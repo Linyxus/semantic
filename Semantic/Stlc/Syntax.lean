@@ -92,8 +92,3 @@ def Exp.is_num_val : Exp n -> Bool
 def Exp.is_val : Exp n -> Bool
 | .abs _ _ => true
 | e => e.is_bool_val || e.is_num_val
-
-theorem Exp.is_bool_val_equiv
-  {e : Exp n} :
-  e.is_bool_val = true ↔ e.IsBoolVal := by
-  sorry
