@@ -46,3 +46,5 @@ inductive HasType : Ctx n -> Exp n -> Ty -> Prop where
   HasType Γ e2 T ->
   HasType Γ e3 T ->
   HasType Γ (.cond e1 e2 e3) T
+
+notation:65 Γ " ⊢ " e " : " T => HasType Γ e T
