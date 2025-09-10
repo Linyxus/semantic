@@ -2,10 +2,6 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.Interpreter
 import Mathlib.Tactic
 
-structure Config (n : Nat) where
-  s : Store n
-  e : Exp n
-
 mutual
 
 def Ty.val_denot : Ty -> ∀ {n}, Config n -> Prop
