@@ -16,8 +16,8 @@ def Ty.val_denot : Ty -> ∀ {n}, Config n -> Prop
 
 def Ty.exp_denot : Ty -> ∀ {n}, Config n -> Prop
 | T => fun config =>
-  ∃ fuel v,
-    eval config.s config.e fuel = .ok v
+  ∃ v,
+    Eval config.s config.e v
     ∧ Ty.val_denot T ⟨config.s, v⟩
 
 end
@@ -51,9 +51,9 @@ theorem sem_typ_var
   (Γ ⊨ (.var x) : T) := by
   intro s hts
   simp [Ty.exp_denot]
-  use 1, s.lookup x
+  use s.lookup x
   split_ands
-  { rfl }
+  { grind [Eval] }
   { sorry }
 
 theorem sem_typ_nsucc
@@ -62,11 +62,11 @@ theorem sem_typ_nsucc
   intro s hts
   specialize ht s hts
   simp [Ty.exp_denot] at *
-  have ⟨fuel0, v0, hev0, hv0⟩ := ht
+  have ⟨v0, hev0, hv0⟩ := ht
   simp [Ty.val_denot] at hv0
-  use fuel0+1, .nsucc v0
+  use .nsucc v0
   split_ands
-  { grind [eval] }
+  { grind [Eval] }
   { simp [Ty.val_denot]
     grind [Exp.is_num_val] }
 
@@ -80,23 +80,23 @@ theorem soundness
   case btrue =>
     intro s hts
     simp [Ty.exp_denot]
-    use 1, .btrue
+    use .btrue
     split_ands
-    { rfl }
+    { grind [Eval] }
     { simp [Ty.val_denot]; rfl }
   case bfalse =>
     intro s hts
     simp [Ty.exp_denot]
-    use 1, .bfalse
+    use .bfalse
     split_ands
-    { rfl }
+    { grind [Eval] }
     { simp [Ty.val_denot]; rfl }
   case nzero =>
     intro s hts
     simp [Ty.exp_denot]
-    use 1, .nzero
+    use .nzero
     split_ands
-    { rfl }
+    { grind [Eval] }
     { simp [Ty.val_denot]; rfl }
   case nsucc ih => apply sem_typ_nsucc ih
   case pred => sorry

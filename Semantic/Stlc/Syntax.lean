@@ -92,3 +92,42 @@ def Exp.is_num_val : Exp n -> Bool
 def Exp.is_val : Exp n -> Bool
 | .abs _ _ => true
 | e => e.is_bool_val || e.is_num_val
+
+theorem Rename.funext {f1 f2 : Rename n1 n2}
+  (hvar : ∀ x, f1.var x = f2.var x) :
+  f1 = f2 := by
+  cases f1; cases f2
+  aesop
+
+theorem Rename.id_liftVar {n : Nat} :
+  (Rename.id (n:=n)).liftVar = Rename.id := by
+  apply Rename.funext
+  intro x
+  cases x <;> rfl
+
+theorem Exp.rename_id {e : Exp n} :
+  e.rename Rename.id = e := by
+  induction e <;> try grind [Exp.rename, Rename.id]
+  case var => rfl
+  case abs =>
+    simp [Exp.rename]
+    simpa [Rename.id_liftVar]
+
+theorem Rename.comp_liftVar {f1 : Rename n1 n2} {f2 : Rename n2 n3} :
+  (f1.comp f2).liftVar = f1.liftVar.comp f2.liftVar := by
+  apply Rename.funext
+  intro x
+  cases x <;> rfl
+
+theorem Exp.rename_comp {e : Exp n} {f2 : Rename n2 n3} :
+  (e.rename f1).rename f2 = e.rename (f1.comp f2) := by
+  induction e generalizing n2 n3 <;> try grind [Exp.rename, Rename.comp]
+  case var => rfl
+  case abs =>
+    simp [Exp.rename]
+    grind [Rename.comp_liftVar]
+
+def Rename.lift (f : Rename n1 n2) (k : Nat) : Rename (n1+k) (n2+k) :=
+  match k with
+  | 0 => f
+  | k+1 => (f.lift k).liftVar

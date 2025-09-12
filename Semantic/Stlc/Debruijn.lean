@@ -9,7 +9,7 @@ inductive Var : Nat -> Type where
 structure Rename (n1 n2 : Nat) where
   var : Var n1 -> Var n2
 
-def Rename.id (n : Nat) : Rename n n where
+def Rename.id {n : Nat} : Rename n n where
   var := fun x => x
 
 def Rename.liftVar (f : Rename n1 n2) : Rename (n1+1) (n2+1) where
@@ -19,3 +19,6 @@ def Rename.liftVar (f : Rename n1 n2) : Rename (n1+1) (n2+1) where
 
 def Rename.succVar : Rename n (n+1) where
   var := fun x => .there x
+
+def Rename.comp (f1 : Rename n1 n2) (f2 : Rename n2 n3) : Rename n1 n3 where
+  var := fun x => f2.var (f1.var x)
