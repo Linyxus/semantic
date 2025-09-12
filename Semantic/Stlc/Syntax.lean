@@ -93,12 +93,6 @@ def Exp.is_val : Exp n -> Bool
 | .abs _ _ => true
 | e => e.is_bool_val || e.is_num_val
 
-theorem Rename.funext {f1 f2 : Rename n1 n2}
-  (hvar : ∀ x, f1.var x = f2.var x) :
-  f1 = f2 := by
-  cases f1; cases f2
-  aesop
-
 theorem Rename.id_liftVar {n : Nat} :
   (Rename.id (n:=n)).liftVar = Rename.id := by
   apply Rename.funext
@@ -131,3 +125,33 @@ def Rename.lift (f : Rename n1 n2) (k : Nat) : Rename (n1+k) (n2+k) :=
   match k with
   | 0 => f
   | k+1 => (f.lift k).liftVar
+
+theorem Exp.rename_succVar_comm {e : Exp n1} {f : Rename n1 n2} :
+  (e.rename f).rename (Rename.succVar) =
+  (e.rename (Rename.succVar)).rename (f.liftVar) := by
+  simp [Exp.rename_comp, Rename.succVar_comm]
+
+theorem Exp.rename_is_boolval {e : Exp n}
+  (h : e.is_bool_val) :
+  (e.rename f).is_bool_val := by
+  cases e <;> aesop
+
+theorem Exp.rename_is_numval {e : Exp n}
+  (h : e.is_num_val) :
+  (e.rename f).is_num_val := by
+  induction e <;> aesop
+
+theorem Exp.rename_is_val {e : Exp n}
+  (h : e.is_val) :
+  (e.rename f).is_val := by
+  induction e <;> try (solve | cases h | rfl)
+  simp [Exp.rename]
+  simp [Exp.is_val]
+  right
+  simp [Exp.is_num_val]
+  simp [Exp.is_val] at h
+  cases h
+  case inl h => cases h
+  case inr h =>
+    simp [Exp.is_num_val] at h
+    apply Exp.rename_is_numval h

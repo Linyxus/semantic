@@ -81,10 +81,68 @@ theorem Exp.subst_id {e : Exp n} :
 def Subst.comp (s1 : Subst n1 n2) (s2 : Subst n2 n3) : Subst n1 n3 where
   exp := fun x => (s1.exp x).subst s2
 
+theorem Subst.liftVar_there_eq {s : Subst n1 n2} {x : Var n1} :
+  (s.liftVar).exp (.there x) = (s.exp x).rename Rename.succVar := by
+  rfl
+
+theorem Exp.var_weaken_subst_comm {x : Var (n1 + k)} {s : Subst n1 n2} :
+  ((var x).subst (s.lift k)).rename (Rename.succVar.lift k) =
+  ((var x).rename (Rename.succVar.lift k)).subst (s.liftVar.lift k) := by
+  induction k
+  case zero => rfl
+  case succ k ih =>
+    cases x
+    case here => rfl
+    case there x =>
+      have ih := ih (x:=x)
+      simp [Exp.subst, Exp.rename]
+      simp [Subst.lift, Rename.lift]
+      conv => lhs; simp [Subst.liftVar]
+      conv => rhs; simp [Rename.liftVar]
+      simp [Subst.liftVar_there_eq]
+      conv => lhs; simp [<-Exp.rename_succVar_comm]
+      congr
+
 theorem Exp.weaken_subst_comm {e : Exp (n1 + k)} {s : Subst n1 n2} :
   (e.subst (s.lift k)).rename (Rename.succVar.lift k) =
     (e.rename (Rename.succVar.lift k)).subst (s.liftVar.lift k) := by
-  sorry
+  match e with
+  | .var x => simp [Exp.var_weaken_subst_comm (x:=x) (s:=s)]
+  | .abs T e =>
+    have ih := Exp.weaken_subst_comm (k:=k+1) (e:=e) (s:=s)
+    simp [Exp.subst, Exp.rename]
+    exact ih
+  | .app e1 e2 =>
+    have ih1 := Exp.weaken_subst_comm (e:=e1) (s:=s)
+    have ih2 := Exp.weaken_subst_comm (e:=e2) (s:=s)
+    simp [Exp.subst, Exp.rename]
+    simp [ih1, ih2]
+  | .btrue => rfl
+  | .bfalse => rfl
+  | .nzero => rfl
+  | .nsucc e =>
+    have ih := Exp.weaken_subst_comm (e:=e) (s:=s)
+    simp [Exp.subst, Exp.rename]
+    simp [ih]
+  | .pred e =>
+    have ih := Exp.weaken_subst_comm (e:=e) (s:=s)
+    simp [Exp.subst, Exp.rename]
+    simp [ih]
+  | .iszero e =>
+    have ih := Exp.weaken_subst_comm (e:=e) (s:=s)
+    simp [Exp.subst, Exp.rename]
+    simp [ih]
+  | .cond e1 e2 e3 =>
+    have ih1 := Exp.weaken_subst_comm (e:=e1) (s:=s)
+    have ih2 := Exp.weaken_subst_comm (e:=e2) (s:=s)
+    have ih3 := Exp.weaken_subst_comm (e:=e3) (s:=s)
+    simp [Exp.subst, Exp.rename]
+    simp [ih1, ih2, ih3]
+
+theorem Exp.weaken_subst_comm_base {e : Exp n1} {s : Subst n1 n2} :
+  (e.subst s).rename (Rename.succVar) =
+    (e.rename (Rename.succVar)).subst (s.liftVar) :=
+  Exp.weaken_subst_comm (k:=0) (e:=e) (s:=s)
 
 theorem Subst.comp_liftVar {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
   (s1.liftVar).comp (s2.liftVar) = (s1.comp s2).liftVar := by
@@ -99,7 +157,7 @@ theorem Subst.comp_liftVar {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
       simp [Subst.comp]
       arg 1
       simp [Subst.liftVar]
-    sorry
+    simp [Exp.weaken_subst_comm_base]
 
 theorem Exp.subst_comp {e : Exp n1} {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
   (e.subst s1).subst s2 = e.subst (s1.comp s2) := by
@@ -108,4 +166,46 @@ theorem Exp.subst_comp {e : Exp n1} {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
   case abs ih =>
     simp [Exp.subst]
     convert ih
-    sorry
+    simp [Subst.comp_liftVar]
+
+def Rename.asSubst (f : Rename n1 n2) : Subst n1 n2 where
+  exp := fun x => .var (f.var x)
+
+theorem Rename.asSubst_liftVar {f : Rename n1 n2} :
+  (Rename.asSubst f).liftVar = Rename.asSubst (f.liftVar) := by
+  apply Subst.funext
+  intro x
+  cases x <;> rfl
+
+theorem Exp.subst_asSubst {e : Exp n1} {f : Rename n1 n2} :
+  e.subst (Rename.asSubst f) = e.rename f := by
+  induction e generalizing n2 <;> try grind [Exp.subst, Exp.rename]
+  case var => rfl
+  case abs ih =>
+    simp [Exp.subst]
+    simp [Rename.asSubst_liftVar]
+    aesop
+
+theorem Subst.openVar_rename_comm {u : Exp n1} {f : Rename n1 n2} :
+  (Subst.openVar u).comp f.asSubst =
+    f.asSubst.liftVar.comp (Subst.openVar (u.rename f)) := by
+  apply Subst.funext
+  intro x
+  cases x
+  case here =>
+    simp [Subst.comp, Subst.openVar]
+    simp [Exp.subst_asSubst]
+    rfl
+  case there x =>
+    simp [Subst.comp, Subst.openVar, Rename.asSubst_liftVar]
+    simp [Exp.subst_asSubst]
+    rfl
+
+theorem Exp.openVar_rename_comm {e : Exp (n1 + 1)} {u : Exp n1} {f : Rename n1 n2} :
+  (e.subst (Subst.openVar u)).rename f
+    = (e.rename (f.liftVar)).subst (Subst.openVar (u.rename f)) := by
+  simp [<-Exp.subst_asSubst]
+  simp [Exp.subst_comp]
+  simp [Exp.subst_asSubst]
+  simp [Subst.openVar_rename_comm]
+  simp [Rename.asSubst_liftVar]
