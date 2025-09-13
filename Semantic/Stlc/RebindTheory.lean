@@ -52,3 +52,17 @@ def Eval.rebind {f : Rename n1 n2}
 
 def Rebind.succVar : Rebind s1 Rename.succVar (s1.val v) where
   var := fun x => by simp [Store.lookup, Rename.succVar]
+
+mutual
+
+theorem Ty.val_denot_rebind
+  (ht : Ty.val_denot T ⟨s1, v1⟩)
+  (ρ : Rebind s1 f s2) :
+  Ty.val_denot T ⟨s2, v1.rename f⟩ := by sorry
+
+theorem Ty.exp_denot_rebind
+  (ht : Ty.exp_denot T ⟨s1, e1⟩)
+  (ρ : Rebind s1 f s2) :
+  Ty.exp_denot T ⟨s2, e1.rename f⟩ := by sorry
+
+end
