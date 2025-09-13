@@ -58,11 +58,25 @@ mutual
 theorem Ty.val_denot_rebind
   (ht : Ty.val_denot T ⟨s1, v1⟩)
   (ρ : Rebind s1 f s2) :
-  Ty.val_denot T ⟨s2, v1.rename f⟩ := by sorry
+  Ty.val_denot T ⟨s2, v1.rename f⟩ := by
+  cases T with
+  | bool =>
+    simp [Ty.val_denot] at ht ⊢
+    exact Exp.rename_is_boolval ht
+  | nat =>
+    simp [Ty.val_denot] at ht ⊢
+    exact Exp.rename_is_numval ht
+  | arrow T U => sorry
 
 theorem Ty.exp_denot_rebind
   (ht : Ty.exp_denot T ⟨s1, e1⟩)
   (ρ : Rebind s1 f s2) :
-  Ty.exp_denot T ⟨s2, e1.rename f⟩ := by sorry
+  Ty.exp_denot T ⟨s2, e1.rename f⟩ := by
+  simp [Ty.exp_denot] at ht ⊢
+  obtain ⟨v, heval, hval⟩ := ht
+  use v.rename f
+  constructor
+  · exact Eval.rebind heval ρ
+  · exact Ty.val_denot_rebind hval ρ
 
 end
