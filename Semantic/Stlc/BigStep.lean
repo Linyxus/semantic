@@ -16,7 +16,7 @@ inductive Eval : Exp 0 -> Exp 0 -> Prop where
 | ev_nzero :
   Eval .nzero .nzero
 | ev_nsucc :
-  Eval e (.nsucc nv) ->
+  Eval e nv ->
   nv.IsNumVal ->
   Eval (.nsucc e) (.nsucc nv)
 | ev_pred_nzero :
