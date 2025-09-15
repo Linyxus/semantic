@@ -1,4 +1,3 @@
-import Aesop
 import Semantic.Stlc.Debruijn
 /-!
 Syntax definitions for the simply typed lambda calculus.
