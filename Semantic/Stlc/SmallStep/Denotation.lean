@@ -4,6 +4,8 @@ import Semantic.Stlc.Syntax
 import Semantic.Stlc.Substitution
 import Mathlib.Tactic
 
+namespace Stlc.SmallStep
+
 mutual
 
 def Ty.val_denot : Ty -> Exp 0 -> Prop
@@ -36,3 +38,5 @@ def SemanticTyping (Γ : Ctx n) (e : Exp n) (T : Ty) : Prop :=
     Ty.exp_denot T (e.subst (Subst.fromStore s))
 
 notation:65 Γ " ⊨ " e " : " T => SemanticTyping Γ e T
+
+end Stlc.SmallStep

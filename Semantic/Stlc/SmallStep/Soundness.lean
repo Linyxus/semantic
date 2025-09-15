@@ -2,6 +2,8 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.SmallStep.Denotation
 import Mathlib.Tactic
 
+namespace Stlc.SmallStep
+
 -- Basic lemmas about Step and Reduce
 
 theorem reduce_refl {e : Exp 0} :
@@ -120,8 +122,57 @@ theorem sem_typ_abs
     }
   }
 
+-- Congruence lemmas for Reduce
+theorem reduce_app_left {e1 e1' e2 : Exp 0} :
+  Reduce e1 e1' -> Reduce (.app e1 e2) (.app e1' e2) := by
+  intro h
+  induction h
+  case red_refl => exact reduce_refl
+  case red_step hstep hred ih =>
+    exact reduce_trans (step_to_reduce (Step.st_app_1 hstep)) ih
+
+theorem reduce_app_right {e1 e2 e2' : Exp 0} :
+  e1.IsVal -> Reduce e2 e2' -> Reduce (.app e1 e2) (.app e1 e2') := by
+  intro hv h
+  induction h
+  case red_refl => exact reduce_refl
+  case red_step hstep hred ih =>
+    exact reduce_trans (step_to_reduce (Step.st_app_2 hv hstep)) ih
+
+theorem sem_typ_app
+  (ht1 : Γ ⊨ e1 : Ty.arrow T U)
+  (ht2 : Γ ⊨ e2 : T) :
+  Γ ⊨ .app e1 e2 : U := by
+  intro s hts
+  specialize ht1 s hts
+  specialize ht2 s hts
+  simp only [Ty.exp_denot] at *
+  obtain ⟨vf, hredf, hvf⟩ := ht1
+  obtain ⟨va, hreda, hva⟩ := ht2
+  simp [Ty.val_denot] at hvf
+  cases hvf.left
+  have app_typed := hvf.right va hva
+  simp [Ty.exp_denot] at app_typed
+  obtain ⟨v, hredapp, vdenot⟩ := app_typed
+  use v
+  apply And.intro _ vdenot
+  -- Show: Reduce (.app (e1.subst σ) (e2.subst σ)) v
+  -- Strategy: e1 → vf, e2 → va, app vf va → v
+  have hvf_val :=
+    val_denot_is_val (T := Ty.arrow T U) (by simp [Ty.val_denot]; exact ⟨by constructor, hvf.right⟩)
+  have hva_val := val_denot_is_val hva
+  have red1 : Reduce (.app (e1.subst (Subst.fromStore s)) (e2.subst (Subst.fromStore s)))
+                     (.app _ (e2.subst (Subst.fromStore s))) :=
+    reduce_app_left hredf
+  have red2 : Reduce (.app _ (e2.subst (Subst.fromStore s)))
+                     (.app _ va) :=
+    reduce_app_right hvf_val hreda
+  exact reduce_trans red1 (reduce_trans red2 hredapp)
+
 theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
-  induction ht <;> try grind [sem_typ_var, sem_typ_abs]
+  induction ht <;> try grind [sem_typ_var, sem_typ_abs, sem_typ_app]
   all_goals sorry
+
+end Stlc.SmallStep

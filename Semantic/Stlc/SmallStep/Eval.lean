@@ -1,6 +1,8 @@
 import Semantic.Stlc.Syntax
 import Semantic.Stlc.Substitution
 
+namespace Stlc.SmallStep
+
 inductive Step : Exp 0 -> Exp 0 -> Prop where
 -- Application rules
 | st_app_1 :
@@ -55,3 +57,5 @@ inductive Reduce : Exp 0 -> Exp 0 -> Prop where
   Step e e' ->
   Reduce e' e'' ->
   Reduce e e''
+
+end Stlc.SmallStep
