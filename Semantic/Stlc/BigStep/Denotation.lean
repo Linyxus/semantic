@@ -1,5 +1,5 @@
 import Semantic.Stlc.TypeSystem
-import Semantic.Stlc.BigStep
+import Semantic.Stlc.BigStep.Eval
 import Mathlib.Tactic
 
 inductive Exp.IsAbsVal : Exp n -> Prop where

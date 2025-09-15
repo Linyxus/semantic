@@ -1,5 +1,5 @@
 import Semantic.Stlc.TypeSystem
-import Semantic.Stlc.Denotation
+import Semantic.Stlc.BigStep.Denotation
 import Mathlib.Tactic
 
 theorem eval_num_val {v : Exp 0}
