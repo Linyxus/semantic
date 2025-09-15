@@ -154,3 +154,28 @@ theorem Exp.rename_is_val {e : Exp n}
   case inr h =>
     simp [Exp.is_num_val] at h
     apply Exp.rename_is_numval h
+
+inductive Store : Nat -> Type where
+| nil : Store 0
+| cons : (e : Exp 0) -> (hv : e.IsVal) -> Store n -> Store (n + 1)
+
+def Store.lookup : Store n -> Var n -> Exp 0
+| .cons v _ s, .here => v
+| .cons _ _ s, .there i => s.lookup i
+
+theorem Store.lookup_is_val {s : Store n} :
+  (s.lookup x).IsVal := by
+  induction x
+  case here => cases s; aesop
+  case there ih =>
+    cases s; simp [Store.lookup]
+    exact ih
+
+inductive Exp.IsAbsVal : Exp n -> Prop where
+| abs : Exp.IsAbsVal (.abs T e)
+
+theorem abs_val_is_val
+  (hv : Exp.IsAbsVal v) :
+  v.IsVal := by
+  cases hv
+  grind [Exp.IsVal]

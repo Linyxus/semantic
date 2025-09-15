@@ -221,3 +221,19 @@ theorem Exp.openVar_succVar_comp {e : Exp n} {u : Exp n} :
   simp [Exp.subst_comp]
   simp [Subst.succVar_openVar_comp]
   simp [Exp.subst_id]
+
+def Subst.fromStore (s : Store n) : Subst n 0 where
+  exp := fun x => s.lookup x
+
+theorem Subst.fromStore_openVar_comp
+  (s : Store n) (v : Exp 0) (hv : v.IsVal) :
+  (Subst.fromStore s).liftVar.comp (Subst.openVar v) =
+    Subst.fromStore (Store.cons v hv s) := by
+  apply Subst.funext
+  intro x
+  cases x
+  case here => rfl
+  case there x0 =>
+    simp [Subst.comp, Subst.liftVar]
+    simp [Exp.openVar_succVar_comp]
+    rfl

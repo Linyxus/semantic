@@ -83,12 +83,6 @@ theorem sem_typ_nsucc
   { simp [Ty.val_denot]
     grind [Exp.IsNumVal] }
 
-theorem abs_val_is_val
-  (hv : Exp.IsAbsVal v) :
-  v.IsVal := by
-  cases hv
-  grind [Exp.IsVal]
-
 theorem val_denot_is_val
   (hv : Ty.val_denot T v) :
   v.IsVal := by
