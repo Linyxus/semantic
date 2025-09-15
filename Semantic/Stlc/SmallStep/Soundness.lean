@@ -170,16 +170,149 @@ theorem sem_typ_app
     reduce_app_right hvf_val hreda
   exact reduce_trans red1 (reduce_trans red2 hredapp)
 
+-- Congruence lemma for nsucc
+theorem reduce_nsucc {e e' : Exp 0} :
+  Reduce e e' -> Reduce (.nsucc e) (.nsucc e') := by
+  intro h
+  induction h
+  case red_refl => exact reduce_refl
+  case red_step hstep hred ih =>
+    exact reduce_trans (step_to_reduce (Step.st_nsucc hstep)) ih
+
+theorem sem_typ_nsucc
+  (ht : Γ ⊨ e : Ty.nat) :
+  (Γ ⊨ .nsucc e : Ty.nat) := by
+  intro s hts
+  specialize ht s hts
+  simp [Ty.exp_denot] at *
+  obtain ⟨v0, hred0, hv0⟩ := ht
+  simp [Ty.val_denot] at hv0
+  use .nsucc v0
+  split_ands
+  { -- Show: Reduce (.nsucc (e.subst (Subst.fromStore s))) (.nsucc v0)
+    exact reduce_nsucc hred0 }
+  { -- Show: Ty.val_denot Ty.nat (.nsucc v0)
+    simp [Ty.val_denot]
+    grind [Exp.IsNumVal] }
+
+-- Congruence lemma for pred
+theorem reduce_pred {e e' : Exp 0} :
+  Reduce e e' -> Reduce (.pred e) (.pred e') := by
+  intro h
+  induction h
+  case red_refl => exact reduce_refl
+  case red_step hstep hred ih =>
+    exact reduce_trans (step_to_reduce (Step.st_pred hstep)) ih
+
+theorem sem_typ_pred
+  (ht : Γ ⊨ e : Ty.nat) :
+  (Γ ⊨ .pred e : Ty.nat) := by
+  intro s hts
+  specialize ht s hts
+  simp only [Ty.exp_denot] at *
+  obtain ⟨v0, hred0, v0denot⟩ := ht
+  simp [Ty.val_denot] at v0denot
+  cases v0denot
+  case nzero =>
+    use .nzero
+    apply And.intro _ (by grind [Ty.val_denot, Exp.IsNumVal])
+    -- Show: Reduce (.pred (e.subst σ)) .nzero
+    -- Strategy: e.subst σ → .nzero, then pred .nzero → .nzero
+    have pred_step : Step (.pred .nzero) .nzero := Step.st_pred_nzero
+    exact reduce_trans (reduce_pred hred0) (step_to_reduce pred_step)
+  case nsucc n0 hv =>
+    use n0
+    apply And.intro _ (by grind [Ty.val_denot, Exp.IsNumVal])
+    -- Show: Reduce (.pred (e.subst σ)) n0
+    -- Strategy: e.subst σ → .nsucc n0, then pred (.nsucc n0) → n0
+    have pred_step : Step (.pred (.nsucc n0)) n0 := Step.st_pred_nsucc hv
+    exact reduce_trans (reduce_pred hred0) (step_to_reduce pred_step)
+
+-- Congruence lemma for iszero
+theorem reduce_iszero {e e' : Exp 0} :
+  Reduce e e' -> Reduce (.iszero e) (.iszero e') := by
+  intro h
+  induction h
+  case red_refl => exact reduce_refl
+  case red_step hstep hred ih =>
+    exact reduce_trans (step_to_reduce (Step.st_iszero hstep)) ih
+
+theorem sem_typ_iszero
+  (ht : Γ ⊨ e : Ty.nat) :
+  (Γ ⊨ .iszero e : Ty.bool) := by
+  intro s hts
+  specialize ht s hts
+  simp only [Ty.exp_denot] at *
+  obtain ⟨v0, hred0, v0denot⟩ := ht
+  simp [Ty.val_denot] at v0denot
+  cases v0denot
+  case nzero =>
+    use .btrue
+    apply And.intro _ (by grind [Ty.val_denot, Exp.IsBoolVal])
+    -- Show: Reduce (.iszero (e.subst σ)) .btrue
+    -- Strategy: e.subst σ → .nzero, then iszero .nzero → .btrue
+    have iszero_step : Step (.iszero .nzero) .btrue := Step.st_iszero_nzero
+    exact reduce_trans (reduce_iszero hred0) (step_to_reduce iszero_step)
+  case nsucc n0 hv =>
+    use .bfalse
+    apply And.intro _ (by grind [Ty.val_denot, Exp.IsBoolVal])
+    -- Show: Reduce (.iszero (e.subst σ)) .bfalse
+    -- Strategy: e.subst σ → .nsucc n0, then iszero (.nsucc n0) → .bfalse
+    have iszero_step : Step (.iszero (.nsucc n0)) .bfalse := Step.st_iszero_nsucc hv
+    exact reduce_trans (reduce_iszero hred0) (step_to_reduce iszero_step)
+
+-- Congruence lemma for cond
+theorem reduce_cond {e1 e1' e2 e3 : Exp 0} :
+  Reduce e1 e1' -> Reduce (.cond e1 e2 e3) (.cond e1' e2 e3) := by
+  intro h
+  induction h
+  case red_refl => exact reduce_refl
+  case red_step hstep hred ih =>
+    exact reduce_trans (step_to_reduce (Step.st_cond hstep)) ih
+
+theorem sem_typ_cond
+  (ht1 : Γ ⊨ e1 : Ty.bool)
+  (ht2 : Γ ⊨ e2 : T)
+  (ht3 : Γ ⊨ e3 : T) :
+  (Γ ⊨ .cond e1 e2 e3 : T) := by
+  intro s hts
+  specialize ht1 s hts
+  specialize ht2 s hts
+  specialize ht3 s hts
+  simp only [Ty.exp_denot] at *
+  obtain ⟨v1, hred1, v1denot⟩ := ht1
+  obtain ⟨v2, hred2, v2denot⟩ := ht2
+  obtain ⟨v3, hred3, v3denot⟩ := ht3
+  simp [Ty.val_denot] at v1denot
+  cases v1denot
+  case btrue =>
+    use v2
+    apply And.intro _ v2denot
+    -- Show: Reduce (.cond (e1.subst σ) (e2.subst σ) (e3.subst σ)) v2
+    -- Strategy: e1.subst σ → .btrue, then cond .btrue e2' e3' → e2', then e2' → v2
+    have cond_step :
+      Step (.cond .btrue (e2.subst (Subst.fromStore s)) (e3.subst (Subst.fromStore s)))
+                          (e2.subst (Subst.fromStore s)) := Step.st_cond_true
+    exact reduce_trans (reduce_cond hred1) (reduce_trans (step_to_reduce cond_step) hred2)
+  case bfalse =>
+    use v3
+    apply And.intro _ v3denot
+    -- Show: Reduce (.cond (e1.subst σ) (e2.subst σ) (e3.subst σ)) v3
+    -- Strategy: e1.subst σ → .bfalse, then cond .bfalse e2' e3' → e3', then e3' → v3
+    have cond_step :
+      Step (.cond .bfalse (e2.subst (Subst.fromStore s)) (e3.subst (Subst.fromStore s)))
+                          (e3.subst (Subst.fromStore s)) := Step.st_cond_false
+    exact reduce_trans (reduce_cond hred1) (reduce_trans (step_to_reduce cond_step) hred3)
+
 theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
   induction ht
     <;> try (solve
-      | grind [sem_typ_var, sem_typ_abs, sem_typ_app]
+      | grind [sem_typ_var, sem_typ_abs, sem_typ_app,
+        sem_typ_nsucc, sem_typ_pred, sem_typ_iszero, sem_typ_cond]
       | intro s hts; simp [Ty.exp_denot, Ty.val_denot];
         constructor; constructor; constructor; try constructor)
-  case nsucc => sorry
-  all_goals sorry
 
 end SmallStep
 end Stlc
