@@ -174,7 +174,11 @@ theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
   induction ht
-    <;> try grind [sem_typ_var, sem_typ_abs, sem_typ_app]
+    <;> try (solve
+      | grind [sem_typ_var, sem_typ_abs, sem_typ_app]
+      | intro s hts; simp [Ty.exp_denot, Ty.val_denot];
+        constructor; constructor; constructor; try constructor)
+  case nsucc => sorry
   all_goals sorry
 
 end SmallStep
