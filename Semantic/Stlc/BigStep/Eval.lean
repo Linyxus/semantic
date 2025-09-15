@@ -1,9 +1,18 @@
 import Semantic.Stlc.Syntax
 import Semantic.Stlc.Substitution
 
+/-!
+Big-step evaluation for STLC.
+
+This module defines the big-step evaluation relation for closed expressions.
+-/
+
 namespace Stlc
 namespace BigStep
 
+/-!
+Big-step evaluation relation.
+-/
 inductive Eval : Exp 0 -> Exp 0 -> Prop where
 | ev_abs :
   Eval (.abs T e) (.abs T e)

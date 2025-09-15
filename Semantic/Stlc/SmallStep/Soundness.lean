@@ -2,10 +2,18 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.SmallStep.Denotation
 import Mathlib.Tactic
 
+/-!
+Soundness proof for small-step STLC.
+
+This module proves that syntactic typing implies semantic typing.
+-/
+
 namespace Stlc
 namespace SmallStep
 
--- Basic lemmas about Step and Reduce
+/-!
+Basic properties of reduction.
+-/
 
 theorem reduce_refl {e : Exp 0} :
   Reduce e e := Reduce.red_refl
@@ -22,7 +30,9 @@ theorem step_to_reduce {e1 e2 : Exp 0} :
   Step e1 e2 -> Reduce e1 e2 :=
   fun h => Reduce.red_step h reduce_refl
 
--- Values don't step
+/-!
+Numeric values cannot step.
+-/
 theorem num_val_no_step {nv : Exp 0}
   (hnv : nv.IsNumVal)
   (hstep : Step nv nv') : False := by
@@ -31,6 +41,9 @@ theorem num_val_no_step {nv : Exp 0}
     cases hstep
     aesop
 
+/-!
+Values cannot step.
+-/
 theorem val_no_step {v : Exp 0}
   (hv : v.IsVal)
   (hstep : Step v v') : False := by
@@ -60,6 +73,9 @@ theorem val_denot_is_val
   case nat => simp [Ty.val_denot] at hv; grind [Exp.IsVal]
   case arrow => simp [Ty.val_denot] at hv; apply abs_val_is_val hv.left
 
+/-!
+Looking up a variable in a typed store yields a value satisfying the type's denotation.
+-/
 theorem lookup_typed_store
   (hts : TypedStore s Γ)
   (hb : Ctx.Lookup Γ x T) :
@@ -304,6 +320,9 @@ theorem sem_typ_cond
                           (e3.subst (Subst.fromStore s)) := Step.st_cond_false
     exact reduce_trans (reduce_cond hred1) (reduce_trans (step_to_reduce cond_step) hred3)
 
+/-!
+Soundness: syntactic typing implies semantic typing.
+-/
 theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by

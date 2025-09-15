@@ -1,29 +1,53 @@
 import Semantic.Stlc.Syntax
 import Mathlib.Tactic
 
+/-!
+Substitutions for STLC, and their properties.
+-/
+
 namespace Stlc
 
+/-!
+A substitution `s : Subst n1 n2` maps each variable in a context of size `n1`
+to an expression in a context of size `n2`.
+-/
 structure Subst (n1 n2 : Nat) where
   exp : Var n1 -> Exp n2
 
+/-!
+Lift a substitution under a binder.
+-/
 def Subst.liftVar (s : Subst n1 n2) : Subst (n1+1) (n2+1) where
   exp := fun
     | .here => .var .here
     | .there x => (s.exp x).rename Rename.succVar
 
+/-!
+Lift a substitution under `k` binders.
+-/
 def Subst.lift (s : Subst n1 n2) (k : Nat) : Subst (n1+k) (n2+k) :=
   match k with
   | 0 => s
   | k+1 => (s.lift k).liftVar
 
+/-!
+The identity substitution.
+-/
 def Subst.id : Subst n n where
   exp := fun x => .var x
 
+/-!
+The substitution that opens an expression by replacing the most recently bound variable
+with the expression `e`.
+-/
 def Subst.openVar (e : Exp n) : Subst (n+1) n where
   exp := fun
     | .here => e
     | .there x => .var x
 
+/-!
+Apply a substitution to an expression.
+-/
 def Exp.subst : Exp n1 -> Subst n1 n2 -> Exp n2
 | .var x, s => s.exp x
 | .abs T e, s => .abs T (e.subst s.liftVar)
@@ -36,6 +60,9 @@ def Exp.subst : Exp n1 -> Subst n1 n2 -> Exp n2
 | .iszero e, s => .iszero (e.subst s)
 | .cond e1 e2 e3, s => .cond (e1.subst s) (e2.subst s) (e3.subst s)
 
+/-!
+Substitution preserves `IsNumVal`.
+-/
 theorem Exp.subst_IsNumVal {e : Exp n1} {s : Subst n1 n2}
   (hv : e.IsNumVal) :
   (e.subst s).IsNumVal := by
@@ -43,6 +70,9 @@ theorem Exp.subst_IsNumVal {e : Exp n1} {s : Subst n1 n2}
   | nzero => exact IsNumVal.nzero
   | nsucc _ ih => exact IsNumVal.nsucc ih
 
+/-!
+Substitution preserves `IsBoolVal`.
+-/
 theorem Exp.subst_IsBoolVal {e : Exp n1} {s : Subst n1 n2}
   (hv : e.IsBoolVal) :
   (e.subst s).IsBoolVal := by
@@ -50,6 +80,9 @@ theorem Exp.subst_IsBoolVal {e : Exp n1} {s : Subst n1 n2}
   | btrue => exact IsBoolVal.btrue
   | bfalse => exact IsBoolVal.bfalse
 
+/-!
+Substitution preserves `IsVal`.
+-/
 theorem Exp.subst_IsVal {e : Exp n1} {s : Subst n1 n2}
   (hv : e.IsVal) :
   (e.subst s).IsVal := by
@@ -58,31 +91,49 @@ theorem Exp.subst_IsVal {e : Exp n1} {s : Subst n1 n2}
   | bool h => exact IsVal.bool (Exp.subst_IsBoolVal h)
   | num h => exact IsVal.num (Exp.subst_IsNumVal h)
 
+/-!
+Substitution for values.
+-/
 def Val.subst {n1 n2 : Nat} (v : Val n1) (s : Subst n1 n2) : Val n2 where
   unwrap := v.unwrap.subst s
   isVal := Exp.subst_IsVal v.isVal
 
+/-!
+Function extensionality principle for substitutions.
+-/
 theorem Subst.funext {s1 s2 : Subst n1 n2}
   (exp : ∀ x, s1.exp x = s2.exp x) :
   s1 = s2 := by
   cases s1; cases s2
   aesop
 
+/-!
+Lifting the identity substitution is still the identity substitution.
+-/
 theorem Subst.id_liftVar {n : Nat} :
   (Subst.id (n:=n)).liftVar = Subst.id := by
   apply Subst.funext
   intro x
   cases x <;> rfl
 
+/-!
+Substituting with the identity substitution is a no-op.
+-/
 theorem Exp.subst_id {e : Exp n} :
   e.subst Subst.id = e := by
   induction e <;> try grind [Exp.subst, Subst.id]
   case var => rfl
   case abs ih => simpa [Exp.subst, Subst.id_liftVar]
 
+/-!
+Composition of substitutions.
+-/
 def Subst.comp (s1 : Subst n1 n2) (s2 : Subst n2 n3) : Subst n1 n3 where
   exp := fun x => (s1.exp x).subst s2
 
+/-!
+An equation for simplifying applying a lifted substitution to a "there" variable.
+-/
 theorem Subst.liftVar_there_eq {s : Subst n1 n2} {x : Var n1} :
   (s.liftVar).exp (.there x) = (s.exp x).rename Rename.succVar := by
   rfl
@@ -105,6 +156,9 @@ theorem Exp.var_weaken_subst_comm {x : Var (n1 + k)} {s : Subst n1 n2} :
       conv => lhs; simp [<-Exp.rename_succVar_comm]
       congr
 
+/-!
+Substitution commutes with weakening.
+-/
 theorem Exp.weaken_subst_comm {e : Exp (n1 + k)} {s : Subst n1 n2} :
   (e.subst (s.lift k)).rename (Rename.succVar.lift k) =
     (e.rename (Rename.succVar.lift k)).subst (s.liftVar.lift k) := by
@@ -141,11 +195,17 @@ theorem Exp.weaken_subst_comm {e : Exp (n1 + k)} {s : Subst n1 n2} :
     simp [Exp.subst, Exp.rename]
     simp [ih1, ih2, ih3]
 
+/-!
+A base case of weakening-commutation of substitution (with `k = 0`).
+-/
 theorem Exp.weaken_subst_comm_base {e : Exp n1} {s : Subst n1 n2} :
   (e.subst s).rename (Rename.succVar) =
     (e.rename (Rename.succVar)).subst (s.liftVar) :=
   Exp.weaken_subst_comm (k:=0) (e:=e) (s:=s)
 
+/-!
+Composition of substitutions commutes with lifting.
+-/
 theorem Subst.comp_liftVar {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
   (s1.liftVar).comp (s2.liftVar) = (s1.comp s2).liftVar := by
   apply Subst.funext
@@ -161,6 +221,10 @@ theorem Subst.comp_liftVar {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
       simp [Subst.liftVar]
     simp [Exp.weaken_subst_comm_base]
 
+/-!
+Substituting a composition of substitutions is the same as
+substituting one after the other for an expression.
+-/
 theorem Exp.subst_comp {e : Exp n1} {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
   (e.subst s1).subst s2 = e.subst (s1.comp s2) := by
   induction e generalizing n2 n3 <;> try grind [Exp.subst, Subst.comp]
@@ -170,15 +234,25 @@ theorem Exp.subst_comp {e : Exp n1} {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
     convert ih
     simp [Subst.comp_liftVar]
 
+/-!
+Lift a renaming to a substitution.
+-/
 def Rename.asSubst (f : Rename n1 n2) : Subst n1 n2 where
   exp := fun x => .var (f.var x)
 
+/-!
+Lifting a renaming and then converting to a substitution is the same as
+converting to a substitution and then lifting the substitution.
+-/
 theorem Rename.asSubst_liftVar {f : Rename n1 n2} :
   (Rename.asSubst f).liftVar = Rename.asSubst (f.liftVar) := by
   apply Subst.funext
   intro x
   cases x <;> rfl
 
+/-!
+Substituting a substitution lifted from a renaming is the same as renaming.
+-/
 theorem Exp.subst_asSubst {e : Exp n1} {f : Rename n1 n2} :
   e.subst (Rename.asSubst f) = e.rename f := by
   induction e generalizing n2 <;> try grind [Exp.subst, Exp.rename]
@@ -188,6 +262,9 @@ theorem Exp.subst_asSubst {e : Exp n1} {f : Rename n1 n2} :
     simp [Rename.asSubst_liftVar]
     aesop
 
+/-!
+Commutativity of opening and renaming.
+-/
 theorem Subst.openVar_rename_comm {u : Exp n1} {f : Rename n1 n2} :
   (Subst.openVar u).comp f.asSubst =
     f.asSubst.liftVar.comp (Subst.openVar (u.rename f)) := by
@@ -203,6 +280,9 @@ theorem Subst.openVar_rename_comm {u : Exp n1} {f : Rename n1 n2} :
     simp [Exp.subst_asSubst]
     rfl
 
+/-!
+Commutativity of opening and renaming for expressions.
+-/
 theorem Exp.openVar_rename_comm {e : Exp (n1 + 1)} {u : Exp n1} {f : Rename n1 n2} :
   (e.subst (Subst.openVar u)).rename f
     = (e.rename (f.liftVar)).subst (Subst.openVar (u.rename f)) := by
@@ -212,11 +292,17 @@ theorem Exp.openVar_rename_comm {e : Exp (n1 + 1)} {u : Exp n1} {f : Rename n1 n
   simp [Subst.openVar_rename_comm]
   simp [Rename.asSubst_liftVar]
 
+/-!
+Weakening followed by opening with a variable is a no-op.
+-/
 theorem Subst.succVar_openVar_comp {u : Exp n} :
   Rename.succVar.asSubst.comp (Subst.openVar u) = Subst.id := by
   apply Subst.funext
   intro x; cases x <;> rfl
 
+/-!
+Opening an expression with a variable after weakening is a no-op.
+-/
 theorem Exp.openVar_succVar_comp {e : Exp n} {u : Exp n} :
   (e.rename Rename.succVar).subst (Subst.openVar u) = e := by
   simp [<-Exp.subst_asSubst]
@@ -224,9 +310,16 @@ theorem Exp.openVar_succVar_comp {e : Exp n} {u : Exp n} :
   simp [Subst.succVar_openVar_comp]
   simp [Exp.subst_id]
 
+/-!
+A substitution that maps each variable to its value in a store.
+-/
 def Subst.fromStore (s : Store n) : Subst n 0 where
   exp := fun x => s.lookup x
 
+/-!
+Composition of a substitution from a store with an opening substitution
+is the same as extending the store with the opened value.
+-/
 theorem Subst.fromStore_openVar_comp
   (s : Store n) (v : Exp 0) (hv : v.IsVal) :
   (Subst.fromStore s).liftVar.comp (Subst.openVar v) =

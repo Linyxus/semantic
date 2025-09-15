@@ -1,9 +1,17 @@
 import Semantic.Stlc.Syntax
 import Semantic.Stlc.Substitution
 
+/-!
+Small-step evaluation for STLC.
+This module defines the small-step reduction relation for closed expressions.
+-/
+
 namespace Stlc
 namespace SmallStep
 
+/-!
+Single-step reduction relation.
+-/
 inductive Step : Exp 0 -> Exp 0 -> Prop where
 -- Application rules
 | st_app_1 :
@@ -51,6 +59,9 @@ inductive Step : Exp 0 -> Exp 0 -> Prop where
 | st_cond_false :
   Step (.cond .bfalse e2 e3) e3
 
+/-!
+Multi-step reduction relation.
+-/
 inductive Reduce : Exp 0 -> Exp 0 -> Prop where
 | red_refl :
   Reduce e e

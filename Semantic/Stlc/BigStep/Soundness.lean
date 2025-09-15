@@ -2,9 +2,18 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.BigStep.Denotation
 import Mathlib.Tactic
 
+/-!
+Soundness proof for STLC.
+
+This module proves that syntactic typing implies semantic typing.
+-/
+
 namespace Stlc
 namespace BigStep
 
+/-!
+Numeric values evaluate to themselves.
+-/
 theorem eval_num_val {v : Exp 0}
   (hv : v.IsNumVal) :
   Eval v v := by
@@ -31,6 +40,9 @@ theorem eval_bool_val_eq
   case bfalse =>
     cases hev; rfl
 
+/-!
+Values evaluate to themselves.
+-/
 theorem eval_val {v : Exp 0}
   (hv : v.IsVal) :
   Eval v v := by
@@ -46,6 +58,9 @@ theorem eval_val_eq
   case bool hv => apply eval_bool_val_eq hv hev
   case num hv => apply eval_num_val_eq hv hev
 
+/-!
+Looking up a variable in a typed store yields a value satisfying the type's denotation.
+-/
 theorem typed_store_lookup
   (hts : TypedStore s Γ)
   (hb : Ctx.Lookup Γ x T) :
@@ -212,6 +227,9 @@ theorem sem_typ_cond
     apply And.intro _ v3denot
     exact Eval.ev_cond_false hev1 hev2 hev3
 
+/-!
+Soundness: syntactic typing implies semantic typing.
+-/
 theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   (Γ ⊨ e : T) := by

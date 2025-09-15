@@ -4,9 +4,17 @@ import Semantic.Stlc.Syntax
 import Semantic.Stlc.Substitution
 import Mathlib.Tactic
 
+/-!
+Type interpretation for small-step STLC.
+This module defines the denotation of types based on small-step reduction.
+-/
+
 namespace Stlc
 namespace SmallStep
 
+/-!
+Denotation of types for small-step evaluation.
+-/
 mutual
 
 def Ty.val_denot : Ty -> Exp 0 -> Prop
@@ -28,16 +36,25 @@ def Ty.exp_denot : Ty -> Exp 0 -> Prop
 
 end
 
+/-!
+Predicate for well-typed stores.
+-/
 def TypedStore : Store n -> Ctx n -> Prop
 | .nil, .empty => True
 | .cons v _ s, .var Γ T =>
   Ty.val_denot T v ∧ TypedStore s Γ
 
+/-!
+Semantic typing.
+-/
 def SemanticTyping (Γ : Ctx n) (e : Exp n) (T : Ty) : Prop :=
   ∀ s,
     TypedStore s Γ ->
     Ty.exp_denot T (e.subst (Subst.fromStore s))
 
+/-!
+Notation for semantic typing.
+-/
 notation:65 Γ " ⊨ " e " : " T => SemanticTyping Γ e T
 
 end SmallStep
