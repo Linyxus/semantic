@@ -209,3 +209,15 @@ theorem Exp.openVar_rename_comm {e : Exp (n1 + 1)} {u : Exp n1} {f : Rename n1 n
   simp [Exp.subst_asSubst]
   simp [Subst.openVar_rename_comm]
   simp [Rename.asSubst_liftVar]
+
+theorem Subst.succVar_openVar_comp {u : Exp n} :
+  Rename.succVar.asSubst.comp (Subst.openVar u) = Subst.id := by
+  apply Subst.funext
+  intro x; cases x <;> rfl
+
+theorem Exp.openVar_succVar_comp {e : Exp n} {u : Exp n} :
+  (e.rename Rename.succVar).subst (Subst.openVar u) = e := by
+  simp [<-Exp.subst_asSubst]
+  simp [Exp.subst_comp]
+  simp [Subst.succVar_openVar_comp]
+  simp [Exp.subst_id]

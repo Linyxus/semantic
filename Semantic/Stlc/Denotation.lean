@@ -2,6 +2,9 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.BigStep
 import Mathlib.Tactic
 
+inductive Exp.IsAbsVal : Exp n -> Prop where
+| abs : Exp.IsAbsVal (.abs T e)
+
 mutual
 
 def Ty.val_denot : Ty -> Exp 0 -> Prop
@@ -10,7 +13,7 @@ def Ty.val_denot : Ty -> Exp 0 -> Prop
 | .nat => fun e  =>
   e.IsNumVal
 | .arrow T U => fun e =>
-  e.IsVal ∧
+  e.IsAbsVal ∧
   ∀ arg_v,
     Ty.val_denot T arg_v ->
     Ty.exp_denot U (.app e arg_v)
@@ -53,3 +56,16 @@ theorem Store.lookup_is_val {s : Store n} :
   case there ih =>
     cases s; simp [Store.lookup]
     exact ih
+
+theorem Subst.fromStore_openVar_comp
+  (s : Store n) (v : Exp 0) (hv : v.IsVal) :
+  (Subst.fromStore s).liftVar.comp (Subst.openVar v) =
+    Subst.fromStore (Store.cons v hv s) := by
+  apply Subst.funext
+  intro x
+  cases x
+  case here => rfl
+  case there x0 =>
+    simp [Subst.comp, Subst.liftVar]
+    simp [Exp.openVar_succVar_comp]
+    rfl
