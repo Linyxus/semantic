@@ -35,7 +35,7 @@ def Exp.subst : Exp n1 -> Subst n1 n2 -> Exp n2
 | .cond e1 e2 e3, s => .cond (e1.subst s) (e2.subst s) (e3.subst s)
 
 theorem Exp.subst_IsNumVal {e : Exp n1} {s : Subst n1 n2}
-  (hv : e.IsNumVal)  :
+  (hv : e.IsNumVal) :
   (e.subst s).IsNumVal := by
   induction hv with
   | nzero => exact IsNumVal.nzero
