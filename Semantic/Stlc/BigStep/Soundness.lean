@@ -209,7 +209,7 @@ theorem sem_typ_cond
     apply And.intro _ v3denot
     exact Eval.ev_cond_false hev1 hev2 hev3
 
-theorem soundness
+theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   (Γ ⊨ e : T) := by
   induction ht <;>
