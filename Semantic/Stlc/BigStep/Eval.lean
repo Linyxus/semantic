@@ -1,6 +1,8 @@
 import Semantic.Stlc.Syntax
 import Semantic.Stlc.Substitution
 
+namespace Stlc.BigStep
+
 inductive Eval : Exp 0 -> Exp 0 -> Prop where
 | ev_abs :
   Eval (.abs T e) (.abs T e)
@@ -43,3 +45,5 @@ inductive Eval : Exp 0 -> Exp 0 -> Prop where
   Eval e2 v2 ->
   Eval e3 v3 ->
   Eval (.cond e1 e2 e3) v3
+
+end Stlc.BigStep

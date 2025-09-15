@@ -172,7 +172,8 @@ theorem sem_typ_app
 theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
-  induction ht <;> try grind [sem_typ_var, sem_typ_abs, sem_typ_app]
+  induction ht
+    <;> try grind [sem_typ_var, sem_typ_abs, sem_typ_app]
   all_goals sorry
 
 end Stlc.SmallStep
