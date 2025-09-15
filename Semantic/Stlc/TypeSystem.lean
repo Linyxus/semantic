@@ -3,6 +3,8 @@ import Semantic.Stlc.Substitution
 Type system definitions for the simply typed lambda calculus.
 -/
 
+namespace Stlc
+
 inductive Ctx : Nat -> Type where
 | empty : Ctx 0
 | var : Ctx n -> Ty -> Ctx (n+1)
@@ -48,3 +50,5 @@ inductive HasType : Ctx n -> Exp n -> Ty -> Prop where
   HasType Γ (.cond e1 e2 e3) T
 
 notation:65 Γ " ⊢ " e " : " T => HasType Γ e T
+
+end Stlc

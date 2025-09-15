@@ -1,6 +1,8 @@
 import Semantic.Stlc.Syntax
 import Mathlib.Tactic
 
+namespace Stlc
+
 structure Subst (n1 n2 : Nat) where
   exp : Var n1 -> Exp n2
 
@@ -237,3 +239,5 @@ theorem Subst.fromStore_openVar_comp
     simp [Subst.comp, Subst.liftVar]
     simp [Exp.openVar_succVar_comp]
     rfl
+
+end Stlc

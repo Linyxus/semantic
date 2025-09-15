@@ -2,7 +2,8 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.BigStep.Eval
 import Mathlib.Tactic
 
-namespace Stlc.BigStep
+namespace Stlc
+namespace BigStep
 
 mutual
 
@@ -37,4 +38,5 @@ def SemanticTyping (Γ : Ctx n) (e : Exp n) (T : Ty) : Prop :=
 
 notation:65 Γ " ⊨ " e " : " T => SemanticTyping Γ e T
 
-end Stlc.BigStep
+end BigStep
+end Stlc

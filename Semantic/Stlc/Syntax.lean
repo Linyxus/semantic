@@ -3,6 +3,8 @@ import Semantic.Stlc.Debruijn
 Syntax definitions for the simply typed lambda calculus.
 -/
 
+namespace Stlc
+
 inductive Ty : Type where
 | bool : Ty
 | nat : Ty
@@ -179,3 +181,5 @@ theorem abs_val_is_val
   v.IsVal := by
   cases hv
   grind [Exp.IsVal]
+
+end Stlc

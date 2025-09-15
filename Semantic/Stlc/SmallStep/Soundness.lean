@@ -2,7 +2,8 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.SmallStep.Denotation
 import Mathlib.Tactic
 
-namespace Stlc.SmallStep
+namespace Stlc
+namespace SmallStep
 
 -- Basic lemmas about Step and Reduce
 
@@ -176,4 +177,5 @@ theorem semantic_soundness
     <;> try grind [sem_typ_var, sem_typ_abs, sem_typ_app]
   all_goals sorry
 
-end Stlc.SmallStep
+end SmallStep
+end Stlc

@@ -4,7 +4,8 @@ import Semantic.Stlc.Syntax
 import Semantic.Stlc.Substitution
 import Mathlib.Tactic
 
-namespace Stlc.SmallStep
+namespace Stlc
+namespace SmallStep
 
 mutual
 
@@ -39,4 +40,5 @@ def SemanticTyping (Γ : Ctx n) (e : Exp n) (T : Ty) : Prop :=
 
 notation:65 Γ " ⊨ " e " : " T => SemanticTyping Γ e T
 
-end Stlc.SmallStep
+end SmallStep
+end Stlc

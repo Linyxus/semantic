@@ -3,6 +3,8 @@ import Mathlib.Tactic
 Library for De Bruijn indices and parallel operations.
 -/
 
+namespace Stlc
+
 inductive Var : Nat -> Type where
 | here : Var (n+1)
 | there : Var n -> Var (n+1)
@@ -34,3 +36,5 @@ theorem Rename.succVar_comm {f : Rename n1 n2} :
   f.comp Rename.succVar = Rename.succVar.comp (f.liftVar) := by
   apply Rename.funext
   intro x; rfl
+
+end Stlc

@@ -2,7 +2,8 @@ import Semantic.Stlc.TypeSystem
 import Semantic.Stlc.BigStep.Denotation
 import Mathlib.Tactic
 
-namespace Stlc.BigStep
+namespace Stlc
+namespace BigStep
 
 theorem eval_num_val {v : Exp 0}
   (hv : v.IsNumVal) :
@@ -240,4 +241,5 @@ theorem semantic_soundness
     { grind [Exp.subst, Eval] }
     { simp [Ty.val_denot]; grind [Exp.IsNumVal] }
 
-end Stlc.BigStep
+end BigStep
+end Stlc
