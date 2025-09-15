@@ -9,7 +9,7 @@ mutual
 def Ty.val_denot : Ty -> Exp 0 -> Prop
 | .bool => fun e =>
   e.IsBoolVal
-| .nat => fun e  =>
+| .nat => fun e =>
   e.IsNumVal
 | .arrow T U => fun e =>
   e.IsAbsVal ∧

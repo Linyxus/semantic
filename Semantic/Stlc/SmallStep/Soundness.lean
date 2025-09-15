@@ -49,6 +49,14 @@ theorem reduce_val_eq {v : Exp 0} :
 theorem reduce_val {v : Exp 0} :
   v.IsVal -> Reduce v v := by grind [reduce_refl]
 
+theorem val_denot_is_val
+  (hv : Ty.val_denot T v) :
+  v.IsVal := by
+  cases T
+  case bool => simp [Ty.val_denot] at hv; grind [Exp.IsVal]
+  case nat => simp [Ty.val_denot] at hv; grind [Exp.IsVal]
+  case arrow => simp [Ty.val_denot] at hv; apply abs_val_is_val hv.left
+
 theorem lookup_typed_store
   (hts : TypedStore s Γ)
   (hb : Ctx.Lookup Γ x T) :
@@ -77,10 +85,43 @@ theorem sem_typ_var
 
 theorem sem_typ_abs
   (ht : (Γ,x:T) ⊨ e : U) :
-  Γ ⊨ .abs T e : .arrow T U := by sorry
+  Γ ⊨ .abs T e : .arrow T U := by
+  intro s hts
+  simp [Ty.exp_denot]
+  simp [Exp.subst]
+  constructor; constructor
+  { apply reduce_val; grind [Exp.IsVal] }
+  { simp [Ty.val_denot]
+    constructor; try grind [Exp.IsAbsVal]
+    intro arg harg
+    unfold SemanticTyping at ht
+    have hvarg := val_denot_is_val harg
+    let s' := Store.cons arg hvarg s
+    have hts' : TypedStore s' (Γ,x:T) := by
+      unfold s'
+      simp [TypedStore]
+      aesop
+    specialize ht s' hts'
+    simp [Ty.exp_denot] at ht ⊢
+    have ⟨v0, hred0, hv0⟩ := ht
+    use v0
+    apply And.intro _ hv0
+    { -- Need to show: Reduce (.app (.abs T e.subst(σ)) arg) v0
+      -- Strategy: beta reduce then use hred0
+      have beta_step : Step (.app (.abs T (e.subst (Subst.fromStore s).liftVar)) arg)
+                            ((e.subst (Subst.fromStore s).liftVar).subst (Subst.openVar arg)) := by
+        apply Step.st_app_beta hvarg
+      have subst_eq : (e.subst (Subst.fromStore s).liftVar).subst (Subst.openVar arg) =
+                      e.subst (Subst.fromStore s') := by
+        simp [Exp.subst_comp]
+        rw [Subst.fromStore_openVar_comp (hv := hvarg)]
+      rw [subst_eq] at beta_step
+      exact Reduce.red_step beta_step hred0
+    }
+  }
 
 theorem semantic_soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
-  induction ht <;> try grind [sem_typ_var]
+  induction ht <;> try grind [sem_typ_var, sem_typ_abs]
   all_goals sorry
