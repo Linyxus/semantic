@@ -1,35 +1,85 @@
 import Semantic.Fsub.Eval
+import Semantic.Fsub.TypeSystem
 
 namespace Fsub
 
+def resolve : Store -> Exp {} -> Option (Exp {})
+| s, .var (.free x) =>
+  match s.lookup x with
+  | some v => some v.unwrap
+  | none => none
+| _, other => some other
+
+/-- Denotation of types. -/
+def Denot := Store -> Exp {} -> Prop
+
+def Denot.Imply (d1 d2 : Denot) : Prop :=
+  ∀ s e,
+    (d1 s e) ->
+    (d2 s e)
+
+inductive TypeInfo : Kind -> Type where
+| var : Nat -> TypeInfo .var
+| tvar : Denot -> TypeInfo .tvar
+
+inductive TypeEnv : Sig -> Type where
+| empty : TypeEnv {}
+| extend :
+  TypeEnv s ->
+  TypeInfo k ->
+  TypeEnv (s,,k)
+
+def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
+  Γ.extend (.var x)
+
+def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
+  Γ.extend (.tvar T)
+
+def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
+| .extend _ info, .here => info
+| .extend Γ _,    .there x => Γ.lookup x
+
+def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat :=
+  match Γ.lookup x with
+  | .var y => y
+
+def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : Denot :=
+  match Γ.lookup x with
+  | .tvar T => T
+
 mutual
 
--- Termination checking fails
-def Ty.val_denot : Ty {} -> Store -> Exp {} -> Prop
-| .top => fun s e => True
-| .singleton x => fun s e => False  -- A value cannot be a singleton
-| .arrow T U => fun s e =>
+def Ty.val_denot : TypeEnv s -> Ty s -> Denot
+| _, .top => fun _ _ => True
+| env, .tvar X => env.lookup_tvar X
+| _, .singleton (.free x) => fun _ e =>
+  e = .var (.free x)
+| env, .singleton (.bound x) => fun _ e =>
+  e = .var (.free (env.lookup_var x))
+| env, .poly T1 T2 => fun s e =>
   ∃ T0 e0,
-    e = .abs T0 e0 ∧
-    (∀ x,
-      Ty.var_denot T s x ->
-      Ty.val_denot (U.subst (Subst.openVar x)) s (e0.subst (Subst.openVar x)))
-| .poly T U => fun s e => sorry
+    resolve s e = some (.tabs T0 e0) ∧
+    (∀ (denot : Denot),
+      denot.Imply (Ty.val_denot env T1) ->
+      Ty.val_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar T0)))
+| env, .arrow T1 T2 => fun s e =>
+  ∃ T0 e0,
+    resolve s e = some (.abs T0 e0) ∧
+    (∀ arg,
+      Ty.val_denot env T1 s (.var (.free arg)) ->
+      Ty.val_denot (env.extend_var arg) T2 s (e0.subst (Subst.openVar (.free arg))))
 
-def Ty.var_denot : Ty {} -> Store -> Var {} -> Prop
-| .singleton x => fun s e => e = x
-| other => fun s e =>
-  ∃ fx v hv,
-    e = .free fx ∧
-    s.lookup fx = some ⟨v, hv⟩ ∧
-    Ty.val_denot other s v
-
-def Ty.exp_denot : Ty {} -> Store -> Exp {} -> Prop :=
-  fun T s e =>
-    ∃ s' v,
-      Reduce s e s' v ∧
-      Ty.val_denot T s' v
+def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
+| env, T => fun s e =>
+  ∃ s' v,
+    Reduce s e s' v ∧
+    Ty.val_denot env T s' v
 
 end
+
+def SemanticTyping (Γ : Ctx s) (e : Exp s) (T : Ty s) : Prop :=
+  match Γ with
+  | .empty => sorry
+  | .push Γ b => sorry
 
 end Fsub
