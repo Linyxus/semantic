@@ -61,7 +61,7 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
     resolve s e = some (.tabs T0 e0) ∧
     (∀ (denot : Denot),
       denot.Imply (Ty.val_denot env T1) ->
-      Ty.val_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar T0)))
+      Ty.val_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar .top)))
 | env, .arrow T1 T2 => fun s e =>
   ∃ T0 e0,
     resolve s e = some (.abs T0 e0) ∧
@@ -96,5 +96,7 @@ def SemanticTyping (Γ : Ctx s) (e : Exp s) (T : Ty s) : Prop :=
   ∀ env store,
     EnvTyping Γ env store ->
     Ty.exp_denot env T store (e.subst (Subst.from_TypeEnv env))
+
+notation:65 Γ " ⊨ " e " : " T => SemanticTyping Γ e T
 
 end Fsub

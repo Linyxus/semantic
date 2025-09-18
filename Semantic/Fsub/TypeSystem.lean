@@ -88,4 +88,6 @@ inductive HasType : Ctx s -> Exp s -> Ty s -> Prop where
   --------------------------------
   HasType Γ (.letin e1 e2) U
 
+notation:65 Γ " ⊢ " e " : " T => HasType Γ e T
+
 end Fsub
