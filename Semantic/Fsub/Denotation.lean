@@ -77,9 +77,24 @@ def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
 
 end
 
+def EnvTyping : Ctx s -> TypeEnv s -> Store -> Prop
+| .empty, .empty, store => True
+| .push Γ (.var T), .extend env (.var n), store =>
+  ∃ v,
+    store.lookup n = some v ∧
+    Ty.val_denot env T store v.unwrap ∧
+    EnvTyping Γ env store
+| .push Γ (.tvar S), .extend env (.tvar d), store =>
+  d.Imply (Ty.val_denot env S) ∧
+  EnvTyping Γ env store
+
+def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
+  var := fun x => .free (env.lookup_var x)
+  tvar := fun _ => .top  -- types can be simply erased
+
 def SemanticTyping (Γ : Ctx s) (e : Exp s) (T : Ty s) : Prop :=
-  match Γ with
-  | .empty => sorry
-  | .push Γ b => sorry
+  ∀ env store,
+    EnvTyping Γ env store ->
+    Ty.exp_denot env T store (e.subst (Subst.from_TypeEnv env))
 
 end Fsub
