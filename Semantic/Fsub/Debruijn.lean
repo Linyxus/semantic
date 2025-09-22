@@ -65,4 +65,10 @@ theorem Rename.funext {f1 f2 : Rename s1 s2}
   cases f1; cases f2
   aesop
 
+theorem Rename.succ_lift_comm {f : Rename s1 s2} :
+  (Rename.succ (k:=k0)).comp f.lift = f.comp (Rename.succ (k:=k0)) := by
+  apply Rename.funext
+  intro k x
+  cases x <;> rfl
+
 end Fsub

@@ -83,13 +83,60 @@ theorem Subst.lift_there_tvar_eq {σ : Subst s1 s2} {X : BVar s1 .tvar} :
   (σ.lift (k:=k)).tvar (.there X) = (σ.tvar X).rename Rename.succ := by
   rfl
 
+theorem Rename.lift_there_tvar_eq {f : Rename s1 s2} {x : BVar s1 .tvar} :
+  (f.lift (k:=k)).var (.there x) = (f.var x).there := by
+  rfl
+
+theorem Ty.weaken_rename_comm {T : Ty s1} {f : Rename s1 s2} :
+  (T.rename f).rename Rename.succ = (T.rename Rename.succ).rename (f.lift (k:=k0)) := by
+  sorry
+
+theorem TVar.weaken_subst_comm_liftMany {X : BVar (s1 ++ K) .tvar} {σ : Subst s1 s2} :
+  ((σ.liftMany K).tvar X).rename ((Rename.succ (k:=k0)).liftMany K) =
+  (σ.lift (k:=k0).liftMany K).tvar ((Rename.succ (k:=k0).liftMany K).var X) := by
+  induction K with
+  | nil =>
+    simp [Subst.liftMany, Rename.liftMany]
+    cases X with
+    | here => simp [Subst.lift, Rename.succ]
+    | there X => rfl
+  | cons k K ih =>
+    simp [Subst.liftMany, Rename.liftMany]
+    cases X with
+    | here => rfl
+    | there X =>
+      simp [Rename.lift_there_tvar_eq]
+      simp [Subst.lift_there_tvar_eq]
+      sorry
+
+theorem Var.weaken_subst_comm_liftMany {x : Var (s1 ++ K)} {σ : Subst s1 s2} :
+  (x.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
+  (x.rename (Rename.succ.liftMany K)).subst (σ.lift (k:=k0).liftMany K) := by
+  induction K with
+  | nil =>
+    simp [Subst.liftMany, Rename.liftMany]
+    sorry
+  | cons k K ih =>
+    simp [Subst.liftMany, Rename.liftMany]
+    cases x with
+    | bound x =>
+      cases x with
+      | here => sorry
+      | there x =>
+        simp [Var.subst, Var.rename, Subst.lift_there_var_eq]
+        have := ih (x := .bound x)
+        simp [Var.subst, Var.rename] at this
+        sorry
+    | free n => simp [Var.subst, Var.rename]
+
+
 theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
     (T.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K) := by
   match T with
   | .top => rfl
-  | .tvar X => sorry
-  | .singleton x => sorry
+  | .tvar X => simp [Ty.subst, Ty.rename, TVar.weaken_subst_comm_liftMany]
+  | .singleton x => simp [Ty.subst, Ty.rename, Var.weaken_subst_comm_liftMany]
   | .arrow T1 T2 =>
     have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x) (k0:=k0)
