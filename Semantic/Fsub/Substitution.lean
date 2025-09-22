@@ -87,9 +87,9 @@ theorem Rename.lift_there_tvar_eq {f : Rename s1 s2} {x : BVar s1 .tvar} :
   (f.lift (k:=k)).var (.there x) = (f.var x).there := by
   rfl
 
-theorem Ty.weaken_rename_comm {T : Ty s1} {f : Rename s1 s2} :
-  (T.rename f).rename Rename.succ = (T.rename Rename.succ).rename (f.lift (k:=k0)) := by
-  sorry
+theorem Rename.lift_there_var_eq {f : Rename s1 s2} {x : BVar s1 .var} :
+  (f.lift (k:=k)).var (.there x) = (f.var x).there := by
+  rfl
 
 theorem TVar.weaken_subst_comm_liftMany {X : BVar (s1 ++ K) .tvar} {σ : Subst s1 s2} :
   ((σ.liftMany K).tvar X).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -107,7 +107,8 @@ theorem TVar.weaken_subst_comm_liftMany {X : BVar (s1 ++ K) .tvar} {σ : Subst s
     | there X =>
       simp [Rename.lift_there_tvar_eq]
       simp [Subst.lift_there_tvar_eq]
-      sorry
+      simp [Ty.weaken_rename_comm]
+      grind
 
 theorem Var.weaken_subst_comm_liftMany {x : Var (s1 ++ K)} {σ : Subst s1 s2} :
   (x.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -115,20 +116,21 @@ theorem Var.weaken_subst_comm_liftMany {x : Var (s1 ++ K)} {σ : Subst s1 s2} :
   induction K with
   | nil =>
     simp [Subst.liftMany, Rename.liftMany]
-    sorry
+    cases x <;> rfl
   | cons k K ih =>
     simp [Subst.liftMany, Rename.liftMany]
     cases x with
     | bound x =>
       cases x with
-      | here => sorry
+      | here => rfl
       | there x =>
-        simp [Var.subst, Var.rename, Subst.lift_there_var_eq]
-        have := ih (x := .bound x)
-        simp [Var.subst, Var.rename] at this
-        sorry
+        conv => lhs; simp [Var.subst]
+        conv => rhs; simp [Var.rename, Var.subst]
+        have ih := ih (x:=.bound x)
+        simp [Subst.lift_there_var_eq, Rename.lift_there_var_eq]
+        simp [Var.weaken_rename_comm]
+        congr
     | free n => simp [Var.subst, Var.rename]
-
 
 theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =

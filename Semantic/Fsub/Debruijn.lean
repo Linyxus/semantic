@@ -71,4 +71,16 @@ theorem Rename.succ_lift_comm {f : Rename s1 s2} :
   intro k x
   cases x <;> rfl
 
+theorem Rename.lift_id :
+  (Rename.id (s:=s)).lift (k:=k0) = Rename.id := by
+  apply Rename.funext
+  intro k x
+  cases x <;> rfl
+
+theorem Rename.lift_comp {f1 : Rename s1 s2} {f2 : Rename s2 s3} :
+  (f1.comp f2).lift (k:=k0) = f1.lift.comp f2.lift := by
+  apply Rename.funext
+  intro k x
+  cases x <;> rfl
+
 end Fsub

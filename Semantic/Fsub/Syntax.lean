@@ -52,4 +52,41 @@ structure Val (s : Sig) where
   unwrap : Exp s
   isVal : unwrap.IsVal
 
+def Var.rename_id {x : Var s} : x.rename (Rename.id) = x := by
+  cases x <;> rfl
+
+def Ty.rename_id {T : Ty s} : T.rename (Rename.id) = T := by
+  induction T
+    <;> try (solve | rfl | simp [Ty.rename, Var.rename_id, Rename.lift_id]; try aesop)
+
+def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
+  induction e
+    <;> try (solve
+      | rfl
+      | simp [Exp.rename, Ty.rename_id, Var.rename_id, Rename.lift_id]; try aesop)
+
+theorem Var.rename_comp {x : Var s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+    (x.rename f).rename g = x.rename (f.comp g) := by
+  cases x <;> rfl
+
+theorem Ty.rename_comp {T : Ty s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+    (T.rename f).rename g = T.rename (f.comp g) := by
+  induction T generalizing s2 s3
+    <;> try (solve | rfl | simp [Ty.rename, Var.rename_comp, Rename.lift_comp]; try aesop)
+
+theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+    (e.rename f).rename g = e.rename (f.comp g) := by
+  induction e generalizing s2 s3
+    <;> try (solve
+      | rfl
+      | simp [Exp.rename, Ty.rename_comp, Var.rename_comp, Rename.lift_comp]; try aesop)
+
+theorem Ty.weaken_rename_comm {T : Ty s1} {f : Rename s1 s2} :
+    (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
+  simp [Ty.rename_comp, Rename.succ_lift_comm]
+
+theorem Var.weaken_rename_comm {x : Var s1} {f : Rename s1 s2} :
+    (x.rename Rename.succ).rename (f.lift (k:=k0)) = (x.rename f).rename (Rename.succ) := by
+  simp [Var.rename_comp, Rename.succ_lift_comm]
+
 end Fsub
