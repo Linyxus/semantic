@@ -75,6 +75,42 @@ def Subst.comp (σ1 : Subst s1 s2) (σ2 : Subst s2 s3) : Subst s1 s3 where
   var := fun x => (σ1.var x).subst σ2
   tvar := fun x => (σ1.tvar x).subst σ2
 
+theorem Subst.lift_there_var_eq {σ : Subst s1 s2} {x : BVar s1 .var} :
+  (σ.lift (k:=k)).var (.there x) = (σ.var x).rename Rename.succ := by
+  rfl
+
+theorem Subst.lift_there_tvar_eq {σ : Subst s1 s2} {X : BVar s1 .tvar} :
+  (σ.lift (k:=k)).tvar (.there X) = (σ.tvar X).rename Rename.succ := by
+  rfl
+
+theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
+  (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
+    (T.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K) := by
+  match T with
+  | .top => rfl
+  | .tvar X => sorry
+  | .singleton x => sorry
+  | .arrow T1 T2 =>
+    have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
+    have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x) (k0:=k0)
+    simp [Ty.subst, Ty.rename, ih1]
+    exact ih2
+  | .poly T1 T2 =>
+    have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
+    have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X) (k0:=k0)
+    simp [Ty.subst, Ty.rename, ih1]
+    exact ih2
+
+theorem Ty.weaken_subst_comm_base {T : Ty s1} {σ : Subst s1 s2} :
+  (T.subst σ).rename (Rename.succ (k:=k)) = (T.rename Rename.succ).subst (σ.lift (k:=k)) :=
+  Ty.weaken_subst_comm (K:=[])
+
+theorem Var.weaken_subst_comm_base {x : Var s1} {σ : Subst s1 s2} :
+  (x.subst σ).rename (Rename.succ (k:=k)) = (x.rename Rename.succ).subst (σ.lift) := by
+  cases x with
+  | bound x => rfl
+  | free n => rfl
+
 /-!
 Composition of substitutions commutes with lifting.
 This is the key technical lemma that enables substitution composition proofs.
@@ -82,7 +118,33 @@ This is the key technical lemma that enables substitution composition proofs.
 theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
   (σ1.lift (k := k)).comp (σ2.lift (k := k)) = (σ1.comp σ2).lift (k := k) := by
   apply Subst.funext
-  all_goals sorry
+  · intro x
+    cases x with
+    | here => rfl
+    | there x0 =>
+      conv =>
+        lhs; simp [Subst.comp, Subst.lift_there_var_eq]
+      simp only [Subst.lift_there_var_eq]
+      simp only [Var.weaken_subst_comm_base, Subst.comp]
+  · intro X
+    cases X with
+    | here => rfl
+    | there x0 =>
+      conv =>
+        lhs; simp only [Subst.comp, Subst.lift_there_tvar_eq]
+      simp only [Subst.lift_there_tvar_eq]
+      simp only [Ty.weaken_subst_comm_base, Subst.comp]
+
+/-!
+Composition of substitutions commutes with lifting many levels.
+-/
+theorem Subst.comp_liftMany {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {K : Sig} :
+  (σ1.liftMany K).comp (σ2.liftMany K) = (σ1.comp σ2).liftMany K := by
+  induction K with
+  | nil => rfl
+  | cons k K ih =>
+    simp [Subst.liftMany]
+    rw [Subst.comp_lift, ih]
 
 /-!
 Substituting a composition of substitutions is the same as
