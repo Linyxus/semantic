@@ -16,6 +16,11 @@ def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
     case here => exact .tvar .here
     case there x => exact (s.tvar x).rename Rename.succ
 
+def Subst.liftMany (s : Subst s1 s2) (K : Sig) : Subst (s1 ++ K) (s2 ++ K) :=
+  match K with
+  | [] => s
+  | k :: K => (s.liftMany K).lift (k:=k)
+
 def Subst.id {s : Sig} : Subst s s where
   var := fun x => .bound x
   tvar := fun x => .tvar x
@@ -64,76 +69,6 @@ theorem Subst.funext {σ1 σ2 : Subst s1 s2}
   aesop
 
 /-!
-Renaming commutes with substitution.
--/
-/-!
-Direct lemmas for the specific cases needed in comp_lift.
-These are the core technical lemmas that establish weakening commutativity.
--/
-theorem Var.comp_lift_var_case {x : BVar s1 Kind.var} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
-  ((σ1.var x).rename Rename.succ).subst (σ2.lift (k := Kind.var)) =
-  ((σ1.var x).subst σ2).rename Rename.succ := by
-  cases h : σ1.var x with
-  | bound y =>
-    -- Both sides equal (σ2.var y).rename Rename.succ
-    rfl
-  | free n =>
-    -- Both sides equal (free n)
-    rfl
-
-theorem Var.comp_lift_tvar_lift {y : Var s2} {σ2 : Subst s2 s3} :
-  (y.rename Rename.succ).subst (σ2.lift (k := Kind.tvar)) =
-  (y.subst σ2).rename Rename.succ := by
-  cases y with
-  | bound z =>
-    -- For bound variables, both sides equal (σ2.var z).rename Rename.succ
-    rfl
-  | free n =>
-    -- For free variables, both sides equal (free n)
-    rfl
-
-theorem Var.comp_lift_general {y : Var s2} {σ2 : Subst s2 s3} {k : Kind} :
-  (y.rename Rename.succ).subst (σ2.lift (k := k)) =
-  (y.subst σ2).rename Rename.succ := by
-  cases y with
-  | bound z =>
-    -- For bound variables, both sides equal (σ2.var z).rename Rename.succ
-    rfl
-  | free n =>
-    -- For free variables, both sides equal (free n)
-    rfl
-
-theorem Ty.comp_lift_general {T : Ty s2} {σ2 : Subst s2 s3} {k : Kind} :
-  (T.rename Rename.succ).subst (σ2.lift (k := k)) =
-  (T.subst σ2).rename Rename.succ := by
-  induction T generalizing s3 with
-  | top => rfl
-  | tvar x => rfl
-  | singleton y =>
-    simp [Ty.subst, Ty.rename]
-    exact Var.comp_lift_general
-  | arrow T1 T2 ih1 ih2 =>
-    simp [Ty.subst, Ty.rename, ih1]
-    -- For T2: This requires proving that different levels of lifting commute
-    -- This is a sophisticated property about De Bruijn index manipulation
-    -- that would require several additional lemmas about lifting interactions
-    sorry
-  | poly T1 T2 ih1 ih2 =>
-    simp [Ty.subst, Ty.rename, ih1]
-    -- For T2: Same complex lifting commutation issue as arrow case
-    -- Proving this would require a deep theory of lifting level interactions
-    sorry
-
-
-theorem Var.rename_subst_comm {x : Var s1} {f : Rename s2 s3} {σ : Subst s1 s2} :
-  (x.subst σ).rename f =
-    x.subst { var := fun y => (σ.var y).rename f, tvar := fun y => (σ.tvar y).rename f } := by
-  cases x with
-  | bound _ => rfl
-  | free _ => rfl
-
-
-/-!
 Composition of substitutions.
 -/
 def Subst.comp (σ1 : Subst s1 s2) (σ2 : Subst s2 s3) : Subst s1 s3 where
@@ -147,36 +82,7 @@ This is the key technical lemma that enables substitution composition proofs.
 theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
   (σ1.lift (k := k)).comp (σ2.lift (k := k)) = (σ1.comp σ2).lift (k := k) := by
   apply Subst.funext
-  · intro x
-    cases x with
-    | here => rfl
-    | there x =>
-      cases k with
-      | var =>
-        -- Variable lifting case
-        unfold Subst.comp Subst.lift
-        simp
-        exact Var.comp_lift_var_case
-      | tvar =>
-        -- Type variable lifting case
-        unfold Subst.comp Subst.lift
-        simp
-        exact Var.comp_lift_tvar_lift
-  · intro x
-    cases x with
-    | here => rfl
-    | there x =>
-      cases k with
-      | var =>
-        -- Variable lifting case for types
-        unfold Subst.comp Subst.lift
-        simp
-        exact Ty.comp_lift_general
-      | tvar =>
-        -- Type variable lifting case for types
-        unfold Subst.comp Subst.lift
-        simp
-        exact Ty.comp_lift_general
+  all_goals sorry
 
 /-!
 Substituting a composition of substitutions is the same as

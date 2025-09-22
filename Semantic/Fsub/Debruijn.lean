@@ -10,6 +10,7 @@ inductive Kind : Type where
 | var : Kind
 | tvar : Kind
 
+@[reducible]
 def Sig : Type := List Kind
 
 instance Sig.instEmptyCollection : EmptyCollection Sig where
@@ -19,9 +20,16 @@ def Sig.extend_var : Sig -> Sig := fun s => .var :: s
 def Sig.extend_tvar : Sig -> Sig := fun s => .tvar :: s
 def Sig.extend : Sig -> Kind -> Sig := fun s k => k :: s
 
+def Sig.extendMany : Sig -> Sig -> Sig
+| s, [] => s
+| s, k :: K => (s.extendMany K).extend k
+
 postfix:80 ",x" => Sig.extend_var
 postfix:80 ",X" => Sig.extend_tvar
 infixl:65 ",," => Sig.extend
+
+instance Sig.instAppend : Append Sig where
+  append := Sig.extendMany
 
 inductive BVar : Sig -> Kind -> Type where
 | here : BVar (s,,k) k
@@ -42,6 +50,11 @@ def Rename.lift (f : Rename s1 s2) : Rename (s1,,k) (s2,,k) where
   var := fun
     | .here => .here
     | .there x => .there (f.var x)
+
+def Rename.liftMany (f : Rename s1 s2) (K : Sig) : Rename (s1 ++ K) (s2 ++ K) :=
+  match K with
+  | [] => f
+  | k :: K => (f.liftMany K).lift (k:=k)
 
 def Rename.succ : Rename s (s,,k) where
   var := fun x => x.there
