@@ -67,17 +67,62 @@ theorem sem_typ_tabs
     { exact hdenot }
     { exact hts }
 
+theorem var_exp_denot_inv
+  (hv : Ty.exp_denot env T store (.var x)) :
+  Ty.val_denot env T store (.var x) := by
+  simp [Ty.exp_denot] at hv
+  have ⟨s', v, hr, hv⟩ := hv
+  have := red_ans (by apply Exp.IsAns.is_var) hr
+  aesop
+
+theorem closed_var_inv (x : Var {}) :
+  ∃ fx, x = .free fx := by
+  cases x
+  case bound bx => cases bx
+  case free fx => aesop
+
+theorem abs_val_denot_inv
+  (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
+  ∃ fx, x = .free fx
+    ∧ ∃ T0 e0 hv, store.lookup fx = some ⟨.abs T0 e0, hv⟩
+    ∧ (∀ arg,
+      (Ty.val_denot env T1 store (.var (.free arg))) ->
+      Ty.exp_denot (env.extend_var arg) T2 store (e0.subst (Subst.openVar (.free arg)))) := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp [Ty.val_denot, resolve] at hv
+    generalize hres : store.lookup fx = res
+    cases res
+    case none => aesop
+    case some v =>
+      cases v
+      aesop
+
 theorem sem_typ_app
   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
   (ht2 : Γ ⊨ (.var y) : T1) :
   Γ ⊨ (.app x y) : (T2.subst (Subst.openVar x)) := by
   intro env store hts
-  simp [Ty.exp_denot]
-  unfold SemanticTyping at ht1 ht2
-  simp [Ty.exp_denot, Ty.val_denot] at ht1
-  have ⟨s', v', hr1, h1⟩ := ht1 env store hts
-  have h := red_ans (by apply Exp.IsAns.is_var) hr1
-  sorry
+  have h1 := ht1 env store hts
+  simp [Exp.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  have ⟨fx, hfx, T0, hbody, _, hlk, hfun⟩ := abs_val_denot_inv h1'
+  simp [Exp.subst, hfx]
+  have h2 := ht2 env store hts
+  simp [Exp.subst] at h2
+  have h2' := var_exp_denot_inv h2
+  have ⟨farg, hfarg⟩ := closed_var_inv (y.subst (Subst.from_TypeEnv env))
+  simp [hfarg] at *
+  have := hfun farg h2'
+  simp [Ty.exp_denot] at this ⊢
+  have ⟨s', v, hr, hv⟩ := this
+  use s', v
+  constructor
+  · apply Reduce.red_step _ hr
+    constructor
+    aesop
+  · sorry
 
 theorem soundness
   (ht : Γ ⊢ e : T) :
