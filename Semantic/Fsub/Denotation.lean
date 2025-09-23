@@ -61,13 +61,13 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
     resolve s e = some (.tabs T0 e0) ∧
     (∀ (denot : Denot),
       denot.Imply (Ty.val_denot env T1) ->
-      Ty.val_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar .top)))
+      Ty.exp_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar .top)))
 | env, .arrow T1 T2 => fun s e =>
   ∃ T0 e0,
     resolve s e = some (.abs T0 e0) ∧
     (∀ arg,
       Ty.val_denot env T1 s (.var (.free arg)) ->
-      Ty.val_denot (env.extend_var arg) T2 s (e0.subst (Subst.openVar (.free arg))))
+      Ty.exp_denot (env.extend_var arg) T2 s (e0.subst (Subst.openVar (.free arg))))
 
 def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
 | env, T => fun s e =>
@@ -80,9 +80,7 @@ end
 def EnvTyping : Ctx s -> TypeEnv s -> Store -> Prop
 | .empty, .empty, store => True
 | .push Γ (.var T), .extend env (.var n), store =>
-  ∃ v,
-    store.lookup n = some v ∧
-    Ty.val_denot env T store v.unwrap ∧
+  Ty.val_denot env T store (.var (.free n)) ∧
     EnvTyping Γ env store
 | .push Γ (.tvar S), .extend env (.tvar d), store =>
   d.Imply (Ty.val_denot env S) ∧
@@ -98,5 +96,37 @@ def SemanticTyping (Γ : Ctx s) (e : Exp s) (T : Ty s) : Prop :=
     Ty.exp_denot env T store (e.subst (Subst.from_TypeEnv env))
 
 notation:65 Γ " ⊨ " e " : " T => SemanticTyping Γ e T
+
+theorem Subst.from_TypeEnv_weaken_open :
+  (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
+    Subst.from_TypeEnv (env.extend_var x) := by
+  apply Subst.funext
+  · intro x
+    cases x <;> rfl
+  · intro X
+    cases X; rfl
+
+theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
+    e.subst (Subst.from_TypeEnv (env.extend_var x)) := by
+  simp [Exp.subst_comp]
+  simp [Subst.from_TypeEnv_weaken_open]
+
+theorem Subst.from_TypeEnv_weaken_open_tvar :
+  (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =
+    Subst.from_TypeEnv (env.extend_tvar d) := by
+  apply Subst.funext
+  · intro x
+    cases x; rfl
+  · intro X
+    cases X
+    case here => rfl
+    case there x => rfl
+
+theorem Exp.from_TypeEnv_weaken_open_tvar {e : Exp (s,X)} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top) =
+    e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
+  simp [Exp.subst_comp]
+  rw [Subst.from_TypeEnv_weaken_open_tvar]
 
 end Fsub

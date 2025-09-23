@@ -87,6 +87,11 @@ inductive HasType : Ctx s -> Exp s -> Ty s -> Prop where
   HasType (Γ,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
   HasType Γ (.letin e1 e2) U
+| subtyp :
+  HasType Γ e S ->
+  Subtyp Γ S T ->
+  ----------------------------
+  HasType Γ e T
 
 notation:65 Γ " ⊢ " e " : " T => HasType Γ e T
 
