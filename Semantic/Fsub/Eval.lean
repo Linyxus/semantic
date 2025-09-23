@@ -47,4 +47,11 @@ inductive Reduce : Store -> Exp {} -> Store -> Exp {} -> Prop where
   Reduce s' e' s'' e'' ->
   Reduce s e s'' e''
 
+inductive Exp.IsAns : Exp {} -> Prop where
+| is_val :
+  (hv : Exp.IsVal v) ->
+  Exp.IsAns v
+| is_var :
+  Exp.IsAns (.var x)
+
 end Fsub
