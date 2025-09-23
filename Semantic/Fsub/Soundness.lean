@@ -1,6 +1,20 @@
 import Semantic.Fsub.Denotation
 namespace Fsub
 
+theorem step_ans_absurd
+  (h : Exp.IsAns e)
+  (hs : Step s e s' e') :
+  False := by
+  cases hs <;> try (solve | cases h | cases h; rename_i hv; cases hv)
+
+theorem red_ans
+  (h : Exp.IsAns e)
+  (hr : Reduce s e s' e') :
+  s = s' ∧ e = e' := by
+  cases hr <;> try (solve | cases h | aesop)
+  rename_i hs _
+  exfalso; apply step_ans_absurd h hs
+
 theorem sem_typ_var :
   Γ ⊨ (.var x) : (.singleton x) := by
   intro s e hts
@@ -61,6 +75,8 @@ theorem sem_typ_app
   simp [Ty.exp_denot]
   unfold SemanticTyping at ht1 ht2
   simp [Ty.exp_denot, Ty.val_denot] at ht1
+  have ⟨s', v', hr1, h1⟩ := ht1 env store hts
+  have h := red_ans (by apply Exp.IsAns.is_var) hr1
   sorry
 
 theorem soundness
