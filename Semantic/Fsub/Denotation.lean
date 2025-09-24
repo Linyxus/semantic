@@ -47,15 +47,18 @@ def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : Denot :=
   match Γ.lookup x with
   | .tvar T => T
 
+def interp_var (env : TypeEnv s) (x : Var s) : Nat :=
+  match x with
+  | .free n => n
+  | .bound x => env.lookup_var x
+
 mutual
 
 def Ty.val_denot : TypeEnv s -> Ty s -> Denot
 | _, .top => fun _ _ => True
 | env, .tvar X => env.lookup_tvar X
-| _, .singleton (.free x) => fun _ e =>
-  e = .var (.free x)
-| env, .singleton (.bound x) => fun _ e =>
-  e = .var (.free (env.lookup_var x))
+| env, .singleton x => fun _ e =>
+  e = .var (.free (interp_var env x))
 | env, .poly T1 T2 => fun s e =>
   ∃ T0 e0,
     resolve s e = some (.tabs T0 e0) ∧
@@ -128,5 +131,105 @@ theorem Exp.from_TypeEnv_weaken_open_tvar {e : Exp (s,X)} :
     e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
   simp [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_tvar]
+
+structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Prop where
+  var :
+    ∀ (x : BVar s1 k),
+      env1.lookup x = env2.lookup (f.var x)
+
+def Rebind.liftVar
+  (ρ : Rebind env1 f env2) :
+  Rebind (env1.extend_var x) (f.lift) (env2.extend_var x) where
+  var := fun
+    | .here => rfl
+    | .there y => by
+      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup]
+      exact ρ.var y
+
+def Rebind.liftTVar
+  (ρ : Rebind env1 f env2) :
+  Rebind (env1.extend_tvar d) (f.lift) (env2.extend_tvar d) where
+  var := fun
+    | .here => rfl
+    | .there y => by
+      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup]
+      exact ρ.var y
+
+mutual
+
+def rebind_val_denot
+  (ρ : Rebind env1 f env2) :
+  Ty.val_denot env1 T = Ty.val_denot env2 (T.rename f) :=
+  match T with
+  | .top => by
+    simp [Ty.val_denot, Ty.rename]
+  | .tvar X => by
+    simp [Ty.val_denot, Ty.rename]
+    sorry
+  | .singleton x => by
+    simp [Ty.val_denot, Ty.rename]
+    sorry
+  | .arrow T1 T2 => by
+    have ih1 := rebind_val_denot ρ (T:=T1)
+    sorry
+  | .poly T1 T2 => by
+    have ih1 := rebind_val_denot ρ (T:=T1)
+    sorry
+
+def rebind_exp_denot
+  (ρ : Rebind env1 f env2) :
+  Ty.exp_denot env1 T = Ty.exp_denot env2 (T.rename f) := by
+  have ih := rebind_val_denot ρ (T:=T)
+  simp [Ty.exp_denot, ih]
+
+end
+
+-- structure EnvMorphism (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) : Prop where
+--   var :
+--     ∀ (x : BVar s1 .var),
+--       env1.lookup_var x = interp_var env2 (σ.var x)
+--   tvar :
+--     ∀ (X : BVar s1 .tvar),
+--       env1.lookup_tvar X = Ty.val_denot env2 (σ.tvar X)
+
+-- def EnvMorphism.liftVar
+--   (ρ : EnvMorphism env1 σ env2) :
+--   EnvMorphism (env1.extend_var x) (σ.lift) (env2.extend_var x) where
+--   var := fun
+--     | .here => rfl
+--     | .there y => sorry
+--   tvar := fun
+--     | .there X => sorry
+
+-- mutual
+
+-- theorem map_val_denot
+--   (ρ : EnvMorphism env1 σ env2) :
+--   Ty.val_denot env1 T = Ty.val_denot env2 (T.subst σ) :=
+--   match T with
+--   | .top => by
+--     simp [Ty.val_denot, Ty.subst]
+--   | .tvar X => by
+--     simp [Ty.val_denot, Ty.subst]
+--     rw [ρ.tvar X]
+--   | .singleton x => by
+--     simp [Ty.val_denot, Ty.subst]
+--     cases x
+--     case free fx => rfl
+--     case bound bx =>
+--       simp [interp_var, ρ.var bx]
+--       rfl
+--   | .arrow T1 T2 => by
+--     have ih1 := map_val_denot ρ (T:=T1)
+--     sorry
+--   | .poly T1 T2 => sorry
+
+-- theorem map_exp_denot
+--   (ρ : EnvMorphism env1 σ env2) :
+--   Ty.exp_denot env1 T = Ty.exp_denot env2 (T.subst σ) := by
+--   have ih := map_val_denot ρ (T:=T)
+--   simp [Ty.exp_denot, ih]
+
+-- end
 
 end Fsub
