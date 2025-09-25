@@ -85,7 +85,35 @@ def rebind_val_denot
     have ih1 := rebind_val_denot ρ (T:=T1)
     simp [Ty.val_denot, Ty.rename]
     intro s0 e0; simp
-    sorry
+    constructor
+    next =>
+      intro h
+      have ⟨T0, e0, hr, hd⟩ := h
+      use T0, e0
+      apply And.intro hr
+      intro denot himply
+      have ih2 := rebind_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
+      have himply' : denot.Imply (Ty.val_denot env1 T1) := by
+        intro s e hdenot
+        have := (ih1 s e).mpr (himply s e hdenot)
+        exact this
+      specialize hd denot himply'
+      have hd' := (ih2 s0 (e0.subst (Subst.openTVar .top))).mp hd
+      exact hd'
+    next =>
+      intro h
+      have ⟨T0, e0, hr, hd⟩ := h
+      use T0, e0
+      apply And.intro hr
+      intro denot himply
+      have ih2 := rebind_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
+      have himply' : denot.Imply (Ty.val_denot env2 (T1.rename f)) := by
+        intro s e hdenot
+        have := (ih1 s e).mp (himply s e hdenot)
+        exact this
+      specialize hd denot himply'
+      have hd' := (ih2 s0 (e0.subst (Subst.openTVar .top))).mpr hd
+      exact hd'
 
 def rebind_exp_denot
   (ρ : Rebind env1 f env2) :
