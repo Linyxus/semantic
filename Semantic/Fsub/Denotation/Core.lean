@@ -246,4 +246,46 @@ theorem val_denot_ans {env : TypeEnv s}
     apply resolve_ans_to_val hr
     constructor; constructor
 
+theorem typed_env_is_inert
+  (ht : EnvTyping Γ env store) :
+  env.inert := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.inert]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht
+          have ⟨_, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.inert] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨himpl, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.inert] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            apply Denot.imply_trans himpl (val_denot_ans ih_result)
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+
 end Fsub
