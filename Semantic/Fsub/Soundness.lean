@@ -124,6 +124,15 @@ theorem sem_typ_app
     aesop
   · sorry
 
+theorem sem_typ_tapp
+  (ht : Γ ⊨ (.var x) : (.poly S T)) :
+  Γ ⊨ (.tapp x S) : (T.subst (Subst.openTVar S)) := by
+  intro env store hts
+  have h1 := ht env store hts
+  simp [Exp.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  sorry
+
 theorem soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
@@ -132,6 +141,7 @@ theorem soundness
   case abs => grind [sem_typ_abs]
   case tabs => grind [sem_typ_tabs]
   case app => sorry
+  case tapp => sorry
   all_goals sorry
 
 end Fsub

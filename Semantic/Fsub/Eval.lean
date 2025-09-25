@@ -32,7 +32,7 @@ inductive Step : Store -> Exp {} -> Store -> Exp {} -> Prop where
   Step s1 (.app (.free x) y) s1 (e.subst (Subst.openVar y))
 | st_tapply :
   s1.lookup x = some ⟨.tabs T0 e, hv⟩ ->
-  Step s1 (.tapp (.free x) T) s1 (e.subst (Subst.openTVar T))
+  Step s1 (.tapp (.free x) T) s1 (e.subst (Subst.openTVar .top))
 | st_rename :
   Step s1 (.letin (.var x) e) s1 (e.subst (Subst.openVar x))
 | st_lift :
