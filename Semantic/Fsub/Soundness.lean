@@ -99,6 +99,24 @@ theorem abs_val_denot_inv
       cases v
       aesop
 
+theorem tabs_val_denot_inv
+  (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
+  ∃ fx, x = .free fx
+    ∧ ∃ T0 e0 hv, store.lookup fx = some ⟨.tabs T0 e0, hv⟩
+    ∧ (∀ (denot : Denot),
+      denot.Imply (Ty.val_denot env T1) ->
+      Ty.exp_denot (env.extend_tvar denot) T2 store (e0.subst (Subst.openTVar .top))) := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp [Ty.val_denot, resolve] at hv
+    generalize hres : store.lookup fx = res
+    cases res
+    case none => aesop
+    case some v =>
+      cases v
+      aesop
+
 theorem interp_var_subst (x : Var s) :
   .free (interp_var env x) = x.subst (Subst.from_TypeEnv env) := by
   cases x <;> rfl
@@ -139,7 +157,18 @@ theorem sem_typ_tapp
   have h1 := ht env store hts
   simp [Exp.subst] at h1
   have h1' := var_exp_denot_inv h1
-  sorry
+  have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv h1'
+  simp [Exp.subst, hfx]
+  have := hfun (Ty.val_denot env S) (by apply Denot.imply_refl)
+  simp [Ty.exp_denot] at this ⊢
+  have ⟨s', v, hr, hv⟩ := this
+  use s', v
+  constructor
+  · apply Reduce.red_step _ hr
+    constructor
+    exact hlk
+  · apply Denot.equiv_ltr _ hv
+    apply open_targ_val_denot
 
 theorem soundness
   (ht : Γ ⊢ e : T) :
@@ -149,7 +178,8 @@ theorem soundness
   case abs => grind [sem_typ_abs]
   case tabs => grind [sem_typ_tabs]
   case app => grind [sem_typ_app]
-  case tapp => sorry
+  case tapp => grind [sem_typ_tapp]
+  case letin => sorry
   all_goals sorry
 
 end Fsub

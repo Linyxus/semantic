@@ -55,7 +55,7 @@ def interp_var (env : TypeEnv s) (x : Var s) : Nat :=
 mutual
 
 def Ty.val_denot : TypeEnv s -> Ty s -> Denot
-| _, .top => fun _ _ => True
+| _, .top => fun _ e => e.IsAns
 | env, .tvar X => env.lookup_tvar X
 | env, .singleton x => fun _ e =>
   e = .var (.free (interp_var env x))
@@ -180,5 +180,70 @@ theorem Denot.equiv_rtl {d1 d2 : Denot}
   (h2 : d2 s e) :
   d1 s e := by
   apply (heqv s e).mpr h2
+
+theorem Denot.imply_refl (d : Denot) : d.Imply d := by
+  intro s e h
+  exact h
+
+theorem Denot.imply_trans {d1 d2 d3 : Denot}
+  (h1 : d1.Imply d2)
+  (h2 : d2.Imply d3) :
+  d1.Imply d3 := by
+  intro s e h
+  aesop
+
+def Denot.ans : Denot :=
+  fun _ e => Exp.IsAns e
+
+def TypeEnv.inert (env : TypeEnv s) : Prop :=
+  ∀ (x : BVar s .tvar),
+    (env.lookup_tvar x).Imply Denot.ans
+
+theorem resolve_var_or_val
+  (hv : resolve store e = some v) :
+  (∃ x, e = .var x) ∨ e = v := by
+  cases e
+  all_goals try (solve | aesop | simp [resolve] at hv; aesop)
+
+theorem resolve_ans_to_val
+  (hv : resolve store e = some v)
+  (hans : v.IsAns) :
+  e.IsAns := by
+  cases (resolve_var_or_val hv)
+  case inl h =>
+    have ⟨x, h⟩ := h
+    rw [h]
+    apply Exp.IsAns.is_var
+  case inr h => aesop
+
+theorem val_denot_ans {env : TypeEnv s}
+  (henv : env.inert) :
+  (Ty.val_denot env T).Imply Denot.ans := by
+  cases T
+  case top =>
+    intro s e h
+    simp [Ty.val_denot] at h
+    aesop
+  case tvar X =>
+    simp [Ty.val_denot]
+    apply henv
+  case singleton x =>
+    intro s e h
+    simp [Ty.val_denot] at h
+    rw [h]
+    simp [Denot.ans]
+    apply Exp.IsAns.is_var
+  case poly T1 T2 =>
+    intro s e h
+    simp [Ty.val_denot] at h
+    have ⟨T0, e0, hr, hfun⟩ := h
+    apply resolve_ans_to_val hr
+    constructor; constructor
+  case arrow T1 T2 =>
+    intro s e h
+    simp [Ty.val_denot] at h
+    have ⟨T0, e0, hr, hfun⟩ := h
+    apply resolve_ans_to_val hr
+    constructor; constructor
 
 end Fsub
