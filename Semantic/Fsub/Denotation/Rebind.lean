@@ -133,4 +133,20 @@ def rebind_exp_denot
 
 end
 
+def Rebind.weaken {env : TypeEnv s} :
+  Rebind env Rename.succ (env.extend_var x) where
+  var := fun _ => rfl
+
+def Rebind.tweaken {env : TypeEnv s} :
+  Rebind env Rename.succ (env.extend_tvar d) where
+  var := fun _ => rfl
+
+lemma weaken_val_denot {env : TypeEnv s} :
+  Ty.val_denot env T ≈ Ty.val_denot (env.extend_var x) (T.rename Rename.succ) := by
+  apply rebind_val_denot (ρ:=Rebind.weaken) (T:=T)
+
+lemma tweaken_val_denot {env : TypeEnv s} :
+  Ty.val_denot env T ≈ Ty.val_denot (env.extend_tvar d) (T.rename Rename.succ) := by
+  apply rebind_val_denot (ρ:=Rebind.tweaken) (T:=T)
+
 end Fsub
