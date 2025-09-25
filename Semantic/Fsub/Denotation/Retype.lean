@@ -174,4 +174,26 @@ theorem retype_exp_denot
 
 end
 
+def Retype.open_arg {env : TypeEnv s} {y : Var s} :
+  Retype
+    (env.extend_var (interp_var env y))
+    (Subst.openVar y)
+    env where
+  var := fun x => by cases x <;> rfl
+  tvar := fun
+    | .there X => by
+      conv =>
+        lhs
+        simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      conv =>
+        rhs
+        simp [Subst.openVar]
+      apply Denot.eq_to_equiv
+      simp [Ty.val_denot, TypeEnv.lookup_tvar]
+
+theorem open_arg_val_denot {env : TypeEnv s} {y : Var s} {T : Ty (s,x)} :
+  Ty.val_denot (env.extend_var (interp_var env y)) T ≈
+    Ty.val_denot env (T.subst (Subst.openVar y)) := by
+  apply retype_val_denot Retype.open_arg
+
 end Fsub

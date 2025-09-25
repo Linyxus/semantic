@@ -99,10 +99,14 @@ theorem abs_val_denot_inv
       cases v
       aesop
 
+theorem interp_var_subst (x : Var s) :
+  .free (interp_var env x) = x.subst (Subst.from_TypeEnv env) := by
+  cases x <;> rfl
+
 theorem sem_typ_app
   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
   (ht2 : Γ ⊨ (.var y) : T1) :
-  Γ ⊨ (.app x y) : (T2.subst (Subst.openVar x)) := by
+  Γ ⊨ (.app x y) : (T2.subst (Subst.openVar y)) := by
   intro env store hts
   have h1 := ht1 env store hts
   simp [Exp.subst] at h1
@@ -113,6 +117,8 @@ theorem sem_typ_app
   simp [Exp.subst] at h2
   have h2' := var_exp_denot_inv h2
   have ⟨farg, hfarg⟩ := closed_var_inv (y.subst (Subst.from_TypeEnv env))
+  have heq := hfarg
+  simp [<-interp_var_subst] at heq
   simp [hfarg] at *
   have := hfun farg h2'
   simp [Ty.exp_denot] at this ⊢
@@ -121,8 +127,10 @@ theorem sem_typ_app
   constructor
   · apply Reduce.red_step _ hr
     constructor
-    aesop
-  · sorry
+    exact hlk
+  · simp [<-heq] at hv
+    apply Denot.equiv_ltr _ hv
+    apply open_arg_val_denot
 
 theorem sem_typ_tapp
   (ht : Γ ⊨ (.var x) : (.poly S T)) :
@@ -140,7 +148,7 @@ theorem soundness
   case var => apply sem_typ_var
   case abs => grind [sem_typ_abs]
   case tabs => grind [sem_typ_tabs]
-  case app => sorry
+  case app => grind [sem_typ_app]
   case tapp => sorry
   all_goals sorry
 

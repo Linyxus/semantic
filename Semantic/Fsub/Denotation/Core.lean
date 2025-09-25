@@ -169,4 +169,16 @@ theorem Denot.eq_to_equiv (d1 d2 : Denot) : d1 = d2 -> d1 ≈ d2 := by
   intro s e
   grind
 
+theorem Denot.equiv_ltr {d1 d2 : Denot}
+  (heqv : d1 ≈ d2)
+  (h1 : d1 s e) :
+  d2 s e := by
+  apply (heqv s e).mp h1
+
+theorem Denot.equiv_rtl {d1 d2 : Denot}
+  (heqv : d1 ≈ d2)
+  (h2 : d2 s e) :
+  d1 s e := by
+  apply (heqv s e).mpr h2
+
 end Fsub
