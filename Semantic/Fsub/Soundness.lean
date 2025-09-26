@@ -1,6 +1,55 @@
 import Semantic.Fsub.Denotation
 namespace Fsub
 
+theorem reduce_trans
+  (hr1 : Reduce s e s' e')
+  (hr2 : Reduce s' e' s'' e'') :
+  Reduce s e s'' e'' := by
+  induction hr1
+  case red_refl => exact hr2
+  case red_step => constructor <;> aesop
+
+theorem reduce_step
+  (hs : Step s e s' e') :
+  Reduce s e s' e' := by
+  apply Reduce.red_step hs
+  apply Reduce.red_refl
+
+theorem reduce_ctx
+  (hr : Reduce s1 e1 s2 e2) :
+  Reduce s1 (.letin e1 u) s2 (.letin e2 u) := by
+  induction hr
+  case red_refl => apply Reduce.red_refl
+  case red_step =>
+    apply Reduce.red_step
+    · apply Step.st_ctx; assumption
+    · aesop
+
+theorem reduce_right_step
+  (hr : Reduce s1 e1 s2 e2)
+  (hs : Step s2 e2 s3 e3) :
+  Reduce s1 e1 s3 e3 := by
+  apply reduce_trans hr
+  apply reduce_step hs
+
+theorem exp_denot_reduce
+  (hr : Reduce s1 e1 s2 e2)
+  (hd : Ty.exp_denot env T s2 e2) :
+  Ty.exp_denot env T s1 e1 := by
+  simp [Ty.exp_denot] at hd ⊢
+  obtain ⟨s0, v0, hr0, hv0⟩ := hd
+  use s0, v0
+  constructor
+  · apply reduce_trans hr hr0
+  · exact hv0
+
+theorem snoc_lookup {s : Store} :
+  (s.snoc v).lookup n = s.lookup n := sorry
+
+theorem snoc_env_typing
+  (hts : EnvTyping Γ env store) :
+  EnvTyping Γ env (store.snoc v) := sorry
+
 theorem step_ans_absurd
   (h : Exp.IsAns e)
   (hs : Step s e s' e') :
@@ -182,11 +231,21 @@ theorem sem_typ_letin
   obtain ⟨s1, v1, hr1, hv1⟩ := ht1
   unfold SemanticTyping at ht2
   have := val_denot_ans henv (T:=T)
-  have := this s1 v1 hv1
-  simp [Denot.ans] at this
-  cases this
-  case is_var x0 => sorry
-  case is_val => sorry
+  have hv1_ans := this s1 v1 hv1
+  simp [Denot.ans] at hv1_ans
+  -- Now hv1_ans : Exp.IsAns v1, meaning v1 is either a variable or a value
+  cases hv1_ans with
+  | is_var =>
+    rename_i x0
+    cases x0
+    case bound bx => cases bx
+    case free fx =>
+      have := reduce_ctx (u:=e2.subst (Subst.from_TypeEnv env).lift) hr1
+      have := reduce_right_step this Step.st_rename
+      apply exp_denot_reduce this
+      specialize ht2 (env.extend_var fx) s1
+      sorry
+  | is_val => sorry
 
 theorem soundness
   (ht : Γ ⊢ e : T) :
