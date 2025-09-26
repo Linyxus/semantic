@@ -16,7 +16,7 @@ def Store.lookup : Store -> Nat -> Option (Val {})
 | .nil, _ => none
 
 def Store.snoc : Store -> Val {} -> Store
-| .cons v s, v0 => .cons v0 (cons v s)
+| .cons v s, v0 => .cons v (s.snoc v0)
 | .nil, v => .cons v nil
 
 def Store.len : Store -> Nat

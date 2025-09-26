@@ -43,12 +43,25 @@ theorem exp_denot_reduce
   · apply reduce_trans hr hr0
   · exact hv0
 
-theorem snoc_lookup {s : Store} :
-  (s.snoc v).lookup n = s.lookup n := sorry
+def Store.SubsumedBy (s1 s2 : Store) : Prop :=
+  ∀ n v, s1.lookup n = some v -> s2.lookup n = some v
 
-theorem snoc_env_typing
-  (hts : EnvTyping Γ env store) :
-  EnvTyping Γ env (store.snoc v) := sorry
+theorem Store.snoc_subsume {s : Store} :
+  s.SubsumedBy (s.snoc v) := by
+  intro n v h
+  induction s generalizing n
+  case nil => cases h
+  case cons => cases n <;> grind [Store.lookup, Store.snoc]
+
+theorem subsume_step {s1 s2 : Store}
+  (hsub : s1.SubsumedBy s2)
+  (hs : Step s1 e s1' e') :
+  ∃ s2', s2.SubsumedBy s2' ∧ Step s2 e s2' e' := by sorry
+
+theorem subsume_env_typing
+  (hsub : s1.SubsumedBy s2)
+  (hts : EnvTyping Γ env s1) :
+  EnvTyping Γ env s2 := by sorry
 
 theorem step_ans_absurd
   (h : Exp.IsAns e)
