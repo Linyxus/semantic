@@ -170,6 +170,24 @@ theorem sem_typ_tapp
   · apply Denot.equiv_ltr _ hv
     apply open_targ_val_denot
 
+theorem sem_typ_letin
+  (ht1 : Γ ⊨ e1 : T)
+  (ht2 : (Γ,x:T) ⊨ e2 : (U.rename Rename.succ)) :
+  Γ ⊨ (.letin e1 e2) : U := by
+  intro env store hts
+  have henv := typed_env_is_inert hts
+  simp [Exp.subst]
+  specialize ht1 env store hts
+  simp [Ty.exp_denot] at ht1
+  obtain ⟨s1, v1, hr1, hv1⟩ := ht1
+  unfold SemanticTyping at ht2
+  have := val_denot_ans henv (T:=T)
+  have := this s1 v1 hv1
+  simp [Denot.ans] at this
+  cases this
+  case is_var x0 => sorry
+  case is_val => sorry
+
 theorem soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
@@ -179,7 +197,7 @@ theorem soundness
   case tabs => grind [sem_typ_tabs]
   case app => grind [sem_typ_app]
   case tapp => grind [sem_typ_tapp]
-  case letin => sorry
+  case letin => grind [sem_typ_letin]
   all_goals sorry
 
 end Fsub
