@@ -132,4 +132,109 @@ theorem Store.rename_levels_comp (s : Store) (f g : Nat -> Nat) :
       simp [Val.rename_levels, Exp.rename_levels_comp]
     · exact ih
 
+/-!
+## Store framing theorem
+
+The framing theorem states that reduction is preserved when we insert additional values
+in the middle of a store, with appropriate level renaming.
+-/
+
+/-- Shift all levels up by n. This is used when inserting values into the store. -/
+def shift_levels (n : Nat) : Nat → Nat := fun x => x + n
+
+/-- Shifting by 0 is the identity. -/
+theorem shift_levels_zero : shift_levels 0 = id := by
+  funext x; simp [shift_levels]
+
+/-- Shifting levels composes additively. -/
+theorem shift_levels_comp (m n : Nat) :
+    shift_levels m ∘ shift_levels n = shift_levels (m + n) := by
+  funext x; simp [shift_levels]; omega
+
+/-- Store lookup with appended stores: if we look up in s1 ++ s2,
+we either find it in s1 (if index < s1.len) or in s2 (shifted index). -/
+theorem Store.lookup_append (s1 s2 : Store) (n : Nat) :
+    (s1 ++ s2).lookup n = if n < s1.len then s1.lookup n else s2.lookup (n - s1.len) := by
+  induction s1 generalizing n with
+  | nil =>
+    -- nil ++ s2 = s2, and nil.len = 0
+    simp only [Store.len, Store.instAppend]
+    change (Store.append Store.nil s2).lookup n =
+      if n < 0 then Store.nil.lookup n else s2.lookup (n - 0)
+    simp only [Store.append]
+    change s2.lookup n = if n < 0 then Store.nil.lookup n else s2.lookup n
+    simp
+  | cons v s1 ih =>
+    cases n with
+    | zero =>
+      -- Looking up at index 0 in cons v s1 ++ s2
+      simp only [Store.len, Store.instAppend]
+      change (Store.append (Store.cons v s1) s2).lookup 0 =
+        if 0 < s1.len + 1 then (Store.cons v s1).lookup 0 else s2.lookup (0 - (s1.len + 1))
+      simp only [Store.append, Store.lookup]
+      simp
+    | succ n' =>
+      -- Looking up at index n'+1 in cons v s1 ++ s2
+      simp only [Store.len, Store.instAppend]
+      change (Store.append (Store.cons v s1) s2).lookup (n' + 1) =
+        if n' + 1 < s1.len + 1 then (Store.cons v s1).lookup (n' + 1)
+        else s2.lookup (n' + 1 - (s1.len + 1))
+      simp only [Store.append, Store.lookup]
+      change (s1 ++ s2).lookup n' =
+        if n' + 1 < s1.len + 1 then s1.lookup n' else s2.lookup (n' + 1 - (s1.len + 1))
+      rw [ih]
+      by_cases h : n' < s1.len
+      · simp [h]
+      · simp [h]
+
+/-- Length of appended stores. -/
+theorem Store.len_append (s1 s2 : Store) : (s1 ++ s2).len = s1.len + s2.len := by
+  induction s1 with
+  | nil =>
+    simp only [Store.len, Store.instAppend]
+    change (Store.append Store.nil s2).len = 0 + s2.len
+    simp only [Store.append]
+    omega
+  | cons v s1 ih =>
+    simp only [Store.len, Store.instAppend]
+    change (Store.append (Store.cons v s1) s2).len = (s1.len + 1) + s2.len
+    simp only [Store.append, Store.len]
+    change (s1 ++ s2).len + 1 = (s1.len + 1) + s2.len
+    rw [ih]
+    omega
+
+/-- Store append distributes over level renaming. -/
+theorem Store.append_rename_levels (s1 s2 : Store) (f : Nat → Nat) :
+    (s1 ++ s2).rename_levels f = s1.rename_levels f ++ s2.rename_levels f := by
+  induction s1 with
+  | nil => rfl
+  | cons v s1 ih =>
+    simp only [Store.instAppend]
+    change (Store.append (Store.cons v s1) s2).rename_levels f =
+      Store.append ((Store.cons v s1).rename_levels f) (s2.rename_levels f)
+    simp only [Store.append, Store.rename_levels]
+    change Store.cons (v.rename_levels f) ((s1 ++ s2).rename_levels f) =
+      Store.cons (v.rename_levels f) (s1.rename_levels f ++ s2.rename_levels f)
+    rw [ih]
+
+/-- Lookup in a level-renamed store with shifted index. -/
+theorem Store.lookup_rename_levels_shift (s : Store) (n k : Nat) :
+    (s.rename_levels (shift_levels k)).lookup n =
+    Option.map (fun v => v.rename_levels (shift_levels k)) (s.lookup n) := by
+  induction s generalizing n with
+  | nil => simp [Store.lookup, Store.rename_levels]
+  | cons v s ih =>
+    cases n with
+    | zero => simp [Store.lookup, Store.rename_levels]
+    | succ n' => simp [Store.lookup, Store.rename_levels, ih]
+
+/-- Frame-shift function: adjusts free variables when inserting a store segment.
+When we insert `s2` after position `pos`, free variables >= pos get shifted up by `shift`. -/
+def frame_shift (pos shift : Nat) : Nat → Nat :=
+  fun n => if n < pos then n else n + shift
+
+/-- Frame-shifting by 0 at any position is the identity. -/
+theorem frame_shift_zero (pos : Nat) : frame_shift pos 0 = id := by
+  funext n; simp [frame_shift]
+
 end Fsub
