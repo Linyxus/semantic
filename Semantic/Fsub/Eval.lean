@@ -19,6 +19,13 @@ def Store.snoc : Store -> Val {} -> Store
 | .cons v s, v0 => .cons v (s.snoc v0)
 | .nil, v => .cons v nil
 
+def Store.append : Store -> Store -> Store
+| .nil, s2 => s2
+| .cons v s1, s2 => .cons v (s1.append s2)
+
+instance Store.instAppend : Append Store where
+  append := Store.append
+
 def Store.len : Store -> Nat
 | .cons _ s => s.len + 1
 | .nil => 0
