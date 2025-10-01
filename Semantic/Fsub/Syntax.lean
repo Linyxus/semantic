@@ -154,4 +154,14 @@ theorem Exp.rename_levels_comp (e : Exp s) (f g : Nat -> Nat) :
     (e.rename_levels f).rename_levels g = e.rename_levels (g ∘ f) := by
   induction e <;> simp [Exp.rename_levels, Ty.rename_levels_comp, Var.rename_level_comp, *]
 
+/-- Level renaming preserves the value property.
+If an expression is a value, it remains a value after renaming levels. -/
+theorem Exp.rename_levels_preserves_IsVal {e : Exp s} (hv : e.IsVal) (f : Nat -> Nat) :
+    (e.rename_levels f).IsVal := by
+  cases hv <;> constructor
+
+/-- Rename free term variables (levels) in a value. -/
+def Val.rename_levels (v : Val s) (f : Nat -> Nat) : Val s :=
+  ⟨v.unwrap.rename_levels f, Exp.rename_levels_preserves_IsVal v.isVal f⟩
+
 end Fsub

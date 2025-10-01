@@ -30,6 +30,12 @@ def Store.len : Store -> Nat
 | .cons _ s => s.len + 1
 | .nil => 0
 
+/-- Rename free term variables (levels) in all values stored in the store.
+This applies the level renaming function to each value in the store. -/
+def Store.rename_levels : Store -> (Nat -> Nat) -> Store
+| .nil, _ => .nil
+| .cons v s, f => .cons (v.rename_levels f) (s.rename_levels f)
+
 inductive Step : Store -> Exp {} -> Store -> Exp {} -> Prop where
 | st_ctx :
   Step s1 e1 s2 e2 ->

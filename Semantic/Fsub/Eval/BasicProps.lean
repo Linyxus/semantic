@@ -106,4 +106,30 @@ theorem reduce_store_monotone {s1 e1 s2 e2 : _} (h : Reduce s1 e1 s2 e2) :
     use s_mid ++ s_rest
     rw [eq_rest, eq_mid, Store.append_assoc]
 
+/-!
+## Level renaming for stores
+-/
+
+/-- The identity function on levels leaves stores unchanged. -/
+theorem Store.rename_levels_id (s : Store) : s.rename_levels id = s := by
+  induction s with
+  | nil => rfl
+  | cons v s ih =>
+    simp [Store.rename_levels]
+    constructor
+    · cases v; simp [Val.rename_levels, Exp.rename_levels_id]
+    · exact ih
+
+/-- Level renaming composes functorially for stores. -/
+theorem Store.rename_levels_comp (s : Store) (f g : Nat -> Nat) :
+    (s.rename_levels f).rename_levels g = s.rename_levels (g ∘ f) := by
+  induction s with
+  | nil => rfl
+  | cons v s ih =>
+    simp [Store.rename_levels]
+    constructor
+    · cases v
+      simp [Val.rename_levels, Exp.rename_levels_comp]
+    · exact ih
+
 end Fsub
