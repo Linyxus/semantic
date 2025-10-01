@@ -1,36 +1,6 @@
 import Semantic.Fsub.Denotation
+import Semantic.Fsub.Eval  -- Now imports BasicProps which has the reduction lemmas
 namespace Fsub
-
-theorem reduce_trans
-  (hr1 : Reduce s e s' e')
-  (hr2 : Reduce s' e' s'' e'') :
-  Reduce s e s'' e'' := by
-  induction hr1
-  case red_refl => exact hr2
-  case red_step => constructor <;> aesop
-
-theorem reduce_step
-  (hs : Step s e s' e') :
-  Reduce s e s' e' := by
-  apply Reduce.red_step hs
-  apply Reduce.red_refl
-
-theorem reduce_ctx
-  (hr : Reduce s1 e1 s2 e2) :
-  Reduce s1 (.letin e1 u) s2 (.letin e2 u) := by
-  induction hr
-  case red_refl => apply Reduce.red_refl
-  case red_step =>
-    apply Reduce.red_step
-    · apply Step.st_ctx; assumption
-    · aesop
-
-theorem reduce_right_step
-  (hr : Reduce s1 e1 s2 e2)
-  (hs : Step s2 e2 s3 e3) :
-  Reduce s1 e1 s3 e3 := by
-  apply reduce_trans hr
-  apply reduce_step hs
 
 theorem exp_denot_reduce
   (hr : Reduce s1 e1 s2 e2)
