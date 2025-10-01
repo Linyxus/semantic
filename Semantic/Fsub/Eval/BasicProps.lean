@@ -237,4 +237,20 @@ def frame_shift (pos shift : Nat) : Nat → Nat :=
 theorem frame_shift_zero (pos : Nat) : frame_shift pos 0 = id := by
   funext n; simp [frame_shift]
 
+theorem step_frame
+  (hr : Reduce s1 e1 (s1 ++ extra) e2) :
+  Step
+    (s1 ++ s2)
+    e1
+    (s1 ++ s2 ++ (extra.rename_levels (frame_shift s1.len s2.len)))
+    (e2.rename_levels (frame_shift s1.len s2.len)) := by sorry
+
+theorem reduce_frame
+  (hr : Reduce s1 e1 (s1 ++ extra) e2) :
+  Reduce
+    (s1 ++ s2)
+    e1
+    (s1 ++ s2 ++ (extra.rename_levels (frame_shift s1.len s2.len)))
+    (e2.rename_levels (frame_shift s1.len s2.len)) := by sorry
+
 end Fsub
