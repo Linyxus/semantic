@@ -286,4 +286,37 @@ theorem Ty.subst_rename_levels {T : Ty s1} {σ : Subst s1 s2} {f : Nat -> Nat} :
     · exact ih1
     · rw [ih2, Subst.lift_rename_levels]
 
+/-- Expression substitution commutes with level renaming. -/
+theorem Exp.subst_rename_levels {e : Exp s1} {σ : Subst s1 s2} {f : Nat -> Nat} :
+  (e.subst σ).rename_levels f = (e.rename_levels f).subst (σ.rename_levels f) := by
+  induction e generalizing s2 with
+  | var x =>
+    simp [Exp.subst, Exp.rename_levels]
+    exact Var.subst_rename_levels
+  | abs T e ih =>
+    simp [Exp.subst, Exp.rename_levels]
+    constructor
+    · exact Ty.subst_rename_levels
+    · rw [ih, Subst.lift_rename_levels]
+  | tabs T e ih =>
+    simp [Exp.subst, Exp.rename_levels]
+    constructor
+    · exact Ty.subst_rename_levels
+    · rw [ih, Subst.lift_rename_levels]
+  | app x y =>
+    simp [Exp.subst, Exp.rename_levels]
+    constructor
+    · exact Var.subst_rename_levels
+    · exact Var.subst_rename_levels
+  | tapp x T =>
+    simp [Exp.subst, Exp.rename_levels]
+    constructor
+    · exact Var.subst_rename_levels
+    · exact Ty.subst_rename_levels
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.subst, Exp.rename_levels]
+    constructor
+    · exact ih1
+    · rw [ih2, Subst.lift_rename_levels]
+
 end Fsub
