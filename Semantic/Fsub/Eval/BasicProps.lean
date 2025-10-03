@@ -649,7 +649,65 @@ theorem step_frame
     rw [hren]
     apply Step.st_rename
   case st_lift v s1 u hv =>
-    sorry
+    -- From heq: s1 ++ extra = s1.snoc ⟨v, hv⟩
+    -- Therefore: extra = Store.cons ⟨v, hv⟩ Store.nil
+    have hval := Store.append_eq_snoc_iff s1 extra ⟨v, hv⟩ heq
+    subst hval
+    -- Now extra = Store.cons ⟨v, hv⟩ Store.nil
+    simp [Store.rename_levels, Store.append_singleton_eq]
+
+    -- v doesn't change under renaming because it's well-formed in s1
+    have hv_ren : v.rename_levels (frame_shift s1.len s2.len) = v := by
+      apply Exp.rename_levels_frame_shift
+      obtain ⟨hwf_v, _⟩ := Exp.letin_wf_inv hwf
+      unfold Exp.WfIn at hwf_v
+      exact hwf_v
+    simp [Val.rename_levels, hv_ren]
+
+    -- Key lemma: substitution with shifted free variable
+    have key_lemma :
+      (u.subst (Subst.openVar (Var.free (s:={}) s1.len))).rename_levels (frame_shift s1.len s2.len) =
+                      u.subst (Subst.openVar (Var.free (s:={}) ((s1 ++ s2).len))) := by
+      -- Use Exp.subst_rename_levels
+      rw [Exp.subst_rename_levels]
+
+      -- First, u doesn't change under renaming because it's well-formed in s1
+      have hu_ren : u.rename_levels (frame_shift s1.len s2.len) = u := by
+        apply Exp.rename_levels_frame_shift
+        -- u is the body of a letin that's well-formed in s1
+        obtain ⟨_, hwf_u⟩ := Exp.letin_wf_inv hwf
+        exact hwf_u
+      rw [hu_ren]
+
+      -- Now show that renaming the substitution gives the right result
+      have hsub_ren : (Subst.openVar (Var.free (s:={}) s1.len)).rename_levels (frame_shift s1.len s2.len) =
+                       Subst.openVar (Var.free (s:={}) ((s1 ++ s2).len)) := by
+        apply Subst.funext
+        · intro x
+          cases x with
+          | here =>
+            -- The .here case maps to .free s1.len, which gets shifted
+            simp [Subst.openVar, Subst.rename_levels, Var.rename_level]
+            -- frame_shift s1.len s2.len s1.len = s1.len + s2.len
+            simp [frame_shift]
+            -- s1.len >= s1.len, so we get s1.len + s2.len
+            have : ¬(s1.len < s1.len) := Nat.lt_irrefl _
+            simp [this, Store.len_append]
+          | there y =>
+            -- The .there case preserves bound variables
+            simp [Subst.openVar, Subst.rename_levels]
+            -- Bound variables don't change under level renaming
+            rfl
+        · intro X
+          -- Type variables are preserved
+          simp [Subst.openVar, Subst.rename_levels]
+          -- Type variables may have bound references, which don't change
+          cases X with
+          | there X' => rfl
+      rw [hsub_ren]
+
+    rw [key_lemma]
+    apply Step.st_lift
 
 theorem reduce_frame
   (hwf_s : Store.WfStore s1)
