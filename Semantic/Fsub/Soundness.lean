@@ -1,6 +1,14 @@
 import Semantic.Fsub.Denotation
-import Semantic.Fsub.Eval  -- Now imports BasicProps which has the reduction lemmas
+import Semantic.Fsub.Eval
 namespace Fsub
+
+mutual
+
+theorem val_denot_frame
+  (hv : Ty.val_denot env T s v) :
+  Ty.val_denot env T (s ++ s') v := sorry
+
+end
 
 theorem exp_denot_reduce
   (hr : Reduce s1 e1 s2 e2)

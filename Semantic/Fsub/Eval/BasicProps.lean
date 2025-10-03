@@ -528,6 +528,115 @@ theorem step_wf_store {s1 : Store}
         -- hlookup says none = some val, contradiction
         contradiction
 
+theorem step_wf
+  (hwfs : Store.WfStore s1)
+  (hwf : Exp.WfIn e1 s1)
+  (hstep : Step s1 e1 s2 e2) :
+  Exp.WfIn e2 s2 := by
+  induction hstep with
+  | st_ctx step ih =>
+    -- e1 = .letin e1' u, e2 = .letin e2' u
+    -- Get well-formedness of components
+    obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
+    -- By IH, e2' is well-formed in s2
+    have hwf_e2' := ih hwfs hwf1
+    -- Need to show .letin e2' u is well-formed in s2
+    -- This means both e2' and u must be well-formed in s2
+    unfold Exp.WfIn at hwf_e2' hwf2 ⊢
+    simp [Exp.dom] at hwf_e2' hwf2 ⊢
+    constructor
+    · exact hwf_e2'
+    · -- u was well-formed in s1, and store only grows
+      obtain ⟨extra, heq⟩ := step_store_monotone step
+      rw [heq]
+      rw [Store.len_append]
+      omega
+  | st_apply hlookup =>
+    -- e1 = .app (.free x) y, e2 = e.subst (Subst.openVar y)
+    -- s2 = s_in (store unchanged)
+    rename_i s_in x y T e hv
+    unfold Exp.WfIn at hwf ⊢
+    -- hwf says (Exp.app (Var.free x) y).dom <= s_in.len
+    -- Goal is (e.subst (Subst.openVar y)).dom <= s_in.len
+    -- From store well-formedness, e has domain <= x
+    have he_dom : e.dom <= x := by
+      have := hwfs x ⟨.abs T e, hv⟩ hlookup
+      simp [Exp.dom] at this
+      exact this.2
+    -- From hwf, x and y are in scope
+    have hx_bound : x < s_in.len := by
+      simp only [Exp.dom, Var.dom] at hwf
+      have : x + 1 <= s_in.len := by
+        trans (max (x + 1) y.dom)
+        · exact Nat.le_max_left _ _
+        · exact hwf
+      omega
+    have hy_bound : y.dom <= s_in.len := by
+      simp only [Exp.dom, Var.dom] at hwf
+      trans (max (x + 1) y.dom)
+      · exact Nat.le_max_right _ _
+      · exact hwf
+    -- Use substitution domain bound
+    have hsub := Exp.subst_dom (e:=e) (Subst.openVar_has_dom (y:=y))
+    omega
+  | st_tapply hlookup =>
+    -- e1 = .tapp (.free x) T_arg, e2 = e.subst (Subst.openTVar .top)
+    -- s2 = s_in (store unchanged)
+    rename_i s_in x T_arg T0 e hv
+    unfold Exp.WfIn at hwf ⊢
+    -- From store well-formedness, e has domain <= x
+    have he_dom : e.dom <= x := by
+      have := hwfs x ⟨.tabs T0 e, hv⟩ hlookup
+      simp [Exp.dom] at this
+      exact this.2
+    -- From hwf, x is in scope
+    have hx_bound : x < s_in.len := by
+      simp only [Exp.dom, Var.dom] at hwf
+      have : x + 1 <= s_in.len := by
+        trans (max (x + 1) T_arg.dom)
+        · exact Nat.le_max_left _ _
+        · exact hwf
+      omega
+    -- openTVar .top has domain 0
+    have hsub := Exp.subst_dom (e:=e) (Subst.openTVar_top_has_dom)
+    omega
+  | st_rename =>
+    -- e1 = .letin (.var x) e_body, e2 = e_body.subst (Subst.openVar x)
+    -- s2 = s1 (store unchanged)
+    rename_i x e_body
+    unfold Exp.WfIn at hwf ⊢
+    simp [Exp.dom] at hwf ⊢
+    obtain ⟨hx, he⟩ := hwf
+    -- Use substitution domain bound
+    have hsub := Exp.subst_dom (e:=e_body) (Subst.openVar_has_dom (y:=x))
+    omega
+  | st_lift hv =>
+    -- e1 = .letin v e_body, e2 = e_body.subst (Subst.openVar (.free s_store.len))
+    -- From the Step.st_lift constructor, s2 = s_store.snoc ⟨v, hv⟩
+    rename_i v s_store e_body
+    unfold Exp.WfIn at hwf ⊢
+    simp [Exp.dom] at hwf ⊢
+    -- hwf gives us max v.dom e_body.dom <= s_store.len
+    have hv_dom : v.dom <= s_store.len := by
+      have := Nat.le_max_left v.dom e_body.dom
+      omega
+    have he_dom : e_body.dom <= s_store.len := by
+      have := Nat.le_max_right v.dom e_body.dom
+      omega
+    -- The free variable has domain s_store.len + 1
+    have hfree : (Var.free (s:={}) s_store.len).dom = s_store.len + 1 := by
+      simp [Var.dom]
+    -- Use substitution domain bound
+    have hsub := Exp.subst_dom (e:=e_body) (Subst.openVar_has_dom (y:=Var.free (s:={}) s_store.len))
+    -- Need to show: (e_body.subst (Subst.openVar (.free s_store.len))).dom <= s2.len
+    -- From Step.st_lift, s2 is definitionally s_store.snoc ⟨v, hv⟩
+    -- So s2.len is (s_store.snoc ⟨v, hv⟩).len
+    change (e_body.subst (Subst.openVar (Var.free s_store.len))).dom <= (s_store.snoc ⟨v, hv⟩).len
+    rw [Store.snoc_eq_append, Store.len_append]
+    simp [Store.len]
+    rw [hfree] at hsub
+    omega
+
 theorem step_frame
   (hwf_s : Store.WfStore s1)
   (hwf : Exp.WfIn e1 s1)
@@ -722,10 +831,10 @@ theorem reduce_frame
     (s1 ++ s2 ++ (extra.rename_levels (frame_shift s1.len s2.len)))
     (e2.rename_levels (frame_shift s1.len s2.len)) := by
   generalize hs_out : s1 ++ extra = s_out at hr
-  induction hr generalizing extra with
+  induction hr generalizing extra s2 with
   | @red_refl s_store e_orig =>
     -- Base case: no reduction steps
-    -- From hs_out: s_store ++ extra = s_store, we get extra = nil
+    -- From hs_out: s1 ++ extra = s_store, so extra = nil (since s_store = s1)
     have hnil : extra = Store.nil := Store.append_eq_self_iff_nil _ _ hs_out
     subst hnil
     simp [Store.rename_levels, Store.append_nil]
@@ -736,6 +845,15 @@ theorem reduce_frame
       exact hwf
     rw [hren]
     apply Reduce.red_refl
-  | red_step hstep hrest ih => sorry
+  | red_step hstep hrest ih =>
+    have ⟨delta1, h1⟩ := step_store_monotone hstep
+    have ⟨delta2, h2⟩ := reduce_store_monotone hrest
+    subst hs_out h1
+    rw [Store.append_assoc] at h2
+    have heq := Store.append_left_cancel _ _ _ h2
+    subst heq
+    have hwf_s' := step_wf_store hwf_s hwf hstep
+    have hwf' := step_wf hwf_s hwf hstep
+    sorry
 
 end Fsub
