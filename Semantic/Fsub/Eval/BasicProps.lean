@@ -275,6 +275,24 @@ theorem Subst.openVar_has_dom {y : Var s} :
     | there x' =>
       simp [Subst.openVar, Ty.dom]
 
+/-- The openTVar substitution with .top has domain bounded by 0. -/
+theorem Subst.openTVar_top_has_dom :
+    (Subst.openTVar (.top : Ty s)).has_dom 0 := by
+  constructor
+  · intro x
+    cases x with
+    | there x' =>
+      -- Bound variables stay bound
+      simp [Subst.openTVar, Var.dom]
+  · intro X
+    cases X with
+    | here =>
+      -- The first type variable gets replaced with .top which has domain 0
+      simp [Subst.openTVar, Ty.dom]
+    | there X' =>
+      -- Other type variables remain as type variables
+      simp [Subst.openTVar, Ty.dom]
+
 /-!
 ## Frame-shift preservation
 
@@ -444,7 +462,41 @@ theorem step_frame
         omega
       simp [hx, hlookup]
     apply Step.st_apply hlookup'
-  case st_tapply => sorry
+  case st_tapply =>
+    -- st_tapply: Step s1 (.tapp (.free x) T) s1 (e.subst (Subst.openTVar .top))
+    -- where s1.lookup x = some ⟨.tabs T0 e, hv⟩
+    rename_i s_store x T T0 e hv hlookup
+    -- From heq, we know extra = nil (store doesn't change in st_tapply)
+    have hnil : extra = Store.nil := Store.append_eq_self_iff_nil s_store extra heq
+    rw [hnil]
+    simp [Store.append_nil, Store.rename_levels]
+    -- The renaming is identity because e.subst (openTVar .top) has domain <= s_store.len
+    have hren : (e.subst (Subst.openTVar .top)).rename_levels (frame_shift s_store.len s2.len) =
+                e.subst (Subst.openTVar .top) := by
+      apply Exp.rename_levels_frame_shift
+      -- The tabs value has domain <= x (the store index)
+      have he_dom : e.dom <= x := by
+        -- e comes from the tabs value at position x in the store
+        have := hwf_s x ⟨.tabs T0 e, hv⟩ hlookup
+        simp [Exp.dom] at this
+        exact this.2
+      have hx_bound : x < s_store.len := by
+        unfold Exp.WfIn Exp.dom Var.dom at hwf
+        simp at hwf
+        omega
+      have hsub := Exp.subst_dom (e:=e) (Subst.openTVar_top_has_dom)
+      omega
+    rw [hren]
+    -- Need to show the lookup works in s_store ++ s2
+    have hlookup' : (s_store ++ s2).lookup x = some ⟨.tabs T0 e, hv⟩ := by
+      rw [Store.lookup_append]
+      -- x < s_store.len because tapp is well-formed
+      have hx : x < s_store.len := by
+        unfold Exp.WfIn Exp.dom Var.dom at hwf
+        simp at hwf
+        omega
+      simp [hx, hlookup]
+    apply Step.st_tapply hlookup'
   case st_rename => sorry
   case st_lift => sorry
 
