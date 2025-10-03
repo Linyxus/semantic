@@ -164,4 +164,27 @@ theorem Exp.rename_levels_preserves_IsVal {e : Exp s} (hv : e.IsVal) (f : Nat ->
 def Val.rename_levels (v : Val s) (f : Nat -> Nat) : Val s :=
   ⟨v.unwrap.rename_levels f, Exp.rename_levels_preserves_IsVal v.isVal f⟩
 
+theorem Var.rename_rename_levels {x : Var s} :
+  (x.rename f).rename_level g =
+    (x.rename_level g).rename f := by
+  cases x <;> rfl
+
+theorem Ty.rename_rename_levels {T : Ty s1} {f : Rename s1 s2} :
+  (T.rename f).rename_levels g =
+    (T.rename_levels g).rename f := by
+  induction T generalizing s2 <;> try (solve | rfl)
+  case singleton => grind [Ty.rename, Ty.rename_levels, Var.rename_rename_levels]
+  case arrow ih1 ih2 =>
+    simp [Ty.rename, Ty.rename_levels]
+    simp [ih1, ih2]
+  case poly ih1 ih2 =>
+    simp [Ty.rename, Ty.rename_levels]
+    simp [ih1, ih2]
+
+theorem Exp.rename_rename_levels {e : Exp s1} {f : Rename s1 s2} :
+  (e.rename f).rename_levels g =
+    (e.rename_levels g).rename f := by
+  induction e generalizing s2
+    <;> simp [Exp.rename, Exp.rename_levels, Ty.rename_rename_levels, Var.rename_rename_levels, *]
+
 end Fsub
