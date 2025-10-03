@@ -601,7 +601,11 @@ theorem step_frame
         omega
       simp [hx, hlookup]
     apply Step.st_tapply hlookup'
-  case st_rename => sorry
+  case st_rename =>
+    obtain heq := Store.append_eq_self_iff_nil _ _ heq
+    subst heq
+    simp [Store.rename_levels, Store.append_nil]
+    sorry
   case st_lift hv => sorry
 
 theorem reduce_frame
