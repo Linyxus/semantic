@@ -257,6 +257,25 @@ theorem frame_shift_zero (pos : Nat) : frame_shift pos 0 = id := by
   funext n; simp [frame_shift]
 
 /-!
+## Substitution domain bounds
+-/
+
+/-- The openVar substitution has domain bounded by the variable's domain. -/
+theorem Subst.openVar_has_dom {y : Var s} :
+    (Subst.openVar y).has_dom y.dom := by
+  constructor
+  · intro x
+    cases x with
+    | here =>
+      simp [Subst.openVar, Var.dom]
+    | there x' =>
+      simp [Subst.openVar, Var.dom]
+  · intro X
+    cases X with
+    | there x' =>
+      simp [Subst.openVar, Ty.dom]
+
+/-!
 ## Frame-shift preservation
 
 If a term's domain is within the frame position, frame-shifting leaves it unchanged.
@@ -358,7 +377,12 @@ theorem Exp.rename_levels_frame_shift (e : Exp s) (l1 l2 : Nat) (h : e.dom <= l1
       simp [Exp.dom] at h
       omega
 
+/-- A store is well-formed if all values at position i have domain <= i. -/
+def Store.WfStore (s : Store) : Prop :=
+  ∀ i v, s.lookup i = some v → v.unwrap.dom <= i
+
 theorem step_frame
+  (hwf_s : Store.WfStore s1)
   (hwf : Exp.WfIn e1 s1)
   (hr : Step s1 e1 (s1 ++ extra) e2) :
   Step
@@ -378,8 +402,48 @@ theorem step_frame
       exact hwf2
     rw [hu]
     apply Step.st_ctx
-    exact ih hwf1 rfl
-  case st_apply => sorry
+    exact ih hwf_s hwf1 rfl
+  case st_apply =>
+    rename_i s1' x y T e hv hlookup
+    -- From heq, we know extra = nil
+    have hnil : extra = Store.nil := Store.append_eq_self_iff_nil s1' extra heq
+    rw [hnil]
+    simp [Store.append_nil, Store.rename_levels]
+    -- The renaming is identity because:
+    -- 1. e is locally closed (values in store have no free vars)
+    -- 2. y is well-formed in s1'
+    -- 3. Therefore e.subst (openVar y) is well-formed in s1'
+    have hren : (e.subst (Subst.openVar y)).rename_levels (frame_shift s1'.len s2.len) =
+                e.subst (Subst.openVar y) := by
+      apply Exp.rename_levels_frame_shift
+      -- The abs value has domain 0 (locally closed)
+      -- Substituting with y (domain <= s1'.len) gives domain <= s1'.len
+      have he_dom : e.dom <= x := by
+        -- e comes from the abs value at position x in the store
+        have := hwf_s x ⟨.abs T e, hv⟩ hlookup
+        simp [Exp.dom] at this
+        exact this.2
+      have hy_dom : y.dom <= s1'.len := by
+        unfold Exp.WfIn Exp.dom at hwf
+        simp at hwf
+        omega
+      have hx_bound : x < s1'.len := by
+        unfold Exp.WfIn Exp.dom Var.dom at hwf
+        simp at hwf
+        omega
+      have hsub := Exp.subst_dom (e:=e) (Subst.openVar_has_dom (y:=y))
+      omega
+    rw [hren]
+    -- Need to show the lookup works in s1' ++ s2
+    have hlookup' : (s1' ++ s2).lookup x = some ⟨.abs T e, hv⟩ := by
+      rw [Store.lookup_append]
+      -- x < s1'.len because app is well-formed
+      have hx : x < s1'.len := by
+        unfold Exp.WfIn Exp.dom Var.dom at hwf
+        simp at hwf
+        omega
+      simp [hx, hlookup]
+    apply Step.st_apply hlookup'
   case st_tapply => sorry
   case st_rename => sorry
   case st_lift => sorry
