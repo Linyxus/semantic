@@ -602,10 +602,27 @@ theorem step_frame
       simp [hx, hlookup]
     apply Step.st_tapply hlookup'
   case st_rename =>
+    rename_i s_store x e_body
     obtain heq := Store.append_eq_self_iff_nil _ _ heq
     subst heq
     simp [Store.rename_levels, Store.append_nil]
-    sorry
+    -- The renaming is identity because e.subst (openVar x) is well-formed in s_store
+    have hren : (e_body.subst (Subst.openVar x)).rename_levels (frame_shift s_store.len s2.len) =
+                e_body.subst (Subst.openVar x) := by
+      apply Exp.rename_levels_frame_shift
+      -- Need to show (e_body.subst (Subst.openVar x)).dom <= s_store.len
+      have he_dom : e_body.dom <= s_store.len := by
+        unfold Exp.WfIn at hwf
+        simp [Exp.dom] at hwf
+        omega
+      have hx_dom : x.dom <= s_store.len := by
+        unfold Exp.WfIn at hwf
+        simp only [Exp.dom] at hwf
+        omega
+      have hsub := Exp.subst_dom (e:=e_body) (Subst.openVar_has_dom (y:=x))
+      omega
+    rw [hren]
+    apply Step.st_rename
   case st_lift hv => sorry
 
 theorem reduce_frame
