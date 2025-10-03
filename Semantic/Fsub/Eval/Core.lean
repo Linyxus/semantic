@@ -149,4 +149,96 @@ theorem Exp.rename_dom {e : Exp s1} {f : Rename s1 s2} :
     simp [Exp.rename, Exp.dom]
     rw [ih1, ih2]
 
+structure Subst.has_dom (σ : Subst s1 s2) (n : Nat) where
+  hvar : ∀ x, (σ.var x).dom <= n
+  htvar : ∀ X, (σ.tvar X).dom <= n
+
+theorem Var.subst_dom {x : Var s1} {σ : Subst s1 s2}
+  (hd : σ.has_dom ns) :
+  (x.subst σ).dom <= max x.dom ns := by
+  cases x with
+  | bound n =>
+    -- bound variable: subst gives σ.var n, with domain <= ns
+    simp [Var.subst, Var.dom]
+    exact hd.hvar n
+  | free n =>
+    -- free variable: subst keeps it as is
+    simp [Var.subst, Var.dom]
+
+/-- Lifting a substitution preserves the domain bound. -/
+theorem Subst.lift_has_dom {σ : Subst s1 s2} {k : Kind} (hd : σ.has_dom ns) :
+    (σ.lift (k:=k)).has_dom ns := by
+  constructor
+  · intro x
+    simp [Subst.lift]
+    cases x with
+    | here => simp [Var.dom]
+    | there x' =>
+      simp
+      rw [Var.rename_dom]
+      exact hd.hvar x'
+  · intro X
+    simp [Subst.lift]
+    cases X with
+    | here => simp [Ty.dom]
+    | there X' =>
+      simp
+      rw [Ty.rename_dom]
+      exact hd.htvar X'
+
+theorem Ty.subst_dom {T : Ty s1} {σ : Subst s1 s2}
+  (hd : σ.has_dom ns) :
+  (T.subst σ).dom <= max T.dom ns := by
+  induction T generalizing s2 with
+  | top => simp [Ty.subst, Ty.dom]
+  | tvar x => simp [Ty.subst, Ty.dom]; exact hd.htvar x
+  | singleton x =>
+    simp [Ty.subst, Ty.dom]
+    have := Var.subst_dom hd (x:=x)
+    omega
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.dom]
+    have h1 := ih1 hd
+    have h2 := ih2 (Subst.lift_has_dom hd)
+    omega
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.dom]
+    have h1 := ih1 hd
+    have h2 := ih2 (Subst.lift_has_dom hd)
+    omega
+
+theorem Exp.subst_dom {e : Exp s1} {σ : Subst s1 s2}
+  (hd : σ.has_dom ns) :
+  (e.subst σ).dom <= max e.dom ns := by
+  induction e generalizing s2 with
+  | var x =>
+    simp [Exp.subst, Exp.dom]
+    have := Var.subst_dom hd (x:=x)
+    omega
+  | abs T e ih =>
+    simp [Exp.subst, Exp.dom]
+    have h1 := Ty.subst_dom hd (T:=T)
+    have h2 := ih (Subst.lift_has_dom hd)
+    omega
+  | app x y =>
+    simp [Exp.subst, Exp.dom]
+    have hx := Var.subst_dom hd (x:=x)
+    have hy := Var.subst_dom hd (x:=y)
+    omega
+  | tabs T e ih =>
+    simp [Exp.subst, Exp.dom]
+    have h1 := Ty.subst_dom hd (T:=T)
+    have h2 := ih (Subst.lift_has_dom hd)
+    omega
+  | tapp x T =>
+    simp [Exp.subst, Exp.dom]
+    have hx := Var.subst_dom hd (x:=x)
+    have hT := Ty.subst_dom hd (T:=T)
+    omega
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.subst, Exp.dom]
+    have h1 := ih1 hd
+    have h2 := ih2 (Subst.lift_has_dom hd)
+    omega
+
 end Fsub
