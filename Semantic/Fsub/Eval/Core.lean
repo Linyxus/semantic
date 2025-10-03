@@ -105,4 +105,48 @@ theorem Exp.letin_wf_inv
   exact ⟨Nat.le_trans (Nat.le_max_left _ _) hwf,
          Nat.le_trans (Nat.le_max_right _ _) hwf⟩
 
+theorem Var.rename_dom {x : Var s} :
+  (x.rename f).dom = x.dom := by cases x <;> rfl
+
+/-- Renaming type variables in a type doesn't change its domain
+(since domain tracks free term variables, not type variables). -/
+theorem Ty.rename_dom {T : Ty s1} {f : Rename s1 s2} :
+  (T.rename f).dom = T.dom := by
+  induction T generalizing s2 with
+  | top => rfl
+  | tvar _ => rfl
+  | singleton x =>
+    simp [Ty.rename, Ty.dom]
+    exact Var.rename_dom
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.rename, Ty.dom]
+    rw [ih1, ih2]
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.rename, Ty.dom]
+    rw [ih1, ih2]
+
+/-- Renaming type variables in an expression doesn't change its domain
+(since domain tracks free term variables, not type variables). -/
+theorem Exp.rename_dom {e : Exp s1} {f : Rename s1 s2} :
+  (e.rename f).dom = e.dom := by
+  induction e generalizing s2 with
+  | var x =>
+    simp [Exp.rename, Exp.dom]
+    exact Var.rename_dom
+  | abs T e ih =>
+    simp [Exp.rename, Exp.dom]
+    rw [Ty.rename_dom, ih]
+  | app x y =>
+    simp [Exp.rename, Exp.dom]
+    rw [Var.rename_dom, Var.rename_dom]
+  | tabs T e ih =>
+    simp [Exp.rename, Exp.dom]
+    rw [Ty.rename_dom, ih]
+  | tapp x T =>
+    simp [Exp.rename, Exp.dom]
+    rw [Var.rename_dom, Ty.rename_dom]
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.rename, Exp.dom]
+    rw [ih1, ih2]
+
 end Fsub

@@ -203,6 +203,25 @@ theorem Store.len_append (s1 s2 : Store) : (s1 ++ s2).len = s1.len + s2.len := b
     rw [ih]
     omega
 
+/-- If appending a store to s1 gives s1 back, the appended store must be empty. -/
+theorem Store.append_eq_self_iff_nil (s1 extra : Store) (h : s1 ++ extra = s1) :
+    extra = Store.nil := by
+  induction s1 with
+  | nil =>
+    -- nil ++ extra = nil, so extra = nil
+    simp only [Store.instAppend] at h
+    change Store.append Store.nil extra = Store.nil at h
+    simp only [Store.append] at h
+    exact h
+  | cons v s1 ih =>
+    -- cons v s1 ++ extra = cons v s1
+    simp only [Store.instAppend] at h
+    change Store.append (Store.cons v s1) extra = Store.cons v s1 at h
+    simp only [Store.append] at h
+    change Store.cons v (s1 ++ extra) = Store.cons v s1 at h
+    injection h with h_v h_s
+    exact ih h_s
+
 /-- Store append distributes over level renaming. -/
 theorem Store.append_rename_levels (s1 s2 : Store) (f : Nat → Nat) :
     (s1 ++ s2).rename_levels f = s1.rename_levels f ++ s2.rename_levels f := by
@@ -237,6 +256,108 @@ def frame_shift (pos shift : Nat) : Nat → Nat :=
 theorem frame_shift_zero (pos : Nat) : frame_shift pos 0 = id := by
   funext n; simp [frame_shift]
 
+/-!
+## Frame-shift preservation
+
+If a term's domain is within the frame position, frame-shifting leaves it unchanged.
+-/
+
+/-- If a variable's domain is at most `l1`, renaming with `frame_shift l1 l2` is the identity. -/
+theorem Var.rename_level_frame_shift (x : Var s) (l1 l2 : Nat) (h : x.dom <= l1) :
+    x.rename_level (frame_shift l1 l2) = x := by
+  cases x with
+  | bound n => rfl
+  | free n =>
+    simp [Var.rename_level, frame_shift]
+    unfold Var.dom at h
+    simp at h
+    omega
+
+/-- If a type's domain is at most `l1`, renaming with `frame_shift l1 l2` is the identity. -/
+theorem Ty.rename_levels_frame_shift (T : Ty s) (l1 l2 : Nat) (h : T.dom <= l1) :
+    T.rename_levels (frame_shift l1 l2) = T := by
+  induction T with
+  | top => rfl
+  | tvar _ => rfl
+  | singleton x =>
+    simp [Ty.rename_levels]
+    apply Var.rename_level_frame_shift
+    simp [Ty.dom] at h
+    exact h
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.rename_levels]
+    constructor
+    · apply ih1
+      simp [Ty.dom] at h
+      omega
+    · apply ih2
+      simp [Ty.dom] at h
+      omega
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.rename_levels]
+    constructor
+    · apply ih1
+      simp [Ty.dom] at h
+      omega
+    · apply ih2
+      simp [Ty.dom] at h
+      omega
+
+/-- If an expression's domain is at most `l1`, renaming with `frame_shift l1 l2` is the identity. -/
+theorem Exp.rename_levels_frame_shift (e : Exp s) (l1 l2 : Nat) (h : e.dom <= l1) :
+    e.rename_levels (frame_shift l1 l2) = e := by
+  induction e with
+  | var x =>
+    simp [Exp.rename_levels]
+    apply Var.rename_level_frame_shift
+    simp [Exp.dom] at h
+    exact h
+  | abs T e ih =>
+    simp [Exp.rename_levels]
+    constructor
+    · apply Ty.rename_levels_frame_shift
+      simp [Exp.dom] at h
+      omega
+    · apply ih
+      simp [Exp.dom] at h
+      omega
+  | app x y =>
+    simp [Exp.rename_levels]
+    constructor
+    · apply Var.rename_level_frame_shift
+      simp [Exp.dom] at h
+      omega
+    · apply Var.rename_level_frame_shift
+      simp [Exp.dom] at h
+      omega
+  | tabs T e ih =>
+    simp [Exp.rename_levels]
+    constructor
+    · apply Ty.rename_levels_frame_shift
+      simp [Exp.dom] at h
+      omega
+    · apply ih
+      simp [Exp.dom] at h
+      omega
+  | tapp x T =>
+    simp [Exp.rename_levels]
+    constructor
+    · apply Var.rename_level_frame_shift
+      simp [Exp.dom] at h
+      omega
+    · apply Ty.rename_levels_frame_shift
+      simp [Exp.dom] at h
+      omega
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.rename_levels]
+    constructor
+    · apply ih1
+      simp [Exp.dom] at h
+      omega
+    · apply ih2
+      simp [Exp.dom] at h
+      omega
+
 theorem step_frame
   (hwf : Exp.WfIn e1 s1)
   (hr : Step s1 e1 (s1 ++ extra) e2) :
@@ -250,8 +371,14 @@ theorem step_frame
   case st_ctx ih =>
     obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
     subst heq
+    rename_i s1' e1' e2' u step
     simp [Exp.rename_levels]
-    sorry
+    have hu : u.rename_levels (frame_shift s1'.len s2.len) = u := by
+      apply Exp.rename_levels_frame_shift
+      exact hwf2
+    rw [hu]
+    apply Step.st_ctx
+    exact ih hwf1 rfl
   case st_apply => sorry
   case st_tapply => sorry
   case st_rename => sorry
