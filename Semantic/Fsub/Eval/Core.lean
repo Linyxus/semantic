@@ -67,4 +67,42 @@ inductive Exp.IsAns : Exp {} -> Prop where
 | is_var :
   Exp.IsAns (.var x)
 
+/-- Domain of a variable: the minimal length of its heap context. -/
+def Var.dom (x : Var s) : Nat :=
+  match x with
+  | .free n => n + 1
+  | .bound _ => 0
+
+/-- Domain of a type: the minimal store length needed for all free type variables to be in scope. -/
+def Ty.dom : Ty s -> Nat
+| .top => 0
+| .tvar _ => 0
+| .arrow T1 T2 => max T1.dom T2.dom
+| .poly T1 T2 => max T1.dom T2.dom
+| .singleton x => x.dom
+
+/-- Domain of an expression:
+  the minimal store length needed for all free variables to be in scope. -/
+def Exp.dom : Exp s -> Nat
+| .var x => x.dom
+| .abs T e => max T.dom e.dom
+| .app e1 e2 => max e1.dom e2.dom
+| .tabs T e => max T.dom e.dom
+| .tapp e T => max e.dom T.dom
+| .letin e1 e2 => max e1.dom e2.dom
+
+def Exp.WfIn (e : Exp s) (s : Store) : Prop :=
+  e.dom <= s.len
+
+def Ty.WfIn (T : Ty s) (s : Store) : Prop :=
+  T.dom <= s.len
+
+theorem Exp.letin_wf_inv
+  (hwf : Exp.WfIn (.letin e1 e2) s) :
+  Exp.WfIn e1 s ∧ Exp.WfIn e2 s := by
+  unfold Exp.WfIn at hwf ⊢
+  simp only [Exp.dom] at hwf ⊢
+  exact ⟨Nat.le_trans (Nat.le_max_left _ _) hwf,
+         Nat.le_trans (Nat.le_max_right _ _) hwf⟩
+
 end Fsub
