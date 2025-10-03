@@ -247,4 +247,43 @@ theorem Var.subst_rename_levels {x : Var s1} {σ : Subst s1 s2} {f : Nat -> Nat}
   | bound x => rfl
   | free n => rfl
 
+/-- Lifting a substitution commutes with level renaming. -/
+theorem Subst.lift_rename_levels {σ : Subst s1 s2} {f : Nat -> Nat} :
+  (σ.lift (k:=k)).rename_levels f = (σ.rename_levels f).lift (k:=k) := by
+  apply Subst.funext
+  case hvar =>
+    intro x
+    cases x with
+    | here => rfl
+    | there x =>
+      simp only [Subst.lift, Subst.rename_levels]
+      exact Var.rename_rename_levels
+  case htvar =>
+    intro X
+    cases X with
+    | here => rfl
+    | there X =>
+      simp only [Subst.lift, Subst.rename_levels]
+      exact Ty.rename_rename_levels
+
+/-- Type substitution commutes with level renaming. -/
+theorem Ty.subst_rename_levels {T : Ty s1} {σ : Subst s1 s2} {f : Nat -> Nat} :
+  (T.subst σ).rename_levels f = (T.rename_levels f).subst (σ.rename_levels f) := by
+  induction T generalizing s2 with
+  | top => rfl
+  | tvar X => rfl
+  | singleton x =>
+    simp [Ty.subst, Ty.rename_levels]
+    exact Var.subst_rename_levels
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.rename_levels]
+    constructor
+    · exact ih1
+    · rw [ih2, Subst.lift_rename_levels]
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.rename_levels]
+    constructor
+    · exact ih1
+    · rw [ih2, Subst.lift_rename_levels]
+
 end Fsub
