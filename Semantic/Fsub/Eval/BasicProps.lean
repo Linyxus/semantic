@@ -518,85 +518,8 @@ theorem step_frame
         omega
       simp [hx, hlookup]
     apply Step.st_tapply hlookup'
-  case st_rename =>
-    -- st_rename: Step s (.letin (.var x) e) s (e.subst (Subst.openVar x))
-    rename_i s x e
-    -- From heq, we know extra = nil (store doesn't change in st_rename)
-    have hnil : extra = Store.nil := Store.append_eq_self_iff_nil s extra heq
-    rw [hnil]
-    simp [Store.append_nil, Store.rename_levels]
-    -- Get well-formedness from hwf
-    obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
-    -- The renaming is identity because e.subst (openVar x) has domain <= s.len
-    have hren_e : (e.subst (Subst.openVar x)).rename_levels (frame_shift s.len s2.len) =
-                  e.subst (Subst.openVar x) := by
-      apply Exp.rename_levels_frame_shift
-      -- Substituting x into e preserves the domain bound
-      have hsub := Exp.subst_dom (e:=e) (Subst.openVar_has_dom (y:=x))
-      -- From well-formedness, we know x.dom <= s.len and e.dom <= s.len
-      simp [Exp.dom] at hwf1 hwf2
-      -- The substitution domain is bounded by max(x.dom, e.dom)
-      simp [Subst.has_dom] at hsub
-      omega
-    rw [hren_e]
-    -- Also rename_levels of (.var x) and e are identity
-    simp only [Exp.rename_levels]
-    have hren_x : x.rename_level (frame_shift s.len s2.len) = x := by
-      apply Var.rename_level_frame_shift
-      simp [Exp.dom] at hwf1
-      exact hwf1
-    have hren_e' : e.rename_levels (frame_shift s.len s2.len) = e := by
-      apply Exp.rename_levels_frame_shift
-      exact hwf2
-    rw [hren_x, hren_e']
-    apply Step.st_rename
-  case st_lift hv =>
-    -- st_lift: Step s1 (.letin v e) (s1.snoc ⟨v, hv⟩) (e.subst (Subst.openVar (.free s1.len)))
-    rename_i v e
-    -- From heq and st_lift, we know extra = Store.cons ⟨v, hv⟩ Store.nil
-    have hextra : s1 ++ extra = s1.snoc ⟨v, hv⟩ := heq
-    rw [Store.snoc_eq_append] at hextra
-    -- Since s1 ++ extra = s1 ++ (cons v nil), we have extra = cons v nil
-    have hextra_eq : extra = Store.cons ⟨v, hv⟩ Store.nil := by
-      -- Direct proof using the uniqueness of append
-      have h : s1 ++ extra = s1 ++ Store.cons ⟨v, hv⟩ Store.nil := hextra
-      -- We need to prove append is left-cancellative
-      generalize hx : extra = x at h ⊢
-      clear hextra hx
-      -- Use the fact about append uniqueness
-      induction s1 generalizing x with
-      | nil =>
-        simp at h
-        exact h
-      | cons w st ih =>
-        simp at h
-        injection h with _ h'
-        exact ih h'
-    rw [hextra_eq]
-    -- Now we need to show the framed version
-    simp [Store.rename_levels, Val.rename_levels]
-    -- The value v is well-formed so its renaming preserves it
-    obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
-    have hv_ren : v.rename_levels (frame_shift s1.len s2.len) = v := by
-      apply Exp.rename_levels_frame_shift
-      exact hwf1
-    rw [hv_ren]
-    -- Show the stores match up correctly
-    have hstore_eq : s1 ++ s2 ++ Store.cons ⟨v, hv⟩ Store.nil = (s1 ++ s2).snoc ⟨v, hv⟩ := by
-      rw [Store.snoc_eq_append]
-    rw [hstore_eq]
-    have hlen_sum : (s1 ++ s2).len = s1.len + s2.len := Store.len_append _ _
-    rw [← hlen_sum]
-    -- Key insight: .free s1.len becomes .free (s1 ++ s2).len after inserting s2
-    -- The substitution needs to be adjusted
-    conv_rhs => arg 2; rw [hlen_sum]
-    -- Now we need to prove the key equality about substitution and renaming
-    have hkey : (e.subst (Subst.openVar (.free s1.len))).rename_levels (frame_shift s1.len s2.len) =
-                e.subst (Subst.openVar (.free (s1.len + s2.len))) := by
-      -- We need the substitution-renaming interaction lemma
-      apply Exp.subst_rename_openVar_free
-    rw [← hkey]
-    apply Step.st_lift hv
+  case st_rename => sorry
+  case st_lift hv => sorry
 
 theorem reduce_frame
   (hwf_s : Store.WfStore s1)
@@ -612,61 +535,10 @@ theorem reduce_frame
   | red_refl =>
     -- Base case: no reduction steps, s = s_out and e = e
     -- From hs_out: s1 ++ extra = s, we get s1 = s and extra = nil
-    subst hs_out
-    have hnil : extra = Store.nil := Store.append_eq_self_iff_nil s1 extra rfl
-    rw [hnil]
+    have := Store.append_eq_self_iff_nil _ _ hs_out
+    subst this
     simp [Store.rename_levels, Store.append_nil]
-    have he_ren : e1.rename_levels (frame_shift s1.len s2.len) = e1 := by
-      apply Exp.rename_levels_frame_shift
-      exact hwf
-    rw [he_ren]
-    apply Reduce.red_refl
-  | red_step hstep hrest ih =>
-    -- Inductive case: Step s e s' e' followed by Reduce s' e' s'' e''
-    subst hs_out
-    rename_i s e s' e' s'' e''
-    -- We know s = s1, e = e1, s'' = s_out = s1 ++ extra, e'' = e2
-    -- Get the store extension from the first step
-    obtain ⟨s_step, heq_step⟩ := step_store_monotone hstep
-    -- So s' = s ++ s_step = s1 ++ s_step
-    -- Apply step_frame to lift the first step
-    have hstep_frame : Step (s1 ++ s2) e1
-                           (s1 ++ s2 ++ s_step.rename_levels (frame_shift s1.len s2.len))
-                           (e'.rename_levels (frame_shift s1.len s2.len)) := by
-      have h := step_frame hwf_s hwf hstep
-      convert h
-    -- Now for the rest of the reduction
-    -- hrest : Reduce s' e' s'' e'' where s'' = s1 ++ extra
-    -- and s' = s1 ++ s_step (by heq_step)
-    rw [heq_step] at hrest
-    -- We know (s1 ++ s_step) reduces to (s1 ++ extra)
-    -- So by store monotonicity, extra = s_step ++ extra_rest for some extra_rest
-    obtain ⟨extra_rest, heq_rest⟩ := reduce_store_monotone hrest
-    -- heq_rest : s1 ++ extra = (s1 ++ s_step) ++ extra_rest
-    have hextra_eq : extra = s_step ++ extra_rest := by
-      have : s1 ++ extra = s1 ++ (s_step ++ extra_rest) := by
-        rw [← Store.append_assoc, ← heq_rest]
-      -- By left cancellation
-      generalize hx : extra = x at this ⊢
-      clear heq_rest hx
-      induction s1 generalizing x with
-      | nil => simp at this; exact this
-      | cons v st ih =>
-        simp at this
-        injection this with _ h'
-        exact ih h'
-    -- Now we need well-formedness for the intermediate state
-    have hwf_mid : Exp.WfIn e' (s1 ++ s_step) := by
-      sorry -- Need preservation of well-formedness
-    have hwf_s_mid : Store.WfStore (s1 ++ s_step) := by
-      sorry -- Need store well-formedness preservation
-    -- Apply the IH
-    have ih_result := ih hwf_s_mid hwf_mid extra_rest heq_rest
-    -- Combine with the first step
-    apply Reduce.red_step hstep_frame
-    convert ih_result
-    · -- Store equation: need to show the final stores match
-      rw [hextra_eq]
-      simp [Store.append_assoc, Store.append_rename_levels]
+    sorry
+  | red_step hstep hrest ih => sorry
 
 end Fsub
