@@ -666,8 +666,9 @@ theorem step_frame
 
     -- Key lemma: substitution with shifted free variable
     have key_lemma :
-      (u.subst (Subst.openVar (Var.free (s:={}) s1.len))).rename_levels (frame_shift s1.len s2.len) =
-                      u.subst (Subst.openVar (Var.free (s:={}) ((s1 ++ s2).len))) := by
+      (u.subst (Subst.openVar (Var.free (s:={}) s1.len))).rename_levels
+        (frame_shift s1.len s2.len) =
+      u.subst (Subst.openVar (Var.free (s:={}) ((s1 ++ s2).len))) := by
       -- Use Exp.subst_rename_levels
       rw [Exp.subst_rename_levels]
 
@@ -680,8 +681,10 @@ theorem step_frame
       rw [hu_ren]
 
       -- Now show that renaming the substitution gives the right result
-      have hsub_ren : (Subst.openVar (Var.free (s:={}) s1.len)).rename_levels (frame_shift s1.len s2.len) =
-                       Subst.openVar (Var.free (s:={}) ((s1 ++ s2).len)) := by
+      have hsub_ren :
+        (Subst.openVar (Var.free (s:={}) s1.len)).rename_levels
+          (frame_shift s1.len s2.len) =
+        Subst.openVar (Var.free (s:={}) ((s1 ++ s2).len)) := by
         apply Subst.funext
         · intro x
           cases x with
@@ -692,7 +695,7 @@ theorem step_frame
             simp [frame_shift]
             -- s1.len >= s1.len, so we get s1.len + s2.len
             have : ¬(s1.len < s1.len) := Nat.lt_irrefl _
-            simp [this, Store.len_append]
+            simp [Store.len_append]
           | there y =>
             -- The .there case preserves bound variables
             simp [Subst.openVar, Subst.rename_levels]
