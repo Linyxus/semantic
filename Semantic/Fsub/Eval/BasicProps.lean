@@ -404,10 +404,104 @@ theorem Exp.rename_levels_frame_shift (e : Exp s) (l1 l2 : Nat) (h : e.dom <= l1
 def Store.WfStore (s : Store) : Prop :=
   ∀ i v, s.lookup i = some v → v.unwrap.dom <= i
 
+/-- Lookup in snoc: when i < s.len, lookup in s.snoc v is same as lookup in s. -/
+theorem Store.lookup_snoc_lt (s : Store) (v : Val {}) (i : Nat) (h : i < s.len) :
+    (s.snoc v).lookup i = s.lookup i := by
+  induction s generalizing i with
+  | nil =>
+    simp [Store.len] at h
+  | cons w s ih =>
+    cases i with
+    | zero =>
+      simp [Store.snoc, Store.lookup]
+    | succ i' =>
+      simp [Store.snoc, Store.lookup]
+      apply ih
+      simp [Store.len] at h
+      omega
+
+/-- Lookup in snoc: when i = s.len, lookup returns the snoced value. -/
+theorem Store.lookup_snoc_eq (s : Store) (v : Val {}) :
+    (s.snoc v).lookup s.len = some v := by
+  induction s with
+  | nil =>
+    simp [Store.snoc, Store.lookup, Store.len]
+  | cons w s ih =>
+    simp [Store.snoc, Store.lookup, Store.len]
+    exact ih
+
+/-- Lookup in snoc: when i > s.len, lookup fails. -/
+theorem Store.lookup_snoc_gt (s : Store) (v : Val {}) (i : Nat) (h : i > s.len) :
+    (s.snoc v).lookup i = none := by
+  induction s generalizing i with
+  | nil =>
+    cases i with
+    | zero =>
+      simp [Store.len] at h
+    | succ i' =>
+      simp [Store.snoc, Store.lookup]
+  | cons w s ih =>
+    cases i with
+    | zero =>
+      simp [Store.len] at h
+    | succ i' =>
+      simp [Store.snoc, Store.lookup]
+      apply ih
+      simp [Store.len] at h
+      omega
+
 theorem step_wf_store {s1 : Store}
   (hwf : s1.WfStore)
+  (hwf_e : Exp.WfIn e1 s1)
   (hstep : Step s1 e1 s2 e2) :
-  s2.WfStore := by sorry
+  s2.WfStore := by
+  induction hstep with
+  | st_ctx step ih =>
+    -- e1 = .letin e1' u, need WfIn for e1'
+    obtain ⟨hwf1, _⟩ := Exp.letin_wf_inv hwf_e
+    exact ih hwf hwf1
+  | st_apply _ =>
+    -- s2 = s1
+    exact hwf
+  | st_tapply _ =>
+    -- s2 = s1
+    exact hwf
+  | st_rename =>
+    -- s2 = s1
+    exact hwf
+  | st_lift hv =>
+    -- s2 = s1.snoc ⟨v, hv⟩
+    -- Need to show ∀ i val, s2.lookup i = some val → val.unwrap.dom <= i
+    rename_i v_exp s_old e_body
+    intro i val hlookup
+    -- Case analysis: either i < s_old.len, i = s_old.len, or i > s_old.len
+    by_cases h : i < s_old.len
+    · -- Case 1: i < s_old.len, so lookup is in the old store
+      have hlookup_old : s_old.lookup i = some val := by
+        rw [Store.lookup_snoc_lt s_old ⟨v_exp, hv⟩ i h] at hlookup
+        exact hlookup
+      exact hwf i val hlookup_old
+    · -- Case 2 or 3: i >= s_old.len
+      push_neg at h
+      by_cases heq : i = s_old.len
+      · -- Case 2: i = s_old.len
+        subst heq
+        have hval : val = ⟨v_exp, hv⟩ := by
+          rw [Store.lookup_snoc_eq s_old ⟨v_exp, hv⟩] at hlookup
+          injection hlookup with h
+          exact h.symm
+        subst hval
+        simp
+        -- Need to show v_exp.dom <= s_old.len
+        -- From hwf_e: (v_exp.letin e_body).WfIn s_old
+        unfold Exp.WfIn at hwf_e
+        simp [Exp.dom] at hwf_e
+        omega
+      · -- Case 3: i > s_old.len
+        have hgt : i > s_old.len := by omega
+        rw [Store.lookup_snoc_gt s_old ⟨v_exp, hv⟩ i hgt] at hlookup
+        -- hlookup says none = some val, contradiction
+        contradiction
 
 theorem step_frame
   (hwf_s : Store.WfStore s1)
