@@ -237,4 +237,14 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | letin e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
 
+def Subst.rename_levels (s : Subst s1 s2) (f : Nat -> Nat) : Subst s1 s2 where
+  var := fun x => (s.var x).rename_level f
+  tvar := fun X => (s.tvar X).rename_levels f
+
+theorem Var.subst_rename_levels {x : Var s1} {σ : Subst s1 s2} {f : Nat -> Nat} :
+  (x.subst σ).rename_level f = (x.rename_level f).subst (σ.rename_levels f) := by
+  cases x with
+  | bound x => rfl
+  | free n => rfl
+
 end Fsub
