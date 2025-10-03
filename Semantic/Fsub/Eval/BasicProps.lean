@@ -222,16 +222,6 @@ theorem Store.append_eq_self_iff_nil (s1 extra : Store) (h : s1 ++ extra = s1) :
     injection h with h_v h_s
     exact ih h_s
 
-/-- Store append cancellation on the right. -/
-theorem Store.append_cancel_right (s1 s2 s3 : Store) (h : s1 ++ s3 = s2 ++ s3) :
-    s1 = s2 := by
-  induction s3 generalizing s1 s2 with
-  | nil =>
-    simp [Store.append_nil] at h
-    exact h
-  | cons v s3 ih =>
-    sorry -- This is trickier, would need to work backwards from the end
-
 /-- Alternate characterization of append with singleton. -/
 theorem Store.append_singleton_eq (s1 : Store) (v : Val {}) :
     s1 ++ Store.cons v Store.nil = s1.snoc v := by
@@ -307,12 +297,6 @@ theorem Subst.openTVar_top_has_dom :
     | there X' =>
       -- Other type variables remain as type variables
       simp [Subst.openTVar, Ty.dom]
-
-/-- Renaming commutes with substitution when using openVar with a free variable. -/
-theorem Exp.subst_rename_openVar_free (e : Exp (s,x)) (n k : Nat) :
-    (e.subst (Subst.openVar (.free n))).rename_levels (frame_shift n k) =
-    (e.rename_levels (frame_shift n k)).subst (Subst.openVar (.free (n + k))) := by
-  sorry -- This is a complex lemma about substitution and renaming interaction
 
 /-!
 ## Frame-shift preservation
@@ -419,6 +403,11 @@ theorem Exp.rename_levels_frame_shift (e : Exp s) (l1 l2 : Nat) (h : e.dom <= l1
 /-- A store is well-formed if all values at position i have domain <= i. -/
 def Store.WfStore (s : Store) : Prop :=
   ∀ i v, s.lookup i = some v → v.unwrap.dom <= i
+
+theorem step_wf_store {s1 : Store}
+  (hwf : s1.WfStore)
+  (hstep : Step s1 e1 s2 e2) :
+  s2.WfStore := by sorry
 
 theorem step_frame
   (hwf_s : Store.WfStore s1)
@@ -532,13 +521,19 @@ theorem reduce_frame
     (e2.rename_levels (frame_shift s1.len s2.len)) := by
   generalize hs_out : s1 ++ extra = s_out at hr
   induction hr generalizing extra with
-  | red_refl =>
-    -- Base case: no reduction steps, s = s_out and e = e
-    -- From hs_out: s1 ++ extra = s, we get s1 = s and extra = nil
-    have := Store.append_eq_self_iff_nil _ _ hs_out
-    subst this
+  | @red_refl s_store e_orig =>
+    -- Base case: no reduction steps
+    -- From hs_out: s_store ++ extra = s_store, we get extra = nil
+    have hnil : extra = Store.nil := Store.append_eq_self_iff_nil _ _ hs_out
+    subst hnil
     simp [Store.rename_levels, Store.append_nil]
-    sorry
+    -- Since e_orig is well-formed in s_store, renaming is identity
+    have hren : e_orig.rename_levels (frame_shift s_store.len s2.len) = e_orig := by
+      apply Exp.rename_levels_frame_shift
+      unfold Exp.WfIn at hwf
+      exact hwf
+    rw [hren]
+    apply Reduce.red_refl
   | red_step hstep hrest ih => sorry
 
 end Fsub
