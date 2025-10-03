@@ -222,6 +222,31 @@ theorem Store.append_eq_self_iff_nil (s1 extra : Store) (h : s1 ++ extra = s1) :
     injection h with h_v h_s
     exact ih h_s
 
+/-- Left cancellation for store append: if s1 ++ s2 = s1 ++ s3, then s2 = s3. -/
+theorem Store.append_left_cancel (s1 s2 s3 : Store) (h : s1 ++ s2 = s1 ++ s3) :
+    s2 = s3 := by
+  induction s1 with
+  | nil =>
+    -- nil ++ s2 = nil ++ s3
+    simp only [Store.instAppend] at h
+    change Store.append Store.nil s2 = Store.append Store.nil s3 at h
+    simp only [Store.append] at h
+    exact h
+  | cons v s1 ih =>
+    -- cons v s1 ++ s2 = cons v s1 ++ s3
+    simp only [Store.instAppend] at h
+    change Store.append (Store.cons v s1) s2 = Store.append (Store.cons v s1) s3 at h
+    simp only [Store.append] at h
+    change Store.cons v (s1 ++ s2) = Store.cons v (s1 ++ s3) at h
+    injection h with h_v h_s
+    exact ih h_s
+
+/-- Corollary: if s1 ++ s2 = s1.snoc v, then s2 = cons v nil. -/
+theorem Store.append_eq_snoc_iff (s1 s2 : Store) (v : Val {}) (h : s1 ++ s2 = s1.snoc v) :
+    s2 = Store.cons v Store.nil := by
+  rw [Store.snoc_eq_append] at h
+  exact Store.append_left_cancel s1 s2 (Store.cons v Store.nil) h
+
 /-- Alternate characterization of append with singleton. -/
 theorem Store.append_singleton_eq (s1 : Store) (v : Val {}) :
     s1 ++ Store.cons v Store.nil = s1.snoc v := by
@@ -623,7 +648,8 @@ theorem step_frame
       omega
     rw [hren]
     apply Step.st_rename
-  case st_lift hv => sorry
+  case st_lift v s1 u hv =>
+    sorry
 
 theorem reduce_frame
   (hwf_s : Store.WfStore s1)
