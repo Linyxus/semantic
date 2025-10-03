@@ -6,7 +6,13 @@ mutual
 
 theorem val_denot_frame
   (hv : Ty.val_denot env T s v) :
-  Ty.val_denot env T (s ++ s') v := sorry
+  Ty.val_denot env T (s ++ s') v := by
+  sorry
+
+theorem exp_denot_frame
+  (hd : Ty.exp_denot env T s e) :
+  Ty.exp_denot env T (s ++ s') e := by
+  sorry
 
 end
 

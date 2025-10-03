@@ -852,6 +852,8 @@ theorem reduce_frame
     rw [Store.append_assoc] at h2
     have heq := Store.append_left_cancel _ _ _ h2
     subst heq
+    have hstep' := step_frame (s2:=s2) hwf_s hwf hstep
+    apply Reduce.red_step hstep'
     have hwf_s' := step_wf_store hwf_s hwf hstep
     have hwf' := step_wf hwf_s hwf hstep
     sorry
