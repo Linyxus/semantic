@@ -637,7 +637,7 @@ theorem step_wf
     rw [hfree] at hsub
     omega
 
-theorem step_frame
+theorem step_frame_old
   (hwf_s : Store.WfStore s1)
   (hwf : Exp.WfIn e1 s1)
   (hr : Step s1 e1 (s1 ++ extra) e2) :
@@ -821,41 +821,149 @@ theorem step_frame
     rw [key_lemma]
     apply Step.st_lift
 
-theorem reduce_frame
+theorem step_frame
   (hwf_s : Store.WfStore s1)
   (hwf : Exp.WfIn e1 s1)
-  (hr : Reduce s1 e1 (s1 ++ extra) e2) :
-  Reduce
-    (s1 ++ s2)
+  (hr : Step (base1 ++ base2) e1 (base1 ++ base2 ++ extra) e2) :
+  Step
+    (base1 ++ inserted ++ base2)
     e1
-    (s1 ++ s2 ++ (extra.rename_levels (frame_shift s1.len s2.len)))
-    (e2.rename_levels (frame_shift s1.len s2.len)) := by
-  generalize hs_out : s1 ++ extra = s_out at hr
-  induction hr generalizing extra s2 with
-  | @red_refl s_store e_orig =>
-    -- Base case: no reduction steps
-    -- From hs_out: s1 ++ extra = s_store, so extra = nil (since s_store = s1)
-    have hnil : extra = Store.nil := Store.append_eq_self_iff_nil _ _ hs_out
-    subst hnil
-    simp [Store.rename_levels, Store.append_nil]
-    -- Since e_orig is well-formed in s_store, renaming is identity
-    have hren : e_orig.rename_levels (frame_shift s_store.len s2.len) = e_orig := by
-      apply Exp.rename_levels_frame_shift
-      unfold Exp.WfIn at hwf
-      exact hwf
-    rw [hren]
-    apply Reduce.red_refl
-  | red_step hstep hrest ih =>
-    have ⟨delta1, h1⟩ := step_store_monotone hstep
-    have ⟨delta2, h2⟩ := reduce_store_monotone hrest
-    subst hs_out h1
-    rw [Store.append_assoc] at h2
-    have heq := Store.append_left_cancel _ _ _ h2
-    subst heq
-    have hstep' := step_frame (s2:=s2) hwf_s hwf hstep
-    apply Reduce.red_step hstep'
-    have hwf_s' := step_wf_store hwf_s hwf hstep
-    have hwf' := step_wf hwf_s hwf hstep
-    sorry
+    (base1 ++ inserted ++ (base2.rename_levels (frame_shift (base1.len + inserted.len) base2.len) ++
+      (extra.rename_levels (frame_shift base1.len inserted.len))))
+    (e2.rename_levels (frame_shift base1.len inserted.len)) := by
+  generalize heq1 : base1 ++ base2 = s_in at hr
+  generalize heq2 : s_in ++ extra = s_out at hr
+  induction hr generalizing inserted with
+  | st_ctx ih =>
+    -- We have: e1✝.letin u✝ as input, e2✝.letin u✝ as output (u✝ unchanged in step)
+    -- ih: Step s1✝ e1✝ s2✝ e2✝ is the inner step
+    -- a_ih✝: is the actual IH function
+    rename_i s_in_inner e1' s_out_inner e2' u a_ih
 
-end Fsub
+    -- Decompose well-formedness of .letin e1' u
+    obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
+
+    -- Key insight: u doesn't change under renaming if u.dom <= base1.len
+    -- This requires s1 = base1 (or s1.len <= base1.len)
+    have hu : u.rename_levels (frame_shift base1.len inserted.len) = u := by
+      apply Exp.rename_levels_frame_shift
+      -- hwf2 : u.WfIn s1 gives u.dom <= s1.len
+      -- Need: s1 = base1 to conclude u.dom <= base1.len
+      -- This should be added as a hypothesis to the theorem
+      sorry
+
+    -- Simplify: (e2'.letin u).rename_levels = .letin (e2'.rename_levels) (u.rename_levels)
+    simp [Exp.rename_levels]
+    rw [hu]
+
+    -- Apply Step.st_ctx
+    apply Step.st_ctx
+
+    -- Apply the actual IH
+    exact a_ih hwf1 heq1 heq2
+  | st_apply => sorry
+  | st_tapply => sorry
+  | st_rename => sorry
+  | st_lift => sorry
+
+/-!
+## Reduction under renaming
+
+First, we prove that reduction is preserved under level renaming.
+-/
+
+-- theorem step_rename_levels
+--   (hs : Step s1 e1 s2 e2)
+--   (f : Nat → Nat) :
+--   Step
+--     (s1.rename_levels f)
+--     (e1.rename_levels f)
+--     (s2.rename_levels f)
+--     (e2.rename_levels f) := by
+--   sorry
+
+-- theorem reduce_rename_levels
+--   (hr : Reduce s1 e1 s2 e2)
+--   (f : Nat → Nat) :
+--   Reduce
+--     (s1.rename_levels f)
+--     (e1.rename_levels f)
+--     (s2.rename_levels f)
+--     (e2.rename_levels f) := by
+--   induction hr with
+--   | red_refl => apply Reduce.red_refl
+--   | red_step hstep _ ih =>
+--     apply Reduce.red_step
+--     · exact step_rename_levels hstep f
+--     · exact ih
+
+-- theorem reduce_frame
+--   (hwf_s : Store.WfStore s1)
+--   (hwf : Exp.WfIn e1 s1)
+--   (hr : Reduce s1 e1 (s1 ++ extra) e2) :
+--   Reduce
+--     (s1 ++ s2)
+--     e1
+--     (s1 ++ s2 ++ (extra.rename_levels (frame_shift s1.len s2.len)))
+--     (e2.rename_levels (frame_shift s1.len s2.len)) := by
+--   generalize hs_out : s1 ++ extra = s_out at hr
+--   induction hr generalizing extra s2 with
+--   | @red_refl s_store e_orig =>
+--     -- Base case: no reduction steps
+--     -- From hs_out: s1 ++ extra = s_store, so extra = nil (since s_store = s1)
+--     have hnil : extra = Store.nil := Store.append_eq_self_iff_nil _ _ hs_out
+--     subst hnil
+--     simp [Store.rename_levels, Store.append_nil]
+--     -- Since e_orig is well-formed in s_store, renaming is identity
+--     have hren : e_orig.rename_levels (frame_shift s_store.len s2.len) = e_orig := by
+--       apply Exp.rename_levels_frame_shift
+--       unfold Exp.WfIn at hwf
+--       exact hwf
+--     rw [hren]
+--     apply Reduce.red_refl
+--   | red_step hstep hrest ih =>
+--     have ⟨delta1, h1⟩ := step_store_monotone hstep
+--     have ⟨delta2, h2⟩ := reduce_store_monotone hrest
+--     subst hs_out h1
+--     rw [Store.append_assoc] at h2
+--     have heq := Store.append_left_cancel _ _ _ h2
+--     subst heq
+--     have hstep' := step_frame (s2:=s2) hwf_s hwf hstep
+--     apply Reduce.red_step hstep'
+--     have hwf_s' := step_wf_store hwf_s hwf hstep
+--     have hwf' := step_wf hwf_s hwf hstep
+
+--     -- Distribute renaming over append
+--     rw [Store.append_rename_levels (s1 := delta1) (s2 := delta2)]
+
+--     -- Let me directly construct the equality we need for the IH
+--     -- Recall: generalize hs_out : s1 ++ extra = s_out at hr
+--     -- So s_out is the final store, and s1 is the initial store
+--     -- After substitutions, s1 has become the unnamed s✝
+
+--     -- The key insight: apply the IH to hrest with the frame being s2
+--     --We need to prove: base_store ++ extra = base_store ++ (delta1 ++ delta2)
+--     -- where base_store is the store after the step, which is (the unnamed store ++ delta1)
+
+--     -- We can directly prove the equality the IH needs
+--     -- The IH is expecting: base ++ extra = base ++ (delta1 ++ delta2)
+--     -- where base is the store after the step
+--     -- We can show this is just associativity when extra = delta2
+
+--     -- The fundamental issue: after the step, we have a different base store
+--     -- The IH can't directly help because it inserts the frame in the wrong place
+--     --
+--     -- The solution: we need to prove that reduce_frame holds using a DIFFERENT
+--     -- induction principle, or we need additional lemmas about store commutation
+--     --
+--     -- For now, this case requires `step_rename_levels` to be proven first,
+--     -- then additional lemmas about how renamings and store operations interact.
+--     --
+--     -- The high-level structure should be:
+--     -- 1. Rename hrest to get the right variable shifts
+--     -- 2. Insert the frame s2 into the renamed reduction
+--     -- 3. Show this matches the goal using store algebraic properties
+
+--     sorry
+
+-- end Fsub
