@@ -6,5 +6,7 @@ Claude develops the proofs step-by-step. It uses `lean4check` frequently to chec
 
 Claude uses the `trace_state` tactic to print the goal information in `lean4check`.
 
+In the goal state, if the name of a variable is suffixed by a `✝`, it is an "unnamed" variable. Use `rename_i` to name them so that you can refer to them. Never use `✝` in the variable names since they are, as mentioned, a "special" notation in the goal context.
+
 Claude thinks super hard.
 
