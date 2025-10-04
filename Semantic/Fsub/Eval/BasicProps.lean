@@ -266,6 +266,14 @@ theorem Store.append_rename_levels (s1 s2 : Store) (f : Nat → Nat) :
       Store.cons (v.rename_levels f) (s1.rename_levels f ++ s2.rename_levels f)
     rw [ih]
 
+/-- Level renaming preserves store length. -/
+theorem Store.len_rename_levels (s : Store) (f : Nat → Nat) :
+    (s.rename_levels f).len = s.len := by
+  induction s with
+  | nil => rfl
+  | cons v s ih =>
+    simp [Store.rename_levels, Store.len, ih]
+
 /-- Lookup in a level-renamed store (general version). -/
 theorem Store.lookup_rename_levels (s : Store) (n : Nat) (f : Nat → Nat) :
     (s.rename_levels f).lookup n =
@@ -1015,7 +1023,92 @@ theorem step_frame
           simp [Subst.rename_levels, Subst.openVar, Ty.rename_levels]
     simp [Exp.subst_rename_levels, openVar_rename]
     apply Step.st_rename
-  | st_lift => sorry
+  | st_lift =>
+    -- Pattern: Step s1 (.letin v e) (s1.snoc ⟨v, hv⟩) (e.subst ...)
+    -- Unnamed vars: v✝, s1✝, e✝, hv✝
+    rename_i v_exp s_store e_body hv
+    -- heq1: base1 ++ base2 = s_store
+    -- heq2: s_store ++ extra = s_store.snoc ⟨v_exp, hv⟩
+    subst heq1
+    -- Now s_store = base1 ++ base2
+    -- heq2: (base1 ++ base2) ++ extra = (base1 ++ base2).snoc ⟨v_exp, hv⟩
+    have hval := Store.append_eq_snoc_iff (base1 ++ base2) extra (Val.mk v_exp hv) heq2
+    subst hval
+    -- Now extra = Store.cons {unwrap := v_exp, isVal := hv} Store.nil
+    simp [Store.rename_levels, Store.append_singleton_eq, Exp.rename_levels]
+
+    -- Show that v_exp.renamed is a value
+    have hv_renamed : (v_exp.rename_levels (frame_shift base1.len inserted.len)).IsVal := by
+      cases hv
+      · apply Exp.IsVal.abs
+      · apply Exp.IsVal.tabs
+
+    -- Key: The free variable position should match the store length
+    have hlen_orig : (base1 ++ base2).len = base1.len + base2.len := Store.len_append _ _
+
+    -- Key lemma: substitution with shifted free variable commutes with renaming
+    have key_lemma :
+      (e_body.subst (Subst.openVar (Var.free (s:={}) ((base1 ++ base2).len)))).rename_levels
+        (frame_shift base1.len inserted.len) =
+      (e_body.rename_levels (frame_shift base1.len inserted.len)).subst
+        (Subst.openVar (Var.free (s:={}) (base1.len + inserted.len + base2.len))) := by
+      rw [hlen_orig]
+      rw [Exp.subst_rename_levels]
+
+      -- The free variable position shifts
+      have hshift : frame_shift base1.len inserted.len (base1.len + base2.len) =
+        base1.len + inserted.len + base2.len := by
+        simp [frame_shift]
+        omega
+
+      -- Show that renaming the openVar substitution gives the right result
+      have hsub_ren :
+        (Subst.openVar (Var.free (s:={}) (base1.len + base2.len))).rename_levels
+          (frame_shift base1.len inserted.len) =
+        Subst.openVar (Var.free (s:={}) (base1.len + inserted.len + base2.len)) := by
+        apply Subst.funext
+        · intro x
+          cases x with
+          | here =>
+            simp [Subst.openVar, Subst.rename_levels, Var.rename_level, hshift]
+          | there y =>
+            simp [Subst.openVar, Subst.rename_levels, Var.rename_level]
+        · intro X
+          cases X with
+          | there X' =>
+            simp [Subst.openVar, Subst.rename_levels, Ty.rename_levels]
+      rw [hsub_ren]
+
+    rw [key_lemma]
+
+    -- Show that the lengths match
+    have hlen_final :
+      (base1 ++ inserted ++
+        base2.rename_levels (frame_shift base1.len inserted.len)).len =
+      base1.len + inserted.len + base2.len := by
+      rw [Store.len_append, Store.len_append, Store.len_rename_levels]
+
+    -- Rewrite the store structure to match Step.st_lift pattern
+    -- Key: show that base1 ++ inserted ++ (base2.renamed).snoc val
+    --             = (base1 ++ inserted ++ base2.renamed).snoc val
+
+    -- First, rewrite snoc as append on the inner store
+    rw [Store.snoc_eq_append (base2.rename_levels (frame_shift base1.len inserted.len))]
+    -- Now RHS store is: base1 ++ inserted ++ (base2.renamed ++ Store.cons val Store.nil)
+
+    -- Use associativity to re-group: we need to move the parentheses
+    -- from: base1 ++ inserted ++ (base2.renamed ++ cons)
+    -- to: (base1 ++ inserted ++ base2.renamed) ++ cons
+    rw [← Store.append_assoc (base1 ++ inserted)]
+    -- Now: (base1 ++ inserted ++ base2.renamed) ++ Store.cons val Store.nil
+
+    -- Rewrite back to snoc form for the whole store
+    rw [← Store.snoc_eq_append]
+    -- Now: (base1 ++ inserted ++ base2.renamed).snoc val
+
+    -- Apply st_lift - the pattern matches perfectly now!
+    rw [← hlen_final]
+    apply Step.st_lift hv_renamed
 
 /-!
 ## Reduction under renaming
@@ -1023,30 +1116,6 @@ theorem step_frame
 First, we prove that reduction is preserved under level renaming.
 -/
 
--- theorem step_rename_levels
---   (hs : Step s1 e1 s2 e2)
---   (f : Nat → Nat) :
---   Step
---     (s1.rename_levels f)
---     (e1.rename_levels f)
---     (s2.rename_levels f)
---     (e2.rename_levels f) := by
---   sorry
-
--- theorem reduce_rename_levels
---   (hr : Reduce s1 e1 s2 e2)
---   (f : Nat → Nat) :
---   Reduce
---     (s1.rename_levels f)
---     (e1.rename_levels f)
---     (s2.rename_levels f)
---     (e2.rename_levels f) := by
---   induction hr with
---   | red_refl => apply Reduce.red_refl
---   | red_step hstep _ ih =>
---     apply Reduce.red_step
---     · exact step_rename_levels hstep f
---     · exact ih
 
 -- theorem reduce_frame
 --   (hwf_s : Store.WfStore s1)
