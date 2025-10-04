@@ -827,40 +827,19 @@ theorem step_frame
   (hr : Step (base1 ++ base2) e1 (base1 ++ base2 ++ extra) e2) :
   Step
     (base1 ++ inserted ++ base2)
-    e1
+    (e1.rename_levels (frame_shift base1.len inserted.len))
     (base1 ++ inserted ++ (base2.rename_levels (frame_shift (base1.len + inserted.len) base2.len) ++
       (extra.rename_levels (frame_shift base1.len inserted.len))))
     (e2.rename_levels (frame_shift base1.len inserted.len)) := by
   generalize heq1 : base1 ++ base2 = s_in at hr
   generalize heq2 : s_in ++ extra = s_out at hr
   induction hr generalizing inserted with
-  | st_ctx ih =>
-    -- We have: e1✝.letin u✝ as input, e2✝.letin u✝ as output (u✝ unchanged in step)
-    -- ih: Step s1✝ e1✝ s2✝ e2✝ is the inner step
-    -- a_ih✝: is the actual IH function
-    rename_i s_in_inner e1' s_out_inner e2' u a_ih
-
-    -- Decompose well-formedness of .letin e1' u
-    obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
-
-    -- Key insight: u doesn't change under renaming if u.dom <= base1.len
-    -- This requires s1 = base1 (or s1.len <= base1.len)
-    have hu : u.rename_levels (frame_shift base1.len inserted.len) = u := by
-      apply Exp.rename_levels_frame_shift
-      -- hwf2 : u.WfIn s1 gives u.dom <= s1.len
-      -- Need: s1 = base1 to conclude u.dom <= base1.len
-      -- This should be added as a hypothesis to the theorem
-      sorry
-
-    -- Simplify: (e2'.letin u).rename_levels = .letin (e2'.rename_levels) (u.rename_levels)
+  | st_ctx hr ih =>
+    subst heq1 heq2
     simp [Exp.rename_levels]
-    rw [hu]
-
-    -- Apply Step.st_ctx
+    obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
     apply Step.st_ctx
-
-    -- Apply the actual IH
-    exact a_ih hwf1 heq1 heq2
+    apply ih hwf1 rfl rfl
   | st_apply => sorry
   | st_tapply => sorry
   | st_rename => sorry
