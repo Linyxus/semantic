@@ -744,6 +744,10 @@ theorem step_wf
     rw [hfree] at hsub
     omega
 
+/-- **Step framing theorem**: A single evaluation step is preserved when inserting
+a store segment with appropriate level renaming. If we have a step on `base1 ++ base2`,
+we can insert any store `inserted` after `base1`, and the step remains valid with
+variables in `base2` and the expression shifted by `inserted.len`. -/
 theorem step_frame
   (hwf_s : Store.WfStore (base1 ++ base2))
   (hwf : Exp.WfIn e1 (base1 ++ base2))
@@ -925,6 +929,10 @@ theorem step_frame
     rw [← hlen_final]
     apply Step.st_lift hv_renamed
 
+/-- **Reduction framing theorem**: Multi-step reduction is preserved when inserting
+a store segment with appropriate level renaming. This extends `step_frame` to arbitrarily
+long reduction sequences, allowing us to insert `inserted` after `base1` while preserving
+the entire reduction with shifted free variables. -/
 theorem reduce_frame
   (hwf_s : Store.WfStore (base1 ++ base2))
   (hwf : Exp.WfIn e1 (base1 ++ base2))
