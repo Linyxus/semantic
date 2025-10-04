@@ -1036,12 +1036,10 @@ theorem reduce_frame
     have hwf_ih := step_wf hwf_s hwf hstep
     specialize ih (inserted:=inserted) heq_ih hwf_s_ih hwf_ih rfl
     have heq0 : extra = delta1 ++ delta2 := by
-      have h1 : (base1 ++ base2) ++ extra = ((base1 ++ base2) ++ delta1) ++ delta2 := heq2
-      have h2 : ((base1 ++ base2) ++ delta1) ++ delta2 = (base1 ++ base2) ++ (delta1 ++ delta2) :=
-        Store.append_assoc _ _ _
-      have h3 : (base1 ++ base2) ++ extra = (base1 ++ base2) ++ (delta1 ++ delta2) := by
-        rw [h1, h2]
-      exact Store.append_left_cancel (base1 ++ base2) extra (delta1 ++ delta2) h3
+      have h : (base1 ++ base2) ++ extra = (base1 ++ base2) ++ (delta1 ++ delta2) := calc
+        (base1 ++ base2) ++ extra = ((base1 ++ base2) ++ delta1) ++ delta2 := heq2
+        _ = (base1 ++ base2) ++ (delta1 ++ delta2) := Store.append_assoc _ _ _
+      exact Store.append_left_cancel (base1 ++ base2) extra (delta1 ++ delta2) h
     simp [heq0]
     convert ih using 1
     { simp [Store.append_rename_levels] }
