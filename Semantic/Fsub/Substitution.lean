@@ -319,4 +319,15 @@ theorem Exp.subst_rename_levels {e : Exp s1} {σ : Subst s1 s2} {f : Nat -> Nat}
     · exact ih1
     · rw [ih2, Subst.lift_rename_levels]
 
+theorem Subst.openVar_rename_levels {x : Var s} :
+  (Subst.openVar x).rename_levels f =
+    Subst.openVar (x.rename_level f) := by
+  apply Subst.funext
+  case hvar =>
+    intro x
+    cases x <;> rfl
+  case htvar =>
+    intro X
+    cases X; rfl
+
 end Fsub

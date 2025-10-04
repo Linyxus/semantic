@@ -429,6 +429,33 @@ theorem Exp.rename_levels_frame_shift (e : Exp s) (l1 l2 : Nat) (h : e.dom <= l1
 def Store.WfStore (s : Store) : Prop :=
   ∀ i v, s.lookup i = some v → v.unwrap.dom <= i
 
+/-- If lookup succeeds at index i, then i < s.len -/
+theorem Store.lookup_some_lt_len {s : Store} {i : Nat} {v : Val {}}
+  (h : s.lookup i = some v) : i < s.len := by
+  induction s generalizing i with
+  | nil =>
+    simp [Store.lookup] at h
+  | cons w s ih =>
+    cases i with
+    | zero =>
+      simp [Store.len]
+    | succ i' =>
+      simp [Store.lookup] at h
+      have hi := ih h
+      simp [Store.len]
+      omega
+
+theorem wf_store_append_inv
+  (hwf : Store.WfStore (s1 ++ s2)) :
+  Store.WfStore s1 := by
+  intro i v hlookup
+  -- If s1.lookup i = some v, then (s1 ++ s2).lookup i = some v
+  have hi : i < s1.len := Store.lookup_some_lt_len hlookup
+  have hlookup' : (s1 ++ s2).lookup i = some v := by
+    rw [Store.lookup_append]
+    simp [hi, hlookup]
+  exact hwf i v hlookup'
+
 /-- Lookup in snoc: when i < s.len, lookup in s.snoc v is same as lookup in s. -/
 theorem Store.lookup_snoc_lt (s : Store) (v : Val {}) (i : Nat) (h : i < s.len) :
     (s.snoc v).lookup i = s.lookup i := by
@@ -454,6 +481,44 @@ theorem Store.lookup_snoc_eq (s : Store) (v : Val {}) :
   | cons w s ih =>
     simp [Store.snoc, Store.lookup, Store.len]
     exact ih
+
+theorem Store.lookup_frame_shift {base1 base2 inserted : Store}
+  (hwf : Store.WfStore (base1 ++ base2))
+  (hl : (base1 ++ base2).lookup x = some v) :
+  (base1 ++ inserted ++
+    (base2.rename_levels (frame_shift base1.len inserted.len))).lookup
+    (frame_shift base1.len inserted.len x) =
+  some (v.rename_levels (frame_shift base1.len inserted.len)) := by
+  -- Rewrite both sides using Store.lookup_append
+  rw [Store.lookup_append] at hl
+  rw [Store.lookup_append]
+  -- Split on whether x < base1.len
+  by_cases h : x < base1.len
+  · -- Case 1: x < base1.len, lookup is in base1
+    have heq : (frame_shift base1.len inserted.len x) = x := by
+      simp [frame_shift, h]
+    simp [heq] at *
+    simp [h] at hl ⊢
+    have h2 : x < (base1 ++ inserted).len := by
+      rw [Store.len_append]
+      omega
+    simp [h2]
+    simp [Store.lookup_append]
+    simp [h]
+    have heq : v.rename_levels (frame_shift base1.len inserted.len) = v := by
+      generalize heq0 : v = v0
+      cases v0
+      simp [Val.rename_levels]
+      apply Exp.rename_levels_frame_shift
+      have hwf' := wf_store_append_inv hwf
+      have hdom := hwf' x v hl
+      subst v
+      simp at hdom
+      omega
+    simp [heq]
+    exact hl
+  · -- Case 2: x >= base1.len, lookup is in base2
+    sorry
 
 /-- Lookup in snoc: when i > s.len, lookup fails. -/
 theorem Store.lookup_snoc_gt (s : Store) (v : Val {}) (i : Nat) (h : i > s.len) :
@@ -822,13 +887,13 @@ theorem step_frame_old
     apply Step.st_lift
 
 theorem step_frame
-  (hwf_s : Store.WfStore s1)
-  (hwf : Exp.WfIn e1 s1)
+  (hwf_s : Store.WfStore (base1 ++ base2))
+  (hwf : Exp.WfIn e1 (base1 ++ base2))
   (hr : Step (base1 ++ base2) e1 (base1 ++ base2 ++ extra) e2) :
   Step
-    (base1 ++ inserted ++ base2)
+    (base1 ++ inserted ++ (base2.rename_levels (frame_shift base1.len inserted.len)))
     (e1.rename_levels (frame_shift base1.len inserted.len))
-    (base1 ++ inserted ++ (base2.rename_levels (frame_shift (base1.len + inserted.len) base2.len) ++
+    (base1 ++ inserted ++ (base2.rename_levels (frame_shift base1.len inserted.len) ++
       (extra.rename_levels (frame_shift base1.len inserted.len))))
     (e2.rename_levels (frame_shift base1.len inserted.len)) := by
   generalize heq1 : base1 ++ base2 = s_in at hr
@@ -840,7 +905,18 @@ theorem step_frame
     obtain ⟨hwf1, hwf2⟩ := Exp.letin_wf_inv hwf
     apply Step.st_ctx
     apply ih hwf1 rfl rfl
-  | st_apply => sorry
+  | st_apply =>
+    rename_i x y T e hv hlookup
+    -- Store doesn't change in st_apply, so extra = nil
+    have hnil : extra = Store.nil := by
+      subst heq1
+      exact Store.append_eq_self_iff_nil _ _ heq2
+    subst hnil heq1
+    simp [Store.append_nil, Store.rename_levels, Exp.rename_levels]
+    simp [Exp.subst_rename_levels, Subst.openVar_rename_levels]
+    apply Step.st_apply
+    { sorry }
+    all_goals sorry
   | st_tapply => sorry
   | st_rename => sorry
   | st_lift => sorry

@@ -2,12 +2,24 @@ import Semantic.Fsub.Denotation
 import Semantic.Fsub.Eval
 namespace Fsub
 
+def Denot.mono_store (d : Denot) : Prop :=
+  ∀ s1 s2 v,
+    d s1 v ->
+    d (s1 ++ s2) v
+
 mutual
 
 theorem val_denot_frame
   (hv : Ty.val_denot env T s v) :
-  Ty.val_denot env T (s ++ s') v := by
-  sorry
+  Ty.val_denot env T (s ++ s') v :=
+  match T with
+  | .top => by grind [Ty.val_denot]
+  | .singleton x => by grind [Ty.val_denot]
+  | .tvar x => by
+    simp [Ty.val_denot] at *
+    sorry
+  | .arrow T1 T2 => sorry
+  | .poly S T => sorry
 
 theorem exp_denot_frame
   (hd : Ty.exp_denot env T s e) :
