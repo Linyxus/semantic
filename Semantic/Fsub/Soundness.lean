@@ -11,8 +11,10 @@ theorem val_denot_mono
   | .top => by
     simp [Ty.val_denot, Denot.Mono]
     intro base1 base2 e he inserted
+    apply Exp.rename_levels_preserves_IsAns he
+  | .singleton x => by
+    simp [Denot.Mono]
     sorry
-  | .singleton x => by sorry
   | .tvar X => by
     simp [Ty.val_denot]
     apply henv

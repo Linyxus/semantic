@@ -45,6 +45,21 @@ theorem reduce_right_step
   apply reduce_step hs
 
 /-!
+## Answer preservation under renaming
+-/
+
+/-- Level renaming preserves the answer property.
+If an expression is an answer (value or variable), it remains an answer after renaming levels. -/
+theorem Exp.rename_levels_preserves_IsAns {e : Exp {}} (ha : e.IsAns) (f : Nat -> Nat) :
+    (e.rename_levels f).IsAns := by
+  cases ha with
+  | is_val hv =>
+    apply Exp.IsAns.is_val
+    exact Exp.rename_levels_preserves_IsVal hv f
+  | is_var =>
+    apply Exp.IsAns.is_var
+
+/-!
 ## Store properties
 
 Properties about store operations: lookup, snoc, append, and len.
