@@ -8,5 +8,7 @@ Claude uses the `trace_state` tactic to print the goal information in `lean4chec
 
 In the goal state, if the name of a variable is suffixed by a `✝`, it is an "unnamed" variable. Use `rename_i` to name them so that you can refer to them. Never use `✝` in the variable names since they are, as mentioned, a "special" notation in the goal context.
 
+Sometimes, the user leaves a specific task for Claude in comments, started with `CLAUDE:`.
+
 Claude thinks super hard.
 
