@@ -4,22 +4,19 @@ namespace Fsub
 
 mutual
 
-theorem val_denot_frame
-  (hv : Ty.val_denot env T s v) :
-  Ty.val_denot env T (s ++ s') v :=
+theorem val_denot_mono
+  (henv : TypeEnv.mono env) :
+  (Ty.val_denot env T).Mono := by
   match T with
-  | .top => by grind [Ty.val_denot]
-  | .singleton x => by grind [Ty.val_denot]
-  | .tvar x => by
-    simp [Ty.val_denot] at *
-    sorry
+  | .top => sorry
+  | .singleton x => sorry
+  | .tvar x => sorry
   | .arrow T1 T2 => sorry
   | .poly S T => sorry
 
 theorem exp_denot_frame
-  (hd : Ty.exp_denot env T s e) :
-  Ty.exp_denot env T (s ++ s') e := by
-  sorry
+  (henv : TypeEnv.mono env) :
+  (Ty.exp_denot env T).Mono := sorry
 
 end
 
