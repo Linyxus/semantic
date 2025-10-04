@@ -956,8 +956,65 @@ theorem step_frame
       exact Store.lookup_frame_shift hwf_s hlookup
     apply Step.st_apply
     exact hlookup'
-  | st_tapply => sorry
-  | st_rename => sorry
+  | st_tapply =>
+    rename_i x T T0 e hv hlookup
+    -- Store doesn't change in st_tapply, so extra = nil
+    have hnil : extra = Store.nil := by
+      subst heq1
+      exact Store.append_eq_self_iff_nil _ _ heq2
+    subst hnil heq1
+    simp [Store.append_nil, Store.rename_levels, Exp.rename_levels]
+    -- Key lemma: openTVar .top is invariant under level renaming
+    have openTVar_inv : (Subst.openTVar (.top : Ty {})).rename_levels
+      (frame_shift base1.len inserted.len) = Subst.openTVar .top := by
+      apply Subst.funext
+      · intro x
+        cases x with
+        | there x' =>
+          simp [Subst.rename_levels, Subst.openTVar, Var.rename_level]
+      · intro X
+        cases X with
+        | here =>
+          simp [Subst.rename_levels, Subst.openTVar, Ty.rename_levels]
+        | there X' =>
+          simp [Subst.rename_levels, Subst.openTVar, Ty.rename_levels]
+    simp [Exp.subst_rename_levels, openTVar_inv]
+    -- Use Store.lookup_frame_shift to get the lookup in the framed store
+    have hlookup' : (base1 ++ inserted ++
+      (base2.rename_levels (frame_shift base1.len inserted.len))).lookup
+      (frame_shift base1.len inserted.len x) =
+      some ((Val.mk (.tabs T0 e) hv).rename_levels (frame_shift base1.len inserted.len)) := by
+      exact Store.lookup_frame_shift hwf_s hlookup
+    apply Step.st_tapply
+    exact hlookup'
+  | st_rename =>
+    rename_i x e_body
+    -- Store doesn't change in st_rename, so extra = nil
+    have hnil : extra = Store.nil := by
+      subst heq1
+      exact Store.append_eq_self_iff_nil _ _ heq2
+    subst hnil heq1
+    simp [Store.append_nil, Store.rename_levels, Exp.rename_levels]
+    -- Key lemma: openVar commutes with level renaming
+    have openVar_rename : (Subst.openVar x).rename_levels
+      (frame_shift base1.len inserted.len) =
+      Subst.openVar (x.rename_level (frame_shift base1.len inserted.len)) := by
+      apply Subst.funext
+      · intro y
+        cases y with
+        | here =>
+          -- .here maps to x, which becomes x.rename_level f
+          simp [Subst.rename_levels, Subst.openVar]
+        | there y' =>
+          -- .there maps to .bound, which is invariant
+          simp [Subst.rename_levels, Subst.openVar, Var.rename_level]
+      · intro X
+        cases X with
+        | there X' =>
+          -- Type variables are invariant under term-level renaming
+          simp [Subst.rename_levels, Subst.openVar, Ty.rename_levels]
+    simp [Exp.subst_rename_levels, openVar_rename]
+    apply Step.st_rename
   | st_lift => sorry
 
 /-!
