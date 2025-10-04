@@ -6,17 +6,28 @@ mutual
 
 theorem val_denot_mono
   (henv : TypeEnv.mono env) :
-  (Ty.val_denot env T).Mono := by
+  (Ty.val_denot env T).Mono :=
   match T with
-  | .top => sorry
-  | .singleton x => sorry
-  | .tvar x => sorry
-  | .arrow T1 T2 => sorry
+  | .top => by
+    simp [Ty.val_denot, Denot.Mono]
+    intro base1 base2 e he inserted
+    sorry
+  | .singleton x => by sorry
+  | .tvar X => by
+    simp [Ty.val_denot]
+    apply henv
+  | .arrow T1 T2 => by
+    sorry
   | .poly S T => sorry
 
 theorem exp_denot_frame
   (henv : TypeEnv.mono env) :
-  (Ty.exp_denot env T).Mono := sorry
+  (Ty.exp_denot env T).Mono := by
+  simp [Denot.Mono]
+  intro base1 base2 e he inserted
+  simp only [Ty.exp_denot] at he ⊢
+  obtain ⟨s_out, v, hred, hv⟩ := he
+  sorry
 
 end
 
