@@ -266,16 +266,22 @@ theorem Store.append_rename_levels (s1 s2 : Store) (f : Nat → Nat) :
       Store.cons (v.rename_levels f) (s1.rename_levels f ++ s2.rename_levels f)
     rw [ih]
 
-/-- Lookup in a level-renamed store with shifted index. -/
-theorem Store.lookup_rename_levels_shift (s : Store) (n k : Nat) :
-    (s.rename_levels (shift_levels k)).lookup n =
-    Option.map (fun v => v.rename_levels (shift_levels k)) (s.lookup n) := by
+/-- Lookup in a level-renamed store (general version). -/
+theorem Store.lookup_rename_levels (s : Store) (n : Nat) (f : Nat → Nat) :
+    (s.rename_levels f).lookup n =
+    Option.map (fun v => v.rename_levels f) (s.lookup n) := by
   induction s generalizing n with
   | nil => simp [Store.lookup, Store.rename_levels]
   | cons v s ih =>
     cases n with
     | zero => simp [Store.lookup, Store.rename_levels]
     | succ n' => simp [Store.lookup, Store.rename_levels, ih]
+
+/-- Lookup in a level-renamed store with shifted index. -/
+theorem Store.lookup_rename_levels_shift (s : Store) (n k : Nat) :
+    (s.rename_levels (shift_levels k)).lookup n =
+    Option.map (fun v => v.rename_levels (shift_levels k)) (s.lookup n) := by
+  exact Store.lookup_rename_levels s n (shift_levels k)
 
 /-- Frame-shift function: adjusts free variables when inserting a store segment.
 When we insert `s2` after position `pos`, free variables >= pos get shifted up by `shift`. -/
@@ -518,7 +524,35 @@ theorem Store.lookup_frame_shift {base1 base2 inserted : Store}
     simp [heq]
     exact hl
   · -- Case 2: x >= base1.len, lookup is in base2
-    sorry
+    push_neg at h
+    -- From hl: base2.lookup (x - base1.len) = some v
+    simp at hl
+    have hl' : base2.lookup (x - base1.len) = some v := by
+      by_cases hlt : x < base1.len
+      · omega
+      · simp [hlt] at hl
+        exact hl
+    -- frame_shift adds inserted.len when x >= base1.len
+    have hshift : frame_shift base1.len inserted.len x = x + inserted.len := by
+      simp [frame_shift]
+      omega
+    rw [hshift]
+    -- The goal already has the if-then-else from Store.lookup_append
+    -- Check: is x + inserted.len < (base1 ++ inserted).len?
+    -- We have (base1 ++ inserted).len = base1.len + inserted.len
+    have hlen : (base1 ++ inserted).len = base1.len + inserted.len := Store.len_append _ _
+    rw [hlen]
+    -- Is x + inserted.len < base1.len + inserted.len? Equivalent to x < base1.len, which is false
+    have : ¬(x + inserted.len < base1.len + inserted.len) := by omega
+    simp only [this, ite_false]
+    -- Now we're in the else branch:
+    -- base2.renamed.lookup (x + inserted.len - (base1.len + inserted.len)) = ...
+    -- Simplify x + inserted.len - (base1.len + inserted.len) = x - base1.len
+    have heq : x + inserted.len - (base1.len + inserted.len) = x - base1.len := by omega
+    rw [heq]
+    -- Use the lemma about lookup in renamed stores
+    rw [Store.lookup_rename_levels]
+    simp [hl']
 
 /-- Lookup in snoc: when i > s.len, lookup fails. -/
 theorem Store.lookup_snoc_gt (s : Store) (v : Val {}) (i : Nat) (h : i > s.len) :
@@ -914,9 +948,14 @@ theorem step_frame
     subst hnil heq1
     simp [Store.append_nil, Store.rename_levels, Exp.rename_levels]
     simp [Exp.subst_rename_levels, Subst.openVar_rename_levels]
+    -- Use Store.lookup_frame_shift to get the lookup in the framed store
+    have hlookup' : (base1 ++ inserted ++
+      (base2.rename_levels (frame_shift base1.len inserted.len))).lookup
+      (frame_shift base1.len inserted.len x) =
+      some ((Val.mk (.abs T e) hv).rename_levels (frame_shift base1.len inserted.len)) := by
+      exact Store.lookup_frame_shift hwf_s hlookup
     apply Step.st_apply
-    { sorry }
-    all_goals sorry
+    exact hlookup'
   | st_tapply => sorry
   | st_rename => sorry
   | st_lift => sorry
