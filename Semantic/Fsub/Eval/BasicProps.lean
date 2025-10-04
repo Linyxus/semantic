@@ -1036,12 +1036,16 @@ theorem reduce_frame
     have hwf_ih := step_wf hwf_s hwf hstep
     specialize ih (inserted:=inserted) heq_ih hwf_s_ih hwf_ih rfl
     have heq0 : extra = delta1 ++ delta2 := by
-      -- CLAUDE: Your task is to prove this equality
-      sorry
+      have h1 : (base1 ++ base2) ++ extra = ((base1 ++ base2) ++ delta1) ++ delta2 := heq2
+      have h2 : ((base1 ++ base2) ++ delta1) ++ delta2 = (base1 ++ base2) ++ (delta1 ++ delta2) :=
+        Store.append_assoc _ _ _
+      have h3 : (base1 ++ base2) ++ extra = (base1 ++ base2) ++ (delta1 ++ delta2) := by
+        rw [h1, h2]
+      exact Store.append_left_cancel (base1 ++ base2) extra (delta1 ++ delta2) h3
     simp [heq0]
     convert ih using 1
     { simp [Store.append_rename_levels] }
     { simp [Store.append_rename_levels]
-      sorry }
+      rw [← Store.append_assoc (s1 := base2.rename_levels _)] }
 
 end Fsub
