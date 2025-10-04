@@ -290,9 +290,11 @@ theorem typed_env_is_inert
 
 /-- The denotation is monotonic over the length of stores. -/
 def Denot.Mono (d : Denot) : Prop :=
-  ∀ s1 s2 v,
-    d s1 v ->
-    d (s1 ++ s2) v
+  ∀ base1 base2 v,
+    d (base1 ++ base2) v ->
+    ∀ inserted,
+      d (base1 ++ inserted ++ (base2.rename_levels (frame_shift base1.len inserted.len)))
+        (v.rename_levels (frame_shift base1.len inserted.len))
 
 def TypeEnv.mono (env : TypeEnv s) : Prop :=
   ∀ (x : BVar s .tvar),
