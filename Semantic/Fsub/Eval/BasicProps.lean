@@ -1002,4 +1002,91 @@ First, we prove that reduction is preserved under level renaming.
 
 --     sorry
 
--- end Fsub
+
+theorem reduce_frame
+  (hwf_s : Store.WfStore (base1 ++ base2))
+  (hwf : Exp.WfIn e1 (base1 ++ base2))
+  (hr : Reduce (base1 ++ base2) e1 (base1 ++ base2 ++ extra) e2) :
+  Reduce
+    (base1 ++ inserted ++ (base2.rename_levels (frame_shift base1.len inserted.len)))
+    (e1.rename_levels (frame_shift base1.len inserted.len))
+    (base1 ++ inserted ++ (base2.rename_levels (frame_shift base1.len inserted.len) ++
+      (extra.rename_levels (frame_shift base1.len inserted.len))))
+    (e2.rename_levels (frame_shift base1.len inserted.len)) := by
+  induction hr with
+  | red_refl =>
+    -- Base case: no reduction steps, extra = Store.nil
+    -- Need to show e1.renamed reduces to e1.renamed (reflexivity)
+    apply Reduce.red_refl
+  | red_step hstep hrest ih =>
+    -- Step case: hstep : Step (base1 ++ base2) e1 (base1 ++ base2 ++ delta1) e1'
+    --            hrest : Reduce (base1 ++ base2 ++ delta1) e1' (base1 ++ base2 ++ extra) e2
+    -- Need to decompose extra = delta1 ++ delta2
+    rename_i e1' delta1
+    have ⟨delta2, heq⟩ := reduce_store_monotone hrest
+
+    -- From hrest, the final store is (base1 ++ base2 ++ delta1) ++ delta2
+    -- This must equal base1 ++ base2 ++ extra
+    rw [Store.append_assoc] at heq
+    have heq' : delta1 ++ delta2 = extra := Store.append_left_cancel _ _ _ heq
+    subst heq'
+
+    -- Apply step_frame to get the framed step
+    have hstep' := step_frame (inserted:=inserted) hwf_s hwf hstep
+
+    -- The framed step gives us:
+    -- Step (base1 ++ inserted ++ base2.renamed)
+    --      e1.renamed
+    --      (base1 ++ inserted ++ (base2.renamed ++ delta1.renamed))
+    --      e1'.renamed
+
+    apply Reduce.red_step hstep'
+
+    -- Now we need to apply the IH to hrest
+    -- hrest : Reduce (base1 ++ base2 ++ delta1) e1' ((base1 ++ base2 ++ delta1) ++ delta2) e2
+
+    -- Rewrite using associativity: base1 ++ base2 ++ delta1 = base1 ++ (base2 ++ delta1)
+    have hstore_eq : base1 ++ base2 ++ delta1 = base1 ++ (base2 ++ delta1) :=
+      (Store.append_assoc _ _ _).symm
+
+    -- We need well-formedness for the new base store
+    have hwf_s' : Store.WfStore (base1 ++ (base2 ++ delta1)) := by
+      rw [← hstore_eq]
+      exact step_wf_store hwf_s hwf hstep
+
+    have hwf' : Exp.WfIn e1' (base1 ++ (base2 ++ delta1)) := by
+      rw [← hstore_eq]
+      exact step_wf hwf_s hwf hstep
+
+    -- Apply IH with base1' = base1, base2' = base2 ++ delta1, inserted' = inserted
+    rw [hstore_eq] at hrest
+    rw [Store.append_assoc] at hrest
+    have hrest' := ih hwf_s' hwf'
+
+    -- Need to massage the conclusion to match our goal
+    -- IH gives: Reduce (base1 ++ inserted ++ (base2 ++ delta1).renamed) ...
+    -- Goal needs: Reduce ... (base1 ++ inserted ++ (base2.renamed ++ delta1.renamed ++ delta2.renamed)) ...
+
+    -- Use that (base2 ++ delta1).renamed = base2.renamed ++ delta1.renamed
+    have hrename_dist : (base2 ++ delta1).rename_levels (frame_shift base1.len inserted.len) =
+        base2.rename_levels (frame_shift base1.len inserted.len) ++
+        delta1.rename_levels (frame_shift base1.len inserted.len) :=
+      Store.append_rename_levels _ _ _
+
+    -- Rewrite the IH conclusion using this
+    simp only [hrename_dist] at hrest'
+
+    -- Use associativity to regroup: (base2.renamed ++ delta1.renamed) ++ delta2.renamed
+    --                            = base2.renamed ++ (delta1.renamed ++ delta2.renamed)
+    rw [Store.append_assoc, Store.append_assoc]
+
+    -- Also need (delta1 ++ delta2).renamed = delta1.renamed ++ delta2.renamed
+    have hrename_dist2 : (delta1 ++ delta2).rename_levels (frame_shift base1.len inserted.len) =
+        delta1.rename_levels (frame_shift base1.len inserted.len) ++
+        delta2.rename_levels (frame_shift base1.len inserted.len) :=
+      Store.append_rename_levels _ _ _
+
+    rw [← hrename_dist2]
+    exact hrest'
+
+end Fsub
