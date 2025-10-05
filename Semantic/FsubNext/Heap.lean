@@ -12,4 +12,11 @@ instance Heap.instEmptyCollection : EmptyCollection Heap := ⟨Heap.empty⟩
 def Heap.extend (h : Heap) (l : Nat) (v : Val {}) : Heap :=
   fun l' => if l' = l then some v else h l'
 
+def Heap.subsumes (big small : Heap) : Prop :=
+  ∀ l v, small l = some v -> big l = some v
+
+theorem Heap.subsumes_refl (h : Heap) : h.subsumes h := by
+  intros l v hlookup
+  exact hlookup
+
 end FsubNext
