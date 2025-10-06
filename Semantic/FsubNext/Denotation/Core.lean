@@ -232,6 +232,22 @@ def TypeEnv.inert (env : TypeEnv s) : Prop :=
   ∀ (x : BVar s .tvar),
     (env.lookup_tvar x).Imply Denot.ans
 
+theorem resolve_var_heap_some
+  (hheap : heap x = some v) :
+  resolve heap (.var (.free x)) = some v.unwrap := by
+  simp [resolve, hheap]
+
+theorem resolve_val
+  (hval : v.IsVal) :
+  resolve heap v = some v := by
+  cases hval <;> rfl
+
+theorem resolve_var_heap_trans
+  (hheap : heap x = some v) :
+  resolve heap (.var (.free x)) = resolve heap (v.unwrap) := by
+  rw [resolve_var_heap_some hheap]
+  rw [resolve_val v.isVal]
+
 theorem resolve_var_or_val
   (hv : resolve store e = some v) :
   (∃ x, e = .var x) ∨ e = v := by
@@ -440,8 +456,15 @@ theorem val_denot_is_transparent
   | .arrow T1 T2 => by
     intro hx ht
     simp [Ty.val_denot] at ht ⊢
-    sorry
-  | .poly T1 T2 => by sorry
+    have heq := resolve_var_heap_trans hx
+    rw [heq]
+    exact ht
+  | .poly T1 T2 => by
+    intro hx ht
+    simp [Ty.val_denot] at ht ⊢
+    have heq := resolve_var_heap_trans hx
+    rw [heq]
+    exact ht
 
 mutual
 
