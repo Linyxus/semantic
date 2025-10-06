@@ -132,28 +132,28 @@ theorem retype_val_denot
       have ⟨T0, e0, hr, hd⟩ := h
       use T0, e0
       apply And.intro hr
-      intro denot hdenot_mono hdenot_trans himply
+      intro H denot Hs hdenot_mono hdenot_trans himply
       have ih2 := retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
-      have himply' : denot.Imply (Ty.val_denot env1 T1) := by
-        intro s e hdenot
-        have := (ih1 s e).mpr (himply s e hdenot)
+      have himply' : denot.ImplyAfter H (Ty.val_denot env1 T1) := by
+        intro s hs e hdenot
+        have := (ih1 s e).mpr (himply s hs e hdenot)
         exact this
-      specialize hd denot hdenot_mono hdenot_trans himply'
-      have hd' := (ih2 s0 (e0.subst (Subst.openTVar .top))).mp hd
+      specialize hd H denot Hs hdenot_mono hdenot_trans himply'
+      have hd' := (ih2 H (e0.subst (Subst.openTVar .top))).mp hd
       exact hd'
     next =>
       intro h
       have ⟨T0, e0, hr, hd⟩ := h
       use T0, e0
       apply And.intro hr
-      intro denot hdenot_mono hdenot_trans himply
+      intro H denot Hs hdenot_mono hdenot_trans himply
       have ih2 := retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
-      have himply' : denot.Imply (Ty.val_denot env2 (T1.subst σ)) := by
-        intro s e hdenot
-        have := (ih1 s e).mp (himply s e hdenot)
+      have himply' : denot.ImplyAfter H (Ty.val_denot env2 (T1.subst σ)) := by
+        intro s hs e hdenot
+        have := (ih1 s e).mp (himply s hs e hdenot)
         exact this
-      specialize hd denot hdenot_mono hdenot_trans himply'
-      have hd' := (ih2 s0 (e0.subst (Subst.openTVar .top))).mpr hd
+      specialize hd H denot Hs hdenot_mono hdenot_trans himply'
+      have hd' := (ih2 H (e0.subst (Subst.openTVar .top))).mpr hd
       exact hd'
 
 theorem retype_exp_denot
