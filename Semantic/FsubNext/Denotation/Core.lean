@@ -95,6 +95,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Heap -> Prop
   Ty.val_denot env T store (.var (.free n)) ∧
     EnvTyping Γ env store
 | .push Γ (.tvar S), .extend env (.tvar d), store =>
+  d.is_monotonic ∧
   d.Imply (Ty.val_denot env S) ∧
   EnvTyping Γ env store
 
@@ -300,7 +301,7 @@ theorem typed_env_is_inert
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨himpl, ht'⟩ := ht
+          have ⟨_, himpl, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.inert] at ih_result ⊢
           intro x
@@ -312,15 +313,57 @@ theorem typed_env_is_inert
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
 
+def TypeEnv.is_monotonic (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_monotonic
+
+theorem typed_env_is_monotonic
+  (ht : EnvTyping Γ env store) :
+  env.is_monotonic := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.is_monotonic]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht
+          have ⟨_, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_monotonic] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨hmono, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_monotonic] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact hmono
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+
 def Denot.as_post_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
   d.as_post.is_monotonic := by
   intro h1 h2 e hsub hde
   apply hmon hsub hde
-
-def TypeEnv.is_monotonic (env : TypeEnv s) : Prop :=
-  ∀ (X : BVar s .tvar),
-    (env.lookup_tvar X).is_monotonic
 
 mutual
 

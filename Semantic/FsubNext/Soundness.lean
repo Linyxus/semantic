@@ -31,8 +31,7 @@ theorem sem_typ_abs
       apply ht (env.extend_var arg) store'
       constructor
       { exact harg }
-      { -- Need to show EnvTyping Γ env store' from EnvTyping Γ env store and heap subsumption
-        sorry }
+      { sorry }
 
 theorem sem_typ_tabs
   (ht : (Γ,X<:S) ⊨ e : T) :
@@ -46,12 +45,14 @@ theorem sem_typ_tabs
     constructor
     · rfl
     · unfold SemanticTyping at ht
-      intro denot hdenot
+      intro denot hdenot_mono himply
       simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
       apply ht
       constructor
-      { exact hdenot }
-      { exact hts }
+      · exact hdenot_mono
+      · constructor
+        · exact himply
+        · exact hts
 
 theorem abs_val_denot_inv
   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
@@ -85,6 +86,7 @@ theorem tabs_val_denot_inv
   ∃ fx, x = .free fx
     ∧ ∃ T0 e0 hv, store fx = some ⟨.tabs T0 e0, hv⟩
     ∧ (∀ (denot : Denot),
+      denot.is_monotonic ->
       denot.Imply (Ty.val_denot env T1) ->
       Ty.exp_denot (env.extend_tvar denot) T2 store (e0.subst (Subst.openTVar .top))) := by
   cases x with
@@ -95,8 +97,25 @@ theorem tabs_val_denot_inv
     cases res
     case none => aesop
     case some v =>
-      cases v
-      aesop
+      -- After substituting hres, resolve returns v.unwrap
+      -- So hv becomes: ∃ T0 e0, v.unwrap = .tabs T0 e0 ∧ ...
+      simp [hres] at hv
+      obtain ⟨T0, e0, htabs, hfun⟩ := hv
+      -- Now v.unwrap = .tabs T0 e0
+      -- We need to show store fx = some ⟨.tabs T0 e0, _⟩
+      -- We have hres : store fx = some v and htabs : v.unwrap = .tabs T0 e0
+      use fx, rfl, T0, e0
+      -- Need to provide proof that (tabs T0 e0).IsVal
+      have hval : (Exp.tabs T0 e0).IsVal := by constructor
+      use hval
+      constructor
+      · -- Show: store fx = some ⟨.tabs T0 e0, hval⟩
+        cases v with
+        | mk unwrap isVal =>
+          simp at htabs
+          subst htabs
+          exact hres
+      · exact hfun
 
 theorem interp_var_subst (x : Var s) :
   .free (interp_var env x) = x.subst (Subst.from_TypeEnv env) := by
@@ -153,7 +172,11 @@ theorem sem_typ_tapp
   have h1' := var_exp_denot_inv h1
   have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv h1'
   simp [Exp.subst, hfx]
-  have := hfun (Ty.val_denot env S) (by apply Denot.imply_refl)
+  -- Need to show Ty.val_denot env S is monotonic
+  have henv := typed_env_is_monotonic hts
+  have hmono : (Ty.val_denot env S).is_monotonic := val_denot_is_monotonic henv
+  -- Apply hfun with monotonicity and reflexivity
+  have this := hfun (Ty.val_denot env S) hmono (Denot.imply_refl _)
   simp [Ty.exp_denot] at this ⊢
   -- Convert postcondition via open_targ_val_denot
   have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
@@ -183,10 +206,11 @@ theorem sem_typ_letin
     exact h1
   case h_val =>
     -- Handle the value case: e1 evaluated to a value v
-    intro h1 v hv hQ1 l' hfresh
+    intro h1 v hs1 hv_isval hQ1 l' hfresh
+    -- h1.subsumes store, v is a value, Q1 v h1 holds
     simp [Denot.as_post] at hQ1
     -- Apply ht2 with extended environment and heap
-    have ht2' := ht2 (env.extend_var l') (h1.extend l' ⟨v, hv⟩)
+    have ht2' := ht2 (env.extend_var l') (h1.extend l' ⟨v, hv_isval⟩)
     simp [Ty.exp_denot] at ht2' ⊢
     -- Rewrite to make expressions match
     rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
@@ -196,17 +220,18 @@ theorem sem_typ_letin
       apply Denot.imply_to_entails
       have heqv := weaken_val_denot (env:=env) (x:=l') (T:=U)
       apply (Denot.equiv_to_imply heqv).2
-    · -- Show: EnvTyping (Γ,x:T) (env.extend_var l') (h1.extend l' ⟨v, hv⟩)
+    · -- Show: EnvTyping (Γ,x:T) (env.extend_var l') (h1.extend l' ⟨v, hv_isval⟩)
       constructor
-      · -- Show: Ty.val_denot env T (h1.extend l' ⟨v, hv⟩) (Exp.var (Var.free l'))
+      · -- Show: Ty.val_denot env T (h1.extend l' ⟨v, hv_isval⟩) (Exp.var (Var.free l'))
         -- v is stored at l' and has type T
         sorry
-      · -- Show: EnvTyping Γ env (h1.extend l' ⟨v, hv⟩)
+      · -- Show: EnvTyping Γ env (h1.extend l' ⟨v, hv_isval⟩)
         -- Original typing preserved under heap extension
         sorry
   case h_var =>
     -- Handle the variable case: e1 evaluated to variable x
-    intro h1 x hQ1
+    intro h1 x hs1 hQ1
+    -- h1.subsumes store, Q1 (.var x) h1 holds
     simp [Denot.as_post] at hQ1
     -- Determine what x is
     have ⟨fx, hfx⟩ := closed_var_inv x
