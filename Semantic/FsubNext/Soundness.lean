@@ -230,11 +230,36 @@ theorem sem_typ_letin
       constructor
       · -- Show: Ty.val_denot env T (h1.extend l' ⟨v, hv_isval⟩) (Exp.var (Var.free l'))
         -- We have: hQ1 : Ty.val_denot env T h1 v (value v has type T)
-        -- We need: the variable .var (.free l') has type T in extended heap
-        -- This requires a lemma: if v has type T, and we store v at l',
-        -- then looking up l' gives something of type T
-        -- This is non-trivial and depends on how val_denot is defined for each type
-        sorry
+        -- Strategy: Use monotonicity to lift hQ1 to extended heap, then use transparency
+
+        -- Step 0: Prove heap subsumption
+        have hext : (h1.extend l' ⟨v, hv_isval⟩).subsumes h1 := by
+          intro x v' hx
+          simp [Heap.extend]
+          split
+          · next heq =>
+              rw [heq] at hx
+              rw [hfresh] at hx
+              contradiction
+          · exact hx
+
+        -- Step 1: Lift hQ1 to extended heap using monotonicity
+        have henv_mono := typed_env_is_monotonic hts
+        have hQ1_lifted : Ty.val_denot env T (h1.extend l' ⟨v, hv_isval⟩) v :=
+          val_denot_is_monotonic henv_mono hext hQ1
+
+        -- Step 2: Apply transparency
+        have henv_trans := typed_env_is_transparent hts
+        have htrans : (Ty.val_denot env T).is_transparent :=
+          val_denot_is_transparent henv_trans
+
+        -- Step 3: Use the heap lookup fact
+        have hlookup : (h1.extend l' ⟨v, hv_isval⟩) l' = some ⟨v, hv_isval⟩ :=
+          Heap.extend_lookup_eq h1 l' ⟨v, hv_isval⟩
+
+        -- Step 4: Apply transparency with the lifted property
+        -- Note: ⟨v, hv_isval⟩.unwrap = v
+        apply htrans hlookup hQ1_lifted
       · -- Show: EnvTyping Γ env (h1.extend l' ⟨v, hv_isval⟩)
         -- Original typing preserved under heap extension
         -- h1.subsumes store, and (h1.extend l' ...).subsumes h1
@@ -287,7 +312,7 @@ theorem fundamental
   case tabs => grind [sem_typ_tabs]
   case app => grind [sem_typ_app]
   case tapp => grind [sem_typ_tapp]
-  -- case letin => grind [sem_typ_letin]
+  case letin => grind [sem_typ_letin]
   all_goals sorry
 
 end FsubNext
