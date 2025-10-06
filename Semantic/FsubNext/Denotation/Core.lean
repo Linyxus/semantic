@@ -468,4 +468,40 @@ def exp_denot_is_monotonic {T : Ty s}
 
 end
 
+theorem env_typing_monotonic
+  (ht : EnvTyping Γ env store1)
+  (hstore : store2.subsumes store1) :
+  EnvTyping Γ env store2 := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty => constructor
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht ⊢
+          have ⟨hval, ht'⟩ := ht
+          constructor
+          · -- Show: Ty.val_denot env' T store2 (.var (.free n))
+            -- We have: hval : Ty.val_denot env' T store1 (.var (.free n))
+            -- Need to use monotonicity of val_denot
+            have henv := typed_env_is_monotonic ht'
+            exact val_denot_is_monotonic henv hstore hval
+          · -- Show: EnvTyping Γ env' store2
+            exact ih ht'
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht ⊢
+          have ⟨hmono, himply, ht'⟩ := ht
+          constructor
+          · exact hmono
+          · constructor
+            · exact himply
+            · exact ih ht'
+
 end FsubNext
