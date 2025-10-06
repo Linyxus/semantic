@@ -1,5 +1,4 @@
-import Semantic.Fsub.Eval.Core
-import Semantic.Fsub.Eval.BasicProps
+import Semantic.Fsub.Eval.BigStep
 
 /-!
 # Fsub Evaluation

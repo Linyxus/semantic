@@ -1,6 +1,6 @@
-import Semantic.FsubNext.Syntax
+import Semantic.Fsub.Syntax
 
-namespace FsubNext
+namespace Fsub
 
 -- A heap is a function from locations to values
 def Heap : Type := Nat -> Option (Val {})
@@ -55,4 +55,4 @@ theorem Heap.extend_lookup_eq
   (h.extend l v) l = some v := by
   simp [Heap.extend]
 
-end FsubNext
+end Fsub

@@ -105,10 +105,10 @@ theorem retype_val_denot
       have ⟨T0, body, hr, hd⟩ := h
       use T0, body
       apply And.intro hr
-      intro arg harg
+      intro s' arg h_s harg
       have ih2 := retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
       have harg' := (ih1 _ _).mpr harg
-      specialize hd _ harg'
+      specialize hd s' arg h_s harg'
       have hd' := (ih2 _ _).mp hd
       exact hd'
     next =>
@@ -116,10 +116,10 @@ theorem retype_val_denot
       have ⟨T0, body, hr, hd⟩ := h
       use T0, body
       apply And.intro hr
-      intro arg harg
+      intro s' arg h_s harg
       have ih2 := retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
       have harg' := (ih1 _ _).mp harg
-      specialize hd _ harg'
+      specialize hd s' arg h_s harg'
       have hd' := (ih2 _ _).mpr hd
       exact hd'
   | .poly T1 T2 => by
@@ -132,13 +132,13 @@ theorem retype_val_denot
       have ⟨T0, e0, hr, hd⟩ := h
       use T0, e0
       apply And.intro hr
-      intro denot himply
+      intro denot hdenot_mono hdenot_trans himply
       have ih2 := retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
       have himply' : denot.Imply (Ty.val_denot env1 T1) := by
         intro s e hdenot
         have := (ih1 s e).mpr (himply s e hdenot)
         exact this
-      specialize hd denot himply'
+      specialize hd denot hdenot_mono hdenot_trans himply'
       have hd' := (ih2 s0 (e0.subst (Subst.openTVar .top))).mp hd
       exact hd'
     next =>
@@ -146,13 +146,13 @@ theorem retype_val_denot
       have ⟨T0, e0, hr, hd⟩ := h
       use T0, e0
       apply And.intro hr
-      intro denot himply
+      intro denot hdenot_mono hdenot_trans himply
       have ih2 := retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
       have himply' : denot.Imply (Ty.val_denot env2 (T1.subst σ)) := by
         intro s e hdenot
         have := (ih1 s e).mp (himply s e hdenot)
         exact this
-      specialize hd denot himply'
+      specialize hd denot hdenot_mono hdenot_trans himply'
       have hd' := (ih2 s0 (e0.subst (Subst.openTVar .top))).mpr hd
       exact hd'
 
@@ -164,13 +164,13 @@ theorem retype_exp_denot
   simp [Ty.exp_denot]
   constructor
   · intro h
-    have ⟨s', v', hr, hv⟩ := h
-    have := ih s' v'
-    aesop
+    apply eval_post_monotonic _ h
+    apply Denot.imply_to_entails
+    apply (Denot.equiv_to_imply ih).1
   · intro h
-    have ⟨s', v', hr, hv⟩ := h
-    have := ih s' v'
-    aesop
+    apply eval_post_monotonic _ h
+    apply Denot.imply_to_entails
+    apply (Denot.equiv_to_imply ih).2
 
 end
 

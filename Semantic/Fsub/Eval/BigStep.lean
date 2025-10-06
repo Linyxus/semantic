@@ -1,8 +1,8 @@
-import Semantic.FsubNext.Syntax
-import Semantic.FsubNext.Substitution
-import Semantic.FsubNext.Heap
+import Semantic.Fsub.Syntax
+import Semantic.Fsub.Substitution
+import Semantic.Fsub.Heap
 
-namespace FsubNext
+namespace Fsub
 
 inductive Eval : Heap -> Exp {} -> Hpost -> Prop where
 | eval_val :
@@ -95,4 +95,4 @@ theorem eval_post_monotonic {Q1 Q2 : Hpost}
       intro h1 x hs1 hq1
       apply ih_var hs1 hq1 himp
 
-end FsubNext
+end Fsub

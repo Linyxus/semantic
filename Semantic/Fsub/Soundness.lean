@@ -2,74 +2,16 @@ import Semantic.Fsub.Denotation
 import Semantic.Fsub.Eval
 namespace Fsub
 
-mutual
-
-theorem val_denot_mono
-  (henv : TypeEnv.mono env) :
-  (Ty.val_denot env T).Mono :=
-  match T with
-  | .top => by
-    simp [Ty.val_denot, Denot.Mono]
-    intro base1 base2 e he inserted
-    apply Exp.rename_levels_preserves_IsAns he
-  | .singleton x => by
-    simp [Denot.Mono]
-    sorry
-  | .tvar X => by
-    simp [Ty.val_denot]
-    apply henv
-  | .arrow T1 T2 => by
-    sorry
-  | .poly S T => sorry
-
-theorem exp_denot_frame
-  (henv : TypeEnv.mono env) :
-  (Ty.exp_denot env T).Mono := by
-  simp [Denot.Mono]
-  intro base1 base2 e he inserted
-  simp only [Ty.exp_denot] at he ⊢
-  obtain ⟨s_out, v, hred, hv⟩ := he
-  sorry
-
-end
-
-theorem exp_denot_reduce
-  (hr : Reduce s1 e1 s2 e2)
-  (hd : Ty.exp_denot env T s2 e2) :
-  Ty.exp_denot env T s1 e1 := by
-  simp [Ty.exp_denot] at hd ⊢
-  obtain ⟨s0, v0, hr0, hv0⟩ := hd
-  use s0, v0
-  constructor
-  · apply reduce_trans hr hr0
-  · exact hv0
-
-theorem step_ans_absurd
-  (h : Exp.IsAns e)
-  (hs : Step s e s' e') :
-  False := by
-  cases hs <;> try (solve | cases h | cases h; rename_i hv; cases hv)
-
-theorem red_ans
-  (h : Exp.IsAns e)
-  (hr : Reduce s e s' e') :
-  s = s' ∧ e = e' := by
-  cases hr <;> try (solve | cases h | aesop)
-  rename_i hs _
-  exfalso; apply step_ans_absurd h hs
-
 theorem sem_typ_var :
   Γ ⊨ (.var x) : (.singleton x) := by
   intro s e hts
   simp [Ty.exp_denot]
-  constructor; constructor
-  apply And.intro Reduce.red_refl _
+  apply Eval.eval_var
   cases x
-  case bound bx =>
-    simp [Ty.val_denot]
-    rfl
   case free fx =>
-    simp [Ty.val_denot]
+    simp [Ty.val_denot, Denot.as_post, Var.subst, interp_var]
+  case bound bx =>
+    simp [Ty.val_denot, Denot.as_post, Var.subst, interp_var]
     rfl
 
 theorem sem_typ_abs
@@ -77,92 +19,124 @@ theorem sem_typ_abs
   Γ ⊨ (.abs T1 e) : (.arrow T1 T2) := by
   intro env store hts
   simp [Ty.exp_denot]
-  constructor; constructor
-  apply And.intro Reduce.red_refl _
-  simp [Ty.val_denot]
-  constructor; constructor
-  constructor
-  · rfl
-  · unfold SemanticTyping at ht
-    intro arg harg
-    simp [Exp.from_TypeEnv_weaken_open]
-    apply ht
+  apply Eval.eval_val
+  · simp [Exp.subst]; constructor
+  · simp [Ty.val_denot, Denot.as_post]
+    constructor; constructor
     constructor
-    { exact harg }
-    { exact hts }
+    · rfl
+    · unfold SemanticTyping at ht
+      intro store' arg hsubsume harg
+      simp [Exp.from_TypeEnv_weaken_open]
+      apply ht (env.extend_var arg) store'
+      constructor
+      { exact harg }
+      { apply env_typing_monotonic hts hsubsume }
 
 theorem sem_typ_tabs
   (ht : (Γ,X<:S) ⊨ e : T) :
   Γ ⊨ (.tabs S e) : (.poly S T) := by
   intro env store hts
   simp [Ty.exp_denot]
-  constructor; constructor
-  apply And.intro Reduce.red_refl _
-  simp [Ty.val_denot]
-  constructor; constructor
-  constructor
-  · rfl
-  · unfold SemanticTyping at ht
-    intro denot hdenot
-    simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
-    apply ht
+  apply Eval.eval_val
+  · simp [Exp.subst]; constructor
+  · simp [Ty.val_denot, Denot.as_post]
+    constructor; constructor
     constructor
-    { exact hdenot }
-    { exact hts }
-
-theorem var_exp_denot_inv
-  (hv : Ty.exp_denot env T store (.var x)) :
-  Ty.val_denot env T store (.var x) := by
-  simp [Ty.exp_denot] at hv
-  have ⟨s', v, hr, hv⟩ := hv
-  have := red_ans (by apply Exp.IsAns.is_var) hr
-  aesop
-
-theorem closed_var_inv (x : Var {}) :
-  ∃ fx, x = .free fx := by
-  cases x
-  case bound bx => cases bx
-  case free fx => aesop
+    · rfl
+    · unfold SemanticTyping at ht
+      intro denot hdenot_mono hdenot_trans himply
+      simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
+      apply ht
+      constructor
+      · exact hdenot_mono
+      · constructor
+        · exact hdenot_trans
+        · constructor
+          · exact himply
+          · exact hts
 
 theorem abs_val_denot_inv
   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
   ∃ fx, x = .free fx
-    ∧ ∃ T0 e0 hv, store.lookup fx = some ⟨.abs T0 e0, hv⟩
-    ∧ (∀ arg,
-      (Ty.val_denot env T1 store (.var (.free arg))) ->
-      Ty.exp_denot (env.extend_var arg) T2 store (e0.subst (Subst.openVar (.free arg)))) := by
+    ∧ ∃ T0 e0 hv, store fx = some ⟨.abs T0 e0, hv⟩
+    ∧ (∀ (store' : Heap) arg,
+      store'.subsumes store ->
+      (Ty.val_denot env T1 store' (.var (.free arg))) ->
+      Ty.exp_denot (env.extend_var arg) T2 store' (e0.subst (Subst.openVar (.free arg)))) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
     simp [Ty.val_denot, resolve] at hv
-    generalize hres : store.lookup fx = res
+    have ⟨T0, e0, hresolve, hfun⟩ := hv
+    -- Analyze what's in the store at fx
+    generalize hres : store fx = res at hresolve ⊢
     cases res
-    case none => aesop
+    case none => simp at hresolve
     case some v =>
-      cases v
-      aesop
+      simp at hresolve
+      cases v; rename_i val hval
+      -- hresolve says val = .abs T0 e0
+      subst hresolve
+      use fx
+      constructor
+      · rfl
+      · use T0, e0, (by constructor)
 
 theorem tabs_val_denot_inv
   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
   ∃ fx, x = .free fx
-    ∧ ∃ T0 e0 hv, store.lookup fx = some ⟨.tabs T0 e0, hv⟩
+    ∧ ∃ T0 e0 hv, store fx = some ⟨.tabs T0 e0, hv⟩
     ∧ (∀ (denot : Denot),
+      denot.is_monotonic ->
+      denot.is_transparent ->
       denot.Imply (Ty.val_denot env T1) ->
       Ty.exp_denot (env.extend_tvar denot) T2 store (e0.subst (Subst.openTVar .top))) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
     simp [Ty.val_denot, resolve] at hv
-    generalize hres : store.lookup fx = res
+    generalize hres : store fx = res
     cases res
     case none => aesop
     case some v =>
-      cases v
-      aesop
+      -- After substituting hres, resolve returns v.unwrap
+      -- So hv becomes: ∃ T0 e0, v.unwrap = .tabs T0 e0 ∧ ...
+      simp [hres] at hv
+      obtain ⟨T0, e0, htabs, hfun⟩ := hv
+      -- Now v.unwrap = .tabs T0 e0
+      -- We need to show store fx = some ⟨.tabs T0 e0, _⟩
+      -- We have hres : store fx = some v and htabs : v.unwrap = .tabs T0 e0
+      use fx, rfl, T0, e0
+      -- Need to provide proof that (tabs T0 e0).IsVal
+      have hval : (Exp.tabs T0 e0).IsVal := by constructor
+      use hval
+      constructor
+      · -- Show: store fx = some ⟨.tabs T0 e0, hval⟩
+        cases v with
+        | mk unwrap isVal =>
+          simp at htabs
+          subst htabs
+          exact hres
+      · exact hfun
 
 theorem interp_var_subst (x : Var s) :
   .free (interp_var env x) = x.subst (Subst.from_TypeEnv env) := by
   cases x <;> rfl
+
+theorem var_exp_denot_inv
+  (hv : Ty.exp_denot env T store (.var x)) :
+  Ty.val_denot env T store (.var x) := by
+  simp [Ty.exp_denot] at hv
+  cases hv
+  case eval_val hv _ => cases hv
+  case eval_var hQ => exact hQ
+
+theorem closed_var_inv (x : Var {}) :
+  ∃ fx, x = .free fx := by
+  cases x
+  case bound bx => cases bx
+  case free fx => aesop
 
 theorem sem_typ_app
   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
@@ -181,17 +155,16 @@ theorem sem_typ_app
   have heq := hfarg
   simp [<-interp_var_subst] at heq
   simp [hfarg] at *
-  have := hfun farg h2'
+  -- Apply hfun with store' = store (reflexive subsumption)
+  have := hfun store farg (Heap.subsumes_refl store) h2'
   simp [Ty.exp_denot] at this ⊢
-  have ⟨s', v, hr, hv⟩ := this
-  use s', v
-  constructor
-  · apply Reduce.red_step _ hr
-    constructor
-    exact hlk
-  · simp [<-heq] at hv
-    apply Denot.equiv_ltr _ hv
-    apply open_arg_val_denot
+  -- Use heq : interp_var env y = farg to rewrite in both goal and hypothesis
+  rw [<-heq]
+  rw [<-heq] at this
+  -- Convert postcondition via open_arg_val_denot
+  have heqv := open_arg_val_denot (env:=env) (y:=y) (T:=T2)
+  have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
+  apply Eval.eval_apply hlk hconv
 
 theorem sem_typ_tapp
   (ht : Γ ⊨ (.var x) : (.poly S T)) :
@@ -202,16 +175,18 @@ theorem sem_typ_tapp
   have h1' := var_exp_denot_inv h1
   have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv h1'
   simp [Exp.subst, hfx]
-  have := hfun (Ty.val_denot env S) (by apply Denot.imply_refl)
+  -- Need to show Ty.val_denot env S is monotonic and transparent
+  have henv_mono := typed_env_is_monotonic hts
+  have henv_trans := typed_env_is_transparent hts
+  have hmono : (Ty.val_denot env S).is_monotonic := val_denot_is_monotonic henv_mono
+  have htrans : (Ty.val_denot env S).is_transparent := val_denot_is_transparent henv_trans
+  -- Apply hfun with monotonicity, transparency, and implication
+  have this := hfun (Ty.val_denot env S) hmono htrans (Denot.imply_refl _)
   simp [Ty.exp_denot] at this ⊢
-  have ⟨s', v, hr, hv⟩ := this
-  use s', v
-  constructor
-  · apply Reduce.red_step _ hr
-    constructor
-    exact hlk
-  · apply Denot.equiv_ltr _ hv
-    apply open_targ_val_denot
+  -- Convert postcondition via open_targ_val_denot
+  have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
+  have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
+  apply Eval.eval_tapply hlk hconv
 
 theorem sem_typ_letin
   (ht1 : Γ ⊨ e1 : T)
@@ -220,28 +195,115 @@ theorem sem_typ_letin
   intro env store hts
   have henv := typed_env_is_inert hts
   simp [Exp.subst]
-  specialize ht1 env store hts
-  simp [Ty.exp_denot] at ht1
-  obtain ⟨s1, v1, hr1, hv1⟩ := ht1
-  unfold SemanticTyping at ht2
-  have := val_denot_ans henv (T:=T)
-  have hv1_ans := this s1 v1 hv1
-  simp [Denot.ans] at hv1_ans
-  -- Now hv1_ans : Exp.IsAns v1, meaning v1 is either a variable or a value
-  cases hv1_ans with
-  | is_var =>
-    rename_i x0
-    cases x0
-    case bound bx => cases bx
-    case free fx =>
-      have := reduce_ctx (u:=e2.subst (Subst.from_TypeEnv env).lift) hr1
-      have := reduce_right_step this Step.st_rename
-      apply exp_denot_reduce this
-      specialize ht2 (env.extend_var fx) s1
-      sorry
-  | is_val => sorry
+  simp [Ty.exp_denot]
+  -- Use Eval.eval_letin with Q1 = (Ty.val_denot env T).as_post
+  apply Eval.eval_letin (Q1 := (Ty.val_denot env T).as_post)
+  case hpred =>
+    -- Show (Ty.val_denot env T).as_post is monotonic
+    intro h1 h2 e hsub hQ
+    simp [Denot.as_post] at hQ ⊢
+    -- Need to show val_denot is monotonic under heap extension
+    have henv_mono := typed_env_is_monotonic hts
+    exact val_denot_is_monotonic henv_mono hsub hQ
+  case a =>
+    -- Show Eval store (e1.subst ...) (Ty.val_denot env T).as_post
+    have h1 := ht1 env store hts
+    simp [Ty.exp_denot] at h1
+    exact h1
+  case h_val =>
+    -- Handle the value case: e1 evaluated to a value v
+    intro h1 v hs1 hv_isval hQ1 l' hfresh
+    -- h1.subsumes store, v is a value, Q1 v h1 holds
+    simp [Denot.as_post] at hQ1
+    -- Apply ht2 with extended environment and heap
+    have ht2' := ht2 (env.extend_var l') (h1.extend l' ⟨v, hv_isval⟩)
+    simp [Ty.exp_denot] at ht2' ⊢
+    -- Rewrite to make expressions match
+    rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+    -- Convert postcondition using weaken_val_denot
+    apply eval_post_monotonic _ (ht2' _)
+    · -- Show postcondition entailment
+      apply Denot.imply_to_entails
+      have heqv := weaken_val_denot (env:=env) (x:=l') (T:=U)
+      apply (Denot.equiv_to_imply heqv).2
+    · -- Show: EnvTyping (Γ,x:T) (env.extend_var l') (h1.extend l' ⟨v, hv_isval⟩)
+      constructor
+      · -- Show: Ty.val_denot env T (h1.extend l' ⟨v, hv_isval⟩) (Exp.var (Var.free l'))
+        -- We have: hQ1 : Ty.val_denot env T h1 v (value v has type T)
+        -- Strategy: Use monotonicity to lift hQ1 to extended heap, then use transparency
 
-theorem soundness
+        -- Step 0: Prove heap subsumption
+        have hext : (h1.extend l' ⟨v, hv_isval⟩).subsumes h1 := by
+          intro x v' hx
+          simp [Heap.extend]
+          split
+          · next heq =>
+              rw [heq] at hx
+              rw [hfresh] at hx
+              contradiction
+          · exact hx
+
+        -- Step 1: Lift hQ1 to extended heap using monotonicity
+        have henv_mono := typed_env_is_monotonic hts
+        have hQ1_lifted : Ty.val_denot env T (h1.extend l' ⟨v, hv_isval⟩) v :=
+          val_denot_is_monotonic henv_mono hext hQ1
+
+        -- Step 2: Apply transparency
+        have henv_trans := typed_env_is_transparent hts
+        have htrans : (Ty.val_denot env T).is_transparent :=
+          val_denot_is_transparent henv_trans
+
+        -- Step 3: Use the heap lookup fact
+        have hlookup : (h1.extend l' ⟨v, hv_isval⟩) l' = some ⟨v, hv_isval⟩ :=
+          Heap.extend_lookup_eq h1 l' ⟨v, hv_isval⟩
+
+        -- Step 4: Apply transparency with the lifted property
+        -- Note: ⟨v, hv_isval⟩.unwrap = v
+        apply htrans hlookup hQ1_lifted
+      · -- Show: EnvTyping Γ env (h1.extend l' ⟨v, hv_isval⟩)
+        -- Original typing preserved under heap extension
+        -- h1.subsumes store, and (h1.extend l' ...).subsumes h1
+        have hext : (h1.extend l' ⟨v, hv_isval⟩).subsumes h1 := by
+          intro x v' hx
+          simp [Heap.extend]
+          split
+          · -- Case: x = l', but h1 l' = none (from hfresh)
+            -- So h1 x = h1 l' = none, contradicting hx : h1 x = some v'
+            next heq =>
+              rw [heq] at hx
+              rw [hfresh] at hx
+              contradiction
+          · exact hx
+        have hsub_trans : (h1.extend l' ⟨v, hv_isval⟩).subsumes store := by
+          exact Heap.subsumes_trans hext hs1
+        exact env_typing_monotonic hts hsub_trans
+  case h_var =>
+    -- Handle the variable case: e1 evaluated to variable x
+    intro h1 x hs1 hQ1
+    -- h1.subsumes store, Q1 (.var x) h1 holds
+    simp [Denot.as_post] at hQ1
+    -- Determine what x is
+    have ⟨fx, hfx⟩ := closed_var_inv x
+    subst hfx
+    -- Apply ht2 with extended environment where the variable is bound to fx
+    have ht2' := ht2 (env.extend_var fx) h1
+    simp [Ty.exp_denot] at ht2' ⊢
+    rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+    -- Convert postcondition
+    apply eval_post_monotonic _ (ht2' _)
+    · -- Show postcondition entailment
+      apply Denot.imply_to_entails
+      have heqv := weaken_val_denot (env:=env) (x:=fx) (T:=U)
+      apply (Denot.equiv_to_imply heqv).2
+    · -- Show: EnvTyping (Γ,x:T) (env.extend_var fx) h1
+      constructor
+      · -- Variable fx has type T in heap h1
+        exact hQ1
+      · -- Original typing preserved: EnvTyping Γ env h1
+        exact env_typing_monotonic hts hs1
+
+/-- The fundamental theorem of semantic type soundness. -/
+theorem fundamental
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
   induction ht
