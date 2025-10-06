@@ -125,7 +125,13 @@ theorem sem_typ_app
   simp [hfarg] at *
   have := hfun farg h2'
   simp [Ty.exp_denot] at this ⊢
-  sorry
+  -- Use heq : interp_var env y = farg to rewrite in both goal and hypothesis
+  rw [<-heq]
+  rw [<-heq] at this
+  -- Convert postcondition via open_arg_val_denot
+  have heqv := open_arg_val_denot (env:=env) (y:=y) (T:=T2)
+  have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
+  apply Eval.eval_apply hlk hconv
 
 theorem soundness
   (ht : Γ ⊢ e : T) :
@@ -134,7 +140,7 @@ theorem soundness
   case var => apply sem_typ_var
   case abs => grind [sem_typ_abs]
   case tabs => grind [sem_typ_tabs]
-  -- case app => grind [sem_typ_app]
+  case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]
   -- case letin => grind [sem_typ_letin]
   all_goals sorry
