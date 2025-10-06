@@ -41,4 +41,13 @@ def Hpost.entails_refl (Q : Hpost) : Q.entails Q := by
   intros h e hQ
   exact hQ
 
+def Heap.subsumes_trans {h1 h2 h3 : Heap}
+  (h12 : h1.subsumes h2)
+  (h23 : h2.subsumes h3) :
+  h1.subsumes h3 := by
+  intros l v hlookup
+  apply h12 l v
+  apply h23 l v
+  exact hlookup
+
 end FsubNext

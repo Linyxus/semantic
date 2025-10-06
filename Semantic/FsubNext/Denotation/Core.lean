@@ -363,7 +363,9 @@ def val_denot_is_monotonic {T : Ty s}
       | abs _ _ => simp [resolve] at hr ⊢; exact hr
       | tabs _ _ => simp [resolve] at hr ⊢
       | app _ _ | tapp _ _ | letin _ _ => simp [resolve] at hr
-    · sorry
+    · intro s' arg hs' harg
+      have hs0 := Heap.subsumes_trans hs' hheap
+      apply hfun s' arg hs0 harg
   | .poly T1 T2 => by
     intro hheap ht
     sorry

@@ -26,12 +26,13 @@ theorem sem_typ_abs
     constructor
     · rfl
     · unfold SemanticTyping at ht
-      intro arg harg
+      intro store' arg hsubsume harg
       simp [Exp.from_TypeEnv_weaken_open]
-      apply ht
+      apply ht (env.extend_var arg) store'
       constructor
       { exact harg }
-      { exact hts }
+      { -- Need to show EnvTyping Γ env store' from EnvTyping Γ env store and heap subsumption
+        sorry }
 
 theorem sem_typ_tabs
   (ht : (Γ,X<:S) ⊨ e : T) :
@@ -56,19 +57,28 @@ theorem abs_val_denot_inv
   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
   ∃ fx, x = .free fx
     ∧ ∃ T0 e0 hv, store fx = some ⟨.abs T0 e0, hv⟩
-    ∧ (∀ arg,
-      (Ty.val_denot env T1 store (.var (.free arg))) ->
-      Ty.exp_denot (env.extend_var arg) T2 store (e0.subst (Subst.openVar (.free arg)))) := by
+    ∧ (∀ (store' : Heap) arg,
+      store'.subsumes store ->
+      (Ty.val_denot env T1 store' (.var (.free arg))) ->
+      Ty.exp_denot (env.extend_var arg) T2 store' (e0.subst (Subst.openVar (.free arg)))) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
     simp [Ty.val_denot, resolve] at hv
-    generalize hres : store fx = res
+    have ⟨T0, e0, hresolve, hfun⟩ := hv
+    -- Analyze what's in the store at fx
+    generalize hres : store fx = res at hresolve ⊢
     cases res
-    case none => aesop
+    case none => simp at hresolve
     case some v =>
-      cases v
-      aesop
+      simp at hresolve
+      cases v; rename_i val hval
+      -- hresolve says val = .abs T0 e0
+      subst hresolve
+      use fx
+      constructor
+      · rfl
+      · use T0, e0, (by constructor)
 
 theorem tabs_val_denot_inv
   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
@@ -123,7 +133,8 @@ theorem sem_typ_app
   have heq := hfarg
   simp [<-interp_var_subst] at heq
   simp [hfarg] at *
-  have := hfun farg h2'
+  -- Apply hfun with store' = store (reflexive subsumption)
+  have := hfun store farg (Heap.subsumes_refl store) h2'
   simp [Ty.exp_denot] at this ⊢
   -- Use heq : interp_var env y = farg to rewrite in both goal and hypothesis
   rw [<-heq]
