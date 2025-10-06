@@ -31,7 +31,7 @@ theorem sem_typ_abs
       apply ht (env.extend_var arg) store'
       constructor
       { exact harg }
-      { sorry }
+      { apply env_typing_monotonic hts hsubsume }
 
 theorem sem_typ_tabs
   (ht : (Γ,X<:S) ⊨ e : T) :
