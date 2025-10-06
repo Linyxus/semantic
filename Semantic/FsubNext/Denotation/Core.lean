@@ -3,15 +3,15 @@ import Semantic.FsubNext.TypeSystem
 
 namespace FsubNext
 
-def resolve : Store -> Exp {} -> Option (Exp {})
+def resolve : Heap -> Exp {} -> Option (Exp {})
 | s, .var (.free x) =>
-  match s.lookup x with
+  match s x with
   | some v => some v.unwrap
   | none => none
 | _, other => some other
 
 /-- Denotation of types. -/
-def Denot := Store -> Exp {} -> Prop
+def Denot := Heap -> Exp {} -> Prop
 
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ s e,
@@ -74,13 +74,11 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
 
 def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
 | env, T => fun s e =>
-  ∃ s' v,
-    Reduce s e s' v ∧
-    Ty.val_denot env T s' v
+  Eval s e (Ty.val_denot env T)
 
 end
 
-def EnvTyping : Ctx s -> TypeEnv s -> Store -> Prop
+def EnvTyping : Ctx s -> TypeEnv s -> Heap -> Prop
 | .empty, .empty, store => True
 | .push Γ (.var T), .extend env (.var n), store =>
   Ty.val_denot env T store (.var (.free n)) ∧
@@ -287,17 +285,5 @@ theorem typed_env_is_inert
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
-
-/-- The denotation is monotonic over the length of stores. -/
-def Denot.Mono (d : Denot) : Prop :=
-  ∀ base1 base2 v,
-    d (base1 ++ base2) v ->
-    ∀ inserted,
-      d (base1 ++ inserted ++ (base2.rename_levels (frame_shift base1.len inserted.len)))
-        (v.rename_levels (frame_shift base1.len inserted.len))
-
-def TypeEnv.mono (env : TypeEnv s) : Prop :=
-  ∀ (x : BVar s .tvar),
-    (env.lookup_tvar x).Mono
 
 end FsubNext

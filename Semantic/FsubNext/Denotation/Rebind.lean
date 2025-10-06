@@ -123,13 +123,9 @@ def rebind_exp_denot
   simp [Ty.exp_denot]
   constructor
   · intro h
-    have ⟨s', v', hr, hv⟩ := h
-    have := ih s' v'
-    aesop
+    sorry
   · intro h
-    have ⟨s', v', hr, hv⟩ := h
-    have := ih s' v'
-    aesop
+    sorry
 
 end
 
