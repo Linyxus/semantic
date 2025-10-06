@@ -504,4 +504,14 @@ theorem env_typing_monotonic
             · exact himply
             · exact ih ht'
 
+def Denot.is_transparent (d : Denot) : Prop :=
+  ∀ {h : Heap} {x : Nat} {v},
+    h x = some v ->
+    d h v.unwrap ->
+    d h (.var (.free x))
+
+def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_transparent
+
 end FsubNext

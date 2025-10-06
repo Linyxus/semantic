@@ -50,4 +50,9 @@ def Heap.subsumes_trans {h1 h2 h3 : Heap}
   apply h23 l v
   exact hlookup
 
+theorem Heap.extend_lookup_eq
+  (h : Heap) (l : Nat) (v : Val {}) :
+  (h.extend l v) l = some v := by
+  simp [Heap.extend]
+
 end FsubNext
