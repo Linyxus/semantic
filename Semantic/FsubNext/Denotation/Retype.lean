@@ -105,10 +105,10 @@ theorem retype_val_denot
       have ⟨T0, body, hr, hd⟩ := h
       use T0, body
       apply And.intro hr
-      intro arg harg
+      intro s' arg h_s harg
       have ih2 := retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
       have harg' := (ih1 _ _).mpr harg
-      specialize hd _ harg'
+      specialize hd s' arg h_s harg'
       have hd' := (ih2 _ _).mp hd
       exact hd'
     next =>
@@ -116,10 +116,10 @@ theorem retype_val_denot
       have ⟨T0, body, hr, hd⟩ := h
       use T0, body
       apply And.intro hr
-      intro arg harg
+      intro s' arg h_s harg
       have ih2 := retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
       have harg' := (ih1 _ _).mp harg
-      specialize hd _ harg'
+      specialize hd s' arg h_s harg'
       have hd' := (ih2 _ _).mpr hd
       exact hd'
   | .poly T1 T2 => by
