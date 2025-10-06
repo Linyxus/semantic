@@ -30,6 +30,13 @@ inductive Ctx.Lookup : Ctx s -> BVar s k -> Binding s k -> Prop where
   Ctx.Lookup Γ x b ->
   Ctx.Lookup (.push Γ b0) (.there x) (b0.rename Rename.succ)
 
+inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> Ty s -> Prop
+| here :
+  Ctx.LookupTVar (.push Γ (.tvar S)) .here (S.rename Rename.succ)
+| there {S : Ty s} {b : Binding s k} :
+  Ctx.LookupTVar Γ X S ->
+  Ctx.LookupTVar (.push Γ b) (.there X) (S.rename Rename.succ)
+
 inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
 | top :
   -------------------

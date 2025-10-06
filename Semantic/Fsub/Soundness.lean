@@ -304,36 +304,46 @@ theorem sem_typ_letin
 
 theorem typed_env_lookup_tvar
   (hts : EnvTyping Γ env store)
-  (hx : Ctx.Lookup Γ X (.tvar S)) :
-  (env.lookup_tvar X).Imply (Ty.val_denot env S) := by sorry
+  (hx : Ctx.LookupTVar Γ X S) :
+  (env.lookup_tvar X).Imply (Ty.val_denot env S) := by
+  induction hx generalizing store
+  case here =>
+    cases env; rename_i info0 env0
+    cases info0
+    simp [EnvTyping] at hts
+    simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+    have ⟨_, _, hd, _⟩ := hts
+    apply Denot.imply_trans
+    · exact hd
+    · apply Denot.equiv_to_imply_l
+      apply tweaken_val_denot
+  case there b _ ih =>
+    cases env; rename_i info0 env0
+    cases info0
+    case var =>
+      cases b
+      simp [EnvTyping] at hts
+      obtain ⟨_, henv⟩ := hts
+      specialize ih henv
+      apply Denot.imply_trans
+      · exact ih
+      · apply Denot.equiv_to_imply_l
+        apply weaken_val_denot
+    case tvar =>
+      cases b
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, _, henv⟩ := hts
+      specialize ih henv
+      apply Denot.imply_trans
+      · exact ih
+      · apply Denot.equiv_to_imply_l
+        apply tweaken_val_denot
 
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
-  case top =>
-    intro env store hts
-    sorry
-  case refl =>
-    intro env store hts
-    exact Denot.imply_refl _
-  case trans ih1 ih2 =>
-    intro env store hts
-    specialize ih1 env store hts
-    specialize ih2 env store hts
-    apply Denot.imply_trans ih1 ih2
-  case tvar =>
-    intro env store hts
-    simp [Ty.val_denot]
-    sorry
-  case singleton =>
-    sorry
-  case arrow ih1 ih2 =>
-    intro env store hts
-    intro s0 e0 h0
-    simp [Ty.val_denot] at h0 ⊢
-    sorry
-  case poly => sorry
+  all_goals sorry
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental

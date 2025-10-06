@@ -208,6 +208,14 @@ theorem Denot.equiv_to_imply {d1 d2 : Denot}
   · intro s e h
     apply (heqv s e).mpr h
 
+theorem Denot.equiv_to_imply_l {d1 d2 : Denot}
+  (heqv : d1 ≈ d2) :
+  d1.Imply d2 := (Denot.equiv_to_imply heqv).1
+
+theorem Denot.equiv_to_imply_r {d1 d2 : Denot}
+  (heqv : d1 ≈ d2) :
+  d2.Imply d1 := (Denot.equiv_to_imply heqv).2
+
 theorem Denot.imply_to_entails (d1 d2 : Denot)
   (himp : d1.Imply d2) :
   d1.as_post.entails d2.as_post := by
