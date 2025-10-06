@@ -388,6 +388,43 @@ theorem typed_env_lookup_var
       apply (Denot.equiv_to_imply heqv).1
       exact hih
 
+lemma sem_subtyp_poly
+  (hS : SemSubtyp Γ S2 S1) -- contravariant in bound
+  (hT : SemSubtyp (Γ,X<:S2) T1 T2) -- covariant in body, under extended context
+  : SemSubtyp Γ (.poly S1 T1) (.poly S2 T2) := by
+  intro type_env heap hts
+  intro heap' hheap
+  intro ans hans
+  simp [Ty.val_denot] at hans ⊢
+  obtain ⟨T0, e0, hresolve, hfun⟩ := hans
+  use T0, e0
+  apply And.intro hresolve
+  intro denot hdenot_mono hdenot_trans himply_S2
+  have hS_at_heap' := hS type_env heap hts heap' hheap
+  have himply_S1 : denot.Imply (Ty.val_denot type_env S1) := by
+    intro s e hdenot
+    have hS2 := himply_S2 s e hdenot
+    specialize hS type_env s
+    sorry
+  -- Apply the original function with this denot
+  specialize hfun denot hdenot_mono hdenot_trans himply_S1
+  -- Now we have: exp_denot (env.extend_tvar denot) T1 heap' (e0.subst ...)
+  -- Need: exp_denot (env.extend_tvar denot) T2 heap' (e0.subst ...)
+  -- Use covariance hT
+  specialize hT (type_env.extend_tvar denot)
+  have henv' : EnvTyping (Γ,X<:S2) (type_env.extend_tvar denot) heap' := by
+    constructor
+    · exact hdenot_mono
+    · constructor
+      · exact hdenot_trans
+      · constructor
+        · exact himply_S2
+        · apply env_typing_monotonic hts hheap
+  specialize hT heap' henv'
+  apply Denot.apply_imply_at hfun
+  apply Denot.imply_after_to_imply_at
+  apply denot_implyat_lift hT
+
 lemma sem_subtyp_arrow
   (hT : SemSubtyp Γ T2 T1)
   (hU : SemSubtyp (Γ,x:T2) U1 U2) :
