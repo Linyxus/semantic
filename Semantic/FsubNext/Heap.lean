@@ -25,4 +25,11 @@ def Hprop := Heap -> Prop
 /-- Postcondition. -/
 def Hpost := Exp {} -> Hprop
 
+/-- Monotonicity of postconditions. -/
+def Hpost.is_monotonic (Q : Hpost) : Prop :=
+  ∀ {h1 h2 : Heap} {e},
+    h2.subsumes h1 ->
+    Q e h1 ->
+    Q e h2
+
 end FsubNext

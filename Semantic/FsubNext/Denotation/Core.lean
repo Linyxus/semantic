@@ -13,6 +13,9 @@ def resolve : Heap -> Exp {} -> Option (Exp {})
 /-- Denotation of types. -/
 def Denot := Heap -> Exp {} -> Prop
 
+def Denot.as_post (d : Denot) : Hpost :=
+  fun e h => d h e
+
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ s e,
     (d1 s e) ->
@@ -74,7 +77,7 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
 
 def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
 | env, T => fun s e =>
-  Eval s e (Ty.val_denot env T)
+  Eval s e (Ty.val_denot env T).as_post
 
 end
 
