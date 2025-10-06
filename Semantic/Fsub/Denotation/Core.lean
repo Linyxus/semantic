@@ -607,9 +607,20 @@ theorem env_typing_monotonic
               · exact himply
               · exact ih ht'
 
+def Denot.ImplyAt (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
+  ∀ e, d1 h e -> d2 h e
+
 def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty s) : Prop :=
-  ∀ env store,
-    EnvTyping Γ env store ->
-    (Ty.val_denot env T1).Imply (Ty.val_denot env T2)
+  ∀ env H,
+    EnvTyping Γ env H ->
+    (∀ (H' : Heap),
+      H'.subsumes H ->
+      (Ty.val_denot env T1).ImplyAt H' (Ty.val_denot env T2))
+
+theorem Denot.imply_implyat {d1 d2 : Denot}
+  (himp : d1.Imply d2) :
+  d1.ImplyAt h d2 := by
+  intro e h1
+  apply himp h e h1
 
 end Fsub
