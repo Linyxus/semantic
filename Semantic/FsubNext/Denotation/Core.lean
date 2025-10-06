@@ -22,6 +22,12 @@ def Denot.is_monotonic (d : Denot) : Prop :=
     d h1 e ->
     d h2 e
 
+def Denot.is_transparent (d : Denot) : Prop :=
+  ∀ {h : Heap} {x : Nat} {v},
+    h x = some v ->
+    d h v.unwrap ->
+    d h (.var (.free x))
+
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ s e,
     (d1 s e) ->
@@ -96,6 +102,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Heap -> Prop
     EnvTyping Γ env store
 | .push Γ (.tvar S), .extend env (.tvar d), store =>
   d.is_monotonic ∧
+  d.is_transparent ∧
   d.Imply (Ty.val_denot env S) ∧
   EnvTyping Γ env store
 
@@ -317,6 +324,10 @@ def TypeEnv.is_monotonic (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_monotonic
 
+def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_transparent
+
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env store) :
   env.is_monotonic := by
@@ -503,15 +514,5 @@ theorem env_typing_monotonic
           · constructor
             · exact himply
             · exact ih ht'
-
-def Denot.is_transparent (d : Denot) : Prop :=
-  ∀ {h : Heap} {x : Nat} {v},
-    h x = some v ->
-    d h v.unwrap ->
-    d h (.var (.free x))
-
-def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
-  ∀ (X : BVar s .tvar),
-    (env.lookup_tvar X).is_transparent
 
 end FsubNext
