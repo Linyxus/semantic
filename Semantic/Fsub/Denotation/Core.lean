@@ -33,6 +33,52 @@ def Denot.Imply (d1 d2 : Denot) : Prop :=
     (d1 s e) ->
     (d2 s e)
 
+def Denot.ImplyAt (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
+  ∀ e, d1 h e -> d2 h e
+
+def Denot.ImplyAfter (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
+  ∀ h', h'.subsumes h -> d1.ImplyAt h' d2
+
+theorem Denot.imply_implyat {d1 d2 : Denot}
+  (himp : d1.Imply d2) :
+  d1.ImplyAt h d2 := by
+  intro e h1
+  apply himp h e h1
+
+theorem Denot.implyat_trans
+  {d1 d2 : Denot}
+  (himp1 : d1.ImplyAt h d2)
+  (himp2 : d2.ImplyAt h d3) :
+  d1.ImplyAt h d3 := by
+  intro e h1
+  apply himp2 e (himp1 e h1)
+
+lemma Denot.imply_after_to_entails_after {d1 d2 : Denot}
+  (himp : d1.ImplyAfter h d2) :
+  d1.as_post.entails_after h d2.as_post := by
+  intro h' hsub e h1
+  apply himp h' hsub e h1
+
+lemma Denot.imply_after_subsumes {d1 d2 : Denot}
+  (himp : d1.ImplyAfter h1 d2)
+  (hheap : h2.subsumes h1) :
+  d1.ImplyAfter h2 d2 := by
+  intro H hs
+  apply himp H
+  apply Heap.subsumes_trans hs hheap
+
+lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
+  (himp : d1.ImplyAfter h d2) :
+  d1.ImplyAt h d2 := by
+  intro e h1
+  apply himp h (Heap.subsumes_refl h) e h1
+
+lemma Denot.apply_imply_at {d1 d2 : Denot}
+  (ht : d1 h e)
+  (himp : d1.ImplyAt h d2) :
+  d2 h e := by
+  apply himp e ht
+
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> TypeInfo .var
 | tvar : Denot -> TypeInfo .tvar
@@ -84,11 +130,12 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
 | env, .poly T1 T2 => fun s e =>
   ∃ T0 e0,
     resolve s e = some (.tabs T0 e0) ∧
-    (∀ (denot : Denot),
+    (∀ (s' : Heap) (denot : Denot),
+      (s'.subsumes s) ->
       denot.is_monotonic ->
       denot.is_transparent ->
-      denot.Imply (Ty.val_denot env T1) ->
-      Ty.exp_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar .top)))
+      denot.ImplyAfter s' (Ty.val_denot env T1) ->
+      Ty.exp_denot (env.extend_tvar denot) T2 s' (e0.subst (Subst.openTVar .top)))
 
 def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
 | env, T => fun s e =>
@@ -544,10 +591,11 @@ def val_denot_is_monotonic {T : Ty s}
       | tabs _ _ => simp [resolve] at hr ⊢; exact hr
       | app _ _ | tapp _ _ | letin _ _ => simp [resolve] at hr
     · -- Show: ∀ denot, monotonic -> transparent -> imply -> ...
-      intro denot hdenot_mono hdenot_trans himply
+      intro H denot Hsub hdenot_mono hdenot_trans himply
       -- Need to show: Ty.exp_denot (env.extend_tvar denot) T2 h2 (e0.subst ...)
       -- We have from hfun: Ty.exp_denot (env.extend_tvar denot) T2 h1 (e0.subst ...)
-      have heval1 := hfun denot hdenot_mono hdenot_trans himply
+      have heval1 :=
+        hfun H denot (Heap.subsumes_trans Hsub hheap) hdenot_mono hdenot_trans himply
       -- Need to lift from h1 to h2 using exp_denot_is_monotonic
       have henv' : (env.extend_tvar denot).is_monotonic := by
         intro X
@@ -560,7 +608,7 @@ def val_denot_is_monotonic {T : Ty s}
         | there X' => exact henv X'
       have hmon : (Ty.exp_denot (env.extend_tvar denot) T2).is_monotonic :=
         exp_denot_is_monotonic (T:=T2) (env:=env.extend_tvar denot) henv'
-      apply hmon hheap heval1
+      exact heval1
 
 def exp_denot_is_monotonic {T : Ty s}
   (henv : TypeEnv.is_monotonic env) :
@@ -615,48 +663,11 @@ theorem env_typing_monotonic
               · exact himply
               · exact ih ht'
 
-def Denot.ImplyAt (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
-  ∀ e, d1 h e -> d2 h e
-
-def Denot.ImplyAfter (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
-  ∀ h', h'.subsumes h -> d1.ImplyAt h' d2
 
 def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty s) : Prop :=
   ∀ env H,
     EnvTyping Γ env H ->
     (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)
-
-theorem Denot.imply_implyat {d1 d2 : Denot}
-  (himp : d1.Imply d2) :
-  d1.ImplyAt h d2 := by
-  intro e h1
-  apply himp h e h1
-
-theorem Denot.implyat_trans
-  {d1 d2 : Denot}
-  (himp1 : d1.ImplyAt h d2)
-  (himp2 : d2.ImplyAt h d3) :
-  d1.ImplyAt h d3 := by
-  intro e h1
-  apply himp2 e (himp1 e h1)
-
-lemma Denot.imply_after_to_entails_after {d1 d2 : Denot}
-  (himp : d1.ImplyAfter h d2) :
-  d1.as_post.entails_after h d2.as_post := by
-  intro h' hsub e h1
-  apply himp h' hsub e h1
-
-lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
-  (himp : d1.ImplyAfter h d2) :
-  d1.ImplyAt h d2 := by
-  intro e h1
-  apply himp h (Heap.subsumes_refl h) e h1
-
-lemma Denot.apply_imply_at {d1 d2 : Denot}
-  (ht : d1 h e)
-  (himp : d1.ImplyAt h d2) :
-  d2 h e := by
-  apply himp e ht
 
 theorem denot_implyat_lift
   (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
