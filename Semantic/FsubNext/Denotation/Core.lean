@@ -16,6 +16,12 @@ def Denot := Heap -> Exp {} -> Prop
 def Denot.as_post (d : Denot) : Hpost :=
   fun e h => d h e
 
+def Denot.is_monotonic (d : Denot) : Prop :=
+  ∀ {h1 h2 : Heap} {e},
+    h2.subsumes h1 ->
+    d h1 e ->
+    d h2 e
+
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ s e,
     (d1 s e) ->
@@ -73,6 +79,7 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
   ∃ T0 e0,
     resolve s e = some (.tabs T0 e0) ∧
     (∀ (denot : Denot),
+      denot.is_monotonic ->
       denot.Imply (Ty.val_denot env T1) ->
       Ty.exp_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar .top)))
 
@@ -305,12 +312,6 @@ theorem typed_env_is_inert
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
 
-def Denot.is_monotonic (d : Denot) : Prop :=
-  ∀ {h1 h2 : Heap} {e},
-    h2.subsumes h1 ->
-    d h1 e ->
-    d h2 e
-
 def Denot.as_post_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
   d.as_post.is_monotonic := by
@@ -368,7 +369,46 @@ def val_denot_is_monotonic {T : Ty s}
       apply hfun s' arg hs0 harg
   | .poly T1 T2 => by
     intro hheap ht
-    sorry
+    rename_i h1 h2 e
+    simp [Ty.val_denot] at ht ⊢
+    have ⟨T0, e0, hr, hfun⟩ := ht
+    use T0, e0
+    constructor
+    · -- Show: resolve h2 e = some (.tabs T0 e0)
+      -- This follows from heap subsumption, similar to the arrow case
+      cases e with
+      | var x =>
+        cases x with
+        | free fx =>
+          simp [resolve] at hr ⊢
+          cases hres : h1 fx with
+          | none => simp [hres] at hr
+          | some v =>
+            simp [hres] at hr
+            have := hheap fx v hres
+            simp [this, hr]
+        | bound bx => cases bx
+      | abs _ _ => simp [resolve] at hr ⊢
+      | tabs _ _ => simp [resolve] at hr ⊢; exact hr
+      | app _ _ | tapp _ _ | letin _ _ => simp [resolve] at hr
+    · -- Show: ∀ denot, denot.is_monotonic -> denot.Imply (Ty.val_denot env T1) -> ...
+      intro denot hdenot_mono himply
+      -- Need to show: Ty.exp_denot (env.extend_tvar denot) T2 h2 (e0.subst ...)
+      -- We have from hfun: Ty.exp_denot (env.extend_tvar denot) T2 h1 (e0.subst ...)
+      have heval1 := hfun denot hdenot_mono himply
+      -- Need to lift from h1 to h2 using exp_denot_is_monotonic
+      have henv' : (env.extend_tvar denot).is_monotonic := by
+        intro X
+        simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar]
+        cases X with
+        | here =>
+          simp [TypeEnv.lookup]
+          -- denot is monotonic by assumption
+          exact hdenot_mono
+        | there X' => exact henv X'
+      have hmon : (Ty.exp_denot (env.extend_tvar denot) T2).is_monotonic :=
+        exp_denot_is_monotonic (T:=T2) (env:=env.extend_tvar denot) henv'
+      apply hmon hheap heval1
 
 def exp_denot_is_monotonic {T : Ty s}
   (henv : TypeEnv.is_monotonic env) :
