@@ -149,6 +149,74 @@ theorem sem_typ_tapp
   have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
   apply Eval.eval_tapply hlk hconv
 
+theorem sem_typ_letin
+  (ht1 : Γ ⊨ e1 : T)
+  (ht2 : (Γ,x:T) ⊨ e2 : (U.rename Rename.succ)) :
+  Γ ⊨ (.letin e1 e2) : U := by
+  intro env store hts
+  have henv := typed_env_is_inert hts
+  simp [Exp.subst]
+  simp [Ty.exp_denot]
+  -- Use Eval.eval_letin with Q1 = (Ty.val_denot env T).as_post
+  apply Eval.eval_letin (Q1 := (Ty.val_denot env T).as_post)
+  case hpred =>
+    -- Show (Ty.val_denot env T).as_post is monotonic
+    intro h1 h2 e hsub hQ
+    simp [Denot.as_post] at hQ ⊢
+    -- Need to show val_denot is monotonic under heap extension
+    sorry
+  case a =>
+    -- Show Eval store (e1.subst ...) (Ty.val_denot env T).as_post
+    have h1 := ht1 env store hts
+    simp [Ty.exp_denot] at h1
+    exact h1
+  case h_val =>
+    -- Handle the value case: e1 evaluated to a value v
+    intro h1 v hv hQ1 l' hfresh
+    simp [Denot.as_post] at hQ1
+    -- Apply ht2 with extended environment and heap
+    have ht2' := ht2 (env.extend_var l') (h1.extend l' ⟨v, hv⟩)
+    simp [Ty.exp_denot] at ht2' ⊢
+    -- Rewrite to make expressions match
+    rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+    -- Convert postcondition using weaken_val_denot
+    apply eval_post_monotonic _ (ht2' _)
+    · -- Show postcondition entailment
+      apply Denot.imply_to_entails
+      have heqv := weaken_val_denot (env:=env) (x:=l') (T:=U)
+      apply (Denot.equiv_to_imply heqv).2
+    · -- Show: EnvTyping (Γ,x:T) (env.extend_var l') (h1.extend l' ⟨v, hv⟩)
+      constructor
+      · -- Show: Ty.val_denot env T (h1.extend l' ⟨v, hv⟩) (Exp.var (Var.free l'))
+        -- v is stored at l' and has type T
+        sorry
+      · -- Show: EnvTyping Γ env (h1.extend l' ⟨v, hv⟩)
+        -- Original typing preserved under heap extension
+        sorry
+  case h_var =>
+    -- Handle the variable case: e1 evaluated to variable x
+    intro h1 x hQ1
+    simp [Denot.as_post] at hQ1
+    -- Determine what x is
+    have ⟨fx, hfx⟩ := closed_var_inv x
+    subst hfx
+    -- Apply ht2 with extended environment where the variable is bound to fx
+    have ht2' := ht2 (env.extend_var fx) h1
+    simp [Ty.exp_denot] at ht2' ⊢
+    rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+    -- Convert postcondition
+    apply eval_post_monotonic _ (ht2' _)
+    · -- Show postcondition entailment
+      apply Denot.imply_to_entails
+      have heqv := weaken_val_denot (env:=env) (x:=fx) (T:=U)
+      apply (Denot.equiv_to_imply heqv).2
+    · -- Show: EnvTyping (Γ,x:T) (env.extend_var fx) h1
+      constructor
+      · -- Variable fx has type T in heap h1
+        exact hQ1
+      · -- Original typing preserved
+        sorry
+
 theorem soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by

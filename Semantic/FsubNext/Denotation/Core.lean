@@ -304,4 +304,63 @@ theorem typed_env_is_inert
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
 
+def Denot.is_monotonic (d : Denot) : Prop :=
+  ∀ {h1 h2 : Heap} {e},
+    h2.subsumes h1 ->
+    d h1 e ->
+    d h2 e
+
+def Denot.as_post_is_monotonic {d : Denot}
+  (hmon : d.is_monotonic) :
+  d.as_post.is_monotonic := by
+  intro h1 h2 e hsub hde
+  apply hmon hsub hde
+
+def TypeEnv.is_monotonic (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_monotonic
+
+mutual
+
+def val_denot_is_monotonic {T : Ty s}
+  (henv : TypeEnv.is_monotonic env) :
+  (Ty.val_denot env T).is_monotonic :=
+  match T with
+  | .top => by
+    intro hheap ht
+    simp [Ty.val_denot] at ht ⊢
+    assumption
+  | .tvar X => by
+    intro hheap ht
+    simp [Ty.val_denot] at ht ⊢
+    apply henv X hheap ht
+  | .singleton x => by
+    intro hheap ht
+    simp [Ty.val_denot] at ht ⊢
+    exact ht
+  | .arrow T1 T2 => by
+    have ih1 : (Ty.val_denot env T1).is_monotonic :=
+      val_denot_is_monotonic (T:=T1) henv
+    intro hheap ht
+    simp [Ty.val_denot] at ht ⊢
+    sorry
+  | .poly T1 T2 => by
+    intro hheap ht
+    sorry
+
+def exp_denot_is_monotonic {T : Ty s}
+  (henv : TypeEnv.is_monotonic env) :
+  (Ty.exp_denot env T).is_monotonic := by
+  have ih : (Ty.val_denot env T).is_monotonic :=
+    val_denot_is_monotonic henv (T:=T)
+  intro h1 h2 e hheap ht
+  simp [Ty.exp_denot] at ht ⊢
+  apply eval_monotonic
+  · apply Denot.as_post_is_monotonic
+    exact ih
+  · exact hheap
+  · exact ht
+
+end
+
 end FsubNext
