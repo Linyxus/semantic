@@ -133,6 +133,22 @@ theorem sem_typ_app
   have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
   apply Eval.eval_apply hlk hconv
 
+theorem sem_typ_tapp
+  (ht : Γ ⊨ (.var x) : (.poly S T)) :
+  Γ ⊨ (.tapp x S) : (T.subst (Subst.openTVar S)) := by
+  intro env store hts
+  have h1 := ht env store hts
+  simp [Exp.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv h1'
+  simp [Exp.subst, hfx]
+  have := hfun (Ty.val_denot env S) (by apply Denot.imply_refl)
+  simp [Ty.exp_denot] at this ⊢
+  -- Convert postcondition via open_targ_val_denot
+  have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
+  have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
+  apply Eval.eval_tapply hlk hconv
+
 theorem soundness
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
@@ -141,7 +157,7 @@ theorem soundness
   case abs => grind [sem_typ_abs]
   case tabs => grind [sem_typ_tabs]
   case app => grind [sem_typ_app]
-  -- case tapp => grind [sem_typ_tapp]
+  case tapp => grind [sem_typ_tapp]
   -- case letin => grind [sem_typ_letin]
   all_goals sorry
 
