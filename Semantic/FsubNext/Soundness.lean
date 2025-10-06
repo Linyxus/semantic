@@ -175,11 +175,13 @@ theorem sem_typ_tapp
   have h1' := var_exp_denot_inv h1
   have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv h1'
   simp [Exp.subst, hfx]
-  -- Need to show Ty.val_denot env S is monotonic
-  have henv := typed_env_is_monotonic hts
-  have hmono : (Ty.val_denot env S).is_monotonic := val_denot_is_monotonic henv
-  -- Apply hfun with monotonicity and reflexivity
-  have this := hfun (Ty.val_denot env S) hmono (Denot.imply_refl _)
+  -- Need to show Ty.val_denot env S is monotonic and transparent
+  have henv_mono := typed_env_is_monotonic hts
+  have henv_trans := typed_env_is_transparent hts
+  have hmono : (Ty.val_denot env S).is_monotonic := val_denot_is_monotonic henv_mono
+  have htrans : (Ty.val_denot env S).is_transparent := val_denot_is_transparent henv_trans
+  -- Apply hfun with monotonicity, transparency, and implication
+  have this := hfun (Ty.val_denot env S) hmono htrans (Denot.imply_refl _)
   simp [Ty.exp_denot] at this ⊢
   -- Convert postcondition via open_targ_val_denot
   have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
