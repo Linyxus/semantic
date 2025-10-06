@@ -253,7 +253,7 @@ theorem sem_typ_letin
       · -- Original typing preserved
         sorry
 
-theorem soundness
+theorem fundamental
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
   induction ht
