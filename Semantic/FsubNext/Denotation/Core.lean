@@ -182,6 +182,21 @@ theorem Denot.equiv_rtl {d1 d2 : Denot}
   d1 s e := by
   apply (heqv s e).mpr h2
 
+theorem Denot.equiv_to_imply {d1 d2 : Denot}
+  (heqv : d1 ≈ d2) :
+  (d1.Imply d2) ∧ (d2.Imply d1) := by
+  constructor
+  · intro s e h
+    apply (heqv s e).mp h
+  · intro s e h
+    apply (heqv s e).mpr h
+
+theorem Denot.imply_to_entails (d1 d2 : Denot)
+  (himp : d1.Imply d2) :
+  d1.as_post.entails d2.as_post := by
+  intro h e h1
+  apply himp h e h1
+
 theorem Denot.imply_refl (d : Denot) : d.Imply d := by
   intro s e h
   exact h

@@ -32,4 +32,13 @@ def Hpost.is_monotonic (Q : Hpost) : Prop :=
     Q e h1 ->
     Q e h2
 
+def Hpost.entails (Q1 Q2 : Hpost) : Prop :=
+  ∀ h e,
+    Q1 e h ->
+    Q2 e h
+
+def Hpost.entails_refl (Q : Hpost) : Q.entails Q := by
+  intros h e hQ
+  exact hQ
+
 end FsubNext

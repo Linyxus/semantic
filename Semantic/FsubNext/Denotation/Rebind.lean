@@ -123,9 +123,13 @@ def rebind_exp_denot
   simp [Ty.exp_denot]
   constructor
   · intro h
-    sorry
+    apply eval_post_monotonic _ h
+    apply Denot.imply_to_entails
+    apply (Denot.equiv_to_imply ih).1
   · intro h
-    sorry
+    apply eval_post_monotonic _ h
+    apply Denot.imply_to_entails
+    apply (Denot.equiv_to_imply ih).2
 
 end
 

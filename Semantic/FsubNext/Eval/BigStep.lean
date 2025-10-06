@@ -66,4 +66,27 @@ theorem eval_monotonic {h1 h2 : Heap}
       apply ih_var hq1 hpred
       apply Heap.subsumes_refl
 
+theorem eval_post_monotonic {Q1 Q2 : Hpost}
+  (himp : Q1.entails Q2)
+  (heval : Eval h e Q1) :
+  Eval h e Q2 := by
+  induction heval generalizing Q2
+  case eval_val => grind [Eval, Hpost.entails]
+  case eval_var => grind [Eval, Hpost.entails]
+  case eval_apply hx _ ih =>
+    apply Eval.eval_apply hx
+    apply ih himp
+  case eval_tapply hx _ ih =>
+    apply Eval.eval_tapply hx
+    apply ih himp
+  case eval_letin Q0 hpred _ _ _ ih ih_val ih_var =>
+    specialize ih (by apply Hpost.entails_refl)
+    apply Eval.eval_letin (Q1:=Q0) hpred ih
+    case h_val =>
+      intro h1 v hv hq1 l' hfresh
+      apply ih_val hv hq1 l' hfresh himp
+    case h_var =>
+      intro h1 x hq1
+      apply ih_var hq1 himp
+
 end FsubNext
