@@ -24,18 +24,19 @@ def Ctx.push_tvar : Ctx s -> Ty s -> Ctx (s,X)
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
 
-inductive Ctx.Lookup : Ctx s -> BVar s k -> Binding s k -> Prop where
-| here : Ctx.Lookup (.push Γ b) .here (b.rename Rename.succ)
-| there :
-  Ctx.Lookup Γ x b ->
-  Ctx.Lookup (.push Γ b0) (.there x) (b0.rename Rename.succ)
-
 inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> Ty s -> Prop
 | here :
   Ctx.LookupTVar (.push Γ (.tvar S)) .here (S.rename Rename.succ)
 | there {S : Ty s} {b : Binding s k} :
   Ctx.LookupTVar Γ X S ->
   Ctx.LookupTVar (.push Γ b) (.there X) (S.rename Rename.succ)
+
+inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty s -> Prop
+| here :
+  Ctx.LookupVar (.push Γ (.var T)) .here (T.rename Rename.succ)
+| there {T : Ty s} {b : Binding s k} :
+  Ctx.LookupVar Γ x T ->
+  Ctx.LookupVar (.push Γ b) (.there x) (T.rename Rename.succ)
 
 inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
 | top :
@@ -50,11 +51,11 @@ inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
   -------------------
   Subtyp Γ T1 T3
 | tvar :
-  Ctx.Lookup Γ X (.tvar S) ->
+  Ctx.LookupTVar Γ X S ->
   -------------------
   Subtyp Γ (.tvar X) S
 | singleton :
-  Ctx.Lookup Γ x (.var T) ->
+  Ctx.LookupVar Γ x T ->
   -------------------
   Subtyp Γ (.singleton (.bound x)) T
 | arrow :

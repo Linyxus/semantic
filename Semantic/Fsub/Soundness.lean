@@ -339,10 +339,68 @@ theorem typed_env_lookup_tvar
       · apply Denot.equiv_to_imply_l
         apply tweaken_val_denot
 
+theorem typed_env_lookup_var
+  (hts : EnvTyping Γ env store)
+  (hx : Ctx.LookupVar Γ x T) :
+  Ty.val_denot env T store (.var (.free (env.lookup_var x))) := by
+  induction hx generalizing store
+  case here => sorry
+  case there => sorry
+
+lemma sem_subtyp_top {T : Ty s} :
+  SemSubtyp Γ T .top := by
+  intro type_env heap hts
+  intro heap' hheap
+  have henv := typed_env_is_inert hts
+  apply Denot.imply_implyat
+  simp [Ty.val_denot]
+  have := val_denot_ans henv (T:=T)
+  exact this
+
+lemma sem_subtyp_refl {T : Ty s} :
+  SemSubtyp Γ T T := by
+  intro type_env heap hts
+  intro heap' hheap
+  have henv := typed_env_is_inert hts
+  apply Denot.imply_refl
+
+lemma sem_subtyp_trans
+  (hsub1 : SemSubtyp Γ T1 T2)
+  (hsub2 : SemSubtyp Γ T2 T3) :
+  SemSubtyp Γ T1 T3 := by
+  intro type_env heap hts
+  intro heap' hheap
+  specialize hsub1 type_env heap hts heap' hheap
+  specialize hsub2 type_env heap hts heap' hheap
+  apply Denot.implyat_trans hsub1 hsub2
+
+lemma sem_subtyp_tvar
+  (hX : Ctx.LookupTVar Γ X S) :
+  SemSubtyp Γ (.tvar X) S := by
+  intro type_env heap hts
+  intro heap' hheap
+  apply Denot.imply_implyat
+  simp [Ty.val_denot]
+  apply typed_env_lookup_tvar hts hX
+
+lemma sem_subtyp_singleton
+  (hx : Ctx.LookupVar Γ x T) :
+  SemSubtyp Γ (.singleton (.bound x)) T := by
+  intro type_env heap hts
+  intro heap' hheap
+  simp [Ty.val_denot, interp_var]
+  intro ans hans
+  sorry
+
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
+  case top => grind [sem_subtyp_top]
+  case refl => grind [sem_subtyp_refl]
+  case trans => grind [sem_subtyp_trans]
+  case tvar => grind [sem_subtyp_tvar]
+  case singleton => sorry
   all_goals sorry
 
 /-- The fundamental theorem of semantic type soundness. -/

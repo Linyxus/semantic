@@ -631,4 +631,12 @@ theorem Denot.imply_implyat {d1 d2 : Denot}
   intro e h1
   apply himp h e h1
 
+theorem Denot.implyat_trans
+  {d1 d2 : Denot}
+  (himp1 : d1.ImplyAt h d2)
+  (himp2 : d2.ImplyAt h d3) :
+  d1.ImplyAt h d3 := by
+  intro e h1
+  apply himp2 e (himp1 e h1)
+
 end Fsub
