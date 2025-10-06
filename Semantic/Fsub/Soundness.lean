@@ -302,6 +302,39 @@ theorem sem_typ_letin
       · -- Original typing preserved: EnvTyping Γ env h1
         exact env_typing_monotonic hts hs1
 
+theorem typed_env_lookup_tvar
+  (hts : EnvTyping Γ env store)
+  (hx : Ctx.Lookup Γ X (.tvar S)) :
+  (env.lookup_tvar X).Imply (Ty.val_denot env S) := by sorry
+
+theorem fundamental_subtyp
+  (hsub : Subtyp Γ T1 T2) :
+  SemSubtyp Γ T1 T2 := by
+  induction hsub
+  case top =>
+    intro env store hts
+    sorry
+  case refl =>
+    intro env store hts
+    exact Denot.imply_refl _
+  case trans ih1 ih2 =>
+    intro env store hts
+    specialize ih1 env store hts
+    specialize ih2 env store hts
+    apply Denot.imply_trans ih1 ih2
+  case tvar =>
+    intro env store hts
+    simp [Ty.val_denot]
+    sorry
+  case singleton =>
+    sorry
+  case arrow ih1 ih2 =>
+    intro env store hts
+    intro s0 e0 h0
+    simp [Ty.val_denot] at h0 ⊢
+    sorry
+  case poly => sorry
+
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (ht : Γ ⊢ e : T) :
@@ -313,6 +346,6 @@ theorem fundamental
   case app => grind [sem_typ_app]
   case tapp => grind [sem_typ_tapp]
   case letin => grind [sem_typ_letin]
-  all_goals sorry
+  case subtyp => sorry
 
 end Fsub

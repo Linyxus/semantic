@@ -607,4 +607,9 @@ theorem env_typing_monotonic
               · exact himply
               · exact ih ht'
 
+def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty s) : Prop :=
+  ∀ env store,
+    EnvTyping Γ env store ->
+    (Ty.val_denot env T1).Imply (Ty.val_denot env T2)
+
 end Fsub
