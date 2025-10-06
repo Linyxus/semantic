@@ -198,7 +198,8 @@ theorem sem_typ_letin
     intro h1 h2 e hsub hQ
     simp [Denot.as_post] at hQ ⊢
     -- Need to show val_denot is monotonic under heap extension
-    sorry
+    have henv_mono := typed_env_is_monotonic hts
+    exact val_denot_is_monotonic henv_mono hsub hQ
   case a =>
     -- Show Eval store (e1.subst ...) (Ty.val_denot env T).as_post
     have h1 := ht1 env store hts
@@ -223,11 +224,29 @@ theorem sem_typ_letin
     · -- Show: EnvTyping (Γ,x:T) (env.extend_var l') (h1.extend l' ⟨v, hv_isval⟩)
       constructor
       · -- Show: Ty.val_denot env T (h1.extend l' ⟨v, hv_isval⟩) (Exp.var (Var.free l'))
-        -- v is stored at l' and has type T
+        -- We have: hQ1 : Ty.val_denot env T h1 v (value v has type T)
+        -- We need: the variable .var (.free l') has type T in extended heap
+        -- This requires a lemma: if v has type T, and we store v at l',
+        -- then looking up l' gives something of type T
+        -- This is non-trivial and depends on how val_denot is defined for each type
         sorry
       · -- Show: EnvTyping Γ env (h1.extend l' ⟨v, hv_isval⟩)
         -- Original typing preserved under heap extension
-        sorry
+        -- h1.subsumes store, and (h1.extend l' ...).subsumes h1
+        have hext : (h1.extend l' ⟨v, hv_isval⟩).subsumes h1 := by
+          intro x v' hx
+          simp [Heap.extend]
+          split
+          · -- Case: x = l', but h1 l' = none (from hfresh)
+            -- So h1 x = h1 l' = none, contradicting hx : h1 x = some v'
+            next heq =>
+              rw [heq] at hx
+              rw [hfresh] at hx
+              contradiction
+          · exact hx
+        have hsub_trans : (h1.extend l' ⟨v, hv_isval⟩).subsumes store := by
+          exact Heap.subsumes_trans hext hs1
+        exact env_typing_monotonic hts hsub_trans
   case h_var =>
     -- Handle the variable case: e1 evaluated to variable x
     intro h1 x hs1 hQ1
@@ -250,9 +269,10 @@ theorem sem_typ_letin
       constructor
       · -- Variable fx has type T in heap h1
         exact hQ1
-      · -- Original typing preserved
-        sorry
+      · -- Original typing preserved: EnvTyping Γ env h1
+        exact env_typing_monotonic hts hs1
 
+/-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
