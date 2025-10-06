@@ -164,13 +164,13 @@ theorem retype_exp_denot
   simp [Ty.exp_denot]
   constructor
   · intro h
-    have ⟨s', v', hr, hv⟩ := h
-    have := ih s' v'
-    aesop
+    apply eval_post_monotonic _ h
+    apply Denot.imply_to_entails
+    apply (Denot.equiv_to_imply ih).1
   · intro h
-    have ⟨s', v', hr, hv⟩ := h
-    have := ih s' v'
-    aesop
+    apply eval_post_monotonic _ h
+    apply Denot.imply_to_entails
+    apply (Denot.equiv_to_imply ih).2
 
 end
 
