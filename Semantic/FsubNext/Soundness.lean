@@ -45,14 +45,16 @@ theorem sem_typ_tabs
     constructor
     · rfl
     · unfold SemanticTyping at ht
-      intro denot hdenot_mono himply
+      intro denot hdenot_mono hdenot_trans himply
       simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
       apply ht
       constructor
       · exact hdenot_mono
       · constructor
-        · exact himply
-        · exact hts
+        · exact hdenot_trans
+        · constructor
+          · exact himply
+          · exact hts
 
 theorem abs_val_denot_inv
   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
@@ -87,6 +89,7 @@ theorem tabs_val_denot_inv
     ∧ ∃ T0 e0 hv, store fx = some ⟨.tabs T0 e0, hv⟩
     ∧ (∀ (denot : Denot),
       denot.is_monotonic ->
+      denot.is_transparent ->
       denot.Imply (Ty.val_denot env T1) ->
       Ty.exp_denot (env.extend_tvar denot) T2 store (e0.subst (Subst.openTVar .top))) := by
   cases x with

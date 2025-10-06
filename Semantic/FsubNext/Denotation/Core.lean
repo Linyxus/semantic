@@ -86,6 +86,7 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
     resolve s e = some (.tabs T0 e0) ∧
     (∀ (denot : Denot),
       denot.is_monotonic ->
+      denot.is_transparent ->
       denot.Imply (Ty.val_denot env T1) ->
       Ty.exp_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar .top)))
 
@@ -308,7 +309,7 @@ theorem typed_env_is_inert
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨_, himpl, ht'⟩ := ht
+          have ⟨_, _, himpl, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.inert] at ih_result ⊢
           intro x
@@ -358,7 +359,7 @@ theorem typed_env_is_monotonic
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨hmono, _, ht'⟩ := ht
+          have ⟨hmono, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_monotonic] at ih_result ⊢
           intro x
@@ -375,6 +376,72 @@ def Denot.as_post_is_monotonic {d : Denot}
   d.as_post.is_monotonic := by
   intro h1 h2 e hsub hde
   apply hmon hsub hde
+
+theorem typed_env_is_transparent
+  (ht : EnvTyping Γ env store) :
+  env.is_transparent := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.is_transparent]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht
+          have ⟨_, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_transparent] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨_, htrans, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_transparent] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact htrans
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+
+theorem val_denot_is_transparent
+  (henv : TypeEnv.is_transparent env) :
+  (Ty.val_denot env T).is_transparent :=
+  match T with
+  | .top => by
+    rename_i h x v; intro hlk hv
+    simp [Ty.val_denot]
+    apply Exp.IsAns.is_var
+  | .tvar X => by
+    simp [Ty.val_denot]
+    exact henv X
+  | .singleton z => by
+    rename_i v
+    intro hx hval
+    simp [Ty.val_denot] at hval
+    cases v; rename_i v hv
+    simp at hval; subst hval
+    cases hv
+  | .arrow T1 T2 => by
+    intro hx ht
+    simp [Ty.val_denot] at ht ⊢
+    sorry
+  | .poly T1 T2 => by sorry
 
 mutual
 
@@ -445,11 +512,11 @@ def val_denot_is_monotonic {T : Ty s}
       | abs _ _ => simp [resolve] at hr ⊢
       | tabs _ _ => simp [resolve] at hr ⊢; exact hr
       | app _ _ | tapp _ _ | letin _ _ => simp [resolve] at hr
-    · -- Show: ∀ denot, denot.is_monotonic -> denot.Imply (Ty.val_denot env T1) -> ...
-      intro denot hdenot_mono himply
+    · -- Show: ∀ denot, monotonic -> transparent -> imply -> ...
+      intro denot hdenot_mono hdenot_trans himply
       -- Need to show: Ty.exp_denot (env.extend_tvar denot) T2 h2 (e0.subst ...)
       -- We have from hfun: Ty.exp_denot (env.extend_tvar denot) T2 h1 (e0.subst ...)
-      have heval1 := hfun denot hdenot_mono himply
+      have heval1 := hfun denot hdenot_mono hdenot_trans himply
       -- Need to lift from h1 to h2 using exp_denot_is_monotonic
       have henv' : (env.extend_tvar denot).is_monotonic := by
         intro X
@@ -508,11 +575,13 @@ theorem env_typing_monotonic
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hmono, himply, ht'⟩ := ht
+          have ⟨hmono, htrans, himply, ht'⟩ := ht
           constructor
           · exact hmono
           · constructor
-            · exact himply
-            · exact ih ht'
+            · exact htrans
+            · constructor
+              · exact himply
+              · exact ih ht'
 
 end FsubNext
