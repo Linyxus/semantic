@@ -1,5 +1,3 @@
-import Semantic.FsubNext.Eval.Core
-import Semantic.FsubNext.Eval.BasicProps
 import Semantic.FsubNext.Eval.BigStep
 
 /-!

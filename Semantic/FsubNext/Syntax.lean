@@ -187,4 +187,11 @@ theorem Exp.rename_rename_levels {e : Exp s1} {f : Rename s1 s2} :
   induction e generalizing s2
     <;> simp [Exp.rename, Exp.rename_levels, Ty.rename_rename_levels, Var.rename_rename_levels, *]
 
+inductive Exp.IsAns : Exp {} -> Prop where
+| is_val :
+  (hv : Exp.IsVal v) ->
+  Exp.IsAns v
+| is_var :
+  Exp.IsAns (.var x)
+
 end FsubNext
