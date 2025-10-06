@@ -64,7 +64,7 @@ def rebind_val_denot
       have ⟨T0, body, hr, hd⟩ := h
       use T0, body
       apply And.intro hr
-      intro arg harg
+      intro s_arg arg h_s harg
       have ih2 := rebind_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
       have harg' := (ih1 _ _).mpr harg
       specialize hd _ harg'

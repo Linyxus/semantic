@@ -62,18 +62,19 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
 | env, .tvar X => env.lookup_tvar X
 | env, .singleton x => fun _ e =>
   e = .var (.free (interp_var env x))
+| env, .arrow T1 T2 => fun s e =>
+  ∃ T0 e0,
+    resolve s e = some (.abs T0 e0) ∧
+    (∀ (s' : Heap) arg,
+      (s'.subsumes s) ->
+      Ty.val_denot env T1 s' (.var (.free arg)) ->
+      Ty.exp_denot (env.extend_var arg) T2 s' (e0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun s e =>
   ∃ T0 e0,
     resolve s e = some (.tabs T0 e0) ∧
     (∀ (denot : Denot),
       denot.Imply (Ty.val_denot env T1) ->
       Ty.exp_denot (env.extend_tvar denot) T2 s (e0.subst (Subst.openTVar .top)))
-| env, .arrow T1 T2 => fun s e =>
-  ∃ T0 e0,
-    resolve s e = some (.abs T0 e0) ∧
-    (∀ arg,
-      Ty.val_denot env T1 s (.var (.free arg)) ->
-      Ty.exp_denot (env.extend_var arg) T2 s (e0.subst (Subst.openVar (.free arg))))
 
 def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
 | env, T => fun s e =>
@@ -342,8 +343,27 @@ def val_denot_is_monotonic {T : Ty s}
     have ih1 : (Ty.val_denot env T1).is_monotonic :=
       val_denot_is_monotonic (T:=T1) henv
     intro hheap ht
+    rename_i h1 h2 e
     simp [Ty.val_denot] at ht ⊢
-    sorry
+    have ⟨T0, e0, hr, hfun⟩ := ht
+    use T0, e0
+    constructor
+    · cases e with
+      | var x =>
+        cases x with
+        | free fx =>
+          simp [resolve] at hr ⊢
+          cases hres : h1 fx with
+          | none => simp [hres] at hr
+          | some v =>
+            simp [hres] at hr
+            have := hheap fx v hres
+            simp [this, hr]
+        | bound bx => cases bx
+      | abs _ _ => simp [resolve] at hr ⊢; exact hr
+      | tabs _ _ => simp [resolve] at hr ⊢
+      | app _ _ | tapp _ _ | letin _ _ => simp [resolve] at hr
+    · sorry
   | .poly T1 T2 => by
     intro hheap ht
     sorry
