@@ -55,4 +55,18 @@ theorem Heap.extend_lookup_eq
   (h.extend l v) l = some v := by
   simp [Heap.extend]
 
+theorem Heap.extend_subsumes {H : Heap} {l : Nat}
+  (hfresh : H l = none) :
+  (H.extend l v).subsumes H := by
+  intro l' v' hlookup
+  simp [Heap.extend]
+  split
+  · next heq =>
+      -- l' = l case: contradiction since H l = none but H l' = some v'
+      rw [heq] at hlookup
+      rw [hfresh] at hlookup
+      contradiction
+  · -- l' ≠ l case: extended heap agrees with original
+    exact hlookup
+
 end Fsub

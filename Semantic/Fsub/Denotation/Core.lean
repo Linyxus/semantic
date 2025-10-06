@@ -618,12 +618,13 @@ theorem env_typing_monotonic
 def Denot.ImplyAt (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
   ∀ e, d1 h e -> d2 h e
 
+def Denot.ImplyAfter (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
+  ∀ h', h'.subsumes h -> d1.ImplyAt h' d2
+
 def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty s) : Prop :=
   ∀ env H,
     EnvTyping Γ env H ->
-    (∀ (H' : Heap),
-      H'.subsumes H ->
-      (Ty.val_denot env T1).ImplyAt H' (Ty.val_denot env T2))
+    (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)
 
 theorem Denot.imply_implyat {d1 d2 : Denot}
   (himp : d1.Imply d2) :
@@ -638,5 +639,32 @@ theorem Denot.implyat_trans
   d1.ImplyAt h d3 := by
   intro e h1
   apply himp2 e (himp1 e h1)
+
+lemma Denot.imply_after_to_entails_after {d1 d2 : Denot}
+  (himp : d1.ImplyAfter h d2) :
+  d1.as_post.entails_after h d2.as_post := by
+  intro h' hsub e h1
+  apply himp h' hsub e h1
+
+lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
+  (himp : d1.ImplyAfter h d2) :
+  d1.ImplyAt h d2 := by
+  intro e h1
+  apply himp h (Heap.subsumes_refl h) e h1
+
+lemma Denot.apply_imply_at {d1 d2 : Denot}
+  (ht : d1 h e)
+  (himp : d1.ImplyAt h d2) :
+  d2 h e := by
+  apply himp e ht
+
+theorem denot_implyat_lift
+  (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
+  (Ty.exp_denot env T1).ImplyAfter H (Ty.exp_denot env T2) := by
+  intro H' hheap v h1
+  simp [Ty.exp_denot] at h1 ⊢
+  apply eval_post_monotonic_general _ h1
+  apply Hpost.entails_after_subsumes <;> try exact hheap
+  apply Denot.imply_after_to_entails_after himp
 
 end Fsub

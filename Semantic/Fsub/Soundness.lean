@@ -344,8 +344,75 @@ theorem typed_env_lookup_var
   (hx : Ctx.LookupVar Γ x T) :
   Ty.val_denot env T store (.var (.free (env.lookup_var x))) := by
   induction hx generalizing store
-  case here => sorry
-  case there => sorry
+  case here =>
+    -- The environment must match the context structure
+    rename_i Γ0 T0
+    cases env; rename_i info0 env0
+    cases info0; rename_i n
+    simp [EnvTyping] at hts
+    simp [TypeEnv.lookup_var, TypeEnv.lookup]
+    -- Apply weaken_val_denot equivalence
+    have heqv := weaken_val_denot (env:=env0) (x:=n) (T:=T0)
+    apply (Denot.equiv_to_imply heqv).1
+    exact hts.1
+  case there b =>
+    -- Need to handle two cases based on the binding (b✝)
+    rename_i k Γ0 x0 T0 binding hlk
+    -- binding is the Binding, hlk is the lookup proof, b is the IH
+    cases binding
+    case var =>
+      -- binding is .var Tb
+      rename_i Tb
+      cases env; rename_i info0 env0
+      cases info0; rename_i n
+      simp [EnvTyping] at hts
+      obtain ⟨_, henv0⟩ := hts
+      -- Apply IH to get the result for env0
+      have hih := b henv0
+      -- Show that lookup_var .there reduces correctly
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      -- Apply weakening
+      have heqv := weaken_val_denot (env:=env0) (x:=n) (T:=T0)
+      apply (Denot.equiv_to_imply heqv).1
+      exact hih
+    case tvar =>
+      -- binding is .tvar Sb
+      rename_i Sb
+      cases env; rename_i info0 env0
+      cases info0; rename_i d
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, _, henv0⟩ := hts
+      have hih := b henv0
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      have heqv := tweaken_val_denot (env:=env0) (d:=d) (T:=T0)
+      apply (Denot.equiv_to_imply heqv).1
+      exact hih
+
+lemma sem_subtyp_arrow
+  (hT : SemSubtyp Γ T2 T1)
+  (hU : SemSubtyp (Γ,x:T2) U1 U2) :
+  SemSubtyp Γ (.arrow T1 U1) (.arrow T2 U2) := by
+  intro type_env heap hts
+  intro heap' hheap
+  intro ans hans
+  simp [Ty.val_denot] at hans ⊢
+  obtain ⟨T0, e0, hresolve, hfun⟩ := hans
+  use T0, e0
+  apply And.intro hresolve
+  intro H arg hheap1 ht_arg
+  specialize hfun H arg hheap1
+  have ht_arg' := hT type_env heap hts H (Heap.subsumes_trans hheap1 hheap) _ ht_arg
+  specialize hfun ht_arg'
+  specialize hU (type_env.extend_var arg)
+  have henv' : EnvTyping (Γ,x:T2) (type_env.extend_var arg) H := by
+    constructor
+    · exact ht_arg
+    · apply env_typing_monotonic hts
+      apply Heap.subsumes_trans hheap1 hheap
+  specialize hU H henv'
+  apply Denot.apply_imply_at hfun
+  apply Denot.imply_after_to_imply_at
+  apply denot_implyat_lift hU
 
 lemma sem_subtyp_top {T : Ty s} :
   SemSubtyp Γ T .top := by
@@ -390,7 +457,10 @@ lemma sem_subtyp_singleton
   intro heap' hheap
   simp [Ty.val_denot, interp_var]
   intro ans hans
-  sorry
+  subst hans
+  apply val_denot_is_monotonic _ hheap
+  · apply typed_env_lookup_var hts hx
+  · apply typed_env_is_monotonic hts
 
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
@@ -400,8 +470,9 @@ theorem fundamental_subtyp
   case refl => grind [sem_subtyp_refl]
   case trans => grind [sem_subtyp_trans]
   case tvar => grind [sem_subtyp_tvar]
-  case singleton => sorry
-  all_goals sorry
+  case singleton => grind [sem_subtyp_singleton]
+  case arrow => grind [sem_subtyp_arrow]
+  case poly => sorry
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
