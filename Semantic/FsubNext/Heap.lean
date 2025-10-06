@@ -19,4 +19,10 @@ theorem Heap.subsumes_refl (h : Heap) : h.subsumes h := by
   intros l v hlookup
   exact hlookup
 
+/-- Heap predicate. -/
+def Hprop := Heap -> Prop
+
+/-- Postcondition. -/
+def Hpost := Exp {} -> Hprop
+
 end FsubNext
