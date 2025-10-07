@@ -336,8 +336,7 @@ theorem typed_env_is_monotonic
 def Denot.as_post_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
   d.as_post.is_monotonic := by
-  intro h1 h2 e hsub hde
-  apply hmon hsub hde
+  grind [as_post, Hpost.is_monotonic, is_monotonic]
 
 theorem typed_env_is_transparent
   (ht : EnvTyping Γ env store) :

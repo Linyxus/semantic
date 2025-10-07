@@ -21,13 +21,9 @@ theorem sem_typ_abs
     constructor; constructor
     constructor
     · rfl
-    · unfold SemanticTyping at ht
-      intro store' arg hsubsume harg
+    · intro store' arg hsubsume harg
       simp [Exp.from_TypeEnv_weaken_open]
-      apply ht (env.extend_var arg) store'
-      constructor
-      { exact harg }
-      { apply env_typing_monotonic hts hsubsume }
+      exact ht (env.extend_var arg) store' ⟨harg, env_typing_monotonic hts hsubsume⟩
 
 theorem sem_typ_tabs
   (ht : (Γ,X<:S) ⊨ e : T) :
@@ -40,17 +36,9 @@ theorem sem_typ_tabs
     constructor; constructor
     constructor
     · rfl
-    · unfold SemanticTyping at ht
-      intro H denot Hs hdenot_mono hdenot_trans himply
+    · intro H denot Hs hdenot_mono hdenot_trans himply
       simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
-      apply ht
-      constructor
-      · exact hdenot_mono
-      · constructor
-        · exact hdenot_trans
-        · constructor
-          · exact himply
-          · apply env_typing_monotonic hts Hs
+      exact ht _ _ ⟨hdenot_mono, hdenot_trans, himply, env_typing_monotonic hts Hs⟩
 
 theorem abs_val_denot_inv
   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
@@ -92,25 +80,14 @@ theorem tabs_val_denot_inv
     cases res
     case none => aesop
     case some v =>
-      -- After substituting hres, resolve returns v.unwrap
-      -- So hv becomes: ∃ T0 e0, v.unwrap = .tabs T0 e0 ∧ ...
       simp [hres] at hv
       obtain ⟨T0, e0, htabs, hfun⟩ := hv
-      -- Now v.unwrap = .tabs T0 e0
-      -- We need to show store fx = some ⟨.tabs T0 e0, _⟩
-      -- We have hres : store fx = some v and htabs : v.unwrap = .tabs T0 e0
-      use fx, rfl, T0, e0
-      -- Need to provide proof that (tabs T0 e0).IsVal
-      have hval : (Exp.tabs T0 e0).IsVal := by constructor
-      use hval
-      constructor
-      · -- Show: store fx = some ⟨.tabs T0 e0, hval⟩
-        cases v with
-        | mk unwrap isVal =>
-          simp at htabs
-          subst htabs
-          exact hres
-      · exact hfun
+      use fx, rfl, T0, e0, by constructor
+      cases v with
+      | mk unwrap isVal =>
+        simp at htabs
+        subst htabs
+        exact ⟨hres, hfun⟩
 
 theorem interp_var_subst (x : Var s) :
   .free (interp_var env x) = x.subst (Subst.from_TypeEnv env) := by
@@ -147,13 +124,10 @@ theorem sem_typ_app
   have heq := hfarg
   simp [<-interp_var_subst] at heq
   simp [hfarg] at *
-  -- Apply hfun with store' = store (reflexive subsumption)
   have := hfun store farg (Heap.subsumes_refl store) h2'
   simp [Ty.exp_denot] at this ⊢
-  -- Use heq : interp_var env y = farg to rewrite in both goal and hypothesis
   rw [<-heq]
   rw [<-heq] at this
-  -- Convert postcondition via open_arg_val_denot
   have heqv := open_arg_val_denot (env:=env) (y:=y) (T:=T2)
   have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
   apply Eval.eval_apply hlk hconv
@@ -164,25 +138,17 @@ theorem sem_typ_tapp
   intro env store hts
   have h1 := ht env store hts
   simp [Exp.subst] at h1
-  have h1' := var_exp_denot_inv h1
-  have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv h1'
+  have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv (var_exp_denot_inv h1)
   simp [Exp.subst, hfx]
-  -- Need to show Ty.val_denot env S is monotonic and transparent
   have henv_mono := typed_env_is_monotonic hts
   have henv_trans := typed_env_is_transparent hts
-  have hmono : (Ty.val_denot env S).is_monotonic := val_denot_is_monotonic henv_mono
-  have htrans : (Ty.val_denot env S).is_transparent := val_denot_is_transparent henv_trans
-  -- Prove reflexivity of ImplyAfter
-  have himply : (Ty.val_denot env S).ImplyAfter store (Ty.val_denot env S) := by
-    intro h' hsub e he
-    exact he
-  -- Apply hfun with heap, denot, monotonicity, transparency, and implication
-  have this := hfun store (Ty.val_denot env S) (Heap.subsumes_refl store) hmono htrans himply
+  have this := hfun store (Ty.val_denot env S) (Heap.subsumes_refl store)
+    (val_denot_is_monotonic henv_mono) (val_denot_is_transparent henv_trans)
+    (fun h' hsub e he => he)
   simp [Ty.exp_denot] at this ⊢
-  -- Convert postcondition via open_targ_val_denot
   have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
   have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
-  apply Eval.eval_tapply hlk hconv
+  exact Eval.eval_tapply hlk hconv
 
 theorem sem_typ_letin
   (ht1 : Γ ⊨ e1 : T)
@@ -486,14 +452,10 @@ lemma sem_subtyp_tvar
 lemma sem_subtyp_singleton
   (hx : Ctx.LookupVar Γ x T) :
   SemSubtyp Γ (.singleton (.bound x)) T := by
-  intro type_env heap hts
-  intro heap' hheap
-  simp [Ty.val_denot, interp_var]
-  intro ans hans
+  intro type_env heap hts heap' hheap ans hans
+  simp [Ty.val_denot, interp_var] at hans
   subst hans
-  apply val_denot_is_monotonic _ hheap
-  · apply typed_env_lookup_var hts hx
-  · apply typed_env_is_monotonic hts
+  exact val_denot_is_monotonic (typed_env_is_monotonic hts) hheap (typed_env_lookup_var hts hx)
 
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
@@ -501,11 +463,11 @@ theorem fundamental_subtyp
   induction hsub with
   | top => exact sem_subtyp_top
   | refl => exact sem_subtyp_refl
-  | trans _ _ ih1 ih2 => exact sem_subtyp_trans ih1 ih2
-  | tvar h => exact sem_subtyp_tvar h
-  | singleton h => exact sem_subtyp_singleton h
-  | arrow _ _ ih1 ih2 => exact sem_subtyp_arrow ih1 ih2
-  | poly _ _ ih1 ih2 => exact sem_subtyp_poly ih1 ih2
+  | trans _ _ => exact sem_subtyp_trans ‹_› ‹_›
+  | tvar => exact sem_subtyp_tvar ‹_›
+  | singleton => exact sem_subtyp_singleton ‹_›
+  | arrow _ _ => exact sem_subtyp_arrow ‹_› ‹_›
+  | poly _ _ => exact sem_subtyp_poly ‹_› ‹_›
 
 theorem sem_typ_subtyp
   (ht : Γ ⊨ e : T1)
@@ -525,11 +487,11 @@ theorem fundamental
   Γ ⊨ e : T := by
   induction ht with
   | var => exact sem_typ_var
-  | abs _ ih => exact sem_typ_abs ih
-  | tabs _ ih => exact sem_typ_tabs ih
-  | app _ _ ih1 ih2 => exact sem_typ_app ih1 ih2
-  | tapp _ ih => exact sem_typ_tapp ih
-  | letin _ _ ih1 ih2 => exact sem_typ_letin ih1 ih2
-  | subtyp _ hsub ih => exact sem_typ_subtyp ih hsub
+  | abs _ => exact sem_typ_abs ‹_›
+  | tabs _ => exact sem_typ_tabs ‹_›
+  | app _ _ => exact sem_typ_app ‹_› ‹_›
+  | tapp _ => exact sem_typ_tapp ‹_›
+  | letin _ _ => exact sem_typ_letin ‹_› ‹_›
+  | subtyp _ _ => exact sem_typ_subtyp ‹_› ‹_›
 
 end Fsub
