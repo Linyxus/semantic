@@ -4,8 +4,8 @@ import Semantic.CC.Substitution
 namespace CC
 
 inductive Binding : Sig -> Kind -> Type where
-| var : Ty s -> Binding s .var
-| tvar : Ty s -> Binding s .tvar
+| var : Ty .shape s -> Binding s .var
+| tvar : Ty .shape s -> Binding s .tvar
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
@@ -15,30 +15,30 @@ inductive Ctx : Sig -> Type where
 | empty : Ctx {}
 | push : Ctx s -> Binding s k -> Ctx (s,,k)
 
-def Ctx.push_var : Ctx s -> Ty s -> Ctx (s,x)
+def Ctx.push_var : Ctx s -> Ty .shape s -> Ctx (s,x)
 | Γ, T => Γ.push (.var T)
 
-def Ctx.push_tvar : Ctx s -> Ty s -> Ctx (s,X)
+def Ctx.push_tvar : Ctx s -> Ty .shape s -> Ctx (s,X)
 | Γ, T => Γ.push (.tvar T)
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
 
-inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> Ty s -> Prop
+inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> Ty .shape s -> Prop
 | here :
   Ctx.LookupTVar (.push Γ (.tvar S)) .here (S.rename Rename.succ)
-| there {S : Ty s} {b : Binding s k} :
+| there {S : Ty .shape s} {b : Binding s k} :
   Ctx.LookupTVar Γ X S ->
   Ctx.LookupTVar (.push Γ b) (.there X) (S.rename Rename.succ)
 
-inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty s -> Prop
+inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .shape s -> Prop
 | here :
   Ctx.LookupVar (.push Γ (.var T)) .here (T.rename Rename.succ)
-| there {T : Ty s} {b : Binding s k} :
+| there {T : Ty .shape s} {b : Binding s k} :
   Ctx.LookupVar Γ x T ->
   Ctx.LookupVar (.push Γ b) (.there x) (T.rename Rename.succ)
 
-inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
+inductive Subtyp : Ctx s -> Ty .shape s -> Ty .shape s -> Prop where
 | top :
   -------------------
   Subtyp Γ T .top
@@ -69,7 +69,7 @@ inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
   --------------------------
   Subtyp Γ (.poly S1 T1) (.poly S2 T2)
 
-inductive HasType : Ctx s -> Exp s -> Ty s -> Prop where
+inductive HasType : Ctx s -> Exp s -> Ty .shape s -> Prop where
 | var :
   ----------------------------
   HasType Γ (.var x) (.singleton x)

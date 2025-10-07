@@ -123,7 +123,7 @@ def interp_var (env : TypeEnv s) (x : Var s) : Nat :=
 
 mutual
 
-def Ty.val_denot : TypeEnv s -> Ty s -> Denot
+def Ty.val_denot : TypeEnv s -> Ty .shape s -> Denot
 | _, .top => fun _ _ => True
 | env, .tvar X => env.lookup_tvar X
 | env, .singleton x => fun _ e =>
@@ -145,7 +145,7 @@ def Ty.val_denot : TypeEnv s -> Ty s -> Denot
       denot.ImplyAfter s' (Ty.val_denot env T1) ->
       Ty.exp_denot (env.extend_tvar denot) T2 s' (e0.subst (Subst.openTVar .top)))
 
-def Ty.exp_denot : TypeEnv s -> Ty s -> Denot
+def Ty.exp_denot : TypeEnv s -> Ty .shape s -> Denot
 | env, T => fun s e =>
   Eval s e (Ty.val_denot env T).as_post
 
@@ -166,7 +166,7 @@ def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x)
   tvar := fun _ => .top  -- types can be simply erased
 
-def SemanticTyping (Γ : Ctx s) (e : Exp s) (T : Ty s) : Prop :=
+def SemanticTyping (Γ : Ctx s) (e : Exp s) (T : Ty .shape s) : Prop :=
   ∀ env store,
     EnvTyping Γ env store ->
     Ty.exp_denot env T store (e.subst (Subst.from_TypeEnv env))
@@ -458,7 +458,7 @@ theorem val_denot_is_transparent
 
 mutual
 
-def val_denot_is_monotonic {T : Ty s}
+def val_denot_is_monotonic {T : Ty .shape s}
   (henv : TypeEnv.is_monotonic env) :
   (Ty.val_denot env T).is_monotonic :=
   match T with
@@ -544,7 +544,7 @@ def val_denot_is_monotonic {T : Ty s}
         exp_denot_is_monotonic (T:=T2) (env:=env.extend_tvar denot) henv'
       exact heval1
 
-def exp_denot_is_monotonic {T : Ty s}
+def exp_denot_is_monotonic {T : Ty .shape s}
   (henv : TypeEnv.is_monotonic env) :
   (Ty.exp_denot env T).is_monotonic := by
   have ih : (Ty.val_denot env T).is_monotonic :=
@@ -598,7 +598,7 @@ theorem env_typing_monotonic
               · exact ih ht'
 
 
-def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty s) : Prop :=
+def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
   ∀ env H,
     EnvTyping Γ env H ->
     (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)

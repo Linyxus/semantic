@@ -18,26 +18,26 @@ inductive TySort : Type where
 -- Existential types
 | exi : TySort
 
-inductive Ty : Sig -> Type where
-| top : Ty s
-| tvar : BVar s .tvar -> Ty s
-| singleton : Var s -> Ty s
-| arrow : Ty s -> Ty (s,x) -> Ty s
-| poly : Ty s -> Ty (s,X) -> Ty s
+inductive Ty : TySort -> Sig -> Type where
+| top : Ty .shape s
+| tvar : BVar s .tvar -> Ty .shape s
+| singleton : Var s -> Ty .shape s
+| arrow : Ty .shape s -> Ty .shape (s,x) -> Ty .shape s
+| poly : Ty .shape s -> Ty .shape (s,X) -> Ty .shape s
 
 inductive Exp : Sig -> Type where
 | var : Var s -> Exp s
-| abs : Ty s -> Exp (s,x) -> Exp s
-| tabs : Ty s -> Exp (s,X) -> Exp s
+| abs : Ty .shape s -> Exp (s,x) -> Exp s
+| tabs : Ty .shape s -> Exp (s,X) -> Exp s
 | app : Var s -> Var s -> Exp s
-| tapp : Var s -> Ty s -> Exp s
+| tapp : Var s -> Ty .shape s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
 
 def Var.rename : Var s1 -> Rename s1 s2 -> Var s2
 | .bound x, f => .bound (f.var x)
 | .free n, _ => .free n
 
-def Ty.rename : Ty s1 -> Rename s1 s2 -> Ty s2
+def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
 | .singleton x, f => .singleton (x.rename f)
@@ -63,7 +63,7 @@ structure Val (s : Sig) where
 def Var.rename_id {x : Var s} : x.rename (Rename.id) = x := by
   cases x <;> rfl
 
-def Ty.rename_id {T : Ty s} : T.rename (Rename.id) = T := by
+def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   induction T
     <;> try (solve | rfl | simp [Ty.rename, Var.rename_id, Rename.lift_id]; try aesop)
 
@@ -77,7 +77,7 @@ theorem Var.rename_comp {x : Var s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (x.rename f).rename g = x.rename (f.comp g) := by
   cases x <;> rfl
 
-theorem Ty.rename_comp {T : Ty s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (T.rename f).rename g = T.rename (f.comp g) := by
   induction T generalizing s2 s3
     <;> try (solve | rfl | simp [Ty.rename, Var.rename_comp, Rename.lift_comp]; try aesop)
@@ -89,7 +89,7 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
       | rfl
       | simp [Exp.rename, Ty.rename_comp, Var.rename_comp, Rename.lift_comp]; try aesop)
 
-theorem Ty.weaken_rename_comm {T : Ty s1} {f : Rename s1 s2} :
+theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
   simp [Ty.rename_comp, Rename.succ_lift_comm]
 
@@ -114,7 +114,7 @@ def Var.rename_level (x : Var s) (f : Nat -> Nat) : Var s :=
 
 /-- Rename free term variables (levels) in a type.
 This only affects free term variables appearing in singleton types. -/
-def Ty.rename_levels (T : Ty s) (f : Nat -> Nat) : Ty s :=
+def Ty.rename_levels (T : Ty sort s) (f : Nat -> Nat) : Ty sort s :=
   match T with
   | .top => .top
   | .tvar x => .tvar x
@@ -140,7 +140,7 @@ theorem Var.rename_level_id (x : Var s) : x.rename_level id = x := by
   cases x <;> rfl
 
 /-- The identity function on levels leaves types unchanged. -/
-theorem Ty.rename_levels_id (T : Ty s) : T.rename_levels id = T := by
+theorem Ty.rename_levels_id (T : Ty sort s) : T.rename_levels id = T := by
   induction T <;> simp [Ty.rename_levels, Var.rename_level_id, *]
 
 /-- The identity function on levels leaves expressions unchanged. -/
@@ -153,7 +153,7 @@ theorem Var.rename_level_comp (x : Var s) (f g : Nat -> Nat) :
   cases x <;> rfl
 
 /-- Level renaming composes functorially for types. -/
-theorem Ty.rename_levels_comp (T : Ty s) (f g : Nat -> Nat) :
+theorem Ty.rename_levels_comp (T : Ty sort s) (f g : Nat -> Nat) :
     (T.rename_levels f).rename_levels g = T.rename_levels (g ∘ f) := by
   induction T <;> simp [Ty.rename_levels, Var.rename_level_comp, *]
 
@@ -177,7 +177,7 @@ theorem Var.rename_rename_levels {x : Var s} :
     (x.rename_level g).rename f := by
   cases x <;> rfl
 
-theorem Ty.rename_rename_levels {T : Ty s1} {f : Rename s1 s2} :
+theorem Ty.rename_rename_levels {T : Ty sort s1} {f : Rename s1 s2} :
   (T.rename f).rename_levels g =
     (T.rename_levels g).rename f := by
   induction T generalizing s2 <;> try (solve | rfl)

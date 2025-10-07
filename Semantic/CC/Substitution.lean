@@ -4,7 +4,7 @@ namespace CC
 
 structure Subst (s1 s2 : Sig) where
   var : BVar s1 .var -> Var s2
-  tvar : BVar s1 .tvar -> Ty s2
+  tvar : BVar s1 .tvar -> Ty .shape s2
 
 def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
   var := fun x => by
@@ -29,7 +29,7 @@ def Var.subst : Var s1 -> Subst s1 s2 -> Var s2
 | .bound x, s => s.var x
 | .free n, _ => .free n
 
-def Ty.subst : Ty s1 -> Subst s1 s2 -> Ty s2
+def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, s => s.tvar x
 | .singleton x, s => .singleton (x.subst s)
@@ -51,7 +51,7 @@ def Subst.openVar (x : Var s) : Subst (s,x) s where
   tvar := fun
     | .there x0 => .tvar x0
 
-def Subst.openTVar (U : Ty s) : Subst (s,X) s where
+def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
   var := fun
     | .there x => .bound x
   tvar := fun
@@ -132,7 +132,7 @@ theorem Var.weaken_subst_comm_liftMany {x : Var (s1 ++ K)} {σ : Subst s1 s2} :
         congr
     | free n => simp [Var.subst, Var.rename]
 
-theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
+theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
     (T.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K) := by
   match T with
@@ -150,7 +150,7 @@ theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
     simp [Ty.subst, Ty.rename, ih1]
     exact ih2
 
-theorem Ty.weaken_subst_comm_base {T : Ty s1} {σ : Subst s1 s2} :
+theorem Ty.weaken_subst_comm_base {T : Ty sort s1} {σ : Subst s1 s2} :
   (T.subst σ).rename (Rename.succ (k:=k)) = (T.rename Rename.succ).subst (σ.lift (k:=k)) :=
   Ty.weaken_subst_comm (K:=[])
 
@@ -209,7 +209,7 @@ theorem Var.subst_comp {x : Var s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
 Substituting a composition of substitutions is the same as
 substituting one after the other for a type.
 -/
-theorem Ty.subst_comp {T : Ty s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (T.subst σ1).subst σ2 = T.subst (σ1.comp σ2) := by
   induction T generalizing s2 s3 with
   | top => rfl
@@ -267,7 +267,7 @@ theorem Subst.lift_rename_levels {σ : Subst s1 s2} {f : Nat -> Nat} :
       exact Ty.rename_rename_levels
 
 /-- Type substitution commutes with level renaming. -/
-theorem Ty.subst_rename_levels {T : Ty s1} {σ : Subst s1 s2} {f : Nat -> Nat} :
+theorem Ty.subst_rename_levels {T : Ty sort s1} {σ : Subst s1 s2} {f : Nat -> Nat} :
   (T.subst σ).rename_levels f = (T.rename_levels f).subst (σ.rename_levels f) := by
   induction T generalizing s2 with
   | top => rfl

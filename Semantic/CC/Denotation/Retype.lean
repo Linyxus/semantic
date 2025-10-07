@@ -191,12 +191,12 @@ def Retype.open_arg {env : TypeEnv s} {y : Var s} :
       apply Denot.eq_to_equiv
       simp [Ty.val_denot, TypeEnv.lookup_tvar]
 
-theorem open_arg_val_denot {env : TypeEnv s} {y : Var s} {T : Ty (s,x)} :
+theorem open_arg_val_denot {env : TypeEnv s} {y : Var s} {T : Ty .shape (s,x)} :
   Ty.val_denot (env.extend_var (interp_var env y)) T ≈
     Ty.val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_val_denot Retype.open_arg
 
-def Retype.open_targ {env : TypeEnv s} {S : Ty s} :
+def Retype.open_targ {env : TypeEnv s} {S : Ty .shape s} :
   Retype
     (env.extend_tvar (Ty.val_denot env S))
     (Subst.openTVar S)
@@ -212,7 +212,7 @@ def Retype.open_targ {env : TypeEnv s} {S : Ty s} :
       simp [Subst.openTVar, Ty.val_denot]
       rfl
 
-theorem open_targ_val_denot {env : TypeEnv s} {S : Ty s} {T : Ty (s,X)} :
+theorem open_targ_val_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .shape (s,X)} :
   Ty.val_denot (env.extend_tvar (Ty.val_denot env S)) T ≈
     Ty.val_denot env (T.subst (Subst.openTVar S)) := by
   apply retype_val_denot Retype.open_targ

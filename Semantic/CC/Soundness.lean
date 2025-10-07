@@ -467,14 +467,14 @@ lemma sem_subtyp_arrow
   apply Denot.imply_after_to_imply_at
   apply denot_implyat_lift hU
 
-lemma sem_subtyp_top {T : Ty s} :
+lemma sem_subtyp_top {T : Ty .shape s} :
   SemSubtyp Γ T .top := by
   intro type_env heap hts
   intro heap' hheap
   intro e he
   simp [Ty.val_denot]
 
-lemma sem_subtyp_refl {T : Ty s} :
+lemma sem_subtyp_refl {T : Ty .shape s} :
   SemSubtyp Γ T T := by
   intro type_env heap hts
   intro heap' hheap
