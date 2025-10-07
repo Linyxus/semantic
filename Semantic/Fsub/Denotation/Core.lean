@@ -42,16 +42,14 @@ def Denot.ImplyAfter (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
 theorem Denot.imply_implyat {d1 d2 : Denot}
   (himp : d1.Imply d2) :
   d1.ImplyAt h d2 := by
-  intro e h1
-  apply himp h e h1
+  grind [Imply, ImplyAt]
 
 theorem Denot.implyat_trans
   {d1 d2 : Denot}
   (himp1 : d1.ImplyAt h d2)
   (himp2 : d2.ImplyAt h d3) :
   d1.ImplyAt h d3 := by
-  intro e h1
-  apply himp2 e (himp1 e h1)
+  grind [ImplyAt]
 
 lemma Denot.imply_after_to_entails_after {d1 d2 : Denot}
   (himp : d1.ImplyAfter h d2) :
@@ -70,22 +68,19 @@ lemma Denot.imply_after_subsumes {d1 d2 : Denot}
 lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
   (himp : d1.ImplyAfter h d2) :
   d1.ImplyAt h d2 := by
-  intro e h1
-  apply himp h (Heap.subsumes_refl h) e h1
+  grind [ImplyAfter, ImplyAt, Heap.subsumes_refl]
 
 lemma Denot.imply_after_trans {d1 d2 d3 : Denot}
   (himp1 : d1.ImplyAfter h d2)
   (himp2 : d2.ImplyAfter h d3) :
   d1.ImplyAfter h d3 := by
-  intro h' hsub e h1
-  apply himp2 h' hsub
-  apply himp1 h' hsub e h1
+  grind [ImplyAfter, ImplyAt]
 
 lemma Denot.apply_imply_at {d1 d2 : Denot}
   (ht : d1 h e)
   (himp : d1.ImplyAt h d2) :
   d2 h e := by
-  apply himp e ht
+  grind [ImplyAt]
 
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> TypeInfo .var
@@ -264,19 +259,18 @@ theorem Denot.imply_to_entails (d1 d2 : Denot)
   apply himp h e h1
 
 theorem Denot.imply_refl (d : Denot) : d.Imply d := by
-  intro s e h; exact h
+  grind [Imply]
 
 theorem Denot.imply_trans {d1 d2 d3 : Denot}
   (h1 : d1.Imply d2)
   (h2 : d2.Imply d3) :
   d1.Imply d3 := by
-  intro s e h
-  exact h2 s e (h1 s e h)
+  grind [Imply]
 
 theorem resolve_var_heap_some
   (hheap : heap x = some v) :
   resolve heap (.var (.free x)) = some v.unwrap := by
-  simp [resolve, hheap]
+  grind [resolve]
 
 theorem resolve_val
   (hval : v.IsVal) :

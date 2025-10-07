@@ -127,8 +127,8 @@ theorem var_exp_denot_inv
 theorem closed_var_inv (x : Var {}) :
   ∃ fx, x = .free fx := by
   cases x
-  case bound bx => cases bx
-  case free fx => use fx
+  · rename_i bx; cases bx
+  · rename_i fx; use fx
 
 theorem sem_typ_app
   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
@@ -461,12 +461,11 @@ lemma sem_subtyp_arrow
 lemma sem_subtyp_top {T : Ty s} :
   SemSubtyp Γ T .top := by
   intro type_env heap hts heap' hheap e he
-  simp [Ty.val_denot]
+  grind [Ty.val_denot]
 
 lemma sem_subtyp_refl {T : Ty s} :
   SemSubtyp Γ T T := by
-  intro type_env heap hts heap' hheap
-  apply Denot.imply_refl
+  grind [SemSubtyp, Denot.ImplyAfter, Denot.ImplyAt]
 
 lemma sem_subtyp_trans
   (hsub1 : SemSubtyp Γ T1 T2)
