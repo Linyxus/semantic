@@ -124,7 +124,7 @@ def interp_var (env : TypeEnv s) (x : Var s) : Nat :=
 mutual
 
 def Ty.val_denot : TypeEnv s -> Ty s -> Denot
-| _, .top => fun _ e => True --e.IsAns
+| _, .top => fun _ _ => True
 | env, .tvar X => env.lookup_tvar X
 | env, .singleton x => fun _ e =>
   e = .var (.free (interp_var env x))
