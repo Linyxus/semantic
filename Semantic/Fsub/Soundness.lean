@@ -522,6 +522,18 @@ theorem fundamental_subtyp
   case arrow => grind [sem_subtyp_arrow]
   case poly => grind [sem_subtyp_poly]
 
+theorem sem_typ_subtyp
+  (ht : Γ ⊨ e : T1)
+  (hsub : Subtyp Γ T1 T2) :
+  Γ ⊨ e : T2 := by
+  intro env store hts
+  have h1 := ht env store hts
+  simp [Ty.exp_denot] at h1 ⊢
+  have hsub' := fundamental_subtyp hsub env store hts
+  apply eval_post_monotonic_general _ h1
+  apply Denot.imply_after_to_entails_after
+  exact hsub'
+
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (ht : Γ ⊢ e : T) :
@@ -533,6 +545,6 @@ theorem fundamental
   case app => grind [sem_typ_app]
   case tapp => grind [sem_typ_tapp]
   case letin => grind [sem_typ_letin]
-  case subtyp => sorry
+  case subtyp => grind [sem_typ_subtyp]
 
 end Fsub
