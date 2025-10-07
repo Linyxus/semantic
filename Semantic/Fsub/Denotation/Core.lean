@@ -151,7 +151,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Heap -> Prop
 | .push Γ (.tvar S), .extend env (.tvar d), store =>
   d.is_monotonic ∧
   d.is_transparent ∧
-  d.Imply (Ty.val_denot env S) ∧
+  d.ImplyAfter store (Ty.val_denot env S) ∧
   EnvTyping Γ env store
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where

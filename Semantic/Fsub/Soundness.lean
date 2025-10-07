@@ -45,7 +45,7 @@ theorem sem_typ_tabs
     constructor
     · rfl
     · unfold SemanticTyping at ht
-      intro denot hdenot_mono hdenot_trans himply
+      intro H denot Hs hdenot_mono hdenot_trans himply
       simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
       apply ht
       constructor
