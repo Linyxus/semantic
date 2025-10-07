@@ -214,33 +214,19 @@ instance Denot.instHasEquiv : HasEquiv Denot where
 
 def Denot.equiv_refl (d : Denot) : d ≈ d := by
   intro s e
-  constructor
-  · intro h
-    exact h
-  · intro h
-    exact h
+  rfl
 
 def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 := by
-  intro h
-  intro s e
-  constructor
-  · intro h0
-    apply (h s e).mpr h0
-  · intro h0
-    apply (h s e).mp h0
+  intro h s e
+  exact (h s e).symm
 
 def Denot.equiv_trans (d1 d2 d3 : Denot) : d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 := by
-  intro h12
-  intro h23
-  intro s e
-  have h1 := h12 s e
-  have h2 := h23 s e
-  grind
+  intro h12 h23 s e
+  exact ⟨fun h => (h23 s e).mp ((h12 s e).mp h), fun h => (h12 s e).mpr ((h23 s e).mpr h)⟩
 
 theorem Denot.eq_to_equiv (d1 d2 : Denot) : d1 = d2 -> d1 ≈ d2 := by
-  intro h
-  intro s e
-  grind
+  intro h s e
+  rw [h]
 
 theorem Denot.equiv_ltr {d1 d2 : Denot}
   (heqv : d1 ≈ d2)
@@ -278,8 +264,7 @@ theorem Denot.imply_to_entails (d1 d2 : Denot)
   apply himp h e h1
 
 theorem Denot.imply_refl (d : Denot) : d.Imply d := by
-  intro s e h
-  exact h
+  intro s e h; exact h
 
 theorem Denot.imply_trans {d1 d2 d3 : Denot}
   (h1 : d1.Imply d2)

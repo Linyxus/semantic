@@ -7,12 +7,8 @@ theorem sem_typ_var :
   intro s e hts
   simp [Ty.exp_denot]
   apply Eval.eval_var
-  cases x
-  case free fx =>
-    simp [Ty.val_denot, Denot.as_post, Var.subst, interp_var]
-  case bound bx =>
-    simp [Ty.val_denot, Denot.as_post, Var.subst, interp_var]
-    rfl
+  cases x <;> simp [Ty.val_denot, Denot.as_post, Var.subst, interp_var]
+  rfl
 
 theorem sem_typ_abs
   (ht : (Γ,x:T1) ⊨ e : T2) :
@@ -68,20 +64,15 @@ theorem abs_val_denot_inv
   | bound bx => cases bx
   | free fx =>
     simp [Ty.val_denot, resolve] at hv
-    have ⟨T0, e0, hresolve, hfun⟩ := hv
-    -- Analyze what's in the store at fx
+    obtain ⟨T0, e0, hresolve, hfun⟩ := hv
     generalize hres : store fx = res at hresolve ⊢
     cases res
     case none => simp at hresolve
     case some v =>
       simp at hresolve
       cases v; rename_i val hval
-      -- hresolve says val = .abs T0 e0
       subst hresolve
-      use fx
-      constructor
-      · rfl
-      · use T0, e0, (by constructor)
+      use fx, rfl, T0, e0, (by constructor)
 
 theorem tabs_val_denot_inv
   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
@@ -137,7 +128,7 @@ theorem closed_var_inv (x : Var {}) :
   ∃ fx, x = .free fx := by
   cases x
   case bound bx => cases bx
-  case free fx => aesop
+  case free fx => use fx
 
 theorem sem_typ_app
   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
@@ -469,32 +460,27 @@ lemma sem_subtyp_arrow
 
 lemma sem_subtyp_top {T : Ty s} :
   SemSubtyp Γ T .top := by
-  intro type_env heap hts
-  intro heap' hheap
-  intro e he
+  intro type_env heap hts heap' hheap e he
   simp [Ty.val_denot]
 
 lemma sem_subtyp_refl {T : Ty s} :
   SemSubtyp Γ T T := by
-  intro type_env heap hts
-  intro heap' hheap
+  intro type_env heap hts heap' hheap
   apply Denot.imply_refl
 
 lemma sem_subtyp_trans
   (hsub1 : SemSubtyp Γ T1 T2)
   (hsub2 : SemSubtyp Γ T2 T3) :
   SemSubtyp Γ T1 T3 := by
-  intro type_env heap hts
-  intro heap' hheap
-  specialize hsub1 type_env heap hts heap' hheap
-  specialize hsub2 type_env heap hts heap' hheap
-  apply Denot.implyat_trans hsub1 hsub2
+  intro type_env heap hts heap' hheap
+  apply Denot.implyat_trans
+    (hsub1 type_env heap hts heap' hheap)
+    (hsub2 type_env heap hts heap' hheap)
 
 lemma sem_subtyp_tvar
   (hX : Ctx.LookupTVar Γ X S) :
   SemSubtyp Γ (.tvar X) S := by
-  intro type_env heap hts
-  intro heap' hheap
+  intro type_env heap hts heap' hheap
   simp [Ty.val_denot]
   apply typed_env_lookup_tvar hts hX heap' hheap
 
@@ -514,13 +500,13 @@ theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
-  case top => grind [sem_subtyp_top]
-  case refl => grind [sem_subtyp_refl]
-  case trans => grind [sem_subtyp_trans]
-  case tvar => grind [sem_subtyp_tvar]
-  case singleton => grind [sem_subtyp_singleton]
-  case arrow => grind [sem_subtyp_arrow]
-  case poly => grind [sem_subtyp_poly]
+  case top => exact sem_subtyp_top
+  case refl => exact sem_subtyp_refl
+  case trans => exact sem_subtyp_trans (by assumption) (by assumption)
+  case tvar => exact sem_subtyp_tvar (by assumption)
+  case singleton => exact sem_subtyp_singleton (by assumption)
+  case arrow => exact sem_subtyp_arrow (by assumption) (by assumption)
+  case poly => exact sem_subtyp_poly (by assumption) (by assumption)
 
 theorem sem_typ_subtyp
   (ht : Γ ⊨ e : T1)
@@ -540,11 +526,11 @@ theorem fundamental
   Γ ⊨ e : T := by
   induction ht
   case var => apply sem_typ_var
-  case abs => grind [sem_typ_abs]
-  case tabs => grind [sem_typ_tabs]
-  case app => grind [sem_typ_app]
-  case tapp => grind [sem_typ_tapp]
-  case letin => grind [sem_typ_letin]
-  case subtyp => grind [sem_typ_subtyp]
+  case abs => apply sem_typ_abs; assumption
+  case tabs => apply sem_typ_tabs; assumption
+  case app => apply sem_typ_app <;> assumption
+  case tapp => apply sem_typ_tapp; assumption
+  case letin => apply sem_typ_letin <;> assumption
+  case subtyp => apply sem_typ_subtyp <;> assumption
 
 end Fsub

@@ -34,11 +34,7 @@ theorem eval_bool_val_eq
   (hv : v.IsBoolVal)
   (hev : Eval v v') :
   v = v' := by
-  cases hv
-  case btrue =>
-    cases hev; rfl
-  case bfalse =>
-    cases hev; rfl
+  cases hv <;> (cases hev; rfl)
 
 /-!
 Values evaluate to themselves.
@@ -67,14 +63,9 @@ theorem typed_store_lookup
   Ty.val_denot T (s.lookup x) := by
   induction hb
   case here =>
-    cases s; rename_i s0 v0
-    simp [TypedStore] at hts
-    simp [Store.lookup]
-    aesop
+    cases s; simp [TypedStore] at hts; simp [Store.lookup]; aesop
   case there ih =>
-    cases s; simp only [Store.lookup]
-    cases hts
-    grind
+    cases s; simp only [Store.lookup]; cases hts; grind
 
 theorem sem_typ_var
   (hb : Ctx.Lookup Γ x T) :

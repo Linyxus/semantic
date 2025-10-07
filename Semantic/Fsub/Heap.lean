@@ -16,8 +16,7 @@ def Heap.subsumes (big small : Heap) : Prop :=
   ∀ l v, small l = some v -> big l = some v
 
 theorem Heap.subsumes_refl (h : Heap) : h.subsumes h := by
-  intros l v hlookup
-  exact hlookup
+  intros l v hlookup; exact hlookup
 
 /-- Heap predicate. -/
 def Hprop := Heap -> Prop
