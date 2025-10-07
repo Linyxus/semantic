@@ -54,7 +54,7 @@ theorem sem_typ_tabs
         · exact hdenot_trans
         · constructor
           · exact himply
-          · exact hts
+          · apply env_typing_monotonic hts Hs
 
 theorem abs_val_denot_inv
   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
@@ -87,11 +87,12 @@ theorem tabs_val_denot_inv
   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
   ∃ fx, x = .free fx
     ∧ ∃ T0 e0 hv, store fx = some ⟨.tabs T0 e0, hv⟩
-    ∧ (∀ (denot : Denot),
+    ∧ (∀ (s' : Heap) (denot : Denot),
+      s'.subsumes store ->
       denot.is_monotonic ->
       denot.is_transparent ->
-      denot.Imply (Ty.val_denot env T1) ->
-      Ty.exp_denot (env.extend_tvar denot) T2 store (e0.subst (Subst.openTVar .top))) := by
+      denot.ImplyAfter s' (Ty.val_denot env T1) ->
+      Ty.exp_denot (env.extend_tvar denot) T2 s' (e0.subst (Subst.openTVar .top))) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -180,8 +181,12 @@ theorem sem_typ_tapp
   have henv_trans := typed_env_is_transparent hts
   have hmono : (Ty.val_denot env S).is_monotonic := val_denot_is_monotonic henv_mono
   have htrans : (Ty.val_denot env S).is_transparent := val_denot_is_transparent henv_trans
-  -- Apply hfun with monotonicity, transparency, and implication
-  have this := hfun (Ty.val_denot env S) hmono htrans (Denot.imply_refl _)
+  -- Prove reflexivity of ImplyAfter
+  have himply : (Ty.val_denot env S).ImplyAfter store (Ty.val_denot env S) := by
+    intro h' hsub e he
+    exact he
+  -- Apply hfun with heap, denot, monotonicity, transparency, and implication
+  have this := hfun store (Ty.val_denot env S) (Heap.subsumes_refl store) hmono htrans himply
   simp [Ty.exp_denot] at this ⊢
   -- Convert postcondition via open_targ_val_denot
   have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
@@ -193,7 +198,6 @@ theorem sem_typ_letin
   (ht2 : (Γ,x:T) ⊨ e2 : (U.rename Rename.succ)) :
   Γ ⊨ (.letin e1 e2) : U := by
   intro env store hts
-  have henv := typed_env_is_inert hts
   simp [Exp.subst]
   simp [Ty.exp_denot]
   -- Use Eval.eval_letin with Q1 = (Ty.val_denot env T).as_post
@@ -305,39 +309,50 @@ theorem sem_typ_letin
 theorem typed_env_lookup_tvar
   (hts : EnvTyping Γ env store)
   (hx : Ctx.LookupTVar Γ X S) :
-  (env.lookup_tvar X).Imply (Ty.val_denot env S) := by
+  (env.lookup_tvar X).ImplyAfter store (Ty.val_denot env S) := by
   induction hx generalizing store
   case here =>
+    -- In here case, S✝ is the actual type from the predecessor context
+    -- Goal: d.ImplyAfter store (Ty.val_denot (env0.extend_tvar d) (S✝.rename Rename.succ))
     cases env; rename_i info0 env0
-    cases info0
+    cases info0; rename_i d
     simp [EnvTyping] at hts
     simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
     have ⟨_, _, hd, _⟩ := hts
-    apply Denot.imply_trans
+    apply Denot.imply_after_trans
     · exact hd
-    · apply Denot.equiv_to_imply_l
-      apply tweaken_val_denot
+    · -- Convert equivalence to ImplyAfter
+      intro h' hsub e he
+      exact (tweaken_val_denot h' e).mp he
   case there b _ ih =>
+    -- In there case, we need to lift the IH through weakening
+    -- IH gives: (env0.lookup_tvar X✝).ImplyAfter store (Ty.val_denot env0 S✝)
+    -- Need: (env0.lookup_tvar X✝).ImplyAfter store
+    --       (Ty.val_denot (env0.extend_...) (S✝.rename Rename.succ))
     cases env; rename_i info0 env0
     cases info0
     case var =>
+      rename_i n
       cases b
       simp [EnvTyping] at hts
       obtain ⟨_, henv⟩ := hts
       specialize ih henv
-      apply Denot.imply_trans
+      simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+      apply Denot.imply_after_trans
       · exact ih
-      · apply Denot.equiv_to_imply_l
-        apply weaken_val_denot
+      · intro h' hsub e he
+        exact (weaken_val_denot h' e).mp he
     case tvar =>
+      rename_i d
       cases b
       simp [EnvTyping] at hts
       obtain ⟨_, _, _, henv⟩ := hts
       specialize ih henv
-      apply Denot.imply_trans
+      simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+      apply Denot.imply_after_trans
       · exact ih
-      · apply Denot.equiv_to_imply_l
-        apply tweaken_val_denot
+      · intro h' hsub e he
+        exact (tweaken_val_denot h' e).mp he
 
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env store)
@@ -399,31 +414,32 @@ lemma sem_subtyp_poly
   obtain ⟨T0, e0, hresolve, hfun⟩ := hans
   use T0, e0
   apply And.intro hresolve
-  intro denot hdenot_mono hdenot_trans himply_S2
-  have hS_at_heap' := hS type_env heap hts heap' hheap
-  have himply_S1 : denot.Imply (Ty.val_denot type_env S1) := by
-    intro s e hdenot
-    have hS2 := himply_S2 s e hdenot
-    specialize hS type_env s
-    sorry
+  intro H denot Hsub hdenot_mono hdenot_trans himply_S2
+  -- hfun expects denot.ImplyAfter H (Ty.val_denot type_env S1)
+  -- We have himply_S2 : denot.ImplyAfter H (Ty.val_denot type_env S2)
+  -- And hS : SemSubtyp Γ S2 S1, i.e., S2 <: S1
+  -- So we need to compose: denot -> S2 -> S1
+  have himply_S1 : denot.ImplyAfter H (Ty.val_denot type_env S1) := by
+    intro h' hs' e hdenot
+    have hS2 := himply_S2 h' hs' e hdenot
+    -- Apply hS at h'
+    have hS_trans := Heap.subsumes_trans hs' (Heap.subsumes_trans Hsub hheap)
+    apply hS type_env heap hts h' hS_trans e hS2
   -- Apply the original function with this denot
-  specialize hfun denot hdenot_mono hdenot_trans himply_S1
-  -- Now we have: exp_denot (env.extend_tvar denot) T1 heap' (e0.subst ...)
-  -- Need: exp_denot (env.extend_tvar denot) T2 heap' (e0.subst ...)
-  -- Use covariance hT
-  specialize hT (type_env.extend_tvar denot)
-  have henv' : EnvTyping (Γ,X<:S2) (type_env.extend_tvar denot) heap' := by
+  have heval1 := hfun H denot Hsub hdenot_mono hdenot_trans himply_S1
+  -- Now use covariance hT
+  have henv' : EnvTyping (Γ,X<:S2) (type_env.extend_tvar denot) H := by
     constructor
     · exact hdenot_mono
     · constructor
       · exact hdenot_trans
       · constructor
         · exact himply_S2
-        · apply env_typing_monotonic hts hheap
-  specialize hT heap' henv'
-  apply Denot.apply_imply_at hfun
+        · apply env_typing_monotonic hts (Heap.subsumes_trans Hsub hheap)
+  have hT_applied := hT (type_env.extend_tvar denot) H henv'
+  apply Denot.apply_imply_at heval1
   apply Denot.imply_after_to_imply_at
-  apply denot_implyat_lift hT
+  apply denot_implyat_lift hT_applied
 
 lemma sem_subtyp_arrow
   (hT : SemSubtyp Γ T2 T1)
@@ -455,17 +471,13 @@ lemma sem_subtyp_top {T : Ty s} :
   SemSubtyp Γ T .top := by
   intro type_env heap hts
   intro heap' hheap
-  have henv := typed_env_is_inert hts
-  apply Denot.imply_implyat
+  intro e he
   simp [Ty.val_denot]
-  have := val_denot_ans henv (T:=T)
-  exact this
 
 lemma sem_subtyp_refl {T : Ty s} :
   SemSubtyp Γ T T := by
   intro type_env heap hts
   intro heap' hheap
-  have henv := typed_env_is_inert hts
   apply Denot.imply_refl
 
 lemma sem_subtyp_trans
@@ -483,9 +495,8 @@ lemma sem_subtyp_tvar
   SemSubtyp Γ (.tvar X) S := by
   intro type_env heap hts
   intro heap' hheap
-  apply Denot.imply_implyat
   simp [Ty.val_denot]
-  apply typed_env_lookup_tvar hts hX
+  apply typed_env_lookup_tvar hts hX heap' hheap
 
 lemma sem_subtyp_singleton
   (hx : Ctx.LookupVar Γ x T) :
@@ -509,7 +520,7 @@ theorem fundamental_subtyp
   case tvar => grind [sem_subtyp_tvar]
   case singleton => grind [sem_subtyp_singleton]
   case arrow => grind [sem_subtyp_arrow]
-  case poly => sorry
+  case poly => grind [sem_subtyp_poly]
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
