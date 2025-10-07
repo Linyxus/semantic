@@ -126,8 +126,6 @@ mutual
 def Ty.val_denot : TypeEnv s -> Ty .shape s -> Denot
 | _, .top => fun _ _ => True
 | env, .tvar X => env.lookup_tvar X
-| env, .singleton x => fun _ e =>
-  e = .var (.free (interp_var env x))
 | env, .arrow T1 T2 => fun s e =>
   ∃ T0 e0,
     resolve s e = some (.abs T0 e0) ∧
@@ -436,13 +434,6 @@ theorem val_denot_is_transparent
   | .tvar X => by
     simp [Ty.val_denot]
     exact henv X
-  | .singleton z => by
-    rename_i v
-    intro hx hval
-    simp [Ty.val_denot] at hval
-    cases v; rename_i v hv
-    simp at hval; subst hval
-    cases hv
   | .arrow T1 T2 => by
     intro hx ht
     simp [Ty.val_denot] at ht ⊢
@@ -469,10 +460,6 @@ def val_denot_is_monotonic {T : Ty .shape s}
     intro hheap ht
     simp [Ty.val_denot] at ht ⊢
     apply henv X hheap ht
-  | .singleton x => by
-    intro hheap ht
-    simp [Ty.val_denot] at ht ⊢
-    exact ht
   | .arrow T1 T2 => by
     have ih1 : (Ty.val_denot env T1).is_monotonic :=
       val_denot_is_monotonic (T:=T1) henv

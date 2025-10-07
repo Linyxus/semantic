@@ -2,17 +2,63 @@ import Semantic.CC.Denotation
 import Semantic.CC.Eval
 namespace CC
 
-theorem sem_typ_var :
-  Γ ⊨ (.var x) : (.singleton x) := by
+theorem typed_env_lookup_var
+  (hts : EnvTyping Γ env store)
+  (hx : Ctx.LookupVar Γ x T) :
+  Ty.val_denot env T store (.var (.free (env.lookup_var x))) := by
+  induction hx generalizing store
+  case here =>
+    -- The environment must match the context structure
+    rename_i Γ0 T0
+    cases env; rename_i info0 env0
+    cases info0; rename_i n
+    simp [EnvTyping] at hts
+    simp [TypeEnv.lookup_var, TypeEnv.lookup]
+    -- Apply weaken_val_denot equivalence
+    have heqv := weaken_val_denot (env:=env0) (x:=n) (T:=T0)
+    apply (Denot.equiv_to_imply heqv).1
+    exact hts.1
+  case there b =>
+    -- Need to handle two cases based on the binding (b✝)
+    rename_i k Γ0 x0 T0 binding hlk
+    -- binding is the Binding, hlk is the lookup proof, b is the IH
+    cases binding
+    case var =>
+      -- binding is .var Tb
+      rename_i Tb
+      cases env; rename_i info0 env0
+      cases info0; rename_i n
+      simp [EnvTyping] at hts
+      obtain ⟨_, henv0⟩ := hts
+      -- Apply IH to get the result for env0
+      have hih := b henv0
+      -- Show that lookup_var .there reduces correctly
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      -- Apply weakening
+      have heqv := weaken_val_denot (env:=env0) (x:=n) (T:=T0)
+      apply (Denot.equiv_to_imply heqv).1
+      exact hih
+    case tvar =>
+      -- binding is .tvar Sb
+      rename_i Sb
+      cases env; rename_i info0 env0
+      cases info0; rename_i d
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, _, henv0⟩ := hts
+      have hih := b henv0
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      have heqv := tweaken_val_denot (env:=env0) (d:=d) (T:=T0)
+      apply (Denot.equiv_to_imply heqv).1
+      exact hih
+
+theorem sem_typ_var
+  (hx : Γ.LookupVar x T) :
+  Γ ⊨ (.var (.bound x)) : T := by
   intro s e hts
   simp [Ty.exp_denot]
   apply Eval.eval_var
-  cases x
-  case free fx =>
-    simp [Ty.val_denot, Denot.as_post, Var.subst, interp_var]
-  case bound bx =>
-    simp [Ty.val_denot, Denot.as_post, Var.subst, interp_var]
-    rfl
+  simp [Denot.as_post]
+  exact typed_env_lookup_var hts hx
 
 theorem sem_typ_abs
   (ht : (Γ,x:T1) ⊨ e : T2) :
@@ -354,55 +400,6 @@ theorem typed_env_lookup_tvar
       · intro h' hsub e he
         exact (tweaken_val_denot h' e).mp he
 
-theorem typed_env_lookup_var
-  (hts : EnvTyping Γ env store)
-  (hx : Ctx.LookupVar Γ x T) :
-  Ty.val_denot env T store (.var (.free (env.lookup_var x))) := by
-  induction hx generalizing store
-  case here =>
-    -- The environment must match the context structure
-    rename_i Γ0 T0
-    cases env; rename_i info0 env0
-    cases info0; rename_i n
-    simp [EnvTyping] at hts
-    simp [TypeEnv.lookup_var, TypeEnv.lookup]
-    -- Apply weaken_val_denot equivalence
-    have heqv := weaken_val_denot (env:=env0) (x:=n) (T:=T0)
-    apply (Denot.equiv_to_imply heqv).1
-    exact hts.1
-  case there b =>
-    -- Need to handle two cases based on the binding (b✝)
-    rename_i k Γ0 x0 T0 binding hlk
-    -- binding is the Binding, hlk is the lookup proof, b is the IH
-    cases binding
-    case var =>
-      -- binding is .var Tb
-      rename_i Tb
-      cases env; rename_i info0 env0
-      cases info0; rename_i n
-      simp [EnvTyping] at hts
-      obtain ⟨_, henv0⟩ := hts
-      -- Apply IH to get the result for env0
-      have hih := b henv0
-      -- Show that lookup_var .there reduces correctly
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      -- Apply weakening
-      have heqv := weaken_val_denot (env:=env0) (x:=n) (T:=T0)
-      apply (Denot.equiv_to_imply heqv).1
-      exact hih
-    case tvar =>
-      -- binding is .tvar Sb
-      rename_i Sb
-      cases env; rename_i info0 env0
-      cases info0; rename_i d
-      simp [EnvTyping] at hts
-      obtain ⟨_, _, _, henv0⟩ := hts
-      have hih := b henv0
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      have heqv := tweaken_val_denot (env:=env0) (d:=d) (T:=T0)
-      apply (Denot.equiv_to_imply heqv).1
-      exact hih
-
 lemma sem_subtyp_poly
   (hS : SemSubtyp Γ S2 S1) -- contravariant in bound
   (hT : SemSubtyp (Γ,X<:S2) T1 T2) -- covariant in body, under extended context
@@ -498,18 +495,6 @@ lemma sem_subtyp_tvar
   simp [Ty.val_denot]
   apply typed_env_lookup_tvar hts hX heap' hheap
 
-lemma sem_subtyp_singleton
-  (hx : Ctx.LookupVar Γ x T) :
-  SemSubtyp Γ (.singleton (.bound x)) T := by
-  intro type_env heap hts
-  intro heap' hheap
-  simp [Ty.val_denot, interp_var]
-  intro ans hans
-  subst hans
-  apply val_denot_is_monotonic _ hheap
-  · apply typed_env_lookup_var hts hx
-  · apply typed_env_is_monotonic hts
-
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
@@ -518,7 +503,6 @@ theorem fundamental_subtyp
   case refl => grind [sem_subtyp_refl]
   case trans => grind [sem_subtyp_trans]
   case tvar => grind [sem_subtyp_tvar]
-  case singleton => grind [sem_subtyp_singleton]
   case arrow => grind [sem_subtyp_arrow]
   case poly => grind [sem_subtyp_poly]
 
@@ -539,7 +523,7 @@ theorem fundamental
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
   induction ht
-  case var => apply sem_typ_var
+  case var hx => apply sem_typ_var hx
   case abs => grind [sem_typ_abs]
   case tabs => grind [sem_typ_tabs]
   case app => grind [sem_typ_app]

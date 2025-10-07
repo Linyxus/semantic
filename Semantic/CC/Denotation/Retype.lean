@@ -81,20 +81,6 @@ theorem retype_val_denot
   | .tvar X => by
     simp [Ty.val_denot, Ty.subst]
     exact ρ.tvar X
-  | .singleton x => by
-    simp [Ty.val_denot, Ty.subst]
-    intro s e
-    simp
-    cases x with
-    | bound x =>
-      conv =>
-        arg 1
-        simp [Var.subst, interp_var]
-      have := ρ.var x
-      simp [this]
-      aesop
-    | free n =>
-      simp [Var.subst, interp_var]
   | .arrow T1 T2 => by
     have ih1 := retype_val_denot ρ (T:=T1)
     simp [Ty.val_denot, Ty.subst]

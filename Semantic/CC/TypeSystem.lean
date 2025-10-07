@@ -54,10 +54,6 @@ inductive Subtyp : Ctx s -> Ty .shape s -> Ty .shape s -> Prop where
   Ctx.LookupTVar Γ X S ->
   -------------------
   Subtyp Γ (.tvar X) S
-| singleton :
-  Ctx.LookupVar Γ x T ->
-  -------------------
-  Subtyp Γ (.singleton (.bound x)) T
 | arrow :
   Subtyp Γ T2 T1 ->
   Subtyp (Γ,x:T2) U1 U2 ->
@@ -71,8 +67,9 @@ inductive Subtyp : Ctx s -> Ty .shape s -> Ty .shape s -> Prop where
 
 inductive HasType : Ctx s -> Exp s -> Ty .shape s -> Prop where
 | var :
+  Γ.LookupVar x T ->
   ----------------------------
-  HasType Γ (.var x) (.singleton x)
+  HasType Γ (.var (.bound x)) T
 | abs :
   HasType (Γ,x:T1) e T2 ->
   ----------------------------

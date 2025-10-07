@@ -49,11 +49,6 @@ def rebind_val_denot
     have h := ρ.var X
     simp [TypeEnv.lookup_tvar]
     grind
-  | .singleton x => by
-    simp [Ty.val_denot, Ty.rename]
-    have := rebind_interp_var ρ (x:=x)
-    apply Denot.eq_to_equiv
-    simp [this]
   | .arrow T1 T2 => by
     have ih1 := rebind_val_denot ρ (T:=T1)
     simp [Ty.val_denot, Ty.rename]

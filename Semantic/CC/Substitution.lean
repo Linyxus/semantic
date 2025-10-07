@@ -32,7 +32,6 @@ def Var.subst : Var s1 -> Subst s1 s2 -> Var s2
 def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, s => s.tvar x
-| .singleton x, s => .singleton (x.subst s)
 | .arrow T1 T2, s => .arrow (T1.subst s) (T2.subst s.lift)
 | .poly T1 T2, s => .poly (T1.subst s) (T2.subst s.lift)
 
@@ -138,7 +137,6 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   match T with
   | .top => rfl
   | .tvar X => simp [Ty.subst, Ty.rename, TVar.weaken_subst_comm_liftMany]
-  | .singleton x => simp [Ty.subst, Ty.rename, Var.weaken_subst_comm_liftMany]
   | .arrow T1 T2 =>
     have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x) (k0:=k0)
@@ -214,7 +212,6 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   induction T generalizing s2 s3 with
   | top => rfl
   | tvar x => rfl
-  | singleton x => simp [Ty.subst, Var.subst_comp]
   | arrow T1 T2 ih1 ih2 =>
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
   | poly T1 T2 ih1 ih2 =>
@@ -272,19 +269,12 @@ theorem Ty.subst_rename_levels {T : Ty sort s1} {σ : Subst s1 s2} {f : Nat -> N
   induction T generalizing s2 with
   | top => rfl
   | tvar X => rfl
-  | singleton x =>
-    simp [Ty.subst, Ty.rename_levels]
-    exact Var.subst_rename_levels
   | arrow T1 T2 ih1 ih2 =>
-    simp [Ty.subst, Ty.rename_levels]
-    constructor
-    · exact ih1
-    · rw [ih2, Subst.lift_rename_levels]
+    simp [Ty.subst, Ty.rename_levels, ih1]
+    rw [ih2, Subst.lift_rename_levels]
   | poly T1 T2 ih1 ih2 =>
-    simp [Ty.subst, Ty.rename_levels]
-    constructor
-    · exact ih1
-    · rw [ih2, Subst.lift_rename_levels]
+    simp [Ty.subst, Ty.rename_levels, ih1]
+    rw [ih2, Subst.lift_rename_levels]
 
 /-- Expression substitution commutes with level renaming. -/
 theorem Exp.subst_rename_levels {e : Exp s1} {σ : Subst s1 s2} {f : Nat -> Nat} :
