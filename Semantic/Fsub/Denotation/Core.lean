@@ -288,13 +288,6 @@ theorem Denot.imply_trans {d1 d2 d3 : Denot}
   intro s e h
   aesop
 
-def Denot.ans : Denot :=
-  fun _ e => Exp.IsAns e
-
-def TypeEnv.inert (env : TypeEnv s) : Prop :=
-  ∀ (x : BVar s .tvar),
-    (env.lookup_tvar x).Imply Denot.ans
-
 theorem resolve_var_heap_some
   (hheap : heap x = some v) :
   resolve heap (.var (.free x)) = some v.unwrap := by
@@ -310,23 +303,6 @@ theorem resolve_var_heap_trans
   resolve heap (.var (.free x)) = resolve heap (v.unwrap) := by
   rw [resolve_var_heap_some hheap]
   rw [resolve_val v.isVal]
-
-theorem resolve_var_or_val
-  (hv : resolve store e = some v) :
-  (∃ x, e = .var x) ∨ e = v := by
-  cases e
-  all_goals try (solve | aesop | simp [resolve] at hv; aesop)
-
-theorem resolve_ans_to_val
-  (hv : resolve store e = some v)
-  (hans : v.IsAns) :
-  e.IsAns := by
-  cases (resolve_var_or_val hv)
-  case inl h =>
-    have ⟨x, h⟩ := h
-    rw [h]
-    apply Exp.IsAns.is_var
-  case inr h => aesop
 
 def TypeEnv.is_monotonic (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
