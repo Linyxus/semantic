@@ -1,6 +1,6 @@
 import Semantic.CC.Denotation
 import Semantic.CC.Eval
-namespace Fsub
+namespace CC
 
 theorem sem_typ_var :
   Γ ⊨ (.var x) : (.singleton x) := by
@@ -547,4 +547,4 @@ theorem fundamental
   case letin => grind [sem_typ_letin]
   case subtyp => grind [sem_typ_subtyp]
 
-end Fsub
+end CC

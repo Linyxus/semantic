@@ -1,6 +1,6 @@
 import Semantic.CC.Denotation.Core
 import Semantic.CC.Denotation.Rebind
-namespace Fsub
+namespace CC
 
 structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
   var :
@@ -217,4 +217,4 @@ theorem open_targ_val_denot {env : TypeEnv s} {S : Ty s} {T : Ty (s,X)} :
     Ty.val_denot env (T.subst (Subst.openTVar S)) := by
   apply retype_val_denot Retype.open_targ
 
-end Fsub
+end CC

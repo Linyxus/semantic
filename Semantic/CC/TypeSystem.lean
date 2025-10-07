@@ -1,7 +1,7 @@
 import Semantic.CC.Syntax
 import Semantic.CC.Substitution
 
-namespace Fsub
+namespace CC
 
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty s -> Binding s .var
@@ -103,4 +103,4 @@ inductive HasType : Ctx s -> Exp s -> Ty s -> Prop where
 
 notation:65 Γ " ⊢ " e " : " T => HasType Γ e T
 
-end Fsub
+end CC

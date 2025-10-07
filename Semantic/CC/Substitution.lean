@@ -1,6 +1,6 @@
 import Semantic.CC.Syntax
 
-namespace Fsub
+namespace CC
 
 structure Subst (s1 s2 : Sig) where
   var : BVar s1 .var -> Var s2
@@ -330,4 +330,4 @@ theorem Subst.openVar_rename_levels {x : Var s} :
     intro X
     cases X; rfl
 
-end Fsub
+end CC

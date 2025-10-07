@@ -1,7 +1,7 @@
 import Semantic.CC.Eval
 import Semantic.CC.TypeSystem
 
-namespace Fsub
+namespace CC
 
 def resolve : Heap -> Exp {} -> Option (Exp {})
 | s, .var (.free x) =>
@@ -612,4 +612,4 @@ theorem denot_implyat_lift
   apply Hpost.entails_after_subsumes <;> try exact hheap
   apply Denot.imply_after_to_entails_after himp
 
-end Fsub
+end CC

@@ -4,7 +4,7 @@ import Semantic.CC.Debruijn
 Syntax definitions for F<:.
 -/
 
-namespace Fsub
+namespace CC
 
 inductive Var : Sig -> Type where
 | bound : BVar s .var -> Var s
@@ -194,4 +194,4 @@ inductive Exp.IsAns : Exp {} -> Prop where
 | is_var :
   Exp.IsAns (.var x)
 
-end Fsub
+end CC

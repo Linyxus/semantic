@@ -2,7 +2,7 @@ import Semantic.CC.Syntax
 import Semantic.CC.Substitution
 import Semantic.CC.Heap
 
-namespace Fsub
+namespace CC
 
 inductive Eval : Heap -> Exp {} -> Hpost -> Prop where
 | eval_val :
@@ -139,4 +139,4 @@ theorem eval_post_monotonic {Q1 Q2 : Hpost}
   apply eval_post_monotonic_general _ heval
   apply Hpost.entails_to_entails_after himp
 
-end Fsub
+end CC

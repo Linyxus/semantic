@@ -1,6 +1,6 @@
 import Semantic.CC.Syntax
 
-namespace Fsub
+namespace CC
 
 -- A heap is a function from locations to values
 def Heap : Type := Nat -> Option (Val {})
@@ -69,4 +69,4 @@ theorem Heap.extend_subsumes {H : Heap} {l : Nat}
   · -- l' ≠ l case: extended heap agrees with original
     exact hlookup
 
-end Fsub
+end CC

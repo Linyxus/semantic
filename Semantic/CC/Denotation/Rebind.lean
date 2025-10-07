@@ -1,5 +1,5 @@
 import Semantic.CC.Denotation.Core
-namespace Fsub
+namespace CC
 
 structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Prop where
   var :
@@ -149,4 +149,4 @@ lemma tweaken_val_denot {env : TypeEnv s} :
   Ty.val_denot env T ≈ Ty.val_denot (env.extend_tvar d) (T.rename Rename.succ) := by
   apply rebind_val_denot (ρ:=Rebind.tweaken) (T:=T)
 
-end Fsub
+end CC
