@@ -10,6 +10,14 @@ inductive Var : Sig -> Type where
 | bound : BVar s .var -> Var s
 | free : Nat -> Var s
 
+inductive TySort : Type where
+-- Capturing types
+| capt : TySort
+-- Shape types
+| shape : TySort
+-- Existential types
+| exi : TySort
+
 inductive Ty : Sig -> Type where
 | top : Ty s
 | tvar : BVar s .tvar -> Ty s
