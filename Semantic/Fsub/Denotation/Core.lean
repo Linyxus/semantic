@@ -271,7 +271,7 @@ theorem Denot.imply_trans {d1 d2 d3 : Denot}
   (h2 : d2.Imply d3) :
   d1.Imply d3 := by
   intro s e h
-  aesop
+  exact h2 s e (h1 s e h)
 
 theorem resolve_var_heap_some
   (hheap : heap x = some v) :
@@ -404,17 +404,10 @@ theorem val_denot_is_transparent
     cases v; rename_i v hv
     simp at hval; subst hval
     cases hv
-  | .arrow T1 T2 => by
+  | .arrow T1 T2 | .poly T1 T2 => by
     intro hx ht
     simp [Ty.val_denot] at ht ⊢
-    have heq := resolve_var_heap_trans hx
-    rw [heq]
-    exact ht
-  | .poly T1 T2 => by
-    intro hx ht
-    simp [Ty.val_denot] at ht ⊢
-    have heq := resolve_var_heap_trans hx
-    rw [heq]
+    rw [resolve_var_heap_trans hx]
     exact ht
 
 mutual

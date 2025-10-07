@@ -98,79 +98,46 @@ theorem retype_val_denot
   | .arrow T1 T2 => by
     have ih1 := retype_val_denot ρ (T:=T1)
     simp [Ty.val_denot, Ty.subst]
-    intro s0 e0
-    simp; constructor
-    next =>
+    intro s0 e0; simp; constructor <;> {
       intro h
-      have ⟨T0, body, hr, hd⟩ := h
-      use T0, body
-      apply And.intro hr
+      obtain ⟨T0, body, hr, hd⟩ := h
+      use T0, body, hr
       intro s' arg h_s harg
       have ih2 := retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
-      have harg' := (ih1 _ _).mpr harg
-      specialize hd s' arg h_s harg'
-      have hd' := (ih2 _ _).mp hd
-      exact hd'
-    next =>
-      intro h
-      have ⟨T0, body, hr, hd⟩ := h
-      use T0, body
-      apply And.intro hr
-      intro s' arg h_s harg
-      have ih2 := retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
-      have harg' := (ih1 _ _).mp harg
-      specialize hd s' arg h_s harg'
-      have hd' := (ih2 _ _).mpr hd
-      exact hd'
+      first
+      | exact (ih2 _ _).mp (hd s' arg h_s ((ih1 _ _).mpr harg))
+      | exact (ih2 _ _).mpr (hd s' arg h_s ((ih1 _ _).mp harg))
+    }
   | .poly T1 T2 => by
     have ih1 := retype_val_denot ρ (T:=T1)
     simp [Ty.val_denot, Ty.subst]
-    intro s0 e0; simp
-    constructor
-    next =>
+    intro s0 e0; simp; constructor <;> {
       intro h
-      have ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0
-      apply And.intro hr
+      obtain ⟨T0, e0, hr, hd⟩ := h
+      use T0, e0, hr
       intro H denot Hs hdenot_mono hdenot_trans himply
       have ih2 := retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
-      have himply' : denot.ImplyAfter H (Ty.val_denot env1 T1) := by
-        intro s hs e hdenot
-        have := (ih1 s e).mpr (himply s hs e hdenot)
-        exact this
-      specialize hd H denot Hs hdenot_mono hdenot_trans himply'
-      have hd' := (ih2 H (e0.subst (Subst.openTVar .top))).mp hd
-      exact hd'
-    next =>
-      intro h
-      have ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0
-      apply And.intro hr
-      intro H denot Hs hdenot_mono hdenot_trans himply
-      have ih2 := retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
-      have himply' : denot.ImplyAfter H (Ty.val_denot env2 (T1.subst σ)) := by
-        intro s hs e hdenot
-        have := (ih1 s e).mp (himply s hs e hdenot)
-        exact this
-      specialize hd H denot Hs hdenot_mono hdenot_trans himply'
-      have hd' := (ih2 H (e0.subst (Subst.openTVar .top))).mpr hd
-      exact hd'
+      first
+      | have himply' : denot.ImplyAfter H (Ty.val_denot env1 T1) := by
+          intro s hs e hdenot; exact (ih1 s e).mpr (himply s hs e hdenot)
+        exact (ih2 H _).mp (hd H denot Hs hdenot_mono hdenot_trans himply')
+      | have himply' : denot.ImplyAfter H (Ty.val_denot env2 (T1.subst σ)) := by
+          intro s hs e hdenot; exact (ih1 s e).mp (himply s hs e hdenot)
+        exact (ih2 H _).mpr (hd H denot Hs hdenot_mono hdenot_trans himply')
+    }
 
 theorem retype_exp_denot
   (ρ : Retype env1 σ env2) :
   Ty.exp_denot env1 T ≈ Ty.exp_denot env2 (T.subst σ) := by
   have ih := retype_val_denot ρ (T:=T)
-  intro s e
-  simp [Ty.exp_denot]
-  constructor
-  · intro h
+  intro s e; simp [Ty.exp_denot]; constructor <;> {
+    intro h
     apply eval_post_monotonic _ h
     apply Denot.imply_to_entails
-    apply (Denot.equiv_to_imply ih).1
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    apply (Denot.equiv_to_imply ih).2
+    first
+    | exact (Denot.equiv_to_imply ih).1
+    | exact (Denot.equiv_to_imply ih).2
+  }
 
 end
 

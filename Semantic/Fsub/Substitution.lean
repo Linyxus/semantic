@@ -65,8 +65,7 @@ theorem Subst.funext {σ1 σ2 : Subst s1 s2}
   (hvar : ∀ x, σ1.var x = σ2.var x)
   (htvar : ∀ x, σ1.tvar x = σ2.tvar x) :
   σ1 = σ2 := by
-  cases σ1; cases σ2
-  aesop
+  cases σ1; cases σ2; aesop
 
 /-!
 Composition of substitutions.

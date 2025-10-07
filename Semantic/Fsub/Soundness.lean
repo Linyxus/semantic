@@ -499,14 +499,14 @@ lemma sem_subtyp_singleton
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
-  induction hsub
-  case top => exact sem_subtyp_top
-  case refl => exact sem_subtyp_refl
-  case trans => exact sem_subtyp_trans (by assumption) (by assumption)
-  case tvar => exact sem_subtyp_tvar (by assumption)
-  case singleton => exact sem_subtyp_singleton (by assumption)
-  case arrow => exact sem_subtyp_arrow (by assumption) (by assumption)
-  case poly => exact sem_subtyp_poly (by assumption) (by assumption)
+  induction hsub with
+  | top => exact sem_subtyp_top
+  | refl => exact sem_subtyp_refl
+  | trans _ _ ih1 ih2 => exact sem_subtyp_trans ih1 ih2
+  | tvar h => exact sem_subtyp_tvar h
+  | singleton h => exact sem_subtyp_singleton h
+  | arrow _ _ ih1 ih2 => exact sem_subtyp_arrow ih1 ih2
+  | poly _ _ ih1 ih2 => exact sem_subtyp_poly ih1 ih2
 
 theorem sem_typ_subtyp
   (ht : Γ ⊨ e : T1)
@@ -524,13 +524,13 @@ theorem sem_typ_subtyp
 theorem fundamental
   (ht : Γ ⊢ e : T) :
   Γ ⊨ e : T := by
-  induction ht
-  case var => apply sem_typ_var
-  case abs => apply sem_typ_abs; assumption
-  case tabs => apply sem_typ_tabs; assumption
-  case app => apply sem_typ_app <;> assumption
-  case tapp => apply sem_typ_tapp; assumption
-  case letin => apply sem_typ_letin <;> assumption
-  case subtyp => apply sem_typ_subtyp <;> assumption
+  induction ht with
+  | var => exact sem_typ_var
+  | abs _ ih => exact sem_typ_abs ih
+  | tabs _ ih => exact sem_typ_tabs ih
+  | app _ _ ih1 ih2 => exact sem_typ_app ih1 ih2
+  | tapp _ ih => exact sem_typ_tapp ih
+  | letin _ _ ih1 ih2 => exact sem_typ_letin ih1 ih2
+  | subtyp _ hsub ih => exact sem_typ_subtyp ih hsub
 
 end Fsub
