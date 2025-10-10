@@ -9,6 +9,7 @@ namespace CC
 inductive Kind : Type where
 | var : Kind
 | tvar : Kind
+| cvar : Kind
 
 @[reducible]
 def Sig : Type := List Kind
@@ -18,6 +19,7 @@ instance Sig.instEmptyCollection : EmptyCollection Sig where
 
 def Sig.extend_var : Sig -> Sig := fun s => .var :: s
 def Sig.extend_tvar : Sig -> Sig := fun s => .tvar :: s
+def Sig.extend_cvar : Sig -> Sig := fun s => .cvar :: s
 def Sig.extend : Sig -> Kind -> Sig := fun s k => k :: s
 
 def Sig.extendMany : Sig -> Sig -> Sig
@@ -26,6 +28,7 @@ def Sig.extendMany : Sig -> Sig -> Sig
 
 postfix:80 ",x" => Sig.extend_var
 postfix:80 ",X" => Sig.extend_tvar
+postfix:80 ",C" => Sig.extend_cvar
 infixl:65 ",," => Sig.extend
 
 instance Sig.instAppend : Append Sig where
