@@ -116,7 +116,7 @@ def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : Denot :=
   match Γ.lookup x with
   | .tvar T => T
 
-def interp_var (env : TypeEnv s) (x : Var s) : Nat :=
+def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
   match x with
   | .free n => n
   | .bound x => env.lookup_var x

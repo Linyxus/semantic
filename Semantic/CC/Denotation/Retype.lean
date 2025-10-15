@@ -11,11 +11,11 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
     ∀ (X : BVar s1 .tvar),
       env1.lookup_tvar X ≈ Ty.val_denot env2 (σ.tvar X)
 
-lemma weaken_interp_var {x : Var s} :
+lemma weaken_interp_var {x : Var .var s} :
   interp_var env x = interp_var (env.extend_var arg) (x.rename Rename.succ) := by
   cases x <;> rfl
 
-lemma tweaken_interp_var {x : Var s} :
+lemma tweaken_interp_var {x : Var .var s} :
   interp_var env x = interp_var (env.extend_tvar d) (x.rename Rename.succ) := by
   cases x <;> rfl
 
@@ -160,7 +160,7 @@ theorem retype_exp_denot
 
 end
 
-def Retype.open_arg {env : TypeEnv s} {y : Var s} :
+def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
   Retype
     (env.extend_var (interp_var env y))
     (Subst.openVar y)
@@ -177,7 +177,7 @@ def Retype.open_arg {env : TypeEnv s} {y : Var s} :
       apply Denot.eq_to_equiv
       simp [Ty.val_denot, TypeEnv.lookup_tvar]
 
-theorem open_arg_val_denot {env : TypeEnv s} {y : Var s} {T : Ty .shape (s,x)} :
+theorem open_arg_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .shape (s,x)} :
   Ty.val_denot (env.extend_var (interp_var env y)) T ≈
     Ty.val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_val_denot Retype.open_arg

@@ -6,19 +6,15 @@ Expression definitions and operations for CC.
 
 namespace CC
 
-inductive Var : Sig -> Type where
-| bound : BVar s .var -> Var s
-| free : Nat -> Var s
-
 inductive Exp : Sig -> Type where
-| var : Var s -> Exp s
+| var : Var .var s -> Exp s
 | abs : Ty .shape s -> Exp (s,x) -> Exp s
 | tabs : Ty .shape s -> Exp (s,X) -> Exp s
-| app : Var s -> Var s -> Exp s
-| tapp : Var s -> Ty .shape s -> Exp s
+| app : Var .var s -> Var .var s -> Exp s
+| tapp : Var .var s -> Ty .shape s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
 
-def Var.rename : Var s1 -> Rename s1 s2 -> Var s2
+def Var.rename : Var k s1 -> Rename s1 s2 -> Var k s2
 | .bound x, f => .bound (f.var x)
 | .free n, _ => .free n
 
@@ -38,7 +34,7 @@ structure Val (s : Sig) where
   unwrap : Exp s
   isVal : unwrap.IsVal
 
-def Var.rename_id {x : Var s} : x.rename (Rename.id) = x := by
+def Var.rename_id {x : Var k s} : x.rename (Rename.id) = x := by
   cases x <;> rfl
 
 def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
@@ -47,7 +43,7 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
       | rfl
       | simp [Exp.rename, Ty.rename_id, Var.rename_id, Rename.lift_id]; try aesop)
 
-theorem Var.rename_comp {x : Var s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+theorem Var.rename_comp {x : Var k s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (x.rename f).rename g = x.rename (f.comp g) := by
   cases x <;> rfl
 
@@ -58,7 +54,7 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
       | rfl
       | simp [Exp.rename, Ty.rename_comp, Var.rename_comp, Rename.lift_comp]; try aesop)
 
-theorem Var.weaken_rename_comm {x : Var s1} {f : Rename s1 s2} :
+theorem Var.weaken_rename_comm {x : Var k s1} {f : Rename s1 s2} :
     (x.rename Rename.succ).rename (f.lift (k:=k0)) = (x.rename f).rename (Rename.succ) := by
   simp [Var.rename_comp, Rename.succ_lift_comm]
 

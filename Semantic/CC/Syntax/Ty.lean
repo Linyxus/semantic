@@ -1,4 +1,5 @@
 import Semantic.CC.Debruijn
+import Semantic.CC.Syntax.CaptureSet
 
 /-!
 Type definitions and operations for CC.

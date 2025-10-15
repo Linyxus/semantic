@@ -32,7 +32,7 @@ inductive Eval : Heap -> Exp {} -> Hpost -> Prop where
         (h1.extend l' ⟨v, hv⟩)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
-  (h_var : ∀ {h1} {x : Var {}},
+  (h_var : ∀ {h1} {x : Var .var {}},
     (h1.subsumes h) ->
     Q1 (.var x) h1 ->
     Eval h1 (e2.subst (Subst.openVar x)) Q) ->

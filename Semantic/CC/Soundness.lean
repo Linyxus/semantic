@@ -167,7 +167,7 @@ theorem tabs_val_denot_inv
           exact hres
       · exact hfun
 
-theorem interp_var_subst (x : Var s) :
+theorem interp_var_subst (x : Var .var s) :
   .free (interp_var env x) = x.subst (Subst.from_TypeEnv env) := by
   cases x <;> rfl
 
@@ -179,7 +179,7 @@ theorem var_exp_denot_inv
   case eval_val hv _ => cases hv
   case eval_var hQ => exact hQ
 
-theorem closed_var_inv (x : Var {}) :
+theorem closed_var_inv (x : Var .var {}) :
   ∃ fx, x = .free fx := by
   cases x
   case bound bx => cases bx

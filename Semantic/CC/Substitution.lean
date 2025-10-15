@@ -3,7 +3,7 @@ import Semantic.CC.Syntax
 namespace CC
 
 structure Subst (s1 s2 : Sig) where
-  var : BVar s1 .var -> Var s2
+  var : BVar s1 .var -> Var .var s2
   tvar : BVar s1 .tvar -> Ty .shape s2
 
 def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
@@ -25,7 +25,7 @@ def Subst.id {s : Sig} : Subst s s where
   var := fun x => .bound x
   tvar := fun x => .tvar x
 
-def Var.subst : Var s1 -> Subst s1 s2 -> Var s2
+def Var.subst : Var .var s1 -> Subst s1 s2 -> Var .var s2
 | .bound x, s => s.var x
 | .free n, _ => .free n
 
@@ -43,7 +43,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
 | .letin e1 e2, s => .letin (e1.subst s) (e2.subst s.lift)
 
-def Subst.openVar (x : Var s) : Subst (s,x) s where
+def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   var := fun
     | .here => x
     | .there x0 => .bound x0
@@ -109,7 +109,7 @@ theorem TVar.weaken_subst_comm_liftMany {X : BVar (s1 ++ K) .tvar} {σ : Subst s
       simp [Ty.weaken_rename_comm]
       grind
 
-theorem Var.weaken_subst_comm_liftMany {x : Var (s1 ++ K)} {σ : Subst s1 s2} :
+theorem Var.weaken_subst_comm_liftMany {x : Var .var (s1 ++ K)} {σ : Subst s1 s2} :
   (x.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
   (x.rename (Rename.succ.liftMany K)).subst (σ.lift (k:=k0).liftMany K) := by
   induction K with
@@ -152,7 +152,7 @@ theorem Ty.weaken_subst_comm_base {T : Ty sort s1} {σ : Subst s1 s2} :
   (T.subst σ).rename (Rename.succ (k:=k)) = (T.rename Rename.succ).subst (σ.lift (k:=k)) :=
   Ty.weaken_subst_comm (K:=[])
 
-theorem Var.weaken_subst_comm_base {x : Var s1} {σ : Subst s1 s2} :
+theorem Var.weaken_subst_comm_base {x : Var .var s1} {σ : Subst s1 s2} :
   (x.subst σ).rename (Rename.succ (k:=k)) = (x.rename Rename.succ).subst (σ.lift) := by
   cases x with
   | bound x => rfl
@@ -197,7 +197,7 @@ theorem Subst.comp_liftMany {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {K : Sig} :
 Substituting a composition of substitutions is the same as
 substituting one after the other for a variable.
 -/
-theorem Var.subst_comp {x : Var s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+theorem Var.subst_comp {x : Var .var s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (x.subst σ1).subst σ2 = x.subst (σ1.comp σ2) := by
   cases x with
   | bound x => rfl
