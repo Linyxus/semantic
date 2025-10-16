@@ -14,10 +14,6 @@ inductive Exp : Sig -> Type where
 | tapp : Var .var s -> Ty .shape s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
 
-def Var.rename : Var k s1 -> Rename s1 s2 -> Var k s2
-| .bound x, f => .bound (f.var x)
-| .free n, _ => .free n
-
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
 | .abs T e, f => .abs (T.rename f) (e.rename (f.lift))
