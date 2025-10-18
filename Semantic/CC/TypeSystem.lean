@@ -124,6 +124,14 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (Cf.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
   HasType {} Γ (.tabs S e) (.typ (.capt Cf (.poly S T)))
+| cabs :
+  HasType (Cf.rename Rename.succ) (Γ,C<:cb) e T ->
+  -----------------------------
+  HasType {} Γ (.cabs cb e) (.typ (.capt Cf (.cpoly cb T)))
+| pack :
+  HasType (.var x) Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
+  ----------------------------
+  HasType (.var x) Γ (.pack C x) (.exi T)
 | app :
   HasType C Γ (.var x) (.typ (.capt Cx (.arrow T1 T2))) ->
   HasType C Γ (.var y) (.typ T1) ->
@@ -138,6 +146,15 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
   HasType C Γ (.letin e1 e2) U
+| unpack :
+  HasType C Γ t (.exi T) ->
+  HasType
+    ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here)))
+    (Γ,C<:.unbound,x:T)
+    u
+    ((U.rename Rename.succ).rename Rename.succ) ->
+  --------------------------------------------
+  HasType C Γ (.unpack t u) U
 | subtyp :
   HasType C1 Γ e E1 ->
   Subcapt Γ C1 C2 ->
@@ -145,6 +162,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType C2 Γ e E2
 
-notation:65 Γ " ⊢ " e " : " T => HasType Γ e T
+notation:65 C "#" Γ " ⊢ " e " : " T => HasType C Γ e T
 
 end CC

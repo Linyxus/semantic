@@ -87,6 +87,15 @@ def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
   cvar := fun
     | .there x => .cvar (.bound x)
 
+def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
+  var := fun
+    | .there x => .bound x
+  tvar := fun
+    | .there x => .tvar x
+  cvar := fun
+    | .here => C
+    | .there x => .cvar (.bound x)
+
 /-!
 Function extensionality principle for substitutions.
 -/

@@ -16,7 +16,7 @@ inductive Exp : Sig -> Type where
 | tapp : Var .var s -> Ty .shape s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
-| unpack : Exp s -> Exp ((s,C),X) -> Exp s
+| unpack : Exp s -> Exp ((s,C),x) -> Exp s
 
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
