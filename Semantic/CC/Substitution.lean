@@ -121,6 +121,18 @@ theorem Rename.lift_there_var_eq {f : Rename s1 s2} {x : BVar s1 .var} :
   (f.lift (k:=k)).var (.there x) = (f.var x).there := by
   rfl
 
+theorem Subst.lift_there_cvar_eq {σ : Subst s1 s2} {C : BVar s1 .cvar} :
+  (σ.lift (k:=k)).cvar (.there C) = (σ.cvar C).rename Rename.succ := by
+  rfl
+
+theorem Rename.lift_there_cvar_eq {f : Rename s1 s2} {C : BVar s1 .cvar} :
+  (f.lift (k:=k)).var (.there C) = (f.var C).there := by
+  rfl
+
+theorem CaptureSet.weaken_rename_comm {cs : CaptureSet s1} {f : Rename s1 s2} :
+  (cs.rename Rename.succ).rename (f.lift (k:=k0)) = (cs.rename f).rename (Rename.succ) := by
+  simp [CaptureSet.rename_comp, Rename.succ_lift_comm]
+
 theorem TVar.weaken_subst_comm_liftMany {X : BVar (s1 ++ K) .tvar} {σ : Subst s1 s2} :
   ((σ.liftMany K).tvar X).rename ((Rename.succ (k:=k0)).liftMany K) =
   (σ.lift (k:=k0).liftMany K).tvar ((Rename.succ (k:=k0).liftMany K).var X) := by
@@ -162,6 +174,25 @@ theorem Var.weaken_subst_comm_liftMany {x : Var .var (s1 ++ K)} {σ : Subst s1 s
         congr
     | free n => simp [Var.subst, Var.rename]
 
+theorem CVar.weaken_subst_comm_liftMany {C : BVar (s1 ++ K) .cvar} {σ : Subst s1 s2} :
+  ((σ.liftMany K).cvar C).rename ((Rename.succ (k:=k0)).liftMany K) =
+  (σ.lift (k:=k0).liftMany K).cvar ((Rename.succ (k:=k0).liftMany K).var C) := by
+  induction K with
+  | nil =>
+    simp [Subst.liftMany, Rename.liftMany]
+    cases C with
+    | here => simp [Subst.lift, Rename.succ]
+    | there C => rfl
+  | cons k K ih =>
+    simp [Subst.liftMany, Rename.liftMany]
+    cases C with
+    | here => rfl
+    | there C =>
+      simp [Rename.lift_there_cvar_eq]
+      simp [Subst.lift_there_cvar_eq]
+      simp [CaptureSet.weaken_rename_comm]
+      grind
+
 theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : Subst s1 s2} :
   (cs.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
   (cs.rename (Rename.succ.liftMany K)).subst (σ.lift (k:=k0).liftMany K) := by
@@ -173,7 +204,12 @@ theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : 
     simp [CaptureSet.subst, CaptureSet.rename]
     exact Var.weaken_subst_comm_liftMany
   | cvar x =>
-    sorry
+    cases x with
+    | bound C =>
+      simp [CaptureSet.subst, CaptureSet.rename, Var.rename]
+      exact CVar.weaken_subst_comm_liftMany
+    | free n =>
+      simp [CaptureSet.subst, CaptureSet.rename, Var.rename]
 
 theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -213,6 +249,13 @@ theorem Var.weaken_subst_comm_base {x : Var .var s1} {σ : Subst s1 s2} :
   | bound x => rfl
   | free n => rfl
 
+theorem CVar.weaken_subst_comm_base {C : BVar s1 .cvar} {σ : Subst s1 s2} :
+  (σ.cvar C).rename (Rename.succ (k:=k)) =
+  (σ.lift (k:=k)).cvar ((Rename.succ (k:=k)).var C) := by
+  cases C with
+  | here => simp [Subst.lift, Rename.succ]
+  | there C => rfl
+
 theorem CaptureSet.weaken_subst_comm_base {cs : CaptureSet s1} {σ : Subst s1 s2} :
   (cs.subst σ).rename (Rename.succ (k:=k)) = (cs.rename Rename.succ).subst (σ.lift) := by
   induction cs with
@@ -226,7 +269,7 @@ theorem CaptureSet.weaken_subst_comm_base {cs : CaptureSet s1} {σ : Subst s1 s2
     cases x with
     | bound x =>
       simp [CaptureSet.subst, CaptureSet.rename, Var.rename, Subst.lift]
-      sorry
+      exact CVar.weaken_subst_comm_base
     | free n =>
       simp [CaptureSet.subst, CaptureSet.rename, Var.rename]
 
