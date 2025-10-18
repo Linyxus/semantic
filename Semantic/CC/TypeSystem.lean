@@ -6,12 +6,12 @@ namespace CC
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : Ty .shape s -> Binding s .tvar
-| cvar : Binding s .cvar
+| cvar : CaptureBound s -> Binding s .cvar
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
 | .tvar T, f => .tvar (T.rename f)
-| .cvar, _ => .cvar
+| .cvar cb, f => .cvar (cb.rename f)
 
 inductive Ctx : Sig -> Type where
 | empty : Ctx {}
@@ -23,12 +23,12 @@ def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 def Ctx.push_tvar : Ctx s -> Ty .shape s -> Ctx (s,X)
 | Γ, T => Γ.push (.tvar T)
 
-def Ctx.push_cvar : Ctx s -> Ctx (s,C)
-| Γ => Γ.push .cvar
+def Ctx.push_cvar : Ctx s -> CaptureBound s -> Ctx (s,C)
+| Γ, cb => Γ.push (.cvar cb)
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
-postfix:65 ",C<:*" => Ctx.push_cvar
+infixl:65 ",C<:" => Ctx.push_cvar
 
 inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> Ty .shape s -> Prop
 | here :
@@ -44,12 +44,12 @@ inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
   Ctx.LookupVar Γ x T ->
   Ctx.LookupVar (.push Γ b) (.there x) (T.rename Rename.succ)
 
-inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> Prop
+inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> CaptureBound s -> Prop
 | here :
-  Ctx.LookupCVar (.push Γ .cvar) .here
+  Ctx.LookupCVar (.push Γ (.cvar cb)) .here (cb.rename Rename.succ)
 | there {b : Binding s k} :
-  Ctx.LookupCVar Γ X ->
-  Ctx.LookupCVar (.push Γ b) (.there X)
+  Ctx.LookupCVar Γ c cb ->
+  Ctx.LookupCVar (.push Γ b0) (.there c) (cb.rename Rename.succ)
 
 inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_trans :
@@ -103,7 +103,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.capt C1 S1) (.capt C2 S2)
 | exi :
-  Subtyp (Γ,C<:*) T1 T2 ->
+  Subtyp (Γ,C<:.unbound) T1 T2 ->
   --------------------------
   Subtyp Γ (.exi T1) (.exi T2)
 | typ :
@@ -117,32 +117,33 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (.var (.bound x)) Γ (.var (.bound x)) (.typ T)
 | abs :
-  HasType (Γ,x:T1) e T2 ->
+  HasType (Cf.rename Rename.succ ∪ (.var (.bound .here))) (Γ,x:T1) e T2 ->
   ----------------------------
-  HasType Γ (.abs T1 e) (.typ (.arrow T1 T2))
+  HasType {} Γ (.abs T1 e) (.typ (.capt Cf (.arrow T1 T2)))
 | tabs :
-  HasType (Γ,X<:S) e T ->
+  HasType (Cf.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
-  HasType Γ (.tabs S e) (.poly S T)
+  HasType {} Γ (.tabs S e) (.typ (.capt Cf (.poly S T)))
 | app :
-  HasType Γ (.var x) (.arrow T1 T2) ->
-  HasType Γ (.var y) T1 ->
+  HasType C Γ (.var x) (.typ (.capt Cx (.arrow T1 T2))) ->
+  HasType C Γ (.var y) (.typ T1) ->
   ----------------------------
-  HasType Γ (.app x y) (T2.subst (Subst.openVar y))
+  HasType C Γ (.app x y) (T2.subst (Subst.openVar y))
 | tapp :
-  HasType Γ (.var x) (.poly S T) ->
+  HasType C Γ (.var x) (.typ (.capt Cx (.poly S T))) ->
   ----------------------------
-  HasType Γ (.tapp x S) (T.subst (Subst.openTVar S))
+  HasType C Γ (.tapp x S) (T.subst (Subst.openTVar S))
 | letin :
-  HasType Γ e1 T ->
-  HasType (Γ,x:T) e2 (U.rename Rename.succ) ->
+  HasType C Γ e1 (.typ T) ->
+  HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
-  HasType Γ (.letin e1 e2) U
+  HasType C Γ (.letin e1 e2) U
 | subtyp :
-  HasType Γ e S ->
-  Subtyp Γ S T ->
+  HasType C1 Γ e E1 ->
+  Subcapt Γ C1 C2 ->
+  Subtyp Γ E1 E2 ->
   ----------------------------
-  HasType Γ e T
+  HasType C2 Γ e E2
 
 notation:65 Γ " ⊢ " e " : " T => HasType Γ e T
 
