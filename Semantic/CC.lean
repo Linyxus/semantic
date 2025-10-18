@@ -2,7 +2,7 @@ import Semantic.CC.Debruijn
 
 import Semantic.CC.Syntax
 
--- import Semantic.CC.Substitution
+import Semantic.CC.Substitution
 
 -- import Semantic.CC.TypeSystem
 
