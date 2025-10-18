@@ -43,11 +43,16 @@ def CaptureSet.subst : CaptureSet s1 -> Subst s1 s2 -> CaptureSet s2
   | .bound x => σ.cvar x
   | .free n => .cvar (.free n)
 
+def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
+| .unbound, _ => .unbound
+| .bound cs, σ => .bound (cs.subst σ)
+
 def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, s => s.tvar x
 | .arrow T1 T2, s => .arrow (T1.subst s) (T2.subst s.lift)
 | .poly T1 T2, s => .poly (T1.subst s) (T2.subst s.lift)
+| .cpoly cb T, s => .cpoly (cb.subst s) (T.subst s.lift)
 | .capt cs T, s => .capt (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
@@ -56,7 +61,8 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
 | .abs T e, s => .abs (T.subst s) (e.subst s.lift)
 | .tabs T e, s => .tabs (T.subst s) (e.subst s.lift)
-| .cabs e, s => .cabs (e.subst s.lift)
+| .cabs cb e, s => .cabs (cb.subst s) (e.subst s.lift)
+| .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
 | .capp x cs, s => .capp (x.subst s) (cs.subst s)
@@ -211,6 +217,14 @@ theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : 
     | free n =>
       simp [CaptureSet.subst, CaptureSet.rename, Var.rename]
 
+theorem CaptureBound.weaken_subst_comm_liftMany {cb : CaptureBound (s1 ++ K)} {σ : Subst s1 s2} :
+  (cb.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
+  (cb.rename (Rename.succ.liftMany K)).subst (σ.lift (k:=k0).liftMany K) := by
+  cases cb with
+  | unbound => rfl
+  | bound cs =>
+    simp [CaptureBound.subst, CaptureBound.rename, CaptureSet.weaken_subst_comm_liftMany]
+
 theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
     (T.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K) := by
@@ -227,6 +241,11 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X) (k0:=k0)
     simp [Ty.subst, Ty.rename, ih1]
     exact ih2
+  | .cpoly cb T =>
+    have ihCB := CaptureBound.weaken_subst_comm_liftMany (cb:=cb) (σ:=σ) (K:=K) (k0:=k0)
+    have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
+    simp [Ty.subst, Ty.rename, ihCB]
+    exact ihT
   | .capt cs T =>
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -340,6 +359,12 @@ theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Su
     | free n =>
       simp [CaptureSet.subst]
 
+theorem CaptureBound.subst_comp {cb : CaptureBound s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+  (cb.subst σ1).subst σ2 = cb.subst (σ1.comp σ2) := by
+  cases cb with
+  | unbound => rfl
+  | bound cs => simp [CaptureBound.subst, CaptureSet.subst_comp]
+
 /-!
 Substituting a composition of substitutions is the same as
 substituting one after the other for a type.
@@ -353,6 +378,8 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
   | poly T1 T2 ih1 ih2 =>
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
+  | cpoly cb T ih =>
+    simp [Ty.subst, ih, CaptureBound.subst_comp, Subst.comp_lift]
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp]
   | exi T ih =>
@@ -372,8 +399,10 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
   | tabs T e ih_e =>
     simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
-  | cabs e ih_e =>
-    simp [Exp.subst, ih_e, Subst.comp_lift]
+  | cabs cb e ih_e =>
+    simp [Exp.subst, CaptureBound.subst_comp, ih_e, Subst.comp_lift]
+  | pack cs x =>
+    simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp [Exp.subst, Var.subst_comp]
   | tapp x T => simp [Exp.subst, Var.subst_comp, Ty.subst_comp]
   | capp x cs =>
