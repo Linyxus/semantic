@@ -52,4 +52,25 @@ theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rena
     · simp [CaptureSet.rename, Var.rename]; rfl
     · simp [CaptureSet.rename, Var.rename]
 
+inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
+| refl :
+  --------------------
+  Subset C C
+| union_left :
+  Subset C1 C ->
+  Subset C2 C ->
+  --------------------
+  Subset (C1.union C2) C
+| union_right_left :
+  Subset C C1 ->
+  --------------------
+  Subset C (C1.union C2)
+| union_right_right {C1 : CaptureSet s} :
+  Subset C C2 ->
+  --------------------
+  Subset C (C1.union C2)
+
+instance CaptureSet.instHasSubset : HasSubset (CaptureSet s) where
+  Subset := CaptureSet.Subset
+
 end CC
