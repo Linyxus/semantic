@@ -17,6 +17,9 @@ instance Heap.instEmptyCollection : EmptyCollection Heap := ⟨Heap.empty⟩
 def Heap.extend (h : Heap) (l : Nat) (v : Val {}) : Heap :=
   fun l' => if l' = l then some (.val v) else h l'
 
+def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
+  fun l' => if l' = l then some .capability else h l'
+
 def Heap.subsumes (big small : Heap) : Prop :=
   ∀ l v, small l = some v -> big l = some v
 

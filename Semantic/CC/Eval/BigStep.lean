@@ -21,6 +21,11 @@ inductive Eval : Heap -> Exp {} -> Hpost -> Prop where
   h y = some (.val ⟨.unit, hv⟩) ->
   Q .unit h ->
   Eval h (.app (.free x) (.free y)) Q
+| eval_newcap {h : Heap} {l : Nat} :
+  (∀ l,
+    h l = none ->
+    Q (.pack (.var (.free l)) (.free l)) h) ->
+  Eval h (.newcap) Q
 | eval_tapply {h : Heap} {x : Nat} :
   h x = some (.val ⟨.tabs T0 e, hv⟩) ->
   Eval h (e.subst (Subst.openTVar .top)) Q ->
@@ -49,8 +54,12 @@ theorem eval_monotonic {h1 h2 : Heap}
   (heval : Eval h1 e Q) :
   Eval h2 e Q := by
   induction heval generalizing h2
-  case eval_val => grind [Eval, Hpost.is_monotonic]
-  case eval_var => grind [Eval, Hpost.is_monotonic]
+  case eval_val hv hQ =>
+    apply Eval.eval_val hv
+    apply hpred hsub hQ
+  case eval_var hQ =>
+    apply Eval.eval_var
+    apply hpred hsub hQ
   case eval_apply hx _ ih =>
     specialize ih hpred hsub
     apply Eval.eval_apply
@@ -61,6 +70,20 @@ theorem eval_monotonic {h1 h2 : Heap}
     · apply hsub _ _ hx
     · apply hsub _ _ hy
     · apply hpred <;> assumption
+  case eval_newcap hQ =>
+    rename_i Q_orig h_orig _l_unused
+    refine Eval.eval_newcap (l:=0) ?_
+    intro l hl
+    -- If h2 l = none and h2.subsumes h_orig, then h_orig l = none
+    have h_orig_none : h_orig l = none := by
+      by_contra h
+      cases h_orig_l : h_orig l
+      · contradiction
+      · have := hsub l _ h_orig_l
+        rw [hl] at this
+        contradiction
+    have := hQ l h_orig_none
+    apply hpred hsub this
   case eval_tapply hx _ ih =>
     specialize ih hpred hsub
     apply Eval.eval_tapply
@@ -128,6 +151,12 @@ theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
   case eval_invoke hx hy hQ =>
     apply Eval.eval_invoke hx hy
     apply himp _ _ _ hQ
+    apply Heap.subsumes_refl
+  case eval_newcap hQ =>
+    refine Eval.eval_newcap (l:=0) ?_
+    intro l hl
+    have := hQ l hl
+    apply himp _ _ _ this
     apply Heap.subsumes_refl
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply hx
