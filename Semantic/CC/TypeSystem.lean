@@ -155,6 +155,17 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
   HasType C Γ (.unpack t u) U
+| newcap :
+  ----------------------------
+  HasType {} Γ (.newcap) (.exi (.capt (.cvar (.bound .here)) .cap))
+| unit :
+  ----------------------------
+  HasType {} Γ (.unit) (.typ (.capt {} .unit))
+| invoke :
+  HasType C Γ (.var x) (.typ (.capt Cx .cap)) ->
+  HasType C Γ (.var y) (.typ (.capt Cy .unit)) ->
+  ------------------------------------------------
+  HasType C Γ (.app x y) (.typ (.capt {} .unit))
 | subtyp :
   HasType C1 Γ e E1 ->
   Subcapt Γ C1 C2 ->
