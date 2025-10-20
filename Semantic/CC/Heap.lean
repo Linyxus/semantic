@@ -2,15 +2,20 @@ import Semantic.CC.Syntax
 
 namespace CC
 
--- A heap is a function from locations to values
-def Heap : Type := Nat -> Option (Val {})
+-- A heap cell can either be a value or a capability
+inductive Cell : Type where
+| val : Val {} -> Cell
+| capability : Cell
+
+-- A heap is a function from locations to cells
+def Heap : Type := Nat -> Option Cell
 
 def Heap.empty : Heap := fun _ => none
 
 instance Heap.instEmptyCollection : EmptyCollection Heap := ⟨Heap.empty⟩
 
 def Heap.extend (h : Heap) (l : Nat) (v : Val {}) : Heap :=
-  fun l' => if l' = l then some v else h l'
+  fun l' => if l' = l then some (.val v) else h l'
 
 def Heap.subsumes (big small : Heap) : Prop :=
   ∀ l v, small l = some v -> big l = some v
@@ -52,7 +57,7 @@ def Heap.subsumes_trans {h1 h2 h3 : Heap}
 
 theorem Heap.extend_lookup_eq
   (h : Heap) (l : Nat) (v : Val {}) :
-  (h.extend l v) l = some v := by
+  (h.extend l v) l = some (.val v) := by
   simp [Heap.extend]
 
 theorem Heap.extend_subsumes {H : Heap} {l : Nat}
@@ -61,12 +66,10 @@ theorem Heap.extend_subsumes {H : Heap} {l : Nat}
   intro l' v' hlookup
   simp [Heap.extend]
   split
-  · next heq =>
-      -- l' = l case: contradiction since H l = none but H l' = some v'
-      rw [heq] at hlookup
-      rw [hfresh] at hlookup
-      contradiction
-  · -- l' ≠ l case: extended heap agrees with original
-    exact hlookup
+  next heq =>
+    rw [heq] at hlookup
+    rw [hfresh] at hlookup
+    contradiction
+  next => exact hlookup
 
 end CC
