@@ -16,6 +16,11 @@ inductive Eval : Heap -> Exp {} -> Hpost -> Prop where
   h x = some (.val ⟨.abs T e, hv⟩) ->
   Eval h (e.subst (Subst.openVar y)) Q ->
   Eval h (.app (.free x) y) Q
+| eval_invoke {h : Heap} {x : Nat} :
+  h x = some .capability ->
+  h y = some (.val ⟨.unit, hv⟩) ->
+  Q .unit h ->
+  Eval h (.app (.free x) (.free y)) Q
 | eval_tapply {h : Heap} {x : Nat} :
   h x = some (.val ⟨.tabs T0 e, hv⟩) ->
   Eval h (e.subst (Subst.openTVar .top)) Q ->
@@ -51,6 +56,11 @@ theorem eval_monotonic {h1 h2 : Heap}
     apply Eval.eval_apply
     · apply hsub _ _ hx
     · assumption
+  case eval_invoke hx hy hQ =>
+    apply Eval.eval_invoke
+    · apply hsub _ _ hx
+    · apply hsub _ _ hy
+    · apply hpred <;> assumption
   case eval_tapply hx _ ih =>
     specialize ih hpred hsub
     apply Eval.eval_tapply
@@ -115,6 +125,10 @@ theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
   case eval_apply hx _ ih =>
     apply Eval.eval_apply hx
     apply ih himp
+  case eval_invoke hx hy hQ =>
+    apply Eval.eval_invoke hx hy
+    apply himp _ _ _ hQ
+    apply Heap.subsumes_refl
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply hx
     apply ih himp

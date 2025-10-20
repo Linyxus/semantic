@@ -37,6 +37,9 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs T e)
 | tabs : Exp.IsVal (.tabs T e)
+| cabs : Exp.IsVal (.cabs cb e)
+| pack : Exp.IsVal (.pack cs x)
+| unit : Exp.IsVal .unit
 
 structure Val (s : Sig) where
   unwrap : Exp s
