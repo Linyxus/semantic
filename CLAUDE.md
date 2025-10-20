@@ -12,5 +12,5 @@ Sometimes, the user leaves a specific task for Claude in comments, started with 
 
 When transforming equalities step-by-step, make use of the `calc` mode when possible. This results in cleaner and more idiomatic code style.
 
-Claude thinks super hard.
+Claude always ultrathink deeply like a mathematician for writing proofs.
 
