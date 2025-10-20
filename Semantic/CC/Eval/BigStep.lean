@@ -21,7 +21,7 @@ inductive Eval : Heap -> Exp {} -> Hpost -> Prop where
   Eval h (e.subst (Subst.openTVar .top)) Q ->
   Eval h (.tapp (.free x) S) Q
 | eval_letin {h : Heap} {Q1 : Hpost} :
-  (hpred : Q1.is_monotonic) ->  -- this local Q1 must be monotonic
+  (hpred : Q1.is_monotonic) ->
   Eval h e1 Q1 ->
   (h_val : ∀ {h1} {v : Exp {}},
     (h1.subsumes h) ->
