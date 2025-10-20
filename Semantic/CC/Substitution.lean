@@ -53,6 +53,8 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .arrow T1 T2, s => .arrow (T1.subst s) (T2.subst s.lift)
 | .poly T1 T2, s => .poly (T1.subst s) (T2.subst s.lift)
 | .cpoly cb T, s => .cpoly (cb.subst s) (T.subst s.lift)
+| .unit, _ => .unit
+| .cap, _ => .cap
 | .capt cs T, s => .capt (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
@@ -255,6 +257,8 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
     simp [Ty.subst, Ty.rename, ihCB]
     exact ihT
+  | .unit => rfl
+  | .cap => rfl
   | .capt cs T =>
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -389,6 +393,8 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
   | cpoly cb T ih =>
     simp [Ty.subst, ih, CaptureBound.subst_comp, Subst.comp_lift]
+  | unit => rfl
+  | cap => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp]
   | exi T ih =>

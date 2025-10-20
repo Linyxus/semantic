@@ -26,6 +26,8 @@ inductive Ty : TySort -> Sig -> Type where
 | arrow : Ty .capt s -> Ty .exi (s,x) -> Ty .shape s
 | poly : Ty .shape s -> Ty .exi (s,X) -> Ty .shape s
 | cpoly : CaptureBound s -> Ty .exi (s,C) -> Ty .shape s
+| unit : Ty .shape s
+| cap : Ty .shape s
 -- capturing types
 | capt : CaptureSet s -> Ty .shape s -> Ty .capt s
 -- existential types
@@ -53,6 +55,8 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .arrow T1 T2, f => .arrow (T1.rename f) (T2.rename (f.lift))
 | .poly T1 T2, f => .poly (T1.rename f) (T2.rename (f.lift))
 | .cpoly cb T, f => .cpoly (cb.rename f) (T.rename (f.lift))
+| .unit, _ => .unit
+| .cap, _ => .cap
 | .capt cs T, f => .capt (cs.rename f) (T.rename f)
 | .exi T, f => .exi (T.rename (f.lift))
 | .typ T, f => .typ (T.rename f)
@@ -64,6 +68,8 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2]
   case poly ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2]
   case cpoly cb ih => simp [Ty.rename, Rename.lift_id, ih, CaptureBound.rename_id]
+  case unit => rfl
+  case cap => rfl
   case capt ih2 =>
     simp [Ty.rename, ih2, CaptureSet.rename_id]
   case exi ih => simp [Ty.rename, Rename.lift_id, ih]
@@ -77,6 +83,8 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2]
   case poly ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2]
   case cpoly cb ih => simp [Ty.rename, Rename.lift_comp, ih, CaptureBound.rename_comp]
+  case unit => rfl
+  case cap => rfl
   case capt ih => simp [Ty.rename, CaptureSet.rename_comp, ih]
   case exi ih => simp [Ty.rename, Rename.lift_comp, ih]
   case typ ih => simp [Ty.rename, ih]
