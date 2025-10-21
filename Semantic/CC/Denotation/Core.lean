@@ -23,11 +23,14 @@ def Denot.is_monotonic (d : Denot) : Prop :=
     d h1 e ->
     d h2 e
 
--- def Denot.is_transparent (d : Denot) : Prop :=
---   ∀ {h : Heap} {x : Nat} {v},
---     h x = some (.val v) ->
---     d h v.unwrap ->
---     d h (.var (.free x))
+def Denot.is_transparent (d : Denot) : Prop :=
+  ∀ {h : Heap} {x : Nat} {v},
+    h x = some (.val v) ->
+    d h v.unwrap ->
+    d h (.var (.free x))
+
+def Denot.is_proper (d : Denot) : Prop :=
+  d.is_monotonic ∧ d.is_transparent
 
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ s e,
@@ -90,7 +93,7 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> CapabilitySet -> TypeInfo .var
-| tvar : Denot -> TypeInfo .tvar
+| tvar : (CapabilitySet -> Denot) -> TypeInfo .tvar
 | cvar : CapabilitySet -> TypeInfo .cvar
 
 inductive TypeEnv : Sig -> Type where
@@ -103,7 +106,7 @@ inductive TypeEnv : Sig -> Type where
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (access : CapabilitySet) : TypeEnv (s,x) :=
   Γ.extend (.var x access)
 
-def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
+def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : CapabilitySet -> Denot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar (Γ : TypeEnv s) (underlying : CapabilitySet) : TypeEnv (s,C) :=
@@ -117,7 +120,7 @@ def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat × CapabilitySet
   match Γ.lookup x with
   | .var y a => ⟨y, a⟩
 
-def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : Denot :=
+def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : (CapabilitySet -> Denot) :=
   match Γ.lookup x with
   | .tvar T => T
 
@@ -130,13 +133,23 @@ def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
 | env, .union cs1 cs2 =>
   (cs1.denot env) ∪ (cs2.denot env)
 | env, .var (.bound x) => (env.lookup_var x).2
-| env, .var (.free x) => sorry
+| _, .var (.free x) => {x}
 | env, .cvar c => env.lookup_cvar c
 
--- def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
---   match x with
---   | .free n => n
---   | .bound x => env.lookup_var x
+def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
+  match x with
+  | .free n => n
+  | .bound x => (env.lookup_var x).1
+
+mutual
+
+def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> CapabilitySet -> Denot := sorry
+
+def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot := sorry
+
+def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot := sorry
+
+end
 
 -- mutual
 

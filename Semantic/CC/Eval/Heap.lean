@@ -32,6 +32,12 @@ instance instEmptyCollection : EmptyCollection CapabilitySet :=
 instance instUnion : Union CapabilitySet :=
   ⟨CapabilitySet.union⟩
 
+def singleton (l : Nat) : CapabilitySet :=
+  .cap l
+
+instance instSingleton : Singleton Nat CapabilitySet :=
+  ⟨CapabilitySet.singleton⟩
+
 end CapabilitySet
 
 -- A heap cell can either be a value or a capability
