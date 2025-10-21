@@ -73,6 +73,14 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
     Q1 (.var x) h1 ->
     Eval C h1 (e2.subst (Subst.openVar x)) Q) ->
   Eval C h (.letin e1 e2) Q
+| eval_unpack {h : Heap} {Q1 : Hpost} :
+  (hpred : Q1.is_monotonic) ->
+  Eval C h e1 Q1 ->
+  (h_val : ∀ {h1} {x : Var .var {}} {cs : CaptureSet {}},
+    (h1.subsumes h) ->
+    Q1 (.pack cs x) h1 ->
+    Eval C h1 (e2.subst (Subst.unpack cs x)) Q) ->
+  Eval C h (.unpack e1 e2) Q
 
 theorem eval_monotonic {h1 h2 : Heap}
   (hpred : Q.is_monotonic)
@@ -117,6 +125,14 @@ theorem eval_monotonic {h1 h2 : Heap}
       have hs_orig := Heap.subsumes_trans hs1 hsub
       apply ih_var hs_orig hq1 hpred
       apply Heap.subsumes_refl
+  case eval_unpack Q1 hpred0 _ _ ih ih_val =>
+    specialize ih hpred0 hsub
+    apply Eval.eval_unpack (Q1:=Q1) hpred0 ih
+    intro h1 x cs hs1 hq1
+    -- h1.subsumes h2, h2.subsumes h1_original, so h1.subsumes h1_original
+    have hs_orig := Heap.subsumes_trans hs1 hsub
+    apply ih_val hs_orig hq1 hpred
+    apply Heap.subsumes_refl
 
 def Hpost.entails_at (Q1 : Hpost) (h : Heap) (Q2 : Hpost) : Prop :=
   ∀ e, Q1 e h -> Q2 e h
@@ -181,6 +197,13 @@ theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
       apply ih_var hs1 hq1
       apply Hpost.entails_after_subsumes himp
       apply hs1
+  case eval_unpack _ Q0 hpred he1 _ ih ih_val =>
+    specialize ih (by apply Hpost.entails_after_refl)
+    apply Eval.eval_unpack (Q1:=Q0) hpred ih
+    intro h1 x cs hs1 hq1
+    apply ih_val hs1 hq1
+    apply Hpost.entails_after_subsumes himp
+    apply hs1
 
 theorem eval_post_monotonic {Q1 Q2 : Hpost}
   (himp : Q1.entails Q2)
