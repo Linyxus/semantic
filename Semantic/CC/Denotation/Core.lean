@@ -88,34 +88,50 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
   d2 h e := by
   apply himp e ht
 
--- inductive TypeInfo : Kind -> Type where
--- | var : Nat -> TypeInfo .var
--- | tvar : Denot -> TypeInfo .tvar
+inductive TypeInfo : Kind -> Type where
+| var : Nat -> CapabilitySet -> TypeInfo .var
+| tvar : Denot -> TypeInfo .tvar
+| cvar : CapabilitySet -> TypeInfo .cvar
 
--- inductive TypeEnv : Sig -> Type where
--- | empty : TypeEnv {}
--- | extend :
---   TypeEnv s ->
---   TypeInfo k ->
---   TypeEnv (s,,k)
+inductive TypeEnv : Sig -> Type where
+| empty : TypeEnv {}
+| extend :
+  TypeEnv s ->
+  TypeInfo k ->
+  TypeEnv (s,,k)
 
--- def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
---   Γ.extend (.var x)
+def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (access : CapabilitySet) : TypeEnv (s,x) :=
+  Γ.extend (.var x access)
 
--- def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
---   Γ.extend (.tvar T)
+def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
+  Γ.extend (.tvar T)
 
--- def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
--- | .extend _ info, .here => info
--- | .extend Γ _,    .there x => Γ.lookup x
+def TypeEnv.extend_cvar (Γ : TypeEnv s) (underlying : CapabilitySet) : TypeEnv (s,C) :=
+  Γ.extend (.cvar underlying)
 
--- def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat :=
---   match Γ.lookup x with
---   | .var y => y
+def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
+| .extend _ info, .here => info
+| .extend Γ _,    .there x => Γ.lookup x
 
--- def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : Denot :=
---   match Γ.lookup x with
---   | .tvar T => T
+def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat × CapabilitySet :=
+  match Γ.lookup x with
+  | .var y a => ⟨y, a⟩
+
+def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : Denot :=
+  match Γ.lookup x with
+  | .tvar T => T
+
+def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CapabilitySet :=
+  match Γ.lookup x with
+  | .cvar c => c
+
+def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
+| _, .empty => CapabilitySet.empty
+| env, .union cs1 cs2 =>
+  (cs1.denot env) ∪ (cs2.denot env)
+| env, .var (.bound x) => (env.lookup_var x).2
+| env, .var (.free x) => sorry
+| env, .cvar c => env.lookup_cvar c
 
 -- def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
 --   match x with
