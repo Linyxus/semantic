@@ -34,50 +34,51 @@ instance instUnion : Union CapabilitySet :=
 
 end CapabilitySet
 
-inductive Eval : Heap -> Exp {} -> Hpost -> Prop where
+inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
 | eval_val :
   (hv : Exp.IsVal v) ->
   (hQ : Q v h) ->
-  Eval h v Q
+  Eval C h v Q
 | eval_var :
   (hQ : Q (.var x) h) ->
-  Eval h (.var x) Q
+  Eval C h (.var x) Q
 | eval_apply {h : Heap} {x : Nat} :
   h x = some (.val ⟨.abs T e, hv⟩) ->
-  Eval h (e.subst (Subst.openVar y)) Q ->
-  Eval h (.app (.free x) y) Q
+  Eval C h (e.subst (Subst.openVar y)) Q ->
+  Eval C h (.app (.free x) y) Q
 | eval_invoke {h : Heap} {x : Nat} :
+  x ∈ C ->
   h x = some .capability ->
   h y = some (.val ⟨.unit, hv⟩) ->
   Q .unit h ->
-  Eval h (.app (.free x) (.free y)) Q
+  Eval C h (.app (.free x) (.free y)) Q
 | eval_tapply {h : Heap} {x : Nat} :
   h x = some (.val ⟨.tabs T0 e, hv⟩) ->
-  Eval h (e.subst (Subst.openTVar .top)) Q ->
-  Eval h (.tapp (.free x) S) Q
+  Eval C h (e.subst (Subst.openTVar .top)) Q ->
+  Eval C h (.tapp (.free x) S) Q
 | eval_letin {h : Heap} {Q1 : Hpost} :
   (hpred : Q1.is_monotonic) ->
-  Eval h e1 Q1 ->
+  Eval C h e1 Q1 ->
   (h_val : ∀ {h1} {v : Exp {}},
     (h1.subsumes h) ->
     (hv : Exp.IsVal v) ->
     Q1 v h1 ->
     ∀ l', h1 l' = none ->
-      Eval
+      Eval C
         (h1.extend l' ⟨v, hv⟩)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {h1} {x : Var .var {}},
     (h1.subsumes h) ->
     Q1 (.var x) h1 ->
-    Eval h1 (e2.subst (Subst.openVar x)) Q) ->
-  Eval h (.letin e1 e2) Q
+    Eval C h1 (e2.subst (Subst.openVar x)) Q) ->
+  Eval C h (.letin e1 e2) Q
 
 theorem eval_monotonic {h1 h2 : Heap}
   (hpred : Q.is_monotonic)
   (hsub : h2.subsumes h1)
-  (heval : Eval h1 e Q) :
-  Eval h2 e Q := by
+  (heval : Eval C h1 e Q) :
+  Eval C h2 e Q := by
   induction heval generalizing h2
   case eval_val hv hQ =>
     apply Eval.eval_val hv
@@ -90,8 +91,9 @@ theorem eval_monotonic {h1 h2 : Heap}
     apply Eval.eval_apply
     · apply hsub _ _ hx
     · assumption
-  case eval_invoke hx hy hQ =>
+  case eval_invoke hmem hx hy hQ =>
     apply Eval.eval_invoke
+    · exact hmem
     · apply hsub _ _ hx
     · apply hsub _ _ hy
     · apply hpred <;> assumption
@@ -145,8 +147,8 @@ theorem Hpost.entails_after_subsumes
 
 theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
   (himp : Q1.entails_after h Q2)
-  (heval : Eval h e Q1) :
-  Eval h e Q2 := by
+  (heval : Eval C h e Q1) :
+  Eval C h e Q2 := by
   induction heval generalizing Q2
   case eval_val v Q H hv hQ =>
     apply Eval.eval_val hv
@@ -159,8 +161,8 @@ theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
   case eval_apply hx _ ih =>
     apply Eval.eval_apply hx
     apply ih himp
-  case eval_invoke hx hy hQ =>
-    apply Eval.eval_invoke hx hy
+  case eval_invoke hmem hx hy hQ =>
+    apply Eval.eval_invoke hmem hx hy
     apply himp _ _ _ hQ
     apply Heap.subsumes_refl
   case eval_tapply hx _ ih =>
@@ -182,8 +184,8 @@ theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
 
 theorem eval_post_monotonic {Q1 Q2 : Hpost}
   (himp : Q1.entails Q2)
-  (heval : Eval h e Q1) :
-  Eval h e Q2 := by
+  (heval : Eval C h e Q1) :
+  Eval C h e Q2 := by
   apply eval_post_monotonic_general _ heval
   apply Hpost.entails_to_entails_after himp
 
