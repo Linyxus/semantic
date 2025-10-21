@@ -1,38 +1,9 @@
 import Semantic.CC.Syntax
 import Semantic.CC.Substitution
-import Semantic.CC.Heap
+import Semantic.CC.Eval.Heap
 
 namespace CC
 
-inductive CapabilitySet : Type where
-| empty : CapabilitySet
-| cap : Nat -> CapabilitySet
-| union : CapabilitySet -> CapabilitySet -> CapabilitySet
-
-namespace CapabilitySet
-
-inductive mem : Nat -> CapabilitySet -> Prop where
-| here : CapabilitySet.mem l (CapabilitySet.cap l)
-| left {l C1 C2} :
-  CapabilitySet.mem l C1 ->
-  CapabilitySet.mem l (CapabilitySet.union C1 C2)
-| right {l C1 C2} :
-  CapabilitySet.mem l C2 ->
-  CapabilitySet.mem l (CapabilitySet.union C1 C2)
-
-@[simp]
-instance instMembership : Membership Nat CapabilitySet :=
-  ⟨fun C l => CapabilitySet.mem l C⟩
-
-@[simp]
-instance instEmptyCollection : EmptyCollection CapabilitySet :=
-  ⟨CapabilitySet.empty⟩
-
-@[simp]
-instance instUnion : Union CapabilitySet :=
-  ⟨CapabilitySet.union⟩
-
-end CapabilitySet
 
 inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
 | eval_val :

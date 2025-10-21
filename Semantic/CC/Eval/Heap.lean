@@ -2,6 +2,38 @@ import Semantic.CC.Syntax
 
 namespace CC
 
+/-- A set of capability labels, representing an "authority":
+  they are the set of capabilities a program at most uses. -/
+inductive CapabilitySet : Type where
+| empty : CapabilitySet
+| cap : Nat -> CapabilitySet
+| union : CapabilitySet -> CapabilitySet -> CapabilitySet
+
+namespace CapabilitySet
+
+inductive mem : Nat -> CapabilitySet -> Prop where
+| here : CapabilitySet.mem l (CapabilitySet.cap l)
+| left {l C1 C2} :
+  CapabilitySet.mem l C1 ->
+  CapabilitySet.mem l (CapabilitySet.union C1 C2)
+| right {l C1 C2} :
+  CapabilitySet.mem l C2 ->
+  CapabilitySet.mem l (CapabilitySet.union C1 C2)
+
+@[simp]
+instance instMembership : Membership Nat CapabilitySet :=
+  ⟨fun C l => CapabilitySet.mem l C⟩
+
+@[simp]
+instance instEmptyCollection : EmptyCollection CapabilitySet :=
+  ⟨CapabilitySet.empty⟩
+
+@[simp]
+instance instUnion : Union CapabilitySet :=
+  ⟨CapabilitySet.union⟩
+
+end CapabilitySet
+
 -- A heap cell can either be a value or a capability
 inductive Cell : Type where
 | val : Val {} -> Cell
