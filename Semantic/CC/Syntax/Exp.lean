@@ -18,7 +18,6 @@ inductive Exp : Sig -> Type where
 | letin : Exp s -> Exp (s,x) -> Exp s
 | unpack : Exp s -> Exp ((s,C),x) -> Exp s
 | unit : Exp s
-| newcap : Exp s
 
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
@@ -32,7 +31,6 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .letin e1 e2, f => .letin (e1.rename f) (e2.rename (f.lift))
 | .unpack e1 e2, f => .unpack (e1.rename f) (e2.rename (f.lift.lift))
 | .unit, _ => .unit
-| .newcap, _ => .newcap
 
 inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs T e)

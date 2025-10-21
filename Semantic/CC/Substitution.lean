@@ -71,7 +71,6 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .letin e1 e2, s => .letin (e1.subst s) (e2.subst s.lift)
 | .unpack e1 e2, s => .unpack (e1.subst s) (e2.subst s.lift.lift)
 | .unit, _ => .unit
-| .newcap, _ => .newcap
 
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   var := fun
@@ -429,6 +428,5 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | unpack e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unit => rfl
-  | newcap => rfl
 
 end CC
