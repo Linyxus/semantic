@@ -72,6 +72,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .unpack e1 e2, s => .unpack (e1.subst s) (e2.subst s.lift.lift)
 | .unit, _ => .unit
 
+/-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   var := fun
     | .here => x
@@ -81,6 +82,7 @@ def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   cvar := fun
     | .there x0 => .cvar (.bound x0)
 
+/-- Opens a type variable binder, substituting `U` for the outermost bound. -/
 def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
   var := fun
     | .there x => .bound x
@@ -90,6 +92,7 @@ def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
   cvar := fun
     | .there x => .cvar (.bound x)
 
+/-- Opens a capture variable binder, substituting `C` for the innermost bound. -/
 def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
   var := fun
     | .there x => .bound x
@@ -98,6 +101,17 @@ def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
   cvar := fun
     | .here => C
     | .there x => .cvar (.bound x)
+
+/-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
+def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
+  var := fun
+    | .here => x
+    | .there (.there x0) => .bound x0
+  cvar := fun
+    | .there (.here) => C
+    | .there (.there c0) => .cvar (.bound c0)
+  tvar := fun
+    | .there (.there X0) => .tvar X0
 
 /-!
 Function extensionality principle for substitutions.
