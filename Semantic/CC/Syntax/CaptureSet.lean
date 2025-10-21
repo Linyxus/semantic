@@ -9,7 +9,7 @@ inductive CaptureSet : Sig -> Type where
 | empty : CaptureSet s
 | union : CaptureSet s -> CaptureSet s -> CaptureSet s
 | var : Var .var s -> CaptureSet s
-| cvar : Var .cvar s -> CaptureSet s
+| cvar : BVar s .cvar -> CaptureSet s
 
 @[simp]
 instance CaptureSet.instEmptyCollection :
@@ -28,7 +28,7 @@ def CaptureSet.rename : CaptureSet s1 -> Rename s1 s2 -> CaptureSet s2
 | .empty, _ => .empty
 | .union cs1 cs2, ρ => .union (cs1.rename ρ) (cs2.rename ρ)
 | .var x, ρ => .var (x.rename ρ)
-| .cvar x, ρ => .cvar (x.rename ρ)
+| .cvar x, ρ => .cvar (ρ.var x)
 
 theorem CaptureSet.rename_id {cs : CaptureSet s} :
     cs.rename (Rename.id) = cs := by
@@ -36,7 +36,7 @@ theorem CaptureSet.rename_id {cs : CaptureSet s} :
   case empty => rfl
   case union ih1 ih2 => simp [CaptureSet.rename, ih1, ih2]
   case var x => cases x <;> rfl
-  case cvar x => cases x <;> rfl
+  case cvar x => simp [CaptureSet.rename, Rename.id]
 
 theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (cs.rename f).rename g = cs.rename (f.comp g) := by
@@ -47,10 +47,7 @@ theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rena
     cases x
     · simp [CaptureSet.rename, Var.rename]; rfl
     · simp [CaptureSet.rename, Var.rename]
-  case cvar x =>
-    cases x
-    · simp [CaptureSet.rename, Var.rename]; rfl
-    · simp [CaptureSet.rename, Var.rename]
+  case cvar x => simp [CaptureSet.rename, Rename.comp]
 
 inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
 | refl :

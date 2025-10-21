@@ -18,7 +18,7 @@ def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
     case there x => exact (s.tvar x).rename Rename.succ
   cvar := fun x => by
     cases x
-    case here => exact .cvar (.bound .here)
+    case here => exact .cvar .here
     case there x => exact (s.cvar x).rename Rename.succ
 
 def Subst.liftMany (s : Subst s1 s2) (K : Sig) : Subst (s1 ++ K) (s2 ++ K) :=
@@ -29,7 +29,7 @@ def Subst.liftMany (s : Subst s1 s2) (K : Sig) : Subst (s1 ++ K) (s2 ++ K) :=
 def Subst.id {s : Sig} : Subst s s where
   var := fun x => .bound x
   tvar := fun x => .tvar x
-  cvar := fun x => .cvar (.bound x)
+  cvar := fun x => .cvar x
 
 def Var.subst : Var .var s1 -> Subst s1 s2 -> Var .var s2
 | .bound x, s => s.var x
@@ -39,9 +39,7 @@ def CaptureSet.subst : CaptureSet s1 -> Subst s1 s2 -> CaptureSet s2
 | .empty, _ => .empty
 | .union cs1 cs2, σ => .union (cs1.subst σ) (cs2.subst σ)
 | .var x, σ => .var (x.subst σ)
-| .cvar x, σ => match x with
-  | .bound x => σ.cvar x
-  | .free n => .cvar (.free n)
+| .cvar x, σ => σ.cvar x
 
 def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
 | .unbound, _ => .unbound
@@ -80,7 +78,7 @@ def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   tvar := fun
     | .there x0 => .tvar x0
   cvar := fun
-    | .there x0 => .cvar (.bound x0)
+    | .there x0 => .cvar x0
 
 /-- Opens a type variable binder, substituting `U` for the outermost bound. -/
 def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
@@ -90,7 +88,7 @@ def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
     | .here => U
     | .there x => .tvar x
   cvar := fun
-    | .there x => .cvar (.bound x)
+    | .there x => .cvar x
 
 /-- Opens a capture variable binder, substituting `C` for the innermost bound. -/
 def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
@@ -100,7 +98,7 @@ def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
     | .there x => .tvar x
   cvar := fun
     | .here => C
-    | .there x => .cvar (.bound x)
+    | .there x => .cvar x
 
 /-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
 def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
@@ -109,7 +107,7 @@ def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
     | .there (.there x0) => .bound x0
   cvar := fun
     | .there (.here) => C
-    | .there (.there c0) => .cvar (.bound c0)
+    | .there (.there c0) => .cvar c0
   tvar := fun
     | .there (.there X0) => .tvar X0
 
@@ -218,7 +216,7 @@ theorem CVar.weaken_subst_comm_liftMany {C : BVar (s1 ++ K) .cvar} {σ : Subst s
   | cons k K ih =>
     simp [Subst.liftMany, Rename.liftMany]
     cases C with
-    | here => rfl
+    | here => simp [Subst.lift, CaptureSet.rename, Rename.lift]
     | there C =>
       simp [Rename.lift_there_cvar_eq]
       simp [Subst.lift_there_cvar_eq]
@@ -235,13 +233,9 @@ theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : 
   | var x =>
     simp [CaptureSet.subst, CaptureSet.rename]
     exact Var.weaken_subst_comm_liftMany
-  | cvar x =>
-    cases x with
-    | bound C =>
-      simp [CaptureSet.subst, CaptureSet.rename, Var.rename]
-      exact CVar.weaken_subst_comm_liftMany
-    | free n =>
-      simp [CaptureSet.subst, CaptureSet.rename, Var.rename]
+  | cvar C =>
+    simp [CaptureSet.subst, CaptureSet.rename]
+    exact CVar.weaken_subst_comm_liftMany
 
 theorem CaptureBound.weaken_subst_comm_liftMany {cb : CaptureBound (s1 ++ K)} {σ : Subst s1 s2} :
   (cb.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -312,13 +306,9 @@ theorem CaptureSet.weaken_subst_comm_base {cs : CaptureSet s1} {σ : Subst s1 s2
   | var x =>
     simp [CaptureSet.subst, CaptureSet.rename]
     exact Var.weaken_subst_comm_base
-  | cvar x =>
-    cases x with
-    | bound x =>
-      simp [CaptureSet.subst, CaptureSet.rename, Var.rename, Subst.lift]
-      exact CVar.weaken_subst_comm_base
-    | free n =>
-      simp [CaptureSet.subst, CaptureSet.rename, Var.rename]
+  | cvar C =>
+    simp [CaptureSet.subst, CaptureSet.rename]
+    exact CVar.weaken_subst_comm_base
 
 /-!
 Composition of substitutions commutes with lifting.
@@ -345,7 +335,7 @@ theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
       simp only [Ty.weaken_subst_comm_base, Subst.comp]
   · intro C
     cases C with
-    | here => rfl
+    | here => simp [Subst.comp, Subst.lift, CaptureSet.subst]
     | there C0 =>
       simp [Subst.comp, Subst.lift]
       exact CaptureSet.weaken_subst_comm_base.symm
@@ -380,12 +370,8 @@ theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Su
   | var x =>
     simp [CaptureSet.subst]
     exact Var.subst_comp
-  | cvar x =>
-    cases x with
-    | bound x =>
-      simp [CaptureSet.subst, Subst.comp]
-    | free n =>
-      simp [CaptureSet.subst]
+  | cvar C =>
+    simp [CaptureSet.subst, Subst.comp]
 
 theorem CaptureBound.subst_comp {cb : CaptureBound s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (cb.subst σ1).subst σ2 = cb.subst (σ1.comp σ2) := by
