@@ -56,6 +56,10 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
   h x = some (.val ⟨.tabs T0 e, hv⟩) ->
   Eval C h (e.subst (Subst.openTVar .top)) Q ->
   Eval C h (.tapp (.free x) S) Q
+| eval_capply {h : Heap} {x : Nat} :
+  h x = some (.val ⟨.cabs B0 e, hv⟩) ->
+  Eval C h (e.subst (Subst.openCVar .empty)) Q ->
+  Eval C h (.capp (.free x) CS) Q
 | eval_letin {h : Heap} {Q1 : Hpost} :
   (hpred : Q1.is_monotonic) ->
   Eval C h e1 Q1 ->
@@ -108,6 +112,11 @@ theorem eval_monotonic {h1 h2 : Heap}
   case eval_tapply hx _ ih =>
     specialize ih hpred hsub
     apply Eval.eval_tapply
+    · apply hsub _ _ hx
+    · assumption
+  case eval_capply hx _ ih =>
+    specialize ih hpred hsub
+    apply Eval.eval_capply
     · apply hsub _ _ hx
     · assumption
   case eval_letin Q1 hpred0 _ _ _ ih ih_val ih_var =>
@@ -183,6 +192,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
     apply Heap.subsumes_refl
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply hx
+    apply ih himp
+  case eval_capply hx _ ih =>
+    apply Eval.eval_capply hx
     apply ih himp
   case eval_letin _ Q0 hpred he1 _ _ ih ih_val ih_var =>
     specialize ih (by apply Hpost.entails_after_refl)
