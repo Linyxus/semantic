@@ -14,6 +14,9 @@ def resolve : Heap -> Exp {} -> Option (Exp {})
 /-- Denotation of types. -/
 def Denot := Heap -> Exp {} -> Prop
 
+/-- Pre-denotation -/
+def PreDenot := CapabilitySet -> Denot
+
 def Denot.as_post (d : Denot) : Hpost :=
   fun e h => d h e
 
@@ -32,16 +35,29 @@ def Denot.is_transparent (d : Denot) : Prop :=
 def Denot.is_proper (d : Denot) : Prop :=
   d.is_monotonic ∧ d.is_transparent
 
+def PreDenot.is_proper (pd : PreDenot) : Prop :=
+  ∀ C, (pd C).is_proper
+
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ s e,
     (d1 s e) ->
     (d2 s e)
 
+def PreDenot.Imply (pd1 pd2 : PreDenot) : Prop :=
+  ∀ C,
+    (pd1 C).Imply (pd2 C)
+
 def Denot.ImplyAt (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
   ∀ e, d1 h e -> d2 h e
 
+def PreDenot.ImplyAt (pd1 pd2 : PreDenot) (h : Heap) : Prop :=
+  ∀ C, (pd1 C).ImplyAt h (pd2 C)
+
 def Denot.ImplyAfter (d1 : Denot) (h : Heap) (d2 : Denot) : Prop :=
   ∀ h', h'.subsumes h -> d1.ImplyAt h' d2
+
+def PreDenot.ImplyAfter (pd1 : PreDenot) (h : Heap) (pd2 : PreDenot) : Prop :=
+  ∀ C, (pd1 C).ImplyAfter h (pd2 C)
 
 theorem Denot.imply_implyat {d1 d2 : Denot}
   (himp : d1.Imply d2) :
@@ -93,7 +109,7 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> CapabilitySet -> TypeInfo .var
-| tvar : (CapabilitySet -> Denot) -> TypeInfo .tvar
+| tvar : PreDenot -> TypeInfo .tvar
 | cvar : CapabilitySet -> TypeInfo .cvar
 
 inductive TypeEnv : Sig -> Type where
@@ -106,7 +122,7 @@ inductive TypeEnv : Sig -> Type where
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (access : CapabilitySet) : TypeEnv (s,x) :=
   Γ.extend (.var x access)
 
-def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : CapabilitySet -> Denot) : TypeEnv (s,X) :=
+def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : PreDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar (Γ : TypeEnv s) (underlying : CapabilitySet) : TypeEnv (s,C) :=
@@ -120,7 +136,7 @@ def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat × CapabilitySet
   match Γ.lookup x with
   | .var y a => ⟨y, a⟩
 
-def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : (CapabilitySet -> Denot) :=
+def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
   match Γ.lookup x with
   | .tvar T => T
 
@@ -136,70 +152,94 @@ def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
 | _, .var (.free x) => {x}
 | env, .cvar c => env.lookup_cvar c
 
-def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
-  match x with
-  | .free n => n
-  | .bound x => (env.lookup_var x).1
+def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapabilitySet
+| _, .unbound => CapabilitySet.any
+| env, .bound cs => cs.denot env
 
 mutual
 
-def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> CapabilitySet -> Denot := sorry
+def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
+| _, .top => fun _ _ _ => True
+| env, .tvar X => env.lookup_tvar X
+| _, .unit => fun _ H e => resolve H e = some .unit
+| _, .cap => fun A H e =>
+  ∃ label : Nat,
+    e = .var (.free label) ∧
+    H label = some .capability ∧
+    label ∈ A
+| env, .arrow T1 T2 => fun A H e =>
+  ∃ T0 t0,
+    resolve H e = some (.abs T0 t0) ∧
+    (∀ (arg : Nat) (H' : Heap),
+      H'.subsumes H ->
+      Ty.capt_val_denot env T1 H' (.var (.free arg)) ->
+      Ty.exi_exp_denot
+        (env.extend_var arg (T1.captureSet.denot env))
+        T2 A H' (t0.subst (Subst.openVar (.free arg))))
+| env, .poly T1 T2 => fun A H e =>
+  ∃ S0 t0,
+    resolve H e = some (.tabs S0 t0) ∧
+    (∀ (H' : Heap) (denot : PreDenot),
+      H'.subsumes H ->
+      denot.is_proper ->
+      denot.ImplyAfter H' (Ty.shape_val_denot env T1) ->
+      Ty.exi_exp_denot
+        (env.extend_tvar denot)
+        T2 A H' (t0.subst (Subst.openTVar .top)))
+| env, .cpoly B T => fun A H e =>
+  ∃ B0 t0,
+    resolve H e = some (.cabs B0 t0) ∧
+    (∀ (H' : Heap) (A0 : CapabilitySet),
+      H'.subsumes H ->
+      (A0 ⊆ B.denot env) ->
+      Ty.exi_exp_denot
+        (env.extend_cvar A0)
+        T A H' (t0.subst (Subst.openCVar .empty)))
 
-def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot := sorry
+def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
+| ρ, .capt C S => Ty.shape_val_denot ρ S (C.denot ρ)
 
-def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot := sorry
+def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
+| ρ, .typ T => Ty.capt_val_denot ρ T
+| ρ, .exi T => fun H e =>
+  ∃ (A : CapabilitySet),
+    Ty.capt_val_denot (ρ.extend_cvar A) T H e
+
+def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
+| ρ, T => fun A H e =>
+  Eval A H e (Ty.capt_val_denot ρ T).as_post
+
+def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
+| ρ, T => fun A H e =>
+  Eval A H e (Ty.exi_val_denot ρ T).as_post
 
 end
 
--- mutual
+def EnvTyping : Ctx s -> TypeEnv s -> Heap -> Prop
+| .empty, .empty, _ => True
+| .push Γ (.var T), .extend env (.var n access), H =>
+  Ty.capt_val_denot env T H (.var (.free n)) ∧
+  access = T.captureSet.denot env ∧
+  EnvTyping Γ env H
+| .push Γ (.tvar S), .extend env (.tvar denot), H =>
+  denot.is_proper ∧
+  denot.ImplyAfter H (Ty.shape_val_denot env S) ∧
+  EnvTyping Γ env H
+| .push Γ (.cvar B), .extend env (.cvar access), H =>
+  (access ⊆ B.denot env) ∧
+  EnvTyping Γ env H
 
--- def Ty.val_denot : TypeEnv s -> Ty .shape s -> Denot
--- | _, .top => fun _ _ => True
--- | env, .tvar X => env.lookup_tvar X
--- | env, .arrow T1 T2 => fun s e =>
---   ∃ T0 e0,
---     resolve s e = some (.abs T0 e0) ∧
---     (∀ (s' : Heap) arg,
---       (s'.subsumes s) ->
---       Ty.val_denot env T1 s' (.var (.free arg)) ->
---       Ty.exp_denot (env.extend_var arg) T2 s' (e0.subst (Subst.openVar (.free arg))))
--- | env, .poly T1 T2 => fun s e =>
---   ∃ T0 e0,
---     resolve s e = some (.tabs T0 e0) ∧
---     (∀ (s' : Heap) (denot : Denot),
---       (s'.subsumes s) ->
---       denot.is_monotonic ->
---       denot.is_transparent ->
---       denot.ImplyAfter s' (Ty.val_denot env T1) ->
---       Ty.exp_denot (env.extend_tvar denot) T2 s' (e0.subst (Subst.openTVar .top)))
+def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
+  var := fun x => .free (env.lookup_var x).1
+  tvar := fun _ => .top
+  cvar := fun _ => {}
 
--- def Ty.exp_denot : TypeEnv s -> Ty .shape s -> Denot
--- | env, T => fun s e =>
---   Eval s e (Ty.val_denot env T).as_post
+def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (T : Ty .exi s) : Prop :=
+  ∀ ρ H,
+    EnvTyping Γ ρ H ->
+    Ty.exi_exp_denot ρ T (C.denot ρ) H (e.subst (Subst.from_TypeEnv ρ))
 
--- end
-
--- def EnvTyping : Ctx s -> TypeEnv s -> Heap -> Prop
--- | .empty, .empty, store => True
--- | .push Γ (.var T), .extend env (.var n), store =>
---   Ty.val_denot env T store (.var (.free n)) ∧
---     EnvTyping Γ env store
--- | .push Γ (.tvar S), .extend env (.tvar d), store =>
---   d.is_monotonic ∧
---   d.is_transparent ∧
---   d.ImplyAfter store (Ty.val_denot env S) ∧
---   EnvTyping Γ env store
-
--- def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
---   var := fun x => .free (env.lookup_var x)
---   tvar := fun _ => .top  -- types can be simply erased
-
--- def SemanticTyping (Γ : Ctx s) (e : Exp s) (T : Ty .shape s) : Prop :=
---   ∀ env store,
---     EnvTyping Γ env store ->
---     Ty.exp_denot env T store (e.subst (Subst.from_TypeEnv env))
-
--- notation:65 Γ " ⊨ " e " : " T => SemanticTyping Γ e T
+notation:65 C "#" Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
 -- theorem Subst.from_TypeEnv_weaken_open :
 --   (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =

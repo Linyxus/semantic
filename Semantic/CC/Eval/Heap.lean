@@ -8,11 +8,13 @@ inductive CapabilitySet : Type where
 | empty : CapabilitySet
 | cap : Nat -> CapabilitySet
 | union : CapabilitySet -> CapabilitySet -> CapabilitySet
+| any : CapabilitySet
 
 namespace CapabilitySet
 
 inductive mem : Nat -> CapabilitySet -> Prop where
 | here : CapabilitySet.mem l (CapabilitySet.cap l)
+| here_any : CapabilitySet.mem l CapabilitySet.any
 | left {l C1 C2} :
   CapabilitySet.mem l C1 ->
   CapabilitySet.mem l (CapabilitySet.union C1 C2)
@@ -37,6 +39,25 @@ def singleton (l : Nat) : CapabilitySet :=
 
 instance instSingleton : Singleton Nat CapabilitySet :=
   ⟨CapabilitySet.singleton⟩
+
+inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
+| refl :
+  Subset C C
+| top :
+  Subset C .any
+| union_left :
+  Subset C1 C3 ->
+  Subset C2 C3 ->
+  Subset (C1 ∪ C2) C3
+| union_right_left :
+  Subset C1 C3 ->
+  Subset C1 (C2 ∪ C3)
+| union_right_right :
+  Subset C1 C3 ->
+  Subset C1 (C3 ∪ C2)
+
+instance instHasSubset : HasSubset CapabilitySet :=
+  ⟨CapabilitySet.Subset⟩
 
 end CapabilitySet
 

@@ -93,4 +93,7 @@ theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
   simp [Ty.rename_comp, Rename.succ_lift_comm]
 
+def Ty.captureSet : Ty .capt s -> CaptureSet s
+| .capt C _ => C
+
 end CC
