@@ -8,7 +8,7 @@ structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Pr
 
 def Rebind.liftVar
   (ρ : Rebind env1 f env2) :
-  Rebind (env1.extend_var x) (f.lift) (env2.extend_var x) where
+  Rebind (env1.extend_var x A) (f.lift) (env2.extend_var x A) where
   var := fun
     | .here => rfl
     | .there y => by
@@ -22,6 +22,15 @@ def Rebind.liftTVar
     | .here => rfl
     | .there y => by
       simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup]
+      exact ρ.var y
+
+def Rebind.liftCVar
+  (ρ : Rebind env1 f env2) :
+  Rebind (env1.extend_cvar c) (f.lift) (env2.extend_cvar c) where
+  var := fun
+    | .here => rfl
+    | .there y => by
+      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup]
       exact ρ.var y
 
 theorem rebind_interp_var
