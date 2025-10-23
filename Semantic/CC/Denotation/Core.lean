@@ -1,5 +1,6 @@
 import Semantic.CC.Eval
 import Semantic.CC.TypeSystem
+import Semantic.Prelude
 
 namespace CC
 
@@ -215,18 +216,47 @@ def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
 
 end
 
+@[simp]
+instance instCaptHasDenotation : HasDenotation (Ty .capt s) (TypeEnv s) Denot where
+  interp := Ty.capt_val_denot
+
+@[simp]
+instance instCaptHasExpDenotation : HasExpDenotation (Ty .capt s) (TypeEnv s) PreDenot where
+  interp := Ty.capt_exp_denot
+
+@[simp]
+instance instExiHasDenotation : HasDenotation (Ty .exi s) (TypeEnv s) Denot where
+  interp := Ty.exi_val_denot
+
+@[simp]
+instance instExiHasExpDenotation : HasExpDenotation (Ty .exi s) (TypeEnv s) PreDenot where
+  interp := Ty.exi_exp_denot
+
+@[simp]
+instance instShapeHasDenotation : HasDenotation (Ty .shape s) (TypeEnv s) PreDenot where
+  interp := Ty.shape_val_denot
+
+@[simp]
+instance instCaptureSetHasDenotation : HasDenotation (CaptureSet s) (TypeEnv s) CapabilitySet where
+  interp := CaptureSet.denot
+
+@[simp]
+instance instCaptureBoundHasDenotation :
+  HasDenotation (CaptureBound s) (TypeEnv s) CapabilitySet where
+  interp := CaptureBound.denot
+
 def EnvTyping : Ctx s -> TypeEnv s -> Heap -> Prop
 | .empty, .empty, _ => True
 | .push Γ (.var T), .extend env (.var n access), H =>
-  Ty.capt_val_denot env T H (.var (.free n)) ∧
-  access = T.captureSet.denot env ∧
+  ⟦T⟧_[env] H (.var (.free n)) ∧
+  access = ⟦T.captureSet⟧_[env] ∧
   EnvTyping Γ env H
 | .push Γ (.tvar S), .extend env (.tvar denot), H =>
   denot.is_proper ∧
-  denot.ImplyAfter H (Ty.shape_val_denot env S) ∧
+  denot.ImplyAfter H ⟦S⟧_[env] ∧
   EnvTyping Γ env H
 | .push Γ (.cvar B), .extend env (.cvar access), H =>
-  (access ⊆ B.denot env) ∧
+  (access ⊆ ⟦B⟧_[env]) ∧
   EnvTyping Γ env H
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
@@ -234,10 +264,10 @@ def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   tvar := fun _ => .top
   cvar := fun _ => {}
 
-def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (T : Ty .exi s) : Prop :=
+def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ H,
     EnvTyping Γ ρ H ->
-    Ty.exi_exp_denot ρ T (C.denot ρ) H (e.subst (Subst.from_TypeEnv ρ))
+    ⟦E⟧e_[ρ] (C.denot ρ) H (e.subst (Subst.from_TypeEnv ρ))
 
 notation:65 C "#" Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
