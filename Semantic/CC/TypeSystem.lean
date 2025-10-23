@@ -188,6 +188,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType C2 Γ e E2
 
-notation:65 C "#" Γ " ⊢ " e " : " T => HasType C Γ e T
+notation:65 C " # " Γ " ⊢ " e " : " T => HasType C Γ e T
 
 end CC
