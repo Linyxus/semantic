@@ -324,15 +324,15 @@ placement: auto,
 #figure(
 [
 $
-Sigma | x thin y &-->^{} Sigma | [z:=y]t & quad "if " Sigma(x) = lambda (z: T) t quad&quad sans("(e-apply)") \
-Sigma | x thin y &-->^{x} Sigma | () & quad "if " Sigma(x) = bold("cap") "and" Sigma(y) = () quad&quad sans("(e-invoke)") \
-Sigma | x[S] &-->^{} Sigma | [X:=top]t & quad "if " Sigma(x) = lambda [X<:S'] t quad&quad sans("(e-tapply)") \
-Sigma | x[C] &-->^{} Sigma | [c:={}]t & quad "if " Sigma(x) = lambda [c<:B] t quad&quad sans("(e-capply)") \
+Sigma | x thin y &-->^C Sigma | [z:=y]t & quad "if " Sigma(x) = lambda (z: T) t quad&quad sans("(e-apply)") \
+Sigma | x thin y &-->^C Sigma | () & quad "if " x in C "and" Sigma(x) = bold("cap") "and" Sigma(y) = () quad&quad sans("(e-invoke)") \
+Sigma | x[S] &-->^C Sigma | [X:=top]t & quad "if " Sigma(x) = lambda [X<:S'] t quad&quad sans("(e-tapply)") \
+Sigma | x[C'] &-->^C Sigma | [c:={}]t & quad "if " Sigma(x) = lambda [c<:B] t quad&quad sans("(e-capply)") \
 Sigma | "let" x = t "in" u &-->^C Sigma' | "let" x = t' "in" u & quad "if " Sigma | t -->^C Sigma' | t' quad&quad sans("(e-ctx1)") \
 Sigma | "unpack" t "as" angle.l c\, x angle.r "in" u &-->^C Sigma' | "unpack" t' "as" angle.l c\, x angle.r "in" u & quad "if " Sigma | t -->^C Sigma' | t' quad&quad sans("(e-ctx2)") \
-Sigma | "let" x = y "in" t &-->^{} Sigma | [x:=y]t & quad "" quad&quad sans("(e-rename)") \
-Sigma | "let" x = v "in" t &-->^{} (Sigma,x mapsto v) | t & quad "" quad&quad sans("(e-lift)") \
-Sigma | "unpack" pack(c',x') "as" pack(c,x) "in" u &-->^{} Sigma | [c:=c'][x:=x']u & quad "" quad&quad sans("(e-unpack)") \
+Sigma | "let" x = y "in" t &-->^C Sigma | [x:=y]t & quad "" quad&quad sans("(e-rename)") \
+Sigma | "let" x = v "in" t &-->^C (Sigma,x mapsto v) | t & quad "" quad&quad sans("(e-lift)") \
+Sigma | "unpack" pack(c',x') "as" pack(c,x) "in" u &-->^C Sigma | [c:=c'][x:=x']u & quad "" quad&quad sans("(e-unpack)") \
 $
 ],
 caption: "Operational Semantics of System Capless.",
@@ -342,16 +342,18 @@ placement: auto,
 @evaluation_defs defines the small-step evaluation relation,
 $Sigma | s -->^C Sigma' | s'$,
 for System Capless.
-This evaluation relation is indexed by a capability set $C$,
-restricting the program from using capabilities outside $C$ during evaluation.
+This evaluation relation is indexed by a capability set $C$ representing an _upper bound_
+on the capabilities that may be invoked during evaluation.
+The semantics is _monotonic_:
+if $Sigma | s -->^C Sigma' | s'$ holds,
+then $Sigma | s -->^(C union C') Sigma' | s'$ holds for any $C'$.
+Only the (e-invoke) rule actually uses capabilities from $C$;
+all other rules are parametric in $C$.
+
 We write
 $Sigma | s -->^C_* Sigma' | s' $
 for the reflexive, transitive closure of
-$Sigma | s -->^C Sigma' | s'$,
-with all $C$ being all capability sets along the trace unioned together.
-In other words,
-given $Sigma_1 | t_1 -->^C_1 Sigma_2 | t_2 -->^C_2 ... -->^C_n Sigma_(n+1) | t_(n+1)$,
-we have $Sigma_1 | t_1 -->^(C_1 union C_2 union ... union C_n)_* Sigma_(n+1) | t_(n+1)$.
+$Sigma | s -->^C Sigma' | s'$.
 
 
 #figure(
