@@ -303,77 +303,77 @@ notation:65 C "#" Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 --   simp [Exp.subst_comp]
 --   rw [Subst.from_TypeEnv_weaken_open_tvar]
 
--- def Denot.Equiv (d1 d2 : Denot) : Prop :=
---   ∀ s e,
---     (d1 s e) ↔ (d2 s e)
+def Denot.Equiv (d1 d2 : Denot) : Prop :=
+  ∀ s e,
+    (d1 s e) ↔ (d2 s e)
 
--- instance Denot.instHasEquiv : HasEquiv Denot where
---   Equiv := Denot.Equiv
+instance Denot.instHasEquiv : HasEquiv Denot where
+  Equiv := Denot.Equiv
 
--- def Denot.equiv_refl (d : Denot) : d ≈ d := by
---   intro s e
---   constructor
---   · intro h
---     exact h
---   · intro h
---     exact h
+def Denot.equiv_refl (d : Denot) : d ≈ d := by
+  intro s e
+  constructor
+  · intro h
+    exact h
+  · intro h
+    exact h
 
--- def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 := by
---   intro h
---   intro s e
---   constructor
---   · intro h0
---     apply (h s e).mpr h0
---   · intro h0
---     apply (h s e).mp h0
+def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 := by
+  intro h
+  intro s e
+  constructor
+  · intro h0
+    apply (h s e).mpr h0
+  · intro h0
+    apply (h s e).mp h0
 
--- def Denot.equiv_trans (d1 d2 d3 : Denot) : d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 := by
---   intro h12
---   intro h23
---   intro s e
---   have h1 := h12 s e
---   have h2 := h23 s e
---   grind
+def Denot.equiv_trans (d1 d2 d3 : Denot) : d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 := by
+  intro h12
+  intro h23
+  intro s e
+  have h1 := h12 s e
+  have h2 := h23 s e
+  grind
 
--- theorem Denot.eq_to_equiv (d1 d2 : Denot) : d1 = d2 -> d1 ≈ d2 := by
---   intro h
---   intro s e
---   grind
+theorem Denot.eq_to_equiv (d1 d2 : Denot) : d1 = d2 -> d1 ≈ d2 := by
+  intro h
+  intro s e
+  grind
 
--- theorem Denot.equiv_ltr {d1 d2 : Denot}
---   (heqv : d1 ≈ d2)
---   (h1 : d1 s e) :
---   d2 s e := by
---   apply (heqv s e).mp h1
+theorem Denot.equiv_ltr {d1 d2 : Denot}
+  (heqv : d1 ≈ d2)
+  (h1 : d1 s e) :
+  d2 s e := by
+  apply (heqv s e).mp h1
 
--- theorem Denot.equiv_rtl {d1 d2 : Denot}
---   (heqv : d1 ≈ d2)
---   (h2 : d2 s e) :
---   d1 s e := by
---   apply (heqv s e).mpr h2
+theorem Denot.equiv_rtl {d1 d2 : Denot}
+  (heqv : d1 ≈ d2)
+  (h2 : d2 s e) :
+  d1 s e := by
+  apply (heqv s e).mpr h2
 
--- theorem Denot.equiv_to_imply {d1 d2 : Denot}
---   (heqv : d1 ≈ d2) :
---   (d1.Imply d2) ∧ (d2.Imply d1) := by
---   constructor
---   · intro s e h
---     apply (heqv s e).mp h
---   · intro s e h
---     apply (heqv s e).mpr h
+theorem Denot.equiv_to_imply {d1 d2 : Denot}
+  (heqv : d1 ≈ d2) :
+  (d1.Imply d2) ∧ (d2.Imply d1) := by
+  constructor
+  · intro s e h
+    apply (heqv s e).mp h
+  · intro s e h
+    apply (heqv s e).mpr h
 
--- theorem Denot.equiv_to_imply_l {d1 d2 : Denot}
---   (heqv : d1 ≈ d2) :
---   d1.Imply d2 := (Denot.equiv_to_imply heqv).1
+theorem Denot.equiv_to_imply_l {d1 d2 : Denot}
+  (heqv : d1 ≈ d2) :
+  d1.Imply d2 := (Denot.equiv_to_imply heqv).1
 
--- theorem Denot.equiv_to_imply_r {d1 d2 : Denot}
---   (heqv : d1 ≈ d2) :
---   d2.Imply d1 := (Denot.equiv_to_imply heqv).2
+theorem Denot.equiv_to_imply_r {d1 d2 : Denot}
+  (heqv : d1 ≈ d2) :
+  d2.Imply d1 := (Denot.equiv_to_imply heqv).2
 
--- theorem Denot.imply_to_entails (d1 d2 : Denot)
---   (himp : d1.Imply d2) :
---   d1.as_post.entails d2.as_post := by
---   intro h e h1
---   apply himp h e h1
+theorem Denot.imply_to_entails (d1 d2 : Denot)
+  (himp : d1.Imply d2) :
+  d1.as_post.entails d2.as_post := by
+  intro h e h1
+  apply himp h e h1
 
 -- theorem Denot.imply_refl (d : Denot) : d.Imply d := by
 --   intro s e h
