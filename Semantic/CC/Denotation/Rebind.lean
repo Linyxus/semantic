@@ -33,27 +33,6 @@ def Rebind.liftCVar
       simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup]
       exact ρ.var y
 
-/- Equivalence for PreDenot -/
-def PreDenot.Equiv (pd1 pd2 : PreDenot) : Prop :=
-  ∀ A, (pd1 A) ≈ (pd2 A)
-
-instance PreDenot.instHasEquiv : HasEquiv PreDenot where
-  Equiv := PreDenot.Equiv
-
-theorem PreDenot.equiv_def {pd1 pd2 : PreDenot} :
-  pd1 ≈ pd2 ↔ ∀ A s e, (pd1 A s e) ↔ (pd2 A s e) := by
-  constructor
-  · intro h A s e
-    exact (h A) s e
-  · intro h A
-    intro s e
-    exact h A s e
-
-theorem PreDenot.eq_to_equiv {pd1 pd2 : PreDenot} (h : pd1 = pd2) : pd1 ≈ pd2 := by
-  intro A
-  intro s e
-  rw [h]
-
 /- Rebinding for CaptureSet.denot -/
 theorem rebind_captureset_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

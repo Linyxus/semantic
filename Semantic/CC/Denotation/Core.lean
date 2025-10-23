@@ -375,6 +375,27 @@ theorem Denot.imply_to_entails (d1 d2 : Denot)
   intro h e h1
   apply himp h e h1
 
+/- Equivalence for PreDenot -/
+def PreDenot.Equiv (pd1 pd2 : PreDenot) : Prop :=
+  ∀ A, (pd1 A) ≈ (pd2 A)
+
+instance PreDenot.instHasEquiv : HasEquiv PreDenot where
+  Equiv := PreDenot.Equiv
+
+theorem PreDenot.equiv_def {pd1 pd2 : PreDenot} :
+  pd1 ≈ pd2 ↔ ∀ A s e, (pd1 A s e) ↔ (pd2 A s e) := by
+  constructor
+  · intro h A s e
+    exact (h A) s e
+  · intro h A
+    intro s e
+    exact h A s e
+
+theorem PreDenot.eq_to_equiv {pd1 pd2 : PreDenot} (h : pd1 = pd2) : pd1 ≈ pd2 := by
+  intro A
+  intro s e
+  rw [h]
+
 -- theorem Denot.imply_refl (d : Denot) : d.Imply d := by
 --   intro s e h
 --   exact h
