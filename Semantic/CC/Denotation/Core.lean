@@ -411,56 +411,49 @@ theorem PreDenot.equiv_trans (pd1 pd2 pd3 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ p
   · exact h12 A
   · exact h23 A
 
--- theorem Denot.imply_refl (d : Denot) : d.Imply d := by
---   intro s e h
---   exact h
+theorem Denot.imply_refl (d : Denot) : d.Imply d := by
+  intro s e h
+  exact h
 
--- theorem Denot.imply_trans {d1 d2 d3 : Denot}
---   (h1 : d1.Imply d2)
---   (h2 : d2.Imply d3) :
---   d1.Imply d3 := by
---   intro s e h
---   aesop
+theorem Denot.imply_trans {d1 d2 d3 : Denot}
+  (h1 : d1.Imply d2)
+  (h2 : d2.Imply d3) :
+  d1.Imply d3 := by
+  intro s e h
+  aesop
 
--- def Denot.ans : Denot :=
---   fun _ e => Exp.IsAns e
+theorem resolve_var_heap_some
+  (hheap : heap x = some (.val v)) :
+  resolve heap (.var (.free x)) = some v.unwrap := by
+  simp [resolve, hheap]
 
--- def TypeEnv.inert (env : TypeEnv s) : Prop :=
---   ∀ (x : BVar s .tvar),
---     (env.lookup_tvar x).Imply Denot.ans
+theorem resolve_val
+  (hval : v.IsVal) :
+  resolve heap v = some v := by
+  cases hval <;> rfl
 
--- theorem resolve_var_heap_some
---   (hheap : heap x = some v) :
---   resolve heap (.var (.free x)) = some v.unwrap := by
---   simp [resolve, hheap]
+theorem resolve_var_heap_trans
+  (hheap : heap x = some (.val v)) :
+  resolve heap (.var (.free x)) = resolve heap (v.unwrap) := by
+  rw [resolve_var_heap_some hheap]
+  rw [resolve_val v.isVal]
 
--- theorem resolve_val
---   (hval : v.IsVal) :
---   resolve heap v = some v := by
---   cases hval <;> rfl
+theorem resolve_var_or_val
+  (hv : resolve store e = some v) :
+  (∃ x, e = .var x) ∨ e = v := by
+  cases e
+  all_goals try (solve | aesop | simp [resolve] at hv; aesop)
 
--- theorem resolve_var_heap_trans
---   (hheap : heap x = some v) :
---   resolve heap (.var (.free x)) = resolve heap (v.unwrap) := by
---   rw [resolve_var_heap_some hheap]
---   rw [resolve_val v.isVal]
-
--- theorem resolve_var_or_val
---   (hv : resolve store e = some v) :
---   (∃ x, e = .var x) ∨ e = v := by
---   cases e
---   all_goals try (solve | aesop | simp [resolve] at hv; aesop)
-
--- theorem resolve_ans_to_val
---   (hv : resolve store e = some v)
---   (hans : v.IsAns) :
---   e.IsAns := by
---   cases (resolve_var_or_val hv)
---   case inl h =>
---     have ⟨x, h⟩ := h
---     rw [h]
---     apply Exp.IsAns.is_var
---   case inr h => aesop
+theorem resolve_ans_to_val
+  (hv : resolve store e = some v)
+  (hans : v.IsAns) :
+  e.IsAns := by
+  cases (resolve_var_or_val hv)
+  case inl h =>
+    have ⟨x, h⟩ := h
+    rw [h]
+    apply Exp.IsAns.is_var
+  case inr h => aesop
 
 -- def TypeEnv.is_monotonic (env : TypeEnv s) : Prop :=
 --   ∀ (X : BVar s .tvar),
