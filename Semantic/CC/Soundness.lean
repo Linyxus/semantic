@@ -221,7 +221,8 @@ theorem sem_typ_var
 --   rw [<-heq] at this
 --   -- Convert postcondition via open_arg_val_denot
 --   have heqv := open_arg_val_denot (env:=env) (y:=y) (T:=T2)
---   have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
+--   have hconv :=
+--     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
 --   apply Eval.eval_apply hlk hconv
 
 -- theorem sem_typ_tapp
@@ -247,7 +248,8 @@ theorem sem_typ_var
 --   simp [Ty.exp_denot] at this ⊢
 --   -- Convert postcondition via open_targ_val_denot
 --   have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
---   have hconv := eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
+--   have hconv :=
+--     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
 --   apply Eval.eval_tapply hlk hconv
 
 -- theorem sem_typ_letin
