@@ -396,6 +396,21 @@ theorem PreDenot.eq_to_equiv {pd1 pd2 : PreDenot} (h : pd1 = pd2) : pd1 ≈ pd2 
   intro s e
   rw [h]
 
+theorem PreDenot.equiv_refl (pd : PreDenot) : pd ≈ pd := by
+  intro A
+  apply Denot.equiv_refl
+
+theorem PreDenot.equiv_symm (pd1 pd2 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd1 := by
+  intro h A
+  apply Denot.equiv_symm
+  exact h A
+
+theorem PreDenot.equiv_trans (pd1 pd2 pd3 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd3 -> pd1 ≈ pd3 := by
+  intro h12 h23 A
+  apply Denot.equiv_trans _ (pd2 A) _
+  · exact h12 A
+  · exact h23 A
+
 -- theorem Denot.imply_refl (d : Denot) : d.Imply d := by
 --   intro s e h
 --   exact h
