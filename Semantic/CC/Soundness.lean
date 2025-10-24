@@ -157,7 +157,40 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.tabs S e : .typ (Ty.capt Cf (S.poly T)) := sorry
+  ∅ # Γ ⊨ Exp.tabs S e : .typ (Ty.capt Cf (S.poly T)) := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
+  apply Eval.eval_val
+  · simp [Exp.subst]; constructor
+  · simp [Denot.as_post]
+    -- Need to provide S0 and t0 for the poly denotation
+    use (S.subst (Subst.from_TypeEnv env)), (e.subst (Subst.from_TypeEnv env).lift)
+    constructor
+    · -- Show that resolve gives back the type abstraction
+      simp [resolve, Exp.subst]
+    · -- Show the polymorphic function property
+      intro H' denot hsubsume hproper himply
+      rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
+      -- Apply the hypothesis
+      have henv : EnvTyping (Γ,X<:S) (env.extend_tvar denot) H' := by
+        constructor
+        · exact hproper
+        · constructor
+          · exact himply
+          · apply env_typing_monotonic hts hsubsume
+      have this := ht (env.extend_tvar denot) H' henv
+      simp [Ty.exi_exp_denot] at this
+      -- Show capability sets match
+      have hcap_rename :
+        (Cf.rename Rename.succ).denot (env.extend_tvar denot) = Cf.denot env := by
+        have := rebind_captureset_denot (Rebind.tweaken (env:=env) (d:=denot)) Cf
+        exact this.symm
+      rw [← hcap_rename]
+      exact this
+
+theorem sem_typ_cvar {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
+  (ht : Cf.rename Rename.succ # Γ,C<:cb ⊨ e : T) :
+  ∅ # Γ ⊨ Exp.cabs cb e : .typ (Ty.capt Cf (Ty.cpoly cb T)) := sorry
 
 -- theorem abs_val_denot_inv
 --   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
@@ -585,9 +618,10 @@ theorem fundamental
   case var hx => apply sem_typ_var hx
   case abs => grind [sem_typ_abs]
   case tabs ih => apply sem_typ_tabs ih
-  case cabs ih => sorry
+  case cabs ih => extract_goal; sorry
   -- case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]
+  -- case capp => grind [sem_typ_capp]
   -- case letin => grind [sem_typ_letin]
   -- case subtyp => grind [sem_typ_subtyp]
   all_goals sorry

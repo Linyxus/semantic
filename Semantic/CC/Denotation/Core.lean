@@ -291,22 +291,29 @@ theorem Exp.from_TypeEnv_weaken_open
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open]
 
--- theorem Subst.from_TypeEnv_weaken_open_tvar :
---   (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =
---     Subst.from_TypeEnv (env.extend_tvar d) := by
---   apply Subst.funext
---   · intro x
---     cases x; rfl
---   · intro X
---     cases X
---     case here => rfl
---     case there x => rfl
+theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : PreDenot} :
+  (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =
+    Subst.from_TypeEnv (env.extend_tvar d) := by
+  apply Subst.funext
+  · intro x
+    cases x
+    rfl
+  · intro X
+    cases X
+    case here => rfl
+    case there X' =>
+      simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openTVar,
+        TypeEnv.extend_tvar, Ty.subst, Ty.rename]
+  · intro C
+    cases C
+    rfl
 
--- theorem Exp.from_TypeEnv_weaken_open_tvar {e : Exp (s,X)} :
---   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top) =
---     e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
---   simp [Exp.subst_comp]
---   rw [Subst.from_TypeEnv_weaken_open_tvar]
+theorem Exp.from_TypeEnv_weaken_open_tvar
+  {env : TypeEnv s} {d : PreDenot} {e : Exp (s,X)} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top) =
+    e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
+  rw [Exp.subst_comp]
+  rw [Subst.from_TypeEnv_weaken_open_tvar]
 
 def Denot.Equiv (d1 d2 : Denot) : Prop :=
   ∀ s e,
