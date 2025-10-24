@@ -90,6 +90,10 @@ theorem sem_typ_var
 --       { exact harg }
 --       { apply env_typing_monotonic hts hsubsume }
 
+theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
+  (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
+  ∅ # Γ ⊨ Exp.abs T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := sorry
+
 -- theorem sem_typ_tabs
 --   (ht : (Γ,X<:S) ⊨ e : T) :
 --   Γ ⊨ (.tabs S e) : (.poly S T) := by
@@ -537,7 +541,7 @@ theorem fundamental
   C # Γ ⊨ e : T := by
   induction ht
   case var hx => apply sem_typ_var hx
-  -- case abs => grind [sem_typ_abs]
+  case abs => extract_goal; sorry --grind [sem_typ_abs]
   -- case tabs => grind [sem_typ_tabs]
   -- case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]

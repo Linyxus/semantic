@@ -269,7 +269,7 @@ def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) :
     EnvTyping Γ ρ H ->
     ⟦E⟧e_[ρ] (C.denot ρ) H (e.subst (Subst.from_TypeEnv ρ))
 
-notation:65 C "#" Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
+notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
 -- theorem Subst.from_TypeEnv_weaken_open :
 --   (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
