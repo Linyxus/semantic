@@ -584,7 +584,8 @@ theorem fundamental
   induction ht
   case var hx => apply sem_typ_var hx
   case abs => grind [sem_typ_abs]
-  case tabs => extract_goal; sorry --grind [sem_typ_tabs]
+  case tabs ih => apply sem_typ_tabs ih
+  case cabs ih => sorry
   -- case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]
   -- case letin => grind [sem_typ_letin]
