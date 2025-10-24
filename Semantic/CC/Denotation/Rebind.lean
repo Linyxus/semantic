@@ -114,7 +114,7 @@ def rebind_shape_val_denot
         have harg' := (ih1 _ _).mpr harg
         specialize hd arg H' hsub harg'
         rw [hC] at hd ih2
-        exact (ih2 A H' _).mp hd
+        exact (ih2 (A ∪ (C.rename f).denot env2) H' _).mp hd
     · intro h
       obtain ⟨T0, t0, hr, hd⟩ := h
       use T0, t0
@@ -128,7 +128,7 @@ def rebind_shape_val_denot
         have harg' := (ih1 _ _).mp harg
         specialize hd arg H' hsub harg'
         rw [← hC] at hd
-        exact (ih2 A H' _).mpr hd
+        exact (ih2 (A ∪ C.denot env1) H' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := rebind_shape_val_denot ρ T1
     intro A s0 e0

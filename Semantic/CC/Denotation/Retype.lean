@@ -164,7 +164,7 @@ def retype_shape_val_denot
         have harg' := (ih1 H' (.var (.free arg))).mpr harg
         specialize hd arg H' hsub harg'
         rw [hC] at hd ih2
-        exact (ih2 A H' _).mp hd
+        exact (ih2 (A ∪ (C.subst σ).denot env2) H' _).mp hd
     · intro h
       obtain ⟨T0, body, hr, hd⟩ := h
       use T0, body
@@ -178,7 +178,7 @@ def retype_shape_val_denot
           (ρ.liftVar (x:=arg) (A:=CaptureSet.denot env2 (C.subst σ))) T2
         have harg' := (ih1 H' (.var (.free arg))).mp harg
         specialize hd arg H' hsub harg'
-        have := (ih2 A H' _).mpr hd
+        have := (ih2 (A ∪ (C.subst σ).denot env2) H' _).mpr hd
         rw [← hC] at this
         exact this
   | .poly T1 T2 => by

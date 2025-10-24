@@ -116,13 +116,20 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
           · apply env_typing_monotonic hts hsubsume
       have this := ht (env.extend_var arg (T1.captureSet.denot env)) H' henv
       simp [Ty.exi_exp_denot] at this
-      -- Now need to show capability sets are equal
-      have hcap :
-        (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
-          (env.extend_var arg (T1.captureSet.denot env))
+      -- Show capability sets match
+      have hcap_rename :
+        (Cf.rename Rename.succ).denot (env.extend_var arg (T1.captureSet.denot env))
         = Cf.denot env := by
-        sorry
-      rw [← hcap]
+        have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=arg)
+          (A:=T1.captureSet.denot env)) Cf
+        exact this.symm
+      have hcap_var :
+        (CaptureSet.var (.bound .here)).denot
+          (env.extend_var arg (T1.captureSet.denot env))
+        = T1.captureSet.denot env := by
+        simp [CaptureSet.denot, TypeEnv.lookup_var, TypeEnv.lookup, TypeEnv.extend_var]
+      rw [← hcap_rename, ← hcap_var]
+      simp [CaptureSet.denot]
       exact this
 
 -- theorem sem_typ_tabs
@@ -147,6 +154,10 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
 --         · constructor
 --           · exact himply
 --           · apply env_typing_monotonic hts Hs
+
+theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
+  (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
+  ∅ # Γ ⊨ Exp.tabs S e : .typ (Ty.capt Cf (S.poly T)) := sorry
 
 -- theorem abs_val_denot_inv
 --   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
@@ -573,7 +584,7 @@ theorem fundamental
   induction ht
   case var hx => apply sem_typ_var hx
   case abs => grind [sem_typ_abs]
-  -- case tabs => grind [sem_typ_tabs]
+  case tabs => extract_goal; sorry --grind [sem_typ_tabs]
   -- case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]
   -- case letin => grind [sem_typ_letin]
