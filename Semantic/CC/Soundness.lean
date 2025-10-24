@@ -345,7 +345,85 @@ theorem sem_typ_app
   (hy : C # Γ ⊨ .var y : .typ T1) :
   C # Γ ⊨ Exp.app x y : T2.subst (Subst.openVar y) := by
   intro env store hts
-  sorry
+
+  -- Apply hx and extract function properties
+  have h1 := hx env store hts
+  simp [Exp.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+  have ⟨fx, hfx, T0, e0, hlk, hfun⟩ := abs_val_denot_inv h1'
+
+  -- Apply hy and extract argument properties
+  have h2 := hy env store hts
+  simp [Exp.subst] at h2
+  have h2' := var_exp_denot_inv h2
+  simp only [Ty.exi_val_denot] at h2'
+
+  -- Show that after substitution, variables become specific free variables
+  have hx_free : x.subst (Subst.from_TypeEnv env) = .free (interp_var env x).1 := by
+    cases x with
+    | bound bx => simp only [Var.subst, Subst.from_TypeEnv, interp_var]
+    | free fx => simp only [Var.subst, interp_var]
+
+  have hy_free : y.subst (Subst.from_TypeEnv env) = .free (interp_var env y).1 := by
+    cases y with
+    | bound bvar => simp only [Var.subst, Subst.from_TypeEnv, interp_var]
+    | free fvar => simp only [Var.subst, interp_var]
+
+  -- Connect with the fx from abs_val_denot_inv
+  rw [hx_free] at hfx
+  have hfx' : fx = (interp_var env x).1 := by cases hfx; rfl
+  subst hfx'
+
+  -- Similarly for y
+  rw [hy_free] at h2'
+
+  -- Simplify the goal
+  simp [Exp.subst, hx_free, hy_free, Ty.exi_exp_denot]
+
+  -- Apply the function to the argument
+  -- Note: hfun expects the argument capability set to be T1.captureSet.denot env
+  have happ := hfun store (interp_var env y).1 (Heap.subsumes_refl store) h2'
+
+  -- PROBLEM 1: Need to relate extended environment to substitution
+  -- The equivalence relates (interp_var env y).2 but we need to show it equals T1.captureSet
+  have hy_capset : (interp_var env y).2 = T1.captureSet.denot env := by
+    sorry  -- Need to prove: typed variables have matching capability sets
+           -- This should follow from EnvTyping and the fact that y has type .typ T1
+
+  -- PROBLEM 2: Need opening lemma for existential types
+  have heqv : ∀ A,
+    Ty.exi_exp_denot (env.extend_var (interp_var env y).1 (T1.captureSet.denot env)) T2 A ≈
+    Ty.exi_exp_denot env (T2.subst (Subst.openVar y)) A := by
+    sorry  -- MISSING LEMMA: open_arg_exi_exp_denot
+           -- Should be liftable from open_arg_shape_val_denot
+
+  -- Convert using equivalence
+  have happ' : Ty.exi_exp_denot env (T2.subst (Subst.openVar y))
+                  (Cx.denot env ∪ T1.captureSet.denot env) store
+                  (e0.subst (Subst.openVar (.free (interp_var env y).1))) := by
+    have h := heqv (Cx.denot env ∪ T1.captureSet.denot env) store
+                   (e0.subst (Subst.openVar (.free (interp_var env y).1)))
+    exact h.1 happ
+
+  -- PROBLEM 3: Capability sets don't match
+  -- happ' uses: (Cx.denot env ∪ T1.captureSet.denot env)
+  -- Goal uses: C.denot env
+  -- Need to show these are compatible or use monotonicity
+
+  have hcap : C.denot env ⊆ Cx.denot env ∪ T1.captureSet.denot env := by
+    sorry  -- MISSING: capability set relationship from typing
+           -- The typing rule has both function and argument with capture set C
+           -- But the function's type has capture set Cx
+           -- Need to understand: does C ⊆ Cx hold? Or something else?
+
+  -- Use capability set monotonicity
+  have happ'' : Eval (C.denot env) store (e0.subst (Subst.openVar (.free (interp_var env y).1)))
+                  (Ty.exi_val_denot env (T2.subst (Subst.openVar y))).as_post := by
+    sorry  -- MISSING LEMMA: Eval monotonicity wrt capability sets
+           -- Need: If A ⊆ B and Eval B H e Q, then Eval A H e Q (under some conditions)
+
+  apply Eval.eval_apply hlk happ''
 
 -- theorem sem_typ_tapp
 --   (ht : Γ ⊨ (.var x) : (.poly S T)) :
