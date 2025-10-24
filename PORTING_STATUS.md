@@ -1,6 +1,6 @@
 # CC Soundness Porting Status
 
-**Last Updated**: 2025-10-24 (Session 2)
+**Last Updated**: 2025-10-24 (Session 3)
 **File**: `Semantic/CC/Soundness.lean`
 **Task**: Port type soundness proofs from Fsub to CC (Capture Calculus)
 
@@ -106,152 +106,65 @@ The arrow denotation correctly **unions** capability sets when evaluating the fu
 
 This union is **semantically essential** - without it, the function body would be incorrectly restricted.
 
-## Completed Work
+## Session 3 Progress: Three Abstractions Complete
 
-### ✅ typed_env_lookup_var (lines 5-63)
-**Status**: Fully ported and compiles
+**Date**: 2025-10-24
+**Focus**: Complete all three abstraction forms (term, type, capture)
 
-**Key changes made**:
-1. Changed return type from generic `Ty.val_denot` to `Ty.capt_val_denot`
-2. Extract `.1` from `(env.lookup_var x).1` to get Nat index
-3. Handle all three binding cases:
-   - `.var`: Use `weaken_capt_val_denot` with parameter `A` (not `access`)
-   - `.tvar`: Use `tweaken_capt_val_denot`
-   - `.cvar`: Use `cweaken_capt_val_denot` (NEW)
+### Key Discovery: Capability Set Handling Differs by Abstraction Type
 
-**Critical fix**: Parameter name is `A` not `access`:
-```lean
--- WRONG:
-weaken_capt_val_denot (env:=env0) (x:=n) (access:=access) (T:=T0)
+The three abstraction forms in CC handle capability sets differently, reflecting their semantic roles:
 
--- CORRECT:
-weaken_capt_val_denot (env:=env0) (x:=n) (A:=access) (T:=T0)
-```
+| Abstraction | Capability Set for Body | Semantic Reason |
+|-------------|------------------------|-----------------|
+| `abs` (term) | `A ∪ T1.captureSet` | Body needs function's captures AND parameter's capabilities |
+| `tabs` (type) | `A` only | Type parameters don't carry runtime capabilities |
+| `cabs` (capture) | `A` only | Capture parameters are constraints, not new capabilities |
 
-### ✅ sem_typ_var (lines 65-72)
-**Status**: Fully ported and compiles
+**Why this matters**: Term abstractions are special because their parameters carry **runtime capabilities**. Type and capture abstractions deal with compile-time information only.
 
-**Key changes made**:
-1. Added capture set to semantic typing: `T.captureSet # Γ ⊨ (.var (.bound x)) : (.typ T)`
-2. Use `Ty.exi_exp_denot` and `Ty.exi_val_denot` instead of generic versions
-3. Wrap type in `.typ` constructor for existential type
+### ⚠️ sem_typ_app (Soundness.lean:343-353)
 
-### ✅ sem_typ_abs (lines 93-134)
-**Status**: ✅ **FULLY PORTED AND COMPILES**
+**Status**: Incomplete - left with `sorry` and detailed comment
 
-**Signature**:
-```lean
-theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
-  (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
-  ∅ # Γ ⊨ Exp.abs T1 e : .typ (Ty.capt Cf (T1.arrow T2))
-```
-
-**Key insights discovered**:
-
-1. **The Arrow Denotation Fix (Core.lean:171-179)**
-   - Initially appeared unprovable due to capability set mismatch
-   - The fix: Arrow denotation now correctly unions `A ∪ T1.captureSet.denot env`
-   - This makes the proof straightforward and semantically correct
-
-2. **Substitution Lemmas Required (Core.lean:274-292)**
-   - Proved `Subst.from_TypeEnv_weaken_open`: Composition of lift and opening
-   - Proved `Exp.from_TypeEnv_weaken_open`: Expression substitution over opening
-   - These lemmas bridge the gap between syntactic and semantic variable binding
-
-3. **Capability Set Equation**:
-   ```lean
-   (Cf.rename Rename.succ ∪ .var (.bound .here)).denot (env.extend_var arg A)
-   = Cf.denot env ∪ A
-   ```
-   Where:
-   - `Cf.rename Rename.succ` denotes to `Cf.denot env` (via `rebind_captureset_denot`)
-   - `.var (.bound .here)` denotes to the freshly added capability set `A`
-   - Their union matches **exactly** what the arrow denotation expects!
-
-4. **Proof Structure**:
-   ```lean
-   intro env store hts
-   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
-   apply Eval.eval_val
-   · simp [Exp.subst]; constructor  -- Show it's a value
-   · simp [Denot.as_post]
-     -- Provide the existential witnesses
-     use (T1.subst (Subst.from_TypeEnv env)), (e.subst (Subst.from_TypeEnv env).lift)
-     constructor
-     · simp [resolve, Exp.subst]  -- resolve returns the abstraction
-     · -- The function property: prove body typechecks with unioned capabilities
-       intro arg H' hsubsume harg
-       rw [Exp.from_TypeEnv_weaken_open (A := T1.captureSet.denot env)]
-       -- Build extended environment typing
-       have henv : EnvTyping (Γ,x:T1) (env.extend_var arg ...) H' := ...
-       have this := ht (env.extend_var arg ...) H' henv
-       -- Show capability sets align using rebind lemmas
-       have hcap_rename := rebind_captureset_denot (Rebind.weaken ...) Cf
-       have hcap_var : ... := by simp [CaptureSet.denot, ...]
-       rw [← hcap_rename, ← hcap_var]
-       simp [CaptureSet.denot]
-       exact this
-   ```
-
-### ✅ Substitution Lemmas (Core.lean:274-292)
-**Status**: Proved and verified
-
-These lemmas were commented out but are essential for sem_typ_abs:
+**Helper lemmas proved** (Soundness.lean:222-306):
 
 ```lean
-theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} {A : CapabilitySet} :
-  (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
-    Subst.from_TypeEnv (env.extend_var x A)
+-- Inverts arrow type to extract function properties
+theorem abs_val_denot_inv {A : CapabilitySet}
+  (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
+  ∃ fx, x = .free fx ∧ ∃ T0 e0,
+    store fx = some (.val ⟨.abs T0 e0, by constructor⟩) ∧
+    (∀ (H' : Heap) (arg : Nat), ...)
 
-theorem Exp.from_TypeEnv_weaken_open
-  {env : TypeEnv s} {x : Nat} {A : CapabilitySet} {e : Exp (s,x)} :
-  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
-    e.subst (Subst.from_TypeEnv (env.extend_var x A))
+-- Extracts value denotation from expression denotation
+theorem var_exp_denot_inv {A : CapabilitySet}
+  (hv : Ty.exi_exp_denot env T A store (.var x)) :
+  Ty.exi_val_denot env T store (.var x)
+
+-- Shows substituted bound variables become free
+theorem var_subst_is_free {x : BVar s .var} :
+  ∃ fx, (Subst.from_TypeEnv env).var x = .free fx
+
+-- Empty-signature variables are free
+theorem closed_var_inv (x : Var .var {}) :
+  ∃ fx, x = .free fx
 ```
 
-**Why they matter**: These lemmas show that variable opening commutes with environment extension, which is crucial for reasoning about function application semantics.
+**Next steps for completion**:
+- May need lemmas to extract `Ty.exi_exp_denot` from `Eval` goals
+- Need better handling of variable substitution in arbitrary signatures
+- Consider proving a more general "opening lemma" that works with `Var` not just `BVar`
 
-### ✅ Rebind Proofs Fixed (Rebind.lean:99-131)
-**Status**: Fixed to account for capability set unioning
-
-The `rebind_shape_val_denot` proof for arrow case now correctly applies the inductive hypothesis with the **unioned capability set**:
-
-```lean
-case arrow T1 T2 => by
-  -- Forward direction (line 117):
-  exact (ih2 (A ∪ (C.rename f).denot env2) H' _).mp hd
-
-  -- Backward direction (line 131):
-  exact (ih2 (A ∪ C.denot env1) H' _).mpr hd
-```
-
-**Key insight**: When showing that renaming preserves arrow denotations, we must account for the fact that the arrow body is evaluated with `A ∪ capset`, not just `A`.
-
-### ✅ Retype Proofs Fixed (Retype.lean:149-183)
-**Status**: Fixed to account for capability set unioning
-
-Similar fix for substitution preservation:
-
-```lean
-case arrow T1 T2 => by
-  -- Forward direction (line 167):
-  exact (ih2 (A ∪ (C.subst σ).denot env2) H' _).mp hd
-
-  -- Backward direction (line 181):
-  have := (ih2 (A ∪ (C.subst σ).denot env2) H' _).mpr hd
-```
-
-## Remaining Work (~50 errors)
+## Remaining Work (~45 errors)
 
 ### High Priority - Core Typing Rules
 
-1. **sem_typ_tabs** (lines 114-119, commented out)
-   - Add capture sets to notation
-   - Use sort-specific denotations
-   - Handle PreDenot for type bounds
-   - Similar structure to sem_typ_abs but for type abstraction
+1. ✅ **sem_typ_tabs** - **COMPLETED in Session 3**
 
-2. **sem_typ_app** (lines 199-225)
+2. ✅ **sem_typ_cabs** - **COMPLETED in Session 3**
+
+3. ⚠️ **sem_typ_app** (lines 343-353) - **PARTIAL PROGRESS in Session 3**
    - Add capture sets
    - Fix type sorts in arrow types
    - Handle function application with capability flow
@@ -319,16 +232,20 @@ case arrow T1 T2 => by
 
 ## Systematic Fixing Strategy
 
-### Phase 1: Core Infrastructure ✅ **COMPLETED**
+### Phase 1: Core Infrastructure ✅ **COMPLETED (Session 2)**
 1. ✅ Fix typed_env_lookup_var
 2. ✅ Fix sem_typ_var
 3. ✅ Fix sem_typ_abs (including arrow denotation fix)
-4. ✅ Prove substitution lemmas
+4. ✅ Prove substitution lemmas for term variables
 5. ✅ Fix Rebind and Retype proofs
 
-### Phase 2: Core Typing Rules (NEXT)
-4. Fix sem_typ_tabs
-5. Fix sem_typ_app, sem_typ_tapp, sem_typ_letin
+### Phase 2: Core Typing Rules ✅ **MOSTLY COMPLETED (Session 3)**
+1. ✅ Prove substitution lemmas for type variables
+2. ✅ Prove substitution lemmas for capture variables
+3. ✅ Fix sem_typ_tabs
+4. ✅ Fix sem_typ_cabs
+5. ⚠️ Fix sem_typ_app (partial - helper lemmas done, main proof needs work)
+6. TODO: Fix sem_typ_tapp, sem_typ_letin
 
 ### Phase 3: Inversion Lemmas
 6. Fix all `*_val_denot_inv` lemmas
@@ -424,7 +341,7 @@ case cvar =>  -- NEW - always needed
   -- handle capture variable binding
 ```
 
-### Pattern 8: **NEW - Capability Set Unioning in Arrow/Poly Bodies**
+### Pattern 8: **Capability Set Unioning in Arrow Bodies**
 ```lean
 -- When proving properties about arrow bodies, remember:
 -- The body is evaluated with A ∪ T1.captureSet.denot env
@@ -435,6 +352,32 @@ exact (ih2 (A ∪ capset) H' _).mp hd
 -- In sem_typ_abs proof:
 -- Show: (Cf.rename Rename.succ ∪ .var .here).denot env'
 --     = Cf.denot env ∪ param_capset
+```
+
+### Pattern 9: **Three Abstraction Forms Have Different Capability Handling**
+```lean
+-- Term abstraction (abs): Body gets A ∪ param_capabilities
+theorem sem_typ_abs
+  (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
+  ∅ # Γ ⊨ Exp.abs T1 e : .typ (Ty.capt Cf (T1.arrow T2))
+-- Proof uses: env.extend_var arg (T1.captureSet.denot env)
+-- Arrow body evaluated with: A ∪ T1.captureSet.denot env
+
+-- Type abstraction (tabs): Body gets A only
+theorem sem_typ_tabs
+  (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
+  ∅ # Γ ⊨ Exp.tabs S e : .typ (Ty.capt Cf (S.poly T))
+-- Proof uses: env.extend_tvar denot
+-- Poly body evaluated with: A (no unioning)
+-- Uses: Exp.from_TypeEnv_weaken_open_tvar
+
+-- Capture abstraction (cabs): Body gets A only
+theorem sem_typ_cabs
+  (ht : Cf.rename Rename.succ # Γ,C<:cb ⊨ e : T) :
+  ∅ # Γ ⊨ Exp.cabs cb e : .typ (Ty.capt Cf (Ty.cpoly cb T))
+-- Proof uses: env.extend_cvar A0 (where A0 ⊆ cb.denot env)
+-- Cpoly body evaluated with: A (no unioning)
+-- Uses: Exp.from_TypeEnv_weaken_open_cvar
 ```
 
 ## Common Errors and Solutions
@@ -464,17 +407,45 @@ exact (ih2 (A ∪ capset) H' _).mp hd
 
 ## Critical Lessons Learned
 
-### 1. **Arrow Denotation Must Union Capability Sets**
+### Session 2: Arrow Denotation and Infrastructure
+
+#### 1. **Arrow Denotation Must Union Capability Sets**
 The initial naive port appeared unprovable because the arrow denotation was missing the union. The semantic intuition is clear: when you call a function that captures capabilities `A` with an argument that carries capabilities `B`, the function body should have access to `A ∪ B`.
 
-### 2. **Rebind/Retype Lemmas Must Respect the Denotation Structure**
+#### 2. **Rebind/Retype Lemmas Must Respect the Denotation Structure**
 When the arrow denotation changed to union capability sets, the rebind and retype preservation lemmas had to be updated to match. This is a general principle: **structural lemmas must exactly match the semantic definitions**.
 
-### 3. **Substitution Lemmas Bridge Syntax and Semantics**
+#### 3. **Substitution Lemmas Bridge Syntax and Semantics**
 The `from_TypeEnv_weaken_open` lemmas show how syntactic operations (opening binders) correspond to semantic operations (extending environments). These bridges are essential for soundness proofs.
 
-### 4. **Capture Set Renaming Preserves Denotations**
-The `rebind_captureset_denot` lemma is crucial for showing that weakening (renaming) preserves the meaning of capture sets. Used extensively in sem_typ_abs.
+#### 4. **Capture Set Renaming Preserves Denotations**
+The `rebind_captureset_denot` lemma is crucial for showing that weakening (renaming) preserves the meaning of capture sets. Used extensively in all abstraction proofs.
+
+### Session 3: Three Abstraction Forms
+
+#### 5. **Abstraction Forms Differ in Capability Handling Based on Runtime vs Compile-Time**
+The key insight: Only **term abstractions** union capability sets because only term parameters carry runtime capabilities. Type parameters and capture parameters are compile-time constructs that don't contribute new runtime capabilities.
+
+**Consequence**: When porting proofs, always check which abstraction form you're working with:
+- `abs`: Use `A ∪ T.captureSet.denot env`, need parameter capability access
+- `tabs`/`cabs`: Use just `A`, no capability unioning needed
+
+#### 6. **Each Binding Kind Needs Its Own Substitution Lemmas**
+Pattern emerged: For each binding kind (`.var`, `.tvar`, `.cvar`), we need:
+- A `Subst.from_TypeEnv_weaken_open_*` lemma
+- An `Exp.from_TypeEnv_weaken_open_*` lemma
+- A `Rebind.*weaken` lemma for capability set renaming
+
+These form a complete set for reasoning about that binding kind.
+
+#### 7. **Non-Empty Signatures Complicate Application Proofs**
+Unlike Fsub where expressions are closed (`{}`), CC allows expressions in arbitrary contexts. This means:
+- Variables may be bound, not just free
+- Substitution must be tracked through non-empty environments
+- Need more sophisticated lemmas to bridge `Var` and `BVar` handling
+
+#### 8. **Helper Lemmas Must Preserve Sort Information**
+The `abs_val_denot_inv` and similar inversion lemmas must carefully preserve type sort information (`.shape`, `.capt`, `.exi`). Getting the sorts wrong makes the lemma unusable.
 
 ## Reference Files
 
@@ -487,21 +458,28 @@ The `rebind_captureset_denot` lemma is crucial for showing that weakening (renam
 
 ## Next Steps
 
-1. **Immediate**: Port `sem_typ_tabs`
-   - Very similar structure to `sem_typ_abs`
-   - Type abstraction instead of term abstraction
-   - No capability set unioning needed (just `A`)
+1. **Immediate**: Complete `sem_typ_app`
+   - Helper lemmas are in place
+   - Main challenge: handling non-empty signatures correctly
+   - May need additional bridging lemmas between `Var` and `BVar`
+   - Consider looking at how Fsub handles this (though it's simpler with empty signatures)
 
-2. **Short-term**: Fix core typing rules (app, tapp, letin)
-   - These build on the abstraction rules
-   - Will exercise the arrow denotation in application
+2. **Short-term**: Port `sem_typ_tapp` and `sem_typ_capp`
+   - Type application (tapp) should follow tabs pattern
+   - Capture application (capp) should follow cabs pattern
+   - Both should be straightforward given the abstraction proofs
 
-3. **Medium-term**: Fix inversion and subtyping lemmas
+3. **Short-term**: Port `sem_typ_letin` and `sem_typ_unpack`
+   - More complex environment manipulation
+   - Build on existing substitution lemmas
+
+4. **Medium-term**: Fix inversion and subtyping lemmas
    - Should be more straightforward now that core infrastructure is solid
+   - May benefit from the helper lemmas already proved
 
-4. **Long-term**: Add CC-specific construct proofs (cabs, capp, pack, unpack)
-   - Capture polymorphism is unique to CC
-   - Will need careful treatment
+5. **Long-term**: Complete `fundamental` theorem
+   - Integrate all completed typing rules
+   - Handle CC-specific cases (pack, invoke, etc.)
 
 ## Tips for Future Sessions
 
@@ -518,10 +496,24 @@ The `rebind_captureset_denot` lemma is crucial for showing that weakening (renam
 
 ## Build Status
 
+### Session 3 (Current)
 ```bash
-✔ [3084/3084] Built Semantic.CC.Soundness
-⚠ warning: declaration uses 'sorry' (only in `fundamental` - expected)
-Build completed successfully
+✔ [3110/3110] Built Semantic.CC (2.2s)
+✔ Built Semantic (2.2s)
+Build completed successfully (3110 jobs)
+
+⚠ 2 declarations use 'sorry':
+  - sem_typ_app (lines 343-353) - partial progress, helper lemmas complete
+  - fundamental (expected - waiting on remaining typing rules)
 ```
 
-All infrastructure is solid. Ready to proceed with remaining typing rules! 🎉
+**Progress Summary**:
+- ✅ **3 abstraction forms complete**: abs, tabs, cabs
+- ✅ **All substitution lemmas proved**: term, type, and capture variables
+- ✅ **Helper lemmas for application ready**: abs_val_denot_inv, var_exp_denot_inv, etc.
+- ⚠️ **1 partially complete**: sem_typ_app (needs signature handling work)
+- 📊 **Estimated ~40-45 theorems remaining**
+
+**Key Achievement**: All three abstraction forms (term, type, capture) are now complete with full understanding of their different capability handling semantics. The infrastructure for application rules is largely in place.
+
+Ready to continue with application rules and then subtyping! 🎯

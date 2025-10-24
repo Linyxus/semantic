@@ -219,32 +219,40 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
       rw [← hcap_rename]
       exact this
 
--- theorem abs_val_denot_inv
---   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
---   ∃ fx, x = .free fx
---     ∧ ∃ T0 e0 hv, store fx = some ⟨.abs T0 e0, hv⟩
---     ∧ (∀ (store' : Heap) arg,
---       store'.subsumes store ->
---       (Ty.val_denot env T1 store' (.var (.free arg))) ->
---       Ty.exp_denot (env.extend_var arg) T2 store' (e0.subst (Subst.openVar (.free arg)))) := by
---   cases x with
---   | bound bx => cases bx
---   | free fx =>
---     simp [Ty.val_denot, resolve] at hv
---     have ⟨T0, e0, hresolve, hfun⟩ := hv
---     -- Analyze what's in the store at fx
---     generalize hres : store fx = res at hresolve ⊢
---     cases res
---     case none => simp at hresolve
---     case some v =>
---       simp at hresolve
---       cases v; rename_i val hval
---       -- hresolve says val = .abs T0 e0
---       subst hresolve
---       use fx
---       constructor
---       · rfl
---       · use T0, e0, (by constructor)
+theorem abs_val_denot_inv {A : CapabilitySet}
+  (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
+  ∃ fx, x = .free fx
+    ∧ ∃ T0 e0,
+      store fx = some (.val ⟨.abs T0 e0, by constructor⟩)
+    ∧ (∀ (H' : Heap) (arg : Nat),
+      H'.subsumes store ->
+      Ty.capt_val_denot env T1 H' (.var (.free arg)) ->
+      Ty.exi_exp_denot
+        (env.extend_var arg (T1.captureSet.denot env))
+        T2 (A ∪ T1.captureSet.denot env) H'
+        (e0.subst (Subst.openVar (.free arg)))) := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp [Ty.shape_val_denot, resolve] at hv
+    obtain ⟨T0, e0, hresolve, hfun⟩ := hv
+    -- Analyze what's in the store at fx
+    generalize hres : store fx = res at hresolve ⊢
+    cases res
+    case none => simp at hresolve
+    case some v =>
+      cases v
+      case val wrapped =>
+        cases wrapped; rename_i unwrap isVal
+        simp at hresolve
+        subst hresolve
+        use fx, rfl, T0, e0
+        constructor
+        · exact hres
+        · intro H' arg hsub harg
+          exact hfun arg H' hsub harg
+      case capability =>
+        simp at hresolve
 
 -- theorem tabs_val_denot_inv
 --   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
@@ -284,23 +292,24 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
 --           exact hres
 --       · exact hfun
 
--- theorem interp_var_subst (x : Var .var s) :
---   .free (interp_var env x) = x.subst (Subst.from_TypeEnv env) := by
---   cases x <;> rfl
+theorem var_subst_is_free {x : BVar s .var} :
+  ∃ fx, (Subst.from_TypeEnv env).var x = .free fx := by
+  use (env.lookup_var x).1
+  rfl
 
--- theorem var_exp_denot_inv
---   (hv : Ty.exp_denot env T store (.var x)) :
---   Ty.val_denot env T store (.var x) := by
---   simp [Ty.exp_denot] at hv
---   cases hv
---   case eval_val hv _ => cases hv
---   case eval_var hQ => exact hQ
+theorem var_exp_denot_inv {A : CapabilitySet}
+  (hv : Ty.exi_exp_denot env T A store (.var x)) :
+  Ty.exi_val_denot env T store (.var x) := by
+  simp [Ty.exi_exp_denot] at hv
+  cases hv
+  case eval_val _ hQ => exact hQ
+  case eval_var hQ => exact hQ
 
--- theorem closed_var_inv (x : Var .var {}) :
---   ∃ fx, x = .free fx := by
---   cases x
---   case bound bx => cases bx
---   case free fx => aesop
+theorem closed_var_inv (x : Var .var {}) :
+  ∃ fx, x = .free fx := by
+  cases x
+  case bound bx => cases bx
+  case free fx => use fx
 
 -- theorem sem_typ_app
 --   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
@@ -331,11 +340,12 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
 --     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
 --   apply Eval.eval_apply hlk hconv
 
-theorem sem_typ_app {x : Var Kind.var s} {Cx : CaptureSet s}
-  {T1 : Ty TySort.capt s} {T2 : Ty TySort.exi (s,x)} {y : Var Kind.var s}
-  (hx : C # Γ ⊨ Exp.var x : (Ty.capt Cx (T1.arrow T2)).typ)
-  (hy : C # Γ ⊨ Exp.var y : T1.typ) :
-  C # Γ ⊨ Exp.app x y : T2.subst (Subst.openVar y) := sorry
+theorem sem_typ_app
+  (hx : C # Γ ⊨ .var x : (Ty.capt Cx (.arrow T1 T2)).typ)
+  (hy : C # Γ ⊨ .var y : .typ T1) :
+  C # Γ ⊨ Exp.app x y : T2.subst (Subst.openVar y) := by
+  intro env store hts
+  sorry
 
 -- theorem sem_typ_tapp
 --   (ht : Γ ⊨ (.var x) : (.poly S T)) :
