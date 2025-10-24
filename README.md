@@ -12,3 +12,7 @@ This repo practices semantic type soundness for various calculi.
 
 The module [Fsub](Semantic/Fsub.lean) includes a semantic type soundness formulation of System F<: in monadic normal forms with singleton types (types like `x.type`).
 
+## System Capless
+
+The module [CC](Semantic/CC.lean) mechanises semantic type soundness for System Capless.
+
