@@ -176,7 +176,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       Ty.capt_val_denot env T1 H' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg (T1.captureSet.denot env))
-        T2 A H' (t0.subst (Subst.openVar (.free arg))))
+        T2 (A ∪ T1.captureSet.denot env) H' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A H e =>
   ∃ S0 t0,
     resolve H e = some (.tabs S0 t0) ∧
@@ -271,20 +271,25 @@ def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) :
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
--- theorem Subst.from_TypeEnv_weaken_open :
---   (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
---     Subst.from_TypeEnv (env.extend_var x) := by
---   apply Subst.funext
---   · intro x
---     cases x <;> rfl
---   · intro X
---     cases X; rfl
+theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} {A : CapabilitySet} :
+  (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
+    Subst.from_TypeEnv (env.extend_var x A) := by
+  apply Subst.funext
+  · intro y
+    cases y <;> rfl
+  · intro X
+    cases X
+    rfl
+  · intro C
+    cases C
+    rfl
 
--- theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
---   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
---     e.subst (Subst.from_TypeEnv (env.extend_var x)) := by
---   simp [Exp.subst_comp]
---   simp [Subst.from_TypeEnv_weaken_open]
+theorem Exp.from_TypeEnv_weaken_open
+  {env : TypeEnv s} {x : Nat} {A : CapabilitySet} {e : Exp (s,x)} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
+    e.subst (Subst.from_TypeEnv (env.extend_var x A)) := by
+  rw [Exp.subst_comp]
+  rw [Subst.from_TypeEnv_weaken_open]
 
 -- theorem Subst.from_TypeEnv_weaken_open_tvar :
 --   (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =

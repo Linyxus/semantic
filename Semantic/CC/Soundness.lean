@@ -92,7 +92,38 @@ theorem sem_typ_var
 
 theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
-  ∅ # Γ ⊨ Exp.abs T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := sorry
+  ∅ # Γ ⊨ Exp.abs T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
+  apply Eval.eval_val
+  · simp [Exp.subst]; constructor
+  · simp [Denot.as_post]
+    -- Need to provide T0 and t0 for the arrow denotation
+    use (T1.subst (Subst.from_TypeEnv env)), (e.subst (Subst.from_TypeEnv env).lift)
+    constructor
+    · -- Show that resolve gives back the abstraction
+      simp [resolve, Exp.subst]
+    · -- Show the function property
+      intro arg H' hsubsume harg
+      rw [Exp.from_TypeEnv_weaken_open (A := T1.captureSet.denot env)]
+      -- Apply the hypothesis
+      have henv :
+        EnvTyping (Γ,x:T1) (env.extend_var arg (T1.captureSet.denot env)) H' := by
+        constructor
+        · exact harg
+        · constructor
+          · rfl
+          · apply env_typing_monotonic hts hsubsume
+      have this := ht (env.extend_var arg (T1.captureSet.denot env)) H' henv
+      simp [Ty.exi_exp_denot] at this
+      -- Now need to show capability sets are equal
+      have hcap :
+        (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
+          (env.extend_var arg (T1.captureSet.denot env))
+        = Cf.denot env := by
+        sorry
+      rw [← hcap]
+      exact this
 
 -- theorem sem_typ_tabs
 --   (ht : (Γ,X<:S) ⊨ e : T) :
@@ -541,7 +572,7 @@ theorem fundamental
   C # Γ ⊨ e : T := by
   induction ht
   case var hx => apply sem_typ_var hx
-  case abs => extract_goal; sorry --grind [sem_typ_abs]
+  case abs => grind [sem_typ_abs]
   -- case tabs => grind [sem_typ_tabs]
   -- case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]
