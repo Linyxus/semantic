@@ -315,6 +315,30 @@ theorem Exp.from_TypeEnv_weaken_open_tvar
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_tvar]
 
+theorem Subst.from_TypeEnv_weaken_open_cvar {env : TypeEnv s} {c : CapabilitySet} :
+  (Subst.from_TypeEnv env).lift.comp (Subst.openCVar .empty) =
+    Subst.from_TypeEnv (env.extend_cvar c) := by
+  apply Subst.funext
+  · intro x
+    cases x
+    rfl
+  · intro X
+    cases X
+    rfl
+  · intro C
+    cases C
+    case here => rfl
+    case there C' =>
+      simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
+        TypeEnv.extend_cvar, CaptureSet.subst, CaptureSet.rename]
+
+theorem Exp.from_TypeEnv_weaken_open_cvar
+  {env : TypeEnv s} {c : CapabilitySet} {e : Exp (s,C)} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar .empty) =
+    e.subst (Subst.from_TypeEnv (env.extend_cvar c)) := by
+  rw [Exp.subst_comp]
+  rw [Subst.from_TypeEnv_weaken_open_cvar]
+
 def Denot.Equiv (d1 d2 : Denot) : Prop :=
   ∀ s e,
     (d1 s e) ↔ (d2 s e)

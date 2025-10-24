@@ -188,9 +188,36 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
       rw [← hcap_rename]
       exact this
 
-theorem sem_typ_cvar {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
+theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
   (ht : Cf.rename Rename.succ # Γ,C<:cb ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.cabs cb e : .typ (Ty.capt Cf (Ty.cpoly cb T)) := sorry
+  ∅ # Γ ⊨ Exp.cabs cb e : .typ (Ty.capt Cf (Ty.cpoly cb T)) := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
+  apply Eval.eval_val
+  · simp [Exp.subst]; constructor
+  · simp [Denot.as_post]
+    -- Need to provide B0 and t0 for the cpoly denotation
+    use (cb.subst (Subst.from_TypeEnv env)), (e.subst (Subst.from_TypeEnv env).lift)
+    constructor
+    · -- Show that resolve gives back the capture abstraction
+      simp [resolve, Exp.subst]
+    · -- Show the capture polymorphic function property
+      intro H' A0 hsubsume hsub_bound
+      rw [Exp.from_TypeEnv_weaken_open_cvar (c := A0)]
+      -- Apply the hypothesis
+      have henv : EnvTyping (Γ,C<:cb) (env.extend_cvar A0) H' := by
+        constructor
+        · exact hsub_bound
+        · apply env_typing_monotonic hts hsubsume
+      have this := ht (env.extend_cvar A0) H' henv
+      simp [Ty.exi_exp_denot] at this
+      -- Show capability sets match
+      have hcap_rename :
+        (Cf.rename Rename.succ).denot (env.extend_cvar A0) = Cf.denot env := by
+        have := rebind_captureset_denot (Rebind.cweaken (env:=env) (c:=A0)) Cf
+        exact this.symm
+      rw [← hcap_rename]
+      exact this
 
 -- theorem abs_val_denot_inv
 --   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :
@@ -303,6 +330,12 @@ theorem sem_typ_cvar {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
 --   have hconv :=
 --     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
 --   apply Eval.eval_apply hlk hconv
+
+theorem sem_typ_app {x : Var Kind.var s} {Cx : CaptureSet s}
+  {T1 : Ty TySort.capt s} {T2 : Ty TySort.exi (s,x)} {y : Var Kind.var s}
+  (hx : C # Γ ⊨ Exp.var x : (Ty.capt Cx (T1.arrow T2)).typ)
+  (hy : C # Γ ⊨ Exp.var y : T1.typ) :
+  C # Γ ⊨ Exp.app x y : T2.subst (Subst.openVar y) := sorry
 
 -- theorem sem_typ_tapp
 --   (ht : Γ ⊨ (.var x) : (.poly S T)) :
@@ -618,8 +651,8 @@ theorem fundamental
   case var hx => apply sem_typ_var hx
   case abs => grind [sem_typ_abs]
   case tabs ih => apply sem_typ_tabs ih
-  case cabs ih => extract_goal; sorry
-  -- case app => grind [sem_typ_app]
+  case cabs ih => apply sem_typ_cabs ih
+  case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]
   -- case capp => grind [sem_typ_capp]
   -- case letin => grind [sem_typ_letin]
