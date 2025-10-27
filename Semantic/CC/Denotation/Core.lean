@@ -108,6 +108,9 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
   d2 h e := by
   apply himp e ht
 
+/-- Reachability maps memory locations to "reachable" capabilities. -/
+def Reachability : Type := Nat -> CapabilitySet
+
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> CapabilitySet -> TypeInfo .var
 | tvar : PreDenot -> TypeInfo .tvar
