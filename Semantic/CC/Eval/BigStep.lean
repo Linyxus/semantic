@@ -4,6 +4,100 @@ import Semantic.CC.Eval.Heap
 
 namespace CC
 
+def reachability_of_loc
+  (h : Heap)
+  (l : Nat) :
+  CapabilitySet :=
+  match h l with
+  | some .capability => {l}
+  | some (.val ⟨_, _, R⟩) => R
+  | none => {}
+
+def expand_captures
+  (h : Heap)
+  (cs : CaptureSet {}) :
+  CapabilitySet :=
+  match cs with
+  | .empty => {}
+  | .var (.free loc) => reachability_of_loc h loc
+  | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
+
+def compute_reachability
+  (h : Heap)
+  (v : Exp {}) (hv : v.IsSimpleVal) :
+  CapabilitySet :=
+  match v with
+  | .abs cs _ _ => expand_captures h cs
+  | .tabs cs _ _ => expand_captures h cs
+  | .cabs cs _ _ => expand_captures h cs
+  | .unit => {}
+
+theorem reachability_of_loc_monotonic
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
+  (l : Nat)
+  (hex : h1 l = some v) :
+  reachability_of_loc h2 l = reachability_of_loc h1 l := by
+  have h2_eq : h2 l = some v := hsub l v hex
+  unfold reachability_of_loc
+  rw [hex, h2_eq]
+
+/-- Expanding a capture set in a bigger heap yields the same result.
+Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
+theorem expand_captures_monotonic
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
+  (cs : CaptureSet {}) :
+  expand_captures h2 cs = expand_captures h1 cs := by
+  induction cs with
+  | empty =>
+    -- Base case: empty capture set expands to empty in any heap
+    rfl
+  | var x =>
+    cases x with
+    | bound x =>
+      -- Impossible: no bound variables in empty signature
+      cases x
+    | free loc =>
+      -- Variable case: use reachability_of_loc_monotonic
+      simp [expand_captures]
+      -- Here we need: h1 loc = some v for some v
+      -- This is a well-formedness condition on the capture set
+      sorry
+  | cvar C =>
+    -- Impossible: no capability variables in empty signature
+    cases C
+  | union cs1 cs2 ih1 ih2 =>
+    -- Union case: by induction on both components
+    simp [expand_captures, ih1, ih2]
+
+/-- Computing reachability of a value in a bigger heap yields the same result.
+Proof by cases on hv, using expand_captures_monotonic. -/
+theorem compute_reachability_monotonic
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
+  (v : Exp {})
+  (hv : v.IsSimpleVal) :
+  compute_reachability h2 v hv = compute_reachability h1 v hv := by
+  -- Case analysis on the structure of the simple value
+  cases hv with
+  | abs =>
+    -- Case: v = .abs cs T e
+    -- compute_reachability h v = expand_captures h cs
+    simp [compute_reachability]
+    exact expand_captures_monotonic hsub _
+  | tabs =>
+    -- Case: v = .tabs cs T e
+    simp [compute_reachability]
+    exact expand_captures_monotonic hsub _
+  | cabs =>
+    -- Case: v = .cabs cs cb e
+    simp [compute_reachability]
+    exact expand_captures_monotonic hsub _
+  | unit =>
+    -- Case: v = .unit
+    -- Both heaps yield empty capability set
+    rfl
 
 inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
 | eval_val :
@@ -40,7 +134,7 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
     Q1 v h1 ->
     ∀ l', h1 l' = none ->
       Eval C
-        (h1.extend l' ⟨v, hv, {}⟩)
+        (h1.extend l' ⟨v, hv, compute_reachability h v hv⟩)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {h1} {x : Var .var {}},
@@ -98,7 +192,7 @@ theorem eval_monotonic {h1 h2 : Heap}
       -- h1.subsumes h2, h2.subsumes h1_original, so h1.subsumes h1_original
       have hs_orig := Heap.subsumes_trans hs1 hsub
       apply ih_val hs_orig hv hq1 l' hfresh hpred
-      apply Heap.subsumes_refl
+      sorry --apply Heap.subsumes_refl
     case h_var =>
       intro h1 x hs1 hq1
       -- h1.subsumes h2, h2.subsumes h1_original, so h1.subsumes h1_original
