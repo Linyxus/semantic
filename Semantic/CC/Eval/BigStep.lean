@@ -14,21 +14,21 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
   (hQ : Q (.var x) h) ->
   Eval C h (.var x) Q
 | eval_apply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.abs cs T e, hv⟩) ->
+  h x = some (.val ⟨.abs cs T e, hv, R⟩) ->
   Eval C h (e.subst (Subst.openVar y)) Q ->
   Eval C h (.app (.free x) y) Q
 | eval_invoke {h : Heap} {x : Nat} :
   x ∈ C ->
   h x = some .capability ->
-  h y = some (.val ⟨.unit, hv⟩) ->
+  h y = some (.val ⟨.unit, hv, R⟩) ->
   Q .unit h ->
   Eval C h (.app (.free x) (.free y)) Q
 | eval_tapply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.tabs cs T0 e, hv⟩) ->
+  h x = some (.val ⟨.tabs cs T0 e, hv, R⟩) ->
   Eval C h (e.subst (Subst.openTVar .top)) Q ->
   Eval C h (.tapp (.free x) S) Q
 | eval_capply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.cabs cs B0 e, hv⟩) ->
+  h x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
   Eval C h (e.subst (Subst.openCVar .empty)) Q ->
   Eval C h (.capp (.free x) CS) Q
 | eval_letin {h : Heap} {Q1 : Hpost} :
@@ -36,11 +36,11 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
   Eval C h e1 Q1 ->
   (h_val : ∀ {h1} {v : Exp {}},
     (h1.subsumes h) ->
-    (hv : Exp.IsVal v) ->
+    (hv : Exp.IsSimpleVal v) ->
     Q1 v h1 ->
     ∀ l', h1 l' = none ->
       Eval C
-        (h1.extend l' ⟨v, hv⟩)
+        (h1.extend l' ⟨v, hv, {}⟩)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {h1} {x : Var .var {}},

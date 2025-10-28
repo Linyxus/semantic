@@ -80,7 +80,7 @@ def Heap.empty : Heap := fun _ => none
 
 instance Heap.instEmptyCollection : EmptyCollection Heap := ⟨Heap.empty⟩
 
-def Heap.extend (h : Heap) (l : Nat) (v : Val {}) : Heap :=
+def Heap.extend (h : Heap) (l : Nat) (v : HeapVal) : Heap :=
   fun l' => if l' = l then some (.val v) else h l'
 
 def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
@@ -125,7 +125,7 @@ def Heap.subsumes_trans {h1 h2 h3 : Heap}
   exact hlookup
 
 theorem Heap.extend_lookup_eq
-  (h : Heap) (l : Nat) (v : Val {}) :
+  (h : Heap) (l : Nat) (v : HeapVal) :
   (h.extend l v) l = some (.val v) := by
   simp [Heap.extend]
 
