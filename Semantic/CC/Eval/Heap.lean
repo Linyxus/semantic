@@ -141,4 +141,15 @@ theorem Heap.extend_subsumes {H : Heap} {l : Nat}
     contradiction
   next => exact hlookup
 
+inductive CaptureSet.WfInHeap : CaptureSet {} -> Heap -> Prop where
+| wf_empty :
+  CaptureSet.WfInHeap {} H
+| wf_union :
+  CaptureSet.WfInHeap C1 H ->
+  CaptureSet.WfInHeap C2 H ->
+  CaptureSet.WfInHeap (C1 ∪ C2) H
+| wf_var :
+  H x = some val ->
+  CaptureSet.WfInHeap (CaptureSet.var (.free x)) H
+
 end CC
