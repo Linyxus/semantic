@@ -47,7 +47,8 @@ Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
 theorem expand_captures_monotonic
   {h1 h2 : Heap}
   (hsub : h2.subsumes h1)
-  (cs : CaptureSet {}) :
+  (cs : CaptureSet {})
+  (hwf : CaptureSet.WfInHeap cs h1) :
   expand_captures h2 cs = expand_captures h1 cs := by
   induction cs with
   | empty =>
@@ -61,15 +62,20 @@ theorem expand_captures_monotonic
     | free loc =>
       -- Variable case: use reachability_of_loc_monotonic
       simp [expand_captures]
-      -- Here we need: h1 loc = some v for some v
-      -- This is a well-formedness condition on the capture set
-      sorry
+      -- Extract existence proof from well-formedness
+      cases hwf with
+      | wf_var_free hex =>
+        -- We have hex : h1 loc = some val
+        exact reachability_of_loc_monotonic hsub loc hex
   | cvar C =>
     -- Impossible: no capability variables in empty signature
     cases C
   | union cs1 cs2 ih1 ih2 =>
     -- Union case: by induction on both components
-    simp [expand_captures, ih1, ih2]
+    -- First, extract well-formedness for both components
+    cases hwf with
+    | wf_union hwf1 hwf2 =>
+      simp [expand_captures, ih1 hwf1, ih2 hwf2]
 
 /-- Computing reachability of a value in a bigger heap yields the same result.
 Proof by cases on hv, using expand_captures_monotonic. -/
@@ -77,7 +83,8 @@ theorem compute_reachability_monotonic
   {h1 h2 : Heap}
   (hsub : h2.subsumes h1)
   (v : Exp {})
-  (hv : v.IsSimpleVal) :
+  (hv : v.IsSimpleVal)
+  (hwf : Exp.WfInHeap v h1) :
   compute_reachability h2 v hv = compute_reachability h1 v hv := by
   -- Case analysis on the structure of the simple value
   cases hv with
@@ -85,15 +92,22 @@ theorem compute_reachability_monotonic
     -- Case: v = .abs cs T e
     -- compute_reachability h v = expand_captures h cs
     simp [compute_reachability]
-    exact expand_captures_monotonic hsub _
+    -- Extract well-formedness of the capture set
+    cases hwf with
+    | wf_abs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub _ hwf_cs
   | tabs =>
     -- Case: v = .tabs cs T e
     simp [compute_reachability]
-    exact expand_captures_monotonic hsub _
+    cases hwf with
+    | wf_tabs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub _ hwf_cs
   | cabs =>
     -- Case: v = .cabs cs cb e
     simp [compute_reachability]
-    exact expand_captures_monotonic hsub _
+    cases hwf with
+    | wf_cabs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub _ hwf_cs
   | unit =>
     -- Case: v = .unit
     -- Both heaps yield empty capability set
