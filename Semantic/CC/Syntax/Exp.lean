@@ -8,9 +8,9 @@ namespace CC
 
 inductive Exp : Sig -> Type where
 | var : Var .var s -> Exp s
-| abs : Ty .capt s -> Exp (s,x) -> Exp s
-| tabs : Ty .shape s -> Exp (s,X) -> Exp s
-| cabs : CaptureBound s -> Exp (s,C) -> Exp s
+| abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
+| tabs : CaptureSet s -> Ty .shape s -> Exp (s,X) -> Exp s
+| cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> Ty .shape s -> Exp s
@@ -21,9 +21,9 @@ inductive Exp : Sig -> Type where
 
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
-| .abs T e, f => .abs (T.rename f) (e.rename (f.lift))
-| .tabs T e, f => .tabs (T.rename f) (e.rename (f.lift))
-| .cabs cb e, f => .cabs (cb.rename f) (e.rename (f.lift))
+| .abs cs T e, f => .abs (cs.rename f) (T.rename f) (e.rename (f.lift))
+| .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
+| .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
 | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
@@ -33,9 +33,9 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .unit, _ => .unit
 
 inductive Exp.IsVal : Exp s -> Prop where
-| abs : Exp.IsVal (.abs T e)
-| tabs : Exp.IsVal (.tabs T e)
-| cabs : Exp.IsVal (.cabs cb e)
+| abs : Exp.IsVal (.abs cs T e)
+| tabs : Exp.IsVal (.tabs cs T e)
+| cabs : Exp.IsVal (.cabs cs cb e)
 | pack : Exp.IsVal (.pack cs x)
 | unit : Exp.IsVal .unit
 
