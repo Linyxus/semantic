@@ -61,9 +61,16 @@ instance instHasSubset : HasSubset CapabilitySet :=
 
 end CapabilitySet
 
+/-- A heap value.
+    It must be a simple value, with a reachability set computed. -/
+structure HeapVal where
+  unwrap : Exp {}
+  isVal : unwrap.IsSimpleVal
+  reachability : CapabilitySet
+
 -- A heap cell can either be a value or a capability
 inductive Cell : Type where
-| val : Val {} -> Cell
+| val : HeapVal -> Cell
 | capability : Cell
 
 -- A heap is a function from locations to cells

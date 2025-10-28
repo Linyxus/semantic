@@ -14,7 +14,7 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
   (hQ : Q (.var x) h) ->
   Eval C h (.var x) Q
 | eval_apply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.abs T e, hv⟩) ->
+  h x = some (.val ⟨.abs cs T e, hv⟩) ->
   Eval C h (e.subst (Subst.openVar y)) Q ->
   Eval C h (.app (.free x) y) Q
 | eval_invoke {h : Heap} {x : Nat} :
@@ -24,11 +24,11 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
   Q .unit h ->
   Eval C h (.app (.free x) (.free y)) Q
 | eval_tapply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.tabs T0 e, hv⟩) ->
+  h x = some (.val ⟨.tabs cs T0 e, hv⟩) ->
   Eval C h (e.subst (Subst.openTVar .top)) Q ->
   Eval C h (.tapp (.free x) S) Q
 | eval_capply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.cabs B0 e, hv⟩) ->
+  h x = some (.val ⟨.cabs cs B0 e, hv⟩) ->
   Eval C h (e.subst (Subst.openCVar .empty)) Q ->
   Eval C h (.capp (.free x) CS) Q
 | eval_letin {h : Heap} {Q1 : Hpost} :

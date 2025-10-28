@@ -39,6 +39,14 @@ inductive Exp.IsVal : Exp s -> Prop where
 | pack : Exp.IsVal (.pack cs x)
 | unit : Exp.IsVal .unit
 
+/-- A simple value is a value that is not a pack. Therefore,
+      a simple value always has a capturing type, not an existential type. -/
+inductive Exp.IsSimpleVal : Exp s -> Prop where
+| abs : Exp.IsSimpleVal (.abs cs T e)
+| tabs : Exp.IsSimpleVal (.tabs cs T e)
+| cabs : Exp.IsSimpleVal (.cabs cs cb e)
+| unit : Exp.IsSimpleVal .unit
+
 structure Val (s : Sig) where
   unwrap : Exp s
   isVal : unwrap.IsVal
