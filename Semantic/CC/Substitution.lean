@@ -59,9 +59,9 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 
 def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
-| .abs T e, s => .abs (T.subst s) (e.subst s.lift)
-| .tabs T e, s => .tabs (T.subst s) (e.subst s.lift)
-| .cabs cb e, s => .cabs (cb.subst s) (e.subst s.lift)
+| .abs cs T e, s => .abs (cs.subst s) (T.subst s) (e.subst s.lift)
+| .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
+| .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
@@ -411,12 +411,12 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (e.subst σ1).subst σ2 = e.subst (σ1.comp σ2) := by
   induction e generalizing s2 s3 with
   | var x => simp [Exp.subst, Var.subst_comp]
-  | abs T e ih_e =>
-    simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
-  | tabs T e ih_e =>
-    simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
-  | cabs cb e ih_e =>
-    simp [Exp.subst, CaptureBound.subst_comp, ih_e, Subst.comp_lift]
+  | abs cs T e ih_e =>
+    simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
+  | tabs cs T e ih_e =>
+    simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
+  | cabs cs cb e ih_e =>
+    simp [Exp.subst, CaptureSet.subst_comp, CaptureBound.subst_comp, ih_e, Subst.comp_lift]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp [Exp.subst, Var.subst_comp]

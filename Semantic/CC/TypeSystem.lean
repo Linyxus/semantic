@@ -135,17 +135,17 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (.var (.bound x)) Γ (.var (.bound x)) (.typ T)
 | abs :
-  HasType (Cf.rename Rename.succ ∪ (.var (.bound .here))) (Γ,x:T1) e T2 ->
+  HasType (cs.rename Rename.succ ∪ (.var (.bound .here))) (Γ,x:T1) e T2 ->
   ----------------------------
-  HasType {} Γ (.abs T1 e) (.typ (.capt Cf (.arrow T1 T2)))
+  HasType {} Γ (.abs cs T1 e) (.typ (.capt cs (.arrow T1 T2)))
 | tabs :
-  HasType (Cf.rename Rename.succ) (Γ,X<:S) e T ->
+  HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
-  HasType {} Γ (.tabs S e) (.typ (.capt Cf (.poly S T)))
+  HasType {} Γ (.tabs cs S e) (.typ (.capt cs (.poly S T)))
 | cabs :
-  HasType (Cf.rename Rename.succ) (Γ,C<:cb) e T ->
+  HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
   -----------------------------
-  HasType {} Γ (.cabs cb e) (.typ (.capt Cf (.cpoly cb T)))
+  HasType {} Γ (.cabs cs cb e) (.typ (.capt cs (.cpoly cb T)))
 | pack :
   HasType (.var x) Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
