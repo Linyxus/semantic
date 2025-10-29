@@ -239,9 +239,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
 theorem abs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
   ∃ fx, x = .free fx
-    ∧ ∃ T0 e0,
-      store fx = some (.val ⟨.abs T0 e0, by constructor⟩)
-    ∧ (∀ (H' : Heap) (arg : Nat),
+    ∧ ∃ cs T0 e0 hval R,
+      store.heap fx = some (Cell.val ⟨Exp.abs cs T0 e0, hval, R⟩)
+    ∧ (∀ (H' : Memory) (arg : Nat),
       H'.subsumes store ->
       Ty.capt_val_denot env T1 H' (.var (.free arg)) ->
       Ty.exi_exp_denot
@@ -252,24 +252,28 @@ theorem abs_val_denot_inv {A : CapabilitySet}
   | bound bx => cases bx
   | free fx =>
     simp [Ty.shape_val_denot, resolve] at hv
-    obtain ⟨T0, e0, hresolve, hfun⟩ := hv
+    obtain ⟨cs, T0, e0, hresolve, hfun⟩ := hv
     -- Analyze what's in the store at fx
-    generalize hres : store fx = res at hresolve ⊢
+    generalize hres : store.heap fx = res at hresolve ⊢
     cases res
     case none => simp at hresolve
-    case some v =>
-      cases v
-      case val wrapped =>
-        cases wrapped; rename_i unwrap isVal
+    case some cell =>
+      -- Match on the cell to extract HeapVal
+      cases cell with
+      | val hval =>
+        -- hval : HeapVal, hresolve should relate to hval.unwrap
+        simp [resolve] at hresolve
+        cases hval with | mk unwrap isVal reachability =>
         simp at hresolve
         subst hresolve
-        use fx, rfl, T0, e0
+        use fx, rfl, cs, T0, e0, isVal, reachability
         constructor
         · exact hres
         · intro H' arg hsub harg
-          exact hfun arg H' hsub harg
-      case capability =>
-        simp at hresolve
+          -- Need to relate reachability_of_loc to T1.captureSet.denot
+          sorry  -- TODO: Lemma relating reachability_of_loc H' arg = T1.captureSet.denot env
+      | capability =>
+        simp [resolve] at hresolve
 
 -- theorem tabs_val_denot_inv
 --   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
@@ -368,7 +372,8 @@ theorem sem_typ_app
   simp [Exp.subst] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
-  have ⟨fx, hfx, T0, e0, hlk, hfun⟩ := abs_val_denot_inv h1'
+  -- h1' is a conjunction: well-formedness ∧ shape_val_denot
+  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hfun⟩ := abs_val_denot_inv h1'.2
 
   -- Apply hy and extract argument properties
   have h2 := hy env store hts
@@ -400,7 +405,7 @@ theorem sem_typ_app
 
   -- Apply the function to the argument
   -- Note: hfun expects the argument capability set to be T1.captureSet.denot env
-  have happ := hfun store (interp_var env y).1 (Heap.subsumes_refl store) h2'
+  have happ := hfun store (interp_var env y).1 (Memory.subsumes_refl store) h2'
 
   -- PROBLEM 1: Need to relate extended environment to substitution
   -- The equivalence relates (interp_var env y).2 but we need to show it equals T1.captureSet
@@ -436,7 +441,7 @@ theorem sem_typ_app
 
   -- Use capability set monotonicity
   have happ'' : Eval (C.denot env) store (e0.subst (Subst.openVar (.free (interp_var env y).1)))
-                  (Ty.exi_val_denot env (T2.subst (Subst.openVar y))).as_post := by
+                  (Ty.exi_val_denot env (T2.subst (Subst.openVar y))).as_mpost := by
     sorry  -- MISSING LEMMA: Eval monotonicity wrt capability sets
            -- Need: If A ⊆ B and Eval B H e Q, then Eval A H e Q (under some conditions)
 
