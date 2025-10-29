@@ -837,4 +837,84 @@ theorem Exp.wf_subst
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_unit
 
+-- Well-formedness of opening substitutions
+
+/-- Opening substitution for variables is well-formed if the variable is well-formed. -/
+theorem Subst.wf_openVar
+  {x : Var .var s}
+  {H : Heap}
+  (hwf_x : Var.WfInHeap x H) :
+  (Subst.openVar x).WfInHeap H := by
+  constructor
+  · intro y
+    cases y with
+    | here =>
+      simp [Subst.openVar]
+      exact hwf_x
+    | there y0 =>
+      simp [Subst.openVar]
+      apply Var.WfInHeap.wf_bound
+  · intro X
+    cases X with
+    | there X0 =>
+      simp [Subst.openVar]
+      apply Ty.WfInHeap.wf_tvar
+  · intro C
+    cases C with
+    | there C0 =>
+      simp [Subst.openVar]
+      apply CaptureSet.WfInHeap.wf_cvar
+
+/-- Opening substitution for type variables is well-formed if the type is well-formed. -/
+theorem Subst.wf_openTVar
+  {U : Ty .shape s}
+  {H : Heap}
+  (hwf_U : Ty.WfInHeap U H) :
+  (Subst.openTVar U).WfInHeap H := by
+  constructor
+  · intro x
+    cases x with
+    | there x0 =>
+      simp [Subst.openTVar]
+      apply Var.WfInHeap.wf_bound
+  · intro X
+    cases X with
+    | here =>
+      simp [Subst.openTVar]
+      exact hwf_U
+    | there X0 =>
+      simp [Subst.openTVar]
+      apply Ty.WfInHeap.wf_tvar
+  · intro C
+    cases C with
+    | there C0 =>
+      simp [Subst.openTVar]
+      apply CaptureSet.WfInHeap.wf_cvar
+
+/-- Opening substitution for capture variables is well-formed if the capture set is well-formed. -/
+theorem Subst.wf_openCVar
+  {C : CaptureSet s}
+  {H : Heap}
+  (hwf_C : CaptureSet.WfInHeap C H) :
+  (Subst.openCVar C).WfInHeap H := by
+  constructor
+  · intro x
+    cases x with
+    | there x0 =>
+      simp [Subst.openCVar]
+      apply Var.WfInHeap.wf_bound
+  · intro X
+    cases X with
+    | there X0 =>
+      simp [Subst.openCVar]
+      apply Ty.WfInHeap.wf_tvar
+  · intro C_var
+    cases C_var with
+    | here =>
+      simp [Subst.openCVar]
+      exact hwf_C
+    | there C0 =>
+      simp [Subst.openCVar]
+      apply CaptureSet.WfInHeap.wf_cvar
+
 end CC
