@@ -146,12 +146,12 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
     (hv : Exp.IsSimpleVal v) ->
+    (hwf_v : Exp.WfInHeap v m1.heap) ->
     Q1 v m1 ->
     ∀ l'
-      (hwf_v : Exp.WfInHeap v (m1.heap.extend l' ⟨v, hv, compute_reachability m v hv⟩))
       (hfresh : m1.lookup l' = none),
       Eval C
-        (m1.extend l' ⟨v, hv, compute_reachability m v hv⟩ hwf_v hfresh)
+        (m1.extend_val l' ⟨v, hv, compute_reachability m v hv⟩ hwf_v hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
@@ -242,7 +242,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     have eval_e1' := ih hpred0 hsub hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 eval_e1'
     case h_val =>
-      intro m_ext' v hs_ext' hv hq1 l' hwf_v hfresh
+      intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
       -- We have: m_ext'.subsumes m2 and m2.subsumes m1 (the original memory)
       -- Therefore: m_ext'.subsumes m1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
@@ -329,10 +329,10 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred ih
     case h_val =>
-      intro m1 v hs1 hv hq1 l' hwf_v hfresh
-      apply ih_val hs1 hv hq1 l' hwf_v hfresh
+      intro m1 v hs1 hv hwf_v hq1 l' hfresh
+      apply ih_val hs1 hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
-      apply Memory.subsumes_trans (Memory.extend_subsumes _ _ _ hwf_v hfresh) hs1
+      apply Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf_v hfresh) hs1
     case h_var =>
       intro m1 x hs1 hq1
       apply ih_var hs1 hq1

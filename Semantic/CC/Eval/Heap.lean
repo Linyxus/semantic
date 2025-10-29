@@ -1006,6 +1006,16 @@ def extend_cap (m : Memory) (l : Nat)
       apply Exp.wf_monotonic (Heap.extend_cap_subsumes hfresh)
       exact m.wf l' hv' hlookup
 
+/-- Extend memory with a value that's well-formed in the current heap.
+    This is often more convenient than `extend` in practice. -/
+def extend_val (m : Memory) (l : Nat) (v : HeapVal)
+  (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+  (hfresh : m.heap l = none) : Memory where
+  heap := m.heap.extend l v
+  wf := Heap.wf_extend m.wf
+    (Exp.wf_monotonic (Heap.extend_subsumes hfresh) hwf_v)
+    hfresh
+
 /-- Memory subsumption: m1 subsumes m2 if m1's heap subsumes m2's heap. -/
 def subsumes (m1 m2 : Memory) : Prop :=
   m1.heap.subsumes m2.heap
@@ -1034,6 +1044,14 @@ theorem extend_subsumes (m : Memory) (l : Nat) (v : HeapVal)
   (hfresh : m.heap l = none) :
   (m.extend l v hwf_v hfresh).subsumes m := by
   simp [subsumes, extend]
+  exact Heap.extend_subsumes hfresh
+
+/-- Extension with extend_val subsumes the original memory. -/
+theorem extend_val_subsumes (m : Memory) (l : Nat) (v : HeapVal)
+  (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+  (hfresh : m.heap l = none) :
+  (m.extend_val l v hwf_v hfresh).subsumes m := by
+  simp [subsumes, extend_val]
   exact Heap.extend_subsumes hfresh
 
 /-- Capability extension subsumes the original memory. -/
