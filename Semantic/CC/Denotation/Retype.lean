@@ -5,7 +5,7 @@ namespace CC
 /-- Interpret a variable in an environment to get its free variable index and capability set. -/
 def interp_var (env : TypeEnv s) (x : Var .var s) : Nat × CapabilitySet :=
   match x with
-  | .free n => (n, {n})
+  | .free n => ⟨n, {n}⟩
   | .bound x => env.lookup_var x
 
 structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
@@ -21,8 +21,8 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
     ∀ (C : BVar s1 .cvar),
       env1.lookup_cvar C = CaptureSet.denot env2 (σ.cvar C)
 
-lemma weaken_interp_var {x : Var .var s} {arg : CapabilitySet} :
-  interp_var env x = interp_var (env.extend_var n arg) (x.rename Rename.succ) := by
+lemma weaken_interp_var {x : Var .var s} :
+  interp_var env x = interp_var (env.extend_var n R) (x.rename Rename.succ) := by
   cases x <;> rfl
 
 lemma tweaken_interp_var {x : Var .var s} :
@@ -34,8 +34,9 @@ lemma cweaken_interp_var {x : Var .var s} :
   cases x <;> rfl
 
 theorem Retype.liftVar
+  {x : Nat} {R : CapabilitySet}
   (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_var x A) (σ.lift) (env2.extend_var x A) where
+  Retype (env1.extend_var x R) (σ.lift) (env2.extend_var x R) where
   var := fun
     | .here => rfl
     | .there y => by
@@ -65,6 +66,7 @@ theorem Retype.liftVar
       apply rebind_captureset_denot Rebind.weaken
 
 theorem Retype.liftTVar
+  {d : PreDenot}
   (ρ : Retype env1 σ env2) :
   Retype (env1.extend_tvar d) (σ.lift) (env2.extend_tvar d) where
   var := fun
@@ -97,6 +99,7 @@ theorem Retype.liftTVar
       apply rebind_captureset_denot Rebind.tweaken
 
 theorem Retype.liftCVar
+  {c : CapabilitySet}
   (ρ : Retype env1 σ env2) :
   Retype (env1.extend_cvar c) (σ.lift) (env2.extend_cvar c) where
   var := fun
@@ -152,30 +155,29 @@ def retype_shape_val_denot
     simp [Ty.shape_val_denot, Ty.subst]
     constructor
     · intro h
-      obtain ⟨T0, body, hr, hd⟩ := h
-      use T0, body
+      obtain ⟨cs, T0, t0, hr, hd⟩ := h
+      use cs, T0, t0
       apply And.intro hr
       intro arg H' hsub harg
       cases T1
       case capt C S =>
         simp [Ty.subst, Ty.captureSet] at hd ⊢
         have hC := retype_captureset_denot ρ C
-        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (A:=C.denot env1)) T2
+        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mpr harg
         specialize hd arg H' hsub harg'
-        rw [hC] at hd ih2
+        rw [hC] at hd
         exact (ih2 (A ∪ (C.subst σ).denot env2) H' _).mp hd
     · intro h
-      obtain ⟨T0, body, hr, hd⟩ := h
-      use T0, body
+      obtain ⟨cs0, T0, t0, hr, hd⟩ := h
+      use cs0, T0, t0
       apply And.intro hr
       intro arg H' hsub harg
       cases T1
       case capt C S =>
         simp [Ty.subst, Ty.captureSet] at hd ⊢
         have hC := retype_captureset_denot ρ C
-        have ih2 := retype_exi_exp_denot
-          (ρ.liftVar (x:=arg) (A:=CaptureSet.denot env2 (C.subst σ))) T2
+        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mp harg
         specialize hd arg H' hsub harg'
         have := (ih2 (A ∪ (C.subst σ).denot env2) H' _).mpr hd
@@ -187,8 +189,8 @@ def retype_shape_val_denot
     simp [Ty.shape_val_denot, Ty.subst]
     constructor
     · intro h
-      obtain ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0
+      obtain ⟨cs, S0, t0, hr, hd⟩ := h
+      use cs, S0, t0
       apply And.intro hr
       intro H' denot hsub hproper himply
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
@@ -198,8 +200,8 @@ def retype_shape_val_denot
       specialize hd H' denot hsub hproper himply'
       exact (ih2 A H' _).mp hd
     · intro h
-      obtain ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0
+      obtain ⟨cs0, S0, t0, hr, hd⟩ := h
+      use cs0, S0, t0
       apply And.intro hr
       intro H' denot hsub hproper himply
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
@@ -214,20 +216,22 @@ def retype_shape_val_denot
     simp [Ty.shape_val_denot, Ty.subst, hB]
     constructor
     · intro h
-      obtain ⟨B0, t0, hr, hd⟩ := h
-      use B0, t0
+      obtain ⟨cs, B0, t0, hr, hd⟩ := h
+      use cs, B0, t0
       apply And.intro hr
-      intro H' A0 hsub hsub_bound
+      intro H' CS hsub hsub_bound
+      let A0 := CS.denot TypeEnv.empty
       have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
-      specialize hd H' A0 hsub hsub_bound
+      specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mp hd
     · intro h
-      obtain ⟨B0, t0, hr, hd⟩ := h
-      use B0, t0
+      obtain ⟨cs0, B0, t0, hr, hd⟩ := h
+      use cs0, B0, t0
       apply And.intro hr
-      intro H' A0 hsub hsub_bound
+      intro H' CS hsub hsub_bound
+      let A0 := CS.denot TypeEnv.empty
       have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
-      specialize hd H' A0 hsub hsub_bound
+      specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mpr hd
 
 def retype_capturebound_denot
@@ -281,6 +285,7 @@ def retype_capt_val_denot
     intro s e
     simp [Ty.capt_val_denot, Ty.subst]
     rw [← hC]
+    intro hwf
     exact hS (C.denot env1) s e
 
 def retype_exi_val_denot

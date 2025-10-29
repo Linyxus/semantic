@@ -8,7 +8,7 @@ structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Pr
 
 def Rebind.liftVar
   (ρ : Rebind env1 f env2) :
-  Rebind (env1.extend_var x A) (f.lift) (env2.extend_var x A) where
+  Rebind (env1.extend_var x R) (f.lift) (env2.extend_var x R) where
   var := fun
     | .here => rfl
     | .there y => by
@@ -48,7 +48,7 @@ theorem rebind_captureset_denot
       simp [CaptureSet.denot, CaptureSet.rename, Var.rename]
       have h := ρ.var x
       cases k : env1.lookup x
-      case var n1 a1 =>
+      case var n1 =>
         simp [k] at h
         simp [TypeEnv.lookup_var, k, h]
     case free n =>
@@ -102,29 +102,29 @@ def rebind_shape_val_denot
     simp [Ty.shape_val_denot, Ty.rename]
     constructor
     · intro h
-      obtain ⟨T0, t0, hr, hd⟩ := h
-      use T0, t0
-      apply And.intro hr
-      intro arg H' hsub harg
-      have hC := rebind_captureset_denot ρ T1.captureSet
-      cases T1
-      case capt C S =>
-        simp [Ty.captureSet] at hC hd ⊢
-        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (A:=C.denot env1)) T2
-        have harg' := (ih1 _ _).mpr harg
-        specialize hd arg H' hsub harg'
-        rw [hC] at hd ih2
-        exact (ih2 (A ∪ (C.rename f).denot env2) H' _).mp hd
-    · intro h
-      obtain ⟨T0, t0, hr, hd⟩ := h
-      use T0, t0
+      obtain ⟨cs, T0, t0, hr, hd⟩ := h
+      use cs, T0, t0
       apply And.intro hr
       intro arg H' hsub harg
       have hC := rebind_captureset_denot ρ T1.captureSet
       cases T1
       case capt C S =>
         simp [Ty.captureSet, Ty.rename] at hC hd ⊢
-        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (A:=C.denot env1)) T2
+        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
+        have harg' := (ih1 _ _).mpr harg
+        specialize hd arg H' hsub harg'
+        rw [hC] at hd
+        exact (ih2 (A ∪ (C.rename f).denot env2) H' _).mp hd
+    · intro h
+      obtain ⟨cs0, T0, t0, hr, hd⟩ := h
+      use cs0, T0, t0
+      apply And.intro hr
+      intro arg H' hsub harg
+      have hC := rebind_captureset_denot ρ T1.captureSet
+      cases T1
+      case capt C S =>
+        simp [Ty.captureSet, Ty.rename] at hC hd ⊢
+        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
         have harg' := (ih1 _ _).mp harg
         specialize hd arg H' hsub harg'
         rw [← hC] at hd
@@ -135,8 +135,8 @@ def rebind_shape_val_denot
     simp [Ty.shape_val_denot, Ty.rename]
     constructor
     · intro h
-      obtain ⟨S0, t0, hr, hd⟩ := h
-      use S0, t0
+      obtain ⟨cs0, S0, t0, hr, hd⟩ := h
+      use cs0, S0, t0
       apply And.intro hr
       intro H' denot hsub hproper himply
       have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
@@ -146,8 +146,8 @@ def rebind_shape_val_denot
       specialize hd H' denot hsub hproper himply'
       exact (ih2 A H' _).mp hd
     · intro h
-      obtain ⟨S0, t0, hr, hd⟩ := h
-      use S0, t0
+      obtain ⟨cs0, S0, t0, hr, hd⟩ := h
+      use cs0, S0, t0
       apply And.intro hr
       intro H' denot hsub hproper himply
       have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
@@ -162,20 +162,22 @@ def rebind_shape_val_denot
     simp [Ty.shape_val_denot, Ty.rename, hB]
     constructor
     · intro h
-      obtain ⟨B0, t0, hr, hd⟩ := h
-      use B0, t0
+      obtain ⟨cs0, B0, t0, hr, hd⟩ := h
+      use cs0, B0, t0
       apply And.intro hr
-      intro H' A0 hsub hsub_bound
+      intro H' CS hsub hsub_bound
+      let A0 := CS.denot TypeEnv.empty
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar (c:=A0)) T
-      specialize hd H' A0 hsub hsub_bound
+      specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mp hd
     · intro h
-      obtain ⟨B0, t0, hr, hd⟩ := h
-      use B0, t0
+      obtain ⟨cs0, B0, t0, hr, hd⟩ := h
+      use cs0, B0, t0
       apply And.intro hr
-      intro H' A0 hsub hsub_bound
+      intro H' CS hsub hsub_bound
+      let A0 := CS.denot TypeEnv.empty
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar (c:=A0)) T
-      specialize hd H' A0 hsub hsub_bound
+      specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mpr hd
 
 def rebind_capt_val_denot
@@ -189,6 +191,7 @@ def rebind_capt_val_denot
     intro s e
     simp [Ty.capt_val_denot, Ty.rename]
     rw [← hC]
+    intro hwf
     exact hS (C.denot env1) s e
 
 def rebind_exi_val_denot
@@ -252,8 +255,8 @@ def rebind_exi_exp_denot
 
 end
 
-def Rebind.weaken {env : TypeEnv s} {x : Nat} {A : CapabilitySet} :
-  Rebind env Rename.succ (env.extend_var x A) where
+def Rebind.weaken {env : TypeEnv s} {x : Nat} {R : CapabilitySet} :
+  Rebind env Rename.succ (env.extend_var x R) where
   var := fun _ => rfl
 
 def Rebind.tweaken {env : TypeEnv s} {d : PreDenot} :
@@ -265,15 +268,15 @@ def Rebind.cweaken {env : TypeEnv s} {c : CapabilitySet} :
   var := fun _ => rfl
 
 lemma weaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
-  Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_var x A) (T.rename Rename.succ) := by
+  Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_var x R) (T.rename Rename.succ) := by
   apply rebind_shape_val_denot (ρ:=Rebind.weaken) (T:=T)
 
 lemma weaken_capt_val_denot {env : TypeEnv s} {T : Ty .capt s} :
-  Ty.capt_val_denot env T ≈ Ty.capt_val_denot (env.extend_var x A) (T.rename Rename.succ) := by
+  Ty.capt_val_denot env T ≈ Ty.capt_val_denot (env.extend_var x R) (T.rename Rename.succ) := by
   apply rebind_capt_val_denot (ρ:=Rebind.weaken) (T:=T)
 
 lemma weaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
-  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_var x A) (T.rename Rename.succ) := by
+  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_var x R) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.weaken) (T:=T)
 
 lemma tweaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
