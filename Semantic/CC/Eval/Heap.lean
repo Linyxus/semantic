@@ -430,4 +430,188 @@ structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
   wf_cvar :
     ∀ C, CaptureSet.WfInHeap (s.cvar C) H
 
+-- Renaming preserves well-formedness
+
+/-- Renaming preserves well-formedness of variables. -/
+theorem Var.wf_rename
+  {x : Var k s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : Var.WfInHeap x H) :
+  Var.WfInHeap (x.rename f) H := by
+  cases hwf with
+  | wf_bound =>
+    simp [Var.rename]
+    apply Var.WfInHeap.wf_bound
+  | wf_free hex =>
+    simp [Var.rename]
+    apply Var.WfInHeap.wf_free
+    exact hex
+
+/-- Renaming preserves well-formedness of capture sets. -/
+theorem CaptureSet.wf_rename
+  {cs : CaptureSet s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap (cs.rename f) H := by
+  induction hwf with
+  | wf_empty =>
+    simp [CaptureSet.rename]
+    apply CaptureSet.WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 =>
+    simp [CaptureSet.rename]
+    apply CaptureSet.WfInHeap.wf_union
+    · exact ih1
+    · exact ih2
+  | wf_var_free hex =>
+    simp [CaptureSet.rename]
+    apply CaptureSet.WfInHeap.wf_var_free
+    exact hex
+  | wf_var_bound =>
+    simp [CaptureSet.rename]
+    apply CaptureSet.WfInHeap.wf_var_bound
+  | wf_cvar =>
+    simp [CaptureSet.rename]
+    apply CaptureSet.WfInHeap.wf_cvar
+
+/-- Renaming preserves well-formedness of capture bounds. -/
+theorem CaptureBound.wf_rename
+  {cb : CaptureBound s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : CaptureBound.WfInHeap cb H) :
+  CaptureBound.WfInHeap (cb.rename f) H := by
+  cases hwf with
+  | wf_unbound =>
+    simp [CaptureBound.rename]
+    apply CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs =>
+    simp [CaptureBound.rename]
+    apply CaptureBound.WfInHeap.wf_bound
+    exact CaptureSet.wf_rename hwf_cs
+
+/-- Renaming preserves well-formedness of types. -/
+theorem Ty.wf_rename
+  {T : Ty sort s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : Ty.WfInHeap T H) :
+  Ty.WfInHeap (T.rename f) H := by
+  induction hwf generalizing s2 with
+  | wf_top =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_top
+  | wf_tvar =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_tvar
+  | wf_arrow _ _ ih1 ih2 =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_arrow
+    · exact ih1
+    · exact ih2
+  | wf_poly _ _ ih1 ih2 =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_poly
+    · exact ih1
+    · exact ih2
+  | wf_cpoly hwf_cb _ ih_T =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_rename hwf_cb
+    · exact ih_T
+  | wf_unit =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_unit
+  | wf_cap =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_cap
+  | wf_capt hwf_cs _ ih_T =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_capt
+    · exact CaptureSet.wf_rename hwf_cs
+    · exact ih_T
+  | wf_exi _ ih =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_exi
+    exact ih
+  | wf_typ _ ih =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_typ
+    exact ih
+
+/-- Renaming preserves well-formedness of expressions. -/
+theorem Exp.wf_rename
+  {e : Exp s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : Exp.WfInHeap e H) :
+  Exp.WfInHeap (e.rename f) H := by
+  induction hwf generalizing s2 with
+  | wf_var hwf_x =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_var
+    exact Var.wf_rename hwf_x
+  | wf_abs hwf_cs hwf_T _ ih_e =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_abs
+    · exact CaptureSet.wf_rename hwf_cs
+    · exact Ty.wf_rename hwf_T
+    · exact ih_e
+  | wf_tabs hwf_cs hwf_T _ ih_e =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_tabs
+    · exact CaptureSet.wf_rename hwf_cs
+    · exact Ty.wf_rename hwf_T
+    · exact ih_e
+  | wf_cabs hwf_cs hwf_cb _ ih_e =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_cabs
+    · exact CaptureSet.wf_rename hwf_cs
+    · exact CaptureBound.wf_rename hwf_cb
+    · exact ih_e
+  | wf_pack hwf_cs hwf_x =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_pack
+    · exact CaptureSet.wf_rename hwf_cs
+    · exact Var.wf_rename hwf_x
+  | wf_app hwf_x hwf_y =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_app
+    · exact Var.wf_rename hwf_x
+    · exact Var.wf_rename hwf_y
+  | wf_tapp hwf_x hwf_T =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_tapp
+    · exact Var.wf_rename hwf_x
+    · exact Ty.wf_rename hwf_T
+  | wf_capp hwf_x hwf_cs =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_capp
+    · exact Var.wf_rename hwf_x
+    · exact CaptureSet.wf_rename hwf_cs
+  | wf_letin _ _ ih1 ih2 =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_letin
+    · exact ih1
+    · exact ih2
+  | wf_unpack _ _ ih1 ih2 =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_unpack
+    · exact ih1
+    · exact ih2
+  | wf_unit =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_unit
+
+-- Substitution well-formedness preservation
+
+/-- Lifting a well-formed substitution preserves well-formedness. -/
+theorem Subst.wf_lift
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_σ : σ.WfInHeap H) :
+  (σ.lift (k:=k)).WfInHeap H := by
+  sorry
+
 end CC
