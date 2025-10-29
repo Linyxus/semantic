@@ -228,12 +228,10 @@ def Ty.exi_val_denot : TypeEnv s -> HeapTopology -> Ty .exi s -> Denot
 
 def Ty.capt_exp_denot : TypeEnv s -> HeapTopology -> Ty .capt s -> PreDenot
 | ρ, φ, T => fun A m (e : Exp {}) =>
-  (hwf_e : e.WfInHeap m.heap) ->
   Eval A m e (Ty.capt_val_denot ρ φ T).as_mpost
 
 def Ty.exi_exp_denot : TypeEnv s -> HeapTopology -> Ty .exi s -> PreDenot
 | ρ, φ, T => fun A m (e : Exp {}) =>
-  (hwf_e : e.WfInHeap m.heap) ->
   Eval A m e (Ty.exi_val_denot ρ φ T).as_mpost
 
 end

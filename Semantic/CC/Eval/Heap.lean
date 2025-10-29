@@ -1142,6 +1142,7 @@ def Mpost := Exp {} -> Mprop
 /-- Monotonicity of memory postconditions. -/
 def Mpost.is_monotonic (Q : Mpost) : Prop :=
   ∀ {m1 m2 : Memory} {e},
+    (hwf_e : e.WfInHeap m1.heap) ->
     m2.subsumes m1 ->
     Q e m1 ->
     Q e m2
