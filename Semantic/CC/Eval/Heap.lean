@@ -430,6 +430,42 @@ structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
   wf_cvar :
     ∀ C, CaptureSet.WfInHeap (s.cvar C) H
 
+/-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
+def Heap.WfHeap (H : Heap) : Prop :=
+  ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
+
+/-- The empty heap is well-formed. -/
+theorem Heap.wf_empty : Heap.WfHeap ∅ := by
+  intro l hv hlookup
+  cases hlookup
+
+/-- Extending a well-formed heap with a well-formed value preserves well-formedness. -/
+theorem Heap.wf_extend
+  {H : Heap} {l : Nat} {v : HeapVal}
+  (hwf_H : H.WfHeap)
+  (hwf_v : Exp.WfInHeap v.unwrap (H.extend l v))
+  (hfresh : H l = none) :
+  (H.extend l v).WfHeap := by
+  intro l' hv' hlookup
+  unfold Heap.extend at hlookup
+  split at hlookup
+  case isTrue heq =>
+    cases hlookup
+    exact hwf_v
+  case isFalse hneq =>
+    apply Exp.wf_monotonic
+    · apply Heap.extend_subsumes
+      exact hfresh
+    · exact hwf_H l' hv' hlookup
+
+/-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
+theorem Heap.wf_lookup
+  {H : Heap} {l : Nat} {hv : HeapVal}
+  (hwf_H : H.WfHeap)
+  (hlookup : H l = some (.val hv)) :
+  Exp.WfInHeap hv.unwrap H :=
+  hwf_H l hv hlookup
+
 -- Renaming preserves well-formedness
 
 /-- Renaming preserves well-formedness of variables. -/
