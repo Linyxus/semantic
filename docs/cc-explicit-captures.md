@@ -1,7 +1,7 @@
 # CC Refactoring: Explicit Captures
 
-**Status**: In Progress
-**Date**: 2025-10-28
+**Status**: Core Complete, Proofs In Progress
+**Date**: 2025-10-29 (Updated)
 
 ## Motivation
 
@@ -94,7 +94,34 @@ theorem compute_reachability_monotonic
   compute_reachability h2 v hv = compute_reachability h1 v hv
 ```
 
-**Significance**: These ensure that reachability computation is stable - doesn't matter if we compute it in a smaller or larger heap.
+**Significance**: These ensure reachability computation is stable - doesn't matter if we compute it in a smaller or larger heap.
+
+### 5. HeapTopology Elimination (✅ Complete)
+
+**HeapTopology is completely removed from the codebase.**
+
+Key insight: With explicit captures, the topology became redundant because:
+- `HeapVal` stores precomputed `reachability`
+- `reachability_of_loc : Memory -> Nat -> CapabilitySet` extracts it on-demand
+- `CaptureSet.denot` never actually used the topology meaningfully
+
+**Changes made**:
+1. Removed `HeapTopology` type and `HeapTopology.extend`
+2. Updated all denotation signatures: `TypeEnv s -> T -> Denot` (no `HeapTopology` parameter)
+3. Simplified `EnvTyping`: `Ctx s -> TypeEnv s -> Memory -> Prop`
+4. Updated notation in `Prelude.lean`: `⟦T⟧_[ρ]` instead of `⟦T⟧_[ρ,φ]`
+
+### 6. Well-Formedness Requirement (✅ Complete)
+
+Added well-formedness to `capt_val_denot`:
+```lean
+def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
+| ρ, .capt C S => fun mem exp =>
+  exp.WfInHeap mem.heap ∧
+  Ty.shape_val_denot ρ S (C.denot ρ) mem exp
+```
+
+**Impact**: This solved the `env_typing_monotonic` proof! Well-formedness of `(.var (.free n))` implies `n` exists in the heap, which is exactly what `reachability_of_loc_monotonic` needs.
 
 ## Files Status
 
@@ -102,29 +129,22 @@ theorem compute_reachability_monotonic
 
 - `Semantic/CC/Syntax/Exp.lean` - Added `CaptureSet` to abs/tabs/cabs
 - `Semantic/CC/Substitution.lean` - Updated `Exp.subst` to handle capture sets
-- `Semantic/CC/Eval/Heap.lean` - Changed `Val {}` to `HeapVal`
-- `Semantic/CC/Eval/BigStep.lean` - Added reachability functions + monotonicity theorems
-- `Semantic/CC.lean` - Module compiles cleanly
+- `Semantic/CC/Eval/Heap.lean` - Changed `Val {}` to `HeapVal` with reachability
+- `Semantic/CC/Eval/BigStep.lean` - Reachability functions + monotonicity theorems
+- `Semantic/Prelude.lean` - Simplified notation (removed `HeapTopology` parameter)
+- **`Semantic/CC/Denotation/Core.lean`** - All denotations updated, `HeapTopology` removed, all proofs compile
 
-### 🚧 Needs Updating
+### 🚧 In Progress
 
-Priority order:
+1. **`Denotation/Rebind.lean`** - Updating rebinding theorems
+   - Mutual theorems (`rebind_*_denot`) signatures updated, need fixing arrow/poly cases
+   - Weakening lemmas commented out temporarily
 
-1. **`Denotation/Core.lean`** - Type denotations extract closures from heap
-   - Update pattern matches: `.abs T e` → `.abs cs T e`
-   - Potentially eliminate or simplify `HeapTopology` usage
-   - Update `resolve` function for new `HeapVal` structure
+### 📝 Not Started
 
-2. **`TypeSystem.lean`** - Typing rules for abstractions
-   - Add capture set to typing rules
-   - Determine how to check/infer captures statically
-
-3. **`Soundness.lean`** - Semantic soundness proof
-   - Update to work with new capture structure
-   - May simplify with explicit captures
-
-4. **`Denotation/Rebind.lean` & `Denotation/Retype.lean`**
-   - Update theorems for new abstraction structure
+1. **`Denotation/Retype.lean`** - Similar updates needed as Rebind.lean
+2. **`TypeSystem.lean`** - Typing rules for abstractions with capture sets
+3. **`Soundness.lean`** - Semantic soundness proof updates
 
 ## Design Philosophy
 
@@ -155,54 +175,58 @@ h1.extend l' ⟨v, hv, compute_reachability h1 v hv⟩
 
 We compute reachability **at allocation time** using the current heap state. The monotonicity theorems ensure this is well-defined.
 
-## Migration Checklist
+## Key Implementation Notes for Future Claude Sessions
 
-When updating a file:
+### Pattern Matching After Refactoring
+```lean
+-- Expressions now have capture sets
+| .abs cs T e    -- λ[cs](x:T).e
+| .tabs cs S e   -- Λ[cs](X<:S).e
+| .cabs cs B e   -- Λ[cs](C<:B).e
 
-1. **Pattern matches on Exp**:
-   - Change `.abs T e` → `.abs cs T e`
-   - Change `.tabs T e` → `.tabs cs T e`
-   - Change `.cabs cb e` → `.cabs cs cb e`
+-- HeapVal structure
+⟨v, hv, R⟩ where R : CapabilitySet  -- precomputed reachability
 
-2. **Val vs HeapVal**:
-   - Change `Val {}` → `HeapVal`
-   - Change `IsVal` → `IsSimpleVal` where appropriate
-   - Extract reachability: `⟨v, hv, R⟩` instead of `⟨v, hv⟩`
+-- Denotation signatures (no HeapTopology!)
+Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
+CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
+```
 
-3. **Heap lookups**:
-   - Pattern: `h x = some (.val ⟨.abs cs T e, hv, R⟩)` (note the `cs` and `R`)
+### Common Patterns in Rebind.lean
 
-4. **Check with lean4check**:
-   ```bash
-   lean4check Semantic/CC/YourFile.lean
-   ```
+**Problem**: Recursive calls in arrow/poly cases refer to old signatures with `φ`.
 
-## Key Questions for Future Work
+**Solution Pattern**:
+```lean
+-- OLD (broken):
+have ih2 := rebind_exi_exp_denot (φ:=φ.extend arg _) (ρ.liftVar) T2
 
-1. **Type checking captures**: How do we verify that declared captures are correct?
-   - Static analysis to compute free variables?
-   - Conservative over-approximation?
+-- NEW (correct):
+have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+```
 
-2. **HeapTopology elimination**: Can we completely remove it now?
-   - Check all uses in `Denotation/Core.lean`
-   - May still need for well-formedness conditions
+**Key insight**: Removing `φ` means removing ALL references to it, including:
+- Named arguments `(φ:=...)`
+- `φ.extend` calls - these are now meaningless
+- The mutual theorems work the same, just simpler signatures
 
-3. **Pack values**: Should they have captures too?
-   - Currently excluded from heap storage
-   - May need special handling
+### Debugging with lean4check
 
-## References
+```bash
+# Use the MCP tool - it gives better error messages
+mcp__lean4check__check Semantic/CC/Denotation/Rebind.lean
 
-- **Original discussion**: Lines 45-73 in conversation about transitive capability problem
-- **Design decision**: Lines 124-150 discussing explicit captures solution
-- **Implementation start**: Syntax/Exp.lean modifications
+# For incremental compilation during fixes
+lake build Semantic.CC.Denotation.Rebind 2>&1 | grep -A 5 "error:"
+```
 
-## Notes
+### Common Errors After HeapTopology Removal
 
-- All changes preserve the **empty signature property**: `Exp {}` means closed expressions
-- The reachability computation works on closed expressions only
-- Monotonicity theorems have one `sorry` for well-formedness (proving all variables in capture sets exist in heap)
+1. **"Invalid argument name `φ`"** - Remove all `(φ:=...)` named arguments
+2. **"Application type mismatch" expecting HeapTopology** - Remove the `φ` parameter completely
+3. **Obtain pattern has wrong number of fields** - Check if extracting from old 4-tuple, now 3-tuple (removed cs field in some places)
 
----
+## Open Questions
 
-**Next step**: Update `Denotation/Core.lean` to work with new abstraction syntax and HeapVal structure.
+1. **Type checking captures**: How to statically verify declared captures are correct?
+2. **Pack values**: Should they carry captures? Currently excluded from heap storage.
