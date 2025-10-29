@@ -953,6 +953,48 @@ theorem Subst.wf_openCVar
       simp [Subst.openCVar]
       apply CaptureSet.WfInHeap.wf_cvar
 
+/-- Unpack substitution is well-formed if both the capture set and variable are well-formed. -/
+theorem Subst.wf_unpack
+  {C : CaptureSet s}
+  {x : Var .var s}
+  {H : Heap}
+  (hwf_C : CaptureSet.WfInHeap C H)
+  (hwf_x : Var.WfInHeap x H) :
+  (Subst.unpack C x).WfInHeap H := by
+  constructor
+  · intro y
+    cases y with
+    | here =>
+      -- .here maps to x
+      simp [Subst.unpack]
+      exact hwf_x
+    | there y' =>
+      cases y' with
+      | there y0 =>
+        -- .there (.there y0) maps to .bound y0
+        simp [Subst.unpack]
+        apply Var.WfInHeap.wf_bound
+  · intro X
+    cases X with
+    | there X' =>
+      cases X' with
+      | there X0 =>
+        -- .there (.there X0) maps to .tvar X0
+        simp [Subst.unpack]
+        apply Ty.WfInHeap.wf_tvar
+  · intro C_var
+    cases C_var with
+    | there C' =>
+      cases C' with
+      | here =>
+        -- .there .here maps to C
+        simp [Subst.unpack]
+        exact hwf_C
+      | there C0 =>
+        -- .there (.there C0) maps to .cvar C0
+        simp [Subst.unpack]
+        apply CaptureSet.WfInHeap.wf_cvar
+
 /-- Memory is a well-formed heap. -/
 structure Memory where
   heap : Heap

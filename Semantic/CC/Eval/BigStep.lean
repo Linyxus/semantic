@@ -151,7 +151,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     ∀ l'
       (hfresh : m1.lookup l' = none),
       Eval C
-        (m1.extend_val l' ⟨v, hv, compute_reachability m v hv⟩ hwf_v hfresh)
+        (m1.extend_val l' ⟨v, hv, compute_reachability m1 v hv⟩ hwf_v hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
@@ -165,6 +165,8 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m e1 Q1 ->
   (h_val : ∀ {m1} {x : Var .var {}} {cs : CaptureSet {}},
     (m1.subsumes m) ->
+    (hwf_x : x.WfInHeap m1.heap) ->
+    (hwf_cs : cs.WfInHeap m1.heap) ->
     Q1 (.pack cs x) m1 ->
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
@@ -245,13 +247,12 @@ theorem eval_monotonic {m1 m2 : Memory}
     apply Eval.eval_letin (Q1:=Q1) hpred0 eval_e1'
     case h_val =>
       intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
-      -- We have: m_ext'.subsumes m2 and m2.subsumes m1 (the original memory)
-      -- Therefore: m_ext'.subsumes m1
+      -- We have: m_ext'.subsumes m2 and m2.subsumes m_orig (the original memory)
+      -- Therefore: m_ext'.subsumes m_orig
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      -- We need a proof that the reachabilities are the same
-      -- This requires well-formedness of v in m1, which we don't have from postconditions
-      -- For now, we leave this as sorry - it requires strengthening the postconditions
-      sorry
+      -- Now we can directly apply h_val_orig with all required arguments
+      -- The key is that eval_letin now provides hwf_v: Exp.WfInHeap v m_ext'.heap
+      exact h_val_orig hs_orig hv hwf_v hq1 l' hfresh
     case h_var =>
       intro m_ext' x hs_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
@@ -264,18 +265,24 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Exp.wf_subst hwf2_ext
         apply Subst.wf_openVar hwf_x
   case eval_unpack Q1 hpred0 eval_e1 h_val_orig ih ih_val =>
+    rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     -- Apply IH for e1 with well-formedness
     have eval_e1' := ih hpred0 hsub hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 eval_e1'
-    intro m_ext' x cs hs_ext' hq1
+    -- The updated eval_unpack now provides both hwf_x and hwf_cs
+    intro m_ext' x cs hs_ext' hwf_x hwf_cs hq1
     have hs_orig := Memory.subsumes_trans hs_ext' hsub
-    apply ih_val hs_orig hq1 hpred
+    apply ih_val hs_orig hwf_x hwf_cs hq1 hpred
     · exact Memory.subsumes_refl _
     · -- Need: (e2.subst (Subst.unpack cs x)).WfInHeap m_ext'.heap
-      -- Similar issue as above - need well-formedness from postconditions
-      sorry
+      -- Lift hwf2 to m_ext'.heap using monotonicity
+      have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
+      -- Apply substitution preservation
+      apply Exp.wf_subst hwf2_ext
+      -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
+      apply Subst.wf_unpack hwf_cs hwf_x
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -346,8 +353,8 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_unpack _ Q0 hpred he1 _ ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred ih
-    intro m1 x cs hs1 hq1
-    apply ih_val hs1 hq1
+    intro m1 x cs hs1 hwf_x hwf_cs hq1
+    apply ih_val hs1 hwf_x hwf_cs hq1
     apply Mpost.entails_after_subsumes himp
     apply hs1
 
