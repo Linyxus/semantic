@@ -156,6 +156,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
     (m1.subsumes m) ->
+    (hwf_x : x.WfInHeap m1.heap) ->
     Q1 (.var x) m1 ->
     Eval C m1 (e2.subst (Subst.openVar x)) Q) ->
   Eval C m (.letin e1 e2) Q
