@@ -953,4 +953,9 @@ theorem Subst.wf_openCVar
       simp [Subst.openCVar]
       apply CaptureSet.WfInHeap.wf_cvar
 
+/-- Memory is a well-formed heap. -/
+structure Memory where
+  heap : Heap
+  wf : heap.WfHeap
+
 end CC
