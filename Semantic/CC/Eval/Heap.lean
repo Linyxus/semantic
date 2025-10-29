@@ -1,4 +1,5 @@
 import Semantic.CC.Syntax
+import Semantic.CC.Substitution
 
 namespace CC
 
@@ -418,5 +419,15 @@ theorem Exp.wf_inv_cabs
   CaptureSet.WfInHeap cs H ∧ CaptureBound.WfInHeap cb H ∧ Exp.WfInHeap e H := by
   cases hwf with
   | wf_cabs hwf_cs hwf_cb hwf_e => exact ⟨hwf_cs, hwf_cb, hwf_e⟩
+
+structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
+  wf_var :
+    ∀ x, Var.WfInHeap (s.var x) H
+
+  wf_tvar :
+    ∀ X, Ty.WfInHeap (s.tvar X) H
+
+  wf_cvar :
+    ∀ C, CaptureSet.WfInHeap (s.cvar C) H
 
 end CC
