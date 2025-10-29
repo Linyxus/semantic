@@ -1,6 +1,6 @@
 # CC Refactoring: Explicit Captures
 
-**Status**: Core Complete, Proofs In Progress
+**Status**: Core + Denotation Complete
 **Date**: 2025-10-29 (Updated)
 
 ## Motivation
@@ -127,24 +127,22 @@ def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 
 ### ✅ Completed
 
+**Core Infrastructure:**
 - `Semantic/CC/Syntax/Exp.lean` - Added `CaptureSet` to abs/tabs/cabs
 - `Semantic/CC/Substitution.lean` - Updated `Exp.subst` to handle capture sets
 - `Semantic/CC/Eval/Heap.lean` - Changed `Val {}` to `HeapVal` with reachability
 - `Semantic/CC/Eval/BigStep.lean` - Reachability functions + monotonicity theorems
 - `Semantic/Prelude.lean` - Simplified notation (removed `HeapTopology` parameter)
-- **`Semantic/CC/Denotation/Core.lean`** - All denotations updated, `HeapTopology` removed, all proofs compile
 
-### 🚧 In Progress
+**Denotational Semantics:**
+- **`Semantic/CC/Denotation/Core.lean`** - All denotations updated, `HeapTopology` removed
+- **`Semantic/CC/Denotation/Rebind.lean`** - All rebinding theorems fixed, weakening lemmas restored
+- **`Semantic/CC/Denotation/Retype.lean`** - All retyping theorems fixed, `open_*` lemmas complete
 
-1. **`Denotation/Rebind.lean`** - Updating rebinding theorems
-   - Mutual theorems (`rebind_*_denot`) signatures updated, need fixing arrow/poly cases
-   - Weakening lemmas commented out temporarily
+### 📝 Remaining Work
 
-### 📝 Not Started
-
-1. **`Denotation/Retype.lean`** - Similar updates needed as Rebind.lean
-2. **`TypeSystem.lean`** - Typing rules for abstractions with capture sets
-3. **`Soundness.lean`** - Semantic soundness proof updates
+1. **`TypeSystem.lean`** - Update typing rules for explicit captures
+2. **`Soundness.lean`** - Fix semantic soundness proof (5 `sorry`s remaining)
 
 ## Design Philosophy
 
@@ -175,11 +173,11 @@ h1.extend l' ⟨v, hv, compute_reachability h1 v hv⟩
 
 We compute reachability **at allocation time** using the current heap state. The monotonicity theorems ensure this is well-defined.
 
-## Key Implementation Notes for Future Claude Sessions
+## Key Implementation Notes
 
-### Pattern Matching After Refactoring
+### Syntax Changes
 ```lean
--- Expressions now have capture sets
+-- Expressions now have explicit capture sets
 | .abs cs T e    -- λ[cs](x:T).e
 | .tabs cs S e   -- Λ[cs](X<:S).e
 | .cabs cs B e   -- Λ[cs](C<:B).e
@@ -192,41 +190,41 @@ Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
 ```
 
-### Common Patterns in Rebind.lean
+### Critical Fixes Applied
 
-**Problem**: Recursive calls in arrow/poly cases refer to old signatures with `φ`.
-
-**Solution Pattern**:
+**Arrow/Poly/Cpoly denotations:** Abstractions now have 3 witnesses (cs, T0, t0):
 ```lean
--- OLD (broken):
-have ih2 := rebind_exi_exp_denot (φ:=φ.extend arg _) (ρ.liftVar) T2
-
--- NEW (correct):
-have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+obtain ⟨cs, T0, t0, hr, hd⟩ := h
+use cs, T0, t0
 ```
 
-**Key insight**: Removing `φ` means removing ALL references to it, including:
-- Named arguments `(φ:=...)`
-- `φ.extend` calls - these are now meaningless
-- The mutual theorems work the same, just simpler signatures
-
-### Debugging with lean4check
-
-```bash
-# Use the MCP tool - it gives better error messages
-mcp__lean4check__check Semantic/CC/Denotation/Rebind.lean
-
-# For incremental compilation during fixes
-lake build Semantic.CC.Denotation.Rebind 2>&1 | grep -A 5 "error:"
+**Reachability in liftVar:** Must provide same reachability on both sides:
+```lean
+ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)
 ```
 
-### Common Errors After HeapTopology Removal
+**Well-formedness in capt_val_denot:** Introduce hypothesis, then prove shape equivalence:
+```lean
+intro hwf
+exact hS (C.denot env1) s e
+```
 
-1. **"Invalid argument name `φ`"** - Remove all `(φ:=...)` named arguments
-2. **"Application type mismatch" expecting HeapTopology** - Remove the `φ` parameter completely
-3. **Obtain pattern has wrong number of fields** - Check if extracting from old 4-tuple, now 3-tuple (removed cs field in some places)
+**Cpoly quantification:** Use `CS : CaptureSet {}` with `let A0 := CS.denot TypeEnv.empty`:
+```lean
+intro H' CS hsub hsub_bound
+let A0 := CS.denot TypeEnv.empty
+have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
+```
 
-## Open Questions
+**Open functions:** Destructure `interp_var` for `extend_var`:
+```lean
+env.extend_var (interp_var env y).1 (interp_var env y).2
+```
 
-1. **Type checking captures**: How to statically verify declared captures are correct?
-2. **Pack values**: Should they carry captures? Currently excluded from heap storage.
+## Next Steps
+
+1. **TypeSystem.lean**: Add typing rules to verify declared captures are correct
+2. **Soundness.lean**: Complete semantic type soundness proof
+   - Need lemma: `open_arg_exi_exp_denot`
+   - Need: Capability set relationships from typing
+   - Need: Eval monotonicity wrt capability sets

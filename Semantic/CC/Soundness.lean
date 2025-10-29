@@ -15,7 +15,7 @@ theorem typed_env_lookup_var
     simp [EnvTyping] at hts
     simp [TypeEnv.lookup_var, TypeEnv.lookup]
     -- Apply weaken_capt_val_denot equivalence
-    have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (A:=access) (T:=T0)
+    have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (R:=access) (T:=T0)
     apply (Denot.equiv_to_imply heqv).1
     exact hts.1
   case there b =>
@@ -34,7 +34,7 @@ theorem typed_env_lookup_var
       -- Show that lookup_var .there reduces correctly
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
       -- Apply weakening
-      have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (A:=access) (T:=T0)
+      have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (R:=access) (T:=T0)
       apply (Denot.equiv_to_imply heqv).1
       exact hih
     case tvar =>
@@ -68,7 +68,7 @@ theorem sem_typ_var
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot]
   apply Eval.eval_var
-  simp [Denot.as_post]
+  simp [Denot.as_mpost]
   exact typed_env_lookup_var hts hx
 
 -- theorem sem_typ_abs
