@@ -209,13 +209,14 @@ def Ty.shape_val_denot : TypeEnv s -> HeapTopology -> Ty .shape s -> PreDenot
 | env, φ, .cpoly B T => fun A m e =>
   ∃ cs B0 t0,
     resolve m.heap e = some (.cabs cs B0 t0) ∧
-    (∀ (m' : Memory) (A0 : CapabilitySet),
+    (∀ (m' : Memory) (CS : CaptureSet {}),
+      let A0 := CS.denot TypeEnv.empty φ
       m'.subsumes m ->
       (A0 ⊆ B.denot env φ) ->
       Ty.exi_exp_denot
         (env.extend_cvar A0)
         φ
-        T A m' (t0.subst (Subst.openCVar .empty)))
+        T A m' (t0.subst (Subst.openCVar CS)))
 
 def Ty.capt_val_denot : TypeEnv s -> HeapTopology -> Ty .capt s -> Denot
 | ρ, φ, .capt C S => Ty.shape_val_denot ρ φ S (C.denot ρ φ)
