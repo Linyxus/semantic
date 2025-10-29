@@ -179,12 +179,23 @@ theorem eval_monotonic {h1 h2 : Heap}
     apply Eval.eval_var
     apply hpred hsub hQ
   case eval_apply hx _ ih =>
-    apply Eval.eval_apply
-    · apply hsub _ _ hx
-    · apply ih hpred hsub
-      -- Need: well-formedness of e.subst (Subst.openVar y)
-      -- This requires preservation of well-formedness under substitution
-      sorry
+    -- Extract well-formedness of the application
+    cases hwf with
+    | wf_app hwf_x hwf_y =>
+      apply Eval.eval_apply
+      · apply hsub _ _ hx
+      · apply ih hpred hsub
+        -- Need: Exp.WfInHeap (e.subst (Subst.openVar y)) h1
+        -- Use Exp.wf_subst with Subst.wf_openVar
+        apply Exp.wf_subst
+        · -- Need: Exp.WfInHeap e h1
+          -- This requires assuming heap values are well-formed
+          -- The abstraction .abs cs T e is stored in the heap at location x
+          -- For now, we admit that heap values maintain well-formedness
+          sorry
+        · -- Show: (Subst.openVar y).WfInHeap h1
+          apply Subst.wf_openVar
+          exact hwf_y
   case eval_invoke hmem hx hy hQ =>
     apply Eval.eval_invoke
     · exact hmem
@@ -195,16 +206,28 @@ theorem eval_monotonic {h1 h2 : Heap}
     apply Eval.eval_tapply
     · apply hsub _ _ hx
     · apply ih hpred hsub
-      -- Need: well-formedness of e.subst (Subst.openTVar .top)
-      -- This requires preservation of well-formedness under substitution
-      sorry
+      -- Need: Exp.WfInHeap (e.subst (Subst.openTVar .top)) h1
+      -- Use Exp.wf_subst with Subst.wf_openTVar
+      apply Exp.wf_subst
+      · -- Need: Exp.WfInHeap e h1
+        -- This requires assuming heap values are well-formed
+        sorry
+      · -- Show: (Subst.openTVar .top).WfInHeap h1
+        apply Subst.wf_openTVar
+        apply Ty.WfInHeap.wf_top
   case eval_capply hx _ ih =>
     apply Eval.eval_capply
     · apply hsub _ _ hx
     · apply ih hpred hsub
-      -- Need: well-formedness of e.subst (Subst.openCVar .empty)
-      -- This requires preservation of well-formedness under substitution
-      sorry
+      -- Need: Exp.WfInHeap (e.subst (Subst.openCVar .empty)) h1
+      -- Use Exp.wf_subst with Subst.wf_openCVar
+      apply Exp.wf_subst
+      · -- Need: Exp.WfInHeap e h1
+        -- This requires assuming heap values are well-formed
+        sorry
+      · -- Show: (Subst.openCVar .empty).WfInHeap h1
+        apply Subst.wf_openCVar
+        apply CaptureSet.WfInHeap.wf_empty
   case eval_letin Q1 hpred0 eval_e1 h_val_orig h_var_orig ih ih_val ih_var =>
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
