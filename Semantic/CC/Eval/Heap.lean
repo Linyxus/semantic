@@ -606,12 +606,235 @@ theorem Exp.wf_rename
 
 -- Substitution well-formedness preservation
 
+/-- A well-formed variable yields a well-formed capture set. -/
+theorem CaptureSet.wf_of_var
+  {x : Var .var s}
+  {H : Heap}
+  (hwf : Var.WfInHeap x H) :
+  CaptureSet.WfInHeap (.var x) H := by
+  cases hwf with
+  | wf_bound =>
+    apply CaptureSet.WfInHeap.wf_var_bound
+  | wf_free hex =>
+    apply CaptureSet.WfInHeap.wf_var_free
+    exact hex
+
 /-- Lifting a well-formed substitution preserves well-formedness. -/
 theorem Subst.wf_lift
   {σ : Subst s1 s2}
   {H : Heap}
   (hwf_σ : σ.WfInHeap H) :
   (σ.lift (k:=k)).WfInHeap H := by
-  sorry
+  constructor
+  · intro x
+    cases x with
+    | here =>
+      simp [Subst.lift]
+      apply Var.WfInHeap.wf_bound
+    | there x =>
+      simp [Subst.lift]
+      apply Var.wf_rename
+      exact hwf_σ.wf_var x
+  · intro X
+    cases X with
+    | here =>
+      simp [Subst.lift]
+      apply Ty.WfInHeap.wf_tvar
+    | there X =>
+      simp [Subst.lift]
+      apply Ty.wf_rename
+      exact hwf_σ.wf_tvar X
+  · intro C
+    cases C with
+    | here =>
+      simp [Subst.lift]
+      apply CaptureSet.WfInHeap.wf_cvar
+    | there C =>
+      simp [Subst.lift]
+      apply CaptureSet.wf_rename
+      exact hwf_σ.wf_cvar C
+
+/-- Well-formed substitutions preserve well-formedness of variables. -/
+theorem Var.wf_subst
+  {x : Var .var s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_x : Var.WfInHeap x H)
+  (hwf_σ : σ.WfInHeap H) :
+  Var.WfInHeap (x.subst σ) H := by
+  cases x with
+  | bound x =>
+    simp [Var.subst]
+    exact hwf_σ.wf_var x
+  | free n =>
+    simp [Var.subst]
+    cases hwf_x with
+    | wf_free hex =>
+      apply Var.WfInHeap.wf_free
+      exact hex
+
+/-- Well-formed substitutions preserve well-formedness of capture sets. -/
+theorem CaptureSet.wf_subst
+  {cs : CaptureSet s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_cs : CaptureSet.WfInHeap cs H)
+  (hwf_σ : σ.WfInHeap H) :
+  CaptureSet.WfInHeap (cs.subst σ) H := by
+  induction hwf_cs with
+  | wf_empty =>
+    simp [CaptureSet.subst]
+    apply CaptureSet.WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 =>
+    simp [CaptureSet.subst]
+    apply CaptureSet.WfInHeap.wf_union
+    · exact ih1 hwf_σ
+    · exact ih2 hwf_σ
+  | wf_var_free hex =>
+    simp [CaptureSet.subst]
+    apply CaptureSet.WfInHeap.wf_var_free
+    exact hex
+  | wf_var_bound =>
+    rename_i x H_wf
+    simp [CaptureSet.subst]
+    apply CaptureSet.wf_of_var
+    apply Var.wf_subst
+    · apply Var.WfInHeap.wf_bound
+    · exact hwf_σ
+  | wf_cvar =>
+    simp [CaptureSet.subst]
+    exact hwf_σ.wf_cvar _
+
+/-- Well-formed substitutions preserve well-formedness of capture bounds. -/
+theorem CaptureBound.wf_subst
+  {cb : CaptureBound s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_cb : CaptureBound.WfInHeap cb H)
+  (hwf_σ : σ.WfInHeap H) :
+  CaptureBound.WfInHeap (cb.subst σ) H := by
+  cases hwf_cb with
+  | wf_unbound =>
+    simp [CaptureBound.subst]
+    apply CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs =>
+    simp [CaptureBound.subst]
+    apply CaptureBound.WfInHeap.wf_bound
+    exact CaptureSet.wf_subst hwf_cs hwf_σ
+
+/-- Well-formed substitutions preserve well-formedness of types. -/
+theorem Ty.wf_subst
+  {T : Ty sort s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_T : Ty.WfInHeap T H)
+  (hwf_σ : σ.WfInHeap H) :
+  Ty.WfInHeap (T.subst σ) H := by
+  induction hwf_T generalizing s2 with
+  | wf_top =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_top
+  | wf_tvar =>
+    simp [Ty.subst]
+    exact hwf_σ.wf_tvar _
+  | wf_arrow _ _ ih1 ih2 =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_arrow
+    · exact ih1 hwf_σ
+    · exact ih2 (Subst.wf_lift hwf_σ)
+  | wf_poly _ _ ih1 ih2 =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_poly
+    · exact ih1 hwf_σ
+    · exact ih2 (Subst.wf_lift hwf_σ)
+  | wf_cpoly hwf_cb _ ih_T =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_subst hwf_cb hwf_σ
+    · exact ih_T (Subst.wf_lift hwf_σ)
+  | wf_unit =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_unit
+  | wf_cap =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_cap
+  | wf_capt hwf_cs _ ih_T =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_capt
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact ih_T hwf_σ
+  | wf_exi _ ih =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_exi
+    exact ih (Subst.wf_lift hwf_σ)
+  | wf_typ _ ih =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_typ
+    exact ih hwf_σ
+
+/-- Well-formed substitutions preserve well-formedness of expressions. -/
+theorem Exp.wf_subst
+  {e : Exp s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_e : Exp.WfInHeap e H)
+  (hwf_σ : σ.WfInHeap H) :
+  Exp.WfInHeap (e.subst σ) H := by
+  induction hwf_e generalizing s2 with
+  | wf_var hwf_x =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_var
+    exact Var.wf_subst hwf_x hwf_σ
+  | wf_abs hwf_cs hwf_T _ ih_e =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_abs
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact Ty.wf_subst hwf_T hwf_σ
+    · exact ih_e (Subst.wf_lift hwf_σ)
+  | wf_tabs hwf_cs hwf_T _ ih_e =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_tabs
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact Ty.wf_subst hwf_T hwf_σ
+    · exact ih_e (Subst.wf_lift hwf_σ)
+  | wf_cabs hwf_cs hwf_cb _ ih_e =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_cabs
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact CaptureBound.wf_subst hwf_cb hwf_σ
+    · exact ih_e (Subst.wf_lift hwf_σ)
+  | wf_pack hwf_cs hwf_x =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_pack
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact Var.wf_subst hwf_x hwf_σ
+  | wf_app hwf_x hwf_y =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_app
+    · exact Var.wf_subst hwf_x hwf_σ
+    · exact Var.wf_subst hwf_y hwf_σ
+  | wf_tapp hwf_x hwf_T =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_tapp
+    · exact Var.wf_subst hwf_x hwf_σ
+    · exact Ty.wf_subst hwf_T hwf_σ
+  | wf_capp hwf_x hwf_cs =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_capp
+    · exact Var.wf_subst hwf_x hwf_σ
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+  | wf_letin _ _ ih1 ih2 =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_letin
+    · exact ih1 hwf_σ
+    · exact ih2 (Subst.wf_lift hwf_σ)
+  | wf_unpack _ _ ih1 ih2 =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_unpack
+    · exact ih1 hwf_σ
+    · exact ih2 (Subst.wf_lift (Subst.wf_lift hwf_σ))
+  | wf_unit =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_unit
 
 end CC
