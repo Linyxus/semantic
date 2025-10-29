@@ -5,54 +5,54 @@ import Semantic.CC.Eval.Heap
 namespace CC
 
 def reachability_of_loc
-  (h : Heap)
+  (m : Memory)
   (l : Nat) :
   CapabilitySet :=
-  match h l with
+  match m.lookup l with
   | some .capability => {l}
   | some (.val ⟨_, _, R⟩) => R
   | none => {}
 
 def expand_captures
-  (h : Heap)
+  (m : Memory)
   (cs : CaptureSet {}) :
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var (.free loc) => reachability_of_loc h loc
-  | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
+  | .var (.free loc) => reachability_of_loc m loc
+  | .union cs1 cs2 => expand_captures m cs1 ∪ expand_captures m cs2
 
 def compute_reachability
-  (h : Heap)
+  (m : Memory)
   (v : Exp {}) (hv : v.IsSimpleVal) :
   CapabilitySet :=
   match v with
-  | .abs cs _ _ => expand_captures h cs
-  | .tabs cs _ _ => expand_captures h cs
-  | .cabs cs _ _ => expand_captures h cs
+  | .abs cs _ _ => expand_captures m cs
+  | .tabs cs _ _ => expand_captures m cs
+  | .cabs cs _ _ => expand_captures m cs
   | .unit => {}
 
 theorem reachability_of_loc_monotonic
-  {h1 h2 : Heap}
-  (hsub : h2.subsumes h1)
+  {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
   (l : Nat)
-  (hex : h1 l = some v) :
-  reachability_of_loc h2 l = reachability_of_loc h1 l := by
-  have h2_eq : h2 l = some v := hsub l v hex
-  unfold reachability_of_loc
-  rw [hex, h2_eq]
+  (hex : m1.lookup l = some v) :
+  reachability_of_loc m2 l = reachability_of_loc m1 l := by
+  have m2_eq : m2.lookup l = some v := hsub l v hex
+  simp only [reachability_of_loc, Memory.lookup] at hex m2_eq ⊢
+  rw [hex, m2_eq]
 
-/-- Expanding a capture set in a bigger heap yields the same result.
-Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
+/-- Expanding a capture set in a bigger memory yields the same result.
+Proof by induction on cs. Requires all free locations in cs to exist in m1. -/
 theorem expand_captures_monotonic
-  {h1 h2 : Heap}
-  (hsub : h2.subsumes h1)
+  {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
   (cs : CaptureSet {})
-  (hwf : CaptureSet.WfInHeap cs h1) :
-  expand_captures h2 cs = expand_captures h1 cs := by
+  (hwf : CaptureSet.WfInHeap cs m1.heap) :
+  expand_captures m2 cs = expand_captures m1 cs := by
   induction cs with
   | empty =>
-    -- Base case: empty capture set expands to empty in any heap
+    -- Base case: empty capture set expands to empty in any memory
     rfl
   | var x =>
     cases x with
@@ -65,7 +65,8 @@ theorem expand_captures_monotonic
       -- Extract existence proof from well-formedness
       cases hwf with
       | wf_var_free hex =>
-        -- We have hex : h1 loc = some val
+        -- We have hex : m1.heap loc = some cell_val
+        -- This is the same as m1.lookup loc = some cell_val
         exact reachability_of_loc_monotonic hsub loc hex
   | cvar C =>
     -- Impossible: no capability variables in empty signature
@@ -77,20 +78,20 @@ theorem expand_captures_monotonic
     | wf_union hwf1 hwf2 =>
       simp [expand_captures, ih1 hwf1, ih2 hwf2]
 
-/-- Computing reachability of a value in a bigger heap yields the same result.
+/-- Computing reachability of a value in a bigger memory yields the same result.
 Proof by cases on hv, using expand_captures_monotonic. -/
 theorem compute_reachability_monotonic
-  {h1 h2 : Heap}
-  (hsub : h2.subsumes h1)
+  {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
   (v : Exp {})
   (hv : v.IsSimpleVal)
-  (hwf : Exp.WfInHeap v h1) :
-  compute_reachability h2 v hv = compute_reachability h1 v hv := by
+  (hwf : Exp.WfInHeap v m1.heap) :
+  compute_reachability m2 v hv = compute_reachability m1 v hv := by
   -- Case analysis on the structure of the simple value
   cases hv with
   | abs =>
     -- Case: v = .abs cs T e
-    -- compute_reachability h v = expand_captures h cs
+    -- compute_reachability m v = expand_captures m cs
     simp [compute_reachability]
     -- Extract well-formedness of the capture set
     cases hwf with
@@ -110,68 +111,70 @@ theorem compute_reachability_monotonic
       exact expand_captures_monotonic hsub _ hwf_cs
   | unit =>
     -- Case: v = .unit
-    -- Both heaps yield empty capability set
+    -- Both memories yield empty capability set
     rfl
 
-inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
+inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_val :
   (hv : Exp.IsVal v) ->
-  (hQ : Q v h) ->
-  Eval C h v Q
+  (hQ : Q v m) ->
+  Eval C m v Q
 | eval_var :
-  (hQ : Q (.var x) h) ->
-  Eval C h (.var x) Q
-| eval_apply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.abs cs T e, hv, R⟩) ->
-  Eval C h (e.subst (Subst.openVar y)) Q ->
-  Eval C h (.app (.free x) y) Q
-| eval_invoke {h : Heap} {x : Nat} :
+  (hQ : Q (.var x) m) ->
+  Eval C m (.var x) Q
+| eval_apply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
+  Eval C m (e.subst (Subst.openVar y)) Q ->
+  Eval C m (.app (.free x) y) Q
+| eval_invoke {m : Memory} {x : Nat} :
   x ∈ C ->
-  h x = some .capability ->
-  h y = some (.val ⟨.unit, hv, R⟩) ->
-  Q .unit h ->
-  Eval C h (.app (.free x) (.free y)) Q
-| eval_tapply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.tabs cs T0 e, hv, R⟩) ->
-  Eval C h (e.subst (Subst.openTVar .top)) Q ->
-  Eval C h (.tapp (.free x) S) Q
-| eval_capply {h : Heap} {x : Nat} :
-  h x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
-  Eval C h (e.subst (Subst.openCVar .empty)) Q ->
-  Eval C h (.capp (.free x) CS) Q
-| eval_letin {h : Heap} {Q1 : Hpost} :
+  m.lookup x = some .capability ->
+  m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
+  Q .unit m ->
+  Eval C m (.app (.free x) (.free y)) Q
+| eval_tapply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.tabs cs T0 e, hv, R⟩) ->
+  Eval C m (e.subst (Subst.openTVar .top)) Q ->
+  Eval C m (.tapp (.free x) S) Q
+| eval_capply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
+  Eval C m (e.subst (Subst.openCVar .empty)) Q ->
+  Eval C m (.capp (.free x) CS) Q
+| eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
-  Eval C h e1 Q1 ->
-  (h_val : ∀ {h1} {v : Exp {}},
-    (h1.subsumes h) ->
+  Eval C m e1 Q1 ->
+  (h_val : ∀ {m1} {v : Exp {}},
+    (m1.subsumes m) ->
     (hv : Exp.IsSimpleVal v) ->
-    Q1 v h1 ->
-    ∀ l', h1 l' = none ->
+    Q1 v m1 ->
+    ∀ l'
+      (hwf_v : Exp.WfInHeap v (m1.heap.extend l' ⟨v, hv, compute_reachability m v hv⟩))
+      (hfresh : m1.lookup l' = none),
       Eval C
-        (h1.extend l' ⟨v, hv, compute_reachability h v hv⟩)
+        (m1.extend l' ⟨v, hv, compute_reachability m v hv⟩ hwf_v hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
-  (h_var : ∀ {h1} {x : Var .var {}},
-    (h1.subsumes h) ->
-    Q1 (.var x) h1 ->
-    Eval C h1 (e2.subst (Subst.openVar x)) Q) ->
-  Eval C h (.letin e1 e2) Q
-| eval_unpack {h : Heap} {Q1 : Hpost} :
+  (h_var : ∀ {m1} {x : Var .var {}},
+    (m1.subsumes m) ->
+    Q1 (.var x) m1 ->
+    Eval C m1 (e2.subst (Subst.openVar x)) Q) ->
+  Eval C m (.letin e1 e2) Q
+| eval_unpack {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
-  Eval C h e1 Q1 ->
-  (h_val : ∀ {h1} {x : Var .var {}} {cs : CaptureSet {}},
-    (h1.subsumes h) ->
-    Q1 (.pack cs x) h1 ->
-    Eval C h1 (e2.subst (Subst.unpack cs x)) Q) ->
-  Eval C h (.unpack e1 e2) Q
+  Eval C m e1 Q1 ->
+  (h_val : ∀ {m1} {x : Var .var {}} {cs : CaptureSet {}},
+    (m1.subsumes m) ->
+    Q1 (.pack cs x) m1 ->
+    Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
+  Eval C m (.unpack e1 e2) Q
 
-theorem eval_monotonic {h1 h2 : Heap}
+theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
-  (hsub : h2.subsumes h1)
-  (hwf : Exp.WfInHeap e h1)
-  (heval : Eval C h1 e Q) :
-  Eval C h2 e Q := by
-  induction heval generalizing h2
+  (hsub : m2.subsumes m1)
+  (hwf : Exp.WfInHeap e m1.heap)
+  (heval : Eval C m1 e Q) :
+  Eval C m2 e Q := by
+  induction heval generalizing m2
   case eval_val hv hQ =>
     apply Eval.eval_val hv
     apply hpred hsub hQ
@@ -183,49 +186,53 @@ theorem eval_monotonic {h1 h2 : Heap}
     cases hwf with
     | wf_app hwf_x hwf_y =>
       apply Eval.eval_apply
-      · apply hsub _ _ hx
+      · exact hsub _ _ hx
       · apply ih hpred hsub
-        -- Need: Exp.WfInHeap (e.subst (Subst.openVar y)) h1
+        -- Need: Exp.WfInHeap (e.subst (Subst.openVar y)) m1.heap
         -- Use Exp.wf_subst with Subst.wf_openVar
         apply Exp.wf_subst
-        · -- Need: Exp.WfInHeap e h1
-          -- This requires assuming heap values are well-formed
-          -- The abstraction .abs cs T e is stored in the heap at location x
-          -- For now, we admit that heap values maintain well-formedness
-          sorry
-        · -- Show: (Subst.openVar y).WfInHeap h1
+        · -- Need: Exp.WfInHeap e m1.heap
+          -- Get it from Memory.wf_lookup and inversion
+          have hwf_abs := Memory.wf_lookup hx
+          have ⟨_, _, hwf_e⟩ := Exp.wf_inv_abs hwf_abs
+          exact hwf_e
+        · -- Show: (Subst.openVar y).WfInHeap m1.heap
           apply Subst.wf_openVar
           exact hwf_y
   case eval_invoke hmem hx hy hQ =>
     apply Eval.eval_invoke
     · exact hmem
-    · apply hsub _ _ hx
-    · apply hsub _ _ hy
+    · exact hsub _ _ hx
+    · exact hsub _ _ hy
     · apply hpred <;> assumption
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply
-    · apply hsub _ _ hx
+    · exact hsub _ _ hx
     · apply ih hpred hsub
-      -- Need: Exp.WfInHeap (e.subst (Subst.openTVar .top)) h1
+      -- Need: Exp.WfInHeap (e.subst (Subst.openTVar .top)) m1.heap
       -- Use Exp.wf_subst with Subst.wf_openTVar
       apply Exp.wf_subst
-      · -- Need: Exp.WfInHeap e h1
-        -- This requires assuming heap values are well-formed
-        sorry
-      · -- Show: (Subst.openTVar .top).WfInHeap h1
+      · -- Need: Exp.WfInHeap e m1.heap
+        -- Get it from Memory.wf_lookup and inversion
+        have hwf_tabs := Memory.wf_lookup hx
+        have ⟨_, _, hwf_e⟩ := Exp.wf_inv_tabs hwf_tabs
+        exact hwf_e
+      · -- Show: (Subst.openTVar .top).WfInHeap m1.heap
         apply Subst.wf_openTVar
         apply Ty.WfInHeap.wf_top
   case eval_capply hx _ ih =>
     apply Eval.eval_capply
-    · apply hsub _ _ hx
+    · exact hsub _ _ hx
     · apply ih hpred hsub
-      -- Need: Exp.WfInHeap (e.subst (Subst.openCVar .empty)) h1
+      -- Need: Exp.WfInHeap (e.subst (Subst.openCVar .empty)) m1.heap
       -- Use Exp.wf_subst with Subst.wf_openCVar
       apply Exp.wf_subst
-      · -- Need: Exp.WfInHeap e h1
-        -- This requires assuming heap values are well-formed
-        sorry
-      · -- Show: (Subst.openCVar .empty).WfInHeap h1
+      · -- Need: Exp.WfInHeap e m1.heap
+        -- Get it from Memory.wf_lookup and inversion
+        have hwf_cabs := Memory.wf_lookup hx
+        have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
+        exact hwf_e
+      · -- Show: (Subst.openCVar .empty).WfInHeap m1.heap
         apply Subst.wf_openCVar
         apply CaptureSet.WfInHeap.wf_empty
   case eval_letin Q1 hpred0 eval_e1 h_val_orig h_var_orig ih ih_val ih_var =>
@@ -235,87 +242,83 @@ theorem eval_monotonic {h1 h2 : Heap}
     have eval_e1' := ih hpred0 hsub hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 eval_e1'
     case h_val =>
-      intro h_ext' v hs_ext' hv hq1 l' hfresh
-      -- We have: h_ext'.subsumes h2 and h2.subsumes h_orig (the original heap h✝)
-      -- Therefore: h_ext'.subsumes h_orig
-      have hs_orig := Heap.subsumes_trans hs_ext' hsub
-      -- KEY ISSUE: To show that the extended heaps are equal, we need:
-      --   compute_reachability h2 v hv = compute_reachability h_orig v hv
-      -- By compute_reachability_monotonic, this requires Exp.WfInHeap v h_orig
-      -- However, v comes from Q1 v h_ext', and we don't have a general way
-      -- to extract well-formedness from postconditions.
-      -- This requires either:
-      --   (a) A preservation theorem showing evaluation produces well-formed results, or
-      --   (b) Strengthening postconditions to track well-formedness
-      -- For now, we admit this requirement:
-      -- We need: Exp.WfInHeap v h_orig (where h_orig is the original heap h✝)
-      -- This requires a preservation theorem or strengthening of postconditions
+      intro m_ext' v hs_ext' hv hq1 l' hwf_v hfresh
+      -- We have: m_ext'.subsumes m2 and m2.subsumes m1 (the original memory)
+      -- Therefore: m_ext'.subsumes m1
+      have hs_orig := Memory.subsumes_trans hs_ext' hsub
+      -- We need a proof that the reachabilities are the same
+      -- This requires well-formedness of v in m1, which we don't have from postconditions
+      -- For now, we leave this as sorry - it requires strengthening the postconditions
       sorry
     case h_var =>
-      intro h_ext' x hs_ext' hq1
-      have hs_orig := Heap.subsumes_trans hs_ext' hsub
+      intro m_ext' x hs_ext' hq1
+      have hs_orig := Memory.subsumes_trans hs_ext' hsub
       apply ih_var hs_orig hq1 hpred
-      -- Need well-formedness of e2.subst in h_ext'
-      all_goals sorry
+      · exact Memory.subsumes_refl _
+      · -- Need: (e2.subst (Subst.openVar x)).WfInHeap m_ext'.heap
+        -- This requires well-formedness from postconditions
+        sorry
   case eval_unpack Q1 hpred0 eval_e1 h_val_orig ih ih_val =>
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     -- Apply IH for e1 with well-formedness
     have eval_e1' := ih hpred0 hsub hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 eval_e1'
-    intro h_ext' x cs hs_ext' hq1
-    have hs_orig := Heap.subsumes_trans hs_ext' hsub
+    intro m_ext' x cs hs_ext' hq1
+    have hs_orig := Memory.subsumes_trans hs_ext' hsub
     apply ih_val hs_orig hq1 hpred
-    -- Need well-formedness of e2.subst in h_ext'
-    all_goals sorry
+    · exact Memory.subsumes_refl _
+    · -- Need: (e2.subst (Subst.unpack cs x)).WfInHeap m_ext'.heap
+      -- Similar issue as above - need well-formedness from postconditions
+      sorry
 
-def Hpost.entails_at (Q1 : Hpost) (h : Heap) (Q2 : Hpost) : Prop :=
-  ∀ e, Q1 e h -> Q2 e h
+def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
+  ∀ e, Q1 e m -> Q2 e m
 
-def Hpost.entails_after (Q1 : Hpost) (h : Heap) (Q2 : Hpost) : Prop :=
-  ∀ h', h'.subsumes h -> Q1.entails_at h' Q2
+def Mpost.entails_after (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
+  ∀ m', m'.subsumes m -> Q1.entails_at m' Q2
 
-lemma Hpost.entails_to_entails_after {Q1 Q2 : Hpost}
+lemma Mpost.entails_to_entails_after {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2) :
-  Q1.entails_after h Q2 := by
-  intro h' hsub
+  Q1.entails_after m Q2 := by
+  intro m' hsub
   intro e hQ
-  apply himp h' e hQ
+  apply himp m' e hQ
 
-theorem Hpost.entails_after_refl (Q : Hpost) (h : Heap) :
-  Q.entails_after h Q := by
-  intro h' _
+theorem Mpost.entails_after_refl (Q : Mpost) (m : Memory) :
+  Q.entails_after m Q := by
+  intro m' _
   intro e hQ
   exact hQ
 
-theorem Hpost.entails_after_subsumes
-  (himp : Hpost.entails_after Q1 h Q2)
-  (hsub : h'.subsumes h) :
-  Q1.entails_after h' Q2 := by
-  intro H hheap e
-  apply himp H _
-  apply Heap.subsumes_trans hheap hsub
+theorem Mpost.entails_after_subsumes
+  (himp : Mpost.entails_after Q1 m Q2)
+  (hsub : m'.subsumes m) :
+  Q1.entails_after m' Q2 := by
+  intro M mheap e
+  apply himp M _
+  apply Memory.subsumes_trans mheap hsub
 
-theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
-  (himp : Q1.entails_after h Q2)
-  (heval : Eval C h e Q1) :
-  Eval C h e Q2 := by
+theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
+  (himp : Q1.entails_after m Q2)
+  (heval : Eval C m e Q1) :
+  Eval C m e Q2 := by
   induction heval generalizing Q2
-  case eval_val v Q H hv hQ =>
+  case eval_val v Q M hv hQ =>
     apply Eval.eval_val hv
-    apply himp H _ _ hQ
-    apply Heap.subsumes_refl
-  case eval_var Q1 H x hQ =>
+    apply himp M _ _ hQ
+    apply Memory.subsumes_refl
+  case eval_var Q1 M x hQ =>
     apply Eval.eval_var
-    apply himp H _ _ hQ
-    apply Heap.subsumes_refl
+    apply himp M _ _ hQ
+    apply Memory.subsumes_refl
   case eval_apply hx _ ih =>
     apply Eval.eval_apply hx
     apply ih himp
   case eval_invoke hmem hx hy hQ =>
     apply Eval.eval_invoke hmem hx hy
     apply himp _ _ _ hQ
-    apply Heap.subsumes_refl
+    apply Memory.subsumes_refl
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply hx
     apply ih himp
@@ -323,31 +326,31 @@ theorem eval_post_monotonic_general {Q1 Q2 : Hpost}
     apply Eval.eval_capply hx
     apply ih himp
   case eval_letin _ Q0 hpred he1 _ _ ih ih_val ih_var =>
-    specialize ih (by apply Hpost.entails_after_refl)
+    specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred ih
     case h_val =>
-      intro h1 v hs1 hv hq1 l' hfresh
-      apply ih_val hs1 hv hq1 l' hfresh
-      apply Hpost.entails_after_subsumes himp
-      apply Heap.subsumes_trans (Heap.extend_subsumes hfresh) hs1
+      intro m1 v hs1 hv hq1 l' hwf_v hfresh
+      apply ih_val hs1 hv hq1 l' hwf_v hfresh
+      apply Mpost.entails_after_subsumes himp
+      apply Memory.subsumes_trans (Memory.extend_subsumes _ _ _ hwf_v hfresh) hs1
     case h_var =>
-      intro h1 x hs1 hq1
+      intro m1 x hs1 hq1
       apply ih_var hs1 hq1
-      apply Hpost.entails_after_subsumes himp
+      apply Mpost.entails_after_subsumes himp
       apply hs1
   case eval_unpack _ Q0 hpred he1 _ ih ih_val =>
-    specialize ih (by apply Hpost.entails_after_refl)
+    specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred ih
-    intro h1 x cs hs1 hq1
+    intro m1 x cs hs1 hq1
     apply ih_val hs1 hq1
-    apply Hpost.entails_after_subsumes himp
+    apply Mpost.entails_after_subsumes himp
     apply hs1
 
-theorem eval_post_monotonic {Q1 Q2 : Hpost}
+theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
-  (heval : Eval C h e Q1) :
-  Eval C h e Q2 := by
+  (heval : Eval C m e Q1) :
+  Eval C m e Q2 := by
   apply eval_post_monotonic_general _ heval
-  apply Hpost.entails_to_entails_after himp
+  apply Mpost.entails_to_entails_after himp
 
 end CC

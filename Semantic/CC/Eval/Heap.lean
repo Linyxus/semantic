@@ -1065,4 +1065,26 @@ theorem wf_lookup {m : Memory} {l : Nat} {hv : HeapVal}
 
 end Memory
 
+/-- Memory predicate. -/
+def Mprop := Memory -> Prop
+
+/-- Memory postcondition. -/
+def Mpost := Exp {} -> Mprop
+
+/-- Monotonicity of memory postconditions. -/
+def Mpost.is_monotonic (Q : Mpost) : Prop :=
+  ∀ {m1 m2 : Memory} {e},
+    m2.subsumes m1 ->
+    Q e m1 ->
+    Q e m2
+
+def Mpost.entails (Q1 Q2 : Mpost) : Prop :=
+  ∀ m e,
+    Q1 e m ->
+    Q2 e m
+
+def Mpost.entails_refl (Q : Mpost) : Q.entails Q := by
+  intros m e hQ
+  exact hQ
+
 end CC
