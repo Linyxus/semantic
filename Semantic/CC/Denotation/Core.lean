@@ -42,7 +42,7 @@ def PreDenot.is_proper (pd : PreDenot) : Prop :=
 lemma Denot.as_mpost_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
   d.as_mpost.is_monotonic := by
-  intro m1 m2 e hsub h
+  intro m1 m2 e hwf hsub h
   unfold Denot.as_mpost at h ⊢
   exact hmon hsub h
 
@@ -924,36 +924,36 @@ def exi_val_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
 def capt_exp_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
   (henv : TypeEnv.is_monotonic env)
   (T : Ty .capt s) :
-  (Ty.capt_exp_denot env φ T).is_monotonic := by
-  intro C m1 m2 e hmem ht
+  ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
+    Exp.WfInHeap e m1.heap ->
+    m2.subsumes m1 ->
+    (Ty.capt_exp_denot env φ T) C m1 e ->
+    (Ty.capt_exp_denot env φ T) C m2 e := by
+  intro C m1 m2 e hwf hmem ht
   simp [Ty.capt_exp_denot] at ht ⊢
-  -- apply eval_monotonic
-  -- · apply Denot.as_mpost_is_monotonic
-  --   exact capt_val_denot_is_monotonic henv T
-  -- · exact hmem
-  -- · -- TODO: Well-formedness should be threaded through denotational semantics
-  --   -- For now we assume the expression is well-formed, which should hold
-  --   -- in practice since we only evaluate well-typed terms
-  --   sorry
-  -- · exact ht
-  sorry
+  apply eval_monotonic
+  · apply Denot.as_mpost_is_monotonic
+    exact capt_val_denot_is_monotonic henv T
+  · exact hmem
+  · exact hwf
+  · exact ht
 
 def exi_exp_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
   (henv : TypeEnv.is_monotonic env)
   (T : Ty .exi s) :
-  (Ty.exi_exp_denot env φ T).is_monotonic := by
-  intro C m1 m2 e hmem ht
+  ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
+    Exp.WfInHeap e m1.heap ->
+    m2.subsumes m1 ->
+    (Ty.exi_exp_denot env φ T) C m1 e ->
+    (Ty.exi_exp_denot env φ T) C m2 e := by
+  intro C m1 m2 e hwf hmem ht
   simp [Ty.exi_exp_denot] at ht ⊢
-  -- apply eval_monotonic
-  -- · apply Denot.as_mpost_is_monotonic
-  --   exact exi_val_denot_is_monotonic henv T
-  -- · exact hmem
-  -- · -- TODO: Well-formedness should be threaded through denotational semantics
-  --   -- For now we assume the expression is well-formed, which should hold
-  --   -- in practice since we only evaluate well-typed terms
-  --   sorry
-  -- · exact ht
-  sorry
+  apply eval_monotonic
+  · apply Denot.as_mpost_is_monotonic
+    exact exi_val_denot_is_monotonic henv T
+  · exact hmem
+  · exact hwf
+  · exact ht
 
 end
 

@@ -180,10 +180,10 @@ theorem eval_monotonic {m1 m2 : Memory}
   induction heval generalizing m2
   case eval_val hv hQ =>
     apply Eval.eval_val hv
-    apply hpred hsub hQ
+    apply hpred hwf hsub hQ
   case eval_var hQ =>
     apply Eval.eval_var
-    apply hpred hsub hQ
+    apply hpred hwf hsub hQ
   case eval_apply hx _ ih =>
     -- Extract well-formedness of the application
     cases hwf with
@@ -207,7 +207,10 @@ theorem eval_monotonic {m1 m2 : Memory}
     · exact hmem
     · exact hsub _ _ hx
     · exact hsub _ _ hy
-    · apply hpred <;> assumption
+    · apply hpred
+      · apply Exp.WfInHeap.wf_unit
+      · exact hsub
+      · exact hQ
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply
     · exact hsub _ _ hx
