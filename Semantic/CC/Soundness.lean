@@ -92,45 +92,50 @@ theorem sem_typ_var
 
 theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
-  ∅ # Γ ⊨ Exp.abs T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := by
+  ∅ # Γ ⊨ Exp.abs Cf T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
-  · simp [Denot.as_post]
-    -- Need to provide T0 and t0 for the arrow denotation
-    use (T1.subst (Subst.from_TypeEnv env)), (e.subst (Subst.from_TypeEnv env).lift)
+  · simp [Denot.as_mpost]
     constructor
-    · -- Show that resolve gives back the abstraction
-      simp [resolve, Exp.subst]
-    · -- Show the function property
-      intro arg H' hsubsume harg
-      rw [Exp.from_TypeEnv_weaken_open (A := T1.captureSet.denot env)]
-      -- Apply the hypothesis
-      have henv :
-        EnvTyping (Γ,x:T1) (env.extend_var arg (T1.captureSet.denot env)) H' := by
-        constructor
-        · exact harg
-        · constructor
-          · rfl
-          · apply env_typing_monotonic hts hsubsume
-      have this := ht (env.extend_var arg (T1.captureSet.denot env)) H' henv
-      simp [Ty.exi_exp_denot] at this
-      -- Show capability sets match
-      have hcap_rename :
-        (Cf.rename Rename.succ).denot (env.extend_var arg (T1.captureSet.denot env))
-        = Cf.denot env := by
-        have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=arg)
-          (A:=T1.captureSet.denot env)) Cf
-        exact this.symm
-      have hcap_var :
-        (CaptureSet.var (.bound .here)).denot
-          (env.extend_var arg (T1.captureSet.denot env))
-        = T1.captureSet.denot env := by
-        simp [CaptureSet.denot, TypeEnv.lookup_var, TypeEnv.lookup, TypeEnv.extend_var]
-      rw [← hcap_rename, ← hcap_var]
-      simp [CaptureSet.denot]
-      exact this
+    · -- Prove well-formedness
+      sorry  -- TODO: Prove WfInHeap for substituted capture set, type, and body
+    · -- Provide the arrow denotation structure
+      use (Cf.subst (Subst.from_TypeEnv env)), (T1.subst (Subst.from_TypeEnv env)),
+        (e.subst (Subst.from_TypeEnv env).lift)
+      constructor
+      · -- Show that resolve gives back the abstraction
+        simp [resolve, Exp.subst]
+      · -- Show the function property
+        intro arg H' hsubsume harg
+        rw [Exp.from_TypeEnv_weaken_open (R := reachability_of_loc H' arg)]
+        -- Apply the hypothesis
+        have henv :
+          EnvTyping (Γ,x:T1) (env.extend_var arg (reachability_of_loc H' arg)) H' := by
+          constructor
+          · exact harg
+          · constructor
+            · rfl
+            · apply env_typing_monotonic hts hsubsume
+        have this := ht (env.extend_var arg (reachability_of_loc H' arg)) H' henv
+        simp [Ty.exi_exp_denot] at this
+        -- Show capability sets match
+        have hcap_rename :
+          (Cf.rename Rename.succ).denot (env.extend_var arg (reachability_of_loc H' arg))
+          = Cf.denot env := by
+          have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=arg)
+            (R:=reachability_of_loc H' arg)) Cf
+          exact this.symm
+        have hcap_var :
+          (CaptureSet.var (.bound .here)).denot
+            (env.extend_var arg (reachability_of_loc H' arg))
+          = T1.captureSet.denot env := by
+          simp [CaptureSet.denot, TypeEnv.lookup_var, TypeEnv.lookup, TypeEnv.extend_var]
+          sorry  -- TODO: Need lemma relating reachability_of_loc to type's capture set
+        rw [← hcap_rename, ← hcap_var]
+        simp [CaptureSet.denot]
+        exact this
 
 -- theorem sem_typ_tabs
 --   (ht : (Γ,X<:S) ⊨ e : T) :
@@ -157,67 +162,79 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.tabs S e : .typ (Ty.capt Cf (S.poly T)) := by
+  ∅ # Γ ⊨ Exp.tabs Cf S e : .typ (Ty.capt Cf (S.poly T)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
-  · simp [Denot.as_post]
-    -- Need to provide S0 and t0 for the poly denotation
-    use (S.subst (Subst.from_TypeEnv env)), (e.subst (Subst.from_TypeEnv env).lift)
+  · simp [Denot.as_mpost]
     constructor
-    · -- Show that resolve gives back the type abstraction
-      simp [resolve, Exp.subst]
-    · -- Show the polymorphic function property
-      intro H' denot hsubsume hproper himply
-      rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
-      -- Apply the hypothesis
-      have henv : EnvTyping (Γ,X<:S) (env.extend_tvar denot) H' := by
-        constructor
-        · exact hproper
-        · constructor
-          · exact himply
-          · apply env_typing_monotonic hts hsubsume
-      have this := ht (env.extend_tvar denot) H' henv
-      simp [Ty.exi_exp_denot] at this
-      -- Show capability sets match
-      have hcap_rename :
-        (Cf.rename Rename.succ).denot (env.extend_tvar denot) = Cf.denot env := by
-        have := rebind_captureset_denot (Rebind.tweaken (env:=env) (d:=denot)) Cf
-        exact this.symm
-      rw [← hcap_rename]
-      exact this
+    · sorry  -- TODO: Prove WfInHeap for substituted capture set, type bound, and body
+    · -- Need to provide cs, S0 and t0 for the poly denotation
+      use (Cf.subst (Subst.from_TypeEnv env)), (S.subst (Subst.from_TypeEnv env)),
+        (e.subst (Subst.from_TypeEnv env).lift)
+      constructor
+      · -- Show that resolve gives back the type abstraction
+        simp [resolve, Exp.subst]
+      · -- Show the polymorphic function property
+        intro H' denot hsubsume hproper himply
+        rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
+        -- Apply the hypothesis
+        have henv : EnvTyping (Γ,X<:S) (env.extend_tvar denot) H' := by
+          constructor
+          · exact hproper
+          · constructor
+            · exact himply
+            · apply env_typing_monotonic hts hsubsume
+        have this := ht (env.extend_tvar denot) H' henv
+        simp [Ty.exi_exp_denot] at this
+        -- Show capability sets match
+        have hcap_rename :
+          (Cf.rename Rename.succ).denot (env.extend_tvar denot) = Cf.denot env := by
+          have := rebind_captureset_denot (Rebind.tweaken (env:=env) (d:=denot)) Cf
+          exact this.symm
+        rw [← hcap_rename]
+        exact this
 
 theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
   (ht : Cf.rename Rename.succ # Γ,C<:cb ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.cabs cb e : .typ (Ty.capt Cf (Ty.cpoly cb T)) := by
+  ∅ # Γ ⊨ Exp.cabs Cf cb e : .typ (Ty.capt Cf (Ty.cpoly cb T)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
-  · simp [Denot.as_post]
-    -- Need to provide B0 and t0 for the cpoly denotation
-    use (cb.subst (Subst.from_TypeEnv env)), (e.subst (Subst.from_TypeEnv env).lift)
+  · simp [Denot.as_mpost]
     constructor
-    · -- Show that resolve gives back the capture abstraction
-      simp [resolve, Exp.subst]
-    · -- Show the capture polymorphic function property
-      intro H' A0 hsubsume hsub_bound
-      rw [Exp.from_TypeEnv_weaken_open_cvar (c := A0)]
-      -- Apply the hypothesis
-      have henv : EnvTyping (Γ,C<:cb) (env.extend_cvar A0) H' := by
-        constructor
-        · exact hsub_bound
-        · apply env_typing_monotonic hts hsubsume
-      have this := ht (env.extend_cvar A0) H' henv
-      simp [Ty.exi_exp_denot] at this
-      -- Show capability sets match
-      have hcap_rename :
-        (Cf.rename Rename.succ).denot (env.extend_cvar A0) = Cf.denot env := by
-        have := rebind_captureset_denot (Rebind.cweaken (env:=env) (c:=A0)) Cf
-        exact this.symm
-      rw [← hcap_rename]
-      exact this
+    · sorry  -- TODO: Prove WfInHeap for substituted capture set, bound, and body
+    · -- Need to provide cs, B0 and t0 for the cpoly denotation
+      use (Cf.subst (Subst.from_TypeEnv env)), (cb.subst (Subst.from_TypeEnv env)),
+        (e.subst (Subst.from_TypeEnv env).lift)
+      constructor
+      · -- Show that resolve gives back the capture abstraction
+        simp [resolve, Exp.subst]
+      · -- Show the capture polymorphic function property
+        intro H' CS hsubsume hsub_bound
+        let A0 := CS.denot TypeEnv.empty
+        -- Apply the hypothesis
+        have henv : EnvTyping (Γ,C<:cb) (env.extend_cvar A0) H' := by
+          constructor
+          · exact hsub_bound
+          · apply env_typing_monotonic hts hsubsume
+        have this := ht (env.extend_cvar A0) H' henv
+        simp [Ty.exi_exp_denot] at this
+        -- Need to relate the two expression forms
+        have hexp_equiv :
+          (e.subst (Subst.from_TypeEnv (env.extend_cvar A0))) =
+          ((e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar CS)) := by
+          sorry  -- TODO: Need lemma from_TypeEnv_weaken_open_cvar for expression equality
+        rw [hexp_equiv] at this
+        -- Show capability sets match
+        have hcap_rename :
+          (Cf.rename Rename.succ).denot (env.extend_cvar A0) = Cf.denot env := by
+          have := rebind_captureset_denot (Rebind.cweaken (env:=env) (c:=A0)) Cf
+          exact this.symm
+        rw [← hcap_rename]
+        exact this
 
 theorem abs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
