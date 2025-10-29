@@ -39,6 +39,13 @@ def Denot.is_proper (d : Denot) : Prop :=
 def PreDenot.is_proper (pd : PreDenot) : Prop :=
   ∀ C, (pd C).is_proper
 
+lemma Denot.as_mpost_is_monotonic {d : Denot}
+  (hmon : d.is_monotonic) :
+  d.as_mpost.is_monotonic := by
+  intro m1 m2 e hsub h
+  unfold Denot.as_mpost at h ⊢
+  exact hmon hsub h
+
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ m e,
     (d1 m e) ->
@@ -220,11 +227,13 @@ def Ty.exi_val_denot : TypeEnv s -> HeapTopology -> Ty .exi s -> Denot
     Ty.capt_val_denot (ρ.extend_cvar A) φ T m e
 
 def Ty.capt_exp_denot : TypeEnv s -> HeapTopology -> Ty .capt s -> PreDenot
-| ρ, φ, T => fun A m e =>
+| ρ, φ, T => fun A m (e : Exp {}) =>
+  (hwf_e : e.WfInHeap m.heap) ->
   Eval A m e (Ty.capt_val_denot ρ φ T).as_mpost
 
 def Ty.exi_exp_denot : TypeEnv s -> HeapTopology -> Ty .exi s -> PreDenot
-| ρ, φ, T => fun A m e =>
+| ρ, φ, T => fun A m (e : Exp {}) =>
+  (hwf_e : e.WfInHeap m.heap) ->
   Eval A m e (Ty.exi_val_denot ρ φ T).as_mpost
 
 end
@@ -914,21 +923,38 @@ def exi_val_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
         exact henv X'
     exact capt_val_denot_is_monotonic henv' T hmem hA
 
--- TODO: This proof needs to be rewritten to work with Memory instead of Heap.
--- The old proof used eval_monotonic which now has a different signature requiring
--- well-formedness proofs. A proper fix requires threading well-formedness through
--- the denotational semantics.
 def capt_exp_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
   (henv : TypeEnv.is_monotonic env)
   (T : Ty .capt s) :
   (Ty.capt_exp_denot env φ T).is_monotonic := by
+  intro C m1 m2 e hmem ht
+  simp [Ty.capt_exp_denot] at ht ⊢
+  -- apply eval_monotonic
+  -- · apply Denot.as_mpost_is_monotonic
+  --   exact capt_val_denot_is_monotonic henv T
+  -- · exact hmem
+  -- · -- TODO: Well-formedness should be threaded through denotational semantics
+  --   -- For now we assume the expression is well-formed, which should hold
+  --   -- in practice since we only evaluate well-typed terms
+  --   sorry
+  -- · exact ht
   sorry
 
--- TODO: Same as capt_exp_denot_is_monotonic - needs rewrite for Memory system.
 def exi_exp_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
   (henv : TypeEnv.is_monotonic env)
   (T : Ty .exi s) :
   (Ty.exi_exp_denot env φ T).is_monotonic := by
+  intro C m1 m2 e hmem ht
+  simp [Ty.exi_exp_denot] at ht ⊢
+  -- apply eval_monotonic
+  -- · apply Denot.as_mpost_is_monotonic
+  --   exact exi_val_denot_is_monotonic henv T
+  -- · exact hmem
+  -- · -- TODO: Well-formedness should be threaded through denotational semantics
+  --   -- For now we assume the expression is well-formed, which should hold
+  --   -- in practice since we only evaluate well-typed terms
+  --   sorry
+  -- · exact ht
   sorry
 
 end
