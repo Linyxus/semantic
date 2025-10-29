@@ -958,4 +958,111 @@ structure Memory where
   heap : Heap
   wf : heap.WfHeap
 
+namespace Memory
+
+/-- Create an empty memory. -/
+def empty : Memory where
+  heap := ∅
+  wf := Heap.wf_empty
+
+/-- Lookup a value in memory. -/
+def lookup (m : Memory) (l : Nat) : Option Cell :=
+  m.heap l
+
+/-- Extend memory with a new value.
+    Requires proof that the value is well-formed and the location is fresh. -/
+def extend (m : Memory) (l : Nat) (v : HeapVal)
+  (hwf_v : Exp.WfInHeap v.unwrap (m.heap.extend l v))
+  (hfresh : m.heap l = none) : Memory where
+  heap := m.heap.extend l v
+  wf := Heap.wf_extend m.wf hwf_v hfresh
+
+/-- Heap extension with capability subsumes original heap. -/
+theorem Heap.extend_cap_subsumes {H : Heap} {l : Nat}
+  (hfresh : H l = none) :
+  (H.extend_cap l).subsumes H := by
+  intro l' v' hlookup
+  unfold Heap.extend_cap
+  split
+  case isTrue heq =>
+    subst heq
+    rw [hfresh] at hlookup
+    contradiction
+  case isFalse => exact hlookup
+
+/-- Extend memory with a capability cell. -/
+def extend_cap (m : Memory) (l : Nat)
+  (hfresh : m.heap l = none) : Memory where
+  heap := m.heap.extend_cap l
+  wf := by
+    intro l' hv' hlookup
+    unfold Heap.extend_cap at hlookup
+    split at hlookup
+    case isTrue heq =>
+      -- If l' = l, then we're looking up the capability, which can't be a val
+      cases hlookup
+    case isFalse hneq =>
+      -- If l' ≠ l, then the lookup is from the original heap
+      apply Exp.wf_monotonic (Heap.extend_cap_subsumes hfresh)
+      exact m.wf l' hv' hlookup
+
+/-- Memory subsumption: m1 subsumes m2 if m1's heap subsumes m2's heap. -/
+def subsumes (m1 m2 : Memory) : Prop :=
+  m1.heap.subsumes m2.heap
+
+/-- Reflexivity of memory subsumption. -/
+theorem subsumes_refl (m : Memory) : m.subsumes m :=
+  Heap.subsumes_refl m.heap
+
+/-- Transitivity of memory subsumption. -/
+theorem subsumes_trans {m1 m2 m3 : Memory}
+  (h12 : m1.subsumes m2)
+  (h23 : m2.subsumes m3) :
+  m1.subsumes m3 :=
+  Heap.subsumes_trans h12 h23
+
+/-- Looking up from a memory after extension at the same location returns the value. -/
+theorem extend_lookup_eq (m : Memory) (l : Nat) (v : HeapVal)
+  (hwf_v : Exp.WfInHeap v.unwrap (m.heap.extend l v))
+  (hfresh : m.heap l = none) :
+  (m.extend l v hwf_v hfresh).lookup l = some (.val v) := by
+  simp [lookup, extend, Heap.extend]
+
+/-- Extension subsumes the original memory. -/
+theorem extend_subsumes (m : Memory) (l : Nat) (v : HeapVal)
+  (hwf_v : Exp.WfInHeap v.unwrap (m.heap.extend l v))
+  (hfresh : m.heap l = none) :
+  (m.extend l v hwf_v hfresh).subsumes m := by
+  simp [subsumes, extend]
+  exact Heap.extend_subsumes hfresh
+
+/-- Capability extension subsumes the original memory. -/
+theorem extend_cap_subsumes (m : Memory) (l : Nat)
+  (hfresh : m.heap l = none) :
+  (m.extend_cap l hfresh).subsumes m := by
+  simp [subsumes, extend_cap]
+  intro l' v' hlookup
+  unfold Heap.extend_cap
+  split
+  case isTrue heq =>
+    rw [heq] at hlookup
+    rw [hfresh] at hlookup
+    contradiction
+  case isFalse => exact hlookup
+
+/-- Well-formedness is preserved under memory subsumption. -/
+theorem wf_monotonic {e : Exp {}} {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
+  (hwf : Exp.WfInHeap e m1.heap) :
+  Exp.WfInHeap e m2.heap :=
+  Exp.wf_monotonic hsub hwf
+
+/-- Looking up a value from a memory yields a well-formed expression. -/
+theorem wf_lookup {m : Memory} {l : Nat} {hv : HeapVal}
+  (hlookup : m.lookup l = some (.val hv)) :
+  Exp.WfInHeap hv.unwrap m.heap :=
+  Heap.wf_lookup m.wf hlookup
+
+end Memory
+
 end CC
