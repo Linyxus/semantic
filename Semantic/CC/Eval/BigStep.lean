@@ -138,7 +138,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m (.tapp (.free x) S) Q
 | eval_capply {m : Memory} {x : Nat} :
   m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
-  Eval C m (e.subst (Subst.openCVar .empty)) Q ->
+  Eval C m (e.subst (Subst.openCVar CS)) Q ->
   Eval C m (.capp (.free x) CS) Q
 | eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
@@ -227,20 +227,23 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Subst.wf_openTVar
         apply Ty.WfInHeap.wf_top
   case eval_capply hx _ ih =>
-    apply Eval.eval_capply
-    · exact hsub _ _ hx
-    · apply ih hpred hsub
-      -- Need: Exp.WfInHeap (e.subst (Subst.openCVar .empty)) m1.heap
-      -- Use Exp.wf_subst with Subst.wf_openCVar
-      apply Exp.wf_subst
-      · -- Need: Exp.WfInHeap e m1.heap
-        -- Get it from Memory.wf_lookup and inversion
-        have hwf_cabs := Memory.wf_lookup hx
-        have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
-        exact hwf_e
-      · -- Show: (Subst.openCVar .empty).WfInHeap m1.heap
-        apply Subst.wf_openCVar
-        apply CaptureSet.WfInHeap.wf_empty
+    -- Extract well-formedness of the capability application
+    cases hwf with
+    | wf_capp hwf_x hwf_cs =>
+      apply Eval.eval_capply
+      · exact hsub _ _ hx
+      · apply ih hpred hsub
+        -- Need: Exp.WfInHeap (e.subst (Subst.openCVar CS)) m1.heap
+        -- Use Exp.wf_subst with Subst.wf_openCVar
+        apply Exp.wf_subst
+        · -- Need: Exp.WfInHeap e m1.heap
+          -- Get it from Memory.wf_lookup and inversion
+          have hwf_cabs := Memory.wf_lookup hx
+          have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
+          exact hwf_e
+        · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
+          apply Subst.wf_openCVar
+          exact hwf_cs
   case eval_letin Q1 hpred0 eval_e1 h_val_orig h_var_orig ih ih_val ih_var =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
