@@ -252,9 +252,9 @@ theorem eval_monotonic {m1 m2 : Memory}
       -- For now, we leave this as sorry - it requires strengthening the postconditions
       sorry
     case h_var =>
-      intro m_ext' x hs_ext' hq1
+      intro m_ext' x hs_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      apply ih_var hs_orig hq1 hpred
+      apply ih_var hs_orig hwf_x hq1 hpred
       · exact Memory.subsumes_refl _
       · -- Need: (e2.subst (Subst.openVar x)).WfInHeap m_ext'.heap
         -- This requires well-formedness from postconditions
@@ -335,8 +335,8 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply Mpost.entails_after_subsumes himp
       apply Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf_v hfresh) hs1
     case h_var =>
-      intro m1 x hs1 hq1
-      apply ih_var hs1 hq1
+      intro m1 x hs1 hwf_x hq1
+      apply ih_var hs1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
   case eval_unpack _ Q0 hpred he1 _ ih ih_val =>
