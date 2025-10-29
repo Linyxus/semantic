@@ -349,9 +349,9 @@ def retype_exi_exp_denot
 
 end
 
-def Retype.open_arg {env : TypeEnv s} {φ : HeapTopology} {y : Var .var s} :
-  Retype φ
-    (env.extend_var (interp_var env y))
+def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
+  Retype
+    (env.extend_var (interp_var env y).1 (interp_var env y).2)
     (Subst.openVar y)
     env where
   var := fun x => by cases x <;> rfl
@@ -371,14 +371,14 @@ def Retype.open_arg {env : TypeEnv s} {φ : HeapTopology} {y : Var .var s} :
       unfold TypeEnv.lookup_cvar
       rfl
 
-theorem open_arg_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {y : Var .var s} {T : Ty .shape (s,x)} :
-  Ty.shape_val_denot (env.extend_var (interp_var env y)) φ T ≈
-    Ty.shape_val_denot env φ (T.subst (Subst.openVar y)) := by
+theorem open_arg_shape_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .shape (s,x)} :
+  Ty.shape_val_denot (env.extend_var (interp_var env y).1 (interp_var env y).2) T ≈
+    Ty.shape_val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_shape_val_denot Retype.open_arg
 
-def Retype.open_targ {env : TypeEnv s} {φ : HeapTopology} {S : Ty .shape s} :
-  Retype φ
-    (env.extend_tvar (Ty.shape_val_denot env φ S))
+def Retype.open_targ {env : TypeEnv s} {S : Ty .shape s} :
+  Retype
+    (env.extend_tvar (Ty.shape_val_denot env S))
     (Subst.openTVar S)
     env where
   var := fun x => by cases x; rfl
@@ -397,14 +397,14 @@ def Retype.open_targ {env : TypeEnv s} {φ : HeapTopology} {S : Ty .shape s} :
       unfold TypeEnv.lookup_cvar
       rfl
 
-theorem open_targ_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {S : Ty .shape s} {T : Ty .shape (s,X)} :
-  Ty.shape_val_denot (env.extend_tvar (Ty.shape_val_denot env φ S)) φ T ≈
-    Ty.shape_val_denot env φ (T.subst (Subst.openTVar S)) := by
+theorem open_targ_shape_val_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .shape (s,X)} :
+  Ty.shape_val_denot (env.extend_tvar (Ty.shape_val_denot env S)) T ≈
+    Ty.shape_val_denot env (T.subst (Subst.openTVar S)) := by
   apply retype_shape_val_denot Retype.open_targ
 
-def Retype.open_carg {env : TypeEnv s} {φ : HeapTopology} {C : CaptureSet s} :
-  Retype φ
-    (env.extend_cvar (C.denot env φ))
+def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} :
+  Retype
+    (env.extend_cvar (C.denot env))
     (Subst.openCVar C)
     env where
   var := fun x => by cases x; rfl
@@ -423,9 +423,9 @@ def Retype.open_carg {env : TypeEnv s} {φ : HeapTopology} {C : CaptureSet s} :
       unfold TypeEnv.lookup_cvar
       rfl
 
-theorem open_carg_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {C : CaptureSet s} {T : Ty .shape (s,C)} :
-  Ty.shape_val_denot (env.extend_cvar (C.denot env φ)) φ T ≈
-    Ty.shape_val_denot env φ (T.subst (Subst.openCVar C)) := by
+theorem open_carg_shape_val_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .shape (s,C)} :
+  Ty.shape_val_denot (env.extend_cvar (C.denot env)) T ≈
+    Ty.shape_val_denot env (T.subst (Subst.openCVar C)) := by
   apply retype_shape_val_denot Retype.open_carg
 
 end CC
