@@ -219,7 +219,9 @@ def Ty.shape_val_denot : TypeEnv s -> HeapTopology -> Ty .shape s -> PreDenot
         T A m' (t0.subst (Subst.openCVar CS)))
 
 def Ty.capt_val_denot : TypeEnv s -> HeapTopology -> Ty .capt s -> Denot
-| ρ, φ, .capt C S => Ty.shape_val_denot ρ φ S (C.denot ρ φ)
+| ρ, φ, .capt C S => fun mem exp =>
+  exp.WfInHeap mem.heap ∧
+  Ty.shape_val_denot ρ φ S (C.denot ρ φ) mem exp
 
 def Ty.exi_val_denot : TypeEnv s -> HeapTopology -> Ty .exi s -> Denot
 | ρ, φ, .typ T => Ty.capt_val_denot ρ φ T
@@ -708,8 +710,17 @@ theorem capt_val_denot_is_transparent {env : TypeEnv s}
   (Ty.capt_val_denot env φ T).is_transparent := by
   cases T with
   | capt C S =>
-    simp [Ty.capt_val_denot]
-    exact shape_val_denot_is_transparent henv S (C.denot env φ)
+    intro m x v hx ht
+    simp [Ty.capt_val_denot] at ht ⊢
+    have ⟨hwf, hshape⟩ := ht
+    constructor
+    · -- Prove: (.var (.free x)).WfInHeap m.heap
+      -- A variable is well-formed if it points to something in the heap
+      apply Exp.WfInHeap.wf_var
+      apply Var.WfInHeap.wf_free
+      exact hx
+    · -- Prove: shape_val_denot env φ S (C.denot env φ) m (.var (.free x))
+      exact shape_val_denot_is_transparent henv S (C.denot env φ) hx hshape
 
 theorem exi_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -898,8 +909,15 @@ def capt_val_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
   (Ty.capt_val_denot env φ T).is_monotonic := by
   cases T with
   | capt C S =>
-    simp [Ty.capt_val_denot]
-    exact shape_val_denot_is_monotonic henv S (C.denot env φ)
+    intro m1 m2 e hmem ht
+    simp [Ty.capt_val_denot] at ht ⊢
+    have ⟨hwf, hshape⟩ := ht
+    constructor
+    · -- Prove: e.WfInHeap m2.heap
+      -- Use monotonicity of well-formedness
+      exact Exp.wf_monotonic hmem hwf
+    · -- Prove: shape_val_denot env φ S (C.denot env φ) m2 e
+      exact shape_val_denot_is_monotonic henv S (C.denot env φ) hmem hshape
 
 def exi_val_denot_is_monotonic {env : TypeEnv s} {φ : HeapTopology}
   (henv : TypeEnv.is_monotonic env)
@@ -972,15 +990,37 @@ theorem env_typing_monotonic
       cases k with
       | var T =>
         cases info with
-        | var n =>
-          simp [EnvTyping] at ht ⊢
+        | var n R =>
+          -- Unfold EnvTyping to get the conjunction
+          unfold EnvTyping at ht ⊢
           have ⟨hval, heq, ht'⟩ := ht
           constructor
-          · have henv := typed_env_is_monotonic ht'
+          · -- Prove: ⟦T⟧_[env', φ] mem2 (.var (.free n))
+            have henv := typed_env_is_monotonic ht'
             exact capt_val_denot_is_monotonic henv T hmem hval
           · constructor
-            · exact heq
-            · exact ih ht'
+            · -- Prove: R = reachability_of_loc mem2 n
+              rw [heq]
+              symm
+              -- Extract existence from well-formedness
+              -- hval : ⟦T⟧_[env', φ] mem1 (.var (.free n))
+              -- By definition, this is: (.var (.free n)).WfInHeap mem1.heap ∧ shape_val_denot ...
+              cases T with
+              | capt C S =>
+                simp only [instCaptHasDenotation, Ty.capt_val_denot] at hval
+                have ⟨hwf, _⟩ := hval
+                -- hwf : Exp.WfInHeap (.var (.free n)) mem1.heap
+                cases hwf with
+                | wf_var hwf_var =>
+                  -- hwf_var : Var.WfInHeap (.free n) mem1.heap
+                  cases hwf_var with
+                  | wf_free hex =>
+                    -- hex : mem1.heap n = some val for some val
+                    apply reachability_of_loc_monotonic hmem n
+                    · simp [Memory.lookup]
+                      exact hex
+            · -- Prove: EnvTyping Γ env' φ mem2
+              exact ih ht'
       | tvar S =>
         cases info with
         | tvar d =>
