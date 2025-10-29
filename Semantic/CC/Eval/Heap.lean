@@ -372,4 +372,51 @@ theorem Exp.wf_monotonic
   | wf_unit =>
     apply Exp.WfInHeap.wf_unit
 
+-- Inversion theorems for Exp.WfInHeap
+
+/-- Inversion for let-in: if `let x = e1 in e2` is well-formed,
+    then both `e1` and `e2` are well-formed. -/
+theorem Exp.wf_inv_letin
+  {e1 : Exp s} {e2 : Exp (s,x)} {H : Heap}
+  (hwf : Exp.WfInHeap (.letin e1 e2) H) :
+  Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H := by
+  cases hwf with
+  | wf_letin hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
+
+/-- Inversion for unpack: if `unpack e1 in e2` is well-formed,
+    then both `e1` and `e2` are well-formed. -/
+theorem Exp.wf_inv_unpack
+  {e1 : Exp s} {e2 : Exp ((s,C),x)} {H : Heap}
+  (hwf : Exp.WfInHeap (.unpack e1 e2) H) :
+  Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H := by
+  cases hwf with
+  | wf_unpack hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
+
+/-- Inversion for lambda abstraction: if `λ(cs) (x : T). e` is well-formed,
+    then its capture set, type, and body are all well-formed. -/
+theorem Exp.wf_inv_abs
+  {cs : CaptureSet s} {T : Ty .capt s} {e : Exp (s,x)} {H : Heap}
+  (hwf : Exp.WfInHeap (.abs cs T e) H) :
+  CaptureSet.WfInHeap cs H ∧ Ty.WfInHeap T H ∧ Exp.WfInHeap e H := by
+  cases hwf with
+  | wf_abs hwf_cs hwf_T hwf_e => exact ⟨hwf_cs, hwf_T, hwf_e⟩
+
+/-- Inversion for type abstraction: if `Λ(cs) (X <: T). e` is well-formed,
+    then its capture set, type bound, and body are all well-formed. -/
+theorem Exp.wf_inv_tabs
+  {cs : CaptureSet s} {T : Ty .shape s} {e : Exp (s,X)} {H : Heap}
+  (hwf : Exp.WfInHeap (.tabs cs T e) H) :
+  CaptureSet.WfInHeap cs H ∧ Ty.WfInHeap T H ∧ Exp.WfInHeap e H := by
+  cases hwf with
+  | wf_tabs hwf_cs hwf_T hwf_e => exact ⟨hwf_cs, hwf_T, hwf_e⟩
+
+/-- Inversion for capture abstraction: if `λ[cs] (C <: cb). e` is well-formed,
+    then its capture set, capture bound, and body are all well-formed. -/
+theorem Exp.wf_inv_cabs
+  {cs : CaptureSet s} {cb : CaptureBound s} {e : Exp (s,C)} {H : Heap}
+  (hwf : Exp.WfInHeap (.cabs cs cb e) H) :
+  CaptureSet.WfInHeap cs H ∧ CaptureBound.WfInHeap cb H ∧ Exp.WfInHeap e H := by
+  cases hwf with
+  | wf_cabs hwf_cs hwf_cb hwf_e => exact ⟨hwf_cs, hwf_cb, hwf_e⟩
+
 end CC
