@@ -1,17 +1,13 @@
 # CC Refactoring: Explicit Captures
 
-**Status**: Core + Denotation Complete
+**Status**: Core + Denotation + Soundness (Partial) Complete
 **Date**: 2025-10-29 (Updated)
 
 ## Motivation
 
-The original design used `HeapTopology : Nat -> CapabilitySet` to track capability reachability. This created fundamental issues:
+Original design used `HeapTopology : Nat -> CapabilitySet` to track reachability, causing circularity: type denotations need topology, but topology construction needs type information.
 
-1. **Circularity**: Type denotations need heap topology, but topology construction needs type information
-2. **Non-constructive**: Topology appeared "magically" without clear construction
-3. **Variable problem**: When `{x}` appears in a capture set and `x` points to a value (not capability), we need to know what capabilities that value transitively uses - but we don't have this information when interpreting types
-
-**Solution**: Make captures explicit in abstraction syntax. When creating a closure, eagerly compute and store its transitive capability closure.
+**Solution**: Make captures explicit in abstractions (`λ[cs]x.e`). Eagerly compute and store transitive capability closure at allocation time.
 
 ## Core Design Changes
 
@@ -35,93 +31,48 @@ Abstractions now carry explicit capture sets indicating what they capture.
 
 ### 2. Heap Values (✅ Complete)
 
-**Before**:
-```lean
-structure Val (s : Sig) where
-  unwrap : Exp s
-  isVal : unwrap.IsVal
-```
-
-**After**:
 ```lean
 structure HeapVal where
-  unwrap : Exp {}
-  isVal : unwrap.IsSimpleVal  -- Note: IsSimpleVal excludes pack
-  reachability : CapabilitySet
+  unwrap : Exp {}              -- closed expressions only
+  isVal : unwrap.IsSimpleVal   -- abs, tabs, cabs, unit (excludes pack)
+  reachability : CapabilitySet -- precomputed transitive closure
 ```
-
-Key changes:
-- Values are closed (`Exp {}`)
-- Use `IsSimpleVal` (excludes `pack`, includes only `abs`, `tabs`, `cabs`, `unit`)
-- Carry precomputed `reachability` - the transitive capability closure
 
 ### 3. Reachability Computation (✅ Complete)
 
-Three new functions in `Eval/BigStep.lean`:
-
 ```lean
--- Extract reachability from a heap location
 def reachability_of_loc (h : Heap) (l : Nat) : CapabilitySet
-
--- Expand a capture set to actual capabilities by resolving variables
 def expand_captures (h : Heap) (cs : CaptureSet {}) : CapabilitySet
-
--- Compute transitive reachability for a value
 def compute_reachability (h : Heap) (v : Exp {}) (hv : v.IsSimpleVal) : CapabilitySet
 ```
 
-**How it works**:
-- When creating abstraction `λ[cs]x.e`, the capture set `cs` contains variables like `{f, g}`
-- `expand_captures h cs` resolves each variable by looking up its reachability in the heap
-- For `cs = {f}`, if `h(f) = ⟨λ[{c}]y.e', _, {c}⟩`, then `expand_captures h {f} = {c}`
-- This gives us transitive closure: if `g` captures `f` which captures `c`, then `{g}` expands to `{c}`
+**Transitive closure**: For `λ[{f}]x.e`, if `f` captures `{c}`, then `expand_captures h {f} = {c}`. Computed at allocation time in `eval_letin`.
 
-### 4. Key Theorems (✅ Proven)
-
-Three monotonicity theorems ensure reachability is well-behaved under heap growth:
+### 4. Monotonicity Theorems (✅ Proven)
 
 ```lean
-theorem reachability_of_loc_monotonic
-  (hsub : h2.subsumes h1) (hex : h1 l = some v) :
-  reachability_of_loc h2 l = reachability_of_loc h1 l
-
-theorem expand_captures_monotonic
-  (hsub : h2.subsumes h1) (cs : CaptureSet {}) :
-  expand_captures h2 cs = expand_captures h1 cs
-
-theorem compute_reachability_monotonic
-  (hsub : h2.subsumes h1) (v : Exp {}) (hv : v.IsSimpleVal) :
-  compute_reachability h2 v hv = compute_reachability h1 v hv
+theorem reachability_of_loc_monotonic : h2.subsumes h1 → reachability_of_loc h2 l = reachability_of_loc h1 l
+theorem expand_captures_monotonic : h2.subsumes h1 → expand_captures h2 cs = expand_captures h1 cs
+theorem compute_reachability_monotonic : h2.subsumes h1 → compute_reachability h2 v hv = compute_reachability h1 v hv
 ```
 
-**Significance**: These ensure reachability computation is stable - doesn't matter if we compute it in a smaller or larger heap.
+**Significance**: Reachability is stable under heap growth.
 
 ### 5. HeapTopology Elimination (✅ Complete)
 
-**HeapTopology is completely removed from the codebase.**
+Removed `HeapTopology` entirely. With explicit captures, topology is redundant:
+- Denotations: `TypeEnv s -> T -> Denot` (no `HeapTopology` parameter)
+- EnvTyping: `Ctx s -> TypeEnv s -> Memory -> Prop`
+- Notation: `⟦T⟧_[ρ]` (was `⟦T⟧_[ρ,φ]`)
 
-Key insight: With explicit captures, the topology became redundant because:
-- `HeapVal` stores precomputed `reachability`
-- `reachability_of_loc : Memory -> Nat -> CapabilitySet` extracts it on-demand
-- `CaptureSet.denot` never actually used the topology meaningfully
+### 6. Well-Formedness (✅ Complete)
 
-**Changes made**:
-1. Removed `HeapTopology` type and `HeapTopology.extend`
-2. Updated all denotation signatures: `TypeEnv s -> T -> Denot` (no `HeapTopology` parameter)
-3. Simplified `EnvTyping`: `Ctx s -> TypeEnv s -> Memory -> Prop`
-4. Updated notation in `Prelude.lean`: `⟦T⟧_[ρ]` instead of `⟦T⟧_[ρ,φ]`
-
-### 6. Well-Formedness Requirement (✅ Complete)
-
-Added well-formedness to `capt_val_denot`:
 ```lean
-def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
-| ρ, .capt C S => fun mem exp =>
-  exp.WfInHeap mem.heap ∧
-  Ty.shape_val_denot ρ S (C.denot ρ) mem exp
+Ty.capt_val_denot ρ (.capt C S) mem exp =
+  exp.WfInHeap mem.heap ∧ Ty.shape_val_denot ρ S (C.denot ρ) mem exp
 ```
 
-**Impact**: This solved the `env_typing_monotonic` proof! Well-formedness of `(.var (.free n))` implies `n` exists in the heap, which is exactly what `reachability_of_loc_monotonic` needs.
+**Impact**: Well-formedness of `(.var (.free n))` guarantees `n` exists in heap, enabling `reachability_of_loc_monotonic`.
 
 ## Files Status
 
@@ -135,96 +86,48 @@ def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 - `Semantic/Prelude.lean` - Simplified notation (removed `HeapTopology` parameter)
 
 **Denotational Semantics:**
-- **`Semantic/CC/Denotation/Core.lean`** - All denotations updated, `HeapTopology` removed
-- **`Semantic/CC/Denotation/Rebind.lean`** - All rebinding theorems fixed, weakening lemmas restored
-- **`Semantic/CC/Denotation/Retype.lean`** - All retyping theorems fixed, `open_*` lemmas complete
+- `Semantic/CC/Denotation/Core.lean` - All denotations updated, `HeapTopology` removed
+- `Semantic/CC/Denotation/Rebind.lean` - All rebinding theorems fixed, weakening lemmas restored
+- `Semantic/CC/Denotation/Retype.lean` - All retyping theorems fixed, `open_*` lemmas complete
+
+**Soundness (Partial):**
+- `Semantic/CC/Soundness.lean` - Abstraction theorems compile with documented gaps:
+  - `sem_typ_abs`, `sem_typ_tabs`, `sem_typ_cabs` - Fixed for explicit captures
+  - `abs_val_denot_inv` - Updated for HeapVal structure
+  - `sem_typ_app` - Compiles with identified proof obligations
 
 ### 📝 Remaining Work
 
-1. **`TypeSystem.lean`** - Update typing rules for explicit captures
-2. **`Soundness.lean`** - Fix semantic soundness proof (5 `sorry`s remaining)
+**Critical Missing Lemmas:**
+1. `reachability_of_loc H' arg = T1.captureSet.denot env` - Relate heap reachability to type capture sets
+2. `open_arg_exi_exp_denot` - Opening lemma for existential types
+3. Capability set relationships from typing judgments
+4. Eval monotonicity wrt capability sets
 
-## Design Philosophy
+**Files:**
+- `TypeSystem.lean` - Update typing rules for explicit captures
+- `Soundness.lean` - Complete remaining proofs (sem_typ_tapp, sem_typ_letin, subtyping)
 
-### Explicit vs Implicit Captures
+## Key Implementation Patterns
 
-**Explicit captures** (current approach):
-- ✅ Constructive - reachability is computed, not assumed
-- ✅ Local - stored with the value, not in external topology
-- ✅ Self-describing - closures carry their own reachability
-- ⚠️ Requires typing rules to verify captures are correct
-
-**Key invariant**: For `λ[cs]x.e`, the capture set `cs` must include all free locations used by `e`.
-
-### Heap Values vs General Values
-
-We distinguish:
-- **Simple values** (`IsSimpleVal`): abs, tabs, cabs, unit - can be stored in heap
-- **Pack values** (`pack cs x`): Cannot be stored directly in heap
-
-This simplifies heap structure - packs must be unpacked before heap allocation.
-
-### Evaluation Strategy
-
-In `eval_letin`, when allocating a value:
+**Abstraction witnesses** - All abstractions now provide 3 components:
 ```lean
-h1.extend l' ⟨v, hv, compute_reachability h1 v hv⟩
-```
-
-We compute reachability **at allocation time** using the current heap state. The monotonicity theorems ensure this is well-defined.
-
-## Key Implementation Notes
-
-### Syntax Changes
-```lean
--- Expressions now have explicit capture sets
-| .abs cs T e    -- λ[cs](x:T).e
-| .tabs cs S e   -- Λ[cs](X<:S).e
-| .cabs cs B e   -- Λ[cs](C<:B).e
-
--- HeapVal structure
-⟨v, hv, R⟩ where R : CapabilitySet  -- precomputed reachability
-
--- Denotation signatures (no HeapTopology!)
-Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
-CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
-```
-
-### Critical Fixes Applied
-
-**Arrow/Poly/Cpoly denotations:** Abstractions now have 3 witnesses (cs, T0, t0):
-```lean
-obtain ⟨cs, T0, t0, hr, hd⟩ := h
+obtain ⟨cs, T0, t0, hr, hd⟩ := h  -- capture set, type, body
 use cs, T0, t0
 ```
 
-**Reachability in liftVar:** Must provide same reachability on both sides:
+**Reachability parameter** - Environment extensions require explicit reachability:
 ```lean
 ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)
 ```
 
-**Well-formedness in capt_val_denot:** Introduce hypothesis, then prove shape equivalence:
-```lean
-intro hwf
-exact hS (C.denot env1) s e
-```
-
-**Cpoly quantification:** Use `CS : CaptureSet {}` with `let A0 := CS.denot TypeEnv.empty`:
+**Cpoly quantification** - Quantify over syntactic capture sets, compute semantic value:
 ```lean
 intro H' CS hsub hsub_bound
 let A0 := CS.denot TypeEnv.empty
-have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
 ```
 
-**Open functions:** Destructure `interp_var` for `extend_var`:
+**Well-formedness** - `capt_val_denot` now includes `WfInHeap` conjunction:
 ```lean
-env.extend_var (interp_var env y).1 (interp_var env y).2
+exp.WfInHeap mem.heap ∧ Ty.shape_val_denot ρ S (C.denot ρ) mem exp
 ```
-
-## Next Steps
-
-1. **TypeSystem.lean**: Add typing rules to verify declared captures are correct
-2. **Soundness.lean**: Complete semantic type soundness proof
-   - Need lemma: `open_arg_exi_exp_denot`
-   - Need: Capability set relationships from typing
-   - Need: Eval monotonicity wrt capability sets
