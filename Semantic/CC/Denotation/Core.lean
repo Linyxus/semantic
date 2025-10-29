@@ -122,7 +122,7 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 def HeapTopology : Type := Nat -> CapabilitySet
 
 inductive TypeInfo : Kind -> Type where
-| var : Nat -> TypeInfo .var
+| var : Nat -> CapabilitySet -> TypeInfo .var
 | tvar : PreDenot -> TypeInfo .tvar
 | cvar : CapabilitySet -> TypeInfo .cvar
 
@@ -133,8 +133,8 @@ inductive TypeEnv : Sig -> Type where
   TypeInfo k ->
   TypeEnv (s,,k)
 
-def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
-  Γ.extend (.var x)
+def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (R : CapabilitySet) : TypeEnv (s,x) :=
+  Γ.extend (.var x R)
 
 def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : PreDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
@@ -150,9 +150,9 @@ def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
 | .extend _ info, .here => info
 | .extend Γ _,    .there x => Γ.lookup x
 
-def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat :=
+def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat × CapabilitySet :=
   match Γ.lookup x with
-  | .var y => y
+  | .var y R => (y, R)
 
 def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
   match Γ.lookup x with
@@ -166,7 +166,7 @@ def CaptureSet.denot : TypeEnv s -> HeapTopology -> CaptureSet s -> CapabilitySe
 | _, _, .empty => CapabilitySet.empty
 | env, topo, .union cs1 cs2 =>
   (cs1.denot env topo) ∪ (cs2.denot env topo)
-| env, topo, .var (.bound x) => topo (env.lookup_var x)
+| env, _, .var (.bound x) => (env.lookup_var x).2
 | _, _, .var (.free x) => {x}
 | env, _, .cvar c => env.lookup_cvar c
 
@@ -192,7 +192,7 @@ def Ty.shape_val_denot : TypeEnv s -> HeapTopology -> Ty .shape s -> PreDenot
       m'.subsumes m ->
       Ty.capt_val_denot env φ T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
-        (env.extend_var arg)
+        (env.extend_var arg (reachability_of_loc m' arg))
         (φ.extend arg (T1.captureSet.denot env φ))
         T2 (A ∪ T1.captureSet.denot env φ) m' (t0.subst (Subst.openVar (.free arg))))
 | env, φ, .poly T1 T2 => fun A m e =>
@@ -274,9 +274,9 @@ instance instCaptureBoundHasDenotation :
 
 def EnvTyping : Ctx s -> TypeEnv s -> HeapTopology -> Memory -> Prop
 | .empty, .empty, _, _ => True
-| .push Γ (.var T), .extend env (.var n), φ, m =>
+| .push Γ (.var T), .extend env (.var n R), φ, m =>
   ⟦T⟧_[env, φ] m (.var (.free n)) ∧
-  φ n = ⟦T.captureSet⟧_[env, φ] ∧
+  R = reachability_of_loc m n ∧
   EnvTyping Γ env φ m
 | .push Γ (.tvar S), .extend env (.tvar denot), φ, m =>
   denot.is_proper ∧
@@ -287,7 +287,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> HeapTopology -> Memory -> Prop
   EnvTyping Γ env φ m
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
-  var := fun x => .free (env.lookup_var x)
+  var := fun x => .free (env.lookup_var x).1
   tvar := fun _ => .top
   cvar := fun _ => {}
 
@@ -300,7 +300,7 @@ notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
 theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
-    Subst.from_TypeEnv (env.extend_var x) := by
+    Subst.from_TypeEnv (env.extend_var x R) := by
   apply Subst.funext
   · intro y
     cases y <;> rfl
@@ -313,7 +313,7 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
 
 theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
-    e.subst (Subst.from_TypeEnv (env.extend_var x)) := by
+    e.subst (Subst.from_TypeEnv (env.extend_var x R)) := by
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open]
 
