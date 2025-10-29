@@ -69,6 +69,14 @@ structure HeapVal where
   isVal : unwrap.IsSimpleVal
   reachability : CapabilitySet
 
+/-- Convert IsSimpleVal to IsVal -/
+theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
+  match e, h with
+  | .abs _ _ _, .abs => .abs
+  | .tabs _ _ _, .tabs => .tabs
+  | .cabs _ _ _, .cabs => .cabs
+  | .unit, .unit => .unit
+
 -- A heap cell can either be a value or a capability
 inductive Cell : Type where
 | val : HeapVal -> Cell
