@@ -168,6 +168,7 @@ inductive Eval : CapabilitySet -> Heap -> Exp {} -> Hpost -> Prop where
 theorem eval_monotonic {h1 h2 : Heap}
   (hpred : Q.is_monotonic)
   (hsub : h2.subsumes h1)
+  (hwf : Exp.WfInHeap e h1)
   (heval : Eval C h1 e Q) :
   Eval C h2 e Q := by
   induction heval generalizing h2
@@ -178,10 +179,12 @@ theorem eval_monotonic {h1 h2 : Heap}
     apply Eval.eval_var
     apply hpred hsub hQ
   case eval_apply hx _ ih =>
-    specialize ih hpred hsub
     apply Eval.eval_apply
     · apply hsub _ _ hx
-    · assumption
+    · apply ih hpred hsub
+      -- Need: well-formedness of e.subst (Subst.openVar y)
+      -- This requires preservation of well-formedness under substitution
+      sorry
   case eval_invoke hmem hx hy hQ =>
     apply Eval.eval_invoke
     · exact hmem
@@ -189,38 +192,59 @@ theorem eval_monotonic {h1 h2 : Heap}
     · apply hsub _ _ hy
     · apply hpred <;> assumption
   case eval_tapply hx _ ih =>
-    specialize ih hpred hsub
     apply Eval.eval_tapply
     · apply hsub _ _ hx
-    · assumption
+    · apply ih hpred hsub
+      -- Need: well-formedness of e.subst (Subst.openTVar .top)
+      -- This requires preservation of well-formedness under substitution
+      sorry
   case eval_capply hx _ ih =>
-    specialize ih hpred hsub
     apply Eval.eval_capply
     · apply hsub _ _ hx
-    · assumption
-  case eval_letin Q1 hpred0 _ _ _ ih ih_val ih_var =>
-    specialize ih hpred0 hsub
-    apply Eval.eval_letin (Q1:=Q1) hpred0 ih
+    · apply ih hpred hsub
+      -- Need: well-formedness of e.subst (Subst.openCVar .empty)
+      -- This requires preservation of well-formedness under substitution
+      sorry
+  case eval_letin Q1 hpred0 eval_e1 h_val_orig h_var_orig ih ih_val ih_var =>
+    -- Use inversion to extract well-formedness of subexpressions
+    have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
+    -- Apply IH for e1 with well-formedness
+    have eval_e1' := ih hpred0 hsub hwf1
+    apply Eval.eval_letin (Q1:=Q1) hpred0 eval_e1'
     case h_val =>
-      intro h1 v hs1 hv hq1 l' hfresh
-      -- h1.subsumes h2, h2.subsumes h1_original, so h1.subsumes h1_original
-      have hs_orig := Heap.subsumes_trans hs1 hsub
-      apply ih_val hs_orig hv hq1 l' hfresh hpred
-      sorry --apply Heap.subsumes_refl
+      intro h_ext' v hs_ext' hv hq1 l' hfresh
+      -- We have: h_ext'.subsumes h2 and h2.subsumes h_orig (the original heap h✝)
+      -- Therefore: h_ext'.subsumes h_orig
+      have hs_orig := Heap.subsumes_trans hs_ext' hsub
+      -- KEY ISSUE: To show that the extended heaps are equal, we need:
+      --   compute_reachability h2 v hv = compute_reachability h_orig v hv
+      -- By compute_reachability_monotonic, this requires Exp.WfInHeap v h_orig
+      -- However, v comes from Q1 v h_ext', and we don't have a general way
+      -- to extract well-formedness from postconditions.
+      -- This requires either:
+      --   (a) A preservation theorem showing evaluation produces well-formed results, or
+      --   (b) Strengthening postconditions to track well-formedness
+      -- For now, we admit this requirement:
+      -- We need: Exp.WfInHeap v h_orig (where h_orig is the original heap h✝)
+      -- This requires a preservation theorem or strengthening of postconditions
+      sorry
     case h_var =>
-      intro h1 x hs1 hq1
-      -- h1.subsumes h2, h2.subsumes h1_original, so h1.subsumes h1_original
-      have hs_orig := Heap.subsumes_trans hs1 hsub
+      intro h_ext' x hs_ext' hq1
+      have hs_orig := Heap.subsumes_trans hs_ext' hsub
       apply ih_var hs_orig hq1 hpred
-      apply Heap.subsumes_refl
-  case eval_unpack Q1 hpred0 _ _ ih ih_val =>
-    specialize ih hpred0 hsub
-    apply Eval.eval_unpack (Q1:=Q1) hpred0 ih
-    intro h1 x cs hs1 hq1
-    -- h1.subsumes h2, h2.subsumes h1_original, so h1.subsumes h1_original
-    have hs_orig := Heap.subsumes_trans hs1 hsub
+      -- Need well-formedness of e2.subst in h_ext'
+      all_goals sorry
+  case eval_unpack Q1 hpred0 eval_e1 h_val_orig ih ih_val =>
+    -- Use inversion to extract well-formedness of subexpressions
+    have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
+    -- Apply IH for e1 with well-formedness
+    have eval_e1' := ih hpred0 hsub hwf1
+    apply Eval.eval_unpack (Q1:=Q1) hpred0 eval_e1'
+    intro h_ext' x cs hs_ext' hq1
+    have hs_orig := Heap.subsumes_trans hs_ext' hsub
     apply ih_val hs_orig hq1 hpred
-    apply Heap.subsumes_refl
+    -- Need well-formedness of e2.subst in h_ext'
+    all_goals sorry
 
 def Hpost.entails_at (Q1 : Hpost) (h : Heap) (Q2 : Hpost) : Prop :=
   ∀ e, Q1 e h -> Q2 e h
