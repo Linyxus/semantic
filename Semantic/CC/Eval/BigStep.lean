@@ -237,6 +237,7 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Subst.wf_openCVar
         apply CaptureSet.WfInHeap.wf_empty
   case eval_letin Q1 hpred0 eval_e1 h_val_orig h_var_orig ih ih_val ih_var =>
+    rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
     -- Apply IH for e1 with well-formedness
@@ -256,9 +257,12 @@ theorem eval_monotonic {m1 m2 : Memory}
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       apply ih_var hs_orig hwf_x hq1 hpred
       · exact Memory.subsumes_refl _
-      · -- Need: (e2.subst (Subst.openVar x)).WfInHeap m_ext'.heap
-        -- This requires well-formedness from postconditions
-        sorry
+      · -- Need: (e2_orig.subst (Subst.openVar x)).WfInHeap m_ext'.heap
+        -- First, lift hwf2 to m_ext'.heap using monotonicity
+        have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
+        -- Then apply substitution preservation
+        apply Exp.wf_subst hwf2_ext
+        apply Subst.wf_openVar hwf_x
   case eval_unpack Q1 hpred0 eval_e1 h_val_orig ih ih_val =>
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
