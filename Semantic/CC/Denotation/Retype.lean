@@ -3,26 +3,26 @@ import Semantic.CC.Denotation.Rebind
 namespace CC
 
 /-- Interpret a variable in an environment to get its free variable index and capability set. -/
-def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
+def interp_var (env : TypeEnv s) (x : Var .var s) : Nat × CapabilitySet :=
   match x with
-  | .free n => n
+  | .free n => ⟨n, {n}⟩
   | .bound x => env.lookup_var x
 
-structure Retype (φ : HeapTopology) (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
+structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
   var :
     ∀ (x : BVar s1 .var),
       env1.lookup_var x = interp_var env2 (σ.var x)
 
   tvar :
     ∀ (X : BVar s1 .tvar),
-      env1.lookup_tvar X ≈ Ty.shape_val_denot env2 φ (σ.tvar X)
+      env1.lookup_tvar X ≈ Ty.shape_val_denot env2 (σ.tvar X)
 
   cvar :
     ∀ (C : BVar s1 .cvar),
-      env1.lookup_cvar C = CaptureSet.denot env2 φ (σ.cvar C)
+      env1.lookup_cvar C = CaptureSet.denot env2 (σ.cvar C)
 
 lemma weaken_interp_var {x : Var .var s} :
-  interp_var env x = interp_var (env.extend_var n) (x.rename Rename.succ) := by
+  interp_var env x = interp_var (env.extend_var n R) (x.rename Rename.succ) := by
   cases x <;> rfl
 
 lemma tweaken_interp_var {x : Var .var s} :
@@ -127,299 +127,299 @@ theorem Retype.liftCVar
       rw [ρ.cvar C]
       apply rebind_captureset_denot Rebind.cweaken
 
-mutual
+-- mutual
 
-def retype_shape_val_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
-  (ρ : Retype φ env1 σ env2) (T : Ty .shape s1) :
-  Ty.shape_val_denot env1 φ T ≈ Ty.shape_val_denot env2 φ (T.subst σ) :=
-  match T with
-  | .top => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
-  | .tvar X => by
-    simp [Ty.shape_val_denot, Ty.subst]
-    exact ρ.tvar X
-  | .unit => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
-  | .cap => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
-  | .arrow T1 T2 => by
-    have ih1 := retype_capt_val_denot ρ T1
-    intro A s0 e0
-    simp [Ty.shape_val_denot, Ty.subst]
-    constructor
-    · intro h
-      obtain ⟨T0, body, hr, hd⟩ := h
-      use T0, body
-      apply And.intro hr
-      intro arg H' hsub harg
-      cases T1
-      case capt C S =>
-        simp [Ty.subst, Ty.captureSet] at hd ⊢
-        have hC := retype_captureset_denot ρ C
-        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
-        have harg' := (ih1 H' (.var (.free arg))).mpr harg
-        specialize hd arg H' hsub harg'
-        rw [hC] at hd
-        exact (ih2 (A ∪ (C.subst σ).denot env2 φ) H' _).mp hd
-    · intro h
-      obtain ⟨T0, body, hr, hd⟩ := h
-      use T0, body
-      apply And.intro hr
-      intro arg H' hsub harg
-      cases T1
-      case capt C S =>
-        simp [Ty.subst, Ty.captureSet] at hd ⊢
-        have hC := retype_captureset_denot ρ C
-        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
-        have harg' := (ih1 H' (.var (.free arg))).mp harg
-        specialize hd arg H' hsub harg'
-        have := (ih2 (A ∪ (C.subst σ).denot env2 φ) H' _).mpr hd
-        rw [← hC] at this
-        exact this
-  | .poly T1 T2 => by
-    have ih1 := retype_shape_val_denot ρ T1
-    intro A s0 e0
-    simp [Ty.shape_val_denot, Ty.subst]
-    constructor
-    · intro h
-      obtain ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0
-      apply And.intro hr
-      intro H' denot hsub hproper himply
-      have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
-      have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env1 φ T1) := by
-        intro H'' hsub' A' e hdenot
-        exact (ih1 _ _ _).mpr (himply H'' hsub' A' e hdenot)
-      specialize hd H' denot hsub hproper himply'
-      exact (ih2 A H' _).mp hd
-    · intro h
-      obtain ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0
-      apply And.intro hr
-      intro H' denot hsub hproper himply
-      have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
-      have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env2 φ (T1.subst σ)) := by
-        intro H'' hsub' A' e hdenot
-        exact (ih1 _ _ _).mp (himply H'' hsub' A' e hdenot)
-      specialize hd H' denot hsub hproper himply'
-      exact (ih2 A H' _).mpr hd
-  | .cpoly B T => by
-    have hB := retype_capturebound_denot ρ B
-    intro A s0 e0
-    simp [Ty.shape_val_denot, Ty.subst, hB]
-    constructor
-    · intro h
-      obtain ⟨B0, t0, hr, hd⟩ := h
-      use B0, t0
-      apply And.intro hr
-      intro H' A0 hsub hsub_bound
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
-      specialize hd H' A0 hsub hsub_bound
-      exact (ih2 A H' _).mp hd
-    · intro h
-      obtain ⟨B0, t0, hr, hd⟩ := h
-      use B0, t0
-      apply And.intro hr
-      intro H' A0 hsub hsub_bound
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
-      specialize hd H' A0 hsub hsub_bound
-      exact (ih2 A H' _).mpr hd
+-- def retype_shape_val_denot
+--   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
+--   (ρ : Retype φ env1 σ env2) (T : Ty .shape s1) :
+--   Ty.shape_val_denot env1 φ T ≈ Ty.shape_val_denot env2 φ (T.subst σ) :=
+--   match T with
+--   | .top => by
+--     apply PreDenot.eq_to_equiv
+--     simp [Ty.shape_val_denot, Ty.subst]
+--   | .tvar X => by
+--     simp [Ty.shape_val_denot, Ty.subst]
+--     exact ρ.tvar X
+--   | .unit => by
+--     apply PreDenot.eq_to_equiv
+--     simp [Ty.shape_val_denot, Ty.subst]
+--   | .cap => by
+--     apply PreDenot.eq_to_equiv
+--     simp [Ty.shape_val_denot, Ty.subst]
+--   | .arrow T1 T2 => by
+--     have ih1 := retype_capt_val_denot ρ T1
+--     intro A s0 e0
+--     simp [Ty.shape_val_denot, Ty.subst]
+--     constructor
+--     · intro h
+--       obtain ⟨T0, body, hr, hd⟩ := h
+--       use T0, body
+--       apply And.intro hr
+--       intro arg H' hsub harg
+--       cases T1
+--       case capt C S =>
+--         simp [Ty.subst, Ty.captureSet] at hd ⊢
+--         have hC := retype_captureset_denot ρ C
+--         have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+--         have harg' := (ih1 H' (.var (.free arg))).mpr harg
+--         specialize hd arg H' hsub harg'
+--         rw [hC] at hd
+--         exact (ih2 (A ∪ (C.subst σ).denot env2 φ) H' _).mp hd
+--     · intro h
+--       obtain ⟨T0, body, hr, hd⟩ := h
+--       use T0, body
+--       apply And.intro hr
+--       intro arg H' hsub harg
+--       cases T1
+--       case capt C S =>
+--         simp [Ty.subst, Ty.captureSet] at hd ⊢
+--         have hC := retype_captureset_denot ρ C
+--         have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+--         have harg' := (ih1 H' (.var (.free arg))).mp harg
+--         specialize hd arg H' hsub harg'
+--         have := (ih2 (A ∪ (C.subst σ).denot env2 φ) H' _).mpr hd
+--         rw [← hC] at this
+--         exact this
+--   | .poly T1 T2 => by
+--     have ih1 := retype_shape_val_denot ρ T1
+--     intro A s0 e0
+--     simp [Ty.shape_val_denot, Ty.subst]
+--     constructor
+--     · intro h
+--       obtain ⟨T0, e0, hr, hd⟩ := h
+--       use T0, e0
+--       apply And.intro hr
+--       intro H' denot hsub hproper himply
+--       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
+--       have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env1 φ T1) := by
+--         intro H'' hsub' A' e hdenot
+--         exact (ih1 _ _ _).mpr (himply H'' hsub' A' e hdenot)
+--       specialize hd H' denot hsub hproper himply'
+--       exact (ih2 A H' _).mp hd
+--     · intro h
+--       obtain ⟨T0, e0, hr, hd⟩ := h
+--       use T0, e0
+--       apply And.intro hr
+--       intro H' denot hsub hproper himply
+--       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
+--       have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env2 φ (T1.subst σ)) := by
+--         intro H'' hsub' A' e hdenot
+--         exact (ih1 _ _ _).mp (himply H'' hsub' A' e hdenot)
+--       specialize hd H' denot hsub hproper himply'
+--       exact (ih2 A H' _).mpr hd
+--   | .cpoly B T => by
+--     have hB := retype_capturebound_denot ρ B
+--     intro A s0 e0
+--     simp [Ty.shape_val_denot, Ty.subst, hB]
+--     constructor
+--     · intro h
+--       obtain ⟨B0, t0, hr, hd⟩ := h
+--       use B0, t0
+--       apply And.intro hr
+--       intro H' A0 hsub hsub_bound
+--       have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
+--       specialize hd H' A0 hsub hsub_bound
+--       exact (ih2 A H' _).mp hd
+--     · intro h
+--       obtain ⟨B0, t0, hr, hd⟩ := h
+--       use B0, t0
+--       apply And.intro hr
+--       intro H' A0 hsub hsub_bound
+--       have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
+--       specialize hd H' A0 hsub hsub_bound
+--       exact (ih2 A H' _).mpr hd
 
-def retype_capturebound_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
-  (ρ : Retype φ env1 σ env2) (B : CaptureBound s1) :
-  CaptureBound.denot env1 φ B = CaptureBound.denot env2 φ (B.subst σ) := by
-  cases B
-  case unbound => rfl
-  case bound C =>
-    simp [CaptureBound.denot, CaptureBound.subst]
-    apply retype_captureset_denot ρ C
+-- def retype_capturebound_denot
+--   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
+--   (ρ : Retype φ env1 σ env2) (B : CaptureBound s1) :
+--   CaptureBound.denot env1 φ B = CaptureBound.denot env2 φ (B.subst σ) := by
+--   cases B
+--   case unbound => rfl
+--   case bound C =>
+--     simp [CaptureBound.denot, CaptureBound.subst]
+--     apply retype_captureset_denot ρ C
 
-def retype_captureset_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
-  (ρ : Retype φ env1 σ env2) (C : CaptureSet s1) :
-  CaptureSet.denot env1 φ C = CaptureSet.denot env2 φ (C.subst σ) := by
-  induction C
-  case empty => rfl
-  case union C1 C2 ih1 ih2 =>
-    simp [CaptureSet.denot, CaptureSet.subst, ih1, ih2]
-  case var x =>
-    cases x
-    case bound x =>
-      simp [CaptureSet.denot, CaptureSet.subst, Var.subst]
-      have := ρ.var x
-      cases hσ : σ.var x
-      case bound y =>
-        simp [CaptureSet.denot, interp_var] at this ⊢
-        rw [hσ] at this
-        simp at this
-        rw [this]
-      case free n =>
-        simp [CaptureSet.denot, interp_var] at this ⊢
-        rw [hσ] at this
-        simp at this
-        rw [this]
-    case free n =>
-      simp [CaptureSet.denot, CaptureSet.subst, Var.subst]
-  case cvar C =>
-    simp [CaptureSet.denot, CaptureSet.subst]
-    exact ρ.cvar C
+-- def retype_captureset_denot
+--   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
+--   (ρ : Retype φ env1 σ env2) (C : CaptureSet s1) :
+--   CaptureSet.denot env1 φ C = CaptureSet.denot env2 φ (C.subst σ) := by
+--   induction C
+--   case empty => rfl
+--   case union C1 C2 ih1 ih2 =>
+--     simp [CaptureSet.denot, CaptureSet.subst, ih1, ih2]
+--   case var x =>
+--     cases x
+--     case bound x =>
+--       simp [CaptureSet.denot, CaptureSet.subst, Var.subst]
+--       have := ρ.var x
+--       cases hσ : σ.var x
+--       case bound y =>
+--         simp [CaptureSet.denot, interp_var] at this ⊢
+--         rw [hσ] at this
+--         simp at this
+--         rw [this]
+--       case free n =>
+--         simp [CaptureSet.denot, interp_var] at this ⊢
+--         rw [hσ] at this
+--         simp at this
+--         rw [this]
+--     case free n =>
+--       simp [CaptureSet.denot, CaptureSet.subst, Var.subst]
+--   case cvar C =>
+--     simp [CaptureSet.denot, CaptureSet.subst]
+--     exact ρ.cvar C
 
-def retype_capt_val_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
-  (ρ : Retype φ env1 σ env2) (T : Ty .capt s1) :
-  Ty.capt_val_denot env1 φ T ≈ Ty.capt_val_denot env2 φ (T.subst σ) :=
-  match T with
-  | .capt C S => by
-    have hC := retype_captureset_denot ρ C
-    have hS := retype_shape_val_denot ρ S
-    intro s e
-    simp [Ty.capt_val_denot, Ty.subst]
-    rw [← hC]
-    exact hS (C.denot env1 φ) s e
+-- def retype_capt_val_denot
+--   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
+--   (ρ : Retype φ env1 σ env2) (T : Ty .capt s1) :
+--   Ty.capt_val_denot env1 φ T ≈ Ty.capt_val_denot env2 φ (T.subst σ) :=
+--   match T with
+--   | .capt C S => by
+--     have hC := retype_captureset_denot ρ C
+--     have hS := retype_shape_val_denot ρ S
+--     intro s e
+--     simp [Ty.capt_val_denot, Ty.subst]
+--     rw [← hC]
+--     exact hS (C.denot env1 φ) s e
 
-def retype_exi_val_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
-  (ρ : Retype φ env1 σ env2) (T : Ty .exi s1) :
-  Ty.exi_val_denot env1 φ T ≈ Ty.exi_val_denot env2 φ (T.subst σ) :=
-  match T with
-  | .typ T => by
-    have ih := retype_capt_val_denot ρ T
-    intro s e
-    simp [Ty.exi_val_denot, Ty.subst]
-    exact ih s e
-  | .exi T => by
-    intro s e
-    simp [Ty.exi_val_denot, Ty.subst]
-    constructor
-    · intro h
-      obtain ⟨A, hval⟩ := h
-      use A
-      have ih := retype_capt_val_denot (ρ.liftCVar (c:=A)) T
-      exact (ih s e).mp hval
-    · intro h
-      obtain ⟨A, hval⟩ := h
-      use A
-      have ih := retype_capt_val_denot (ρ.liftCVar (c:=A)) T
-      exact (ih s e).mpr hval
+-- def retype_exi_val_denot
+--   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
+--   (ρ : Retype φ env1 σ env2) (T : Ty .exi s1) :
+--   Ty.exi_val_denot env1 φ T ≈ Ty.exi_val_denot env2 φ (T.subst σ) :=
+--   match T with
+--   | .typ T => by
+--     have ih := retype_capt_val_denot ρ T
+--     intro s e
+--     simp [Ty.exi_val_denot, Ty.subst]
+--     exact ih s e
+--   | .exi T => by
+--     intro s e
+--     simp [Ty.exi_val_denot, Ty.subst]
+--     constructor
+--     · intro h
+--       obtain ⟨A, hval⟩ := h
+--       use A
+--       have ih := retype_capt_val_denot (ρ.liftCVar (c:=A)) T
+--       exact (ih s e).mp hval
+--     · intro h
+--       obtain ⟨A, hval⟩ := h
+--       use A
+--       have ih := retype_capt_val_denot (ρ.liftCVar (c:=A)) T
+--       exact (ih s e).mpr hval
 
-def retype_capt_exp_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
-  (ρ : Retype φ env1 σ env2) (T : Ty .capt s1) :
-  Ty.capt_exp_denot env1 φ T ≈ Ty.capt_exp_denot env2 φ (T.subst σ) := by
-  have ih := retype_capt_val_denot ρ T
-  intro A s e
-  simp [Ty.capt_exp_denot]
-  constructor
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).1
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).2
+-- def retype_capt_exp_denot
+--   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
+--   (ρ : Retype φ env1 σ env2) (T : Ty .capt s1) :
+--   Ty.capt_exp_denot env1 φ T ≈ Ty.capt_exp_denot env2 φ (T.subst σ) := by
+--   have ih := retype_capt_val_denot ρ T
+--   intro A s e
+--   simp [Ty.capt_exp_denot]
+--   constructor
+--   · intro h
+--     apply eval_post_monotonic _ h
+--     apply Denot.imply_to_entails
+--     exact (Denot.equiv_to_imply ih).1
+--   · intro h
+--     apply eval_post_monotonic _ h
+--     apply Denot.imply_to_entails
+--     exact (Denot.equiv_to_imply ih).2
 
-def retype_exi_exp_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
-  (ρ : Retype φ env1 σ env2) (T : Ty .exi s1) :
-  Ty.exi_exp_denot env1 φ T ≈ Ty.exi_exp_denot env2 φ (T.subst σ) := by
-  have ih := retype_exi_val_denot ρ T
-  intro A s e
-  simp [Ty.exi_exp_denot]
-  constructor
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).1
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).2
+-- def retype_exi_exp_denot
+--   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {φ : HeapTopology}
+--   (ρ : Retype φ env1 σ env2) (T : Ty .exi s1) :
+--   Ty.exi_exp_denot env1 φ T ≈ Ty.exi_exp_denot env2 φ (T.subst σ) := by
+--   have ih := retype_exi_val_denot ρ T
+--   intro A s e
+--   simp [Ty.exi_exp_denot]
+--   constructor
+--   · intro h
+--     apply eval_post_monotonic _ h
+--     apply Denot.imply_to_entails
+--     exact (Denot.equiv_to_imply ih).1
+--   · intro h
+--     apply eval_post_monotonic _ h
+--     apply Denot.imply_to_entails
+--     exact (Denot.equiv_to_imply ih).2
 
-end
+-- end
 
-def Retype.open_arg {env : TypeEnv s} {φ : HeapTopology} {y : Var .var s} :
-  Retype φ
-    (env.extend_var (interp_var env y))
-    (Subst.openVar y)
-    env where
-  var := fun x => by cases x <;> rfl
-  tvar := fun
-    | .there X => by
-      conv =>
-        lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
-      conv =>
-        rhs
-        simp [Subst.openVar]
-      apply PreDenot.eq_to_equiv
-      simp [Ty.shape_val_denot, TypeEnv.lookup_tvar]
-  cvar := fun
-    | .there C => by
-      simp [TypeEnv.extend_var, Subst.openVar]
-      unfold TypeEnv.lookup_cvar
-      rfl
+-- def Retype.open_arg {env : TypeEnv s} {φ : HeapTopology} {y : Var .var s} :
+--   Retype φ
+--     (env.extend_var (interp_var env y))
+--     (Subst.openVar y)
+--     env where
+--   var := fun x => by cases x <;> rfl
+--   tvar := fun
+--     | .there X => by
+--       conv =>
+--         lhs
+--         simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
+--       conv =>
+--         rhs
+--         simp [Subst.openVar]
+--       apply PreDenot.eq_to_equiv
+--       simp [Ty.shape_val_denot, TypeEnv.lookup_tvar]
+--   cvar := fun
+--     | .there C => by
+--       simp [TypeEnv.extend_var, Subst.openVar]
+--       unfold TypeEnv.lookup_cvar
+--       rfl
 
-theorem open_arg_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {y : Var .var s} {T : Ty .shape (s,x)} :
-  Ty.shape_val_denot (env.extend_var (interp_var env y)) φ T ≈
-    Ty.shape_val_denot env φ (T.subst (Subst.openVar y)) := by
-  apply retype_shape_val_denot Retype.open_arg
+-- theorem open_arg_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {y : Var .var s} {T : Ty .shape (s,x)} :
+--   Ty.shape_val_denot (env.extend_var (interp_var env y)) φ T ≈
+--     Ty.shape_val_denot env φ (T.subst (Subst.openVar y)) := by
+--   apply retype_shape_val_denot Retype.open_arg
 
-def Retype.open_targ {env : TypeEnv s} {φ : HeapTopology} {S : Ty .shape s} :
-  Retype φ
-    (env.extend_tvar (Ty.shape_val_denot env φ S))
-    (Subst.openTVar S)
-    env where
-  var := fun x => by cases x; rfl
-  tvar := fun
-    | .here => by
-      apply PreDenot.eq_to_equiv
-      rfl
-    | .there X => by
-      apply PreDenot.eq_to_equiv
-      simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-      simp [Subst.openTVar, Ty.shape_val_denot]
-      rfl
-  cvar := fun
-    | .there C => by
-      simp [TypeEnv.extend_tvar, Subst.openTVar]
-      unfold TypeEnv.lookup_cvar
-      rfl
+-- def Retype.open_targ {env : TypeEnv s} {φ : HeapTopology} {S : Ty .shape s} :
+--   Retype φ
+--     (env.extend_tvar (Ty.shape_val_denot env φ S))
+--     (Subst.openTVar S)
+--     env where
+--   var := fun x => by cases x; rfl
+--   tvar := fun
+--     | .here => by
+--       apply PreDenot.eq_to_equiv
+--       rfl
+--     | .there X => by
+--       apply PreDenot.eq_to_equiv
+--       simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+--       simp [Subst.openTVar, Ty.shape_val_denot]
+--       rfl
+--   cvar := fun
+--     | .there C => by
+--       simp [TypeEnv.extend_tvar, Subst.openTVar]
+--       unfold TypeEnv.lookup_cvar
+--       rfl
 
-theorem open_targ_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {S : Ty .shape s} {T : Ty .shape (s,X)} :
-  Ty.shape_val_denot (env.extend_tvar (Ty.shape_val_denot env φ S)) φ T ≈
-    Ty.shape_val_denot env φ (T.subst (Subst.openTVar S)) := by
-  apply retype_shape_val_denot Retype.open_targ
+-- theorem open_targ_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {S : Ty .shape s} {T : Ty .shape (s,X)} :
+--   Ty.shape_val_denot (env.extend_tvar (Ty.shape_val_denot env φ S)) φ T ≈
+--     Ty.shape_val_denot env φ (T.subst (Subst.openTVar S)) := by
+--   apply retype_shape_val_denot Retype.open_targ
 
-def Retype.open_carg {env : TypeEnv s} {φ : HeapTopology} {C : CaptureSet s} :
-  Retype φ
-    (env.extend_cvar (C.denot env φ))
-    (Subst.openCVar C)
-    env where
-  var := fun x => by cases x; rfl
-  tvar := fun
-    | .there X => by
-      apply PreDenot.eq_to_equiv
-      simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-      simp [Subst.openCVar, Ty.shape_val_denot]
-      rfl
-  cvar := fun
-    | .here => by
-      simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
-      simp [Subst.openCVar]
-    | .there C => by
-      simp [TypeEnv.extend_cvar, Subst.openCVar]
-      unfold TypeEnv.lookup_cvar
-      rfl
+-- def Retype.open_carg {env : TypeEnv s} {φ : HeapTopology} {C : CaptureSet s} :
+--   Retype φ
+--     (env.extend_cvar (C.denot env φ))
+--     (Subst.openCVar C)
+--     env where
+--   var := fun x => by cases x; rfl
+--   tvar := fun
+--     | .there X => by
+--       apply PreDenot.eq_to_equiv
+--       simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+--       simp [Subst.openCVar, Ty.shape_val_denot]
+--       rfl
+--   cvar := fun
+--     | .here => by
+--       simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+--       simp [Subst.openCVar]
+--     | .there C => by
+--       simp [TypeEnv.extend_cvar, Subst.openCVar]
+--       unfold TypeEnv.lookup_cvar
+--       rfl
 
-theorem open_carg_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {C : CaptureSet s} {T : Ty .shape (s,C)} :
-  Ty.shape_val_denot (env.extend_cvar (C.denot env φ)) φ T ≈
-    Ty.shape_val_denot env φ (T.subst (Subst.openCVar C)) := by
-  apply retype_shape_val_denot Retype.open_carg
+-- theorem open_carg_shape_val_denot {env : TypeEnv s} {φ : HeapTopology} {C : CaptureSet s} {T : Ty .shape (s,C)} :
+--   Ty.shape_val_denot (env.extend_cvar (C.denot env φ)) φ T ≈
+--     Ty.shape_val_denot env φ (T.subst (Subst.openCVar C)) := by
+--   apply retype_shape_val_denot Retype.open_carg
 
-end CC
+-- end CC
