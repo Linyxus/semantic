@@ -1,6 +1,6 @@
 import Semantic.CC.Syntax
 import Semantic.CC.Substitution
-import Semantic.CC.Eval.Heap
+import Semantic.CC.Semantics.Heap
 
 namespace CC
 

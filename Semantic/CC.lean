@@ -6,7 +6,7 @@ import Semantic.CC.Substitution
 
 import Semantic.CC.TypeSystem
 
-import Semantic.CC.Eval
+import Semantic.CC.Semantics
 
 import Semantic.CC.Denotation
 

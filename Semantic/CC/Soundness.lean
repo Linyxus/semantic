@@ -1,5 +1,5 @@
 import Semantic.CC.Denotation
-import Semantic.CC.Eval
+import Semantic.CC.Semantics
 namespace CC
 
 theorem typed_env_lookup_var

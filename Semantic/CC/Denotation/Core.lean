@@ -1,4 +1,4 @@
-import Semantic.CC.Eval
+import Semantic.CC.Semantics
 import Semantic.CC.TypeSystem
 import Semantic.Prelude
 
