@@ -91,6 +91,7 @@ theorem sem_typ_var
 --       { apply env_typing_monotonic hts hsubsume }
 
 theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
+  (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
   (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
   ∅ # Γ ⊨ Exp.abs Cf T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := by
   intro env store hts
@@ -757,13 +758,17 @@ theorem sem_typ_app
 theorem fundamental
   (ht : C # Γ ⊢ e : T) :
   C # Γ ⊨ e : T := by
+  have hclosed_e := HasType.exp_is_closed ht
   induction ht
   case var hx => apply sem_typ_var hx
-  case abs => grind [sem_typ_abs]
-  case tabs ih => apply sem_typ_tabs ih
-  case cabs ih => apply sem_typ_cabs ih
+  case abs =>
+    apply sem_typ_abs
+    · exact hclosed_e
+    · cases hclosed_e; aesop
+  case tabs => apply sem_typ_tabs; sorry
+  case cabs => apply sem_typ_cabs; sorry
   case pack => sorry
-  case app => grind [sem_typ_app]
+  case app => sorry
   -- case tapp => grind [sem_typ_tapp]
   -- case capp => grind [sem_typ_capp]
   -- case letin => grind [sem_typ_letin]
