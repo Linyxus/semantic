@@ -167,6 +167,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
 --           · apply env_typing_monotonic hts Hs
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
+  (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
   (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
   ∅ # Γ ⊨ Exp.tabs Cf S e : .typ (Ty.capt Cf (S.poly T)) := by
   intro env store hts
@@ -175,7 +176,13 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   · simp [Exp.subst]; constructor
   · simp [Denot.as_mpost]
     constructor
-    · sorry  -- TODO: Prove WfInHeap for substituted capture set, type bound, and body
+    · -- Prove well-formedness: closed expressions remain well-formed after substitution
+      -- Strategy: (1) closed => wf, (2) typed env => wf subst, (3) wf subst preserves wf
+      apply Exp.wf_subst
+      · -- Closedness implies well-formedness in any heap
+        apply Exp.wf_of_closed hclosed_tabs
+      · -- The substitution from typed environment is well-formed
+        apply from_TypeEnv_wf_in_heap hts
     · -- Need to provide cs, S0 and t0 for the poly denotation
       use (Cf.subst (Subst.from_TypeEnv env)), (S.subst (Subst.from_TypeEnv env)),
         (e.subst (Subst.from_TypeEnv env).lift)
@@ -770,7 +777,10 @@ theorem fundamental
     apply sem_typ_abs
     · exact hclosed_e
     · cases hclosed_e; aesop
-  case tabs => apply sem_typ_tabs; sorry
+  case tabs =>
+    apply sem_typ_tabs
+    · exact hclosed_e
+    · cases hclosed_e; aesop
   case cabs => apply sem_typ_cabs; sorry
   case pack => sorry
   case app => sorry
