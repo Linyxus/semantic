@@ -262,7 +262,7 @@ theorem abs_val_denot_inv {A : CapabilitySet}
       cases cell with
       | val hval =>
         -- hval : HeapVal, hresolve should relate to hval.unwrap
-        simp [resolve] at hresolve
+        simp at hresolve
         cases hval with | mk unwrap isVal reachability =>
         simp at hresolve
         subst hresolve
@@ -273,7 +273,7 @@ theorem abs_val_denot_inv {A : CapabilitySet}
           -- Need to relate reachability_of_loc to T1.captureSet.denot
           sorry  -- TODO: Lemma relating reachability_of_loc H' arg = T1.captureSet.denot env
       | capability =>
-        simp [resolve] at hresolve
+        simp at hresolve
 
 -- theorem tabs_val_denot_inv
 --   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
@@ -762,10 +762,12 @@ theorem fundamental
   case abs => grind [sem_typ_abs]
   case tabs ih => apply sem_typ_tabs ih
   case cabs ih => apply sem_typ_cabs ih
+  case pack => sorry
   case app => grind [sem_typ_app]
   -- case tapp => grind [sem_typ_tapp]
   -- case capp => grind [sem_typ_capp]
   -- case letin => grind [sem_typ_letin]
+  -- case unpack => sorry
   -- case subtyp => grind [sem_typ_subtyp]
   all_goals sorry
 
