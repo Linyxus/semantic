@@ -30,6 +30,17 @@ infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
 infixl:65 ",C<:" => Ctx.push_cvar
 
+/-- A binding is closed if the type it contains is closed. -/
+inductive Binding.IsClosed : Binding s k -> Prop where
+| var : T.IsClosed -> Binding.IsClosed (.var T)
+| tvar : T.IsClosed -> Binding.IsClosed (.tvar T)
+| cvar : cb.IsClosed -> Binding.IsClosed (.cvar cb)
+
+/-- A context is closed if all bindings in it are closed. -/
+inductive Ctx.IsClosed : Ctx s -> Prop where
+| empty : Ctx.IsClosed .empty
+| push : Ctx.IsClosed Γ -> b.IsClosed -> Ctx.IsClosed (.push Γ b)
+
 inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> Ty .shape s -> Prop
 | here :
   Ctx.LookupTVar (.push Γ (.tvar S)) .here (S.rename Rename.succ)
@@ -134,19 +145,23 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   Γ.LookupVar x T ->
   ----------------------------
   HasType (.var (.bound x)) Γ (.var (.bound x)) (.typ T)
-| abs :
+| abs {T1 : Ty .capt s} :
+  T1.IsClosed ->
   HasType (cs.rename Rename.succ ∪ (.var (.bound .here))) (Γ,x:T1) e T2 ->
   ----------------------------
   HasType {} Γ (.abs cs T1 e) (.typ (.capt cs (.arrow T1 T2)))
-| tabs :
+| tabs {S : Ty .shape s} :
+  S.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
   HasType {} Γ (.tabs cs S e) (.typ (.capt cs (.poly S T)))
-| cabs :
+| cabs {cb : CaptureBound s} :
+  cb.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.capt cs (.cpoly cb T)))
-| pack :
+| pack {C : CaptureSet s} :
+  C.IsClosed ->
   HasType (.var x) Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
   HasType (.var x) Γ (.pack C x) (.exi T)
@@ -155,10 +170,16 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType C Γ (.var y) (.typ T1) ->
   ----------------------------
   HasType C Γ (.app x y) (T2.subst (Subst.openVar y))
-| tapp :
+| tapp {S : Ty .shape s} :
+  S.IsClosed ->
   HasType C Γ (.var x) (.typ (.capt Cx (.poly S T))) ->
   ----------------------------
   HasType C Γ (.tapp x S) (T.subst (Subst.openTVar S))
+| capp {D : CaptureSet s} :
+  D.IsClosed ->
+  HasType C Γ (.var x) (.typ (.capt Cx (.cpoly cb T))) ->
+  ----------------------------
+  HasType C Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin :
   HasType C Γ e1 (.typ T) ->
   HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
