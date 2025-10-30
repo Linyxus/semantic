@@ -357,6 +357,120 @@ theorem Exp.from_TypeEnv_weaken_open_cvar
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_cvar]
 
+/--
+If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
+via `Subst.from_TypeEnv` is well-formed in the heap.
+
+This is a key lemma connecting the semantic typing judgment to syntactic well-formedness.
+Since `EnvTyping` ensures each variable location in the environment exists in memory,
+the substitution that maps variables to these locations must be well-formed.
+-/
+theorem from_TypeEnv_wf_in_heap
+  {Γ : Ctx s} {ρ : TypeEnv s} {m : Memory}
+  (htyping : EnvTyping Γ ρ m) :
+  (Subst.from_TypeEnv ρ).WfInHeap m.heap := by
+  induction Γ with
+  | empty =>
+    -- Base case: empty context has no variables
+    cases ρ with
+    | empty =>
+      constructor
+      · intro x; cases x
+      · intro X; cases X
+      · intro C; cases C
+  | push Γ' k ih =>
+    -- Inductive case: handle each kind of binding
+    cases ρ with
+    | extend ρ' info =>
+      cases k with
+      | var T =>
+        -- Variable binding: extract well-formedness from typing
+        cases info with
+        | var n R =>
+          unfold EnvTyping at htyping
+          have ⟨htype, _, htyping'⟩ := htyping
+          -- htype : ⟦T⟧_[ρ'] m (.var (.free n))
+          cases T with
+          | capt C S =>
+            simp [instCaptHasDenotation, Ty.capt_val_denot] at htype
+            have ⟨hwf, _⟩ := htype
+            -- hwf : (.var (.free n)).WfInHeap m.heap
+            cases hwf with
+            | wf_var hwf_var =>
+              -- hwf_var : Var.WfInHeap (.free n) m.heap
+              have ih_wf := ih htyping'
+              constructor
+              · intro x
+                cases x with
+                | here =>
+                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+                  exact hwf_var
+                | there x' =>
+                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+                  exact ih_wf.wf_var x'
+              · intro X
+                cases X with
+                | there X' =>
+                  simp [Subst.from_TypeEnv]
+                  exact ih_wf.wf_tvar X'
+              · intro C_var
+                cases C_var with
+                | there C' =>
+                  simp [Subst.from_TypeEnv]
+                  exact ih_wf.wf_cvar C'
+      | tvar S =>
+        -- Type variable binding: doesn't affect term variable substitution
+        cases info with
+        | tvar denot =>
+          unfold EnvTyping at htyping
+          have ⟨_, _, htyping'⟩ := htyping
+          have ih_wf := ih htyping'
+          constructor
+          · intro x
+            cases x with
+            | there x' =>
+              simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+              exact ih_wf.wf_var x'
+          · intro X
+            cases X with
+            | here =>
+              simp [Subst.from_TypeEnv]
+              apply Ty.WfInHeap.wf_top
+            | there X' =>
+              simp [Subst.from_TypeEnv]
+              exact ih_wf.wf_tvar X'
+          · intro C_var
+            cases C_var with
+            | there C' =>
+              simp [Subst.from_TypeEnv]
+              exact ih_wf.wf_cvar C'
+      | cvar B =>
+        -- Capture variable binding: doesn't affect term variable substitution
+        cases info with
+        | cvar access =>
+          unfold EnvTyping at htyping
+          have ⟨_, htyping'⟩ := htyping
+          have ih_wf := ih htyping'
+          constructor
+          · intro x
+            cases x with
+            | there x' =>
+              simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+              exact ih_wf.wf_var x'
+          · intro X
+            cases X with
+            | there X' =>
+              simp [Subst.from_TypeEnv]
+              exact ih_wf.wf_tvar X'
+          · intro C_var
+            cases C_var with
+            | here =>
+              simp [Subst.from_TypeEnv]
+              apply CaptureSet.WfInHeap.wf_empty
+            | there C' =>
+              simp [Subst.from_TypeEnv]
+              exact ih_wf.wf_cvar C'
+
 def Denot.Equiv (d1 d2 : Denot) : Prop :=
   ∀ m e,
     (d1 m e) ↔ (d2 m e)
