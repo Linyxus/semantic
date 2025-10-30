@@ -100,8 +100,13 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   · simp [Exp.subst]; constructor
   · simp [Denot.as_mpost]
     constructor
-    · -- Prove well-formedness
-      sorry  -- TODO: Prove WfInHeap for substituted capture set, type, and body
+    · -- Prove well-formedness: closed expressions remain well-formed after substitution
+      -- Strategy: (1) closed => wf, (2) typed env => wf subst, (3) wf subst preserves wf
+      apply Exp.wf_subst
+      · -- Closedness implies well-formedness in any heap
+        apply Exp.wf_of_closed hclosed_abs
+      · -- The substitution from typed environment is well-formed
+        apply from_TypeEnv_wf_in_heap hts
     · -- Provide the arrow denotation structure
       use (Cf.subst (Subst.from_TypeEnv env)), (T1.subst (Subst.from_TypeEnv env)),
         (e.subst (Subst.from_TypeEnv env).lift)
