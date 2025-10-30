@@ -86,4 +86,22 @@ inductive Exp.IsAns : Exp {} -> Prop where
 | is_var :
   Exp.IsAns (.var x)
 
+/-- Closedness judgements. A syntax construct is closed if it contains no heap pointers. -/
+
+inductive Exp.IsClosed : Exp s -> Prop where
+| var : Var.IsClosed x -> Exp.IsClosed (.var x)
+| abs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
+    Exp.IsClosed (.abs cs T e)
+| tabs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
+    Exp.IsClosed (.tabs cs T e)
+| cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
+    Exp.IsClosed (.cabs cs cb e)
+| pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
+| app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
+| tapp : Var.IsClosed x -> Ty.IsClosed T -> Exp.IsClosed (.tapp x T)
+| capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
+| letin : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.letin e1 e2)
+| unpack : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack e1 e2)
+| unit : Exp.IsClosed .unit
+
 end CC

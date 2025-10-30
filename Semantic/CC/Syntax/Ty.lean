@@ -96,4 +96,25 @@ theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
 def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .capt C _ => C
 
+/-- Closedness judgements. A syntax construct is closed if it contains no heap pointers. -/
+
+inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
+| unbound : CaptureBound.IsClosed .unbound
+| bound : CaptureSet.IsClosed cs -> CaptureBound.IsClosed (.bound cs)
+
+inductive Ty.IsClosed : Ty sort s -> Prop where
+-- shape types
+| top : Ty.IsClosed .top
+| tvar : Ty.IsClosed (.tvar x)
+| arrow : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.arrow T1 T2)
+| poly : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.poly T1 T2)
+| cpoly : CaptureBound.IsClosed cb -> Ty.IsClosed T -> Ty.IsClosed (.cpoly cb T)
+| unit : Ty.IsClosed .unit
+| cap : Ty.IsClosed .cap
+-- capturing types
+| capt : CaptureSet.IsClosed cs -> Ty.IsClosed S -> Ty.IsClosed (.capt cs S)
+-- existential types
+| exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
+| typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
+
 end CC
