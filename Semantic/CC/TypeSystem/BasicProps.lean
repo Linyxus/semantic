@@ -102,6 +102,7 @@ theorem HasType.exp_is_closed
   case pack C x T => sorry
   case app => sorry
   case tapp => sorry
+  case capp => sorry
   case letin ih1 ih2 => sorry
   case unpack ih1 ih2 => sorry
   case invoke => sorry
@@ -125,6 +126,7 @@ theorem HasType.result_is_closed
     sorry
   case tapp =>
     sorry
+  case capp => sorry
   case letin ih1 ih2 =>
     sorry
   case unpack ih1 ih2 =>
