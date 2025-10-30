@@ -260,6 +260,96 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
 | wf_unit :
   Exp.WfInHeap .unit H
 
+-- Closedness implies well-formedness in any heap
+
+/-- Closedness implies well-formedness for variables. -/
+theorem Var.wf_of_closed {x : Var k s} {H : Heap}
+  (hclosed : x.IsClosed) :
+  Var.WfInHeap x H := by
+  cases hclosed
+  apply Var.WfInHeap.wf_bound
+
+/-- Closedness implies well-formedness for capture sets. -/
+theorem CaptureSet.wf_of_closed {cs : CaptureSet s} {H : Heap}
+  (hclosed : cs.IsClosed) :
+  CaptureSet.WfInHeap cs H := by
+  induction hclosed with
+  | empty => apply CaptureSet.WfInHeap.wf_empty
+  | union _ _ ih1 ih2 => apply CaptureSet.WfInHeap.wf_union <;> assumption
+  | cvar => apply CaptureSet.WfInHeap.wf_cvar
+  | var_bound => apply CaptureSet.WfInHeap.wf_var_bound
+
+/-- Closedness implies well-formedness for capture bounds. -/
+theorem CaptureBound.wf_of_closed {cb : CaptureBound s} {H : Heap}
+  (hclosed : cb.IsClosed) :
+  CaptureBound.WfInHeap cb H := by
+  cases hclosed with
+  | unbound => apply CaptureBound.WfInHeap.wf_unbound
+  | bound hcs => apply CaptureBound.WfInHeap.wf_bound; exact CaptureSet.wf_of_closed hcs
+
+/-- Closedness implies well-formedness for types. -/
+theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
+  (hclosed : T.IsClosed) :
+  Ty.WfInHeap T H := by
+  induction hclosed with
+  | top => apply Ty.WfInHeap.wf_top
+  | tvar => apply Ty.WfInHeap.wf_tvar
+  | arrow _ _ ih1 ih2 => apply Ty.WfInHeap.wf_arrow <;> assumption
+  | poly _ _ ih1 ih2 => apply Ty.WfInHeap.wf_poly <;> assumption
+  | cpoly hcb _ ih =>
+    apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_of_closed hcb
+    · exact ih
+  | unit => apply Ty.WfInHeap.wf_unit
+  | cap => apply Ty.WfInHeap.wf_cap
+  | capt hcs _ ih =>
+    apply Ty.WfInHeap.wf_capt
+    · exact CaptureSet.wf_of_closed hcs
+    · exact ih
+  | exi _ ih => apply Ty.WfInHeap.wf_exi; exact ih
+  | typ _ ih => apply Ty.WfInHeap.wf_typ; exact ih
+
+/-- Closedness implies well-formedness for expressions. -/
+theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
+  (hclosed : e.IsClosed) :
+  Exp.WfInHeap e H := by
+  induction hclosed with
+  | var hx => apply Exp.WfInHeap.wf_var; exact Var.wf_of_closed hx
+  | abs hcs hT _ ih =>
+    apply Exp.WfInHeap.wf_abs
+    · exact CaptureSet.wf_of_closed hcs
+    · exact Ty.wf_of_closed hT
+    · exact ih
+  | tabs hcs hT _ ih =>
+    apply Exp.WfInHeap.wf_tabs
+    · exact CaptureSet.wf_of_closed hcs
+    · exact Ty.wf_of_closed hT
+    · exact ih
+  | cabs hcs hcb _ ih =>
+    apply Exp.WfInHeap.wf_cabs
+    · exact CaptureSet.wf_of_closed hcs
+    · exact CaptureBound.wf_of_closed hcb
+    · exact ih
+  | pack hcs hx =>
+    apply Exp.WfInHeap.wf_pack
+    · exact CaptureSet.wf_of_closed hcs
+    · exact Var.wf_of_closed hx
+  | app hx hy =>
+    apply Exp.WfInHeap.wf_app
+    · exact Var.wf_of_closed hx
+    · exact Var.wf_of_closed hy
+  | tapp hx hT =>
+    apply Exp.WfInHeap.wf_tapp
+    · exact Var.wf_of_closed hx
+    · exact Ty.wf_of_closed hT
+  | capp hx hcs =>
+    apply Exp.WfInHeap.wf_capp
+    · exact Var.wf_of_closed hx
+    · exact CaptureSet.wf_of_closed hcs
+  | letin _ _ ih1 ih2 => apply Exp.WfInHeap.wf_letin <;> assumption
+  | unpack _ _ ih1 ih2 => apply Exp.WfInHeap.wf_unpack <;> assumption
+  | unit => apply Exp.WfInHeap.wf_unit
+
 -- Monotonicity theorems: WfInHeap is preserved under heap subsumption
 
 theorem Var.wf_monotonic
