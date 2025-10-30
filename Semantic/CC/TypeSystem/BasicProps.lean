@@ -78,6 +78,28 @@ theorem CaptureSet.rename_closed {cs : CaptureSet s1} {f : Rename s1 s2} :
   case cvar => exact IsClosed.cvar
   case var_bound => exact IsClosed.var_bound
 
+/-- If a renamed capture set is closed, the original is also closed. -/
+theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
+    (cs.rename f).IsClosed -> cs.IsClosed := by
+  intro h
+  induction cs
+  case empty => exact IsClosed.empty
+  case union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.rename] at h
+    cases h
+    rename_i h1 h2
+    exact IsClosed.union (ih1 h1) (ih2 h2)
+  case cvar => exact IsClosed.cvar
+  case var v =>
+    cases v
+    case bound => exact IsClosed.var_bound
+    case free =>
+      -- If cs = .var (.free h), then cs.rename f = .var (.free h)
+      -- But h says (cs.rename f).IsClosed, which means no free heap variables
+      -- This is a contradiction
+      simp [CaptureSet.rename, Var.rename] at h
+      cases h
+
 /-- Renaming preserves closedness of capture bounds. -/
 theorem CaptureBound.rename_closed {cb : CaptureBound s1} {f : Rename s1 s2} :
     cb.IsClosed -> (cb.rename f).IsClosed := by
@@ -95,14 +117,75 @@ theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
   e.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [Exp.IsClosed])
-  case var => sorry
-  case abs T1 ih => sorry
-  case tabs S ih => sorry
-  case cabs cb ih => sorry
-  case pack C x T => sorry
-  case app => sorry
-  case tapp => sorry
-  case capp => sorry
-  case letin ih1 ih2 => sorry
-  case unpack ih1 ih2 => sorry
-  case invoke => sorry
+  case var => constructor; constructor
+  case abs T1 ih =>
+    rename_i T1_closed
+    constructor
+    · -- cs✝.IsClosed
+      have h_use := HasType.use_set_is_closed T1
+      cases h_use with
+      | union h_cs_renamed h_var =>
+        exact CaptureSet.rename_closed_inv h_cs_renamed
+    · -- T1✝.IsClosed
+      exact T1_closed
+    · -- e✝.IsClosed
+      exact ih
+  case tabs S ih =>
+    rename_i S_closed
+    constructor
+    · -- cs✝.IsClosed
+      have h_use := HasType.use_set_is_closed S
+      exact CaptureSet.rename_closed_inv h_use
+    · -- S✝.IsClosed (the shape type bound)
+      exact S_closed
+    · -- e✝.IsClosed
+      exact ih
+  case cabs cb ih =>
+    rename_i cb_closed
+    constructor
+    · -- cs✝.IsClosed
+      have h_use := HasType.use_set_is_closed cb
+      exact CaptureSet.rename_closed_inv h_use
+    · -- cb✝.IsClosed
+      exact cb_closed
+    · -- e✝.IsClosed
+      exact ih
+  case pack C x T =>
+    constructor
+    · -- C✝.IsClosed
+      assumption
+    · -- Var.IsClosed x✝
+      cases T
+      assumption
+  case app =>
+    rename_i ih_x ih_y
+    constructor
+    · -- Var.IsClosed x✝
+      cases ih_x; assumption
+    · -- Var.IsClosed y✝
+      cases ih_y; assumption
+  case tapp =>
+    constructor
+    · -- Var.IsClosed x✝
+      rename_i _ ih_x
+      cases ih_x; assumption
+    · -- Ty.IsClosed S✝
+      assumption
+  case capp =>
+    constructor
+    · -- Var.IsClosed x✝
+      rename_i _ ih_x
+      cases ih_x; assumption
+    · -- CaptureSet.IsClosed D✝
+      assumption
+  case letin ih1 ih2 => constructor <;> assumption
+  case unpack ih1 ih2 => constructor <;> assumption
+  case invoke =>
+    rename_i ih_x ih_y
+    constructor
+    · -- Var.IsClosed x✝
+      cases ih_x; assumption
+    · -- Var.IsClosed y✝
+      cases ih_y; assumption
+
+end CC
