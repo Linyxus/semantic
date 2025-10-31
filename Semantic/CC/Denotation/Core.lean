@@ -186,7 +186,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg (reachability_of_loc m' arg))
-        T2 (A ∪ T1.captureSet.denot env) m' (t0.subst (Subst.openVar (.free arg))))
+        T2 (A ∪ (reachability_of_loc m' arg)) m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
   ∃ cs S0 t0,
     resolve m.heap e = some (.tabs cs S0 t0) ∧
