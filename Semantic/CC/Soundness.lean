@@ -464,6 +464,8 @@ theorem sem_typ_app
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, Ty.exi_exp_denot]
 
   -- Apply function to argument
+  -- Note: hfun returns Ty.exi_exp_denot with capability set (A ∪ reachability_of_loc store arg)
+  -- where A = (env.lookup_var x).2
   have happ := hfun store fy (Memory.subsumes_refl store) h2'
 
   -- Key insight: The capability sets from EnvTyping match reachability
@@ -472,35 +474,45 @@ theorem sem_typ_app
   have hreach_y : (env.lookup_var y).2 = reachability_of_loc store fy :=
     typed_env_reachability_eq hts hy_lookup
 
-  -- Rewrite capability sets to reachability
+  -- Rewrite capability sets to reachability in the goal
   rw [hreach_x, hreach_y]
 
-  -- Now use the opening lemma
+  -- The opening lemma relates extended environment to substituted type
   have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (T:=T2)
 
-  -- Note: interp_var (.bound y) = (env.lookup_var y).1, (env.lookup_var y).2
-  have fy_eq : fy = (interp_var env (.bound y)).1 := by simp [interp_var]
-  have reach_eq : reachability_of_loc store fy = (interp_var env (.bound y)).2 := by
+  -- Simplify CaptureSet.denot in happ to get (env.lookup_var x).2
+  simp only [CaptureSet.denot] at happ
+
+  -- Now rewrite to use reachability
+  rw [hreach_x] at happ
+
+  -- Now happ has type:
+  -- Ty.exi_exp_denot (env.extend_var fy (reachability_of_loc store fy)) T2
+  --   (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
+  --   (e0.subst (Subst.openVar (Var.free fy)))
+
+  -- Rewrite the environment extension to use interp_var
+  have env_ext_eq : env.extend_var fy (reachability_of_loc store fy) =
+                    env.extend_var (interp_var env (Var.bound y)).1 (interp_var env (Var.bound y)).2 := by
     simp [interp_var]
-    exact hreach_y.symm
+    rw [← hreach_y]
 
-  -- Rewrite happ using these equalities
-  rw [fy_eq, reach_eq] at happ
+  rw [env_ext_eq] at happ
 
-  -- Also need to match the capability set in happ
-  have cap_eq : CaptureSet.denot env (CaptureSet.var (.bound x)) =
-                reachability_of_loc store (env.lookup_var x).1 := by
-    simp [CaptureSet.denot, interp_var]
-    exact hreach_x
+  -- Now apply the opening equivalence to convert from extended environment to substitution
+  -- happ : Ty.exi_exp_denot (env.extend_var (interp_var env (Var.bound y)).1 (interp_var env (Var.bound y)).2) T2
+  --          (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
+  --          (e0.subst (Subst.openVar (Var.free fy)))
 
-  rw [cap_eq] at happ
+  have happ' := (heqv (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
+                      (e0.subst (Subst.openVar (Var.free fy)))).1 happ
 
-  -- Now happ has the right form to apply heqv
-  -- But heqv is about denotations, and happ is an Eval which is a denotation
-  simp [Ty.exi_exp_denot] at happ ⊢
+  -- happ' : Ty.exi_exp_denot env (T2.subst (Subst.openVar (Var.bound y)))
+  --           (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
+  --           (e0.subst (Subst.openVar (Var.free fy)))
 
-  -- Apply opening equivalence
-  have happ' := (heqv _ _).1 happ
+  -- Unfold to get Eval
+  simp [Ty.exi_exp_denot] at happ'
 
   -- Apply eval_apply
   apply Eval.eval_apply hlk happ'
