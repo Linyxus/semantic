@@ -193,6 +193,27 @@ theorem HasType.exp_is_closed
 -- More context lookup properties
 
 theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
-  ∃ T, Γ.LookupVar x T := by sorry
+  ∃ T, Γ.LookupVar x T := by
+  cases x with
+  | here =>
+    -- x = here, so s = s₀,,var for some s₀
+    -- Γ : Ctx (s₀,,var), so Γ = push Γ₀ b where b : Binding s₀ .var
+    cases Γ with
+    | push Γ₀ b =>
+      -- Since b : Binding s₀ .var, we have b = .var T₀
+      cases b with
+      | var T₀ =>
+        use T₀.rename Rename.succ
+        apply Ctx.LookupVar.here
+  | there x' =>
+    -- x = there x', so s = s₀,,k for some s₀, k
+    -- Γ : Ctx (s₀,,k), so Γ = push Γ₀ b where b : Binding s₀ k
+    cases Γ with
+    | push Γ₀ b =>
+      -- Recursively apply the theorem to get T₀ such that Γ₀.LookupVar x' T₀
+      obtain ⟨T₀, h⟩ := lookup_var_exists (Γ := Γ₀) (x := x')
+      use T₀.rename Rename.succ
+      apply Ctx.LookupVar.there
+      exact h
 
 end CC
