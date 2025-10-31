@@ -190,4 +190,9 @@ theorem HasType.exp_is_closed
     · -- Var.IsClosed y✝
       cases ih_y; assumption
 
+-- More context lookup properties
+
+theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
+  ∃ T, Γ.LookupVar x T := by sorry
+
 end CC
