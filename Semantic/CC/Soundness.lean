@@ -133,12 +133,12 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
           have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=arg)
             (R:=reachability_of_loc H' arg)) Cf
           exact this.symm
+        -- The variable .here in the extended environment denotes to the reachability we stored
         have hcap_var :
           (CaptureSet.var (.bound .here)).denot
             (env.extend_var arg (reachability_of_loc H' arg))
-          = T1.captureSet.denot env := by
+          = reachability_of_loc H' arg := by
           simp [CaptureSet.denot, TypeEnv.lookup_var, TypeEnv.lookup, TypeEnv.extend_var]
-          sorry  -- TODO: Need lemma relating reachability_of_loc to type's capture set
         rw [← hcap_rename, ← hcap_var]
         simp [CaptureSet.denot]
         exact this
@@ -265,8 +265,8 @@ theorem abs_val_denot_inv {A : CapabilitySet}
       H'.subsumes store ->
       Ty.capt_val_denot env T1 H' (.var (.free arg)) ->
       Ty.exi_exp_denot
-        (env.extend_var arg (T1.captureSet.denot env))
-        T2 (A ∪ T1.captureSet.denot env) H'
+        (env.extend_var arg (reachability_of_loc H' arg))
+        T2 (A ∪ (reachability_of_loc H' arg)) H'
         (e0.subst (Subst.openVar (.free arg)))) := by
   cases x with
   | bound bx => cases bx
@@ -289,9 +289,9 @@ theorem abs_val_denot_inv {A : CapabilitySet}
         use fx, rfl, cs, T0, e0, isVal, reachability
         constructor
         · exact hres
-        · intro H' arg hsub harg
-          -- Need to relate reachability_of_loc to T1.captureSet.denot
-          sorry  -- TODO: Lemma relating reachability_of_loc H' arg = T1.captureSet.denot env
+        · -- The function property directly matches the new denotation
+          intro H' arg hsub harg
+          exact hfun arg H' hsub harg
       | capability =>
         simp at hresolve
 
@@ -424,36 +424,32 @@ theorem sem_typ_app
   simp [Exp.subst, hx_free, hy_free, Ty.exi_exp_denot]
 
   -- Apply the function to the argument
-  -- Note: hfun expects the argument capability set to be T1.captureSet.denot env
+  -- Note: hfun uses reachability_of_loc for the capability set (new denotation)
   have happ := hfun store (interp_var env y).1 (Memory.subsumes_refl store) h2'
 
-  -- PROBLEM 1: Need to relate extended environment to substitution
-  -- The equivalence relates (interp_var env y).2 but we need to show it equals T1.captureSet
-  have hy_capset : (interp_var env y).2 = T1.captureSet.denot env := by
-    sorry  -- Need to prove: typed variables have matching capability sets
-           -- This should follow from EnvTyping and the fact that y has type .typ T1
-
-  -- PROBLEM 2: Need opening lemma for existential types
+  -- PROBLEM 1: Need opening lemma for existential types
   have heqv : ∀ A,
-    Ty.exi_exp_denot (env.extend_var (interp_var env y).1 (T1.captureSet.denot env)) T2 A ≈
+    Ty.exi_exp_denot
+      (env.extend_var (interp_var env y).1 (reachability_of_loc store (interp_var env y).1))
+      T2 A ≈
     Ty.exi_exp_denot env (T2.subst (Subst.openVar y)) A := by
     sorry  -- MISSING LEMMA: open_arg_exi_exp_denot
            -- Should be liftable from open_arg_shape_val_denot
 
   -- Convert using equivalence
   have happ' : Ty.exi_exp_denot env (T2.subst (Subst.openVar y))
-                  (Cx.denot env ∪ T1.captureSet.denot env) store
+                  (Cx.denot env ∪ (reachability_of_loc store (interp_var env y).1)) store
                   (e0.subst (Subst.openVar (.free (interp_var env y).1))) := by
-    have h := heqv (Cx.denot env ∪ T1.captureSet.denot env) store
+    have h := heqv (Cx.denot env ∪ (reachability_of_loc store (interp_var env y).1)) store
                    (e0.subst (Subst.openVar (.free (interp_var env y).1)))
     exact h.1 happ
 
-  -- PROBLEM 3: Capability sets don't match
-  -- happ' uses: (Cx.denot env ∪ T1.captureSet.denot env)
+  -- PROBLEM 2: Capability sets don't match
+  -- happ' uses: (Cx.denot env ∪ reachability_of_loc store (interp_var env y).1)
   -- Goal uses: C.denot env
   -- Need to show these are compatible or use monotonicity
 
-  have hcap : C.denot env ⊆ Cx.denot env ∪ T1.captureSet.denot env := by
+  have hcap : C.denot env ⊆ Cx.denot env ∪ (reachability_of_loc store (interp_var env y).1) := by
     sorry  -- MISSING: capability set relationship from typing
            -- The typing rule has both function and argument with capture set C
            -- But the function's type has capture set Cx

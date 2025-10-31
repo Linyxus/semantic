@@ -161,13 +161,11 @@ def retype_shape_val_denot
       intro arg H' hsub harg
       cases T1
       case capt C S =>
-        simp [Ty.subst, Ty.captureSet] at hd ⊢
-        have hC := retype_captureset_denot ρ C
         have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mpr harg
         specialize hd arg H' hsub harg'
-        rw [hC] at hd
-        exact (ih2 (A ∪ (C.subst σ).denot env2) H' _).mp hd
+        -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
+        exact (ih2 (A ∪ (reachability_of_loc H' arg)) H' _).mp hd
     · intro h
       obtain ⟨cs0, T0, t0, hr, hd⟩ := h
       use cs0, T0, t0
@@ -175,14 +173,11 @@ def retype_shape_val_denot
       intro arg H' hsub harg
       cases T1
       case capt C S =>
-        simp [Ty.subst, Ty.captureSet] at hd ⊢
-        have hC := retype_captureset_denot ρ C
         have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mp harg
         specialize hd arg H' hsub harg'
-        have := (ih2 (A ∪ (C.subst σ).denot env2) H' _).mpr hd
-        rw [← hC] at this
-        exact this
+        -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
+        exact (ih2 (A ∪ (reachability_of_loc H' arg)) H' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := retype_shape_val_denot ρ T1
     intro A s0 e0

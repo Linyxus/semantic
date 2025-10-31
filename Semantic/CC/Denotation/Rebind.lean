@@ -106,29 +106,25 @@ def rebind_shape_val_denot
       use cs, T0, t0
       apply And.intro hr
       intro arg H' hsub harg
-      have hC := rebind_captureset_denot ρ T1.captureSet
       cases T1
       case capt C S =>
-        simp [Ty.captureSet, Ty.rename] at hC hd ⊢
         have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
         have harg' := (ih1 _ _).mpr harg
         specialize hd arg H' hsub harg'
-        rw [hC] at hd
-        exact (ih2 (A ∪ (C.rename f).denot env2) H' _).mp hd
+        -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
+        exact (ih2 (A ∪ (reachability_of_loc H' arg)) H' _).mp hd
     · intro h
       obtain ⟨cs0, T0, t0, hr, hd⟩ := h
       use cs0, T0, t0
       apply And.intro hr
       intro arg H' hsub harg
-      have hC := rebind_captureset_denot ρ T1.captureSet
       cases T1
       case capt C S =>
-        simp [Ty.captureSet, Ty.rename] at hC hd ⊢
         have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
         have harg' := (ih1 _ _).mp harg
         specialize hd arg H' hsub harg'
-        rw [← hC] at hd
-        exact (ih2 (A ∪ C.denot env1) H' _).mpr hd
+        -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
+        exact (ih2 (A ∪ (reachability_of_loc H' arg)) H' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := rebind_shape_val_denot ρ T1
     intro A s0 e0
