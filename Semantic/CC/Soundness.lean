@@ -458,8 +458,7 @@ theorem sem_typ_app
   -- Use capability set monotonicity
   have happ'' : Eval (C.denot env) store (e0.subst (Subst.openVar (.free (interp_var env y).1)))
                   (Ty.exi_val_denot env (T2.subst (Subst.openVar y))).as_mpost := by
-    sorry  -- MISSING LEMMA: Eval monotonicity wrt capability sets
-           -- Need: If A ⊆ B and Eval B H e Q, then Eval A H e Q (under some conditions)
+    sorry  -- Use theorem eval_capability_set_monotonic.
 
   apply Eval.eval_apply hlk happ''
 
