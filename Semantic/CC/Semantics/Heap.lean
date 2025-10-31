@@ -60,6 +60,22 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
 
+theorem subset_preserves_mem {C1 C2 : CapabilitySet} {x : Nat}
+  (hsub : C1 ⊆ C2)
+  (hmem : x ∈ C1) :
+  x ∈ C2 := by
+  induction hsub generalizing x
+  case refl => exact hmem
+  case top => exact mem.here_any
+  case union_left ih1 ih2 =>
+    cases hmem
+    case left h => exact ih1 h
+    case right h => exact ih2 h
+  case union_right_left ih =>
+    exact mem.right (ih hmem)
+  case union_right_right ih =>
+    exact mem.left (ih hmem)
+
 end CapabilitySet
 
 /-- A heap value.

@@ -374,6 +374,31 @@ theorem eval_post_monotonic {Q1 Q2 : Mpost}
 theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   (heval : Eval A1 m e Q)
   (hsub : A1 ⊆ A2) :
-  Eval A2 m e Q := sorry
+  Eval A2 m e Q := by
+  induction heval
+  case eval_val hv hQ =>
+    exact Eval.eval_val hv hQ
+  case eval_var hQ =>
+    exact Eval.eval_var hQ
+  case eval_apply hlookup _ ih =>
+    exact Eval.eval_apply hlookup (ih hsub)
+  case eval_invoke hmem hlookup_x hlookup_y hQ =>
+    exact Eval.eval_invoke (CapabilitySet.subset_preserves_mem hsub hmem) hlookup_x hlookup_y hQ
+  case eval_tapply hlookup _ ih =>
+    exact Eval.eval_tapply hlookup (ih hsub)
+  case eval_capply hlookup _ ih =>
+    exact Eval.eval_capply hlookup (ih hsub)
+  case eval_letin =>
+    rename_i hpred_mono heval_e1 h_val h_var ih_e1 ih_val ih_var
+    apply Eval.eval_letin hpred_mono (ih_e1 hsub)
+    · intro m1 v hs1 hv hwf_v hq1 l' hfresh
+      exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
+    · intro m1 x hs1 hwf_x hq1
+      exact ih_var hs1 hwf_x hq1 hsub
+  case eval_unpack =>
+    rename_i hpred_mono heval_e1 h_val ih_e1 ih_val
+    apply Eval.eval_unpack hpred_mono (ih_e1 hsub)
+    · intro m1 x cs hs1 hwf_x hwf_cs hq1
+      exact ih_val hs1 hwf_x hwf_cs hq1 hsub
 
 end CC
