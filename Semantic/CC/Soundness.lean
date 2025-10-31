@@ -438,15 +438,12 @@ theorem closed_var_inv (x : Var .var {}) :
 -- Helper theorem: For bound variables in a typed environment, the capture set denotation
 -- equals the heap reachability (simplified wrapper, now redundant with typed_env_reachability_eq)
 theorem bound_var_cap_eq_reachability
-  (hts : EnvTyping Γ env store)
-  (hlookup : Ctx.LookupVar Γ x T) :
+  (hts : EnvTyping Γ env store) :
   (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
   typed_env_reachability_eq hts
 
 theorem sem_typ_app
-  {x y : BVar s .var}  -- x and y must be BOUND variables (from typing rule)
-  (hx_lookup : Ctx.LookupVar Γ x (.capt (.var (.bound x)) (.arrow T1 T2)))
-  (hy_lookup : Ctx.LookupVar Γ y T1)
+  {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.arrow T1 T2)))
   (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ T1) :
   ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨ Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
