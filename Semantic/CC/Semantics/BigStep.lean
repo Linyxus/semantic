@@ -371,4 +371,9 @@ theorem eval_post_monotonic {Q1 Q2 : Mpost}
   apply eval_post_monotonic_general _ heval
   apply Mpost.entails_to_entails_after himp
 
+theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
+  (heval : Eval A1 m e Q)
+  (hsub : A1 ⊆ A2) :
+  Eval A2 m e Q := sorry
+
 end CC
