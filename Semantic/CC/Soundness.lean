@@ -2,6 +2,48 @@ import Semantic.CC.Denotation
 import Semantic.CC.Semantics
 namespace CC
 
+theorem typed_env_reachability_eq
+  (hts : EnvTyping Γ env store)
+  (hx : Ctx.LookupVar Γ x T) :
+  (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 := by
+  induction hx generalizing store
+  case here =>
+    cases env; rename_i info0 env0
+    cases info0; rename_i n R
+    simp [EnvTyping] at hts
+    simp [TypeEnv.lookup_var, TypeEnv.lookup]
+    exact hts.2.1
+  case there b =>
+    rename_i k Γ0 x0 T0 binding hlk
+    cases binding
+    case var =>
+      rename_i Tb
+      cases env; rename_i info0 env0
+      cases info0; rename_i n R
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, henv0⟩ := hts
+      have hih := b henv0
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      exact hih
+    case tvar =>
+      rename_i Sb
+      cases env; rename_i info0 env0
+      cases info0; rename_i d
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, henv0⟩ := hts
+      have hih := b henv0
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      exact hih
+    case cvar =>
+      rename_i Bb
+      cases env; rename_i info0 env0
+      cases info0; rename_i A
+      simp [EnvTyping] at hts
+      obtain ⟨_, henv0⟩ := hts
+      have hih := b henv0
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      exact hih
+
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env store)
   (hx : Ctx.LookupVar Γ x T) :
@@ -381,86 +423,87 @@ theorem closed_var_inv (x : Var .var {}) :
 --     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
 --   apply Eval.eval_apply hlk hconv
 
+-- Helper theorem: For bound variables in a typed environment, the capture set denotation
+-- equals the heap reachability
+theorem bound_var_cap_eq_reachability
+  (hts : EnvTyping Γ env store)
+  (hlookup : Ctx.LookupVar Γ x T) :
+  (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
+  typed_env_reachability_eq hts hlookup
+
 theorem sem_typ_app
-  (hx : C # Γ ⊨ .var x : (Ty.capt Cx (.arrow T1 T2)).typ)
-  (hy : C # Γ ⊨ .var y : .typ T1) :
-  C # Γ ⊨ Exp.app x y : T2.subst (Subst.openVar y) := by
+  {x y : BVar s .var}  -- x and y must be BOUND variables (from typing rule)
+  (hx_lookup : Ctx.LookupVar Γ x (.capt (.var (.bound x)) (.arrow T1 T2)))
+  (hy_lookup : Ctx.LookupVar Γ y T1)
+  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.arrow T1 T2)))
+  (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ T1) :
+  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨ Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
   intro env store hts
 
-  -- Apply hx and extract function properties
+  -- Extract function denotation
   have h1 := hx env store hts
-  simp [Exp.subst] at h1
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
-  -- h1' is a conjunction: well-formedness ∧ shape_val_denot
+
+  -- Extract the arrow structure
   have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hfun⟩ := abs_val_denot_inv h1'.2
 
-  -- Apply hy and extract argument properties
+  -- Extract argument denotation
   have h2 := hy env store hts
-  simp [Exp.subst] at h2
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h2
   have h2' := var_exp_denot_inv h2
   simp only [Ty.exi_val_denot] at h2'
 
-  -- Show that after substitution, variables become specific free variables
-  have hx_free : x.subst (Subst.from_TypeEnv env) = .free (interp_var env x).1 := by
-    cases x with
-    | bound bx => simp only [Var.subst, Subst.from_TypeEnv, interp_var]
-    | free fx => simp only [Var.subst, interp_var]
+  -- Determine concrete locations
+  have : fx = (env.lookup_var x).1 := by cases hfx; rfl
+  subst this
+  let fy := (env.lookup_var y).1
 
-  have hy_free : y.subst (Subst.from_TypeEnv env) = .free (interp_var env y).1 := by
-    cases y with
-    | bound bvar => simp only [Var.subst, Subst.from_TypeEnv, interp_var]
-    | free fvar => simp only [Var.subst, interp_var]
+  -- Simplify goal
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, Ty.exi_exp_denot]
 
-  -- Connect with the fx from abs_val_denot_inv
-  rw [hx_free] at hfx
-  have hfx' : fx = (interp_var env x).1 := by cases hfx; rfl
-  subst hfx'
+  -- Apply function to argument
+  have happ := hfun store fy (Memory.subsumes_refl store) h2'
 
-  -- Similarly for y
-  rw [hy_free] at h2'
+  -- Key insight: The capability sets from EnvTyping match reachability
+  have hreach_x : (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
+    typed_env_reachability_eq hts hx_lookup
+  have hreach_y : (env.lookup_var y).2 = reachability_of_loc store fy :=
+    typed_env_reachability_eq hts hy_lookup
 
-  -- Simplify the goal
-  simp [Exp.subst, hx_free, hy_free, Ty.exi_exp_denot]
+  -- Rewrite capability sets to reachability
+  rw [hreach_x, hreach_y]
 
-  -- Apply the function to the argument
-  -- Note: hfun uses reachability_of_loc for the capability set (new denotation)
-  have happ := hfun store (interp_var env y).1 (Memory.subsumes_refl store) h2'
+  -- Now use the opening lemma
+  have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (T:=T2)
 
-  -- PROBLEM 1: Need opening lemma for existential types
-  have heqv : ∀ A,
-    Ty.exi_exp_denot
-      (env.extend_var (interp_var env y).1 (reachability_of_loc store (interp_var env y).1))
-      T2 A ≈
-    Ty.exi_exp_denot env (T2.subst (Subst.openVar y)) A := by
-    sorry  -- MISSING LEMMA: open_arg_exi_exp_denot
-           -- Should be liftable from open_arg_shape_val_denot
+  -- Note: interp_var (.bound y) = (env.lookup_var y).1, (env.lookup_var y).2
+  have fy_eq : fy = (interp_var env (.bound y)).1 := by simp [interp_var]
+  have reach_eq : reachability_of_loc store fy = (interp_var env (.bound y)).2 := by
+    simp [interp_var]
+    exact hreach_y.symm
 
-  -- Convert using equivalence
-  have happ' : Ty.exi_exp_denot env (T2.subst (Subst.openVar y))
-                  (Cx.denot env ∪ (reachability_of_loc store (interp_var env y).1)) store
-                  (e0.subst (Subst.openVar (.free (interp_var env y).1))) := by
-    have h := heqv (Cx.denot env ∪ (reachability_of_loc store (interp_var env y).1)) store
-                   (e0.subst (Subst.openVar (.free (interp_var env y).1)))
-    exact h.1 happ
+  -- Rewrite happ using these equalities
+  rw [fy_eq, reach_eq] at happ
 
-  -- PROBLEM 2: Capability sets don't match
-  -- happ' uses: (Cx.denot env ∪ reachability_of_loc store (interp_var env y).1)
-  -- Goal uses: C.denot env
-  -- Need to show these are compatible or use monotonicity
+  -- Also need to match the capability set in happ
+  have cap_eq : CaptureSet.denot env (CaptureSet.var (.bound x)) =
+                reachability_of_loc store (env.lookup_var x).1 := by
+    simp [CaptureSet.denot, interp_var]
+    exact hreach_x
 
-  have hcap : C.denot env ⊆ Cx.denot env ∪ (reachability_of_loc store (interp_var env y).1) := by
-    sorry  -- MISSING: capability set relationship from typing
-           -- The typing rule has both function and argument with capture set C
-           -- But the function's type has capture set Cx
-           -- Need to understand: does C ⊆ Cx hold? Or something else?
+  rw [cap_eq] at happ
 
-  -- Use capability set monotonicity
-  have happ'' : Eval (C.denot env) store (e0.subst (Subst.openVar (.free (interp_var env y).1)))
-                  (Ty.exi_val_denot env (T2.subst (Subst.openVar y))).as_mpost := by
-    sorry  -- Use theorem eval_capability_set_monotonic.
+  -- Now happ has the right form to apply heqv
+  -- But heqv is about denotations, and happ is an Eval which is a denotation
+  simp [Ty.exi_exp_denot] at happ ⊢
 
-  apply Eval.eval_apply hlk happ''
+  -- Apply opening equivalence
+  have happ' := (heqv _ _).1 happ
+
+  -- Apply eval_apply
+  apply Eval.eval_apply hlk happ'
 
 -- theorem sem_typ_tapp
 --   (ht : Γ ⊨ (.var x) : (.poly S T)) :
@@ -788,7 +831,12 @@ theorem fundamental
     · exact hclosed_e
     · cases hclosed_e; aesop
   case pack => sorry
-  case app => sorry
+  case app =>
+    rename_i hx hy
+    -- The IHs prove closedness of the sub-expressions
+    -- We need to apply them to get semantic typing
+    trace_state
+    sorry
   -- case tapp => grind [sem_typ_tapp]
   -- case capp => grind [sem_typ_capp]
   -- case letin => grind [sem_typ_letin]
