@@ -2,7 +2,8 @@ import Semantic.CC.Denotation
 import Semantic.CC.Semantics
 namespace CC
 
-theorem typed_env_reachability_eq
+-- Auxiliary theorem with explicit lookup witness
+theorem typed_env_reachability_eq_aux
   (hts : EnvTyping Γ env store)
   (hx : Ctx.LookupVar Γ x T) :
   (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 := by
@@ -43,6 +44,17 @@ theorem typed_env_reachability_eq
       have hih := b henv0
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
       exact hih
+
+/-- For bound variables in a typed environment, the capability set component
+    equals the heap reachability at that location.
+
+    This version doesn't require an explicit lookup witness - it's derived
+    automatically using `Ctx.lookup_var_exists`. -/
+theorem typed_env_reachability_eq
+  (hts : EnvTyping Γ env store) :
+  (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 := by
+  obtain ⟨T, hx⟩ := Ctx.lookup_var_exists (Γ := Γ) (x := x)
+  exact typed_env_reachability_eq_aux hts hx
 
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env store)
@@ -424,12 +436,12 @@ theorem closed_var_inv (x : Var .var {}) :
 --   apply Eval.eval_apply hlk hconv
 
 -- Helper theorem: For bound variables in a typed environment, the capture set denotation
--- equals the heap reachability
+-- equals the heap reachability (simplified wrapper, now redundant with typed_env_reachability_eq)
 theorem bound_var_cap_eq_reachability
   (hts : EnvTyping Γ env store)
   (hlookup : Ctx.LookupVar Γ x T) :
   (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
-  typed_env_reachability_eq hts hlookup
+  typed_env_reachability_eq hts
 
 theorem sem_typ_app
   {x y : BVar s .var}  -- x and y must be BOUND variables (from typing rule)
@@ -470,9 +482,9 @@ theorem sem_typ_app
 
   -- Key insight: The capability sets from EnvTyping match reachability
   have hreach_x : (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
-    typed_env_reachability_eq hts hx_lookup
+    typed_env_reachability_eq hts
   have hreach_y : (env.lookup_var y).2 = reachability_of_loc store fy :=
-    typed_env_reachability_eq hts hy_lookup
+    typed_env_reachability_eq hts
 
   -- Rewrite capability sets to reachability in the goal
   rw [hreach_x, hreach_y]
