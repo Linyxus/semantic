@@ -466,7 +466,7 @@ theorem sem_typ_tapp
   -- Apply the polymorphic function to the type argument S
   -- We need to provide: denot.is_proper and denot.ImplyAfter
   have happ := hfun store (Ty.shape_val_denot env S) (Memory.subsumes_refl store)
-    (sorry : (Ty.shape_val_denot env S).is_proper)  -- TODO: need to prove shape_val_denot is proper
+    (shape_val_denot_is_proper hts)  -- Shape type denotations are proper
     (by intro C m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter is reflexive
 
   -- The opening lemma relates extended environment to substituted type

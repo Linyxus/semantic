@@ -1162,4 +1162,16 @@ theorem env_typing_monotonic
 --   intro h'' hsub' e' he'
 --   apply (himp (C.denot env)) h'' hsub' e' he'
 
+/-- If the type environment is well-typed, then the denotation of any shape type is proper.
+
+    A PreDenot is proper if it is both monotonic and transparent. This theorem combines
+    the monotonicity and transparency results for shape type denotations. -/
+theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
+  (hts : EnvTyping Γ env m) :
+  (Ty.shape_val_denot env S).is_proper := by
+  intro C
+  constructor
+  · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
+  · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
+
 end CC
