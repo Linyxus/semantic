@@ -462,7 +462,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar original_cs access =>
           unfold EnvTyping at htyping
-          have ⟨heq, hsub, htyping'⟩ := htyping
+          have ⟨hwf, heq, hsub, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -702,7 +702,7 @@ theorem typed_env_is_monotonic
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨_, _, ht'⟩ := ht
+          have ⟨_, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_monotonic] at ih_result ⊢
           intro x
@@ -759,7 +759,7 @@ theorem typed_env_is_transparent
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨_, _, ht'⟩ := ht
+          have ⟨_, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1022,8 +1022,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       | tapp _ _ => simp [resolve] at hr
       | capp _ _ => simp [resolve] at hr
       | letin _ _ => simp [resolve] at hr
-    · intro m' A0 msub hA0
-      apply hfun m' A0 (Memory.subsumes_trans msub hmem) hA0
+    · intro m' CS hwf msub hA0
+      apply hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0
 
 def capt_val_denot_is_monotonic {env : TypeEnv s}
   (henv : TypeEnv.is_monotonic env)
@@ -1159,12 +1159,14 @@ theorem env_typing_monotonic
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht ⊢
-          have ⟨heq, hsub, ht'⟩ := ht
+          have ⟨hwf, heq, hsub, ht'⟩ := ht
           constructor
-          · exact heq
+          · exact CaptureSet.wf_monotonic hmem hwf
           · constructor
-            · exact hsub
-            · exact ih ht'
+            · exact heq
+            · constructor
+              · exact hsub
+              · exact ih ht'
 
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
 --   ∀ env H,
