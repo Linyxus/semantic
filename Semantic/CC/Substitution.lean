@@ -654,6 +654,28 @@ theorem Subst.weaken_openCVar {C : CaptureSet s} :
   · intro C; rfl
 
 theorem CaptureSet.weaken_openVar {C : CaptureSet (s)} {z : Var .var s} :
-  (C.rename Rename.succ).subst (Subst.openVar z) = C := sorry
+  (C.rename Rename.succ).subst (Subst.openVar z) = C := by
+  calc (C.rename Rename.succ).subst (Subst.openVar z)
+      = (C.subst Rename.succ.asSubst).subst (Subst.openVar z) := by rw [<-CaptureSet.subst_asSubst]
+    _ = C.subst (Rename.succ.asSubst.comp (Subst.openVar z)) := by rw [CaptureSet.subst_comp]
+    _ = C.subst Subst.id := by rw [Subst.weaken_openVar]
+    _ = C := by rw [CaptureSet.subst_id]
+
+theorem CaptureSet.weaken_openTVar {C : CaptureSet (s)} {U : Ty .shape s} :
+  (C.rename Rename.succ).subst (Subst.openTVar U) = C := by
+  calc (C.rename Rename.succ).subst (Subst.openTVar U)
+      = (C.subst Rename.succ.asSubst).subst (Subst.openTVar U) := by rw [<-CaptureSet.subst_asSubst]
+    _ = C.subst (Rename.succ.asSubst.comp (Subst.openTVar U)) := by rw [CaptureSet.subst_comp]
+    _ = C.subst Subst.id := by rw [Subst.weaken_openTVar]
+    _ = C := by rw [CaptureSet.subst_id]
+
+theorem CaptureSet.weaken_openCVar {C : CaptureSet (s)} {C' : CaptureSet s} :
+  (C.rename Rename.succ).subst (Subst.openCVar C') = C := by
+  calc (C.rename Rename.succ).subst (Subst.openCVar C')
+      = (C.subst Rename.succ.asSubst).subst (Subst.openCVar C') := by
+        rw [<-CaptureSet.subst_asSubst]
+    _ = C.subst (Rename.succ.asSubst.comp (Subst.openCVar C')) := by rw [CaptureSet.subst_comp]
+    _ = C.subst Subst.id := by rw [Subst.weaken_openCVar]
+    _ = C := by rw [CaptureSet.subst_id]
 
 end CC
