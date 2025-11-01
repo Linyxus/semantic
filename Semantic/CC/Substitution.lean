@@ -434,10 +434,114 @@ def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
   tvar := fun X => .tvar (f.var X)
   cvar := fun C => .cvar (f.var C)
 
+/-!
+Lifting a renaming and then converting to a substitution is the same as
+converting to a substitution and then lifting the substitution.
+-/
+theorem Rename.asSubst_lift {f : Rename s1 s2} :
+  (f.lift (k:=k)).asSubst = (f.asSubst).lift (k:=k) := by
+  apply Subst.funext
+  · intro x
+    cases x
+    · rfl
+    · rfl
+  · intro X
+    cases X
+    · rfl
+    · rfl
+  · intro C
+    cases C
+    · rfl
+    · rfl
+
 theorem Var.subst_asSubst {x : Var .var s1} {f : Rename s1 s2} :
   x.subst (f.asSubst) = x.rename f := by
   cases x with
   | bound x => rfl
   | free n => rfl
+
+/-!
+Substituting a substitution lifted from a renaming is the same as renaming
+for a capture set.
+-/
+theorem CaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
+  cs.subst (f.asSubst) = cs.rename f := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
+  | var x =>
+    simp [CaptureSet.subst, CaptureSet.rename, Var.subst_asSubst]
+  | cvar C =>
+    simp [CaptureSet.subst, CaptureSet.rename, Rename.asSubst]
+
+theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :
+  cb.subst (f.asSubst) = cb.rename f := by
+  cases cb with
+  | unbound => rfl
+  | bound cs => simp [CaptureBound.subst, CaptureBound.rename, CaptureSet.subst_asSubst]
+
+/-!
+Substituting a substitution lifted from a renaming is the same as renaming
+for a type.
+-/
+theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
+  T.subst (f.asSubst) = T.rename f := by
+  induction T generalizing s2 with
+  | top => rfl
+  | tvar x => simp [Ty.subst, Ty.rename, Rename.asSubst]
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.rename, ih1]
+    rw [<-Rename.asSubst_lift, ih2]
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.rename, ih1]
+    rw [<-Rename.asSubst_lift, ih2]
+  | cpoly cb T ih =>
+    simp [Ty.subst, Ty.rename, CaptureBound.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | unit => rfl
+  | cap => rfl
+  | capt cs T ih =>
+    simp [Ty.subst, Ty.rename, ih, CaptureSet.subst_asSubst]
+  | exi T ih =>
+    simp [Ty.subst, Ty.rename]
+    rw [<-Rename.asSubst_lift, ih]
+  | typ T ih =>
+    simp [Ty.subst, Ty.rename, ih]
+
+/-!
+Substituting a substitution lifted from a renaming is the same as renaming
+for an expression.
+-/
+theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
+  e.subst (f.asSubst) = e.rename f := by
+  induction e generalizing s2 with
+  | var x =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | abs cs T e ih =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | tabs cs T e ih =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | cabs cs cb e ih =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, CaptureBound.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | pack cs x =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
+  | app x y =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | tapp x T =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst, Ty.subst_asSubst]
+  | capp x cs =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst, CaptureSet.subst_asSubst]
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.subst, Exp.rename, ih1]
+    rw [<-Rename.asSubst_lift, ih2]
+  | unpack e1 e2 ih1 ih2 =>
+    simp [Exp.subst, Exp.rename, ih1]
+    rw [<-Rename.asSubst_lift, <-Rename.asSubst_lift, ih2]
+  | unit =>
+    rfl
 
 end CC
