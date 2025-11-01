@@ -429,6 +429,24 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unit => rfl
 
+/-!
+Substituting with the identity substitution is a no-op for a capture set.
+-/
+theorem CaptureSet.subst_id {cs : CaptureSet s} :
+  cs.subst Subst.id = cs := sorry
+
+/-!
+Substituting with the identity substitution is a no-op for a type.
+-/
+theorem Ty.subst_id {T : Ty sort s} :
+  T.subst Subst.id = T := sorry
+
+/-!
+Substituting with the identity substitution is a no-op for an expression.
+-/
+theorem Exp.subst_id {e : Exp s} :
+  e.subst Subst.id = e := sorry
+
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
   var := fun x => .bound (f.var x)
   tvar := fun X => .tvar (f.var X)
@@ -564,5 +582,8 @@ theorem Subst.weaken_openCVar {C : CaptureSet s} :
   · intro x; rfl
   · intro X; rfl
   · intro C; rfl
+
+theorem CaptureSet.weaken_openVar {C : CaptureSet (s)} {z : Var .var s} :
+  (C.rename Rename.succ).subst (Subst.openVar z) = C := sorry
 
 end CC
