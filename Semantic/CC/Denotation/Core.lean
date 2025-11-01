@@ -277,7 +277,8 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.is_proper ∧
   denot.ImplyAfter m ⟦S⟧_[env] ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar _ access), m =>
+| .push Γ (.cvar B), .extend env (.cvar cs access), m =>
+  (cs.denot TypeEnv.empty = access) ∧
   (access ⊆ ⟦B⟧_[env]) ∧
   EnvTyping Γ env m
 
