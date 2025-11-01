@@ -153,9 +153,9 @@ def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
   match Γ.lookup x with
   | .tvar T => T
 
-def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CapabilitySet :=
+def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} × CapabilitySet :=
   match Γ.lookup x with
-  | .cvar _ c => c
+  | .cvar cs c => (cs, c)
 
 def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
 | _, .empty => CapabilitySet.empty
@@ -163,7 +163,7 @@ def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
   (cs1.denot env) ∪ (cs2.denot env)
 | env, .var (.bound x) => (env.lookup_var x).2
 | _, .var (.free x) => {x}
-| env, .cvar c => env.lookup_cvar c
+| env, .cvar c => (env.lookup_cvar c).2
 
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapabilitySet
 | _, .unbound => CapabilitySet.any
@@ -285,7 +285,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x).1
   tvar := fun _ => .top
-  cvar := fun _ => {}
+  cvar := fun c => (env.lookup_cvar c).1
 
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
