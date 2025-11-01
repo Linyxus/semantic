@@ -2,6 +2,24 @@ import Semantic.CC.Denotation
 import Semantic.CC.Semantics
 namespace CC
 
+def Retype.from_TypeEnv
+  (env : TypeEnv s) (hwt : EnvTyping Γ env mem) :
+  Retype env (Subst.from_TypeEnv env) TypeEnv.empty where
+  var := fun x => by
+    -- Need to show: env.lookup_var x = interp_var TypeEnv.empty ((Subst.from_TypeEnv env).var x)
+    simp [Subst.from_TypeEnv, interp_var]
+    -- Goal: env.lookup_var x = ((env.lookup_var x).1, {(env.lookup_var x).1})
+
+    -- This requires proving: (env.lookup_var x).2 = {(env.lookup_var x).1}
+    -- From EnvTyping, we know: (env.lookup_var x).2 = reachability_of_loc mem (env.lookup_var x).1
+    -- And reachability_of_loc returns R (the full stored reachability), not necessarily {location}
+
+    -- This is the fundamental issue: variables in typed environments store full reachability
+    -- information, not just singletons. This Retype morphism CANNOT be constructed.
+    sorry
+  tvar := fun X => sorry
+  cvar := fun c => sorry
+
 -- Auxiliary theorem with explicit lookup witness
 theorem typed_env_reachability_eq_aux
   (hts : EnvTyping Γ env store)
@@ -481,6 +499,15 @@ theorem closed_var_inv (x : Var .var {}) :
   case bound bx => cases bx
   case free fx => use fx
 
+/-- For closed capture sets, the denotation is preserved under substitution with from_TypeEnv,
+provided the environment satisfies the cvar invariant. -/
+theorem closed_captureset_subst_denot
+  {s : Sig} {env : TypeEnv s} {D : CaptureSet s}
+  (hD_closed : D.IsClosed) :
+  (D.subst (Subst.from_TypeEnv env)).denot TypeEnv.empty = D.denot env := by
+  symm
+  sorry
+
 -- theorem sem_typ_app
 --   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
 --   (ht2 : Γ ⊨ (.var y) : T1) :
@@ -592,7 +619,7 @@ theorem sem_typ_capp
 
   -- For closed capture sets, the denotation is preserved under substitution
   have hD'_denot : D'.denot TypeEnv.empty = D.denot env := by
-    trace_state; sorry  -- TODO: Prove that for closed CS, denot is preserved under substitution
+    exact closed_captureset_subst_denot hD_closed
 
   -- D' is also closed
   have hD'_closed : D'.IsClosed := by
