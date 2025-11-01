@@ -846,10 +846,17 @@ theorem fundamental
   case pack => sorry
   case app =>
     rename_i hx hy
-    -- The IHs prove closedness of the sub-expressions
-    -- We need to apply them to get semantic typing
-    trace_state
-    sorry
+    -- From closedness of (app x y), extract that x and y are closed variables
+    cases hclosed_e with
+    | app hx_closed hy_closed =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      cases hy_closed
+      -- Apply IHs to get semantic typing for the variables
+      -- Then apply sem_typ_app theorem
+      exact sem_typ_app
+        (hx (Exp.IsClosed.var Var.IsClosed.bound))
+        (hy (Exp.IsClosed.var Var.IsClosed.bound))
   -- case tapp => grind [sem_typ_tapp]
   -- case capp => grind [sem_typ_capp]
   -- case letin => grind [sem_typ_letin]
