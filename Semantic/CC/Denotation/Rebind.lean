@@ -25,8 +25,8 @@ def Rebind.liftTVar
       exact ρ.var y
 
 def Rebind.liftCVar
-  (ρ : Rebind env1 f env2) :
-  Rebind (env1.extend_cvar c) (f.lift) (env2.extend_cvar c) where
+  (ρ : Rebind env1 f env2) (cs : CaptureSet {}) (c : CapabilitySet) :
+  Rebind (env1.extend_cvar cs c) (f.lift) (env2.extend_cvar cs c) where
   var := fun
     | .here => rfl
     | .there y => by
@@ -57,7 +57,7 @@ theorem rebind_captureset_denot
     simp [CaptureSet.denot, CaptureSet.rename]
     have h := ρ.var c
     cases k : env1.lookup c
-    case cvar c0 =>
+    case cvar cs0 c0 =>
       simp [k] at h
       simp [TypeEnv.lookup_cvar, k, h]
 
@@ -163,7 +163,7 @@ def rebind_shape_val_denot
       apply And.intro hr
       intro H' CS hsub hsub_bound
       let A0 := CS.denot TypeEnv.empty
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar (c:=A0)) T
+      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS A0) T
       specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mp hd
     · intro h
@@ -172,7 +172,7 @@ def rebind_shape_val_denot
       apply And.intro hr
       intro H' CS hsub hsub_bound
       let A0 := CS.denot TypeEnv.empty
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar (c:=A0)) T
+      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS A0) T
       specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mpr hd
 
@@ -205,14 +205,16 @@ def rebind_exi_val_denot
     simp [Ty.exi_val_denot, Ty.rename]
     constructor
     · intro h
-      obtain ⟨A, hval⟩ := h
-      use A
-      have ih := rebind_capt_val_denot (ρ.liftCVar (c:=A)) T
+      obtain ⟨CS, hval⟩ := h
+      use CS
+      let A := CS.denot TypeEnv.empty
+      have ih := rebind_capt_val_denot (ρ.liftCVar CS A) T
       exact (ih s e).mp hval
     · intro h
-      obtain ⟨A, hval⟩ := h
-      use A
-      have ih := rebind_capt_val_denot (ρ.liftCVar (c:=A)) T
+      obtain ⟨CS, hval⟩ := h
+      use CS
+      let A := CS.denot TypeEnv.empty
+      have ih := rebind_capt_val_denot (ρ.liftCVar CS A) T
       exact (ih s e).mpr hval
 
 def rebind_capt_exp_denot
@@ -259,8 +261,8 @@ def Rebind.tweaken {env : TypeEnv s} {d : PreDenot} :
   Rebind env Rename.succ (env.extend_tvar d) where
   var := fun _ => rfl
 
-def Rebind.cweaken {env : TypeEnv s} {c : CapabilitySet} :
-  Rebind env Rename.succ (env.extend_cvar c) where
+def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet} :
+  Rebind env Rename.succ (env.extend_cvar cs c) where
   var := fun _ => rfl
 
 lemma weaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
@@ -287,16 +289,22 @@ lemma tweaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
   Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_tvar d) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.tweaken) (T:=T)
 
-lemma cweaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
-  Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_cvar c) (T.rename Rename.succ) := by
+lemma cweaken_shape_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet}
+  {T : Ty .shape s} :
+  Ty.shape_val_denot env T ≈
+    Ty.shape_val_denot (env.extend_cvar cs c) (T.rename Rename.succ) := by
   apply rebind_shape_val_denot (ρ:=Rebind.cweaken) (T:=T)
 
-lemma cweaken_capt_val_denot {env : TypeEnv s} {T : Ty .capt s} :
-  Ty.capt_val_denot env T ≈ Ty.capt_val_denot (env.extend_cvar c) (T.rename Rename.succ) := by
+lemma cweaken_capt_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet}
+  {T : Ty .capt s} :
+  Ty.capt_val_denot env T ≈
+    Ty.capt_val_denot (env.extend_cvar cs c) (T.rename Rename.succ) := by
   apply rebind_capt_val_denot (ρ:=Rebind.cweaken) (T:=T)
 
-lemma cweaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
-  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_cvar c) (T.rename Rename.succ) := by
+lemma cweaken_exi_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet}
+  {T : Ty .exi s} :
+  Ty.exi_val_denot env T ≈
+    Ty.exi_val_denot (env.extend_cvar cs c) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.cweaken) (T:=T)
 
 end CC
