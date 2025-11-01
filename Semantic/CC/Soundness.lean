@@ -384,6 +384,44 @@ theorem tabs_val_denot_inv {A : CapabilitySet}
       | capability =>
         simp at hresolve
 
+theorem cap_val_denot_inv {A : CapabilitySet}
+  (hv : Ty.shape_val_denot env .cap A store (.var x)) :
+  ∃ fx, x = .free fx ∧ store.heap fx = some .capability ∧ fx ∈ A := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp only [Ty.shape_val_denot, Memory.lookup] at hv
+    obtain ⟨label, heq, hlookup, hmem⟩ := hv
+    have : fx = label := by
+      injection heq with h1
+      rename_i heq_var
+      injection heq_var
+    subst this
+    use fx, rfl, hlookup, hmem
+
+theorem unit_val_denot_inv
+  (hv : Ty.shape_val_denot env .unit A store (.var x)) :
+  ∃ fx, x = .free fx
+    ∧ ∃ hval R,
+      store.heap fx = some (Cell.val ⟨Exp.unit, hval, R⟩) := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp [Ty.shape_val_denot, resolve] at hv
+    generalize hres : store.heap fx = res at hv ⊢
+    cases res
+    case none => simp at hv
+    case some cell =>
+      cases cell with
+      | val hval =>
+        simp at hv
+        cases hval with | mk unwrap isVal reachability =>
+        simp at hv
+        subst hv
+        use fx, rfl, isVal, reachability, hres
+      | capability =>
+        simp at hv
+
 theorem var_subst_is_free {x : BVar s .var} :
   ∃ fx, (Subst.from_TypeEnv env).var x = .free fx := by
   use (env.lookup_var x).1
@@ -564,7 +602,49 @@ theorem sem_typ_invoke
   (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ (.capt (.var (.bound y)) .unit)) :
   ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
     Exp.app (.bound x) (.bound y) : .typ (.capt {} .unit) := by
-  sorry
+  intro env store hts
+
+  -- Extract capability denotation from hx
+  have h1 := hx env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+
+  -- Extract the capability structure
+  have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'.2
+
+  -- Extract unit denotation from hy
+  have h2 := hy env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h2
+  have h2' := var_exp_denot_inv h2
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h2'
+
+  -- Extract the unit structure
+  have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'.2
+
+  -- Determine concrete locations
+  have : fx = (env.lookup_var x).1 := by cases hfx; rfl
+  subst this
+  have : fy = (env.lookup_var y).1 := by cases hfy; rfl
+  subst this
+
+  -- Simplify goal
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
+        Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
+
+  -- Show fx ∈ (env.lookup_var x).2 ∪ (env.lookup_var y).2
+  have hmem : (env.lookup_var x).1 ∈ ((env.lookup_var x).2 ∪ (env.lookup_var y).2) := by
+    simp [CaptureSet.denot] at hmem_cap
+    apply CapabilitySet.mem.left
+    exact hmem_cap
+
+  -- Apply eval_invoke
+  apply Eval.eval_invoke hmem hlk_cap hlk_unit
+
+  -- Show the postcondition holds for unit
+  constructor
+  · exact Exp.WfInHeap.wf_unit
+  · simp [resolve]
 
 -- theorem sem_typ_tapp
 --   (ht : Γ ⊨ (.var x) : (.poly S T)) :
