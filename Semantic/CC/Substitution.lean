@@ -544,4 +544,25 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   | unit =>
     rfl
 
+theorem Subst.weaken_openVar {z : Var .var s} :
+  Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
+  apply Subst.funext
+  · intro x; rfl
+  · intro X; rfl
+  · intro C; rfl
+
+theorem Subst.weaken_openTVar {U : Ty .shape s} :
+  Rename.succ.asSubst.comp (Subst.openTVar U) = Subst.id := by
+  apply Subst.funext
+  · intro x; rfl
+  · intro X; rfl
+  · intro C; rfl
+
+theorem Subst.weaken_openCVar {C : CaptureSet s} :
+  Rename.succ.asSubst.comp (Subst.openCVar C) = Subst.id := by
+  apply Subst.funext
+  · intro x; rfl
+  · intro X; rfl
+  · intro C; rfl
+
 end CC
