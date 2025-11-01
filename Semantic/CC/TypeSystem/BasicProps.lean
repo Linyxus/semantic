@@ -114,6 +114,8 @@ theorem HasType.use_set_is_closed
   induction ht <;> try (solve | constructor | grind only [CaptureSet.IsClosed])
   case app ih_x ih_y =>
     exact CaptureSet.IsClosed.union ih_x ih_y
+  case invoke ih_x ih_y =>
+    exact CaptureSet.IsClosed.union ih_x ih_y
 
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
