@@ -40,7 +40,7 @@ theorem typed_env_reachability_eq_aux
       cases env; rename_i info0 env0
       cases info0; rename_i A
       simp [EnvTyping] at hts
-      obtain ⟨_, henv0⟩ := hts
+      obtain ⟨_, _, _, henv0⟩ := hts
       have hih := b henv0
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
       exact hih
@@ -107,12 +107,12 @@ theorem typed_env_lookup_var
       -- binding is .cvar Bb
       rename_i Bb
       cases env; rename_i info0 env0
-      cases info0; rename_i A
+      cases info0; rename_i cs A
       simp [EnvTyping] at hts
-      obtain ⟨_, henv0⟩ := hts
+      obtain ⟨_, _, _, henv0⟩ := hts
       have hih := b henv0
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      have heqv := cweaken_capt_val_denot (env:=env0) (c:=A) (T:=T0)
+      have heqv := cweaken_capt_val_denot (env:=env0) (cs:=cs) (c:=A) (T:=T0)
       apply (Denot.equiv_to_imply heqv).1
       exact hih
 
@@ -287,25 +287,29 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
       · -- Show that resolve gives back the capture abstraction
         simp [resolve, Exp.subst]
       · -- Show the capture polymorphic function property
-        intro H' CS hsubsume hsub_bound
+        intro H' CS hwf hsubsume hsub_bound
         let A0 := CS.denot TypeEnv.empty
         -- Apply the hypothesis
-        have henv : EnvTyping (Γ,C<:cb) (env.extend_cvar A0) H' := by
+        have henv : EnvTyping (Γ,C<:cb) (env.extend_cvar CS A0) H' := by
           constructor
-          · exact hsub_bound
-          · apply env_typing_monotonic hts hsubsume
-        have this := ht (env.extend_cvar A0) H' henv
+          · exact hwf
+          · constructor
+            · rfl
+            · constructor
+              · exact hsub_bound
+              · apply env_typing_monotonic hts hsubsume
+        have this := ht (env.extend_cvar CS A0) H' henv
         simp [Ty.exi_exp_denot] at this
         -- Need to relate the two expression forms
         have hexp_equiv :
-          (e.subst (Subst.from_TypeEnv (env.extend_cvar A0))) =
+          (e.subst (Subst.from_TypeEnv (env.extend_cvar CS A0))) =
           ((e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar CS)) := by
           sorry  -- TODO: Need lemma from_TypeEnv_weaken_open_cvar for expression equality
         rw [hexp_equiv] at this
         -- Show capability sets match
         have hcap_rename :
-          (Cf.rename Rename.succ).denot (env.extend_cvar A0) = Cf.denot env := by
-          have := rebind_captureset_denot (Rebind.cweaken (env:=env) (c:=A0)) Cf
+          (Cf.rename Rename.succ).denot (env.extend_cvar CS A0) = Cf.denot env := by
+          have := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=CS) (c:=A0)) Cf
           exact this.symm
         rw [← hcap_rename]
         exact this
