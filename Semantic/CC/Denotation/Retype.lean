@@ -61,7 +61,7 @@ theorem Retype.liftVar
   cvar := fun
     | .there C => by
       simp [TypeEnv.extend_var, Subst.lift]
-      change env1.lookup_cvar C = _
+      change (env1.lookup_cvar C).2 = _
       rw [ρ.cvar C]
       apply rebind_captureset_denot Rebind.weaken
 
@@ -94,14 +94,14 @@ theorem Retype.liftTVar
   cvar := fun
     | .there C => by
       simp [TypeEnv.extend_tvar, Subst.lift]
-      change env1.lookup_cvar C = _
+      change (env1.lookup_cvar C).2 = _
       rw [ρ.cvar C]
       apply rebind_captureset_denot Rebind.tweaken
 
 theorem Retype.liftCVar
-  {c : CapabilitySet}
+  {cs : CaptureSet {}} {c : CapabilitySet}
   (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_cvar c) (σ.lift) (env2.extend_cvar c) where
+  Retype (env1.extend_cvar cs c) (σ.lift) (env2.extend_cvar cs c) where
   var := fun
     | .there x => by
       conv => lhs; simp [TypeEnv.extend_cvar, TypeEnv.lookup_var, TypeEnv.lookup]
@@ -126,7 +126,7 @@ theorem Retype.liftCVar
         simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
     | .there C => by
       simp [TypeEnv.extend_cvar, Subst.lift]
-      change env1.lookup_cvar C = _
+      change (env1.lookup_cvar C).2 = _
       rw [ρ.cvar C]
       apply rebind_captureset_denot Rebind.cweaken
 
@@ -216,7 +216,7 @@ def retype_shape_val_denot
       apply And.intro hr
       intro H' CS hsub hsub_bound
       let A0 := CS.denot TypeEnv.empty
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
+      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS) (c:=A0)) T
       specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mp hd
     · intro h
@@ -225,7 +225,7 @@ def retype_shape_val_denot
       apply And.intro hr
       intro H' CS hsub hsub_bound
       let A0 := CS.denot TypeEnv.empty
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (c:=A0)) T
+      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS) (c:=A0)) T
       specialize hd H' CS hsub hsub_bound
       exact (ih2 A H' _).mpr hd
 
@@ -298,14 +298,16 @@ def retype_exi_val_denot
     simp [Ty.exi_val_denot, Ty.subst]
     constructor
     · intro h
-      obtain ⟨A, hval⟩ := h
-      use A
-      have ih := retype_capt_val_denot (ρ.liftCVar (c:=A)) T
+      obtain ⟨CS, hval⟩ := h
+      use CS
+      let A := CS.denot TypeEnv.empty
+      have ih := retype_capt_val_denot (ρ.liftCVar (cs:=CS) (c:=A)) T
       exact (ih s e).mp hval
     · intro h
-      obtain ⟨A, hval⟩ := h
-      use A
-      have ih := retype_capt_val_denot (ρ.liftCVar (c:=A)) T
+      obtain ⟨CS, hval⟩ := h
+      use CS
+      let A := CS.denot TypeEnv.empty
+      have ih := retype_capt_val_denot (ρ.liftCVar (cs:=CS) (c:=A)) T
       exact (ih s e).mpr hval
 
 def retype_capt_exp_denot
@@ -429,27 +431,24 @@ theorem open_targ_exi_exp_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .exi
 
 def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} :
   Retype
-    (env.extend_cvar (C.denot env))
+    (env.extend_cvar .empty (C.denot env))
     (Subst.openCVar C)
     env where
   var := fun x => by cases x; rfl
   tvar := fun
     | .there X => by
       apply PreDenot.eq_to_equiv
-      simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-      simp [Subst.openCVar, Ty.shape_val_denot]
-      rfl
+      simp [TypeEnv.lookup_tvar, Subst.openCVar, TypeEnv.extend_cvar,
+        TypeEnv.lookup, Ty.shape_val_denot]
   cvar := fun
     | .here => by
-      simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
-      simp [Subst.openCVar]
+      simp [TypeEnv.lookup_cvar, Subst.openCVar, TypeEnv.extend_cvar, TypeEnv.lookup]
     | .there C => by
-      simp [TypeEnv.extend_cvar, Subst.openCVar]
-      unfold TypeEnv.lookup_cvar
-      rfl
+      simp [Subst.openCVar, TypeEnv.lookup_cvar, TypeEnv.extend_cvar,
+        TypeEnv.lookup, CaptureSet.denot]
 
 theorem open_carg_shape_val_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .shape (s,C)} :
-  Ty.shape_val_denot (env.extend_cvar (C.denot env)) T ≈
+  Ty.shape_val_denot (env.extend_cvar .empty (C.denot env)) T ≈
     Ty.shape_val_denot env (T.subst (Subst.openCVar C)) := by
   apply retype_shape_val_denot Retype.open_carg
 
