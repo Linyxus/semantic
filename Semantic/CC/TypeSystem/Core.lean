@@ -172,14 +172,14 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType ((.var x) ∪ (.var y)) Γ (.app x y) (T2.subst (Subst.openVar y))
 | tapp {S : Ty .shape s} :
   S.IsClosed ->
-  HasType C Γ (.var x) (.typ (.capt Cx (.poly S T))) ->
+  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) (.poly S T))) ->
   ----------------------------
-  HasType C Γ (.tapp x S) (T.subst (Subst.openTVar S))
+  HasType (.var x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
 | capp {D : CaptureSet s} :
   D.IsClosed ->
-  HasType C Γ (.var x) (.typ (.capt Cx (.cpoly cb T))) ->
+  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) (.cpoly cb T))) ->
   ----------------------------
-  HasType C Γ (.capp x D) (T.subst (Subst.openCVar D))
+  HasType (.var x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin :
   HasType C Γ e1 (.typ T) ->
   HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
