@@ -304,7 +304,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
         have hexp_equiv :
           (e.subst (Subst.from_TypeEnv (env.extend_cvar CS A0))) =
           ((e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar CS)) := by
-          sorry  -- TODO: Need lemma from_TypeEnv_weaken_open_cvar for expression equality
+          exact Exp.from_TypeEnv_weaken_open_cvar.symm
         rw [hexp_equiv] at this
         -- Show capability sets match
         have hcap_rename :

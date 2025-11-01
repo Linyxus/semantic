@@ -345,9 +345,10 @@ theorem Exp.from_TypeEnv_weaken_open_tvar
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_tvar]
 
-theorem Subst.from_TypeEnv_weaken_open_cvar {env : TypeEnv s} {c : CapabilitySet} :
-  (Subst.from_TypeEnv env).lift.comp (Subst.openCVar .empty) =
-    Subst.from_TypeEnv (env.extend_cvar .empty c) := by
+theorem Subst.from_TypeEnv_weaken_open_cvar
+  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet} :
+  (Subst.from_TypeEnv env).lift.comp (Subst.openCVar cs) =
+    Subst.from_TypeEnv (env.extend_cvar cs c) := by
   apply Subst.funext
   · intro x
     cases x
@@ -364,9 +365,9 @@ theorem Subst.from_TypeEnv_weaken_open_cvar {env : TypeEnv s} {c : CapabilitySet
       exact CaptureSet.weaken_openCVar
 
 theorem Exp.from_TypeEnv_weaken_open_cvar
-  {env : TypeEnv s} {c : CapabilitySet} {e : Exp (s,C)} :
-  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar .empty) =
-    e.subst (Subst.from_TypeEnv (env.extend_cvar .empty c)) := by
+  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet} {e : Exp (s,C)} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar cs) =
+    e.subst (Subst.from_TypeEnv (env.extend_cvar cs c)) := by
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_cvar]
 
