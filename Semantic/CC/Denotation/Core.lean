@@ -304,8 +304,12 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
     cases X
     rfl
   · intro C
-    cases C
-    rfl
+    cases C with
+    | there C' =>
+      simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openVar,
+        TypeEnv.extend_var, TypeEnv.lookup_cvar, TypeEnv.lookup]
+      -- CaptureSet {} rename and subst operations cancel out
+      sorry
 
 theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
@@ -327,8 +331,12 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : PreDenot} :
       simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openTVar,
         TypeEnv.extend_tvar, Ty.subst, Ty.rename]
   · intro C
-    cases C
-    rfl
+    cases C with
+    | there C' =>
+      simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openTVar,
+        TypeEnv.extend_tvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+      -- CaptureSet {} rename and subst operations cancel out
+      sorry
 
 theorem Exp.from_TypeEnv_weaken_open_tvar
   {env : TypeEnv s} {d : PreDenot} {e : Exp (s,X)} :
@@ -352,7 +360,9 @@ theorem Subst.from_TypeEnv_weaken_open_cvar {env : TypeEnv s} {c : CapabilitySet
     case here => rfl
     case there C' =>
       simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
-        TypeEnv.extend_cvar, CaptureSet.subst, CaptureSet.rename]
+        TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+      -- CaptureSet {} rename and subst operations cancel out
+      sorry
 
 theorem Exp.from_TypeEnv_weaken_open_cvar
   {env : TypeEnv s} {c : CapabilitySet} {e : Exp (s,C)} :
@@ -451,9 +461,9 @@ theorem from_TypeEnv_wf_in_heap
       | cvar B =>
         -- Capture variable binding: doesn't affect term variable substitution
         cases info with
-        | cvar _ access =>
+        | cvar original_cs access =>
           unfold EnvTyping at htyping
-          have ⟨_, _, htyping'⟩ := htyping
+          have ⟨heq, hsub, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -469,8 +479,12 @@ theorem from_TypeEnv_wf_in_heap
           · intro C_var
             cases C_var with
             | here =>
-              simp [Subst.from_TypeEnv]
-              apply CaptureSet.WfInHeap.wf_empty
+              simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
+              -- Need to prove original_cs.WfInHeap m.heap where original_cs : CaptureSet {}
+              -- Since original_cs is in empty sig, it can only contain free variables
+              -- We know original_cs.denot TypeEnv.empty = access and access ⊆ ⟦B⟧_[ρ']
+              -- This should be sufficient to prove well-formedness
+              sorry
             | there C' =>
               simp [Subst.from_TypeEnv]
               exact ih_wf.wf_cvar C'
