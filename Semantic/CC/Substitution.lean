@@ -429,23 +429,93 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unit => rfl
 
+theorem Var.subst_id {x : Var .var s} :
+  x.subst Subst.id = x := by
+  cases x with
+  | bound x => rfl
+  | free n => rfl
+
 /-!
 Substituting with the identity substitution is a no-op for a capture set.
 -/
 theorem CaptureSet.subst_id {cs : CaptureSet s} :
-  cs.subst Subst.id = cs := sorry
+  cs.subst Subst.id = cs := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.subst, ih1, ih2]
+  | var x =>
+    simp [CaptureSet.subst, Var.subst_id]
+  | cvar C =>
+    simp [CaptureSet.subst, Subst.id]
+
+theorem CaptureBound.subst_id {cb : CaptureBound s} :
+  cb.subst Subst.id = cb := by
+  cases cb with
+  | unbound => rfl
+  | bound cs => simp [CaptureBound.subst, CaptureSet.subst_id]
+
+theorem Subst.lift_id :
+  (Subst.id (s:=s)).lift (k:=k) = Subst.id := by
+  apply Subst.funext
+  · intro x
+    cases x <;> rfl
+  · intro X
+    cases X <;> rfl
+  · intro C
+    cases C <;> rfl
 
 /-!
 Substituting with the identity substitution is a no-op for a type.
 -/
 theorem Ty.subst_id {T : Ty sort s} :
-  T.subst Subst.id = T := sorry
+  T.subst Subst.id = T := by
+  induction T with
+  | top => rfl
+  | tvar x => simp [Ty.subst, Subst.id]
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.subst, ih1, ih2, Subst.lift_id]
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.subst, ih1, ih2, Subst.lift_id]
+  | cpoly cb T ih =>
+    simp [Ty.subst, ih, Subst.lift_id, CaptureBound.subst_id]
+  | unit => rfl
+  | cap => rfl
+  | capt cs T ih =>
+    simp [Ty.subst, ih, CaptureSet.subst_id]
+  | exi T ih =>
+    simp [Ty.subst, ih, Subst.lift_id]
+  | typ T ih =>
+    simp [Ty.subst, ih]
 
 /-!
 Substituting with the identity substitution is a no-op for an expression.
 -/
 theorem Exp.subst_id {e : Exp s} :
-  e.subst Subst.id = e := sorry
+  e.subst Subst.id = e := by
+  induction e with
+  | var x =>
+    simp [Exp.subst, Var.subst_id]
+  | abs cs T e ih =>
+    simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
+  | tabs cs T e ih =>
+    simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
+  | cabs cs cb e ih =>
+    simp [Exp.subst, CaptureSet.subst_id, CaptureBound.subst_id, ih, Subst.lift_id]
+  | pack cs x =>
+    simp [Exp.subst, CaptureSet.subst_id, Var.subst_id]
+  | app x y =>
+    simp [Exp.subst, Var.subst_id]
+  | tapp x T =>
+    simp [Exp.subst, Var.subst_id, Ty.subst_id]
+  | capp x cs =>
+    simp [Exp.subst, Var.subst_id, CaptureSet.subst_id]
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.subst, ih1, ih2, Subst.lift_id]
+  | unpack e1 e2 ih1 ih2 =>
+    simp [Exp.subst, ih1, ih2, Subst.lift_id]
+  | unit =>
+    rfl
 
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
   var := fun x => .bound (f.var x)
