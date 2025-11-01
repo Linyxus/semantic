@@ -388,6 +388,42 @@ theorem tabs_val_denot_inv {A : CapabilitySet}
       | capability =>
         simp at hresolve
 
+theorem cabs_val_denot_inv {A : CapabilitySet}
+  (hv : Ty.shape_val_denot env (.cpoly B T) A store (.var x)) :
+  ∃ fx, x = .free fx
+    ∧ ∃ cs B0 e0 hval R,
+      store.heap fx = some (Cell.val ⟨Exp.cabs cs B0 e0, hval, R⟩)
+    ∧ (∀ (m' : Memory) (CS : CaptureSet {}),
+      CS.WfInHeap m'.heap ->
+      let A0 := CS.denot TypeEnv.empty
+      m'.subsumes store ->
+      (A0 ⊆ B.denot env) ->
+      Ty.exi_exp_denot
+        (env.extend_cvar CS A0)
+        T A m'
+        (e0.subst (Subst.openCVar CS))) := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp [Ty.shape_val_denot, resolve] at hv
+    obtain ⟨cs, B0, e0, hresolve, hfun⟩ := hv
+    -- Analyze what's in the store at fx
+    generalize hres : store.heap fx = res at hresolve ⊢
+    cases res
+    case none => simp at hresolve
+    case some cell =>
+      -- Match on the cell to extract HeapVal
+      cases cell with
+      | val hval =>
+        -- hval : HeapVal, hresolve should relate to hval.unwrap
+        simp at hresolve
+        cases hval with | mk unwrap isVal reachability =>
+        simp at hresolve
+        subst hresolve
+        use fx, rfl, cs, B0, e0, isVal, reachability, hres, hfun
+      | capability =>
+        simp at hresolve
+
 theorem cap_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env .cap A store (.var x)) :
   ∃ fx, x = .free fx ∧ store.heap fx = some .capability ∧ fx ∈ A := by
@@ -533,7 +569,66 @@ theorem sem_typ_capp
   (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) :
     .typ (.capt (.var (.bound x)) (.cpoly cb T))) :
   (.var (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
-  sorry
+  intro env store hts
+
+  -- Extract function denotation
+  have h1 := hx env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+
+  -- Extract the cpoly structure
+  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hfun⟩ := cabs_val_denot_inv h1'.2
+
+  -- Determine concrete location
+  have : fx = (env.lookup_var x).1 := by cases hfx; rfl
+  subst this
+
+  -- Simplify goal
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot]
+
+  -- After substitution, D becomes a closed capture set
+  let D' := D.subst (Subst.from_TypeEnv env)
+
+  -- For closed capture sets, the denotation is preserved under substitution
+  have hD'_denot : D'.denot TypeEnv.empty = D.denot env := by
+    trace_state; sorry  -- TODO: Prove that for closed CS, denot is preserved under substitution
+
+  -- D' is also closed
+  have hD'_closed : D'.IsClosed := by
+    sorry  -- TODO: Prove that closedness is preserved under substitution
+
+  -- Apply the polymorphic function to the capture argument D'
+  have happ := hfun store D'
+    (CaptureSet.wf_of_closed hD'_closed)  -- Closed capture sets are well-formed
+    (Memory.subsumes_refl store)          -- Memory subsumes itself
+    sorry  -- TODO: Prove that D'.denot TypeEnv.empty ⊆ cb.denot env
+           -- With hD'_denot, this becomes: D.denot env ⊆ cb.denot env
+
+  -- Rewrite using the denotation equality
+  rw [hD'_denot] at happ
+
+  -- Now happ has type with env.extend_cvar D' (D.denot env)
+  -- But we need env.extend_cvar .empty (D.denot env) to use the opening lemma
+
+  -- The two environments are semantically equivalent (same denotation)
+  have henv_equiv : ∀ T A m e,
+    Ty.exi_exp_denot (env.extend_cvar D' (D.denot env)) T A m e ↔
+    Ty.exi_exp_denot (env.extend_cvar .empty (D.denot env)) T A m e := by
+    sorry  -- TODO: Environments differing only in syntactic CS (not denotation) are equivalent
+
+  -- Use the equivalence to rewrite happ
+  have happ2 := (henv_equiv T (env.lookup_var x).2 store (e0.subst (Subst.openCVar D'))).1 happ
+
+  -- Now apply the opening lemma
+  have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T)
+
+  -- Convert using the equivalence
+  have happ3 := (heqv (env.lookup_var x).2 store (e0.subst (Subst.openCVar D'))).1 happ2
+
+  simp [Ty.exi_exp_denot] at happ3
+
+  apply Eval.eval_capply hlk happ3
 
 theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)

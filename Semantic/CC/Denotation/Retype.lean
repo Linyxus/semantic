@@ -452,4 +452,14 @@ theorem open_carg_shape_val_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .
     Ty.shape_val_denot env (T.subst (Subst.openCVar C)) := by
   apply retype_shape_val_denot Retype.open_carg
 
+theorem open_carg_exi_val_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} :
+  Ty.exi_val_denot (env.extend_cvar .empty (C.denot env)) T ≈
+    Ty.exi_val_denot env (T.subst (Subst.openCVar C)) := by
+  apply retype_exi_val_denot Retype.open_carg
+
+theorem open_carg_exi_exp_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} :
+  Ty.exi_exp_denot (env.extend_cvar .empty (C.denot env)) T ≈
+    Ty.exi_exp_denot env (T.subst (Subst.openCVar C)) := by
+  apply retype_exi_exp_denot Retype.open_carg
+
 end CC
