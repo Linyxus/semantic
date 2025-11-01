@@ -308,8 +308,7 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
     | there C' =>
       simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openVar,
         TypeEnv.extend_var, TypeEnv.lookup_cvar, TypeEnv.lookup]
-      -- CaptureSet {} rename and subst operations cancel out
-      sorry
+      exact CaptureSet.weaken_openVar
 
 theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
@@ -335,8 +334,7 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : PreDenot} :
     | there C' =>
       simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openTVar,
         TypeEnv.extend_tvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
-      -- CaptureSet {} rename and subst operations cancel out
-      sorry
+      exact CaptureSet.weaken_openTVar
 
 theorem Exp.from_TypeEnv_weaken_open_tvar
   {env : TypeEnv s} {d : PreDenot} {e : Exp (s,X)} :
@@ -361,8 +359,7 @@ theorem Subst.from_TypeEnv_weaken_open_cvar {env : TypeEnv s} {c : CapabilitySet
     case there C' =>
       simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
         TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
-      -- CaptureSet {} rename and subst operations cancel out
-      sorry
+      exact CaptureSet.weaken_openCVar
 
 theorem Exp.from_TypeEnv_weaken_open_cvar
   {env : TypeEnv s} {c : CapabilitySet} {e : Exp (s,C)} :
