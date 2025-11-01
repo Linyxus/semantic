@@ -198,10 +198,10 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.unit) (.typ (.capt {} .unit))
 | invoke :
-  HasType C Γ (.var x) (.typ (.capt Cx .cap)) ->
-  HasType C Γ (.var y) (.typ (.capt Cy .unit)) ->
+  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) .cap)) ->
+  HasType (.var y) Γ (.var y) (.typ (.capt (.var y) .unit)) ->
   ------------------------------------------------
-  HasType C Γ (.app x y) (.typ (.capt {} .unit))
+  HasType ((.var x) ∪ (.var y)) Γ (.app x y) (.typ (.capt {} .unit))
 | subtyp :
   HasType C1 Γ e E1 ->
   Subcapt Γ C1 C2 ->
