@@ -161,19 +161,19 @@ def rebind_shape_val_denot
       obtain ⟨cs0, B0, t0, hr, hd⟩ := h
       use cs0, B0, t0
       apply And.intro hr
-      intro H' CS hsub hsub_bound
+      intro H' CS hwf hsub hsub_bound
       let A0 := CS.denot TypeEnv.empty
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS A0) T
-      specialize hd H' CS hsub hsub_bound
+      specialize hd H' CS hwf hsub hsub_bound
       exact (ih2 A H' _).mp hd
     · intro h
       obtain ⟨cs0, B0, t0, hr, hd⟩ := h
       use cs0, B0, t0
       apply And.intro hr
-      intro H' CS hsub hsub_bound
+      intro H' CS hwf hsub hsub_bound
       let A0 := CS.denot TypeEnv.empty
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS A0) T
-      specialize hd H' CS hsub hsub_bound
+      specialize hd H' CS hwf hsub hsub_bound
       exact (ih2 A H' _).mpr hd
 
 def rebind_capt_val_denot
