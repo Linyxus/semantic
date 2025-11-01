@@ -884,6 +884,7 @@ theorem fundamental
     · exact hclosed_e
     · cases hclosed_e; aesop
   case pack => sorry
+  case unit => sorry
   case app =>
     rename_i hx hy
     -- From closedness of (app x y), extract that x and y are closed variables
@@ -897,6 +898,7 @@ theorem fundamental
       exact sem_typ_app
         (hx (Exp.IsClosed.var Var.IsClosed.bound))
         (hy (Exp.IsClosed.var Var.IsClosed.bound))
+  case invoke => sorry
   case tapp =>
     rename_i hS_closed hx
     -- From closedness of (tapp x S), extract that x and S are closed
@@ -908,10 +910,9 @@ theorem fundamental
       -- Then apply sem_typ_tapp theorem
       exact sem_typ_tapp
         (hx (Exp.IsClosed.var Var.IsClosed.bound))
-  -- case capp => grind [sem_typ_capp]
-  -- case letin => grind [sem_typ_letin]
-  -- case unpack => sorry
-  -- case subtyp => grind [sem_typ_subtyp]
-  all_goals sorry
+  case capp => sorry --grind [sem_typ_capp]
+  case letin => sorry --grind [sem_typ_letin]
+  case unpack => sorry
+  case subtyp => sorry --grind [sem_typ_subtyp]
 
 end CC
