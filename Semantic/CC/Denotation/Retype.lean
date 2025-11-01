@@ -19,7 +19,7 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
 
   cvar :
     ∀ (C : BVar s1 .cvar),
-      env1.lookup_cvar C = CaptureSet.denot env2 (σ.cvar C)
+      (env1.lookup_cvar C).2 = CaptureSet.denot env2 (σ.cvar C)
 
 lemma weaken_interp_var {x : Var .var s} :
   interp_var env x = interp_var (env.extend_var n R) (x.rename Rename.succ) := by
@@ -30,7 +30,7 @@ lemma tweaken_interp_var {x : Var .var s} :
   cases x <;> rfl
 
 lemma cweaken_interp_var {x : Var .var s} :
-  interp_var env x = interp_var (env.extend_cvar c) (x.rename Rename.succ) := by
+  interp_var env x = interp_var (env.extend_cvar c A) (x.rename Rename.succ) := by
   cases x <;> rfl
 
 theorem Retype.liftVar
