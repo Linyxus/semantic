@@ -453,7 +453,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar _ access =>
           unfold EnvTyping at htyping
-          have ⟨_, htyping'⟩ := htyping
+          have ⟨_, _, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -689,7 +689,7 @@ theorem typed_env_is_monotonic
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          have ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_monotonic] at ih_result ⊢
           intro x
@@ -746,7 +746,7 @@ theorem typed_env_is_transparent
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          have ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1146,10 +1146,12 @@ theorem env_typing_monotonic
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hsub, ht'⟩ := ht
+          have ⟨heq, hsub, ht'⟩ := ht
           constructor
-          · exact hsub
-          · exact ih ht'
+          · exact heq
+          · constructor
+            · exact hsub
+            · exact ih ht'
 
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
 --   ∀ env H,
