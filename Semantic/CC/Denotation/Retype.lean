@@ -412,6 +412,21 @@ theorem open_targ_shape_val_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .s
     Ty.shape_val_denot env (T.subst (Subst.openTVar S)) := by
   apply retype_shape_val_denot Retype.open_targ
 
+theorem open_targ_capt_val_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .capt (s,X)} :
+  Ty.capt_val_denot (env.extend_tvar (Ty.shape_val_denot env S)) T ≈
+    Ty.capt_val_denot env (T.subst (Subst.openTVar S)) := by
+  apply retype_capt_val_denot Retype.open_targ
+
+theorem open_targ_exi_val_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .exi (s,X)} :
+  Ty.exi_val_denot (env.extend_tvar (Ty.shape_val_denot env S)) T ≈
+    Ty.exi_val_denot env (T.subst (Subst.openTVar S)) := by
+  apply retype_exi_val_denot Retype.open_targ
+
+theorem open_targ_exi_exp_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .exi (s,X)} :
+  Ty.exi_exp_denot (env.extend_tvar (Ty.shape_val_denot env S)) T ≈
+    Ty.exi_exp_denot env (T.subst (Subst.openTVar S)) := by
+  apply retype_exi_exp_denot Retype.open_targ
+
 def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} :
   Retype
     (env.extend_cvar (C.denot env))

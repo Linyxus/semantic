@@ -349,43 +349,40 @@ theorem abs_val_denot_inv {A : CapabilitySet}
       | capability =>
         simp at hresolve
 
--- theorem tabs_val_denot_inv
---   (hv : Ty.val_denot env (.poly T1 T2) store (.var x)) :
---   ∃ fx, x = .free fx
---     ∧ ∃ T0 e0 hv, store fx = some ⟨.tabs T0 e0, hv⟩
---     ∧ (∀ (s' : Heap) (denot : Denot),
---       s'.subsumes store ->
---       denot.is_monotonic ->
---       denot.is_transparent ->
---       denot.ImplyAfter s' (Ty.val_denot env T1) ->
---       Ty.exp_denot (env.extend_tvar denot) T2 s' (e0.subst (Subst.openTVar .top))) := by
---   cases x with
---   | bound bx => cases bx
---   | free fx =>
---     simp [Ty.val_denot, resolve] at hv
---     generalize hres : store fx = res
---     cases res
---     case none => aesop
---     case some v =>
---       -- After substituting hres, resolve returns v.unwrap
---       -- So hv becomes: ∃ T0 e0, v.unwrap = .tabs T0 e0 ∧ ...
---       simp [hres] at hv
---       obtain ⟨T0, e0, htabs, hfun⟩ := hv
---       -- Now v.unwrap = .tabs T0 e0
---       -- We need to show store fx = some ⟨.tabs T0 e0, _⟩
---       -- We have hres : store fx = some v and htabs : v.unwrap = .tabs T0 e0
---       use fx, rfl, T0, e0
---       -- Need to provide proof that (tabs T0 e0).IsVal
---       have hval : (Exp.tabs T0 e0).IsVal := by constructor
---       use hval
---       constructor
---       · -- Show: store fx = some ⟨.tabs T0 e0, hval⟩
---         cases v with
---         | mk unwrap isVal =>
---           simp at htabs
---           subst htabs
---           exact hres
---       · exact hfun
+theorem tabs_val_denot_inv {A : CapabilitySet}
+  (hv : Ty.shape_val_denot env (.poly S T) A store (.var x)) :
+  ∃ fx, x = .free fx
+    ∧ ∃ cs S0 e0 hval R,
+      store.heap fx = some (Cell.val ⟨Exp.tabs cs S0 e0, hval, R⟩)
+    ∧ (∀ (m' : Memory) (denot : PreDenot),
+      m'.subsumes store ->
+      denot.is_proper ->
+      denot.ImplyAfter m' (Ty.shape_val_denot env S) ->
+      Ty.exi_exp_denot
+        (env.extend_tvar denot)
+        T A m'
+        (e0.subst (Subst.openTVar .top))) := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp [Ty.shape_val_denot, resolve] at hv
+    obtain ⟨cs, S0, e0, hresolve, hfun⟩ := hv
+    -- Analyze what's in the store at fx
+    generalize hres : store.heap fx = res at hresolve ⊢
+    cases res
+    case none => simp at hresolve
+    case some cell =>
+      -- Match on the cell to extract HeapVal
+      cases cell with
+      | val hval =>
+        -- hval : HeapVal, hresolve should relate to hval.unwrap
+        simp at hresolve
+        cases hval with | mk unwrap isVal reachability =>
+        simp at hresolve
+        subst hresolve
+        use fx, rfl, cs, S0, e0, isVal, reachability, hres, hfun
+      | capability =>
+        simp at hresolve
 
 theorem var_subst_is_free {x : BVar s .var} :
   ∃ fx, (Subst.from_TypeEnv env).var x = .free fx := by
@@ -441,6 +438,49 @@ theorem bound_var_cap_eq_reachability
   (hts : EnvTyping Γ env store) :
   (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
   typed_env_reachability_eq hts
+
+theorem sem_typ_tapp
+  {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
+  {S : Ty .shape s} -- Type argument
+  {T : Ty .exi (s,X)} -- Result type (depends on type variable X)
+  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.poly S T))) :
+  (.var (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
+  intro env store hts
+
+  -- Extract function denotation
+  have h1 := hx env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+
+  -- Extract the poly structure
+  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hfun⟩ := tabs_val_denot_inv h1'.2
+
+  -- Determine concrete location
+  have : fx = (env.lookup_var x).1 := by cases hfx; rfl
+  subst this
+
+  -- Simplify goal
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, Ty.exi_exp_denot]
+
+  -- Apply the polymorphic function to the type argument S
+  -- We need to provide: denot.is_proper and denot.ImplyAfter
+  have happ := hfun store (Ty.shape_val_denot env S) (Memory.subsumes_refl store)
+    (sorry : (Ty.shape_val_denot env S).is_proper)  -- TODO: need to prove shape_val_denot is proper
+    (by intro C m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter is reflexive
+
+  -- The opening lemma relates extended environment to substituted type
+  have heqv := open_targ_exi_exp_denot (env:=env) (S:=S) (T:=T)
+
+  -- The capability set should match
+  simp only [CaptureSet.denot] at happ
+
+  -- Convert the denotation using the equivalence
+  have happ' := (heqv (env.lookup_var x).2 store (e0.subst (Subst.openTVar .top))).1 happ
+
+  simp [Ty.exi_exp_denot] at happ'
+
+  apply Eval.eval_tapply hlk happ'
 
 theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -857,7 +897,17 @@ theorem fundamental
       exact sem_typ_app
         (hx (Exp.IsClosed.var Var.IsClosed.bound))
         (hy (Exp.IsClosed.var Var.IsClosed.bound))
-  -- case tapp => grind [sem_typ_tapp]
+  case tapp =>
+    rename_i hS_closed hx
+    -- From closedness of (tapp x S), extract that x and S are closed
+    cases hclosed_e with
+    | tapp hx_closed hS_closed =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      -- Apply IH to get semantic typing for the variable
+      -- Then apply sem_typ_tapp theorem
+      exact sem_typ_tapp
+        (hx (Exp.IsClosed.var Var.IsClosed.bound))
   -- case capp => grind [sem_typ_capp]
   -- case letin => grind [sem_typ_letin]
   -- case unpack => sorry
