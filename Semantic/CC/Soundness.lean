@@ -446,7 +446,8 @@ theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.arrow T1 T2)))
   (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ T1) :
-  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨ Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
+  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
+    Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
   intro env store hts
 
   -- Extract function denotation
@@ -501,29 +502,20 @@ theorem sem_typ_app
   --   (e0.subst (Subst.openVar (Var.free fy)))
 
   -- Rewrite the environment extension to use interp_var
-  have env_ext_eq : env.extend_var fy (reachability_of_loc store fy) =
-                    env.extend_var (interp_var env (Var.bound y)).1 (interp_var env (Var.bound y)).2 := by
+  have env_ext_eq :
+    env.extend_var fy (reachability_of_loc store fy) =
+      env.extend_var (interp_var env (Var.bound y)).1 (interp_var env (Var.bound y)).2 := by
     simp [interp_var]
     rw [← hreach_y]
 
   rw [env_ext_eq] at happ
 
-  -- Now apply the opening equivalence to convert from extended environment to substitution
-  -- happ : Ty.exi_exp_denot (env.extend_var (interp_var env (Var.bound y)).1 (interp_var env (Var.bound y)).2) T2
-  --          (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
-  --          (e0.subst (Subst.openVar (Var.free fy)))
+  have happ' :=
+    (heqv (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
+      (e0.subst (Subst.openVar (Var.free fy)))).1 happ
 
-  have happ' := (heqv (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
-                      (e0.subst (Subst.openVar (Var.free fy)))).1 happ
-
-  -- happ' : Ty.exi_exp_denot env (T2.subst (Subst.openVar (Var.bound y)))
-  --           (reachability_of_loc store (env.lookup_var x).1 ∪ reachability_of_loc store fy) store
-  --           (e0.subst (Subst.openVar (Var.free fy)))
-
-  -- Unfold to get Eval
   simp [Ty.exi_exp_denot] at happ'
 
-  -- Apply eval_apply
   apply Eval.eval_apply hlk happ'
 
 -- theorem sem_typ_tapp
