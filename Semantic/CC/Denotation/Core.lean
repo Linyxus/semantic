@@ -479,11 +479,7 @@ theorem from_TypeEnv_wf_in_heap
             cases C_var with
             | here =>
               simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
-              -- Need to prove original_cs.WfInHeap m.heap where original_cs : CaptureSet {}
-              -- Since original_cs is in empty sig, it can only contain free variables
-              -- We know original_cs.denot TypeEnv.empty = access and access ⊆ ⟦B⟧_[ρ']
-              -- This should be sufficient to prove well-formedness
-              sorry
+              exact htyping.1
             | there C' =>
               simp [Subst.from_TypeEnv]
               exact ih_wf.wf_cvar C'
