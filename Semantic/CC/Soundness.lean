@@ -524,6 +524,17 @@ theorem sem_typ_tapp
 
   apply Eval.eval_tapply hlk happ'
 
+theorem sem_typ_capp
+  {x : BVar s .var}
+  {cb : CaptureBound s}
+  {T : Ty .exi (s,C)}
+  {D : CaptureSet s}
+  (hD_closed : D.IsClosed)
+  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) :
+    .typ (.capt (.var (.bound x)) (.cpoly cb T))) :
+  (.var (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
+  sorry
+
 theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.arrow T1 T2)))
@@ -1025,7 +1036,13 @@ theorem fundamental
       -- Then apply sem_typ_tapp theorem
       exact sem_typ_tapp
         (hx (Exp.IsClosed.var Var.IsClosed.bound))
-  case capp => sorry --grind [sem_typ_capp]
+  case capp =>
+    rename_i hx hD_closed hih
+    cases hclosed_e with
+    | capp hx_closed hD_closed_exp =>
+      cases hx_closed
+      exact sem_typ_capp hD_closed_exp
+        (hih (Exp.IsClosed.var Var.IsClosed.bound))
   case letin => sorry --grind [sem_typ_letin]
   case unpack => sorry
   case subtyp => sorry --grind [sem_typ_subtyp]
