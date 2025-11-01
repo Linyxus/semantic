@@ -646,6 +646,17 @@ theorem sem_typ_invoke
   · exact Exp.WfInHeap.wf_unit
   · simp [resolve]
 
+theorem sem_typ_unit :
+  {} # Γ ⊨ Exp.unit : .typ (.capt {} .unit) := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot,
+        Exp.subst, CaptureSet.denot]
+  apply Eval.eval_val
+  · exact Exp.IsVal.unit
+  · constructor
+    · exact Exp.WfInHeap.wf_unit
+    · simp [resolve]
+
 -- theorem sem_typ_tapp
 --   (ht : Γ ⊨ (.var x) : (.poly S T)) :
 --   Γ ⊨ (.tapp x S) : (T.subst (Subst.openTVar S)) := by
@@ -972,7 +983,7 @@ theorem fundamental
     · exact hclosed_e
     · cases hclosed_e; aesop
   case pack => sorry
-  case unit => sorry
+  case unit => exact sem_typ_unit
   case app =>
     rename_i hx hy
     -- From closedness of (app x y), extract that x and y are closed variables
