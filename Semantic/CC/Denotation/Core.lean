@@ -121,7 +121,7 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> CapabilitySet -> TypeInfo .var
 | tvar : PreDenot -> TypeInfo .tvar
-| cvar : CapabilitySet -> TypeInfo .cvar
+| cvar : CaptureSet {} -> CapabilitySet -> TypeInfo .cvar
 
 inductive TypeEnv : Sig -> Type where
 | empty : TypeEnv {}
@@ -136,8 +136,10 @@ def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (R : CapabilitySet) : TypeEnv 
 def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : PreDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
-def TypeEnv.extend_cvar (Γ : TypeEnv s) (underlying : CapabilitySet) : TypeEnv (s,C) :=
-  Γ.extend (.cvar underlying)
+def TypeEnv.extend_cvar
+  (Γ : TypeEnv s) (original : CaptureSet {}) (underlying : CapabilitySet) :
+  TypeEnv (s,C) :=
+  Γ.extend (.cvar original underlying)
 
 def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
 | .extend _ info, .here => info
@@ -153,7 +155,7 @@ def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
 
 def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CapabilitySet :=
   match Γ.lookup x with
-  | .cvar c => c
+  | .cvar _ c => c
 
 def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
 | _, .empty => CapabilitySet.empty
@@ -205,7 +207,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       m'.subsumes m ->
       (A0 ⊆ B.denot env) ->
       Ty.exi_exp_denot
-        (env.extend_cvar A0)
+        (env.extend_cvar CS A0)
         T A m' (t0.subst (Subst.openCVar CS)))
 
 def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
@@ -216,8 +218,9 @@ def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 | ρ, .typ T => Ty.capt_val_denot ρ T
 | ρ, .exi T => fun m e =>
-  ∃ (A : CapabilitySet),
-    Ty.capt_val_denot (ρ.extend_cvar A) T m e
+  ∃ (CS : CaptureSet {}),
+    let A := CS.denot TypeEnv.empty
+    Ty.capt_val_denot (ρ.extend_cvar CS A) T m e
 
 def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
 | ρ, T => fun A m (e : Exp {}) =>
@@ -274,7 +277,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.is_proper ∧
   denot.ImplyAfter m ⟦S⟧_[env] ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar access), m =>
+| .push Γ (.cvar B), .extend env (.cvar _ access), m =>
   (access ⊆ ⟦B⟧_[env]) ∧
   EnvTyping Γ env m
 
@@ -335,7 +338,7 @@ theorem Exp.from_TypeEnv_weaken_open_tvar
 
 theorem Subst.from_TypeEnv_weaken_open_cvar {env : TypeEnv s} {c : CapabilitySet} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openCVar .empty) =
-    Subst.from_TypeEnv (env.extend_cvar c) := by
+    Subst.from_TypeEnv (env.extend_cvar .empty c) := by
   apply Subst.funext
   · intro x
     cases x
@@ -353,7 +356,7 @@ theorem Subst.from_TypeEnv_weaken_open_cvar {env : TypeEnv s} {c : CapabilitySet
 theorem Exp.from_TypeEnv_weaken_open_cvar
   {env : TypeEnv s} {c : CapabilitySet} {e : Exp (s,C)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar .empty) =
-    e.subst (Subst.from_TypeEnv (env.extend_cvar c)) := by
+    e.subst (Subst.from_TypeEnv (env.extend_cvar .empty c)) := by
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_cvar]
 
@@ -447,7 +450,7 @@ theorem from_TypeEnv_wf_in_heap
       | cvar B =>
         -- Capture variable binding: doesn't affect term variable substitution
         cases info with
-        | cvar access =>
+        | cvar _ access =>
           unfold EnvTyping at htyping
           have ⟨_, htyping'⟩ := htyping
           have ih_wf := ih htyping'
@@ -683,7 +686,7 @@ theorem typed_env_is_monotonic
             exact ih_result x
       | cvar B =>
         cases info with
-        | cvar access =>
+        | cvar _ access =>
           simp [EnvTyping] at ht
           have ⟨_, ht'⟩ := ht
           have ih_result := ih ht'
@@ -740,7 +743,7 @@ theorem typed_env_is_transparent
             exact ih_result x
       | cvar B =>
         cases info with
-        | cvar access =>
+        | cvar _ access =>
           simp [EnvTyping] at ht
           have ⟨_, ht'⟩ := ht
           have ih_result := ih ht'
@@ -837,10 +840,11 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
   | exi T =>
     intro m x v hx ht
     simp [Ty.exi_val_denot] at ht ⊢
-    have ⟨A, hA⟩ := ht
-    use A
+    have ⟨CS, hA⟩ := ht
+    use CS
+    let A := CS.denot TypeEnv.empty
     -- Need to show transparency is preserved when extending with cvar
-    have henv' : (env.extend_cvar A).is_transparent := by
+    have henv' : (env.extend_cvar CS A).is_transparent := by
       intro X
       cases X with
       | there X' =>
@@ -1034,9 +1038,10 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
   | exi T =>
     intro m1 m2 e hmem ht
     simp [Ty.exi_val_denot] at ht ⊢
-    have ⟨A, hA⟩ := ht
-    use A
-    have henv' : (env.extend_cvar A).is_monotonic := by
+    have ⟨CS, hA⟩ := ht
+    use CS
+    let A := CS.denot TypeEnv.empty
+    have henv' : (env.extend_cvar CS A).is_monotonic := by
       intro X
       cases X with
       | there X' =>
@@ -1138,7 +1143,7 @@ theorem env_typing_monotonic
             · exact ih ht'
       | cvar B =>
         cases info with
-        | cvar access =>
+        | cvar _ access =>
           simp [EnvTyping] at ht ⊢
           have ⟨hsub, ht'⟩ := ht
           constructor
