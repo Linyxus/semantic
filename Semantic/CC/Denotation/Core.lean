@@ -203,6 +203,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
   ∃ cs B0 t0,
     resolve m.heap e = some (.cabs cs B0 t0) ∧
     (∀ (m' : Memory) (CS : CaptureSet {}),
+      CS.WfInHeap m'.heap ->
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
       (A0 ⊆ B.denot env) ->
@@ -278,6 +279,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S⟧_[env] ∧
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs access), m =>
+  (CaptureSet.WfInHeap cs m.heap) ∧
   (cs.denot TypeEnv.empty = access) ∧
   (access ⊆ ⟦B⟧_[env]) ∧
   EnvTyping Γ env m
