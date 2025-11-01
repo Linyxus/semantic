@@ -429,4 +429,15 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unit => rfl
 
+def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
+  var := fun x => .bound (f.var x)
+  tvar := fun X => .tvar (f.var X)
+  cvar := fun C => .cvar (f.var C)
+
+theorem Var.subst_asSubst {x : Var .var s1} {f : Rename s1 s2} :
+  x.subst (f.asSubst) = x.rename f := by
+  cases x with
+  | bound x => rfl
+  | free n => rfl
+
 end CC
