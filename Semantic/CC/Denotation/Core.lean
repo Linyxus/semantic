@@ -15,8 +15,11 @@ def resolve : Heap -> Exp {} -> Option (Exp {})
 /-- Denotation of types. -/
 def Denot := Memory -> Exp {} -> Prop
 
-/-- Pre-denotation -/
+/-- Pre-denotation. It takes a capability to form a denotation. -/
 def PreDenot := CapabilitySet -> Denot
+
+/-- Capture-denotation. Given any memory, it produces a set of capabilities. -/
+def CapDenot := Memory -> CapabilitySet
 
 def Denot.as_mpost (d : Denot) : Mpost :=
   fun e m => d m e
@@ -157,16 +160,16 @@ def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} × C
   match Γ.lookup x with
   | .cvar cs c => (cs, c)
 
-def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapabilitySet
-| _, .empty => CapabilitySet.empty
-| env, .union cs1 cs2 =>
-  (cs1.denot env) ∪ (cs2.denot env)
-| env, .var (.bound x) => (env.lookup_var x).2
-| _, .var (.free x) => {x}
-| env, .cvar c => (env.lookup_cvar c).2
+def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapDenot
+| _, .empty => fun _ => {}
+| env, .union cs1 cs2 => fun m =>
+  (cs1.denot env m) ∪ (cs2.denot env m)
+| env, .var (.bound x) => fun _ => (env.lookup_var x).2
+| _, .var (.free x) => fun _ => {x}
+| env, .cvar c => fun _ => (env.lookup_cvar c).2
 
-def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapabilitySet
-| _, .unbound => CapabilitySet.any
+def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
+| _, .unbound => fun _ => CapabilitySet.any
 | env, .bound cs => cs.denot env
 
 mutual
@@ -204,9 +207,9 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     resolve m.heap e = some (.cabs cs B0 t0) ∧
     (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
-      let A0 := CS.denot TypeEnv.empty
+      let A0 := CS.denot TypeEnv.empty m'
       m'.subsumes m ->
-      (A0 ⊆ B.denot env) ->
+      (A0 ⊆ B.denot env m') ->
       Ty.exi_exp_denot
         (env.extend_cvar CS A0)
         T A m' (t0.subst (Subst.openCVar CS)))
@@ -214,13 +217,13 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 | ρ, .capt C S => fun mem exp =>
   exp.WfInHeap mem.heap ∧
-  Ty.shape_val_denot ρ S (C.denot ρ) mem exp
+  Ty.shape_val_denot ρ S (C.denot ρ mem) mem exp
 
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 | ρ, .typ T => Ty.capt_val_denot ρ T
 | ρ, .exi T => fun m e =>
   ∃ (CS : CaptureSet {}),
-    let A := CS.denot TypeEnv.empty
+    let A := CS.denot TypeEnv.empty m
     Ty.capt_val_denot (ρ.extend_cvar CS A) T m e
 
 def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
@@ -260,12 +263,12 @@ instance instShapeHasDenotation :
 
 @[simp]
 instance instCaptureSetHasDenotation :
-  HasDenotation (CaptureSet s) (TypeEnv s) CapabilitySet where
+  HasDenotation (CaptureSet s) (TypeEnv s) CapDenot where
   interp := CaptureSet.denot
 
 @[simp]
 instance instCaptureBoundHasDenotation :
-  HasDenotation (CaptureBound s) (TypeEnv s) CapabilitySet where
+  HasDenotation (CaptureBound s) (TypeEnv s) CapDenot where
   interp := CaptureBound.denot
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
