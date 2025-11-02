@@ -1058,9 +1058,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     · intro m' CS hwf msub hA0
       apply hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0
 
-def capt_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
+def capt_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
-  (htyping : EnvTyping Γ env m)
   (T : Ty .capt s) :
   (Ty.capt_val_denot env T).is_monotonic := by
   cases T with
@@ -1075,15 +1074,14 @@ def capt_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
     · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
       sorry
 
-def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
+def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
-  (htyping : EnvTyping Γ env m)
   (T : Ty .exi s) :
   (Ty.exi_val_denot env T).is_monotonic := by
   cases T with
   | typ T =>
     simp [Ty.exi_val_denot]
-    exact capt_val_denot_is_monotonic henv htyping T
+    exact capt_val_denot_is_monotonic henv T
   | exi T =>
     intro m1 m2 e hmem ht
     simp [Ty.exi_val_denot] at ht ⊢
@@ -1105,29 +1103,10 @@ def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
         | there X' =>
           simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
           exact henv.cvar X'
-    -- Extract well-formedness of CS from hA
-    have hwf_cs : CS.WfInHeap m1.heap := by
-      sorry -- Need to track this through the definition
-    -- Get env typing at m1 using monotonicity
-    have htyping_m1 : EnvTyping Γ env m1 := by
-      sorry -- This is actually not provable without more assumptions
-    have htyping' : EnvTyping (.push Γ (.cvar (.unbound))) (env.extend_cvar CS A) m1 := by
-      unfold EnvTyping
-      constructor
-      · sorry -- Prove: A.is_monotonic
-      · constructor
-        · exact hwf_cs
-        · constructor
-          · rfl
-          · constructor
-            · simp [CaptureBound.denot]
-              sorry -- TODO: Prove A m1 ⊆ CapabilitySet.any (trivially true)
-            · exact htyping_m1
-    exact capt_val_denot_is_monotonic henv' htyping' T hmem hA
+    exact capt_val_denot_is_monotonic henv' T hmem hA
 
-def capt_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
+def capt_exp_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
-  (htyping : EnvTyping Γ env m)
   (T : Ty .capt s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -1138,14 +1117,13 @@ def capt_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
   simp [Ty.capt_exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
-    exact capt_val_denot_is_monotonic henv htyping T
+    exact capt_val_denot_is_monotonic henv T
   · exact hmem
   · exact hwf
   · exact ht
 
-def exi_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
+def exi_exp_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
-  (htyping : EnvTyping Γ env m)
   (T : Ty .exi s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -1156,7 +1134,7 @@ def exi_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
   simp [Ty.exi_exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
-    exact exi_val_denot_is_monotonic henv htyping T
+    exact exi_val_denot_is_monotonic henv T
   · exact hmem
   · exact hwf
   · exact ht
@@ -1184,7 +1162,7 @@ theorem env_typing_monotonic
           constructor
           · -- Prove: ⟦T⟧_[env', φ] mem2 (.var (.free n))
             have henv := typed_env_is_monotonic ht'
-            exact capt_val_denot_is_monotonic henv ht' T hmem hval
+            exact capt_val_denot_is_monotonic henv T hmem hval
           · constructor
             · -- Prove: R = reachability_of_loc mem2 n
               rw [heq]
