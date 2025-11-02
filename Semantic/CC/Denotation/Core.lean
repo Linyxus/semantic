@@ -30,6 +30,11 @@ def Denot.is_monotonic (d : Denot) : Prop :=
     d m1 e ->
     d m2 e
 
+def CapDenot.is_monotonic (cd : CapDenot) : Prop :=
+  ∀ {m1 m2 : Memory},
+    m2.subsumes m1 ->
+    cd m1 = cd m2
+
 def Denot.is_transparent (d : Denot) : Prop :=
   ∀ {m : Memory} {x : Nat} {v},
     m.lookup x = some (.val v) ->
@@ -282,6 +287,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S⟧_[env] ∧
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs denot), m =>
+  denot.is_monotonic ∧
   (CaptureSet.WfInHeap cs m.heap) ∧
   (cs.denot TypeEnv.empty = denot) ∧
   (denot m ⊆ ⟦B⟧_[env] m) ∧
@@ -640,11 +646,6 @@ theorem resolve_ans_to_val
     apply Exp.IsAns.is_var
   case inr h => aesop
 
-def CapDenot.is_monotonic (cd : CapDenot) : Prop :=
-  ∀ {m1 m2 : Memory},
-    m2.subsumes m1 ->
-    cd m1 = cd m2
-
 def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
   ∀ C, (pd C).is_monotonic
 
@@ -654,6 +655,9 @@ def PreDenot.is_transparent (pd : PreDenot) : Prop :=
 structure TypeEnv.IsMonotonic (env : TypeEnv s) : Prop where
   tvar : ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_monotonic
+
+  cvar : ∀ (X : BVar s .cvar),
+    (env.lookup_cvar X).2.is_monotonic
 
 def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
