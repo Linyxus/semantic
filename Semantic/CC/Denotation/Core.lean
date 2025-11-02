@@ -894,6 +894,47 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
         exact henv X'
     exact capt_val_denot_is_transparent henv' T hx hA
 
+theorem capture_set_denot_is_monotonic {C : CaptureSet s}
+  (hρ : ρ.IsMonotonic) :
+  (C.denot ρ).is_monotonic_for (C.subst (Subst.from_TypeEnv ρ)) := by
+  unfold CapDenot.is_monotonic_for
+  intro m1 m2 hwf hsub
+  induction C with
+  | empty =>
+    -- Empty set denotes {} at all memories
+    rfl
+  | union C1 C2 ih1 ih2 =>
+    -- Union: use IH on both components
+    unfold CaptureSet.denot
+    simp [CaptureSet.subst] at hwf
+    cases hwf with
+    | wf_union hwf1 hwf2 =>
+      rw [ih1 hwf1, ih2 hwf2]
+  | var v =>
+    cases v with
+    | bound x =>
+      -- Bound variable: after substitution becomes free variable
+      unfold CaptureSet.denot
+      simp [CaptureSet.subst, Subst.from_TypeEnv] at hwf
+      cases hwf with
+      | wf_var_free hex =>
+        -- hex : m1.heap (ρ.lookup_var x).1 = some _
+        -- Memory.lookup is definitionally equal to heap access
+        exact (reachability_of_loc_monotonic hsub (ρ.lookup_var x).1 hex).symm
+    | free x =>
+      -- Free variable: stays as free variable
+      unfold CaptureSet.denot
+      simp [CaptureSet.subst] at hwf
+      cases hwf with
+      | wf_var_free hex =>
+        -- hex : m1.heap x = some _
+        -- Memory.lookup is definitionally equal to heap access
+        exact (reachability_of_loc_monotonic hsub x hex).symm
+  | cvar c =>
+    -- Capture variable: use monotonicity from ρ.IsMonotonic
+    unfold CaptureSet.denot
+    exact hρ.cvar c hwf hsub
+
 mutual
 
 def shape_val_denot_is_monotonic {env : TypeEnv s}
