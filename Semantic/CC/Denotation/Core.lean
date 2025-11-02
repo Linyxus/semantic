@@ -164,8 +164,8 @@ def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapDenot
 | _, .empty => fun _ => {}
 | env, .union cs1 cs2 => fun m =>
   (cs1.denot env m) ∪ (cs2.denot env m)
-| env, .var (.bound x) => fun _ => (env.lookup_var x).2
-| _, .var (.free x) => fun _ => {x}
+| env, .var (.bound x) => fun m => reachability_of_loc m (env.lookup_var x).1
+| _, .var (.free x) => fun m => reachability_of_loc m x
 | env, .cvar c => (env.lookup_cvar c).2
 
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
@@ -639,6 +639,11 @@ theorem resolve_ans_to_val
     rw [h]
     apply Exp.IsAns.is_var
   case inr h => aesop
+
+def CapDenot.is_monotonic (cd : CapDenot) : Prop :=
+  ∀ {m1 m2 : Memory},
+    m2.subsumes m1 ->
+    cd m1 = cd m2
 
 def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
   ∀ C, (pd C).is_monotonic
