@@ -651,8 +651,8 @@ def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
 def PreDenot.is_transparent (pd : PreDenot) : Prop :=
   ∀ C, (pd C).is_transparent
 
-def TypeEnv.is_monotonic (env : TypeEnv s) : Prop :=
-  ∀ (X : BVar s .tvar),
+structure TypeEnv.IsMonotonic (env : TypeEnv s) : Prop where
+  tvar : ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_monotonic
 
 def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
@@ -661,12 +661,12 @@ def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
 
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env mem) :
-  env.is_monotonic := by
+  env.IsMonotonic := by
   induction Γ with
   | empty =>
     cases env with
     | empty =>
-      simp [TypeEnv.is_monotonic]
+      constructor
       intro x
       cases x
   | push Γ k ih =>
@@ -679,19 +679,19 @@ theorem typed_env_is_monotonic
           simp [EnvTyping] at ht
           have ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
-          simp [TypeEnv.is_monotonic] at ih_result ⊢
+          constructor
           intro x
           cases x with
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
+            exact ih_result.tvar x
       | tvar S =>
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
           have ⟨hproper, _, ht'⟩ := ht
           have ih_result := ih ht'
-          simp [TypeEnv.is_monotonic] at ih_result ⊢
+          constructor
           intro x
           cases x with
           | here =>
@@ -702,19 +702,19 @@ theorem typed_env_is_monotonic
             exact (hproper C).1
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
+            exact ih_result.tvar x
       | cvar B =>
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
           have ⟨_, _, _, ht'⟩ := ht
           have ih_result := ih ht'
-          simp [TypeEnv.is_monotonic] at ih_result ⊢
+          constructor
           intro x
           cases x with
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
+            exact ih_result.tvar x
 
 theorem typed_env_is_transparent
   (ht : EnvTyping Γ env mem) :
@@ -874,7 +874,7 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
 mutual
 
 def shape_val_denot_is_monotonic {env : TypeEnv s}
-  (henv : TypeEnv.is_monotonic env)
+  (henv : env.IsMonotonic)
   (T : Ty .shape s) :
   (Ty.shape_val_denot env T).is_monotonic := by
   intro C
@@ -884,7 +884,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     simp [Ty.shape_val_denot] at ht ⊢
   | tvar X =>
     simp [Ty.shape_val_denot]
-    exact henv X C
+    exact henv.tvar X C
   | unit =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -987,7 +987,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       | capp _ _ => simp [resolve] at hr
       | letin _ _ => simp [resolve] at hr
     · intro m' denot msub hdenot_proper himply
-      have henv' : (env.extend_tvar denot).is_monotonic := by
+      have henv' : (env.extend_tvar denot).IsMonotonic := by
+        constructor
         intro X
         cases X with
         | here =>
@@ -996,7 +997,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
           exact (hdenot_proper C).1
         | there X' =>
           simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-          exact henv X'
+          exact henv.tvar X'
       apply hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply
   | cpoly B T =>
     intro m1 m2 e hmem ht
@@ -1031,7 +1032,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       apply hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0
 
 def capt_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
-  (henv : TypeEnv.is_monotonic env)
+  (henv : env.IsMonotonic)
   (htyping : EnvTyping Γ env m)
   (T : Ty .capt s) :
   (Ty.capt_val_denot env T).is_monotonic := by
@@ -1048,7 +1049,7 @@ def capt_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
       sorry
 
 def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
-  (henv : TypeEnv.is_monotonic env)
+  (henv : env.IsMonotonic)
   (htyping : EnvTyping Γ env m)
   (T : Ty .exi s) :
   (Ty.exi_val_denot env T).is_monotonic := by
@@ -1062,12 +1063,13 @@ def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
     have ⟨CS, hA⟩ := ht
     use CS
     let A := CS.denot TypeEnv.empty
-    have henv' : (env.extend_cvar CS A).is_monotonic := by
+    have henv' : (env.extend_cvar CS A).IsMonotonic := by
+      constructor
       intro X
       cases X with
       | there X' =>
         simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-        exact henv X'
+        exact henv.tvar X'
     -- Extract well-formedness of CS from hA
     have hwf_cs : CS.WfInHeap m1.heap := by
       sorry -- Need to track this through the definition
@@ -1087,7 +1089,7 @@ def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
     exact capt_val_denot_is_monotonic henv' htyping' T hmem hA
 
 def capt_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
-  (henv : TypeEnv.is_monotonic env)
+  (henv : env.IsMonotonic)
   (htyping : EnvTyping Γ env m)
   (T : Ty .capt s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
@@ -1105,7 +1107,7 @@ def capt_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
   · exact ht
 
 def exi_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
-  (henv : TypeEnv.is_monotonic env)
+  (henv : env.IsMonotonic)
   (htyping : EnvTyping Γ env m)
   (T : Ty .exi s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
