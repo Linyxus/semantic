@@ -172,6 +172,28 @@ def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
 | _, .unbound => fun _ => CapabilitySet.any
 | env, .bound cs => cs.denot env
 
+theorem CaptureSet.denot_mem_independent
+  (env : TypeEnv s) (cs : CaptureSet s) :
+  ∀ m1 m2, cs.denot env m1 = cs.denot env m2 := by
+  induction cs with
+  | empty => intro m1 m2; rfl
+  | union cs1 cs2 ih1 ih2 =>
+    intro m1 m2
+    unfold CaptureSet.denot
+    rw [ih1 m1 m2, ih2 m1 m2]
+  | var v =>
+    cases v with
+    | bound x => intro m1 m2; rfl
+    | free x => intro m1 m2; rfl
+  | cvar c => intro m1 m2; rfl
+
+theorem CaptureBound.denot_mem_independent
+  (env : TypeEnv s) (b : CaptureBound s) :
+  ∀ m1 m2, b.denot env m1 = b.denot env m2 := by
+  cases b with
+  | unbound => intro m1 m2; rfl
+  | bound cs => intro m1 m2; exact CaptureSet.denot_mem_independent env cs m1 m2
+
 mutual
 
 def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
@@ -283,8 +305,8 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs access), m =>
   (CaptureSet.WfInHeap cs m.heap) ∧
-  (cs.denot TypeEnv.empty = access) ∧
-  (access ⊆ ⟦B⟧_[env]) ∧
+  (cs.denot TypeEnv.empty m = access) ∧
+  (access ⊆ ⟦B⟧_[env] m) ∧
   EnvTyping Γ env m
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
@@ -295,7 +317,7 @@ def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m ->
-    ⟦E⟧e_[ρ] (C.denot ρ) m (e.subst (Subst.from_TypeEnv ρ))
+    ⟦E⟧e_[ρ] (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
@@ -840,8 +862,8 @@ theorem capt_val_denot_is_transparent {env : TypeEnv s}
       apply Exp.WfInHeap.wf_var
       apply Var.WfInHeap.wf_free
       exact hx
-    · -- Prove: shape_val_denot env S (C.denot env) m (.var (.free x))
-      exact shape_val_denot_is_transparent henv S (C.denot env) hx hshape
+    · -- Prove: shape_val_denot env S (C.denot env m) m (.var (.free x))
+      exact shape_val_denot_is_transparent henv S (C.denot env m) hx hshape
 
 theorem exi_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -856,7 +878,7 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
     simp [Ty.exi_val_denot] at ht ⊢
     have ⟨CS, hA⟩ := ht
     use CS
-    let A := CS.denot TypeEnv.empty
+    let A := CS.denot TypeEnv.empty m
     -- Need to show transparency is preserved when extending with cvar
     have henv' : (env.extend_cvar CS A).is_transparent := by
       intro X
@@ -1038,8 +1060,10 @@ def capt_val_denot_is_monotonic {env : TypeEnv s}
     · -- Prove: e.WfInHeap m2.heap
       -- Use monotonicity of well-formedness
       exact Exp.wf_monotonic hmem hwf
-    · -- Prove: shape_val_denot env S (C.denot env) m2 e
-      exact shape_val_denot_is_monotonic henv S (C.denot env) hmem hshape
+    · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
+      have heq := CaptureSet.denot_mem_independent env C m1 m2
+      rw [← heq]
+      exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : TypeEnv.is_monotonic env)
@@ -1054,14 +1078,18 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
     simp [Ty.exi_val_denot] at ht ⊢
     have ⟨CS, hA⟩ := ht
     use CS
-    let A := CS.denot TypeEnv.empty
+    let A := CS.denot TypeEnv.empty m1
+    have heq : A = CS.denot TypeEnv.empty m2 :=
+      CaptureSet.denot_mem_independent TypeEnv.empty CS m1 m2
     have henv' : (env.extend_cvar CS A).is_monotonic := by
       intro X
       cases X with
       | there X' =>
         simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
         exact henv X'
-    exact capt_val_denot_is_monotonic henv' T hmem hA
+    have hA' := capt_val_denot_is_monotonic henv' T hmem hA
+    rw [← heq]
+    exact hA'
 
 def capt_exp_denot_is_monotonic {env : TypeEnv s}
   (henv : TypeEnv.is_monotonic env)
@@ -1157,15 +1185,19 @@ theorem env_typing_monotonic
             · exact ih ht'
       | cvar B =>
         cases info with
-        | cvar _ access =>
+        | cvar cs access =>
           simp [EnvTyping] at ht ⊢
           have ⟨hwf, heq, hsub, ht'⟩ := ht
           constructor
           · exact CaptureSet.wf_monotonic hmem hwf
           · constructor
-            · exact heq
+            · have heq_cs := CaptureSet.denot_mem_independent TypeEnv.empty cs mem1 mem2
+              rw [← heq_cs]
+              exact heq
             · constructor
-              · exact hsub
+              · have heq_b := CaptureBound.denot_mem_independent env' B mem1 mem2
+                rw [← heq_b]
+                exact hsub
               · exact ih ht'
 
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
