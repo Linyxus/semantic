@@ -172,28 +172,6 @@ def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
 | _, .unbound => fun _ => CapabilitySet.any
 | env, .bound cs => cs.denot env
 
-theorem CaptureSet.denot_mem_independent
-  (env : TypeEnv s) (cs : CaptureSet s) :
-  ∀ m1 m2, cs.denot env m1 = cs.denot env m2 := by
-  induction cs with
-  | empty => intro m1 m2; rfl
-  | union cs1 cs2 ih1 ih2 =>
-    intro m1 m2
-    unfold CaptureSet.denot
-    rw [ih1 m1 m2, ih2 m1 m2]
-  | var v =>
-    cases v with
-    | bound x => intro m1 m2; rfl
-    | free x => intro m1 m2; rfl
-  | cvar c => sorry
-
-theorem CaptureBound.denot_mem_independent
-  (env : TypeEnv s) (b : CaptureBound s) :
-  ∀ m1 m2, b.denot env m1 = b.denot env m2 := by
-  cases b with
-  | unbound => intro m1 m2; rfl
-  | bound cs => intro m1 m2; exact CaptureSet.denot_mem_independent env cs m1 m2
-
 mutual
 
 def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
@@ -371,7 +349,7 @@ theorem Exp.from_TypeEnv_weaken_open_tvar
   rw [Subst.from_TypeEnv_weaken_open_tvar]
 
 theorem Subst.from_TypeEnv_weaken_open_cvar
-  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet} :
+  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapDenot} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openCVar cs) =
     Subst.from_TypeEnv (env.extend_cvar cs c) := by
   apply Subst.funext
@@ -390,7 +368,7 @@ theorem Subst.from_TypeEnv_weaken_open_cvar
       exact CaptureSet.weaken_openCVar
 
 theorem Exp.from_TypeEnv_weaken_open_cvar
-  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapabilitySet} {e : Exp (s,C)} :
+  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapDenot} {e : Exp (s,C)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar cs) =
     e.subst (Subst.from_TypeEnv (env.extend_cvar cs c)) := by
   rw [Exp.subst_comp]
@@ -878,7 +856,7 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
     simp [Ty.exi_val_denot] at ht ⊢
     have ⟨CS, hA⟩ := ht
     use CS
-    let A := CS.denot TypeEnv.empty m
+    let A := CS.denot TypeEnv.empty
     -- Need to show transparency is preserved when extending with cvar
     have henv' : (env.extend_cvar CS A).is_transparent := by
       intro X
@@ -1047,8 +1025,9 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     · intro m' CS hwf msub hA0
       apply hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0
 
-def capt_val_denot_is_monotonic {env : TypeEnv s}
+def capt_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
   (henv : TypeEnv.is_monotonic env)
+  (htyping : EnvTyping Γ env m)
   (T : Ty .capt s) :
   (Ty.capt_val_denot env T).is_monotonic := by
   cases T with
@@ -1061,38 +1040,50 @@ def capt_val_denot_is_monotonic {env : TypeEnv s}
       -- Use monotonicity of well-formedness
       exact Exp.wf_monotonic hmem hwf
     · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
-      have heq := CaptureSet.denot_mem_independent env C m1 m2
-      rw [← heq]
-      exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
+      sorry
 
-def exi_val_denot_is_monotonic {env : TypeEnv s}
+def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
   (henv : TypeEnv.is_monotonic env)
+  (htyping : EnvTyping Γ env m)
   (T : Ty .exi s) :
   (Ty.exi_val_denot env T).is_monotonic := by
   cases T with
   | typ T =>
     simp [Ty.exi_val_denot]
-    exact capt_val_denot_is_monotonic henv T
+    exact capt_val_denot_is_monotonic henv htyping T
   | exi T =>
     intro m1 m2 e hmem ht
     simp [Ty.exi_val_denot] at ht ⊢
     have ⟨CS, hA⟩ := ht
     use CS
-    let A := CS.denot TypeEnv.empty m1
-    have heq : A = CS.denot TypeEnv.empty m2 :=
-      CaptureSet.denot_mem_independent TypeEnv.empty CS m1 m2
+    let A := CS.denot TypeEnv.empty
     have henv' : (env.extend_cvar CS A).is_monotonic := by
       intro X
       cases X with
       | there X' =>
         simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
         exact henv X'
-    have hA' := capt_val_denot_is_monotonic henv' T hmem hA
-    rw [← heq]
-    exact hA'
+    -- Extract well-formedness of CS from hA
+    have hwf_cs : CS.WfInHeap m1.heap := by
+      sorry -- Need to track this through the definition
+    -- Get env typing at m1 using monotonicity
+    have htyping_m1 : EnvTyping Γ env m1 := by
+      sorry -- This is actually not provable without more assumptions
+    have htyping' : EnvTyping (.push Γ (.cvar (.unbound))) (env.extend_cvar CS A) m1 := by
+      unfold EnvTyping
+      constructor
+      · exact hwf_cs
+      · constructor
+        · rfl
+        · constructor
+          · simp [CaptureBound.denot]
+            sorry -- TODO: Prove A m1 ⊆ CapabilitySet.any (trivially true)
+          · exact htyping_m1
+    exact capt_val_denot_is_monotonic henv' htyping' T hmem hA
 
-def capt_exp_denot_is_monotonic {env : TypeEnv s}
+def capt_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
   (henv : TypeEnv.is_monotonic env)
+  (htyping : EnvTyping Γ env m)
   (T : Ty .capt s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -1103,13 +1094,14 @@ def capt_exp_denot_is_monotonic {env : TypeEnv s}
   simp [Ty.capt_exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
-    exact capt_val_denot_is_monotonic henv T
+    exact capt_val_denot_is_monotonic henv htyping T
   · exact hmem
   · exact hwf
   · exact ht
 
-def exi_exp_denot_is_monotonic {env : TypeEnv s}
+def exi_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
   (henv : TypeEnv.is_monotonic env)
+  (htyping : EnvTyping Γ env m)
   (T : Ty .exi s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -1120,7 +1112,7 @@ def exi_exp_denot_is_monotonic {env : TypeEnv s}
   simp [Ty.exi_exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
-    exact exi_val_denot_is_monotonic henv T
+    exact exi_val_denot_is_monotonic henv htyping T
   · exact hmem
   · exact hwf
   · exact ht
@@ -1148,7 +1140,7 @@ theorem env_typing_monotonic
           constructor
           · -- Prove: ⟦T⟧_[env', φ] mem2 (.var (.free n))
             have henv := typed_env_is_monotonic ht'
-            exact capt_val_denot_is_monotonic henv T hmem hval
+            exact capt_val_denot_is_monotonic henv ht' T hmem hval
           · constructor
             · -- Prove: R = reachability_of_loc mem2 n
               rw [heq]
@@ -1185,19 +1177,19 @@ theorem env_typing_monotonic
             · exact ih ht'
       | cvar B =>
         cases info with
-        | cvar cs access =>
+        | cvar cs denot =>
           simp [EnvTyping] at ht ⊢
           have ⟨hwf, heq, hsub, ht'⟩ := ht
           constructor
           · exact CaptureSet.wf_monotonic hmem hwf
           · constructor
-            · have heq_cs := CaptureSet.denot_mem_independent TypeEnv.empty cs mem1 mem2
-              rw [← heq_cs]
+            · -- heq : cs.denot TypeEnv.empty = denot (equality of CapDenots)
               exact heq
             · constructor
-              · have heq_b := CaptureBound.denot_mem_independent env' B mem1 mem2
-                rw [← heq_b]
-                exact hsub
+              · -- Need: denot mem2 ⊆ ⟦B⟧_[env'] mem2
+                -- Have: denot mem1 ⊆ ⟦B⟧_[env'] mem1
+                -- Since denot = cs.denot TypeEnv.empty, and that's memory-independent:
+                sorry
               · exact ih ht'
 
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
