@@ -30,8 +30,9 @@ def Denot.is_monotonic (d : Denot) : Prop :=
     d m1 e ->
     d m2 e
 
-def CapDenot.is_monotonic (cd : CapDenot) : Prop :=
+def CapDenot.is_monotonic_for (cd : CapDenot) (cs : CaptureSet {}) : Prop :=
   ∀ {m1 m2 : Memory},
+    cs.WfInHeap m1.heap ->
     m2.subsumes m1 ->
     cd m1 = cd m2
 
@@ -287,7 +288,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S⟧_[env] ∧
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs denot), m =>
-  denot.is_monotonic ∧
+  denot.is_monotonic_for cs ∧
   (CaptureSet.WfInHeap cs m.heap) ∧
   (cs.denot TypeEnv.empty = denot) ∧
   (denot m ⊆ ⟦B⟧_[env] m) ∧
@@ -657,7 +658,7 @@ structure TypeEnv.IsMonotonic (env : TypeEnv s) : Prop where
     (env.lookup_tvar X).is_monotonic
 
   cvar : ∀ (X : BVar s .cvar),
-    (env.lookup_cvar X).2.is_monotonic
+    (env.lookup_cvar X).2.is_monotonic_for (env.lookup_cvar X).1
 
 def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
@@ -1099,7 +1100,7 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         cases X with
         | here =>
           simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
-          sorry -- Need to prove A.is_monotonic
+          sorry -- Need to prove A.is_monotonic_for CS where A = CS.denot TypeEnv.empty
         | there X' =>
           simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
           exact henv.cvar X'
