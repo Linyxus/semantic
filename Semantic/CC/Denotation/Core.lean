@@ -124,7 +124,7 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> CapabilitySet -> TypeInfo .var
 | tvar : PreDenot -> TypeInfo .tvar
-| cvar : CaptureSet {} -> CapabilitySet -> TypeInfo .cvar
+| cvar : CaptureSet {} -> CapDenot -> TypeInfo .cvar
 
 inductive TypeEnv : Sig -> Type where
 | empty : TypeEnv {}
@@ -140,7 +140,7 @@ def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : PreDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar
-  (Γ : TypeEnv s) (original : CaptureSet {}) (underlying : CapabilitySet) :
+  (Γ : TypeEnv s) (original : CaptureSet {}) (underlying : CapDenot) :
   TypeEnv (s,C) :=
   Γ.extend (.cvar original underlying)
 
@@ -156,7 +156,7 @@ def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
   match Γ.lookup x with
   | .tvar T => T
 
-def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} × CapabilitySet :=
+def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} × CapDenot :=
   match Γ.lookup x with
   | .cvar cs c => (cs, c)
 
@@ -166,7 +166,7 @@ def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapDenot
   (cs1.denot env m) ∪ (cs2.denot env m)
 | env, .var (.bound x) => fun _ => (env.lookup_var x).2
 | _, .var (.free x) => fun _ => {x}
-| env, .cvar c => fun _ => (env.lookup_cvar c).2
+| env, .cvar c => (env.lookup_cvar c).2
 
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
 | _, .unbound => fun _ => CapabilitySet.any
@@ -185,7 +185,7 @@ theorem CaptureSet.denot_mem_independent
     cases v with
     | bound x => intro m1 m2; rfl
     | free x => intro m1 m2; rfl
-  | cvar c => intro m1 m2; rfl
+  | cvar c => sorry
 
 theorem CaptureBound.denot_mem_independent
   (env : TypeEnv s) (b : CaptureBound s) :
@@ -229,9 +229,9 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     resolve m.heap e = some (.cabs cs B0 t0) ∧
     (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
-      let A0 := CS.denot TypeEnv.empty m'
+      let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
-      (A0 ⊆ B.denot env m') ->
+      (A0 m' ⊆ B.denot env m') ->
       Ty.exi_exp_denot
         (env.extend_cvar CS A0)
         T A m' (t0.subst (Subst.openCVar CS)))
@@ -245,7 +245,7 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 | ρ, .typ T => Ty.capt_val_denot ρ T
 | ρ, .exi T => fun m e =>
   ∃ (CS : CaptureSet {}),
-    let A := CS.denot TypeEnv.empty m
+    let A := CS.denot TypeEnv.empty
     Ty.capt_val_denot (ρ.extend_cvar CS A) T m e
 
 def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
@@ -303,10 +303,10 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.is_proper ∧
   denot.ImplyAfter m ⟦S⟧_[env] ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar cs access), m =>
+| .push Γ (.cvar B), .extend env (.cvar cs denot), m =>
   (CaptureSet.WfInHeap cs m.heap) ∧
-  (cs.denot TypeEnv.empty m = access) ∧
-  (access ⊆ ⟦B⟧_[env] m) ∧
+  (cs.denot TypeEnv.empty = denot) ∧
+  (denot m ⊆ ⟦B⟧_[env] m) ∧
   EnvTyping Γ env m
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
