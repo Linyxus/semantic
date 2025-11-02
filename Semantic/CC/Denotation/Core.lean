@@ -472,7 +472,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar original_cs access =>
           unfold EnvTyping at htyping
-          have ⟨hwf, heq, hsub, htyping'⟩ := htyping
+          have ⟨hmon, hwf, heq, hsub, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -489,7 +489,7 @@ theorem from_TypeEnv_wf_in_heap
             cases C_var with
             | here =>
               simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
-              exact htyping.1
+              exact hwf
             | there C' =>
               simp [Subst.from_TypeEnv]
               exact ih_wf.wf_cvar C'
@@ -671,8 +671,8 @@ theorem typed_env_is_monotonic
     cases env with
     | empty =>
       constructor
-      intro x
-      cases x
+      · intro x; cases x
+      · intro x; cases x
   | push Γ k ih =>
     cases env with
     | extend env' info =>
@@ -684,11 +684,16 @@ theorem typed_env_is_monotonic
           have ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result.tvar x
+          · intro x
+            cases x with
+            | there x =>
+              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              exact ih_result.tvar x
+          · intro x
+            cases x with
+            | there x =>
+              simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+              exact ih_result.cvar x
       | tvar S =>
         cases info with
         | tvar d =>
@@ -696,29 +701,42 @@ theorem typed_env_is_monotonic
           have ⟨hproper, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
-          intro x
-          cases x with
-          | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper, which means ∀ C, (d C).is_proper
-            -- We need d.is_monotonic, which means ∀ C, (d C).is_monotonic
-            intro C
-            exact (hproper C).1
-          | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result.tvar x
+          · intro x
+            cases x with
+            | here =>
+              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              -- hproper says d.is_proper, which means ∀ C, (d C).is_proper
+              -- We need d.is_monotonic, which means ∀ C, (d C).is_monotonic
+              intro C
+              exact (hproper C).1
+            | there x =>
+              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              exact ih_result.tvar x
+          · intro x
+            cases x with
+            | there x =>
+              simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+              exact ih_result.cvar x
       | cvar B =>
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨_, _, _, ht'⟩ := ht
+          have ⟨hmon, hwf, heq, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result.tvar x
+          · intro x
+            cases x with
+            | there x =>
+              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              exact ih_result.tvar x
+          · intro x
+            cases x with
+            | here =>
+              simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+              exact hmon
+            | there x =>
+              simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+              exact ih_result.cvar x
 
 theorem typed_env_is_transparent
   (ht : EnvTyping Γ env mem) :
@@ -768,7 +786,7 @@ theorem typed_env_is_transparent
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨_, _, _, ht'⟩ := ht
+          have ⟨hmon, hwf, heq, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -993,15 +1011,20 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     · intro m' denot msub hdenot_proper himply
       have henv' : (env.extend_tvar denot).IsMonotonic := by
         constructor
-        intro X
-        cases X with
-        | here =>
-          simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-          intro C
-          exact (hdenot_proper C).1
-        | there X' =>
-          simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-          exact henv.tvar X'
+        · intro X
+          cases X with
+          | here =>
+            simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+            intro C
+            exact (hdenot_proper C).1
+          | there X' =>
+            simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact henv.tvar X'
+        · intro X
+          cases X with
+          | there X' =>
+            simp [TypeEnv.extend_tvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+            exact henv.cvar X'
       apply hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply
   | cpoly B T =>
     intro m1 m2 e hmem ht
@@ -1069,11 +1092,19 @@ def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
     let A := CS.denot TypeEnv.empty
     have henv' : (env.extend_cvar CS A).IsMonotonic := by
       constructor
-      intro X
-      cases X with
-      | there X' =>
-        simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-        exact henv.tvar X'
+      · intro X
+        cases X with
+        | there X' =>
+          simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+          exact henv.tvar X'
+      · intro X
+        cases X with
+        | here =>
+          simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+          sorry -- Need to prove A.is_monotonic
+        | there X' =>
+          simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+          exact henv.cvar X'
     -- Extract well-formedness of CS from hA
     have hwf_cs : CS.WfInHeap m1.heap := by
       sorry -- Need to track this through the definition
@@ -1083,13 +1114,15 @@ def exi_val_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
     have htyping' : EnvTyping (.push Γ (.cvar (.unbound))) (env.extend_cvar CS A) m1 := by
       unfold EnvTyping
       constructor
-      · exact hwf_cs
+      · sorry -- Prove: A.is_monotonic
       · constructor
-        · rfl
+        · exact hwf_cs
         · constructor
-          · simp [CaptureBound.denot]
-            sorry -- TODO: Prove A m1 ⊆ CapabilitySet.any (trivially true)
-          · exact htyping_m1
+          · rfl
+          · constructor
+            · simp [CaptureBound.denot]
+              sorry -- TODO: Prove A m1 ⊆ CapabilitySet.any (trivially true)
+            · exact htyping_m1
     exact capt_val_denot_is_monotonic henv' htyping' T hmem hA
 
 def capt_exp_denot_is_monotonic {env : TypeEnv s} {Γ : Ctx s} {m : Memory}
@@ -1190,18 +1223,22 @@ theorem env_typing_monotonic
         cases info with
         | cvar cs denot =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hwf, heq, hsub, ht'⟩ := ht
+          have ⟨hmon, hwf, heq, hsub, ht'⟩ := ht
           constructor
-          · exact CaptureSet.wf_monotonic hmem hwf
+          · -- Prove: denot.is_monotonic
+            exact hmon
           · constructor
-            · -- heq : cs.denot TypeEnv.empty = denot (equality of CapDenots)
-              exact heq
+            · -- Prove: cs.WfInHeap mem2.heap
+              exact CaptureSet.wf_monotonic hmem hwf
             · constructor
-              · -- Need: denot mem2 ⊆ ⟦B⟧_[env'] mem2
-                -- Have: denot mem1 ⊆ ⟦B⟧_[env'] mem1
-                -- Since denot = cs.denot TypeEnv.empty, and that's memory-independent:
-                sorry
-              · exact ih ht'
+              · -- heq : cs.denot TypeEnv.empty = denot (equality of CapDenots)
+                exact heq
+              · constructor
+                · -- Need: denot mem2 ⊆ ⟦B⟧_[env'] mem2
+                  -- Have: denot mem1 ⊆ ⟦B⟧_[env'] mem1
+                  -- Since denot = cs.denot TypeEnv.empty, and that's memory-independent:
+                  sorry
+                · exact ih ht'
 
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
 --   ∀ env H,
