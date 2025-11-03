@@ -684,8 +684,21 @@ theorem sem_typ_app
   -- The opening lemma relates extended environment to substituted type
   have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (T:=T2)
 
-  -- TODO: Need to prove capability set equivalence and apply opening lemma
-  sorry
+  -- Note that interp_var env (Var.bound y) = env.lookup_var y = fy
+  have hinterp : interp_var env (Var.bound y) = fy := rfl
+
+  -- Simplify the capability set in happ
+  simp only [CaptureSet.denot] at happ
+
+  -- Convert the denotation using the equivalence
+  rw [hinterp] at heqv
+  have happ' :=
+    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪ reachability_of_loc store fy)
+      store (e0.subst (Subst.openVar (Var.free fy)))).1 happ
+
+  simp [Ty.exi_exp_denot] at happ'
+
+  apply Eval.eval_apply hlk happ'
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -724,7 +737,8 @@ theorem sem_typ_invoke
         Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
 
   -- Show env.lookup_var x is in the union of capability sets
-  have hmem : env.lookup_var x ∈ CaptureSet.denot env (CaptureSet.var (Var.bound x) ∪ CaptureSet.var (Var.bound y)) store := by
+  have hmem :
+    env.lookup_var x ∈ CaptureSet.denot env (.var (.bound x) ∪ .var (.bound y)) store := by
     apply CapabilitySet.mem.left
     exact hmem_cap
 
