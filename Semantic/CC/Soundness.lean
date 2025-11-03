@@ -110,7 +110,11 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
     · -- Provide the arrow denotation structure
       constructor
       · -- Prove WfInHeap for the capture set
-        sorry
+        apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed
+          cases hclosed_abs
+          assumption
+        · apply from_TypeEnv_wf_in_heap hts
       · -- Provide existential witnesses: cs, T0, t0
         use (Cf.subst (Subst.from_TypeEnv env)), (T1.subst (Subst.from_TypeEnv env)),
           (e.subst (Subst.from_TypeEnv env).lift)
@@ -200,7 +204,11 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
     · -- Need to provide cs, S0 and t0 for the poly denotation
       constructor
       · -- Prove WfInHeap for the capture set
-        sorry
+        apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed
+          cases hclosed_tabs
+          assumption
+        · apply from_TypeEnv_wf_in_heap hts
       · -- Provide existential witnesses: cs, S0, t0
         use (Cf.subst (Subst.from_TypeEnv env)), (S.subst (Subst.from_TypeEnv env)),
           (e.subst (Subst.from_TypeEnv env).lift)
@@ -259,7 +267,11 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
     · -- Need to provide cs, B0 and t0 for the cpoly denotation
       constructor
       · -- Prove WfInHeap for the capture set
-        sorry
+        apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed
+          cases hclosed_cabs
+          assumption
+        · apply from_TypeEnv_wf_in_heap hts
       · -- Provide existential witnesses: cs, B0, t0
         use (Cf.subst (Subst.from_TypeEnv env)), (cb.subst (Subst.from_TypeEnv env)),
           (e.subst (Subst.from_TypeEnv env).lift)
