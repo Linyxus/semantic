@@ -1120,7 +1120,9 @@ def capt_val_denot_is_monotonic {env : TypeEnv s}
       · -- Prove: C.WfInHeap m2.heap
         exact CaptureSet.wf_monotonic hmem hwf_C
       · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
-        sorry
+        have h := capture_set_denot_is_monotonic henv hwf_C hmem
+        rw [<-h]
+        exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
