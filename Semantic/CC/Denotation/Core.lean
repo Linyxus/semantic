@@ -128,7 +128,7 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
   apply himp e ht
 
 inductive TypeInfo : Kind -> Type where
-| var : Nat -> CapabilitySet -> TypeInfo .var
+| var : Nat -> TypeInfo .var
 | tvar : PreDenot -> TypeInfo .tvar
 | cvar : CaptureSet {} -> CapDenot -> TypeInfo .cvar
 
@@ -139,8 +139,8 @@ inductive TypeEnv : Sig -> Type where
   TypeInfo k ->
   TypeEnv (s,,k)
 
-def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (R : CapabilitySet) : TypeEnv (s,x) :=
-  Γ.extend (.var x R)
+def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
+  Γ.extend (.var x)
 
 def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : PreDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
@@ -154,9 +154,9 @@ def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
 | .extend _ info, .here => info
 | .extend Γ _,    .there x => Γ.lookup x
 
-def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat × CapabilitySet :=
+def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat :=
   match Γ.lookup x with
-  | .var y R => (y, R)
+  | .var y => y
 
 def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
   match Γ.lookup x with
@@ -167,7 +167,7 @@ def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} × C
   | .cvar cs c => (cs, c)
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
-  var := fun x => .free (env.lookup_var x).1
+  var := fun x => .free (env.lookup_var x)
   tvar := fun _ => .top
   cvar := fun c => (env.lookup_cvar c).1
 
@@ -182,7 +182,7 @@ def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapDenot
 | _, .empty => fun _ => {}
 | env, .union cs1 cs2 => fun m =>
   (cs1.denot env m) ∪ (cs2.denot env m)
-| env, .var (.bound x) => fun m => reachability_of_loc m (env.lookup_var x).1
+| env, .var (.bound x) => fun m => reachability_of_loc m (env.lookup_var x)
 | _, .var (.free x) => fun m => reachability_of_loc m x
 | env, .cvar c => (env.lookup_cvar c).2
 
@@ -208,7 +208,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       m'.subsumes m ->
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
-        (env.extend_var arg (reachability_of_loc m' arg))
+        (env.extend_var arg)
         T2 (A ∪ (reachability_of_loc m' arg)) m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
   ∃ cs S0 t0,
@@ -292,9 +292,8 @@ instance instCaptureBoundHasDenotation :
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
-| .push Γ (.var T), .extend env (.var n R), m =>
+| .push Γ (.var T), .extend env (.var n), m =>
   ⟦T⟧_[env] m (.var (.free n)) ∧
-  R = reachability_of_loc m n ∧
   EnvTyping Γ env m
 | .push Γ (.tvar S), .extend env (.tvar denot), m =>
   denot.is_proper ∧
@@ -316,7 +315,7 @@ notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
 theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
-    Subst.from_TypeEnv (env.extend_var x R) := by
+    Subst.from_TypeEnv (env.extend_var x) := by
   apply Subst.funext
   · intro y
     cases y <;> rfl
@@ -332,7 +331,7 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
 
 theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
-    e.subst (Subst.from_TypeEnv (env.extend_var x R)) := by
+    e.subst (Subst.from_TypeEnv (env.extend_var x)) := by
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open]
 
@@ -418,9 +417,9 @@ theorem from_TypeEnv_wf_in_heap
       | var T =>
         -- Variable binding: extract well-formedness from typing
         cases info with
-        | var n R =>
+        | var n =>
           unfold EnvTyping at htyping
-          have ⟨htype, _, htyping'⟩ := htyping
+          have ⟨htype, htyping'⟩ := htyping
           -- htype : ⟦T⟧_[ρ'] m (.var (.free n))
           cases T with
           | capt C S =>
@@ -690,7 +689,7 @@ theorem typed_env_is_monotonic
         cases info with
         | var n =>
           simp [EnvTyping] at ht
-          have ⟨_, _, ht'⟩ := ht
+          have ⟨_, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -765,7 +764,7 @@ theorem typed_env_is_transparent
         cases info with
         | var n =>
           simp [EnvTyping] at ht
-          have ⟨_, _, ht'⟩ := ht
+          have ⟨_, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -929,9 +928,9 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s}
       simp [CaptureSet.subst, Subst.from_TypeEnv] at hwf
       cases hwf with
       | wf_var_free hex =>
-        -- hex : m1.heap (ρ.lookup_var x).1 = some _
+        -- hex : m1.heap (ρ.lookup_var x) = some _
         -- Memory.lookup is definitionally equal to heap access
-        exact (reachability_of_loc_monotonic hsub (ρ.lookup_var x).1 hex).symm
+        exact (reachability_of_loc_monotonic hsub (ρ.lookup_var x) hex).symm
     | free x =>
       -- Free variable: stays as free variable
       unfold CaptureSet.denot
@@ -1241,44 +1240,23 @@ theorem env_typing_monotonic
   induction Γ with
   | empty =>
     cases env with
-    | empty => constructor
+    | empty => trivial
   | push Γ k ih =>
     cases env with
     | extend env' info =>
       cases k with
       | var T =>
         cases info with
-        | var n R =>
+        | var n =>
           -- Unfold EnvTyping to get the conjunction
           unfold EnvTyping at ht ⊢
-          have ⟨hval, heq, ht'⟩ := ht
+          have ⟨hval, ht'⟩ := ht
           constructor
           · -- Prove: ⟦T⟧_[env', φ] mem2 (.var (.free n))
             have henv := typed_env_is_monotonic ht'
             exact capt_val_denot_is_monotonic henv T hmem hval
-          · constructor
-            · -- Prove: R = reachability_of_loc mem2 n
-              rw [heq]
-              symm
-              -- Extract existence from well-formedness
-              -- hval : ⟦T⟧_[env', φ] mem1 (.var (.free n))
-              -- By definition, this is: (.var (.free n)).WfInHeap mem1.heap ∧ shape_val_denot ...
-              cases T with
-              | capt C S =>
-                simp only [instCaptHasDenotation, Ty.capt_val_denot] at hval
-                have ⟨hwf, _, _⟩ := hval
-                -- hwf : Exp.WfInHeap (.var (.free n)) mem1.heap
-                cases hwf with
-                | wf_var hwf_var =>
-                  -- hwf_var : Var.WfInHeap (.free n) mem1.heap
-                  cases hwf_var with
-                  | wf_free hex =>
-                    -- hex : mem1.heap n = some val for some val
-                    apply reachability_of_loc_monotonic hmem n
-                    · simp [Memory.lookup]
-                      exact hex
-            · -- Prove: EnvTyping Γ env' mem2
-              exact ih ht'
+          · -- Prove: EnvTyping Γ env' mem2
+            exact ih ht'
       | tvar S =>
         cases info with
         | tvar d =>
