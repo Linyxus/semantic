@@ -8,7 +8,7 @@ structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Pr
 
 def Rebind.liftVar
   (ρ : Rebind env1 f env2) :
-  Rebind (env1.extend_var x R) (f.lift) (env2.extend_var x R) where
+  Rebind (env1.extend_var x) (f.lift) (env2.extend_var x) where
   var := fun
     | .here => rfl
     | .there y => by
@@ -49,7 +49,7 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
     | bound x =>
       have h := ρ.var x
       cases k : env1.lookup x with
-      | var n _ =>
+      | var n =>
         rw [k] at h
         simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
               Subst.from_TypeEnv, TypeEnv.lookup_var, k]
@@ -141,7 +141,7 @@ def rebind_shape_val_denot
       intro arg H' hsub harg
       cases T1
       case capt C S =>
-        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
+        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
         have harg' := (ih1 _ _).mpr harg
         specialize hd arg H' hsub harg'
         -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
@@ -153,7 +153,7 @@ def rebind_shape_val_denot
       intro arg H' hsub harg
       cases T1
       case capt C S =>
-        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
+        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
         have harg' := (ih1 _ _).mp harg
         specialize hd arg H' hsub harg'
         -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
@@ -300,8 +300,8 @@ def rebind_exi_exp_denot
 
 end
 
-def Rebind.weaken {env : TypeEnv s} {x : Nat} {R : CapabilitySet} :
-  Rebind env Rename.succ (env.extend_var x R) where
+def Rebind.weaken {env : TypeEnv s} {x : Nat} :
+  Rebind env Rename.succ (env.extend_var x) where
   var := fun _ => rfl
 
 def Rebind.tweaken {env : TypeEnv s} {d : PreDenot} :
@@ -313,15 +313,15 @@ def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {c : CapDenot} :
   var := fun _ => rfl
 
 lemma weaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
-  Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_var x R) (T.rename Rename.succ) := by
+  Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_var x) (T.rename Rename.succ) := by
   apply rebind_shape_val_denot (ρ:=Rebind.weaken) (T:=T)
 
 lemma weaken_capt_val_denot {env : TypeEnv s} {T : Ty .capt s} :
-  Ty.capt_val_denot env T ≈ Ty.capt_val_denot (env.extend_var x R) (T.rename Rename.succ) := by
+  Ty.capt_val_denot env T ≈ Ty.capt_val_denot (env.extend_var x) (T.rename Rename.succ) := by
   apply rebind_capt_val_denot (ρ:=Rebind.weaken) (T:=T)
 
 lemma weaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
-  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_var x R) (T.rename Rename.succ) := by
+  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_var x) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.weaken) (T:=T)
 
 lemma tweaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
