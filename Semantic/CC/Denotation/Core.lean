@@ -939,6 +939,76 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s}
     unfold CaptureSet.denot
     exact hρ.cvar c hwf hsub
 
+-- Helper lemma: derive well-formedness of substituted capture set from EnvTyping
+theorem capture_set_subst_wf {Γ : Ctx s} {env : TypeEnv s} {C : CaptureSet s} {m : Memory}
+  (htyping : EnvTyping Γ env m)
+  (hwf_C : C.WfInHeap m.heap) :
+  (C.subst (Subst.from_TypeEnv env)).WfInHeap m.heap := by
+  induction C generalizing m with
+  | empty =>
+    simp [CaptureSet.subst]
+    apply CaptureSet.WfInHeap.wf_empty
+  | union C1 C2 ih1 ih2 =>
+    simp [CaptureSet.subst]
+    cases hwf_C with
+    | wf_union hwf1 hwf2 =>
+      apply CaptureSet.WfInHeap.wf_union
+      · exact ih1 htyping hwf1
+      · exact ih2 htyping hwf2
+  | var v =>
+    cases v with
+    | free x =>
+      simp [CaptureSet.subst]
+      cases hwf_C with
+      | wf_var_free hex =>
+        apply CaptureSet.WfInHeap.wf_var_free
+        exact hex
+    | bound x =>
+      simp [CaptureSet.subst, Subst.from_TypeEnv]
+      -- After substitution, .var (.bound x) becomes .var (.free loc)
+      -- where loc = (env.lookup_var x).1
+      -- We need to show this location exists in the heap
+      sorry -- Requires: extract from EnvTyping that bound variables map to valid locations
+  | cvar c =>
+    simp [CaptureSet.subst, Subst.from_TypeEnv]
+    -- After substitution, .cvar c becomes the capture set stored in env
+    -- We need to show that (env.lookup_cvar c).1 is well-formed in the heap
+    sorry -- This requires extracting from EnvTyping that cvars map to well-formed capture sets
+
+-- Monotonicity theorem with typing context
+-- This requires EnvTyping to hold for the first memory in the monotonicity relation
+theorem capt_val_denot_is_monotonic_with_typing {Γ : Ctx s} {env : TypeEnv s}
+  (henv : env.IsMonotonic)
+  (T : Ty .capt s) :
+  ∀ {m1 m2 : Memory} {e},
+    EnvTyping Γ env m1 ->
+    m2.subsumes m1 ->
+    (Ty.capt_val_denot env T) m1 e ->
+    (Ty.capt_val_denot env T) m2 e := by
+  cases T with
+  | capt C S =>
+    intro m1 m2 e htyping hmem ht
+    simp [Ty.capt_val_denot] at ht ⊢
+    have ⟨hwf, hwf_C, hshape⟩ := ht
+    constructor
+    · -- Prove: e.WfInHeap m2.heap
+      -- Use monotonicity of well-formedness
+      exact Exp.wf_monotonic hmem hwf
+    · constructor
+      · -- Prove: C.WfInHeap m2.heap
+        exact CaptureSet.wf_monotonic hmem hwf_C
+      · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
+        -- Use capture_set_denot_is_monotonic to show C.denot env m1 = C.denot env m2
+        have hwf_subst : (C.subst (Subst.from_TypeEnv env)).WfInHeap m1.heap :=
+          capture_set_subst_wf htyping hwf_C
+        have heq : C.denot env m1 = C.denot env m2 :=
+          capture_set_denot_is_monotonic henv hwf_subst hmem
+        rw [← heq]
+        -- Now we need to show: shape_val_denot env S (C.denot env m1) m2 e from hshape
+        -- This requires that shape_val_denot is monotonic in memory,
+        -- which needs to be proven separately
+        sorry -- Requires: shape denotations are monotonic in memory
+
 mutual
 
 def shape_val_denot_is_monotonic {env : TypeEnv s}
@@ -1115,12 +1185,14 @@ def capt_val_denot_is_monotonic {env : TypeEnv s}
     have ⟨hwf, hwf_C, hshape⟩ := ht
     constructor
     · -- Prove: e.WfInHeap m2.heap
-      -- Use monotonicity of well-formedness
       exact Exp.wf_monotonic hmem hwf
     · constructor
       · -- Prove: C.WfInHeap m2.heap
         exact CaptureSet.wf_monotonic hmem hwf_C
       · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
+        -- This cannot be proven without EnvTyping because we cannot derive
+        -- (C.subst (Subst.from_TypeEnv env)).WfInHeap m1.heap from C.WfInHeap m1.heap
+        -- Use the version with typing context instead: capt_val_denot_is_monotonic_with_typing
         sorry
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
