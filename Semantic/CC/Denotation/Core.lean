@@ -130,7 +130,7 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> TypeInfo .var
 | tvar : PreDenot -> TypeInfo .tvar
-| cvar : CaptureSet {} -> CapDenot -> TypeInfo .cvar
+| cvar : CaptureSet {} -> TypeInfo .cvar
 
 inductive TypeEnv : Sig -> Type where
 | empty : TypeEnv {}
@@ -146,9 +146,9 @@ def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : PreDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar
-  (Γ : TypeEnv s) (original : CaptureSet {}) (underlying : CapDenot) :
+  (Γ : TypeEnv s) (ground : CaptureSet {}) :
   TypeEnv (s,C) :=
-  Γ.extend (.cvar original underlying)
+  Γ.extend (.cvar ground)
 
 def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
 | .extend _ info, .here => info
@@ -162,14 +162,14 @@ def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
   match Γ.lookup x with
   | .tvar T => T
 
-def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} × CapDenot :=
+def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} :=
   match Γ.lookup x with
-  | .cvar cs c => (cs, c)
+  | .cvar cs => cs
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x)
   tvar := fun _ => .top
-  cvar := fun c => (env.lookup_cvar c).1
+  cvar := fun c => env.lookup_cvar c
 
 theorem Subst.from_TypeEnv_empty :
   Subst.from_TypeEnv TypeEnv.empty = Subst.id := by
@@ -178,13 +178,15 @@ theorem Subst.from_TypeEnv_empty :
   · intro X; cases X
   · intro C; cases C
 
-def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapDenot
-| _, .empty => fun _ => {}
-| env, .union cs1 cs2 => fun m =>
-  (cs1.denot env m) ∪ (cs2.denot env m)
-| env, .var (.bound x) => fun m => reachability_of_loc m (env.lookup_var x)
-| _, .var (.free x) => fun m => reachability_of_loc m x
-| env, .cvar c => (env.lookup_cvar c).2
+/-- Compute denotation for a ground capture set. -/
+def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
+| .empty => fun _ => {}
+| .union cs1 cs2 => fun m =>
+  (cs1.ground_denot m) ∪ (cs2.ground_denot m)
+| .var (.free x) => fun m => reachability_of_loc m x
+
+def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
+  (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
 | _, .unbound => fun _ => CapabilitySet.any
@@ -229,7 +231,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       m'.subsumes m ->
       (A0 m' ⊆ B.denot env m') ->
       Ty.exi_exp_denot
-        (env.extend_cvar CS A0)
+        (env.extend_cvar CS)
         T A m' (t0.subst (Subst.openCVar CS)))
 
 def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
@@ -242,8 +244,7 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 | ρ, .typ T => Ty.capt_val_denot ρ T
 | ρ, .exi T => fun m e =>
   ∃ (CS : CaptureSet {}),
-    let A := CS.denot TypeEnv.empty
-    Ty.capt_val_denot (ρ.extend_cvar CS A) T m e
+    Ty.capt_val_denot (ρ.extend_cvar CS) T m e
 
 def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
 | ρ, T => fun A m (e : Exp {}) =>
@@ -299,11 +300,10 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.is_proper ∧
   denot.ImplyAfter m ⟦S⟧_[env] ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar cs denot), m =>
-  denot.is_monotonic_for cs ∧
+| .push Γ (.cvar B), .extend env (.cvar cs), m =>
   (cs.WfInHeap m.heap) ∧
-  (cs.denot TypeEnv.empty = denot) ∧ ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
-  (denot m ⊆ ⟦B⟧_[env] m) ∧
+  ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
+  (cs.ground_denot m ⊆ ⟦B⟧_[env] m) ∧
   EnvTyping Γ env m
 
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
@@ -363,9 +363,9 @@ theorem Exp.from_TypeEnv_weaken_open_tvar
   rw [Subst.from_TypeEnv_weaken_open_tvar]
 
 theorem Subst.from_TypeEnv_weaken_open_cvar
-  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapDenot} :
+  {env : TypeEnv s} {cs : CaptureSet {}} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openCVar cs) =
-    Subst.from_TypeEnv (env.extend_cvar cs c) := by
+    Subst.from_TypeEnv (env.extend_cvar cs) := by
   apply Subst.funext
   · intro x
     cases x
@@ -382,9 +382,9 @@ theorem Subst.from_TypeEnv_weaken_open_cvar
       exact CaptureSet.weaken_openCVar
 
 theorem Exp.from_TypeEnv_weaken_open_cvar
-  {env : TypeEnv s} {cs : CaptureSet {}} {c : CapDenot} {e : Exp (s,C)} :
+  {env : TypeEnv s} {cs : CaptureSet {}} {e : Exp (s,C)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar cs) =
-    e.subst (Subst.from_TypeEnv (env.extend_cvar cs c)) := by
+    e.subst (Subst.from_TypeEnv (env.extend_cvar cs)) := by
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_cvar]
 
