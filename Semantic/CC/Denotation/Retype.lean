@@ -99,7 +99,7 @@ theorem Retype.liftTVar
       apply rebind_captureset_denot Rebind.tweaken
 
 theorem Retype.liftCVar
-  {cs : CaptureSet {}} {c : CapabilitySet}
+  {cs : CaptureSet {}} {c : CapDenot}
   (ρ : Retype env1 σ env2) :
   Retype (env1.extend_cvar cs c) (σ.lift) (env2.extend_cvar cs c) where
   var := fun
@@ -280,8 +280,20 @@ def retype_capt_val_denot
     intro s e
     simp [Ty.capt_val_denot, Ty.subst]
     rw [← hC]
-    intro hwf
-    exact hS (C.denot env1) s e
+    intro hwf_e
+    constructor
+    · intro ⟨hwf_C, hshape⟩
+      constructor
+      · -- Need: ((C.subst σ).subst (Subst.from_TypeEnv env2)).WfInHeap s.heap
+        -- Have: (C.subst (Subst.from_TypeEnv env1)).WfInHeap s.heap
+        sorry
+      · exact (hS (C.denot env1 s) s e).mp hshape
+    · intro ⟨hwf_C, hshape⟩
+      constructor
+      · -- Need: (C.subst (Subst.from_TypeEnv env1)).WfInHeap s.heap
+        -- Have: ((C.subst σ).subst (Subst.from_TypeEnv env2)).WfInHeap s.heap
+        sorry
+      · exact (hS (C.denot env1 s) s e).mpr hshape
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
