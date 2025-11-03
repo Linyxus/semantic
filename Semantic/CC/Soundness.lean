@@ -749,7 +749,9 @@ theorem sem_typ_invoke
   constructor
   · exact Exp.WfInHeap.wf_unit
   · constructor
-    · sorry  -- TODO: Prove (CaptureSet.empty.subst (Subst.from_TypeEnv env)).WfInHeap store.heap
+    · -- Empty capture set is always well-formed
+      simp only [CaptureSet.subst]
+      exact CaptureSet.WfInHeap.wf_empty
     · simp [resolve]
 
 theorem sem_typ_unit :
