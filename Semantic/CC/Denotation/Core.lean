@@ -171,6 +171,13 @@ def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   tvar := fun _ => .top
   cvar := fun c => (env.lookup_cvar c).1
 
+theorem Subst.from_TypeEnv_empty :
+  Subst.from_TypeEnv TypeEnv.empty = Subst.id := by
+  apply Subst.funext
+  · intro x; cases x
+  · intro X; cases X
+  · intro C; cases C
+
 def CaptureSet.denot : TypeEnv s -> CaptureSet s -> CapDenot
 | _, .empty => fun _ => {}
 | env, .union cs1 cs2 => fun m =>
@@ -938,6 +945,25 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s}
     -- Capture variable: use monotonicity from ρ.IsMonotonic
     unfold CaptureSet.denot
     exact hρ.cvar c hwf hsub
+
+theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
+  (hρ : ρ.IsMonotonic)
+  (hwf : (B.subst (Subst.from_TypeEnv ρ)).WfInHeap m1.heap)
+  (hsub : m2.subsumes m1) :
+  B.denot ρ m1 = B.denot ρ m2 := by
+  cases B with
+  | unbound =>
+    -- Unbound denotes CapabilitySet.any at all memories
+    unfold CaptureBound.denot
+    rfl
+  | bound cs =>
+    -- Bounded case: use capture_set_denot_is_monotonic
+    unfold CaptureBound.denot
+    -- Extract well-formedness of the capture set from hwf
+    simp [CaptureBound.subst] at hwf
+    cases hwf with
+    | wf_bound hwf_cs =>
+      exact capture_set_denot_is_monotonic hρ hwf_cs hsub
 
 mutual
 
