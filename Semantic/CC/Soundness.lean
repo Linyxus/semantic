@@ -2,10 +2,6 @@ import Semantic.CC.Denotation
 import Semantic.CC.Semantics
 namespace CC
 
-def Retype.from_TypeEnv
-  (env : TypeEnv s) (hwt : EnvTyping Γ env mem) :
-  Retype env (Subst.from_TypeEnv env) TypeEnv.empty := sorry
-
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env store)
   (hx : Ctx.LookupVar Γ x T) :
