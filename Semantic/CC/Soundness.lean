@@ -149,7 +149,9 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
               assumption
             -- Closed capture sets are well-formed in any heap
             have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-              sorry  -- TODO: Need lemma about closed capture sets being wf after substitution
+              apply CaptureSet.wf_subst
+              · apply CaptureSet.wf_of_closed hCf_closed
+              · apply from_TypeEnv_wf_in_heap hts
             exact capture_set_denot_is_monotonic hwf_Cf hsubsume
           rw [hCf_mono, ← hcap_rename, ← hcap_var]
           simp [CaptureSet.denot]
@@ -230,7 +232,9 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
               assumption
             -- Closed capture sets are well-formed in any heap
             have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-              sorry  -- TODO: Need lemma about closed capture sets being wf after substitution
+              apply CaptureSet.wf_subst
+              · apply CaptureSet.wf_of_closed hCf_closed
+              · apply from_TypeEnv_wf_in_heap hts
             exact capture_set_denot_is_monotonic hwf_Cf hsubsume
           rw [hCf_mono, ← hcap_rename]
           exact this
@@ -269,7 +273,16 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
             constructor
             · exact hwf
             · constructor
-              · sorry  -- TODO: Prove (cb.subst (Subst.from_TypeEnv env)).WfInHeap H'.heap
+              · -- Prove (cb.subst (Subst.from_TypeEnv env)).WfInHeap H'.heap
+                apply CaptureBound.wf_subst
+                · apply CaptureBound.wf_of_closed
+                  cases hclosed_cabs; assumption
+                · -- Lift Subst.WfInHeap from store to H' using monotonicity
+                  have hwf_subst_store := from_TypeEnv_wf_in_heap hts
+                  constructor
+                  · intro x; exact Var.wf_monotonic hsubsume (hwf_subst_store.wf_var x)
+                  · intro X; exact Ty.wf_monotonic hsubsume (hwf_subst_store.wf_tvar X)
+                  · intro C; exact CaptureSet.wf_monotonic hsubsume (hwf_subst_store.wf_cvar C)
               · constructor
                 · -- Rewrite hsub_bound to match expected type
                   -- Need to show: CS.ground_denot H' ⊆ ⟦cb⟧_[env] H'
@@ -278,9 +291,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
                   -- For ground CS, subst with TypeEnv.empty is identity
                   have heq : CS.ground_denot = CaptureSet.denot TypeEnv.empty CS := by
                     funext m
-                    simp [CaptureSet.denot, Subst.from_TypeEnv]
-                    -- CS has no bound variables, so substitution is identity
-                    sorry
+                    simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
                   rw [heq]
                   exact hsub_bound
                 · apply env_typing_monotonic hts hsubsume
@@ -305,7 +316,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
               assumption
             -- Closed capture sets are well-formed in any heap
             have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-              sorry  -- TODO: Need lemma about closed capture sets being wf after substitution
+              apply CaptureSet.wf_subst
+              · apply CaptureSet.wf_of_closed hCf_closed
+              · apply from_TypeEnv_wf_in_heap hts
             exact capture_set_denot_is_monotonic hwf_Cf hsubsume
           rw [hCf_mono, ← hcap_rename]
           exact this
@@ -721,7 +734,9 @@ theorem sem_typ_unit :
   · constructor
     · exact Exp.WfInHeap.wf_unit
     · constructor
-      · sorry  -- TODO: Prove (CaptureSet.empty.subst (Subst.from_TypeEnv env)).WfInHeap store.heap
+      · apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
+        · apply from_TypeEnv_wf_in_heap hts
       · simp [resolve]
 
 -- theorem sem_typ_tapp
