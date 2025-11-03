@@ -2,10 +2,10 @@ import Semantic.CC.Denotation.Core
 import Semantic.CC.Denotation.Rebind
 namespace CC
 
-/-- Interpret a variable in an environment to get its free variable index and capability set. -/
-def interp_var (env : TypeEnv s) (x : Var .var s) : Nat × CapabilitySet :=
+/-- Interpret a variable in an environment to get its free variable index. -/
+def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
   match x with
-  | .free n => ⟨n, {n}⟩
+  | .free n => n
   | .bound x => env.lookup_var x
 
 structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
@@ -22,7 +22,7 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
       (env1.lookup_cvar C).2 = CaptureSet.denot env2 (σ.cvar C)
 
 lemma weaken_interp_var {x : Var .var s} :
-  interp_var env x = interp_var (env.extend_var n R) (x.rename Rename.succ) := by
+  interp_var env x = interp_var (env.extend_var n) (x.rename Rename.succ) := by
   cases x <;> rfl
 
 lemma tweaken_interp_var {x : Var .var s} :
@@ -34,9 +34,9 @@ lemma cweaken_interp_var {x : Var .var s} :
   cases x <;> rfl
 
 theorem Retype.liftVar
-  {x : Nat} {R : CapabilitySet}
+  {x : Nat}
   (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_var x R) (σ.lift) (env2.extend_var x R) where
+  Retype (env1.extend_var x) (σ.lift) (env2.extend_var x) where
   var := fun
     | .here => rfl
     | .there y => by
@@ -161,7 +161,7 @@ def retype_shape_val_denot
       intro arg H' hsub harg
       cases T1
       case capt C S =>
-        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
+        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mpr harg
         specialize hd arg H' hsub harg'
         -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
@@ -173,7 +173,7 @@ def retype_shape_val_denot
       intro arg H' hsub harg
       cases T1
       case capt C S =>
-        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (R:=reachability_of_loc H' arg)) T2
+        have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mp harg
         specialize hd arg H' hsub harg'
         -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
@@ -360,7 +360,7 @@ end
 
 def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
   Retype
-    (env.extend_var (interp_var env y).1 (interp_var env y).2)
+    (env.extend_var (interp_var env y))
     (Subst.openVar y)
     env where
   var := fun x => by cases x <;> rfl
@@ -381,22 +381,22 @@ def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
       rfl
 
 theorem open_arg_shape_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .shape (s,x)} :
-  Ty.shape_val_denot (env.extend_var (interp_var env y).1 (interp_var env y).2) T ≈
+  Ty.shape_val_denot (env.extend_var (interp_var env y)) T ≈
     Ty.shape_val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_shape_val_denot Retype.open_arg
 
 theorem open_arg_capt_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .capt (s,x)} :
-  Ty.capt_val_denot (env.extend_var (interp_var env y).1 (interp_var env y).2) T ≈
+  Ty.capt_val_denot (env.extend_var (interp_var env y)) T ≈
     Ty.capt_val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_capt_val_denot Retype.open_arg
 
 theorem open_arg_exi_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .exi (s,x)} :
-  Ty.exi_val_denot (env.extend_var (interp_var env y).1 (interp_var env y).2) T ≈
+  Ty.exi_val_denot (env.extend_var (interp_var env y)) T ≈
     Ty.exi_val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_exi_val_denot Retype.open_arg
 
 theorem open_arg_exi_exp_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .exi (s,x)} :
-  Ty.exi_exp_denot (env.extend_var (interp_var env y).1 (interp_var env y).2) T ≈
+  Ty.exi_exp_denot (env.extend_var (interp_var env y)) T ≈
     Ty.exi_exp_denot env (T.subst (Subst.openVar y)) := by
   apply retype_exi_exp_denot Retype.open_arg
 
