@@ -302,8 +302,8 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs denot), m =>
   denot.is_monotonic_for cs ∧
-  (CaptureSet.WfInHeap cs m.heap) ∧
-  (cs.denot TypeEnv.empty = denot) ∧
+  (cs.WfInHeap m.heap) ∧
+  (cs.denot TypeEnv.empty = denot) ∧ ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
   (denot m ⊆ ⟦B⟧_[env] m) ∧
   EnvTyping Γ env m
 
@@ -481,7 +481,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar original_cs access =>
           unfold EnvTyping at htyping
-          have ⟨hmon, hwf, heq, hsub, htyping'⟩ := htyping
+          have ⟨hmon, hwf, heq, hwf_bound, hsub, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -730,7 +730,7 @@ theorem typed_env_is_monotonic
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨hmon, hwf, heq, hsub, ht'⟩ := ht
+          have ⟨hmon, hwf, heq, hwf_bound, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -795,7 +795,7 @@ theorem typed_env_is_transparent
         cases info with
         | cvar _ access =>
           simp [EnvTyping] at ht
-          have ⟨hmon, hwf, heq, hsub, ht'⟩ := ht
+          have ⟨hmon, hwf, heq, hwf_bound, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1294,7 +1294,7 @@ theorem env_typing_monotonic
         cases info with
         | cvar cs denot =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hmon, hwf, heq, hsub, ht'⟩ := ht
+          have ⟨hmon, hwf, heq, hwf_bound, hsub, ht'⟩ := ht
           constructor
           · -- Prove: denot.is_monotonic
             exact hmon
@@ -1305,11 +1305,21 @@ theorem env_typing_monotonic
               · -- heq : cs.denot TypeEnv.empty = denot (equality of CapDenots)
                 exact heq
               · constructor
-                · -- Need: denot mem2 ⊆ ⟦B⟧_[env'] mem2
-                  -- Have: denot mem1 ⊆ ⟦B⟧_[env'] mem1
-                  -- Since denot = cs.denot TypeEnv.empty, and that's memory-independent:
-                  sorry
-                · exact ih ht'
+                · -- Prove: (B.subst (Subst.from_TypeEnv env')).WfInHeap mem2.heap
+                  exact CaptureBound.wf_monotonic hmem hwf_bound
+                · constructor
+                  · -- Need: denot mem2 ⊆ ⟦B⟧_[env'] mem2
+                    -- Have: denot mem1 ⊆ ⟦B⟧_[env'] mem1
+                    -- Get denot mem1 = denot mem2 from monotonicity
+                    have h_denot_eq := hmon hwf hmem
+                    -- Get ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2 from capture bound monotonicity
+                    have h_env_mon := typed_env_is_monotonic ht'
+                    have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
+                      capture_bound_denot_is_monotonic h_env_mon hwf_bound hmem
+                    -- Combine: denot mem2 = denot mem1 ⊆ ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2
+                    rw [<-h_denot_eq, <-h_bound_eq]
+                    exact hsub
+                  · exact ih ht'
 
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
 --   ∀ env H,
