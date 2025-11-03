@@ -4,90 +4,22 @@ namespace CC
 
 def Retype.from_TypeEnv
   (env : TypeEnv s) (hwt : EnvTyping Γ env mem) :
-  Retype env (Subst.from_TypeEnv env) TypeEnv.empty where
-  var := fun x => by
-    -- Need to show: env.lookup_var x = interp_var TypeEnv.empty ((Subst.from_TypeEnv env).var x)
-    simp [Subst.from_TypeEnv, interp_var]
-    -- Goal: env.lookup_var x = ((env.lookup_var x).1, {(env.lookup_var x).1})
-
-    -- This requires proving: (env.lookup_var x).2 = {(env.lookup_var x).1}
-    -- From EnvTyping, we know: (env.lookup_var x).2 = reachability_of_loc mem (env.lookup_var x).1
-    -- And reachability_of_loc returns R (the full stored reachability), not necessarily {location}
-
-    -- This is the fundamental issue: variables in typed environments store full reachability
-    -- information, not just singletons. This Retype morphism CANNOT be constructed.
-    sorry
-  tvar := fun X => sorry
-  cvar := fun c => sorry
-
--- Auxiliary theorem with explicit lookup witness
-theorem typed_env_reachability_eq_aux
-  (hts : EnvTyping Γ env store)
-  (hx : Ctx.LookupVar Γ x T) :
-  (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 := by
-  induction hx generalizing store
-  case here =>
-    cases env; rename_i info0 env0
-    cases info0; rename_i n R
-    simp [EnvTyping] at hts
-    simp [TypeEnv.lookup_var, TypeEnv.lookup]
-    exact hts.2.1
-  case there b =>
-    rename_i k Γ0 x0 T0 binding hlk
-    cases binding
-    case var =>
-      rename_i Tb
-      cases env; rename_i info0 env0
-      cases info0; rename_i n R
-      simp [EnvTyping] at hts
-      obtain ⟨_, _, henv0⟩ := hts
-      have hih := b henv0
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      exact hih
-    case tvar =>
-      rename_i Sb
-      cases env; rename_i info0 env0
-      cases info0; rename_i d
-      simp [EnvTyping] at hts
-      obtain ⟨_, _, henv0⟩ := hts
-      have hih := b henv0
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      exact hih
-    case cvar =>
-      rename_i Bb
-      cases env; rename_i info0 env0
-      cases info0; rename_i A
-      simp [EnvTyping] at hts
-      obtain ⟨_, _, _, henv0⟩ := hts
-      have hih := b henv0
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      exact hih
-
-/-- For bound variables in a typed environment, the capability set component
-    equals the heap reachability at that location.
-
-    This version doesn't require an explicit lookup witness - it's derived
-    automatically using `Ctx.lookup_var_exists`. -/
-theorem typed_env_reachability_eq
-  (hts : EnvTyping Γ env store) :
-  (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 := by
-  obtain ⟨T, hx⟩ := Ctx.lookup_var_exists (Γ := Γ) (x := x)
-  exact typed_env_reachability_eq_aux hts hx
+  Retype env (Subst.from_TypeEnv env) TypeEnv.empty := sorry
 
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env store)
   (hx : Ctx.LookupVar Γ x T) :
-  Ty.capt_val_denot env T store (.var (.free (env.lookup_var x).1)) := by
+  Ty.capt_val_denot env T store (.var (.free (env.lookup_var x))) := by
   induction hx generalizing store
   case here =>
     -- The environment must match the context structure
     rename_i Γ0 T0
     cases env; rename_i info0 env0
-    cases info0; rename_i n access
+    cases info0; rename_i n
     simp [EnvTyping] at hts
     simp [TypeEnv.lookup_var, TypeEnv.lookup]
     -- Apply weaken_capt_val_denot equivalence
-    have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (R:=access) (T:=T0)
+    have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (T:=T0)
     apply (Denot.equiv_to_imply heqv).1
     exact hts.1
   case there b =>
@@ -98,15 +30,15 @@ theorem typed_env_lookup_var
       -- binding is .var Tb
       rename_i Tb
       cases env; rename_i info0 env0
-      cases info0; rename_i n access
+      cases info0; rename_i n
       simp [EnvTyping] at hts
-      obtain ⟨_, _, henv0⟩ := hts
+      obtain ⟨_, henv0⟩ := hts
       -- Apply IH to get the result for env0
       have hih := b henv0
       -- Show that lookup_var .there reduces correctly
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
       -- Apply weakening
-      have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (R:=access) (T:=T0)
+      have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (T:=T0)
       apply (Denot.equiv_to_imply heqv).1
       exact hih
     case tvar =>
@@ -125,12 +57,12 @@ theorem typed_env_lookup_var
       -- binding is .cvar Bb
       rename_i Bb
       cases env; rename_i info0 env0
-      cases info0; rename_i cs A
+      cases info0; rename_i cs
       simp [EnvTyping] at hts
       obtain ⟨_, _, _, henv0⟩ := hts
       have hih := b henv0
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      have heqv := cweaken_capt_val_denot (env:=env0) (cs:=cs) (c:=A) (T:=T0)
+      have heqv := cweaken_capt_val_denot (env:=env0) (cs:=cs) (T:=T0)
       apply (Denot.equiv_to_imply heqv).1
       exact hih
 
