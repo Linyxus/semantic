@@ -36,7 +36,35 @@ def Rebind.liftCVar
 theorem rebind_resolved_capture_set {C : CaptureSet s1}
   (ρ : Rebind env1 f env2) :
   C.subst (Subst.from_TypeEnv env1) =
-    (C.rename f).subst (Subst.from_TypeEnv env2) := by sorry
+    (C.rename f).subst (Subst.from_TypeEnv env2) := by
+  induction C with
+  | empty =>
+    simp [CaptureSet.subst, CaptureSet.rename]
+  | union C1 C2 ih1 ih2 =>
+    simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
+  | var x =>
+    cases x with
+    | free n =>
+      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
+    | bound x =>
+      have h := ρ.var x
+      cases k : env1.lookup x with
+      | var n _ =>
+        rw [k] at h
+        simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
+              Subst.from_TypeEnv, TypeEnv.lookup_var, k]
+        rw [<-h]
+  | cvar x =>
+    have h := ρ.var x
+    cases k1 : env1.lookup x with
+    | cvar cs1 c1 =>
+      rw [k1] at h
+      cases k2 : env2.lookup (f.var x) with
+      | cvar cs2 c2 =>
+        rw [k2] at h
+        cases h
+        simp [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv,
+              TypeEnv.lookup_cvar, k1, k2]
 
 /- Rebinding for CaptureSet.denot -/
 theorem rebind_captureset_denot
@@ -198,14 +226,15 @@ def rebind_capt_val_denot
       constructor
       · -- Need: ((C.rename f).subst (Subst.from_TypeEnv env2)).WfInHeap s.heap
         -- Have: (C.subst (Subst.from_TypeEnv env1)).WfInHeap s.heap
-        -- When Rebind env1 f env2 holds, these should denote the same capture set
-        -- so they should have the same well-formedness
-        sorry
+        -- These are equal by rebind_resolved_capture_set
+        rw [<-rebind_resolved_capture_set ρ]
+        exact hwf_C
       · exact (hS (C.denot env1 s) s e).mp hshape
     · intro ⟨hwf_C, hshape⟩
       constructor
       · -- Symmetric case
-        sorry
+        rw [rebind_resolved_capture_set ρ]
+        exact hwf_C
       · exact (hS (C.denot env1 s) s e).mpr hshape
 
 def rebind_exi_val_denot
