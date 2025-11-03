@@ -33,6 +33,11 @@ def Rebind.liftCVar
       simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup]
       exact ρ.var y
 
+theorem rebind_resolved_capture_set {C : CaptureSet s1}
+  (ρ : Rebind env1 f env2) :
+  C.subst (Subst.from_TypeEnv env1) =
+    (C.rename f).subst (Subst.from_TypeEnv env2) := by sorry
+
 /- Rebinding for CaptureSet.denot -/
 theorem rebind_captureset_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
