@@ -882,10 +882,33 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
     exact capt_val_denot_is_transparent henv' T hx hA
 
 theorem ground_denot_is_monotonic {C : CaptureSet {}} :
-  (C.ground_denot).is_monotonic_for C := sorry
+  (C.ground_denot).is_monotonic_for C := by
+  unfold CapDenot.is_monotonic_for
+  intro m1 m2 hwf hsub
+  induction C with
+  | empty =>
+    -- Empty set denotes {} at all memories
+    rfl
+  | union cs1 cs2 ih1 ih2 =>
+    -- Union: use IH on both components
+    unfold CaptureSet.ground_denot
+    simp at hwf
+    cases hwf with
+    | wf_union hwf1 hwf2 =>
+      rw [ih1 hwf1, ih2 hwf2]
+  | var v =>
+    cases v with
+    | bound x => cases x  -- No bound variables in empty signature
+    | free x =>
+      -- Free variable: use reachability_of_loc_monotonic
+      unfold CaptureSet.ground_denot
+      simp at hwf
+      cases hwf with
+      | wf_var_free hex =>
+        exact (reachability_of_loc_monotonic hsub x hex).symm
+  | cvar c => cases c  -- No capture variables in empty signature
 
-theorem capture_set_denot_is_monotonic {C : CaptureSet s}
-  (hρ : ρ.IsMonotonic) :
+theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
   (C.denot ρ).is_monotonic_for (C.subst (Subst.from_TypeEnv ρ)) := by
   unfold CapDenot.is_monotonic_for
   intro m1 m2 hwf hsub
@@ -929,7 +952,7 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s}
     simp [CaptureSet.subst, Subst.from_TypeEnv]
     -- Need: (ρ.lookup_cvar c).ground_denot m1 = (ρ.lookup_cvar c).ground_denot m2
     -- This follows from ground_denot_is_monotonic
-    sorry -- TODO: apply ground_denot_is_monotonic hwf hsub
+    exact ground_denot_is_monotonic hwf hsub
 
 theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
   (hρ : ρ.IsMonotonic)
@@ -948,7 +971,7 @@ theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
     simp [CaptureBound.subst] at hwf
     cases hwf with
     | wf_bound hwf_cs =>
-      exact capture_set_denot_is_monotonic hρ hwf_cs hsub
+      exact capture_set_denot_is_monotonic hwf_cs hsub
 
 mutual
 
@@ -1126,7 +1149,7 @@ def capt_val_denot_is_monotonic {env : TypeEnv s}
       · -- Prove: C.WfInHeap m2.heap
         exact CaptureSet.wf_monotonic hmem hwf_C
       · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
-        have h := capture_set_denot_is_monotonic henv hwf_C hmem
+        have h := capture_set_denot_is_monotonic hwf_C hmem
         rw [<-h]
         exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
 
@@ -1237,16 +1260,15 @@ theorem env_typing_monotonic
             · constructor
               · -- Need: cs.ground_denot mem2 ⊆ ⟦B⟧_[env'] mem2
                 -- Have: cs.ground_denot mem1 ⊆ ⟦B⟧_[env'] mem1
-                -- Get cs.ground_denot mem1 = cs.ground_denot mem2 from ground denot monotonicity
-                sorry -- TODO: need ground_denot_is_monotonic theorem
-                -- have h_denot_eq := ground_denot_is_monotonic hwf hmem
-                -- Get ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2 from capture bound monotonicity
-                -- have h_env_mon := typed_env_is_monotonic ht'
-                -- have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
-                --   capture_bound_denot_is_monotonic h_env_mon hwf_bound hmem
-                -- Combine: cs.ground_denot mem2 = cs.ground_denot mem1 ⊆ ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2
-                -- rw [<-h_denot_eq, <-h_bound_eq]
-                -- exact hsub
+                -- Get cs.ground_denot mem1 = cs.ground_denot mem2
+                have h_denot_eq := ground_denot_is_monotonic hwf hmem
+                -- Get ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2
+                have h_env_mon := typed_env_is_monotonic ht'
+                have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
+                  capture_bound_denot_is_monotonic h_env_mon hwf_bound hmem
+                -- Combine the equalities
+                rw [<-h_denot_eq, <-h_bound_eq]
+                exact hsub
               · exact ih ht'
 
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
