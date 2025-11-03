@@ -1175,7 +1175,24 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         cases X with
         | here =>
           simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
-          sorry -- Need to prove A.is_monotonic_for CS where A = CS.denot TypeEnv.empty
+          -- Need to prove A.is_monotonic_for CS where A = CS.denot TypeEnv.empty
+          unfold CapDenot.is_monotonic_for
+          intro m1 m2 hwf hsub
+          -- Unfold A to expose CS.denot TypeEnv.empty
+          change CS.denot TypeEnv.empty m1 = CS.denot TypeEnv.empty m2
+          -- First, prove TypeEnv.empty.IsMonotonic
+          have hempty : TypeEnv.empty.IsMonotonic := by
+            constructor
+            · intro X; cases X
+            · intro X; cases X
+          -- Rewrite: CS.subst (Subst.from_TypeEnv TypeEnv.empty) = CS
+          have heq : CS.subst (Subst.from_TypeEnv TypeEnv.empty) = CS := by
+            calc CS.subst (Subst.from_TypeEnv TypeEnv.empty)
+              _ = CS.subst Subst.id := by rw [Subst.from_TypeEnv_empty]
+              _ = CS := by rw [CaptureSet.subst_id]
+          -- Apply capture_set_denot_is_monotonic
+          rw [← heq] at hwf
+          exact capture_set_denot_is_monotonic hempty (C := CS) hwf hsub
         | there X' =>
           simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
           exact henv.cvar X'
