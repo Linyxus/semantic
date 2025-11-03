@@ -540,8 +540,6 @@ theorem closed_captureset_subst_denot
 --   apply Eval.eval_apply hlk hconv
 
 -- NOTE: This theorem is no longer valid after the refactor - lookup_var now returns Nat, not a pair
--- -- Helper theorem: For bound variables in a typed environment, the capture set denotation
--- -- equals the heap reachability (simplified wrapper, now redundant with typed_env_reachability_eq)
 -- theorem bound_var_cap_eq_reachability
 --   (hts : EnvTyping Γ env store) :
 --   (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
@@ -584,7 +582,9 @@ theorem sem_typ_tapp
   simp only [CaptureSet.denot] at happ
 
   -- Convert the denotation using the equivalence
-  have happ' := (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store) store (e0.subst (Subst.openTVar .top))).1 happ
+  have happ' :=
+    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store)
+      store (e0.subst (Subst.openTVar .top))).1 happ
 
   simp [Ty.exi_exp_denot] at happ'
 
@@ -639,7 +639,9 @@ theorem sem_typ_capp
   have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T)
 
   -- Convert using the equivalence
-  have happ2 := (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store) store (e0.subst (Subst.openCVar D'))).1 sorry
+  have happ2 :=
+    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store)
+      store (e0.subst (Subst.openCVar D'))).1 sorry
 
   simp [Ty.exi_exp_denot] at happ2
 
