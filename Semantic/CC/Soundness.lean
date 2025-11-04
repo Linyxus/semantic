@@ -651,8 +651,21 @@ theorem sem_typ_capp
   have happ := hfun store D'
     hD'_wf              -- Closed capture sets are well-formed
     (Memory.subsumes_refl store)          -- Memory subsumes itself
-    sorry  -- TODO: Prove that D'.denot TypeEnv.empty ⊆ cb.denot env
-           -- With hD'_denot, this becomes: D.denot env ⊆ cb.denot env
+    (by -- Prove that D'.denot TypeEnv.empty ⊆ cb.denot env
+      rw [hD'_denot]
+      -- We need: D.denot env store ⊆ cb.denot env store
+      -- This should follow from the typing rule, but capp doesn't enforce it!
+      -- The only way this is sound is if cb = .unbound (allowing any capture set)
+      cases cb with
+      | unbound =>
+        -- For unbound, cb.denot = fun _ => CapabilitySet.any
+        simp [CaptureBound.denot]
+        exact CapabilitySet.Subset.top
+      | bound cs =>
+        -- For bounded capture sets, we would need D ⊆ cs syntactically
+        -- or semantically. This is not provided by the capp typing rule.
+        -- This suggests the typing rule may need a Subcapt premise.
+        sorry)
 
   -- Now apply the opening lemma
   have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T)
@@ -660,7 +673,7 @@ theorem sem_typ_capp
   -- Convert using the equivalence
   have happ2 :=
     (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store)
-      store (e0.subst (Subst.openCVar D'))).1 sorry
+      store (e0.subst (Subst.openCVar D'))).1 happ
 
   simp [Ty.exi_exp_denot] at happ2
 
