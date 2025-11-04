@@ -337,10 +337,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
 
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
-  (hclosed_cs : cs.IsClosed)
-  (ht : CaptureSet.var x # Γ ⊢ Exp.var x : (T.subst (Subst.openCVar cs)).typ)
-  (ih : (Exp.var x).IsClosed → CaptureSet.var x # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ)
-  (hclosed_e : (Exp.pack cs x).IsClosed) :
+  (hclosed_e : (Exp.pack cs x).IsClosed)
+  (ht : CaptureSet.var x # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
   CaptureSet.var x # Γ ⊨ Exp.pack cs x : T.exi := by
   sorry
 
@@ -1126,8 +1124,13 @@ theorem fundamental
     · exact hclosed_e
     · cases hclosed_e; aesop
   case pack =>
-    rename_i hclosed_cs ht ih
-    apply sem_typ_pack hclosed_cs ht ih hclosed_e
+    rename_i ih
+    apply sem_typ_pack
+    · exact hclosed_e
+    · cases hclosed_e with | pack _ hx_closed =>
+      apply ih
+      constructor
+      exact hx_closed
   case unit => exact sem_typ_unit
   case app =>
     rename_i hx hy
