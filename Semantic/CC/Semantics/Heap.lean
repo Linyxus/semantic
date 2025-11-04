@@ -1262,4 +1262,15 @@ def Mpost.entails_refl (Q : Mpost) : Q.entails Q := by
   intros m e hQ
   exact hQ
 
+/-! More properties on capability sets. -/
+
+namespace CapabilitySet
+
+theorem subset_trans {C1 C2 : CapabilitySet}
+  (hsub1 : C1 ⊆ C2)
+  (hsub2 : C2 ⊆ C3) :
+  C1 ⊆ C3 := by sorry
+
+end CapabilitySet
+
 end CC

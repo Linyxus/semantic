@@ -1154,6 +1154,25 @@ theorem sem_typ_letin
 --   case arrow => grind [sem_subtyp_arrow]
 --   case poly => grind [sem_subtyp_poly]
 
+theorem sem_sc_trans
+  (hsub1 : SemSubcapt Γ C1 C2)
+  (hsub2 : SemSubcapt Γ C2 C3) :
+  SemSubcapt Γ C1 C3 := by
+  intro env store hts
+  specialize hsub1 env store hts
+  specialize hsub2 env store hts
+  sorry
+
+theorem fundamental_subcapt
+  (hsub : Subcapt Γ C1 C2) :
+  SemSubcapt Γ C1 C2 := by
+  induction hsub
+  case sc_trans => sorry
+  case sc_elem => sorry
+  case sc_union => sorry
+  case sc_var => sorry
+  case sc_cvar => sorry
+
 -- theorem sem_typ_subtyp
 --   (ht : Γ ⊨ e : T1)
 --   (hsub : Subtyp Γ T1 T2) :

@@ -1444,6 +1444,12 @@ theorem env_typing_monotonic
                 exact hsub
               · exact ih ht'
 
+/-- Semantic subcapturing. -/
+def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
+  ∀ env m,
+    EnvTyping Γ env m ->
+    C1.denot env m ⊆ C2.denot env m
+
 -- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
 --   ∀ env H,
 --     EnvTyping Γ env H ->
