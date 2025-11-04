@@ -507,8 +507,21 @@ theorem closed_captureset_subst_denot
   {s : Sig} {env : TypeEnv s} {D : CaptureSet s}
   (hD_closed : D.IsClosed) :
   (D.subst (Subst.from_TypeEnv env)).denot TypeEnv.empty = D.denot env := by
-  symm
-  sorry
+  induction hD_closed with
+  | empty =>
+    rfl
+  | union _ _ ih1 ih2 =>
+    simp only [CaptureSet.subst, CaptureSet.denot] at ih1 ih2 ⊢
+    funext m
+    simp only [CaptureSet.ground_denot]
+    rw [congrFun ih1 m, congrFun ih2 m]
+  | cvar =>
+    simp only [CaptureSet.subst, CaptureSet.denot, Subst.from_TypeEnv]
+    change ((env.lookup_cvar _).subst (Subst.from_TypeEnv TypeEnv.empty)).ground_denot =
+      (env.lookup_cvar _).ground_denot
+    rw [Subst.from_TypeEnv_empty, CaptureSet.subst_id]
+  | var_bound =>
+    simp only [CaptureSet.subst, CaptureSet.denot, Var.subst, Subst.from_TypeEnv]
 
 -- theorem sem_typ_app
 --   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
@@ -625,12 +638,12 @@ theorem sem_typ_capp
     exact closed_captureset_subst_denot hD_closed
 
   -- D' is also closed
-  have hD'_closed : D'.IsClosed := by
-    sorry  -- TODO: Prove that closedness is preserved under substitution
+  have hD'_wf : D'.WfInHeap store.heap := by
+    sorry
 
   -- Apply the polymorphic function to the capture argument D'
   have happ := hfun store D'
-    (CaptureSet.wf_of_closed hD'_closed)  -- Closed capture sets are well-formed
+    hD'_wf              -- Closed capture sets are well-formed
     (Memory.subsumes_refl store)          -- Memory subsumes itself
     sorry  -- TODO: Prove that D'.denot TypeEnv.empty ⊆ cb.denot env
            -- With hD'_denot, this becomes: D.denot env ⊆ cb.denot env
