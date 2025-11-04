@@ -1379,7 +1379,7 @@ theorem sem_typ_unpack
         rw [heqv1, heqv2]
 
       -- Apply hu'' with conversions
-      show Eval (C.denot env store) m1
+      change Eval (C.denot env store) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
         (Ty.exi_val_denot env U).as_mpost
       rw [hexp_eq, <-hcap_eq]
