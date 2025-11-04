@@ -177,7 +177,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (.var x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
 | capp {D : CaptureSet s} :
   D.IsClosed ->
-  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) (.cpoly cb T))) ->
+  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) (.cpoly (.bound D) T))) ->
   ----------------------------
   HasType (.var x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin :
