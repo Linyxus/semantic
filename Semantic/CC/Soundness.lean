@@ -1198,6 +1198,10 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
   · exact hsub1 env m hts
   · exact hsub2 env m hts
 
+theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
+  (hlookup : Γ.LookupCVar c (.bound C)) :
+  SemSubcapt Γ (.cvar c) C := by sorry
+
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
   SemSubcapt Γ C1 C2 := by
@@ -1205,8 +1209,8 @@ theorem fundamental_subcapt
   case sc_trans => grind [sem_sc_trans]
   case sc_elem hsub => exact sem_sc_elem hsub
   case sc_union ih1 ih2 => exact sem_sc_union ih1 ih2
+  case sc_cvar hlookup => exact sem_sc_cvar hlookup
   case sc_var => sorry
-  case sc_cvar => sorry
 
 -- theorem sem_typ_subtyp
 --   (ht : Γ ⊨ e : T1)
