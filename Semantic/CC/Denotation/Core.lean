@@ -16,7 +16,43 @@ theorem resolve_monotonic {m1 m2 : Memory}
   (hsub : m2.subsumes m1)
   (hres : resolve m1.heap e = some v) :
   resolve m2.heap e = some v := by
-  sorry
+  -- Case on the expression e
+  cases e
+  case var x =>
+    -- Case on whether x is bound or free
+    cases x
+    case bound bv =>
+      -- Bound variables in empty signature are impossible
+      cases bv
+    case free fx =>
+      -- Free variable case: resolve looks up in heap
+      simp only [resolve] at hres ⊢
+      -- hres tells us what m1.heap fx is
+      cases hfx : m1.heap fx
+      · -- m1.heap fx = none, contradiction with hres
+        simp [hfx] at hres
+      · -- m1.heap fx = some cell
+        rename_i cell
+        simp [hfx] at hres
+        cases cell
+        case val heapval =>
+          simp at hres
+          -- hres now says: heapval.unwrap = v
+          -- From hsub, m2.heap fx must also be some (Cell.val heapval)
+          have : m2.heap fx = some (Cell.val heapval) := by
+            simp [Memory.subsumes, Heap.subsumes] at hsub
+            exact hsub fx (Cell.val heapval) hfx
+          simp [this]
+          exact hres
+        case capability =>
+          -- m1.heap fx = some Cell.capability, so resolve returns none
+          simp at hres
+  all_goals {
+    -- For all other expression constructors (pack, abs, tabs, etc.)
+    -- resolve returns the expression itself unchanged
+    simp [resolve] at hres ⊢
+    exact hres
+  }
 
 /-- Denotation of types. -/
 def Denot := Memory -> Exp {} -> Prop
@@ -1221,8 +1257,20 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         rename_i CS y
         simp [hresolve1] at ht
         -- ht now says: Ty.capt_val_denot (env.extend_cvar CS) T m1 (var y)
-        -- Need to show: resolve m2.heap e = some (pack CS y) and monotonicity of capt_val_denot
-        sorry  -- Need lemma about resolve being monotonic
+        -- Use resolve_monotonic to show resolve m2.heap e = some (pack CS y)
+        have hresolve2 : resolve m2.heap e = some (Exp.pack CS y) := by
+          apply resolve_monotonic hmem hresolve1
+        simp [hresolve2]
+        -- Now need to show: Ty.capt_val_denot (env.extend_cvar CS) T m2 (var y)
+        -- Use monotonicity of capt_val_denot
+        have henv' : (env.extend_cvar CS).IsMonotonic := by
+          constructor
+          · intro X
+            cases X with
+            | there X' =>
+              simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+              exact henv.tvar X'
+        exact capt_val_denot_is_monotonic henv' T hmem ht
       all_goals {
         -- resolve returned non-pack, so ht is False
         simp [hresolve1] at ht
