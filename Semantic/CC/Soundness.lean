@@ -1282,10 +1282,10 @@ theorem sem_typ_letin
 
 theorem sem_typ_unpack
   {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
-  {u : Exp (s,,Kind.cvar,,Kind.var)} {U : Ty .exi s}
+  {u : Exp (s,C,x)} {U : Ty .exi s}
   (hclosed_C : C.IsClosed)
   (hclosed_e : (Exp.unpack t u).IsClosed)
-  (ht : C # Γ ⊨ t : T.exi)
+  (ht : C # Γ ⊨ t : .exi T)
   (hu : (C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here)) #
         (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C # Γ ⊨ (Exp.unpack t u) : U := by
