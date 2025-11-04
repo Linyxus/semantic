@@ -1280,6 +1280,16 @@ theorem sem_typ_letin
 --   apply Denot.imply_after_to_entails_after
 --   exact hsub'
 
+theorem sem_typ_unpack
+  {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
+  {u : Exp (s,,Kind.cvar,,Kind.var)} {U : Ty .exi s}
+  (hclosed_e : (Exp.unpack t u).IsClosed)
+  (ht : C # Γ ⊨ t : T.exi)
+  (hu : (C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here)) #
+        (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
+  C # Γ ⊨ (Exp.unpack t u) : U := by
+  sorry
+
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (ht : C # Γ ⊢ e : T) :
@@ -1361,7 +1371,14 @@ theorem fundamental
         (Exp.IsClosed.letin he1_closed he2_closed)
         (ht1_ih he1_closed)
         (ht2_ih he2_closed)
-  case unpack => sorry
+  case unpack =>
+    rename_i ht_syn hu_syn ht_ih hu_ih
+    cases hclosed_e with
+    | unpack ht_closed hu_closed =>
+      exact sem_typ_unpack
+        (Exp.IsClosed.unpack ht_closed hu_closed)
+        (ht_ih ht_closed)
+        (hu_ih hu_closed)
   case subtyp => sorry --grind [sem_typ_subtyp]
 
 end CC
