@@ -243,8 +243,9 @@ def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 | ρ, .typ T => Ty.capt_val_denot ρ T
 | ρ, .exi T => fun m e =>
-  ∃ (CS : CaptureSet {}),
-    Ty.capt_val_denot (ρ.extend_cvar CS) T m e
+  ∃ (CS : CaptureSet {}) (x : Var .var {}),
+    e = .pack CS x ∧
+    Ty.capt_val_denot (ρ.extend_cvar CS) T m (.var x)
 
 def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
 | ρ, T => fun A m (e : Exp {}) =>
