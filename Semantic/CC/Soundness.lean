@@ -639,7 +639,13 @@ theorem sem_typ_capp
 
   -- D' is also closed
   have hD'_wf : D'.WfInHeap store.heap := by
-    sorry
+    -- First show D is wf by closedness
+    have hD_wf : D.WfInHeap store.heap := CaptureSet.wf_of_closed hD_closed
+    -- Then show the substitution is wf
+    have hσ_wf : (Subst.from_TypeEnv env).WfInHeap store.heap :=
+      from_TypeEnv_wf_in_heap hts
+    -- Apply wf_subst
+    exact CaptureSet.wf_subst hD_wf hσ_wf
 
   -- Apply the polymorphic function to the capture argument D'
   have happ := hfun store D'
