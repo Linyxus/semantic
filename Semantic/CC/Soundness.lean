@@ -1165,14 +1165,34 @@ theorem sem_sc_trans
 
 theorem sem_sc_elem {C1 C2 : CaptureSet s}
   (hmem : C1 ⊆ C2) :
-  SemSubcapt Γ C1 C2 := by sorry
+  SemSubcapt Γ C1 C2 := by
+  intro env m hts
+  unfold CaptureSet.denot
+  induction hmem
+  case refl =>
+    exact CapabilitySet.Subset.refl
+  case union_left ih1 ih2 =>
+    -- (C1 ∪ C2).subst σ = (C1.subst σ) ∪ (C2.subst σ)
+    simp [CaptureSet.subst]
+    -- ((C1.subst σ) ∪ (C2.subst σ)).ground_denot
+    --   = (C1.subst σ).ground_denot ∪ (C2.subst σ).ground_denot
+    simp [CaptureSet.ground_denot]
+    apply CapabilitySet.Subset.union_left
+    · exact ih1
+    · exact ih2
+  case union_right_left ih =>
+    simp [CaptureSet.subst, CaptureSet.ground_denot]
+    exact CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_left
+  case union_right_right ih =>
+    simp [CaptureSet.subst, CaptureSet.ground_denot]
+    exact CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_right
 
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
   SemSubcapt Γ C1 C2 := by
   induction hsub
   case sc_trans => grind [sem_sc_trans]
-  case sc_elem => sorry
+  case sc_elem hsub => exact sem_sc_elem hsub
   case sc_union => sorry
   case sc_var => sorry
   case sc_cvar => sorry
