@@ -431,6 +431,10 @@ theorem Exp.from_TypeEnv_weaken_open_cvar
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_cvar]
 
+theorem Subst.from_TypeEnv_weaken_unpack :
+  (Subst.from_TypeEnv ρ).lift.lift.comp (Subst.unpack cs (.free x)) =
+    Subst.from_TypeEnv ((ρ.extend_cvar cs).extend_var x) := by sorry
+
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
 via `Subst.from_TypeEnv` is well-formed in the heap.
