@@ -1355,18 +1355,37 @@ theorem sem_typ_unpack
       -- Apply hu' with the typing context
       have hu'' := hu' hts_extended
 
-      -- Now need to rewrite to match the goal
-      -- The key is to show the substitutions compose correctly
+      -- Expression substitution equality
+      have hexp_eq :
+        (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
+          u.subst (Subst.from_TypeEnv ((env.extend_cvar cs).extend_var fx)) := by
+        rw [Exp.subst_comp, Subst.from_TypeEnv_weaken_unpack]
 
-      -- CLAUDE: The proof continues here. The main remaining steps are:
-      -- 1. Show substitution composition:
-      --    (u.subst (from_TypeEnv env).lift.lift).subst (unpack cs (free fx))
-      --    = u.subst (from_TypeEnv ((env.extend_cvar cs).extend_var fx))
-      -- 2. Show capture set equality using rebind lemmas
-      -- 3. Show postcondition conversion from double-renamed U to just U
-      -- 4. Apply eval_post_monotonic to convert the postcondition
+      -- Capture set equality
+      have hcap_eq :
+        ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here))).denot
+          ((env.extend_cvar cs).extend_var fx) m1 =
+        C.denot env store := by
+        sorry
 
-      sorry
+      -- Type equivalence via double rebind
+      have heqv_composed : Ty.exi_val_denot env U ≈
+        Ty.exi_val_denot ((env.extend_cvar cs).extend_var fx)
+          ((U.rename Rename.succ).rename Rename.succ) := by
+        have heqv1 := rebind_exi_val_denot (Rebind.cweaken (env:=env) (cs:=cs)) U
+        have heqv2 := rebind_exi_val_denot
+          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx)) (U.rename Rename.succ)
+        intro m e
+        rw [heqv1, heqv2]
+
+      -- Apply hu'' with conversions
+      show Eval (C.denot env store) m1
+        ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
+        (Ty.exi_val_denot env U).as_mpost
+      rw [hexp_eq, <-hcap_eq]
+      apply eval_post_monotonic _ hu''
+      apply Denot.imply_to_entails
+      apply (Denot.equiv_to_imply heqv_composed).2
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
