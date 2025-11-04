@@ -340,7 +340,39 @@ theorem sem_typ_pack
   (hclosed_e : (Exp.pack cs x).IsClosed)
   (ht : CaptureSet.var x # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
   CaptureSet.var x # Γ ⊨ Exp.pack cs x : T.exi := by
-  sorry
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot]
+  -- pack cs x is a value, so we use eval_val
+  apply Eval.eval_val
+  · constructor -- pack is a value
+  · simp [Denot.as_mpost]
+    -- Need to provide witness CS : CaptureSet {}
+    use cs.subst (Subst.from_TypeEnv env)
+    -- Simplify the pack expression after substitution
+    simp [Exp.subst]
+    -- Now need: capt_val_denot (env.extend_cvar (cs.subst ...)) T store (pack ...)
+    -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
+    have hx := ht env store hts
+    simp [Ty.exi_exp_denot] at hx
+    -- hx says x evaluates to something with type (T.subst (Subst.openCVar cs)).typ
+    -- Since .typ is just a wrapper, unfold exi_val_denot
+    simp [Ty.exi_val_denot] at hx
+    -- Now hx : Eval ... (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost
+    -- Use retype to convert T.subst (Subst.openCVar cs) at env
+    -- to T at (env.extend_cvar (cs.subst ...))
+    have hretype := @retype_capt_val_denot (s,C) s
+      (env.extend_cvar (cs.subst (Subst.from_TypeEnv env)))
+      (Subst.openCVar cs) env
+      (@Retype.open_carg s env cs) T
+    -- Apply hretype in the backwards direction
+    apply (hretype store
+      (Exp.pack (cs.subst (Subst.from_TypeEnv env))
+        (x.subst (Subst.from_TypeEnv env)))).mpr
+    -- Goal: capt_val_denot env (T.subst (Subst.openCVar cs)) store (pack ...)
+    -- TODO: Need to relate pack expression to underlying variable x
+    -- This requires understanding how pack interacts with capt_val_denot
+    -- May need additional lemmas about pack denotations
+    sorry
 
 theorem abs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
