@@ -1283,12 +1283,90 @@ theorem sem_typ_letin
 theorem sem_typ_unpack
   {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,,Kind.cvar,,Kind.var)} {U : Ty .exi s}
+  (hclosed_C : C.IsClosed)
   (hclosed_e : (Exp.unpack t u).IsClosed)
   (ht : C # Γ ⊨ t : T.exi)
   (hu : (C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here)) #
         (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C # Γ ⊨ (Exp.unpack t u) : U := by
-  sorry
+  intro env store hts
+  simp [Exp.subst]
+  simp [Ty.exi_exp_denot]
+  -- Use Eval.eval_unpack with Q1 = (Ty.exi_val_denot env T.exi).as_mpost
+  apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot env T.exi).as_mpost)
+  case hpred =>
+    -- Show (Ty.exi_val_denot env T.exi).as_mpost is monotonic
+    intro m1 m2 e hwf hsub hQ
+    simp [Denot.as_mpost] at hQ ⊢
+    have henv_mono := typed_env_is_monotonic hts
+    exact exi_val_denot_is_monotonic henv_mono T.exi hsub hQ
+  case a =>
+    -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env T.exi).as_mpost
+    have ht' := ht env store hts
+    simp [Ty.exi_exp_denot] at ht'
+    exact ht'
+  case h_val =>
+    -- Handle the value case: t evaluated to a pack
+    intro m1 x cs hs1 hwf_x hwf_cs hQ1
+    simp [Denot.as_mpost] at hQ1
+    -- hQ1 : Ty.exi_val_denot env T.exi m1 (.pack cs x)
+    -- This means: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var x)
+    simp [Ty.exi_val_denot] at hQ1
+    -- Extract the variable from x
+    cases x
+    case bound bx => cases bx  -- No bound variables in empty signature
+    case free fx =>
+      -- Now hQ1 : After resolving pack cs (free fx), we get the value denot
+      -- Simplify hQ1 by resolving the pack
+      simp [resolve] at hQ1
+      -- Now hQ1 : Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var (.free fx))
+
+      -- Apply hu with doubly extended environment
+      have hu' := hu ((env.extend_cvar cs).extend_var fx) m1
+      simp [Ty.exi_exp_denot] at hu' ⊢
+
+      -- First, construct the typing context for hu'
+      -- Need to show: EnvTyping (Γ,C<:unbound,x:T) (extended environment) m1
+      have hts_extended :
+        EnvTyping (Γ,C<:.unbound,x:T) ((env.extend_cvar cs).extend_var fx) m1 := by
+        -- This unfolds to a conjunction by EnvTyping definition
+        constructor
+        · -- Show: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var (.free fx))
+          exact hQ1
+        · -- Show: EnvTyping (Γ,C<:.unbound) (env.extend_cvar cs) m1
+          -- This is also a conjunction
+          constructor
+          · -- Show: cs.WfInHeap m1.heap
+            exact hwf_cs
+          · constructor
+            · -- Show: (unbound.subst (from_TypeEnv env)).WfInHeap m1.heap
+              simp [CaptureBound.subst]
+              constructor  -- unbound is always wf
+            · constructor
+              · -- Show: cs.ground_denot m1 ⊆ ⟦unbound⟧_[env] m1
+                -- unbound's denotation is the whole memory, so any set is subset
+                simp [CaptureBound.denot]
+                -- CLAUDE: Goal: cs.ground_denot m1 ⊆ CapabilitySet.any
+                -- CLAUDE: This should be trivially true - CapabilitySet.any is the universal set
+                constructor
+              · -- Show: EnvTyping Γ env m1
+                exact env_typing_monotonic hts hs1
+
+      -- Apply hu' with the typing context
+      have hu'' := hu' hts_extended
+
+      -- Now need to rewrite to match the goal
+      -- The key is to show the substitutions compose correctly
+
+      -- CLAUDE: The proof continues here. The main remaining steps are:
+      -- 1. Show substitution composition:
+      --    (u.subst (from_TypeEnv env).lift.lift).subst (unpack cs (free fx))
+      --    = u.subst (from_TypeEnv ((env.extend_cvar cs).extend_var fx))
+      -- 2. Show capture set equality using rebind lemmas
+      -- 3. Show postcondition conversion from double-renamed U to just U
+      -- 4. Apply eval_post_monotonic to convert the postcondition
+
+      sorry
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
@@ -1376,6 +1454,7 @@ theorem fundamental
     cases hclosed_e with
     | unpack ht_closed hu_closed =>
       exact sem_typ_unpack
+        (HasType.use_set_is_closed ht_syn)
         (Exp.IsClosed.unpack ht_closed hu_closed)
         (ht_ih ht_closed)
         (hu_ih hu_closed)
