@@ -46,16 +46,18 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
   Subset C C
 | top :
   Subset C .any
+| trans :
+  Subset C1 C2 ->
+  Subset C2 C3 ->
+  Subset C1 C3
 | union_left :
   Subset C1 C3 ->
   Subset C2 C3 ->
   Subset (C1 ∪ C2) C3
 | union_right_left :
-  Subset C1 C3 ->
-  Subset C1 (C2 ∪ C3)
+  Subset C1 (C1 ∪ C2)
 | union_right_right :
-  Subset C1 C3 ->
-  Subset C1 (C3 ∪ C2)
+  Subset C1 (C2 ∪ C1)
 
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
@@ -67,14 +69,13 @@ theorem subset_preserves_mem {C1 C2 : CapabilitySet} {x : Nat}
   induction hsub generalizing x
   case refl => exact hmem
   case top => exact mem.here_any
+  case trans ih1 ih2 => apply ih2 (ih1 hmem)
   case union_left ih1 ih2 =>
     cases hmem
     case left h => exact ih1 h
     case right h => exact ih2 h
-  case union_right_left ih =>
-    exact mem.right (ih hmem)
-  case union_right_right ih =>
-    exact mem.left (ih hmem)
+  case union_right_left => exact mem.left hmem
+  case union_right_right => exact mem.right hmem
 
 end CapabilitySet
 
@@ -1262,15 +1263,5 @@ def Mpost.entails_refl (Q : Mpost) : Q.entails Q := by
   intros m e hQ
   exact hQ
 
-/-! More properties on capability sets. -/
-
-namespace CapabilitySet
-
-theorem subset_trans {C1 C2 : CapabilitySet}
-  (hsub1 : C1 ⊆ C2)
-  (hsub2 : C2 ⊆ C3) :
-  C1 ⊆ C3 := by sorry
-
-end CapabilitySet
 
 end CC

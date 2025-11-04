@@ -1161,13 +1161,17 @@ theorem sem_sc_trans
   intro env store hts
   specialize hsub1 env store hts
   specialize hsub2 env store hts
-  sorry
+  apply CapabilitySet.Subset.trans hsub1 hsub2
+
+theorem sem_sc_elem {C1 C2 : CaptureSet s}
+  (hmem : C1 ⊆ C2) :
+  SemSubcapt Γ C1 C2 := by sorry
 
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
   SemSubcapt Γ C1 C2 := by
   induction hsub
-  case sc_trans => sorry
+  case sc_trans => grind [sem_sc_trans]
   case sc_elem => sorry
   case sc_union => sorry
   case sc_var => sorry
