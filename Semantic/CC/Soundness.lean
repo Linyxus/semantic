@@ -501,12 +501,6 @@ theorem closed_var_inv (x : Var .var {}) :
   case bound bx => cases bx
   case free fx => use fx
 
-def Retype.from_TypeEnv {env : TypeEnv s} :
-  Retype env (Subst.from_TypeEnv env) TypeEnv.empty where
-  var := fun x => rfl
-  tvar := fun X => sorry
-  cvar := fun c => sorry
-
 /-- For closed capture sets, the denotation is preserved under substitution with from_TypeEnv,
 provided the environment satisfies the cvar invariant. -/
 theorem closed_captureset_subst_denot
