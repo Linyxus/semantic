@@ -6,7 +6,7 @@ This repo practices semantic type soundness for various calculi.
 
 This project makes extensive use of Claude for proof writing.
 See [CLAUDE.md](./CLAUDE.md) for the project-level instructions.
-It assumes a MCP tool called `lean4check`, which can be found in [this project](https://github.com/linyxus/ucw).
+It assumes a MCP tool called `lean4check`, which can be found in [this Github repo](https://github.com/linyxus/ucw).
 
 To setup MCP, clone the aforementioned `ucw` repo somewhere on your machine. Then, go back to the root of this project, and run:
 ```
