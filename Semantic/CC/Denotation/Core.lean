@@ -12,6 +12,12 @@ def resolve : Heap -> Exp {} -> Option (Exp {})
 | s, .var (.bound x) => by cases x
 | _, other => some other
 
+theorem resolve_monotonic {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
+  (hres : resolve m1.heap e = some v) :
+  resolve m2.heap e = some v := by
+  sorry
+
 /-- Denotation of types. -/
 def Denot := Memory -> Exp {} -> Prop
 
@@ -896,8 +902,11 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
         -- Need to show v.unwrap = pack CS' y'
         cases hunwrap : v.unwrap <;> rw [hunwrap] at hresolve
         case var =>
-          -- var case - resolve recurses, proof complex
-          sorry
+          cases v
+          simp at hunwrap
+          subst hunwrap
+          rename_i h_isval
+          cases h_isval
         case pack =>
           -- pack case
           rename_i CS'' y''
