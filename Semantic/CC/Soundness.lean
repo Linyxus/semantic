@@ -355,8 +355,30 @@ theorem sem_typ_pack
     simp [resolve]
     -- Goal: capt_val_denot (env.extend_cvar (cs.subst ...)) T store (var (x.subst ...))
     -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
-    -- Need to extract value from evaluation and apply retype lemma
-    sorry
+    have hx := ht env store hts
+    simp [Ty.exi_exp_denot, Ty.exi_val_denot] at hx
+    -- hx : Eval ... store ((Exp.var x).subst ...)
+    --      (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost
+    -- Since (Exp.var x).subst is a variable, invert the Eval
+    have : (Exp.var x).subst (Subst.from_TypeEnv env) =
+           Exp.var (x.subst (Subst.from_TypeEnv env)) := by
+      cases x <;> simp [Exp.subst, Var.subst]
+    rw [this] at hx
+    cases hx
+    case eval_var hQ =>
+      -- hQ : (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost (var (x.subst ...)) store
+      simp [Denot.as_mpost] at hQ
+      -- hQ : capt_val_denot env (T.subst (Subst.openCVar cs)) store (var (x.subst ...))
+      -- Now use retype lemma to convert from T.subst (Subst.openCVar cs) at env
+      -- to T at env.extend_cvar (cs.subst ...)
+      have hretype := @retype_capt_val_denot (s,C) s
+        (env.extend_cvar (cs.subst (Subst.from_TypeEnv env)))
+        (Subst.openCVar cs) env
+        (@Retype.open_carg s env cs) T
+      exact (hretype store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ
+    case eval_val =>
+      -- Variables can only use eval_var, not eval_val
+      contradiction
 
 theorem abs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
