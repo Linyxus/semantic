@@ -863,6 +863,16 @@ theorem sem_typ_unit :
 --     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
 --   apply Eval.eval_tapply hlk hconv
 
+theorem sem_typ_letin
+  {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
+  {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
+  (hclosed_e : (Exp.letin e1 e2).IsClosed)
+  (ht1 : C # Γ ⊨ e1 : T.typ)
+  (ht2 : C.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
+  C # Γ ⊨ (Exp.letin e1 e2) : U := by
+  sorry
+
+-- OLD Fsub version for reference:
 -- theorem sem_typ_letin
 --   (ht1 : Γ ⊨ e1 : T)
 --   (ht2 : (Γ,x:T) ⊨ e2 : (U.rename Rename.succ)) :
@@ -1214,7 +1224,13 @@ theorem fundamental
       cases hx_closed
       exact sem_typ_capp hD_closed_exp
         (hih (Exp.IsClosed.var Var.IsClosed.bound))
-  case letin => sorry --grind [sem_typ_letin]
+  case letin =>
+    rename_i ht1_syn ht2_syn ht1_ih ht2_ih
+    cases hclosed_e with
+    | letin he1_closed he2_closed =>
+      exact sem_typ_letin (Exp.IsClosed.letin he1_closed he2_closed)
+        (ht1_ih he1_closed)
+        (ht2_ih he2_closed)
   case unpack => sorry
   case subtyp => sorry --grind [sem_typ_subtyp]
 
