@@ -1284,24 +1284,23 @@ theorem sem_typ_unpack
   {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
   (hclosed_C : C.IsClosed)
-  (hclosed_e : (Exp.unpack t u).IsClosed)
   (ht : C # Γ ⊨ t : .exi T)
-  (hu : (C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here)) #
+  (hu : (C.rename Rename.succ).rename Rename.succ #
         (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts
   simp [Exp.subst]
   simp [Ty.exi_exp_denot]
-  -- Use Eval.eval_unpack with Q1 = (Ty.exi_val_denot env T.exi).as_mpost
-  apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot env T.exi).as_mpost)
+  -- Use Eval.eval_unpack with Q1 = (Ty.exi_val_denot env (.exi T)).as_mpost
+  apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot env (.exi T)).as_mpost)
   case hpred =>
-    -- Show (Ty.exi_val_denot env T.exi).as_mpost is monotonic
+    -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is monotonic
     intro m1 m2 e hwf hsub hQ
     simp [Denot.as_mpost] at hQ ⊢
     have henv_mono := typed_env_is_monotonic hts
-    exact exi_val_denot_is_monotonic henv_mono T.exi hsub hQ
+    exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ
   case a =>
-    -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env T.exi).as_mpost
+    -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env (.exi T)).as_mpost
     have ht' := ht env store hts
     simp [Ty.exi_exp_denot] at ht'
     exact ht'
@@ -1309,7 +1308,7 @@ theorem sem_typ_unpack
     -- Handle the value case: t evaluated to a pack
     intro m1 x cs hs1 hwf_x hwf_cs hQ1
     simp [Denot.as_mpost] at hQ1
-    -- hQ1 : Ty.exi_val_denot env T.exi m1 (.pack cs x)
+    -- hQ1 : Ty.exi_val_denot env (.exi T) m1 (.pack cs x)
     -- This means: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var x)
     simp [Ty.exi_val_denot] at hQ1
     -- Extract the variable from x
@@ -1361,12 +1360,26 @@ theorem sem_typ_unpack
           u.subst (Subst.from_TypeEnv ((env.extend_cvar cs).extend_var fx)) := by
         rw [Exp.subst_comp, Subst.from_TypeEnv_weaken_unpack]
 
-      -- Capture set equality
+      -- Capture set equality via rebinding
       have hcap_eq :
-        ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here))).denot
+        ((C.rename Rename.succ).rename Rename.succ).denot
           ((env.extend_cvar cs).extend_var fx) m1 =
         C.denot env store := by
-        sorry
+        -- Use rebind to show double-renamed C equals original C
+        have h1 := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=cs)) C
+        have h2 := rebind_captureset_denot
+          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx)) (C.rename Rename.succ)
+        calc
+          ((C.rename Rename.succ).rename Rename.succ).denot
+            ((env.extend_cvar cs).extend_var fx) m1
+          _ = (C.rename Rename.succ).denot (env.extend_cvar cs) m1 := by rw [<-h2]
+          _ = C.denot env m1 := by rw [<-h1]
+          _ = C.denot env store := by
+            have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
+              apply CaptureSet.wf_subst
+              · apply CaptureSet.wf_of_closed hclosed_C
+              · apply from_TypeEnv_wf_in_heap hts
+            exact (capture_set_denot_is_monotonic hwf_C hs1).symm
 
       -- Type equivalence via double rebind
       have heqv_composed : Ty.exi_val_denot env U ≈
@@ -1474,7 +1487,6 @@ theorem fundamental
     | unpack ht_closed hu_closed =>
       exact sem_typ_unpack
         (HasType.use_set_is_closed ht_syn)
-        (Exp.IsClosed.unpack ht_closed hu_closed)
         (ht_ih ht_closed)
         (hu_ih hu_closed)
   case subtyp => sorry --grind [sem_typ_subtyp]
