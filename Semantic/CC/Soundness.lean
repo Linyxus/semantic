@@ -870,7 +870,123 @@ theorem sem_typ_letin
   (ht1 : C # Γ ⊨ e1 : T.typ)
   (ht2 : C.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
   C # Γ ⊨ (Exp.letin e1 e2) : U := by
-  sorry
+  intro env store hts
+  simp [Exp.subst]
+  simp [Ty.exi_exp_denot]
+  -- Use Eval.eval_letin with Q1 = (Ty.capt_val_denot env T).as_mpost
+  apply Eval.eval_letin (Q1 := (Ty.capt_val_denot env T).as_mpost)
+  case hpred =>
+    -- Show (Ty.capt_val_denot env T).as_mpost is monotonic
+    intro m1 m2 e hwf hsub hQ
+    simp [Denot.as_mpost] at hQ ⊢
+    have henv_mono := typed_env_is_monotonic hts
+    exact capt_val_denot_is_monotonic henv_mono T hsub hQ
+  case a =>
+    -- Show Eval ... store (e1.subst ...) (Ty.capt_val_denot env T).as_mpost
+    have h1 := ht1 env store hts
+    simp [Ty.exi_exp_denot, Ty.exi_val_denot] at h1
+    exact h1
+  case h_val =>
+    -- Handle the value case: e1 evaluated to a simple value v
+    intro m1 v hs1 hv hwf_v hQ1 l' hfresh
+    -- m1.subsumes store, v is a simple value, Q1 v m1 holds
+    simp [Denot.as_mpost] at hQ1
+    -- Construct the HeapVal for v
+    let heapval : HeapVal := ⟨v, hv, compute_reachability m1 v hv⟩
+    -- Apply ht2 with extended environment and memory
+    have ht2' := ht2 (env.extend_var l')
+      (m1.extend_val l' heapval hwf_v hfresh)
+    simp [Ty.exi_exp_denot] at ht2' ⊢
+    -- Rewrite to make expressions match
+    rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+    -- Show that capability sets match
+    have hcap_rename :
+      (C.rename Rename.succ).denot (env.extend_var l')
+      = C.denot env := by
+      have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l')) C
+      exact this.symm
+    have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v hfresh) := by
+      sorry -- TODO: Need to prove C is well-formed in store.heap
+    -- Convert postcondition using weaken_exi_val_denot
+    rw [hC_mono, ← hcap_rename]
+    apply eval_post_monotonic _ (ht2' _)
+    · -- Show postcondition entailment
+      apply Denot.imply_to_entails
+      have heqv := weaken_exi_val_denot (env:=env) (x:=l') (T:=U)
+      apply (Denot.equiv_to_imply heqv).2
+    · -- Show: EnvTyping (Γ,x:T) (env.extend_var l')
+      --       (m1.extend_val l' heapval hwf_v hfresh)
+      constructor
+      · -- Show: Ty.capt_val_denot env T
+        --       (m1.extend_val l' heapval hwf_v hfresh) (Exp.var (Var.free l'))
+        -- Strategy: Use monotonicity + transparency
+
+        -- Step 1: Prove memory subsumption
+        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 := by
+          sorry -- TODO: Prove extend_val subsumes original memory
+
+        -- Step 2: Lift hQ1 to extended memory using monotonicity
+        have henv_mono := typed_env_is_monotonic hts
+        have hQ1_lifted : Ty.capt_val_denot env T
+          (m1.extend_val l' heapval hwf_v hfresh) v :=
+          capt_val_denot_is_monotonic henv_mono T hext hQ1
+
+        -- Step 3: Apply transparency
+        have henv_trans := typed_env_is_transparent hts
+        have htrans : (Ty.capt_val_denot env T).is_transparent :=
+          capt_val_denot_is_transparent henv_trans T
+
+        -- Step 4: Use the memory lookup fact
+        have hlookup : (m1.extend_val l' heapval hwf_v hfresh).lookup l' =
+          some (Cell.val heapval) := by
+          sorry -- TODO: Prove lookup equality for extend_val
+
+        -- Step 5: Apply transparency
+        apply htrans hlookup hQ1_lifted
+      · -- Show: EnvTyping Γ env (m1.extend_val l' heapval hwf_v hfresh)
+        -- Original typing preserved under memory extension
+        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 := by
+          sorry -- TODO: Prove extend_val subsumes original memory
+        -- Combine subsumptions: extended memory subsumes m1, m1 subsumes store
+        have hsubsume : (m1.extend_val l' heapval hwf_v hfresh).subsumes store :=
+          Memory.subsumes_trans hext hs1
+        exact env_typing_monotonic hts hsubsume
+  case h_var =>
+    -- Handle the variable case: e1 evaluated to a variable x
+    intro m1 x hs1 hwf_x hQ1
+    simp [Denot.as_mpost] at hQ1
+    -- Extract the free variable number from x
+    cases x
+    case bound bv =>
+      -- Bound variables in empty signature are impossible
+      cases bv
+    case free fx =>
+      -- Apply ht2 with extended environment (no memory extension needed)
+      have ht2' := ht2 (env.extend_var fx) m1
+      simp [Ty.exi_exp_denot] at ht2' ⊢
+      -- Rewrite to make expressions match
+      rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+      -- Show that capability sets match
+      have hcap_rename :
+        (C.rename Rename.succ).denot (env.extend_var fx)
+        = C.denot env := by
+        have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=fx)) C
+        exact this.symm
+      have hC_mono : C.denot env store = C.denot env m1 := by
+        sorry -- TODO: Need to prove C is well-formed in store.heap
+      -- Convert postcondition using weaken_exi_val_denot
+      rw [hC_mono, ← hcap_rename]
+      apply eval_post_monotonic _ (ht2' _)
+      · -- Show postcondition entailment
+        apply Denot.imply_to_entails
+        have heqv := weaken_exi_val_denot (env:=env) (x:=fx) (T:=U)
+        apply (Denot.equiv_to_imply heqv).2
+      · -- Show: EnvTyping (Γ,x:T) (env.extend_var fx) m1
+        constructor
+        · -- Show: Ty.capt_val_denot env T m1 (Exp.var (Var.free fx))
+          exact hQ1
+        · -- Show: EnvTyping Γ env m1
+          exact env_typing_monotonic hts hs1
 
 -- OLD Fsub version for reference:
 -- theorem sem_typ_letin
