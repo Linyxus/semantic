@@ -1187,13 +1187,24 @@ theorem sem_sc_elem {C1 C2 : CaptureSet s}
     simp [CaptureSet.subst, CaptureSet.ground_denot]
     exact CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_right
 
+theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
+  (hsub1 : SemSubcapt Γ C1 C3)
+  (hsub2 : SemSubcapt Γ C2 C3) :
+  SemSubcapt Γ (C1.union C2) C3 := by
+  intro env m hts
+  unfold CaptureSet.denot
+  simp [CaptureSet.subst, CaptureSet.ground_denot]
+  apply CapabilitySet.Subset.union_left
+  · exact hsub1 env m hts
+  · exact hsub2 env m hts
+
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
   SemSubcapt Γ C1 C2 := by
   induction hsub
   case sc_trans => grind [sem_sc_trans]
   case sc_elem hsub => exact sem_sc_elem hsub
-  case sc_union => sorry
+  case sc_union ih1 ih2 => exact sem_sc_union ih1 ih2
   case sc_var => sorry
   case sc_cvar => sorry
 
