@@ -1198,9 +1198,45 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
   · exact hsub1 env m hts
   · exact hsub2 env m hts
 
+theorem typed_env_lookup_cvar_aux
+  (hts : EnvTyping Γ env m)
+  (hc : Ctx.LookupCVar Γ c cb) :
+  (env.lookup_cvar c).ground_denot m ⊆ (cb.denot env) m := by
+  induction hc generalizing m
+  case here =>
+    -- Γ = .push Γ' (.cvar cb'), c = .here
+    -- cb = cb'.rename Rename.succ
+    rename_i Γ' cb'
+    cases env; rename_i info' env'
+    cases info'; rename_i cs
+    simp [EnvTyping] at hts
+    simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+    -- Need: cs.ground_denot m ⊆ (cb'.rename Rename.succ).denot (env'.extend (TypeInfo.cvar cs)) m
+    -- We have: cs.ground_denot m ⊆ cb'.denot env' m (from hts.2.2.1)
+    -- Use rebinding: cb'.denot env' = (cb'.rename Rename.succ).denot (env'.extend_cvar cs)
+    have hreb := rebind_capturebound_denot (Rebind.cweaken (env:=env') (cs:=cs)) cb'
+    simp only [TypeEnv.extend_cvar] at hreb
+    rw [<-hreb]
+    exact hts.2.2.1
+  case there b0 b hc_prev ih =>
+    trace_state
+    sorry
+
+theorem typed_env_lookup_cvar
+  (hts : EnvTyping Γ env m)
+  (hc : Ctx.LookupCVar Γ c (.bound C)) :
+  (env.lookup_cvar c).ground_denot m ⊆ C.denot env m := by
+  have h := typed_env_lookup_cvar_aux hts hc
+  simp [CaptureBound.denot] at h
+  exact h
+
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   (hlookup : Γ.LookupCVar c (.bound C)) :
-  SemSubcapt Γ (.cvar c) C := by sorry
+  SemSubcapt Γ (.cvar c) C := by
+  intro env m hts
+  unfold CaptureSet.denot
+  simp [CaptureSet.subst, Subst.from_TypeEnv]
+  exact typed_env_lookup_cvar hts hlookup
 
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
