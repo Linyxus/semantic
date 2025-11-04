@@ -285,24 +285,18 @@ def retype_capt_val_denot
     rw [← hC]
     intro hwf_e
     constructor
-    · intro ⟨hreach, hwf_C, hshape⟩
+    · intro ⟨hwf_C, hshape⟩
       constructor
-      · -- Reachability constraint
-        exact hreach
-      · constructor
-        · -- Use retype_resolved_capture_set to show equality of resolved capture sets
-          rw [←retype_resolved_capture_set ρ C]
-          exact hwf_C
-        · exact (hS (C.denot env1 s) s e).mp hshape
-    · intro ⟨hreach, hwf_C, hshape⟩
+      · -- Use retype_resolved_capture_set to show equality of resolved capture sets
+        rw [←retype_resolved_capture_set ρ C]
+        exact hwf_C
+      · exact (hS (C.denot env1 s) s e).mp hshape
+    · intro ⟨hwf_C, hshape⟩
       constructor
-      · -- Reachability constraint
-        exact hreach
-      · constructor
-        · -- Use retype_resolved_capture_set to show equality of resolved capture sets
-          rw [retype_resolved_capture_set ρ C]
-          exact hwf_C
-        · exact (hS (C.denot env1 s) s e).mpr hshape
+      · -- Use retype_resolved_capture_set to show equality of resolved capture sets
+        rw [retype_resolved_capture_set ρ C]
+        exact hwf_C
+      · exact (hS (C.denot env1 s) s e).mpr hshape
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
