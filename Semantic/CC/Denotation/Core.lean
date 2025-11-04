@@ -433,7 +433,63 @@ theorem Exp.from_TypeEnv_weaken_open_cvar
 
 theorem Subst.from_TypeEnv_weaken_unpack :
   (Subst.from_TypeEnv ρ).lift.lift.comp (Subst.unpack cs (.free x)) =
-    Subst.from_TypeEnv ((ρ.extend_cvar cs).extend_var x) := by sorry
+    Subst.from_TypeEnv ((ρ.extend_cvar cs).extend_var x) := by
+  apply Subst.funext
+  · -- var case
+    intro y
+    cases y
+    case here =>
+      -- LHS: unpack maps .here to .free x, which is unchanged by subst
+      -- RHS: from_TypeEnv of extend_var maps .here to .free x
+      rfl
+    case there y' =>
+      cases y'
+      case there v =>
+        -- LHS: unpack maps .there (.there v) to .bound v,
+        --      subst applies lift.lift.var v
+        -- Need to show: lift.lift.var v = .free (ρ.lookup_var v)
+        simp [Subst.comp, Subst.unpack, Var.subst]
+        -- Now show lift.lift.var (.there (.there v)) for from_TypeEnv evaluates correctly
+        rw [Subst.lift_there_var_eq]
+        rw [Subst.lift_there_var_eq]
+        simp [Subst.from_TypeEnv, Var.rename, TypeEnv.lookup_var]
+        simp [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup]
+  · -- tvar case
+    intro X
+    cases X
+    case there X' =>
+      cases X'
+      case there X0 =>
+        -- Both sides map to .top
+        rfl
+  · -- cvar case
+    intro c
+    cases c
+    case there c' =>
+      cases c'
+      case here =>
+        -- LHS: comp maps .there .here through unpack then lift.lift
+        -- unpack.cvar (.there .here) = cs
+        -- Then cs.subst lift.lift, but cs : CaptureSet {} has no bound vars
+        simp [Subst.comp, Subst.unpack]
+        -- Need to show: (lift.lift.cvar (.there .here)).subst unpack = cs
+        -- This is unpack.cvar (.there .here) = cs by definition
+        rw [Subst.lift_there_cvar_eq]
+        simp [Subst.lift, CaptureSet.subst, CaptureSet.rename]
+        -- Goal: match Rename.succ.var .here with | .here.there => cs | ... = cs
+        -- Rename.succ.var .here = .here.there by definition
+        rfl
+      case there c0 =>
+        -- LHS: comp maps .there (.there c0) through unpack then lift.lift
+        simp [Subst.comp, Subst.unpack]
+        rw [Subst.lift_there_cvar_eq]
+        rw [Subst.lift_there_cvar_eq]
+        simp [Subst.from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar,
+          TypeEnv.lookup_cvar, TypeEnv.lookup]
+        -- Goal: ground capture set unchanged by double rename + subst
+        -- Since ρ.lookup_cvar c0 : CaptureSet {}, it has no bound cvars
+        -- so rename and subst don't change it
+        sorry -- CLAUDE: Need lemma that CaptureSet {} is invariant under rename/subst
 
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it

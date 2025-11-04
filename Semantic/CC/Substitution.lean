@@ -678,4 +678,10 @@ theorem CaptureSet.weaken_openCVar {C : CaptureSet (s)} {C' : CaptureSet s} :
     _ = C.subst Subst.id := by rw [Subst.weaken_openCVar]
     _ = C := by rw [CaptureSet.subst_id]
 
+theorem CaptureSet.ground_rename_invariant {C : CaptureSet {}} :
+  C.rename f = C := by sorry
+
+theorem CaptureSet.ground_subst_invariant {C : CaptureSet {}} :
+  C.subst σ = C := by sorry
+
 end CC
