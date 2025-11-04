@@ -1219,8 +1219,47 @@ theorem typed_env_lookup_cvar_aux
     rw [<-hreb]
     exact hts.2.2.1
   case there b0 b hc_prev ih =>
-    trace_state
-    sorry
+    -- Handle three cases based on the binding kind
+    cases b0
+    case var =>
+      -- Name the unnamed variables including cb'
+      rename_i Γ' c' cb' Tb
+      cases env; rename_i info' env'
+      cases info'; rename_i x
+      simp [EnvTyping] at hts
+      obtain ⟨_, henv'⟩ := hts
+      -- Apply IH to get the result for env'
+      have hih := ih henv'
+      simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+      -- Use rebind lemma to relate denots in predecessor and extended env
+      have hreb := rebind_capturebound_denot (Rebind.weaken (env:=env') (x:=x)) cb'
+      simp only [TypeEnv.extend_var] at hreb
+      rw [<-hreb]
+      exact hih
+    case tvar =>
+      rename_i Γ' c' cb' Sb
+      cases env; rename_i info' env'
+      cases info'; rename_i d
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+      have hreb := rebind_capturebound_denot (Rebind.tweaken (env:=env') (d:=d)) cb'
+      simp only [TypeEnv.extend_tvar] at hreb
+      rw [<-hreb]
+      exact hih
+    case cvar =>
+      rename_i Γ' c' cb' Bb
+      cases env; rename_i info' env'
+      cases info'; rename_i cs
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, _, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
+      have hreb := rebind_capturebound_denot (Rebind.cweaken (env:=env') (cs:=cs)) cb'
+      simp only [TypeEnv.extend_cvar] at hreb
+      rw [<-hreb]
+      exact hih
 
 theorem typed_env_lookup_cvar
   (hts : EnvTyping Γ env m)
