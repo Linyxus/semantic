@@ -955,7 +955,6 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
     exact ground_denot_is_monotonic hwf hsub
 
 theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
-  (hρ : ρ.IsMonotonic)
   (hwf : (B.subst (Subst.from_TypeEnv ρ)).WfInHeap m1.heap)
   (hsub : m2.subsumes m1) :
   B.denot ρ m1 = B.denot ρ m2 := by
@@ -1263,9 +1262,8 @@ theorem env_typing_monotonic
                 -- Get cs.ground_denot mem1 = cs.ground_denot mem2
                 have h_denot_eq := ground_denot_is_monotonic hwf hmem
                 -- Get ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2
-                have h_env_mon := typed_env_is_monotonic ht'
                 have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
-                  capture_bound_denot_is_monotonic h_env_mon hwf_bound hmem
+                  capture_bound_denot_is_monotonic hwf_bound hmem
                 -- Combine the equalities
                 rw [<-h_denot_eq, <-h_bound_eq]
                 exact hsub
