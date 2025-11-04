@@ -536,7 +536,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | var n =>
           unfold EnvTyping at htyping
-          have ⟨htype, htyping'⟩ := htyping
+          have ⟨htype, _, htyping'⟩ := htyping
           -- htype : ⟦T⟧_[ρ'] m (.var (.free n))
           cases T with
           | capt C S =>
@@ -802,7 +802,7 @@ theorem typed_env_is_monotonic
         cases info with
         | var n =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          have ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -859,7 +859,7 @@ theorem typed_env_is_transparent
         cases info with
         | var n =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          have ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1403,13 +1403,19 @@ theorem env_typing_monotonic
         | var n =>
           -- Unfold EnvTyping to get the conjunction
           unfold EnvTyping at ht ⊢
-          have ⟨hval, ht'⟩ := ht
+          have ⟨hval, hreach, ht'⟩ := ht
           constructor
           · -- Prove: ⟦T⟧_[env', φ] mem2 (.var (.free n))
             have henv := typed_env_is_monotonic ht'
             exact capt_val_denot_is_monotonic henv T hmem hval
-          · -- Prove: EnvTyping Γ env' mem2
-            exact ih ht'
+          · constructor
+            · -- Prove: reachability_of_loc mem2 n ⊆ CaptureSet.denot env' T.captureSet mem2
+              -- From hreach: reachability_of_loc mem1 n ⊆ CaptureSet.denot env' T.captureSet mem1
+              -- Need: reachability_of_loc mem2 n ⊆ CaptureSet.denot env' T.captureSet mem2
+              -- Use reachability and capture set monotonicity
+              sorry
+            · -- Prove: EnvTyping Γ env' mem2
+              exact ih ht'
       | tvar S =>
         cases info with
         | tvar d =>
