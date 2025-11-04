@@ -922,8 +922,8 @@ theorem sem_typ_letin
         -- Strategy: Use monotonicity + transparency
 
         -- Step 1: Prove memory subsumption
-        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 := by
-          sorry -- TODO: Prove extend_val subsumes original memory
+        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 :=
+          Memory.extend_val_subsumes m1 l' heapval hwf_v hfresh
 
         -- Step 2: Lift hQ1 to extended memory using monotonicity
         have henv_mono := typed_env_is_monotonic hts
@@ -939,14 +939,15 @@ theorem sem_typ_letin
         -- Step 4: Use the memory lookup fact
         have hlookup : (m1.extend_val l' heapval hwf_v hfresh).lookup l' =
           some (Cell.val heapval) := by
-          sorry -- TODO: Prove lookup equality for extend_val
+          simp [Memory.lookup, Memory.extend_val]
+          exact Heap.extend_lookup_eq m1.heap l' heapval
 
         -- Step 5: Apply transparency
         apply htrans hlookup hQ1_lifted
       · -- Show: EnvTyping Γ env (m1.extend_val l' heapval hwf_v hfresh)
         -- Original typing preserved under memory extension
-        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 := by
-          sorry -- TODO: Prove extend_val subsumes original memory
+        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 :=
+          Memory.extend_val_subsumes m1 l' heapval hwf_v hfresh
         -- Combine subsumptions: extended memory subsumes m1, m1 subsumes store
         have hsubsume : (m1.extend_val l' heapval hwf_v hfresh).subsumes store :=
           Memory.subsumes_trans hext hs1
