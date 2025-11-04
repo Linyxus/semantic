@@ -12,10 +12,6 @@ def resolve : Heap -> Exp {} -> Option (Exp {})
 | s, .var (.bound x) => by cases x
 | _, other => some other
 
-def resolve_reachability : Memory -> Exp {} -> Option CapabilitySet
-| mem, .var (.free x) => reachability_of_loc mem x
-| _, _ => none
-
 theorem resolve_monotonic {m1 m2 : Memory}
   (hsub : m2.subsumes m1)
   (hres : resolve m1.heap e = some v) :
@@ -283,8 +279,6 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 | ρ, .capt C S => fun mem exp =>
   exp.WfInHeap mem.heap ∧
-  (∀ R, resolve_reachability mem exp = some R ->
-    R ⊆ C.denot ρ mem) ∧
   (C.subst (Subst.from_TypeEnv ρ)).WfInHeap mem.heap ∧
   Ty.shape_val_denot ρ S (C.denot ρ mem) mem exp
 
