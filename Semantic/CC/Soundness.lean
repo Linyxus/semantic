@@ -866,7 +866,8 @@ theorem sem_typ_unit :
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
-  (hclosed_e : (Exp.letin e1 e2).IsClosed)
+  (hclosed_C : C.IsClosed)
+  (_hclosed_e : (Exp.letin e1 e2).IsClosed)
   (ht1 : C # Γ ⊨ e1 : T.typ)
   (ht2 : C.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
   C # Γ ⊨ (Exp.letin e1 e2) : U := by
@@ -906,7 +907,13 @@ theorem sem_typ_letin
       have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l')) C
       exact this.symm
     have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v hfresh) := by
-      sorry -- TODO: Need to prove C is well-formed in store.heap
+      have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
+        apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed hclosed_C
+        · apply from_TypeEnv_wf_in_heap hts
+      have hext_subsumes_store : (m1.extend_val l' heapval hwf_v hfresh).subsumes store :=
+        Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v hfresh) hs1
+      exact capture_set_denot_is_monotonic hwf_C hext_subsumes_store
     -- Convert postcondition using weaken_exi_val_denot
     rw [hC_mono, ← hcap_rename]
     apply eval_post_monotonic _ (ht2' _)
@@ -974,7 +981,11 @@ theorem sem_typ_letin
         have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=fx)) C
         exact this.symm
       have hC_mono : C.denot env store = C.denot env m1 := by
-        sorry -- TODO: Need to prove C is well-formed in store.heap
+        have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
+          apply CaptureSet.wf_subst
+          · apply CaptureSet.wf_of_closed hclosed_C
+          · apply from_TypeEnv_wf_in_heap hts
+        exact capture_set_denot_is_monotonic hwf_C hs1
       -- Convert postcondition using weaken_exi_val_denot
       rw [hC_mono, ← hcap_rename]
       apply eval_post_monotonic _ (ht2' _)
@@ -1345,7 +1356,9 @@ theorem fundamental
     rename_i ht1_syn ht2_syn ht1_ih ht2_ih
     cases hclosed_e with
     | letin he1_closed he2_closed =>
-      exact sem_typ_letin (Exp.IsClosed.letin he1_closed he2_closed)
+      exact sem_typ_letin
+        (HasType.use_set_is_closed ht1_syn)
+        (Exp.IsClosed.letin he1_closed he2_closed)
         (ht1_ih he1_closed)
         (ht2_ih he2_closed)
   case unpack => sorry
