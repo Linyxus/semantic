@@ -2,6 +2,19 @@
 
 This repo practices semantic type soundness for various calculi.
 
+## Setup
+
+This project makes extensive use of Claude for proof writing.
+See [CLAUDE.md](./CLAUDE.md) for the project-level instructions.
+It assumes a MCP tool called `lean4check`, which can be found in [this project](https://github.com/linyxus/ucw).
+
+To setup MCP, clone the aforementioned `ucw` repo somewhere on your machine. Then, go back to the root of this project, and run:
+```
+claude mcp add lean4check -- uv --project <UCW_ROOT>/lean4check run lean4check --root <THIS_PROJECT_ROOT>
+```
+
+This tiny MCP server provides only one tool `check`, which compiles a Lean 4 module and output all diagnostics with its context. Less is more!
+
 ## Simply Typed Lambda Calculus
 
 - [BigStep](Semantic/Stlc/BigStep/Soundness.lean) proves semantic type soundness for STLC with big-step operational semantics.
