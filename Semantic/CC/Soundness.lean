@@ -335,6 +335,15 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
           rw [hCf_mono, ← hcap_rename]
           exact this
 
+theorem sem_typ_pack
+  {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
+  (hclosed_cs : cs.IsClosed)
+  (ht : CaptureSet.var x # Γ ⊢ Exp.var x : (T.subst (Subst.openCVar cs)).typ)
+  (ih : (Exp.var x).IsClosed → CaptureSet.var x # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ)
+  (hclosed_e : (Exp.pack cs x).IsClosed) :
+  CaptureSet.var x # Γ ⊨ Exp.pack cs x : T.exi := by
+  sorry
+
 theorem abs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
   ∃ fx, x = .free fx
@@ -1116,7 +1125,9 @@ theorem fundamental
     apply sem_typ_cabs
     · exact hclosed_e
     · cases hclosed_e; aesop
-  case pack => sorry
+  case pack =>
+    rename_i hclosed_cs ht ih
+    apply sem_typ_pack hclosed_cs ht ih hclosed_e
   case unit => exact sem_typ_unit
   case app =>
     rename_i hx hy
