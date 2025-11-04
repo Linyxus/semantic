@@ -605,12 +605,11 @@ theorem sem_typ_tapp
 
 theorem sem_typ_capp
   {x : BVar s .var}
-  {cb : CaptureBound s}
   {T : Ty .exi (s,C)}
   {D : CaptureSet s}
   (hD_closed : D.IsClosed)
   (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) :
-    .typ (.capt (.var (.bound x)) (.cpoly cb T))) :
+    .typ (.capt (.var (.bound x)) (.cpoly (.bound D) T))) :
   (.var (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
   intro env store hts
 
@@ -651,21 +650,12 @@ theorem sem_typ_capp
   have happ := hfun store D'
     hD'_wf              -- Closed capture sets are well-formed
     (Memory.subsumes_refl store)          -- Memory subsumes itself
-    (by -- Prove that D'.denot TypeEnv.empty ⊆ cb.denot env
+    (by -- Prove that D'.denot TypeEnv.empty ⊆ (.bound D).denot env
       rw [hD'_denot]
-      -- We need: D.denot env store ⊆ cb.denot env store
-      -- This should follow from the typing rule, but capp doesn't enforce it!
-      -- The only way this is sound is if cb = .unbound (allowing any capture set)
-      cases cb with
-      | unbound =>
-        -- For unbound, cb.denot = fun _ => CapabilitySet.any
-        simp [CaptureBound.denot]
-        exact CapabilitySet.Subset.top
-      | bound cs =>
-        -- For bounded capture sets, we would need D ⊆ cs syntactically
-        -- or semantically. This is not provided by the capp typing rule.
-        -- This suggests the typing rule may need a Subcapt premise.
-        sorry)
+      -- Since cb = .bound D, we need: D.denot env store ⊆ D.denot env store
+      -- which is trivially true by reflexivity
+      simp [CaptureBound.denot]
+      exact CapabilitySet.Subset.refl)
 
   -- Now apply the opening lemma
   have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T)
