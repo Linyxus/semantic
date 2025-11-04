@@ -107,23 +107,26 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
         apply Exp.wf_of_closed hclosed_abs
       · -- The substitution from typed environment is well-formed
         apply from_TypeEnv_wf_in_heap hts
-    · -- Provide the arrow denotation structure
-      constructor
-      · -- Prove WfInHeap for the capture set
-        apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed
-          cases hclosed_abs
-          assumption
-        · apply from_TypeEnv_wf_in_heap hts
-      · -- Provide existential witnesses: cs, T0, t0
-        use (Cf.subst (Subst.from_TypeEnv env)), (T1.subst (Subst.from_TypeEnv env)),
-          (e.subst (Subst.from_TypeEnv env).lift)
-        constructor
-        · -- Show that resolve gives back the abstraction
-          simp [resolve, Exp.subst]
-        · -- Show the function property
-          intro arg H' hsubsume harg
-          rw [Exp.from_TypeEnv_weaken_open]
+    · constructor
+      · -- Reachability constraint (vacuous for abs)
+        intro R hR
+        simp [resolve_reachability, Exp.subst] at hR
+      · constructor
+        · -- Prove WfInHeap for the capture set
+          apply CaptureSet.wf_subst
+          · apply CaptureSet.wf_of_closed
+            cases hclosed_abs
+            assumption
+          · apply from_TypeEnv_wf_in_heap hts
+        · -- Provide the arrow denotation structure (existential witnesses: cs, T0, t0)
+          use (Cf.subst (Subst.from_TypeEnv env)), (T1.subst (Subst.from_TypeEnv env)),
+            (e.subst (Subst.from_TypeEnv env).lift)
+          constructor
+          · -- Show that resolve gives back the abstraction
+            simp [resolve, Exp.subst]
+          · -- Show the function property
+            intro arg H' hsubsume harg
+            rw [Exp.from_TypeEnv_weaken_open]
           -- Apply the hypothesis
           have henv :
             EnvTyping (Γ,x:T1) (env.extend_var arg) H' := by
@@ -201,23 +204,26 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
         apply Exp.wf_of_closed hclosed_tabs
       · -- The substitution from typed environment is well-formed
         apply from_TypeEnv_wf_in_heap hts
-    · -- Need to provide cs, S0 and t0 for the poly denotation
-      constructor
-      · -- Prove WfInHeap for the capture set
-        apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed
-          cases hclosed_tabs
-          assumption
-        · apply from_TypeEnv_wf_in_heap hts
-      · -- Provide existential witnesses: cs, S0, t0
-        use (Cf.subst (Subst.from_TypeEnv env)), (S.subst (Subst.from_TypeEnv env)),
-          (e.subst (Subst.from_TypeEnv env).lift)
-        constructor
-        · -- Show that resolve gives back the type abstraction
-          simp [resolve, Exp.subst]
-        · -- Show the polymorphic function property
-          intro H' denot hsubsume hproper himply
-          rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
+    · constructor
+      · -- Reachability constraint (vacuous for tabs)
+        intro R hR
+        simp [resolve_reachability, Exp.subst] at hR
+      · constructor
+        · -- Prove WfInHeap for the capture set
+          apply CaptureSet.wf_subst
+          · apply CaptureSet.wf_of_closed
+            cases hclosed_tabs
+            assumption
+          · apply from_TypeEnv_wf_in_heap hts
+        · -- Need to provide cs, S0 and t0 for the poly denotation
+          use (Cf.subst (Subst.from_TypeEnv env)), (S.subst (Subst.from_TypeEnv env)),
+            (e.subst (Subst.from_TypeEnv env).lift)
+          constructor
+          · -- Show that resolve gives back the type abstraction
+            simp [resolve, Exp.subst]
+          · -- Show the polymorphic function property
+            intro H' denot hsubsume hproper himply
+            rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
           -- Apply the hypothesis
           have henv : EnvTyping (Γ,X<:S) (env.extend_tvar denot) H' := by
             constructor
@@ -264,22 +270,25 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
         apply Exp.wf_of_closed hclosed_cabs
       · -- The substitution from typed environment is well-formed
         apply from_TypeEnv_wf_in_heap hts
-    · -- Need to provide cs, B0 and t0 for the cpoly denotation
-      constructor
-      · -- Prove WfInHeap for the capture set
-        apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed
-          cases hclosed_cabs
-          assumption
-        · apply from_TypeEnv_wf_in_heap hts
-      · -- Provide existential witnesses: cs, B0, t0
-        use (Cf.subst (Subst.from_TypeEnv env)), (cb.subst (Subst.from_TypeEnv env)),
-          (e.subst (Subst.from_TypeEnv env).lift)
-        constructor
-        · -- Show that resolve gives back the capture abstraction
-          simp [resolve, Exp.subst]
-        · -- Show the capture polymorphic function property
-          intro H' CS hwf hsubsume hsub_bound
+    · constructor
+      · -- Reachability constraint (vacuous for cabs)
+        intro R hR
+        simp [resolve_reachability, Exp.subst] at hR
+      · constructor
+        · -- Prove WfInHeap for the capture set
+          apply CaptureSet.wf_subst
+          · apply CaptureSet.wf_of_closed
+            cases hclosed_cabs
+            assumption
+          · apply from_TypeEnv_wf_in_heap hts
+        · -- Need to provide cs, B0 and t0 for the cpoly denotation
+          use (Cf.subst (Subst.from_TypeEnv env)), (cb.subst (Subst.from_TypeEnv env)),
+            (e.subst (Subst.from_TypeEnv env).lift)
+          constructor
+          · -- Show that resolve gives back the capture abstraction
+            simp [resolve, Exp.subst]
+          · -- Show the capture polymorphic function property
+            intro H' CS hwf hsubsume hsub_bound
           -- Apply the hypothesis
           have henv : EnvTyping (Γ,C<:cb) (env.extend_cvar CS) H' := by
             constructor
@@ -618,7 +627,7 @@ theorem sem_typ_tapp
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
   -- Extract the poly structure
-  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hfun⟩ := tabs_val_denot_inv h1'.2.2
+  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hfun⟩ := tabs_val_denot_inv h1'.2.2.2
 
   -- Determine concrete location
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -665,7 +674,7 @@ theorem sem_typ_capp
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
   -- Extract the cpoly structure
-  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hfun⟩ := cabs_val_denot_inv h1'.2.2
+  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hfun⟩ := cabs_val_denot_inv h1'.2.2.2
 
   -- Determine concrete location
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -729,7 +738,7 @@ theorem sem_typ_app
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
   -- Extract the arrow structure
-  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hfun⟩ := abs_val_denot_inv h1'.2.2
+  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hfun⟩ := abs_val_denot_inv h1'.2.2.2
 
   -- Extract argument denotation
   have h2 := hy env store hts
@@ -782,7 +791,7 @@ theorem sem_typ_invoke
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
   -- Extract the capability structure
-  have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'.2.2
+  have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'.2.2.2
 
   -- Extract unit denotation from hy
   have h2 := hy env store hts
@@ -791,7 +800,7 @@ theorem sem_typ_invoke
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h2'
 
   -- Extract the unit structure
-  have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'.2.2
+  have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'.2.2.2
 
   -- Determine concrete locations
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -816,10 +825,14 @@ theorem sem_typ_invoke
   constructor
   · exact Exp.WfInHeap.wf_unit
   · constructor
-    · -- Empty capture set is always well-formed
-      simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
+    · -- Reachability constraint (vacuous for unit)
+      intro R hR
+      simp [resolve_reachability] at hR
+    · constructor
+      · -- Empty capture set is always well-formed
+        simp only [CaptureSet.subst]
+        exact CaptureSet.WfInHeap.wf_empty
+      · simp [resolve]
 
 theorem sem_typ_unit :
   {} # Γ ⊨ Exp.unit : .typ (.capt {} .unit) := by
@@ -831,10 +844,14 @@ theorem sem_typ_unit :
   · constructor
     · exact Exp.WfInHeap.wf_unit
     · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_TypeEnv_wf_in_heap hts
-      · simp [resolve]
+      · -- Reachability constraint (vacuous for unit)
+        intro R hR
+        simp [resolve_reachability] at hR
+      · constructor
+        · apply CaptureSet.wf_subst
+          · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
+          · apply from_TypeEnv_wf_in_heap hts
+        · simp [resolve]
 
 -- theorem sem_typ_tapp
 --   (ht : Γ ⊨ (.var x) : (.poly S T)) :

@@ -202,20 +202,26 @@ def rebind_capt_val_denot
     rw [← hC]
     intro hwf_e
     constructor
-    · intro ⟨hwf_C, hshape⟩
+    · intro ⟨hreach, hwf_C, hshape⟩
       constructor
-      · -- Need: ((C.rename f).subst (Subst.from_TypeEnv env2)).WfInHeap s.heap
-        -- Have: (C.subst (Subst.from_TypeEnv env1)).WfInHeap s.heap
-        -- These are equal by rebind_resolved_capture_set
-        rw [<-rebind_resolved_capture_set ρ]
-        exact hwf_C
-      · exact (hS (C.denot env1 s) s e).mp hshape
-    · intro ⟨hwf_C, hshape⟩
+      · -- Reachability constraint
+        exact hreach
+      · constructor
+        · -- Need: ((C.rename f).subst (Subst.from_TypeEnv env2)).WfInHeap s.heap
+          -- Have: (C.subst (Subst.from_TypeEnv env1)).WfInHeap s.heap
+          -- These are equal by rebind_resolved_capture_set
+          rw [<-rebind_resolved_capture_set ρ]
+          exact hwf_C
+        · exact (hS (C.denot env1 s) s e).mp hshape
+    · intro ⟨hreach, hwf_C, hshape⟩
       constructor
-      · -- Symmetric case
-        rw [rebind_resolved_capture_set ρ]
-        exact hwf_C
-      · exact (hS (C.denot env1 s) s e).mpr hshape
+      · -- Reachability constraint
+        exact hreach
+      · constructor
+        · -- Symmetric case
+          rw [rebind_resolved_capture_set ρ]
+          exact hwf_C
+        · exact (hS (C.denot env1 s) s e).mpr hshape
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

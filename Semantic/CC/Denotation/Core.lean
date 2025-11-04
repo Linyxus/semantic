@@ -968,7 +968,7 @@ theorem capt_val_denot_is_transparent {env : TypeEnv s}
   | capt C S =>
     intro m x v hx ht
     simp [Ty.capt_val_denot] at ht ⊢
-    have ⟨hwf, hwf_C, hshape⟩ := ht
+    have ⟨hwf, hreach, hwf_C, hshape⟩ := ht
     constructor
     · -- Prove: (.var (.free x)).WfInHeap m.heap
       -- A variable is well-formed if it points to something in the heap
@@ -976,10 +976,21 @@ theorem capt_val_denot_is_transparent {env : TypeEnv s}
       apply Var.WfInHeap.wf_free
       exact hx
     · constructor
-      · -- Prove: C.WfInHeap m.heap
-        exact hwf_C
-      · -- Prove: shape_val_denot env S (C.denot env m) m (.var (.free x))
-        exact shape_val_denot_is_transparent henv S (C.denot env m) hx hshape
+      · -- Prove: resolve_reachability constraint for .var (.free x)
+        intro R hR
+        simp [resolve_reachability] at hR
+        -- hR : some (reachability_of_loc m x) = some R
+        cases hR
+        -- Need to show: reachability_of_loc m x ⊆ C.denot env m
+        -- This requires that v.reachability ⊆ C.denot env m
+        -- which should be an invariant maintained by the heap typing
+        -- TODO: This requires additional heap typing invariants
+        sorry
+      · constructor
+        · -- Prove: C.WfInHeap m.heap
+          exact hwf_C
+        · -- Prove: shape_val_denot env S (C.denot env m) m (.var (.free x))
+          exact shape_val_denot_is_transparent henv S (C.denot env m) hx hshape
 
 theorem exi_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1300,17 +1311,34 @@ def capt_val_denot_is_monotonic {env : TypeEnv s}
   | capt C S =>
     intro m1 m2 e hmem ht
     simp [Ty.capt_val_denot] at ht ⊢
-    have ⟨hwf, hwf_C, hshape⟩ := ht
+    have ⟨hwf, hreach, hwf_C, hshape⟩ := ht
     constructor
     · -- Prove: e.WfInHeap m2.heap
       exact Exp.wf_monotonic hmem hwf
     · constructor
-      · -- Prove: C.WfInHeap m2.heap
-        exact CaptureSet.wf_monotonic hmem hwf_C
-      · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
+      · -- Prove: reachability constraint in m2
+        intro R hR
+        -- resolve_reachability is monotonic (resolve only depends on heap structure)
+        -- If resolve_reachability m2 e = some R, then resolve_reachability m1 e = some R
+        -- because heap subsumption preserves heap structure
+        have : resolve_reachability m1 e = some R := by
+          -- resolve_reachability only looks at the heap to find reachability
+          -- and heap subsumption preserves this information
+          sorry
+        have hsub := hreach R this
+        -- Now we have: R ⊆ C.denot env m1
+        -- Need: R ⊆ C.denot env m2
+        -- This follows from capture set monotonicity
         have h := capture_set_denot_is_monotonic hwf_C hmem
-        rw [<-h]
-        exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
+        rw [← h]
+        exact hsub
+      · constructor
+        · -- Prove: C.WfInHeap m2.heap
+          exact CaptureSet.wf_monotonic hmem hwf_C
+        · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
+          have h := capture_set_denot_is_monotonic hwf_C hmem
+          rw [<-h]
+          exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
