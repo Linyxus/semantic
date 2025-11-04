@@ -484,12 +484,25 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         simp [Subst.comp, Subst.unpack]
         rw [Subst.lift_there_cvar_eq]
         rw [Subst.lift_there_cvar_eq]
-        simp [Subst.from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar,
+        -- Generalize before simplifying
+        simp only [Subst.from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar,
           TypeEnv.lookup_cvar, TypeEnv.lookup]
-        -- Goal: ground capture set unchanged by double rename + subst
-        -- Since ρ.lookup_cvar c0 : CaptureSet {}, it has no bound cvars
-        -- so rename and subst don't change it
-        sorry -- CLAUDE: Need lemma that CaptureSet {} is invariant under rename/subst
+        -- Now the goal has ρ.lookup_cvar c0 expanded to match expression
+        -- Let's generalize this ground capture set
+        generalize (match ρ.lookup c0 with | TypeInfo.cvar cs => cs) = ground_cs
+        -- Goal: double rename + subst on ground_cs equals ground_cs
+        induction ground_cs with
+        | empty => rfl  -- .empty.rename.rename.subst = .empty
+        | union cs1 cs2 ih1 ih2 =>
+          -- .union case: distribute rename/subst over both sides
+          simp only [CaptureSet.rename, CaptureSet.subst, ih1, ih2]
+        | var v =>
+          cases v with
+          | bound bv => cases bv  -- Impossible: no bound vars in {}
+          | free n =>
+            -- .var (.free n).rename.rename.subst = .var (.free n)
+            rfl
+        | cvar cv => cases cv  -- Impossible: no capture vars in {}
 
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it

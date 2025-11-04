@@ -679,9 +679,33 @@ theorem CaptureSet.weaken_openCVar {C : CaptureSet (s)} {C' : CaptureSet s} :
     _ = C := by rw [CaptureSet.subst_id]
 
 theorem CaptureSet.ground_rename_invariant {C : CaptureSet {}} :
-  C.rename f = C := by sorry
+  C.rename f = C := by
+  induction C with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.rename]
+    constructor <;> assumption
+  | var x =>
+    cases x with
+    | bound bx => cases bx  -- No bound variables in empty signature
+    | free n =>
+      -- Free variables are unchanged by rename
+      simp [CaptureSet.rename, Var.rename]
+  | cvar c => cases c  -- No capture variables in empty signature
 
 theorem CaptureSet.ground_subst_invariant {C : CaptureSet {}} :
-  C.subst σ = C := by sorry
+  C.subst σ = C := by
+  induction C with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.subst]
+    constructor <;> assumption
+  | var x =>
+    cases x with
+    | bound bx => cases bx  -- No bound variables in empty signature
+    | free n =>
+      -- Free variables are unchanged by subst
+      simp [CaptureSet.subst, Var.subst]
+  | cvar c => cases c  -- No capture variables in empty signature
 
 end CC
