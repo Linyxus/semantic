@@ -310,18 +310,23 @@ def retype_exi_val_denot
     exact ih s e
   | .exi T => by
     intro s e
-    simp [Ty.exi_val_denot, Ty.subst]
-    constructor
-    · intro h
-      obtain ⟨CS, hval⟩ := h
-      use CS
-      have ih := retype_capt_val_denot (ρ.liftCVar (cs:=CS)) T
-      exact (ih s e).mp hval
-    · intro h
-      obtain ⟨CS, hval⟩ := h
-      use CS
-      have ih := retype_capt_val_denot (ρ.liftCVar (cs:=CS)) T
-      exact (ih s e).mpr hval
+    simp only [Ty.exi_val_denot, Ty.subst]
+    -- Both sides are match expressions on resolve s.heap e
+    cases hresolve : resolve s.heap e
+    · -- resolve = none
+      simp [hresolve]
+    · -- resolve = some e'
+      rename_i e'
+      cases e'
+      case pack =>
+        rename_i CS y
+        simp [hresolve]
+        have ih := retype_capt_val_denot (ρ.liftCVar (cs:=CS)) T
+        exact ih s (Exp.var y)
+      all_goals {
+        -- resolve returned non-pack
+        simp [hresolve]
+      }
 
 def retype_capt_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}

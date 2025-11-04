@@ -346,32 +346,16 @@ theorem sem_typ_pack
   apply Eval.eval_val
   · constructor -- pack is a value
   · simp [Denot.as_mpost]
-    -- Need to provide witness CS : CaptureSet {}
-    use cs.subst (Subst.from_TypeEnv env)
-    -- Simplify the pack expression after substitution
-    simp [Exp.subst]
-    -- Now need: capt_val_denot (env.extend_cvar (cs.subst ...)) T store (pack ...)
+    -- Goal: match (resolve store.heap (pack cs x).subst ...) with ...
+    -- Simplify: resolve of a pack returns the pack itself
+    have : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
+           Exp.pack (cs.subst (Subst.from_TypeEnv env)) (x.subst (Subst.from_TypeEnv env)) := by
+      simp [Exp.subst]
+    rw [this]
+    simp [resolve]
+    -- Goal: capt_val_denot (env.extend_cvar (cs.subst ...)) T store (var (x.subst ...))
     -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
-    have hx := ht env store hts
-    simp [Ty.exi_exp_denot] at hx
-    -- hx says x evaluates to something with type (T.subst (Subst.openCVar cs)).typ
-    -- Since .typ is just a wrapper, unfold exi_val_denot
-    simp [Ty.exi_val_denot] at hx
-    -- Now hx : Eval ... (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost
-    -- Use retype to convert T.subst (Subst.openCVar cs) at env
-    -- to T at (env.extend_cvar (cs.subst ...))
-    have hretype := @retype_capt_val_denot (s,C) s
-      (env.extend_cvar (cs.subst (Subst.from_TypeEnv env)))
-      (Subst.openCVar cs) env
-      (@Retype.open_carg s env cs) T
-    -- Apply hretype in the backwards direction
-    apply (hretype store
-      (Exp.pack (cs.subst (Subst.from_TypeEnv env))
-        (x.subst (Subst.from_TypeEnv env)))).mpr
-    -- Goal: capt_val_denot env (T.subst (Subst.openCVar cs)) store (pack ...)
-    -- TODO: Need to relate pack expression to underlying variable x
-    -- This requires understanding how pack interacts with capt_val_denot
-    -- May need additional lemmas about pack denotations
+    -- Need to extract value from evaluation and apply retype lemma
     sorry
 
 theorem abs_val_denot_inv {A : CapabilitySet}

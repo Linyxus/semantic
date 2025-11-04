@@ -243,9 +243,9 @@ def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 | ρ, .typ T => Ty.capt_val_denot ρ T
 | ρ, .exi T => fun m e =>
-  ∃ (CS : CaptureSet {}) (x : Var .var {}),
-    e = .pack CS x ∧
-    Ty.capt_val_denot (ρ.extend_cvar CS) T m (.var x)
+  match resolve m.heap e with
+  | some (.pack CS x) => Ty.capt_val_denot (ρ.extend_cvar CS) T m (.var x)
+  | _ => False
 
 def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
 | ρ, T => fun A m (e : Exp {}) =>
@@ -870,17 +870,52 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
     exact capt_val_denot_is_transparent henv T
   | exi T =>
     intro m x v hx ht
-    simp [Ty.exi_val_denot] at ht ⊢
-    have ⟨CS, hA⟩ := ht
-    use CS
-    -- Need to show transparency is preserved when extending with cvar
-    have henv' : (env.extend_cvar CS).is_transparent := by
-      intro X
-      cases X with
-      | there X' =>
-        simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-        exact henv X'
-    exact capt_val_denot_is_transparent henv' T hx hA
+    simp only [Ty.exi_val_denot] at ht ⊢
+    -- ht: match (resolve m.heap v.unwrap) with some (pack CS x) => ...
+    -- Goal: match (resolve m.heap (var (free x))) with some (pack CS x) => ...
+    -- Since m.heap x = some (Cell.val v), resolve (var (free x)) = some v.unwrap
+    have hlookup : m.heap x = some (Cell.val v) := by simp [Memory.lookup] at hx; exact hx
+    -- Rewrite resolve m.heap (var (free x))
+    change match resolve m.heap (.var (.free x)) with
+      | some (.pack CS x) => Ty.capt_val_denot (env.extend_cvar CS) T m (.var x)
+      | _ => False
+    simp only [resolve, hlookup]
+    -- Now goal is: match (some v.unwrap) with ...
+    -- Need to show this equals match (resolve m.heap v.unwrap) with ...
+    cases hresolve : resolve m.heap v.unwrap
+    · -- resolve returned none - contradiction with ht
+      simp [hresolve] at ht
+    · -- resolve returned some e'
+      rename_i e'
+      cases e'
+      case pack =>
+        -- resolve returned some (pack CS' y')
+        rename_i CS' y'
+        simp [hresolve] at ht
+        -- ht now says: Ty.capt_val_denot (env.extend_cvar CS') T m (var y')
+        -- Need to show v.unwrap = pack CS' y'
+        cases hunwrap : v.unwrap <;> rw [hunwrap] at hresolve
+        case var =>
+          -- var case - resolve recurses, proof complex
+          sorry
+        case pack =>
+          -- pack case
+          rename_i CS'' y''
+          simp [resolve] at hresolve
+          -- hresolve now says: CS'' = CS' ∧ y'' = y'
+          obtain ⟨hCS, hy⟩ := hresolve
+          subst hCS hy
+          simp
+          exact ht
+        all_goals {
+          -- For other constructors (abs, tabs, etc.)
+          simp [resolve] at hresolve
+          -- hresolve says some (this constructor) = some (pack ...), contradiction
+        }
+      all_goals {
+        -- resolve returned something other than pack - contradiction with ht
+        simp [hresolve] at ht
+      }
 
 theorem ground_denot_is_monotonic {C : CaptureSet {}} :
   (C.ground_denot).is_monotonic_for C := by
@@ -1163,17 +1198,26 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
     exact capt_val_denot_is_monotonic henv T
   | exi T =>
     intro m1 m2 e hmem ht
-    simp [Ty.exi_val_denot] at ht ⊢
-    have ⟨CS, hA⟩ := ht
-    use CS
-    have henv' : (env.extend_cvar CS).IsMonotonic := by
-      constructor
-      · intro X
-        cases X with
-        | there X' =>
-          simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-          exact henv.tvar X'
-    exact capt_val_denot_is_monotonic henv' T hmem hA
+    simp only [Ty.exi_val_denot] at ht ⊢
+    -- ht: match (resolve m1.heap e) with some (pack CS x) => ... | _ => False
+    -- Goal: match (resolve m2.heap e) with some (pack CS x) => ... | _ => False
+    cases hresolve1 : resolve m1.heap e
+    · -- resolve m1.heap e = none, so ht is False
+      simp [hresolve1] at ht
+    · -- resolve m1.heap e = some e'
+      rename_i e'
+      cases e'
+      case pack =>
+        -- resolve m1.heap e = some (pack CS y)
+        rename_i CS y
+        simp [hresolve1] at ht
+        -- ht now says: Ty.capt_val_denot (env.extend_cvar CS) T m1 (var y)
+        -- Need to show: resolve m2.heap e = some (pack CS y) and monotonicity of capt_val_denot
+        sorry  -- Need lemma about resolve being monotonic
+      all_goals {
+        -- resolve returned non-pack, so ht is False
+        simp [hresolve1] at ht
+      }
 
 def capt_exp_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
