@@ -80,6 +80,34 @@ theorem subset_preserves_mem {C1 C2 : CapabilitySet} {x : Nat}
   case union_right_left => exact mem.left hmem
   case union_right_right => exact mem.right hmem
 
+/-- If an element is in a set, then the singleton of that element is a subset of the set. -/
+theorem mem_imp_singleton_subset {C : CapabilitySet} {x : Nat}
+  (hmem : x ∈ C) :
+  {x} ⊆ C := by
+  -- We need to prove that the singleton {x} is a subset of C
+  -- This requires case analysis on C and use of the subset constructors
+  induction C with
+  | empty => cases hmem
+  | cap y =>
+    -- C = {y}, and x ∈ {y}, so x = y
+    cases hmem
+    -- x = y, so {x} = {y} = C
+    apply Subset.refl
+  | union C1 C2 ih1 ih2 =>
+    cases hmem with
+    | left h =>
+      -- x ∈ C1, so by IH: {x} ⊆ C1
+      -- Need: {x} ⊆ (C1 ∪ C2)
+      apply Subset.trans (ih1 h)
+      apply Subset.union_right_left
+    | right h =>
+      -- x ∈ C2, so by IH: {x} ⊆ C2
+      -- Need: {x} ⊆ (C1 ∪ C2)
+      apply Subset.trans (ih2 h)
+      apply Subset.union_right_right
+  | any =>
+    apply Subset.top
+
 end CapabilitySet
 
 /-- A heap value.
