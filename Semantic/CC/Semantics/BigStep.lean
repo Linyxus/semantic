@@ -5,54 +5,54 @@ import Semantic.CC.Semantics.Heap
 namespace CC
 
 def reachability_of_loc
-  (m : Memory)
+  (h : Heap)
   (l : Nat) :
   CapabilitySet :=
-  match m.lookup l with
+  match h l with
   | some .capability => {l}
   | some (.val ⟨_, _, R⟩) => R
   | none => {}
 
 def expand_captures
-  (m : Memory)
+  (h : Heap)
   (cs : CaptureSet {}) :
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var (.free loc) => reachability_of_loc m loc
-  | .union cs1 cs2 => expand_captures m cs1 ∪ expand_captures m cs2
+  | .var (.free loc) => reachability_of_loc h loc
+  | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
 
 def compute_reachability
-  (m : Memory)
+  (h : Heap)
   (v : Exp {}) (hv : v.IsSimpleVal) :
   CapabilitySet :=
   match v with
-  | .abs cs _ _ => expand_captures m cs
-  | .tabs cs _ _ => expand_captures m cs
-  | .cabs cs _ _ => expand_captures m cs
+  | .abs cs _ _ => expand_captures h cs
+  | .tabs cs _ _ => expand_captures h cs
+  | .cabs cs _ _ => expand_captures h cs
   | .unit => {}
 
 theorem reachability_of_loc_monotonic
-  {m1 m2 : Memory}
-  (hsub : m2.subsumes m1)
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
   (l : Nat)
-  (hex : m1.lookup l = some v) :
-  reachability_of_loc m2 l = reachability_of_loc m1 l := by
-  have m2_eq : m2.lookup l = some v := hsub l v hex
-  simp only [reachability_of_loc, Memory.lookup] at hex m2_eq ⊢
-  rw [hex, m2_eq]
+  (hex : h1 l = some v) :
+  reachability_of_loc h2 l = reachability_of_loc h1 l := by
+  have h2_eq : h2 l = some v := hsub l v hex
+  simp only [reachability_of_loc] at hex h2_eq ⊢
+  rw [hex, h2_eq]
 
-/-- Expanding a capture set in a bigger memory yields the same result.
-Proof by induction on cs. Requires all free locations in cs to exist in m1. -/
+/-- Expanding a capture set in a bigger heap yields the same result.
+Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
 theorem expand_captures_monotonic
-  {m1 m2 : Memory}
-  (hsub : m2.subsumes m1)
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
   (cs : CaptureSet {})
-  (hwf : CaptureSet.WfInHeap cs m1.heap) :
-  expand_captures m2 cs = expand_captures m1 cs := by
+  (hwf : CaptureSet.WfInHeap cs h1) :
+  expand_captures h2 cs = expand_captures h1 cs := by
   induction cs with
   | empty =>
-    -- Base case: empty capture set expands to empty in any memory
+    -- Base case: empty capture set expands to empty in any heap
     rfl
   | var x =>
     cases x with
@@ -65,8 +65,7 @@ theorem expand_captures_monotonic
       -- Extract existence proof from well-formedness
       cases hwf with
       | wf_var_free hex =>
-        -- We have hex : m1.heap loc = some cell_val
-        -- This is the same as m1.lookup loc = some cell_val
+        -- We have hex : h1 loc = some cell_val
         exact reachability_of_loc_monotonic hsub loc hex
   | cvar C =>
     -- Impossible: no capability variables in empty signature
@@ -78,20 +77,20 @@ theorem expand_captures_monotonic
     | wf_union hwf1 hwf2 =>
       simp [expand_captures, ih1 hwf1, ih2 hwf2]
 
-/-- Computing reachability of a value in a bigger memory yields the same result.
+/-- Computing reachability of a value in a bigger heap yields the same result.
 Proof by cases on hv, using expand_captures_monotonic. -/
 theorem compute_reachability_monotonic
-  {m1 m2 : Memory}
-  (hsub : m2.subsumes m1)
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
   (v : Exp {})
   (hv : v.IsSimpleVal)
-  (hwf : Exp.WfInHeap v m1.heap) :
-  compute_reachability m2 v hv = compute_reachability m1 v hv := by
+  (hwf : Exp.WfInHeap v h1) :
+  compute_reachability h2 v hv = compute_reachability h1 v hv := by
   -- Case analysis on the structure of the simple value
   cases hv with
   | abs =>
     -- Case: v = .abs cs T e
-    -- compute_reachability m v = expand_captures m cs
+    -- compute_reachability h v = expand_captures h cs
     simp [compute_reachability]
     -- Extract well-formedness of the capture set
     cases hwf with
@@ -111,7 +110,7 @@ theorem compute_reachability_monotonic
       exact expand_captures_monotonic hsub _ hwf_cs
   | unit =>
     -- Case: v = .unit
-    -- Both memories yield empty capability set
+    -- Both heaps yield empty capability set
     rfl
 
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
@@ -151,7 +150,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     ∀ l'
       (hfresh : m1.lookup l' = none),
       Eval C
-        (m1.extend_val l' ⟨v, hv, compute_reachability m1 v hv⟩ hwf_v hfresh)
+        (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},

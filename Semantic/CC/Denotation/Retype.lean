@@ -161,8 +161,8 @@ def retype_shape_val_denot
         have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mpr harg
         specialize hd arg H' hsub harg'
-        -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
-        exact (ih2 (A ∪ (reachability_of_loc H' arg)) H' _).mp hd
+        -- The capability set (A ∪ reachability_of_loc H'.heap arg) is environment-invariant
+        exact (ih2 (A ∪ (reachability_of_loc H'.heap arg)) H' _).mp hd
     · intro h
       obtain ⟨cs0, T0, t0, hr, hd⟩ := h
       use cs0, T0, t0
@@ -173,8 +173,8 @@ def retype_shape_val_denot
         have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
         have harg' := (ih1 H' (.var (.free arg))).mp harg
         specialize hd arg H' hsub harg'
-        -- The capability set (A ∪ reachability_of_loc H' arg) is environment-invariant
-        exact (ih2 (A ∪ (reachability_of_loc H' arg)) H' _).mpr hd
+        -- The capability set (A ∪ reachability_of_loc H'.heap arg) is environment-invariant
+        exact (ih2 (A ∪ (reachability_of_loc H'.heap arg)) H' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := retype_shape_val_denot ρ T1
     intro A s0 e0

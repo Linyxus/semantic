@@ -225,7 +225,7 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 | .empty => fun _ => {}
 | .union cs1 cs2 => fun m =>
   (cs1.ground_denot m) ∪ (cs2.ground_denot m)
-| .var (.free x) => fun m => reachability_of_loc m x
+| .var (.free x) => fun m => reachability_of_loc m.heap x
 
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
@@ -253,7 +253,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg)
-        T2 (A ∪ (reachability_of_loc m' arg)) m' (t0.subst (Subst.openVar (.free arg))))
+        T2 (A ∪ (reachability_of_loc m'.heap arg)) m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
   ∃ cs S0 t0,
     resolve m.heap e = some (.tabs cs S0 t0) ∧
@@ -1086,6 +1086,8 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
       -- Bound variable: after substitution becomes free variable
       unfold CaptureSet.denot
       simp [CaptureSet.subst, Subst.from_TypeEnv] at hwf
+      simp [CaptureSet.subst, Subst.from_TypeEnv]
+      unfold CaptureSet.ground_denot
       cases hwf with
       | wf_var_free hex =>
         -- hex : m1.heap (ρ.lookup_var x) = some _
@@ -1095,6 +1097,8 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
       -- Free variable: stays as free variable
       unfold CaptureSet.denot
       simp [CaptureSet.subst] at hwf
+      simp [CaptureSet.subst]
+      unfold CaptureSet.ground_denot
       cases hwf with
       | wf_var_free hex =>
         -- hex : m1.heap x = some _
