@@ -897,7 +897,7 @@ theorem sem_typ_letin
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     -- Apply ht2 with extended environment and memory
     have ht2' := ht2 (env.extend_var l')
-      (m1.extend_val l' heapval hwf_v hfresh)
+      (m1.extend_val l' heapval hwf_v rfl hfresh)
     simp [Ty.exi_exp_denot] at ht2' ⊢
     -- Rewrite to make expressions match
     rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
@@ -907,13 +907,13 @@ theorem sem_typ_letin
       = C.denot env := by
       have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l')) C
       exact this.symm
-    have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v hfresh) := by
+    have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v rfl hfresh) := by
       have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
         apply CaptureSet.wf_subst
         · apply CaptureSet.wf_of_closed hclosed_C
         · apply from_TypeEnv_wf_in_heap hts
-      have hext_subsumes_store : (m1.extend_val l' heapval hwf_v hfresh).subsumes store :=
-        Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v hfresh) hs1
+      have hext_subsumes_store : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes store :=
+        Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh) hs1
       exact capture_set_denot_is_monotonic hwf_C hext_subsumes_store
     -- Convert postcondition using weaken_exi_val_denot
     rw [hC_mono, ← hcap_rename]
@@ -930,13 +930,13 @@ theorem sem_typ_letin
         -- Strategy: Use monotonicity + transparency
 
         -- Step 1: Prove memory subsumption
-        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 :=
-          Memory.extend_val_subsumes m1 l' heapval hwf_v hfresh
+        have hext : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes m1 :=
+          Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
 
         -- Step 2: Lift hQ1 to extended memory using monotonicity
         have henv_mono := typed_env_is_monotonic hts
         have hQ1_lifted : Ty.capt_val_denot env T
-          (m1.extend_val l' heapval hwf_v hfresh) v :=
+          (m1.extend_val l' heapval hwf_v rfl hfresh) v :=
           capt_val_denot_is_monotonic henv_mono T hext hQ1
 
         -- Step 3: Apply transparency
@@ -945,19 +945,19 @@ theorem sem_typ_letin
           capt_val_denot_is_transparent henv_trans T
 
         -- Step 4: Use the memory lookup fact
-        have hlookup : (m1.extend_val l' heapval hwf_v hfresh).lookup l' =
+        have hlookup : (m1.extend_val l' heapval hwf_v rfl hfresh).lookup l' =
           some (Cell.val heapval) := by
-          simp [Memory.lookup, Memory.extend_val]
+          simp [Memory.extend_val]
           exact Heap.extend_lookup_eq m1.heap l' heapval
 
         -- Step 5: Apply transparency
         apply htrans hlookup hQ1_lifted
-      · -- Show: EnvTyping Γ env (m1.extend_val l' heapval hwf_v hfresh)
+      · -- Show: EnvTyping Γ env (m1.extend_val l' heapval hwf_v rfl hfresh)
         -- Original typing preserved under memory extension
-        have hext : (m1.extend_val l' heapval hwf_v hfresh).subsumes m1 :=
-          Memory.extend_val_subsumes m1 l' heapval hwf_v hfresh
+        have hext : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes m1 :=
+          Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
         -- Combine subsumptions: extended memory subsumes m1, m1 subsumes store
-        have hsubsume : (m1.extend_val l' heapval hwf_v hfresh).subsumes store :=
+        have hsubsume : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes store :=
           Memory.subsumes_trans hext hs1
         exact env_typing_monotonic hts hsubsume
   case h_var =>
