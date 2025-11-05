@@ -87,8 +87,21 @@ def Denot.is_transparent (d : Denot) : Prop :=
 def Denot.is_proper (d : Denot) : Prop :=
   d.is_monotonic ∧ d.is_transparent
 
+def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
+  match e with
+  | .var (.free x) => reachability_of_loc H x
+  | .abs cs _ _ => expand_captures H cs
+  | .tabs cs _ _ => expand_captures H cs
+  | .cabs cs _ _ => expand_captures H cs
+  | _ => {}  -- Other expressions have no reachability
+
+def PreDenot.is_reachability_safe (denot : PreDenot) : Prop :=
+  ∀ R m e,
+    denot R m e ->
+    resolve_reachability m.heap e ⊆ R
+
 def PreDenot.is_proper (pd : PreDenot) : Prop :=
-  ∀ C, (pd C).is_proper
+  pd.is_reachability_safe ∧ ∀ C, (pd C).is_proper
 
 lemma Denot.as_mpost_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
@@ -237,7 +250,8 @@ def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
 mutual
 
 def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
-| _, .top => fun _ _ _ => True
+| _, .top => fun R m e =>
+  resolve_reachability m.heap e ⊆ R
 | env, .tvar X => env.lookup_tvar X
 | _, .unit => fun _ m e => resolve m.heap e = some .unit
 | _, .cap => fun A m e =>
