@@ -998,7 +998,59 @@ theorem typed_env_is_transparent
 
 theorem typed_env_is_reachability_safe
   (ht : EnvTyping Γ env mem) :
-  env.is_reachability_safe := sorry
+  env.is_reachability_safe := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.is_reachability_safe]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht
+          have ⟨_, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_reachability_safe] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨hproper, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_reachability_safe] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            -- hproper says d.is_proper, which is d.is_reachability_safe ∧ ∀ C, (d C).is_proper
+            -- We need d.is_reachability_safe
+            exact hproper.1
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | cvar B =>
+        cases info with
+        | cvar cs =>
+          simp [EnvTyping] at ht
+          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_reachability_safe] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
 
 theorem shape_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1629,8 +1681,163 @@ def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
 --   apply (himp (C.denot env)) h'' hsub' e' he'
 
 theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
-  (hts : env.is_reachability_safe) :
-  (Ty.shape_val_denot env T).is_reachability_safe := sorry
+  (hts : env.is_reachability_safe)
+  (T : Ty .shape s) :
+  (Ty.shape_val_denot env T).is_reachability_safe := by
+  intro R m e hdenot
+  cases T with
+  | top =>
+    -- For .top, the denotation already includes resolve_reachability m.heap e ⊆ R
+    simp [Ty.shape_val_denot] at hdenot
+    exact hdenot.2
+  | tvar X =>
+    -- For .tvar, use the hypothesis that env is reachability safe
+    simp [Ty.shape_val_denot] at hdenot
+    exact hts X R m e hdenot
+  | unit =>
+    -- For .unit, resolve_reachability returns empty set or reachability from heap
+    simp [Ty.shape_val_denot] at hdenot
+    -- hdenot : resolve m.heap e = some .unit
+    -- Need: resolve_reachability m.heap e ⊆ R
+    cases e with
+    | unit =>
+      simp [resolve_reachability]
+      intro x hx
+      simp at hx
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve_reachability]
+        -- reachability_of_loc for unit values is empty
+        intro x hx
+        simp [reachability_of_loc] at hx
+        simp [resolve] at hdenot
+        cases hfx : m.heap fx <;> simp [hfx] at hdenot
+        case some cell =>
+          cases cell <;> simp at hdenot
+          case val v =>
+            simp at hx
+            cases hv : v.unwrap <;> simp [hv] at hdenot
+            case unit =>
+              -- For unit, reachability is empty
+              exact absurd hx (by simp)
+      | bound bx => cases bx
+    | _ =>
+      simp [resolve] at hdenot
+  | cap =>
+    -- For .cap, e is a variable pointing to a capability
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨label, heq, hcap, hmem⟩ := hdenot
+    -- hdenot says: e = .var (.free label) ∧ label ∈ R
+    rw [heq]
+    simp [resolve_reachability]
+    -- Need: reachability_of_loc m.heap label ⊆ R
+    -- From hcap: m.lookup label = some .capability
+    -- So: reachability_of_loc m.heap label = {label}
+    have hcap' : m.heap label = some .capability := by
+      simp [Memory.lookup] at hcap
+      exact hcap
+    simp [reachability_of_loc, hcap']
+    -- Goal: {label} ⊆ R, which means ∀ x, x ∈ {label} → x ∈ R
+    intro x hx
+    simp at hx
+    rw [hx]
+    exact hmem
+  | arrow T1 T2 =>
+    -- For arrow types, e resolves to an abstraction with capture set cs
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨cs, T0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    -- Need: resolve_reachability m.heap e ⊆ R
+    -- From hdenot: R0 = expand_captures m.heap cs and R0 ⊆ R
+    cases e with
+    | abs cs' T0' t0' =>
+      simp [resolve, resolve_reachability] at hres ⊢
+      obtain ⟨rfl, rfl, rfl⟩ := hres
+      exact hR0_sub
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hfx : m.heap fx with
+        | none => simp [hfx] at hres
+        | some cell =>
+          simp [hfx] at hres
+          cases cell with
+          | capability => simp at hres
+          | val v =>
+            simp at hres
+            cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
+            case abs cs' T0' t0' =>
+              obtain ⟨rfl, rfl, rfl⟩ := hres
+              -- Need: reachability_of_loc m.heap fx ⊆ R
+              -- From heap invariant: reachability_of_loc m.heap fx = v.reachability
+              -- And v.reachability = expand_captures m.heap cs' (for abs values)
+              have hv_heap : m.heap fx = some (Cell.val v) := hfx
+              rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
+              simp [resolve_reachability, hunwrap]
+              exact hR0_sub
+      | bound bx => cases bx
+    | _ => simp [resolve] at hres
+  | poly T1 T2 =>
+    -- Similar to arrow case
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨cs, S0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    cases e with
+    | tabs cs' S0' t0' =>
+      simp [resolve, resolve_reachability] at hres ⊢
+      obtain ⟨rfl, rfl, rfl⟩ := hres
+      exact hR0_sub
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hfx : m.heap fx with
+        | none => simp [hfx] at hres
+        | some cell =>
+          simp [hfx] at hres
+          cases cell with
+          | capability => simp at hres
+          | val v =>
+            simp at hres
+            cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
+            case tabs cs' S0' t0' =>
+              obtain ⟨rfl, rfl, rfl⟩ := hres
+              have hv_heap : m.heap fx = some (Cell.val v) := hfx
+              rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
+              simp [resolve_reachability, hunwrap]
+              exact hR0_sub
+      | bound bx => cases bx
+    | _ => simp [resolve] at hres
+  | cpoly B T =>
+    -- Similar to arrow case
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨cs, B0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    cases e with
+    | cabs cs' B0' t0' =>
+      simp [resolve, resolve_reachability] at hres ⊢
+      obtain ⟨rfl, rfl, rfl⟩ := hres
+      exact hR0_sub
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hfx : m.heap fx with
+        | none => simp [hfx] at hres
+        | some cell =>
+          simp [hfx] at hres
+          cases cell with
+          | capability => simp at hres
+          | val v =>
+            simp at hres
+            cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
+            case cabs cs' B0' t0' =>
+              obtain ⟨rfl, rfl, rfl⟩ := hres
+              have hv_heap : m.heap fx = some (Cell.val v) := hfx
+              rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
+              simp [resolve_reachability, hunwrap]
+              exact hR0_sub
+      | bound bx => cases bx
+    | _ => simp [resolve] at hres
 
 /-- If the type environment is well-typed, then the denotation of any shape type is proper.
 
@@ -1642,10 +1849,7 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (Ty.shape_val_denot env S).is_proper := by
   constructor
   · -- Prove: (Ty.shape_val_denot env S).is_reachability_safe
-    intro R m' e hdenot
-    -- Need: resolve_reachability m'.heap e ⊆ R
-    -- This should follow from the definition of each shape type's denotation
-    sorry
+    exact shape_val_denot_is_reachability_safe (typed_env_is_reachability_safe hts) S
   · -- Prove: ∀ C, ((Ty.shape_val_denot env S) C).is_proper
     intro C
     constructor
