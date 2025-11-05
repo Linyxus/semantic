@@ -1521,11 +1521,15 @@ theorem fundamental_subcapt
   case sc_cvar hlookup => exact sem_sc_cvar hlookup
   case sc_var hlookup => exact sem_sc_var hlookup
 
+lemma sem_subtyp_top {T : Ty .shape s} :
+  SemSubtyp Γ T .top := by
+  sorry
+
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
-  case top => trace_state; sorry
+  case top => apply sem_subtyp_top
   case refl => sorry
   case trans => sorry
   case tvar => sorry
