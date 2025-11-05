@@ -577,8 +577,9 @@ def compute_reachability
   | .unit => {}
 
 /-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
-def Heap.WfHeap (H : Heap) : Prop :=
-  ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
+structure Heap.WfHeap (H : Heap) : Prop where
+  wf_val :
+    ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
 
 /-- The empty heap is well-formed. -/
 theorem Heap.wf_empty : Heap.WfHeap ∅ := by
