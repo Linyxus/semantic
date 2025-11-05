@@ -172,8 +172,17 @@ def PreDenot.is_reachability_safe (denot : PreDenot) : Prop :=
     denot R m e ->
     resolve_reachability m.heap e ⊆ R
 
+def PreDenot.is_reachability_monotonic (pd : PreDenot) : Prop :=
+  ∀ R1 R2,
+    R1 ⊆ R2 ->
+    ∀ m e,
+      pd R1 m e ->
+      pd R2 m e
+
 def PreDenot.is_proper (pd : PreDenot) : Prop :=
-  pd.is_reachability_safe ∧ ∀ C, (pd C).is_proper
+  pd.is_reachability_safe
+  ∧ pd.is_reachability_monotonic
+  ∧ ∀ C, (pd C).is_proper
 
 lemma Denot.as_mpost_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
