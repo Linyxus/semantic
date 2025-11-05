@@ -1371,6 +1371,64 @@ theorem typed_env_lookup_cvar
   simp [CaptureBound.denot] at h
   exact h
 
+theorem typed_env_lookup_var_reachability
+  (hts : EnvTyping Γ env m)
+  (hx : Ctx.LookupVar Γ x T) :
+  reachability_of_loc m.heap (env.lookup_var x) ⊆ T.captureSet.denot env m := by
+  induction hx generalizing m
+  case here =>
+    -- Γ = .push Γ' (.var T'), x = .here
+    rename_i Γ' T'
+    cases env; rename_i info' env'
+    cases info'; rename_i n
+    simp [EnvTyping] at hts
+    simp [TypeEnv.lookup_var, TypeEnv.lookup]
+    -- From hts.1, we have: Ty.capt_val_denot env' T' m (.var (.free n))
+    -- Need: reachability_of_loc m.heap n ⊆
+    --       (T'.captureSet.rename Rename.succ).denot (env'.extend_var n) m
+    sorry
+  case there b hx_prev ih =>
+    -- Handle three cases based on the binding kind
+    cases b
+    case var =>
+      rename_i Γ' x' T' Tb
+      cases env; rename_i info' env'
+      cases info'; rename_i n
+      simp [EnvTyping] at hts
+      obtain ⟨_, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      -- Use rebinding to relate authorities in predecessor and extended env
+      sorry
+    case tvar =>
+      rename_i Γ' x' T' Sb
+      cases env; rename_i info' env'
+      cases info'; rename_i d
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      sorry
+    case cvar =>
+      rename_i Γ' x' T' Bb
+      cases env; rename_i info' env'
+      cases info'; rename_i cs
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, _, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      sorry
+
+theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s}
+  (hlookup : Γ.LookupVar x (.capt C S)) :
+  SemSubcapt Γ (.var (.bound x)) C := by
+  intro env m hts
+  unfold CaptureSet.denot
+  simp [CaptureSet.subst, Subst.from_TypeEnv]
+  have h := typed_env_lookup_var_reachability hts hlookup
+  simp [Ty.captureSet] at h
+  exact h
+
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   (hlookup : Γ.LookupCVar c (.bound C)) :
   SemSubcapt Γ (.cvar c) C := by
@@ -1387,7 +1445,7 @@ theorem fundamental_subcapt
   case sc_elem hsub => exact sem_sc_elem hsub
   case sc_union ih1 ih2 => exact sem_sc_union ih1 ih2
   case sc_cvar hlookup => exact sem_sc_cvar hlookup
-  case sc_var => sorry
+  case sc_var hlookup => exact sem_sc_var hlookup
 
 -- theorem sem_typ_subtyp
 --   (ht : Γ ⊨ e : T1)
