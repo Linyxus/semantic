@@ -46,6 +46,8 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
   Subset C C
 | top :
   Subset C .any
+| empty :
+  Subset .empty C
 | trans :
   Subset C1 C2 ->
   Subset C2 C3 ->
@@ -70,6 +72,7 @@ theorem subset_preserves_mem {C1 C2 : CapabilitySet} {x : Nat}
   case refl => exact hmem
   case top => exact mem.here_any
   case trans ih1 ih2 => apply ih2 (ih1 hmem)
+  case empty => cases hmem
   case union_left ih1 ih2 =>
     cases hmem
     case left h => exact ih1 h
