@@ -314,18 +314,18 @@ def retype_exi_val_denot
     -- Both sides are match expressions on resolve s.heap e
     cases hresolve : resolve s.heap e
     · -- resolve = none
-      simp [hresolve]
+      simp
     · -- resolve = some e'
       rename_i e'
       cases e'
       case pack =>
         rename_i CS y
-        simp [hresolve]
+        simp
         have ih := retype_capt_val_denot (ρ.liftCVar (cs:=CS)) T
         exact ih s (Exp.var y)
       all_goals {
         -- resolve returned non-pack
-        simp [hresolve]
+        simp
       }
 
 def retype_capt_exp_denot
