@@ -4,34 +4,6 @@ import Semantic.CC.Semantics.Heap
 
 namespace CC
 
-def reachability_of_loc
-  (h : Heap)
-  (l : Nat) :
-  CapabilitySet :=
-  match h l with
-  | some .capability => {l}
-  | some (.val ⟨_, _, R⟩) => R
-  | none => {}
-
-def expand_captures
-  (h : Heap)
-  (cs : CaptureSet {}) :
-  CapabilitySet :=
-  match cs with
-  | .empty => {}
-  | .var (.free loc) => reachability_of_loc h loc
-  | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
-
-def compute_reachability
-  (h : Heap)
-  (v : Exp {}) (hv : v.IsSimpleVal) :
-  CapabilitySet :=
-  match v with
-  | .abs cs _ _ => expand_captures h cs
-  | .tabs cs _ _ => expand_captures h cs
-  | .cabs cs _ _ => expand_captures h cs
-  | .unit => {}
-
 theorem reachability_of_loc_monotonic
   {h1 h2 : Heap}
   (hsub : h2.subsumes h1)

@@ -545,6 +545,37 @@ structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
   wf_cvar :
     ∀ C, CaptureSet.WfInHeap (s.cvar C) H
 
+/-- Lookup the reachability set of a location. -/
+def reachability_of_loc
+  (h : Heap)
+  (l : Nat) :
+  CapabilitySet :=
+  match h l with
+  | some .capability => {l}
+  | some (.val ⟨_, _, R⟩) => R
+  | none => {}
+
+/-- Resolve reachability of each element of the capture set. -/
+def expand_captures
+  (h : Heap)
+  (cs : CaptureSet {}) :
+  CapabilitySet :=
+  match cs with
+  | .empty => {}
+  | .var (.free loc) => reachability_of_loc h loc
+  | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
+
+/-- Compute reachability for a heap value. -/
+def compute_reachability
+  (h : Heap)
+  (v : Exp {}) (hv : v.IsSimpleVal) :
+  CapabilitySet :=
+  match v with
+  | .abs cs _ _ => expand_captures h cs
+  | .tabs cs _ _ => expand_captures h cs
+  | .cabs cs _ _ => expand_captures h cs
+  | .unit => {}
+
 /-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
 def Heap.WfHeap (H : Heap) : Prop :=
   ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
