@@ -2065,7 +2065,10 @@ theorem resolve_implies_wf {m : Memory}
   case var x0 =>
     cases x0
     case bound b => cases b
-    case free f => sorry
+    case free f =>
+      constructor; constructor
+      simp [resolve] at hres
+      all_goals sorry
   all_goals sorry
 
 theorem shape_val_denot_implies_wf {env : TypeEnv s}
