@@ -1542,14 +1542,39 @@ theorem fundamental_subcapt
 
 lemma sem_subtyp_top {T : Ty .shape s} :
   SemSubtyp Γ T .top := by
-  sorry
+  -- Unfold SemSubtyp for shape types
+  simp [SemSubtyp]
+  -- Introduce the environment, memory, and typing assumption
+  intro env H htyping
+  -- Unfold ImplyAfter to handle memory subsumption
+  simp [PreDenot.ImplyAfter]
+  intro R
+  simp [Denot.ImplyAfter]
+  intro m' hsubsumes
+  -- Unfold ImplyAt to get the implication at a specific memory
+  simp [Denot.ImplyAt]
+  intro e hdenot_T
+  -- Need to prove: Ty.shape_val_denot env .top R m' e
+  -- Which unfolds to: e.WfInHeap m'.heap ∧ resolve_reachability m'.heap e ⊆ R
+  simp [Ty.shape_val_denot]
+  constructor
+  · -- Prove well-formedness: e.WfInHeap m'.heap
+    -- Use the theorem that shape denotations imply well-formedness
+    have hwf_env := typed_env_is_implying_wf htyping
+    have hwf_denot := shape_val_denot_implies_wf hwf_env T
+    exact hwf_denot R m' e hdenot_T
+  · -- Prove reachability bound: resolve_reachability m'.heap e ⊆ R
+    -- Use the theorem that shape denotations are reachability safe
+    have hsafe_env := typed_env_is_reachability_safe htyping
+    have hsafe_denot := shape_val_denot_is_reachability_safe hsafe_env T
+    exact hsafe_denot R m' e hdenot_T
 
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
   case top => apply sem_subtyp_top
-  case refl => sorry
+  case refl => trace_state; sorry
   case trans => sorry
   case tvar => sorry
   case arrow => sorry
