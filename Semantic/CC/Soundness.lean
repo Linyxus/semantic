@@ -1386,7 +1386,34 @@ theorem typed_env_lookup_var_reachability
     -- From hts.1, we have: Ty.capt_val_denot env' T' m (.var (.free n))
     -- Need: reachability_of_loc m.heap n ⊆
     --       (T'.captureSet.rename Rename.succ).denot (env'.extend_var n) m
-    sorry
+    -- Extract capture set from T'
+    cases T' with | capt C S =>
+    -- From hts.1: Ty.capt_val_denot env' (.capt C S) m (.var (.free n))
+    -- This gives us: Ty.shape_val_denot env' S (C.denot env' m) m
+    --   (.var (.free n))
+    have hval := hts.1
+    simp [Ty.capt_val_denot] at hval
+    obtain ⟨_, _, hshape⟩ := hval
+    -- Apply reachability safety to get:
+    --   resolve_reachability m.heap (.var (.free n)) ⊆ C.denot env' m
+    have hsafe := shape_val_denot_is_reachability_safe
+      (typed_env_is_reachability_safe hts.2) S
+    have hreach := hsafe (C.denot env' m) m (.var (.free n)) hshape
+    -- resolve_reachability for variables equals reachability_of_loc
+    simp [resolve_reachability] at hreach
+    -- Simplify the goal to show it matches the expected form
+    simp [Ty.captureSet, Ty.rename]
+    -- Use rebinding to relate C.denot env' with
+    -- (C.rename Rename.succ).denot (env'.extend n)
+    have hreb := rebind_captureset_denot (Rebind.weaken (env:=env') (x:=n)) C
+    -- hreb : C.denot env' = (C.rename Rename.succ).denot (env'.extend_var n)
+    -- Need to apply this to memory m
+    have hreb_m : C.denot env' m =
+      (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n)) m := by
+      rw [hreb]
+      rfl
+    rw [<-hreb_m]
+    exact hreach
   case there b hx_prev ih =>
     -- Handle three cases based on the binding kind
     cases b
