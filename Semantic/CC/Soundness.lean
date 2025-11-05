@@ -1426,7 +1426,22 @@ theorem typed_env_lookup_var_reachability
       have hih := ih henv'
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
       -- Use rebinding to relate authorities in predecessor and extended env
-      sorry
+      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       T'.captureSet.denot env' m
+      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_var n) m
+      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
+      cases T' with | capt C S =>
+      simp [Ty.captureSet, Ty.rename]
+      simp [Ty.captureSet] at hih
+      have hreb := rebind_captureset_denot
+        (Rebind.weaken (env:=env') (x:=n)) C
+      have hreb_m : C.denot env' m =
+        (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n)) m := by
+        rw [hreb]
+        rfl
+      rw [<-hreb_m]
+      exact hih
     case tvar =>
       rename_i Γ' x' T' Sb
       cases env; rename_i info' env'
@@ -1435,7 +1450,23 @@ theorem typed_env_lookup_var_reachability
       obtain ⟨_, _, henv'⟩ := hts
       have hih := ih henv'
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      sorry
+      -- Use rebinding with tweaken for type variable extension
+      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       T'.captureSet.denot env' m
+      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_tvar d) m
+      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
+      cases T' with | capt C S =>
+      simp [Ty.captureSet, Ty.rename]
+      simp [Ty.captureSet] at hih
+      have hreb := rebind_captureset_denot
+        (Rebind.tweaken (env:=env') (d:=d)) C
+      have hreb_m : C.denot env' m =
+        (C.rename Rename.succ).denot (env'.extend (TypeInfo.tvar d)) m := by
+        rw [hreb]
+        rfl
+      rw [<-hreb_m]
+      exact hih
     case cvar =>
       rename_i Γ' x' T' Bb
       cases env; rename_i info' env'
@@ -1444,7 +1475,23 @@ theorem typed_env_lookup_var_reachability
       obtain ⟨_, _, _, henv'⟩ := hts
       have hih := ih henv'
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      sorry
+      -- Use rebinding with cweaken for capture variable extension
+      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       T'.captureSet.denot env' m
+      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_cvar cs) m
+      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
+      cases T' with | capt C S =>
+      simp [Ty.captureSet, Ty.rename]
+      simp [Ty.captureSet] at hih
+      have hreb := rebind_captureset_denot
+        (Rebind.cweaken (env:=env') (cs:=cs)) C
+      have hreb_m : C.denot env' m =
+        (C.rename Rename.succ).denot (env'.extend (TypeInfo.cvar cs)) m := by
+        rw [hreb]
+        rfl
+      rw [<-hreb_m]
+      exact hih
 
 theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s}
   (hlookup : Γ.LookupVar x (.capt C S)) :
