@@ -580,12 +580,16 @@ def compute_reachability
 structure Heap.WfHeap (H : Heap) : Prop where
   wf_val :
     ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
+  wf_reach :
+    ∀ l v hv R,
+      H l = some (.val ⟨v, hv, R⟩) ->
+        R = compute_reachability H v hv
 
 /-- The empty heap is well-formed. -/
 theorem Heap.wf_empty : Heap.WfHeap ∅ := by
   constructor
-  intro l hv hlookup
-  cases hlookup
+  · intro l hv hlookup; cases hlookup
+  · intros _ _ _ _ hlookup; cases hlookup
 
 /-- Extending a well-formed heap with a well-formed value preserves well-formedness. -/
 theorem Heap.wf_extend
