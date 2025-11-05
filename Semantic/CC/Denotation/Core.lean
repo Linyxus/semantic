@@ -2100,36 +2100,6 @@ lemma wf_from_resolve_unit
     apply Exp.WfInHeap.wf_unit
   | _ => simp [resolve] at hresolve
 
-theorem resolve_implies_wf {m : Memory}
-  (hres : resolve m.heap e = some hv) :
-  e.WfInHeap m.heap := by
-  cases e <;> try (solve | cases hres)
-  case var x0 =>
-    cases x0
-    case bound b => cases b
-    case free f =>
-      constructor
-      simp [resolve] at hres
-      -- After simplification, hres tells us that match on m.heap f returned some hv
-      -- So m.heap f must be some (Cell.val v) for some v
-      cases h : m.heap f with
-      | none => simp [h] at hres
-      | some cell =>
-        cases cell with
-        | capability => simp [h] at hres
-        | val v =>
-          -- Now we know m.heap f = some (Cell.val v)
-          constructor; exact h
-  case unit => constructor
-  all_goals (
-    -- For non-variable expressions like abs, tabs, etc., resolve just returns them unchanged
-    -- To prove they're well-formed, we need to show all components are well-formed
-    -- However, we don't have sufficient hypotheses to prove this in general
-    -- In practice, these cases may not occur because expressions in denotations
-    -- are typically variables pointing to heap locations, not direct constructions
-    sorry
-  )
-
 theorem shape_val_denot_implies_wf {env : TypeEnv s}
   (hts : env.is_implying_wf)
   (T : Ty .shape s) :
