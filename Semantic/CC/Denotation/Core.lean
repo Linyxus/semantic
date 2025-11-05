@@ -179,9 +179,15 @@ def PreDenot.is_reachability_monotonic (pd : PreDenot) : Prop :=
       pd R1 m e ->
       pd R2 m e
 
+def PreDenot.implies_wf (pd : PreDenot) : Prop :=
+  ∀ R m e,
+    pd R m e ->
+    e.WfInHeap m.heap
+
 def PreDenot.is_proper (pd : PreDenot) : Prop :=
   pd.is_reachability_safe
   ∧ pd.is_reachability_monotonic
+  ∧ pd.implies_wf
   ∧ ∀ C, (pd C).is_proper
 
 lemma Denot.as_mpost_is_monotonic {d : Denot}
