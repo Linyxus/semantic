@@ -141,7 +141,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
           -- The variable .here in the extended environment denotes to the reachability we stored
           have hcap_var :
             (CaptureSet.var (.bound .here)).denot (env.extend_var arg) H'
-            = reachability_of_loc H' arg := by
+            = reachability_of_loc H'.heap arg := by
             simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
                   Subst.from_TypeEnv, Var.subst, TypeEnv.lookup_var]
             rfl
@@ -390,7 +390,7 @@ theorem abs_val_denot_inv {A : CapabilitySet}
       Ty.capt_val_denot env T1 H' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg)
-        T2 (A ∪ (reachability_of_loc H' arg)) H'
+        T2 (A ∪ (reachability_of_loc H'.heap arg)) H'
         (e0.subst (Subst.openVar (.free arg)))) := by
   cases x with
   | bound bx => cases bx
@@ -760,7 +760,8 @@ theorem sem_typ_app
   -- Convert the denotation using the equivalence
   rw [hinterp] at heqv
   have happ' :=
-    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪ reachability_of_loc store fy)
+    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪
+           reachability_of_loc store.heap fy)
       store (e0.subst (Subst.openVar (Var.free fy)))).1 happ
 
   simp [Ty.exi_exp_denot] at happ'
@@ -893,7 +894,7 @@ theorem sem_typ_letin
     -- m1.subsumes store, v is a simple value, Q1 v m1 holds
     simp [Denot.as_mpost] at hQ1
     -- Construct the HeapVal for v
-    let heapval : HeapVal := ⟨v, hv, compute_reachability m1 v hv⟩
+    let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     -- Apply ht2 with extended environment and memory
     have ht2' := ht2 (env.extend_var l')
       (m1.extend_val l' heapval hwf_v hfresh)
