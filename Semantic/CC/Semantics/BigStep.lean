@@ -4,87 +4,6 @@ import Semantic.CC.Semantics.Heap
 
 namespace CC
 
-theorem reachability_of_loc_monotonic
-  {h1 h2 : Heap}
-  (hsub : h2.subsumes h1)
-  (l : Nat)
-  (hex : h1 l = some v) :
-  reachability_of_loc h2 l = reachability_of_loc h1 l := by
-  have h2_eq : h2 l = some v := hsub l v hex
-  simp only [reachability_of_loc] at hex h2_eq ⊢
-  rw [hex, h2_eq]
-
-/-- Expanding a capture set in a bigger heap yields the same result.
-Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
-theorem expand_captures_monotonic
-  {h1 h2 : Heap}
-  (hsub : h2.subsumes h1)
-  (cs : CaptureSet {})
-  (hwf : CaptureSet.WfInHeap cs h1) :
-  expand_captures h2 cs = expand_captures h1 cs := by
-  induction cs with
-  | empty =>
-    -- Base case: empty capture set expands to empty in any heap
-    rfl
-  | var x =>
-    cases x with
-    | bound x =>
-      -- Impossible: no bound variables in empty signature
-      cases x
-    | free loc =>
-      -- Variable case: use reachability_of_loc_monotonic
-      simp [expand_captures]
-      -- Extract existence proof from well-formedness
-      cases hwf with
-      | wf_var_free hex =>
-        -- We have hex : h1 loc = some cell_val
-        exact reachability_of_loc_monotonic hsub loc hex
-  | cvar C =>
-    -- Impossible: no capability variables in empty signature
-    cases C
-  | union cs1 cs2 ih1 ih2 =>
-    -- Union case: by induction on both components
-    -- First, extract well-formedness for both components
-    cases hwf with
-    | wf_union hwf1 hwf2 =>
-      simp [expand_captures, ih1 hwf1, ih2 hwf2]
-
-/-- Computing reachability of a value in a bigger heap yields the same result.
-Proof by cases on hv, using expand_captures_monotonic. -/
-theorem compute_reachability_monotonic
-  {h1 h2 : Heap}
-  (hsub : h2.subsumes h1)
-  (v : Exp {})
-  (hv : v.IsSimpleVal)
-  (hwf : Exp.WfInHeap v h1) :
-  compute_reachability h2 v hv = compute_reachability h1 v hv := by
-  -- Case analysis on the structure of the simple value
-  cases hv with
-  | abs =>
-    -- Case: v = .abs cs T e
-    -- compute_reachability h v = expand_captures h cs
-    simp [compute_reachability]
-    -- Extract well-formedness of the capture set
-    cases hwf with
-    | wf_abs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub _ hwf_cs
-  | tabs =>
-    -- Case: v = .tabs cs T e
-    simp [compute_reachability]
-    cases hwf with
-    | wf_tabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub _ hwf_cs
-  | cabs =>
-    -- Case: v = .cabs cs cb e
-    simp [compute_reachability]
-    cases hwf with
-    | wf_cabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub _ hwf_cs
-  | unit =>
-    -- Case: v = .unit
-    -- Both heaps yield empty capability set
-    rfl
-
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_val :
   (hv : Exp.IsVal v) ->
@@ -120,9 +39,14 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     (hwf_v : Exp.WfInHeap v m1.heap) ->
     Q1 v m1 ->
     ∀ l'
-      (hfresh : m1.lookup l' = none),
+      (hfresh : m1.lookup l' = none)
+      (hreach : compute_reachability m1.heap v hv =
+        compute_reachability
+          (m1.heap.extend l' ⟨v, hv, compute_reachability m1.heap v hv⟩)
+          v hv),
       Eval C
-        (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v hfresh)
+        (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩
+          hwf_v hreach hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
@@ -318,10 +242,11 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred ih
     case h_val =>
-      intro m1 v hs1 hv hwf_v hq1 l' hfresh
-      apply ih_val hs1 hv hwf_v hq1 l' hfresh
+      intro m1 v hs1 hv hwf_v hq1 l' hfresh hreach
+      apply ih_val hs1 hv hwf_v hq1 l' hfresh hreach
       apply Mpost.entails_after_subsumes himp
-      apply Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf_v hfresh) hs1
+      apply Memory.subsumes_trans
+        (Memory.extend_val_subsumes _ _ _ hwf_v hreach hfresh) hs1
     case h_var =>
       intro m1 x hs1 hwf_x hq1
       apply ih_var hs1 hwf_x hq1
@@ -362,8 +287,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_letin =>
     rename_i hpred_mono heval_e1 h_val h_var ih_e1 ih_val ih_var
     apply Eval.eval_letin hpred_mono (ih_e1 hsub)
-    · intro m1 v hs1 hv hwf_v hq1 l' hfresh
-      exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
+    · intro m1 v hs1 hv hwf_v hq1 l' hfresh hreach
+      exact ih_val hs1 hv hwf_v hq1 l' hfresh hreach hsub
     · intro m1 x hs1 hwf_x hq1
       exact ih_var hs1 hwf_x hq1 hsub
   case eval_unpack =>
