@@ -932,8 +932,8 @@ theorem typed_env_is_monotonic
             cases x with
             | here =>
               simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-              -- hproper says d.is_proper, which is d.is_reachability_safe ∧ d.is_reachability_monotonic ∧ ∀ C, (d C).is_proper
-              -- We need d.is_monotonic, which means ∀ C, (d C).is_monotonic
+              -- hproper says d.is_proper
+              -- We need d.is_monotonic
               intro C
               exact (hproper.2.2 C).1
             | there x =>
@@ -989,8 +989,8 @@ theorem typed_env_is_transparent
           cases x with
           | here =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper, which is d.is_reachability_safe ∧ d.is_reachability_monotonic ∧ ∀ C, (d C).is_proper
-            -- We need d.is_transparent, which means ∀ C, (d C).is_transparent
+            -- hproper says d.is_proper
+            -- We need d.is_transparent
             intro C
             exact (hproper.2.2 C).2
           | there x =>
