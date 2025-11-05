@@ -142,8 +142,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
             · apply from_TypeEnv_wf_in_heap hts
           · constructor
             · -- Prove expand_captures ... ⊆ ...
-              -- Need: expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) ⊆ Cf.denot env store
-              -- By expand_captures_eq_ground_denot and definition of denot, these are equal
+              -- By expand_captures_eq_ground_denot and denot definition
               rw [expand_captures_eq_ground_denot]
               simp [CaptureSet.denot]
               apply CapabilitySet.Subset.refl
@@ -164,7 +163,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                 = Cf.denot env := by
                 have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=arg)) Cf
                 exact this.symm
-              -- The variable .here in the extended environment denotes to the reachability we stored
+              -- Variable .here denotes to the reachability we stored
               have hcap_var :
                 (CaptureSet.var (.bound .here)).denot (env.extend_var arg) H'
                 = reachability_of_loc H'.heap arg := by
@@ -183,23 +182,35 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   · apply CaptureSet.wf_of_closed hCf_closed
                   · apply from_TypeEnv_wf_in_heap hts
                 exact capture_set_denot_is_monotonic hwf_Cf hsubsume
-              -- Show the authority matches by rewriting with the equalities
+              -- Show the authority matches by rewriting with equalities
               have hauthority :
-                (Cf.rename Rename.succ ∪ .var (.bound .here)).denot (env.extend_var arg) H' =
-                (expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env))).union (reachability_of_loc H'.heap arg) := by
-                calc (Cf.rename Rename.succ ∪ .var (.bound .here)).denot (env.extend_var arg) H'
+                (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
+                  (env.extend_var arg) H' =
+                (expand_captures store.heap
+                  (Cf.subst (Subst.from_TypeEnv env))).union
+                  (reachability_of_loc H'.heap arg) := by
+                calc (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
+                      (env.extend_var arg) H'
                   _ = (Cf.rename Rename.succ).denot (env.extend_var arg) H' ∪
-                      (CaptureSet.var (.bound .here)).denot (env.extend_var arg) H' := by
-                    simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst]
+                      (CaptureSet.var (.bound .here)).denot
+                        (env.extend_var arg) H' := by
+                    simp [CaptureSet.denot, CaptureSet.ground_denot,
+                          CaptureSet.subst]
                   _ = Cf.denot env H' ∪ reachability_of_loc H'.heap arg := by
                     rw [congrFun hcap_rename H', hcap_var]
-                  _ = Cf.denot env store ∪ reachability_of_loc H'.heap arg := by
+                  _ = Cf.denot env store ∪
+                      reachability_of_loc H'.heap arg := by
                     rw [← hCf_mono]
-                  _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store ∪ reachability_of_loc H'.heap arg := by
+                  _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store ∪
+                      reachability_of_loc H'.heap arg := by
                     simp [CaptureSet.denot]
-                  _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) ∪ reachability_of_loc H'.heap arg := by
+                  _ = expand_captures store.heap
+                        (Cf.subst (Subst.from_TypeEnv env)) ∪
+                      reachability_of_loc H'.heap arg := by
                     rw [← expand_captures_eq_ground_denot]
-                  _ = (expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env))).union (reachability_of_loc H'.heap arg) := by
+                  _ = (expand_captures store.heap
+                        (Cf.subst (Subst.from_TypeEnv env))).union
+                      (reachability_of_loc H'.heap arg) := by
                     rfl
               rw [← hauthority]
               exact this
@@ -498,7 +509,9 @@ theorem abs_val_denot_inv {A : CapabilitySet}
         · -- The function property matches the new denotation
           -- Need to show: expand_captures...  ∪ reach = A ∪ reach
           intro H' arg hsub harg
-          have heq : expand_captures store.heap cs ∪ reachability_of_loc H'.heap arg = A ∪ reachability_of_loc H'.heap arg := by
+          have heq : expand_captures store.heap cs ∪
+              reachability_of_loc H'.heap arg =
+            A ∪ reachability_of_loc H'.heap arg := by
             sorry
           rw [← heq]
           exact hfun arg H' hsub harg
