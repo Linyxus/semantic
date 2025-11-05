@@ -323,7 +323,7 @@ mutual
 
 def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 | _, .top => fun R m e =>
-  resolve_reachability m.heap e ⊆ R
+  e.WfInHeap m.heap ∧ resolve_reachability m.heap e ⊆ R
 | env, .tvar X => env.lookup_tvar X
 | _, .unit => fun _ m e => resolve m.heap e = some .unit
 | _, .cap => fun A m e =>
