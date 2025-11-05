@@ -1986,10 +1986,26 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
 
 theorem capt_denot_implyafter_lift
   (himp : (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T2)) :
-  (Ty.capt_exp_denot env T1).ImplyAfter H (Ty.capt_exp_denot env T2) := by sorry
+  (Ty.capt_exp_denot env T1).ImplyAfter H (Ty.capt_exp_denot env T2) := by
+  intro C m' hsub e heval
+  simp [Ty.capt_exp_denot] at heval ⊢
+  -- heval : Eval C m' e (capt_val_denot env T1).as_mpost
+  -- Goal: Eval C m' e (capt_val_denot env T2).as_mpost
+  apply eval_post_monotonic_general _ heval
+  -- Need: (capt_val_denot env T1).as_mpost.entails_after m' (capt_val_denot env T2).as_mpost
+  have himp' := Denot.imply_after_to_m_entails_after himp
+  exact Mpost.entails_after_subsumes himp' hsub
 
 theorem exi_denot_implyafter_lift
   (himp : (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)) :
-  (Ty.exi_exp_denot env T1).ImplyAfter H (Ty.exi_exp_denot env T2) := by sorry
+  (Ty.exi_exp_denot env T1).ImplyAfter H (Ty.exi_exp_denot env T2) := by
+  intro C m' hsub e heval
+  simp [Ty.exi_exp_denot] at heval ⊢
+  -- heval : Eval C m' e (exi_val_denot env T1).as_mpost
+  -- Goal: Eval C m' e (exi_val_denot env T2).as_mpost
+  apply eval_post_monotonic_general _ heval
+  -- Need: (exi_val_denot env T1).as_mpost.entails_after m' (exi_val_denot env T2).as_mpost
+  have himp' := Denot.imply_after_to_m_entails_after himp
+  exact Mpost.entails_after_subsumes himp' hsub
 
 end CC
