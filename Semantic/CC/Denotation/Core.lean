@@ -1232,7 +1232,7 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
   | cap =>
     intro C m x v hx ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨label, hlabel, hcap, hmem⟩ := ht
+    have ⟨_, label, hlabel, hcap, hmem⟩ := ht
     -- v.unwrap = .var (.free label), but v.isVal says it's a simple value
     -- Variables are not simple values, so this is a contradiction
     have hval := v.isVal
@@ -1246,7 +1246,15 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
       exact hx
     have heq := resolve_var_heap_trans hx'
     rw [heq]
-    exact ht
+    -- Split ht into well-formedness and existential parts
+    have ⟨hwf_unwrap, hexists⟩ := ht
+    constructor
+    · -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
+      constructor
+      constructor
+      exact hx'
+    · -- The existential part remains the same
+      exact hexists
   | poly T1 T2 =>
     intro C m x v hx ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1255,7 +1263,15 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
       exact hx
     have heq := resolve_var_heap_trans hx'
     rw [heq]
-    exact ht
+    -- Split ht into well-formedness and existential parts
+    have ⟨hwf_unwrap, hexists⟩ := ht
+    constructor
+    · -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
+      constructor
+      constructor
+      exact hx'
+    · -- The existential part remains the same
+      exact hexists
   | cpoly B T =>
     intro C m x v hx ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1264,7 +1280,15 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
       exact hx
     have heq := resolve_var_heap_trans hx'
     rw [heq]
-    exact ht
+    -- Split ht into well-formedness and existential parts
+    have ⟨hwf_unwrap, hexists⟩ := ht
+    constructor
+    · -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
+      constructor
+      constructor
+      exact hx'
+    · -- The existential part remains the same
+      exact hexists
 
 theorem capt_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1495,148 +1519,154 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
   | cap =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨label, heq, hcap, hmemin⟩ := ht
-    use label
+    have ⟨hwf_e, label, heq, hcap, hmemin⟩ := ht
     constructor
-    · exact heq
-    · constructor
-      · have hsub : m2.heap.subsumes m1.heap := hmem
-        have := hsub label .capability hcap
-        simp [Memory.lookup]
-        exact this
-      · exact hmemin
+    · -- Prove e.WfInHeap m2.heap
+      exact Exp.wf_monotonic hmem hwf_e
+    · use label
+      constructor
+      · exact heq
+      · constructor
+        · have hsub : m2.heap.subsumes m1.heap := hmem
+          have := hsub label .capability hcap
+          simp [Memory.lookup]
+          exact this
+        · exact hmemin
   | arrow T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨cs, T0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
-    use cs, T0, t0
+    have ⟨hwf_e, cs, T0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
     constructor
-    · cases e with
-      | var x =>
-        cases x with
-        | free fx =>
-          simp [resolve] at hr ⊢
-          cases hres : m1.heap fx with
-          | none => simp [hres] at hr
-          | some v =>
-            simp [hres] at hr
+    · -- Prove e.WfInHeap m2.heap
+      exact Exp.wf_monotonic hmem hwf_e
+    · use cs, T0, t0
+      constructor
+      · cases e with
+        | var x =>
+          cases x with
+          | free fx =>
+            simp [resolve] at hr ⊢
+            split at hr <;> try (cases hr)
+            rename_i v heq
             have hsub : m2.heap.subsumes m1.heap := hmem
-            have := hsub fx v hres
+            have := hsub fx (Cell.val v) heq
             simp [this, hr]
-        | bound bx => cases bx
-      | abs _ _ _ => simp [resolve] at hr ⊢; exact hr
-      | tabs _ _ _ => simp [resolve] at hr
-      | cabs _ _ _ => simp [resolve] at hr
-      | pack _ _ => simp [resolve] at hr
-      | unit => simp [resolve] at hr
-      | unpack _ _ => simp [resolve] at hr
-      | app _ _ => simp [resolve] at hr
-      | tapp _ _ => simp [resolve] at hr
-      | capp _ _ => simp [resolve] at hr
-      | letin _ _ => simp [resolve] at hr
-    · constructor
-      · exact CaptureSet.wf_monotonic hmem hwf_cs
+          | bound bx => cases bx
+        | abs _ _ _ => simp [resolve] at hr ⊢; exact hr
+        | tabs _ _ _ => cases hr
+        | cabs _ _ _ => cases hr
+        | pack _ _ => cases hr
+        | unit => cases hr
+        | unpack _ _ => cases hr
+        | app _ _ => cases hr
+        | tapp _ _ => cases hr
+        | capp _ _ => cases hr
+        | letin _ _ => cases hr
       · constructor
-        · -- Prove: expand_captures m2.heap cs ⊆ C
-          have heq := expand_captures_monotonic hmem cs hwf_cs
-          rw [heq]
-          exact hR0_sub
-        · intro arg m' hs' harg
-          have hs0 := Memory.subsumes_trans hs' hmem
-          -- Use convert with expand_captures monotonicity
-          have heq' := expand_captures_monotonic hmem cs hwf_cs
-          convert hfun arg m' hs0 harg using 2
+        · exact CaptureSet.wf_monotonic hmem hwf_cs
+        · constructor
+          · -- Prove: expand_captures m2.heap cs ⊆ C
+            have heq := expand_captures_monotonic hmem cs hwf_cs
+            rw [heq]
+            exact hR0_sub
+          · intro arg m' hs' harg
+            have hs0 := Memory.subsumes_trans hs' hmem
+            -- Use convert with expand_captures monotonicity
+            have heq' := expand_captures_monotonic hmem cs hwf_cs
+            convert hfun arg m' hs0 harg using 2
   | poly T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨cs, S0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
-    use cs, S0, t0
+    have ⟨hwf_e, cs, S0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
     constructor
-    · cases e with
-      | var x =>
-        cases x with
-        | free fx =>
-          simp [resolve] at hr ⊢
-          cases hres : m1.heap fx with
-          | none => simp [hres] at hr
-          | some v =>
-            simp [hres] at hr
+    · -- Prove e.WfInHeap m2.heap
+      exact Exp.wf_monotonic hmem hwf_e
+    · use cs, S0, t0
+      constructor
+      · cases e with
+        | var x =>
+          cases x with
+          | free fx =>
+            simp [resolve] at hr ⊢
+            split at hr <;> try (cases hr)
+            rename_i v heq
             have hsub : m2.heap.subsumes m1.heap := hmem
-            have := hsub fx v hres
+            have := hsub fx (Cell.val v) heq
             simp [this, hr]
-        | bound bx => cases bx
-      | tabs _ _ _ => simp [resolve] at hr ⊢; exact hr
-      | abs _ _ _ => simp [resolve] at hr
-      | cabs _ _ _ => simp [resolve] at hr
-      | pack _ _ => simp [resolve] at hr
-      | unit => simp [resolve] at hr
-      | unpack _ _ => simp [resolve] at hr
-      | app _ _ => simp [resolve] at hr
-      | tapp _ _ => simp [resolve] at hr
-      | capp _ _ => simp [resolve] at hr
-      | letin _ _ => simp [resolve] at hr
-    · constructor
-      · exact CaptureSet.wf_monotonic hmem hwf_cs
+          | bound bx => cases bx
+        | tabs _ _ _ => simp [resolve] at hr ⊢; exact hr
+        | abs _ _ _ => cases hr
+        | cabs _ _ _ => cases hr
+        | pack _ _ => cases hr
+        | unit => cases hr
+        | unpack _ _ => cases hr
+        | app _ _ => cases hr
+        | tapp _ _ => cases hr
+        | capp _ _ => cases hr
+        | letin _ _ => cases hr
       · constructor
-        · -- Prove: expand_captures m2.heap cs ⊆ C
-          have heq := expand_captures_monotonic hmem cs hwf_cs
-          rw [heq]
-          exact hR0_sub
-        · intro m' denot msub hdenot_proper himply
-          have henv' : (env.extend_tvar denot).IsMonotonic := by
-            constructor
-            · intro X
-              cases X with
-              | here =>
-                simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-                intro C
-                exact (hdenot_proper.2.2.2 C).1
-              | there X' =>
-                simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-                exact henv.tvar X'
-          -- Use convert with expand_captures monotonicity
-          have heq' := expand_captures_monotonic hmem cs hwf_cs
-          convert hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply using 2
+        · exact CaptureSet.wf_monotonic hmem hwf_cs
+        · constructor
+          · -- Prove: expand_captures m2.heap cs ⊆ C
+            have heq := expand_captures_monotonic hmem cs hwf_cs
+            rw [heq]
+            exact hR0_sub
+          · intro m' denot msub hdenot_proper himply
+            have henv' : (env.extend_tvar denot).IsMonotonic := by
+              constructor
+              · intro X
+                cases X with
+                | here =>
+                  simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                  intro C
+                  exact (hdenot_proper.2.2.2 C).1
+                | there X' =>
+                  simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                  exact henv.tvar X'
+            -- Use convert with expand_captures monotonicity
+            have heq' := expand_captures_monotonic hmem cs hwf_cs
+            convert hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply using 2
   | cpoly B T =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨cs, B0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
-    use cs, B0, t0
+    have ⟨hwf_e, cs, B0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
     constructor
-    · cases e with
-      | var x =>
-        cases x with
-        | free fx =>
-          simp [resolve] at hr ⊢
-          cases hres : m1.heap fx with
-          | none => simp [hres] at hr
-          | some v =>
-            simp [hres] at hr
+    · -- Prove e.WfInHeap m2.heap
+      exact Exp.wf_monotonic hmem hwf_e
+    · use cs, B0, t0
+      constructor
+      · cases e with
+        | var x =>
+          cases x with
+          | free fx =>
+            simp [resolve] at hr ⊢
+            split at hr <;> try (cases hr)
+            rename_i v heq
             have hsub : m2.heap.subsumes m1.heap := hmem
-            have := hsub fx v hres
+            have := hsub fx (Cell.val v) heq
             simp [this, hr]
-        | bound bx => cases bx
-      | cabs _ _ _ => simp [resolve] at hr ⊢; exact hr
-      | abs _ _ _ => simp [resolve] at hr
-      | tabs _ _ _ => simp [resolve] at hr
-      | pack _ _ => simp [resolve] at hr
-      | unit => simp [resolve] at hr
-      | unpack _ _ => simp [resolve] at hr
-      | app _ _ => simp [resolve] at hr
-      | tapp _ _ => simp [resolve] at hr
-      | capp _ _ => simp [resolve] at hr
-      | letin _ _ => simp [resolve] at hr
-    · constructor
-      · exact CaptureSet.wf_monotonic hmem hwf_cs
+          | bound bx => cases bx
+        | cabs _ _ _ => simp [resolve] at hr ⊢; exact hr
+        | abs _ _ _ => cases hr
+        | tabs _ _ _ => cases hr
+        | pack _ _ => cases hr
+        | unit => cases hr
+        | unpack _ _ => cases hr
+        | app _ _ => cases hr
+        | tapp _ _ => cases hr
+        | capp _ _ => cases hr
+        | letin _ _ => cases hr
       · constructor
-        · -- Prove: expand_captures m2.heap cs ⊆ C
-          have heq := expand_captures_monotonic hmem cs hwf_cs
-          rw [heq]
-          exact hR0_sub
-        · intro m' CS hwf msub hA0
-          -- Use convert with expand_captures monotonicity
-          have heq' := expand_captures_monotonic hmem cs hwf_cs
-          convert hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0 using 2
+        · exact CaptureSet.wf_monotonic hmem hwf_cs
+        · constructor
+          · -- Prove: expand_captures m2.heap cs ⊆ C
+            have heq := expand_captures_monotonic hmem cs hwf_cs
+            rw [heq]
+            exact hR0_sub
+          · intro m' CS hwf msub hA0
+            -- Use convert with expand_captures monotonicity
+            have heq' := expand_captures_monotonic hmem cs hwf_cs
+            convert hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0 using 2
 
 def capt_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
@@ -1876,7 +1906,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
   | cap =>
     -- For .cap, e is a variable pointing to a capability
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨label, heq, hcap, hmem⟩ := hdenot
+    have ⟨hwf_e, label, heq, hcap, hmem⟩ := hdenot
     -- hdenot says: e = .var (.free label) ∧ label ∈ R
     rw [heq]
     simp [resolve_reachability]
@@ -1892,7 +1922,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
   | arrow T1 T2 =>
     -- For arrow types, e resolves to an abstraction with capture set cs
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨cs, T0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    have ⟨hwf_e, cs, T0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
     -- Need: resolve_reachability m.heap e ⊆ R
     -- From hdenot: R0 = expand_captures m.heap cs and R0 ⊆ R
     cases e with
@@ -1924,11 +1954,11 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
               simp [resolve_reachability, hunwrap]
               exact hR0_sub
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | _ => cases hres
   | poly T1 T2 =>
     -- Similar to arrow case
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨cs, S0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    have ⟨hwf_e, cs, S0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
     cases e with
     | tabs cs' S0' t0' =>
       simp [resolve, resolve_reachability] at hres ⊢
@@ -1955,11 +1985,11 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
               simp [resolve_reachability, hunwrap]
               exact hR0_sub
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | _ => cases hres
   | cpoly B T =>
     -- Similar to arrow case
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨cs, B0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    have ⟨hwf_e, cs, B0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
     cases e with
     | cabs cs' B0' t0' =>
       simp [resolve, resolve_reachability] at hres ⊢
@@ -1986,7 +2016,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
               simp [resolve_reachability, hunwrap]
               exact hR0_sub
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | _ => cases hres
 
 theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
   (hts : env.is_reachability_monotonic)
