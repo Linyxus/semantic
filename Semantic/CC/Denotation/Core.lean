@@ -248,25 +248,31 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 | env, .arrow T1 T2 => fun A m e =>
   ∃ cs T0 t0,
     resolve m.heap e = some (.abs cs T0 t0) ∧
+    let R0 := expand_captures m.heap cs
+    R0 ⊆ A ∧
     (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg)
-        T2 (A ∪ (reachability_of_loc m'.heap arg)) m' (t0.subst (Subst.openVar (.free arg))))
+        T2 (R0 ∪ (reachability_of_loc m'.heap arg)) m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
   ∃ cs S0 t0,
     resolve m.heap e = some (.tabs cs S0 t0) ∧
+    let R0 := expand_captures m.heap cs
+    R0 ⊆ A ∧
     (∀ (m' : Memory) (denot : PreDenot),
       m'.subsumes m ->
       denot.is_proper ->
       denot.ImplyAfter m' (Ty.shape_val_denot env T1) ->
       Ty.exi_exp_denot
         (env.extend_tvar denot)
-        T2 A m' (t0.subst (Subst.openTVar .top)))
+        T2 R0 m' (t0.subst (Subst.openTVar .top)))
 | env, .cpoly B T => fun A m e =>
   ∃ cs B0 t0,
     resolve m.heap e = some (.cabs cs B0 t0) ∧
+    let R0 := expand_captures m.heap cs
+    R0 ⊆ A ∧
     (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
       let A0 := CS.denot TypeEnv.empty
@@ -274,7 +280,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       (A0 m' ⊆ B.denot env m') ->
       Ty.exi_exp_denot
         (env.extend_cvar CS)
-        T A m' (t0.subst (Subst.openCVar CS)))
+        T R0 m' (t0.subst (Subst.openCVar CS)))
 
 def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 | ρ, .capt C S => fun mem exp =>
