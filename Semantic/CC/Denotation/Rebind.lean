@@ -115,6 +115,7 @@ def rebind_shape_val_denot
     have ih1 := rebind_capt_val_denot ρ T1
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename]
+    intro hwf_e
     constructor
     · intro h
       obtain ⟨cs, T0, t0, hr, hwf, hR0_sub, hd⟩ := h
@@ -156,6 +157,7 @@ def rebind_shape_val_denot
     have ih1 := rebind_shape_val_denot ρ T1
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename]
+    intro hwf_e
     constructor
     · intro h
       obtain ⟨cs0, S0, t0, hr, hwf, hR0_sub, hd⟩ := h
@@ -193,6 +195,7 @@ def rebind_shape_val_denot
     have hB := rebind_capturebound_denot ρ B
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename, hB]
+    intro hwf_e
     constructor
     · intro h
       obtain ⟨cs0, B0, t0, hr, hwf, hR0_sub, hd⟩ := h
