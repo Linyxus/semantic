@@ -2033,11 +2033,76 @@ theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
     A PreDenot is proper if it is reachability-safe, monotonic, and transparent. This theorem
     combines the reachability safety, monotonicity, and transparency results for shape type
     denotations. -/
+lemma wf_from_resolve_unit
+  {m : Memory} {e : Exp {}}
+  (hresolve : resolve m.heap e = some .unit) :
+  e.WfInHeap m.heap := by
+  cases e with
+  | var x =>
+    cases x with
+    | free fx =>
+      simp [resolve] at hresolve
+      cases hfx : m.heap fx with
+      | none => simp [hfx] at hresolve
+      | some cell =>
+        simp [hfx] at hresolve
+        cases cell with
+        | capability => simp at hresolve
+        | val v =>
+          simp at hresolve
+          apply Exp.WfInHeap.wf_var
+          apply Var.WfInHeap.wf_free
+          exact hfx
+    | bound bx => cases bx
+  | unit =>
+    apply Exp.WfInHeap.wf_unit
+  | _ => simp [resolve] at hresolve
+
+theorem resolve_implies_wf {m : Memory}
+  (hres : resolve m.heap e = some hv) :
+  e.WfInHeap m.heap := by
+  cases e <;> try (solve | cases hres)
+  case var x0 =>
+    cases x0
+    case bound b => cases b
+    case free f => sorry
+  all_goals sorry
+
 theorem shape_val_denot_implies_wf {env : TypeEnv s}
   (hts : env.is_implying_wf)
   (T : Ty .shape s) :
   (Ty.shape_val_denot env T).implies_wf := by
-  sorry
+  intro R m e hdenot
+  cases T with
+  | top =>
+    simp [Ty.shape_val_denot] at hdenot
+    exact hdenot.1
+  | tvar X =>
+    simp [Ty.shape_val_denot] at hdenot
+    exact hts X R m e hdenot
+  | unit =>
+    simp [Ty.shape_val_denot] at hdenot
+    exact wf_from_resolve_unit hdenot
+  | cap =>
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨label, heq, hlookup, _⟩ := hdenot
+    rw [heq]
+    apply Exp.WfInHeap.wf_var
+    apply Var.WfInHeap.wf_free
+    simp [Memory.lookup] at hlookup
+    exact hlookup
+  | arrow T1 T2 =>
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨cs, T0, t0, hresolve, hwf_cs, _⟩ := hdenot
+    apply resolve_implies_wf hresolve
+  | poly T1 T2 =>
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨cs, S0, t0, hresolve, hwf_cs, _⟩ := hdenot
+    apply resolve_implies_wf hresolve
+  | cpoly B T =>
+    simp [Ty.shape_val_denot] at hdenot
+    have ⟨cs, B0, t0, hresolve, hwf_cs, _⟩ := hdenot
+    apply resolve_implies_wf hresolve
 
 theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (hts : EnvTyping Γ env m) :
