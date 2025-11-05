@@ -95,6 +95,46 @@ def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
   | .cabs cs _ _ => expand_captures H cs
   | _ => {}  -- Other expressions have no reachability
 
+theorem resolve_reachability_monotonic
+  {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
+  (e : Exp {})
+  (hwf : e.WfInHeap m1.heap) :
+  resolve_reachability m2.heap e = resolve_reachability m1.heap e := by
+  cases e with
+  | var x =>
+    cases x with
+    | free fx =>
+      simp [resolve_reachability]
+      cases hwf with
+      | wf_var hwf_x =>
+        cases hwf_x with
+        | wf_free hex =>
+          exact reachability_of_loc_monotonic hsub fx hex
+    | bound bx => cases bx
+  | abs cs _ _ =>
+    simp [resolve_reachability]
+    cases hwf with
+    | wf_abs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub cs hwf_cs
+  | tabs cs _ _ =>
+    simp [resolve_reachability]
+    cases hwf with
+    | wf_tabs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub cs hwf_cs
+  | cabs cs _ _ =>
+    simp [resolve_reachability]
+    cases hwf with
+    | wf_cabs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub cs hwf_cs
+  | pack _ _ => simp [resolve_reachability]
+  | unit => simp [resolve_reachability]
+  | app _ _ => simp [resolve_reachability]
+  | tapp _ _ => simp [resolve_reachability]
+  | capp _ _ => simp [resolve_reachability]
+  | letin _ _ => simp [resolve_reachability]
+  | unpack _ _ => simp [resolve_reachability]
+
 def PreDenot.is_reachability_safe (denot : PreDenot) : Prop :=
   ∀ R m e,
     denot R m e ->
@@ -843,10 +883,10 @@ theorem typed_env_is_monotonic
             cases x with
             | here =>
               simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-              -- hproper says d.is_proper, which means ∀ C, (d C).is_proper
+              -- hproper says d.is_proper, which is d.is_reachability_safe ∧ ∀ C, (d C).is_proper
               -- We need d.is_monotonic, which means ∀ C, (d C).is_monotonic
               intro C
-              exact (hproper C).1
+              exact (hproper.2 C).1
             | there x =>
               simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
               exact ih_result.tvar x
@@ -900,10 +940,10 @@ theorem typed_env_is_transparent
           cases x with
           | here =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper, which means ∀ C, (d C).is_proper
+            -- hproper says d.is_proper, which is d.is_reachability_safe ∧ ∀ C, (d C).is_proper
             -- We need d.is_transparent, which means ∀ C, (d C).is_transparent
             intro C
-            exact (hproper C).2
+            exact (hproper.2 C).2
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
@@ -927,7 +967,17 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
   cases T with
   | top =>
     intro C m x v hx ht
-    simp [Ty.shape_val_denot]
+    simp [Ty.shape_val_denot] at ht ⊢
+    -- ht : resolve_reachability m.heap v.unwrap ⊆ C
+    -- Goal: resolve_reachability m.heap (Exp.var (Var.free x)) ⊆ C
+    -- By definition: resolve_reachability for vars equals reachability_of_loc
+    simp [resolve_reachability]
+    -- Need: reachability_of_loc m.heap x ⊆ C
+    -- From hx: m.heap x = some (Cell.val v)
+    -- From heap invariant: reachability_of_loc m.heap x equals the precomputed reachability for v
+    -- which should be compute_reachability m.heap v.unwrap v.isVal
+    -- which equals resolve_reachability m.heap v.unwrap for simple values
+    sorry
   | tvar X =>
     intro C
     simp [Ty.shape_val_denot]
@@ -1164,6 +1214,13 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
   | top =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
+    -- ht : resolve_reachability m1.heap e ⊆ C
+    -- Goal: resolve_reachability m2.heap e ⊆ C
+    -- Use resolve_reachability_monotonic to show they're equal
+    have hwf : e.WfInHeap m1.heap := sorry  -- Need well-formedness assumption
+    have heq := resolve_reachability_monotonic hmem e hwf
+    rw [heq]
+    exact ht
   | tvar X =>
     simp [Ty.shape_val_denot]
     exact henv.tvar X C
@@ -1291,7 +1348,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
               | here =>
                 simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 intro C
-                exact (hdenot_proper C).1
+                exact (hdenot_proper.2 C).1
               | there X' =>
                 simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 exact henv.tvar X'
@@ -1522,14 +1579,22 @@ def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
 
 /-- If the type environment is well-typed, then the denotation of any shape type is proper.
 
-    A PreDenot is proper if it is both monotonic and transparent. This theorem combines
-    the monotonicity and transparency results for shape type denotations. -/
+    A PreDenot is proper if it is reachability-safe, monotonic, and transparent. This theorem
+    combines the reachability safety, monotonicity, and transparency results for shape type
+    denotations. -/
 theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (hts : EnvTyping Γ env m) :
   (Ty.shape_val_denot env S).is_proper := by
-  intro C
   constructor
-  · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
-  · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
+  · -- Prove: (Ty.shape_val_denot env S).is_reachability_safe
+    intro R m' e hdenot
+    -- Need: resolve_reachability m'.heap e ⊆ R
+    -- This should follow from the definition of each shape type's denotation
+    sorry
+  · -- Prove: ∀ C, ((Ty.shape_val_denot env S) C).is_proper
+    intro C
+    constructor
+    · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
+    · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
 
 end CC
