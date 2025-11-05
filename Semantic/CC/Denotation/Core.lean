@@ -342,11 +342,13 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 | env, .tvar X => env.lookup_tvar X
 | _, .unit => fun _ m e => resolve m.heap e = some .unit
 | _, .cap => fun A m e =>
+  e.WfInHeap m.heap ∧
   ∃ label : Nat,
     e = .var (.free label) ∧
     m.lookup label = some .capability ∧
     label ∈ A
 | env, .arrow T1 T2 => fun A m e =>
+  e.WfInHeap m.heap ∧
   ∃ cs T0 t0,
     resolve m.heap e = some (.abs cs T0 t0) ∧
     cs.WfInHeap m.heap ∧
@@ -359,6 +361,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
         (env.extend_var arg)
         T2 (R0 ∪ (reachability_of_loc m'.heap arg)) m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
+  e.WfInHeap m.heap ∧
   ∃ cs S0 t0,
     resolve m.heap e = some (.tabs cs S0 t0) ∧
     cs.WfInHeap m.heap ∧
@@ -372,6 +375,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
         (env.extend_tvar denot)
         T2 R0 m' (t0.subst (Subst.openTVar .top)))
 | env, .cpoly B T => fun A m e =>
+  e.WfInHeap m.heap ∧
   ∃ cs B0 t0,
     resolve m.heap e = some (.cabs cs B0 t0) ∧
     cs.WfInHeap m.heap ∧
@@ -2066,10 +2070,27 @@ theorem resolve_implies_wf {m : Memory}
     cases x0
     case bound b => cases b
     case free f =>
-      constructor; constructor
+      constructor
       simp [resolve] at hres
-      all_goals sorry
-  all_goals sorry
+      -- After simplification, hres tells us that match on m.heap f returned some hv
+      -- So m.heap f must be some (Cell.val v) for some v
+      cases h : m.heap f with
+      | none => simp [h] at hres
+      | some cell =>
+        cases cell with
+        | capability => simp [h] at hres
+        | val v =>
+          -- Now we know m.heap f = some (Cell.val v)
+          constructor; exact h
+  case unit => constructor
+  all_goals (
+    -- For non-variable expressions like abs, tabs, etc., resolve just returns them unchanged
+    -- To prove they're well-formed, we need to show all components are well-formed
+    -- However, we don't have sufficient hypotheses to prove this in general
+    -- In practice, these cases may not occur because expressions in denotations
+    -- are typically variables pointing to heap locations, not direct constructions
+    sorry
+  )
 
 theorem shape_val_denot_implies_wf {env : TypeEnv s}
   (hts : env.is_implying_wf)
