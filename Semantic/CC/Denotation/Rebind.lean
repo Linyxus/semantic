@@ -117,77 +117,107 @@ def rebind_shape_val_denot
     simp [Ty.shape_val_denot, Ty.rename]
     constructor
     · intro h
-      obtain ⟨cs, T0, t0, hr, hd⟩ := h
+      obtain ⟨cs, T0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs, T0, t0
-      apply And.intro hr
-      intro arg H' hsub harg
-      cases T1
-      case capt C S =>
-        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
-        have harg' := (ih1 _ _).mpr harg
-        specialize hd arg H' hsub harg'
-        -- The capability set (A ∪ reachability_of_loc H'.heap arg) is environment-invariant
-        exact (ih2 (A ∪ (reachability_of_loc H'.heap arg)) H' _).mp hd
+      constructor
+      · exact hr
+      · constructor
+        · exact hwf
+        · constructor
+          · exact hR0_sub
+          · intro arg H' hsub harg
+            cases T1
+            case capt C S =>
+              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              have harg' := (ih1 _ _).mpr harg
+              specialize hd arg H' hsub harg'
+              -- The capability set uses expand_captures
+              exact (ih2 (expand_captures s0.heap cs ∪ (reachability_of_loc H'.heap arg)) H' _).mp hd
     · intro h
-      obtain ⟨cs0, T0, t0, hr, hd⟩ := h
+      obtain ⟨cs0, T0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, T0, t0
-      apply And.intro hr
-      intro arg H' hsub harg
-      cases T1
-      case capt C S =>
-        have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
-        have harg' := (ih1 _ _).mp harg
-        specialize hd arg H' hsub harg'
-        -- The capability set (A ∪ reachability_of_loc H'.heap arg) is environment-invariant
-        exact (ih2 (A ∪ (reachability_of_loc H'.heap arg)) H' _).mpr hd
+      constructor
+      · exact hr
+      · constructor
+        · exact hwf
+        · constructor
+          · exact hR0_sub
+          · intro arg H' hsub harg
+            cases T1
+            case capt C S =>
+              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              have harg' := (ih1 _ _).mp harg
+              specialize hd arg H' hsub harg'
+              -- The capability set uses expand_captures
+              exact (ih2 (expand_captures s0.heap cs0 ∪ (reachability_of_loc H'.heap arg)) H' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := rebind_shape_val_denot ρ T1
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename]
     constructor
     · intro h
-      obtain ⟨cs0, S0, t0, hr, hd⟩ := h
+      obtain ⟨cs0, S0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, S0, t0
-      apply And.intro hr
-      intro H' denot hsub hproper himply
-      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
-      have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env1 T1) := by
-        intro H'' hsub' A' e hdenot
-        exact (ih1 _ _ _).mpr (himply H'' hsub' A' e hdenot)
-      specialize hd H' denot hsub hproper himply'
-      exact (ih2 A H' _).mp hd
+      constructor
+      · exact hr
+      · constructor
+        · exact hwf
+        · constructor
+          · exact hR0_sub
+          · intro H' denot hsub hproper himply
+            have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
+            have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env1 T1) := by
+              intro H'' hsub' A' e hdenot
+              exact (ih1 _ _ _).mpr (himply H'' hsub' A' e hdenot)
+            specialize hd H' denot hsub hproper himply'
+            exact (ih2 (expand_captures s0.heap cs0) H' _).mp hd
     · intro h
-      obtain ⟨cs0, S0, t0, hr, hd⟩ := h
+      obtain ⟨cs0, S0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, S0, t0
-      apply And.intro hr
-      intro H' denot hsub hproper himply
-      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
-      have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env2 (T1.rename f)) := by
-        intro H'' hsub' A' e hdenot
-        exact (ih1 _ _ _).mp (himply H'' hsub' A' e hdenot)
-      specialize hd H' denot hsub hproper himply'
-      exact (ih2 A H' _).mpr hd
+      constructor
+      · exact hr
+      · constructor
+        · exact hwf
+        · constructor
+          · exact hR0_sub
+          · intro H' denot hsub hproper himply
+            have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
+            have himply' : denot.ImplyAfter H' (Ty.shape_val_denot env2 (T1.rename f)) := by
+              intro H'' hsub' A' e hdenot
+              exact (ih1 _ _ _).mp (himply H'' hsub' A' e hdenot)
+            specialize hd H' denot hsub hproper himply'
+            exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
   | .cpoly B T => by
     have hB := rebind_capturebound_denot ρ B
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename, hB]
     constructor
     · intro h
-      obtain ⟨cs0, B0, t0, hr, hd⟩ := h
+      obtain ⟨cs0, B0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, B0, t0
-      apply And.intro hr
-      intro H' CS hwf hsub hsub_bound
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
-      specialize hd H' CS hwf hsub hsub_bound
-      exact (ih2 A H' _).mp hd
+      constructor
+      · exact hr
+      · constructor
+        · exact hwf
+        · constructor
+          · exact hR0_sub
+          · intro H' CS hwf hsub hsub_bound
+            have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
+            specialize hd H' CS hwf hsub hsub_bound
+            exact (ih2 (expand_captures s0.heap cs0) H' _).mp hd
     · intro h
-      obtain ⟨cs0, B0, t0, hr, hd⟩ := h
+      obtain ⟨cs0, B0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, B0, t0
-      apply And.intro hr
-      intro H' CS hwf hsub hsub_bound
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
-      specialize hd H' CS hwf hsub hsub_bound
-      exact (ih2 A H' _).mpr hd
+      constructor
+      · exact hr
+      · constructor
+        · exact hwf
+        · constructor
+          · exact hR0_sub
+          · intro H' CS hwf hsub hsub_bound
+            have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
+            specialize hd H' CS hwf hsub hsub_bound
+            exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
 
 def rebind_capt_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

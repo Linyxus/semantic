@@ -248,6 +248,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 | env, .arrow T1 T2 => fun A m e =>
   ∃ cs T0 t0,
     resolve m.heap e = some (.abs cs T0 t0) ∧
+    cs.WfInHeap m.heap ∧
     let R0 := expand_captures m.heap cs
     R0 ⊆ A ∧
     (∀ (arg : Nat) (m' : Memory),
@@ -259,6 +260,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 | env, .poly T1 T2 => fun A m e =>
   ∃ cs S0 t0,
     resolve m.heap e = some (.tabs cs S0 t0) ∧
+    cs.WfInHeap m.heap ∧
     let R0 := expand_captures m.heap cs
     R0 ⊆ A ∧
     (∀ (m' : Memory) (denot : PreDenot),
@@ -271,6 +273,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 | env, .cpoly B T => fun A m e =>
   ∃ cs B0 t0,
     resolve m.heap e = some (.cabs cs B0 t0) ∧
+    cs.WfInHeap m.heap ∧
     let R0 := expand_captures m.heap cs
     R0 ⊆ A ∧
     (∀ (m' : Memory) (CS : CaptureSet {}),
@@ -1192,7 +1195,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
   | arrow T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨cs, T0, t0, hr, hfun⟩ := ht
+    have ⟨cs, T0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
     use cs, T0, t0
     constructor
     · cases e with
@@ -1218,14 +1221,22 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       | tapp _ _ => simp [resolve] at hr
       | capp _ _ => simp [resolve] at hr
       | letin _ _ => simp [resolve] at hr
-    · intro arg m' hs' harg
-      have hs0 := Memory.subsumes_trans hs' hmem
-      -- harg is already in m', so we can use it directly
-      apply hfun arg m' hs0 harg
+    · constructor
+      · exact CaptureSet.wf_monotonic hmem hwf_cs
+      · constructor
+        · -- Prove: expand_captures m2.heap cs ⊆ C
+          have heq := expand_captures_monotonic hmem cs hwf_cs
+          rw [heq]
+          exact hR0_sub
+        · intro arg m' hs' harg
+          have hs0 := Memory.subsumes_trans hs' hmem
+          -- Use convert with expand_captures monotonicity
+          have heq' := expand_captures_monotonic hmem cs hwf_cs
+          convert hfun arg m' hs0 harg using 2
   | poly T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨cs, S0, t0, hr, hfun⟩ := ht
+    have ⟨cs, S0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
     use cs, S0, t0
     constructor
     · cases e with
@@ -1251,23 +1262,32 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       | tapp _ _ => simp [resolve] at hr
       | capp _ _ => simp [resolve] at hr
       | letin _ _ => simp [resolve] at hr
-    · intro m' denot msub hdenot_proper himply
-      have henv' : (env.extend_tvar denot).IsMonotonic := by
-        constructor
-        · intro X
-          cases X with
-          | here =>
-            simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-            intro C
-            exact (hdenot_proper C).1
-          | there X' =>
-            simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact henv.tvar X'
-      apply hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply
+    · constructor
+      · exact CaptureSet.wf_monotonic hmem hwf_cs
+      · constructor
+        · -- Prove: expand_captures m2.heap cs ⊆ C
+          have heq := expand_captures_monotonic hmem cs hwf_cs
+          rw [heq]
+          exact hR0_sub
+        · intro m' denot msub hdenot_proper himply
+          have henv' : (env.extend_tvar denot).IsMonotonic := by
+            constructor
+            · intro X
+              cases X with
+              | here =>
+                simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                intro C
+                exact (hdenot_proper C).1
+              | there X' =>
+                simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                exact henv.tvar X'
+          -- Use convert with expand_captures monotonicity
+          have heq' := expand_captures_monotonic hmem cs hwf_cs
+          convert hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply using 2
   | cpoly B T =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    have ⟨cs, B0, t0, hr, hfun⟩ := ht
+    have ⟨cs, B0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
     use cs, B0, t0
     constructor
     · cases e with
@@ -1293,8 +1313,17 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       | tapp _ _ => simp [resolve] at hr
       | capp _ _ => simp [resolve] at hr
       | letin _ _ => simp [resolve] at hr
-    · intro m' CS hwf msub hA0
-      apply hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0
+    · constructor
+      · exact CaptureSet.wf_monotonic hmem hwf_cs
+      · constructor
+        · -- Prove: expand_captures m2.heap cs ⊆ C
+          have heq := expand_captures_monotonic hmem cs hwf_cs
+          rw [heq]
+          exact hR0_sub
+        · intro m' CS hwf msub hA0
+          -- Use convert with expand_captures monotonicity
+          have heq' := expand_captures_monotonic hmem cs hwf_cs
+          convert hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0 using 2
 
 def capt_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
