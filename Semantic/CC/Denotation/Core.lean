@@ -1984,4 +1984,12 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
       · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
       · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
 
+theorem capt_denot_implyafter_lift
+  (himp : (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T2)) :
+  (Ty.capt_exp_denot env T1).ImplyAfter H (Ty.capt_exp_denot env T2) := by sorry
+
+theorem exi_denot_implyafter_lift
+  (himp : (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)) :
+  (Ty.exi_exp_denot env T1).ImplyAfter H (Ty.exi_exp_denot env T2) := by sorry
+
 end CC
