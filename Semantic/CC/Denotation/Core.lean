@@ -1000,18 +1000,24 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
   | top =>
     intro C m x v hx ht
     simp [Ty.shape_val_denot] at ht ⊢
-    -- ht : resolve_reachability m.heap v.unwrap ⊆ C
-    -- Goal: resolve_reachability m.heap (Exp.var (Var.free x)) ⊆ C
-    simp [resolve_reachability]
-    -- Goal: reachability_of_loc m.heap x ⊆ C
-    -- Extract heap location from memory lookup
-    have hx_heap : m.heap x = some (Cell.val v) := by
-      simp [Memory.lookup] at hx
+    -- ht : v.unwrap.WfInHeap m.heap ∧ resolve_reachability m.heap v.unwrap ⊆ C
+    -- Goal: (.var (.free x)).WfInHeap m.heap ∧ resolve_reachability m.heap (.var (.free x)) ⊆ C
+    constructor
+    · -- Prove: (.var (.free x)).WfInHeap m.heap
+      apply Exp.WfInHeap.wf_var
+      apply Var.WfInHeap.wf_free
       exact hx
-    -- Use heap invariant to connect stored reachability with resolve_reachability
-    rw [reachability_of_loc_eq_resolve_reachability m x v hx_heap]
-    -- Now goal is: resolve_reachability m.heap v.unwrap ⊆ C, which is ht
-    exact ht
+    · -- Prove: resolve_reachability m.heap (.var (.free x)) ⊆ C
+      simp [resolve_reachability]
+      -- Goal: reachability_of_loc m.heap x ⊆ C
+      -- Extract heap location from memory lookup
+      have hx_heap : m.heap x = some (Cell.val v) := by
+        simp [Memory.lookup] at hx
+        exact hx
+      -- Use heap invariant to connect stored reachability with resolve_reachability
+      rw [reachability_of_loc_eq_resolve_reachability m x v hx_heap]
+      -- Now goal is: resolve_reachability m.heap v.unwrap ⊆ C, which is ht.2
+      exact ht.2
   | tvar X =>
     intro C
     simp [Ty.shape_val_denot]
@@ -1248,13 +1254,16 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
   | top =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
-    -- ht : resolve_reachability m1.heap e ⊆ C
-    -- Goal: resolve_reachability m2.heap e ⊆ C
-    -- Use resolve_reachability_monotonic to show they're equal
-    have hwf : e.WfInHeap m1.heap := sorry  -- Need well-formedness assumption
-    have heq := resolve_reachability_monotonic hmem e hwf
-    rw [heq]
-    exact ht
+    -- ht : e.WfInHeap m1.heap ∧ resolve_reachability m1.heap e ⊆ C
+    -- Goal: e.WfInHeap m2.heap ∧ resolve_reachability m2.heap e ⊆ C
+    constructor
+    · -- Prove: e.WfInHeap m2.heap
+      exact Exp.wf_monotonic hmem ht.1
+    · -- Prove: resolve_reachability m2.heap e ⊆ C
+      -- Use resolve_reachability_monotonic to show they're equal
+      have heq := resolve_reachability_monotonic hmem e ht.1
+      rw [heq]
+      exact ht.2
   | tvar X =>
     simp [Ty.shape_val_denot]
     exact henv.tvar X C
