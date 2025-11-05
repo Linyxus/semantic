@@ -167,7 +167,8 @@ def retype_shape_val_denot
               have harg' := (ih1 H' (.var (.free arg))).mpr harg
               specialize hd arg H' hsub harg'
               -- The capability set uses expand_captures
-              exact (ih2 (expand_captures s0.heap cs ∪ (reachability_of_loc H'.heap arg)) H' _).mp hd
+              exact (ih2 (expand_captures s0.heap cs ∪
+                         (reachability_of_loc H'.heap arg)) H' _).mp hd
     · intro h
       obtain ⟨cs0, T0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, T0, t0
@@ -184,7 +185,8 @@ def retype_shape_val_denot
               have harg' := (ih1 H' (.var (.free arg))).mp harg
               specialize hd arg H' hsub harg'
               -- The capability set uses expand_captures
-              exact (ih2 (expand_captures s0.heap cs0 ∪ (reachability_of_loc H'.heap arg)) H' _).mpr hd
+              exact (ih2 (expand_captures s0.heap cs0 ∪
+                         (reachability_of_loc H'.heap arg)) H' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := retype_shape_val_denot ρ T1
     intro A s0 e0
