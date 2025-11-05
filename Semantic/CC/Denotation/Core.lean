@@ -1702,25 +1702,28 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
     cases e with
     | unit =>
       simp [resolve_reachability]
-      intro x hx
-      simp at hx
+      exact CapabilitySet.Subset.empty
     | var x =>
       cases x with
       | free fx =>
         simp [resolve_reachability]
         -- reachability_of_loc for unit values is empty
-        intro x hx
-        simp [reachability_of_loc] at hx
         simp [resolve] at hdenot
         cases hfx : m.heap fx <;> simp [hfx] at hdenot
         case some cell =>
           cases cell <;> simp at hdenot
           case val v =>
-            simp at hx
             cases hv : v.unwrap <;> simp [hv] at hdenot
             case unit =>
-              -- For unit, reachability is empty
-              exact absurd hx (by simp)
+              -- For unit, reachability is v.reachability which should be empty
+              simp [reachability_of_loc, hfx]
+              -- Use heap invariant to show v.reachability = compute_reachability = {}
+              have hinv := Memory.reachability_invariant m fx v (by simp [hfx])
+              simp [hv] at hinv
+              -- compute_reachability for unit is {}
+              rw [hinv]
+              simp [compute_reachability]
+              exact CapabilitySet.Subset.empty
       | bound bx => cases bx
     | _ =>
       simp [resolve] at hdenot
@@ -1738,11 +1741,8 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
       simp [Memory.lookup] at hcap
       exact hcap
     simp [reachability_of_loc, hcap']
-    -- Goal: {label} ⊆ R, which means ∀ x, x ∈ {label} → x ∈ R
-    intro x hx
-    simp at hx
-    rw [hx]
-    exact hmem
+    -- Goal: {label} ⊆ R, which follows from label ∈ R
+    exact CapabilitySet.mem_imp_singleton_subset hmem
   | arrow T1 T2 =>
     -- For arrow types, e resolves to an abstraction with capture set cs
     simp [Ty.shape_val_denot] at hdenot
@@ -1772,6 +1772,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
               -- Need: reachability_of_loc m.heap fx ⊆ R
               -- From heap invariant: reachability_of_loc m.heap fx = v.reachability
               -- And v.reachability = expand_captures m.heap cs' (for abs values)
+              simp [resolve_reachability]
               have hv_heap : m.heap fx = some (Cell.val v) := hfx
               rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
               simp [resolve_reachability, hunwrap]
@@ -1802,6 +1803,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
             case tabs cs' S0' t0' =>
               obtain ⟨rfl, rfl, rfl⟩ := hres
+              simp [resolve_reachability]
               have hv_heap : m.heap fx = some (Cell.val v) := hfx
               rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
               simp [resolve_reachability, hunwrap]
@@ -1832,6 +1834,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
             case cabs cs' B0' t0' =>
               obtain ⟨rfl, rfl, rfl⟩ := hres
+              simp [resolve_reachability]
               have hv_heap : m.heap fx = some (Cell.val v) := hfx
               rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
               simp [resolve_reachability, hunwrap]
