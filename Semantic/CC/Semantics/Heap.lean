@@ -583,6 +583,7 @@ structure Heap.WfHeap (H : Heap) : Prop where
 
 /-- The empty heap is well-formed. -/
 theorem Heap.wf_empty : Heap.WfHeap ∅ := by
+  constructor
   intro l hv hlookup
   cases hlookup
 
@@ -593,6 +594,7 @@ theorem Heap.wf_extend
   (hwf_v : Exp.WfInHeap v.unwrap (H.extend l v))
   (hfresh : H l = none) :
   (H.extend l v).WfHeap := by
+  constructor
   intro l' hv' hlookup
   unfold Heap.extend at hlookup
   split at hlookup
@@ -603,7 +605,7 @@ theorem Heap.wf_extend
     apply Exp.wf_monotonic
     · apply Heap.extend_subsumes
       exact hfresh
-    · exact hwf_H l' hv' hlookup
+    · exact hwf_H.wf_val l' hv' hlookup
 
 /-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
 theorem Heap.wf_lookup
@@ -611,7 +613,7 @@ theorem Heap.wf_lookup
   (hwf_H : H.WfHeap)
   (hlookup : H l = some (.val hv)) :
   Exp.WfInHeap hv.unwrap H :=
-  hwf_H l hv hlookup
+  hwf_H.wf_val l hv hlookup
 
 -- Renaming preserves well-formedness
 
@@ -1184,6 +1186,7 @@ def extend_cap (m : Memory) (l : Nat)
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend_cap l
   wf := by
+    constructor
     intro l' hv' hlookup
     unfold Heap.extend_cap at hlookup
     split at hlookup
@@ -1193,7 +1196,7 @@ def extend_cap (m : Memory) (l : Nat)
     case isFalse hneq =>
       -- If l' ≠ l, then the lookup is from the original heap
       apply Exp.wf_monotonic (Heap.extend_cap_subsumes hfresh)
-      exact m.wf l' hv' hlookup
+      exact m.wf.wf_val l' hv' hlookup
 
 /-- Extend memory with a value that's well-formed in the current heap.
     This is often more convenient than `extend` in practice. -/
