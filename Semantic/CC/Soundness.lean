@@ -478,12 +478,13 @@ theorem abs_val_denot_inv {A : CapabilitySet}
   ∃ fx, x = .free fx
     ∧ ∃ cs T0 e0 hval R,
       store.heap fx = some (Cell.val ⟨Exp.abs cs T0 e0, hval, R⟩)
-    ∧ (∀ (H' : Memory) (arg : Nat),
-      H'.subsumes store ->
-      Ty.capt_val_denot env T1 H' (.var (.free arg)) ->
+    ∧ expand_captures store.heap cs ⊆ A
+    ∧ (∀ (arg : Nat) (m' : Memory),
+      m'.subsumes store ->
+      Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg)
-        T2 (A ∪ (reachability_of_loc H'.heap arg)) H'
+        T2 (expand_captures store.heap cs ∪ (reachability_of_loc m'.heap arg)) m'
         (e0.subst (Subst.openVar (.free arg)))) := by
   cases x with
   | bound bx => cases bx
@@ -503,18 +504,7 @@ theorem abs_val_denot_inv {A : CapabilitySet}
         cases hval with | mk unwrap isVal reachability =>
         simp at hresolve
         subst hresolve
-        use fx, rfl, cs, T0, e0, isVal, reachability
-        constructor
-        · exact hres
-        · -- The function property matches the new denotation
-          -- Need to show: expand_captures...  ∪ reach = A ∪ reach
-          intro H' arg hsub harg
-          have heq : expand_captures store.heap cs ∪
-              reachability_of_loc H'.heap arg =
-            A ∪ reachability_of_loc H'.heap arg := by
-            sorry
-          rw [← heq]
-          exact hfun arg H' hsub harg
+        use fx, rfl, cs, T0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
         simp at hresolve
 
@@ -523,13 +513,14 @@ theorem tabs_val_denot_inv {A : CapabilitySet}
   ∃ fx, x = .free fx
     ∧ ∃ cs S0 e0 hval R,
       store.heap fx = some (Cell.val ⟨Exp.tabs cs S0 e0, hval, R⟩)
+    ∧ expand_captures store.heap cs ⊆ A
     ∧ (∀ (m' : Memory) (denot : PreDenot),
       m'.subsumes store ->
       denot.is_proper ->
       denot.ImplyAfter m' (Ty.shape_val_denot env S) ->
       Ty.exi_exp_denot
         (env.extend_tvar denot)
-        T A m'
+        T (expand_captures store.heap cs) m'
         (e0.subst (Subst.openTVar .top))) := by
   cases x with
   | bound bx => cases bx
@@ -549,12 +540,7 @@ theorem tabs_val_denot_inv {A : CapabilitySet}
         cases hval with | mk unwrap isVal reachability =>
         simp at hresolve
         subst hresolve
-        use fx, rfl, cs, S0, e0, isVal, reachability, hres
-        -- Need to convert expand_captures to A
-        intro m' denot hsub hproper himply
-        have heq : expand_captures store.heap cs = A := by sorry
-        rw [← heq]
-        exact hfun m' denot hsub hproper himply
+        use fx, rfl, cs, S0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
         simp at hresolve
 
@@ -563,13 +549,14 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
   ∃ fx, x = .free fx
     ∧ ∃ cs B0 e0 hval R,
       store.heap fx = some (Cell.val ⟨Exp.cabs cs B0 e0, hval, R⟩)
+    ∧ expand_captures store.heap cs ⊆ A
     ∧ (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
       m'.subsumes store ->
       (CS.denot TypeEnv.empty m' ⊆ B.denot env m') ->
       Ty.exi_exp_denot
         (env.extend_cvar CS)
-        T A m'
+        T (expand_captures store.heap cs) m'
         (e0.subst (Subst.openCVar CS))) := by
   cases x with
   | bound bx => cases bx
@@ -589,12 +576,7 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
         cases hval with | mk unwrap isVal reachability =>
         simp at hresolve
         subst hresolve
-        use fx, rfl, cs, B0, e0, isVal, reachability, hres
-        -- Need to convert expand_captures to A
-        intro m' CS hwf hsub hsub_bound
-        have heq : expand_captures store.heap cs = A := by sorry
-        rw [← heq]
-        exact hfun m' CS hwf hsub hsub_bound
+        use fx, rfl, cs, B0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
         simp at hresolve
 
@@ -727,7 +709,7 @@ theorem sem_typ_tapp
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
   -- Extract the poly structure
-  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hfun⟩ := tabs_val_denot_inv h1'.2.2
+  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hR0_sub, hfun⟩ := tabs_val_denot_inv h1'.2.2
 
   -- Determine concrete location
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -745,17 +727,17 @@ theorem sem_typ_tapp
   -- The opening lemma relates extended environment to substituted type
   have heqv := open_targ_exi_exp_denot (env:=env) (S:=S) (T:=T)
 
-  -- The capability set should match
-  simp only [CaptureSet.denot] at happ
-
   -- Convert the denotation using the equivalence
   have happ' :=
-    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store)
+    (heqv (expand_captures store.heap cs)
       store (e0.subst (Subst.openTVar .top))).1 happ
 
   simp [Ty.exi_exp_denot] at happ'
 
-  apply Eval.eval_tapply hlk happ'
+  -- Widen the authority using monotonicity
+  have happ'' := eval_capability_set_monotonic happ' hR0_sub
+
+  apply Eval.eval_tapply hlk happ''
 
 theorem sem_typ_capp
   {x : BVar s .var}
@@ -774,7 +756,7 @@ theorem sem_typ_capp
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
   -- Extract the cpoly structure
-  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hfun⟩ := cabs_val_denot_inv h1'.2.2
+  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hR0_sub, hfun⟩ := cabs_val_denot_inv h1'.2.2
 
   -- Determine concrete location
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -816,12 +798,15 @@ theorem sem_typ_capp
 
   -- Convert using the equivalence
   have happ2 :=
-    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store)
+    (heqv (expand_captures store.heap cs)
       store (e0.subst (Subst.openCVar D'))).1 happ
 
   simp [Ty.exi_exp_denot] at happ2
 
-  apply Eval.eval_capply hlk happ2
+  -- Widen the authority using monotonicity
+  have happ3 := eval_capability_set_monotonic happ2 hR0_sub
+
+  apply Eval.eval_capply hlk happ3
 
 theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -838,7 +823,7 @@ theorem sem_typ_app
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
   -- Extract the arrow structure
-  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hfun⟩ := abs_val_denot_inv h1'.2.2
+  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'.2.2
 
   -- Extract argument denotation
   have h2 := hy env store hts
@@ -855,7 +840,7 @@ theorem sem_typ_app
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, Ty.exi_exp_denot]
 
   -- Apply function to argument
-  have happ := hfun store fy (Memory.subsumes_refl store) h2'
+  have happ := hfun fy store (Memory.subsumes_refl store) h2'
 
   -- The opening lemma relates extended environment to substituted type
   have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (T:=T2)
@@ -863,19 +848,26 @@ theorem sem_typ_app
   -- Note that interp_var env (Var.bound y) = env.lookup_var y = fy
   have hinterp : interp_var env (Var.bound y) = fy := rfl
 
-  -- Simplify the capability set in happ
-  simp only [CaptureSet.denot] at happ
-
   -- Convert the denotation using the equivalence
   rw [hinterp] at heqv
   have happ' :=
-    (heqv (CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪
+    (heqv (expand_captures store.heap cs ∪
            reachability_of_loc store.heap fy)
       store (e0.subst (Subst.openVar (Var.free fy)))).1 happ
 
   simp [Ty.exi_exp_denot] at happ'
 
-  apply Eval.eval_apply hlk happ'
+  -- Widen the authority using union monotonicity
+  have hunion_mono : expand_captures store.heap cs ∪ reachability_of_loc store.heap fy ⊆
+                     CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪
+                     reachability_of_loc store.heap fy := by
+    apply CapabilitySet.Subset.union_left
+    · exact CapabilitySet.Subset.trans hR0_sub CapabilitySet.Subset.union_right_left
+    · exact CapabilitySet.Subset.union_right_right
+
+  have happ'' := eval_capability_set_monotonic happ' hunion_mono
+
+  apply Eval.eval_apply hlk happ''
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
