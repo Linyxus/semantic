@@ -892,6 +892,10 @@ def TypeEnv.is_reachability_safe (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_reachability_safe
 
+def TypeEnv.is_reachability_monotonic (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_reachability_monotonic
+
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env mem) :
   env.IsMonotonic := by
@@ -928,10 +932,10 @@ theorem typed_env_is_monotonic
             cases x with
             | here =>
               simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-              -- hproper says d.is_proper, which is d.is_reachability_safe ∧ ∀ C, (d C).is_proper
+              -- hproper says d.is_proper, which is d.is_reachability_safe ∧ d.is_reachability_monotonic ∧ ∀ C, (d C).is_proper
               -- We need d.is_monotonic, which means ∀ C, (d C).is_monotonic
               intro C
-              exact (hproper.2 C).1
+              exact (hproper.2.2 C).1
             | there x =>
               simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
               exact ih_result.tvar x
@@ -985,10 +989,10 @@ theorem typed_env_is_transparent
           cases x with
           | here =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper, which is d.is_reachability_safe ∧ ∀ C, (d C).is_proper
+            -- hproper says d.is_proper, which is d.is_reachability_safe ∧ d.is_reachability_monotonic ∧ ∀ C, (d C).is_proper
             -- We need d.is_transparent, which means ∀ C, (d C).is_transparent
             intro C
-            exact (hproper.2 C).2
+            exact (hproper.2.2 C).2
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
@@ -1055,6 +1059,62 @@ theorem typed_env_is_reachability_safe
           have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_reachability_safe] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+
+theorem typed_env_is_reachability_monotonic
+  (ht : EnvTyping Γ env mem) :
+  env.is_reachability_monotonic := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.is_reachability_monotonic]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht
+          have ⟨_, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨hproper, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            -- hproper says d.is_proper
+            -- We need d.is_reachability_monotonic, which is hproper.2.1
+            exact hproper.2.1
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | cvar B =>
+        cases info with
+        | cvar cs =>
+          simp [EnvTyping] at ht
+          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
           intro x
           cases x with
           | there x =>
@@ -1460,7 +1520,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
               | here =>
                 simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 intro C
-                exact (hdenot_proper.2 C).1
+                exact (hdenot_proper.2.2 C).1
               | there X' =>
                 simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 exact henv.tvar X'
@@ -1858,6 +1918,51 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
       | bound bx => cases bx
     | _ => simp [resolve] at hres
 
+theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
+  (hts : env.is_reachability_monotonic)
+  (T : Ty .shape s) :
+  (Ty.shape_val_denot env T).is_reachability_monotonic := by
+  intro R1 R2 hsub m e hdenot
+  cases T with
+  | top =>
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    constructor
+    · exact hdenot.1
+    · exact CapabilitySet.Subset.trans hdenot.2 hsub
+  | tvar X =>
+    -- For type variables, use the environment's reachability monotonicity
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    exact hts X R1 R2 hsub m e hdenot
+  | unit =>
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    exact hdenot
+  | cap =>
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    have ⟨label, heq, hcap, hmem⟩ := hdenot
+    exists label, heq, hcap
+    exact CapabilitySet.subset_preserves_mem hsub hmem
+  | arrow T1 T2 =>
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    have ⟨cs, T0, t0, hres, hwf_cs, hR0_sub, hfun⟩ := hdenot
+    exists cs, T0, t0, hres, hwf_cs
+    constructor
+    · exact CapabilitySet.Subset.trans hR0_sub hsub
+    · exact hfun
+  | poly T1 T2 =>
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    have ⟨cs, T0, t0, hres, hwf_cs, hR0_sub, hfun⟩ := hdenot
+    exists cs, T0, t0, hres, hwf_cs
+    constructor
+    · exact CapabilitySet.Subset.trans hR0_sub hsub
+    · exact hfun
+  | cpoly B T =>
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    have ⟨cs, B0, t0, hres, hwf_cs, hR0_sub, hfun⟩ := hdenot
+    exists cs, B0, t0, hres, hwf_cs
+    constructor
+    · exact CapabilitySet.Subset.trans hR0_sub hsub
+    · exact hfun
+
 /-- If the type environment is well-typed, then the denotation of any shape type is proper.
 
     A PreDenot is proper if it is reachability-safe, monotonic, and transparent. This theorem
@@ -1869,10 +1974,14 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   constructor
   · -- Prove: (Ty.shape_val_denot env S).is_reachability_safe
     exact shape_val_denot_is_reachability_safe (typed_env_is_reachability_safe hts) S
-  · -- Prove: ∀ C, ((Ty.shape_val_denot env S) C).is_proper
-    intro C
-    constructor
-    · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
-    · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
+  · constructor
+    · -- Prove: (Ty.shape_val_denot env S).is_reachability_monotonic
+      exact shape_val_denot_is_reachability_monotonic
+        (typed_env_is_reachability_monotonic hts) S
+    · -- Prove: ∀ C, ((Ty.shape_val_denot env S) C).is_proper
+      intro C
+      constructor
+      · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
+      · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
 
 end CC
