@@ -150,6 +150,7 @@ def retype_shape_val_denot
     have ih1 := retype_capt_val_denot ρ T1
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.subst]
+    intro hwf_e
     constructor
     · intro h
       obtain ⟨cs, T0, t0, hr, hwf, hR0_sub, hd⟩ := h
@@ -191,6 +192,7 @@ def retype_shape_val_denot
     have ih1 := retype_shape_val_denot ρ T1
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.subst]
+    intro hwf_e
     constructor
     · intro h
       obtain ⟨cs, S0, t0, hr, hwf, hR0_sub, hd⟩ := h
@@ -228,6 +230,7 @@ def retype_shape_val_denot
     have hB := retype_capturebound_denot ρ B
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.subst, hB]
+    intro hwf_e
     constructor
     · intro h
       obtain ⟨cs, B0, t0, hr, hwf, hR0_sub, hd⟩ := h
