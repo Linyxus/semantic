@@ -676,8 +676,8 @@ theorem Heap.wf_empty : Heap.WfHeap ∅ := by
 theorem Heap.wf_extend
   {H : Heap} {l : Nat} {v : HeapVal}
   (hwf_H : H.WfHeap)
-  (hwf_v : Exp.WfInHeap v.unwrap (H.extend l v))
-  (hreach : v.reachability = compute_reachability (H.extend l v) v.unwrap v.isVal)
+  (hwf_v : Exp.WfInHeap v.unwrap H)
+  (hreach : v.reachability = compute_reachability H v.unwrap v.isVal)
   (hfresh : H l = none) :
   (H.extend l v).WfHeap := by
   constructor
@@ -687,7 +687,11 @@ theorem Heap.wf_extend
     split at hlookup
     case isTrue heq =>
       cases hlookup
-      exact hwf_v
+      -- Use monotonicity to lift hwf_v from H to H.extend l v
+      apply Exp.wf_monotonic
+      · apply Heap.extend_subsumes
+        exact hfresh
+      · exact hwf_v
     case isFalse hneq =>
       apply Exp.wf_monotonic
       · apply Heap.extend_subsumes
@@ -699,6 +703,8 @@ theorem Heap.wf_extend
     split at hlookup
     case isTrue heq =>
       cases hlookup
+      -- Use monotonicity to show reachability is the same in extended heap
+      rw [compute_reachability_monotonic (Heap.extend_subsumes hfresh) v' hv' hwf_v]
       exact hreach
     case isFalse hneq =>
       have heq := hwf_H.wf_reach l' v' hv' R' hlookup
@@ -1262,8 +1268,8 @@ def lookup (m : Memory) (l : Nat) : Option Cell :=
 /-- Extend memory with a new value.
     Requires proof that the value is well-formed and the location is fresh. -/
 def extend (m : Memory) (l : Nat) (v : HeapVal)
-  (hwf_v : Exp.WfInHeap v.unwrap (m.heap.extend l v))
-  (hreach : v.reachability = compute_reachability (m.heap.extend l v) v.unwrap v.isVal)
+  (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend l v
   wf := Heap.wf_extend m.wf hwf_v hreach hfresh
@@ -1316,13 +1322,10 @@ def extend_cap (m : Memory) (l : Nat)
     This is often more convenient than `extend` in practice. -/
 def extend_val (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
-  (hreach : v.reachability = compute_reachability (m.heap.extend l v) v.unwrap v.isVal)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend l v
-  wf := Heap.wf_extend m.wf
-    (Exp.wf_monotonic (Heap.extend_subsumes hfresh) hwf_v)
-    hreach
-    hfresh
+  wf := Heap.wf_extend m.wf hwf_v hreach hfresh
 
 /-- Memory subsumption: m1 subsumes m2 if m1's heap subsumes m2's heap. -/
 def subsumes (m1 m2 : Memory) : Prop :=
@@ -1341,16 +1344,16 @@ theorem subsumes_trans {m1 m2 m3 : Memory}
 
 /-- Looking up from a memory after extension at the same location returns the value. -/
 theorem extend_lookup_eq (m : Memory) (l : Nat) (v : HeapVal)
-  (hwf_v : Exp.WfInHeap v.unwrap (m.heap.extend l v))
-  (hreach : v.reachability = compute_reachability (m.heap.extend l v) v.unwrap v.isVal)
+  (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
   (hfresh : m.heap l = none) :
   (m.extend l v hwf_v hreach hfresh).lookup l = some (.val v) := by
   simp [lookup, extend, Heap.extend]
 
 /-- Extension subsumes the original memory. -/
 theorem extend_subsumes (m : Memory) (l : Nat) (v : HeapVal)
-  (hwf_v : Exp.WfInHeap v.unwrap (m.heap.extend l v))
-  (hreach : v.reachability = compute_reachability (m.heap.extend l v) v.unwrap v.isVal)
+  (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
   (hfresh : m.heap l = none) :
   (m.extend l v hwf_v hreach hfresh).subsumes m := by
   simp [subsumes, extend]
@@ -1359,7 +1362,7 @@ theorem extend_subsumes (m : Memory) (l : Nat) (v : HeapVal)
 /-- Extension with extend_val subsumes the original memory. -/
 theorem extend_val_subsumes (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
-  (hreach : v.reachability = compute_reachability (m.heap.extend l v) v.unwrap v.isVal)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
   (hfresh : m.heap l = none) :
   (m.extend_val l v hwf_v hreach hfresh).subsumes m := by
   simp [subsumes, extend_val]

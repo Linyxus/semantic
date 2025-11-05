@@ -39,14 +39,10 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     (hwf_v : Exp.WfInHeap v m1.heap) ->
     Q1 v m1 ->
     ∀ l'
-      (hfresh : m1.lookup l' = none)
-      (hreach : compute_reachability m1.heap v hv =
-        compute_reachability
-          (m1.heap.extend l' ⟨v, hv, compute_reachability m1.heap v hv⟩)
-          v hv),
+      (hfresh : m1.lookup l' = none),
       Eval C
         (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩
-          hwf_v hreach hfresh)
+          hwf_v rfl hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
@@ -242,11 +238,11 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred ih
     case h_val =>
-      intro m1 v hs1 hv hwf_v hq1 l' hfresh hreach
-      apply ih_val hs1 hv hwf_v hq1 l' hfresh hreach
+      intro m1 v hs1 hv hwf_v hq1 l' hfresh
+      apply ih_val hs1 hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
       apply Memory.subsumes_trans
-        (Memory.extend_val_subsumes _ _ _ hwf_v hreach hfresh) hs1
+        (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh) hs1
     case h_var =>
       intro m1 x hs1 hwf_x hq1
       apply ih_var hs1 hwf_x hq1
@@ -287,8 +283,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_letin =>
     rename_i hpred_mono heval_e1 h_val h_var ih_e1 ih_val ih_var
     apply Eval.eval_letin hpred_mono (ih_e1 hsub)
-    · intro m1 v hs1 hv hwf_v hq1 l' hfresh hreach
-      exact ih_val hs1 hv hwf_v hq1 l' hfresh hreach hsub
+    · intro m1 v hs1 hv hwf_v hq1 l' hfresh
+      exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
     · intro m1 x hs1 hwf_x hq1
       exact ih_var hs1 hwf_x hq1 hsub
   case eval_unpack =>
