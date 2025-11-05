@@ -879,6 +879,10 @@ def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_transparent
 
+def TypeEnv.is_reachability_safe (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_reachability_safe
+
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env mem) :
   env.IsMonotonic := by
@@ -991,6 +995,10 @@ theorem typed_env_is_transparent
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
+
+theorem typed_env_is_reachability_safe
+  (ht : EnvTyping Γ env mem) :
+  env.is_reachability_safe := sorry
 
 theorem shape_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1619,6 +1627,10 @@ def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
 --   simp [Ty.capt_val_denot]
 --   intro h'' hsub' e' he'
 --   apply (himp (C.denot env)) h'' hsub' e' he'
+
+theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
+  (hts : env.is_reachability_safe) :
+  (Ty.shape_val_denot env T).is_reachability_safe := sorry
 
 /-- If the type environment is well-typed, then the denotation of any shape type is proper.
 
