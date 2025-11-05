@@ -1663,10 +1663,17 @@ def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
     EnvTyping Γ env m ->
     C1.denot env m ⊆ C2.denot env m
 
--- def SemSubtyp (Γ : Ctx s) (T1 T2 : Ty .shape s) : Prop :=
---   ∀ env H,
---     EnvTyping Γ env H ->
---     (Ty.shape_val_denot env T1).ImplyAfter H (Ty.shape_val_denot env T2)
+def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
+  match k with
+  | .shape =>
+    ∀ env H, EnvTyping Γ env H ->
+      (Ty.shape_val_denot env T1).ImplyAfter H (Ty.shape_val_denot env T2)
+  | .capt =>
+    ∀ env H, EnvTyping Γ env H ->
+      (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T2)
+  | .exi =>
+    ∀ env H, EnvTyping Γ env H ->
+      (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
 
 -- theorem denot_implyat_lift
 --   (himp : (Ty.shape_val_denot env T1).ImplyAfter H (Ty.shape_val_denot env T2)) :
