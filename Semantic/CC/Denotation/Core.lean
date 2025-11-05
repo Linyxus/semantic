@@ -2038,30 +2038,38 @@ theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
     exact hdenot
   | cap =>
     simp [Ty.shape_val_denot] at hdenot ⊢
-    have ⟨label, heq, hcap, hmem⟩ := hdenot
-    exists label, heq, hcap
-    exact CapabilitySet.subset_preserves_mem hsub hmem
+    have ⟨hwf_e, label, heq, hcap, hmem⟩ := hdenot
+    constructor
+    · exact hwf_e
+    · exists label, heq, hcap
+      exact CapabilitySet.subset_preserves_mem hsub hmem
   | arrow T1 T2 =>
     simp [Ty.shape_val_denot] at hdenot ⊢
-    have ⟨cs, T0, t0, hres, hwf_cs, hR0_sub, hfun⟩ := hdenot
-    exists cs, T0, t0, hres, hwf_cs
+    have ⟨hwf_e, cs, T0, t0, hres, hwf_cs, hR0_R1, hfun⟩ := hdenot
     constructor
-    · exact CapabilitySet.Subset.trans hR0_sub hsub
-    · exact hfun
+    · exact hwf_e
+    · exists cs, T0, t0, hres, hwf_cs
+      constructor
+      · exact CapabilitySet.Subset.trans hR0_R1 hsub
+      · exact hfun
   | poly T1 T2 =>
     simp [Ty.shape_val_denot] at hdenot ⊢
-    have ⟨cs, T0, t0, hres, hwf_cs, hR0_sub, hfun⟩ := hdenot
-    exists cs, T0, t0, hres, hwf_cs
+    have ⟨hwf_e, cs, T0, t0, hres, hwf_cs, hR0_R1, hfun⟩ := hdenot
     constructor
-    · exact CapabilitySet.Subset.trans hR0_sub hsub
-    · exact hfun
+    · exact hwf_e
+    · exists cs, T0, t0, hres, hwf_cs
+      constructor
+      · exact CapabilitySet.Subset.trans hR0_R1 hsub
+      · exact hfun
   | cpoly B T =>
     simp [Ty.shape_val_denot] at hdenot ⊢
-    have ⟨cs, B0, t0, hres, hwf_cs, hR0_sub, hfun⟩ := hdenot
-    exists cs, B0, t0, hres, hwf_cs
+    have ⟨hwf_e, cs, B0, t0, hres, hwf_cs, hR0_R1, hfun⟩ := hdenot
     constructor
-    · exact CapabilitySet.Subset.trans hR0_sub hsub
-    · exact hfun
+    · exact hwf_e
+    · exists cs, B0, t0, hres, hwf_cs
+      constructor
+      · exact CapabilitySet.Subset.trans hR0_R1 hsub
+      · exact hfun
 
 /-- If the type environment is well-typed, then the denotation of any shape type is proper.
     A PreDenot is proper if it is reachability-safe, monotonic, and transparent. This theorem
@@ -2139,24 +2147,20 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
     exact wf_from_resolve_unit hdenot
   | cap =>
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨label, heq, hlookup, _⟩ := hdenot
-    rw [heq]
-    apply Exp.WfInHeap.wf_var
-    apply Var.WfInHeap.wf_free
-    simp [Memory.lookup] at hlookup
-    exact hlookup
+    have ⟨hwf_e, label, heq, hlookup, _⟩ := hdenot
+    exact hwf_e
   | arrow T1 T2 =>
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨cs, T0, t0, hresolve, hwf_cs, _⟩ := hdenot
-    apply resolve_implies_wf hresolve
+    have ⟨hwf_e, cs, T0, t0, hresolve, hwf_cs, _⟩ := hdenot
+    exact hwf_e
   | poly T1 T2 =>
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨cs, S0, t0, hresolve, hwf_cs, _⟩ := hdenot
-    apply resolve_implies_wf hresolve
+    have ⟨hwf_e, cs, S0, t0, hresolve, hwf_cs, _⟩ := hdenot
+    exact hwf_e
   | cpoly B T =>
     simp [Ty.shape_val_denot] at hdenot
-    have ⟨cs, B0, t0, hresolve, hwf_cs, _⟩ := hdenot
-    apply resolve_implies_wf hresolve
+    have ⟨hwf_e, cs, B0, t0, hresolve, hwf_cs, _⟩ := hdenot
+    exact hwf_e
 
 theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (hts : EnvTyping Γ env m) :
