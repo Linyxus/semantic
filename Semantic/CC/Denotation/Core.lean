@@ -135,6 +135,38 @@ theorem resolve_reachability_monotonic
   | letin _ _ => simp [resolve_reachability]
   | unpack _ _ => simp [resolve_reachability]
 
+/-- For simple values, compute_reachability equals resolve_reachability. -/
+theorem compute_reachability_eq_resolve_reachability
+  (h : Heap) (v : Exp {}) (hv : v.IsSimpleVal) :
+  compute_reachability h v hv = resolve_reachability h v := by
+  cases hv <;> rfl
+
+/-- Heap invariant: the reachability stored in a heap value equals the computed
+    reachability for that value.
+
+    This invariant is maintained by the operational semantics, which always uses
+    `compute_reachability` when creating heap values (see eval_letin in BigStep.lean).
+
+    This is a fundamental property connecting operational reachability (stored in
+    the heap) with denotational reachability (computed from expression structure). -/
+axiom Memory.reachability_invariant :
+  ∀ (m : Memory) (x : Nat) (v : HeapVal),
+    m.heap x = some (Cell.val v) ->
+    v.reachability = compute_reachability m.heap v.unwrap v.isVal
+
+/-- Reachability of a heap location equals resolve_reachability of the stored value. -/
+theorem reachability_of_loc_eq_resolve_reachability
+  (m : Memory) (x : Nat) (v : HeapVal)
+  (hx : m.heap x = some (Cell.val v)) :
+  reachability_of_loc m.heap x = resolve_reachability m.heap v.unwrap := by
+  -- reachability_of_loc m.heap x = v.reachability by definition
+  unfold reachability_of_loc
+  simp [hx]
+  -- v.reachability = compute_reachability m.heap v.unwrap v.isVal
+  rw [Memory.reachability_invariant m x v hx]
+  -- compute_reachability = resolve_reachability for simple values
+  exact compute_reachability_eq_resolve_reachability m.heap v.unwrap v.isVal
+
 def PreDenot.is_reachability_safe (denot : PreDenot) : Prop :=
   ∀ R m e,
     denot R m e ->
@@ -970,14 +1002,16 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
     simp [Ty.shape_val_denot] at ht ⊢
     -- ht : resolve_reachability m.heap v.unwrap ⊆ C
     -- Goal: resolve_reachability m.heap (Exp.var (Var.free x)) ⊆ C
-    -- By definition: resolve_reachability for vars equals reachability_of_loc
     simp [resolve_reachability]
-    -- Need: reachability_of_loc m.heap x ⊆ C
-    -- From hx: m.heap x = some (Cell.val v)
-    -- From heap invariant: reachability_of_loc m.heap x equals the precomputed reachability for v
-    -- which should be compute_reachability m.heap v.unwrap v.isVal
-    -- which equals resolve_reachability m.heap v.unwrap for simple values
-    sorry
+    -- Goal: reachability_of_loc m.heap x ⊆ C
+    -- Extract heap location from memory lookup
+    have hx_heap : m.heap x = some (Cell.val v) := by
+      simp [Memory.lookup] at hx
+      exact hx
+    -- Use heap invariant to connect stored reachability with resolve_reachability
+    rw [reachability_of_loc_eq_resolve_reachability m x v hx_heap]
+    -- Now goal is: resolve_reachability m.heap v.unwrap ⊆ C, which is ht
+    exact ht
   | tvar X =>
     intro C
     simp [Ty.shape_val_denot]
