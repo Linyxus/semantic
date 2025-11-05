@@ -401,7 +401,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
                         constructor
                         · intro x; exact Var.wf_monotonic hsubsume (hwf_subst_store.wf_var x)
                         · intro X; exact Ty.wf_monotonic hsubsume (hwf_subst_store.wf_tvar X)
-                        · intro C; exact CaptureSet.wf_monotonic hsubsume (hwf_subst_store.wf_cvar C)
+                        · intro C
+                          exact CaptureSet.wf_monotonic hsubsume (hwf_subst_store.wf_cvar C)
                     · constructor
                       · -- Rewrite hsub_bound to match expected type
                         -- Need to show: CS.ground_denot H' ⊆ ⟦cb⟧_[env] H'
