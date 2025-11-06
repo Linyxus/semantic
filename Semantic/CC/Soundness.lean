@@ -1724,14 +1724,6 @@ lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
   have hsub_H : m'.subsumes H := Memory.subsumes_trans hsub_m' hsub
   exact himply C m' hsub_H
 
--- TODO: This lemma requires proving that EnvTyping implies TypeEnv.IsMonotonic
--- or finding an alternative approach that doesn't require monotonicity
--- For now, we axiomatize this property
-axiom env_typing_subsumes {Γ : Ctx s} {env : TypeEnv s} {H m : Memory}
-  (htyping : EnvTyping Γ env H)
-  (hsub : m.subsumes H) :
-  EnvTyping Γ env m
-
 lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
   (hres : SemSubtyp (Γ,x:T2) U1 U2) :
@@ -1780,7 +1772,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
             · -- The original typing still holds with subsumption
               have hsub_H_m'' := Memory.subsumes_trans hsub_m'' hsubsumes
               -- Prove EnvTyping Γ env m'' from EnvTyping Γ env H and subsumption
-              exact env_typing_subsumes htyping hsub_H_m''
+              exact env_typing_monotonic htyping hsub_H_m''
           -- Apply semantic subtyping for the result
           have hres_sem := hres (env.extend_var arg) m'' htyping_ext
           -- hres_sem : (Ty.exi_val_denot (env.extend_var arg) U1).ImplyAfter m'' ...
