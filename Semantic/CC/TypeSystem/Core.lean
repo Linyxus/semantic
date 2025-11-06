@@ -103,6 +103,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   -------------------
   Subtyp Γ T T
 | trans :
+  (hT2 : T2.IsClosed) ->
   Subtyp Γ T1 T2 ->
   Subtyp Γ T2 T3 ->
   -------------------
