@@ -1575,11 +1575,39 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {env : TypeEnv
   (htyping : EnvTyping Γ env m) :
   (env.lookup_tvar X).ImplyAfter m (Ty.shape_val_denot env S) := by
   induction hlookup generalizing m
-  case here =>
+  case here Γ S =>
     cases env; rename_i info0 env0
     cases info0; rename_i d
     simp [EnvTyping] at htyping
-    trace_state; sorry
+    obtain ⟨hproper, himply, htyping'⟩ := htyping
+    -- lookup_tvar BVar.here gives us d
+    simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+    -- Need: d.ImplyAfter m (shape_val_denot (env0.extend_tvar d) (S.rename Rename.succ))
+    -- Have: d.ImplyAfter m (Ty.shape_val_denot env0 S)
+    -- Use weakening theorem to relate the denotations
+    have hw : Ty.shape_val_denot env0 S ≈
+              Ty.shape_val_denot (env0.extend_tvar d) (S.rename Rename.succ) :=
+      tweaken_shape_val_denot (d := d)
+    simp [TypeEnv.extend_tvar] at hw
+    -- Need to convert equiv to implication at the PreDenot level
+    -- Unfold PreDenot.ImplyAfter and PreDenot.equiv_def
+    simp [PreDenot.ImplyAfter]
+    intro C
+    -- Now we have himply : d.ImplyAfter m ((Ty.shape_val_denot env0 S) C)
+    simp [PreDenot.ImplyAfter] at himply
+    specialize himply C
+    -- And hw gives us equiv at the Denot level
+    simp [PreDenot.equiv_def] at hw
+    specialize hw C
+    -- Use Denot.equiv_to_imply
+    have himply_right := (Denot.equiv_to_imply hw).1
+    -- Compose the implications
+    intro m' hsub e hd
+    -- himply_right : Denot.Imply (Ty.shape_val_denot env0 S C)
+    --                (Ty.shape_val_denot (env0.extend_tvar d) (S.rename Rename.succ) C)
+    -- himply : d.ImplyAfter m ((Ty.shape_val_denot env0 S) C)
+    apply himply_right m' e
+    apply himply m' hsub e hd
   case there => sorry
 
 lemma sem_subtyp_tvar {X : BVar s .tvar} {S : Ty .shape s}
