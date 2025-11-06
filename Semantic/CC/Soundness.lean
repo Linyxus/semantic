@@ -1711,6 +1711,13 @@ lemma sem_subtyp_tvar {X : BVar s .tvar} {S : Ty .shape s}
   -- The result follows directly from himply
   exact himply
 
+lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
+  (harg : SemSubtyp Γ T2 T1)
+  (hres : SemSubtyp (Γ,x:T2) U1 U2) :
+  SemSubtyp Γ (.arrow T1 U1) (.arrow T2 U2) := by
+  trace_state
+  sorry
+
 lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   (h12 : SemSubtyp Γ T1 T2)
   (h23 : SemSubtyp Γ T2 T3) :
@@ -1797,7 +1804,8 @@ theorem fundamental_subtyp
   case refl => apply sem_subtyp_refl
   case trans ih12 ih23 => apply sem_subtyp_trans ih12 ih23
   case tvar hlookup => apply sem_subtyp_tvar hlookup
-  case arrow => sorry
+  case arrow T1 T2 U1 U2 hsub_arg hsub_res ih_arg ih_res =>
+    apply sem_subtyp_arrow ih_arg ih_res
   case poly => sorry
   case cpoly => sorry
   case capt => sorry
