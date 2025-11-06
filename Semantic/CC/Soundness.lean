@@ -2036,24 +2036,44 @@ lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
           exact himply_entails
 
 theorem fundamental_subtyp
+  (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
-  case top => apply sem_subtyp_top
-  case refl => apply sem_subtyp_refl
-  case trans ih12 ih23 => apply sem_subtyp_trans ih12 ih23
-  case tvar hlookup => apply sem_subtyp_tvar hlookup
-  case arrow T1 T2 U1 U2 hsub_arg hsub_res ih_arg ih_res =>
-    apply sem_subtyp_arrow ih_arg ih_res
-  case poly S1 S2 T1 T2 hsub_bound hsub_body ih_bound ih_body =>
-    apply sem_subtyp_poly ih_bound ih_body
-  case cpoly cb1 cb2 T1 T2 hsub_bound hsub_body ih_body =>
+  case top =>
+    -- T1 is some shape type, T2 is .top
+    apply sem_subtyp_top
+  case refl =>
+    -- T1 = T2
+    apply sem_subtyp_refl
+  case trans _ _ _ _ _ ih12 ih23 =>
+    -- hsub is (T1_l <: T2_mid <: T3_r), where T1 = T1_l and T2 = T3_r
+    -- Need closedness of T2_mid (the middle type)
+    -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
+    -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
+    apply sem_subtyp_trans (ih12 hT1 sorry) (ih23 sorry hT2)
+  case tvar hlookup =>
+    -- T1 is a type variable, T2 is looked up from context
+    apply sem_subtyp_tvar hlookup
+  case arrow T1_arg T2_arg U1 U2 hsub_arg hsub_res ih_arg ih_res =>
+    -- T1 = .arrow T1_arg U1, T2 = .arrow T2_arg U2
+    -- Extract closedness from arrow types
+    cases hT1 with | arrow hT1_arg_closed hU1_closed =>
+    cases hT2 with | arrow hT2_arg_closed hU2_closed =>
+    apply sem_subtyp_arrow (ih_arg hT2_arg_closed hT1_arg_closed) (ih_res hU1_closed hU2_closed)
+  case poly S1 S2 T1_body T2_body hsub_bound hsub_body ih_bound ih_body =>
+    -- T1 = .poly S1 T1_body, T2 = .poly S2 T2_body
+    -- Extract closedness from poly types
+    cases hT1 with | poly hS1_closed hT1_body_closed =>
+    cases hT2 with | poly hS2_closed hT2_body_closed =>
+    apply sem_subtyp_poly (ih_bound hS2_closed hS1_closed) (ih_body hT1_body_closed hT2_body_closed)
+  case cpoly cb1 cb2 T1_body T2_body hsub_bound hsub_body ih_body =>
+    -- T1 = .cpoly cb2 T1_body, T2 = .cpoly cb1 T2_body (note the swap!)
+    -- Extract closedness from cpoly types
+    cases hT1 with | cpoly hcb2_closed hT1_body_closed =>
+    cases hT2 with | cpoly hcb1_closed hT2_body_closed =>
     have ih_bound := fundamental_subbound hsub_bound
-    have hclosed : cb1.IsClosed := by
-      -- This should follow from a well-formedness invariant for typing contexts
-      -- In well-typed programs, bounds in cpoly types should be closed
-      sorry
-    apply sem_subtyp_cpoly ih_bound ih_body hclosed
+    apply sem_subtyp_cpoly ih_bound (ih_body hT1_body_closed hT2_body_closed) hcb1_closed
   case capt => sorry
   case exi => sorry
   case typ => sorry
