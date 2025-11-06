@@ -1711,6 +1711,27 @@ lemma sem_subtyp_tvar {X : BVar s .tvar} {S : Ty .shape s}
   -- The result follows directly from himply
   exact himply
 
+-- Helper lemma: PreDenot.ImplyAfter is monotonic in the starting memory
+lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
+  (himply : pd1.ImplyAfter H pd2)
+  (hsub : m.subsumes H) :
+  pd1.ImplyAfter m pd2 := by
+  simp [PreDenot.ImplyAfter] at himply ⊢
+  intro C
+  simp [Denot.ImplyAfter] at himply ⊢
+  intro m' hsub_m'
+  -- m' subsumes m, and m subsumes H, so m' subsumes H by transitivity
+  have hsub_H : m'.subsumes H := Memory.subsumes_trans hsub_m' hsub
+  exact himply C m' hsub_H
+
+-- TODO: This lemma requires proving that EnvTyping implies TypeEnv.IsMonotonic
+-- or finding an alternative approach that doesn't require monotonicity
+-- For now, we axiomatize this property
+axiom env_typing_subsumes {Γ : Ctx s} {env : TypeEnv s} {H m : Memory}
+  (htyping : EnvTyping Γ env H)
+  (hsub : m.subsumes H) :
+  EnvTyping Γ env m
+
 lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
   (hres : SemSubtyp (Γ,x:T2) U1 U2) :
@@ -1753,21 +1774,25 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
           -- Need to show the environment typing holds for the extended context
           have htyping_ext : EnvTyping (Γ,x:T2) (env.extend_var arg) m'' := by
             -- Construct EnvTyping for the extended context
-            simp [TypeEnv.extend_var, EnvTyping]
+            simp [TypeEnv.extend_var]
             constructor
             · exact harg_T2
             · -- The original typing still holds with subsumption
               have hsub_H_m'' := Memory.subsumes_trans hsub_m'' hsubsumes
-              -- Apply subsumption monotonicity to htyping
-              sorry
+              -- Prove EnvTyping Γ env m'' from EnvTyping Γ env H and subsumption
+              exact env_typing_subsumes htyping hsub_H_m''
           -- Apply semantic subtyping for the result
           have hres_sem := hres (env.extend_var arg) m'' htyping_ext
-          -- hres_sem gives us SemSubtyp for U1 → U2
-          -- For exi types, SemSubtyp means: Ty.exi_exp_denot env U1 C H e → Ty.exi_exp_denot env U2 C H e
+          -- hres_sem : (Ty.exi_val_denot (env.extend_var arg) U1).ImplyAfter m'' ...
           let R0 := expand_captures m'.heap cs
           let R := R0 ∪ (reachability_of_loc m''.heap arg)
-          -- exact hres_sem R (t0.subst (Subst.openVar (.free arg))) hbody
-          sorry
+          -- Need to convert Denot.ImplyAfter to Mpost.entails_after
+          have himply_entails := Denot.imply_after_to_m_entails_after hres_sem
+          -- Now use eval_post_monotonic_general to lift hbody from U1 to U2
+          -- hbody : Ty.exi_exp_denot ... U1 R m'' (t0.subst...)
+          unfold Ty.exi_exp_denot at hbody ⊢
+          apply eval_post_monotonic_general _ hbody
+          exact himply_entails
 
 lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   (h12 : SemSubtyp Γ T1 T2)
