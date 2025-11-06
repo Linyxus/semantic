@@ -1574,8 +1574,13 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {env : TypeEnv
   (hlookup : Ctx.LookupTVar Γ X S)
   (htyping : EnvTyping Γ env m) :
   (env.lookup_tvar X).ImplyAfter m (Ty.shape_val_denot env S) := by
-  sorry  -- This proof requires careful analysis of how type variable bounds are stored in EnvTyping
-         -- and how they relate through context lookups and environment extensions
+  induction hlookup generalizing m
+  case here =>
+    cases env; rename_i info0 env0
+    cases info0; rename_i d
+    simp [EnvTyping] at htyping
+    trace_state; sorry
+  case there => sorry
 
 lemma sem_subtyp_tvar {X : BVar s .tvar} {S : Ty .shape s}
   (hlookup : Ctx.LookupTVar Γ X S) :
