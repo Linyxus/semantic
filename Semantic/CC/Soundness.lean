@@ -1864,6 +1864,72 @@ lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
     -- Apply reflexivity of implication
     exact Denot.imply_implyat (Denot.imply_refl _)
 
+lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
+  (hS : SemSubtyp Γ S2 S1) -- contravariant in bound
+  (hT : SemSubtyp (Γ,X<:S2) T1 T2) -- covariant in body
+  : SemSubtyp Γ (.poly S1 T1) (.poly S2 T2) := by
+  -- Unfold SemSubtyp for shape types
+  simp [SemSubtyp]
+  intro env H htyping
+  -- Need to prove PreDenot.ImplyAfter for poly types
+  simp [PreDenot.ImplyAfter]
+  intro A
+  -- Need to prove Denot.ImplyAfter for poly types at capability set A
+  simp [Denot.ImplyAfter]
+  intro m' hsubsumes e h_poly_S1_T1
+  -- Unfold the denotation of poly types
+  simp [Ty.shape_val_denot] at h_poly_S1_T1 ⊢
+  -- Extract the components from the S1 ∀ T1 denotation
+  obtain ⟨hwf, cs, S0, t0, hresolve, hcs_wf, hR0_subset, hbody⟩ := h_poly_S1_T1
+  -- Construct the proof for S2 ∀ T2
+  constructor
+  · exact hwf  -- Well-formedness is preserved
+  · use cs, S0, t0
+    constructor
+    · exact hresolve  -- Same resolution
+    · constructor
+      · exact hcs_wf  -- Capture set well-formedness preserved
+      · constructor
+        · exact hR0_subset  -- Same capture subset constraint
+        · -- Need to prove the body property with contravariant bound and covariant body
+          intro m'' denot hsub_m'' hdenot_proper himply_S2
+          -- hbody expects denot.ImplyAfter m'' (Ty.shape_val_denot env S1)
+          -- We have himply_S2 : denot.ImplyAfter m'' (Ty.shape_val_denot env S2)
+          -- And hS : SemSubtyp Γ S2 S1, i.e., S2 <: S1
+          -- So we need to compose: denot -> S2 -> S1
+          have himply_S1 : denot.ImplyAfter m'' (Ty.shape_val_denot env S1) := by
+            simp [PreDenot.ImplyAfter, Denot.ImplyAfter, Denot.ImplyAt]
+            intro C m''' hsub_m''' e' hdenot
+            -- We have: hdenot : (denot C) m''' e'
+            -- Need: (Ty.shape_val_denot env S1 C) m''' e'
+            -- From himply_S2: denot.ImplyAfter m'' (Ty.shape_val_denot env S2)
+            simp [PreDenot.ImplyAfter, Denot.ImplyAfter, Denot.ImplyAt] at himply_S2
+            have hS2 := himply_S2 C m''' hsub_m''' e' hdenot
+            -- Now apply hS: SemSubtyp Γ S2 S1
+            have hS_trans :=
+              Memory.subsumes_trans hsub_m''' (Memory.subsumes_trans hsub_m'' hsubsumes)
+            have hS_sem := hS env H htyping
+            simp [PreDenot.ImplyAfter, Denot.ImplyAfter, Denot.ImplyAt] at hS_sem
+            exact hS_sem C m''' hS_trans e' hS2
+          -- Apply the original function body with this denot
+          have heval1 := hbody m'' denot hsub_m'' hdenot_proper himply_S1
+          -- Now use covariance hT
+          have henv' : EnvTyping (Γ,X<:S2) (env.extend_tvar denot) m'' := by
+            constructor
+            · exact hdenot_proper
+            · constructor
+              · exact himply_S2
+              · apply env_typing_monotonic htyping (Memory.subsumes_trans hsub_m'' hsubsumes)
+          have hT_sem := hT (env.extend_tvar denot) m'' henv'
+          -- hT_sem : (Ty.exi_val_denot (env.extend_tvar denot) T1).ImplyAfter m'' ...
+          let R0 := expand_captures m'.heap cs
+          -- Convert to postcondition entailment
+          have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+          -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
+          unfold Ty.exi_exp_denot at heval1 ⊢
+          apply eval_post_monotonic_general _ heval1
+          exact himply_entails
+
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
@@ -1874,7 +1940,8 @@ theorem fundamental_subtyp
   case tvar hlookup => apply sem_subtyp_tvar hlookup
   case arrow T1 T2 U1 U2 hsub_arg hsub_res ih_arg ih_res =>
     apply sem_subtyp_arrow ih_arg ih_res
-  case poly => sorry
+  case poly S1 S2 T1 T2 hsub_bound hsub_body ih_bound ih_body =>
+    apply sem_subtyp_poly ih_bound ih_body
   case cpoly => sorry
   case capt => sorry
   case exi => sorry
