@@ -1864,6 +1864,111 @@ lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
     -- Apply reflexivity of implication
     exact Denot.imply_implyat (Denot.imply_refl _)
 
+-- Semantic subtyping for capture bounds
+def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
+  ∀ env m,
+    EnvTyping Γ env m ->
+    B1.denot env m ⊆ B2.denot env m
+
+-- Fundamental theorem for Subbound
+lemma fundamental_subbound
+  (hsub : Subbound Γ B1 B2) :
+  SemSubbound Γ B1 B2 := by
+  induction hsub with
+  | capset hsubcapt =>
+    -- Subbound Γ (.bound C1) (.bound C2) from Subcapt Γ C1 C2
+    intro env m htyping
+    simp [CaptureBound.denot]
+    -- Need to show: C1.denot env m ⊆ C2.denot env m
+    have hsem := fundamental_subcapt hsubcapt
+    exact hsem env m htyping
+  | top =>
+    -- Subbound Γ B .unbound
+    intro env m htyping
+    simp [CaptureBound.denot]
+    -- .unbound denotes CapabilitySet.any, which contains everything
+    apply CapabilitySet.Subset.top
+
+lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
+  (hB : SemSubbound Γ cb1 cb2) -- contravariant in bound (cb1 <: cb2)
+  (hT : SemSubtyp (Γ,C<:cb1) T1 T2) -- covariant in body
+  (hclosed_cb1 : cb1.IsClosed) -- cb1 is closed
+  : SemSubtyp Γ (.cpoly cb2 T1) (.cpoly cb1 T2) := by
+  -- Unfold SemSubtyp for shape types
+  simp [SemSubtyp]
+  intro env H htyping
+  -- Need to prove PreDenot.ImplyAfter for cpoly types
+  simp [PreDenot.ImplyAfter]
+  intro A
+  -- Need to prove Denot.ImplyAfter for cpoly types at capability set A
+  simp [Denot.ImplyAfter]
+  intro m' hsubsumes e h_cpoly_cb1_T1
+  -- Unfold the denotation of cpoly types
+  simp [Ty.shape_val_denot] at h_cpoly_cb1_T1 ⊢
+  -- Extract the components from the cb2 ∀C T1 denotation (left side)
+  obtain ⟨hwf, cs, B0, t0, hresolve, hcs_wf, hR0_subset, hbody⟩ := h_cpoly_cb1_T1
+  -- Construct the proof for cb1 ∀C T2 (right side)
+  constructor
+  · exact hwf  -- Well-formedness is preserved
+  · use cs, B0, t0
+    constructor
+    · exact hresolve  -- Same resolution
+    · constructor
+      · exact hcs_wf  -- Capture set well-formedness preserved
+      · constructor
+        · exact hR0_subset  -- Same capture subset constraint
+        · -- Need to prove the body property with contravariant bound and covariant body
+          intro m'' CS hCS_wf hsub_m'' hCS_satisfies_cb1
+          -- hbody expects: A0 m'' ⊆ cb2.denot env m''
+          -- We have hCS_satisfies_cb1 : A0 m'' ⊆ cb1.denot env m''
+          -- And hB : SemSubbound Γ cb1 cb2, i.e., cb1 <: cb2
+          -- So we need: cb1.denot env m'' ⊆ cb2.denot env m''
+          let A0 := CS.denot TypeEnv.empty
+          have hCS_satisfies_cb2 : A0 m'' ⊆ cb2.denot env m'' := by
+            -- Apply contravariance: cb1.denot env m'' ⊆ cb2.denot env m''
+            have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
+            have htyping_m'' := env_typing_monotonic htyping hB_trans
+            have hB_at_m'' := hB env m'' htyping_m''
+            exact CapabilitySet.Subset.trans hCS_satisfies_cb1 hB_at_m''
+          -- Apply the original function body with this CS
+          have heval1 := hbody m'' CS hCS_wf hsub_m'' hCS_satisfies_cb2
+          -- Now use covariance hT
+          have henv' : EnvTyping (Γ,C<:cb1) (env.extend_cvar CS) m'' := by
+            simp [TypeEnv.extend_cvar]
+            constructor
+            · exact hCS_wf
+            · constructor
+              · -- Need: (cb1.subst (Subst.from_TypeEnv env)).WfInHeap m''.heap
+                -- From closedness of cb1, we get well-formedness at any heap
+                -- First show it's well-formed at H.heap
+                have hwf_cb1_at_H : (cb1.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
+                  -- Use wf_subst with closedness of cb1 and well-formedness of the substitution
+                  apply CaptureBound.wf_subst
+                  · -- cb1.WfInHeap H.heap follows from closedness
+                    apply CaptureBound.wf_of_closed hclosed_cb1
+                  · -- (Subst.from_TypeEnv env).WfInHeap H.heap follows from EnvTyping
+                    exact from_TypeEnv_wf_in_heap htyping
+                -- Then lift to m''.heap using monotonicity
+                have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
+                exact CaptureBound.wf_monotonic hB_trans hwf_cb1_at_H
+              · constructor
+                · -- Convert hCS_satisfies_cb1 from CS.denot TypeEnv.empty to CS.ground_denot
+                  have : CS.denot TypeEnv.empty = CS.ground_denot := by
+                    simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
+                  rw [← this]
+                  exact hCS_satisfies_cb1
+                · have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
+                  exact env_typing_monotonic htyping hB_trans
+          have hT_sem := hT (env.extend_cvar CS) m'' henv'
+          -- hT_sem : (Ty.exi_val_denot (env.extend_cvar CS) T1).ImplyAfter m'' ...
+          let R0 := expand_captures m'.heap cs
+          -- Convert to postcondition entailment
+          have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+          -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
+          unfold Ty.exi_exp_denot at heval1 ⊢
+          apply eval_post_monotonic_general _ heval1
+          exact himply_entails
+
 lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
   (hS : SemSubtyp Γ S2 S1) -- contravariant in bound
   (hT : SemSubtyp (Γ,X<:S2) T1 T2) -- covariant in body
@@ -1942,7 +2047,13 @@ theorem fundamental_subtyp
     apply sem_subtyp_arrow ih_arg ih_res
   case poly S1 S2 T1 T2 hsub_bound hsub_body ih_bound ih_body =>
     apply sem_subtyp_poly ih_bound ih_body
-  case cpoly => sorry
+  case cpoly cb1 cb2 T1 T2 hsub_bound hsub_body ih_body =>
+    have ih_bound := fundamental_subbound hsub_bound
+    have hclosed : cb1.IsClosed := by
+      -- This should follow from a well-formedness invariant for typing contexts
+      -- In well-typed programs, bounds in cpoly types should be closed
+      sorry
+    apply sem_subtyp_cpoly ih_bound ih_body hclosed
   case capt => sorry
   case exi => sorry
   case typ => sorry
