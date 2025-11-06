@@ -1569,14 +1569,113 @@ lemma sem_subtyp_top {T : Ty .shape s} :
     have hsafe_denot := shape_val_denot_is_reachability_safe hsafe_env T
     exact hsafe_denot R m' e hdenot_T
 
+-- Helper lemma for extracting type variable bounds from EnvTyping
+lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {env : TypeEnv s} {m : Memory}
+  (hlookup : Ctx.LookupTVar Γ X S)
+  (htyping : EnvTyping Γ env m) :
+  (env.lookup_tvar X).ImplyAfter m (Ty.shape_val_denot env S) := by
+  sorry  -- This proof requires careful analysis of how type variable bounds are stored in EnvTyping
+         -- and how they relate through context lookups and environment extensions
+
+lemma sem_subtyp_tvar {X : BVar s .tvar} {S : Ty .shape s}
+  (hlookup : Ctx.LookupTVar Γ X S) :
+  SemSubtyp Γ (.tvar X) S := by
+  -- Unfold SemSubtyp for shape types
+  simp [SemSubtyp]
+  intro env H htyping
+  -- Extract the type variable bound using the helper lemma
+  have himply := env_typing_lookup_tvar hlookup htyping
+  -- Unfold the denotations
+  simp [Ty.shape_val_denot]
+  -- The result follows directly from himply
+  exact himply
+
+lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
+  (h12 : SemSubtyp Γ T1 T2)
+  (h23 : SemSubtyp Γ T2 T3) :
+  SemSubtyp Γ T1 T3 := by
+  -- Unfold SemSubtyp and handle each type sort
+  simp [SemSubtyp] at h12 h23 ⊢
+  -- Match on the type sort
+  cases k with
+  | shape =>
+    -- For shape types: prove (Ty.shape_val_denot env T1).ImplyAfter H (Ty.shape_val_denot env T3)
+    intro env H htyping
+    -- Extract the hypotheses for T1→T2 and T2→T3
+    have h12' := h12 env H htyping
+    have h23' := h23 env H htyping
+    -- Unfold PreDenot.ImplyAfter
+    simp [PreDenot.ImplyAfter] at h12' h23' ⊢
+    intro R
+    -- Extract the Denot.ImplyAfter hypotheses for this specific R
+    have h12_R := h12' R
+    have h23_R := h23' R
+    -- Unfold Denot.ImplyAfter
+    simp [Denot.ImplyAfter] at h12_R h23_R ⊢
+    intro m' hsubsumes
+    -- Apply transitivity of ImplyAt
+    exact Denot.implyat_trans (h12_R m' hsubsumes) (h23_R m' hsubsumes)
+  | capt =>
+    -- For capturing types: prove (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T3)
+    intro env H htyping
+    -- Extract the hypotheses for T1→T2 and T2→T3
+    have h12' := h12 env H htyping
+    have h23' := h23 env H htyping
+    -- Unfold Denot.ImplyAfter
+    simp [Denot.ImplyAfter] at h12' h23' ⊢
+    intro m' hsubsumes
+    -- Apply transitivity of ImplyAt
+    exact Denot.implyat_trans (h12' m' hsubsumes) (h23' m' hsubsumes)
+  | exi =>
+    -- For existential types: prove (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T3)
+    intro env H htyping
+    -- Extract the hypotheses for T1→T2 and T2→T3
+    have h12' := h12 env H htyping
+    have h23' := h23 env H htyping
+    -- Unfold Denot.ImplyAfter
+    simp [Denot.ImplyAfter] at h12' h23' ⊢
+    intro m' hsubsumes
+    -- Apply transitivity of ImplyAt
+    exact Denot.implyat_trans (h12' m' hsubsumes) (h23' m' hsubsumes)
+
+lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
+  SemSubtyp Γ T T := by
+  -- Unfold SemSubtyp and handle each type sort
+  simp [SemSubtyp]
+  -- Match on the type sort
+  cases k with
+  | shape =>
+    -- For shape types, prove (Ty.shape_val_denot env T).ImplyAfter H (Ty.shape_val_denot env T)
+    intro env H htyping
+    simp [PreDenot.ImplyAfter]
+    intro R
+    simp [Denot.ImplyAfter]
+    intro m' hsubsumes
+    -- Apply reflexivity of implication
+    exact Denot.imply_implyat (Denot.imply_refl _)
+  | capt =>
+    -- For capturing types, prove (Ty.capt_val_denot env T).ImplyAfter H (Ty.capt_val_denot env T)
+    intro env H htyping
+    simp [Denot.ImplyAfter]
+    intro m' hsubsumes
+    -- Apply reflexivity of implication
+    exact Denot.imply_implyat (Denot.imply_refl _)
+  | exi =>
+    -- For existential types, prove (Ty.exi_val_denot env T).ImplyAfter H (Ty.exi_val_denot env T)
+    intro env H htyping
+    simp [Denot.ImplyAfter]
+    intro m' hsubsumes
+    -- Apply reflexivity of implication
+    exact Denot.imply_implyat (Denot.imply_refl _)
+
 theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
   case top => apply sem_subtyp_top
-  case refl => trace_state; sorry
-  case trans => sorry
-  case tvar => sorry
+  case refl => apply sem_subtyp_refl
+  case trans ih12 ih23 => apply sem_subtyp_trans ih12 ih23
+  case tvar hlookup => apply sem_subtyp_tvar hlookup
   case arrow => sorry
   case poly => sorry
   case cpoly => sorry
