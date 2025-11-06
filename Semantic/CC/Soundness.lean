@@ -1715,8 +1715,59 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
   (hres : SemSubtyp (Γ,x:T2) U1 U2) :
   SemSubtyp Γ (.arrow T1 U1) (.arrow T2 U2) := by
-  trace_state
-  sorry
+  -- Unfold SemSubtyp for shape types
+  simp [SemSubtyp]
+  intro env H htyping
+  -- Need to prove PreDenot.ImplyAfter for arrow types
+  simp [PreDenot.ImplyAfter]
+  intro A
+  -- Need to prove Denot.ImplyAfter for arrow types at capability set A
+  simp [Denot.ImplyAfter]
+  intro m' hsubsumes e h_arrow_T1_U1
+  -- Unfold the denotation of arrow types
+  simp [Ty.shape_val_denot] at h_arrow_T1_U1 ⊢
+  -- Extract the components from the T1 -> U1 denotation
+  obtain ⟨hwf, cs, T0, t0, hresolve, hcs_wf, hR0_subset, hbody⟩ := h_arrow_T1_U1
+  -- Construct the proof for T2 -> U2
+  constructor
+  · exact hwf  -- Well-formedness is preserved
+  · use cs, T0, t0
+    constructor
+    · exact hresolve  -- Same resolution
+    · constructor
+      · exact hcs_wf  -- Capture set well-formedness preserved
+      · constructor
+        · exact hR0_subset  -- Same capture subset constraint
+        · -- Need to prove the body property with contravariant arg and covariant result
+          intro arg m'' hsub_m'' harg_T2
+          -- Apply contravariance: if arg satisfies T2, it also satisfies T1
+          have harg_T1 : Ty.capt_val_denot env T1 m'' (.var (.free arg)) := by
+            -- Extract semantic subtyping for arguments
+            have harg_sem := harg env H htyping
+            -- Apply it at m'' (need transitivity of subsumption)
+            have hsub_H_m'' := Memory.subsumes_trans hsub_m'' hsubsumes
+            exact harg_sem m'' hsub_H_m'' (.var (.free arg)) harg_T2
+          -- Get the body satisfaction for U1
+          specialize hbody arg m'' hsub_m'' harg_T1
+          -- Apply covariance: if body satisfies U1, it also satisfies U2
+          -- Need to show the environment typing holds for the extended context
+          have htyping_ext : EnvTyping (Γ,x:T2) (env.extend_var arg) m'' := by
+            -- Construct EnvTyping for the extended context
+            simp [TypeEnv.extend_var, EnvTyping]
+            constructor
+            · exact harg_T2
+            · -- The original typing still holds with subsumption
+              have hsub_H_m'' := Memory.subsumes_trans hsub_m'' hsubsumes
+              -- Apply subsumption monotonicity to htyping
+              sorry
+          -- Apply semantic subtyping for the result
+          have hres_sem := hres (env.extend_var arg) m'' htyping_ext
+          -- hres_sem gives us SemSubtyp for U1 → U2
+          -- For exi types, SemSubtyp means: Ty.exi_exp_denot env U1 C H e → Ty.exi_exp_denot env U2 C H e
+          let R0 := expand_captures m'.heap cs
+          let R := R0 ∪ (reachability_of_loc m''.heap arg)
+          -- exact hres_sem R (t0.subst (Subst.openVar (.free arg))) hbody
+          sorry
 
 lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   (h12 : SemSubtyp Γ T1 T2)
