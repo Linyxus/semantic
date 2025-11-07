@@ -62,14 +62,41 @@ theorem typed_env_lookup_var
       apply (Denot.equiv_to_imply heqv).1
       exact hih
 
+theorem shape_denot_with_var_reachability
+  (hclosed : Γ.IsClosed)
+  (hb : Γ.LookupVar x (.capt C S))
+  (hts : EnvTyping Γ env m)
+  (hd : Ty.shape_val_denot env S (C.denot env m) m (.var (.free (env.lookup_var x)))) :
+  Ty.shape_val_denot env S (reachability_of_loc m.heap (env.lookup_var x)) m
+    (.var (.free (env.lookup_var x))) := sorry
+
 theorem sem_typ_var
-  (hx : Γ.LookupVar x T) :
-  (.var (.bound x)) # Γ ⊨ (.var (.bound x)) : (.typ T) := by
+  (hΓ : Γ.IsClosed)
+  (hx : Γ.LookupVar x (.capt C S)) :
+  (.var (.bound x)) # Γ ⊨ (.var (.bound x)) : (.typ (.capt (.var (.bound x)) S)) := by
   intro env store hts
-  simp [Ty.exi_exp_denot, Ty.exi_val_denot]
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot]
   apply Eval.eval_var
   simp [Denot.as_mpost]
-  exact typed_env_lookup_var hts hx
+  -- From typed_env_lookup_var, we get that .var (.free n) satisfies .capt C S
+  have h_lookup := typed_env_lookup_var hts hx
+  simp [Ty.capt_val_denot] at h_lookup ⊢
+  obtain ⟨hwf, hwf_C, hshape⟩ := h_lookup
+  constructor
+  · exact hwf
+  constructor
+  · -- (.var (.bound x)).subst env becomes (.var (.free n)) which is well-formed
+    -- Need: CaptureSet.var (.free n) is well-formed, which requires heap lookup
+    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv]
+    cases hwf with
+    | wf_var hwf_var =>
+      cases hwf_var with
+      | wf_free hlookup =>
+        exact CaptureSet.WfInHeap.wf_var_free hlookup
+  · -- Use the key lemma: shape with C.denot implies shape with reachability_of_loc
+    simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
+      CaptureSet.ground_denot]
+    exact shape_denot_with_var_reachability env S C x store Γ hΓ hx hts hshape
 
 -- theorem sem_typ_abs
 --   (ht : Cbody # (Γ,x:T1) ⊨ e : T2) :
@@ -2249,7 +2276,7 @@ theorem fundamental
   C # Γ ⊨ e : T := by
   have hclosed_e := HasType.exp_is_closed ht
   induction ht
-  case var hx => apply sem_typ_var hx
+  case var hΓ hx => apply sem_typ_var hΓ hx
   case abs =>
     apply sem_typ_abs
     · exact hclosed_e
