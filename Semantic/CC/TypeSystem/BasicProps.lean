@@ -108,6 +108,80 @@ theorem CaptureBound.rename_closed {cb : CaptureBound s1} {f : Rename s1 s2} :
   case unbound => exact IsClosed.unbound
   case bound ih => exact IsClosed.bound (CaptureSet.rename_closed ih)
 
+/-- If a renamed capture bound is closed, the original is also closed. -/
+theorem CaptureBound.rename_closed_inv {cb : CaptureBound s1} {f : Rename s1 s2} :
+    (cb.rename f).IsClosed -> cb.IsClosed := by
+  intro h
+  cases cb
+  case unbound => exact IsClosed.unbound
+  case bound cs =>
+    simp [CaptureBound.rename] at h
+    cases h
+    exact IsClosed.bound (CaptureSet.rename_closed_inv ‹_›)
+
+theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
+    T.IsClosed -> (T.rename f).IsClosed := by
+  intro h
+  induction T generalizing s2
+  case top => exact IsClosed.top
+  case tvar => exact IsClosed.tvar
+  case arrow T1 T2 ih1 ih2 =>
+    cases h with | arrow h1 h2 =>
+    exact IsClosed.arrow (ih1 h1) (ih2 h2)
+  case poly S T ih1 ih2 =>
+    cases h with | poly h1 h2 =>
+    exact IsClosed.poly (ih1 h1) (ih2 h2)
+  case cpoly cb T ihcb ihT =>
+    cases h with | cpoly hcb hT =>
+    exact IsClosed.cpoly (CaptureBound.rename_closed hcb) (ihT hT)
+  case unit => exact IsClosed.unit
+  case cap => exact IsClosed.cap
+  case capt C S ihC ihS =>
+    cases h with | capt hC hS =>
+    exact IsClosed.capt (CaptureSet.rename_closed hC) (ihS hS)
+  case typ T ih =>
+    cases h with | typ hT =>
+    exact IsClosed.typ (ih hT)
+  case exi T ih =>
+    cases h with | exi hT =>
+    exact IsClosed.exi (ih hT)
+
+/-- If a renamed type is closed, the original is also closed. -/
+theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
+    (T.rename f).IsClosed -> T.IsClosed := by
+  intro h
+  induction T generalizing s2
+  case top => exact IsClosed.top
+  case tvar => exact IsClosed.tvar
+  case arrow T1 T2 ih1 ih2 =>
+    simp [Ty.rename] at h
+    cases h; rename_i h1 h2
+    exact IsClosed.arrow (ih1 h1) (ih2 h2)
+  case poly S T ih1 ih2 =>
+    simp [Ty.rename] at h
+    cases h; rename_i h1 h2
+    exact IsClosed.poly (ih1 h1) (ih2 h2)
+  case cpoly cb T ihcb ihT =>
+    simp [Ty.rename] at h
+    cases h; rename_i hcb hT
+    constructor
+    · exact CaptureBound.rename_closed_inv hcb
+    · exact ihT hT
+  case unit => exact IsClosed.unit
+  case cap => exact IsClosed.cap
+  case capt C S ihC ihS =>
+    simp [Ty.rename] at h
+    cases h; rename_i hC hS
+    exact IsClosed.capt (CaptureSet.rename_closed_inv hC) (ihS hS)
+  case typ T ih =>
+    simp [Ty.rename] at h
+    cases h; rename_i hT
+    exact IsClosed.typ (ih hT)
+  case exi T ih =>
+    simp [Ty.rename] at h
+    cases h; rename_i hT
+    exact IsClosed.exi (ih hT)
+
 theorem HasType.use_set_is_closed
   (ht : C # Γ ⊢ e : T) :
   C.IsClosed := by
@@ -191,6 +265,97 @@ theorem HasType.exp_is_closed
       cases ih_x; assumption
     · -- Var.IsClosed y✝
       cases ih_y; assumption
+
+theorem HasType.type_is_closed
+  (ht : C # Γ ⊢ e : E) :
+  E.IsClosed := by
+  induction ht <;> try (solve | constructor | grind only [Ty.IsClosed])
+  case var => sorry -- Need context well-formedness
+  case abs T1_closed ht_body ih =>
+    constructor
+    constructor
+    · -- cs.IsClosed where cs.rename Rename.succ ∪ ... typed the body
+      have h_use := HasType.use_set_is_closed ht_body
+      cases h_use with | union h_cs_renamed h_var =>
+      exact CaptureSet.rename_closed_inv h_cs_renamed
+    · constructor <;> assumption
+  case tabs S_closed ht_body ih =>
+    constructor
+    constructor
+    · -- cs.IsClosed where cs.rename Rename.succ typed the body
+      have h_use := HasType.use_set_is_closed ht_body
+      exact CaptureSet.rename_closed_inv h_use
+    · constructor <;> assumption
+  case cabs cb_closed ht_body ih =>
+    constructor
+    constructor
+    · -- cs.IsClosed where cs.rename Rename.succ typed the body
+      have h_use := HasType.use_set_is_closed ht_body
+      exact CaptureSet.rename_closed_inv h_use
+    · constructor <;> assumption
+  case pack hC ih =>
+    -- ih : (T.subst (Subst.openCVar C)).typ.IsClosed
+    -- hC : C.IsClosed
+    -- Need: T.exi.IsClosed, i.e., T.IsClosed
+    -- T has type Ty .capt (s,C), meaning T is in extended signature
+    -- Since T.subst (openCVar C) is closed and C is closed,
+    -- T must be closed (substitution with closed terms preserves closedness)
+    constructor
+    -- For now, admit this - needs lemma about substitution/closedness
+    sorry
+  case app ih_x ih_y =>
+    -- ih_x : (Ty.capt (CaptureSet.var x) (T1.arrow T2)).typ.IsClosed
+    -- Extract: T2.IsClosed
+    cases ih_x with | typ h =>
+    cases h with | capt _ h =>
+    cases h with | arrow _ hT2 =>
+    -- hT2 : T2.IsClosed
+    -- Now T2 is in extended signature (s,x)
+    -- Need: (T2.subst (Subst.openVar y)).IsClosed
+    -- Since T2 is closed and openVar y substitutes with a bound variable,
+    -- the result is closed
+    sorry
+  case tapp hS ih =>
+    -- ih : (Ty.capt (CaptureSet.var x) (S.poly T)).typ.IsClosed
+    -- hS : S.IsClosed
+    -- Extract: T.IsClosed
+    cases ih with | typ h =>
+    cases h with | capt _ h =>
+    cases h with | poly _ hT =>
+    -- hT : T.IsClosed
+    -- Need: (T.subst (Subst.openTVar S)).IsClosed
+    -- Since T is closed and S is closed, the result is closed
+    sorry
+  case capp hD ih =>
+    -- ih : (Ty.capt (CaptureSet.var x) (Ty.cpoly (CaptureBound.bound D) T)).typ.IsClosed
+    -- hD : D.IsClosed
+    -- Extract: T.IsClosed
+    cases ih with | typ h =>
+    cases h with | capt _ h =>
+    cases h with | cpoly _ hT =>
+    -- hT : T.IsClosed
+    -- Need: (T.subst (Subst.openCVar D)).IsClosed
+    -- Since T is closed and D is closed, the result is closed
+    sorry
+  case letin ih1 ih2 =>
+    -- ih2 : (U.rename Rename.succ).IsClosed
+    -- Need: U.IsClosed
+    exact Ty.rename_closed_inv ih2
+  case unpack ih1 ih2 =>
+    -- ih2 : ((U.rename Rename.succ).rename Rename.succ).IsClosed
+    -- Need: U.IsClosed
+    apply Ty.rename_closed_inv
+    exact Ty.rename_closed_inv ih2
+  case unit =>
+    constructor
+    constructor
+    · constructor
+    · constructor
+  case invoke =>
+    constructor
+    constructor
+    · constructor
+    · constructor
 
 -- More context lookup properties
 
