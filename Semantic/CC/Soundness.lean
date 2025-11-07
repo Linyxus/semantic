@@ -1972,7 +1972,6 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
 lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
   (hC : SemSubcapt Γ C1 C2) -- covariant in capture set
   (hS : SemSubtyp Γ S1 S2) -- covariant in shape
-  (hclosed_C1 : C1.IsClosed) -- C1 is closed
   (hclosed_C2 : C2.IsClosed) -- C2 is closed
   : SemSubtyp Γ (.capt C1 S1) (.capt C2 S2) := by
   -- Unfold SemSubtyp for capt types
@@ -2015,10 +2014,11 @@ lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
 
       -- Step 2: Lift S1 from C1.denot to C2.denot
       have hS1_at_C2 : Ty.shape_val_denot env S1 (C2.denot env m) m e := by
-        -- Shape denotations are covariant in capability sets
-        -- For each type constructor, a smaller capability set is harder to satisfy
-        -- So if e : S1 at C1 and C1 ⊆ C2, then e : S1 at C2
-        sorry  -- Need: capability set covariance for shape types
+        -- Use reachability monotonicity: shape types are covariant in capability sets
+        have henv_mono := typed_env_is_reachability_monotonic htyping
+        have hshape_mono := shape_val_denot_is_reachability_monotonic henv_mono S1
+        simp [PreDenot.is_reachability_monotonic] at hshape_mono
+        exact hshape_mono (C1.denot env m) (C2.denot env m) hC_subset m e hS1_at_C1
 
       -- Step 3: Apply semantic subtyping
       have hS_sem := hS env H htyping
@@ -2139,7 +2139,7 @@ theorem fundamental_subtyp
     -- Convert syntactic subcapture to semantic
     have ih_capt := fundamental_subcapt hsub_capt
     -- Apply the lemma
-    apply sem_subtyp_capt ih_capt (ih_shape hS1_closed hS2_closed) hC1_closed hC2_closed
+    apply sem_subtyp_capt ih_capt (ih_shape hS1_closed hS2_closed) hC2_closed
   case exi => sorry
   case typ => sorry
 
