@@ -2074,6 +2074,17 @@ theorem fundamental_subtyp
     -- Apply the lemma
     apply sem_subtyp_typ (ih_body hT1_body_closed hT2_body_closed)
 
+theorem sem_typ_subtyp
+  {C1 C2 : CaptureSet s} {E1 E2 : Ty .exi s}
+  (ht : C1 # Γ ⊨ e : E1)
+  (hsubcapt : Subcapt Γ C1 C2)
+  (hsubtyp : Subtyp Γ E1 E2)
+  (hclosed_C1 : C1.IsClosed) (hclosed_E1 : E1.IsClosed)
+  (hclosed_C2 : C2.IsClosed) (hclosed_E2 : E2.IsClosed) :
+  C2 # Γ ⊨ e : E2 := by
+  trace_state
+  sorry
+
 -- theorem sem_typ_subtyp
 --   (ht : Γ ⊨ e : T1)
 --   (hsub : Subtyp Γ T1 T2) :
@@ -2296,6 +2307,12 @@ theorem fundamental
         (HasType.use_set_is_closed ht_syn)
         (ht_ih ht_closed)
         (hu_ih hu_closed)
-  case subtyp => sorry --grind [sem_typ_subtyp]
+  case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
+    -- Get closedness of C1 from the syntactic typing derivation
+    have hclosed_C1 := HasType.use_set_is_closed ht_syn
+
+    -- For E1's closedness, we need a helper theorem HasType.type_is_closed
+    -- For now, use sorry - this needs to be added as a lemma
+    apply sem_typ_subtyp (ht_ih sorry) hsubcapt hsubtyp hclosed_C1 sorry hclosed_C2 hclosed_E2
 
 end CC
