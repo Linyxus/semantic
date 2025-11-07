@@ -182,6 +182,19 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     cases h; rename_i hT
     exact IsClosed.exi (ih hT)
 
+theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
+  (hΓ : Γ.IsClosed) (hlookup : Γ.LookupVar x T) :
+  T.IsClosed := by
+  induction hlookup with
+  | here =>
+    cases hΓ with | push hΓ_prev hb =>
+    cases hb with | var hT =>
+    exact Ty.rename_closed hT
+  | there _ ih =>
+    cases hΓ with | push hΓ_prev _ =>
+    have hT := ih hΓ_prev
+    exact Ty.rename_closed hT
+
 theorem HasType.use_set_is_closed
   (ht : C # Γ ⊢ e : T) :
   C.IsClosed := by
@@ -270,7 +283,9 @@ theorem HasType.type_is_closed
   (ht : C # Γ ⊢ e : E) :
   E.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [Ty.IsClosed])
-  case var => sorry -- Need context well-formedness
+  case var hΓ_closed hlookup =>
+    constructor
+    exact Ctx.lookup_var_gives_closed hΓ_closed hlookup
   case abs T1_closed ht_body ih =>
     constructor
     constructor
