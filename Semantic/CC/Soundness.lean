@@ -68,7 +68,131 @@ theorem shape_denot_with_var_reachability
   (hts : EnvTyping Γ env m)
   (hd : Ty.shape_val_denot env S (C.denot env m) m (.var (.free (env.lookup_var x)))) :
   Ty.shape_val_denot env S (reachability_of_loc m.heap (env.lookup_var x)) m
-    (.var (.free (env.lookup_var x))) := sorry
+    (.var (.free (env.lookup_var x))) := by
+  -- Key insight: For a variable .var (.free n), its reachability_of_loc equals
+  -- the captures of the value stored at location n. This is maintained by heap invariants.
+  -- So changing from C.denot to reachability_of_loc just changes the upper bound,
+  -- but the stored value's captures remain the same.
+  cases S with
+  | top =>
+    simp [Ty.shape_val_denot] at hd ⊢
+    constructor
+    · exact hd.1
+    · -- Have: resolve_reachability m.heap (.var (.free n)) ⊆ C.denot env m
+      -- Need: resolve_reachability m.heap (.var (.free n)) ⊆ reachability_of_loc m.heap n
+      -- For variables: resolve_reachability m.heap (.var (.free n)) = reachability_of_loc m.heap n
+      simp [resolve_reachability]
+      exact CapabilitySet.Subset.refl
+  | tvar X =>
+    -- Type variables: PreDenot takes capability set parameter
+    -- For type variables, we need to use monotonicity since we'll prove reachability later
+    simp [Ty.shape_val_denot] at hd ⊢
+    sorry  -- TODO: Need typed_env_lookup_var_reachability which is defined later
+  | unit =>
+    -- Unit doesn't depend on capability set
+    simp [Ty.shape_val_denot] at hd ⊢
+    exact hd
+  | cap =>
+    -- Capability shape: e = .var (.free label) where label is a capability
+    -- The cap case is more complex due to membership proofs
+    sorry  -- TODO: Handle capability case with proper membership extraction
+  | arrow T1 T2 =>
+    -- Arrow: e resolves to abstraction with captures cs
+    simp [Ty.shape_val_denot] at hd ⊢
+    obtain ⟨hwf, cs, T0, t0, hresolve, hwf_cs, hR0_subset_C, hbody⟩ := hd
+    constructor
+    · exact hwf
+    · use cs, T0, t0
+      constructor
+      · exact hresolve
+      · constructor
+        · exact hwf_cs
+        · constructor
+          · -- Have: expand_captures m.heap cs ⊆ C.denot env m
+            -- Need: expand_captures m.heap cs ⊆ reachability_of_loc m.heap n
+            -- For variables: reachability_of_loc n equals expand_captures of stored cs
+            let n := env.lookup_var x
+            -- resolve m.heap (.var (.free n)) = some (.abs cs T0 t0)
+            -- This means m.heap n stores the abstraction
+            simp [resolve] at hresolve
+            cases hlookup_heap : m.heap n with
+            | none => rw [hlookup_heap] at hresolve; simp at hresolve
+            | some cell =>
+              rw [hlookup_heap] at hresolve
+              cases cell with
+              | capability => simp at hresolve
+              | val hv =>
+                simp at hresolve
+                cases hunwrap : hv.unwrap <;> (try simp [hunwrap] at hresolve)
+                case abs cs' T0' t0' =>
+                  obtain ⟨rfl, rfl, rfl⟩ := hresolve
+                  -- Use heap invariant: reachability_of_loc n = expand_captures cs
+                  have heq := reachability_of_loc_eq_resolve_reachability m n hv
+                    hlookup_heap
+                  simp [resolve_reachability, hunwrap] at heq
+                  rw [heq]
+                  exact CapabilitySet.Subset.refl
+          · exact hbody
+  | poly S0 T =>
+    -- Similar to arrow
+    simp [Ty.shape_val_denot] at hd ⊢
+    obtain ⟨hwf, cs, S1, t0, hresolve, hwf_cs, hR0_subset_C, hbody⟩ := hd
+    constructor
+    · exact hwf
+    · use cs, S1, t0
+      constructor
+      · exact hresolve
+      · constructor
+        · exact hwf_cs
+        · constructor
+          · let n := env.lookup_var x
+            simp [resolve] at hresolve
+            cases hlookup_heap : m.heap n with
+            | none => rw [hlookup_heap] at hresolve; simp at hresolve
+            | some cell =>
+              rw [hlookup_heap] at hresolve
+              cases cell with
+              | capability => simp at hresolve
+              | val hv =>
+                simp at hresolve
+                cases hunwrap : hv.unwrap <;> (try simp [hunwrap] at hresolve)
+                case tabs cs' S1' t0' =>
+                  obtain ⟨rfl, rfl, rfl⟩ := hresolve
+                  have heq := reachability_of_loc_eq_resolve_reachability m n hv hlookup_heap
+                  simp [resolve_reachability, hunwrap] at heq
+                  rw [heq]
+                  exact CapabilitySet.Subset.refl
+          · exact hbody
+  | cpoly B T =>
+    -- Similar to arrow
+    simp [Ty.shape_val_denot] at hd ⊢
+    obtain ⟨hwf, cs, B0, t0, hresolve, hwf_cs, hR0_subset_C, hbody⟩ := hd
+    constructor
+    · exact hwf
+    · use cs, B0, t0
+      constructor
+      · exact hresolve
+      · constructor
+        · exact hwf_cs
+        · constructor
+          · let n := env.lookup_var x
+            simp [resolve] at hresolve
+            cases hlookup_heap : m.heap n with
+            | none => rw [hlookup_heap] at hresolve; simp at hresolve
+            | some cell =>
+              rw [hlookup_heap] at hresolve
+              cases cell with
+              | capability => simp at hresolve
+              | val hv =>
+                simp at hresolve
+                cases hunwrap : hv.unwrap <;> (try simp [hunwrap] at hresolve)
+                case cabs cs' B0' t0' =>
+                  obtain ⟨rfl, rfl, rfl⟩ := hresolve
+                  have heq := reachability_of_loc_eq_resolve_reachability m n hv hlookup_heap
+                  simp [resolve_reachability, hunwrap] at heq
+                  rw [heq]
+                  exact CapabilitySet.Subset.refl
+          · exact hbody
 
 theorem sem_typ_var
   (hΓ : Γ.IsClosed)
@@ -96,7 +220,7 @@ theorem sem_typ_var
   · -- Use the key lemma: shape with C.denot implies shape with reachability_of_loc
     simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
       CaptureSet.ground_denot]
-    exact shape_denot_with_var_reachability env S C x store Γ hΓ hx hts hshape
+    exact shape_denot_with_var_reachability hΓ hx hts hshape
 
 -- theorem sem_typ_abs
 --   (ht : Cbody # (Γ,x:T1) ⊨ e : T2) :
