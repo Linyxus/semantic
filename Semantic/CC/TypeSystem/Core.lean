@@ -143,6 +143,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
+  Γ.IsClosed ->
   Γ.LookupVar x T ->
   ----------------------------
   HasType (.var (.bound x)) Γ (.var (.bound x)) (.typ T)
