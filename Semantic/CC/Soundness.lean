@@ -1972,6 +1972,8 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
 lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
   (hC : SemSubcapt Γ C1 C2) -- covariant in capture set
   (hS : SemSubtyp Γ S1 S2) -- covariant in shape
+  (hclosed_C1 : C1.IsClosed) -- C1 is closed
+  (hclosed_C2 : C2.IsClosed) -- C2 is closed
   : SemSubtyp Γ (.capt C1 S1) (.capt C2 S2) := by
   -- Unfold SemSubtyp for capt types
   simp [SemSubtyp]
@@ -1988,7 +1990,17 @@ lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
   · exact hwf  -- Well-formedness preserved
   · constructor
     · -- Need: (C2.subst (Subst.from_TypeEnv env)).WfInHeap m.heap
-      sorry  -- Should follow from subcapture and well-formedness
+      -- From closedness of C2, we get well-formedness at any heap
+      -- First show it's well-formed at H.heap
+      have hwf_C2_at_H : (C2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
+        -- Use wf_subst with closedness of C2 and well-formedness of the substitution
+        apply CaptureSet.wf_subst
+        · -- C2.WfInHeap H.heap follows from closedness
+          apply CaptureSet.wf_of_closed hclosed_C2
+        · -- (Subst.from_TypeEnv env).WfInHeap H.heap follows from EnvTyping
+          exact from_TypeEnv_wf_in_heap htyping
+      -- Then lift to m.heap using monotonicity
+      exact CaptureSet.wf_monotonic hsubsumes hwf_C2_at_H
     · -- Need: Ty.shape_val_denot env S2 (C2.denot env m) m e
       -- We have: hS1_at_C1 : Ty.shape_val_denot env S1 (C1.denot env m) m e
       -- Strategy:
@@ -2127,7 +2139,7 @@ theorem fundamental_subtyp
     -- Convert syntactic subcapture to semantic
     have ih_capt := fundamental_subcapt hsub_capt
     -- Apply the lemma
-    apply sem_subtyp_capt ih_capt (ih_shape hS1_closed hS2_closed)
+    apply sem_subtyp_capt ih_capt (ih_shape hS1_closed hS2_closed) hC1_closed hC2_closed
   case exi => sorry
   case typ => sorry
 
