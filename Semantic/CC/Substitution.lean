@@ -928,4 +928,46 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
   | unit =>
     exact IsClosed.unit
 
+theorem Subst.openVar_is_closed {z : Var .var s}
+  (hz : z.IsClosed) :
+  (Subst.openVar z).IsClosed where
+  var_closed := fun x => by
+    cases x with
+    | here => exact hz
+    | there x => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    cases X with
+    | there X => exact Ty.IsClosed.tvar
+  cvar_closed := fun C => by
+    cases C with
+    | there C => exact CaptureSet.IsClosed.cvar
+
+theorem Subst.openTVar_is_closed {U : Ty .shape s}
+  (hU : U.IsClosed) :
+  (Subst.openTVar U).IsClosed where
+  var_closed := fun x => by
+    cases x with
+    | there x => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    cases X with
+    | here => exact hU
+    | there X => exact Ty.IsClosed.tvar
+  cvar_closed := fun C => by
+    cases C with
+    | there C => exact CaptureSet.IsClosed.cvar
+
+theorem Subst.openCVar_is_closed {C : CaptureSet s}
+  (hC : C.IsClosed) :
+  (Subst.openCVar C).IsClosed where
+  var_closed := fun x => by
+    cases x with
+    | there x => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    cases X with
+    | there X => exact Ty.IsClosed.tvar
+  cvar_closed := fun c => by
+    cases c with
+    | here => exact hC
+    | there c => exact CaptureSet.IsClosed.cvar
+
 end CC
