@@ -708,4 +708,17 @@ theorem CaptureSet.ground_subst_invariant {C : CaptureSet {}} :
       simp [CaptureSet.subst, Var.subst]
   | cvar c => cases c  -- No capture variables in empty signature
 
+structure Subst.IsClosed (σ : Subst s1 s2) : Prop where
+  var_closed : ∀ x, (σ.var x).IsClosed
+  tvar_closed : ∀ X, (σ.tvar X).IsClosed
+  cvar_closed : ∀ C, (σ.cvar C).IsClosed
+
+def Var.is_closed_subst {x : Var .var s1} {σ : Subst s1 s2}
+  (hc : x.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (x.subst σ).IsClosed := by
+  cases x with
+  | bound x =>
+    exact hsubst.var_closed x
+  | free n => cases hc
+
 end CC
