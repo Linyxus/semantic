@@ -62,6 +62,128 @@ theorem typed_env_lookup_var
       apply (Denot.equiv_to_imply heqv).1
       exact hih
 
+theorem typed_env_lookup_var_reachability
+  (hts : EnvTyping Γ env m)
+  (hx : Ctx.LookupVar Γ x T) :
+  reachability_of_loc m.heap (env.lookup_var x) ⊆ T.captureSet.denot env m := by
+  induction hx generalizing m
+  case here =>
+    -- Γ = .push Γ' (.var T'), x = .here
+    rename_i Γ' T'
+    cases env; rename_i info' env'
+    cases info'; rename_i n
+    simp [EnvTyping] at hts
+    simp [TypeEnv.lookup_var, TypeEnv.lookup]
+    -- From hts.1, we have: Ty.capt_val_denot env' T' m (.var (.free n))
+    -- Need: reachability_of_loc m.heap n ⊆
+    --       (T'.captureSet.rename Rename.succ).denot (env'.extend_var n) m
+    -- Extract capture set from T'
+    cases T' with | capt C S =>
+    -- From hts.1: Ty.capt_val_denot env' (.capt C S) m (.var (.free n))
+    -- This gives us: Ty.shape_val_denot env' S (C.denot env' m) m
+    --   (.var (.free n))
+    have hval := hts.1
+    simp [Ty.capt_val_denot] at hval
+    obtain ⟨_, _, hshape⟩ := hval
+    -- Apply reachability safety to get:
+    --   resolve_reachability m.heap (.var (.free n)) ⊆ C.denot env' m
+    have hsafe := shape_val_denot_is_reachability_safe
+      (typed_env_is_reachability_safe hts.2) S
+    have hreach := hsafe (C.denot env' m) m (.var (.free n)) hshape
+    -- resolve_reachability for variables equals reachability_of_loc
+    simp [resolve_reachability] at hreach
+    -- Simplify the goal to show it matches the expected form
+    simp [Ty.captureSet, Ty.rename]
+    -- Use rebinding to relate C.denot env' with
+    -- (C.rename Rename.succ).denot (env'.extend n)
+    have hreb := rebind_captureset_denot (Rebind.weaken (env:=env') (x:=n)) C
+    -- hreb : C.denot env' = (C.rename Rename.succ).denot (env'.extend_var n)
+    -- Need to apply this to memory m
+    have hreb_m : C.denot env' m =
+      (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n)) m := by
+      rw [hreb]
+      rfl
+    rw [<-hreb_m]
+    exact hreach
+  case there b hx_prev ih =>
+    -- Handle three cases based on the binding kind
+    cases b
+    case var =>
+      rename_i Γ' x' T' Tb
+      cases env; rename_i info' env'
+      cases info'; rename_i n
+      simp [EnvTyping] at hts
+      obtain ⟨_, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      -- Use rebinding to relate authorities in predecessor and extended env
+      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       T'.captureSet.denot env' m
+      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_var n) m
+      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
+      cases T' with | capt C S =>
+      simp [Ty.captureSet, Ty.rename]
+      simp [Ty.captureSet] at hih
+      have hreb := rebind_captureset_denot
+        (Rebind.weaken (env:=env') (x:=n)) C
+      have hreb_m : C.denot env' m =
+        (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n)) m := by
+        rw [hreb]
+        rfl
+      rw [<-hreb_m]
+      exact hih
+    case tvar =>
+      rename_i Γ' x' T' Sb
+      cases env; rename_i info' env'
+      cases info'; rename_i d
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      -- Use rebinding with tweaken for type variable extension
+      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       T'.captureSet.denot env' m
+      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_tvar d) m
+      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
+      cases T' with | capt C S =>
+      simp [Ty.captureSet, Ty.rename]
+      simp [Ty.captureSet] at hih
+      have hreb := rebind_captureset_denot
+        (Rebind.tweaken (env:=env') (d:=d)) C
+      have hreb_m : C.denot env' m =
+        (C.rename Rename.succ).denot (env'.extend (TypeInfo.tvar d)) m := by
+        rw [hreb]
+        rfl
+      rw [<-hreb_m]
+      exact hih
+    case cvar =>
+      rename_i Γ' x' T' Bb
+      cases env; rename_i info' env'
+      cases info'; rename_i cs
+      simp [EnvTyping] at hts
+      obtain ⟨_, _, _, henv'⟩ := hts
+      have hih := ih henv'
+      simp [TypeEnv.lookup_var, TypeEnv.lookup]
+      -- Use rebinding with cweaken for capture variable extension
+      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       T'.captureSet.denot env' m
+      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
+      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_cvar cs) m
+      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
+      cases T' with | capt C S =>
+      simp [Ty.captureSet, Ty.rename]
+      simp [Ty.captureSet] at hih
+      have hreb := rebind_captureset_denot
+        (Rebind.cweaken (env:=env') (cs:=cs)) C
+      have hreb_m : C.denot env' m =
+        (C.rename Rename.succ).denot (env'.extend (TypeInfo.cvar cs)) m := by
+        rw [hreb]
+        rfl
+      rw [<-hreb_m]
+      exact hih
+
 theorem shape_denot_with_var_reachability
   (hclosed : Γ.IsClosed)
   (hb : Γ.LookupVar x (.capt C S))
@@ -84,10 +206,23 @@ theorem shape_denot_with_var_reachability
       simp [resolve_reachability]
       exact CapabilitySet.Subset.refl
   | tvar X =>
-    -- Type variables: PreDenot takes capability set parameter
-    -- For type variables, we need to use monotonicity since we'll prove reachability later
     simp [Ty.shape_val_denot] at hd ⊢
-    sorry  -- TODO: Need typed_env_lookup_var_reachability which is defined later
+    -- For type variables, we face a fundamental challenge:
+    -- We have: hd gives us `(env.lookup_tvar X) (C.denot env m) m (.var (.free n))`
+    -- We need: `(env.lookup_tvar X) (reachability_of_loc m n) m (.var (.free n))`
+    -- We know: reachability_of_loc m n ⊆ C.denot env m (from typed_env_lookup_var_reachability)
+    -- We have: monotonicity says R1 ⊆ R2 → pd R1 m e → pd R2 m e
+    --
+    -- But we need to go from LARGER (C.denot) to SMALLER (reachability_of_loc),
+    -- which is the opposite direction of monotonicity!
+    --
+    -- This may require a different property of type variables, such as:
+    -- - Type variables from well-typed environments satisfy a stronger invariant
+    -- - Or the PreDenot for variables only depends on the variable itself
+    -- - Or we need to use the ImplyAfter relationship with the upper bound
+    --
+    -- For now, this case remains open.
+    sorry
   | unit =>
     -- Unit doesn't depend on capability set
     simp [Ty.shape_val_denot] at hd ⊢
@@ -1395,128 +1530,6 @@ theorem typed_env_lookup_cvar
   have h := typed_env_lookup_cvar_aux hts hc
   simp [CaptureBound.denot] at h
   exact h
-
-theorem typed_env_lookup_var_reachability
-  (hts : EnvTyping Γ env m)
-  (hx : Ctx.LookupVar Γ x T) :
-  reachability_of_loc m.heap (env.lookup_var x) ⊆ T.captureSet.denot env m := by
-  induction hx generalizing m
-  case here =>
-    -- Γ = .push Γ' (.var T'), x = .here
-    rename_i Γ' T'
-    cases env; rename_i info' env'
-    cases info'; rename_i n
-    simp [EnvTyping] at hts
-    simp [TypeEnv.lookup_var, TypeEnv.lookup]
-    -- From hts.1, we have: Ty.capt_val_denot env' T' m (.var (.free n))
-    -- Need: reachability_of_loc m.heap n ⊆
-    --       (T'.captureSet.rename Rename.succ).denot (env'.extend_var n) m
-    -- Extract capture set from T'
-    cases T' with | capt C S =>
-    -- From hts.1: Ty.capt_val_denot env' (.capt C S) m (.var (.free n))
-    -- This gives us: Ty.shape_val_denot env' S (C.denot env' m) m
-    --   (.var (.free n))
-    have hval := hts.1
-    simp [Ty.capt_val_denot] at hval
-    obtain ⟨_, _, hshape⟩ := hval
-    -- Apply reachability safety to get:
-    --   resolve_reachability m.heap (.var (.free n)) ⊆ C.denot env' m
-    have hsafe := shape_val_denot_is_reachability_safe
-      (typed_env_is_reachability_safe hts.2) S
-    have hreach := hsafe (C.denot env' m) m (.var (.free n)) hshape
-    -- resolve_reachability for variables equals reachability_of_loc
-    simp [resolve_reachability] at hreach
-    -- Simplify the goal to show it matches the expected form
-    simp [Ty.captureSet, Ty.rename]
-    -- Use rebinding to relate C.denot env' with
-    -- (C.rename Rename.succ).denot (env'.extend n)
-    have hreb := rebind_captureset_denot (Rebind.weaken (env:=env') (x:=n)) C
-    -- hreb : C.denot env' = (C.rename Rename.succ).denot (env'.extend_var n)
-    -- Need to apply this to memory m
-    have hreb_m : C.denot env' m =
-      (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n)) m := by
-      rw [hreb]
-      rfl
-    rw [<-hreb_m]
-    exact hreach
-  case there b hx_prev ih =>
-    -- Handle three cases based on the binding kind
-    cases b
-    case var =>
-      rename_i Γ' x' T' Tb
-      cases env; rename_i info' env'
-      cases info'; rename_i n
-      simp [EnvTyping] at hts
-      obtain ⟨_, henv'⟩ := hts
-      have hih := ih henv'
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      -- Use rebinding to relate authorities in predecessor and extended env
-      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
-      --       T'.captureSet.denot env' m
-      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
-      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_var n) m
-      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
-      cases T' with | capt C S =>
-      simp [Ty.captureSet, Ty.rename]
-      simp [Ty.captureSet] at hih
-      have hreb := rebind_captureset_denot
-        (Rebind.weaken (env:=env') (x:=n)) C
-      have hreb_m : C.denot env' m =
-        (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n)) m := by
-        rw [hreb]
-        rfl
-      rw [<-hreb_m]
-      exact hih
-    case tvar =>
-      rename_i Γ' x' T' Sb
-      cases env; rename_i info' env'
-      cases info'; rename_i d
-      simp [EnvTyping] at hts
-      obtain ⟨_, _, henv'⟩ := hts
-      have hih := ih henv'
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      -- Use rebinding with tweaken for type variable extension
-      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
-      --       T'.captureSet.denot env' m
-      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
-      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_tvar d) m
-      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
-      cases T' with | capt C S =>
-      simp [Ty.captureSet, Ty.rename]
-      simp [Ty.captureSet] at hih
-      have hreb := rebind_captureset_denot
-        (Rebind.tweaken (env:=env') (d:=d)) C
-      have hreb_m : C.denot env' m =
-        (C.rename Rename.succ).denot (env'.extend (TypeInfo.tvar d)) m := by
-        rw [hreb]
-        rfl
-      rw [<-hreb_m]
-      exact hih
-    case cvar =>
-      rename_i Γ' x' T' Bb
-      cases env; rename_i info' env'
-      cases info'; rename_i cs
-      simp [EnvTyping] at hts
-      obtain ⟨_, _, _, henv'⟩ := hts
-      have hih := ih henv'
-      simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      -- Use rebinding with cweaken for capture variable extension
-      -- hih : reachability_of_loc m.heap (env'.lookup_var x') ⊆
-      --       T'.captureSet.denot env' m
-      -- Need: reachability_of_loc m.heap (env'.lookup_var x') ⊆
-      --       (T'.rename Rename.succ).captureSet.denot (env'.extend_cvar cs) m
-      -- First, show that (T'.rename f).captureSet = T'.captureSet.rename f
-      cases T' with | capt C S =>
-      simp [Ty.captureSet, Ty.rename]
-      simp [Ty.captureSet] at hih
-      have hreb := rebind_captureset_denot
-        (Rebind.cweaken (env:=env') (cs:=cs)) C
-      have hreb_m : C.denot env' m =
-        (C.rename Rename.succ).denot (env'.extend (TypeInfo.cvar cs)) m := by
-        rw [hreb]
-        rfl
-      rw [<-hreb_m]
-      exact hih
 
 theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s}
   (hlookup : Γ.LookupVar x (.capt C S)) :
