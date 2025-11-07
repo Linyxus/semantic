@@ -970,4 +970,33 @@ theorem Subst.openCVar_is_closed {C : CaptureSet s}
     | here => exact hC
     | there c => exact CaptureSet.IsClosed.cvar
 
+theorem Var.subst_closed_inv {x : Var .var s1} {σ : Subst s1 s2}
+  (hclosed : (x.subst σ).IsClosed) :
+  x.IsClosed := by
+  cases x with
+  | bound bx => constructor
+  | free n =>
+    simp [Var.subst] at hclosed
+    cases hclosed
+
+theorem CaptureSet.subst_closed_inv {cs : CaptureSet s1} {σ : Subst s1 s2}
+  (hclosed : (cs.subst σ).IsClosed) :
+  cs.IsClosed := by
+  sorry
+
+theorem CaptureBound.subst_closed_inv {cb : CaptureBound s1} {σ : Subst s1 s2}
+  (hclosed : (cb.subst σ).IsClosed) :
+  cb.IsClosed := by
+  sorry
+
+theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
+  (hclosed : (T.subst σ).IsClosed) :
+  T.IsClosed := by
+  sorry
+
+theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
+  (hclosed : (e.subst σ).IsClosed) :
+  e.IsClosed := by
+  sorry
+
 end CC
