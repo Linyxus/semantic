@@ -2335,9 +2335,10 @@ theorem fundamental
   case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
     -- Get closedness of C1 from the syntactic typing derivation
     have hclosed_C1 := HasType.use_set_is_closed ht_syn
-
-    -- For E1's closedness, we need a helper theorem HasType.type_is_closed
-    -- For now, use sorry - this needs to be added as a lemma
-    apply sem_typ_subtyp (ht_ih sorry) hsubcapt hsubtyp hclosed_C1 sorry hclosed_C2 hclosed_E2
+    -- Get closedness of E1 from the syntactic typing derivation
+    have hclosed_E1 := HasType.type_is_closed ht_syn
+    -- Apply the semantic subtyping lemma
+    apply sem_typ_subtyp (ht_ih hclosed_e) hsubcapt hsubtyp
+      hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
 
 end CC
