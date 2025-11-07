@@ -10,4 +10,4 @@ import Semantic.CC.Semantics
 
 import Semantic.CC.Denotation
 
--- import Semantic.CC.Soundness
+import Semantic.CC.Soundness
