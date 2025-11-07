@@ -275,6 +275,8 @@ def rebind_exi_val_denot
       case pack =>
         rename_i CS y
         simp
+        -- Goal: CS.WfInHeap s.heap → (... ↔ ...)
+        intro _hwf
         have ih := rebind_capt_val_denot (ρ.liftCVar CS) T
         exact ih s (Exp.var y)
       all_goals {

@@ -1330,7 +1330,8 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
     have hlookup : m.heap x = some (Cell.val v) := by simp [Memory.lookup] at hx; exact hx
     -- Rewrite resolve m.heap (var (free x))
     change match resolve m.heap (.var (.free x)) with
-      | some (.pack CS x) => Ty.capt_val_denot (env.extend_cvar CS) T m (.var x)
+      | some (.pack CS x) =>
+        CS.WfInHeap m.heap ∧ Ty.capt_val_denot (env.extend_cvar CS) T m (.var x)
       | _ => False
     simp only [resolve, hlookup]
     -- Now goal is: match (some v.unwrap) with ...
@@ -1713,21 +1714,26 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         -- resolve m1.heap e = some (pack CS y)
         rename_i CS y
         simp [hresolve1] at ht
-        -- ht now says: Ty.capt_val_denot (env.extend_cvar CS) T m1 (var y)
+        -- ht now says: CS.WfInHeap m1.heap ∧ Ty.capt_val_denot (env.extend_cvar CS) T m1 (var y)
+        obtain ⟨hwf_CS_m1, ht_body⟩ := ht
         -- Use resolve_monotonic to show resolve m2.heap e = some (pack CS y)
         have hresolve2 : resolve m2.heap e = some (Exp.pack CS y) := by
           apply resolve_monotonic hmem hresolve1
         simp [hresolve2]
-        -- Now need to show: Ty.capt_val_denot (env.extend_cvar CS) T m2 (var y)
-        -- Use monotonicity of capt_val_denot
-        have henv' : (env.extend_cvar CS).IsMonotonic := by
-          constructor
-          · intro X
-            cases X with
-            | there X' =>
-              simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-              exact henv.tvar X'
-        exact capt_val_denot_is_monotonic henv' T hmem ht
+        -- Now need to show:
+        -- CS.WfInHeap m2.heap ∧ Ty.capt_val_denot (env.extend_cvar CS) T m2 (var y)
+        constructor
+        · -- Well-formedness is monotonic
+          exact CaptureSet.wf_monotonic hmem hwf_CS_m1
+        · -- Use monotonicity of capt_val_denot
+          have henv' : (env.extend_cvar CS).IsMonotonic := by
+            constructor
+            · intro X
+              cases X with
+              | there X' =>
+                simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                exact henv.tvar X'
+          exact capt_val_denot_is_monotonic henv' T hmem ht_body
       all_goals {
         -- resolve returned non-pack, so ht is False
         simp [hresolve1] at ht
