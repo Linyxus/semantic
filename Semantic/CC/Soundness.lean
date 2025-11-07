@@ -207,21 +207,6 @@ theorem shape_denot_with_var_reachability
       exact CapabilitySet.Subset.refl
   | tvar X =>
     simp [Ty.shape_val_denot] at hd ⊢
-    -- For type variables, we face a fundamental challenge:
-    -- We have: hd gives us `(env.lookup_tvar X) (C.denot env m) m (.var (.free n))`
-    -- We need: `(env.lookup_tvar X) (reachability_of_loc m n) m (.var (.free n))`
-    -- We know: reachability_of_loc m n ⊆ C.denot env m (from typed_env_lookup_var_reachability)
-    -- We have: monotonicity says R1 ⊆ R2 → pd R1 m e → pd R2 m e
-    --
-    -- But we need to go from LARGER (C.denot) to SMALLER (reachability_of_loc),
-    -- which is the opposite direction of monotonicity!
-    --
-    -- This may require a different property of type variables, such as:
-    -- - Type variables from well-typed environments satisfy a stronger invariant
-    -- - Or the PreDenot for variables only depends on the variable itself
-    -- - Or we need to use the ImplyAfter relationship with the upper bound
-    --
-    -- For now, this case remains open.
     sorry
   | unit =>
     -- Unit doesn't depend on capability set
@@ -229,8 +214,26 @@ theorem shape_denot_with_var_reachability
     exact hd
   | cap =>
     -- Capability shape: e = .var (.free label) where label is a capability
-    -- The cap case is more complex due to membership proofs
-    sorry  -- TODO: Handle capability case with proper membership extraction
+    simp [Ty.shape_val_denot] at hd ⊢
+    -- After simplification:
+    -- hd: hwf ∧ m.lookup n = some .capability ∧ n ∈ C.denot env m
+    -- Goal: hwf ∧ m.lookup n = some .capability ∧ n ∈ reachability_of_loc m.heap n
+    -- where n = env.lookup_var x
+    obtain ⟨hwf, hlookup, _⟩ := hd
+    constructor
+    · exact hwf
+    · constructor
+      · exact hlookup
+      · -- Need: n ∈ reachability_of_loc m.heap n
+        -- Since m.lookup n = some .capability, reachability_of_loc m.heap n = {n}
+        let n := env.lookup_var x
+        unfold reachability_of_loc
+        simp [Memory.lookup] at hlookup
+        rw [hlookup]
+        -- Goal: n ∈ {n} (singleton set membership)
+        -- {n} = .cap n by definition of singleton
+        -- Use CapabilitySet.mem.here : mem l (.cap l)
+        exact CapabilitySet.mem.here
   | arrow T1 T2 =>
     -- Arrow: e resolves to abstraction with captures cs
     simp [Ty.shape_val_denot] at hd ⊢
