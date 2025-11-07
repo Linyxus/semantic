@@ -285,7 +285,16 @@ theorem HasType.type_is_closed
   induction ht <;> try (solve | constructor | grind only [Ty.IsClosed])
   case var hΓ_closed hlookup =>
     constructor
-    exact Ctx.lookup_var_gives_closed hΓ_closed hlookup
+    -- Need to prove: (.capt (.var (.bound x)) S).IsClosed
+    -- We have: hlookup : Γ.LookupVar x (.capt C S)
+    -- Extract S.IsClosed from the lookup
+    have hT_closed := Ctx.lookup_var_gives_closed hΓ_closed hlookup
+    cases hT_closed with | capt _ hS =>
+    constructor
+    · -- (.var (.bound x)).IsClosed
+      constructor
+    · -- S.IsClosed
+      exact hS
   case abs T1_closed ht_body ih =>
     constructor
     constructor
