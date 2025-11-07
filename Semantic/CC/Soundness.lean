@@ -465,32 +465,41 @@ theorem sem_typ_pack
       simp [Exp.subst]
     rw [this]
     simp [resolve]
-    -- Goal: capt_val_denot (env.extend_cvar (cs.subst ...)) T store (var (x.subst ...))
-    -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
-    have hx := ht env store hts
-    simp [Ty.exi_exp_denot, Ty.exi_val_denot] at hx
-    -- hx : Eval ... store ((Exp.var x).subst ...)
-    --      (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost
-    -- Since (Exp.var x).subst is a variable, invert the Eval
-    have : (Exp.var x).subst (Subst.from_TypeEnv env) =
-           Exp.var (x.subst (Subst.from_TypeEnv env)) := by
-      cases x <;> simp [Exp.subst, Var.subst]
-    rw [this] at hx
-    cases hx
-    case eval_var hQ =>
-      -- hQ : (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost (var (x.subst ...)) store
-      simp [Denot.as_mpost] at hQ
-      -- hQ : capt_val_denot env (T.subst (Subst.openCVar cs)) store (var (x.subst ...))
-      -- Now use retype lemma to convert from T.subst (Subst.openCVar cs) at env
-      -- to T at env.extend_cvar (cs.subst ...)
-      have hretype := @retype_capt_val_denot (s,C) s
-        (env.extend_cvar (cs.subst (Subst.from_TypeEnv env)))
-        (Subst.openCVar cs) env
-        (@Retype.open_carg s env cs) T
-      exact (hretype store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ
-    case eval_val =>
-      -- Variables can only use eval_var, not eval_val
-      contradiction
+    -- Goal: CS.WfInHeap ∧ capt_val_denot (env.extend_cvar ...) T store ...
+    constructor
+    · -- Well-formedness of the capture set
+      -- cs is closed (from hclosed_e), so cs.subst is well-formed
+      have hclosed_cs : cs.IsClosed := by
+        cases hclosed_e with
+        | pack hcs_closed _hx_closed => exact hcs_closed
+      apply CaptureSet.wf_subst
+      · exact CaptureSet.wf_of_closed hclosed_cs
+      · exact from_TypeEnv_wf_in_heap hts
+    · -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
+      have hx := ht env store hts
+      simp [Ty.exi_exp_denot, Ty.exi_val_denot] at hx
+      -- hx : Eval ... store ((Exp.var x).subst ...)
+      --      (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost
+      -- Since (Exp.var x).subst is a variable, invert the Eval
+      have : (Exp.var x).subst (Subst.from_TypeEnv env) =
+             Exp.var (x.subst (Subst.from_TypeEnv env)) := by
+        cases x <;> simp [Exp.subst, Var.subst]
+      rw [this] at hx
+      cases hx
+      case eval_var hQ =>
+        -- hQ : (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost ...
+        simp [Denot.as_mpost] at hQ
+        -- hQ : capt_val_denot env (T.subst (Subst.openCVar cs)) store (var (x.subst ...))
+        -- Now use retype lemma to convert from T.subst (Subst.openCVar cs) at env
+        -- to T at env.extend_cvar (cs.subst ...)
+        have hretype := @retype_capt_val_denot (s,C) s
+          (env.extend_cvar (cs.subst (Subst.from_TypeEnv env)))
+          (Subst.openCVar cs) env
+          (@Retype.open_carg s env cs) T
+        exact (hretype store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ
+      case eval_val =>
+        -- Variables can only use eval_var, not eval_val
+        contradiction
 
 theorem abs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
@@ -2047,33 +2056,34 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
     simp [hresolve] at h_exi_T1 ⊢
     cases cell with
     | pack CS x =>
-      -- h_exi_T1 : Ty.capt_val_denot (env.extend_cvar CS) T1 m (.var x)
-      -- Need: Ty.capt_val_denot (env.extend_cvar CS) T2 m (.var x)
+      -- h_exi_T1 : CS.WfInHeap m.heap ∧ Ty.capt_val_denot (env.extend_cvar CS) T1 m (.var x)
+      -- Need: CS.WfInHeap m.heap ∧ Ty.capt_val_denot (env.extend_cvar CS) T2 m (.var x)
+      obtain ⟨hwf_CS, h_body_T1⟩ := h_exi_T1
 
-      -- Construct EnvTyping for the extended context
-      have henv' : EnvTyping (Γ,C<:.unbound) (env.extend_cvar CS) m := by
-        simp [TypeEnv.extend_cvar]
-        constructor
-        · -- Need: CS.WfInHeap m.heap
-          -- CS is a ground capture set (CaptureSet {})
-          -- Ground closed capture sets are well-formed in any heap
-          -- For now, we use sorry - this should follow from the fact that
-          -- CS is closed (no free variables) and resolve returns well-formed expressions
-          sorry
-        · constructor
-          · -- Need: CaptureBound.unbound.subst (...).WfInHeap m.heap
-            simp [CaptureBound.subst]
-            apply CaptureBound.WfInHeap.wf_unbound
+      -- Construct the well-formedness part of the goal
+      constructor
+      · exact hwf_CS
+
+      · -- Construct EnvTyping for the extended context
+        have henv' : EnvTyping (Γ,C<:.unbound) (env.extend_cvar CS) m := by
+          simp [TypeEnv.extend_cvar]
+          constructor
+          · -- Need: CS.WfInHeap m.heap
+            exact hwf_CS
           · constructor
-            · -- Need: CS.ground_denot m ⊆ CaptureBound.unbound.denot env m
-              simp [CaptureBound.denot]
-              apply CapabilitySet.Subset.top
-            · exact env_typing_monotonic htyping hsubsumes
+            · -- Need: CaptureBound.unbound.subst (...).WfInHeap m.heap
+              simp [CaptureBound.subst]
+              apply CaptureBound.WfInHeap.wf_unbound
+            · constructor
+              · -- Need: CS.ground_denot m ⊆ CaptureBound.unbound.denot env m
+                simp [CaptureBound.denot]
+                apply CapabilitySet.Subset.top
+              · exact env_typing_monotonic htyping hsubsumes
 
-      -- Apply semantic subtyping
-      have hT_sem := hT (env.extend_cvar CS) m henv'
-      simp [Denot.ImplyAfter, Denot.ImplyAt] at hT_sem
-      exact hT_sem m (Memory.subsumes_refl m) (.var x) h_exi_T1
+        -- Apply semantic subtyping
+        have hT_sem := hT (env.extend_cvar CS) m henv'
+        simp [Denot.ImplyAfter, Denot.ImplyAt] at hT_sem
+        exact hT_sem m (Memory.subsumes_refl m) (.var x) h_body_T1
     | _ =>
       -- Other cell types don't match exi
       simp at h_exi_T1
@@ -2268,7 +2278,8 @@ theorem sem_typ_unpack
       -- Now hQ1 : After resolving pack cs (free fx), we get the value denot
       -- Simplify hQ1 by resolving the pack
       simp [resolve] at hQ1
-      -- Now hQ1 : Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var (.free fx))
+      -- Now hQ1 : cs.WfInHeap m1.heap ∧ Ty.capt_val_denot ... m1 (.var (.free fx))
+      obtain ⟨hwf_cs, hQ1_body⟩ := hQ1
 
       -- Apply hu with doubly extended environment
       have hu' := hu ((env.extend_cvar cs).extend_var fx) m1
@@ -2281,7 +2292,7 @@ theorem sem_typ_unpack
         -- This unfolds to a conjunction by EnvTyping definition
         constructor
         · -- Show: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var (.free fx))
-          exact hQ1
+          exact hQ1_body
         · -- Show: EnvTyping (Γ,C<:.unbound) (env.extend_cvar cs) m1
           -- This is also a conjunction
           constructor
