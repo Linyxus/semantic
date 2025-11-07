@@ -400,7 +400,9 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 | ρ, .typ T => Ty.capt_val_denot ρ T
 | ρ, .exi T => fun m e =>
   match resolve m.heap e with
-  | some (.pack CS x) => Ty.capt_val_denot (ρ.extend_cvar CS) T m (.var x)
+  | some (.pack CS x) =>
+    CS.WfInHeap m.heap ∧
+    Ty.capt_val_denot (ρ.extend_cvar CS) T m (.var x)
   | _ => False
 
 def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
