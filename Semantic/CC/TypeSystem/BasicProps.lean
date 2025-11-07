@@ -309,8 +309,8 @@ theorem HasType.type_is_closed
       exact CaptureSet.rename_closed_inv h_use
     · constructor <;> assumption
   case pack hC ih =>
-    trace_state
-    sorry
+    constructor
+    sorry -- TODO: Need lemma: subst_closed_implies_original_closed
   case app ht_x ht_y ih_x ih_y =>
     -- Goal: (T2✝.subst (Subst.openVar y✝)).IsClosed
     -- After rename_i, variables get renamed in order: s✝ x✝ Γ✝ T1✝ T2✝ y✝
