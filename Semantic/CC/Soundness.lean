@@ -2079,11 +2079,36 @@ theorem sem_typ_subtyp
   (ht : C1 # Γ ⊨ e : E1)
   (hsubcapt : Subcapt Γ C1 C2)
   (hsubtyp : Subtyp Γ E1 E2)
-  (hclosed_C1 : C1.IsClosed) (hclosed_E1 : E1.IsClosed)
-  (hclosed_C2 : C2.IsClosed) (hclosed_E2 : E2.IsClosed) :
+  (_hclosed_C1 : C1.IsClosed) (hclosed_E1 : E1.IsClosed)
+  (_hclosed_C2 : C2.IsClosed) (hclosed_E2 : E2.IsClosed) :
   C2 # Γ ⊨ e : E2 := by
-  trace_state
-  sorry
+  -- Unfold semantic typing
+  intro env m htyping
+  simp [Ty.exi_exp_denot]
+
+  -- Get the evaluation from ht at C1 and E1
+  have h_eval_E1 := ht env m htyping
+  simp [Ty.exi_exp_denot] at h_eval_E1
+  -- h_eval_E1 : Eval (C1.denot env m) m (e.subst ...) (exi_val_denot env E1).as_mpost
+
+  -- Use fundamental_subcapt to get C1.denot ⊆ C2.denot
+  have hsubcapt_sem := fundamental_subcapt hsubcapt env m htyping
+  -- hsubcapt_sem : C1.denot env m ⊆ C2.denot env m
+
+  -- Lift the evaluation from C1 to C2 using capability set monotonicity
+  have h_eval_E1_at_C2 := eval_capability_set_monotonic h_eval_E1 hsubcapt_sem
+  -- h_eval_E1_at_C2 : Eval (C2.denot env m) m (e.subst ...) (exi_val_denot env E1).as_mpost
+
+  -- Use fundamental_subtyp to get E1 <: E2 semantically
+  have hsubtyp_sem := fundamental_subtyp hclosed_E1 hclosed_E2 hsubtyp env m htyping
+  -- hsubtyp_sem : (exi_val_denot env E1).ImplyAfter m (exi_val_denot env E2)
+
+  -- Convert ImplyAfter to entailment
+  have h_entails := Denot.imply_after_to_m_entails_after hsubtyp_sem
+  -- h_entails : (exi_val_denot env E1).as_mpost.entails_after m (exi_val_denot env E2).as_mpost
+
+  -- Lift the evaluation from E1 to E2 using postcondition monotonicity
+  exact eval_post_monotonic_general h_entails h_eval_E1_at_C2
 
 -- theorem sem_typ_subtyp
 --   (ht : Γ ⊨ e : T1)
