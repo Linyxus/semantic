@@ -2027,6 +2027,57 @@ lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
       simp [Denot.ImplyAfter, Denot.ImplyAt] at hS_at_H
       exact hS_at_H m hsubsumes e hS1_at_C2
 
+lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
+  (hT : SemSubtyp (Γ,C<:.unbound) T1 T2) -- covariant in body
+  : SemSubtyp Γ (.exi T1) (.exi T2) := by
+  -- Unfold SemSubtyp for exi types
+  simp [SemSubtyp]
+  intro env H htyping
+  -- Need to prove Denot.ImplyAfter for exi types
+  simp [Denot.ImplyAfter, Denot.ImplyAt]
+  intro m hsubsumes e h_exi_T1
+  -- Unfold the denotation of exi types
+  simp [Ty.exi_val_denot] at h_exi_T1 ⊢
+  -- Extract the pack from the exi denotation
+  cases hresolve : resolve m.heap e with
+  | none =>
+    -- e doesn't resolve, contradiction
+    simp [hresolve] at h_exi_T1
+  | some cell =>
+    simp [hresolve] at h_exi_T1 ⊢
+    cases cell with
+    | pack CS x =>
+      -- h_exi_T1 : Ty.capt_val_denot (env.extend_cvar CS) T1 m (.var x)
+      -- Need: Ty.capt_val_denot (env.extend_cvar CS) T2 m (.var x)
+
+      -- Construct EnvTyping for the extended context
+      have henv' : EnvTyping (Γ,C<:.unbound) (env.extend_cvar CS) m := by
+        simp [TypeEnv.extend_cvar]
+        constructor
+        · -- Need: CS.WfInHeap m.heap
+          -- CS is a ground capture set (CaptureSet {})
+          -- Ground closed capture sets are well-formed in any heap
+          -- For now, we use sorry - this should follow from the fact that
+          -- CS is closed (no free variables) and resolve returns well-formed expressions
+          sorry
+        · constructor
+          · -- Need: CaptureBound.unbound.subst (...).WfInHeap m.heap
+            simp [CaptureBound.subst]
+            apply CaptureBound.WfInHeap.wf_unbound
+          · constructor
+            · -- Need: CS.ground_denot m ⊆ CaptureBound.unbound.denot env m
+              simp [CaptureBound.denot]
+              apply CapabilitySet.Subset.top
+            · exact env_typing_monotonic htyping hsubsumes
+
+      -- Apply semantic subtyping
+      have hT_sem := hT (env.extend_cvar CS) m henv'
+      simp [Denot.ImplyAfter, Denot.ImplyAt] at hT_sem
+      exact hT_sem m (Memory.subsumes_refl m) (.var x) h_exi_T1
+    | _ =>
+      -- Other cell types don't match exi
+      simp at h_exi_T1
+
 lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
   (hS : SemSubtyp Γ S2 S1) -- contravariant in bound
   (hT : SemSubtyp (Γ,X<:S2) T1 T2) -- covariant in body
@@ -2140,7 +2191,12 @@ theorem fundamental_subtyp
     have ih_capt := fundamental_subcapt hsub_capt
     -- Apply the lemma
     apply sem_subtyp_capt ih_capt (ih_shape hS1_closed hS2_closed) hC2_closed
-  case exi => sorry
+  case exi T1_body T2_body hsub_body ih_body =>
+    -- Extract closedness from exi types
+    cases hT1 with | exi hT1_body_closed =>
+    cases hT2 with | exi hT2_body_closed =>
+    -- Apply the lemma
+    apply sem_subtyp_exi (ih_body hT1_body_closed hT2_body_closed)
   case typ => sorry
 
 -- theorem sem_typ_subtyp
