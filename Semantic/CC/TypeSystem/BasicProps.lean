@@ -309,49 +309,45 @@ theorem HasType.type_is_closed
       exact CaptureSet.rename_closed_inv h_use
     · constructor <;> assumption
   case pack hC ih =>
-    -- ih : (T.subst (Subst.openCVar C)).typ.IsClosed
-    -- hC : C.IsClosed
-    -- Need: T.exi.IsClosed, i.e., T.IsClosed
-    -- T has type Ty .capt (s,C), meaning T is in extended signature
-    -- Since T.subst (openCVar C) is closed and C is closed,
-    -- T must be closed (substitution with closed terms preserves closedness)
-    constructor
-    -- For now, admit this - needs lemma about substitution/closedness
+    trace_state
     sorry
-  case app ih_x ih_y =>
-    -- ih_x : (Ty.capt (CaptureSet.var x) (T1.arrow T2)).typ.IsClosed
-    -- Extract: T2.IsClosed
+  case app ht_x ht_y ih_x ih_y =>
+    -- Goal: (T2✝.subst (Subst.openVar y✝)).IsClosed
+    -- After rename_i, variables get renamed in order: s✝ x✝ Γ✝ T1✝ T2✝ y✝
+    -- So we name them: sig_s func_x ctx_gamma arg_type result_type arg_y
+    rename_i sig_s func_x ctx_gamma arg_type result_type arg_y
+    -- Extract result_type.IsClosed from ih_x
     cases ih_x with | typ h =>
     cases h with | capt _ h =>
     cases h with | arrow _ hT2 =>
-    -- hT2 : T2.IsClosed
-    -- Now T2 is in extended signature (s,x)
-    -- Need: (T2.subst (Subst.openVar y)).IsClosed
-    -- Since T2 is closed and openVar y substitutes with a bound variable,
-    -- the result is closed
-    sorry
-  case tapp hS ih =>
+    -- hT2 : result_type.IsClosed
+    -- Get arg_y.IsClosed from the closed expression
+    have hy_closed : arg_y.IsClosed := by
+      have h_exp := HasType.exp_is_closed ht_y
+      cases h_exp; assumption
+    exact Ty.is_closed_subst hT2 (Subst.openVar_is_closed hy_closed)
+  case tapp hS_closed ht_x ih =>
+    rename_i x S T
     -- ih : (Ty.capt (CaptureSet.var x) (S.poly T)).typ.IsClosed
-    -- hS : S.IsClosed
+    -- hS_closed : S.IsClosed
     -- Extract: T.IsClosed
     cases ih with | typ h =>
     cases h with | capt _ h =>
     cases h with | poly _ hT =>
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openTVar S)).IsClosed
-    -- Since T is closed and S is closed, the result is closed
-    sorry
-  case capp hD ih =>
+    exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
+  case capp hD_closed ht_x ih =>
+    rename_i x D T
     -- ih : (Ty.capt (CaptureSet.var x) (Ty.cpoly (CaptureBound.bound D) T)).typ.IsClosed
-    -- hD : D.IsClosed
+    -- hD_closed : D.IsClosed
     -- Extract: T.IsClosed
     cases ih with | typ h =>
     cases h with | capt _ h =>
     cases h with | cpoly _ hT =>
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openCVar D)).IsClosed
-    -- Since T is closed and D is closed, the result is closed
-    sorry
+    exact Ty.is_closed_subst hT (Subst.openCVar_is_closed hD_closed)
   case letin ih1 ih2 =>
     -- ih2 : (U.rename Rename.succ).IsClosed
     -- Need: U.IsClosed
