@@ -2078,6 +2078,19 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
       -- Other cell types don't match exi
       simp at h_exi_T1
 
+lemma sem_subtyp_typ {T1 T2 : Ty .capt s}
+  (hT : SemSubtyp Γ T1 T2) -- covariant in body
+  : SemSubtyp Γ (.typ T1) (.typ T2) := by
+  -- Unfold SemSubtyp for exi types
+  simp [SemSubtyp]
+  intro env H htyping
+  -- Unfold exi_val_denot for .typ
+  -- .typ T has denotation capt_val_denot env T
+  simp [Ty.exi_val_denot]
+  -- The goal is now: (capt_val_denot env T1).ImplyAfter H (capt_val_denot env T2)
+  -- Which is exactly SemSubtyp Γ T1 T2 (for capt types)
+  exact hT env H htyping
+
 lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
   (hS : SemSubtyp Γ S2 S1) -- contravariant in bound
   (hT : SemSubtyp (Γ,X<:S2) T1 T2) -- covariant in body
@@ -2197,7 +2210,13 @@ theorem fundamental_subtyp
     cases hT2 with | exi hT2_body_closed =>
     -- Apply the lemma
     apply sem_subtyp_exi (ih_body hT1_body_closed hT2_body_closed)
-  case typ => sorry
+  case typ T1_body T2_body hsub_body ih_body =>
+    -- T1 = .typ T1_body, T2 = .typ T2_body
+    -- Extract closedness from typ types
+    cases hT1 with | typ hT1_body_closed =>
+    cases hT2 with | typ hT2_body_closed =>
+    -- Apply the lemma
+    apply sem_subtyp_typ (ih_body hT1_body_closed hT2_body_closed)
 
 -- theorem sem_typ_subtyp
 --   (ht : Γ ⊨ e : T1)
