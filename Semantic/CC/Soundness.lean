@@ -2155,12 +2155,12 @@ theorem fundamental_subtyp
   case refl =>
     -- T1 = T2
     apply sem_subtyp_refl
-  case trans _ _ _ _ _ ih12 ih23 =>
-    -- hsub is (T1_l <: T2_mid <: T3_r), where T1 = T1_l and T2 = T3_r
-    -- Need closedness of T2_mid (the middle type)
+  case trans T2_mid hT2_mid _hsub12 _hsub23 ih12 ih23 =>
+    -- hsub is (T1 <: T2_mid <: T2), where T2_mid is the middle type
+    -- hT2_mid : T2_mid.IsClosed (provided by the trans rule)
     -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
     -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
-    apply sem_subtyp_trans (ih12 hT1 sorry) (ih23 sorry hT2)
+    apply sem_subtyp_trans (ih12 hT1 hT2_mid) (ih23 hT2_mid hT2)
   case tvar hlookup =>
     -- T1 is a type variable, T2 is looked up from context
     apply sem_subtyp_tvar hlookup
