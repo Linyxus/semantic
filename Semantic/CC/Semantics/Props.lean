@@ -96,63 +96,55 @@ theorem reduce_memory_monotonic
   | trans _ _ ih1 ih2 =>
     exact Memory.subsumes_trans ih2 ih1
 
--- /-- For any evaluation, an answer exists. -/
--- theorem eval_ans_exists
---   (heval : Eval C m e Q) :
---   ∃ a, Q a m ∧ a.IsAns := sorry
-
--- /-- Go from evaluation to reduction. -/
--- theorem eval_to_reduce_exists
---   (heval : Eval C m1 e1 Q) :
---   ∃ m2 e2,
---     Reduce C m1 e1 m2 e2 ∧
---     Q e2 m2 := by
---   induction heval with
---   | eval_val hv hQ =>
---     -- Base case: already a value
---     exact ⟨_, _, Reduce.refl, hQ⟩
---   | eval_var hQ =>
---     -- Base case: already a variable
---     exact ⟨_, _, Reduce.refl, hQ⟩
---   | eval_apply hlookup _ ih =>
---     -- Step from app to substituted body, then reduce
---     -- Note: In signature {}, there are no bound variables, so y must be a free variable
---     -- But the type doesn't enforce this statically. We rely on the semantics being well-formed.
---     obtain ⟨m2, e2, hred, hQ⟩ := ih
---     -- We need y to be .free for step_apply, but big-step allows any Var
---     -- This is a potential issue if y is not .free
---     sorry  -- Cannot prove without knowing y is .free
---   | eval_invoke hmem hlookup_x hlookup_y hQ =>
---     -- Single step to unit
---     exact ⟨_, _, Reduce.single (Step.step_invoke hmem hlookup_x hlookup_y), hQ⟩
---   | eval_tapply hlookup _ ih =>
---     -- SEMANTIC MISMATCH:
---     -- Big-step: Eval C m (e.subst (Subst.openTVar S)) Q
---     -- Small-step: Step C m (.tapp (.free x) S) m (e.subst (Subst.openTVar .top))
---     -- The big-step uses the actual type argument S, but small-step erases to .top
---     sorry
---   | eval_capply hlookup _ ih =>
---     -- SEMANTIC MISMATCH:
---     -- Big-step: Eval C m (e.subst (Subst.openCVar CS)) Q
---     -- Small-step: Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar .empty))
---     -- The big-step uses the actual capture set CS, but small-step erases to .empty
---     sorry
---   | eval_letin hpred _ h_val h_var ih =>
---     -- THE PROBLEMATIC CASE
---     -- By IH on e1, we get some m1', e1' with reduction and Q1 e1' m1'
---     obtain ⟨m1', e1', hred1, hQ1⟩ := ih
---     -- We can reduce letin e1 e2 to letin e1' e2 using congruence
---     -- But now we don't know if e1' is a value, variable, or something else!
---     sorry
---   | eval_unpack hpred _ h_val ih =>
---     -- Similar problem as eval_letin
---     sorry
-
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q) :
   ∀ m2 e2,
     e2.IsAns ->
     Reduce C m1 e1 m2 e2 ->
-    Q e2 m2 := by sorry
+    Q e2 m2 := by
+  induction heval with
+  | eval_val hv hQ => sorry
+  | eval_var hQ =>
+    intro m2 e2 hans hred
+    sorry
+  | eval_apply hlookup eval_body ih =>
+    -- e1 = .app (.free x) y
+    -- Evaluation: lookup x, get abstraction, evaluate body
+    -- Any reduction must step via step_apply first
+    intro m2 e2 hans hred
+    -- The application is not an answer, so reduction cannot be refl
+    cases hred with
+    | refl =>
+      -- .app is not an answer, contradiction
+      cases hans; rename_i hv
+      cases hv
+    | single hstep =>
+      -- Single step from application
+      cases hstep with
+      | step_apply hlookup' =>
+        -- We stepped to the substituted body
+        -- By IH on the body evaluation with Reduce.refl
+        sorry
+      | step_invoke =>
+        -- This is for capability invocation, different from eval_apply
+        sorry
+    | trans hred1 hred2 =>
+      -- Multi-step reduction
+      sorry
+  | eval_invoke hmem hlookup_x hlookup_y hQ =>
+    intro m2 e2 hans hred
+    sorry
+  | eval_tapply hlookup eval_body ih =>
+    intro m2 e2 hans hred
+    sorry
+  | eval_capply hlookup eval_body ih =>
+    intro m2 e2 hans hred
+    sorry
+  | eval_letin hpred eval_e1 h_val h_var ih =>
+    intro m2 e2 hans hred
+    sorry
+  | eval_unpack hpred eval_e1 h_val ih =>
+    intro m2 e2 hans hred
+    sorry
 
 end CC
