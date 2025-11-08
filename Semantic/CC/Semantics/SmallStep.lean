@@ -1,6 +1,6 @@
 import Semantic.CC.Syntax
 import Semantic.CC.Substitution
-import Semantic.CC.Eval.Heap
+import Semantic.CC.Semantics.Heap
 
 namespace CC
 
@@ -9,18 +9,18 @@ namespace CC
   using at most capabilities from C. -/
 inductive Step : CapabilitySet -> Heap -> Exp {} -> Heap -> Exp {} -> Prop where
 | step_apply :
-  h x = some (.val ⟨.abs T e, .abs⟩) ->
+  h x = some (.val ⟨.abs cs T e, hv, R⟩) ->
   Step C h (.app (.free x) (.free y)) h (e.subst (Subst.openVar (.free y)))
 | step_invoke :
   x ∈ C ->
   h x = some .capability ->
-  h y = some (.val ⟨.unit, .unit⟩) ->
+  h y = some (.val ⟨.unit, hv, R⟩) ->
   Step C h (.app (.free x) (.free y)) h .unit
 | step_tapply :
-  h x = some (.val ⟨.tabs S' e, .tabs⟩) ->
+  h x = some (.val ⟨.tabs cs S' e, hv, R⟩) ->
   Step C h (.tapp (.free x) S) h (e.subst (Subst.openTVar .top))
 | step_capply :
-  h x = some (.val ⟨.cabs B e, .cabs⟩) ->
+  h x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step C h (.capp (.free x) CS) h (e.subst (Subst.openCVar .empty))
 | step_ctx_letin :
   Step C h e1 h' e1' ->
@@ -31,9 +31,12 @@ inductive Step : CapabilitySet -> Heap -> Exp {} -> Heap -> Exp {} -> Prop where
 | step_rename :
   Step C h (.letin (.var (.free y)) e) h (e.subst (Subst.openVar (.free y)))
 | step_lift :
-  (hv : Exp.IsVal v) ->
+  (hv : Exp.IsSimpleVal v) ->
   h l = none ->
-  Step C h (.letin v e) (h.extend l ⟨v, hv⟩) (e.subst (Subst.openVar (.free l)))
+  Step
+    C
+    h (.letin v e)
+    (h.extend l ⟨v, hv, compute_reachability h v hv⟩) (e.subst (Subst.openVar (.free l)))
 | step_unpack :
   Step C h (.unpack (.pack cs (.free x)) e) h (e.subst (Subst.unpack cs (.free x)))
 

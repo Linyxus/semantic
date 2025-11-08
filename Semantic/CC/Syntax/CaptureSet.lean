@@ -70,4 +70,16 @@ inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
 instance CaptureSet.instHasSubset : HasSubset (CaptureSet s) where
   Subset := CaptureSet.Subset
 
+/-- Closedness judgements. A syntax construct is closed if it contains no heap pointers. -/
+
+inductive Var.IsClosed : Var k s -> Prop where
+| bound : Var.IsClosed (.bound x)
+
+inductive CaptureSet.IsClosed : CaptureSet s -> Prop where
+| empty : CaptureSet.IsClosed .empty
+| union : CaptureSet.IsClosed cs1 -> CaptureSet.IsClosed cs2 ->
+    CaptureSet.IsClosed (cs1.union cs2)
+| cvar : CaptureSet.IsClosed (.cvar x)
+| var_bound : CaptureSet.IsClosed (.var (.bound x))
+
 end CC

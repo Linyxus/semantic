@@ -59,9 +59,9 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 
 def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
-| .abs T e, s => .abs (T.subst s) (e.subst s.lift)
-| .tabs T e, s => .tabs (T.subst s) (e.subst s.lift)
-| .cabs cb e, s => .cabs (cb.subst s) (e.subst s.lift)
+| .abs cs T e, s => .abs (cs.subst s) (T.subst s) (e.subst s.lift)
+| .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
+| .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
@@ -411,12 +411,12 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (e.subst σ1).subst σ2 = e.subst (σ1.comp σ2) := by
   induction e generalizing s2 s3 with
   | var x => simp [Exp.subst, Var.subst_comp]
-  | abs T e ih_e =>
-    simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
-  | tabs T e ih_e =>
-    simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
-  | cabs cb e ih_e =>
-    simp [Exp.subst, CaptureBound.subst_comp, ih_e, Subst.comp_lift]
+  | abs cs T e ih_e =>
+    simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
+  | tabs cs T e ih_e =>
+    simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
+  | cabs cs cb e ih_e =>
+    simp [Exp.subst, CaptureSet.subst_comp, CaptureBound.subst_comp, ih_e, Subst.comp_lift]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp [Exp.subst, Var.subst_comp]
@@ -428,5 +428,668 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | unpack e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unit => rfl
+
+theorem Var.subst_id {x : Var .var s} :
+  x.subst Subst.id = x := by
+  cases x with
+  | bound x => rfl
+  | free n => rfl
+
+/-!
+Substituting with the identity substitution is a no-op for a capture set.
+-/
+theorem CaptureSet.subst_id {cs : CaptureSet s} :
+  cs.subst Subst.id = cs := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.subst, ih1, ih2]
+  | var x =>
+    simp [CaptureSet.subst, Var.subst_id]
+  | cvar C =>
+    simp [CaptureSet.subst, Subst.id]
+
+theorem CaptureBound.subst_id {cb : CaptureBound s} :
+  cb.subst Subst.id = cb := by
+  cases cb with
+  | unbound => rfl
+  | bound cs => simp [CaptureBound.subst, CaptureSet.subst_id]
+
+theorem Subst.lift_id :
+  (Subst.id (s:=s)).lift (k:=k) = Subst.id := by
+  apply Subst.funext
+  · intro x
+    cases x <;> rfl
+  · intro X
+    cases X <;> rfl
+  · intro C
+    cases C <;> rfl
+
+/-!
+Substituting with the identity substitution is a no-op for a type.
+-/
+theorem Ty.subst_id {T : Ty sort s} :
+  T.subst Subst.id = T := by
+  induction T with
+  | top => rfl
+  | tvar x => simp [Ty.subst, Subst.id]
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.subst, ih1, ih2, Subst.lift_id]
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.subst, ih1, ih2, Subst.lift_id]
+  | cpoly cb T ih =>
+    simp [Ty.subst, ih, Subst.lift_id, CaptureBound.subst_id]
+  | unit => rfl
+  | cap => rfl
+  | capt cs T ih =>
+    simp [Ty.subst, ih, CaptureSet.subst_id]
+  | exi T ih =>
+    simp [Ty.subst, ih, Subst.lift_id]
+  | typ T ih =>
+    simp [Ty.subst, ih]
+
+/-!
+Substituting with the identity substitution is a no-op for an expression.
+-/
+theorem Exp.subst_id {e : Exp s} :
+  e.subst Subst.id = e := by
+  induction e with
+  | var x =>
+    simp [Exp.subst, Var.subst_id]
+  | abs cs T e ih =>
+    simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
+  | tabs cs T e ih =>
+    simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
+  | cabs cs cb e ih =>
+    simp [Exp.subst, CaptureSet.subst_id, CaptureBound.subst_id, ih, Subst.lift_id]
+  | pack cs x =>
+    simp [Exp.subst, CaptureSet.subst_id, Var.subst_id]
+  | app x y =>
+    simp [Exp.subst, Var.subst_id]
+  | tapp x T =>
+    simp [Exp.subst, Var.subst_id, Ty.subst_id]
+  | capp x cs =>
+    simp [Exp.subst, Var.subst_id, CaptureSet.subst_id]
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.subst, ih1, ih2, Subst.lift_id]
+  | unpack e1 e2 ih1 ih2 =>
+    simp [Exp.subst, ih1, ih2, Subst.lift_id]
+  | unit =>
+    rfl
+
+def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
+  var := fun x => .bound (f.var x)
+  tvar := fun X => .tvar (f.var X)
+  cvar := fun C => .cvar (f.var C)
+
+/-!
+Lifting a renaming and then converting to a substitution is the same as
+converting to a substitution and then lifting the substitution.
+-/
+theorem Rename.asSubst_lift {f : Rename s1 s2} :
+  (f.lift (k:=k)).asSubst = (f.asSubst).lift (k:=k) := by
+  apply Subst.funext
+  · intro x
+    cases x
+    · rfl
+    · rfl
+  · intro X
+    cases X
+    · rfl
+    · rfl
+  · intro C
+    cases C
+    · rfl
+    · rfl
+
+theorem Var.subst_asSubst {x : Var .var s1} {f : Rename s1 s2} :
+  x.subst (f.asSubst) = x.rename f := by
+  cases x with
+  | bound x => rfl
+  | free n => rfl
+
+/-!
+Substituting a substitution lifted from a renaming is the same as renaming
+for a capture set.
+-/
+theorem CaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
+  cs.subst (f.asSubst) = cs.rename f := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
+  | var x =>
+    simp [CaptureSet.subst, CaptureSet.rename, Var.subst_asSubst]
+  | cvar C =>
+    simp [CaptureSet.subst, CaptureSet.rename, Rename.asSubst]
+
+theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :
+  cb.subst (f.asSubst) = cb.rename f := by
+  cases cb with
+  | unbound => rfl
+  | bound cs => simp [CaptureBound.subst, CaptureBound.rename, CaptureSet.subst_asSubst]
+
+/-!
+Substituting a substitution lifted from a renaming is the same as renaming
+for a type.
+-/
+theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
+  T.subst (f.asSubst) = T.rename f := by
+  induction T generalizing s2 with
+  | top => rfl
+  | tvar x => simp [Ty.subst, Ty.rename, Rename.asSubst]
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.rename, ih1]
+    rw [<-Rename.asSubst_lift, ih2]
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.subst, Ty.rename, ih1]
+    rw [<-Rename.asSubst_lift, ih2]
+  | cpoly cb T ih =>
+    simp [Ty.subst, Ty.rename, CaptureBound.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | unit => rfl
+  | cap => rfl
+  | capt cs T ih =>
+    simp [Ty.subst, Ty.rename, ih, CaptureSet.subst_asSubst]
+  | exi T ih =>
+    simp [Ty.subst, Ty.rename]
+    rw [<-Rename.asSubst_lift, ih]
+  | typ T ih =>
+    simp [Ty.subst, Ty.rename, ih]
+
+/-!
+Substituting a substitution lifted from a renaming is the same as renaming
+for an expression.
+-/
+theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
+  e.subst (f.asSubst) = e.rename f := by
+  induction e generalizing s2 with
+  | var x =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | abs cs T e ih =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | tabs cs T e ih =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | cabs cs cb e ih =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, CaptureBound.subst_asSubst]
+    rw [<-Rename.asSubst_lift, ih]
+  | pack cs x =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
+  | app x y =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | tapp x T =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst, Ty.subst_asSubst]
+  | capp x cs =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst, CaptureSet.subst_asSubst]
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.subst, Exp.rename, ih1]
+    rw [<-Rename.asSubst_lift, ih2]
+  | unpack e1 e2 ih1 ih2 =>
+    simp [Exp.subst, Exp.rename, ih1]
+    rw [<-Rename.asSubst_lift, <-Rename.asSubst_lift, ih2]
+  | unit =>
+    rfl
+
+theorem Subst.weaken_openVar {z : Var .var s} :
+  Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
+  apply Subst.funext
+  · intro x; rfl
+  · intro X; rfl
+  · intro C; rfl
+
+theorem Subst.weaken_openTVar {U : Ty .shape s} :
+  Rename.succ.asSubst.comp (Subst.openTVar U) = Subst.id := by
+  apply Subst.funext
+  · intro x; rfl
+  · intro X; rfl
+  · intro C; rfl
+
+theorem Subst.weaken_openCVar {C : CaptureSet s} :
+  Rename.succ.asSubst.comp (Subst.openCVar C) = Subst.id := by
+  apply Subst.funext
+  · intro x; rfl
+  · intro X; rfl
+  · intro C; rfl
+
+theorem CaptureSet.weaken_openVar {C : CaptureSet (s)} {z : Var .var s} :
+  (C.rename Rename.succ).subst (Subst.openVar z) = C := by
+  calc (C.rename Rename.succ).subst (Subst.openVar z)
+      = (C.subst Rename.succ.asSubst).subst (Subst.openVar z) := by rw [<-CaptureSet.subst_asSubst]
+    _ = C.subst (Rename.succ.asSubst.comp (Subst.openVar z)) := by rw [CaptureSet.subst_comp]
+    _ = C.subst Subst.id := by rw [Subst.weaken_openVar]
+    _ = C := by rw [CaptureSet.subst_id]
+
+theorem CaptureSet.weaken_openTVar {C : CaptureSet (s)} {U : Ty .shape s} :
+  (C.rename Rename.succ).subst (Subst.openTVar U) = C := by
+  calc (C.rename Rename.succ).subst (Subst.openTVar U)
+      = (C.subst Rename.succ.asSubst).subst (Subst.openTVar U) := by rw [<-CaptureSet.subst_asSubst]
+    _ = C.subst (Rename.succ.asSubst.comp (Subst.openTVar U)) := by rw [CaptureSet.subst_comp]
+    _ = C.subst Subst.id := by rw [Subst.weaken_openTVar]
+    _ = C := by rw [CaptureSet.subst_id]
+
+theorem CaptureSet.weaken_openCVar {C : CaptureSet (s)} {C' : CaptureSet s} :
+  (C.rename Rename.succ).subst (Subst.openCVar C') = C := by
+  calc (C.rename Rename.succ).subst (Subst.openCVar C')
+      = (C.subst Rename.succ.asSubst).subst (Subst.openCVar C') := by
+        rw [<-CaptureSet.subst_asSubst]
+    _ = C.subst (Rename.succ.asSubst.comp (Subst.openCVar C')) := by rw [CaptureSet.subst_comp]
+    _ = C.subst Subst.id := by rw [Subst.weaken_openCVar]
+    _ = C := by rw [CaptureSet.subst_id]
+
+theorem CaptureSet.ground_rename_invariant {C : CaptureSet {}} :
+  C.rename f = C := by
+  induction C with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.rename]
+    constructor <;> assumption
+  | var x =>
+    cases x with
+    | bound bx => cases bx  -- No bound variables in empty signature
+    | free n =>
+      -- Free variables are unchanged by rename
+      simp [CaptureSet.rename, Var.rename]
+  | cvar c => cases c  -- No capture variables in empty signature
+
+theorem CaptureSet.ground_subst_invariant {C : CaptureSet {}} :
+  C.subst σ = C := by
+  induction C with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.subst]
+    constructor <;> assumption
+  | var x =>
+    cases x with
+    | bound bx => cases bx  -- No bound variables in empty signature
+    | free n =>
+      -- Free variables are unchanged by subst
+      simp [CaptureSet.subst, Var.subst]
+  | cvar c => cases c  -- No capture variables in empty signature
+
+structure Subst.IsClosed (σ : Subst s1 s2) : Prop where
+  var_closed : ∀ x, (σ.var x).IsClosed
+  tvar_closed : ∀ X, (σ.tvar X).IsClosed
+  cvar_closed : ∀ C, (σ.cvar C).IsClosed
+
+def Var.is_closed_subst {x : Var .var s1} {σ : Subst s1 s2}
+  (hc : x.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (x.subst σ).IsClosed := by
+  cases x with
+  | bound x =>
+    exact hsubst.var_closed x
+  | free n => cases hc
+
+def CaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : Subst s1 s2}
+  (hc : cs.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (cs.subst σ).IsClosed := by
+  induction cs with
+  | empty =>
+    exact IsClosed.empty
+  | union cs1 cs2 ih1 ih2 =>
+    cases hc with | union h1 h2 =>
+    simp [CaptureSet.subst]
+    exact IsClosed.union (ih1 h1) (ih2 h2)
+  | cvar C =>
+    simp [CaptureSet.subst]
+    exact hsubst.cvar_closed C
+  | var x =>
+    cases hc with | var_bound =>
+    rename_i bx
+    simp [CaptureSet.subst, Var.subst]
+    generalize h_eq : σ.var bx = v
+    have h_var : v.IsClosed := h_eq ▸ hsubst.var_closed bx
+    cases v with
+    | bound y =>
+      exact IsClosed.var_bound
+    | free n =>
+      cases h_var
+
+def CaptureBound.is_closed_subst {cb : CaptureBound s1} {σ : Subst s1 s2}
+  (hc : cb.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (cb.subst σ).IsClosed := by
+  cases cb with
+  | unbound =>
+    exact IsClosed.unbound
+  | bound cs =>
+    cases hc with | bound h_cs =>
+    simp [CaptureBound.subst]
+    exact IsClosed.bound (CaptureSet.is_closed_subst h_cs hsubst)
+
+-- Helper lemmas for renaming closedness (minimal versions needed here)
+private theorem Var.rename_closed_any {x : Var .var s1} {f : Rename s1 s2}
+  (hc : x.IsClosed) : (x.rename f).IsClosed := by
+  cases x with
+  | bound _ => exact IsClosed.bound
+  | free _ => cases hc
+
+private theorem CaptureSet.rename_closed_any {cs : CaptureSet s1} {f : Rename s1 s2}
+  (hc : cs.IsClosed) : (cs.rename f).IsClosed := by
+  induction cs with
+  | empty => exact IsClosed.empty
+  | union cs1 cs2 ih1 ih2 =>
+    cases hc with | union h1 h2 =>
+    exact IsClosed.union (ih1 h1) (ih2 h2)
+  | cvar => exact IsClosed.cvar
+  | var x =>
+    cases hc with | var_bound =>
+    exact IsClosed.var_bound
+
+private theorem CaptureBound.rename_closed_any {cb : CaptureBound s1} {f : Rename s1 s2}
+  (hc : cb.IsClosed) : (cb.rename f).IsClosed := by
+  cases cb <;> cases hc
+  case unbound.unbound => exact IsClosed.unbound
+  case bound.bound cs h_cs => exact IsClosed.bound (CaptureSet.rename_closed_any h_cs)
+
+private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
+  (hc : T.IsClosed) : (T.rename f).IsClosed := by
+  induction T generalizing s2 with
+  | top => exact IsClosed.top
+  | tvar => exact IsClosed.tvar
+  | arrow T1 T2 ih1 ih2 =>
+    cases hc with | arrow h1 h2 =>
+    exact IsClosed.arrow (ih1 h1) (ih2 h2)
+  | poly S T ih1 ih2 =>
+    cases hc with | poly h1 h2 =>
+    exact IsClosed.poly (ih1 h1) (ih2 h2)
+  | cpoly cb T ih =>
+    cases hc with | cpoly hcb hT =>
+    exact IsClosed.cpoly (CaptureBound.rename_closed_any hcb) (ih hT)
+  | unit => exact IsClosed.unit
+  | cap => exact IsClosed.cap
+  | capt cs T ih =>
+    cases hc with | capt h1 h2 =>
+    exact IsClosed.capt (CaptureSet.rename_closed_any h1) (ih h2)
+  | typ T ih =>
+    cases hc with | typ hT =>
+    exact IsClosed.typ (ih hT)
+  | exi T ih =>
+    cases hc with | exi hT =>
+    exact IsClosed.exi (ih hT)
+
+theorem Subst.lift_closed {σ : Subst s1 s2} (hσ : σ.IsClosed) :
+  (σ.lift (k:=k)).IsClosed := by
+  constructor
+  · intro x
+    cases x with
+    | here => exact Var.IsClosed.bound
+    | there x => simp [Subst.lift]; exact Var.rename_closed_any (hσ.var_closed x)
+  · intro X
+    cases X with
+    | here => exact Ty.IsClosed.tvar
+    | there X => simp [Subst.lift]; exact Ty.rename_closed_any (hσ.tvar_closed X)
+  · intro C
+    cases C with
+    | here => exact CaptureSet.IsClosed.cvar
+    | there C => simp [Subst.lift]; exact CaptureSet.rename_closed_any (hσ.cvar_closed C)
+
+def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
+  (hc : T.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (T.subst σ).IsClosed := by
+  induction T generalizing s2 with
+  | top => exact IsClosed.top
+  | tvar X => simp [Ty.subst]; exact hsubst.tvar_closed X
+  | arrow T1 T2 ih1 ih2 =>
+    cases hc with | arrow h1 h2 =>
+    simp [Ty.subst]
+    exact IsClosed.arrow (ih1 h1 hsubst) (ih2 h2 (Subst.lift_closed hsubst))
+  | poly S T ih1 ih2 =>
+    cases hc with | poly h1 h2 =>
+    simp [Ty.subst]
+    exact IsClosed.poly (ih1 h1 hsubst) (ih2 h2 (Subst.lift_closed hsubst))
+  | cpoly cb T ih =>
+    cases hc with | cpoly hcb hT =>
+    simp [Ty.subst]
+    exact IsClosed.cpoly
+      (CaptureBound.is_closed_subst hcb hsubst)
+      (ih hT (Subst.lift_closed hsubst))
+  | unit => exact IsClosed.unit
+  | cap => exact IsClosed.cap
+  | capt cs S ih =>
+    cases hc with | capt h1 h2 =>
+    simp [Ty.subst]
+    exact IsClosed.capt (CaptureSet.is_closed_subst h1 hsubst) (ih h2 hsubst)
+  | typ T ih =>
+    cases hc with | typ hT =>
+    simp [Ty.subst]
+    exact IsClosed.typ (ih hT hsubst)
+  | exi T ih =>
+    cases hc with | exi hT =>
+    simp [Ty.subst]
+    exact IsClosed.exi (ih hT (Subst.lift_closed hsubst))
+
+def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
+  (hc : e.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (e.subst σ).IsClosed := by
+  induction e generalizing s2 with
+  | var x =>
+    cases hc with | var hx =>
+    simp [Exp.subst]
+    constructor
+    exact Var.is_closed_subst hx hsubst
+  | abs cs T e ih =>
+    cases hc with | abs hcs hT he =>
+    simp [Exp.subst]
+    constructor
+    · exact CaptureSet.is_closed_subst hcs hsubst
+    · exact Ty.is_closed_subst hT hsubst
+    · exact ih he (Subst.lift_closed hsubst)
+  | tabs cs S e ih =>
+    cases hc with | tabs hcs hS he =>
+    simp [Exp.subst]
+    constructor
+    · exact CaptureSet.is_closed_subst hcs hsubst
+    · exact Ty.is_closed_subst hS hsubst
+    · exact ih he (Subst.lift_closed hsubst)
+  | cabs cs cb e ih =>
+    cases hc with | cabs hcs hcb he =>
+    simp [Exp.subst]
+    constructor
+    · exact CaptureSet.is_closed_subst hcs hsubst
+    · exact CaptureBound.is_closed_subst hcb hsubst
+    · exact ih he (Subst.lift_closed hsubst)
+  | pack cs x =>
+    cases hc with | pack hcs hx =>
+    simp [Exp.subst]
+    constructor
+    · exact CaptureSet.is_closed_subst hcs hsubst
+    · exact Var.is_closed_subst hx hsubst
+  | app x y =>
+    cases hc with | app hx hy =>
+    simp [Exp.subst]
+    constructor
+    · exact Var.is_closed_subst hx hsubst
+    · exact Var.is_closed_subst hy hsubst
+  | tapp x T =>
+    cases hc with | tapp hx hT =>
+    simp [Exp.subst]
+    constructor
+    · exact Var.is_closed_subst hx hsubst
+    · exact Ty.is_closed_subst hT hsubst
+  | capp x cs =>
+    cases hc with | capp hx hcs =>
+    simp [Exp.subst]
+    constructor
+    · exact Var.is_closed_subst hx hsubst
+    · exact CaptureSet.is_closed_subst hcs hsubst
+  | letin e1 e2 ih1 ih2 =>
+    cases hc with | letin he1 he2 =>
+    simp [Exp.subst]
+    constructor
+    · exact ih1 he1 hsubst
+    · exact ih2 he2 (Subst.lift_closed hsubst)
+  | unpack e1 e2 ih1 ih2 =>
+    cases hc with | unpack he1 he2 =>
+    simp [Exp.subst]
+    constructor
+    · exact ih1 he1 hsubst
+    · exact ih2 he2 (Subst.lift_closed (Subst.lift_closed hsubst))
+  | unit =>
+    exact IsClosed.unit
+
+theorem Subst.openVar_is_closed {z : Var .var s}
+  (hz : z.IsClosed) :
+  (Subst.openVar z).IsClosed where
+  var_closed := fun x => by
+    cases x with
+    | here => exact hz
+    | there x => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    cases X with
+    | there X => exact Ty.IsClosed.tvar
+  cvar_closed := fun C => by
+    cases C with
+    | there C => exact CaptureSet.IsClosed.cvar
+
+theorem Subst.openTVar_is_closed {U : Ty .shape s}
+  (hU : U.IsClosed) :
+  (Subst.openTVar U).IsClosed where
+  var_closed := fun x => by
+    cases x with
+    | there x => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    cases X with
+    | here => exact hU
+    | there X => exact Ty.IsClosed.tvar
+  cvar_closed := fun C => by
+    cases C with
+    | there C => exact CaptureSet.IsClosed.cvar
+
+theorem Subst.openCVar_is_closed {C : CaptureSet s}
+  (hC : C.IsClosed) :
+  (Subst.openCVar C).IsClosed where
+  var_closed := fun x => by
+    cases x with
+    | there x => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    cases X with
+    | there X => exact Ty.IsClosed.tvar
+  cvar_closed := fun c => by
+    cases c with
+    | here => exact hC
+    | there c => exact CaptureSet.IsClosed.cvar
+
+theorem Var.subst_closed_inv {x : Var .var s1} {σ : Subst s1 s2}
+  (hclosed : (x.subst σ).IsClosed) :
+  x.IsClosed := by
+  cases x with
+  | bound bx => constructor
+  | free n =>
+    simp [Var.subst] at hclosed
+    cases hclosed
+
+theorem CaptureSet.subst_closed_inv {cs : CaptureSet s1} {σ : Subst s1 s2}
+  (hclosed : (cs.subst σ).IsClosed) :
+  cs.IsClosed := by
+  induction cs with
+  | empty => exact IsClosed.empty
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CaptureSet.subst] at hclosed
+    cases hclosed with | union h1 h2 =>
+    exact IsClosed.union (ih1 h1) (ih2 h2)
+  | cvar C => exact IsClosed.cvar
+  | var x =>
+    cases x with
+    | bound bx =>
+      -- For bound variables, .var (.bound bx) is always closed
+      exact IsClosed.var_bound
+    | free n =>
+      -- For free variables, (.var (.free n)).subst σ = .var (.free n)
+      -- But this can't be closed, contradicting hclosed
+      simp [CaptureSet.subst, Var.subst] at hclosed
+      cases hclosed
+
+theorem CaptureBound.subst_closed_inv {cb : CaptureBound s1} {σ : Subst s1 s2}
+  (hclosed : (cb.subst σ).IsClosed) :
+  cb.IsClosed := by
+  cases cb with
+  | unbound => exact IsClosed.unbound
+  | bound cs =>
+    simp [CaptureBound.subst] at hclosed
+    cases hclosed with | bound h_cs =>
+    exact IsClosed.bound (CaptureSet.subst_closed_inv h_cs)
+
+theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
+  (hclosed : (T.subst σ).IsClosed) :
+  T.IsClosed := by
+  induction T generalizing s2 with
+  | top => exact IsClosed.top
+  | tvar X => exact IsClosed.tvar
+  | arrow T1 T2 ih1 ih2 =>
+    simp [Ty.subst] at hclosed
+    cases hclosed with | arrow h1 h2 =>
+    exact IsClosed.arrow (ih1 h1) (ih2 h2)
+  | poly T1 T2 ih1 ih2 =>
+    simp [Ty.subst] at hclosed
+    cases hclosed with | poly h1 h2 =>
+    exact IsClosed.poly (ih1 h1) (ih2 h2)
+  | cpoly cb T ih =>
+    simp [Ty.subst] at hclosed
+    cases hclosed with | cpoly hcb hT =>
+    exact IsClosed.cpoly (CaptureBound.subst_closed_inv hcb) (ih hT)
+  | unit => exact IsClosed.unit
+  | cap => exact IsClosed.cap
+  | capt cs T ih =>
+    simp [Ty.subst] at hclosed
+    cases hclosed with | capt h1 h2 =>
+    exact IsClosed.capt (CaptureSet.subst_closed_inv h1) (ih h2)
+  | exi T ih =>
+    simp [Ty.subst] at hclosed
+    cases hclosed with | exi hT =>
+    exact IsClosed.exi (ih hT)
+  | typ T ih =>
+    simp [Ty.subst] at hclosed
+    cases hclosed with | typ hT =>
+    exact IsClosed.typ (ih hT)
+
+theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
+  (hclosed : (e.subst σ).IsClosed) :
+  e.IsClosed := by
+  induction e generalizing s2 with
+  | var x =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | var hx =>
+    exact IsClosed.var (Var.subst_closed_inv hx)
+  | abs cs T e ih =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | abs hcs hT he =>
+    exact IsClosed.abs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
+  | tabs cs T e ih =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | tabs hcs hT he =>
+    exact IsClosed.tabs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
+  | cabs cs cb e ih =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | cabs hcs hcb he =>
+    exact IsClosed.cabs
+      (CaptureSet.subst_closed_inv hcs)
+      (CaptureBound.subst_closed_inv hcb)
+      (ih he)
+  | pack cs x =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | pack hcs hx =>
+    exact IsClosed.pack (CaptureSet.subst_closed_inv hcs) (Var.subst_closed_inv hx)
+  | app x y =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | app hx hy =>
+    exact IsClosed.app (Var.subst_closed_inv hx) (Var.subst_closed_inv hy)
+  | tapp x T =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | tapp hx hT =>
+    exact IsClosed.tapp (Var.subst_closed_inv hx) (Ty.subst_closed_inv hT)
+  | capp x cs =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | capp hx hcs =>
+    exact IsClosed.capp (Var.subst_closed_inv hx) (CaptureSet.subst_closed_inv hcs)
+  | letin e1 e2 ih1 ih2 =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | letin he1 he2 =>
+    exact IsClosed.letin (ih1 he1) (ih2 he2)
+  | unpack e1 e2 ih1 ih2 =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | unpack he1 he2 =>
+    exact IsClosed.unpack (ih1 he1) (ih2 he2)
+  | unit => exact IsClosed.unit
 
 end CC
