@@ -96,6 +96,11 @@ theorem reduce_memory_monotonic
   | trans _ _ ih1 ih2 =>
     exact Memory.subsumes_trans ih2 ih1
 
+/-- For any evaluation, an answer exists. -/
+theorem eval_ans_exists
+  (heval : Eval C m e Q) :
+  ∃ a, Q a m ∧ a.IsAns := sorry
+
 /-- Go from evaluation to reduction. -/
 theorem eval_to_reduce_exists
   (heval : Eval C m1 e1 Q) :
