@@ -187,11 +187,18 @@ def PreDenot.implies_wf (pd : PreDenot) : Prop :=
     pd R m e ->
     e.WfInHeap m.heap
 
+/-- This pre-denotation is "tight" on reachability sets. -/
+def PreDenot.is_tight (pd : PreDenot) : Prop :=
+  ∀ R m fx,
+    pd R m (.var (.free fx)) ->
+    pd (reachability_of_loc m.heap fx) m (.var (.free fx))
+
 /-- This is a proper pre-denotation. -/
 def PreDenot.is_proper (pd : PreDenot) : Prop :=
   pd.is_reachability_safe
   ∧ pd.is_reachability_monotonic
   ∧ pd.implies_wf
+  ∧ pd.is_tight
   ∧ ∀ C, (pd C).is_proper
 
 lemma Denot.as_mpost_is_monotonic {d : Denot}
