@@ -5,8 +5,8 @@ namespace CC
 /-- Step is monotonic with respect to capability sets:
     if a step can happen under authority R1, it can happen under any larger authority R2. -/
 theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
-  (hstep : Step R1 h e h' e') (hsub : R1 ⊆ R2) :
-  Step R2 h e h' e' := by
+  (hstep : Step R1 m e m' e') (hsub : R1 ⊆ R2) :
+  Step R2 m e m' e' := by
   induction hstep with
   | step_apply hlookup =>
     apply Step.step_apply hlookup
@@ -27,16 +27,16 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     exact ih hsub
   | step_rename =>
     apply Step.step_rename
-  | step_lift hv hfresh =>
-    apply Step.step_lift hv hfresh
+  | step_lift hv hwf hfresh =>
+    apply Step.step_lift hv hwf hfresh
   | step_unpack =>
     apply Step.step_unpack
 
 /-- Reduce (multi-step reduction) is monotonic with respect to capability sets:
     if a reduction can happen under authority R1, it can happen under any larger authority R2. -/
 theorem small_step_capability_set_monotonic {R1 R2 : CapabilitySet}
-  (hred : Reduce R1 h e h' e') (hsub : R1 ⊆ R2) :
-  Reduce R2 h e h' e' := by
+  (hred : Reduce R1 m e m' e') (hsub : R1 ⊆ R2) :
+  Reduce R2 m e m' e' := by
   induction hred generalizing R2 with
   | refl =>
     apply Reduce.refl

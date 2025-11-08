@@ -5,53 +5,55 @@ import Semantic.CC.Semantics.Heap
 namespace CC
 
 /-- Small-step evaluation relation indexed by a capability set upper bound.
-  Step C h e h' e' means that expression e in heap h steps to e' in heap h'
+  Step C m e m' e' means that expression e in memory m steps to e' in memory m'
   using at most capabilities from C. -/
-inductive Step : CapabilitySet -> Heap -> Exp {} -> Heap -> Exp {} -> Prop where
+inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_apply :
-  h x = some (.val ⟨.abs cs T e, hv, R⟩) ->
-  Step C h (.app (.free x) (.free y)) h (e.subst (Subst.openVar (.free y)))
+  m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
+  Step C m (.app (.free x) (.free y)) m (e.subst (Subst.openVar (.free y)))
 | step_invoke :
   x ∈ C ->
-  h x = some .capability ->
-  h y = some (.val ⟨.unit, hv, R⟩) ->
-  Step C h (.app (.free x) (.free y)) h .unit
+  m.lookup x = some .capability ->
+  m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
+  Step C m (.app (.free x) (.free y)) m .unit
 | step_tapply :
-  h x = some (.val ⟨.tabs cs S' e, hv, R⟩) ->
-  Step C h (.tapp (.free x) S) h (e.subst (Subst.openTVar .top))
+  m.lookup x = some (.val ⟨.tabs cs S' e, hv, R⟩) ->
+  Step C m (.tapp (.free x) S) m (e.subst (Subst.openTVar .top))
 | step_capply :
-  h x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
-  Step C h (.capp (.free x) CS) h (e.subst (Subst.openCVar .empty))
+  m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
+  Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar .empty))
 | step_ctx_letin :
-  Step C h e1 h' e1' ->
-  Step C h (.letin e1 e2) h' (.letin e1' e2)
+  Step C m e1 m' e1' ->
+  Step C m (.letin e1 e2) m' (.letin e1' e2)
 | step_ctx_unpack :
-  Step C h e1 h' e1' ->
-  Step C h (.unpack e1 e2) h' (.unpack e1' e2)
+  Step C m e1 m' e1' ->
+  Step C m (.unpack e1 e2) m' (.unpack e1' e2)
 | step_rename :
-  Step C h (.letin (.var (.free y)) e) h (e.subst (Subst.openVar (.free y)))
+  Step C m (.letin (.var (.free y)) e) m (e.subst (Subst.openVar (.free y)))
 | step_lift :
   (hv : Exp.IsSimpleVal v) ->
-  h l = none ->
+  (hwf : Exp.WfInHeap v m.heap) ->
+  (hfresh : m.heap l = none) ->
   Step
     C
-    h (.letin v e)
-    (h.extend l ⟨v, hv, compute_reachability h v hv⟩) (e.subst (Subst.openVar (.free l)))
+    m (.letin v e)
+    (m.extend l ⟨v, hv, compute_reachability m.heap v hv⟩ hwf rfl hfresh)
+    (e.subst (Subst.openVar (.free l)))
 | step_unpack :
-  Step C h (.unpack (.pack cs (.free x)) e) h (e.subst (Subst.unpack cs (.free x)))
+  Step C m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
 
 /-- Multi-step reduction relation: reflexive-transitive closure of Step.
-  Reduce C h e h' e' means that e in heap h reduces to e' in heap h'
+  Reduce C m e m' e' means that e in memory m reduces to e' in memory m'
   using at most capabilities from C. -/
-inductive Reduce : CapabilitySet -> Heap -> Exp {} -> Heap -> Exp {} -> Prop where
+inductive Reduce : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | refl :
-  Reduce C h e h e
+  Reduce C m e m e
 | single :
-  Step C h e h' e' ->
-  Reduce C h e h' e'
+  Step C m e m' e' ->
+  Reduce C m e m' e'
 | trans :
-  Reduce C h1 e1 h2 e2 ->
-  Reduce C h2 e2 h3 e3 ->
-  Reduce C h1 e1 h3 e3
+  Reduce C m1 e1 m2 e2 ->
+  Reduce C m2 e2 m3 e3 ->
+  Reduce C m1 e1 m3 e3
 
 end CC
