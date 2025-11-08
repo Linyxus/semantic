@@ -79,7 +79,8 @@ def Rename.liftMany (f : Rename s1 s2) (K : Sig) : Rename (s1 ++ K) (s2 ++ K) :=
 def Rename.succ : Rename s (s,,k) where
   var := fun x => x.there
 
-/-- Function extensionality for renamings. Two renamings are equal if they map all variables equally. -/
+/-- Function extensionality for renamings. 
+  Two renamings are equal if they map all variables equally. -/
 theorem Rename.funext {f1 f2 : Rename s1 s2}
   (hvar : ∀ {k} (x : BVar s1 k), f1.var x = f2.var x) :
   f1 = f2 := by
