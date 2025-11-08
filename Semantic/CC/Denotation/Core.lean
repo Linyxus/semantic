@@ -1919,18 +1919,6 @@ def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
     ∀ env H, EnvTyping Γ env H ->
       (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
 
--- theorem denot_implyat_lift
---   (himp : (Ty.shape_val_denot env T1).ImplyAfter H (Ty.shape_val_denot env T2)) :
---   (Ty.capt_exp_denot env (.capt C T1)).ImplyAfter H (Ty.capt_exp_denot env (.capt C T2)) := by
---   intro A
---   intro H' hsub e h1
---   simp [Ty.capt_exp_denot] at h1 ⊢
---   apply eval_post_monotonic_general _ h1
---   apply Hpost.entails_after_subsumes <;> try exact hsub
---   simp [Ty.capt_val_denot]
---   intro h'' hsub' e' he'
---   apply (himp (C.denot env)) h'' hsub' e' he'
-
 theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
   (hts : env.is_reachability_safe)
   (T : Ty .shape s) :
