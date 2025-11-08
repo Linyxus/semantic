@@ -43,17 +43,19 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   Step C m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
 
 /-- Multi-step reduction relation: reflexive-transitive closure of Step.
-  Reduce C m e m' e' means that e in memory m reduces to e' in memory m'
+  Reduce C m e m' e' means that e in memory m takes multiple steps to e' in memory m'
   using at most capabilities from C. -/
 inductive Reduce : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | refl :
   Reduce C m e m e
-| single :
-  Step C m e m' e' ->
-  Reduce C m e m' e'
-| trans :
-  Reduce C m1 e1 m2 e2 ->
+| step :
+  Step C m1 e1 m2 e2 ->
   Reduce C m2 e2 m3 e3 ->
   Reduce C m1 e1 m3 e3
+
+theorem reduce_trans
+  (hred1 : Reduce C m1 e1 m2 e2)
+  (hred2 : Reduce C m2 e2 m3 e3) :
+  Reduce C m1 e1 m3 e3 := by sorry
 
 end CC
