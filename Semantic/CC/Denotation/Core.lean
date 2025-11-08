@@ -923,6 +923,10 @@ def TypeEnv.is_implying_wf (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).implies_wf
 
+def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_tight
+
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env mem) :
   env.IsMonotonic := by
@@ -962,7 +966,7 @@ theorem typed_env_is_monotonic
               -- hproper says d.is_proper
               -- We need d.is_monotonic
               intro C
-              exact (hproper.2.2.2 C).1
+              exact (hproper.2.2.2.2 C).1
             | there x =>
               simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
               exact ih_result.tvar x
@@ -1019,7 +1023,7 @@ theorem typed_env_is_transparent
             -- hproper says d.is_proper
             -- We need d.is_transparent
             intro C
-            exact (hproper.2.2.2 C).2
+            exact (hproper.2.2.2.2 C).2
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
@@ -1203,6 +1207,10 @@ theorem typed_env_is_implying_wf
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
+
+theorem typed_env_is_tight
+  (ht : EnvTyping Γ env mem) :
+  env.is_tight := by sorry
 
 theorem shape_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1633,7 +1641,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
                 | here =>
                   simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                   intro C
-                  exact (hdenot_proper.2.2.2 C).1
+                  exact (hdenot_proper.2.2.2.2 C).1
                 | there X' =>
                   simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                   exact henv.tvar X'
@@ -2151,6 +2159,10 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
     have ⟨hwf_e, cs, B0, t0, hresolve, hwf_cs, _⟩ := hdenot
     exact hwf_e
 
+theorem shape_val_denot_is_tight {env : TypeEnv s}
+  (hts : env.is_tight) :
+  (Ty.shape_val_denot env T).is_tight := sorry
+
 theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (hts : EnvTyping Γ env m) :
   (Ty.shape_val_denot env S).is_proper := by
@@ -2164,11 +2176,14 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
     · constructor
       · -- Prove: (Ty.shape_val_denot env S).implies_wf
         exact shape_val_denot_implies_wf (typed_env_is_implying_wf hts) S
-      · -- Prove: ∀ C, ((Ty.shape_val_denot env S) C).is_proper
-        intro C
-        constructor
-        · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
-        · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
+      · constructor
+        · -- Prove: (Ty.shape_val_denot env S).is_tight
+          sorry
+        · -- Prove: ∀ C, ((Ty.shape_val_denot env S) C).is_proper
+          intro C
+          constructor
+          · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
+          · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
 
 theorem capt_denot_implyafter_lift
   (himp : (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T2)) :
