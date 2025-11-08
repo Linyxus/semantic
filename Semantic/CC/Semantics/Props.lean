@@ -40,11 +40,10 @@ theorem small_step_capability_set_monotonic {R1 R2 : CapabilitySet}
   induction hred generalizing R2 with
   | refl =>
     apply Reduce.refl
-  | single hstep =>
-    apply Reduce.single
-    exact step_capability_set_monotonic hstep hsub
-  | trans _ _ ih1 ih2 =>
-    exact Reduce.trans (ih1 hsub) (ih2 hsub)
+  | step h rest ih =>
+    apply Reduce.step
+    · exact step_capability_set_monotonic h hsub
+    · exact ih hsub
 
 /-- Helper: Congruence for Reduce in letin context. -/
 theorem reduce_ctx_letin
@@ -52,11 +51,10 @@ theorem reduce_ctx_letin
   Reduce C m (.letin e1 e2) m' (.letin e1' e2) := by
   induction hred with
   | refl => apply Reduce.refl
-  | single hstep =>
-    apply Reduce.single
-    apply Step.step_ctx_letin hstep
-  | trans _ _ ih1 ih2 =>
-    exact Reduce.trans ih1 ih2
+  | step h rest ih =>
+    apply Reduce.step
+    · apply Step.step_ctx_letin h
+    · exact ih
 
 /-- Helper: Congruence for Reduce in unpack context. -/
 theorem reduce_ctx_unpack
@@ -64,11 +62,10 @@ theorem reduce_ctx_unpack
   Reduce C m (.unpack e1 e2) m' (.unpack e1' e2) := by
   induction hred with
   | refl => apply Reduce.refl
-  | single hstep =>
-    apply Reduce.single
-    apply Step.step_ctx_unpack hstep
-  | trans _ _ ih1 ih2 =>
-    exact Reduce.trans ih1 ih2
+  | step h rest ih =>
+    apply Reduce.step
+    · apply Step.step_ctx_unpack h
+    · exact ih
 
 /-- Helper: Single step preserves memory subsumption. -/
 theorem step_memory_monotonic
@@ -92,9 +89,8 @@ theorem reduce_memory_monotonic
   m2.subsumes m1 := by
   induction hred with
   | refl => exact Memory.subsumes_refl _
-  | single hstep => exact step_memory_monotonic hstep
-  | trans _ _ ih1 ih2 =>
-    exact Memory.subsumes_trans ih2 ih1
+  | step h rest ih =>
+    exact Memory.subsumes_trans ih (step_memory_monotonic h)
 
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q) :
@@ -103,7 +99,8 @@ theorem eval_to_reduce
     Reduce C m1 e1 m2 e2 ->
     Q e2 m2 := by
   induction heval with
-  | eval_val hv hQ => sorry
+  | eval_val hv hQ =>
+    sorry
   | eval_var hQ =>
     intro m2 e2 hans hred
     sorry
@@ -118,19 +115,16 @@ theorem eval_to_reduce
       -- .app is not an answer, contradiction
       cases hans; rename_i hv
       cases hv
-    | single hstep =>
-      -- Single step from application
+    | step hstep rest =>
+      -- At least one step from application
       cases hstep with
       | step_apply hlookup' =>
         -- We stepped to the substituted body
-        -- By IH on the body evaluation with Reduce.refl
+        -- Now apply IH to the rest of the reduction
         sorry
       | step_invoke =>
         -- This is for capability invocation, different from eval_apply
         sorry
-    | trans hred1 hred2 =>
-      -- Multi-step reduction
-      sorry
   | eval_invoke hmem hlookup_x hlookup_y hQ =>
     intro m2 e2 hans hred
     sorry

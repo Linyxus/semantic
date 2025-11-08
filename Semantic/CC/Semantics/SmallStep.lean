@@ -56,6 +56,9 @@ inductive Reduce : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop
 theorem reduce_trans
   (hred1 : Reduce C m1 e1 m2 e2)
   (hred2 : Reduce C m2 e2 m3 e3) :
-  Reduce C m1 e1 m3 e3 := by sorry
+  Reduce C m1 e1 m3 e3 := by
+  induction hred1 with
+  | refl => exact hred2
+  | step h rest ih => exact Reduce.step h (ih hred2)
 
 end CC
