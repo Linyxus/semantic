@@ -1,4 +1,10 @@
 import Semantic.CC.Debruijn
+
+/!-
+This module defines the capture set syntax of CC.
+-/
+
+
 namespace CC
 
 inductive Var : Kind -> Sig -> Type where
