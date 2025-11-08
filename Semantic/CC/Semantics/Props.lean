@@ -92,6 +92,34 @@ theorem reduce_memory_monotonic
   | step h rest ih =>
     exact Memory.subsumes_trans ih (step_memory_monotonic h)
 
+theorem step_var_absurd
+  (hstep : Step C m (.var x) m' e') : False := by
+  cases hstep
+
+theorem step_val_absurd
+  (hv : Exp.IsSimpleVal v)
+  (hstep : Step C m v m' e') :
+  False := by
+  cases hv <;> cases hstep
+
+theorem step_ans_absurd
+  (hans : e.IsAns)
+  (hstep : Step C m e m' e') :
+  False := by
+  cases hans with
+  | is_var => exact step_var_absurd hstep
+  | is_val hv => cases hv <;> cases hstep
+
+theorem reduce_ans_eq
+  (hans : e.IsAns)
+  (hred : Reduce C m e m' e') :
+  m = m' ∧ e = e' := by
+  induction hred with
+  | refl => exact ⟨rfl, rfl⟩
+  | step h rest ih =>
+    have habsurd : False := step_ans_absurd hans h
+    contradiction
+
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q) :
   ∀ m2 e2,
