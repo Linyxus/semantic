@@ -21,7 +21,7 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   Step C m (.tapp (.free x) S) m (e.subst (Subst.openTVar .top))
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
-  Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar .empty))
+  Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
 | step_ctx_letin :
   Step C m e1 m' e1' ->
   Step C m (.letin e1 e2) m' (.letin e1' e2)
