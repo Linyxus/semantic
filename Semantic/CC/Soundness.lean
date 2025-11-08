@@ -220,25 +220,6 @@ theorem sem_typ_var
       CaptureSet.ground_denot]
     exact shape_denot_with_var_reachability hts hshape
 
--- theorem sem_typ_abs
---   (ht : Cbody # (Γ,x:T1) ⊨ e : T2) :
---   Cfun # Γ ⊨ (.abs T1 e) : (.typ (.capt Cfun (.arrow T1 T2))) := by
---   intro env store hts
---   simp [Ty.exi_exp_denot, Ty.capt_val_denot, Ty.shape_val_denot, Ty.exi_val_denot]
---   apply Eval.eval_val
---   · simp [Exp.subst]; constructor
---   · simp [Denot.as_post]
---     use T1, e
---     constructor
---     · rfl
---     · intro arg H' hsubsume harg
---       simp [Exp.from_TypeEnv_weaken_open]
---       unfold SemanticTyping at ht
---       apply ht (env.extend_var arg (T1.captureSet.denot env)) H'
---       constructor
---       { exact harg }
---       { apply env_typing_monotonic hts hsubsume }
-
 theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
   expand_captures m.heap cs = cs.ground_denot m := by
   induction cs with
@@ -369,29 +350,6 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                       rfl
                 rw [← hauthority]
                 exact this
-
--- theorem sem_typ_tabs
---   (ht : (Γ,X<:S) ⊨ e : T) :
---   Γ ⊨ (.tabs S e) : (.poly S T) := by
---   intro env store hts
---   simp [Ty.exp_denot]
---   apply Eval.eval_val
---   · simp [Exp.subst]; constructor
---   · simp [Ty.val_denot, Denot.as_post]
---     constructor; constructor
---     constructor
---     · rfl
---     · unfold SemanticTyping at ht
---       intro H denot Hs hdenot_mono hdenot_trans himply
---       simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
---       apply ht
---       constructor
---       · exact hdenot_mono
---       · constructor
---         · exact hdenot_trans
---         · constructor
---           · exact himply
---           · apply env_typing_monotonic hts Hs
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
@@ -836,41 +794,6 @@ theorem closed_captureset_subst_denot
   | var_bound =>
     simp only [CaptureSet.subst, CaptureSet.denot, Var.subst, Subst.from_TypeEnv]
 
--- theorem sem_typ_app
---   (ht1 : Γ ⊨ (.var x) : (.arrow T1 T2))
---   (ht2 : Γ ⊨ (.var y) : T1) :
---   Γ ⊨ (.app x y) : (T2.subst (Subst.openVar y)) := by
---   intro env store hts
---   have h1 := ht1 env store hts
---   simp [Exp.subst] at h1
---   have h1' := var_exp_denot_inv h1
---   have ⟨fx, hfx, T0, hbody, _, hlk, hfun⟩ := abs_val_denot_inv h1'
---   simp [Exp.subst, hfx]
---   have h2 := ht2 env store hts
---   simp [Exp.subst] at h2
---   have h2' := var_exp_denot_inv h2
---   have ⟨farg, hfarg⟩ := closed_var_inv (y.subst (Subst.from_TypeEnv env))
---   have heq := hfarg
---   simp [<-interp_var_subst] at heq
---   simp [hfarg] at *
---   -- Apply hfun with store' = store (reflexive subsumption)
---   have := hfun store farg (Heap.subsumes_refl store) h2'
---   simp [Ty.exp_denot] at this ⊢
---   -- Use heq : interp_var env y = farg to rewrite in both goal and hypothesis
---   rw [<-heq]
---   rw [<-heq] at this
---   -- Convert postcondition via open_arg_val_denot
---   have heqv := open_arg_val_denot (env:=env) (y:=y) (T:=T2)
---   have hconv :=
---     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
---   apply Eval.eval_apply hlk hconv
-
--- NOTE: This theorem is no longer valid after the refactor - lookup_var now returns Nat, not a pair
--- theorem bound_var_cap_eq_reachability
---   (hts : EnvTyping Γ env store) :
---   (env.lookup_var x).2 = reachability_of_loc store (env.lookup_var x).1 :=
---   typed_env_reachability_eq hts
-
 theorem sem_typ_tapp
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   {S : Ty .shape s} -- Type argument
@@ -1114,33 +1037,6 @@ theorem sem_typ_unit :
         · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
         · apply from_TypeEnv_wf_in_heap hts
       · simp [resolve]
-
--- theorem sem_typ_tapp
---   (ht : Γ ⊨ (.var x) : (.poly S T)) :
---   Γ ⊨ (.tapp x S) : (T.subst (Subst.openTVar S)) := by
---   intro env store hts
---   have h1 := ht env store hts
---   simp [Exp.subst] at h1
---   have h1' := var_exp_denot_inv h1
---   have ⟨fx, hfx, T0, e0, _, hlk, hfun⟩ := tabs_val_denot_inv h1'
---   simp [Exp.subst, hfx]
---   -- Need to show Ty.val_denot env S is monotonic and transparent
---   have henv_mono := typed_env_is_monotonic hts
---   have henv_trans := typed_env_is_transparent hts
---   have hmono : (Ty.val_denot env S).is_monotonic := val_denot_is_monotonic henv_mono
---   have htrans : (Ty.val_denot env S).is_transparent := val_denot_is_transparent henv_trans
---   -- Prove reflexivity of ImplyAfter
---   have himply : (Ty.val_denot env S).ImplyAfter store (Ty.val_denot env S) := by
---     intro h' hsub e he
---     exact he
---   -- Apply hfun with heap, denot, monotonicity, transparency, and implication
---   have this := hfun store (Ty.val_denot env S) (Heap.subsumes_refl store) hmono htrans himply
---   simp [Ty.exp_denot] at this ⊢
---   -- Convert postcondition via open_targ_val_denot
---   have heqv := open_targ_val_denot (env:=env) (S:=S) (T:=T)
---   have hconv :=
---     eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).1) this
---   apply Eval.eval_tapply hlk hconv
 
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
@@ -2136,18 +2032,6 @@ theorem sem_typ_subtyp
 
   -- Lift the evaluation from E1 to E2 using postcondition monotonicity
   exact eval_post_monotonic_general h_entails h_eval_E1_at_C2
-
--- theorem sem_typ_subtyp
---   (ht : Γ ⊨ e : T1)
---   (hsub : Subtyp Γ T1 T2) :
---   Γ ⊨ e : T2 := by
---   intro env store hts
---   have h1 := ht env store hts
---   simp [Ty.exp_denot] at h1 ⊢
---   have hsub' := fundamental_subtyp hsub env store hts
---   apply eval_post_monotonic_general _ h1
---   apply Denot.imply_after_to_entails_after
---   exact hsub'
 
 theorem sem_typ_unpack
   {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
