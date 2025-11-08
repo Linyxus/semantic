@@ -6,11 +6,16 @@ De Bruijn indices and variable renamings for CC.
 
 namespace CC
 
+/-- Kind of a variable. -/
 inductive Kind : Type where
+/-- Term variable -/
 | var : Kind
+/-- Type variable -/
 | tvar : Kind
+/-- Capture variable -/
 | cvar : Kind
 
+/-- A `Sig` describes the shape of a context, which is a list of variable kinds. -/
 @[reducible]
 def Sig : Type := List Kind
 
@@ -34,15 +39,18 @@ infixl:65 ",," => Sig.extend
 instance Sig.instAppend : Append Sig where
   append := Sig.extendMany
 
+/-- A bound variable, de Bruijn indexed. -/
 inductive BVar : Sig -> Kind -> Type where
 | here : BVar (s,,k) k
 | there :
   BVar s k ->
   BVar (s,,k0) k
 
+/-- A `Rename` maps bound variables in one context to another. -/
 structure Rename (s1 s2 : Sig) where
   var : BVar s1 k -> BVar s2 k
 
+/-- The identity `Rename`. -/
 def Rename.id {s : Sig} : Rename s s where
   var := fun x => x
 
