@@ -167,11 +167,13 @@ theorem reachability_of_loc_eq_resolve_reachability
   -- compute_reachability = resolve_reachability for simple values
   exact compute_reachability_eq_resolve_reachability m.heap v.unwrap v.isVal
 
+/-- This pre-denotation actually enforces the reachability bound. -/
 def PreDenot.is_reachability_safe (denot : PreDenot) : Prop :=
   ∀ R m e,
     denot R m e ->
     resolve_reachability m.heap e ⊆ R
 
+/-- This pre-denotation is monotonic over reachability sets. -/
 def PreDenot.is_reachability_monotonic (pd : PreDenot) : Prop :=
   ∀ R1 R2,
     R1 ⊆ R2 ->
@@ -179,11 +181,13 @@ def PreDenot.is_reachability_monotonic (pd : PreDenot) : Prop :=
       pd R1 m e ->
       pd R2 m e
 
+/-- This pre-denotation entails heap well-formedness. -/
 def PreDenot.implies_wf (pd : PreDenot) : Prop :=
   ∀ R m e,
     pd R m e ->
     e.WfInHeap m.heap
 
+/-- This is a proper pre-denotation. -/
 def PreDenot.is_proper (pd : PreDenot) : Prop :=
   pd.is_reachability_safe
   ∧ pd.is_reachability_monotonic
