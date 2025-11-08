@@ -1210,7 +1210,55 @@ theorem typed_env_is_implying_wf
 
 theorem typed_env_is_tight
   (ht : EnvTyping Γ env mem) :
-  env.is_tight := by sorry
+  env.is_tight := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      intro X
+      cases X
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht
+          have ⟨_, ht'⟩ := ht
+          have ih_result := ih ht'
+          intro X
+          cases X with
+          | there X' =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result X'
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨hproper, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          intro X
+          cases X with
+          | here =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            -- hproper says d.is_proper
+            -- We need d.is_tight
+            exact hproper.2.2.2.1
+          | there X' =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result X'
+      | cvar B =>
+        cases info with
+        | cvar cs =>
+          simp [EnvTyping] at ht
+          have ⟨_, _, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          intro X
+          cases X with
+          | there X' =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result X'
 
 theorem shape_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -2161,7 +2209,110 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
 
 theorem shape_val_denot_is_tight {env : TypeEnv s}
   (hts : env.is_tight) :
-  (Ty.shape_val_denot env T).is_tight := sorry
+  (Ty.shape_val_denot env T).is_tight := by
+  intro R m fx ht
+  cases T with
+  | top =>
+    simp only [Ty.shape_val_denot, resolve_reachability] at ht ⊢
+    constructor
+    · exact ht.1
+    · exact CapabilitySet.Subset.refl
+  | tvar X =>
+    simp [Ty.shape_val_denot] at ht ⊢
+    exact hts X R m fx ht
+  | unit =>
+    simp [Ty.shape_val_denot] at ht ⊢
+    exact ht
+  | cap =>
+    simp [Ty.shape_val_denot, reachability_of_loc, Memory.lookup] at ht ⊢
+    obtain ⟨hwf, hmem, hin⟩ := ht
+    constructor
+    · exact hwf
+    · constructor
+      · exact hmem
+      · simp [hmem]
+        exact CapabilitySet.mem.here
+  | arrow T1 T2 =>
+    simp [Ty.shape_val_denot] at ht ⊢
+    have ⟨hwf, cs, T0, t0, hresolve, hwf_cs, hR0_sub, hbody⟩ := ht
+    constructor
+    · exact hwf
+    · use cs, T0, t0
+      constructor
+      · exact hresolve
+      · constructor
+        · exact hwf_cs
+        · constructor
+          · -- Need to show: expand_captures m.heap cs ⊆ reachability_of_loc m.heap fx
+            -- Extract the heap value from resolve
+            have : ∃ v, m.heap fx = some (Cell.val v) ∧ v.unwrap = Exp.abs cs T0 t0 := by
+              unfold resolve at hresolve
+              cases heq : m.heap fx
+              · simp [heq] at hresolve
+              · next cell =>
+                cases cell <;> simp [heq] at hresolve
+                exact ⟨_, rfl, hresolve⟩
+            obtain ⟨v, hv, hunwrap⟩ := this
+            -- Use the equality: reachability_of_loc = resolve_reachability of unwrapped value
+            have heq := reachability_of_loc_eq_resolve_reachability m fx v hv
+            rw [heq, hunwrap]
+            simp [resolve_reachability]
+            exact CapabilitySet.Subset.refl
+          · exact hbody
+  | poly T1 T2 =>
+    simp [Ty.shape_val_denot] at ht ⊢
+    have ⟨hwf, cs, S0, t0, hresolve, hwf_cs, hR0_sub, hbody⟩ := ht
+    constructor
+    · exact hwf
+    · use cs, S0, t0
+      constructor
+      · exact hresolve
+      · constructor
+        · exact hwf_cs
+        · constructor
+          · -- Need to show: expand_captures m.heap cs ⊆ reachability_of_loc m.heap fx
+            -- Extract the heap value from resolve
+            have : ∃ v, m.heap fx = some (Cell.val v) ∧ v.unwrap = Exp.tabs cs S0 t0 := by
+              unfold resolve at hresolve
+              cases heq : m.heap fx
+              · simp [heq] at hresolve
+              · next cell =>
+                cases cell <;> simp [heq] at hresolve
+                exact ⟨_, rfl, hresolve⟩
+            obtain ⟨v, hv, hunwrap⟩ := this
+            -- Use the equality: reachability_of_loc = resolve_reachability of unwrapped value
+            have heq := reachability_of_loc_eq_resolve_reachability m fx v hv
+            rw [heq, hunwrap]
+            simp [resolve_reachability]
+            exact CapabilitySet.Subset.refl
+          · exact hbody
+  | cpoly B T =>
+    simp [Ty.shape_val_denot] at ht ⊢
+    have ⟨hwf, cs, B0, t0, hresolve, hwf_cs, hR0_sub, hbody⟩ := ht
+    constructor
+    · exact hwf
+    · use cs, B0, t0
+      constructor
+      · exact hresolve
+      · constructor
+        · exact hwf_cs
+        · constructor
+          · -- Need to show: expand_captures m.heap cs ⊆ reachability_of_loc m.heap fx
+            -- Extract the heap value from resolve
+            have : ∃ v, m.heap fx = some (Cell.val v) ∧ v.unwrap = Exp.cabs cs B0 t0 := by
+              unfold resolve at hresolve
+              cases heq : m.heap fx
+              · simp [heq] at hresolve
+              · next cell =>
+                cases cell <;> simp [heq] at hresolve
+                exact ⟨_, rfl, hresolve⟩
+            obtain ⟨v, hv, hunwrap⟩ := this
+            -- Use the equality: reachability_of_loc = resolve_reachability of unwrapped value
+            have heq := reachability_of_loc_eq_resolve_reachability m fx v hv
+            rw [heq, hunwrap]
+            simp [resolve_reachability]
+            exact CapabilitySet.Subset.refl
+          · exact hbody
 
 theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (hts : EnvTyping Γ env m) :
@@ -2178,7 +2329,7 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
         exact shape_val_denot_implies_wf (typed_env_is_implying_wf hts) S
       · constructor
         · -- Prove: (Ty.shape_val_denot env S).is_tight
-          sorry
+          exact shape_val_denot_is_tight (typed_env_is_tight hts)
         · -- Prove: ∀ C, ((Ty.shape_val_denot env S) C).is_proper
           intro C
           constructor
