@@ -7,18 +7,22 @@ Type definitions and operations for CC.
 
 namespace CC
 
+/-- The sort of a type: capturing, shape, or existential. -/
 inductive TySort : Type where
--- Capturing types
+/-- capturing types -/
 | capt : TySort
--- Shape types
+/-- shape types -/
 | shape : TySort
--- Existential types
+/-- existential types -/
 | exi : TySort
 
+/-- A capture bound, either unbound or bounded by a capture set. 
+  It bounds capture set parameters. -/
 inductive CaptureBound : Sig -> Type where
 | unbound : CaptureBound s
 | bound : CaptureSet s -> CaptureBound s
 
+/-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
 inductive Ty : TySort -> Sig -> Type where
 -- shape types
 | top : Ty .shape s
@@ -34,21 +38,25 @@ inductive Ty : TySort -> Sig -> Type where
 | exi : Ty .capt (s,C) -> Ty .exi s
 | typ : Ty .capt s -> Ty .exi s
 
+/-- Applies a renaming to a capture bound. -/
 def CaptureBound.rename : CaptureBound s1 -> Rename s1 s2 -> CaptureBound s2
 | .unbound, _ => .unbound
 | .bound cs, f => .bound (cs.rename f)
 
+/-- Renaming by the identity renaming leaves a capture bound unchanged. -/
 def CaptureBound.rename_id {cb : CaptureBound s} : cb.rename (Rename.id) = cb := by
   cases cb
   case unbound => rfl
   case bound cs => simp [CaptureBound.rename, CaptureSet.rename_id]
 
+/-- Renaming distributes over composition of renamings. -/
 theorem CaptureBound.rename_comp {cb : CaptureBound s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (cb.rename f).rename g = cb.rename (f.comp g) := by
   cases cb
   case unbound => rfl
   case bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
 
+/-- Applies a renaming to all bound variables in a type. -/
 def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
@@ -61,6 +69,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .exi T, f => .exi (T.rename (f.lift))
 | .typ T, f => .typ (T.rename f)
 
+/-- Renaming by the identity renaming leaves a type unchanged. -/
 def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   induction T
   case top => rfl
@@ -75,6 +84,7 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case exi ih => simp [Ty.rename, Rename.lift_id, ih]
   case typ ih => simp [Ty.rename, ih]
 
+/-- Renaming distributes over composition of renamings. -/
 theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (T.rename f).rename g = T.rename (f.comp g) := by
   induction T generalizing s2 s3
@@ -89,19 +99,21 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   case exi ih => simp [Ty.rename, Rename.lift_comp, ih]
   case typ ih => simp [Ty.rename, ih]
 
+/-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
   simp [Ty.rename_comp, Rename.succ_lift_comm]
 
+/-- Extracts the capture set from a capturing type. -/
 def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .capt C _ => C
 
-/-- Closedness judgements. A syntax construct is closed if it contains no heap pointers. -/
-
+/-- A capture bound is closed if it contains no heap pointers. -/
 inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
 | unbound : CaptureBound.IsClosed .unbound
 | bound : CaptureSet.IsClosed cs -> CaptureBound.IsClosed (.bound cs)
 
+/-- A type is closed if it contains no heap pointers. -/
 inductive Ty.IsClosed : Ty sort s -> Prop where
 -- shape types
 | top : Ty.IsClosed .top
