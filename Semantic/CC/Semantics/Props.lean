@@ -222,10 +222,50 @@ theorem eval_to_reduce
         exact hQ
   | eval_tapply hlookup eval_body ih =>
     intro m2 e2 hans hred
-    sorry
+    -- Type application is not an answer, so reduction cannot be refl
+    cases hred with
+    | refl =>
+      -- .tapp is not an answer, contradiction
+      cases hans; rename_i hv
+      cases hv
+    | step hstep rest =>
+      -- The only step from tapp is step_tapply
+      cases hstep with
+      | step_tapply hlookup' =>
+        -- Both lookups access the same location, so they must return the same value
+        rename_i cs1 T1 e1 hv1 R1 C Q m x S cs2 T2 e2_body hv2 R2
+        have heq := Memory.lookup_deterministic hlookup hlookup'
+        -- Extract equality of type abstraction bodies
+        injection heq with heq_cell
+        injection heq_cell with heq_val
+        injection heq_val with _ _ _ heq_body
+        -- Now we know e1 = e2_body, so the substitutions are equal
+        rw [←heq_body] at rest
+        -- Apply IH to the rest of the reduction
+        exact ih m2 e2 hans rest
   | eval_capply hlookup eval_body ih =>
     intro m2 e2 hans hred
-    sorry
+    -- Capability application is not an answer, so reduction cannot be refl
+    cases hred with
+    | refl =>
+      -- .capp is not an answer, contradiction
+      cases hans; rename_i hv
+      cases hv
+    | step hstep rest =>
+      -- The only step from capp is step_capply
+      cases hstep with
+      | step_capply hlookup' =>
+        -- Both lookups access the same location, so they must return the same value
+        rename_i cs1 B1 e1 hv1 R1 C Q m x CS cs2 B2 e2_body hv2 R2
+        have heq := Memory.lookup_deterministic hlookup hlookup'
+        -- Extract equality of capability abstraction bodies
+        injection heq with heq_cell
+        injection heq_cell with heq_val
+        injection heq_val with _ _ _ heq_body
+        -- Now we know e1 = e2_body, so the substitutions are equal
+        rw [←heq_body] at rest
+        -- Apply IH to the rest of the reduction
+        exact ih m2 e2 hans rest
   | eval_letin hpred eval_e1 h_val h_var ih =>
     intro m2 e2 hans hred
     sorry
