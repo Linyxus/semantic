@@ -148,4 +148,11 @@ theorem reduce_memory_monotonic
 --     -- Similar problem as eval_letin
 --     sorry
 
+theorem eval_to_reduce
+  (heval : Eval C m1 e1 Q) :
+  ∀ m2 e2,
+    e2.IsAns ->
+    Reduce C m1 e1 m2 e2 ->
+    Q e2 m2 := by sorry
+
 end CC
