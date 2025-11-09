@@ -250,7 +250,7 @@ theorem eval_to_reduce
       cases hstep with
       | step_tapply hlookup' =>
         -- Both lookups access the same location, so they must return the same value
-        rename_i cs1 T1 e1 hv1 R1 C Q m x S cs2 T2 e2_body hv2 R2
+        rename_i cs1 T0_1 e1 hv1 R1 C Q S mem x cs2 S'_2 e2_body hv2 R2
         have heq := Memory.lookup_deterministic hlookup hlookup'
         -- Extract equality of type abstraction bodies
         injection heq with heq_cell
@@ -259,7 +259,21 @@ theorem eval_to_reduce
         -- Now we know e1 = e2_body, so the substitutions are equal
         rw [←heq_body] at rest
         -- Apply IH to the rest of the reduction
-        exact ih (by sorry) m2 e2 hans rest
+        -- Need to show (e1.subst (Subst.openTVar .top)).WfInHeap mem.heap
+        have hwf_subst_body : (e1.subst (Subst.openTVar .top)).WfInHeap mem.heap := by
+          -- From mem.wf.wf_val and hlookup, get that the type abstraction is well-formed
+          have hwf_tabs : Exp.WfInHeap (.tabs cs1 T0_1 e1) mem.heap :=
+            mem.wf.wf_val _ _ hlookup
+          -- Extract well-formedness of e1 from the type abstraction
+          cases hwf_tabs with
+          | wf_tabs _ _ hwf_e1 =>
+            -- Build well-formed substitution: .top is always well-formed
+            have hwf_top : Ty.WfInHeap (.top : Ty .shape ∅) mem.heap :=
+              Ty.WfInHeap.wf_top
+            have hwf_subst := Subst.wf_openTVar hwf_top
+            -- Apply substitution preservation
+            exact Exp.wf_subst hwf_e1 hwf_subst
+        exact ih hwf_subst_body m2 e2 hans rest
   | eval_capply hlookup eval_body ih =>
     intro m2 e2 hans hred
     -- Capability application is not an answer, so reduction cannot be refl
@@ -273,7 +287,7 @@ theorem eval_to_reduce
       cases hstep with
       | step_capply hlookup' =>
         -- Both lookups access the same location, so they must return the same value
-        rename_i cs1 B1 e1 hv1 R1 C Q m x CS cs2 B2 e2_body hv2 R2
+        rename_i cs1 B0_1 e1 hv1 R1 C CS Q mem x cs2 B2 e2_body hv2 R2
         have heq := Memory.lookup_deterministic hlookup hlookup'
         -- Extract equality of capability abstraction bodies
         injection heq with heq_cell
@@ -282,7 +296,23 @@ theorem eval_to_reduce
         -- Now we know e1 = e2_body, so the substitutions are equal
         rw [←heq_body] at rest
         -- Apply IH to the rest of the reduction
-        exact ih (by sorry) m2 e2 hans rest
+        -- Need to show (e1.subst (Subst.openCVar CS)).WfInHeap mem.heap
+        have hwf_subst_body : (e1.subst (Subst.openCVar CS)).WfInHeap mem.heap := by
+          -- From mem.wf.wf_val and hlookup, get that the capability abstraction is well-formed
+          have hwf_cabs : Exp.WfInHeap (.cabs cs1 B0_1 e1) mem.heap :=
+            mem.wf.wf_val _ _ hlookup
+          -- Extract well-formedness of CS from hwf
+          have hwf_capp := hwf
+          cases hwf_capp with
+          | wf_capp _ hwf_CS =>
+            -- Extract well-formedness of e1 from the capability abstraction
+            cases hwf_cabs with
+            | wf_cabs _ _ hwf_e1 =>
+              -- Build well-formed substitution
+              have hwf_subst := Subst.wf_openCVar hwf_CS
+              -- Apply substitution preservation
+              exact Exp.wf_subst hwf_e1 hwf_subst
+        exact ih hwf_subst_body m2 e2 hans rest
   | eval_letin =>
     intro m2 e2 hans hred
     rename_i ih h_val_ih h_var_ih
