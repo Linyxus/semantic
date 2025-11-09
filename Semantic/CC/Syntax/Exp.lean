@@ -6,6 +6,7 @@ Expression definitions and operations for CC.
 
 namespace CC
 
+/-- An expression in CC. -/
 inductive Exp : Sig -> Type where
 | var : Var .var s -> Exp s
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
@@ -19,6 +20,7 @@ inductive Exp : Sig -> Type where
 | unpack : Exp s -> Exp ((s,C),x) -> Exp s
 | unit : Exp s
 
+/-- Applies a renaming to all bound variables in an expression. -/
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
 | .abs cs T e, f => .abs (cs.rename f) (T.rename f) (e.rename (f.lift))
@@ -32,6 +34,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .unpack e1 e2, f => .unpack (e1.rename f) (e2.rename (f.lift.lift))
 | .unit, _ => .unit
 
+/-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
@@ -47,13 +50,16 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | cabs : Exp.IsSimpleVal (.cabs cs cb e)
 | unit : Exp.IsSimpleVal .unit
 
+/-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
   unwrap : Exp s
   isVal : unwrap.IsVal
 
+/-- Renaming by the identity renaming leaves a variable unchanged. -/
 def Var.rename_id {x : Var k s} : x.rename (Rename.id) = x := by
   cases x <;> rfl
 
+/-- Renaming by the identity renaming leaves an expression unchanged. -/
 def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   induction e
     <;> try (solve
@@ -62,10 +68,12 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
               CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
         try aesop)
 
+/-- Renaming distributes over composition of renamings. -/
 theorem Var.rename_comp {x : Var k s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (x.rename f).rename g = x.rename (f.comp g) := by
   cases x <;> rfl
 
+/-- Renaming distributes over composition of renamings. -/
 theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (e.rename f).rename g = e.rename (f.comp g) := by
   induction e generalizing s2 s3
@@ -75,10 +83,12 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
               CaptureSet.rename_comp, CaptureBound.rename_comp, Rename.lift_comp]
         try aesop)
 
+/-- Weakening commutes with renaming under a binder. -/
 theorem Var.weaken_rename_comm {x : Var k s1} {f : Rename s1 s2} :
     (x.rename Rename.succ).rename (f.lift (k:=k0)) = (x.rename f).rename (Rename.succ) := by
   simp [Var.rename_comp, Rename.succ_lift_comm]
 
+/-- An answer is a value or a free variable in the empty context. -/
 inductive Exp.IsAns : Exp {} -> Prop where
 | is_val :
   (hv : Exp.IsVal v) ->
@@ -86,8 +96,7 @@ inductive Exp.IsAns : Exp {} -> Prop where
 | is_var :
   Exp.IsAns (.var x)
 
-/-- Closedness judgements. A syntax construct is closed if it contains no heap pointers. -/
-
+/-- An expression is closed if it contains no heap pointers. -/
 inductive Exp.IsClosed : Exp s -> Prop where
 | var : Var.IsClosed x -> Exp.IsClosed (.var x)
 | abs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
