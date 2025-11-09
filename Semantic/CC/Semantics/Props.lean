@@ -192,7 +192,23 @@ theorem eval_to_reduce
         -- Now we know e1 = e2_body, so the substitutions are equal
         rw [←heq_body] at rest
         -- Apply IH to the rest of the reduction
-        exact ih (by sorry) m2 e2 hans rest
+        -- Need to show (e1.subst (Subst.openVar (.free y))).WfInHeap m.heap
+        have hwf_subst_body : (e1.subst (Subst.openVar (.free y))).WfInHeap m.heap := by
+          -- Extract well-formedness of y from hwf
+          have hwf_app := hwf
+          cases hwf_app with
+          | wf_app hwf_x hwf_y =>
+            -- From m.wf.wf_val and hlookup, get that the abstraction body is well-formed
+            have hwf_abs : Exp.WfInHeap (.abs cs1 T1 e1) m.heap :=
+              m.wf.wf_val _ _ hlookup
+            -- Extract well-formedness of e1 from the abstraction
+            cases hwf_abs with
+            | wf_abs _ _ hwf_e1 =>
+              -- Build well-formed substitution
+              have hwf_subst := Subst.wf_openVar hwf_y
+              -- Apply substitution preservation
+              exact Exp.wf_subst hwf_e1 hwf_subst
+        exact ih hwf_subst_body m2 e2 hans rest
       | step_invoke =>
         rename_i cs T e hv R C Q m x y hv_unit R_unit hlookup_y hmem hlookup_cap
         have heq := Memory.lookup_deterministic hlookup hlookup_cap
