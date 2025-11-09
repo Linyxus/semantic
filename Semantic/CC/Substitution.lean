@@ -2,11 +2,13 @@ import Semantic.CC.Syntax
 
 namespace CC
 
+/-- A substitution maps bound variables of each kind to terms of the appropriate sort. -/
 structure Subst (s1 s2 : Sig) where
   var : BVar s1 .var -> Var .var s2
   tvar : BVar s1 .tvar -> Ty .shape s2
   cvar : BVar s1 .cvar -> CaptureSet s2
 
+/-- Lifts a substitution under a binder. The newly bound variable maps to itself. -/
 def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
   var := fun x => by
     cases x
@@ -21,30 +23,36 @@ def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
     case here => exact .cvar .here
     case there x => exact (s.cvar x).rename Rename.succ
 
+/-- Lifts a substitution under multiple binders. -/
 def Subst.liftMany (s : Subst s1 s2) (K : Sig) : Subst (s1 ++ K) (s2 ++ K) :=
   match K with
   | [] => s
   | k :: K => (s.liftMany K).lift (k:=k)
 
+/-- The identity substitution. -/
 def Subst.id {s : Sig} : Subst s s where
   var := fun x => .bound x
   tvar := fun x => .tvar x
   cvar := fun x => .cvar x
 
+/-- Applies a substitution to a variable. Free variables remain unchanged. -/
 def Var.subst : Var .var s1 -> Subst s1 s2 -> Var .var s2
 | .bound x, s => s.var x
 | .free n, _ => .free n
 
+/-- Applies a substitution to all bound variables in a capture set. -/
 def CaptureSet.subst : CaptureSet s1 -> Subst s1 s2 -> CaptureSet s2
 | .empty, _ => .empty
 | .union cs1 cs2, σ => .union (cs1.subst σ) (cs2.subst σ)
 | .var x, σ => .var (x.subst σ)
 | .cvar x, σ => σ.cvar x
 
+/-- Applies a substitution to a capture bound. -/
 def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
 | .unbound, _ => .unbound
 | .bound cs, σ => .bound (cs.subst σ)
 
+/-- Applies a substitution to a type. -/
 def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, s => s.tvar x
@@ -57,6 +65,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
 
+/-- Applies a substitution to an expression. -/
 def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
 | .abs cs T e, s => .abs (cs.subst s) (T.subst s) (e.subst s.lift)
@@ -80,7 +89,7 @@ def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   cvar := fun
     | .there x0 => .cvar x0
 
-/-- Opens a type variable binder, substituting `U` for the outermost bound. -/
+/-- Opens a type variable binder, substituting `U` for the innermost bound. -/
 def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
   var := fun
     | .there x => .bound x
@@ -111,9 +120,8 @@ def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
   tvar := fun
     | .there (.there X0) => .tvar X0
 
-/-!
-Function extensionality principle for substitutions.
--/
+/-- Function extensionality for substitutions.
+  Two substitutions are equal if they map all variables equally. -/
 theorem Subst.funext {σ1 σ2 : Subst s1 s2}
   (hvar : ∀ x, σ1.var x = σ2.var x)
   (htvar : ∀ x, σ1.tvar x = σ2.tvar x)
@@ -127,9 +135,7 @@ theorem Subst.funext {σ1 σ2 : Subst s1 s2}
   · funext x; exact htvar x
   · funext x; exact hcvar x
 
-/-!
-Composition of substitutions.
--/
+/-- Composition of substitutions. -/
 def Subst.comp (σ1 : Subst s1 s2) (σ2 : Subst s2 s3) : Subst s1 s3 where
   var := fun x => (σ1.var x).subst σ2
   tvar := fun x => (σ1.tvar x).subst σ2
@@ -310,10 +316,7 @@ theorem CaptureSet.weaken_subst_comm_base {cs : CaptureSet s1} {σ : Subst s1 s2
     simp [CaptureSet.subst, CaptureSet.rename]
     exact CVar.weaken_subst_comm_base
 
-/-!
-Composition of substitutions commutes with lifting.
-This is the key technical lemma that enables substitution composition proofs.
--/
+/-- Composition of substitutions commutes with lifting. -/
 theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
   (σ1.lift (k := k)).comp (σ2.lift (k := k)) = (σ1.comp σ2).lift (k := k) := by
   apply Subst.funext
@@ -340,9 +343,7 @@ theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
       simp [Subst.comp, Subst.lift]
       exact CaptureSet.weaken_subst_comm_base.symm
 
-/-!
-Composition of substitutions commutes with lifting many levels.
--/
+/-- Composition of substitutions commutes with lifting many levels. -/
 theorem Subst.comp_liftMany {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {K : Sig} :
   (σ1.liftMany K).comp (σ2.liftMany K) = (σ1.comp σ2).liftMany K := by
   induction K with
@@ -351,16 +352,15 @@ theorem Subst.comp_liftMany {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {K : Sig} :
     simp [Subst.liftMany]
     rw [Subst.comp_lift, ih]
 
-/-!
-Substituting a composition of substitutions is the same as
-substituting one after the other for a variable.
--/
+/-- Substituting a composition of substitutions is the same as
+  substituting one after the other. -/
 theorem Var.subst_comp {x : Var .var s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (x.subst σ1).subst σ2 = x.subst (σ1.comp σ2) := by
   cases x with
   | bound x => rfl
   | free n => rfl
 
+/-- Substitution on capture sets distributes over composition of substitutions. -/
 theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (cs.subst σ1).subst σ2 = cs.subst (σ1.comp σ2) := by
   induction cs with
@@ -373,16 +373,14 @@ theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Su
   | cvar C =>
     simp [CaptureSet.subst, Subst.comp]
 
+/-- Substitution on capture bounds distributes over composition of substitutions. -/
 theorem CaptureBound.subst_comp {cb : CaptureBound s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (cb.subst σ1).subst σ2 = cb.subst (σ1.comp σ2) := by
   cases cb with
   | unbound => rfl
   | bound cs => simp [CaptureBound.subst, CaptureSet.subst_comp]
 
-/-!
-Substituting a composition of substitutions is the same as
-substituting one after the other for a type.
--/
+/-- Substitution on types distributes over composition of substitutions. -/
 theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (T.subst σ1).subst σ2 = T.subst (σ1.comp σ2) := by
   induction T generalizing s2 s3 with
@@ -403,10 +401,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | typ T ih =>
     simp [Ty.subst, ih]
 
-/-!
-Substituting a composition of substitutions is the same as
-substituting one after the other for an expression.
--/
+/-- Substitution on terms distributes over composition of substitutions. -/
 theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (e.subst σ1).subst σ2 = e.subst (σ1.comp σ2) := by
   induction e generalizing s2 s3 with
@@ -429,15 +424,14 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unit => rfl
 
+/-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem Var.subst_id {x : Var .var s} :
   x.subst Subst.id = x := by
   cases x with
   | bound x => rfl
   | free n => rfl
 
-/-!
-Substituting with the identity substitution is a no-op for a capture set.
--/
+/-- Substituting with the identity substitution leaves a capture set unchanged. -/
 theorem CaptureSet.subst_id {cs : CaptureSet s} :
   cs.subst Subst.id = cs := by
   induction cs with
@@ -449,12 +443,14 @@ theorem CaptureSet.subst_id {cs : CaptureSet s} :
   | cvar C =>
     simp [CaptureSet.subst, Subst.id]
 
+/-- Substituting with the identity substitution leaves a capture bound unchanged. -/
 theorem CaptureBound.subst_id {cb : CaptureBound s} :
   cb.subst Subst.id = cb := by
   cases cb with
   | unbound => rfl
   | bound cs => simp [CaptureBound.subst, CaptureSet.subst_id]
 
+/-- Lifting the identity substitution yields the identity. -/
 theorem Subst.lift_id :
   (Subst.id (s:=s)).lift (k:=k) = Subst.id := by
   apply Subst.funext
@@ -465,9 +461,7 @@ theorem Subst.lift_id :
   · intro C
     cases C <;> rfl
 
-/-!
-Substituting with the identity substitution is a no-op for a type.
--/
+/-- Substituting with the identity substitution leaves a type unchanged. -/
 theorem Ty.subst_id {T : Ty sort s} :
   T.subst Subst.id = T := by
   induction T with
@@ -488,9 +482,7 @@ theorem Ty.subst_id {T : Ty sort s} :
   | typ T ih =>
     simp [Ty.subst, ih]
 
-/-!
-Substituting with the identity substitution is a no-op for an expression.
--/
+/-- Substituting with the identity substitution leaves an expression unchanged. -/
 theorem Exp.subst_id {e : Exp s} :
   e.subst Subst.id = e := by
   induction e with
@@ -517,15 +509,14 @@ theorem Exp.subst_id {e : Exp s} :
   | unit =>
     rfl
 
+/-- Converts a renaming to a substitution. -/
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
   var := fun x => .bound (f.var x)
   tvar := fun X => .tvar (f.var X)
   cvar := fun C => .cvar (f.var C)
 
-/-!
-Lifting a renaming and then converting to a substitution is the same as
-converting to a substitution and then lifting the substitution.
--/
+/-- Lifting a renaming and then converting to a substitution is the same as
+  converting to a substitution and then lifting the substitution. -/
 theorem Rename.asSubst_lift {f : Rename s1 s2} :
   (f.lift (k:=k)).asSubst = (f.asSubst).lift (k:=k) := by
   apply Subst.funext
@@ -542,16 +533,14 @@ theorem Rename.asSubst_lift {f : Rename s1 s2} :
     · rfl
     · rfl
 
+/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem Var.subst_asSubst {x : Var .var s1} {f : Rename s1 s2} :
   x.subst (f.asSubst) = x.rename f := by
   cases x with
   | bound x => rfl
   | free n => rfl
 
-/-!
-Substituting a substitution lifted from a renaming is the same as renaming
-for a capture set.
--/
+/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem CaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
   cs.subst (f.asSubst) = cs.rename f := by
   induction cs with
@@ -563,16 +552,14 @@ theorem CaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
   | cvar C =>
     simp [CaptureSet.subst, CaptureSet.rename, Rename.asSubst]
 
+/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :
   cb.subst (f.asSubst) = cb.rename f := by
   cases cb with
   | unbound => rfl
   | bound cs => simp [CaptureBound.subst, CaptureBound.rename, CaptureSet.subst_asSubst]
 
-/-!
-Substituting a substitution lifted from a renaming is the same as renaming
-for a type.
--/
+/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   T.subst (f.asSubst) = T.rename f := by
   induction T generalizing s2 with
@@ -597,10 +584,7 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | typ T ih =>
     simp [Ty.subst, Ty.rename, ih]
 
-/-!
-Substituting a substitution lifted from a renaming is the same as renaming
-for an expression.
--/
+/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   e.subst (f.asSubst) = e.rename f := by
   induction e generalizing s2 with
@@ -702,17 +686,17 @@ theorem CaptureSet.ground_subst_invariant {C : CaptureSet {}} :
     constructor <;> assumption
   | var x =>
     cases x with
-    | bound bx => cases bx  -- No bound variables in empty signature
-    | free n =>
-      -- Free variables are unchanged by subst
-      simp [CaptureSet.subst, Var.subst]
-  | cvar c => cases c  -- No capture variables in empty signature
+    | bound bx => cases bx
+    | free n => simp [CaptureSet.subst, Var.subst]
+  | cvar c => cases c
 
+/-- A substitution is closed if all its images are closed. -/
 structure Subst.IsClosed (σ : Subst s1 s2) : Prop where
   var_closed : ∀ x, (σ.var x).IsClosed
   tvar_closed : ∀ X, (σ.tvar X).IsClosed
   cvar_closed : ∀ C, (σ.cvar C).IsClosed
 
+/-- Substitution preserves closedness for variables. -/
 def Var.is_closed_subst {x : Var .var s1} {σ : Subst s1 s2}
   (hc : x.IsClosed) (hsubst : Subst.IsClosed σ) :
   (x.subst σ).IsClosed := by
@@ -721,6 +705,7 @@ def Var.is_closed_subst {x : Var .var s1} {σ : Subst s1 s2}
     exact hsubst.var_closed x
   | free n => cases hc
 
+/-- Substitution preserves closedness for capture sets. -/
 def CaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : Subst s1 s2}
   (hc : cs.IsClosed) (hsubst : Subst.IsClosed σ) :
   (cs.subst σ).IsClosed := by
@@ -746,6 +731,7 @@ def CaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : Subst s1 s2}
     | free n =>
       cases h_var
 
+/-- Substitution preserves closedness for capture bounds. -/
 def CaptureBound.is_closed_subst {cb : CaptureBound s1} {σ : Subst s1 s2}
   (hc : cb.IsClosed) (hsubst : Subst.IsClosed σ) :
   (cb.subst σ).IsClosed := by
@@ -808,6 +794,7 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
     cases hc with | exi hT =>
     exact IsClosed.exi (ih hT)
 
+/-- Lifting preserves closedness of substitutions. -/
 theorem Subst.lift_closed {σ : Subst s1 s2} (hσ : σ.IsClosed) :
   (σ.lift (k:=k)).IsClosed := by
   constructor
@@ -824,6 +811,7 @@ theorem Subst.lift_closed {σ : Subst s1 s2} (hσ : σ.IsClosed) :
     | here => exact CaptureSet.IsClosed.cvar
     | there C => simp [Subst.lift]; exact CaptureSet.rename_closed_any (hσ.cvar_closed C)
 
+/-- Substitution preserves closedness for types. -/
 def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   (hc : T.IsClosed) (hsubst : Subst.IsClosed σ) :
   (T.subst σ).IsClosed := by
@@ -859,6 +847,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     simp [Ty.subst]
     exact IsClosed.exi (ih hT (Subst.lift_closed hsubst))
 
+/-- Substitution preserves closedness for expressions. -/
 def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
   (hc : e.IsClosed) (hsubst : Subst.IsClosed σ) :
   (e.subst σ).IsClosed := by
@@ -928,6 +917,7 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
   | unit =>
     exact IsClosed.unit
 
+/-- The openVar substitution is closed if the variable is closed. -/
 theorem Subst.openVar_is_closed {z : Var .var s}
   (hz : z.IsClosed) :
   (Subst.openVar z).IsClosed where
@@ -942,6 +932,7 @@ theorem Subst.openVar_is_closed {z : Var .var s}
     cases C with
     | there C => exact CaptureSet.IsClosed.cvar
 
+/-- The openTVar substitution is closed if the type is closed. -/
 theorem Subst.openTVar_is_closed {U : Ty .shape s}
   (hU : U.IsClosed) :
   (Subst.openTVar U).IsClosed where
@@ -956,6 +947,7 @@ theorem Subst.openTVar_is_closed {U : Ty .shape s}
     cases C with
     | there C => exact CaptureSet.IsClosed.cvar
 
+/-- The openCVar substitution is closed if the capture set is closed. -/
 theorem Subst.openCVar_is_closed {C : CaptureSet s}
   (hC : C.IsClosed) :
   (Subst.openCVar C).IsClosed where
@@ -970,6 +962,7 @@ theorem Subst.openCVar_is_closed {C : CaptureSet s}
     | here => exact hC
     | there c => exact CaptureSet.IsClosed.cvar
 
+/-- If the result of substitution is closed, the original variable was closed. -/
 theorem Var.subst_closed_inv {x : Var .var s1} {σ : Subst s1 s2}
   (hclosed : (x.subst σ).IsClosed) :
   x.IsClosed := by
@@ -979,6 +972,7 @@ theorem Var.subst_closed_inv {x : Var .var s1} {σ : Subst s1 s2}
     simp [Var.subst] at hclosed
     cases hclosed
 
+/-- If the result of substitution is closed, the original capture set was closed. -/
 theorem CaptureSet.subst_closed_inv {cs : CaptureSet s1} {σ : Subst s1 s2}
   (hclosed : (cs.subst σ).IsClosed) :
   cs.IsClosed := by
@@ -1000,6 +994,7 @@ theorem CaptureSet.subst_closed_inv {cs : CaptureSet s1} {σ : Subst s1 s2}
       simp [CaptureSet.subst, Var.subst] at hclosed
       cases hclosed
 
+/-- If the result of substitution is closed, the original capture bound was closed. -/
 theorem CaptureBound.subst_closed_inv {cb : CaptureBound s1} {σ : Subst s1 s2}
   (hclosed : (cb.subst σ).IsClosed) :
   cb.IsClosed := by
@@ -1010,6 +1005,7 @@ theorem CaptureBound.subst_closed_inv {cb : CaptureBound s1} {σ : Subst s1 s2}
     cases hclosed with | bound h_cs =>
     exact IsClosed.bound (CaptureSet.subst_closed_inv h_cs)
 
+/-- If the result of substitution is closed, the original type was closed. -/
 theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   (hclosed : (T.subst σ).IsClosed) :
   T.IsClosed := by
@@ -1043,6 +1039,7 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     cases hclosed with | typ hT =>
     exact IsClosed.typ (ih hT)
 
+/-- If the result of substitution is closed, the original expression was closed. -/
 theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
   (hclosed : (e.subst σ).IsClosed) :
   e.IsClosed := by
