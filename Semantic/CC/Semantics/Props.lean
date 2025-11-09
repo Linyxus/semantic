@@ -393,6 +393,41 @@ theorem eval_to_reduce
           hwf_e2_subst m2 e2 hans rest
   | eval_unpack hpred eval_e1 h_val ih =>
     intro m2 e2 hans hred
-    sorry
+    rename_i h_val_ih
+    -- unpack is not an answer, so reduction cannot be refl
+    cases hred with
+    | refl =>
+      -- .unpack is not an answer, contradiction
+      cases hans; rename_i hv
+      cases hv
+    | step hstep rest =>
+      -- Multiple possible steps for unpack
+      cases hstep with
+      | step_ctx_unpack hstep_e1 =>
+        -- e1 steps to some e1', then we have rest: Reduce C m' (.unpack e1' e2') m2 e2
+        -- This requires additional machinery similar to step_ctx_letin
+        sorry
+      | step_unpack =>
+        -- e1 = .pack cs (.free x), the step unpacks and substitutes
+        rename_i cs x
+        -- Extract well-formedness of subexpressions from hwf
+        have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_unpack hwf
+        -- The pack is an answer
+        have hans_pack : Exp.IsAns (.pack cs (.free x)) := by
+          apply Exp.IsAns.is_val
+          exact Exp.IsVal.pack
+        -- Apply ih to establish Q1 for the pack (no reduction needed)
+        have hQ1 := ih hwf_e1 _ (.pack cs (.free x)) hans_pack Reduce.refl
+        -- Extract well-formedness of x and cs from the pack
+        have hwf_pack := hwf_e1
+        cases hwf_pack with
+        | wf_pack hwf_cs hwf_x =>
+          -- Build well-formed substitution
+          have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
+          -- Substituted body is well-formed
+          have hwf_e2_subst := Exp.wf_subst hwf_e2 hwf_subst
+          -- Apply h_val_ih
+          exact h_val_ih (Memory.subsumes_refl _) hwf_x hwf_cs hQ1
+            hwf_e2_subst m2 e2 hans rest
 
 end CC
