@@ -84,7 +84,7 @@ theorem typed_env_lookup_var_reachability
     --   (.var (.free n))
     have hval := hts.1
     simp [Ty.capt_val_denot] at hval
-    obtain ⟨_, _, hshape⟩ := hval
+    obtain ⟨_, _, _, hshape⟩ := hval
     -- Apply reachability safety to get:
     --   resolve_reachability m.heap (.var (.free n)) ⊆ C.denot env' m
     have hsafe := shape_val_denot_is_reachability_safe
@@ -203,7 +203,10 @@ theorem sem_typ_var
   -- From typed_env_lookup_var, we get that .var (.free n) satisfies .capt C S
   have h_lookup := typed_env_lookup_var hts hx
   simp [Ty.capt_val_denot] at h_lookup ⊢
-  obtain ⟨hwf, hwf_C, hshape⟩ := h_lookup
+  obtain ⟨hsimple, hwf, hwf_C, hshape⟩ := h_lookup
+  constructor
+  · -- Prove IsSimpleAns: variables are simple answers
+    exact hsimple
   constructor
   · exact hwf
   constructor
@@ -241,6 +244,11 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
   · simp [Denot.as_mpost]
+    constructor
+    · -- Prove IsSimpleAns: abs is a simple value
+      simp [Exp.subst]
+      apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.abs
     constructor
     · -- Prove well-formedness: closed expressions remain well-formed after substitution
       -- Strategy: (1) closed => wf, (2) typed env => wf subst, (3) wf subst preserves wf
@@ -361,6 +369,11 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   · simp [Exp.subst]; constructor
   · simp [Denot.as_mpost]
     constructor
+    · -- Prove IsSimpleAns: tabs is a simple value
+      simp [Exp.subst]
+      apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.tabs
+    constructor
     · -- Prove well-formedness: closed expressions remain well-formed after substitution
       -- Strategy: (1) closed => wf, (2) typed env => wf subst, (3) wf subst preserves wf
       apply Exp.wf_subst
@@ -452,6 +465,11 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
   · simp [Denot.as_mpost]
+    constructor
+    · -- Prove IsSimpleAns: cabs is a simple value
+      simp [Exp.subst]
+      apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.cabs
     constructor
     · -- Prove well-formedness: closed expressions remain well-formed after substitution
       -- Strategy: (1) closed => wf, (2) typed env => wf subst, (3) wf subst preserves wf
@@ -808,8 +826,8 @@ theorem sem_typ_tapp
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
-  -- Extract the poly structure
-  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hR0_sub, hfun⟩ := tabs_val_denot_inv h1'.2.2
+  -- Extract the poly structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
+  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hR0_sub, hfun⟩ := tabs_val_denot_inv h1'.2.2.2
 
   -- Determine concrete location
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -855,8 +873,8 @@ theorem sem_typ_capp
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
-  -- Extract the cpoly structure
-  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hR0_sub, hfun⟩ := cabs_val_denot_inv h1'.2.2
+  -- Extract the cpoly structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
+  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hR0_sub, hfun⟩ := cabs_val_denot_inv h1'.2.2.2
 
   -- Determine concrete location
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -922,8 +940,8 @@ theorem sem_typ_app
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
-  -- Extract the arrow structure
-  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'.2.2
+  -- Extract the arrow structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
+  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'.2.2.2
 
   -- Extract argument denotation
   have h2 := hy env store hts
@@ -983,8 +1001,8 @@ theorem sem_typ_invoke
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
 
-  -- Extract the capability structure
-  have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'.2.2
+  -- Extract the capability structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
+  have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'.2.2.2
 
   -- Extract unit denotation from hy
   have h2 := hy env store hts
@@ -992,8 +1010,8 @@ theorem sem_typ_invoke
   have h2' := var_exp_denot_inv h2
   simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h2'
 
-  -- Extract the unit structure
-  have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'.2.2
+  -- Extract the unit structure (now at h2'.2.2.2 due to extra IsSimpleAns conjunct)
+  have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'.2.2.2
 
   -- Determine concrete locations
   have : fx = env.lookup_var x := by cases hfx; rfl
@@ -1016,12 +1034,16 @@ theorem sem_typ_invoke
 
   -- Show the postcondition holds for unit
   constructor
+  · -- Prove IsSimpleAns for unit
+    apply Exp.IsSimpleAns.is_simple_val
+    apply Exp.IsSimpleVal.unit
+  constructor
   · exact Exp.WfInHeap.wf_unit
-  · constructor
-    · -- Empty capture set is always well-formed
-      simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
+  constructor
+  · -- Empty capture set is always well-formed
+    simp only [CaptureSet.subst]
+    exact CaptureSet.WfInHeap.wf_empty
+  · simp [resolve]
 
 theorem sem_typ_unit :
   {} # Γ ⊨ Exp.unit : .typ (.capt {} .unit) := by
@@ -1031,6 +1053,10 @@ theorem sem_typ_unit :
   apply Eval.eval_val
   · exact Exp.IsVal.unit
   · constructor
+    · -- Prove IsSimpleAns: unit is a simple value
+      apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.unit
+    constructor
     · exact Exp.WfInHeap.wf_unit
     · constructor
       · apply CaptureSet.wf_subst
@@ -1070,10 +1096,10 @@ theorem sem_typ_letin
     cases T with
     | capt C_T S =>
       simp [Ty.capt_val_denot] at hQ1
-      obtain ⟨hwf_v, hwf_C, h_shape⟩ := hQ1
+      obtain ⟨hsimple, hwf_v, hwf_C, h_shape⟩ := hQ1
       constructor
-      · -- Prove v.IsSimpleAns from shape_val_denot
-        sorry
+      · -- Prove v.IsSimpleAns
+        exact hsimple
       · -- Prove v.WfInHeap m1.heap
         exact hwf_v
   case h_val =>
@@ -1775,8 +1801,10 @@ lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
   -- Unfold the denotation of capt types
   simp [Ty.capt_val_denot] at h_capt_C1_S1 ⊢
   -- Extract components from C1 S1 denotation
-  obtain ⟨hwf, hC1_wf, hS1_at_C1⟩ := h_capt_C1_S1
+  obtain ⟨hsimple, hwf, hC1_wf, hS1_at_C1⟩ := h_capt_C1_S1
   -- Construct proof for C2 S2
+  constructor
+  · exact hsimple  -- IsSimpleAns preserved
   constructor
   · exact hwf  -- Well-formedness preserved
   · constructor

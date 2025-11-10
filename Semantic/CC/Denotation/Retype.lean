@@ -318,7 +318,7 @@ def retype_capt_val_denot
     intro s e
     simp [Ty.capt_val_denot, Ty.subst]
     rw [← hC]
-    intro hwf_e
+    intro hwf_e hwf
     constructor
     · intro ⟨hwf_C, hshape⟩
       constructor
