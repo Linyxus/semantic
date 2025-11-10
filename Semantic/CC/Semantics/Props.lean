@@ -654,13 +654,13 @@ theorem eval_to_reduce
       -- Apply h_val_ih
       exact h_val_ih hsub hwf_x hwf_cs hQ1 hwf_e2_subst m2 e_ans hans hred_body
 
-inductive IsProgressive : Memory -> Exp {} -> Prop where
+inductive IsProgressive : CapabilitySet -> Memory -> Exp {} -> Prop where
 | done :
   e.IsAns ->
-  IsProgressive m e
+  IsProgressive R m e
 | step :
   Step C m e m' e' ->
-  IsProgressive m e
+  IsProgressive C m e
 
 /-- If an answer has an evaluation, then the postcondition holds for it. -/
 theorem eval_ans_holds_post
@@ -679,7 +679,7 @@ theorem eval_ans_holds_post
 
 theorem eval_implies_progressive
   (heval : Eval C m e Q) :
-  IsProgressive m e := by
+  IsProgressive C m e := by
   induction heval with
   | eval_val hv hQ =>
     -- e is a value, so it's an answer
@@ -705,11 +705,11 @@ theorem eval_implies_progressive
   | eval_tapply hlookup eval_body ih =>
     -- e = .tapp (.free x) S, can step via step_tapply
     apply IsProgressive.step
-    apply Step.step_tapply (C := C) hlookup
+    apply Step.step_tapply hlookup
   | eval_capply hlookup eval_body ih =>
     -- e = .capp (.free x) CS, can step via step_capply
     apply IsProgressive.step
-    apply Step.step_capply (C := C) hlookup
+    apply Step.step_capply hlookup
   | eval_letin hpred eval_e1 h_nonstuck h_val h_var ih =>
     -- e = .letin e1 e2
     -- By IH, e1 is progressive
@@ -730,7 +730,7 @@ theorem eval_implies_progressive
         rename_i m0 _ _ _
         have ⟨l0, hfresh⟩ := Memory.exists_fresh m0
         apply IsProgressive.step
-        apply Step.step_lift (C := C) (m := _) (l := l0) hv hwf
+        apply Step.step_lift (l := l0) hv hwf
         exact hfresh
       | is_var =>
         -- e1 is a variable, we need to show it's a free variable
@@ -739,7 +739,7 @@ theorem eval_implies_progressive
         | bound idx => cases idx
         | free y =>
           apply IsProgressive.step
-          apply Step.step_rename (C := C)
+          apply Step.step_rename
     | step hstep =>
       -- e1 can step, so letin e1 e2 can step via step_ctx_letin
       apply IsProgressive.step
@@ -764,7 +764,7 @@ theorem eval_implies_progressive
         | bound idx => cases idx
         | free x =>
           apply IsProgressive.step
-          apply Step.step_unpack (C := C)
+          apply Step.step_unpack
     | step hstep =>
       -- e1 can step, so unpack e1 e2 can step via step_ctx_unpack
       apply IsProgressive.step
