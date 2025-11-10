@@ -1522,4 +1522,22 @@ def Mpost.entails_refl (Q : Mpost) : Q.entails Q := by
   intros m e hQ
   exact hQ
 
+theorem Memory.exists_fresh (m : Memory) :
+  ∃ l : Nat, m.lookup l = none := by
+  -- Extract the finite domain
+  obtain ⟨dom, hdom⟩ := m.findom
+  -- Choose a location outside the domain
+  use dom.sup id + 1
+  -- Show it's not in the domain
+  unfold Memory.lookup
+  by_contra h
+  -- If m.heap (dom.sup id + 1) ≠ none, then it must be in dom
+  have : dom.sup id + 1 ∈ dom := (hdom (dom.sup id + 1)).mp h
+  -- But dom.sup id + 1 > dom.sup id ≥ all elements in dom
+  have hbound : ∀ x ∈ dom, x ≤ dom.sup id := by
+    intro x hx
+    exact Finset.le_sup (f := id) hx
+  have : dom.sup id + 1 ≤ dom.sup id := hbound _ this
+  omega
+
 end CC
