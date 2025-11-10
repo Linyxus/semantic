@@ -50,6 +50,16 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | cabs : Exp.IsSimpleVal (.cabs cs cb e)
 | unit : Exp.IsSimpleVal .unit
 
+inductive Exp.IsSimpleAns : Exp s -> Prop where
+| is_simple_val :
+  (hv : Exp.IsSimpleVal v) ->
+  Exp.IsSimpleAns v
+| is_var :
+  Exp.IsSimpleAns (.var x)
+
+inductive Exp.IsPack : Exp s -> Prop where
+| pack : Exp.IsPack (.pack cs x)
+
 /-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
   unwrap : Exp s
