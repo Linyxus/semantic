@@ -8,6 +8,31 @@ Claude uses the `trace_state` tactic to print the goal information in `lean4chec
 
 In the goal state, if the name of a variable is suffixed by a `✝`, it is an "unnamed" variable. Use `rename_i` to name them so that you can refer to them. Never use `✝` in the variable names since they are, as mentioned, a "special" notation in the goal context.
 
+When using `rename_i`, unnamed variables are named from the bottom of the goal context. For instance, given a goal state:
+```
+a✝ : P1
+b✝ : P2
+c✝ : P3
+d✝ : P4
+e✝ : P5
+```
+Running `rename_i x1 x2 x3` renames the LAST THREE unnamed variables in the goal context, in the order they appear in the context. For example, this tactic results in:
+```
+a✝ : P1
+b✝ : P2
+x1 : P3
+x2 : P4
+x3 : P5
+```
+And you can use `_` for names you want to skip. So `rename_i x1 _ x3` will be:
+```
+a✝ : P1
+b✝ : P2
+x1 : P3
+d✝ : P4
+x3 : P5
+```
+
 Sometimes, the user leaves a specific task for Claude in comments, started with `CLAUDE:`.
 
 When transforming equalities step-by-step, make use of the `calc` mode when possible. This results in cleaner and more idiomatic code style.
