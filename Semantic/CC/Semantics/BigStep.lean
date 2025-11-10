@@ -57,6 +57,9 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_unpack {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   Eval C m e1 Q1 ->
+  (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
+    Q1 v m1 ->
+    v.IsPack ∧ Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {x : Var .var {}} {cs : CaptureSet {}},
     (m1.subsumes m) ->
     (hwf_x : x.WfInHeap m1.heap) ->
@@ -168,25 +171,29 @@ theorem eval_monotonic {m1 m2 : Memory}
         -- Then apply substitution preservation
         apply Exp.wf_subst hwf2_ext
         apply Subst.wf_openVar hwf_x
-  case eval_unpack Q1 hpred0 eval_e1 h_val_orig ih ih_val =>
+  case eval_unpack Q1 hpred0 eval_e1 h_nonstuck_orig h_val_orig ih ih_val =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     -- Apply IH for e1 with well-formedness
     have eval_e1' := ih hpred0 hsub hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 eval_e1'
-    -- The updated eval_unpack now provides both hwf_x and hwf_cs
-    intro m_ext' x cs hs_ext' hwf_x hwf_cs hq1
-    have hs_orig := Memory.subsumes_trans hs_ext' hsub
-    apply ih_val hs_orig hwf_x hwf_cs hq1 hpred
-    · exact Memory.subsumes_refl _
-    · -- Need: (e2.subst (Subst.unpack cs x)).WfInHeap m_ext'.heap
-      -- Lift hwf2 to m_ext'.heap using monotonicity
-      have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
-      -- Apply substitution preservation
-      apply Exp.wf_subst hwf2_ext
-      -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
-      apply Subst.wf_unpack hwf_cs hwf_x
+    -- Provide the h_nonstuck condition
+    case h_nonstuck =>
+      intro m1 v hQ_orig
+      exact h_nonstuck_orig hQ_orig
+    case h_val =>
+      intro m_ext' x cs hs_ext' hwf_x hwf_cs hq1
+      have hs_orig := Memory.subsumes_trans hs_ext' hsub
+      apply ih_val hs_orig hwf_x hwf_cs hq1 hpred
+      · exact Memory.subsumes_refl _
+      · -- Need: (e2.subst (Subst.unpack cs x)).WfInHeap m_ext'.heap
+        -- Lift hwf2 to m_ext'.heap using monotonicity
+        have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
+        -- Apply substitution preservation
+        apply Exp.wf_subst hwf2_ext
+        -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
+        apply Subst.wf_unpack hwf_cs hwf_x
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -258,13 +265,17 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_var hs1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
-  case eval_unpack _ Q0 hpred he1 _ ih ih_val =>
+  case eval_unpack _ Q0 hpred he1 h_nonstuck _ ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred ih
-    intro m1 x cs hs1 hwf_x hwf_cs hq1
-    apply ih_val hs1 hwf_x hwf_cs hq1
-    apply Mpost.entails_after_subsumes himp
-    apply hs1
+    case h_nonstuck =>
+      intro m1 v hQ0
+      exact h_nonstuck hQ0
+    case h_val =>
+      intro m1 x cs hs1 hwf_x hwf_cs hq1
+      apply ih_val hs1 hwf_x hwf_cs hq1
+      apply Mpost.entails_after_subsumes himp
+      apply hs1
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
@@ -300,8 +311,10 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     · intro m1 x hs1 hwf_x hq1
       exact ih_var hs1 hwf_x hq1 hsub
   case eval_unpack =>
-    rename_i hpred_mono heval_e1 h_val ih_e1 ih_val
+    rename_i hpred_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
     apply Eval.eval_unpack hpred_mono (ih_e1 hsub)
+    · intro m1 v hQ
+      exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       exact ih_val hs1 hwf_x hwf_cs hq1 hsub
 
