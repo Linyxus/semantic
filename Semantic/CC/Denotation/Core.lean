@@ -403,6 +403,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
 
 def Ty.capt_val_denot : TypeEnv s -> Ty .capt s -> Denot
 | ρ, .capt C S => fun mem exp =>
+  exp.IsSimpleAns ∧
   exp.WfInHeap mem.heap ∧
   (C.subst (Subst.from_TypeEnv ρ)).WfInHeap mem.heap ∧
   Ty.shape_val_denot ρ S (C.denot ρ mem) mem exp
@@ -667,7 +668,7 @@ theorem from_TypeEnv_wf_in_heap
           cases T with
           | capt C S =>
             simp [instCaptHasDenotation, Ty.capt_val_denot] at htype
-            have ⟨hwf, _, _⟩ := htype
+            have ⟨_, hwf, _, _⟩ := htype
             -- hwf : (.var (.free n)).WfInHeap m.heap
             cases hwf with
             | wf_var hwf_var =>
@@ -1367,18 +1368,18 @@ theorem capt_val_denot_is_transparent {env : TypeEnv s}
   | capt C S =>
     intro m x v hx ht
     simp [Ty.capt_val_denot] at ht ⊢
-    have ⟨hwf, hwf_C, hshape⟩ := ht
-    constructor
+    have ⟨hsv, hwf, hwf_C, hshape⟩ := ht
+    split_ands
+    · apply Exp.IsSimpleAns.is_var
     · -- Prove: (.var (.free x)).WfInHeap m.heap
       -- A variable is well-formed if it points to something in the heap
       apply Exp.WfInHeap.wf_var
       apply Var.WfInHeap.wf_free
       exact hx
-    · constructor
-      · -- Prove: C.WfInHeap m.heap
-        exact hwf_C
-      · -- Prove: shape_val_denot env S (C.denot env m) m (.var (.free x))
-        exact shape_val_denot_is_transparent henv S (C.denot env m) hx hshape
+    · -- Prove: C.WfInHeap m.heap
+      exact hwf_C
+    · -- Prove: shape_val_denot env S (C.denot env m) m (.var (.free x))
+      exact shape_val_denot_is_transparent henv S (C.denot env m) hx hshape
 
 theorem exi_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1746,17 +1747,17 @@ def capt_val_denot_is_monotonic {env : TypeEnv s}
   | capt C S =>
     intro m1 m2 e hmem ht
     simp [Ty.capt_val_denot] at ht ⊢
-    have ⟨hwf, hwf_C, hshape⟩ := ht
-    constructor
+    have ⟨hsv, hwf, hwf_C, hshape⟩ := ht
+    split_ands
+    · exact hsv
     · -- Prove: e.WfInHeap m2.heap
       exact Exp.wf_monotonic hmem hwf
-    · constructor
-      · -- Prove: C.WfInHeap m2.heap
-        exact CaptureSet.wf_monotonic hmem hwf_C
-      · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
-        have h := capture_set_denot_is_monotonic hwf_C hmem
-        rw [<-h]
-        exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
+    · -- Prove: C.WfInHeap m2.heap
+      exact CaptureSet.wf_monotonic hmem hwf_C
+    · -- Prove: shape_val_denot env S (C.denot env m2) m2 e
+      have h := capture_set_denot_is_monotonic hwf_C hmem
+      rw [<-h]
+      exact shape_val_denot_is_monotonic henv S (C.denot env m1) hmem hshape
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
