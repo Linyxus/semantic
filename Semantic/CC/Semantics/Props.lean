@@ -142,6 +142,7 @@ theorem reduce_letin_inv
      Reduce C m0 (e2.subst (Subst.openVar (.free y0))) m' a) ∨
   (∃ (m0 : Memory) (v0 : Exp {}) (hv : v0.IsSimpleVal) (hwf : Exp.WfInHeap v0 m0.heap)
      (l0 : Nat) (hfresh : m0.heap l0 = none),
+    Reduce C m e1 m0 v0 ∧
     Reduce
       C
       (m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf rfl hfresh)
@@ -181,9 +182,13 @@ theorem reduce_letin_inv
         · exact hred_body
       | inr h_val =>
         -- Value case from IH
-        obtain ⟨m0, v0, hv, hwf, l0, hfresh, hred_body⟩ := h_val
+        obtain ⟨m0, v0, hv, hwf, l0, hfresh, hred_e1', hred_body⟩ := h_val
         apply Or.inr
         exists m0, v0, hv, hwf, l0, hfresh
+        constructor
+        · -- Reduction from e1 to v0
+          apply Reduce.step hstep_e1 hred_e1'
+        · exact hred_body
     | step_rename =>
       -- e1 = .var (.free y), stepped to e2.subst (openVar (.free y))
       -- This is the variable case
@@ -201,6 +206,10 @@ theorem reduce_letin_inv
       rename_i mem_src _ mem_dst _ location
       apply Or.inr
       exists mem_src, e1, hv, hwf, location, hfresh
+      constructor
+      · -- e1 is already the value, so reduction is reflexive
+        apply Reduce.refl
+      · exact rest
 
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q)
@@ -381,83 +390,65 @@ theorem eval_to_reduce
               exact Exp.wf_subst hwf_e1 hwf_subst
         exact ih hwf_subst_body m2 e2 hans rest
   | eval_letin =>
-    intro m2 e2 hans hred
-    rename_i ih h_val_ih h_var_ih
-    -- letin is not an answer, so reduction cannot be refl
-    cases hred with
-    | refl =>
-      -- .letin is not an answer, contradiction
-      cases hans; rename_i hv
-      cases hv
-    | step hstep rest =>
-      -- Multiple possible steps for letin
-      cases hstep with
-      | step_ctx_letin hstep_e1 =>
-        -- e1 steps to some e1', then we have rest: Reduce C m' (.letin e1' e2') m2 e2
-        -- The key insight: rest is still reducing a letin, so it will eventually
-        -- reach step_rename or step_lift. We need to apply this theorem recursively.
-        -- But we don't have an evaluation for (.letin e1' e2') starting from m'.
-        -- We need a lemma that lets us "step" evaluations forward, or we need
-        -- to restructure the proof. For now, this requires additional machinery.
+    intro m2 e_ans hans hred
+    rename_i e1_body e2_body ih h_val_ih h_var_ih
+    -- Extract well-formedness of subexpressions
+    have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
+    -- Apply reduce_letin_inv to decompose the reduction
+    have hinv := reduce_letin_inv hred hans
+    cases hinv with
+    | inl h_var =>
+      -- Variable case: e1 reduces to a variable
+      obtain ⟨m0, y0, hred_e1, hred_body⟩ := h_var
+      -- Apply ih to establish Q1 for the variable
+      have hans_var : Exp.IsAns (.var (.free y0)) := Exp.IsAns.is_var
+      have hQ1 := ih hwf_e1 m0 (.var (.free y0)) hans_var hred_e1
+      -- Extract Var.WfInHeap from the fact that e1 reduced to a variable
+      have hwf_var : Var.WfInHeap (.free y0 : Var .var ∅) m0.heap := by
+        -- The variable must be well-formed since reduction preserves well-formedness
+        -- and ends at a variable that must be in the heap
         sorry
-      | step_rename =>
-        -- e1 = .var (.free y), the step performs renaming
-        rename_i y eval_e1
-        -- Extract well-formedness of subexpressions from hwf
-        have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
-        -- The variable is an answer
-        have hans_var : Exp.IsAns (.var (.free y)) := Exp.IsAns.is_var
-        -- Apply ih to establish Q1 for the variable (no reduction needed)
-        have hQ1 := ih hwf_e1 _ (.var (.free y)) hans_var Reduce.refl
-        -- Extract Var.WfInHeap from Exp.WfInHeap
-        have hwf_var := by
-          cases hwf_e1 with
-          | wf_var h => exact h
-        -- Build well-formed substitution
-        have hwf_subst := Subst.wf_openVar hwf_var
-        -- Substituted body is well-formed
-        have hwf_e2_subst := Exp.wf_subst hwf_e2 hwf_subst
-        -- Apply h_var_ih: given Q1 for the variable and reduction of the substituted body,
-        -- we get the final postcondition
-        exact h_var_ih (Memory.subsumes_refl _) hwf_var hQ1 hwf_e2_subst m2 e2 hans rest
-      | step_lift hv hwf_v hfresh =>
-        -- e1 is a simple value, allocate it in heap
-        -- Rename all the unnamed variables in order
-        rename_i C_eval e1_val Q_eval e2_body m_eval Q1_eval hpred_eval
-          a_eval h_val_eval h_var_eval l
-        -- Extract well-formedness of e1 and e2
-        have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
-        -- Convert IsSimpleVal to IsVal to IsAns
-        have hv_isval : e1_val.IsVal := by
-          cases hv with
-          | abs => exact Exp.IsVal.abs
-          | tabs => exact Exp.IsVal.tabs
-          | cabs => exact Exp.IsVal.cabs
-          | unit => exact Exp.IsVal.unit
-        have hans_val : e1_val.IsAns := Exp.IsAns.is_val hv_isval
-        -- Apply ih to establish Q1 for the value
-        have hQ1 := ih hwf_e1 _ e1_val hans_val Reduce.refl
-        -- Build well-formedness proof for the substituted body in the extended heap
-        -- First, extended memory subsumes original
-        have hsub := Memory.extend_subsumes m_eval l
-          ⟨e1_val, hv, compute_reachability m_eval.heap e1_val hv⟩ hwf_v rfl hfresh
-        -- e2 is well-formed in the extended heap (by monotonicity)
-        have hwf_e2_ext := Exp.wf_monotonic hsub hwf_e2
-        -- Show (.free l) is well-formed in extended heap
-        let m_ext := m_eval.extend l
-          ⟨e1_val, hv, compute_reachability m_eval.heap e1_val hv⟩ hwf_v rfl hfresh
-        have hwf_l : Var.WfInHeap (.free l : Var .var ∅) m_ext.heap := by
-          apply Var.WfInHeap.wf_free
-          unfold m_ext
-          simp [Memory.extend]
-          exact Heap.extend_lookup_eq _ _ _
-        have hwf_subst := Subst.wf_openVar hwf_l
-        -- Substituted body is well-formed in extended heap
-        have hwf_e2_subst := Exp.wf_subst hwf_e2_ext hwf_subst
-        -- Apply h_val_ih with m1 = m_eval (the original memory before extension)
-        -- h_val_ih will handle extending the memory with l and evaluating the substituted body
-        exact h_val_ih (Memory.subsumes_refl m_eval) hv hwf_v hQ1 l hfresh
-          hwf_e2_subst m2 e2 hans rest
+      -- Build well-formed substitution
+      have hwf_subst := Subst.wf_openVar hwf_var
+      -- e2 is well-formed in m0 (by monotonicity from reduction)
+      have hsub := reduce_memory_monotonic hred_e1
+      have hwf_e2_m0 := Exp.wf_monotonic hsub hwf_e2
+      -- Substituted body is well-formed
+      have hwf_e2_subst := Exp.wf_subst hwf_e2_m0 hwf_subst
+      -- Apply h_var_ih
+      exact h_var_ih hsub hwf_var hQ1 hwf_e2_subst m2 e_ans hans hred_body
+    | inr h_val =>
+      -- Value case: e1 reduces to a simple value that gets allocated
+      obtain ⟨m0, v0, hv, hwf_v, l0, hfresh, hred_e1, hred_body⟩ := h_val
+      -- Apply ih to establish Q1 for the value
+      have hv_isval : v0.IsVal := by
+        cases hv with
+        | abs => exact Exp.IsVal.abs
+        | tabs => exact Exp.IsVal.tabs
+        | cabs => exact Exp.IsVal.cabs
+        | unit => exact Exp.IsVal.unit
+      have hans_val : v0.IsAns := Exp.IsAns.is_val hv_isval
+      have hQ1 := ih hwf_e1 m0 v0 hans_val hred_e1
+      -- Build well-formedness for the substituted body in the extended heap
+      have hsub := reduce_memory_monotonic hred_e1
+      have hwf_e2_m0 := Exp.wf_monotonic hsub hwf_e2
+      -- Show (.free l0) is well-formed in extended heap
+      let m_ext := m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf_v rfl hfresh
+      have hwf_l : Var.WfInHeap (.free l0 : Var .var ∅) m_ext.heap := by
+        apply Var.WfInHeap.wf_free
+        unfold m_ext
+        simp [Memory.extend]
+        exact Heap.extend_lookup_eq _ _ _
+      -- e2 is well-formed in extended heap
+      have hsub_ext := Memory.extend_subsumes m0 l0
+        ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf_v rfl hfresh
+      have hwf_e2_ext := Exp.wf_monotonic hsub_ext hwf_e2_m0
+      -- Build well-formed substitution
+      have hwf_subst := Subst.wf_openVar hwf_l
+      -- Substituted body is well-formed in extended heap
+      have hwf_e2_subst := Exp.wf_subst hwf_e2_ext hwf_subst
+      -- Apply h_val_ih
+      exact h_val_ih hsub hv hwf_v hQ1 l0 hfresh hwf_e2_subst m2 e_ans hans hred_body
   | eval_unpack hpred eval_e1 h_val ih =>
     intro m2 e2 hans hred
     rename_i h_val_ih
