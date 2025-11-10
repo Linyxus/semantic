@@ -662,8 +662,110 @@ inductive IsProgressive : Memory -> Exp {} -> Prop where
   Step C m e m' e' ->
   IsProgressive m e
 
+/-- If an answer has an evaluation, then the postcondition holds for it. -/
+theorem eval_ans_holds_post
+  (heval : Eval C m e Q)
+  (hans : e.IsAns) :
+  Q e m := by
+  cases heval with
+  | eval_val hv hQ => exact hQ
+  | eval_var hQ => exact hQ
+  | eval_apply => cases hans; rename_i hv; cases hv
+  | eval_invoke => cases hans; rename_i hv; cases hv
+  | eval_tapply => cases hans; rename_i hv; cases hv
+  | eval_capply => cases hans; rename_i hv; cases hv
+  | eval_letin => cases hans; rename_i hv; cases hv
+  | eval_unpack => cases hans; rename_i hv; cases hv
+
 theorem eval_implies_progressive
   (heval : Eval C m e Q) :
-  IsProgressive m e := by sorry
+  IsProgressive m e := by
+  induction heval with
+  | eval_val hv hQ =>
+    -- e is a value, so it's an answer
+    apply IsProgressive.done
+    exact Exp.IsAns.is_val hv
+  | eval_var hQ =>
+    -- e is a variable, so it's an answer
+    apply IsProgressive.done
+    exact Exp.IsAns.is_var
+  | eval_apply hlookup eval_body ih =>
+    -- e = .app (.free x) y, can step via step_apply
+    -- y must be a free variable since we're in the empty context
+    rename_i cs T e_abs hv R C' y Q' m' x
+    match y with
+    | .bound idx => cases idx
+    | .free y' =>
+      apply IsProgressive.step
+      exact @Step.step_apply C' m' x y' cs T e_abs hv R hlookup
+  | eval_invoke hmem hlookup_x hlookup_y hQ =>
+    -- e = .app (.free x) (.free y), can step via step_invoke
+    apply IsProgressive.step
+    exact Step.step_invoke hmem hlookup_x hlookup_y
+  | eval_tapply hlookup eval_body ih =>
+    -- e = .tapp (.free x) S, can step via step_tapply
+    apply IsProgressive.step
+    apply Step.step_tapply (C := C) hlookup
+  | eval_capply hlookup eval_body ih =>
+    -- e = .capp (.free x) CS, can step via step_capply
+    apply IsProgressive.step
+    apply Step.step_capply (C := C) hlookup
+  | eval_letin hpred eval_e1 h_nonstuck h_val h_var ih =>
+    -- e = .letin e1 e2
+    -- By IH, e1 is progressive
+    have hprog_e1 := ih
+    cases hprog_e1 with
+    | done hans =>
+      -- e1 is an answer, use the variables directly without renaming
+      -- By eval_ans_holds_post, the postcondition holds for e1
+      have hQ1 := eval_ans_holds_post eval_e1 hans
+      -- By h_nonstuck, e1 is a simple answer
+      have ⟨hsimple_ans, hwf⟩ := h_nonstuck hQ1
+      -- Case analyze on whether it's a simple value or variable
+      cases hsimple_ans with
+      | is_simple_val hv =>
+        -- e1 is a simple value, we can use step_lift
+        -- For progress, we assert that a fresh location exists
+        -- The heap is finite, so there are infinitely many fresh locations
+        apply IsProgressive.step
+        apply Step.step_lift (C := C) (m := _) (l := 0) hv hwf
+        sorry
+      | is_var =>
+        -- e1 is a variable, we need to show it's a free variable
+        rename_i x_var
+        cases x_var with
+        | bound idx => cases idx
+        | free y =>
+          apply IsProgressive.step
+          apply Step.step_rename (C := C)
+    | step hstep =>
+      -- e1 can step, so letin e1 e2 can step via step_ctx_letin
+      apply IsProgressive.step
+      exact Step.step_ctx_letin hstep
+  | eval_unpack hpred eval_e1 h_nonstuck h_val ih =>
+    -- e = .unpack e1 e2
+    -- By IH, e1 is progressive
+    have hprog_e1 := ih
+    cases hprog_e1 with
+    | done hans =>
+      -- e1 is an answer
+      -- By eval_ans_holds_post, the postcondition holds for e1
+      have hQ1 := eval_ans_holds_post eval_e1 hans
+      -- By h_nonstuck, e1 is a pack
+      have ⟨hpack, hwf⟩ := h_nonstuck hQ1
+      -- e1 is a pack, so we can use step_unpack
+      cases hpack with
+      | pack =>
+        -- We need to show the variable is free
+        rename_i cs x_var
+        cases x_var with
+        | bound idx => cases idx
+        | free x =>
+          apply IsProgressive.step
+          apply Step.step_unpack (C := C)
+    | step hstep =>
+      -- e1 can step, so unpack e1 e2 can step via step_ctx_unpack
+      apply IsProgressive.step
+      exact Step.step_ctx_unpack hstep
 
 end CC
