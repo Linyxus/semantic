@@ -2081,6 +2081,17 @@ lemma simple_val_not_pack {e : Exp s}
   -- IsSimpleVal and IsPack apply to disjoint sets of constructors
   cases hsimple <;> cases hpack
 
+lemma resolve_pack_eq {e : Exp {}} {m : Memory} {CS : CaptureSet {}} {x : Var .var {}}
+  (hres : resolve m.heap e = some (.pack CS x))
+  (hpack : e.IsPack) : e = .pack CS x := by
+  -- If resolve returns a pack and e is a pack, then e equals that pack
+  cases hpack
+  -- e = .pack cs y for some cs, y
+  rename_i cs y
+  simp [resolve] at hres
+  obtain ⟨h1, h2⟩ := hres
+  rw [h1, h2]
+
 theorem resolve_is_pack {e : Exp {}} {m : Memory}
   (hres : resolve m.heap e = some v)
   (hv : v.IsPack) : e.IsPack := by
@@ -2160,8 +2171,24 @@ theorem sem_typ_unpack
       have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
       exact resolve_is_pack hres hpack
     · -- Prove v.WfInHeap m1.heap
-      -- From resolve result and well-formedness of CS and x_pack
-      sorry
+      -- First show that v = .pack CS x_pack
+      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
+      have hv_pack : v.IsPack := resolve_is_pack hres hpack
+      have heq : v = .pack CS x_pack := resolve_pack_eq hres hv_pack
+      -- Now prove well-formedness of the pack
+      rw [heq]
+      apply Exp.WfInHeap.wf_pack
+      · -- Prove CS.WfInHeap m1.heap
+        exact hwf_CS
+      · -- Prove x_pack.WfInHeap m1.heap
+        -- Extract from hQ1_body : Ty.capt_val_denot (env.extend_cvar CS) T m1 (Exp.var x_pack)
+        cases T with
+        | capt C_T S =>
+          simp [Ty.capt_val_denot] at hQ1_body
+          obtain ⟨_, hwf_var, _, _⟩ := hQ1_body
+          cases hwf_var with
+          | wf_var hwf_v =>
+            exact hwf_v
   case h_val =>
     -- Handle the value case: t evaluated to a pack
     intro m1 x cs hs1 hwf_x hwf_cs hQ1
