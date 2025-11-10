@@ -1062,6 +1062,20 @@ theorem sem_typ_letin
     have h1 := ht1 env store hts
     simp [Ty.exi_exp_denot, Ty.exi_val_denot] at h1
     exact h1
+  case h_nonstuck =>
+    intro m1 v hQ1
+    simp [Denot.as_mpost] at hQ1
+    -- hQ1 : Ty.capt_val_denot env T m1 v
+    -- Unfold capt_val_denot to get well-formedness and shape info
+    cases T with
+    | capt C_T S =>
+      simp [Ty.capt_val_denot] at hQ1
+      obtain ⟨hwf_v, hwf_C, h_shape⟩ := hQ1
+      constructor
+      · -- Prove v.IsSimpleAns from shape_val_denot
+        sorry
+      · -- Prove v.WfInHeap m1.heap
+        exact hwf_v
   case h_val =>
     -- Handle the value case: e1 evaluated to a simple value v
     intro m1 v hs1 hv hwf_v hQ1 l' hfresh

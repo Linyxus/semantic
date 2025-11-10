@@ -34,9 +34,8 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   (hpred : Q1.is_monotonic) ->
   Eval C m e1 Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
-    (m1.subsumes m) ∧
-    v.IsSimpleAns ∧
-    Exp.WfInHeap v m1.heap) ->
+    Q1 v m1 ->
+    v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
     (hv : Exp.IsSimpleVal v) ->
@@ -139,13 +138,17 @@ theorem eval_monotonic {m1 m2 : Memory}
         · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
           apply Subst.wf_openCVar
           exact hwf_cs
-  case eval_letin Q1 hpred0 eval_e1 h_val_orig h_var_orig ih ih_val ih_var =>
+  case eval_letin Q1 hpred0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
     -- Apply IH for e1 with well-formedness
     have eval_e1' := ih hpred0 hsub hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 eval_e1'
+    -- Provide the h_nonstuck condition
+    case h_nonstuck =>
+      intro m1 v hQ_orig
+      exact h_nonstuck_orig hQ_orig
     case h_val =>
       intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
       -- We have: m_ext'.subsumes m2 and m2.subsumes m_orig (the original memory)
@@ -238,9 +241,12 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_capply hx _ ih =>
     apply Eval.eval_capply hx
     apply ih himp
-  case eval_letin _ Q0 hpred he1 _ _ ih ih_val ih_var =>
+  case eval_letin _ Q0 hpred he1 h_nonstuck h_val h_var ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred ih
+    case h_nonstuck =>
+      intro m1 v hQ0
+      exact h_nonstuck hQ0
     case h_val =>
       intro m1 v hs1 hv hwf_v hq1 l' hfresh
       apply ih_val hs1 hv hwf_v hq1 l' hfresh
@@ -285,8 +291,10 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
   case eval_letin =>
-    rename_i hpred_mono heval_e1 h_val h_var ih_e1 ih_val ih_var
+    rename_i hpred_mono heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var
     apply Eval.eval_letin hpred_mono (ih_e1 hsub)
+    · intro m1 v hQ
+      exact h_nonstuck hQ
     · intro m1 v hs1 hv hwf_v hq1 l' hfresh
       exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
     · intro m1 x hs1 hwf_x hq1
