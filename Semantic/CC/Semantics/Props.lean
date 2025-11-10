@@ -770,4 +770,9 @@ theorem eval_implies_progressive
       apply IsProgressive.step
       exact Step.step_ctx_unpack hstep
 
+theorem step_preserves_eval
+  (he : Eval C m1 e1 Q)
+  (hstep : Step C m1 e1 m2 e2) :
+  Eval C m2 e2 Q := by sorry
+
 end CC
