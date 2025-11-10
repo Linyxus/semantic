@@ -214,7 +214,133 @@ theorem reduce_letin_inv
 theorem step_preserves_wf
   (hstep : Step C m1 e1 m2 e2)
   (hwf : e1.WfInHeap m1.heap) :
-  e2.WfInHeap m2.heap := by sorry
+  e2.WfInHeap m2.heap := by
+  cases hstep with
+  | step_apply hlookup =>
+    -- e1 = .app (.free x) (.free y), e2 = body.subst (openVar y)
+    -- Extract well-formedness of x and y from the application
+    rename_i x y cs T e_body hv R
+    cases hwf with
+    | wf_app hwf_x hwf_y =>
+      -- Get well-formedness of the abstraction from the heap
+      have hwf_abs : Exp.WfInHeap (.abs cs T e_body) m1.heap :=
+        m1.wf.wf_val _ _ hlookup
+      -- Extract well-formedness of the body
+      have ⟨_, _, hwf_body⟩ := Exp.wf_inv_abs hwf_abs
+      -- Build well-formed substitution
+      have hwf_subst := Subst.wf_openVar hwf_y
+      -- Apply substitution preservation
+      exact Exp.wf_subst hwf_body hwf_subst
+  | step_invoke hmem hlookup_x hlookup_y =>
+    -- e1 = .app (.free x) (.free y), e2 = .unit
+    -- Unit is always well-formed
+    apply Exp.WfInHeap.wf_unit
+  | step_tapply hlookup =>
+    -- e1 = .tapp (.free x) S, e2 = body.subst (openTVar .top)
+    -- Extract well-formedness of x and S from the type application
+    rename_i x S cs S' e_body hv R
+    cases hwf with
+    | wf_tapp hwf_x hwf_S =>
+      -- Get well-formedness of the type abstraction from the heap
+      have hwf_tabs : Exp.WfInHeap (.tabs cs S' e_body) m1.heap :=
+        m1.wf.wf_val _ _ hlookup
+      -- Extract well-formedness of the body
+      have ⟨_, _, hwf_body⟩ := Exp.wf_inv_tabs hwf_tabs
+      -- Build well-formed substitution: .top is always well-formed
+      have hwf_top : Ty.WfInHeap (.top : Ty .shape ∅) m1.heap :=
+        Ty.WfInHeap.wf_top
+      have hwf_subst := Subst.wf_openTVar hwf_top
+      -- Apply substitution preservation
+      exact Exp.wf_subst hwf_body hwf_subst
+  | step_capply hlookup =>
+    -- e1 = .capp (.free x) CS, e2 = body.subst (openCVar CS)
+    -- Extract well-formedness of x and CS from the capability application
+    rename_i x CS cs B e_body hv R
+    cases hwf with
+    | wf_capp hwf_x hwf_CS =>
+      -- Get well-formedness of the capability abstraction from the heap
+      have hwf_cabs : Exp.WfInHeap (.cabs cs B e_body) m1.heap :=
+        m1.wf.wf_val _ _ hlookup
+      -- Extract well-formedness of the body
+      have ⟨_, _, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
+      -- Build well-formed substitution
+      have hwf_subst := Subst.wf_openCVar hwf_CS
+      -- Apply substitution preservation
+      exact Exp.wf_subst hwf_body hwf_subst
+  | step_ctx_letin hstep_e1 =>
+    -- e1 = .letin e1' e2', e2 = .letin e1'' e2'
+    -- Use IH recursively
+    have ⟨hwf_e1', hwf_e2'⟩ := Exp.wf_inv_letin hwf
+    have hwf_e1'' := step_preserves_wf hstep_e1 hwf_e1'
+    -- Memory might have changed, need monotonicity
+    have hsub := step_memory_monotonic hstep_e1
+    have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
+    apply Exp.WfInHeap.wf_letin hwf_e1'' hwf_e2''
+  | step_ctx_unpack hstep_e1 =>
+    -- e1 = .unpack e1' e2', e2 = .unpack e1'' e2'
+    -- Use IH recursively
+    have ⟨hwf_e1', hwf_e2'⟩ := Exp.wf_inv_unpack hwf
+    have hwf_e1'' := step_preserves_wf hstep_e1 hwf_e1'
+    -- Memory might have changed, need monotonicity
+    have hsub := step_memory_monotonic hstep_e1
+    have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
+    apply Exp.WfInHeap.wf_unpack hwf_e1'' hwf_e2''
+  | step_rename =>
+    -- e1 = .letin (.var (.free y)) e, e2 = e.subst (openVar y)
+    rename_i y e_body
+    -- Extract well-formedness from letin
+    have ⟨hwf_var, hwf_body⟩ := Exp.wf_inv_letin hwf
+    -- Extract Var.WfInHeap from Exp.WfInHeap
+    cases hwf_var with
+    | wf_var hwf_y =>
+      -- Build well-formed substitution
+      have hwf_subst := Subst.wf_openVar hwf_y
+      -- Apply substitution preservation
+      exact Exp.wf_subst hwf_body hwf_subst
+  | step_lift hv hwf_v hfresh =>
+    -- e1 = .letin v e, e2 = e.subst (openVar (.free l))
+    rename_i v e_body l
+    -- Extract well-formedness from letin
+    have ⟨hwf_v', hwf_body⟩ := Exp.wf_inv_letin hwf
+    -- Memory extends with the value
+    -- The resulting memory is m1.extend l ...
+    let m_ext := m1.extend l ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
+    -- Show (.free l) is well-formed in the extended heap
+    have hwf_l : Var.WfInHeap (.free l : Var .var ∅) m_ext.heap := by
+      apply Var.WfInHeap.wf_free
+      unfold m_ext
+      simp [Memory.extend]
+      exact Heap.extend_lookup_eq _ _ _
+    -- e_body is well-formed in the extended heap (by monotonicity)
+    have hsub := Memory.extend_subsumes m1 l
+      ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
+    have hwf_body_ext := Exp.wf_monotonic hsub hwf_body
+    -- Build well-formed substitution
+    have hwf_subst := Subst.wf_openVar hwf_l
+    -- Apply substitution preservation
+    exact Exp.wf_subst hwf_body_ext hwf_subst
+  | step_unpack =>
+    -- e1 = .unpack (.pack cs (.free x)) e, e2 = e.subst (unpack cs x)
+    rename_i cs x e_body
+    -- Extract well-formedness from unpack
+    have ⟨hwf_pack, hwf_body⟩ := Exp.wf_inv_unpack hwf
+    -- Extract well-formedness from pack
+    cases hwf_pack with
+    | wf_pack hwf_cs hwf_x =>
+      -- Build well-formed substitution
+      have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
+      -- Apply substitution preservation
+      exact Exp.wf_subst hwf_body hwf_subst
+
+theorem reduce_preserves_wf
+  (hred : Reduce C m1 e1 m2 e2)
+  (hwf : e1.WfInHeap m1.heap) :
+  e2.WfInHeap m2.heap := by
+  induction hred with
+  | refl => exact hwf
+  | step hstep rest ih =>
+    have hwf_mid := step_preserves_wf hstep hwf
+    exact ih hwf_mid
 
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q)
@@ -411,8 +537,10 @@ theorem eval_to_reduce
       -- Extract Var.WfInHeap from the fact that e1 reduced to a variable
       have hwf_var : Var.WfInHeap (.free y0 : Var .var ∅) m0.heap := by
         -- The variable must be well-formed since reduction preserves well-formedness
-        -- and ends at a variable that must be in the heap
-        sorry
+        have hwf_result := reduce_preserves_wf hred_e1 hwf_e1
+        -- Extract Var.WfInHeap from Exp.WfInHeap for the variable
+        cases hwf_result with
+        | wf_var h => exact h
       -- Build well-formed substitution
       have hwf_subst := Subst.wf_openVar hwf_var
       -- e2 is well-formed in m0 (by monotonicity from reduction)
