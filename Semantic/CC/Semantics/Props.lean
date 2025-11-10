@@ -654,4 +654,16 @@ theorem eval_to_reduce
       -- Apply h_val_ih
       exact h_val_ih hsub hwf_x hwf_cs hQ1 hwf_e2_subst m2 e_ans hans hred_body
 
+inductive IsProgressive : Memory -> Exp {} -> Prop where
+| done :
+  e.IsAns ->
+  IsProgressive m e
+| step :
+  Step C m e m' e' ->
+  IsProgressive m e
+
+theorem eval_implies_progressive
+  (heval : Eval C m e Q) :
+  IsProgressive m e := by sorry
+
 end CC
