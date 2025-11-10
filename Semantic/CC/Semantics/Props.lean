@@ -773,6 +773,167 @@ theorem eval_implies_progressive
 theorem step_preserves_eval
   (he : Eval C m1 e1 Q)
   (hstep : Step C m1 e1 m2 e2) :
-  Eval C m2 e2 Q := by sorry
+  Eval C m2 e2 Q := by
+  induction he generalizing m2 e2 with
+  | eval_val hv hQ =>
+    -- e1 is a value, which is an answer, but answers cannot step - contradiction
+    have hans : Exp.IsAns _ := Exp.IsAns.is_val hv
+    exact absurd hstep (step_ans_absurd hans)
+  | eval_var hQ =>
+    -- e1 is a variable, which is an answer, but answers cannot step - contradiction
+    rename_i x
+    have hans : Exp.IsAns (.var x) := Exp.IsAns.is_var
+    exact absurd hstep (step_ans_absurd hans)
+  | eval_apply hlookup heval ih =>
+    -- e1 = .app (.free x) y
+    -- The step must be step_apply or step_invoke
+    -- Case analyze on the step
+    cases hstep with
+    | step_apply hlookup' =>
+      -- Stepped to the substituted body
+      -- Both lookups access the same location, so they return the same value
+      rename_i cs1 T1 e_body1 hv1 R1 cs2 T2 e_body2 hv2 R2
+      have heq := Memory.lookup_deterministic hlookup hlookup'
+      -- Extract equality of abstraction bodies
+      injection heq with heq_cell
+      injection heq_cell with heq_val
+      injection heq_val with heq_abs
+      -- Name the unnamed equalities: reachability, signature, captures, type, body
+      rename_i _ _ _ _ heq_body
+      -- Rewrite using the body equality
+      rw [←heq_body]
+      -- Now we have the same expression that was already evaluated
+      exact heval
+    | step_invoke hmem hlookup_x hlookup_y =>
+      -- step_invoke says x contains a capability, but hlookup says x contains an abstraction
+      -- This is a contradiction
+      have heq := Memory.lookup_deterministic hlookup hlookup_x
+      cases heq
+  | eval_invoke hmem hlookup_x hlookup_y hQ =>
+    -- e1 = .app (.free x) (.free y) where x contains a capability
+    -- The step must be step_apply or step_invoke
+    cases hstep with
+    | step_apply hlookup' =>
+      -- step_apply says x contains an abstraction, but hlookup_x says x contains a capability
+      -- This is a contradiction
+      have heq := Memory.lookup_deterministic hlookup_x hlookup'
+      cases heq
+    | step_invoke hmem' hlookup_x' hlookup_y' =>
+      -- Stepped to .unit
+      -- The postcondition holds by hQ
+      apply Eval.eval_val
+      · exact Exp.IsVal.unit
+      · exact hQ
+  | eval_tapply hlookup heval ih =>
+    -- e1 = .tapp (.free x) S
+    -- The only step is step_tapply
+    cases hstep with
+    | step_tapply hlookup' =>
+      -- Stepped to the substituted body
+      -- Both lookups access the same location, so they return the same value
+      have heq := Memory.lookup_deterministic hlookup hlookup'
+      -- Extract equality of type abstraction bodies
+      injection heq with heq_cell
+      injection heq_cell with heq_val
+      injection heq_val with heq_abs
+      -- Name the unnamed equalities
+      rename_i _ _ _ _ heq_body
+      -- Rewrite using the body equality
+      rw [←heq_body]
+      -- Now we have the same expression that was already evaluated
+      exact heval
+  | eval_capply hlookup heval ih =>
+    -- e1 = .capp (.free x) CS
+    -- The only step is step_capply
+    cases hstep with
+    | step_capply hlookup' =>
+      -- Stepped to the substituted body
+      -- Both lookups access the same location, so they return the same value
+      have heq := Memory.lookup_deterministic hlookup hlookup'
+      -- Extract equality of capability abstraction bodies
+      injection heq with heq_cell
+      injection heq_cell with heq_val
+      injection heq_val with heq_abs
+      -- Name the unnamed equalities
+      rename_i _ _ _ _ heq_body
+      -- Rewrite using the body equality
+      rw [←heq_body]
+      -- Now we have the same expression that was already evaluated
+      exact heval
+  | eval_letin hpred heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
+    -- e1 = .letin e1' e2'
+    -- Possible steps: step_ctx_letin, step_rename, step_lift
+    cases hstep with
+    | step_ctx_letin hstep_e1 =>
+      -- e1' steps to some e1''
+      -- Apply IH to get the new evaluation of e1''
+      have heval_e1'' := ih_e1 hstep_e1
+      -- Rebuild eval_letin with the new evaluation
+      -- First, we need to show that memory is monotonic
+      have hsub := step_memory_monotonic hstep_e1
+      -- The handlers need to be updated for the new memory
+      -- h_val and h_var already work with any memory that subsumes m, so they're still valid
+      apply Eval.eval_letin hpred heval_e1'' h_nonstuck
+      · -- h_val case
+        intro m1 v hsub1 hv hwf_v hQ1 l' hfresh
+        -- m1 subsumes m2 which subsumes m, so m1 subsumes m
+        have hsub_full := Memory.subsumes_trans hsub1 hsub
+        exact h_val hsub_full hv hwf_v hQ1 l' hfresh
+      · -- h_var case
+        intro m1 x hsub1 hwf_x hQ1
+        -- m1 subsumes m2 which subsumes m, so m1 subsumes m
+        have hsub_full := Memory.subsumes_trans hsub1 hsub
+        exact h_var hsub_full hwf_x hQ1
+    | step_rename =>
+      -- e1' = .var (.free y), stepped to e2'.subst (openVar y)
+      -- The postcondition holds for the variable
+      have hQ1 := eval_ans_holds_post heval_e1 Exp.IsAns.is_var
+      -- Extract well-formedness from h_nonstuck
+      have ⟨_, hwf_y⟩ := h_nonstuck hQ1
+      cases hwf_y with
+      | wf_var hwf_y' =>
+        -- Apply h_var - Lean will infer the memory from the implicit argument
+        exact h_var (by apply Memory.subsumes_refl) hwf_y' hQ1
+    | step_lift hv hwf_v hfresh =>
+      -- e1' is a simple value, allocated at l
+      -- The postcondition holds for the value
+      have hQ1 := eval_ans_holds_post heval_e1 (Exp.IsAns.is_val (by
+        cases hv with
+        | abs => exact Exp.IsVal.abs
+        | tabs => exact Exp.IsVal.tabs
+        | cabs => exact Exp.IsVal.cabs
+        | unit => exact Exp.IsVal.unit))
+      -- Apply h_val - Lean will infer the memory from the implicit argument
+      exact h_val (by apply Memory.subsumes_refl) hv hwf_v hQ1 _ hfresh
+  | eval_unpack hpred heval_e1 h_nonstuck h_pack ih_e1 ih_pack =>
+    -- e1 = .unpack e1' e2'
+    -- Possible steps: step_ctx_unpack, step_unpack
+    cases hstep with
+    | step_ctx_unpack hstep_e1 =>
+      -- e1' steps to some e1''
+      -- Apply IH to get the new evaluation of e1''
+      have heval_e1'' := ih_e1 hstep_e1
+      -- Rebuild eval_unpack with the new evaluation
+      have hsub := step_memory_monotonic hstep_e1
+      apply Eval.eval_unpack hpred heval_e1'' h_nonstuck
+      -- The pack handler needs to work with the new memory
+      intro m1 x cs hsub1 hwf_x hwf_cs hQ1
+      -- m1 subsumes m2 which subsumes m, so m1 subsumes m
+      have hsub_full := Memory.subsumes_trans hsub1 hsub
+      exact h_pack hsub_full hwf_x hwf_cs hQ1
+    | step_unpack =>
+      -- e1' = .pack cs (.free x), stepped to e2'.subst (unpack cs x)
+      -- The postcondition holds for the pack
+      have hQ1 := eval_ans_holds_post heval_e1 (Exp.IsAns.is_val Exp.IsVal.pack)
+      -- Extract well-formedness from h_nonstuck
+      have ⟨hpack_form, hwf_pack⟩ := h_nonstuck hQ1
+      -- Extract the pack structure
+      cases hpack_form with
+      | pack =>
+        -- Extract well-formedness of cs and x
+        cases hwf_pack with
+        | wf_pack hwf_cs hwf_x =>
+          -- Apply h_pack with reflexive subsumption
+          exact h_pack (by apply Memory.subsumes_refl) hwf_x hwf_cs hQ1
 
 end CC
