@@ -727,9 +727,11 @@ theorem eval_implies_progressive
         -- e1 is a simple value, we can use step_lift
         -- For progress, we assert that a fresh location exists
         -- The heap is finite, so there are infinitely many fresh locations
+        rename_i m0 _ _ _
+        have ⟨l0, hfresh⟩ := Memory.exists_fresh m0
         apply IsProgressive.step
-        apply Step.step_lift (C := C) (m := _) (l := 0) hv hwf
-        sorry
+        apply Step.step_lift (C := C) (m := _) (l := l0) hv hwf
+        exact hfresh
       | is_var =>
         -- e1 is a variable, we need to show it's a free variable
         rename_i x_var
