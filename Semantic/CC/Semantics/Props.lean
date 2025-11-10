@@ -640,8 +640,9 @@ theorem eval_to_reduce
       have hans_pack : Exp.IsAns (.pack cs (.free x)) := by
         apply Exp.IsAns.is_val
         exact Exp.IsVal.pack
-      -- Apply ih to establish Q1 for the pack
-      have hQ1 := ih hwf_e1 m0 (.pack cs (.free x)) hans_pack hred_e1
+      -- Apply IH to establish Q1 for the pack
+      rename_i a_ih
+      have hQ1 := a_ih hwf_e1 m0 (Exp.pack cs (.free x)) hans_pack hred_e1
       -- Memory subsumption from reduction
       have hsub := reduce_memory_monotonic hred_e1
       -- e2 is well-formed in m0.heap (by monotonicity)
