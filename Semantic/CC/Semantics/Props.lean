@@ -135,6 +135,19 @@ theorem reduce_ans_eq
     have habsurd : False := step_ans_absurd hans h
     contradiction
 
+theorem reduce_letin_inv
+  (hred : Reduce C m (.letin e1 e2) m' a)
+  (hans : a.IsAns) :
+  (∃ y0, Reduce C m e1 m0 (.var (.free y0)) ∧
+     Reduce C m0 (e2.subst (Subst.openVar (.free y0))) m' a) ∨
+  (∃ (v0 : Exp {}) (hv : v0.IsSimpleVal) (hwf : Exp.WfInHeap v0 m0.heap)
+     (l0 : Nat) (hfresh : m0.heap l0 = none),
+    Reduce
+      C
+      (m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf rfl hfresh)
+      (e2.subst (Subst.openVar (.free l0)))
+      m' a) := sorry
+
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q)
   (hwf : e1.WfInHeap m1.heap) :
