@@ -211,6 +211,11 @@ theorem reduce_letin_inv
         apply Reduce.refl
       · exact rest
 
+theorem step_preserves_wf
+  (hstep : Step C m1 e1 m2 e2)
+  (hwf : e1.WfInHeap m1.heap) :
+  e2.WfInHeap m2.heap := by sorry
+
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q)
   (hwf : e1.WfInHeap m1.heap) :
