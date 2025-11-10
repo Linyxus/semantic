@@ -33,6 +33,10 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   Eval C m e1 Q1 ->
+  (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
+    (m1.subsumes m) ∧
+    v.IsSimpleAns ∧
+    Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
     (hv : Exp.IsSimpleVal v) ->
