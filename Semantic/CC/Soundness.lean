@@ -2099,6 +2099,26 @@ theorem sem_typ_unpack
     have ht' := ht env store hts
     simp [Ty.exi_exp_denot] at ht'
     exact ht'
+  case h_nonstuck =>
+    -- Prove that values satisfying exi_val_denot are packs and well-formed
+    intro m1 v hQ1
+    simp [Denot.as_mpost, Ty.exi_val_denot] at hQ1
+    -- hQ1 : match resolve m1.heap v with | some (.pack CS x) => ... | _ => False
+    -- Case analyze on resolve result
+    cases hres : resolve m1.heap v <;> simp [hres] at hQ1
+    rename_i exp
+    cases exp <;> simp at hQ1
+    -- Only pack case is valid
+    rename_i CS x_pack
+    obtain ⟨hwf_CS, hQ1_body⟩ := hQ1
+    constructor
+    · -- Prove v.IsPack
+      -- From resolve m1.heap v = some (.pack CS x_pack), we know v must be a direct pack
+      -- (since packs are not stored in heap, only simple values are)
+      sorry
+    · -- Prove v.WfInHeap m1.heap
+      -- From resolve result and well-formedness of CS and x_pack
+      sorry
   case h_val =>
     -- Handle the value case: t evaluated to a pack
     intro m1 x cs hs1 hwf_x hwf_cs hQ1
