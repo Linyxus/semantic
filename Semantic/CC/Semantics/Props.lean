@@ -342,6 +342,46 @@ theorem reduce_preserves_wf
     have hwf_mid := step_preserves_wf hstep hwf
     exact ih hwf_mid
 
+/-- Inversion lemma for reduction of unpack expressions -/
+theorem reduce_unpack_inv
+  (hred : Reduce C m (.unpack e1 e2) m' a)
+  (hans : a.IsAns) :
+  ∃ (m0 : Memory) (cs : CaptureSet {}) (x : Nat),
+    Reduce C m e1 m0 (.pack cs (.free x)) ∧
+    Reduce C m0 (e2.subst (Subst.unpack cs (.free x))) m' a := by
+  -- Use generalization to make induction work
+  generalize hgen : Exp.unpack e1 e2 = e_full at hred
+  induction hred generalizing e1 e2 with
+  | refl =>
+    -- Base case: no reduction, but unpack is not an answer
+    rw [←hgen] at hans
+    cases hans; rename_i hv
+    cases hv
+  | step hstep rest ih =>
+    -- Step case: analyze the step from unpack
+    rw [←hgen] at hstep
+    cases hstep with
+    | step_ctx_unpack hstep_e1 =>
+      -- e1 steps to e1', then continue with induction
+      rename_i e1'
+      have ih_result := ih (e1 := e1') (e2 := e2) hans rfl
+      obtain ⟨m0, cs, x, hred_e1', hred_body⟩ := ih_result
+      -- Build the reduction from e1 to pack
+      -- hstep_e1 : Step C m1✝ e1 m2✝ e1'
+      -- hred_e1' : Reduce C m2✝ e1' m0 (pack cs x)
+      -- Combine them to get: Reduce C m1✝ e1 m0 (pack cs x)
+      have hred_e1 : Reduce C _ e1 m0 (.pack cs (.free x)) :=
+        Reduce.step hstep_e1 hred_e1'
+      exact ⟨m0, cs, x, hred_e1, hred_body⟩
+    | step_unpack =>
+      -- e1 is already .pack cs (.free x)
+      rename_i cs x
+      -- rest is the reduction from the substituted body
+      -- rest : Reduce C m1✝ (e2.subst (Subst.unpack cs x)) m3✝ e3✝
+      -- We need: Reduce C m1✝ e1 m1✝ (pack cs x)
+      -- Since e1 = pack cs x, this is Reduce.refl
+      exact ⟨_, cs, x, Reduce.refl, rest⟩
+
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q)
   (hwf : e1.WfInHeap m1.heap) :
@@ -583,42 +623,34 @@ theorem eval_to_reduce
       -- Apply h_val_ih
       exact h_val_ih hsub hv hwf_v hQ1 l0 hfresh hwf_e2_subst m2 e_ans hans hred_body
   | eval_unpack hpred eval_e1 h_val ih =>
-    intro m2 e2 hans hred
+    intro m2 e_ans hans hred
     rename_i h_val_ih
-    -- unpack is not an answer, so reduction cannot be refl
-    cases hred with
-    | refl =>
-      -- .unpack is not an answer, contradiction
-      cases hans; rename_i hv
-      cases hv
-    | step hstep rest =>
-      -- Multiple possible steps for unpack
-      cases hstep with
-      | step_ctx_unpack hstep_e1 =>
-        -- e1 steps to some e1', then we have rest: Reduce C m' (.unpack e1' e2') m2 e2
-        -- This requires additional machinery similar to step_ctx_letin
-        sorry
-      | step_unpack =>
-        -- e1 = .pack cs (.free x), the step unpacks and substitutes
-        rename_i cs x
-        -- Extract well-formedness of subexpressions from hwf
-        have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_unpack hwf
-        -- The pack is an answer
-        have hans_pack : Exp.IsAns (.pack cs (.free x)) := by
-          apply Exp.IsAns.is_val
-          exact Exp.IsVal.pack
-        -- Apply ih to establish Q1 for the pack (no reduction needed)
-        have hQ1 := ih hwf_e1 _ (.pack cs (.free x)) hans_pack Reduce.refl
-        -- Extract well-formedness of x and cs from the pack
-        have hwf_pack := hwf_e1
-        cases hwf_pack with
-        | wf_pack hwf_cs hwf_x =>
-          -- Build well-formed substitution
-          have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
-          -- Substituted body is well-formed
-          have hwf_e2_subst := Exp.wf_subst hwf_e2 hwf_subst
-          -- Apply h_val_ih
-          exact h_val_ih (Memory.subsumes_refl _) hwf_x hwf_cs hQ1
-            hwf_e2_subst m2 e2 hans rest
+    -- Extract well-formedness of subexpressions
+    have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_unpack hwf
+    -- Apply reduce_unpack_inv to decompose the reduction
+    have hinv := reduce_unpack_inv hred hans
+    obtain ⟨m0, cs, x, hred_e1, hred_body⟩ := hinv
+    -- e1 reduces to pack in m0
+    -- Use reduce_preserves_wf to get well-formedness of the pack
+    have hwf_pack := reduce_preserves_wf hred_e1 hwf_e1
+    -- Extract well-formedness of cs and x from pack
+    cases hwf_pack with
+    | wf_pack hwf_cs hwf_x =>
+      -- The pack is an answer
+      have hans_pack : Exp.IsAns (.pack cs (.free x)) := by
+        apply Exp.IsAns.is_val
+        exact Exp.IsVal.pack
+      -- Apply ih to establish Q1 for the pack
+      have hQ1 := ih hwf_e1 m0 (.pack cs (.free x)) hans_pack hred_e1
+      -- Memory subsumption from reduction
+      have hsub := reduce_memory_monotonic hred_e1
+      -- e2 is well-formed in m0.heap (by monotonicity)
+      have hwf_e2_m0 := Exp.wf_monotonic hsub hwf_e2
+      -- Build well-formed substitution
+      have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
+      -- Substituted body is well-formed
+      have hwf_e2_subst := Exp.wf_subst hwf_e2_m0 hwf_subst
+      -- Apply h_val_ih
+      exact h_val_ih hsub hwf_x hwf_cs hQ1 hwf_e2_subst m2 e_ans hans hred_body
 
 end CC
