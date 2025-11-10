@@ -138,15 +138,69 @@ theorem reduce_ans_eq
 theorem reduce_letin_inv
   (hred : Reduce C m (.letin e1 e2) m' a)
   (hans : a.IsAns) :
-  (∃ y0, Reduce C m e1 m0 (.var (.free y0)) ∧
+  (∃ m0 y0, Reduce C m e1 m0 (.var (.free y0)) ∧
      Reduce C m0 (e2.subst (Subst.openVar (.free y0))) m' a) ∨
-  (∃ (v0 : Exp {}) (hv : v0.IsSimpleVal) (hwf : Exp.WfInHeap v0 m0.heap)
+  (∃ (m0 : Memory) (v0 : Exp {}) (hv : v0.IsSimpleVal) (hwf : Exp.WfInHeap v0 m0.heap)
      (l0 : Nat) (hfresh : m0.heap l0 = none),
     Reduce
       C
       (m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf rfl hfresh)
       (e2.subst (Subst.openVar (.free l0)))
-      m' a) := sorry
+      m' a) := by
+  -- Generalize the letin expression to enable induction
+  generalize hgen : Exp.letin e1 e2 = e_full at hred
+  induction hred generalizing e1 e2 with
+  | refl =>
+    -- Base case: e_full = a, but a is an answer and e_full = .letin e1 e2
+    -- letin is never an answer, contradiction
+    rw [←hgen] at hans
+    cases hans with
+    | is_val hv => cases hv
+  | step hstep rest ih =>
+    -- We have a step from e_full, and e_full = .letin e1 e2
+    rw [←hgen] at hstep
+    -- Case analysis on what step was taken from letin
+    cases hstep with
+    | step_ctx_letin hstep_e1 =>
+      -- e1 steps to e1', and we have rest: Reduce C m2 (.letin e1' e2) m' a
+      -- Apply IH to the rest of the reduction
+      rename_i m_step e1'
+      have ih_result := ih hans rfl
+      -- Extract the result from IH
+      cases ih_result with
+      | inl h_var =>
+        -- Variable case from IH
+        obtain ⟨m0, y0, hred_e1', hred_body⟩ := h_var
+        apply Or.inl
+        exists m0, y0
+        constructor
+        · -- Need to show: Reduce C m_step e1 m0 (.var (.free y0))
+          -- We have: hstep_e1 : Step C m_step e1 _ e1'
+          -- and: hred_e1' : Reduce C _ e1' m0 (.var (.free y0))
+          apply Reduce.step hstep_e1 hred_e1'
+        · exact hred_body
+      | inr h_val =>
+        -- Value case from IH
+        obtain ⟨m0, v0, hv, hwf, l0, hfresh, hred_body⟩ := h_val
+        apply Or.inr
+        exists m0, v0, hv, hwf, l0, hfresh
+    | step_rename =>
+      -- e1 = .var (.free y), stepped to e2.subst (openVar (.free y))
+      -- This is the variable case
+      -- Unnamed variables in order: m1✝, e1✝, m3✝, e3✝, y✝
+      rename_i m_src _ _ _ y
+      apply Or.inl
+      exists m_src, y
+      constructor
+      · apply Reduce.refl
+      · exact rest
+    | step_lift hv hwf hfresh =>
+      -- e1 is a simple value v, allocated at l
+      -- This is the value case
+      -- Unnamed vars: m3✝(dst), e3✝(ans), l✝(loc), m1✝(src), e1✝
+      rename_i mem_src _ mem_dst _ location
+      apply Or.inr
+      exists mem_src, e1, hv, hwf, location, hfresh
 
 theorem eval_to_reduce
   (heval : Eval C m1 e1 Q)
