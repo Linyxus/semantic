@@ -2075,6 +2075,49 @@ theorem sem_typ_subtyp
   -- Lift the evaluation from E1 to E2 using postcondition monotonicity
   exact eval_post_monotonic_general h_entails h_eval_E1_at_C2
 
+lemma simple_val_not_pack {e : Exp s}
+  (hsimple : e.IsSimpleVal)
+  (hpack : e.IsPack) : False := by
+  -- IsSimpleVal and IsPack apply to disjoint sets of constructors
+  cases hsimple <;> cases hpack
+
+theorem resolve_is_pack {e : Exp {}} {m : Memory}
+  (hres : resolve m.heap e = some v)
+  (hv : v.IsPack) : e.IsPack := by
+  -- Case analyze on e
+  cases e <;> simp [resolve] at hres
+  case pack cs x =>
+    -- For packs, resolve returns the pack itself
+    -- After simp, hres : .pack cs x = v
+    rw [← hres] at hv
+    exact hv
+  case var y =>
+    -- For variables, resolve looks up in the heap
+    cases y
+    case bound bv => cases bv
+    case free fy =>
+      -- resolve looks up m.heap fy
+      -- If it returns some v where v.IsPack, then the heap contains a pack
+      -- But packs are not simple values, so they shouldn't be in the heap
+      -- We need to derive a contradiction
+      cases hval : m.heap fy <;> simp [hval] at hres
+      rename_i cell
+      cases cell <;> simp at hres
+      rename_i val
+      -- After simp, hres : val.unwrap = v
+      rw [← hres] at hv
+      -- Now hv : val.unwrap.IsPack
+      -- But val.isVal : val.unwrap.IsSimpleVal
+      -- Use simple_val_not_pack to derive contradiction
+      exfalso
+      exact simple_val_not_pack val.isVal hv
+  -- For all other expressions, resolve returns them unchanged
+  all_goals {
+    -- After simp, hres : e = v
+    rw [← hres] at hv
+    exact hv
+  }
+
 theorem sem_typ_unpack
   {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
@@ -2113,9 +2156,9 @@ theorem sem_typ_unpack
     obtain ⟨hwf_CS, hQ1_body⟩ := hQ1
     constructor
     · -- Prove v.IsPack
-      -- From resolve m1.heap v = some (.pack CS x_pack), we know v must be a direct pack
-      -- (since packs are not stored in heap, only simple values are)
-      sorry
+      -- Use resolve_is_pack: if resolve returns a pack, then v is a pack
+      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
+      exact resolve_is_pack hres hpack
     · -- Prove v.WfInHeap m1.heap
       -- From resolve result and well-formedness of CS and x_pack
       sorry
