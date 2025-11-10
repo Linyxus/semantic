@@ -1,5 +1,6 @@
 import Semantic.CC.Syntax
 import Semantic.CC.Substitution
+import Mathlib.Data.Finset.Basic
 
 namespace CC
 
@@ -1280,10 +1281,70 @@ theorem Subst.wf_unpack
         simp [Subst.unpack]
         apply CaptureSet.WfInHeap.wf_cvar
 
+def Heap.HasFinDom (H : Heap) (L : Finset Nat) : Prop :=
+  ∀ l, H l ≠ none <-> l ∈ L
+
+def Heap.empty_has_fin_dom : Heap.HasFinDom ∅ ∅ := by
+  intro l
+  aesop
+
+theorem Heap.extend_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat} {v : HeapVal}
+  (hdom : H.HasFinDom dom) (hfresh : H l = none) :
+  (H.extend l v).HasFinDom (dom ∪ {l}) := by
+  intro l'
+  unfold Heap.extend
+  split
+  case isTrue heq =>
+    subst heq
+    constructor
+    · intro _
+      simp
+    · intro _
+      simp
+  case isFalse hneq =>
+    constructor
+    · intro h
+      have : l' ∈ dom := (hdom l').mp h
+      simp [this, hneq]
+    · intro h
+      simp at h
+      rcases h with h | h
+      · -- h : l' = l, but we have hneq : ¬l' = l
+        contradiction
+      · -- h : l' ∈ dom
+        exact (hdom l').mpr h
+
+theorem Heap.extend_cap_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat}
+  (hdom : H.HasFinDom dom) (hfresh : H l = none) :
+  (H.extend_cap l).HasFinDom (dom ∪ {l}) := by
+  intro l'
+  unfold Heap.extend_cap
+  split
+  case isTrue heq =>
+    subst heq
+    constructor
+    · intro _
+      simp
+    · intro _
+      simp
+  case isFalse hneq =>
+    constructor
+    · intro h
+      have : l' ∈ dom := (hdom l').mp h
+      simp [this, hneq]
+    · intro h
+      simp at h
+      rcases h with h | h
+      · -- h : l' = l, but we have hneq : ¬l' = l
+        contradiction
+      · -- h : l' ∈ dom
+        exact (hdom l').mpr h
+
 /-- Memory is a well-formed heap. -/
 structure Memory where
   heap : Heap
   wf : heap.WfHeap
+  findom : ∃ dom, heap.HasFinDom dom
 
 namespace Memory
 
@@ -1291,6 +1352,7 @@ namespace Memory
 def empty : Memory where
   heap := ∅
   wf := Heap.wf_empty
+  findom := ⟨∅, Heap.empty_has_fin_dom⟩
 
 /-- Lookup a value in memory. -/
 def lookup (m : Memory) (l : Nat) : Option Cell :=
@@ -1304,6 +1366,9 @@ def extend (m : Memory) (l : Nat) (v : HeapVal)
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend l v
   wf := Heap.wf_extend m.wf hwf_v hreach hfresh
+  findom :=
+    let ⟨dom, hdom⟩ := m.findom
+    ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
 
 /-- Heap extension with capability subsumes original heap. -/
 theorem Heap.extend_cap_subsumes {H : Heap} {l : Nat}
@@ -1348,6 +1413,9 @@ def extend_cap (m : Memory) (l : Nat)
         rw [heq]
         exact (compute_reachability_monotonic (Heap.extend_cap_subsumes hfresh) v' hv'
           (m.wf.wf_val l' _ hlookup)).symm
+  findom :=
+    let ⟨dom, hdom⟩ := m.findom
+    ⟨dom ∪ {l}, Heap.extend_cap_has_fin_dom hdom hfresh⟩
 
 /-- Extend memory with a value that's well-formed in the current heap.
     This is often more convenient than `extend` in practice. -/
@@ -1357,6 +1425,9 @@ def extend_val (m : Memory) (l : Nat) (v : HeapVal)
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend l v
   wf := Heap.wf_extend m.wf hwf_v hreach hfresh
+  findom :=
+    let ⟨dom, hdom⟩ := m.findom
+    ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
 
 /-- Memory subsumption: m1 subsumes m2 if m1's heap subsumes m2's heap. -/
 def subsumes (m1 m2 : Memory) : Prop :=
@@ -1450,6 +1521,5 @@ def Mpost.entails (Q1 Q2 : Mpost) : Prop :=
 def Mpost.entails_refl (Q : Mpost) : Q.entails Q := by
   intros m e hQ
   exact hQ
-
 
 end CC
