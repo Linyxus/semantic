@@ -18,54 +18,46 @@ namespace CC
     If a well-typed term evaluates to a simple value, then the value's runtime
     reachability is bounded by what the capturing type predicts.
 
-    More precisely: Given a well-typed term `C # Γ ⊢ e : T`, if `e` evaluates
-    to a simple value `v` in memory `m'`, then the actual reachability computed
-    for `v` is a subset of the capabilities predicted by expanding the capture
-    set from the type.
+    More precisely: Given a well-typed term `C # Γ ⊢ e : T` and an environment
+    `ρ` that gives meaning to the free variables in `e`, if the substituted term
+    evaluates to a simple value `v` in memory `m'`, then the actual reachability
+    computed for `v` is a subset of the capabilities predicted by expanding the
+    capture set from the type (after substitution).
 
     Proof strategy:
     1. Use fundamental theorem to get semantic typing: C # Γ ⊨ e : T
-    2. Instantiate semantic typing with empty environment and initial memory
+    2. Instantiate semantic typing with the given environment ρ and memory m
     3. From semantic typing of existential type, extract the capturing type witness
     4. Use reachability safety of the denotation to bound actual captures
     5. Connect expand_captures with the denotational semantics
 -/
 theorem capture_prediction_simple_val
-  {C : CaptureSet {}}
-  {e : Exp {}}
-  {T : Ty .exi {}}
+  {C : CaptureSet s}
+  {Γ : Ctx s}
+  {e : Exp s}
+  {T : Ty .exi s}
+  {ρ : TypeEnv s}
   {m m' : Memory}
   {v : Exp {}}
   {Q : Mpost}
-  (htype : C # .empty ⊢ e : T)
-  (heval : Eval CapabilitySet.any m e Q)
+  (htype : C # Γ ⊢ e : T)
+  (henv : EnvTyping Γ ρ m)
+  (heval : Eval CapabilitySet.any m (e.subst (Subst.from_TypeEnv ρ)) Q)
   (hpost : Q v m')
   (hval : v.IsSimpleVal) :
-  ∃ (CS : CaptureSet {}) (S : Ty .shape {}),
+  ∃ (CS : CaptureSet s) (S : Ty .shape s),
     -- There exists a capturing type in T
-    (∃ (T_capt : Ty .capt {}),
+    (∃ (T_capt : Ty .capt s),
       T = .typ T_capt ∧ T_capt = .capt CS S) ∧
     -- The actual reachability is bounded by the predicted captures
-    compute_reachability m'.heap v hval ⊆ expand_captures m'.heap CS := by
+    compute_reachability m'.heap v hval ⊆
+      expand_captures m'.heap (CS.subst (Subst.from_TypeEnv ρ)) := by
   -- Step 1: Apply fundamental theorem to get semantic typing
-  have hsem : C # .empty ⊨ e : T := fundamental htype
+  have hsem : C # Γ ⊨ e : T := fundamental htype
 
-  -- Step 2: Instantiate with empty environment
-  -- The empty environment typing holds trivially
-  have henv_empty : EnvTyping .empty .empty m := by
-    simp [EnvTyping]
-
-  -- Step 3: Unfold semantic typing to get denotational interpretation
+  -- Step 2: Instantiate semantic typing with the given environment
   simp [SemanticTyping] at hsem
-  have hsem_inst := hsem .empty m henv_empty
-
-  -- The expression is closed, so substitution is identity
-  have he_closed := HasType.exp_is_closed htype
-  have he_subst : e.subst (Subst.from_TypeEnv .empty) = e := by
-    rw [Subst.from_TypeEnv_empty]
-    exact Exp.subst_id
-
-  rw [he_subst] at hsem_inst
+  have hsem_inst := hsem ρ m henv
 
   -- Step 4: Case analysis on the existential type T
   cases T with
@@ -90,6 +82,7 @@ theorem capture_prediction_simple_val
     answer's runtime reachability is bounded by what the type predicts.
 
     This generalizes to existential types by opening the existential witness.
+    Works for arbitrary typing contexts by substituting the environment.
 
     Proof strategy:
     1. Use fundamental theorem for semantic typing
@@ -98,33 +91,37 @@ theorem capture_prediction_simple_val
     4. For simple values, use capture_prediction_simple_val
 -/
 theorem capture_prediction
-  {C : CaptureSet {}}
-  {e : Exp {}}
-  {T : Ty .exi {}}
+  {C : CaptureSet s}
+  {Γ : Ctx s}
+  {e : Exp s}
+  {T : Ty .exi s}
+  {ρ : TypeEnv s}
   {m m' : Memory}
   {ans : Exp {}}
   {Q : Mpost}
-  (htype : C # .empty ⊢ e : T)
-  (heval : Eval CapabilitySet.any m e Q)
+  (htype : C # Γ ⊢ e : T)
+  (henv : EnvTyping Γ ρ m)
+  (heval : Eval CapabilitySet.any m (e.subst (Subst.from_TypeEnv ρ)) Q)
   (hpost : Q ans m') :
   -- The answer is either a simple value or a pack
   (∃ (v : Exp {}) (hval : v.IsSimpleVal),
     ans = v ∧
-    ∃ (CS : CaptureSet {}) (S : Ty .shape {}),
-      (∃ (T_capt : Ty .capt {}),
+    ∃ (CS : CaptureSet s) (S : Ty .shape s),
+      (∃ (T_capt : Ty .capt s),
         T = .typ T_capt ∧ T_capt = .capt CS S) ∧
-      compute_reachability m'.heap v hval ⊆ expand_captures m'.heap CS)
+      compute_reachability m'.heap v hval ⊆
+        expand_captures m'.heap (CS.subst (Subst.from_TypeEnv ρ)))
   ∨
   (∃ (cs : CaptureSet {}) (x : Var .var {}),
     ans = .pack cs x ∧
-    ∃ (T_inner : Ty .capt ({},C)),
+    ∃ (T_inner : Ty .capt (s,C)),
       T = .exi T_inner ∧
       -- The witness capture set cs bounds what the packed value x captures
       (∀ (loc : Nat),
         x = .free loc →
         reachability_of_loc m'.heap loc ⊆ expand_captures m'.heap cs)) := by
   -- Apply fundamental theorem
-  have hsem : C # .empty ⊨ e : T := fundamental htype
+  have hsem : C # Γ ⊨ e : T := fundamental htype
 
   -- Case analysis on whether ans is a simple value or a pack
   by_cases hans_val : ans.IsSimpleVal
@@ -164,35 +161,37 @@ theorem resolve_reachability_eq_compute_reachability
   (compute_reachability_eq_resolve_reachability m.heap v hval).symm
 
 /-- Helper: Semantic typing implies reachability bounds for values.
-    This connects the denotational semantics with the operational reachability. -/
+    This connects the denotational semantics with the operational reachability.
+    Works for arbitrary typing contexts via environment substitution. -/
 theorem sem_typing_implies_reachability_bound
-  {CS : CaptureSet {}}
-  {S : Ty .shape {}}
+  {CS : CaptureSet s}
+  {S : Ty .shape s}
+  {ρ : TypeEnv s}
   {m : Memory}
   {v : Exp {}}
   (hval : v.IsSimpleVal)
-  (hsem : Ty.capt_val_denot .empty (.capt CS S) m v) :
-  compute_reachability m.heap v hval ⊆ expand_captures m.heap CS := by
+  (henv : EnvTyping Γ ρ m)
+  (hsem : Ty.capt_val_denot ρ (.capt CS S) m v) :
+  compute_reachability m.heap v hval ⊆
+    expand_captures m.heap (CS.subst (Subst.from_TypeEnv ρ)) := by
   -- Unfold the semantic typing for capturing types
   simp [Ty.capt_val_denot] at hsem
   obtain ⟨_, _, _, hshape⟩ := hsem
 
   -- Extract reachability safety from shape denotation
-  -- The environment is empty, so env.is_reachability_safe holds trivially
-  have henv_safe : TypeEnv.is_reachability_safe .empty := by
-    intro X
-    cases X -- empty context has no type variables
+  have henv_safe : TypeEnv.is_reachability_safe ρ :=
+    typed_env_is_reachability_safe henv
 
   have hsafe := shape_val_denot_is_reachability_safe henv_safe S
-  have hreach := hsafe (CS.denot .empty m) m v hshape
+  have hreach := hsafe (CS.denot ρ m) m v hshape
 
   -- resolve_reachability v = compute_reachability v for simple values
   rw [resolve_reachability_eq_compute_reachability hval] at hreach
 
-  -- CS.denot .empty m = expand_captures m.heap CS for closed capture sets
-  have hdenot_eq : CS.denot .empty m = expand_captures m.heap CS := by
-    simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
-    exact (expand_captures_eq_ground_denot CS m).symm
+  -- CS.denot ρ m = expand_captures m.heap (CS.subst (Subst.from_TypeEnv ρ))
+  have hdenot_eq : CS.denot ρ m = expand_captures m.heap (CS.subst (Subst.from_TypeEnv ρ)) := by
+    simp [CaptureSet.denot]
+    exact (expand_captures_eq_ground_denot (CS.subst (Subst.from_TypeEnv ρ)) m).symm
 
   rw [← hdenot_eq]
   exact hreach
