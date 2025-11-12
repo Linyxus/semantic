@@ -196,4 +196,46 @@ theorem sem_typing_implies_reachability_bound
   rw [← hdenot_eq]
   exact hreach
 
+/-- Use Prediction Theorem:
+    If a well-typed term evaluates successfully with a capability set A, then
+    A must be bounded by the syntactic use set C predicted by the type system.
+
+    This is a stronger property than capture prediction - it bounds the capabilities
+    used **during** evaluation, not just what the result captures.
+
+    More precisely: Given `C # Γ ⊢ e : T`, if the substituted term evaluates
+    with capability set A, then A ⊆ expand_captures (after environment substitution).
+
+    Proof strategy:
+    1. Use fundamental theorem to get semantic typing: C # Γ ⊨ e : T
+    2. Semantic typing unfolds to: Eval (C.denot ρ m) m e.subst Q
+    3. Given Eval A m e.subst Q, we need A ⊆ C.denot ρ m
+    4. Use eval_capability_set_monotonic or determinism of Eval
+    5. Connect C.denot ρ m with expand_captures m.heap (C.subst ρ)
+-/
+theorem use_prediction
+  {C : CaptureSet s}
+  {Γ : Ctx s}
+  {e : Exp s}
+  {T : Ty .exi s}
+  {ρ : TypeEnv s}
+  {m : Memory}
+  {A : CapabilitySet}
+  {Q : Mpost}
+  (htype : C # Γ ⊢ e : T)
+  (henv : EnvTyping Γ ρ m)
+  (heval : Eval A m (e.subst (Subst.from_TypeEnv ρ)) Q) :
+  A ⊆ C.denot ρ m := by
+  -- Step 1: Apply fundamental theorem
+  have hsem : C # Γ ⊨ e : T := fundamental htype
+
+  -- Step 2: Unfold semantic typing
+  simp [SemanticTyping] at hsem
+  have hsem_inst := hsem ρ m henv
+
+  -- Step 3: hsem_inst gives us Eval (C.denot ρ m) m (e.subst ...) (denotation).as_mpost
+  -- We have Eval A m (e.subst ...) Q
+  -- Need to relate these two evaluations
+  sorry -- TODO: Need determinism or monotonicity properties of Eval
+
 end CC
