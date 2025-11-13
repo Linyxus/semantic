@@ -1550,7 +1550,8 @@ theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
     simp [CaptureBound.subst] at hwf
     cases hwf with
     | wf_bound hwf_cs =>
-      exact capture_set_denot_is_monotonic hwf_cs hsub
+      simp only []
+      rw [capture_set_denot_is_monotonic hwf_cs hsub]
 
 mutual
 
