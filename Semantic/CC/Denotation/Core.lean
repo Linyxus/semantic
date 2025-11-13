@@ -360,6 +360,32 @@ inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop whe
   C1 ⊆ C2 ->
   CapabilitySet.BoundedBy C1 (CapabilityBound.set C2)
 
+inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop where
+| refl :
+  CapabilityBound.SubsetEq B B
+| set :
+  C1 ⊆ C2 ->
+  CapabilityBound.SubsetEq (CapabilityBound.set C1) (CapabilityBound.set C2)
+| top :
+  CapabilityBound.SubsetEq B CapabilityBound.top
+
+instance : HasSubset CapabilityBound where
+  Subset := CapabilityBound.SubsetEq
+
+theorem CapabilitySet.BoundedBy.trans
+  {C : CapabilitySet} {B1 B2 : CapabilityBound}
+  (hbound : CapabilitySet.BoundedBy C B1)
+  (hsub : B1 ⊆ B2) :
+  CapabilitySet.BoundedBy C B2 := by
+  cases hsub with
+  | refl => exact hbound
+  | set hsub_set =>
+    cases hbound with
+    | set hbound_set =>
+      exact CapabilitySet.BoundedBy.set
+        (CapabilitySet.Subset.trans hbound_set hsub_set)
+  | top => exact CapabilitySet.BoundedBy.top
+
 mutual
 
 def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
