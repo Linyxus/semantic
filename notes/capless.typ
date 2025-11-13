@@ -2,7 +2,7 @@
 
 #set page(margin: 0.4in, numbering: "1")
 #set heading(numbering: "1.1")
-#set text(font: "CommitMono", weight: "regular", size: 9pt)
+// #set text(font: "CommitMono", weight: "regular", size: 9pt)
 #show math.equation: set text(font: "Latin Modern Math", size: 11pt)
 #show: thmrules
 
@@ -30,7 +30,7 @@
 #let typ(cs, ctx, e, t) = $ #cs\; #ctx turnstile #e : #t $
 #let wf(ctx, obj) = $ #ctx turnstile #obj sans("wf") $
 #let subtyp(ctx, t1, t2) = $ #ctx turnstile #t1 <: #t2 $
-#let pack(c, x) = $ angle.l #c, #x angle.r $
+#let pack(c, x) = $ lr(chevron.l #c, #x chevron.r) $
 #let sem(body) = $ lr([|#body|])$
 #let semtyp(cs, ctx, exp, t) = $ #cs\; #ctx sturnstile #exp : #t $
 #let semctxtyp(ctx, typenv, heap) = $ (#ctx, #typenv) sturnstile #heap $
