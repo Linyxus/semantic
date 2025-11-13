@@ -936,4 +936,26 @@ theorem step_preserves_eval
           -- Apply h_pack with reflexive subsumption
           exact h_pack (by apply Memory.subsumes_refl) hwf_x hwf_cs hQ1
 
+/-- Turns a capability set into a finite set of natural numbers. -/
+def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
+| .empty => {}
+| .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
+| .cap x => {x}
+
+/-- A heap has a capability domain if all capabilities on this heap
+    lives in the given domain. -/
+def Heap.HasCapDom (H : Heap) (d : Finset Nat) : Prop :=
+  ∀ l, H l = some .capability <-> l ∈ d
+
+def Heap.restrict_caps (H : Heap) (d : Finset Nat) : Heap :=
+  fun l =>
+    match H l with
+    | some .capability =>
+      if l ∈ d then some .capability else none
+    | some v => some v
+    | none => none
+
+theorem Heap.restricted_has_capdom {H : Heap} :
+  (H.restrict_caps D).HasCapDom D := by sorry
+
 end CC
