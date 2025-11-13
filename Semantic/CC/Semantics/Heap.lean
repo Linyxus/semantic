@@ -10,13 +10,11 @@ inductive CapabilitySet : Type where
 | empty : CapabilitySet
 | cap : Nat -> CapabilitySet
 | union : CapabilitySet -> CapabilitySet -> CapabilitySet
-| any : CapabilitySet
 
 namespace CapabilitySet
 
 inductive mem : Nat -> CapabilitySet -> Prop where
 | here : CapabilitySet.mem l (CapabilitySet.cap l)
-| here_any : CapabilitySet.mem l CapabilitySet.any
 | left {l C1 C2} :
   CapabilitySet.mem l C1 ->
   CapabilitySet.mem l (CapabilitySet.union C1 C2)
@@ -45,8 +43,6 @@ instance instSingleton : Singleton Nat CapabilitySet :=
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C
-| top :
-  Subset C .any
 | empty :
   Subset .empty C
 | trans :
@@ -71,7 +67,6 @@ theorem subset_preserves_mem {C1 C2 : CapabilitySet} {x : Nat}
   x ∈ C2 := by
   induction hsub generalizing x
   case refl => exact hmem
-  case top => exact mem.here_any
   case trans ih1 ih2 => apply ih2 (ih1 hmem)
   case empty => cases hmem
   case union_left ih1 ih2 =>
@@ -106,8 +101,6 @@ theorem mem_imp_singleton_subset {C : CapabilitySet} {x : Nat}
       -- Need: {x} ⊆ (C1 ∪ C2)
       apply Subset.trans (ih2 h)
       apply Subset.union_right_right
-  | any =>
-    apply Subset.top
 
 end CapabilitySet
 
