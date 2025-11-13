@@ -1063,8 +1063,7 @@ theorem Heap.has_dom_restricted {H : Heap}
         contradiction
     · -- Show restricted heap has value at l (trivial)
       exact h_restricted_neq_none
-  · -- Backward: if l ∈ D and restricted heap has value at l, then restricted heap has value at l
-    intro ⟨_, h_restricted_neq_none⟩
+  · intro ⟨_, h_restricted_neq_none⟩
     exact h_restricted_neq_none
 
 end CC
