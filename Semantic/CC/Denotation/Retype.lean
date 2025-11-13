@@ -267,7 +267,9 @@ def retype_capturebound_denot
   case unbound => rfl
   case bound C =>
     simp [CaptureBound.denot, CaptureBound.subst]
-    apply retype_captureset_denot ρ C
+    funext m
+    congr 1
+    exact congrFun (retype_captureset_denot ρ C) m
 
 def retype_resolved_capture_set
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}

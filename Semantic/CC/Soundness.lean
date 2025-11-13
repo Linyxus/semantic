@@ -660,6 +660,8 @@ theorem abs_val_denot_inv {A : CapabilitySet}
         use fx, rfl, cs, T0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
         simp at hresolve
+      | masked =>
+        simp at hresolve
 
 theorem tabs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.poly S T) A store (.var x)) :
@@ -696,6 +698,8 @@ theorem tabs_val_denot_inv {A : CapabilitySet}
         use fx, rfl, cs, S0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
         simp at hresolve
+      | masked =>
+        simp at hresolve
 
 theorem cabs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.cpoly B T) A store (.var x)) :
@@ -706,7 +710,7 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
     ∧ (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
       m'.subsumes store ->
-      (CS.denot TypeEnv.empty m' ⊆ B.denot env m') ->
+      ((CS.denot TypeEnv.empty m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS)
         T (expand_captures store.heap cs) m'
@@ -731,6 +735,8 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
         subst hresolve
         use fx, rfl, cs, B0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
+        simp at hresolve
+      | masked =>
         simp at hresolve
 
 theorem cap_val_denot_inv {A : CapabilitySet}
@@ -769,6 +775,8 @@ theorem unit_val_denot_inv
         subst hv
         use fx, rfl, isVal, reachability, hres
       | capability =>
+        simp at hv
+      | masked =>
         simp at hv
 
 theorem var_subst_is_free {x : BVar s .var} :
@@ -904,12 +912,15 @@ theorem sem_typ_capp
   have happ := hfun store D'
     hD'_wf              -- Closed capture sets are well-formed
     (Memory.subsumes_refl store)          -- Memory subsumes itself
-    (by -- Prove that D'.denot TypeEnv.empty ⊆ (.bound D).denot env
+    (by -- Prove that (D'.denot TypeEnv.empty store).BoundedBy
+        --   ((.bound D).denot env store)
       rw [hD'_denot]
-      -- Since cb = .bound D, we need: D.denot env store ⊆ D.denot env store
-      -- which is trivially true by reflexivity
+      -- Since cb = .bound D, we have:
+      --   (.bound D).denot env store = CapabilityBound.set (D.denot env store)
+      -- So we need: (D.denot env store).BoundedBy
+      --   (CapabilityBound.set (D.denot env store))
       simp [CaptureBound.denot]
-      exact CapabilitySet.Subset.refl)
+      exact CapabilitySet.BoundedBy.set CapabilitySet.Subset.refl)
 
   -- Now apply the opening lemma
   have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T)
@@ -1262,7 +1273,7 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
 theorem typed_env_lookup_cvar_aux
   (hts : EnvTyping Γ env m)
   (hc : Ctx.LookupCVar Γ c cb) :
-  (env.lookup_cvar c).ground_denot m ⊆ (cb.denot env) m := by
+  ((env.lookup_cvar c).ground_denot m).BoundedBy ((cb.denot env) m) := by
   induction hc generalizing m
   case here =>
     -- Γ = .push Γ' (.cvar cb'), c = .here
@@ -1328,7 +1339,8 @@ theorem typed_env_lookup_cvar
   (env.lookup_cvar c).ground_denot m ⊆ C.denot env m := by
   have h := typed_env_lookup_cvar_aux hts hc
   simp [CaptureBound.denot] at h
-  exact h
+  cases h with
+  | set hsub => exact hsub
 
 theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s}
   (hlookup : Γ.LookupVar x (.capt C S)) :
@@ -1697,15 +1709,16 @@ lemma fundamental_subbound
     -- Subbound Γ (.bound C1) (.bound C2) from Subcapt Γ C1 C2
     intro env m htyping
     simp [CaptureBound.denot]
-    -- Need to show: C1.denot env m ⊆ C2.denot env m
+    -- Need to show: CapabilityBound.set (C1.denot env m) ⊆
+    --   CapabilityBound.set (C2.denot env m)
     have hsem := fundamental_subcapt hsubcapt
-    exact hsem env m htyping
+    exact CapabilityBound.SubsetEq.set (hsem env m htyping)
   | top =>
     -- Subbound Γ B .unbound
     intro env m htyping
     simp [CaptureBound.denot]
-    -- .unbound denotes CapabilitySet.any, which contains everything
-    apply CapabilitySet.Subset.top
+    -- .unbound denotes CapabilityBound.top, which is the largest bound
+    apply CapabilityBound.SubsetEq.top
 
 lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
   (hB : SemSubbound Γ cb1 cb2) -- contravariant in bound (cb1 <: cb2)
@@ -1737,17 +1750,17 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
         · exact hR0_subset  -- Same capture subset constraint
         · -- Need to prove the body property with contravariant bound and covariant body
           intro m'' CS hCS_wf hsub_m'' hCS_satisfies_cb1
-          -- hbody expects: A0 m'' ⊆ cb2.denot env m''
-          -- We have hCS_satisfies_cb1 : A0 m'' ⊆ cb1.denot env m''
+          -- hbody expects: (A0 m'').BoundedBy (cb2.denot env m'')
+          -- We have hCS_satisfies_cb1 : (A0 m'').BoundedBy (cb1.denot env m'')
           -- And hB : SemSubbound Γ cb1 cb2, i.e., cb1 <: cb2
           -- So we need: cb1.denot env m'' ⊆ cb2.denot env m''
           let A0 := CS.denot TypeEnv.empty
-          have hCS_satisfies_cb2 : A0 m'' ⊆ cb2.denot env m'' := by
+          have hCS_satisfies_cb2 : (A0 m'').BoundedBy (cb2.denot env m'') := by
             -- Apply contravariance: cb1.denot env m'' ⊆ cb2.denot env m''
             have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
             have htyping_m'' := env_typing_monotonic htyping hB_trans
             have hB_at_m'' := hB env m'' htyping_m''
-            exact CapabilitySet.Subset.trans hCS_satisfies_cb1 hB_at_m''
+            exact CapabilitySet.BoundedBy.trans hCS_satisfies_cb1 hB_at_m''
           -- Apply the original function body with this CS
           have heval1 := hbody m'' CS hCS_wf hsub_m'' hCS_satisfies_cb2
           -- Now use covariance hT
@@ -1886,9 +1899,9 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
               simp [CaptureBound.subst]
               apply CaptureBound.WfInHeap.wf_unbound
             · constructor
-              · -- Need: CS.ground_denot m ⊆ CaptureBound.unbound.denot env m
+              · -- Need: (CS.ground_denot m).BoundedBy (CaptureBound.unbound.denot env m)
                 simp [CaptureBound.denot]
-                apply CapabilitySet.Subset.top
+                apply CapabilitySet.BoundedBy.top
               · exact env_typing_monotonic htyping hsubsumes
 
         -- Apply semantic subtyping
