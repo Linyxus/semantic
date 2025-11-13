@@ -47,6 +47,9 @@ theorem resolve_monotonic {m1 m2 : Memory}
         case capability =>
           -- m1.heap fx = some Cell.capability, so resolve returns none
           simp at hres
+        case masked =>
+          -- m1.heap fx = some Cell.masked, so resolve returns none
+          simp at hres
   all_goals {
     -- For all other expression constructors (pack, abs, tabs, etc.)
     -- resolve returns the expression itself unchanged
@@ -2046,6 +2049,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
           simp [hfx] at hres
           cases cell with
           | capability => simp at hres
+          | masked => simp at hres
           | val v =>
             simp at hres
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
@@ -2080,6 +2084,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
           simp [hfx] at hres
           cases cell with
           | capability => simp at hres
+          | masked => simp at hres
           | val v =>
             simp at hres
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
@@ -2111,6 +2116,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
           simp [hfx] at hres
           cases cell with
           | capability => simp at hres
+          | masked => simp at hres
           | val v =>
             simp at hres
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
@@ -2196,6 +2202,7 @@ lemma wf_from_resolve_unit
         simp [hfx] at hresolve
         cases cell with
         | capability => simp at hresolve
+        | masked => simp at hresolve
         | val v =>
           simp at hresolve
           apply Exp.WfInHeap.wf_var
