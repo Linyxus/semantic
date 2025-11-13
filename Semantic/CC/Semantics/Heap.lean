@@ -123,6 +123,7 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
 inductive Cell : Type where
 | val : HeapVal -> Cell
 | capability : Cell
+| masked : Cell
 
 -- A heap is a function from locations to cells
 def Heap : Type := Nat -> Option Cell
@@ -578,6 +579,7 @@ def reachability_of_loc
   match h l with
   | some .capability => {l}
   | some (.val ⟨_, _, R⟩) => R
+  | some .masked => {}
   | none => {}
 
 /-- Resolve reachability of each element of the capture set. -/
