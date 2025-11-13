@@ -84,7 +84,9 @@ theorem rebind_capturebound_denot
   case unbound => rfl
   case bound C =>
     simp [CaptureBound.denot, CaptureBound.rename]
-    exact rebind_captureset_denot ρ C
+    funext m
+    congr 1
+    exact congrFun (rebind_captureset_denot ρ C) m
 
 mutual
 
