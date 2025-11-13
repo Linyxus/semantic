@@ -955,7 +955,72 @@ def Heap.restrict_caps (H : Heap) (d : Finset Nat) : Heap :=
     | some v => some v
     | none => none
 
-theorem Heap.restricted_has_capdom {H : Heap} :
-  (H.restrict_caps D).HasCapDom D := by sorry
+theorem Heap.restricted_has_capdom {H : Heap}
+  (hd : H.HasCapDom D0) :
+  (H.restrict_caps D).HasCapDom (D0 ∩ D) := by
+  unfold HasCapDom restrict_caps
+  intro l
+  -- Use the precondition to relate H l to D0
+  have h_cap_iff := hd l
+  -- Case analysis on what's at location l in H
+  split
+  · -- Case: H l = some .capability
+    rename_i heq
+    -- By hd, since H l = some .capability, we have l ∈ D0
+    have h_in_D0 : l ∈ D0 := h_cap_iff.mp heq
+    -- Now split on whether l ∈ D
+    split_ifs with h_in_D
+    · -- Subcase: l ∈ D, so (H.restrict_caps D) l = some .capability
+      -- Need to show: some .capability = some .capability ↔ l ∈ D0 ∩ D
+      simp
+      exact ⟨h_in_D0, h_in_D⟩
+    · -- Subcase: l ∉ D, so (H.restrict_caps D) l = none
+      -- Need to show: none = some .capability ↔ l ∈ D0 ∩ D
+      simp
+      -- simp turns this into: l ∈ D0 → l ∉ D
+      intro _
+      exact h_in_D
+  · -- Case: H l = some v (where v ≠ .capability)
+    rename_i v h_not_cap heq
+    -- By hd, since H l ≠ some .capability, we have l ∉ D0
+    have h_not_in_D0 : l ∉ D0 := by
+      intro h_in
+      have : H l = some .capability := h_cap_iff.mpr h_in
+      rw [heq] at this
+      cases this
+      exact h_not_cap rfl
+    -- (H.restrict_caps D) l = some v
+    -- Need to show: some v = some .capability ↔ l ∈ D0 ∩ D
+    constructor
+    · -- Forward: some v = some .capability → l ∈ D0 ∩ D
+      intro h_eq
+      cases h_eq
+      exact absurd rfl h_not_cap
+    · -- Backward: l ∈ D0 ∩ D → some v = some .capability
+      intro h_mem
+      -- h_mem says l ∈ D0 ∩ D, so l ∈ D0
+      have : l ∈ D0 := Finset.mem_inter.mp h_mem |>.1
+      -- But we proved l ∉ D0, contradiction
+      exact absurd this h_not_in_D0
+  · -- Case: H l = none
+    rename_i heq
+    -- By hd, since H l ≠ some .capability, we have l ∉ D0
+    have h_not_in_D0 : l ∉ D0 := by
+      intro h_in
+      have : H l = some .capability := h_cap_iff.mpr h_in
+      rw [heq] at this
+      cases this
+    -- (H.restrict_caps D) l = none
+    -- Need to show: none = some .capability ↔ l ∈ D0 ∩ D
+    constructor
+    · -- Forward: none = some .capability → l ∈ D0 ∩ D
+      intro h_eq
+      cases h_eq
+    · -- Backward: l ∈ D0 ∩ D → none = some .capability
+      intro h_mem
+      -- h_mem says l ∈ D0 ∩ D, so l ∈ D0
+      have : l ∈ D0 := Finset.mem_inter.mp h_mem |>.1
+      -- But we proved l ∉ D0, contradiction
+      exact absurd this h_not_in_D0
 
 end CC
