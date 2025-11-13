@@ -660,6 +660,8 @@ theorem abs_val_denot_inv {A : CapabilitySet}
         use fx, rfl, cs, T0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
         simp at hresolve
+      | masked =>
+        simp at hresolve
 
 theorem tabs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.poly S T) A store (.var x)) :
@@ -696,6 +698,8 @@ theorem tabs_val_denot_inv {A : CapabilitySet}
         use fx, rfl, cs, S0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
         simp at hresolve
+      | masked =>
+        simp at hresolve
 
 theorem cabs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.cpoly B T) A store (.var x)) :
@@ -731,6 +735,8 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
         subst hresolve
         use fx, rfl, cs, B0, e0, isVal, reachability, hres, hR0_sub, hfun
       | capability =>
+        simp at hresolve
+      | masked =>
         simp at hresolve
 
 theorem cap_val_denot_inv {A : CapabilitySet}
@@ -769,6 +775,8 @@ theorem unit_val_denot_inv
         subst hv
         use fx, rfl, isVal, reachability, hres
       | capability =>
+        simp at hv
+      | masked =>
         simp at hv
 
 theorem var_subst_is_free {x : BVar s .var} :
