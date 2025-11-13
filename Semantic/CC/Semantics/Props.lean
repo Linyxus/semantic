@@ -1023,4 +1023,48 @@ theorem Heap.restricted_has_capdom {H : Heap}
       -- But we proved l ∉ D0, contradiction
       exact absurd this h_not_in_D0
 
+theorem Heap.has_dom_restricted {H : Heap}
+  (hdom : H.HasFinDom D) :
+  ∃ D', (H.restrict_caps D1).HasFinDom D' := by
+  -- D' is the subset of D where the restricted heap has values
+  -- We construct it by filtering D (using classical decidability)
+  classical
+  use D.filter (fun l => (H.restrict_caps D1) l ≠ none)
+  unfold HasFinDom
+  intro l
+  simp only [Finset.mem_filter]
+  -- Goal: H.restrict_caps D1 l ≠ none ↔ l ∈ D ∧ H.restrict_caps D1 l ≠ none
+  constructor
+  · -- Forward: if restricted heap has value at l, then l ∈ D and restricted heap has value at l
+    intro h_restricted_neq_none
+    constructor
+    · -- Show l ∈ D
+      -- Key: if (H.restrict_caps D1) l ≠ none, then H l ≠ none
+      -- By case analysis on restrict_caps
+      unfold restrict_caps at h_restricted_neq_none
+      split at h_restricted_neq_none
+      · -- Case: H l = some .capability
+        rename_i heq
+        -- H l = some .capability ≠ none, so by hdom, l ∈ D
+        have : H l ≠ none := by
+          rw [heq]
+          simp
+        exact (hdom l).mp this
+      · -- Case: H l = some v (non-capability)
+        rename_i v _ heq
+        -- H l = some v ≠ none, so by hdom, l ∈ D
+        have : H l ≠ none := by
+          rw [heq]
+          simp
+        exact (hdom l).mp this
+      · -- Case: H l = none
+        -- Then (H.restrict_caps D1) l = none, contradicting h_restricted_neq_none
+        -- After the split, h_restricted_neq_none : none ≠ none
+        contradiction
+    · -- Show restricted heap has value at l (trivial)
+      exact h_restricted_neq_none
+  · -- Backward: if l ∈ D and restricted heap has value at l, then restricted heap has value at l
+    intro ⟨_, h_restricted_neq_none⟩
+    exact h_restricted_neq_none
+
 end CC
