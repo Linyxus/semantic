@@ -1195,7 +1195,22 @@ theorem Exp.wf_masked
 
 def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
   heap := m.heap.mask_caps mask
-  wf := sorry
+  wf := {
+    wf_val := by
+      intro l hv hlookup
+      unfold Heap.mask_caps at hlookup
+      split at hlookup
+      · split at hlookup <;> simp at hlookup
+      · rename_i v _ heq
+        simp at hlookup
+        subst hlookup
+        have hwf_orig : Exp.WfInHeap hv.unwrap m.heap := by
+          apply m.wf.wf_val
+          exact heq
+        exact Exp.wf_masked hwf_orig
+      · simp at hlookup
+    wf_reach := sorry
+  }
   findom := sorry
 
 end CC

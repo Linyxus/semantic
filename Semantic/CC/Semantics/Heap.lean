@@ -579,7 +579,7 @@ def reachability_of_loc
   match h l with
   | some .capability => {l}
   | some (.val ⟨_, _, R⟩) => R
-  | some .masked => {}
+  | some .masked => {l}
   | none => {}
 
 /-- Resolve reachability of each element of the capture set. -/
