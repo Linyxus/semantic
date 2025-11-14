@@ -1266,4 +1266,9 @@ def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
     use dom
     exact Heap.masked_has_findom hdom
 
+theorem step_masked
+  (hstep : Step C m1 e1 m2 e2) :
+  let M := C.to_finset
+  Step C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by sorry
+
 end CC
