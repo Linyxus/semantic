@@ -1193,4 +1193,9 @@ theorem Exp.wf_masked
   | wf_unit =>
     apply Exp.WfInHeap.wf_unit
 
+def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
+  heap := m.heap.mask_caps mask
+  wf := sorry
+  findom := sorry
+
 end CC
