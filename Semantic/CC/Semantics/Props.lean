@@ -1193,6 +1193,43 @@ theorem Exp.wf_masked
   | wf_unit =>
     apply Exp.WfInHeap.wf_unit
 
+theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
+  reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
+  unfold reachability_of_loc
+  unfold Heap.mask_caps
+  cases h_cell : H l
+  · simp
+  · rename_i cell
+    cases cell
+    · rename_i hv
+      simp
+    · by_cases h : l ∈ D
+      · simp [h]
+      · simp [h]
+    · simp
+
+theorem expand_captures_masked {H : Heap} (cs : CaptureSet {}) :
+  expand_captures H cs = expand_captures (H.mask_caps D) cs := by
+  induction cs with
+  | empty =>
+    unfold expand_captures
+    rfl
+  | var x =>
+    cases x with
+    | free loc =>
+      unfold expand_captures
+      exact reachability_of_loc_masked loc
+    | bound x => nomatch x
+  | union cs1 cs2 ih1 ih2 =>
+    unfold expand_captures
+    rw [ih1, ih2]
+  | cvar x => nomatch x
+
+theorem masked_compute_reachability {H : Heap} :
+  compute_reachability H v hv = compute_reachability (H.mask_caps D) v hv := by
+  cases hv <;> simp [compute_reachability]
+  all_goals exact expand_captures_masked _
+
 def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
   heap := m.heap.mask_caps mask
   wf := {
