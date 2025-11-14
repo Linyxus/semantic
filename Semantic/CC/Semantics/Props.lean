@@ -1055,6 +1055,34 @@ theorem Heap.masked_has_findom {H : Heap}
 
 theorem Var.wf_masked
   (hwf : Var.WfInHeap x H) :
-  Var.WfInHeap x (H.mask_caps D) := by sorry
+  Var.WfInHeap x (H.mask_caps D) := by
+  cases hwf with
+  | wf_bound =>
+    -- Bound variables are always well-formed
+    apply Var.WfInHeap.wf_bound
+  | wf_free hex =>
+    -- Free variable case: H n = some val
+    -- Need to show: (H.mask_caps D) n = some val' for some val'
+    -- mask_caps preserves "some-ness": if H n = some val, then masked heap also has some value at n
+    rename_i val n
+    -- Construct a proof that (H.mask_caps D) n is non-none
+    have h_masked : ∃ val', (H.mask_caps D) n = some val' := by
+      unfold Heap.mask_caps
+      rw [hex]
+      -- Now we have (match some val with ...) and need to show it's some _
+      cases val
+      · -- val = .val hv
+        rename_i hv
+        use Cell.val hv
+      · -- val = .capability
+        by_cases h : n ∈ D
+        · use Cell.capability
+          simp [h]
+        · use Cell.masked
+          simp [h]
+      · -- val = .masked
+        use Cell.masked
+    obtain ⟨val', h_masked⟩ := h_masked
+    exact Var.WfInHeap.wf_free h_masked
 
 end CC
