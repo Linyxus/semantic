@@ -1535,4 +1535,24 @@ theorem Memory.exists_fresh (m : Memory) :
   have : dom.sup id + 1 ≤ dom.sup id := hbound _ this
   omega
 
+/-- A heap has a capability domain if all capabilities on this heap
+    lives in the given domain. -/
+def Heap.HasCapDom (H : Heap) (d : Finset Nat) : Prop :=
+  ∀ l, H l = some .capability <-> l ∈ d
+
+/-- Masks capabilities in the heap outside of the given domain. -/
+def Heap.mask_caps (H : Heap) (d : Finset Nat) : Heap :=
+  fun l =>
+    match H l with
+    | some .capability =>
+      if l ∈ d then some .capability else some .masked
+    | some v => some v
+    | none => none
+
+/-- Turns a capability set into a finite set of natural numbers. -/
+def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
+| .empty => {}
+| .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
+| .cap x => {x}
+
 end CC

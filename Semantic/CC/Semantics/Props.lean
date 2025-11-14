@@ -936,29 +936,11 @@ theorem step_preserves_eval
           -- Apply h_pack with reflexive subsumption
           exact h_pack (by apply Memory.subsumes_refl) hwf_x hwf_cs hQ1
 
-/-- Turns a capability set into a finite set of natural numbers. -/
-def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
-| .empty => {}
-| .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
-| .cap x => {x}
-
-/-- A heap has a capability domain if all capabilities on this heap
-    lives in the given domain. -/
-def Heap.HasCapDom (H : Heap) (d : Finset Nat) : Prop :=
-  ∀ l, H l = some .capability <-> l ∈ d
-
-def Heap.restrict_caps (H : Heap) (d : Finset Nat) : Heap :=
-  fun l =>
-    match H l with
-    | some .capability =>
-      if l ∈ d then some .capability else none
-    | some v => some v
-    | none => none
 
 theorem Heap.restricted_has_capdom {H : Heap}
   (hd : H.HasCapDom D0) :
-  (H.restrict_caps D).HasCapDom (D0 ∩ D) := by
-  unfold HasCapDom restrict_caps
+  (H.mask_caps D).HasCapDom (D0 ∩ D) := by
+  unfold HasCapDom mask_caps
   intro l
   -- Use the precondition to relate H l to D0
   have h_cap_iff := hd l
@@ -1023,47 +1005,9 @@ theorem Heap.restricted_has_capdom {H : Heap}
       -- But we proved l ∉ D0, contradiction
       exact absurd this h_not_in_D0
 
-theorem Heap.has_dom_restricted {H : Heap}
+/-- Masking caps in a heap does not change the finite domain of the heap. -/
+theorem Heap.masked_has_findom {H : Heap}
   (hdom : H.HasFinDom D) :
-  ∃ D', (H.restrict_caps D1).HasFinDom D' := by
-  -- D' is the subset of D where the restricted heap has values
-  -- We construct it by filtering D (using classical decidability)
-  classical
-  use D.filter (fun l => (H.restrict_caps D1) l ≠ none)
-  unfold HasFinDom
-  intro l
-  simp only [Finset.mem_filter]
-  -- Goal: H.restrict_caps D1 l ≠ none ↔ l ∈ D ∧ H.restrict_caps D1 l ≠ none
-  constructor
-  · -- Forward: if restricted heap has value at l, then l ∈ D and restricted heap has value at l
-    intro h_restricted_neq_none
-    constructor
-    · -- Show l ∈ D
-      -- Key: if (H.restrict_caps D1) l ≠ none, then H l ≠ none
-      -- By case analysis on restrict_caps
-      unfold restrict_caps at h_restricted_neq_none
-      split at h_restricted_neq_none
-      · -- Case: H l = some .capability
-        rename_i heq
-        -- H l = some .capability ≠ none, so by hdom, l ∈ D
-        have : H l ≠ none := by
-          rw [heq]
-          simp
-        exact (hdom l).mp this
-      · -- Case: H l = some v (non-capability)
-        rename_i v _ heq
-        -- H l = some v ≠ none, so by hdom, l ∈ D
-        have : H l ≠ none := by
-          rw [heq]
-          simp
-        exact (hdom l).mp this
-      · -- Case: H l = none
-        -- Then (H.restrict_caps D1) l = none, contradicting h_restricted_neq_none
-        -- After the split, h_restricted_neq_none : none ≠ none
-        contradiction
-    · -- Show restricted heap has value at l (trivial)
-      exact h_restricted_neq_none
-  · intro ⟨_, h_restricted_neq_none⟩
-    exact h_restricted_neq_none
+  (H.mask_caps D1).HasFinDom D := by sorry
 
 end CC
