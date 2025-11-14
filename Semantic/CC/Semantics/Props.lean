@@ -1246,8 +1246,24 @@ def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
           exact heq
         exact Exp.wf_masked hwf_orig
       · simp at hlookup
-    wf_reach := sorry
+    wf_reach := by
+      intro l v hv R hlookup
+      unfold Heap.mask_caps at hlookup
+      split at hlookup
+      · split at hlookup <;> simp at hlookup
+      · rename_i cell _ heq
+        simp at hlookup
+        subst hlookup
+        have hr_orig : R = compute_reachability m.heap v hv := by
+          apply m.wf.wf_reach
+          exact heq
+        rw [hr_orig]
+        exact masked_compute_reachability
+      · simp at hlookup
   }
-  findom := sorry
+  findom := by
+    obtain ⟨dom, hdom⟩ := m.findom
+    use dom
+    exact Heap.masked_has_findom hdom
 
 end CC
