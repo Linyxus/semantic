@@ -1085,4 +1085,38 @@ theorem Var.wf_masked
     obtain ⟨val', h_masked⟩ := h_masked
     exact Var.WfInHeap.wf_free h_masked
 
+theorem CaptureSet.wf_masked
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap cs (H.mask_caps D) := by
+  induction hwf with
+  | wf_empty =>
+    apply CaptureSet.WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 =>
+    apply CaptureSet.WfInHeap.wf_union <;> assumption
+  | wf_var_free hex =>
+    -- Same approach as Var.wf_masked: prove that a free var in masked heap maps to something
+    rename_i H_orig val x
+    have hwf_var : Var.WfInHeap (Var.free (k := .var) (s := {}) x) (H_orig.mask_caps D) := by
+      apply Var.wf_masked
+      exact Var.WfInHeap.wf_free hex
+    cases hwf_var with
+    | wf_free hex' =>
+      exact CaptureSet.WfInHeap.wf_var_free hex'
+  | wf_var_bound =>
+    apply CaptureSet.WfInHeap.wf_var_bound
+  | wf_cvar =>
+    apply CaptureSet.WfInHeap.wf_cvar
+
+theorem CaptureBound.wf_masked
+  (hwf : CaptureBound.WfInHeap cb H) :
+  CaptureBound.WfInHeap cb (H.mask_caps D) := by sorry
+
+theorem Ty.wf_masked
+  (hwf : Ty.WfInHeap T H) :
+  Ty.WfInHeap T (H.mask_caps D) := by sorry
+
+theorem Exp.wf_masked
+  (hwf : Exp.WfInHeap e H) :
+  Exp.WfInHeap e (H.mask_caps D) := by sorry
+
 end CC
