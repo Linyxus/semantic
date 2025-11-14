@@ -1053,4 +1053,8 @@ theorem Heap.masked_has_findom {H : Heap}
         rw [h_cell] at heq
         simp at heq
 
+theorem Var.wf_masked
+  (hwf : Var.WfInHeap x H) :
+  Var.WfInHeap x (H.mask_caps D) := by sorry
+
 end CC
