@@ -1109,14 +1109,88 @@ theorem CaptureSet.wf_masked
 
 theorem CaptureBound.wf_masked
   (hwf : CaptureBound.WfInHeap cb H) :
-  CaptureBound.WfInHeap cb (H.mask_caps D) := by sorry
+  CaptureBound.WfInHeap cb (H.mask_caps D) := by
+  cases hwf with
+  | wf_unbound =>
+    apply CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs =>
+    apply CaptureBound.WfInHeap.wf_bound
+    exact CaptureSet.wf_masked hwf_cs
 
 theorem Ty.wf_masked
   (hwf : Ty.WfInHeap T H) :
-  Ty.WfInHeap T (H.mask_caps D) := by sorry
+  Ty.WfInHeap T (H.mask_caps D) := by
+  induction hwf with
+  | wf_top =>
+    apply Ty.WfInHeap.wf_top
+  | wf_tvar =>
+    apply Ty.WfInHeap.wf_tvar
+  | wf_arrow _ _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_arrow <;> assumption
+  | wf_poly _ _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_poly <;> assumption
+  | wf_cpoly hwf_cb _ ih_T =>
+    apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_masked hwf_cb
+    · exact ih_T
+  | wf_unit =>
+    apply Ty.WfInHeap.wf_unit
+  | wf_cap =>
+    apply Ty.WfInHeap.wf_cap
+  | wf_capt hwf_cs _ ih_T =>
+    apply Ty.WfInHeap.wf_capt
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact ih_T
+  | wf_exi _ ih =>
+    apply Ty.WfInHeap.wf_exi
+    exact ih
+  | wf_typ _ ih =>
+    apply Ty.WfInHeap.wf_typ
+    exact ih
 
 theorem Exp.wf_masked
   (hwf : Exp.WfInHeap e H) :
-  Exp.WfInHeap e (H.mask_caps D) := by sorry
+  Exp.WfInHeap e (H.mask_caps D) := by
+  induction hwf with
+  | wf_var hwf_x =>
+    apply Exp.WfInHeap.wf_var
+    exact Var.wf_masked hwf_x
+  | wf_abs hwf_cs hwf_T _ ih =>
+    apply Exp.WfInHeap.wf_abs
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact Ty.wf_masked hwf_T
+    · exact ih
+  | wf_tabs hwf_cs hwf_T _ ih =>
+    apply Exp.WfInHeap.wf_tabs
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact Ty.wf_masked hwf_T
+    · exact ih
+  | wf_cabs hwf_cs hwf_cb _ ih =>
+    apply Exp.WfInHeap.wf_cabs
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact CaptureBound.wf_masked hwf_cb
+    · exact ih
+  | wf_pack hwf_cs hwf_x =>
+    apply Exp.WfInHeap.wf_pack
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact Var.wf_masked hwf_x
+  | wf_app hwf_x hwf_y =>
+    apply Exp.WfInHeap.wf_app
+    · exact Var.wf_masked hwf_x
+    · exact Var.wf_masked hwf_y
+  | wf_tapp hwf_x hwf_T =>
+    apply Exp.WfInHeap.wf_tapp
+    · exact Var.wf_masked hwf_x
+    · exact Ty.wf_masked hwf_T
+  | wf_capp hwf_x hwf_cs =>
+    apply Exp.WfInHeap.wf_capp
+    · exact Var.wf_masked hwf_x
+    · exact CaptureSet.wf_masked hwf_cs
+  | wf_letin _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_letin <;> assumption
+  | wf_unpack _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_unpack <;> assumption
+  | wf_unit =>
+    apply Exp.WfInHeap.wf_unit
 
 end CC
