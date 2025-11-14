@@ -1008,6 +1008,49 @@ theorem Heap.restricted_has_capdom {H : Heap}
 /-- Masking caps in a heap does not change the finite domain of the heap. -/
 theorem Heap.masked_has_findom {H : Heap}
   (hdom : H.HasFinDom D) :
-  (H.mask_caps D1).HasFinDom D := by sorry
+  (H.mask_caps D1).HasFinDom D := by
+  unfold HasFinDom
+  intro l
+  constructor
+  · -- Forward: (H.mask_caps D1) l ≠ none → l ∈ D
+    intro h_masked_neq_none
+    -- Case analysis on H l
+    unfold mask_caps at h_masked_neq_none
+    split at h_masked_neq_none
+    · -- Case: H l = some .capability
+      rename_i heq
+      -- Then H l ≠ none, so by hdom, l ∈ D
+      have : H l ≠ none := by rw [heq]; simp
+      exact (hdom l).mp this
+    · -- Case: H l = some v (non-capability)
+      rename_i v _ heq
+      -- Then H l ≠ none, so by hdom, l ∈ D
+      have : H l ≠ none := by rw [heq]; simp
+      exact (hdom l).mp this
+    · -- Case: H l = none
+      -- Then (H.mask_caps D1) l = none, contradicting h_masked_neq_none
+      contradiction
+  · -- Backward: l ∈ D → (H.mask_caps D1) l ≠ none
+    intro h_in_D
+    -- By hdom, l ∈ D implies H l ≠ none
+    have h_orig_neq_none : H l ≠ none := (hdom l).mpr h_in_D
+    -- So H l = some cell for some cell
+    cases h_cell : H l
+    · -- H l = none, contradicting h_orig_neq_none
+      contradiction
+    · -- H l = some cell
+      rename_i cell
+      -- Show (H.mask_caps D1) l ≠ none by case analysis on cell
+      unfold mask_caps
+      split
+      · -- Case: H l = some .capability, split creates if-then-else
+        split <;> simp
+      · -- Case: H l = some v (non-capability)
+        simp
+      · -- Case: H l = none
+        -- This contradicts h_cell : H l = some cell
+        rename_i heq
+        rw [h_cell] at heq
+        simp at heq
 
 end CC
