@@ -1266,9 +1266,97 @@ def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
     use dom
     exact Heap.masked_has_findom hdom
 
+-- Helper lemma: masking preserves value lookups
+theorem masked_lookup_val {m : Memory} {M : Finset Nat} {l : Nat} {hv : HeapVal} :
+  m.lookup l = some (.val hv) →
+  (m.masked_caps M).lookup l = some (.val hv) := by
+  intro hlookup
+  unfold Memory.lookup at hlookup ⊢
+  unfold Memory.masked_caps
+  simp
+  unfold Heap.mask_caps
+  rw [hlookup]
+
+-- Helper lemma: masking preserves capability lookups when in the mask set
+theorem masked_lookup_cap {m : Memory} {M : Finset Nat} {l : Nat} :
+  m.lookup l = some .capability →
+  l ∈ M →
+  (m.masked_caps M).lookup l = some .capability := by
+  intro hlookup hmem
+  unfold Memory.lookup at hlookup ⊢
+  unfold Memory.masked_caps
+  simp
+  unfold Heap.mask_caps
+  rw [hlookup]
+  simp [hmem]
+
+-- Helper lemma: membership in CapabilitySet implies membership in to_finset
+theorem mem_to_finset {x : Nat} {C : CapabilitySet} :
+  x ∈ C → x ∈ C.to_finset := by
+  intro hmem
+  induction hmem with
+  | here =>
+    simp [CapabilitySet.to_finset]
+  | left h ih =>
+    simp [CapabilitySet.to_finset]
+    left
+    exact ih
+  | right h ih =>
+    simp [CapabilitySet.to_finset]
+    right
+    exact ih
+
+-- Helper lemma: freshness is preserved by masking
+theorem masked_preserves_fresh {m : Memory} {M : Finset Nat} {l : Nat} :
+  m.heap l = none → (m.masked_caps M).heap l = none := by
+  intro hfresh
+  unfold Memory.masked_caps
+  simp
+  unfold Heap.mask_caps
+  rw [hfresh]
+
+-- Helper lemma: extending then masking equals masking then extending
+theorem masked_extend_commute {m : Memory} {M : Finset Nat} {l : Nat} {v : HeapVal}
+  (hwf : Exp.WfInHeap v.unwrap m.heap)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hfresh : m.heap l = none) :
+  (m.extend l v hwf hreach hfresh).masked_caps M =
+  (m.masked_caps M).extend l v (Exp.wf_masked hwf)
+    (hreach.trans masked_compute_reachability) (masked_preserves_fresh hfresh) := by
+  sorry
+
 theorem step_masked
   (hstep : Step C m1 e1 m2 e2) :
   let M := C.to_finset
-  Step C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by sorry
+  Step C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by
+  intro M
+  induction hstep with
+  | step_apply hlookup =>
+    apply Step.step_apply
+    exact masked_lookup_val hlookup
+  | step_invoke hx hlookup_x hlookup_y =>
+    apply Step.step_invoke hx
+    · exact masked_lookup_cap hlookup_x (mem_to_finset hx)
+    · exact masked_lookup_val hlookup_y
+  | step_tapply hlookup =>
+    apply Step.step_tapply
+    exact masked_lookup_val hlookup
+  | step_capply hlookup =>
+    apply Step.step_capply
+    exact masked_lookup_val hlookup
+  | step_ctx_letin hstep' ih =>
+    apply Step.step_ctx_letin
+    exact ih
+  | step_ctx_unpack hstep' ih =>
+    apply Step.step_ctx_unpack
+    exact ih
+  | step_rename =>
+    apply Step.step_rename
+  | step_lift hv hwf hfresh =>
+    -- The induction generalizes m1 to m✝, but we need to work with m1
+    -- This requires the masked_extend_commute lemma
+    sorry
+  | step_unpack =>
+    apply Step.step_unpack
 
 end CC
