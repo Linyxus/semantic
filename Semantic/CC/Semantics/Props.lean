@@ -1328,9 +1328,23 @@ theorem Heap.masked_extend_comm {H : Heap} {l : Nat} {v : HeapVal} :
   · -- Case: l' ≠ l
     simp [h_eq]
 
-theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal} :
-  (m.extend l v sorry sorry sorry).masked_caps D =
-  (m.masked_caps D).extend l v sorry sorry sorry := by sorry
+theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal}
+  (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hfresh : m.heap l = none) :
+  (m.extend l v hwf_v hreach hfresh).masked_caps D =
+  (m.masked_caps D).extend l v
+    (Exp.wf_masked hwf_v)
+    (by
+      simp [Memory.masked_caps]
+      exact hreach.trans (masked_compute_reachability
+        (H := m.heap) (D := D) (v := v.unwrap) (hv := v.isVal)))
+    (masked_preserves_fresh hfresh) := by
+  -- Prove equality of Memory structures by showing their heaps are equal
+  -- The other fields (wf and findom) are Props, so proof irrelevance applies
+  unfold Memory.extend Memory.masked_caps
+  simp
+  exact Heap.masked_extend_comm
 
 theorem step_masked
   (hstep : Step C m1 e1 m2 e2) :
