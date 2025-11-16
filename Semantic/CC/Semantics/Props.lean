@@ -1315,6 +1315,23 @@ theorem masked_preserves_fresh {m : Memory} {M : Finset Nat} {l : Nat} :
   unfold Heap.mask_caps
   rw [hfresh]
 
+/-- Capability masking and extension commutes for heaps. -/
+theorem Heap.masked_extend_comm {H : Heap} {l : Nat} {v : HeapVal} :
+  (H.extend l v).mask_caps D =
+  (H.mask_caps D).extend l v := by
+  funext l'
+  unfold Heap.extend Heap.mask_caps
+  by_cases h_eq : l' = l
+  · -- Case: l' = l
+    rw [h_eq]
+    simp
+  · -- Case: l' ≠ l
+    simp [h_eq]
+
+theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal} :
+  (m.extend l v sorry sorry sorry).masked_caps D =
+  (m.masked_caps D).extend l v sorry sorry sorry := by sorry
+
 theorem step_masked
   (hstep : Step C m1 e1 m2 e2) :
   let M := C.to_finset
