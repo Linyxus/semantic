@@ -1315,16 +1315,6 @@ theorem masked_preserves_fresh {m : Memory} {M : Finset Nat} {l : Nat} :
   unfold Heap.mask_caps
   rw [hfresh]
 
--- Helper lemma: extending then masking equals masking then extending
-theorem masked_extend_commute {m : Memory} {M : Finset Nat} {l : Nat} {v : HeapVal}
-  (hwf : Exp.WfInHeap v.unwrap m.heap)
-  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
-  (hfresh : m.heap l = none) :
-  (m.extend l v hwf hreach hfresh).masked_caps M =
-  (m.masked_caps M).extend l v (Exp.wf_masked hwf)
-    (hreach.trans masked_compute_reachability) (masked_preserves_fresh hfresh) := by
-  sorry
-
 theorem step_masked
   (hstep : Step C m1 e1 m2 e2) :
   let M := C.to_finset
@@ -1353,8 +1343,6 @@ theorem step_masked
   | step_rename =>
     apply Step.step_rename
   | step_lift hv hwf hfresh =>
-    -- The induction generalizes m1 to m✝, but we need to work with m1
-    -- This requires the masked_extend_commute lemma
     sorry
   | step_unpack =>
     apply Step.step_unpack
