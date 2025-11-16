@@ -1395,16 +1395,6 @@ theorem step_masked
   | step_rename =>
     apply Step.step_rename
   | step_lift hv hwf hfresh =>
-    -- Goal: Step C✝ (m✝.masked_caps M) (v✝.letin e✝)
-    --            ((m✝.extend l✝ ⟨v✝, hv, R_orig⟩ ...).masked_caps M) (e✝.subst ...)
-    -- Where R_orig = compute_reachability m✝.heap v✝ hv
-    --
-    -- Strategy:
-    -- 1. Rewrite using masked_extend_comm to get (m✝.masked_caps M).extend l✝ ⟨v✝, hv, R_orig⟩ ...
-    -- 2. Show this equals (m✝.masked_caps M).extend l✝ ⟨v✝, hv, R_masked⟩ ...
-    --    where R_masked = compute_reachability (m✝.masked_caps M).heap v✝ hv
-    -- 3. Apply step_lift
-    --
     -- Rewrite using masked_extend_comm
     rw [Memory.masked_extend_comm hwf rfl hfresh]
     -- Use helper lemma to show the two extend calls are equal
