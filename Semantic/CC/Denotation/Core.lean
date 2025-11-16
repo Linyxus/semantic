@@ -47,6 +47,9 @@ theorem resolve_monotonic {m1 m2 : Memory}
         case capability =>
           -- m1.heap fx = some Cell.capability, so resolve returns none
           simp at hres
+        case masked =>
+          -- m1.heap fx = some Cell.masked, so resolve returns none
+          simp at hres
   all_goals {
     -- For all other expression constructors (pack, abs, tabs, etc.)
     -- resolve returns the expression itself unchanged
@@ -62,6 +65,14 @@ def PreDenot := CapabilitySet -> Denot
 
 /-- Capture-denotation. Given any memory, it produces a set of capabilities. -/
 def CapDenot := Memory -> CapabilitySet
+
+/-- A bound on capability sets. It can either be a concrete set of the top element. -/
+inductive CapabilityBound : Type where
+| top : CapabilityBound
+| set : CapabilitySet -> CapabilityBound
+
+/-- Capture bound denotation. -/
+def CapBoundDenot := Memory -> CapabilityBound
 
 def Denot.as_mpost (d : Denot) : Mpost :=
   fun e m => d m e
@@ -341,9 +352,42 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
-def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapDenot
-| _, .unbound => fun _ => CapabilitySet.any
-| env, .bound cs => cs.denot env
+def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
+| _, .unbound => fun _ => .top
+| env, .bound cs => fun m => .set (cs.denot env m)
+
+inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
+| top :
+  CapabilitySet.BoundedBy C CapabilityBound.top
+| set :
+  C1 ⊆ C2 ->
+  CapabilitySet.BoundedBy C1 (CapabilityBound.set C2)
+
+inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop where
+| refl :
+  CapabilityBound.SubsetEq B B
+| set :
+  C1 ⊆ C2 ->
+  CapabilityBound.SubsetEq (CapabilityBound.set C1) (CapabilityBound.set C2)
+| top :
+  CapabilityBound.SubsetEq B CapabilityBound.top
+
+instance : HasSubset CapabilityBound where
+  Subset := CapabilityBound.SubsetEq
+
+theorem CapabilitySet.BoundedBy.trans
+  {C : CapabilitySet} {B1 B2 : CapabilityBound}
+  (hbound : CapabilitySet.BoundedBy C B1)
+  (hsub : B1 ⊆ B2) :
+  CapabilitySet.BoundedBy C B2 := by
+  cases hsub with
+  | refl => exact hbound
+  | set hsub_set =>
+    cases hbound with
+    | set hbound_set =>
+      exact CapabilitySet.BoundedBy.set
+        (CapabilitySet.Subset.trans hbound_set hsub_set)
+  | top => exact CapabilitySet.BoundedBy.top
 
 mutual
 
@@ -396,7 +440,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       CS.WfInHeap m'.heap ->
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
-      (A0 m' ⊆ B.denot env m') ->
+      ((A0 m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS)
         T R0 m' (t0.subst (Subst.openCVar CS)))
@@ -459,7 +503,7 @@ instance instCaptureSetHasDenotation :
 
 @[simp]
 instance instCaptureBoundHasDenotation :
-  HasDenotation (CaptureBound s) (TypeEnv s) CapDenot where
+  HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
@@ -474,7 +518,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .push Γ (.cvar B), .extend env (.cvar cs), m =>
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
-  (cs.ground_denot m ⊆ ⟦B⟧_[env] m) ∧
+  ((cs.ground_denot m).BoundedBy (⟦B⟧_[env] m)) ∧
   EnvTyping Γ env m
 
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
@@ -1535,7 +1579,8 @@ theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
     simp [CaptureBound.subst] at hwf
     cases hwf with
     | wf_bound hwf_cs =>
-      exact capture_set_denot_is_monotonic hwf_cs hsub
+      simp only []
+      rw [capture_set_denot_is_monotonic hwf_cs hsub]
 
 mutual
 
@@ -2004,6 +2049,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
           simp [hfx] at hres
           cases cell with
           | capability => simp at hres
+          | masked => simp at hres
           | val v =>
             simp at hres
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
@@ -2038,6 +2084,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
           simp [hfx] at hres
           cases cell with
           | capability => simp at hres
+          | masked => simp at hres
           | val v =>
             simp at hres
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
@@ -2069,6 +2116,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
           simp [hfx] at hres
           cases cell with
           | capability => simp at hres
+          | masked => simp at hres
           | val v =>
             simp at hres
             cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
@@ -2154,6 +2202,7 @@ lemma wf_from_resolve_unit
         simp [hfx] at hresolve
         cases cell with
         | capability => simp at hresolve
+        | masked => simp at hresolve
         | val v =>
           simp at hresolve
           apply Exp.WfInHeap.wf_var

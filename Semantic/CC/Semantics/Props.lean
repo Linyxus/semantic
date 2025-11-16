@@ -936,4 +936,486 @@ theorem step_preserves_eval
           -- Apply h_pack with reflexive subsumption
           exact h_pack (by apply Memory.subsumes_refl) hwf_x hwf_cs hQ1
 
+
+theorem Heap.restricted_has_capdom {H : Heap}
+  (hd : H.HasCapDom D0) :
+  (H.mask_caps D).HasCapDom (D0 ∩ D) := by
+  unfold HasCapDom mask_caps
+  intro l
+  -- Use the precondition to relate H l to D0
+  have h_cap_iff := hd l
+  -- Case analysis on what's at location l in H
+  split
+  · -- Case: H l = some .capability
+    rename_i heq
+    -- By hd, since H l = some .capability, we have l ∈ D0
+    have h_in_D0 : l ∈ D0 := h_cap_iff.mp heq
+    -- Now split on whether l ∈ D
+    split_ifs with h_in_D
+    · -- Subcase: l ∈ D, so (H.restrict_caps D) l = some .capability
+      -- Need to show: some .capability = some .capability ↔ l ∈ D0 ∩ D
+      simp
+      exact ⟨h_in_D0, h_in_D⟩
+    · -- Subcase: l ∉ D, so (H.restrict_caps D) l = none
+      -- Need to show: none = some .capability ↔ l ∈ D0 ∩ D
+      simp
+      -- simp turns this into: l ∈ D0 → l ∉ D
+      intro _
+      exact h_in_D
+  · -- Case: H l = some v (where v ≠ .capability)
+    rename_i v h_not_cap heq
+    -- By hd, since H l ≠ some .capability, we have l ∉ D0
+    have h_not_in_D0 : l ∉ D0 := by
+      intro h_in
+      have : H l = some .capability := h_cap_iff.mpr h_in
+      rw [heq] at this
+      cases this
+      exact h_not_cap rfl
+    -- (H.restrict_caps D) l = some v
+    -- Need to show: some v = some .capability ↔ l ∈ D0 ∩ D
+    constructor
+    · -- Forward: some v = some .capability → l ∈ D0 ∩ D
+      intro h_eq
+      cases h_eq
+      exact absurd rfl h_not_cap
+    · -- Backward: l ∈ D0 ∩ D → some v = some .capability
+      intro h_mem
+      -- h_mem says l ∈ D0 ∩ D, so l ∈ D0
+      have : l ∈ D0 := Finset.mem_inter.mp h_mem |>.1
+      -- But we proved l ∉ D0, contradiction
+      exact absurd this h_not_in_D0
+  · -- Case: H l = none
+    rename_i heq
+    -- By hd, since H l ≠ some .capability, we have l ∉ D0
+    have h_not_in_D0 : l ∉ D0 := by
+      intro h_in
+      have : H l = some .capability := h_cap_iff.mpr h_in
+      rw [heq] at this
+      cases this
+    -- (H.restrict_caps D) l = none
+    -- Need to show: none = some .capability ↔ l ∈ D0 ∩ D
+    constructor
+    · -- Forward: none = some .capability → l ∈ D0 ∩ D
+      intro h_eq
+      cases h_eq
+    · -- Backward: l ∈ D0 ∩ D → none = some .capability
+      intro h_mem
+      -- h_mem says l ∈ D0 ∩ D, so l ∈ D0
+      have : l ∈ D0 := Finset.mem_inter.mp h_mem |>.1
+      -- But we proved l ∉ D0, contradiction
+      exact absurd this h_not_in_D0
+
+/-- Masking caps in a heap does not change the finite domain of the heap. -/
+theorem Heap.masked_has_findom {H : Heap}
+  (hdom : H.HasFinDom D) :
+  (H.mask_caps D1).HasFinDom D := by
+  unfold HasFinDom
+  intro l
+  constructor
+  · -- Forward: (H.mask_caps D1) l ≠ none → l ∈ D
+    intro h_masked_neq_none
+    -- Case analysis on H l
+    unfold mask_caps at h_masked_neq_none
+    split at h_masked_neq_none
+    · -- Case: H l = some .capability
+      rename_i heq
+      -- Then H l ≠ none, so by hdom, l ∈ D
+      have : H l ≠ none := by rw [heq]; simp
+      exact (hdom l).mp this
+    · -- Case: H l = some v (non-capability)
+      rename_i v _ heq
+      -- Then H l ≠ none, so by hdom, l ∈ D
+      have : H l ≠ none := by rw [heq]; simp
+      exact (hdom l).mp this
+    · -- Case: H l = none
+      -- Then (H.mask_caps D1) l = none, contradicting h_masked_neq_none
+      contradiction
+  · -- Backward: l ∈ D → (H.mask_caps D1) l ≠ none
+    intro h_in_D
+    -- By hdom, l ∈ D implies H l ≠ none
+    have h_orig_neq_none : H l ≠ none := (hdom l).mpr h_in_D
+    -- So H l = some cell for some cell
+    cases h_cell : H l
+    · -- H l = none, contradicting h_orig_neq_none
+      contradiction
+    · -- H l = some cell
+      rename_i cell
+      -- Show (H.mask_caps D1) l ≠ none by case analysis on cell
+      unfold mask_caps
+      split
+      · -- Case: H l = some .capability, split creates if-then-else
+        split <;> simp
+      · -- Case: H l = some v (non-capability)
+        simp
+      · -- Case: H l = none
+        -- This contradicts h_cell : H l = some cell
+        rename_i heq
+        rw [h_cell] at heq
+        simp at heq
+
+theorem Var.wf_masked
+  (hwf : Var.WfInHeap x H) :
+  Var.WfInHeap x (H.mask_caps D) := by
+  cases hwf with
+  | wf_bound =>
+    -- Bound variables are always well-formed
+    apply Var.WfInHeap.wf_bound
+  | wf_free hex =>
+    -- Free variable case: H n = some val
+    -- Need to show: (H.mask_caps D) n = some val' for some val'
+    -- mask_caps preserves "some-ness": if H n = some val, then masked heap also has some value at n
+    rename_i val n
+    -- Construct a proof that (H.mask_caps D) n is non-none
+    have h_masked : ∃ val', (H.mask_caps D) n = some val' := by
+      unfold Heap.mask_caps
+      rw [hex]
+      -- Now we have (match some val with ...) and need to show it's some _
+      cases val
+      · -- val = .val hv
+        rename_i hv
+        use Cell.val hv
+      · -- val = .capability
+        by_cases h : n ∈ D
+        · use Cell.capability
+          simp [h]
+        · use Cell.masked
+          simp [h]
+      · -- val = .masked
+        use Cell.masked
+    obtain ⟨val', h_masked⟩ := h_masked
+    exact Var.WfInHeap.wf_free h_masked
+
+theorem CaptureSet.wf_masked
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap cs (H.mask_caps D) := by
+  induction hwf with
+  | wf_empty =>
+    apply CaptureSet.WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 =>
+    apply CaptureSet.WfInHeap.wf_union <;> assumption
+  | wf_var_free hex =>
+    -- Same approach as Var.wf_masked: prove that a free var in masked heap maps to something
+    rename_i H_orig val x
+    have hwf_var : Var.WfInHeap (Var.free (k := .var) (s := {}) x) (H_orig.mask_caps D) := by
+      apply Var.wf_masked
+      exact Var.WfInHeap.wf_free hex
+    cases hwf_var with
+    | wf_free hex' =>
+      exact CaptureSet.WfInHeap.wf_var_free hex'
+  | wf_var_bound =>
+    apply CaptureSet.WfInHeap.wf_var_bound
+  | wf_cvar =>
+    apply CaptureSet.WfInHeap.wf_cvar
+
+theorem CaptureBound.wf_masked
+  (hwf : CaptureBound.WfInHeap cb H) :
+  CaptureBound.WfInHeap cb (H.mask_caps D) := by
+  cases hwf with
+  | wf_unbound =>
+    apply CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs =>
+    apply CaptureBound.WfInHeap.wf_bound
+    exact CaptureSet.wf_masked hwf_cs
+
+theorem Ty.wf_masked
+  (hwf : Ty.WfInHeap T H) :
+  Ty.WfInHeap T (H.mask_caps D) := by
+  induction hwf with
+  | wf_top =>
+    apply Ty.WfInHeap.wf_top
+  | wf_tvar =>
+    apply Ty.WfInHeap.wf_tvar
+  | wf_arrow _ _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_arrow <;> assumption
+  | wf_poly _ _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_poly <;> assumption
+  | wf_cpoly hwf_cb _ ih_T =>
+    apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_masked hwf_cb
+    · exact ih_T
+  | wf_unit =>
+    apply Ty.WfInHeap.wf_unit
+  | wf_cap =>
+    apply Ty.WfInHeap.wf_cap
+  | wf_capt hwf_cs _ ih_T =>
+    apply Ty.WfInHeap.wf_capt
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact ih_T
+  | wf_exi _ ih =>
+    apply Ty.WfInHeap.wf_exi
+    exact ih
+  | wf_typ _ ih =>
+    apply Ty.WfInHeap.wf_typ
+    exact ih
+
+theorem Exp.wf_masked
+  (hwf : Exp.WfInHeap e H) :
+  Exp.WfInHeap e (H.mask_caps D) := by
+  induction hwf with
+  | wf_var hwf_x =>
+    apply Exp.WfInHeap.wf_var
+    exact Var.wf_masked hwf_x
+  | wf_abs hwf_cs hwf_T _ ih =>
+    apply Exp.WfInHeap.wf_abs
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact Ty.wf_masked hwf_T
+    · exact ih
+  | wf_tabs hwf_cs hwf_T _ ih =>
+    apply Exp.WfInHeap.wf_tabs
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact Ty.wf_masked hwf_T
+    · exact ih
+  | wf_cabs hwf_cs hwf_cb _ ih =>
+    apply Exp.WfInHeap.wf_cabs
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact CaptureBound.wf_masked hwf_cb
+    · exact ih
+  | wf_pack hwf_cs hwf_x =>
+    apply Exp.WfInHeap.wf_pack
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact Var.wf_masked hwf_x
+  | wf_app hwf_x hwf_y =>
+    apply Exp.WfInHeap.wf_app
+    · exact Var.wf_masked hwf_x
+    · exact Var.wf_masked hwf_y
+  | wf_tapp hwf_x hwf_T =>
+    apply Exp.WfInHeap.wf_tapp
+    · exact Var.wf_masked hwf_x
+    · exact Ty.wf_masked hwf_T
+  | wf_capp hwf_x hwf_cs =>
+    apply Exp.WfInHeap.wf_capp
+    · exact Var.wf_masked hwf_x
+    · exact CaptureSet.wf_masked hwf_cs
+  | wf_letin _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_letin <;> assumption
+  | wf_unpack _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_unpack <;> assumption
+  | wf_unit =>
+    apply Exp.WfInHeap.wf_unit
+
+theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
+  reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
+  unfold reachability_of_loc
+  unfold Heap.mask_caps
+  cases h_cell : H l
+  · simp
+  · rename_i cell
+    cases cell
+    · rename_i hv
+      simp
+    · by_cases h : l ∈ D
+      · simp [h]
+      · simp [h]
+    · simp
+
+theorem expand_captures_masked {H : Heap} (cs : CaptureSet {}) :
+  expand_captures H cs = expand_captures (H.mask_caps D) cs := by
+  induction cs with
+  | empty =>
+    unfold expand_captures
+    rfl
+  | var x =>
+    cases x with
+    | free loc =>
+      unfold expand_captures
+      exact reachability_of_loc_masked loc
+    | bound x => nomatch x
+  | union cs1 cs2 ih1 ih2 =>
+    unfold expand_captures
+    rw [ih1, ih2]
+  | cvar x => nomatch x
+
+theorem masked_compute_reachability {H : Heap} :
+  compute_reachability H v hv = compute_reachability (H.mask_caps D) v hv := by
+  cases hv <;> simp [compute_reachability]
+  all_goals exact expand_captures_masked _
+
+def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
+  heap := m.heap.mask_caps mask
+  wf := {
+    wf_val := by
+      intro l hv hlookup
+      unfold Heap.mask_caps at hlookup
+      split at hlookup
+      · split at hlookup <;> simp at hlookup
+      · rename_i v _ heq
+        simp at hlookup
+        subst hlookup
+        have hwf_orig : Exp.WfInHeap hv.unwrap m.heap := by
+          apply m.wf.wf_val
+          exact heq
+        exact Exp.wf_masked hwf_orig
+      · simp at hlookup
+    wf_reach := by
+      intro l v hv R hlookup
+      unfold Heap.mask_caps at hlookup
+      split at hlookup
+      · split at hlookup <;> simp at hlookup
+      · rename_i cell _ heq
+        simp at hlookup
+        subst hlookup
+        have hr_orig : R = compute_reachability m.heap v hv := by
+          apply m.wf.wf_reach
+          exact heq
+        rw [hr_orig]
+        exact masked_compute_reachability
+      · simp at hlookup
+  }
+  findom := by
+    obtain ⟨dom, hdom⟩ := m.findom
+    use dom
+    exact Heap.masked_has_findom hdom
+
+-- Helper lemma: masking preserves value lookups
+theorem masked_lookup_val {m : Memory} {M : Finset Nat} {l : Nat} {hv : HeapVal} :
+  m.lookup l = some (.val hv) →
+  (m.masked_caps M).lookup l = some (.val hv) := by
+  intro hlookup
+  unfold Memory.lookup at hlookup ⊢
+  unfold Memory.masked_caps
+  simp
+  unfold Heap.mask_caps
+  rw [hlookup]
+
+-- Helper lemma: masking preserves capability lookups when in the mask set
+theorem masked_lookup_cap {m : Memory} {M : Finset Nat} {l : Nat} :
+  m.lookup l = some .capability →
+  l ∈ M →
+  (m.masked_caps M).lookup l = some .capability := by
+  intro hlookup hmem
+  unfold Memory.lookup at hlookup ⊢
+  unfold Memory.masked_caps
+  simp
+  unfold Heap.mask_caps
+  rw [hlookup]
+  simp [hmem]
+
+-- Helper lemma: membership in CapabilitySet implies membership in to_finset
+theorem mem_to_finset {x : Nat} {C : CapabilitySet} :
+  x ∈ C → x ∈ C.to_finset := by
+  intro hmem
+  induction hmem with
+  | here =>
+    simp [CapabilitySet.to_finset]
+  | left h ih =>
+    simp [CapabilitySet.to_finset]
+    left
+    exact ih
+  | right h ih =>
+    simp [CapabilitySet.to_finset]
+    right
+    exact ih
+
+-- Helper lemma: freshness is preserved by masking
+theorem masked_preserves_fresh {m : Memory} {M : Finset Nat} {l : Nat} :
+  m.heap l = none → (m.masked_caps M).heap l = none := by
+  intro hfresh
+  unfold Memory.masked_caps
+  simp
+  unfold Heap.mask_caps
+  rw [hfresh]
+
+/-- Capability masking and extension commutes for heaps. -/
+theorem Heap.masked_extend_comm {H : Heap} {l : Nat} {v : HeapVal} :
+  (H.extend l v).mask_caps D =
+  (H.mask_caps D).extend l v := by
+  funext l'
+  unfold Heap.extend Heap.mask_caps
+  by_cases h_eq : l' = l
+  · -- Case: l' = l
+    rw [h_eq]
+    simp
+  · -- Case: l' ≠ l
+    simp [h_eq]
+
+-- Helper lemma: Memory.extend with HeapVals differing only in reachability are equal
+private theorem Memory.extend_heapval_reachability_irrel
+  {m : Memory} {l : Nat} {v : Exp {}} {hv : v.IsSimpleVal}
+  {R1 R2 : CapabilitySet}
+  (hwf : Exp.WfInHeap v m.heap)
+  (hreach1 : R1 = compute_reachability m.heap v hv)
+  (hreach2 : R2 = compute_reachability m.heap v hv)
+  (hfresh : m.heap l = none) :
+  m.extend l ⟨v, hv, R1⟩ hwf hreach1 hfresh =
+  m.extend l ⟨v, hv, R2⟩ hwf hreach2 hfresh := by
+  -- Memories are equal because the HeapVals have equal fields
+  unfold Memory.extend
+  simp
+  -- Use funext on heaps
+  funext l'
+  simp [Heap.extend]
+  split
+  · -- At location l, HeapVals are equal
+    simp [hreach1, hreach2]
+  · rfl
+
+theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal}
+  (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+  (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hfresh : m.heap l = none) :
+  (m.extend l v hwf_v hreach hfresh).masked_caps D =
+  (m.masked_caps D).extend l v
+    (Exp.wf_masked hwf_v)
+    (by
+      simp [Memory.masked_caps]
+      exact hreach.trans (masked_compute_reachability
+        (H := m.heap) (D := D) (v := v.unwrap) (hv := v.isVal)))
+    (masked_preserves_fresh hfresh) := by
+  -- Prove equality of Memory structures by showing their heaps are equal
+  -- The other fields (wf and findom) are Props, so proof irrelevance applies
+  unfold Memory.extend Memory.masked_caps
+  simp
+  exact Heap.masked_extend_comm
+
+theorem step_masked
+  (hstep : Step C m1 e1 m2 e2) :
+  let M := C.to_finset
+  Step C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by
+  intro M
+  induction hstep with
+  | step_apply hlookup =>
+    apply Step.step_apply
+    exact masked_lookup_val hlookup
+  | step_invoke hx hlookup_x hlookup_y =>
+    apply Step.step_invoke hx
+    · exact masked_lookup_cap hlookup_x (mem_to_finset hx)
+    · exact masked_lookup_val hlookup_y
+  | step_tapply hlookup =>
+    apply Step.step_tapply
+    exact masked_lookup_val hlookup
+  | step_capply hlookup =>
+    apply Step.step_capply
+    exact masked_lookup_val hlookup
+  | step_ctx_letin hstep' ih =>
+    apply Step.step_ctx_letin
+    exact ih
+  | step_ctx_unpack hstep' ih =>
+    apply Step.step_ctx_unpack
+    exact ih
+  | step_rename =>
+    apply Step.step_rename
+  | step_lift hv hwf hfresh =>
+    -- Goal: Step C✝ (m✝.masked_caps M) (v✝.letin e✝)
+    --            ((m✝.extend l✝ ⟨v✝, hv, R_orig⟩ ...).masked_caps M) (e✝.subst ...)
+    -- Where R_orig = compute_reachability m✝.heap v✝ hv
+    --
+    -- Strategy:
+    -- 1. Rewrite using masked_extend_comm to get (m✝.masked_caps M).extend l✝ ⟨v✝, hv, R_orig⟩ ...
+    -- 2. Show this equals (m✝.masked_caps M).extend l✝ ⟨v✝, hv, R_masked⟩ ...
+    --    where R_masked = compute_reachability (m✝.masked_caps M).heap v✝ hv
+    -- 3. Apply step_lift
+    --
+    -- Rewrite using masked_extend_comm
+    rw [Memory.masked_extend_comm hwf rfl hfresh]
+    -- Use helper lemma to show the two extend calls are equal
+    rw [Memory.extend_heapval_reachability_irrel (Exp.wf_masked hwf)
+         (by simp [Memory.masked_caps];
+             exact rfl.trans masked_compute_reachability)
+         rfl
+         (masked_preserves_fresh hfresh)]
+    -- Now apply step_lift
+    apply Step.step_lift hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
+  | step_unpack =>
+    apply Step.step_unpack
+
 end CC
