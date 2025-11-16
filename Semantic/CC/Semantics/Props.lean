@@ -1328,6 +1328,27 @@ theorem Heap.masked_extend_comm {H : Heap} {l : Nat} {v : HeapVal} :
   · -- Case: l' ≠ l
     simp [h_eq]
 
+-- Helper lemma: Memory.extend with HeapVals differing only in reachability are equal
+private theorem Memory.extend_heapval_reachability_irrel
+  {m : Memory} {l : Nat} {v : Exp {}} {hv : v.IsSimpleVal}
+  {R1 R2 : CapabilitySet}
+  (hwf : Exp.WfInHeap v m.heap)
+  (hreach1 : R1 = compute_reachability m.heap v hv)
+  (hreach2 : R2 = compute_reachability m.heap v hv)
+  (hfresh : m.heap l = none) :
+  m.extend l ⟨v, hv, R1⟩ hwf hreach1 hfresh =
+  m.extend l ⟨v, hv, R2⟩ hwf hreach2 hfresh := by
+  -- Memories are equal because the HeapVals have equal fields
+  unfold Memory.extend
+  simp
+  -- Use funext on heaps
+  funext l'
+  simp [Heap.extend]
+  split
+  · -- At location l, HeapVals are equal
+    simp [hreach1, hreach2]
+  · rfl
+
 theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal}
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
@@ -1374,7 +1395,26 @@ theorem step_masked
   | step_rename =>
     apply Step.step_rename
   | step_lift hv hwf hfresh =>
-    sorry
+    -- Goal: Step C✝ (m✝.masked_caps M) (v✝.letin e✝)
+    --            ((m✝.extend l✝ ⟨v✝, hv, R_orig⟩ ...).masked_caps M) (e✝.subst ...)
+    -- Where R_orig = compute_reachability m✝.heap v✝ hv
+    --
+    -- Strategy:
+    -- 1. Rewrite using masked_extend_comm to get (m✝.masked_caps M).extend l✝ ⟨v✝, hv, R_orig⟩ ...
+    -- 2. Show this equals (m✝.masked_caps M).extend l✝ ⟨v✝, hv, R_masked⟩ ...
+    --    where R_masked = compute_reachability (m✝.masked_caps M).heap v✝ hv
+    -- 3. Apply step_lift
+    --
+    -- Rewrite using masked_extend_comm
+    rw [Memory.masked_extend_comm hwf rfl hfresh]
+    -- Use helper lemma to show the two extend calls are equal
+    rw [Memory.extend_heapval_reachability_irrel (Exp.wf_masked hwf)
+         (by simp [Memory.masked_caps];
+             exact rfl.trans masked_compute_reachability)
+         rfl
+         (masked_preserves_fresh hfresh)]
+    -- Now apply step_lift
+    apply Step.step_lift hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
   | step_unpack =>
     apply Step.step_unpack
 
