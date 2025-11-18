@@ -936,6 +936,19 @@ theorem step_preserves_eval
           -- Apply h_pack with reflexive subsumption
           exact h_pack (by apply Memory.subsumes_refl) hwf_x hwf_cs hQ1
 
+theorem reduce_preserves_eval
+  (he : Eval C m1 e1 Q)
+  (hred : Reduce C m1 e1 m2 e2) :
+  Eval C m2 e2 Q := by
+  induction hred with
+  | refl =>
+    -- No reduction, so evaluation remains the same
+    exact he
+  | step hstep rest ih =>
+    -- Apply step_preserves_eval to the step
+    have heval_step := step_preserves_eval he hstep
+    -- Apply IH to the rest of the reduction
+    exact ih heval_step
 
 theorem Heap.restricted_has_capdom {H : Heap}
   (hd : H.HasCapDom D0) :
