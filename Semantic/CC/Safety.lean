@@ -190,4 +190,12 @@ theorem env_typing_of_platform {N : Nat} :
             · omega
             · exact ih
 
+/-- An expression `e` is safe with a platform environment of `N` ground
+    capabilities under permission `P` iff for any possible reduction state
+    starting from `e` on the platform, it is progressive. -/
+def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
+  ∀ M1 e1,
+    Reduce P (Memory.platform_of N) e M1 e1 ->
+    IsProgressive P M1 e1
+
 end CC
