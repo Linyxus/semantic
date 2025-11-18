@@ -232,15 +232,16 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
       -- This is the most recent term variable x_N
       -- x.here : BVar (Sig.platform_of (N+1)) .var
       -- where Sig.platform_of (N+1) = ((platform_of N),C),x
-      -- So .here.level = ((platform_of N),C).length = 2*N + 1
+      -- With new BVar.level definition: .here.level = ((platform_of N),C).length = 2*N + 1
       unfold TypeEnv.platform_of TypeEnv.lookup_var TypeEnv.extend_var TypeEnv.extend_cvar
-      simp [TypeEnv.lookup, BVar.level]
-      -- After simps: goal is N = List.length (Sig.platform_of (N+1)) / 2
-      -- Use platform_of_length to get: List.length (Sig.platform_of (N+1)) = 2*(N+1)
+      simp [TypeEnv.lookup, BVar.level, Sig.size]
+      -- Goal: N = List.length (Sig.platform_of N,C) / 2
+      -- (Sig.platform_of N,C).length = 1 + (Sig.platform_of N).length = 1 + 2*N = 2*N + 1
+      unfold Sig.extend_cvar
+      simp only [List.length]
       rw [Sig.platform_of_length]
-      -- Now: N = 2*(N+1) / 2 = N+1, which is wrong!
-      -- This means the level is being computed from the wrong signature
-      sorry
+      -- Goal: N = (2 * N + 1) / 2
+      omega
     | there x' =>
       cases x' with
       | there x'' =>
@@ -277,10 +278,11 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
         simp [TypeEnv.lookup]
         -- After simp, goal is: .var (.free N) = .var (.free (BVar.here.there.level / 2))
         -- .there preserves level, so .here.there.level = .here.level
-        -- .here.level = length of (platform_of N,C) = length of (.cvar :: platform_of N)
-        --             = (platform_of N).length = 2*N
-        simp only [BVar.level, Sig.extend_cvar, List.length]
+        -- .here.level = length of (platform_of N) = 2*N
+        simp only [BVar.level, Sig.size]
+        -- Goal: N = List.length (Sig.platform_of N) / 2
         rw [Sig.platform_of_length]
+        -- Goal: N = (2 * N) / 2
         omega
       | there c'' =>
         -- c'' : BVar (Sig.platform_of N) .cvar
@@ -296,9 +298,57 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
         simp only [BVar.level] at h ⊢
         exact h
 
+/-- For any bound term variable in a platform signature, its level divided by 2 is less than N. -/
+theorem BVar.level_var_bound {b : BVar (Sig.platform_of N) .var} : b.level / 2 < N := by
+  induction N with
+  | zero => cases b
+  | succ N ih =>
+    -- Sig.platform_of (N+1) = ((Sig.platform_of N),C),x
+    cases b with
+    | here =>
+      -- b.level = ((Sig.platform_of N),C).length = 2*N + 1
+      unfold BVar.level Sig.size Sig.extend_cvar
+      simp only [List.length]
+      rw [Sig.platform_of_length]
+      -- Goal: (2 * N + 1) / 2 < N + 1, which is N < N + 1
+      omega
+    | there b' =>
+      cases b' with
+      | there b'' =>
+        -- b'': BVar (Sig.platform_of N) .var
+        -- b''.there.there.level = b''.there.level = b''.level
+        simp only [BVar.level]
+        have := ih (b := b'')
+        omega
+
+/-- For any bound capture variable in a platform signature,
+    its level divided by 2 is less than N. -/
+theorem BVar.level_cvar_bound {c : BVar (Sig.platform_of N) .cvar} : c.level / 2 < N := by
+  induction N with
+  | zero => cases c
+  | succ N ih =>
+    -- Sig.platform_of (N+1) = ((Sig.platform_of N),C),x
+    -- c must be .there c' since outermost is x (a var)
+    cases c with
+    | there c' =>
+      cases c' with
+      | here =>
+        -- c'.level = (Sig.platform_of N).length = 2*N
+        simp only [BVar.level, Sig.size]
+        rw [Sig.platform_of_length]
+        -- Goal: (2 * N) / 2 < N + 1, which is N < N + 1
+        omega
+      | there c'' =>
+        -- c'': BVar (Sig.platform_of N) .cvar
+        -- c''.there.there.level = c''.there.level = c''.level
+        simp only [BVar.level]
+        have := ih (c := c'')
+        omega
+
 /-- The denotation of a capture set in the platform environment equals
-    its direct capability set translation. -/
-theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)} :
+    its direct capability set translation, provided the capture set is well-formed. -/
+theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
+  (hwf : C.WfInHeap (Heap.platform_of N)) :
   C.denot (TypeEnv.platform_of N) (Memory.platform_of N) = C.to_platform_capability_set := by
   unfold CaptureSet.denot
   induction C with
@@ -308,9 +358,11 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)} :
     rfl
   | union cs1 cs2 ih1 ih2 =>
     -- Union of capture sets
-    unfold CaptureSet.subst CaptureSet.to_platform_capability_set CaptureSet.ground_denot
-    unfold CaptureSet.denot at ih1 ih2
-    rw [ih1, ih2]
+    cases hwf with
+    | wf_union hwf1 hwf2 =>
+      unfold CaptureSet.subst CaptureSet.to_platform_capability_set CaptureSet.ground_denot
+      unfold CaptureSet.denot at ih1 ih2
+      rw [ih1 hwf1, ih2 hwf2]
   | var x =>
     -- Variable (term variable used as capture)
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
@@ -320,20 +372,28 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)} :
       unfold Subst.from_TypeEnv Var.subst
       simp [CaptureSet.ground_denot]
       rw [TypeEnv.lookup_var_platform]
-      have hlevel : b.level / 2 < N := sorry
+      have hlevel : b.level / 2 < N := BVar.level_var_bound
       unfold Memory.platform_of
       simp
       rw [reachability_of_loc_platform hlevel]
       rfl
     | free n =>
-      -- Free term variable
-      unfold Subst.from_TypeEnv Var.subst
-      simp [CaptureSet.ground_denot]
-      unfold Memory.platform_of
-      simp
-      have hn : n < N := sorry
-      rw [reachability_of_loc_platform hn]
-      rfl
+      -- Free term variable - extract proof that n < N from hwf
+      cases hwf with
+      | wf_var_free hlookup =>
+        unfold Subst.from_TypeEnv Var.subst
+        simp [CaptureSet.ground_denot]
+        unfold Memory.platform_of
+        simp
+        -- From hlookup: (Heap.platform_of N) n = some val
+        -- This implies n < N
+        have hn : n < N := by
+          unfold Heap.platform_of at hlookup
+          split at hlookup
+          case isTrue h => exact h
+          case isFalse => contradiction
+        rw [reachability_of_loc_platform hn]
+        rfl
   | cvar c =>
     -- Capture variable
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
@@ -342,13 +402,15 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)} :
     unfold CaptureSet.ground_denot Memory.platform_of
     simp
     -- Goal: reachability_of_loc (Heap.platform_of N) (c.level / 2) = {c.level / 2}
-    have hlevel : c.level / 2 < N := sorry
+    have hlevel : c.level / 2 < N := BVar.level_cvar_bound
     rw [reachability_of_loc_platform hlevel]
     rfl
 
-/-- Adequacy of semantic typing on platform contexts. -/
+/-- Adequacy of semantic typing on platform contexts.
+    Requires that the capture set is well-formed in the platform heap. -/
 theorem adequacy_platform {e : Exp (Sig.platform_of N)}
-  (ht : SemanticTyping C (Ctx.platform_of N) e E) :
+  (ht : SemanticTyping C (Ctx.platform_of N) e E)
+  (hwf : C.WfInHeap (Heap.platform_of N)) :
   (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform
     N
     (C.to_platform_capability_set) := by
@@ -357,7 +419,7 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   -- Apply semantic typing with platform environment
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N) env_typing_of_platform
   -- Rewrite using the equality of capability sets
-  rw [capture_set_denot_eq_platform] at hdenot
+  rw [capture_set_denot_eq_platform hwf] at hdenot
   -- Preservation: Eval is preserved under reduction
   have heval' : Eval C.to_platform_capability_set M1 e1
       (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
