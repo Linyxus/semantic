@@ -407,10 +407,10 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     rfl
 
 /-- Adequacy of semantic typing on platform contexts.
-    Requires that the capture set is well-formed in the platform heap. -/
+    Requires that the capture set is closed (contains no free variables). -/
 theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   (ht : SemanticTyping C (Ctx.platform_of N) e E)
-  (hwf : C.WfInHeap (Heap.platform_of N)) :
+  (hclosed : C.IsClosed) :
   (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform
     N
     (C.to_platform_capability_set) := by
@@ -418,6 +418,8 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   intro M1 e1 hred
   -- Apply semantic typing with platform environment
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N) env_typing_of_platform
+  -- Derive well-formedness from closedness
+  have hwf : C.WfInHeap (Heap.platform_of N) := CaptureSet.wf_of_closed hclosed
   -- Rewrite using the equality of capability sets
   rw [capture_set_denot_eq_platform hwf] at hdenot
   -- Preservation: Eval is preserved under reduction
