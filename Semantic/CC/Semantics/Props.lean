@@ -1408,4 +1408,17 @@ theorem step_masked
   | step_unpack =>
     apply Step.step_unpack
 
+theorem reduce_masked
+  (hred : Reduce C m1 e1 m2 e2) :
+  let M := C.to_finset
+  Reduce C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by
+  intro M
+  induction hred with
+  | refl =>
+    apply Reduce.refl
+  | step h rest ih =>
+    apply Reduce.step
+    · exact step_masked h
+    · exact ih
+
 end CC
