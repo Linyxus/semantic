@@ -219,7 +219,9 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   -- Preservation: Eval is preserved under reduction
   have heval' : Eval C.to_platform_capability_set M1 e1
       (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
-    apply reduce_preserves_eval sorry hred
+    simp only [HasExpDenotation.interp] at hdenot
+    unfold Ty.exi_exp_denot at hdenot
+    apply reduce_preserves_eval hdenot hred
   -- Progressive: Eval implies progressive
   exact eval_implies_progressive heval'
 
