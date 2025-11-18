@@ -198,4 +198,11 @@ def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
     Reduce P (Memory.platform_of N) e M1 e1 ->
     IsProgressive P M1 e1
 
+/-- Adequacy of semantic typing on platform contexts. -/
+theorem adequacy_platform {e : Exp (Sig.platform_of N)}
+  (ht : SemanticTyping C (Ctx.platform_of N) e E) :
+  (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform
+    N
+    (C.to_platform_capability_set) := sorry
+
 end CC
