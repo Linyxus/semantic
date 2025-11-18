@@ -28,7 +28,9 @@ def Sig.size : Sig -> Nat :=
 
 /-- Debruijn-level of a bound variable. -/
 def BVar.level : BVar s k -> Nat
-| .here => s.length
+| .here => by
+  rename_i s0
+  exact s0.size
 | .there x => x.level
 
 /-- Convert a capture set in a platform context to a concrete capability set.
@@ -227,6 +229,17 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
     unfold TypeEnv.platform_of
     cases x with
     | here =>
+      -- This is the most recent term variable x_N
+      -- x.here : BVar (Sig.platform_of (N+1)) .var
+      -- where Sig.platform_of (N+1) = ((platform_of N),C),x
+      -- So .here.level = ((platform_of N),C).length = 2*N + 1
+      unfold TypeEnv.platform_of TypeEnv.lookup_var TypeEnv.extend_var TypeEnv.extend_cvar
+      simp [TypeEnv.lookup, BVar.level]
+      -- After simps: goal is N = List.length (Sig.platform_of (N+1)) / 2
+      -- Use platform_of_length to get: List.length (Sig.platform_of (N+1)) = 2*(N+1)
+      rw [Sig.platform_of_length]
+      -- Now: N = 2*(N+1) / 2 = N+1, which is wrong!
+      -- This means the level is being computed from the wrong signature
       sorry
     | there x' =>
       cases x' with
