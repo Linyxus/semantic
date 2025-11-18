@@ -22,4 +22,20 @@ def Heap.platform_of (N : Nat) : Heap :=
     else
       .none
 
+/-- The size of a signature. -/
+def Sig.size : Sig -> Nat :=
+  fun s => s.length
+
+/-- Debruijn-level of a bound variable. -/
+def BVar.level : BVar s k -> Nat
+| .here => s.length
+| .there x => x.level
+
+def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> CapabilitySet
+| .empty => .empty
+| .union cs1 cs2 =>
+    (cs1.to_platform_capability_set) ∪ (cs2.to_platform_capability_set)
+| .var x => sorry
+| .cvar c => sorry
+
 end CC
