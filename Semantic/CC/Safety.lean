@@ -31,11 +31,19 @@ def BVar.level : BVar s k -> Nat
 | .here => s.length
 | .there x => x.level
 
+/-- Convert a capture set in a platform context to a concrete capability set.
+  Platform contexts have `N` capabilities arranged as pairs `(C, x)` at levels
+  `(0,1), (2,3), ..., (2N-2, 2N-1)`, where capability `i` corresponds to
+  variables at levels `2i` and `2i+1`. Bound variables map via `level / 2`,
+  while free variables directly reference heap locations. -/
 def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> CapabilitySet
 | .empty => .empty
 | .union cs1 cs2 =>
     (cs1.to_platform_capability_set) ∪ (cs2.to_platform_capability_set)
-| .var x => sorry
-| .cvar c => sorry
+| .var x =>
+    match x with
+    | .bound b => .cap (b.level / 2)
+    | .free n => .cap n
+| .cvar c => .cap (c.level / 2)
 
 end CC
