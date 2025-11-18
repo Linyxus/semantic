@@ -198,11 +198,29 @@ def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
     Reduce P (Memory.platform_of N) e M1 e1 ->
     IsProgressive P M1 e1
 
+/-- The denotation of a capture set in the platform environment equals
+    its direct capability set translation. -/
+theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)} :
+  C.denot (TypeEnv.platform_of N) (Memory.platform_of N) = C.to_platform_capability_set := by
+  sorry
+
 /-- Adequacy of semantic typing on platform contexts. -/
 theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   (ht : SemanticTyping C (Ctx.platform_of N) e E) :
   (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform
     N
-    (C.to_platform_capability_set) := sorry
+    (C.to_platform_capability_set) := by
+  unfold Exp.SafeWithPlatform
+  intro M1 e1 hred
+  -- Apply semantic typing with platform environment
+  have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N) env_typing_of_platform
+  -- Rewrite using the equality of capability sets
+  rw [capture_set_denot_eq_platform] at hdenot
+  -- Preservation: Eval is preserved under reduction
+  have heval' : Eval C.to_platform_capability_set M1 e1
+      (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
+    apply reduce_preserves_eval sorry hred
+  -- Progressive: Eval implies progressive
+  exact eval_implies_progressive heval'
 
 end CC
