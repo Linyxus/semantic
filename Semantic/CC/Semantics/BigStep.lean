@@ -67,6 +67,23 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Q1 (.pack cs x) m1 ->
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
+| eval_cond {m : Memory} {Q1 : Mpost} :
+  (hpred : Q1.is_monotonic) ->
+  Eval C m (.var x) Q1 ->
+  (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
+    Q1 v m1 ->
+    resolve m1.heap v = some .btrue ∨ resolve m1.heap v = some .bfalse) ->
+  (h_true : ∀ {m1 : Memory} {v : Exp {}},
+    (m1.subsumes m) ->
+    Q1 v m1 ->
+    resolve m1.heap v = some .btrue ->
+    Eval C m1 e2 Q) ->
+  (h_false : ∀ {m1 : Memory} {v : Exp {}},
+    (m1.subsumes m) ->
+    Q1 v m1 ->
+    resolve m1.heap v = some .bfalse ->
+    Eval C m1 e3 Q) ->
+  Eval C m (.cond x e2 e3) Q
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
@@ -194,6 +211,21 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Exp.wf_subst hwf2_ext
         -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
         apply Subst.wf_unpack hwf_cs hwf_x
+  case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
+    -- Extract well-formedness of the guard and both branches
+    have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
+    -- Build well-formedness of (.var x) in original heap
+    have hwf_var : Exp.WfInHeap (.var _) _ := Exp.WfInHeap.wf_var hwf_x
+    have eval_e1' := ih_guard hpred_guard hsub hwf_var
+    apply Eval.eval_cond (Q1:=Q1) hpred_guard eval_e1'
+    · intro m_guard v hQ1
+      exact h_nonstuck hQ1
+    · intro m_branch v hs hQ1 hres
+      have hs_orig := Memory.subsumes_trans hs hsub
+      exact h_true hs_orig hQ1 hres
+    · intro m_branch v hs hQ1 hres
+      have hs_orig := Memory.subsumes_trans hs hsub
+      exact h_false hs_orig hQ1 hres
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -276,6 +308,23 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_val hs1 hwf_x hwf_cs hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
+  case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
+    -- Strengthen the induction hypothesis for the guard evaluation
+    have eval_e1' := ih_guard (Q2:=Q1) (by intro _ _ _ h; exact h)
+    apply Eval.eval_cond (Q1:=Q1) hpred_guard eval_e1'
+    case h_nonstuck =>
+      intro m1 v hQ0
+      exact h_nonstuck hQ0
+    case h_true =>
+      intro m1 v hsub hq1 hres
+      apply ih_true hsub hq1 hres
+      apply Mpost.entails_after_subsumes himp
+      exact hsub
+    case h_false =>
+      intro m1 v hsub hq1 hres
+      apply ih_false hsub hq1 hres
+      apply Mpost.entails_after_subsumes himp
+      exact hsub
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
@@ -317,5 +366,13 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       exact ih_val hs1 hwf_x hwf_cs hq1 hsub
+  case eval_cond Q1 hpred_guard heval_e1 h_nonstuck h_true h_false ih_e1 ih_true ih_false =>
+    apply Eval.eval_cond (Q1:=Q1) hpred_guard (ih_e1 hsub)
+    · intro m1 v hQ
+      exact h_nonstuck hQ
+    · intro m1 v hs1 hq1 hres
+      exact ih_true hs1 hq1 hres hsub
+    · intro m1 v hs1 hq1 hres
+      exact ih_false hs1 hq1 hres hsub
 
 end CC

@@ -22,6 +22,12 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
+| step_cond_var_true :
+  m.lookup x = some (.val ⟨.btrue, hv, R⟩) ->
+  Step C m (.cond (.free x) e1 e2) m e1
+| step_cond_var_false :
+  m.lookup x = some (.val ⟨.bfalse, hv, R⟩) ->
+  Step C m (.cond (.free x) e1 e2) m e2
 | step_ctx_letin :
   Step C m e1 m' e1' ->
   Step C m (.letin e1 e2) m' (.letin e1' e2)

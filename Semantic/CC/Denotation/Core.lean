@@ -4,59 +4,6 @@ import Semantic.Prelude
 
 namespace CC
 
-def resolve : Heap -> Exp {} -> Option (Exp {})
-| s, .var (.free x) =>
-  match s x with
-  | some (.val v) => some v.unwrap
-  | _ => none
-| s, .var (.bound x) => by cases x
-| _, other => some other
-
-theorem resolve_monotonic {m1 m2 : Memory}
-  (hsub : m2.subsumes m1)
-  (hres : resolve m1.heap e = some v) :
-  resolve m2.heap e = some v := by
-  -- Case on the expression e
-  cases e
-  case var x =>
-    -- Case on whether x is bound or free
-    cases x
-    case bound bv =>
-      -- Bound variables in empty signature are impossible
-      cases bv
-    case free fx =>
-      -- Free variable case: resolve looks up in heap
-      simp only [resolve] at hres ⊢
-      -- hres tells us what m1.heap fx is
-      cases hfx : m1.heap fx
-      · -- m1.heap fx = none, contradiction with hres
-        simp [hfx] at hres
-      · -- m1.heap fx = some cell
-        rename_i cell
-        simp [hfx] at hres
-        cases cell
-        case val heapval =>
-          simp at hres
-          -- hres now says: heapval.unwrap = v
-          -- From hsub, m2.heap fx must also be some (Cell.val heapval)
-          have : m2.heap fx = some (Cell.val heapval) := by
-            simp [Memory.subsumes, Heap.subsumes] at hsub
-            exact hsub fx (Cell.val heapval) hfx
-          simp [this]
-          exact hres
-        case capability =>
-          -- m1.heap fx = some Cell.capability, so resolve returns none
-          simp at hres
-        case masked =>
-          -- m1.heap fx = some Cell.masked, so resolve returns none
-          simp at hres
-  all_goals {
-    -- For all other expression constructors (pack, abs, tabs, etc.)
-    -- resolve returns the expression itself unchanged
-    simp [resolve] at hres ⊢
-    exact hres
-  }
-
 /-- Denotation of types. -/
 def Denot := Memory -> Exp {} -> Prop
 
@@ -97,54 +44,6 @@ def Denot.is_transparent (d : Denot) : Prop :=
 
 def Denot.is_proper (d : Denot) : Prop :=
   d.is_monotonic ∧ d.is_transparent
-
-def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
-  match e with
-  | .var (.free x) => reachability_of_loc H x
-  | .abs cs _ _ => expand_captures H cs
-  | .tabs cs _ _ => expand_captures H cs
-  | .cabs cs _ _ => expand_captures H cs
-  | _ => {}  -- Other expressions have no reachability
-
-theorem resolve_reachability_monotonic
-  {m1 m2 : Memory}
-  (hsub : m2.subsumes m1)
-  (e : Exp {})
-  (hwf : e.WfInHeap m1.heap) :
-  resolve_reachability m2.heap e = resolve_reachability m1.heap e := by
-  cases e with
-  | var x =>
-    cases x with
-    | free fx =>
-      simp [resolve_reachability]
-      cases hwf with
-      | wf_var hwf_x =>
-        cases hwf_x with
-        | wf_free hex =>
-          exact reachability_of_loc_monotonic hsub fx hex
-    | bound bx => cases bx
-  | abs cs _ _ =>
-    simp [resolve_reachability]
-    cases hwf with
-    | wf_abs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
-  | tabs cs _ _ =>
-    simp [resolve_reachability]
-    cases hwf with
-    | wf_tabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
-  | cabs cs _ _ =>
-    simp [resolve_reachability]
-    cases hwf with
-    | wf_cabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
-  | pack _ _ => simp [resolve_reachability]
-  | unit => simp [resolve_reachability]
-  | app _ _ => simp [resolve_reachability]
-  | tapp _ _ => simp [resolve_reachability]
-  | capp _ _ => simp [resolve_reachability]
-  | letin _ _ => simp [resolve_reachability]
-  | unpack _ _ => simp [resolve_reachability]
 
 /-- For simple values, compute_reachability equals resolve_reachability. -/
 theorem compute_reachability_eq_resolve_reachability
@@ -402,6 +301,8 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     e = .var (.free label) ∧
     m.lookup label = some .capability ∧
     label ∈ A
+| _, .bool => fun _ m e =>
+  resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
 | env, .arrow T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
   ∃ cs T0 t0,
@@ -1369,6 +1270,25 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
       exact hx'
     · -- The existential part remains the same
       exact hexists
+  | bool =>
+    intro C m x v hx ht
+    -- Destructure the heap value to access its components
+    cases v with
+    | mk vexp hv_simple hreach =>
+      -- rewrite the lookup in terms of the heap
+      have hlookup : m.heap x = some (Cell.val ⟨vexp, hv_simple, hreach⟩) := by
+        simpa [Memory.lookup] using hx
+      have hres_self : resolve m.heap vexp = some vexp := by
+        cases hv_simple <;> simp [resolve]
+      -- From the denotation, vexp must be a boolean literal
+      have hbool : vexp = .btrue ∨ vexp = .bfalse := by
+        simpa [Ty.shape_val_denot, hres_self] using ht
+      -- Finish by rewriting with hbool
+      cases hbool with
+      | inl hb =>
+        simp [Ty.shape_val_denot, resolve, hlookup, hb]
+      | inr hb =>
+        simp [Ty.shape_val_denot, resolve, hlookup, hb]
   | poly T1 T2 =>
     intro C m x v hx ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1632,6 +1552,9 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     | tapp _ _ => simp [resolve] at ht
     | capp _ _ => simp [resolve] at ht
     | letin _ _ => simp [resolve] at ht
+    | btrue => simp [resolve] at ht
+    | bfalse => simp [resolve] at ht
+    | cond _ _ _ => simp [resolve] at ht
   | cap =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1648,6 +1571,16 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
           simp [Memory.lookup]
           exact this
         · exact hmemin
+  | bool =>
+    intro m1 m2 e hmem ht
+    simp [Ty.shape_val_denot] at ht ⊢
+    cases ht with
+    | inl htrue =>
+      left
+      exact resolve_monotonic hmem htrue
+    | inr hfalse =>
+      right
+      exact resolve_monotonic hmem hfalse
   | arrow T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1678,6 +1611,9 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | tapp _ _ => cases hr
         | capp _ _ => cases hr
         | letin _ _ => cases hr
+        | btrue => cases hr
+        | bfalse => cases hr
+        | cond _ _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -1720,6 +1656,9 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | tapp _ _ => cases hr
         | capp _ _ => cases hr
         | letin _ _ => cases hr
+        | btrue => cases hr
+        | bfalse => cases hr
+        | cond _ _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -1772,6 +1711,9 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | tapp _ _ => cases hr
         | capp _ _ => cases hr
         | letin _ _ => cases hr
+        | btrue => cases hr
+        | bfalse => cases hr
+        | cond _ _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -1979,6 +1921,58 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
     -- For .tvar, use the hypothesis that env is reachability safe
     simp [Ty.shape_val_denot] at hdenot
     exact hts X R m e hdenot
+  | bool =>
+    simp [Ty.shape_val_denot] at hdenot
+    cases e with
+    | btrue =>
+      -- Bool literals have empty reachability
+      simp [resolve_reachability]
+      exact CapabilitySet.Subset.empty
+    | bfalse =>
+      simp [resolve_reachability]
+      exact CapabilitySet.Subset.empty
+    | var x =>
+      cases x with
+      | bound bx => cases bx
+      | free fx =>
+        -- The heap cell for fx must contain a boolean value
+        cases hcell : m.heap fx with
+        | none =>
+          simp [resolve, hcell] at hdenot
+        | some cell =>
+          cases cell with
+          | capability =>
+            simp [resolve, hcell] at hdenot
+          | masked =>
+            simp [resolve, hcell] at hdenot
+          | val hv =>
+            cases hv with
+            | mk vexp hv_simple hreach_val =>
+              have hreach :=
+                Memory.reachability_invariant m fx ⟨vexp, hv_simple, hreach_val⟩
+                  (by simp [hcell])
+              cases hv_simple with
+              | abs =>
+                simp [resolve, hcell] at hdenot ⊢
+              | tabs =>
+                simp [resolve, hcell] at hdenot ⊢
+              | cabs =>
+                simp [resolve, hcell] at hdenot ⊢
+              | unit =>
+                simp [resolve, hcell] at hdenot ⊢
+              | btrue =>
+                have hreach_empty : hreach_val = {} := by
+                  simpa [compute_reachability] using hreach
+                simp [resolve_reachability, reachability_of_loc, hcell, hreach_empty]
+                exact CapabilitySet.Subset.empty
+              | bfalse =>
+                have hreach_empty : hreach_val = {} := by
+                  simpa [compute_reachability] using hreach
+                simp [resolve_reachability, reachability_of_loc, hcell, hreach_empty]
+                exact CapabilitySet.Subset.empty
+    | _ =>
+      -- Other expressions cannot resolve to a boolean
+      simp [resolve] at hdenot
   | unit =>
     -- For .unit, resolve_reachability returns empty set or reachability from heap
     simp [Ty.shape_val_denot] at hdenot
@@ -2145,6 +2139,9 @@ theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
     -- For type variables, use the environment's reachability monotonicity
     simp [Ty.shape_val_denot] at hdenot ⊢
     exact hts X R1 R2 hsub m e hdenot
+  | bool =>
+    simp [Ty.shape_val_denot] at hdenot ⊢
+    exact hdenot
   | unit =>
     simp [Ty.shape_val_denot] at hdenot ⊢
     exact hdenot
@@ -2225,6 +2222,30 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
   | tvar X =>
     simp [Ty.shape_val_denot] at hdenot
     exact hts X R m e hdenot
+  | bool =>
+    simp [Ty.shape_val_denot] at hdenot
+    cases e with
+    | btrue => exact Exp.WfInHeap.wf_btrue
+    | bfalse => exact Exp.WfInHeap.wf_bfalse
+    | var x =>
+      cases x with
+      | bound bx => cases bx
+      | free fx =>
+        cases hcell : m.heap fx with
+        | none =>
+          simp [resolve, hcell] at hdenot
+        | some cell =>
+          cases cell with
+          | val hv =>
+            apply Exp.WfInHeap.wf_var
+            apply Var.WfInHeap.wf_free
+            simpa [Memory.lookup] using hcell
+          | capability =>
+            simp [resolve, hcell] at hdenot
+          | masked =>
+            simp [resolve, hcell] at hdenot
+    | _ =>
+      simp [resolve] at hdenot
   | unit =>
     simp [Ty.shape_val_denot] at hdenot
     exact wf_from_resolve_unit hdenot
@@ -2258,6 +2279,9 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
   | tvar X =>
     simp [Ty.shape_val_denot] at ht ⊢
     exact hts X R m fx ht
+  | bool =>
+    simp [Ty.shape_val_denot] at ht ⊢
+    exact ht
   | unit =>
     simp [Ty.shape_val_denot] at ht ⊢
     exact ht

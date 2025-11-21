@@ -118,6 +118,8 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
   | .tabs _ _ _, .tabs => .tabs
   | .cabs _ _ _, .cabs => .cabs
   | .unit, .unit => .unit
+  | .btrue, .btrue => .btrue
+  | .bfalse, .bfalse => .bfalse
 
 -- A heap cell can either be a value or a capability
 inductive Cell : Type where
@@ -244,6 +246,8 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap .unit H
 | wf_cap :
   Ty.WfInHeap .cap H
+| wf_bool :
+  Ty.WfInHeap .bool H
 -- Capturing types
 | wf_capt :
   CaptureSet.WfInHeap cs H ->
@@ -302,6 +306,15 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap (.unpack e1 e2) H
 | wf_unit :
   Exp.WfInHeap .unit H
+| wf_btrue :
+  Exp.WfInHeap .btrue H
+| wf_bfalse :
+  Exp.WfInHeap .bfalse H
+| wf_cond :
+  Var.WfInHeap x H ->
+  Exp.WfInHeap e2 H ->
+  Exp.WfInHeap e3 H ->
+  Exp.WfInHeap (.cond x e2 e3) H
 
 -- Closedness implies well-formedness in any heap
 
@@ -345,6 +358,7 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
     · exact ih
   | unit => apply Ty.WfInHeap.wf_unit
   | cap => apply Ty.WfInHeap.wf_cap
+  | bool => apply Ty.WfInHeap.wf_bool
   | capt hcs _ ih =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_of_closed hcs
@@ -392,6 +406,13 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
   | letin _ _ ih1 ih2 => apply Exp.WfInHeap.wf_letin <;> assumption
   | unpack _ _ ih1 ih2 => apply Exp.WfInHeap.wf_unpack <;> assumption
   | unit => apply Exp.WfInHeap.wf_unit
+  | btrue => apply Exp.WfInHeap.wf_btrue
+  | bfalse => apply Exp.WfInHeap.wf_bfalse
+  | cond hx _ _ ih2 ih3 =>
+    apply Exp.WfInHeap.wf_cond
+    · exact Var.wf_of_closed hx
+    · assumption
+    · assumption
 
 -- Monotonicity theorems: WfInHeap is preserved under heap subsumption
 
@@ -456,6 +477,7 @@ theorem Ty.wf_monotonic
     · exact ih_T hsub
   | wf_unit => apply Ty.WfInHeap.wf_unit
   | wf_cap => apply Ty.WfInHeap.wf_cap
+  | wf_bool => apply Ty.WfInHeap.wf_bool
   | wf_capt hwf_cs hwf_T ih_T =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_monotonic hsub hwf_cs
@@ -513,6 +535,15 @@ theorem Exp.wf_monotonic
     · exact ih2 hsub
   | wf_unit =>
     apply Exp.WfInHeap.wf_unit
+  | wf_btrue =>
+    apply Exp.WfInHeap.wf_btrue
+  | wf_bfalse =>
+    apply Exp.WfInHeap.wf_bfalse
+  | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
+    apply Exp.WfInHeap.wf_cond
+    · exact Var.wf_monotonic hsub hwf_x
+    · exact ih2 hsub
+    · exact ih3 hsub
 
 -- Inversion theorems for Exp.WfInHeap
 
@@ -533,6 +564,14 @@ theorem Exp.wf_inv_unpack
   Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H := by
   cases hwf with
   | wf_unpack hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
+
+/-- Inversion for conditionals. -/
+theorem Exp.wf_inv_cond
+  {x : Var .var s} {e2 e3 : Exp s} {H : Heap}
+  (hwf : Exp.WfInHeap (.cond x e2 e3) H) :
+  Var.WfInHeap x H ∧ Exp.WfInHeap e2 H ∧ Exp.WfInHeap e3 H := by
+  cases hwf with
+  | wf_cond hwf_x hwf2 hwf3 => exact ⟨hwf_x, hwf2, hwf3⟩
 
 /-- Inversion for lambda abstraction: if `λ(cs) (x : T). e` is well-formed,
     then its capture set, type, and body are all well-formed. -/
@@ -602,6 +641,68 @@ def compute_reachability
   | .tabs cs _ _ => expand_captures h cs
   | .cabs cs _ _ => expand_captures h cs
   | .unit => {}
+  | .btrue => {}
+  | .bfalse => {}
+
+def resolve : Heap -> Exp {} -> Option (Exp {})
+| s, .var (.free x) =>
+  match s x with
+  | some (.val v) => some v.unwrap
+  | _ => none
+| s, .var (.bound x) => by cases x
+| _, other => some other
+
+def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
+  match e with
+  | .var (.free x) => reachability_of_loc H x
+  | .abs cs _ _ => expand_captures H cs
+  | .tabs cs _ _ => expand_captures H cs
+  | .cabs cs _ _ => expand_captures H cs
+  | _ => {}  -- Other expressions have no reachability
+
+theorem resolve_monotonic {H1 H2 : Heap}
+  (hsub : H2.subsumes H1)
+  (hres : resolve H1 e = some v) :
+  resolve H2 e = some v := by
+  -- Case on the expression e
+  cases e
+  case var x =>
+    -- Case on whether x is bound or free
+    cases x
+    case bound bv =>
+      -- Bound variables in empty signature are impossible
+      cases bv
+    case free fx =>
+      -- Free variable case: resolve looks up in heap
+      simp only [resolve] at hres ⊢
+      -- hres tells us what m1.heap fx is
+      cases hfx : H1 fx
+      · -- m1.heap fx = none, contradiction with hres
+        simp [hfx] at hres
+      · -- m1.heap fx = some cell
+        rename_i cell
+        simp [hfx] at hres
+        cases cell
+        case val heapval =>
+          simp at hres
+          -- hres now says: heapval.unwrap = v
+          -- Need to show resolve m2.heap (.var (.free fx)) = some v
+          -- We know hsub : H2.subsumes H1, so H2 fx = H1 fx
+          have hfx2 : H2 fx = some (.val heapval) := by
+            -- Use subsumption
+            exact hsub fx (.val heapval) hfx
+          simp [hfx2, hres]
+        case capability =>
+          -- resolve yields none on capabilities; contradiction with hres
+          simp at hres
+        case masked =>
+          -- resolve yields none on masked cells; contradiction
+          simp at hres
+    -- For .var (.bound _), already contradicted; done
+  -- For other expressions, resolve returns them unchanged
+  all_goals
+    simp [resolve] at hres
+    simp [resolve, hres]
 
 theorem reachability_of_loc_monotonic
   {h1 h2 : Heap}
@@ -648,6 +749,59 @@ theorem expand_captures_monotonic
     | wf_union hwf1 hwf2 =>
       simp [expand_captures, ih1 hwf1, ih2 hwf2]
 
+theorem resolve_reachability_monotonic
+  {H1 H2 : Heap}
+  (hsub : H2.subsumes H1)
+  (e : Exp {})
+  (hwf : e.WfInHeap H1) :
+  resolve_reachability H2 e = resolve_reachability H1 e := by
+  cases e with
+  | var x =>
+    cases x with
+    | free fx =>
+      simp [resolve_reachability]
+      cases hwf with
+      | wf_var hwf_x =>
+        cases hwf_x with
+        | wf_free hex =>
+          exact reachability_of_loc_monotonic hsub fx hex
+    | bound bx => cases bx
+  | abs cs _ _ =>
+    simp [resolve_reachability]
+    cases hwf with
+    | wf_abs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub cs hwf_cs
+  | tabs cs _ _ =>
+    simp [resolve_reachability]
+    cases hwf with
+    | wf_tabs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub cs hwf_cs
+  | cabs cs _ _ =>
+    simp [resolve_reachability]
+    cases hwf with
+    | wf_cabs hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub cs hwf_cs
+  | pack _ _ =>
+    simp [resolve_reachability]
+  | unit =>
+    simp [resolve_reachability]
+  | btrue =>
+    simp [resolve_reachability]
+  | bfalse =>
+    simp [resolve_reachability]
+  | app _ _ =>
+    simp [resolve_reachability]
+  | tapp _ _ =>
+    simp [resolve_reachability]
+  | capp _ _ =>
+    simp [resolve_reachability]
+  | letin _ _ =>
+    simp [resolve_reachability]
+  | unpack _ _ =>
+    simp [resolve_reachability]
+  | cond _ _ _ =>
+    simp [resolve_reachability]
+
 /-- Computing reachability of a value in a bigger heap yields the same result.
 Proof by cases on hv, using expand_captures_monotonic. -/
 theorem compute_reachability_monotonic
@@ -682,6 +836,12 @@ theorem compute_reachability_monotonic
   | unit =>
     -- Case: v = .unit
     -- Both heaps yield empty capability set
+    rfl
+  | btrue =>
+    -- Boolean literals carry no reachability
+    rfl
+  | bfalse =>
+    -- Boolean literals carry no reachability
     rfl
 
 /-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
@@ -843,6 +1003,9 @@ theorem Ty.wf_rename
   | wf_cap =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_cap
+  | wf_bool =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_bool
   | wf_capt hwf_cs _ ih_T =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_capt
@@ -920,6 +1083,18 @@ theorem Exp.wf_rename
   | wf_unit =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_unit
+  | wf_btrue =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_btrue
+  | wf_bfalse =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_bfalse
+  | wf_cond hwf_x _ _ ih2 ih3 =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_cond
+    · exact Var.wf_rename hwf_x
+    · exact ih2
+    · exact ih3
 
 -- Substitution well-formedness preservation
 
@@ -1075,6 +1250,9 @@ theorem Ty.wf_subst
   | wf_cap =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_cap
+  | wf_bool =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_bool
   | wf_capt hwf_cs _ ih_T =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_capt
@@ -1153,6 +1331,18 @@ theorem Exp.wf_subst
   | wf_unit =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_unit
+  | wf_btrue =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_btrue
+  | wf_bfalse =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_bfalse
+  | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_cond
+    · exact Var.wf_subst hwf_x hwf_σ
+    · exact ih2 hwf_σ
+    · exact ih3 hwf_σ
 
 -- Well-formedness of opening substitutions
 

@@ -199,6 +199,18 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | unit :
   ----------------------------
   HasType {} Γ (.unit) (.typ (.capt {} .unit))
+| btrue :
+  ----------------------------
+  HasType {} Γ (.btrue) (.typ (.capt {} .bool))
+| bfalse :
+  ----------------------------
+  HasType {} Γ (.bfalse) (.typ (.capt {} .bool))
+| cond :
+  HasType C1 Γ (.var x) (.typ (.capt Cb .bool)) ->
+  HasType C2 Γ e2 T ->
+  HasType C3 Γ e3 T ->
+  ----------------------------
+  HasType (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
 | invoke :
   HasType (.var x) Γ (.var x) (.typ (.capt (.var x) .cap)) ->
   HasType (.var y) Γ (.var y) (.typ (.capt (.var y) .unit)) ->
