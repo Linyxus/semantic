@@ -577,7 +577,7 @@ theorem eval_implies_progressive
             | free fx =>
               cases hcell : m0.heap fx with
               | none =>
-                cases (by simpa [resolve, hcell] using hbtrue : False)
+                simp [resolve, hcell] at hbtrue
               | some cell =>
                 cases cell with
                 | val hv =>
@@ -590,16 +590,16 @@ theorem eval_implies_progressive
                     refine Step.step_cond_var_true (hv := hsimple) (R := reach) (by
                       simp [Memory.lookup, hcell])
                 | capability =>
-                  cases (by simpa [resolve, hcell] using hbtrue : False)
+                  simp [resolve, hcell] at hbtrue
                 | masked =>
-                  cases (by simpa [resolve, hcell] using hbtrue : False)
+                  simp [resolve, hcell] at hbtrue
           | inr hbfalse =>
             cases x with
             | bound bx => cases bx
             | free fx =>
               cases hcell : m0.heap fx with
               | none =>
-                cases (by simpa [resolve, hcell] using hbfalse : False)
+                simp [resolve, hcell] at hbfalse
               | some cell =>
                 cases cell with
                 | val hv =>
@@ -612,13 +612,12 @@ theorem eval_implies_progressive
                     refine Step.step_cond_var_false (hv := hsimple) (R := reach) (by
                       simp [Memory.lookup, hcell])
                 | capability =>
-                  cases (by simpa [resolve, hcell] using hbfalse : False)
+                  simp [resolve, hcell] at hbfalse
                 | masked =>
-                  cases (by simpa [resolve, hcell] using hbfalse : False)
+                  simp [resolve, hcell] at hbfalse
         | eval_val hv _ =>
           -- Impossible: variables are not values
           cases hv
-        | _ => cases hans_copy
     | step hstep =>
       -- Guard can step, so cond steps in context
       apply IsProgressive.step
