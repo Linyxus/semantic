@@ -1075,6 +1075,145 @@ theorem sem_typ_unit :
         · apply from_TypeEnv_wf_in_heap hts
       · simp [resolve]
 
+theorem sem_typ_cond
+  {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
+  {e1 e2 e3 : Exp s} {T : Ty .exi s} {Cb : CaptureSet s}
+  (hclosed_C1 : C1.IsClosed)
+  (hclosed_C2 : C2.IsClosed)
+  (hclosed_C3 : C3.IsClosed)
+  (_hclosed_guard : e1.IsClosed)
+  (_hclosed_then : e2.IsClosed)
+  (_hclosed_else : e3.IsClosed)
+  (ht1 : C1 # Γ ⊨ e1 : .typ (.capt Cb .bool))
+  (ht2 : C2 # Γ ⊨ e2 : T)
+  (ht3 : C3 # Γ ⊨ e3 : T) :
+  (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond e1 e2 e3) : T := by
+  intro env store hts
+  simp [Exp.subst, Ty.exi_exp_denot]
+  -- Let Q1 be the guard postcondition
+  set Q1 := (Ty.exi_val_denot env (.typ (.capt Cb .bool))).as_mpost
+  -- Monotonicity of Q1
+  have hpred : Q1.is_monotonic := Denot.as_mpost_is_monotonic
+    (exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.typ (.capt Cb .bool)))
+  -- Evaluate the guard under base authority
+  have hguard_base := ht1 env store hts
+  simp [Ty.exi_exp_denot] at hguard_base
+  -- Widen authority to C1 ∪ C2 ∪ C3
+  have hsubC1 : CaptureSet.denot env C1 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store := by
+    -- Goal: C1 ⊆ (C1 ∪ C2) ∪ C3
+    set A := CaptureSet.denot env C1 store
+    set B := CaptureSet.denot env C2 store
+    set C := CaptureSet.denot env C3 store
+    have hA : A ⊆ A ∪ B := CapabilitySet.Subset.union_right_left
+    have hAB : A ∪ B ⊆ (A ∪ B) ∪ C := CapabilitySet.Subset.union_right_left
+    exact CapabilitySet.Subset.trans hA hAB
+  have hguard := eval_capability_set_monotonic hguard_base hsubC1
+  -- Assemble eval_cond
+  refine Eval.eval_cond (Q1 := Q1) hpred hguard ?h_nonstuck ?h_true ?h_false
+  · -- non-stuck: guard evaluates to a literal boolean
+    intro m1 v hQ1
+    have hQ1' : Ty.capt_val_denot env (.capt Cb .bool) m1 v := by
+      simpa [Q1, Denot.as_mpost, Ty.exi_val_denot] using hQ1
+    have hshape : resolve m1.heap v = some .btrue ∨ resolve m1.heap v = some .bfalse := by
+      have h := hQ1'
+      simp [Ty.capt_val_denot, Ty.shape_val_denot] at h
+      exact h.2.2.2
+    exact hshape
+  · -- true branch
+    intro m1 v hsub hQtrue hres
+    have hts' : EnvTyping Γ env m1 := env_typing_monotonic hts hsub
+    have hthen := ht2 env m1 hts'
+    simp [Ty.exi_exp_denot] at hthen
+    have hsubC2 : CaptureSet.denot env C2 m1 ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 := by
+      set A := CaptureSet.denot env C1 m1
+      set B := CaptureSet.denot env C2 m1
+      set C := CaptureSet.denot env C3 m1
+      have hB : B ⊆ A ∪ B := CapabilitySet.Subset.union_right_right
+      have hAB : A ∪ B ⊆ (A ∪ B) ∪ C := CapabilitySet.Subset.union_right_left
+      exact CapabilitySet.Subset.trans hB hAB
+    -- widen authority, then lift over memory subsumption using post monotonicity
+    have hthen' := eval_capability_set_monotonic hthen hsubC2
+    -- Align capability sets computed at store versus m1 using monotonicity
+    have hwf_union :
+        ((C1 ∪ C2 ∪ C3).subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
+      apply CaptureSet.wf_subst
+      · apply CaptureSet.wf_of_closed
+        exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union hclosed_C1 hclosed_C2) hclosed_C3
+      · exact from_TypeEnv_wf_in_heap hts
+    have hcap_eq :
+        CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 =
+        CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
+      (capture_set_denot_is_monotonic
+        (C := C1 ∪ C2 ∪ C3) (ρ := env) (m1 := store) (m2 := m1)
+        hwf_union hsub).symm
+    have hthen_store :
+        Eval (CaptureSet.denot env (C1 ∪ C2 ∪ C3) store) m1
+          (e2.subst (Subst.from_TypeEnv env)) (Ty.exi_val_denot env T).as_mpost := by
+      exact hcap_eq ▸ hthen'
+    exact hthen_store
+  · -- false branch
+    intro m1 v hsub hQfalse hres
+    have hts' : EnvTyping Γ env m1 := env_typing_monotonic hts hsub
+    have helse := ht3 env m1 hts'
+    simp [Ty.exi_exp_denot] at helse
+    have hsubC3 : CaptureSet.denot env C3 m1 ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 := by
+      simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+      apply CapabilitySet.Subset.union_right_right
+    have helse' := eval_capability_set_monotonic helse hsubC3
+    have hwf_union :
+        ((C1 ∪ C2 ∪ C3).subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
+      apply CaptureSet.wf_subst
+      · apply CaptureSet.wf_of_closed
+        exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union hclosed_C1 hclosed_C2) hclosed_C3
+      · exact from_TypeEnv_wf_in_heap hts
+    have hcap_eq :
+        CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 =
+        CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
+      (capture_set_denot_is_monotonic
+        (C := C1 ∪ C2 ∪ C3) (ρ := env) (m1 := store) (m2 := m1)
+        hwf_union hsub).symm
+    have helse_store :
+        Eval (CaptureSet.denot env (C1 ∪ C2 ∪ C3) store) m1
+          (e3.subst (Subst.from_TypeEnv env)) (Ty.exi_val_denot env T).as_mpost := by
+      exact hcap_eq ▸ helse'
+    exact helse_store
+
+theorem sem_typ_btrue :
+  {} # Γ ⊨ Exp.btrue : .typ (.capt {} .bool) := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot,
+        Exp.subst, CaptureSet.denot]
+  apply Eval.eval_val
+  · exact Exp.IsVal.btrue
+  · constructor
+    · apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.btrue
+    constructor
+    · exact Exp.WfInHeap.wf_btrue
+    · constructor
+      · apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
+        · apply from_TypeEnv_wf_in_heap hts
+      · simp [resolve]
+
+theorem sem_typ_bfalse :
+  {} # Γ ⊨ Exp.bfalse : .typ (.capt {} .bool) := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot,
+        Exp.subst, CaptureSet.denot]
+  apply Eval.eval_val
+  · exact Exp.IsVal.bfalse
+  · constructor
+    · apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.bfalse
+    constructor
+    · exact Exp.WfInHeap.wf_bfalse
+    · constructor
+      · apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
+        · apply from_TypeEnv_wf_in_heap hts
+      · simp [resolve]
+
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -2327,6 +2466,17 @@ theorem fundamental
       constructor
       exact hx_closed
   case unit => exact sem_typ_unit
+  case btrue => exact sem_typ_btrue
+  case bfalse => exact sem_typ_bfalse
+  case cond ht1 ht2 ht3 ih1 ih2 ih3 =>
+    -- hclosed_e gives closedness of cond e1 e2 e3
+    cases hclosed_e with
+    | cond hclosed_guard hclosed_then hclosed_else =>
+      have hclosedC1 := HasType.use_set_is_closed ht1
+      have hclosedC2 := HasType.use_set_is_closed ht2
+      have hclosedC3 := HasType.use_set_is_closed ht3
+      exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
+        (ih1 hclosed_guard) (ih2 hclosed_then) (ih3 hclosed_else)
   case app =>
     rename_i hx hy
     -- From closedness of (app x y), extract that x and y are closed variables

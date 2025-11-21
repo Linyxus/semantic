@@ -34,11 +34,22 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     apply Step.step_tapply hlookup
   | step_capply hlookup =>
     apply Step.step_capply hlookup
+  | step_cond_true =>
+    apply Step.step_cond_true
+  | step_cond_false =>
+    apply Step.step_cond_false
+  | step_cond_var_true hlookup =>
+    apply Step.step_cond_var_true hlookup
+  | step_cond_var_false hlookup =>
+    apply Step.step_cond_var_false hlookup
   | step_ctx_letin _ ih =>
     apply Step.step_ctx_letin
     exact ih hsub
   | step_ctx_unpack _ ih =>
     apply Step.step_ctx_unpack
+    exact ih hsub
+  | step_ctx_cond _ ih =>
+    apply Step.step_ctx_cond
     exact ih hsub
   | step_rename =>
     apply Step.step_rename
@@ -82,6 +93,17 @@ theorem reduce_ctx_unpack
     · apply Step.step_ctx_unpack h
     · exact ih
 
+/-- Helper: Congruence for Reduce in cond context. -/
+theorem reduce_ctx_cond
+  (hred : Reduce C m e1 m' e1') :
+  Reduce C m (.cond e1 e2 e3) m' (.cond e1' e2 e3) := by
+  induction hred with
+  | refl => apply Reduce.refl
+  | step h rest ih =>
+    apply Reduce.step
+    · apply Step.step_ctx_cond h
+    · exact ih
+
 /-- Helper: Single step preserves memory subsumption. -/
 theorem step_memory_monotonic
   (hstep : Step C m1 e1 m2 e2) :
@@ -91,8 +113,13 @@ theorem step_memory_monotonic
   | step_invoke => exact Memory.subsumes_refl _
   | step_tapply => exact Memory.subsumes_refl _
   | step_capply => exact Memory.subsumes_refl _
+  | step_cond_true => exact Memory.subsumes_refl _
+  | step_cond_false => exact Memory.subsumes_refl _
+  | step_cond_var_true _ => exact Memory.subsumes_refl _
+  | step_cond_var_false _ => exact Memory.subsumes_refl _
   | step_ctx_letin _ ih => exact ih
   | step_ctx_unpack _ ih => exact ih
+  | step_ctx_cond _ ih => exact ih
   | step_rename => exact Memory.subsumes_refl _
   | step_lift hv hwf hfresh =>
     exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
@@ -267,6 +294,18 @@ theorem step_preserves_wf
       have hwf_subst := Subst.wf_openCVar hwf_CS
       -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
+  | step_cond_true =>
+    have ⟨_, hwf_then, _⟩ := Exp.wf_inv_cond hwf
+    exact hwf_then
+  | step_cond_false =>
+    have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
+    exact hwf_else
+  | step_cond_var_true hlookup =>
+    have ⟨hwf_guard, hwf_then, _⟩ := Exp.wf_inv_cond hwf
+    exact hwf_then
+  | step_cond_var_false hlookup =>
+    have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
+    exact hwf_else
   | step_ctx_letin hstep_e1 =>
     -- e1 = .letin e1' e2', e2 = .letin e1'' e2'
     -- Use IH recursively
@@ -285,6 +324,13 @@ theorem step_preserves_wf
     have hsub := step_memory_monotonic hstep_e1
     have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
     apply Exp.WfInHeap.wf_unpack hwf_e1'' hwf_e2''
+  | step_ctx_cond hstep_guard =>
+    have ⟨hwf_guard, hwf_then, hwf_else⟩ := Exp.wf_inv_cond hwf
+    have hwf_guard' := step_preserves_wf hstep_guard hwf_guard
+    have hsub := step_memory_monotonic hstep_guard
+    have hwf_then' := Exp.wf_monotonic hsub hwf_then
+    have hwf_else' := Exp.wf_monotonic hsub hwf_else
+    exact Exp.WfInHeap.wf_cond hwf_guard' hwf_then' hwf_else'
   | step_rename =>
     -- e1 = .letin (.var (.free y)) e, e2 = e.subst (openVar y)
     rename_i y e_body
@@ -382,278 +428,6 @@ theorem reduce_unpack_inv
       -- Since e1 = pack cs x, this is Reduce.refl
       exact ⟨_, cs, x, Reduce.refl, rest⟩
 
-theorem eval_to_reduce
-  (heval : Eval C m1 e1 Q)
-  (hwf : e1.WfInHeap m1.heap) :
-  ∀ m2 e2,
-    e2.IsAns ->
-    Reduce C m1 e1 m2 e2 ->
-    Q e2 m2 := by
-  induction heval with
-  | eval_val hv hQ =>
-    intro m2 e2 hans hred
-    rename_i v Q C m
-    -- v is a value, so it's an answer
-    have hans_v : Exp.IsAns v := Exp.IsAns.is_val hv
-    -- Since v reduces to e2 and both are answers, they must be equal
-    have ⟨heq_m, heq_e⟩ := reduce_ans_eq hans_v hred
-    rw [←heq_m, ←heq_e]
-    exact hQ
-  | eval_var hQ =>
-    intro m2 e2 hans hred
-    rename_i Q C m x
-    -- .var x is an answer
-    have hans_var : Exp.IsAns (.var x) := Exp.IsAns.is_var
-    -- Since .var x reduces to e2 and both are answers, they must be equal
-    have ⟨heq_m, heq_e⟩ := reduce_ans_eq hans_var hred
-    rw [←heq_m, ←heq_e]
-    exact hQ
-  | eval_apply hlookup eval_body ih =>
-    -- e1 = .app (.free x) y
-    -- Evaluation: lookup x, get abstraction, evaluate body
-    -- Any reduction must step via step_apply first
-    intro m2 e2 hans hred
-    -- The application is not an answer, so reduction cannot be refl
-    cases hred with
-    | refl =>
-      -- .app is not an answer, contradiction
-      cases hans; rename_i hv
-      cases hv
-    | step hstep rest =>
-      -- At least one step from application
-      cases hstep with
-      | step_apply hlookup' =>
-        -- We stepped to the substituted body
-        -- The two lookups must give the same result
-        rename_i cs1 T1 e1 hv1 R1 C Q m x y cs2 T2 e2_body hv2 R2
-        -- hlookup and hlookup' both look up x in m, so they must be equal
-        have heq : (some (Cell.val ⟨.abs cs1 T1 e1, hv1, R1⟩) : Option Cell) =
-                   some (Cell.val ⟨.abs cs2 T2 e2_body, hv2, R2⟩) := by
-          rw [←hlookup, ←hlookup']
-        -- From equality of Options, extract equality of contents
-        injection heq with heq_cell
-        injection heq_cell with heq_val
-        injection heq_val with heq_abs
-        -- From equality of abstractions, extract equality of bodies
-        injection heq_abs with _ _ _ heq_body
-        -- Now we know e1 = e2_body, so the substitutions are equal
-        rw [←heq_body] at rest
-        -- Apply IH to the rest of the reduction
-        -- Need to show (e1.subst (Subst.openVar (.free y))).WfInHeap m.heap
-        have hwf_subst_body : (e1.subst (Subst.openVar (.free y))).WfInHeap m.heap := by
-          -- Extract well-formedness of y from hwf
-          have hwf_app := hwf
-          cases hwf_app with
-          | wf_app hwf_x hwf_y =>
-            -- From m.wf.wf_val and hlookup, get that the abstraction body is well-formed
-            have hwf_abs : Exp.WfInHeap (.abs cs1 T1 e1) m.heap :=
-              m.wf.wf_val _ _ hlookup
-            -- Extract well-formedness of e1 from the abstraction
-            cases hwf_abs with
-            | wf_abs _ _ hwf_e1 =>
-              -- Build well-formed substitution
-              have hwf_subst := Subst.wf_openVar hwf_y
-              -- Apply substitution preservation
-              exact Exp.wf_subst hwf_e1 hwf_subst
-        exact ih hwf_subst_body m2 e2 hans rest
-      | step_invoke =>
-        rename_i cs T e hv R C Q m x y hv_unit R_unit hlookup_y hmem hlookup_cap
-        have heq := Memory.lookup_deterministic hlookup hlookup_cap
-        cases heq
-  | eval_invoke hmem hlookup_x hlookup_y hQ =>
-    intro m2 e2 hans hred
-    -- Application is not an answer, so reduction cannot be refl
-    cases hred with
-    | refl =>
-      -- .app is not an answer, contradiction
-      cases hans; rename_i hv
-      cases hv
-    | step hstep rest =>
-      -- At least one step from application
-      cases hstep with
-      | step_apply hlookup' =>
-        -- step_apply says x contains an abstraction
-        -- but hlookup_x says x contains a capability - contradiction!
-        have heq := Memory.lookup_deterministic hlookup_x hlookup'
-        cases heq
-      | step_invoke hmem' hlookup_x' hlookup_y' =>
-        -- step_invoke steps to unit
-        -- rest : Reduce C m unit m2 e2
-        -- unit is an answer, so by reduce_ans_eq, unit = e2 and m = m2
-        have hans_unit : Exp.IsAns .unit := Exp.IsAns.is_val .unit
-        have ⟨heq_m, heq_e⟩ := reduce_ans_eq hans_unit rest
-        rw [←heq_m, ←heq_e]
-        exact hQ
-  | eval_tapply hlookup eval_body ih =>
-    intro m2 e2 hans hred
-    -- Type application is not an answer, so reduction cannot be refl
-    cases hred with
-    | refl =>
-      -- .tapp is not an answer, contradiction
-      cases hans; rename_i hv
-      cases hv
-    | step hstep rest =>
-      -- The only step from tapp is step_tapply
-      cases hstep with
-      | step_tapply hlookup' =>
-        -- Both lookups access the same location, so they must return the same value
-        rename_i cs1 T0_1 e1 hv1 R1 C Q S mem x cs2 S'_2 e2_body hv2 R2
-        have heq := Memory.lookup_deterministic hlookup hlookup'
-        -- Extract equality of type abstraction bodies
-        injection heq with heq_cell
-        injection heq_cell with heq_val
-        injection heq_val with _ _ _ heq_body
-        -- Now we know e1 = e2_body, so the substitutions are equal
-        rw [←heq_body] at rest
-        -- Apply IH to the rest of the reduction
-        -- Need to show (e1.subst (Subst.openTVar .top)).WfInHeap mem.heap
-        have hwf_subst_body : (e1.subst (Subst.openTVar .top)).WfInHeap mem.heap := by
-          -- From mem.wf.wf_val and hlookup, get that the type abstraction is well-formed
-          have hwf_tabs : Exp.WfInHeap (.tabs cs1 T0_1 e1) mem.heap :=
-            mem.wf.wf_val _ _ hlookup
-          -- Extract well-formedness of e1 from the type abstraction
-          cases hwf_tabs with
-          | wf_tabs _ _ hwf_e1 =>
-            -- Build well-formed substitution: .top is always well-formed
-            have hwf_top : Ty.WfInHeap (.top : Ty .shape ∅) mem.heap :=
-              Ty.WfInHeap.wf_top
-            have hwf_subst := Subst.wf_openTVar hwf_top
-            -- Apply substitution preservation
-            exact Exp.wf_subst hwf_e1 hwf_subst
-        exact ih hwf_subst_body m2 e2 hans rest
-  | eval_capply hlookup eval_body ih =>
-    intro m2 e2 hans hred
-    -- Capability application is not an answer, so reduction cannot be refl
-    cases hred with
-    | refl =>
-      -- .capp is not an answer, contradiction
-      cases hans; rename_i hv
-      cases hv
-    | step hstep rest =>
-      -- The only step from capp is step_capply
-      cases hstep with
-      | step_capply hlookup' =>
-        -- Both lookups access the same location, so they must return the same value
-        rename_i cs1 B0_1 e1 hv1 R1 C CS Q mem x cs2 B2 e2_body hv2 R2
-        have heq := Memory.lookup_deterministic hlookup hlookup'
-        -- Extract equality of capability abstraction bodies
-        injection heq with heq_cell
-        injection heq_cell with heq_val
-        injection heq_val with _ _ _ heq_body
-        -- Now we know e1 = e2_body, so the substitutions are equal
-        rw [←heq_body] at rest
-        -- Apply IH to the rest of the reduction
-        -- Need to show (e1.subst (Subst.openCVar CS)).WfInHeap mem.heap
-        have hwf_subst_body : (e1.subst (Subst.openCVar CS)).WfInHeap mem.heap := by
-          -- From mem.wf.wf_val and hlookup, get that the capability abstraction is well-formed
-          have hwf_cabs : Exp.WfInHeap (.cabs cs1 B0_1 e1) mem.heap :=
-            mem.wf.wf_val _ _ hlookup
-          -- Extract well-formedness of CS from hwf
-          have hwf_capp := hwf
-          cases hwf_capp with
-          | wf_capp _ hwf_CS =>
-            -- Extract well-formedness of e1 from the capability abstraction
-            cases hwf_cabs with
-            | wf_cabs _ _ hwf_e1 =>
-              -- Build well-formed substitution
-              have hwf_subst := Subst.wf_openCVar hwf_CS
-              -- Apply substitution preservation
-              exact Exp.wf_subst hwf_e1 hwf_subst
-        exact ih hwf_subst_body m2 e2 hans rest
-  | eval_letin =>
-    intro m2 e_ans hans hred
-    rename_i e1_body e2_body ih h_val_ih h_var_ih
-    -- Extract well-formedness of subexpressions
-    have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
-    -- Apply reduce_letin_inv to decompose the reduction
-    have hinv := reduce_letin_inv hred hans
-    cases hinv with
-    | inl h_var =>
-      -- Variable case: e1 reduces to a variable
-      obtain ⟨m0, y0, hred_e1, hred_body⟩ := h_var
-      -- Apply ih to establish Q1 for the variable
-      have hans_var : Exp.IsAns (.var (.free y0)) := Exp.IsAns.is_var
-      have hQ1 := ih hwf_e1 m0 (.var (.free y0)) hans_var hred_e1
-      -- Extract Var.WfInHeap from the fact that e1 reduced to a variable
-      have hwf_var : Var.WfInHeap (.free y0 : Var .var ∅) m0.heap := by
-        -- The variable must be well-formed since reduction preserves well-formedness
-        have hwf_result := reduce_preserves_wf hred_e1 hwf_e1
-        -- Extract Var.WfInHeap from Exp.WfInHeap for the variable
-        cases hwf_result with
-        | wf_var h => exact h
-      -- Build well-formed substitution
-      have hwf_subst := Subst.wf_openVar hwf_var
-      -- e2 is well-formed in m0 (by monotonicity from reduction)
-      have hsub := reduce_memory_monotonic hred_e1
-      have hwf_e2_m0 := Exp.wf_monotonic hsub hwf_e2
-      -- Substituted body is well-formed
-      have hwf_e2_subst := Exp.wf_subst hwf_e2_m0 hwf_subst
-      -- Apply h_var_ih
-      exact h_var_ih hsub hwf_var hQ1 hwf_e2_subst m2 e_ans hans hred_body
-    | inr h_val =>
-      -- Value case: e1 reduces to a simple value that gets allocated
-      obtain ⟨m0, v0, hv, hwf_v, l0, hfresh, hred_e1, hred_body⟩ := h_val
-      -- Apply ih to establish Q1 for the value
-      have hv_isval : v0.IsVal := by
-        cases hv with
-        | abs => exact Exp.IsVal.abs
-        | tabs => exact Exp.IsVal.tabs
-        | cabs => exact Exp.IsVal.cabs
-        | unit => exact Exp.IsVal.unit
-      have hans_val : v0.IsAns := Exp.IsAns.is_val hv_isval
-      have hQ1 := ih hwf_e1 m0 v0 hans_val hred_e1
-      -- Build well-formedness for the substituted body in the extended heap
-      have hsub := reduce_memory_monotonic hred_e1
-      have hwf_e2_m0 := Exp.wf_monotonic hsub hwf_e2
-      -- Show (.free l0) is well-formed in extended heap
-      let m_ext := m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf_v rfl hfresh
-      have hwf_l : Var.WfInHeap (.free l0 : Var .var ∅) m_ext.heap := by
-        apply Var.WfInHeap.wf_free
-        unfold m_ext
-        simp [Memory.extend]
-        exact Heap.extend_lookup_eq _ _ _
-      -- e2 is well-formed in extended heap
-      have hsub_ext := Memory.extend_subsumes m0 l0
-        ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf_v rfl hfresh
-      have hwf_e2_ext := Exp.wf_monotonic hsub_ext hwf_e2_m0
-      -- Build well-formed substitution
-      have hwf_subst := Subst.wf_openVar hwf_l
-      -- Substituted body is well-formed in extended heap
-      have hwf_e2_subst := Exp.wf_subst hwf_e2_ext hwf_subst
-      -- Apply h_val_ih
-      exact h_val_ih hsub hv hwf_v hQ1 l0 hfresh hwf_e2_subst m2 e_ans hans hred_body
-  | eval_unpack hpred eval_e1 h_val ih =>
-    intro m2 e_ans hans hred
-    rename_i h_val_ih
-    -- Extract well-formedness of subexpressions
-    have ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_unpack hwf
-    -- Apply reduce_unpack_inv to decompose the reduction
-    have hinv := reduce_unpack_inv hred hans
-    obtain ⟨m0, cs, x, hred_e1, hred_body⟩ := hinv
-    -- e1 reduces to pack in m0
-    -- Use reduce_preserves_wf to get well-formedness of the pack
-    have hwf_pack := reduce_preserves_wf hred_e1 hwf_e1
-    -- Extract well-formedness of cs and x from pack
-    cases hwf_pack with
-    | wf_pack hwf_cs hwf_x =>
-      -- The pack is an answer
-      have hans_pack : Exp.IsAns (.pack cs (.free x)) := by
-        apply Exp.IsAns.is_val
-        exact Exp.IsVal.pack
-      -- Apply IH to establish Q1 for the pack
-      rename_i a_ih
-      have hQ1 := a_ih hwf_e1 m0 (Exp.pack cs (.free x)) hans_pack hred_e1
-      -- Memory subsumption from reduction
-      have hsub := reduce_memory_monotonic hred_e1
-      -- e2 is well-formed in m0.heap (by monotonicity)
-      have hwf_e2_m0 := Exp.wf_monotonic hsub hwf_e2
-      -- Build well-formed substitution
-      have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
-      -- Substituted body is well-formed
-      have hwf_e2_subst := Exp.wf_subst hwf_e2_m0 hwf_subst
-      -- Apply h_val_ih
-      exact h_val_ih hsub hwf_x hwf_cs hQ1 hwf_e2_subst m2 e_ans hans hred_body
-
 inductive IsProgressive : CapabilitySet -> Memory -> Exp {} -> Prop where
 | done :
   e.IsAns ->
@@ -676,6 +450,9 @@ theorem eval_ans_holds_post
   | eval_capply => cases hans; rename_i hv; cases hv
   | eval_letin => cases hans; rename_i hv; cases hv
   | eval_unpack => cases hans; rename_i hv; cases hv
+  | eval_cond =>
+    cases hans with
+    | is_val hv => cases hv
 
 theorem eval_implies_progressive
   (heval : Eval C m e Q) :
@@ -769,6 +546,83 @@ theorem eval_implies_progressive
       -- e1 can step, so unpack e1 e2 can step via step_ctx_unpack
       apply IsProgressive.step
       exact Step.step_ctx_unpack hstep
+  | eval_cond hpred eval_e1 h_nonstuck h_true h_false ih =>
+    -- e = .cond e_guard e2 e3
+    rename_i m0 Q1 e2 e3
+    cases ih with
+    | done hans =>
+      have hQ := eval_ans_holds_post eval_e1 hans
+      have hres := h_nonstuck hQ
+      have hans_copy := hans
+      cases hans with
+      | is_val hv =>
+        cases hv with
+        | btrue =>
+          apply IsProgressive.step
+          exact Step.step_cond_true
+        | bfalse =>
+          apply IsProgressive.step
+          exact Step.step_cond_false
+        | _ =>
+          cases hres <;> simp [resolve] at *
+      | is_var =>
+        -- Guard is a variable; use the evaluation proof to extract it
+        cases eval_e1 with
+        | eval_var hQ_guard =>
+          rename_i x
+          cases hres with
+          | inl hbtrue =>
+            cases x with
+            | bound bx => cases bx
+            | free fx =>
+              cases hcell : m0.heap fx with
+              | none =>
+                cases (by simpa [resolve, hcell] using hbtrue : False)
+              | some cell =>
+                cases cell with
+                | val hv =>
+                  cases hv with
+                  | mk unwrap hsimple reach =>
+                    have hunwrap : unwrap = .btrue := by
+                      simpa [resolve, hcell] using hbtrue
+                    cases hunwrap
+                    apply IsProgressive.step
+                    refine Step.step_cond_var_true (hv := hsimple) (R := reach) (by
+                      simp [Memory.lookup, hcell])
+                | capability =>
+                  cases (by simpa [resolve, hcell] using hbtrue : False)
+                | masked =>
+                  cases (by simpa [resolve, hcell] using hbtrue : False)
+          | inr hbfalse =>
+            cases x with
+            | bound bx => cases bx
+            | free fx =>
+              cases hcell : m0.heap fx with
+              | none =>
+                cases (by simpa [resolve, hcell] using hbfalse : False)
+              | some cell =>
+                cases cell with
+                | val hv =>
+                  cases hv with
+                  | mk unwrap hsimple reach =>
+                    have hunwrap : unwrap = .bfalse := by
+                      simpa [resolve, hcell] using hbfalse
+                    cases hunwrap
+                    apply IsProgressive.step
+                    refine Step.step_cond_var_false (hv := hsimple) (R := reach) (by
+                      simp [Memory.lookup, hcell])
+                | capability =>
+                  cases (by simpa [resolve, hcell] using hbfalse : False)
+                | masked =>
+                  cases (by simpa [resolve, hcell] using hbfalse : False)
+        | eval_val hv _ =>
+          -- Impossible: variables are not values
+          cases hv
+        | _ => cases hans_copy
+    | step hstep =>
+      -- Guard can step, so cond steps in context
+      apply IsProgressive.step
+      exact Step.step_ctx_cond hstep
 
 theorem step_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -902,7 +756,9 @@ theorem step_preserves_eval
         | abs => exact Exp.IsVal.abs
         | tabs => exact Exp.IsVal.tabs
         | cabs => exact Exp.IsVal.cabs
-        | unit => exact Exp.IsVal.unit))
+        | unit => exact Exp.IsVal.unit
+        | btrue => exact Exp.IsVal.btrue
+        | bfalse => exact Exp.IsVal.bfalse))
       -- Apply h_val - Lean will infer the memory from the implicit argument
       exact h_val (by apply Memory.subsumes_refl) hv hwf_v hQ1 _ hfresh
   | eval_unpack hpred heval_e1 h_nonstuck h_pack ih_e1 ih_pack =>
@@ -935,6 +791,50 @@ theorem step_preserves_eval
         | wf_pack hwf_cs hwf_x =>
           -- Apply h_pack with reflexive subsumption
           exact h_pack (by apply Memory.subsumes_refl) hwf_x hwf_cs hQ1
+  | eval_cond hpred heval_e1 h_nonstuck h_true h_false ih =>
+    -- e = .cond e1 e2 e3
+    rename_i m_guard e1 e2 e3
+    cases hstep with
+    | step_cond_true =>
+      -- Guard is true, use h_true
+      have hQ1 := eval_ans_holds_post heval_e1 (Exp.IsAns.is_val Exp.IsVal.btrue)
+      exact h_true (Memory.subsumes_refl m_guard) hQ1 (by simp [resolve])
+    | step_cond_false =>
+      -- Guard is false, use h_false
+      have hQ1 := eval_ans_holds_post heval_e1 (Exp.IsAns.is_val Exp.IsVal.bfalse)
+      exact h_false (Memory.subsumes_refl m_guard) hQ1 (by simp [resolve])
+    | step_cond_var_true hlookup =>
+      -- The guard evaluates to a variable, but non-stuckness says it must be boolean
+      have hQ1 := eval_ans_holds_post heval_e1 Exp.IsAns.is_var
+      rename_i x hv R
+      have hheap : m_guard.heap x =
+          some (Cell.val { unwrap := .btrue, isVal := hv, reachability := R }) := by
+        simpa [Memory.lookup] using hlookup
+      have hres : resolve m_guard.heap (.var (.free x)) = some .btrue := by
+        simp [resolve, hheap]
+      exact h_true (Memory.subsumes_refl m_guard) hQ1 hres
+    | step_cond_var_false hlookup =>
+      have hQ1 := eval_ans_holds_post heval_e1 Exp.IsAns.is_var
+      rename_i x hv R
+      have hheap : m_guard.heap x =
+          some (Cell.val { unwrap := .bfalse, isVal := hv, reachability := R }) := by
+        simpa [Memory.lookup] using hlookup
+      have hres : resolve m_guard.heap (.var (.free x)) = some .bfalse := by
+        simp [resolve, hheap]
+      exact h_false (Memory.subsumes_refl m_guard) hQ1 hres
+    | step_ctx_cond hstep_e1 =>
+      -- Guard steps; rebuild eval_cond with updated evaluation
+      have heval_e1' := ih hstep_e1
+      have hsub := step_memory_monotonic hstep_e1
+      apply Eval.eval_cond hpred heval_e1'
+      · intro m1 v hQ1
+        exact h_nonstuck hQ1
+      · intro m1 v hsub1 hQ_true hres
+        have hsub_full := Memory.subsumes_trans hsub1 hsub
+        exact h_true hsub_full hQ_true hres
+      · intro m1 v hsub1 hQ_false hres
+        have hsub_full := Memory.subsumes_trans hsub1 hsub
+        exact h_false hsub_full hQ_false hres
 
 theorem reduce_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -949,6 +849,18 @@ theorem reduce_preserves_eval
     have heval_step := step_preserves_eval he hstep
     -- Apply IH to the rest of the reduction
     exact ih heval_step
+
+theorem eval_to_reduce
+  (heval : Eval C m1 e1 Q)
+  (_hwf : e1.WfInHeap m1.heap) :
+  ∀ m2 e2,
+    e2.IsAns ->
+    Reduce C m1 e1 m2 e2 ->
+    Q e2 m2 := by
+  intro m2 e2 hans hred
+  -- Reductions preserve evaluations, then any answer satisfies its postcondition.
+  have heval' : Eval C m2 e2 Q := reduce_preserves_eval heval hred
+  exact eval_ans_holds_post heval' hans
 
 theorem Heap.restricted_has_capdom {H : Heap}
   (hd : H.HasCapDom D0) :
@@ -1150,6 +1062,8 @@ theorem Ty.wf_masked
     apply Ty.WfInHeap.wf_unit
   | wf_cap =>
     apply Ty.WfInHeap.wf_cap
+  | wf_bool =>
+    apply Ty.WfInHeap.wf_bool
   | wf_capt hwf_cs _ ih_T =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_masked hwf_cs
@@ -1205,6 +1119,12 @@ theorem Exp.wf_masked
     apply Exp.WfInHeap.wf_unpack <;> assumption
   | wf_unit =>
     apply Exp.WfInHeap.wf_unit
+  | wf_btrue =>
+    apply Exp.WfInHeap.wf_btrue
+  | wf_bfalse =>
+    apply Exp.WfInHeap.wf_bfalse
+  | wf_cond _ _ _ ih1 ih2 ih3 =>
+    apply Exp.WfInHeap.wf_cond <;> assumption
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
@@ -1399,11 +1319,24 @@ theorem step_masked
   | step_capply hlookup =>
     apply Step.step_capply
     exact masked_lookup_val hlookup
+  | step_cond_true =>
+    apply Step.step_cond_true
+  | step_cond_false =>
+    apply Step.step_cond_false
+  | step_cond_var_true hlookup =>
+    apply Step.step_cond_var_true
+    exact masked_lookup_val hlookup
+  | step_cond_var_false hlookup =>
+    apply Step.step_cond_var_false
+    exact masked_lookup_val hlookup
   | step_ctx_letin hstep' ih =>
     apply Step.step_ctx_letin
     exact ih
   | step_ctx_unpack hstep' ih =>
     apply Step.step_ctx_unpack
+    exact ih
+  | step_ctx_cond hstep' ih =>
+    apply Step.step_ctx_cond
     exact ih
   | step_rename =>
     apply Step.step_rename

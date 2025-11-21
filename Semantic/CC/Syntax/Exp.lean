@@ -19,6 +19,9 @@ inductive Exp : Sig -> Type where
 | letin : Exp s -> Exp (s,x) -> Exp s
 | unpack : Exp s -> Exp ((s,C),x) -> Exp s
 | unit : Exp s
+| btrue : Exp s
+| bfalse : Exp s
+| cond : Exp s -> Exp s -> Exp s -> Exp s
 
 /-- Applies a renaming to all bound variables in an expression. -/
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
@@ -33,6 +36,9 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .letin e1 e2, f => .letin (e1.rename f) (e2.rename (f.lift))
 | .unpack e1 e2, f => .unpack (e1.rename f) (e2.rename (f.lift.lift))
 | .unit, _ => .unit
+| .btrue, _ => .btrue
+| .bfalse, _ => .bfalse
+| .cond e1 e2 e3, f => .cond (e1.rename f) (e2.rename f) (e3.rename f)
 
 /-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
@@ -41,6 +47,8 @@ inductive Exp.IsVal : Exp s -> Prop where
 | cabs : Exp.IsVal (.cabs cs cb e)
 | pack : Exp.IsVal (.pack cs x)
 | unit : Exp.IsVal .unit
+| btrue : Exp.IsVal .btrue
+| bfalse : Exp.IsVal .bfalse
 
 /-- A simple value is a value that is not a pack. Therefore,
       a simple value always has a capturing type, not an existential type. -/
@@ -49,6 +57,8 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | tabs : Exp.IsSimpleVal (.tabs cs T e)
 | cabs : Exp.IsSimpleVal (.cabs cs cb e)
 | unit : Exp.IsSimpleVal .unit
+| btrue : Exp.IsSimpleVal .btrue
+| bfalse : Exp.IsSimpleVal .bfalse
 
 inductive Exp.IsSimpleAns : Exp s -> Prop where
 | is_simple_val :
@@ -122,5 +132,8 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | letin : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.letin e1 e2)
 | unpack : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack e1 e2)
 | unit : Exp.IsClosed .unit
+| btrue : Exp.IsClosed .btrue
+| bfalse : Exp.IsClosed .bfalse
+| cond : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed e3 -> Exp.IsClosed (.cond e1 e2 e3)
 
 end CC

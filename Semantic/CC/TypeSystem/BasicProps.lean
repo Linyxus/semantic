@@ -136,6 +136,7 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
     exact IsClosed.cpoly (CaptureBound.rename_closed hcb) (ihT hT)
   case unit => exact IsClosed.unit
   case cap => exact IsClosed.cap
+  case bool => exact IsClosed.bool
   case capt C S ihC ihS =>
     cases h with | capt hC hS =>
     exact IsClosed.capt (CaptureSet.rename_closed hC) (ihS hS)
@@ -169,6 +170,7 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     · exact ihT hT
   case unit => exact IsClosed.unit
   case cap => exact IsClosed.cap
+  case bool => exact IsClosed.bool
   case capt C S ihC ihS =>
     simp [Ty.rename] at h
     cases h; rename_i hC hS
@@ -203,6 +205,8 @@ theorem HasType.use_set_is_closed
     exact CaptureSet.IsClosed.union ih_x ih_y
   case invoke ih_x ih_y =>
     exact CaptureSet.IsClosed.union ih_x ih_y
+  case cond ih1 ih2 ih3 =>
+    exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
 
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
@@ -382,6 +386,10 @@ theorem HasType.type_is_closed
     constructor
     · constructor
     · constructor
+  case btrue =>
+    exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.bool)
+  case bfalse =>
+    exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.bool)
 
 -- More context lookup properties
 

@@ -61,6 +61,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .cpoly cb T, s => .cpoly (cb.subst s) (T.subst s.lift)
 | .unit, _ => .unit
 | .cap, _ => .cap
+| .bool, _ => .bool
 | .capt cs T, s => .capt (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
@@ -78,6 +79,9 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .letin e1 e2, s => .letin (e1.subst s) (e2.subst s.lift)
 | .unpack e1 e2, s => .unpack (e1.subst s) (e2.subst s.lift.lift)
 | .unit, _ => .unit
+| .btrue, _ => .btrue
+| .bfalse, _ => .bfalse
+| .cond e1 e2 e3, s => .cond (e1.subst s) (e2.subst s) (e3.subst s)
 
 /-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
@@ -274,6 +278,7 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     exact ihT
   | .unit => rfl
   | .cap => rfl
+  | .bool => rfl
   | .capt cs T =>
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -394,6 +399,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Ty.subst, ih, CaptureBound.subst_comp, Subst.comp_lift]
   | unit => rfl
   | cap => rfl
+  | bool => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp]
   | exi T ih =>
@@ -423,6 +429,10 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | unpack e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unit => rfl
+  | btrue => rfl
+  | bfalse => rfl
+  | cond e1 e2 e3 ih1 ih2 ih3 =>
+    simp [Exp.subst, ih1, ih2, ih3]
 
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem Var.subst_id {x : Var .var s} :
@@ -475,6 +485,7 @@ theorem Ty.subst_id {T : Ty sort s} :
     simp [Ty.subst, ih, Subst.lift_id, CaptureBound.subst_id]
   | unit => rfl
   | cap => rfl
+  | bool => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_id]
   | exi T ih =>
@@ -508,6 +519,10 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, ih1, ih2, Subst.lift_id]
   | unit =>
     rfl
+  | btrue => rfl
+  | bfalse => rfl
+  | cond e1 e2 e3 ih1 ih2 ih3 =>
+    simp [Exp.subst, ih1, ih2, ih3]
 
 /-- Converts a renaming to a substitution. -/
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
@@ -576,6 +591,7 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
     rw [<-Rename.asSubst_lift, ih]
   | unit => rfl
   | cap => rfl
+  | bool => rfl
   | capt cs T ih =>
     simp [Ty.subst, Ty.rename, ih, CaptureSet.subst_asSubst]
   | exi T ih =>
@@ -615,6 +631,12 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     rw [<-Rename.asSubst_lift, <-Rename.asSubst_lift, ih2]
   | unit =>
     rfl
+  | btrue =>
+    rfl
+  | bfalse =>
+    rfl
+  | cond e1 e2 e3 ih1 ih2 ih3 =>
+    simp [Exp.subst, Exp.rename, ih1, ih2, ih3]
 
 theorem Subst.weaken_openVar {z : Var .var s} :
   Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
@@ -784,6 +806,7 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
     exact IsClosed.cpoly (CaptureBound.rename_closed_any hcb) (ih hT)
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
+  | bool => exact IsClosed.bool
   | capt cs T ih =>
     cases hc with | capt h1 h2 =>
     exact IsClosed.capt (CaptureSet.rename_closed_any h1) (ih h2)
@@ -834,6 +857,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
       (ih hT (Subst.lift_closed hsubst))
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
+  | bool => exact IsClosed.bool
   | capt cs S ih =>
     cases hc with | capt h1 h2 =>
     simp [Ty.subst]
@@ -916,6 +940,14 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     · exact ih2 he2 (Subst.lift_closed (Subst.lift_closed hsubst))
   | unit =>
     exact IsClosed.unit
+  | btrue =>
+    exact IsClosed.btrue
+  | bfalse =>
+    exact IsClosed.bfalse
+  | cond e1 e2 e3 ih1 ih2 ih3 =>
+    cases hc with | cond h1 h2 h3 =>
+    simp [Exp.subst]
+    exact IsClosed.cond (ih1 h1 hsubst) (ih2 h2 hsubst) (ih3 h3 hsubst)
 
 /-- The openVar substitution is closed if the variable is closed. -/
 theorem Subst.openVar_is_closed {z : Var .var s}
@@ -1026,6 +1058,7 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     exact IsClosed.cpoly (CaptureBound.subst_closed_inv hcb) (ih hT)
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
+  | bool => exact IsClosed.bool
   | capt cs T ih =>
     simp [Ty.subst] at hclosed
     cases hclosed with | capt h1 h2 =>
@@ -1088,5 +1121,15 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     cases hclosed with | unpack he1 he2 =>
     exact IsClosed.unpack (ih1 he1) (ih2 he2)
   | unit => exact IsClosed.unit
+  | btrue =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | btrue => exact IsClosed.btrue
+  | bfalse =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | bfalse => exact IsClosed.bfalse
+  | cond e1 e2 e3 ih1 ih2 ih3 =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | cond h1 h2 h3 =>
+    exact IsClosed.cond (ih1 h1) (ih2 h2) (ih3 h3)
 
 end CC
