@@ -1077,17 +1077,17 @@ theorem sem_typ_unit :
 
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
-  {e1 e2 e3 : Exp s} {T : Ty .exi s} {Cb : CaptureSet s}
+  {x : Var .var s} {e2 e3 : Exp s} {T : Ty .exi s} {Cb : CaptureSet s}
   (hclosed_C1 : C1.IsClosed)
   (hclosed_C2 : C2.IsClosed)
   (hclosed_C3 : C3.IsClosed)
-  (_hclosed_guard : e1.IsClosed)
+  (_hclosed_guard : x.IsClosed)
   (_hclosed_then : e2.IsClosed)
   (_hclosed_else : e3.IsClosed)
-  (ht1 : C1 # Γ ⊨ e1 : .typ (.capt Cb .bool))
+  (ht1 : C1 # Γ ⊨ (.var x) : .typ (.capt Cb .bool))
   (ht2 : C2 # Γ ⊨ e2 : T)
   (ht3 : C3 # Γ ⊨ e3 : T) :
-  (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond e1 e2 e3) : T := by
+  (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond x e2 e3) : T := by
   intro env store hts
   simp [Exp.subst, Ty.exi_exp_denot]
   -- Let Q1 be the guard postcondition
@@ -2476,7 +2476,7 @@ theorem fundamental
       have hclosedC2 := HasType.use_set_is_closed ht2
       have hclosedC3 := HasType.use_set_is_closed ht3
       exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
-        (ih1 hclosed_guard) (ih2 hclosed_then) (ih3 hclosed_else)
+        (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
   case app =>
     rename_i hx hy
     -- From closedness of (app x y), extract that x and y are closed variables

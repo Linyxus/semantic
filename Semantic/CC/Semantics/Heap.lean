@@ -311,10 +311,10 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
 | wf_bfalse :
   Exp.WfInHeap .bfalse H
 | wf_cond :
-  Exp.WfInHeap e1 H ->
+  Var.WfInHeap x H ->
   Exp.WfInHeap e2 H ->
   Exp.WfInHeap e3 H ->
-  Exp.WfInHeap (.cond e1 e2 e3) H
+  Exp.WfInHeap (.cond x e2 e3) H
 
 -- Closedness implies well-formedness in any heap
 
@@ -408,8 +408,11 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
   | unit => apply Exp.WfInHeap.wf_unit
   | btrue => apply Exp.WfInHeap.wf_btrue
   | bfalse => apply Exp.WfInHeap.wf_bfalse
-  | cond _ _ _ ih1 ih2 ih3 =>
-    apply Exp.WfInHeap.wf_cond <;> assumption
+  | cond hx _ _ ih2 ih3 =>
+    apply Exp.WfInHeap.wf_cond
+    · exact Var.wf_of_closed hx
+    · assumption
+    · assumption
 
 -- Monotonicity theorems: WfInHeap is preserved under heap subsumption
 
@@ -536,9 +539,9 @@ theorem Exp.wf_monotonic
     apply Exp.WfInHeap.wf_btrue
   | wf_bfalse =>
     apply Exp.WfInHeap.wf_bfalse
-  | wf_cond hwf1 hwf2 hwf3 ih1 ih2 ih3 =>
+  | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
     apply Exp.WfInHeap.wf_cond
-    · exact ih1 hsub
+    · exact Var.wf_monotonic hsub hwf_x
     · exact ih2 hsub
     · exact ih3 hsub
 
@@ -564,11 +567,11 @@ theorem Exp.wf_inv_unpack
 
 /-- Inversion for conditionals. -/
 theorem Exp.wf_inv_cond
-  {e1 e2 e3 : Exp s} {H : Heap}
-  (hwf : Exp.WfInHeap (.cond e1 e2 e3) H) :
-  Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H ∧ Exp.WfInHeap e3 H := by
+  {x : Var .var s} {e2 e3 : Exp s} {H : Heap}
+  (hwf : Exp.WfInHeap (.cond x e2 e3) H) :
+  Var.WfInHeap x H ∧ Exp.WfInHeap e2 H ∧ Exp.WfInHeap e3 H := by
   cases hwf with
-  | wf_cond hwf1 hwf2 hwf3 => exact ⟨hwf1, hwf2, hwf3⟩
+  | wf_cond hwf_x hwf2 hwf3 => exact ⟨hwf_x, hwf2, hwf3⟩
 
 /-- Inversion for lambda abstraction: if `λ(cs) (x : T). e` is well-formed,
     then its capture set, type, and body are all well-formed. -/
@@ -1086,10 +1089,10 @@ theorem Exp.wf_rename
   | wf_bfalse =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_bfalse
-  | wf_cond _ _ _ ih1 ih2 ih3 =>
+  | wf_cond hwf_x _ _ ih2 ih3 =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_cond
-    · exact ih1
+    · exact Var.wf_rename hwf_x
     · exact ih2
     · exact ih3
 
@@ -1334,10 +1337,10 @@ theorem Exp.wf_subst
   | wf_bfalse =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_bfalse
-  | wf_cond hwf1 hwf2 hwf3 ih1 ih2 ih3 =>
+  | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_cond
-    · exact ih1 hwf_σ
+    · exact Var.wf_subst hwf_x hwf_σ
     · exact ih2 hwf_σ
     · exact ih3 hwf_σ
 

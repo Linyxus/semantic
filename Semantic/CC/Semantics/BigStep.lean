@@ -69,7 +69,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m (.unpack e1 e2) Q
 | eval_cond {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
-  Eval C m e1 Q1 ->
+  Eval C m (.var x) Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
     resolve m1.heap v = some .btrue ∨ resolve m1.heap v = some .bfalse) ->
@@ -83,7 +83,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Q1 v m1 ->
     resolve m1.heap v = some .bfalse ->
     Eval C m1 e3 Q) ->
-  Eval C m (.cond e1 e2 e3) Q
+  Eval C m (.cond x e2 e3) Q
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
@@ -213,9 +213,10 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Subst.wf_unpack hwf_cs hwf_x
   case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
     -- Extract well-formedness of the guard and both branches
-    have ⟨hwf1, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
-    -- Evaluate the guard in the larger memory using monotonicity
-    have eval_e1' := ih_guard hpred_guard hsub hwf1
+    have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
+    -- Build well-formedness of (.var x) in original heap
+    have hwf_var : Exp.WfInHeap (.var _) _ := Exp.WfInHeap.wf_var hwf_x
+    have eval_e1' := ih_guard hpred_guard hsub hwf_var
     apply Eval.eval_cond (Q1:=Q1) hpred_guard eval_e1'
     · intro m_guard v hQ1
       exact h_nonstuck hQ1

@@ -81,7 +81,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .unit, _ => .unit
 | .btrue, _ => .btrue
 | .bfalse, _ => .bfalse
-| .cond e1 e2 e3, s => .cond (e1.subst s) (e2.subst s) (e3.subst s)
+| .cond x e2 e3, s => .cond (x.subst s) (e2.subst s) (e3.subst s)
 
 /-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
@@ -431,8 +431,8 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
-  | cond e1 e2 e3 ih1 ih2 ih3 =>
-    simp [Exp.subst, ih1, ih2, ih3]
+  | cond x e2 e3 ih2 ih3 =>
+    simp [Exp.subst, Var.subst_comp, ih2, ih3]
 
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem Var.subst_id {x : Var .var s} :
@@ -521,8 +521,8 @@ theorem Exp.subst_id {e : Exp s} :
     rfl
   | btrue => rfl
   | bfalse => rfl
-  | cond e1 e2 e3 ih1 ih2 ih3 =>
-    simp [Exp.subst, ih1, ih2, ih3]
+  | cond x e2 e3 ih2 ih3 =>
+    simp [Exp.subst, Var.subst_id, ih2, ih3]
 
 /-- Converts a renaming to a substitution. -/
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
@@ -635,8 +635,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     rfl
   | bfalse =>
     rfl
-  | cond e1 e2 e3 ih1 ih2 ih3 =>
-    simp [Exp.subst, Exp.rename, ih1, ih2, ih3]
+  | cond x e2 e3 ih2 ih3 =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst, ih2, ih3]
 
 theorem Subst.weaken_openVar {z : Var .var s} :
   Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
@@ -944,10 +944,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     exact IsClosed.btrue
   | bfalse =>
     exact IsClosed.bfalse
-  | cond e1 e2 e3 ih1 ih2 ih3 =>
-    cases hc with | cond h1 h2 h3 =>
+  | cond x e2 e3 ih2 ih3 =>
+    cases hc with | cond hx h2 h3 =>
     simp [Exp.subst]
-    exact IsClosed.cond (ih1 h1 hsubst) (ih2 h2 hsubst) (ih3 h3 hsubst)
+    exact IsClosed.cond (Var.is_closed_subst hx hsubst) (ih2 h2 hsubst) (ih3 h3 hsubst)
 
 /-- The openVar substitution is closed if the variable is closed. -/
 theorem Subst.openVar_is_closed {z : Var .var s}
@@ -1127,9 +1127,9 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
   | bfalse =>
     simp [Exp.subst] at hclosed
     cases hclosed with | bfalse => exact IsClosed.bfalse
-  | cond e1 e2 e3 ih1 ih2 ih3 =>
+  | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst] at hclosed
-    cases hclosed with | cond h1 h2 h3 =>
-    exact IsClosed.cond (ih1 h1) (ih2 h2) (ih3 h3)
+    cases hclosed with | cond hx h2 h3 =>
+    exact IsClosed.cond (Var.subst_closed_inv hx) (ih2 h2) (ih3 h3)
 
 end CC

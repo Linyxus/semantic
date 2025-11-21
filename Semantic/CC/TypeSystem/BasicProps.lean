@@ -213,6 +213,14 @@ theorem HasType.exp_is_closed
   e.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [Exp.IsClosed])
   case var => constructor; constructor
+  case cond ih_var ih2 ih3 =>
+    -- ih_var : (.var x).IsClosed, need to extract x.IsClosed
+    cases ih_var with
+    | var hx_closed =>
+      constructor
+      · exact hx_closed
+      · exact ih2
+      · exact ih3
   case abs T1 ih =>
     rename_i T1_closed
     constructor

@@ -34,10 +34,6 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     apply Step.step_tapply hlookup
   | step_capply hlookup =>
     apply Step.step_capply hlookup
-  | step_cond_true =>
-    apply Step.step_cond_true
-  | step_cond_false =>
-    apply Step.step_cond_false
   | step_cond_var_true hlookup =>
     apply Step.step_cond_var_true hlookup
   | step_cond_var_false hlookup =>
@@ -47,9 +43,6 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     exact ih hsub
   | step_ctx_unpack _ ih =>
     apply Step.step_ctx_unpack
-    exact ih hsub
-  | step_ctx_cond _ ih =>
-    apply Step.step_ctx_cond
     exact ih hsub
   | step_rename =>
     apply Step.step_rename
@@ -93,17 +86,6 @@ theorem reduce_ctx_unpack
     · apply Step.step_ctx_unpack h
     · exact ih
 
-/-- Helper: Congruence for Reduce in cond context. -/
-theorem reduce_ctx_cond
-  (hred : Reduce C m e1 m' e1') :
-  Reduce C m (.cond e1 e2 e3) m' (.cond e1' e2 e3) := by
-  induction hred with
-  | refl => apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · apply Step.step_ctx_cond h
-    · exact ih
-
 /-- Helper: Single step preserves memory subsumption. -/
 theorem step_memory_monotonic
   (hstep : Step C m1 e1 m2 e2) :
@@ -113,13 +95,10 @@ theorem step_memory_monotonic
   | step_invoke => exact Memory.subsumes_refl _
   | step_tapply => exact Memory.subsumes_refl _
   | step_capply => exact Memory.subsumes_refl _
-  | step_cond_true => exact Memory.subsumes_refl _
-  | step_cond_false => exact Memory.subsumes_refl _
   | step_cond_var_true _ => exact Memory.subsumes_refl _
   | step_cond_var_false _ => exact Memory.subsumes_refl _
   | step_ctx_letin _ ih => exact ih
   | step_ctx_unpack _ ih => exact ih
-  | step_ctx_cond _ ih => exact ih
   | step_rename => exact Memory.subsumes_refl _
   | step_lift hv hwf hfresh =>
     exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
@@ -294,14 +273,8 @@ theorem step_preserves_wf
       have hwf_subst := Subst.wf_openCVar hwf_CS
       -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
-  | step_cond_true =>
-    have ⟨_, hwf_then, _⟩ := Exp.wf_inv_cond hwf
-    exact hwf_then
-  | step_cond_false =>
-    have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
-    exact hwf_else
   | step_cond_var_true hlookup =>
-    have ⟨hwf_guard, hwf_then, _⟩ := Exp.wf_inv_cond hwf
+    have ⟨_, hwf_then, _⟩ := Exp.wf_inv_cond hwf
     exact hwf_then
   | step_cond_var_false hlookup =>
     have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
@@ -324,13 +297,6 @@ theorem step_preserves_wf
     have hsub := step_memory_monotonic hstep_e1
     have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
     apply Exp.WfInHeap.wf_unpack hwf_e1'' hwf_e2''
-  | step_ctx_cond hstep_guard =>
-    have ⟨hwf_guard, hwf_then, hwf_else⟩ := Exp.wf_inv_cond hwf
-    have hwf_guard' := step_preserves_wf hstep_guard hwf_guard
-    have hsub := step_memory_monotonic hstep_guard
-    have hwf_then' := Exp.wf_monotonic hsub hwf_then
-    have hwf_else' := Exp.wf_monotonic hsub hwf_else
-    exact Exp.WfInHeap.wf_cond hwf_guard' hwf_then' hwf_else'
   | step_rename =>
     -- e1 = .letin (.var (.free y)) e, e2 = e.subst (openVar y)
     rename_i y e_body
@@ -547,81 +513,62 @@ theorem eval_implies_progressive
       apply IsProgressive.step
       exact Step.step_ctx_unpack hstep
   | eval_cond hpred eval_e1 h_nonstuck h_true h_false ih =>
-    -- e = .cond e_guard e2 e3
-    rename_i m0 Q1 e2 e3
+    -- e = .cond x e2 e3 where x : Var
+    -- Rename all 9 unnamed variables:
+    -- C✝, x✝(guard), e2✝, Q✝, e3✝, m✝(memory), Q1✝, h_true_ih✝, h_false_ih✝
+    rename_i _ x_guard _ _ _ m_eval _ _ _
     cases ih with
     | done hans =>
       have hQ := eval_ans_holds_post eval_e1 hans
       have hres := h_nonstuck hQ
-      have hans_copy := hans
-      cases hans with
-      | is_val hv =>
-        cases hv with
-        | btrue =>
-          apply IsProgressive.step
-          exact Step.step_cond_true
-        | bfalse =>
-          apply IsProgressive.step
-          exact Step.step_cond_false
-        | _ =>
-          cases hres <;> simp [resolve] at *
-      | is_var =>
-        -- Guard is a variable; use the evaluation proof to extract it
-        cases eval_e1 with
-        | eval_var hQ_guard =>
-          rename_i x
-          cases hres with
-          | inl hbtrue =>
-            cases x with
-            | bound bx => cases bx
-            | free fx =>
-              cases hcell : m0.heap fx with
-              | none =>
-                simp [resolve, hcell] at hbtrue
-              | some cell =>
-                cases cell with
-                | val hv =>
-                  cases hv with
-                  | mk unwrap hsimple reach =>
-                    have hunwrap : unwrap = .btrue := by
-                      simpa [resolve, hcell] using hbtrue
-                    cases hunwrap
-                    apply IsProgressive.step
-                    refine Step.step_cond_var_true (hv := hsimple) (R := reach) (by
-                      simp [Memory.lookup, hcell])
-                | capability =>
-                  simp [resolve, hcell] at hbtrue
-                | masked =>
-                  simp [resolve, hcell] at hbtrue
-          | inr hbfalse =>
-            cases x with
-            | bound bx => cases bx
-            | free fx =>
-              cases hcell : m0.heap fx with
-              | none =>
-                simp [resolve, hcell] at hbfalse
-              | some cell =>
-                cases cell with
-                | val hv =>
-                  cases hv with
-                  | mk unwrap hsimple reach =>
-                    have hunwrap : unwrap = .bfalse := by
-                      simpa [resolve, hcell] using hbfalse
-                    cases hunwrap
-                    apply IsProgressive.step
-                    refine Step.step_cond_var_false (hv := hsimple) (R := reach) (by
-                      simp [Memory.lookup, hcell])
-                | capability =>
-                  simp [resolve, hcell] at hbfalse
-                | masked =>
-                  simp [resolve, hcell] at hbfalse
-        | eval_val hv _ =>
-          -- Impossible: variables are not values
-          cases hv
+      -- Guard is a variable; case on it (must be .free since we're in empty sig)
+      cases x_guard with
+      | bound bx =>
+        -- Impossible: we're in empty signature, no bound variables
+        cases bx
+      | free fx =>
+        cases hres with
+        | inl hbtrue =>
+          cases hcell : m_eval.heap fx with
+          | none =>
+            simp [resolve, hcell] at hbtrue
+          | some cell =>
+            cases cell with
+            | val hv =>
+              cases hv with
+              | mk unwrap hsimple reach =>
+                have hunwrap : unwrap = .btrue := by
+                  simpa [resolve, hcell] using hbtrue
+                cases hunwrap
+                apply IsProgressive.step
+                refine Step.step_cond_var_true (hv := hsimple) (R := reach) (by
+                  simp [Memory.lookup, hcell])
+            | capability =>
+              simp [resolve, hcell] at hbtrue
+            | masked =>
+              simp [resolve, hcell] at hbtrue
+        | inr hbfalse =>
+          cases hcell : m_eval.heap fx with
+          | none =>
+            simp [resolve, hcell] at hbfalse
+          | some cell =>
+            cases cell with
+            | val hv =>
+              cases hv with
+              | mk unwrap hsimple reach =>
+                have hunwrap : unwrap = .bfalse := by
+                  simpa [resolve, hcell] using hbfalse
+                cases hunwrap
+                apply IsProgressive.step
+                refine Step.step_cond_var_false (hv := hsimple) (R := reach) (by
+                  simp [Memory.lookup, hcell])
+            | capability =>
+              simp [resolve, hcell] at hbfalse
+            | masked =>
+              simp [resolve, hcell] at hbfalse
     | step hstep =>
-      -- Guard can step, so cond steps in context
-      apply IsProgressive.step
-      exact Step.step_ctx_cond hstep
+      -- Guard is a variable, so it cannot step - contradiction
+      exact absurd hstep step_var_absurd
 
 theorem step_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -791,49 +738,31 @@ theorem step_preserves_eval
           -- Apply h_pack with reflexive subsumption
           exact h_pack (by apply Memory.subsumes_refl) hwf_x hwf_cs hQ1
   | eval_cond hpred heval_e1 h_nonstuck h_true h_false ih =>
-    -- e = .cond e1 e2 e3
-    rename_i m_guard e1 e2 e3
+    -- e = .cond x e2 e3 where x is a Var
+    -- Since the guard is now a variable, it can only step via
+    -- step_cond_var_true or step_cond_var_false
+    rename_i m_guard x e2 e3
     cases hstep with
-    | step_cond_true =>
-      -- Guard is true, use h_true
-      have hQ1 := eval_ans_holds_post heval_e1 (Exp.IsAns.is_val Exp.IsVal.btrue)
-      exact h_true (Memory.subsumes_refl m_guard) hQ1 (by simp [resolve])
-    | step_cond_false =>
-      -- Guard is false, use h_false
-      have hQ1 := eval_ans_holds_post heval_e1 (Exp.IsAns.is_val Exp.IsVal.bfalse)
-      exact h_false (Memory.subsumes_refl m_guard) hQ1 (by simp [resolve])
     | step_cond_var_true hlookup =>
-      -- The guard evaluates to a variable, but non-stuckness says it must be boolean
+      -- The guard variable points to true
       have hQ1 := eval_ans_holds_post heval_e1 Exp.IsAns.is_var
-      rename_i x hv R
-      have hheap : m_guard.heap x =
+      rename_i fx hv R
+      have hheap : m_guard.heap fx =
           some (Cell.val { unwrap := .btrue, isVal := hv, reachability := R }) := by
         simpa [Memory.lookup] using hlookup
-      have hres : resolve m_guard.heap (.var (.free x)) = some .btrue := by
+      have hres : resolve m_guard.heap (.var (.free fx)) = some .btrue := by
         simp [resolve, hheap]
       exact h_true (Memory.subsumes_refl m_guard) hQ1 hres
     | step_cond_var_false hlookup =>
+      -- The guard variable points to false
       have hQ1 := eval_ans_holds_post heval_e1 Exp.IsAns.is_var
-      rename_i x hv R
-      have hheap : m_guard.heap x =
+      rename_i fx hv R
+      have hheap : m_guard.heap fx =
           some (Cell.val { unwrap := .bfalse, isVal := hv, reachability := R }) := by
         simpa [Memory.lookup] using hlookup
-      have hres : resolve m_guard.heap (.var (.free x)) = some .bfalse := by
+      have hres : resolve m_guard.heap (.var (.free fx)) = some .bfalse := by
         simp [resolve, hheap]
       exact h_false (Memory.subsumes_refl m_guard) hQ1 hres
-    | step_ctx_cond hstep_e1 =>
-      -- Guard steps; rebuild eval_cond with updated evaluation
-      have heval_e1' := ih hstep_e1
-      have hsub := step_memory_monotonic hstep_e1
-      apply Eval.eval_cond hpred heval_e1'
-      · intro m1 v hQ1
-        exact h_nonstuck hQ1
-      · intro m1 v hsub1 hQ_true hres
-        have hsub_full := Memory.subsumes_trans hsub1 hsub
-        exact h_true hsub_full hQ_true hres
-      · intro m1 v hsub1 hQ_false hres
-        have hsub_full := Memory.subsumes_trans hsub1 hsub
-        exact h_false hsub_full hQ_false hres
 
 theorem reduce_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -1122,8 +1051,11 @@ theorem Exp.wf_masked
     apply Exp.WfInHeap.wf_btrue
   | wf_bfalse =>
     apply Exp.WfInHeap.wf_bfalse
-  | wf_cond _ _ _ ih1 ih2 ih3 =>
-    apply Exp.WfInHeap.wf_cond <;> assumption
+  | wf_cond hwf_x _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_cond
+    · exact Var.wf_masked hwf_x
+    · exact ih1
+    · exact ih2
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
@@ -1318,10 +1250,6 @@ theorem step_masked
   | step_capply hlookup =>
     apply Step.step_capply
     exact masked_lookup_val hlookup
-  | step_cond_true =>
-    apply Step.step_cond_true
-  | step_cond_false =>
-    apply Step.step_cond_false
   | step_cond_var_true hlookup =>
     apply Step.step_cond_var_true
     exact masked_lookup_val hlookup
@@ -1333,9 +1261,6 @@ theorem step_masked
     exact ih
   | step_ctx_unpack hstep' ih =>
     apply Step.step_ctx_unpack
-    exact ih
-  | step_ctx_cond hstep' ih =>
-    apply Step.step_ctx_cond
     exact ih
   | step_rename =>
     apply Step.step_rename
