@@ -12,6 +12,8 @@ import Semantic.CC.Denotation
 
 import Semantic.CC.Fundamental
 
+import Semantic.CC.Safety
+
 /-!
 # Semantic Type Soundness for Capture Calculus
 
@@ -30,7 +32,9 @@ This module defines the denotation function turning types into these predicates,
 properties on these denotations.
 Semantic typing is then defined based on these type denotations.
 
-Finally, `Semantic.CC.Fundamental` establishes semantic type soundness of Capture Calculus.
+Finally, `Semantic.CC.Fundamental` and `Semantic.CC.Safety` establishes
+semantic type soundness of Capture Calculus.
 It proves the fundamental theorem: syntactic typing (which is defined in `Semantic.CC.TypeSystem`)
 implies semantic typing.
+Then, it proves safety: well-typed programs are always progressive.
 -/
