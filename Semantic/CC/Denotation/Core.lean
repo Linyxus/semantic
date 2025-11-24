@@ -42,8 +42,12 @@ def Denot.is_transparent (d : Denot) : Prop :=
     d m v.unwrap ->
     d m (.var (.free x))
 
+def Denot.is_bool_independent (d : Denot) : Prop :=
+  ∀ {m : Memory},
+    d m .btrue <-> d m .bfalse
+
 def Denot.is_proper (d : Denot) : Prop :=
-  d.is_monotonic ∧ d.is_transparent
+  d.is_monotonic ∧ d.is_transparent ∧ d.is_bool_independent
 
 /-- For simple values, compute_reachability equals resolve_reachability. -/
 theorem compute_reachability_eq_resolve_reachability
