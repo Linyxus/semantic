@@ -741,7 +741,7 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
 
 theorem cap_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env .cap A store (.var x)) :
-  ∃ fx, x = .free fx ∧ store.heap fx = some .capability ∧ fx ∈ A := by
+  ∃ fx, x = .free fx ∧ store.heap fx = some (.capability .basic) ∧ fx ∈ A := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -774,6 +774,51 @@ theorem unit_val_denot_inv
         simp at hv
         subst hv
         use fx, rfl, isVal, reachability, hres
+      | capability =>
+        simp at hv
+      | masked =>
+        simp at hv
+
+theorem cell_val_denot_inv {A : CapabilitySet}
+  (hv : Ty.shape_val_denot env .cell A store (.var x)) :
+  ∃ fx b0, x = .free fx ∧ store.heap fx = some (.capability (.mcell b0)) ∧ fx ∈ A := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp only [Ty.shape_val_denot, Memory.lookup] at hv
+    obtain ⟨label, b0, heq, hlookup, hmem⟩ := hv
+    have : fx = label := by
+      injection heq with h1
+      rename_i heq_var
+      injection heq_var
+    subst this
+    use fx, b0, rfl, hlookup, hmem
+
+theorem bool_val_denot_inv
+  (hv : Ty.shape_val_denot env .bool A store (.var x)) :
+  ∃ fx, ∃ b : Bool, ∃ hval R,
+    x = .free fx ∧
+    store.heap fx = some (Cell.val ⟨(if b then Exp.btrue else Exp.bfalse), hval, R⟩) := by
+  cases x with
+  | bound bx => cases bx
+  | free fx =>
+    simp [Ty.shape_val_denot, resolve] at hv
+    generalize hres : store.heap fx = res at hv ⊢
+    cases res
+    case none => simp at hv
+    case some cell =>
+      cases cell with
+      | val hval =>
+        simp at hv
+        cases hval with | mk unwrap isVal reachability =>
+        simp at hv
+        cases hv with
+        | inl hl =>
+          subst hl
+          use fx, true, isVal, reachability, rfl, hres
+        | inr hr =>
+          subst hr
+          use fx, false, isVal, reachability, rfl, hres
       | capability =>
         simp at hv
       | masked =>
@@ -1095,6 +1140,9 @@ theorem sem_typ_cond
   -- Monotonicity of Q1
   have hpred : Q1.is_monotonic := Denot.as_mpost_is_monotonic
     (exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.typ (.capt Cb .bool)))
+  -- Bool independence of Q1
+  have hbool : Q1.is_bool_independent := Denot.as_mpost_is_bool_independent
+    (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.typ (.capt Cb .bool)))
   -- Evaluate the guard under base authority
   have hguard_base := ht1 env store hts
   simp [Ty.exi_exp_denot] at hguard_base
@@ -1109,7 +1157,7 @@ theorem sem_typ_cond
     exact CapabilitySet.Subset.trans hA hAB
   have hguard := eval_capability_set_monotonic hguard_base hsubC1
   -- Assemble eval_cond
-  refine Eval.eval_cond (Q1 := Q1) hpred hguard ?h_nonstuck ?h_true ?h_false
+  refine Eval.eval_cond (Q1 := Q1) hpred hbool hguard ?h_nonstuck ?h_true ?h_false
   · -- non-stuck: guard evaluates to a literal boolean
     intro m1 v hQ1
     have hQ1' : Ty.capt_val_denot env (.capt Cb .bool) m1 v := by
@@ -1214,6 +1262,130 @@ theorem sem_typ_bfalse :
         · apply from_TypeEnv_wf_in_heap hts
       · simp [resolve]
 
+theorem sem_typ_read
+  {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
+  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt C .cell)) :
+  (.var (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ (.capt {} .bool) := by
+  intro env store hts
+
+  -- Extract cell denotation from hx
+  have h1 := hx env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+
+  -- Extract the cell structure
+  have ⟨fx, b0, hfx, hlk_cell, hmem_cell⟩ := cell_val_denot_inv h1'.2.2.2
+
+  -- Determine concrete location
+  have : fx = env.lookup_var x := by cases hfx; rfl
+  subst this
+
+  -- Simplify goal
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
+        Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
+
+  -- Apply eval_read with membership proof
+  -- The membership proof: env.lookup_var x ∈ reachability_of_loc store.heap (env.lookup_var x)
+  -- Since store contains a capability at that location, reachability is {env.lookup_var x}
+  have hmem : env.lookup_var x ∈
+    ((CaptureSet.var (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot store := by
+    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
+          reachability_of_loc, hlk_cell]
+    exact CapabilitySet.mem.here
+  apply Eval.eval_read hmem hlk_cell
+
+  -- Show the postcondition holds for the boolean result
+  constructor
+  · -- Prove IsSimpleAns for the boolean
+    apply Exp.IsSimpleAns.is_simple_val
+    cases b0
+    · exact Exp.IsSimpleVal.bfalse
+    · exact Exp.IsSimpleVal.btrue
+  constructor
+  · -- WfInHeap for the boolean
+    cases b0
+    · exact Exp.WfInHeap.wf_bfalse
+    · exact Exp.WfInHeap.wf_btrue
+  constructor
+  · -- Empty capture set is always well-formed
+    simp only [CaptureSet.subst]
+    exact CaptureSet.WfInHeap.wf_empty
+  · -- The result is btrue or bfalse
+    cases b0 <;> simp [resolve]
+
+theorem sem_typ_write
+  {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
+  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt Cx .cell))
+  (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ (.capt {} .bool)) :
+  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
+    Exp.write (.bound x) (.bound y) : .typ (.capt {} .unit) := by
+  intro env store hts
+
+  -- Extract cell denotation from hx
+  have h1 := hx env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+
+  -- Extract the cell structure
+  have ⟨fx, b0, hfx, hlk_cell, hmem_cell⟩ := cell_val_denot_inv h1'.2.2.2
+
+  -- Extract bool denotation from hy
+  have h2 := hy env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h2
+  have h2' := var_exp_denot_inv h2
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h2'
+
+  -- Extract the bool structure
+  have ⟨fy, b, hval, R, hfy, hlk_bool⟩ := bool_val_denot_inv h2'.2.2.2
+
+  -- Determine concrete locations
+  have : fx = env.lookup_var x := by cases hfx; rfl
+  subst this
+  have : fy = env.lookup_var y := by cases hfy; rfl
+  subst this
+
+  -- Simplify goal
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
+        Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
+
+  -- Prove membership: env.lookup_var x is in the denotation of the write's capture set
+  have hmem : env.lookup_var x ∈
+    (((CaptureSet.var (Var.bound x)).union (CaptureSet.var (Var.bound y))).subst
+      (Subst.from_TypeEnv env)).ground_denot store := by
+    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
+          reachability_of_loc, hlk_cell]
+    apply CapabilitySet.mem.left
+    exact CapabilitySet.mem.here
+
+  -- Apply eval_write based on the boolean value
+  cases b
+  · -- b = false
+    apply Eval.eval_write_false hmem (hx := hlk_cell) hlk_bool
+    -- Show the postcondition holds for unit
+    constructor
+    · apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.unit
+    constructor
+    · exact Exp.WfInHeap.wf_unit
+    constructor
+    · simp only [CaptureSet.subst]
+      exact CaptureSet.WfInHeap.wf_empty
+    · simp [resolve]
+  · -- b = true
+    apply Eval.eval_write_true hmem (hx := hlk_cell) hlk_bool
+    -- Show the postcondition holds for unit
+    constructor
+    · apply Exp.IsSimpleAns.is_simple_val
+      apply Exp.IsSimpleVal.unit
+    constructor
+    · exact Exp.WfInHeap.wf_unit
+    constructor
+    · simp only [CaptureSet.subst]
+      exact CaptureSet.WfInHeap.wf_empty
+    · simp [resolve]
+
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -1233,6 +1405,10 @@ theorem sem_typ_letin
     simp [Denot.as_mpost] at hQ ⊢
     have henv_mono := typed_env_is_monotonic hts
     exact capt_val_denot_is_monotonic henv_mono T hsub hQ
+  case hbool =>
+    -- Show (Ty.capt_val_denot env T).as_mpost is bool independent
+    apply Denot.as_mpost_is_bool_independent
+    exact capt_val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
   case a =>
     -- Show Eval ... store (e1.subst ...) (Ty.capt_val_denot env T).as_mpost
     have h1 := ht1 env store hts
@@ -2300,6 +2476,10 @@ theorem sem_typ_unpack
     simp [Denot.as_mpost] at hQ ⊢
     have henv_mono := typed_env_is_monotonic hts
     exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ
+  case hbool =>
+    -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is bool independent
+    apply Denot.as_mpost_is_bool_independent
+    exact exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T)
   case a =>
     -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env (.exi T)).as_mpost
     have ht' := ht env store hts
@@ -2538,6 +2718,28 @@ theorem fundamental
         (HasType.use_set_is_closed ht_syn)
         (ht_ih ht_closed)
         (hu_ih hu_closed)
+  case read =>
+    rename_i hx_syn hx_ih
+    -- From closedness of (read x), extract that x is closed
+    cases hclosed_e with
+    | read hx_closed =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      -- Apply IH to get semantic typing for the variable
+      exact sem_typ_read
+        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  case write =>
+    rename_i hx_syn hy_syn hx_ih hy_ih
+    -- From closedness of (write x y), extract that x and y are closed
+    cases hclosed_e with
+    | write hx_closed hy_closed =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      cases hy_closed
+      -- Apply IHs to get semantic typing for the variables
+      exact sem_typ_write
+        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+        (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
   case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
     -- Get closedness of C1 from the syntactic typing derivation
     have hclosed_C1 := HasType.use_set_is_closed ht_syn

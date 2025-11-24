@@ -16,7 +16,7 @@ inductive TySort : Type where
 /-- existential types -/
 | exi : TySort
 
-/-- A capture bound, either unbound or bounded by a capture set. 
+/-- A capture bound, either unbound or bounded by a capture set.
   It bounds capture set parameters. -/
 inductive CaptureBound : Sig -> Type where
 | unbound : CaptureBound s
@@ -33,6 +33,7 @@ inductive Ty : TySort -> Sig -> Type where
 | unit : Ty .shape s
 | cap : Ty .shape s
 | bool : Ty .shape s
+| cell : Ty .shape s
 -- capturing types
 | capt : CaptureSet s -> Ty .shape s -> Ty .capt s
 -- existential types
@@ -67,6 +68,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .unit, _ => .unit
 | .cap, _ => .cap
 | .bool, _ => .bool
+| .cell, _ => .cell
 | .capt cs T, f => .capt (cs.rename f) (T.rename f)
 | .exi T, f => .exi (T.rename (f.lift))
 | .typ T, f => .typ (T.rename f)
@@ -82,6 +84,7 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case unit => rfl
   case cap => rfl
   case bool => rfl
+  case cell => rfl
   case capt ih2 =>
     simp [Ty.rename, ih2, CaptureSet.rename_id]
   case exi ih => simp [Ty.rename, Rename.lift_id, ih]
@@ -99,6 +102,7 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   case unit => rfl
   case cap => rfl
   case bool => rfl
+  case cell => rfl
   case capt ih => simp [Ty.rename, CaptureSet.rename_comp, ih]
   case exi ih => simp [Ty.rename, Rename.lift_comp, ih]
   case typ ih => simp [Ty.rename, ih]
@@ -128,6 +132,7 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | unit : Ty.IsClosed .unit
 | cap : Ty.IsClosed .cap
 | bool : Ty.IsClosed .bool
+| cell : Ty.IsClosed .cell
 -- capturing types
 | capt : CaptureSet.IsClosed cs -> Ty.IsClosed S -> Ty.IsClosed (.capt cs S)
 -- existential types

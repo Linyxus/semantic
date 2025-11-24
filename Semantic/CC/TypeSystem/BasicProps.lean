@@ -137,6 +137,7 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
   case unit => exact IsClosed.unit
   case cap => exact IsClosed.cap
   case bool => exact IsClosed.bool
+  case cell => exact IsClosed.cell
   case capt C S ihC ihS =>
     cases h with | capt hC hS =>
     exact IsClosed.capt (CaptureSet.rename_closed hC) (ihS hS)
@@ -171,6 +172,7 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
   case unit => exact IsClosed.unit
   case cap => exact IsClosed.cap
   case bool => exact IsClosed.bool
+  case cell => exact IsClosed.cell
   case capt C S ihC ihS =>
     simp [Ty.rename] at h
     cases h; rename_i hC hS
@@ -205,6 +207,8 @@ theorem HasType.use_set_is_closed
     exact CaptureSet.IsClosed.union ih_x ih_y
   case invoke ih_x ih_y =>
     exact CaptureSet.IsClosed.union ih_x ih_y
+  case write ih_x ih_y =>
+    exact CaptureSet.IsClosed.union ih_x ih_y
   case cond ih1 ih2 ih3 =>
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
 
@@ -213,6 +217,21 @@ theorem HasType.exp_is_closed
   e.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [Exp.IsClosed])
   case var => constructor; constructor
+  case read ih_x =>
+    -- ih_x : (.var x).IsClosed, need to extract x.IsClosed
+    cases ih_x with
+    | var hx_closed =>
+      constructor
+      exact hx_closed
+  case write ih_x ih_y =>
+    -- Need to extract variable closedness from both IHs
+    cases ih_x with
+    | var hx_closed =>
+      cases ih_y with
+      | var hy_closed =>
+        constructor
+        · exact hx_closed
+        · exact hy_closed
   case cond ih_var ih2 ih3 =>
     -- ih_var : (.var x).IsClosed, need to extract x.IsClosed
     cases ih_var with
@@ -338,6 +357,18 @@ theorem HasType.type_is_closed
     -- hT : (T✝.subst (Subst.openCVar C✝)).IsClosed
     -- Apply Ty.subst_closed_inv to get T✝.IsClosed
     exact Ty.subst_closed_inv hT
+  case read ih_x =>
+    -- Goal: (Ty.capt ∅ Ty.bool).typ.IsClosed
+    constructor
+    constructor
+    · constructor
+    · constructor
+  case write ih_x ih_y =>
+    -- Goal: (Ty.capt ∅ Ty.unit).typ.IsClosed
+    constructor
+    constructor
+    · constructor
+    · constructor
   case app ht_x ht_y ih_x ih_y =>
     -- Goal: (T2✝.subst (Subst.openVar y✝)).IsClosed
     -- After rename_i, variables get renamed in order: s✝ x✝ Γ✝ T1✝ T2✝ y✝
