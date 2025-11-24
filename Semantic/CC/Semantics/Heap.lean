@@ -145,12 +145,35 @@ def Heap.extend (h : Heap) (l : Nat) (v : HeapVal) : Heap :=
 def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
   fun l' => if l' = l then some (.capability .basic) else h l'
 
+/-- Auxiliary relation: one cell subsumes another.
+    For mutable cells, the boolean value is irrelevant. -/
+def Cell.subsumes : Cell -> Cell -> Prop
+| .capability (.mcell _), .capability (.mcell _) => True
+| c1, c2 => c1 = c2
+
+theorem Cell.subsumes_refl (c : Cell) : c.subsumes c := by
+  cases c <;> simp [Cell.subsumes]
+  case capability info =>
+    cases info <;> simp
+
+theorem Cell.subsumes_trans {c1 c2 c3 : Cell}
+  (h12 : c1.subsumes c2) (h23 : c2.subsumes c3) : c1.subsumes c3 := by
+  cases c1 <;> cases c2 <;> cases c3 <;> simp [Cell.subsumes] at h12 h23 ⊢
+  all_goals try (subst h12; subst h23; rfl)
+  case capability.capability.capability info1 info2 info3 =>
+    cases info1 <;> cases info2 <;> cases info3 <;> simp at h12 h23 ⊢
+
 def Heap.subsumes (big small : Heap) : Prop :=
-  ∀ l v, small l = some v -> big l = some v
+  ∀ l v, small l = some v -> ∃ v', big l = some v' ∧ v'.subsumes v
 
 theorem Heap.subsumes_refl (h : Heap) : h.subsumes h := by
   intros l v hlookup
-  exact hlookup
+  exists v
+  constructor
+  · exact hlookup
+  · cases v <;> simp [Cell.subsumes]
+    case capability info =>
+      cases info <;> simp
 
 /-- Heap predicate. -/
 def Hprop := Heap -> Prop
@@ -179,9 +202,12 @@ def Heap.subsumes_trans {h1 h2 h3 : Heap}
   (h23 : h2.subsumes h3) :
   h1.subsumes h3 := by
   intros l v hlookup
-  apply h12 l v
-  apply h23 l v
-  exact hlookup
+  obtain ⟨v2, hv2, hsub23⟩ := h23 l v hlookup
+  obtain ⟨v1, hv1, hsub12⟩ := h12 l v2 hv2
+  exists v1
+  constructor
+  · exact hv1
+  · exact Cell.subsumes_trans hsub12 hsub23
 
 theorem Heap.extend_lookup_eq
   (h : Heap) (l : Nat) (v : HeapVal) :
@@ -198,7 +224,9 @@ theorem Heap.extend_subsumes {H : Heap} {l : Nat}
     rw [heq] at hlookup
     rw [hfresh] at hlookup
     contradiction
-  next => exact hlookup
+  next =>
+    exists v'
+    exact ⟨hlookup, Cell.subsumes_refl v'⟩
 
 inductive CaptureSet.WfInHeap : CaptureSet s -> Heap -> Prop where
 | wf_empty :
@@ -446,8 +474,9 @@ theorem Var.wf_monotonic
   cases hwf with
   | wf_bound => apply Var.WfInHeap.wf_bound
   | wf_free hex =>
+    obtain ⟨v', hv', _⟩ := hsub _ _ hex
     apply Var.WfInHeap.wf_free
-    apply hsub _ _ hex
+    exact hv'
 
 theorem CaptureSet.wf_monotonic
   {h1 h2 : Heap}
@@ -461,8 +490,9 @@ theorem CaptureSet.wf_monotonic
     · exact ih1 hsub
     · exact ih2 hsub
   | wf_var_free hex =>
+    obtain ⟨v', hv', _⟩ := hsub _ _ hex
     apply CaptureSet.WfInHeap.wf_var_free
-    apply hsub _ _ hex
+    exact hv'
   | wf_var_bound => apply CaptureSet.WfInHeap.wf_var_bound
   | wf_cvar => apply CaptureSet.WfInHeap.wf_cvar
 
@@ -717,11 +747,12 @@ theorem resolve_monotonic {H1 H2 : Heap}
           simp at hres
           -- hres now says: heapval.unwrap = v
           -- Need to show resolve m2.heap (.var (.free fx)) = some v
-          -- We know hsub : H2.subsumes H1, so H2 fx = H1 fx
-          have hfx2 : H2 fx = some (.val heapval) := by
-            -- Use subsumption
-            exact hsub fx (.val heapval) hfx
-          simp [hfx2, hres]
+          -- We know hsub : H2.subsumes H1
+          obtain ⟨v', hv', hsub_v⟩ := hsub fx (.val heapval) hfx
+          -- For val cells, subsumes requires equality
+          simp [Cell.subsumes] at hsub_v
+          subst hsub_v
+          simp [hv', hres]
         case capability =>
           -- resolve yields none on capabilities; contradiction with hres
           simp at hres
@@ -740,8 +771,13 @@ theorem reachability_of_loc_monotonic
   (l : Nat)
   (hex : h1 l = some v) :
   reachability_of_loc h2 l = reachability_of_loc h1 l := by
-  have h2_eq : h2 l = some v := hsub l v hex
+  obtain ⟨v', h2_eq, hsub_v⟩ := hsub l v hex
   simp only [reachability_of_loc, hex, h2_eq]
+  -- Need to show that subsumes preserves the capability structure
+  cases v <;> cases v' <;> simp [Cell.subsumes] at hsub_v
+  all_goals try (subst hsub_v; rfl)
+  -- For capability and masked cells, both sides return {l}
+  all_goals rfl
 
 /-- Expanding a capture set in a bigger heap yields the same result.
 Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
@@ -1623,7 +1659,9 @@ theorem Heap.extend_cap_subsumes {H : Heap} {l : Nat}
     subst heq
     rw [hfresh] at hlookup
     contradiction
-  case isFalse => exact hlookup
+  case isFalse =>
+    exists v'
+    exact ⟨hlookup, Cell.subsumes_refl v'⟩
 
 /-- Extend memory with a capability cell. -/
 def extend_cap (m : Memory) (l : Nat)
@@ -1724,7 +1762,9 @@ theorem extend_cap_subsumes (m : Memory) (l : Nat)
     rw [heq] at hlookup
     rw [hfresh] at hlookup
     contradiction
-  case isFalse => exact hlookup
+  case isFalse =>
+    exists v'
+    exact ⟨hlookup, Cell.subsumes_refl v'⟩
 
 /-- Well-formedness is preserved under memory subsumption. -/
 theorem wf_monotonic {e : Exp {}} {m1 m2 : Memory}
