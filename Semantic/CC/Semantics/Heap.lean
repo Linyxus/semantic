@@ -143,7 +143,7 @@ def Heap.extend (h : Heap) (l : Nat) (v : HeapVal) : Heap :=
   fun l' => if l' = l then some (.val v) else h l'
 
 def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
-  fun l' => if l' = l then some .capability else h l'
+  fun l' => if l' = l then some (.capability .basic) else h l'
 
 def Heap.subsumes (big small : Heap) : Prop :=
   ∀ l v, small l = some v -> big l = some v
@@ -646,7 +646,7 @@ def reachability_of_loc
   (l : Nat) :
   CapabilitySet :=
   match h l with
-  | some .capability => {l}
+  | some (.capability _) => {l}
   | some (.val ⟨_, _, R⟩) => R
   | some .masked => {l}
   | none => {}
@@ -741,8 +741,7 @@ theorem reachability_of_loc_monotonic
   (hex : h1 l = some v) :
   reachability_of_loc h2 l = reachability_of_loc h1 l := by
   have h2_eq : h2 l = some v := hsub l v hex
-  simp only [reachability_of_loc] at hex h2_eq ⊢
-  rw [hex, h2_eq]
+  simp only [reachability_of_loc, hex, h2_eq]
 
 /-- Expanding a capture set in a bigger heap yields the same result.
 Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
@@ -1786,14 +1785,14 @@ theorem Memory.exists_fresh (m : Memory) :
 /-- A heap has a capability domain if all capabilities on this heap
     lives in the given domain. -/
 def Heap.HasCapDom (H : Heap) (d : Finset Nat) : Prop :=
-  ∀ l, H l = some .capability <-> l ∈ d
+  ∀ l, (∃ info, H l = some (.capability info)) <-> l ∈ d
 
 /-- Masks capabilities in the heap outside of the given domain. -/
 def Heap.mask_caps (H : Heap) (d : Finset Nat) : Heap :=
   fun l =>
     match H l with
-    | some .capability =>
-      if l ∈ d then some .capability else some .masked
+    | some (.capability info) =>
+      if l ∈ d then some (.capability info) else some .masked
     | some v => some v
     | none => none
 
