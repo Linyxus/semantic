@@ -21,6 +21,8 @@ inductive Exp : Sig -> Type where
 | unit : Exp s
 | btrue : Exp s
 | bfalse : Exp s
+| read : Var .var s -> Exp s
+| write : Var .var s -> Var .var s -> Exp s
 | cond : Var .var s -> Exp s -> Exp s -> Exp s
 
 /-- Applies a renaming to all bound variables in an expression. -/
