@@ -29,13 +29,16 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   m.lookup x = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.cond (.free x) e1 e2) m e2
 | step_read :
+  x ∈ C ->
   m.lookup x = some (.capability (.mcell b)) ->
   Step C m (.read (.free x)) m (if b then .btrue else .bfalse)
 | step_write_true :
+  x ∈ C ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
   Step C m (.write (.free x) (.free y)) (m.update_mcell x true ⟨b0, hx⟩) .unit
 | step_write_false :
+  x ∈ C ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.write (.free x) (.free y)) (m.update_mcell x false ⟨b0, hx⟩) .unit
