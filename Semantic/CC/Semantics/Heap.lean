@@ -121,10 +121,15 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
   | .btrue, .btrue => .btrue
   | .bfalse, .bfalse => .bfalse
 
--- A heap cell can either be a value or a capability
+/-- Underlying info of a capability. -/
+inductive CapabilityInfo : Type where
+| basic : CapabilityInfo
+| mcell : Bool -> CapabilityInfo
+
+/-- A heap cell. -/
 inductive Cell : Type where
 | val : HeapVal -> Cell
-| capability : Cell
+| capability : CapabilityInfo -> Cell
 | masked : Cell
 
 -- A heap is a function from locations to cells
