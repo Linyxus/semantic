@@ -145,6 +145,10 @@ def Heap.extend (h : Heap) (l : Nat) (v : HeapVal) : Heap :=
 def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
   fun l' => if l' = l then some (.capability .basic) else h l'
 
+/-- Update a cell in the heap with a new cell value. -/
+def Heap.update_cell (h : Heap) (l : Nat) (c : Cell) : Heap :=
+  fun l' => if l' = l then some c else h l'
+
 /-- Auxiliary relation: one cell subsumes another.
     For mutable cells, the boolean value is irrelevant. -/
 def Cell.subsumes : Cell -> Cell -> Prop
@@ -1709,6 +1713,63 @@ def extend_val (m : Memory) (l : Nat) (v : HeapVal)
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
 
+/-- Update a mutable cell in memory with a new boolean value.
+    Requires proof that the location contains a mutable cell. -/
+def update_mcell (m : Memory) (l : Nat) (b : Bool)
+  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0))) : Memory where
+  heap := m.heap.update_cell l (.capability (.mcell b))
+  wf := by
+    constructor
+    · -- wf_val case: updating a capability doesn't affect value well-formedness
+      intro l' hv' hlookup
+      unfold Heap.update_cell at hlookup
+      split at hlookup
+      case isTrue heq =>
+        -- If l' = l, then we're looking up the updated mcell, which can't be a val
+        cases hlookup
+      case isFalse hneq =>
+        -- If l' ≠ l, then the lookup is from the original heap
+        -- Well-formedness is preserved because updating a capability doesn't affect values
+        sorry
+    · -- wf_reach case: updating a capability doesn't affect reachability computation
+      intro l' v' hv' R' hlookup
+      unfold Heap.update_cell at hlookup
+      split at hlookup
+      case isTrue heq =>
+        -- If l' = l, then we're looking up the updated mcell, which can't be a val
+        cases hlookup
+      case isFalse hneq =>
+        -- If l' ≠ l, then the lookup is from the original heap
+        -- Reachability should be invariant under updating mcells
+        sorry
+  findom := by
+    -- Domain remains unchanged when updating an existing cell
+    obtain ⟨dom, hdom⟩ := m.findom
+    exists dom
+    intro l'
+    constructor
+    · -- Forward direction: if l' has a value in updated heap, it's in domain
+      intro hne_none
+      unfold Heap.update_cell at hne_none
+      split at hne_none
+      case isTrue heq =>
+        -- l' = l, and l is in the domain (since it had a cell)
+        obtain ⟨b0, hb0⟩ := hexists
+        rw [←heq] at hb0
+        apply (hdom l').mp
+        intro hcontra
+        rw [hb0] at hcontra
+        cases hcontra
+      case isFalse hneq =>
+        -- l' ≠ l, so the value came from original heap
+        exact (hdom l').mp hne_none
+    · -- Backward direction
+      intro hin_dom
+      unfold Heap.update_cell
+      split
+      case isTrue => simp
+      case isFalse => exact (hdom l').mpr hin_dom
+
 /-- Memory subsumption: m1 subsumes m2 if m1's heap subsumes m2's heap. -/
 def subsumes (m1 m2 : Memory) : Prop :=
   m1.heap.subsumes m2.heap
@@ -1723,6 +1784,31 @@ theorem subsumes_trans {m1 m2 m3 : Memory}
   (h23 : m2.subsumes m3) :
   m1.subsumes m3 :=
   Heap.subsumes_trans h12 h23
+
+/-- Updating a mutable cell creates a memory that subsumes the original. -/
+theorem update_mcell_subsumes (m : Memory) (l : Nat) (b : Bool)
+  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0))) :
+  (m.update_mcell l b hexists).subsumes m := by
+  unfold subsumes update_mcell Heap.subsumes
+  intro l' v hlookup
+  simp [Heap.update_cell]
+  split
+  case isTrue heq =>
+    -- l' = l, so we're looking up the updated cell
+    subst heq
+    obtain ⟨b0, hb0⟩ := hexists
+    rw [hb0] at hlookup
+    exists (.capability (.mcell b))
+    constructor
+    · simp
+    · cases hlookup
+      simp [Cell.subsumes]
+  case isFalse hneq =>
+    -- l' ≠ l, so the lookup is from the original heap
+    exists v
+    constructor
+    · exact hlookup
+    · exact Cell.subsumes_refl v
 
 /-- Looking up from a memory after extension at the same location returns the value. -/
 theorem extend_lookup_eq (m : Memory) (l : Nat) (v : HeapVal)

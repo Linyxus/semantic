@@ -72,14 +72,14 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Q (if b then .btrue else .bfalse) m ->
   Eval C m (.read (.free x)) Q
 | eval_write_true {m : Memory} {x y : Nat} :
-  m.lookup x = some (.capability (.mcell _)) ->
+  (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
-  Q .unit m ->
+  Q .unit (m.update_mcell x true ⟨b0, hx⟩) ->
   Eval C m (.write (.free x) (.free y)) Q
 | eval_write_false {m : Memory} {x y : Nat} :
-  m.lookup x = some (.capability (.mcell _)) ->
+  (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
-  Q .unit m ->
+  Q .unit (m.update_mcell x false ⟨b0, hx⟩) ->
   Eval C m (.write (.free x) (.free y)) Q
 | eval_cond {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
@@ -368,11 +368,11 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_write_true hx hy hQ =>
     apply Eval.eval_write_true hx hy
     apply himp _ _ _ hQ
-    apply Memory.subsumes_refl
+    apply Memory.update_mcell_subsumes
   case eval_write_false hx hy hQ =>
     apply Eval.eval_write_false hx hy
     apply himp _ _ _ hQ
-    apply Memory.subsumes_refl
+    apply Memory.update_mcell_subsumes
   case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
     -- Strengthen the induction hypothesis for the guard evaluation
     have eval_e1' := ih_guard (Q2:=Q1) (by intro _ _ _ h; exact h)
