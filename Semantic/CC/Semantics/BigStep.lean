@@ -32,6 +32,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m (.capp (.free x) CS) Q
 | eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
+  (hbool : Q1.is_bool_independent) ->
   Eval C m e1 Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
@@ -56,6 +57,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m (.letin e1 e2) Q
 | eval_unpack {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
+  (hbool : Q1.is_bool_independent) ->
   Eval C m e1 Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
@@ -83,6 +85,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m (.write (.free x) (.free y)) Q
 | eval_cond {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
+  (hbool : Q1.is_bool_independent) ->
   Eval C m (.var x) Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
@@ -197,15 +200,13 @@ theorem eval_monotonic {m1 m2 : Memory}
           · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
             apply Subst.wf_openCVar
             exact hwf_cs)
-  case eval_letin Q1 hpred0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
+  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
     -- Apply IH for e1 with well-formedness
-    -- NOTE: We need Q1.is_bool_independent here, but we only have Q_orig.is_bool_independent.
-    -- In general, intermediate postconditions also need to be bool-independent for monotonicity.
-    have eval_e1' := ih hpred0 (sorry : Q1.is_bool_independent) hsub hwf1
-    apply Eval.eval_letin (Q1:=Q1) hpred0 eval_e1'
+    have eval_e1' := ih hpred0 hbool0 hsub hwf1
+    apply Eval.eval_letin (Q1:=Q1) hpred0 hbool0 eval_e1'
     -- Provide the h_nonstuck condition
     case h_nonstuck =>
       intro m1 v hQ_orig
@@ -229,15 +230,13 @@ theorem eval_monotonic {m1 m2 : Memory}
         -- Then apply substitution preservation
         apply Exp.wf_subst hwf2_ext
         apply Subst.wf_openVar hwf_x
-  case eval_unpack Q1 hpred0 eval_e1 h_nonstuck_orig h_val_orig ih ih_val =>
+  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih ih_val =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     -- Apply IH for e1 with well-formedness
-    -- NOTE: We need Q1.is_bool_independent here, but we only have Q_orig.is_bool_independent.
-    -- In general, intermediate postconditions also need to be bool-independent for monotonicity.
-    have eval_e1' := ih hpred0 (sorry : Q1.is_bool_independent) hsub hwf1
-    apply Eval.eval_unpack (Q1:=Q1) hpred0 eval_e1'
+    have eval_e1' := ih hpred0 hbool0 hsub hwf1
+    apply Eval.eval_unpack (Q1:=Q1) hpred0 hbool0 eval_e1'
     -- Provide the h_nonstuck condition
     case h_nonstuck =>
       intro m1 v hQ_orig
@@ -367,15 +366,14 @@ theorem eval_monotonic {m1 m2 : Memory}
         · exact hQ
     case masked =>
       simp [Cell.subsumes] at hsub_x
-  case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
+  case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
+      ih_guard ih_true ih_false =>
     -- Extract well-formedness of the guard and both branches
     have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
     -- Build well-formedness of (.var x) in original heap
     have hwf_var : Exp.WfInHeap (.var _) _ := Exp.WfInHeap.wf_var hwf_x
-    -- NOTE: We need Q1.is_bool_independent here, but we only have Q_orig.is_bool_independent.
-    -- In general, intermediate postconditions also need to be bool-independent for monotonicity.
-    have eval_e1' := ih_guard hpred_guard (sorry : Q1.is_bool_independent) hsub hwf_var
-    apply Eval.eval_cond (Q1:=Q1) hpred_guard eval_e1'
+    have eval_e1' := ih_guard hpred_guard hbool_guard hsub hwf_var
+    apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard eval_e1'
     · intro m_guard v hQ1
       exact h_nonstuck hQ1
     · intro m_branch v hs hQ1 hres
@@ -438,9 +436,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_capply hx _ ih =>
     apply Eval.eval_capply hx
     apply ih himp
-  case eval_letin _ Q0 hpred he1 h_nonstuck h_val h_var ih ih_val ih_var =>
+  case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
-    apply Eval.eval_letin (Q1:=Q0) hpred ih
+    apply Eval.eval_letin (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
       intro m1 v hQ0
       exact h_nonstuck hQ0
@@ -455,9 +453,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_var hs1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
-  case eval_unpack _ Q0 hpred he1 h_nonstuck _ ih ih_val =>
+  case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
-    apply Eval.eval_unpack (Q1:=Q0) hpred ih
+    apply Eval.eval_unpack (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
       intro m1 v hQ0
       exact h_nonstuck hQ0
@@ -478,10 +476,11 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     apply Eval.eval_write_false hx hy
     apply himp _ _ _ hQ
     apply Memory.update_mcell_subsumes
-  case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
+  case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
+      ih_guard ih_true ih_false =>
     -- Strengthen the induction hypothesis for the guard evaluation
     have eval_e1' := ih_guard (Q2:=Q1) (by intro _ _ _ h; exact h)
-    apply Eval.eval_cond (Q1:=Q1) hpred_guard eval_e1'
+    apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard eval_e1'
     case h_nonstuck =>
       intro m1 v hQ0
       exact h_nonstuck hQ0
@@ -521,8 +520,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
   case eval_letin =>
-    rename_i hpred_mono heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var
-    apply Eval.eval_letin hpred_mono (ih_e1 hsub)
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var
+    apply Eval.eval_letin hpred_mono hbool_mono (ih_e1 hsub)
     · intro m1 v hQ
       exact h_nonstuck hQ
     · intro m1 v hs1 hv hwf_v hq1 l' hfresh
@@ -530,8 +529,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     · intro m1 x hs1 hwf_x hq1
       exact ih_var hs1 hwf_x hq1 hsub
   case eval_unpack =>
-    rename_i hpred_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
-    apply Eval.eval_unpack hpred_mono (ih_e1 hsub)
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
+    apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
     · intro m1 v hQ
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
@@ -542,8 +541,9 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     exact Eval.eval_write_true hlookup_x hlookup_y hQ
   case eval_write_false hlookup_x hlookup_y hQ =>
     exact Eval.eval_write_false hlookup_x hlookup_y hQ
-  case eval_cond Q1 hpred_guard heval_e1 h_nonstuck h_true h_false ih_e1 ih_true ih_false =>
-    apply Eval.eval_cond (Q1:=Q1) hpred_guard (ih_e1 hsub)
+  case eval_cond Q1 hpred_guard hbool_guard heval_e1 h_nonstuck h_true h_false
+      ih_e1 ih_true ih_false =>
+    apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard (ih_e1 hsub)
     · intro m1 v hQ
       exact h_nonstuck hQ
     · intro m1 v hs1 hq1 hres
