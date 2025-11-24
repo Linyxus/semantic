@@ -16,7 +16,7 @@ inductive TySort : Type where
 /-- existential types -/
 | exi : TySort
 
-/-- A capture bound, either unbound or bounded by a capture set. 
+/-- A capture bound, either unbound or bounded by a capture set.
   It bounds capture set parameters. -/
 inductive CaptureBound : Sig -> Type where
 | unbound : CaptureBound s
@@ -33,6 +33,7 @@ inductive Ty : TySort -> Sig -> Type where
 | unit : Ty .shape s
 | cap : Ty .shape s
 | bool : Ty .shape s
+| cell : Ty .shape s
 -- capturing types
 | capt : CaptureSet s -> Ty .shape s -> Ty .capt s
 -- existential types
