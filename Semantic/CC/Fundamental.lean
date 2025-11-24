@@ -2561,11 +2561,9 @@ theorem sem_typ_unpack
               constructor  -- unbound is always wf
             · constructor
               · -- Show: cs.ground_denot m1 ⊆ ⟦unbound⟧_[env] m1
-                -- unbound's denotation is the whole memory, so any set is subset
+                -- Unbound denotes the top capability bound, so every set is bounded by it
                 simp [CaptureBound.denot]
-                -- CLAUDE: Goal: cs.ground_denot m1 ⊆ CapabilitySet.any
-                -- CLAUDE: This should be trivially true - CapabilitySet.any is the universal set
-                constructor
+                exact CapabilitySet.BoundedBy.top
               · -- Show: EnvTyping Γ env m1
                 exact env_typing_monotonic hts hs1
 
