@@ -18,7 +18,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m (.app (.free x) y) Q
 | eval_invoke {m : Memory} {x : Nat} :
   x ∈ C ->
-  m.lookup x = some .capability ->
+  m.lookup x = some (.capability .basic) ->
   m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
   Q .unit m ->
   Eval C m (.app (.free x) (.free y)) Q
@@ -67,6 +67,20 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Q1 (.pack cs x) m1 ->
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
+| eval_read {m : Memory} {x : Nat} {b : Bool} :
+  m.lookup x = some (.capability (.mcell b)) ->
+  Q (if b then .btrue else .bfalse) m ->
+  Eval C m (.read (.free x)) Q
+| eval_write_true {m : Memory} {x y : Nat} :
+  m.lookup x = some (.capability (.mcell _)) ->
+  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  Q .unit m ->
+  Eval C m (.write (.free x) (.free y)) Q
+| eval_write_false {m : Memory} {x y : Nat} :
+  m.lookup x = some (.capability (.mcell _)) ->
+  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
+  Q .unit m ->
+  Eval C m (.write (.free x) (.free y)) Q
 | eval_cond {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   Eval C m (.var x) Q1 ->
@@ -102,8 +116,13 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- Extract well-formedness of the application
     cases hwf with
     | wf_app hwf_x hwf_y =>
+      -- Destructure subsumption to get the value in m2
+      obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
+      -- For value cells, subsumption requires equality
+      simp [Cell.subsumes] at hsub_v
+      subst hsub_v
       apply Eval.eval_apply
-      · exact hsub _ _ hx
+      · exact hx2
       · apply ih hpred hsub
         -- Need: Exp.WfInHeap (e.subst (Subst.openVar y)) m1.heap
         -- Use Exp.wf_subst with Subst.wf_openVar
@@ -117,17 +136,31 @@ theorem eval_monotonic {m1 m2 : Memory}
           apply Subst.wf_openVar
           exact hwf_y
   case eval_invoke hmem hx hy hQ =>
+    -- Destructure subsumptions
+    obtain ⟨v'x, hx2, hsub_vx⟩ := hsub _ _ hx
+    obtain ⟨v'y, hy2, hsub_vy⟩ := hsub _ _ hy
+    -- For basic capability cells, subsumption requires equality
+    simp [Cell.subsumes] at hsub_vx
+    subst hsub_vx
+    -- For value cells, subsumption requires equality
+    simp [Cell.subsumes] at hsub_vy
+    subst hsub_vy
     apply Eval.eval_invoke
     · exact hmem
-    · exact hsub _ _ hx
-    · exact hsub _ _ hy
+    · exact hx2
+    · exact hy2
     · apply hpred
       · apply Exp.WfInHeap.wf_unit
       · exact hsub
       · exact hQ
   case eval_tapply hx _ ih =>
+    -- Destructure subsumption to get the value in m2
+    obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
+    -- For value cells, subsumption requires equality
+    simp [Cell.subsumes] at hsub_v
+    subst hsub_v
     apply Eval.eval_tapply
-    · exact hsub _ _ hx
+    · exact hx2
     · apply ih hpred hsub
       -- Need: Exp.WfInHeap (e.subst (Subst.openTVar .top)) m1.heap
       -- Use Exp.wf_subst with Subst.wf_openTVar
@@ -144,8 +177,13 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- Extract well-formedness of the capability application
     cases hwf with
     | wf_capp hwf_x hwf_cs =>
+      -- Destructure subsumption to get the value in m2
+      obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
+      -- For value cells, subsumption requires equality
+      simp [Cell.subsumes] at hsub_v
+      subst hsub_v
       apply Eval.eval_capply
-      · exact hsub _ _ hx
+      · exact hx2
       · apply ih hpred hsub
         -- Need: Exp.WfInHeap (e.subst (Subst.openCVar CS)) m1.heap
         -- Use Exp.wf_subst with Subst.wf_openCVar
@@ -211,6 +249,21 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Exp.wf_subst hwf2_ext
         -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
         apply Subst.wf_unpack hwf_cs hwf_x
+  case eval_read hx hQ =>
+    -- For mutable cells, subsumption allows different boolean values, but
+    -- evaluation depends on the actual value stored. This is a fundamental
+    -- limitation: reads are not monotonic when cell values can change.
+    -- TODO: Either restrict subsumption to preserve cell values, or redesign
+    -- the evaluation semantics to handle this properly.
+    sorry
+  case eval_write_true hx hy hQ =>
+    -- Same issue as eval_read: writes depend on cell state and are not
+    -- monotonic when cell values can change under subsumption.
+    sorry
+  case eval_write_false hx hy hQ =>
+    -- Same issue as eval_read: writes depend on cell state and are not
+    -- monotonic when cell values can change under subsumption.
+    sorry
   case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
     -- Extract well-formedness of the guard and both branches
     have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
@@ -308,6 +361,18 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_val hs1 hwf_x hwf_cs hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
+  case eval_read hx hQ =>
+    apply Eval.eval_read hx
+    apply himp _ _ _ hQ
+    apply Memory.subsumes_refl
+  case eval_write_true hx hy hQ =>
+    apply Eval.eval_write_true hx hy
+    apply himp _ _ _ hQ
+    apply Memory.subsumes_refl
+  case eval_write_false hx hy hQ =>
+    apply Eval.eval_write_false hx hy
+    apply himp _ _ _ hQ
+    apply Memory.subsumes_refl
   case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
     -- Strengthen the induction hypothesis for the guard evaluation
     have eval_e1' := ih_guard (Q2:=Q1) (by intro _ _ _ h; exact h)
@@ -366,6 +431,12 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       exact ih_val hs1 hwf_x hwf_cs hq1 hsub
+  case eval_read hlookup hQ =>
+    exact Eval.eval_read hlookup hQ
+  case eval_write_true hlookup_x hlookup_y hQ =>
+    exact Eval.eval_write_true hlookup_x hlookup_y hQ
+  case eval_write_false hlookup_x hlookup_y hQ =>
+    exact Eval.eval_write_false hlookup_x hlookup_y hQ
   case eval_cond Q1 hpred_guard heval_e1 h_nonstuck h_true h_false ih_e1 ih_true ih_false =>
     apply Eval.eval_cond (Q1:=Q1) hpred_guard (ih_e1 hsub)
     · intro m1 v hQ
