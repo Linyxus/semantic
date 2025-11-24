@@ -82,6 +82,8 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .unit, _ => .unit
 | .btrue, _ => .btrue
 | .bfalse, _ => .bfalse
+| .read x, s => .read (x.subst s)
+| .write x y, s => .write (x.subst s) (y.subst s)
 | .cond x e2 e3, s => .cond (x.subst s) (e2.subst s) (e3.subst s)
 
 /-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
@@ -434,6 +436,8 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
+  | read x => simp [Exp.subst, Var.subst_comp]
+  | write x y => simp [Exp.subst, Var.subst_comp]
   | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst, Var.subst_comp, ih2, ih3]
 
@@ -525,6 +529,10 @@ theorem Exp.subst_id {e : Exp s} :
     rfl
   | btrue => rfl
   | bfalse => rfl
+  | read x =>
+    simp [Exp.subst, Var.subst_id]
+  | write x y =>
+    simp [Exp.subst, Var.subst_id]
   | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst, Var.subst_id, ih2, ih3]
 
@@ -640,6 +648,10 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     rfl
   | bfalse =>
     rfl
+  | read x =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | write x y =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst, Exp.rename, Var.subst_asSubst, ih2, ih3]
 
@@ -951,6 +963,14 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     exact IsClosed.btrue
   | bfalse =>
     exact IsClosed.bfalse
+  | read x =>
+    cases hc with | read hx =>
+    simp [Exp.subst]
+    exact IsClosed.read (Var.is_closed_subst hx hsubst)
+  | write x y =>
+    cases hc with | write hx hy =>
+    simp [Exp.subst]
+    exact IsClosed.write (Var.is_closed_subst hx hsubst) (Var.is_closed_subst hy hsubst)
   | cond x e2 e3 ih2 ih3 =>
     cases hc with | cond hx h2 h3 =>
     simp [Exp.subst]
@@ -1135,6 +1155,14 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
   | bfalse =>
     simp [Exp.subst] at hclosed
     cases hclosed with | bfalse => exact IsClosed.bfalse
+  | read x =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | read hx =>
+    exact IsClosed.read (Var.subst_closed_inv hx)
+  | write x y =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | write hx hy =>
+    exact IsClosed.write (Var.subst_closed_inv hx) (Var.subst_closed_inv hy)
   | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst] at hclosed
     cases hclosed with | cond hx h2 h3 =>
