@@ -303,10 +303,11 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     label ∈ A
 | _, .bool => fun _ m e =>
   resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
-| _, .cell => fun _ m e =>
+| _, .cell => fun R m e =>
   ∃ l b0,
-    resolve m.heap e = some (.var (.free l)) ∧
-    m.lookup l = some (.capability (.mcell b0))
+    e = .var (.free l) ∧
+    m.lookup l = some (.capability (.mcell b0)) ∧
+    l ∈ R
 | env, .arrow T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
   ∃ cs T0 t0,
@@ -1293,6 +1294,15 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
         simp [Ty.shape_val_denot, resolve, hlookup, hb]
       | inr hb =>
         simp [Ty.shape_val_denot, resolve, hlookup, hb]
+  | cell =>
+    intro C m x v hx ht
+    simp only [Ty.shape_val_denot] at ht ⊢
+    obtain ⟨l, b0, heq, hlookup_and_mem⟩ := ht
+    -- v.unwrap = .var (.free l), but v.isVal says it's a simple value
+    -- Variables are not simple values, so this is a contradiction
+    have hval := v.isVal
+    rw [heq] at hval
+    cases hval
   | poly T1 T2 =>
     intro C m x v hx ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1543,8 +1553,15 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | some v =>
           simp [hres] at ht
           have hsub : m2.heap.subsumes m1.heap := hmem
-          have := hsub fx v hres
-          simp [this, ht]
+          obtain ⟨v', hv', hsub_v⟩ := hsub fx v hres
+          -- For value cells, subsumption requires equality
+          cases v with
+          | val val_v =>
+            simp [Cell.subsumes] at hsub_v
+            subst hsub_v
+            simpa [hv'] using ht
+          | capability _ => cases ht
+          | masked => cases ht
       | bound bx => cases bx
     | unit => simp [resolve] at ht ⊢
     | abs _ _ _ => simp [resolve] at ht
@@ -1558,6 +1575,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     | letin _ _ => simp [resolve] at ht
     | btrue => simp [resolve] at ht
     | bfalse => simp [resolve] at ht
+    | read _ => simp [resolve] at ht
+    | write _ _ => simp [resolve] at ht
     | cond _ _ _ => simp [resolve] at ht
   | cap =>
     intro m1 m2 e hmem ht
@@ -1571,9 +1590,12 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       · exact heq
       · constructor
         · have hsub : m2.heap.subsumes m1.heap := hmem
-          have := hsub label .capability hcap
+          obtain ⟨c', hc', hsub_c⟩ := hsub label (Cell.capability .basic) hcap
+          -- For basic capability cells, subsumption requires equality
+          simp [Cell.subsumes] at hsub_c
+          subst hsub_c
           simp [Memory.lookup]
-          exact this
+          exact hc'
         · exact hmemin
   | bool =>
     intro m1 m2 e hmem ht
@@ -1585,6 +1607,27 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     | inr hfalse =>
       right
       exact resolve_monotonic hmem hfalse
+  | cell =>
+    intro m1 m2 e hmem ht
+    simp only [Ty.shape_val_denot] at ht ⊢
+    obtain ⟨l, b0, heq, hlookup, hmem_l⟩ := ht
+    -- m2.lookup l = some (.capability (.mcell ...))
+    have hsub : m2.heap.subsumes m1.heap := hmem
+    simp [Memory.lookup] at hlookup
+    obtain ⟨c', hc', hsub_c⟩ := hsub l (Cell.capability (.mcell b0)) hlookup
+    -- For mcell capability cells, subsumption is always True (mcell subsumes mcell)
+    cases c' with
+    | val v => simp [Cell.subsumes] at hsub_c
+    | masked => simp [Cell.subsumes] at hsub_c
+    | capability info =>
+      cases info with
+      | basic => simp [Cell.subsumes] at hsub_c
+      | mcell b' =>
+        -- Cell.subsumes says mcell-to-mcell is True
+        -- The boolean value b' might differ from b0, which is fine
+        refine ⟨l, b', heq, ?_, hmem_l⟩
+        simp [Memory.lookup]
+        exact hc'
   | arrow T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1602,8 +1645,11 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
             split at hr <;> try (cases hr)
             rename_i v heq
             have hsub : m2.heap.subsumes m1.heap := hmem
-            have := hsub fx (Cell.val v) heq
-            simp [this, hr]
+            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
+            -- For value cells, subsumption requires equality
+            simp [Cell.subsumes] at hsub_v
+            subst hsub_v
+            simp [hv', hr]
           | bound bx => cases bx
         | abs _ _ _ => simp [resolve] at hr ⊢; exact hr
         | tabs _ _ _ => cases hr
@@ -1617,6 +1663,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | letin _ _ => cases hr
         | btrue => cases hr
         | bfalse => cases hr
+        | read _ => cases hr
+        | write _ _ => cases hr
         | cond _ _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
@@ -1647,8 +1695,11 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
             split at hr <;> try (cases hr)
             rename_i v heq
             have hsub : m2.heap.subsumes m1.heap := hmem
-            have := hsub fx (Cell.val v) heq
-            simp [this, hr]
+            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
+            -- For value cells, subsumption requires equality
+            simp [Cell.subsumes] at hsub_v
+            subst hsub_v
+            simp [hv', hr]
           | bound bx => cases bx
         | tabs _ _ _ => simp [resolve] at hr ⊢; exact hr
         | abs _ _ _ => cases hr
@@ -1662,6 +1713,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | letin _ _ => cases hr
         | btrue => cases hr
         | bfalse => cases hr
+        | read _ => cases hr
+        | write _ _ => cases hr
         | cond _ _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
@@ -1702,8 +1755,11 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
             split at hr <;> try (cases hr)
             rename_i v heq
             have hsub : m2.heap.subsumes m1.heap := hmem
-            have := hsub fx (Cell.val v) heq
-            simp [this, hr]
+            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
+            -- For value cells, subsumption requires equality
+            simp [Cell.subsumes] at hsub_v
+            subst hsub_v
+            simp [hv', hr]
           | bound bx => cases bx
         | cabs _ _ _ => simp [resolve] at hr ⊢; exact hr
         | abs _ _ _ => cases hr
@@ -1717,6 +1773,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | letin _ _ => cases hr
         | btrue => cases hr
         | bfalse => cases hr
+        | read _ => cases hr
+        | write _ _ => cases hr
         | cond _ _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
@@ -1811,6 +1869,10 @@ def capt_exp_denot_is_monotonic {env : TypeEnv s}
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
     exact capt_val_denot_is_monotonic henv T
+  · -- TODO: Prove that value denotations are bool-independent
+    -- This should hold because value denotations don't distinguish between
+    -- different boolean values in mutable cells (they only care about the shape)
+    sorry
   · exact hmem
   · exact hwf
   · exact ht
@@ -1828,6 +1890,10 @@ def exi_exp_denot_is_monotonic {env : TypeEnv s}
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
     exact exi_val_denot_is_monotonic henv T
+  · -- TODO: Prove that value denotations are bool-independent
+    -- This should hold because value denotations don't distinguish between
+    -- different boolean values in mutable cells (they only care about the shape)
+    sorry
   · exact hmem
   · exact hwf
   · exact ht
@@ -1977,6 +2043,19 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
     | _ =>
       -- Other expressions cannot resolve to a boolean
       simp [resolve] at hdenot
+  | cell =>
+    simp only [Ty.shape_val_denot] at hdenot
+    obtain ⟨l, b0, heq, hlookup, hmem⟩ := hdenot
+    -- e is a variable pointing to an mcell capability
+    rw [heq]
+    simp [resolve_reachability]
+    -- reachability_of_loc m.heap l = {l} for mcell capabilities
+    have hlookup' : m.heap l = some (Cell.capability (.mcell b0)) := by
+      simp [Memory.lookup] at hlookup
+      exact hlookup
+    simp [reachability_of_loc, hlookup']
+    -- Goal: {l} ⊆ R, which follows from l ∈ R
+    exact CapabilitySet.mem_imp_singleton_subset hmem
   | unit =>
     -- For .unit, resolve_reachability returns empty set or reachability from heap
     simp [Ty.shape_val_denot] at hdenot
@@ -2018,9 +2097,9 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
     rw [heq]
     simp [resolve_reachability]
     -- Need: reachability_of_loc m.heap label ⊆ R
-    -- From hcap: m.lookup label = some .capability
+    -- From hcap: m.lookup label = some (Cell.capability .basic)
     -- So: reachability_of_loc m.heap label = {label}
-    have hcap' : m.heap label = some .capability := by
+    have hcap' : m.heap label = some (Cell.capability .basic) := by
       simp [Memory.lookup] at hcap
       exact hcap
     simp [reachability_of_loc, hcap']
@@ -2146,6 +2225,11 @@ theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
   | bool =>
     simp [Ty.shape_val_denot] at hdenot ⊢
     exact hdenot
+  | cell =>
+    simp only [Ty.shape_val_denot] at hdenot ⊢
+    obtain ⟨l, b0, heq, hlookup, hmem⟩ := hdenot
+    use l, b0
+    exact ⟨heq, hlookup, CapabilitySet.subset_preserves_mem hsub hmem⟩
   | unit =>
     simp [Ty.shape_val_denot] at hdenot ⊢
     exact hdenot
@@ -2253,6 +2337,15 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
   | unit =>
     simp [Ty.shape_val_denot] at hdenot
     exact wf_from_resolve_unit hdenot
+  | cell =>
+    simp only [Ty.shape_val_denot] at hdenot
+    obtain ⟨l, b0, heq, hlookup, _⟩ := hdenot
+    -- e is a variable, so it's well-formed if it's in the heap
+    rw [heq]
+    apply Exp.WfInHeap.wf_var
+    apply Var.WfInHeap.wf_free
+    · simp [Memory.lookup] at hlookup
+      exact hlookup
   | cap =>
     simp [Ty.shape_val_denot] at hdenot
     have ⟨hwf_e, label, heq, hlookup, _⟩ := hdenot
@@ -2289,6 +2382,24 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
   | unit =>
     simp [Ty.shape_val_denot] at ht ⊢
     exact ht
+  | cell =>
+    simp only [Ty.shape_val_denot] at ht ⊢
+    obtain ⟨l, b0, heq, hlookup, hmem⟩ := ht
+    -- From heq: .var (.free fx) = .var (.free l), so fx = l
+    have hfx_eq_l : fx = l := by
+      injection heq with _ h
+      injection h
+    subst hfx_eq_l
+    -- Need: fx ∈ reachability_of_loc m.heap fx
+    -- reachability_of_loc m.heap fx = {fx} for mcell capabilities
+    use fx, b0
+    constructor
+    · rfl
+    · constructor
+      · exact hlookup
+      · simp [Memory.lookup] at hlookup
+        simp [reachability_of_loc, hlookup]
+        exact CapabilitySet.mem.here
   | cap =>
     simp [Ty.shape_val_denot, reachability_of_loc, Memory.lookup] at ht ⊢
     obtain ⟨hwf, hmem, hin⟩ := ht
