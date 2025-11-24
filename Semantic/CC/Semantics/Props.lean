@@ -92,6 +92,18 @@ theorem reduce_ctx_unpack
     · apply Step.step_ctx_unpack h
     · exact ih
 
+/-- Helper: Variables cannot step, so reduction is reflexive. -/
+theorem reduce_var_inv
+  (hred : Reduce C m (.var x) m' v') :
+  m' = m ∧ v' = .var x := by
+  generalize he : Exp.var x = e at hred
+  induction hred with
+  | refl => exact ⟨rfl, he ▸ rfl⟩
+  | step hstep _ ih =>
+    -- No Step rule applies to a bare variable
+    subst he
+    cases hstep
+
 /-- Helper: Single step preserves memory subsumption. -/
 theorem step_memory_monotonic
   (hstep : Step C m1 e1 m2 e2) :
@@ -1506,5 +1518,168 @@ theorem eval_exists_answer
       have ih_cont := ih_false hsub1 hQ1 hbfalse
       obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
       exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
+
+/-- If Eval C m1 e1 Q holds, then there exist m2 and e2 such that
+    e1 reduces to e2 (an answer) under capability set C, and Q e2 m2 holds. -/
+theorem eval_reduce_exists_answer
+  (heval : Eval C m1 e1 Q) :
+  ∃ m2 e2, Reduce C m1 e1 m2 e2 ∧ e2.IsAns ∧ Q e2 m2 := by
+  induction heval with
+  | eval_val hv hQ =>
+    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_val hv, hQ⟩
+  | eval_var hQ =>
+    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_var, hQ⟩
+  | eval_apply hlookup _ ih =>
+    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
+    rename_i y _ _ _ _
+    cases y with
+    | bound idx => cases idx
+    | free fy =>
+      exact ⟨m2, e2, Reduce.step (Step.step_apply hlookup) hred, hans, hQ⟩
+  | eval_invoke hmem hlookup_x hlookup_y hQ =>
+    exact ⟨_, _, Reduce.step (Step.step_invoke hmem hlookup_x hlookup_y) Reduce.refl,
+           Exp.IsAns.is_val Exp.IsVal.unit, hQ⟩
+  | eval_tapply hlookup _ ih =>
+    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
+    exact ⟨m2, e2, Reduce.step (Step.step_tapply hlookup) hred, hans, hQ⟩
+  | eval_capply hlookup _ ih =>
+    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
+    exact ⟨m2, e2, Reduce.step (Step.step_capply hlookup) hred, hans, hQ⟩
+  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
+    rename_i C_case _ _ e2_cont _ _
+    -- Get reduction of e1 to an answer, WITH postcondition
+    obtain ⟨m1', v1, hred1, hans1, hQ1⟩ := ih_e1
+    have ⟨hsimple, hwf1⟩ := h_nonstuck hQ1
+    -- Lift reduction through letin context
+    have hred_ctx := reduce_ctx_letin (e2 := e2_cont) hred1
+    cases hsimple with
+    | is_simple_val hv =>
+      -- v1 is a simple value, allocate it and continue
+      obtain ⟨l', hfresh⟩ := Memory.exists_fresh m1'
+      have hfresh' : m1'.heap l' = none := by
+        simp [Memory.lookup] at hfresh
+        exact hfresh
+      -- Step from letin v1 e2 to e2.subst with allocation
+      have hstep_lift := Step.step_lift (e := e2_cont) (C := C_case) (l := l') hv hwf1 hfresh'
+      -- Get IH for continuation
+      have hsub1 := reduce_memory_monotonic hred1
+      have ih_cont := ih_val hsub1 hv hwf1 hQ1 l' hfresh'
+      obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
+      -- Combine: letin e1 e2 -> letin v1 e2 -> e2.subst... -> answer
+      exact ⟨m2, e2, reduce_trans hred_ctx (Reduce.step hstep_lift hred2), hans2, hQ2⟩
+    | is_var =>
+      -- v1 is a variable
+      rename_i x
+      cases x with
+      | bound idx => cases idx
+      | free fx =>
+        -- Step from letin (var x) e2 to e2.subst x
+        have hstep_rename := Step.step_rename (C := C_case) (m := m1') (y := fx) (e := e2_cont)
+        -- Get IH for continuation
+        have hsub1 := reduce_memory_monotonic hred1
+        cases hwf1 with
+        | wf_var hwf_x =>
+          have ih_cont := ih_var hsub1 hwf_x hQ1
+          obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
+          -- Combine: letin e1 e2 -> letin (var x) e2 -> e2.subst x -> answer
+          exact ⟨m2, e2, reduce_trans hred_ctx (Reduce.step hstep_rename hred2), hans2, hQ2⟩
+  | eval_unpack hpred hbool eval_e1 h_nonstuck h_val ih_e1 ih_val =>
+    rename_i C_case _ _ e2_cont _ _
+    -- Get reduction of e1 to an answer (a pack), WITH postcondition
+    obtain ⟨m1', v1, hred1, hans1, hQ1⟩ := ih_e1
+    have ⟨hpack, hwf1⟩ := h_nonstuck hQ1
+    -- Lift reduction through unpack context
+    have hred_ctx := reduce_ctx_unpack (e2 := e2_cont) hred1
+    cases hpack with
+      | pack =>
+        rename_i cs x
+        cases x with
+        | bound idx => cases idx
+        | free fx =>
+          -- Step from unpack (pack cs x) e2 to e2.subst
+          have hstep_unpack :=
+            Step.step_unpack (C := C_case) (m := m1') (cs := cs) (x := fx) (e := e2_cont)
+          -- Get IH for continuation
+          have hsub1 := reduce_memory_monotonic hred1
+          cases hwf1 with
+          | wf_pack hwf_cs hwf_x =>
+            have ih_cont := ih_val hsub1 hwf_x hwf_cs hQ1
+            obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
+            -- Combine: unpack e1 e2 -> unpack (pack cs x) e2 -> e2.subst -> answer
+            exact ⟨m2, e2, reduce_trans hred_ctx (Reduce.step hstep_unpack hred2), hans2, hQ2⟩
+  | eval_read hmem hlookup hQ =>
+    rename_i b
+    cases b with
+    | true =>
+      exact ⟨_, _, Reduce.step (Step.step_read hmem hlookup) Reduce.refl,
+             Exp.IsAns.is_val Exp.IsVal.btrue, hQ⟩
+    | false =>
+      exact ⟨_, _, Reduce.step (Step.step_read hmem hlookup) Reduce.refl,
+             Exp.IsAns.is_val Exp.IsVal.bfalse, hQ⟩
+  | eval_write_true hmem hx hy hQ =>
+    exact ⟨_, _, Reduce.step (Step.step_write_true hmem hx hy) Reduce.refl,
+           Exp.IsAns.is_val Exp.IsVal.unit, hQ⟩
+  | eval_write_false hmem hx hy hQ =>
+    exact ⟨_, _, Reduce.step (Step.step_write_false hmem hx hy) Reduce.refl,
+           Exp.IsAns.is_val Exp.IsVal.unit, hQ⟩
+  | eval_cond hpred hbool eval_guard h_nonstuck h_true h_false ih_guard ih_true ih_false =>
+    -- Guard is a variable .var x, get postcondition from IH
+    rename_i C_case x_guard e_true Q_res e_false m_start Q1
+    obtain ⟨m_guard, v_guard, hred_guard, hans_guard, hQ1⟩ := ih_guard
+    -- Use reduce_var_inv to show reduction of variable is reflexive
+    have ⟨hm_eq, hv_eq⟩ := reduce_var_inv hred_guard
+    subst hm_eq hv_eq
+    -- Now v_guard = .var x_guard and m_guard = original memory
+    have hres := h_nonstuck hQ1
+    have hsub1 := Memory.subsumes_refl m_guard
+    -- The guard must be .free since BVar {} is empty
+    cases x_guard with
+    | bound idx => cases idx
+    | free fx =>
+      cases hres with
+      | inl hbtrue =>
+        -- Guard resolves to true
+        cases hcell : m_guard.heap fx with
+        | none => simp [resolve, hcell] at hbtrue
+        | some cell =>
+          cases cell with
+          | capability => simp [resolve, hcell] at hbtrue
+          | masked => simp [resolve, hcell] at hbtrue
+          | val hv =>
+            have hunwrap : hv.unwrap = .btrue := by
+              simpa [resolve, hcell] using hbtrue
+            -- Destructure hv and substitute
+            obtain ⟨unwrap, isVal, reachability⟩ := hv
+            simp only at hunwrap
+            subst hunwrap
+            have hlookup : m_guard.lookup fx = some (.val ⟨.btrue, isVal, reachability⟩) := by
+              simp only [Memory.lookup, hcell]
+            have hstep :=
+              Step.step_cond_var_true (C := C_case) (e1 := e_true) (e2 := e_false) hlookup
+            have ih_cont := ih_true hsub1 hQ1 hbtrue
+            obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
+            exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
+      | inr hbfalse =>
+        -- Guard resolves to false (symmetric)
+        cases hcell : m_guard.heap fx with
+        | none => simp [resolve, hcell] at hbfalse
+        | some cell =>
+          cases cell with
+          | capability => simp [resolve, hcell] at hbfalse
+          | masked => simp [resolve, hcell] at hbfalse
+          | val hv =>
+            have hunwrap : hv.unwrap = .bfalse := by
+              simpa [resolve, hcell] using hbfalse
+            -- Destructure hv and substitute
+            obtain ⟨unwrap, isVal, reachability⟩ := hv
+            simp only at hunwrap
+            subst hunwrap
+            have hlookup : m_guard.lookup fx = some (.val ⟨.bfalse, isVal, reachability⟩) := by
+              simp only [Memory.lookup, hcell]
+            have hstep :=
+              Step.step_cond_var_false (C := C_case) (e1 := e_true) (e2 := e_false) hlookup
+            have ih_cont := ih_false hsub1 hQ1 hbfalse
+            obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
+            exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
 
 end CC
