@@ -38,12 +38,12 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     apply Step.step_cond_var_true hlookup
   | step_cond_var_false hlookup =>
     apply Step.step_cond_var_false hlookup
-  | step_read hlookup =>
-    apply Step.step_read hlookup
-  | step_write_true hx hy =>
-    apply Step.step_write_true hx hy
-  | step_write_false hx hy =>
-    apply Step.step_write_false hx hy
+  | step_read hmem hlookup =>
+    apply Step.step_read (CapabilitySet.subset_preserves_mem hsub hmem) hlookup
+  | step_write_true hmem hx hy =>
+    apply Step.step_write_true (CapabilitySet.subset_preserves_mem hsub hmem) hx hy
+  | step_write_false hmem hx hy =>
+    apply Step.step_write_false (CapabilitySet.subset_preserves_mem hsub hmem) hx hy
   | step_ctx_letin _ ih =>
     apply Step.step_ctx_letin
     exact ih hsub
@@ -103,9 +103,9 @@ theorem step_memory_monotonic
   | step_capply => exact Memory.subsumes_refl _
   | step_cond_var_true _ => exact Memory.subsumes_refl _
   | step_cond_var_false _ => exact Memory.subsumes_refl _
-  | step_read _ => exact Memory.subsumes_refl _
-  | step_write_true hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
-  | step_write_false hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
+  | step_read _ _ => exact Memory.subsumes_refl _
+  | step_write_true _ hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
+  | step_write_false _ hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
   | step_ctx_letin _ ih => exact ih
   | step_ctx_unpack _ ih => exact ih
   | step_rename => exact Memory.subsumes_refl _
@@ -288,18 +288,18 @@ theorem step_preserves_wf
   | step_cond_var_false hlookup =>
     have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
     exact hwf_else
-  | step_read hlookup =>
+  | step_read _ hlookup =>
     -- e1 = .read (.free x), e2 = .btrue or .bfalse
     -- Boolean values are always well-formed
-    rename_i b
-    cases b
-    · exact Exp.WfInHeap.wf_bfalse
-    · exact Exp.WfInHeap.wf_btrue
-  | step_write_true hx hy =>
+    rename_i b _
+    by_cases hb : b
+    · simp [hb]; exact Exp.WfInHeap.wf_btrue
+    · simp [hb]; exact Exp.WfInHeap.wf_bfalse
+  | step_write_true _ hx hy =>
     -- e1 = .write (.free x) (.free y), e2 = .unit
     -- Unit is always well-formed in any heap
     exact Exp.WfInHeap.wf_unit
-  | step_write_false hx hy =>
+  | step_write_false _ hx hy =>
     -- e1 = .write (.free x) (.free y), e2 = .unit
     -- Unit is always well-formed in any heap
     exact Exp.WfInHeap.wf_unit
@@ -591,18 +591,18 @@ theorem eval_implies_progressive
     | step hstep =>
       -- Guard is a variable, so it cannot step - contradiction
       exact absurd hstep step_var_absurd
-  | eval_read hlookup hQ =>
+  | eval_read hmem hlookup hQ =>
     -- e = .read (.free x), can step via step_read
     apply IsProgressive.step
-    exact Step.step_read hlookup
-  | eval_write_true hx hy hQ =>
+    exact Step.step_read hmem hlookup
+  | eval_write_true hmem hx hy hQ =>
     -- e = .write (.free x) (.free y), can step via step_write_true
     apply IsProgressive.step
-    exact Step.step_write_true hx hy
-  | eval_write_false hx hy hQ =>
+    exact Step.step_write_true hmem hx hy
+  | eval_write_false hmem hx hy hQ =>
     -- e = .write (.free x) (.free y), can step via step_write_false
     apply IsProgressive.step
-    exact Step.step_write_false hx hy
+    exact Step.step_write_false hmem hx hy
 
 theorem step_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -797,28 +797,30 @@ theorem step_preserves_eval
       have hres : resolve m_guard.heap (.var (.free fx)) = some .bfalse := by
         simp [resolve, hheap]
       exact h_false (Memory.subsumes_refl m_guard) hQ1 hres
-  | eval_read hlookup hQ =>
+  | eval_read _ hlookup hQ =>
     -- e = .read (.free x), can only step via step_read
     cases hstep with
-    | step_read hlookup' =>
+    | step_read _ hlookup' =>
       -- The step produces the same boolean value
       have heq := Memory.lookup_deterministic hlookup hlookup'
       injection heq with heq_cell
       -- The cells are equal, so the booleans must be the same
       cases heq_cell
       -- The result is a value, so use eval_val
-      rename_i b
-      cases b
-      · exact Eval.eval_val Exp.IsVal.bfalse hQ
-      · exact Eval.eval_val Exp.IsVal.btrue hQ
-  | eval_write_true hx hy hQ =>
+      rename_i b _ _
+      by_cases hb : b
+      · simp only [hb, ↓reduceIte] at hQ ⊢
+        exact Eval.eval_val Exp.IsVal.btrue hQ
+      · simp only [hb, Bool.false_eq_true, ↓reduceIte] at hQ ⊢
+        exact Eval.eval_val Exp.IsVal.bfalse hQ
+  | eval_write_true _ hx hy hQ =>
     -- e = .write (.free x) (.free y), can only step via step_write_true or step_write_false
     cases hstep with
-    | step_write_true hx' hy' =>
+    | step_write_true _ hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
       exact Eval.eval_val Exp.IsVal.unit hQ
-    | step_write_false hx' hy' =>
+    | step_write_false _ hx' hy' =>
       -- y is looked up as btrue in eval, but bfalse in step - contradiction
       have heq_y := Memory.lookup_deterministic hy hy'
       -- The cells must be equal
@@ -826,10 +828,10 @@ theorem step_preserves_eval
       -- The ValPairs must be equal, extract unwrap field
       have h_unwrap : Exp.btrue = Exp.bfalse := congrArg (·.unwrap) heq_val
       cases h_unwrap
-  | eval_write_false hx hy hQ =>
+  | eval_write_false _ hx hy hQ =>
     -- e = .write (.free x) (.free y), can only step via step_write_false
     cases hstep with
-    | step_write_true hx' hy' =>
+    | step_write_true _ hx' hy' =>
       -- y is looked up as bfalse in eval, but btrue in step - contradiction
       have heq_y := Memory.lookup_deterministic hy hy'
       -- The cells must be equal
@@ -837,7 +839,7 @@ theorem step_preserves_eval
       -- The ValPairs must be equal, extract unwrap field
       have h_unwrap : Exp.bfalse = Exp.btrue := congrArg (·.unwrap) heq_val
       cases h_unwrap
-    | step_write_false hx' hy' =>
+    | step_write_false _ hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
       exact Eval.eval_val Exp.IsVal.unit hQ
@@ -1312,6 +1314,37 @@ theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal}
   simp
   exact Heap.masked_extend_comm
 
+/-- Helper lemma: Heap masking and update_cell commute when the location is in the mask. -/
+theorem Heap.masked_update_mcell_comm {H : Heap} {l : Nat} {b : Bool} {M : Finset Nat}
+  (hmem : l ∈ M) :
+  (H.update_cell l (.capability (.mcell b))).mask_caps M =
+  (H.mask_caps M).update_cell l (.capability (.mcell b)) := by
+  funext l'
+  unfold Heap.update_cell Heap.mask_caps
+  by_cases heq : l' = l
+  · -- Case: l' = l
+    subst heq
+    simp [hmem]
+  · -- Case: l' ≠ l
+    simp [heq]
+
+/-- Helper lemma: Memory masking and update_mcell commute when the location is in the mask. -/
+theorem Memory.masked_update_mcell_comm {m : Memory} {l : Nat} {b : Bool} {M : Finset Nat}
+  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0)))
+  (hmem : l ∈ M) :
+  (m.update_mcell l b hexists).masked_caps M =
+  (m.masked_caps M).update_mcell l b (by
+    obtain ⟨b0, hb0⟩ := hexists
+    use b0
+    simp [Memory.masked_caps]
+    unfold Heap.mask_caps
+    rw [hb0]
+    simp [hmem]) := by
+  -- Prove equality by showing heaps are equal
+  unfold Memory.update_mcell Memory.masked_caps
+  simp
+  exact Heap.masked_update_mcell_comm hmem
+
 theorem step_masked
   (hstep : Step C m1 e1 m2 e2) :
   let M := C.to_finset
@@ -1358,20 +1391,25 @@ theorem step_masked
     apply Step.step_lift hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
   | step_unpack =>
     apply Step.step_unpack
-  | step_read hlookup =>
-    -- Note: step_read doesn't require the mcell to be in C, but masking would hide it if not.
-    -- This case needs the semantics to be updated to require x ∈ C for step_read.
-    -- For now, use sorry to allow compilation to continue.
-    sorry
-  | step_write_true hx hy =>
-    -- Note: step_write_true doesn't require the mcell to be in C, but masking would hide it.
-    -- This case needs the semantics to be updated to require x ∈ C for step_write.
-    -- Additionally, we need to show that masking commutes with update_mcell.
-    sorry
-  | step_write_false hx hy =>
-    -- Note: step_write_false doesn't require the mcell to be in C, but masking would hide it.
-    -- Similar to step_write_true case.
-    sorry
+  | step_read hmem hlookup =>
+    -- With x ∈ C, masking preserves the mcell lookup
+    apply Step.step_read hmem
+    exact masked_lookup_cap hlookup (mem_to_finset hmem)
+  | step_write_true hmem hx hy =>
+    -- With x ∈ C, masking preserves the mcell lookup and commutes with update_mcell
+    rename_i x m y b0 hv R
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (mem_to_finset hmem)]
+    apply Step.step_write_true hmem
+    · -- Need to show the masked memory still has the mcell at x
+      exact masked_lookup_cap hx (mem_to_finset hmem)
+    · exact masked_lookup_val hy
+  | step_write_false hmem hx hy =>
+    -- Symmetric to step_write_true
+    rename_i x m y b0 hv R
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (mem_to_finset hmem)]
+    apply Step.step_write_false hmem
+    · exact masked_lookup_cap hx (mem_to_finset hmem)
+    · exact masked_lookup_val hy
 
 theorem reduce_masked
   (hred : Reduce C m1 e1 m2 e2) :

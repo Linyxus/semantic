@@ -14,11 +14,11 @@ def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
 | n+1 => ((Ctx.platform_of n),C<:.unbound),x:(.capt (.cvar .here) .cap)
 
-/-- A platform heap with `n` ground capabilities. -/
+/-- A platform heap with `n` ground capabilities (basic capabilities). -/
 def Heap.platform_of (N : Nat) : Heap :=
   fun i =>
     if i < N then
-      .some .capability
+      .some (.capability .basic)
     else
       .none
 
@@ -138,14 +138,14 @@ theorem env_typing_of_platform {N : Nat} :
         · -- Well-formed in heap
           apply Exp.WfInHeap.wf_var
           apply Var.WfInHeap.wf_free
-          show (Heap.platform_of (N + 1)) N = some Cell.capability
+          show (Heap.platform_of (N + 1)) N = some (.capability .basic)
           unfold Heap.platform_of
           simp
         · constructor
           · -- Capture set after substitution is well-formed
             simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
             apply CaptureSet.WfInHeap.wf_var_free
-            show (Heap.platform_of (N + 1)) N = some Cell.capability
+            show (Heap.platform_of (N + 1)) N = some (.capability .basic)
             unfold Heap.platform_of
             simp
           · -- Shape typing: N is a capability with reachability {N}
@@ -154,7 +154,7 @@ theorem env_typing_of_platform {N : Nat} :
             · -- Well-formed
               apply Exp.WfInHeap.wf_var
               apply Var.WfInHeap.wf_free
-              show (Heap.platform_of (N + 1)) N = some Cell.capability
+              show (Heap.platform_of (N + 1)) N = some (.capability .basic)
               unfold Heap.platform_of
               simp
             · -- Exists label N that is a capability
@@ -177,7 +177,7 @@ theorem env_typing_of_platform {N : Nat} :
       constructor
       · -- cs.WfInHeap
         apply CaptureSet.WfInHeap.wf_var_free
-        show (Heap.platform_of (N + 1)) N = some Cell.capability
+        show (Heap.platform_of (N + 1)) N = some (.capability .basic)
         unfold Heap.platform_of
         simp
       · constructor

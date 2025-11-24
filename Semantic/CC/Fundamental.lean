@@ -1285,8 +1285,15 @@ theorem sem_typ_read
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
         Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
 
-  -- Apply eval_read
-  apply Eval.eval_read hlk_cell
+  -- Apply eval_read with membership proof
+  -- The membership proof: env.lookup_var x ∈ reachability_of_loc store.heap (env.lookup_var x)
+  -- Since store contains a capability at that location, reachability is {env.lookup_var x}
+  have hmem : env.lookup_var x ∈
+    ((CaptureSet.var (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot store := by
+    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
+          reachability_of_loc, hlk_cell]
+    exact CapabilitySet.mem.here
+  apply Eval.eval_read hmem hlk_cell
 
   -- Show the postcondition holds for the boolean result
   constructor
@@ -1343,10 +1350,19 @@ theorem sem_typ_write
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
         Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
 
+  -- Prove membership: env.lookup_var x is in the denotation of the write's capture set
+  have hmem : env.lookup_var x ∈
+    (((CaptureSet.var (Var.bound x)).union (CaptureSet.var (Var.bound y))).subst
+      (Subst.from_TypeEnv env)).ground_denot store := by
+    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
+          reachability_of_loc, hlk_cell]
+    apply CapabilitySet.mem.left
+    exact CapabilitySet.mem.here
+
   -- Apply eval_write based on the boolean value
   cases b
   · -- b = false
-    apply Eval.eval_write_false (hx := hlk_cell) hlk_bool
+    apply Eval.eval_write_false hmem (hx := hlk_cell) hlk_bool
     -- Show the postcondition holds for unit
     constructor
     · apply Exp.IsSimpleAns.is_simple_val
@@ -1358,7 +1374,7 @@ theorem sem_typ_write
       exact CaptureSet.WfInHeap.wf_empty
     · simp [resolve]
   · -- b = true
-    apply Eval.eval_write_true (hx := hlk_cell) hlk_bool
+    apply Eval.eval_write_true hmem (hx := hlk_cell) hlk_bool
     -- Show the postcondition holds for unit
     constructor
     · apply Exp.IsSimpleAns.is_simple_val
