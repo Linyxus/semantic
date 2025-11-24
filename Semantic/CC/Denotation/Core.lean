@@ -858,6 +858,9 @@ def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
 def PreDenot.is_transparent (pd : PreDenot) : Prop :=
   ∀ C, (pd C).is_transparent
 
+def PreDenot.is_bool_independent (pd : PreDenot) : Prop :=
+  ∀ C, (pd C).is_bool_independent
+
 structure TypeEnv.IsMonotonic (env : TypeEnv s) : Prop where
   tvar : ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_monotonic
@@ -865,6 +868,10 @@ structure TypeEnv.IsMonotonic (env : TypeEnv s) : Prop where
 def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_transparent
+
+def TypeEnv.is_bool_independent (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_bool_independent
 
 def TypeEnv.is_reachability_safe (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
@@ -978,7 +985,7 @@ theorem typed_env_is_transparent
             -- hproper says d.is_proper
             -- We need d.is_transparent
             intro C
-            exact (hproper.2.2.2.2 C).2
+            exact (hproper.2.2.2.2 C).2.1
           | there x =>
             simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
@@ -989,6 +996,63 @@ theorem typed_env_is_transparent
           have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+
+theorem typed_env_is_bool_independent
+  (ht : EnvTyping Γ env mem) :
+  env.is_bool_independent := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.is_bool_independent]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n =>
+          simp [EnvTyping] at ht
+          have ⟨_, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_bool_independent] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨hproper, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_bool_independent] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            -- hproper says d.is_proper
+            -- We need d.is_bool_independent
+            intro C
+            exact (hproper.2.2.2.2 C).2.2
+          | there x =>
+            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            exact ih_result x
+      | cvar B =>
+        cases info with
+        | cvar cs =>
+          simp [EnvTyping] at ht
+          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
           cases x with
           | there x =>
@@ -2495,6 +2559,36 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
             exact CapabilitySet.Subset.refl
           · exact hbody
 
+theorem shape_val_denot_is_bool_independent {env : TypeEnv s}
+  (henv : env.is_bool_independent)
+  (T : Ty .shape s) :
+  ∀ C, (Ty.shape_val_denot env T C).is_bool_independent := by
+  intro C m
+  cases T with
+  | top =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve_reachability]
+    intro _
+    constructor <;> intro
+    · apply Exp.WfInHeap.wf_bfalse
+    · apply Exp.WfInHeap.wf_btrue
+  | tvar X =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent]
+    exact henv X C
+  | unit =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
+  | cap =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent]
+  | bool =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
+  | cell =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent]
+  | arrow T1 T2 =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
+  | poly T1 T2 =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
+  | cpoly B T =>
+    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
+
 theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (hts : EnvTyping Γ env m) :
   (Ty.shape_val_denot env S).is_proper := by
@@ -2515,7 +2609,9 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
           intro C
           constructor
           · exact shape_val_denot_is_monotonic (typed_env_is_monotonic hts) S C
-          · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
+          · constructor
+            · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
+            · exact shape_val_denot_is_bool_independent (typed_env_is_bool_independent hts) S C
 
 theorem capt_denot_implyafter_lift
   (himp : (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T2)) :
