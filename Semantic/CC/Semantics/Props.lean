@@ -1424,4 +1424,87 @@ theorem reduce_masked
     · exact step_masked h
     · exact ih
 
+/-- If Eval C m e Q holds, then there exist m' and e' such that e' is an answer,
+    the memory m' subsumes m, and Q e' m' holds. -/
+theorem eval_exists_answer
+  (heval : Eval C m e Q) :
+  ∃ m' e', e'.IsAns ∧ m'.subsumes m ∧ Q e' m' := by
+  induction heval with
+  | eval_val hv hQ =>
+    exact ⟨_, _, Exp.IsAns.is_val hv, Memory.subsumes_refl _, hQ⟩
+  | eval_var hQ =>
+    exact ⟨_, _, Exp.IsAns.is_var, Memory.subsumes_refl _, hQ⟩
+  | eval_apply _ _ ih =>
+    exact ih
+  | eval_invoke _ _ _ hQ =>
+    exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.unit, Memory.subsumes_refl _, hQ⟩
+  | eval_tapply _ _ ih =>
+    exact ih
+  | eval_capply _ _ ih =>
+    exact ih
+  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
+    obtain ⟨m1', v1, hans1, hsub1, hQ1⟩ := ih_e1
+    have ⟨hsimple, hwf1⟩ := h_nonstuck hQ1
+    cases hsimple with
+    | is_simple_val hv =>
+      obtain ⟨l', hfresh⟩ := Memory.exists_fresh m1'
+      have hfresh' : m1'.heap l' = none := by
+        simp [Memory.lookup] at hfresh
+        exact hfresh
+      have ih_cont := ih_val hsub1 hv hwf1 hQ1 l' hfresh'
+      obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
+      exact ⟨m2, e2, hans2,
+             Memory.subsumes_trans hsub2
+               (Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf1 rfl hfresh') hsub1),
+             hQ2⟩
+    | is_var =>
+      rename_i x
+      cases x with
+      | bound idx => cases idx
+      | free fx =>
+        cases hwf1 with
+        | wf_var hwf_x =>
+          have ih_cont := ih_var hsub1 hwf_x hQ1
+          obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
+          exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
+  | eval_unpack hpred hbool eval_e1 h_nonstuck h_val ih_e1 ih_val =>
+    obtain ⟨m1', v1, hans1, hsub1, hQ1⟩ := ih_e1
+    have ⟨hpack, hwf1⟩ := h_nonstuck hQ1
+    cases hpack with
+    | pack =>
+      rename_i cs x
+      cases x with
+      | bound idx => cases idx
+      | free fx =>
+        cases hwf1 with
+        | wf_pack hwf_cs hwf_x =>
+          have ih_cont := ih_val hsub1 hwf_x hwf_cs hQ1
+          obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
+          exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
+  | eval_read _ _ hQ =>
+    rename_i _ _ b _ _
+    by_cases hb : b
+    · simp only [hb, ↓reduceIte] at hQ ⊢
+      exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.btrue, Memory.subsumes_refl _, hQ⟩
+    · simp only [hb, Bool.false_eq_true, ↓reduceIte] at hQ ⊢
+      exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.bfalse, Memory.subsumes_refl _, hQ⟩
+  | eval_write_true _ hx _ hQ =>
+    exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.unit,
+           Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩, hQ⟩
+  | eval_write_false _ hx _ hQ =>
+    exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.unit,
+           Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩, hQ⟩
+  | eval_cond hpred hbool eval_guard h_nonstuck h_true h_false ih_guard ih_true ih_false =>
+    obtain ⟨m1', v1, hans1, hsub1, hQ1⟩ := ih_guard
+    have hres := h_nonstuck hQ1
+    cases hres with
+    | inl hbtrue =>
+      have ih_cont := ih_true hsub1 hQ1 hbtrue
+      obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
+      exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
+    | inr hbfalse =>
+      have ih_cont := ih_false hsub1 hQ1 hbfalse
+      obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
+      exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
+
 end CC
