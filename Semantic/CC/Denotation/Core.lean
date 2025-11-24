@@ -299,10 +299,14 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
   e.WfInHeap m.heap ∧
   ∃ label : Nat,
     e = .var (.free label) ∧
-    m.lookup label = some .capability ∧
+    m.lookup label = some (.capability .basic) ∧
     label ∈ A
 | _, .bool => fun _ m e =>
   resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
+| _, .cell => fun _ m e =>
+  ∃ l b0,
+    resolve m.heap e = some (.var (.free l)) ∧
+    m.lookup l = some (.capability (.mcell b0))
 | env, .arrow T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
   ∃ cs T0 t0,
