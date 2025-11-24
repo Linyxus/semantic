@@ -248,6 +248,8 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap .cap H
 | wf_bool :
   Ty.WfInHeap .bool H
+| wf_cell :
+  Ty.WfInHeap .cell H
 -- Capturing types
 | wf_capt :
   CaptureSet.WfInHeap cs H ->
@@ -310,6 +312,13 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap .btrue H
 | wf_bfalse :
   Exp.WfInHeap .bfalse H
+| wf_read :
+  Var.WfInHeap x H ->
+  Exp.WfInHeap (.read x) H
+| wf_write :
+  Var.WfInHeap x H ->
+  Var.WfInHeap y H ->
+  Exp.WfInHeap (.write x y) H
 | wf_cond :
   Var.WfInHeap x H ->
   Exp.WfInHeap e2 H ->
@@ -359,6 +368,7 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   | unit => apply Ty.WfInHeap.wf_unit
   | cap => apply Ty.WfInHeap.wf_cap
   | bool => apply Ty.WfInHeap.wf_bool
+  | cell => apply Ty.WfInHeap.wf_cell
   | capt hcs _ ih =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_of_closed hcs
@@ -408,6 +418,13 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
   | unit => apply Exp.WfInHeap.wf_unit
   | btrue => apply Exp.WfInHeap.wf_btrue
   | bfalse => apply Exp.WfInHeap.wf_bfalse
+  | read hx =>
+    apply Exp.WfInHeap.wf_read
+    exact Var.wf_of_closed hx
+  | write hx hy =>
+    apply Exp.WfInHeap.wf_write
+    · exact Var.wf_of_closed hx
+    · exact Var.wf_of_closed hy
   | cond hx _ _ ih2 ih3 =>
     apply Exp.WfInHeap.wf_cond
     · exact Var.wf_of_closed hx
@@ -478,6 +495,7 @@ theorem Ty.wf_monotonic
   | wf_unit => apply Ty.WfInHeap.wf_unit
   | wf_cap => apply Ty.WfInHeap.wf_cap
   | wf_bool => apply Ty.WfInHeap.wf_bool
+  | wf_cell => apply Ty.WfInHeap.wf_cell
   | wf_capt hwf_cs hwf_T ih_T =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_monotonic hsub hwf_cs
@@ -539,6 +557,13 @@ theorem Exp.wf_monotonic
     apply Exp.WfInHeap.wf_btrue
   | wf_bfalse =>
     apply Exp.WfInHeap.wf_bfalse
+  | wf_read hwf_x =>
+    apply Exp.WfInHeap.wf_read
+    exact Var.wf_monotonic hsub hwf_x
+  | wf_write hwf_x hwf_y =>
+    apply Exp.WfInHeap.wf_write
+    · exact Var.wf_monotonic hsub hwf_x
+    · exact Var.wf_monotonic hsub hwf_y
   | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
     apply Exp.WfInHeap.wf_cond
     · exact Var.wf_monotonic hsub hwf_x
@@ -799,6 +824,10 @@ theorem resolve_reachability_monotonic
     simp [resolve_reachability]
   | unpack _ _ =>
     simp [resolve_reachability]
+  | read _ =>
+    simp [resolve_reachability]
+  | write _ _ =>
+    simp [resolve_reachability]
   | cond _ _ _ =>
     simp [resolve_reachability]
 
@@ -1006,6 +1035,9 @@ theorem Ty.wf_rename
   | wf_bool =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_bool
+  | wf_cell =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_cell
   | wf_capt hwf_cs _ ih_T =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_capt
@@ -1089,6 +1121,15 @@ theorem Exp.wf_rename
   | wf_bfalse =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_bfalse
+  | wf_read hwf_x =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_read
+    exact Var.wf_rename hwf_x
+  | wf_write hwf_x hwf_y =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_write
+    · exact Var.wf_rename hwf_x
+    · exact Var.wf_rename hwf_y
   | wf_cond hwf_x _ _ ih2 ih3 =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_cond
@@ -1253,6 +1294,9 @@ theorem Ty.wf_subst
   | wf_bool =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_bool
+  | wf_cell =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_cell
   | wf_capt hwf_cs _ ih_T =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_capt
@@ -1337,6 +1381,15 @@ theorem Exp.wf_subst
   | wf_bfalse =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_bfalse
+  | wf_read hwf_x =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_read
+    exact Var.wf_subst hwf_x hwf_σ
+  | wf_write hwf_x hwf_y =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_write
+    · exact Var.wf_subst hwf_x hwf_σ
+    · exact Var.wf_subst hwf_y hwf_σ
   | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_cond
