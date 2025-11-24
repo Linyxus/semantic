@@ -62,6 +62,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .unit, _ => .unit
 | .cap, _ => .cap
 | .bool, _ => .bool
+| .cell, _ => .cell
 | .capt cs T, s => .capt (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
@@ -279,6 +280,7 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   | .unit => rfl
   | .cap => rfl
   | .bool => rfl
+  | .cell => rfl
   | .capt cs T =>
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -400,6 +402,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | unit => rfl
   | cap => rfl
   | bool => rfl
+  | cell => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp]
   | exi T ih =>
@@ -486,6 +489,7 @@ theorem Ty.subst_id {T : Ty sort s} :
   | unit => rfl
   | cap => rfl
   | bool => rfl
+  | cell => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_id]
   | exi T ih =>
@@ -592,6 +596,7 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | unit => rfl
   | cap => rfl
   | bool => rfl
+  | cell => rfl
   | capt cs T ih =>
     simp [Ty.subst, Ty.rename, ih, CaptureSet.subst_asSubst]
   | exi T ih =>
@@ -807,6 +812,7 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
+  | cell => exact IsClosed.cell
   | capt cs T ih =>
     cases hc with | capt h1 h2 =>
     exact IsClosed.capt (CaptureSet.rename_closed_any h1) (ih h2)
@@ -858,6 +864,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
+  | cell => exact IsClosed.cell
   | capt cs S ih =>
     cases hc with | capt h1 h2 =>
     simp [Ty.subst]
@@ -1059,6 +1066,7 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
+  | cell => exact IsClosed.cell
   | capt cs T ih =>
     simp [Ty.subst] at hclosed
     cases hclosed with | capt h1 h2 =>
