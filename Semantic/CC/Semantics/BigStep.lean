@@ -257,13 +257,61 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- the evaluation semantics to handle this properly.
     sorry
   case eval_write_true hx hy hQ =>
-    -- Same issue as eval_read: writes depend on cell state and are not
-    -- monotonic when cell values can change under subsumption.
-    sorry
+    -- From subsumption, m2 must also have an mcell at x (possibly different value)
+    -- and the same val at y
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
+    obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
+    -- cx must be an mcell (possibly with different boolean)
+    cases cx
+    case val v =>
+      -- Contradiction: val cannot subsume capability
+      simp [Cell.subsumes] at hsub_x
+    case capability info =>
+      cases info
+      case basic =>
+        -- Contradiction: basic cannot subsume mcell
+        simp [Cell.subsumes] at hsub_x
+      case mcell b' =>
+        -- Good! m2 has an mcell at x
+        -- cy must be the same val as in m1 (subsumption is equality for vals)
+        simp [Cell.subsumes] at hsub_y
+        subst hsub_y
+        -- Now we can apply eval_write_true with m2
+        apply Eval.eval_write_true (hx := hx2) hy2
+        -- Need to show: Q .unit (m2.update_mcell x true ⟨b', hx2⟩)
+        -- We have: Q .unit (m1.update_mcell x true ⟨_, hx⟩)
+        -- Use monotonicity with update_mcell_subsumes_compat
+        apply hpred
+        · -- unit is well-formed in any heap
+          constructor
+        · apply Memory.update_mcell_subsumes_compat _ _
+              (Exists.intro _ hx) (Exists.intro _ hx2) hsub
+        · exact hQ
+    case masked =>
+      -- Contradiction: masked cannot subsume mcell
+      simp [Cell.subsumes] at hsub_x
   case eval_write_false hx hy hQ =>
-    -- Same issue as eval_read: writes depend on cell state and are not
-    -- monotonic when cell values can change under subsumption.
-    sorry
+    -- Symmetric to eval_write_true
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
+    obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
+    cases cx
+    case val v =>
+      simp [Cell.subsumes] at hsub_x
+    case capability info =>
+      cases info
+      case basic =>
+        simp [Cell.subsumes] at hsub_x
+      case mcell b' =>
+        simp [Cell.subsumes] at hsub_y
+        subst hsub_y
+        apply Eval.eval_write_false (hx := hx2) hy2
+        apply hpred
+        · constructor
+        · apply Memory.update_mcell_subsumes_compat _ _
+              (Exists.intro _ hx) (Exists.intro _ hx2) hsub
+        · exact hQ
+    case masked =>
+      simp [Cell.subsumes] at hsub_x
   case eval_cond Q1 hpred_guard eval_e1 h_nonstuck h_true h_false ih_guard ih_true ih_false =>
     -- Extract well-formedness of the guard and both branches
     have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf

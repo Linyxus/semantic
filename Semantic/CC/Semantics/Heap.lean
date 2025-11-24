@@ -1810,6 +1810,35 @@ theorem update_mcell_subsumes (m : Memory) (l : Nat) (b : Bool)
     · exact hlookup
     · exact Cell.subsumes_refl v
 
+/-- Updating mcells in subsuming memories preserves subsumption. -/
+theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
+  (hexists1 : ∃ b0, m1.heap l = some (.capability (.mcell b0)))
+  (hexists2 : ∃ b0, m2.heap l = some (.capability (.mcell b0)))
+  (hsub : m2.subsumes m1) :
+  (m2.update_mcell l b hexists2).subsumes (m1.update_mcell l b hexists1) := by
+  unfold subsumes update_mcell Heap.subsumes
+  intro l' v hlookup
+  simp [Heap.update_cell] at hlookup ⊢
+  split at hlookup
+  case isTrue heq =>
+    -- l' = l, so we're looking up the updated cell in m1
+    subst heq
+    cases hlookup
+    split
+    · -- l = l in m2 as well
+      simp [Cell.subsumes]
+    · contradiction
+  case isFalse hneq =>
+    -- l' ≠ l, so the lookup is from the original m1
+    split
+    case isTrue heq =>
+      -- l' = l, but hneq says l' ≠ l
+      subst heq
+      contradiction
+    case isFalse =>
+      -- l' ≠ l in both, so use subsumption of original memories
+      exact hsub l' v hlookup
+
 /-- Looking up from a memory after extension at the same location returns the value. -/
 theorem extend_lookup_eq (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
