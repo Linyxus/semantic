@@ -126,7 +126,7 @@ lemma Denot.as_mpost_is_bool_independent {d : Denot}
   (hbool : d.is_bool_independent) :
   d.as_mpost.is_bool_independent := by
   intro m
-  simp [Denot.as_mpost, Mpost.is_bool_independent]
+  simp [Denot.as_mpost]
   exact hbool
 
 def Denot.Imply (d1 d2 : Denot) : Prop :=
