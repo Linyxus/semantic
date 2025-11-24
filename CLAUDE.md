@@ -32,6 +32,14 @@ x1 : P3
 d✝ : P4
 x3 : P5
 ```
+Note that a prefix `_` NEVER make sense: `rename_i _ _ x3` is equivalent to just `rename_i x3`, since naming starts from the BOTTOM. However, a suffix `_` does make sense: `rename_i t _ _ _` transforms the goal state to:
+```
+a✝ : P1
+t  : P2
+c✝ : P3
+d✝ : P4
+e✝ : P5
+```
 
 Sometimes, the user leaves a specific task for Claude in comments, started with `CLAUDE:`.
 
