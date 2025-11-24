@@ -213,6 +213,27 @@ def Heap.subsumes_trans {h1 h2 h3 : Heap}
   · exact hv1
   · exact Cell.subsumes_trans hsub12 hsub23
 
+/-- Updating an mcell with another mcell creates a heap that subsumes the original. -/
+theorem Heap.update_mcell_subsumes (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) :
+  (h.update_cell l (.capability (.mcell b))).subsumes h := by
+  intro l' v hlookup
+  unfold Heap.update_cell
+  split
+  case isTrue heq =>
+    -- l' = l
+    subst heq
+    obtain ⟨b0, hb0⟩ := hexists
+    rw [hb0] at hlookup
+    cases hlookup
+    simp [Cell.subsumes]
+  case isFalse hneq =>
+    -- l' ≠ l
+    exists v
+    constructor
+    · exact hlookup
+    · exact Cell.subsumes_refl v
+
 theorem Heap.extend_lookup_eq
   (h : Heap) (l : Nat) (v : HeapVal) :
   (h.extend l v) l = some (.val v) := by
@@ -916,6 +937,51 @@ theorem compute_reachability_monotonic
   | bfalse =>
     -- Boolean literals carry no reachability
     rfl
+
+/-- Updating an mcell preserves reachability_of_loc for all locations. -/
+theorem reachability_of_loc_update_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) (l' : Nat) :
+  reachability_of_loc (h.update_cell l (.capability (.mcell b))) l' =
+  reachability_of_loc h l' := by
+  unfold reachability_of_loc Heap.update_cell
+  by_cases heq : l' = l
+  · -- l' = l case
+    subst heq
+    obtain ⟨b0, hb0⟩ := hexists
+    simp [hb0]
+  · -- l' ≠ l case
+    simp [heq]
+
+/-- Updating an mcell preserves expand_captures. -/
+theorem expand_captures_update_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) (cs : CaptureSet {}) :
+  expand_captures (h.update_cell l (.capability (.mcell b))) cs =
+  expand_captures h cs := by
+  induction cs with
+  | empty => rfl
+  | var x =>
+    cases x with
+    | bound bv => cases bv
+    | free loc =>
+      simp [expand_captures]
+      exact reachability_of_loc_update_mcell h l hexists b loc
+  | union cs1 cs2 ih1 ih2 =>
+    simp [expand_captures, ih1, ih2]
+  | cvar c => cases c
+
+/-- Updating an mcell preserves compute_reachability. -/
+theorem compute_reachability_update_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool)
+  (v : Exp {}) (hv : v.IsSimpleVal) :
+  compute_reachability (h.update_cell l (.capability (.mcell b))) v hv =
+  compute_reachability h v hv := by
+  cases hv with
+  | abs => simp [compute_reachability]; exact expand_captures_update_mcell h l hexists b _
+  | tabs => simp [compute_reachability]; exact expand_captures_update_mcell h l hexists b _
+  | cabs => simp [compute_reachability]; exact expand_captures_update_mcell h l hexists b _
+  | unit => rfl
+  | btrue => rfl
+  | bfalse => rfl
 
 /-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
 structure Heap.WfHeap (H : Heap) : Prop where
@@ -1730,7 +1796,13 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool)
       case isFalse hneq =>
         -- If l' ≠ l, then the lookup is from the original heap
         -- Well-formedness is preserved because updating a capability doesn't affect values
-        sorry
+        -- First, get well-formedness from the original heap
+        have hwf_orig : hv'.unwrap.WfInHeap m.heap := m.wf.wf_val l' hv' hlookup
+        -- Show that the updated heap subsumes the original heap
+        have hsub : (m.heap.update_cell l (.capability (.mcell b))).subsumes m.heap :=
+          Heap.update_mcell_subsumes m.heap l hexists b
+        -- Apply monotonicity
+        exact Exp.wf_monotonic hsub hwf_orig
     · -- wf_reach case: updating a capability doesn't affect reachability computation
       intro l' v' hv' R' hlookup
       unfold Heap.update_cell at hlookup
@@ -1741,7 +1813,12 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool)
       case isFalse hneq =>
         -- If l' ≠ l, then the lookup is from the original heap
         -- Reachability should be invariant under updating mcells
-        sorry
+        -- Get reachability from the original heap
+        have hreach_orig : R' = compute_reachability m.heap v' hv' :=
+          m.wf.wf_reach l' v' hv' R' hlookup
+        -- Show that compute_reachability is preserved
+        rw [hreach_orig]
+        exact (compute_reachability_update_mcell m.heap l hexists b v' hv').symm
   findom := by
     -- Domain remains unchanged when updating an existing cell
     obtain ⟨dom, hdom⟩ := m.findom
