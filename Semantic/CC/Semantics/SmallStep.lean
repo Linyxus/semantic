@@ -13,7 +13,7 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   Step C m (.app (.free x) (.free y)) m (e.subst (Subst.openVar (.free y)))
 | step_invoke :
   x ∈ C ->
-  m.lookup x = some .capability ->
+  m.lookup x = some (.capability .basic) ->
   m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
   Step C m (.app (.free x) (.free y)) m .unit
 | step_tapply :
@@ -28,6 +28,17 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
 | step_cond_var_false :
   m.lookup x = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.cond (.free x) e1 e2) m e2
+| step_read :
+  m.lookup x = some (.capability (.mcell b)) ->
+  Step C m (.read (.free x)) m (if b then .btrue else .bfalse)
+| step_write_true :
+  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  Step C m (.write (.free x) (.free y)) (m.update_mcell x true ⟨b0, hx⟩) .unit
+| step_write_false :
+  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
+  Step C m (.write (.free x) (.free y)) (m.update_mcell x false ⟨b0, hx⟩) .unit
 | step_ctx_letin :
   Step C m e1 m' e1' ->
   Step C m (.letin e1 e2) m' (.letin e1' e2)
