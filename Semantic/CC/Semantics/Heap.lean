@@ -1910,6 +1910,11 @@ def Mpost.is_monotonic (Q : Mpost) : Prop :=
     Q e m1 ->
     Q e m2
 
+def Mpost.is_bool_independent (Q : Mpost) : Prop :=
+  ∀ {m : Memory},
+    Q (.btrue) m <-> Q (.bfalse) m
+
+/-- Entailment between memory postconditions. -/
 def Mpost.entails (Q1 Q2 : Mpost) : Prop :=
   ∀ m e,
     Q1 e m ->
