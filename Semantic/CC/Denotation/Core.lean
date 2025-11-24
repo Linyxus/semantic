@@ -122,6 +122,13 @@ lemma Denot.as_mpost_is_monotonic {d : Denot}
   unfold Denot.as_mpost at h ⊢
   exact hmon hsub h
 
+lemma Denot.as_mpost_is_bool_independent {d : Denot}
+  (hbool : d.is_bool_independent) :
+  d.as_mpost.is_bool_independent := by
+  intro m
+  simp [Denot.as_mpost, Mpost.is_bool_independent]
+  exact hbool
+
 def Denot.Imply (d1 d2 : Denot) : Prop :=
   ∀ m e,
     (d1 m e) ->
@@ -1406,6 +1413,36 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
     · -- The existential part remains the same
       exact hexists
 
+theorem shape_val_denot_is_bool_independent {env : TypeEnv s}
+  (henv : env.is_bool_independent)
+  (T : Ty .shape s) :
+  ∀ C, (Ty.shape_val_denot env T C).is_bool_independent := by
+  intro C m
+  cases T with
+  | top =>
+    simp [Ty.shape_val_denot, resolve_reachability]
+    intro _
+    constructor <;> intro
+    · apply Exp.WfInHeap.wf_bfalse
+    · apply Exp.WfInHeap.wf_btrue
+  | tvar X =>
+    simp [Ty.shape_val_denot]
+    exact henv X C
+  | unit =>
+    simp [Ty.shape_val_denot, resolve]
+  | cap =>
+    simp [Ty.shape_val_denot]
+  | bool =>
+    simp [Ty.shape_val_denot, resolve]
+  | cell =>
+    simp [Ty.shape_val_denot]
+  | arrow T1 T2 =>
+    simp [Ty.shape_val_denot, resolve]
+  | poly T1 T2 =>
+    simp [Ty.shape_val_denot, resolve]
+  | cpoly B T =>
+    simp [Ty.shape_val_denot, resolve]
+
 theorem capt_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
   (T : Ty .capt s) :
@@ -1924,8 +1961,52 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         simp [hresolve1] at ht
       }
 
+def capt_val_denot_is_bool_independent {env : TypeEnv s}
+  (henv : TypeEnv.is_bool_independent env)
+  (T : Ty .capt s) :
+  (Ty.capt_val_denot env T).is_bool_independent := by
+  cases T with
+  | capt C S =>
+    intro m
+    simp [Ty.capt_val_denot]
+    constructor
+    · intro ⟨hsimple, hwf, hwf_C, hshape⟩
+      constructor
+      · apply Exp.IsSimpleAns.is_simple_val
+        apply Exp.IsSimpleVal.bfalse
+      · constructor
+        · apply Exp.WfInHeap.wf_bfalse
+        · constructor
+          · exact hwf_C
+          · exact (shape_val_denot_is_bool_independent henv S (C.denot env m)).mp hshape
+    · intro ⟨hsimple, hwf, hwf_C, hshape⟩
+      constructor
+      · apply Exp.IsSimpleAns.is_simple_val
+        apply Exp.IsSimpleVal.btrue
+      · constructor
+        · apply Exp.WfInHeap.wf_btrue
+        · constructor
+          · exact hwf_C
+          · exact (shape_val_denot_is_bool_independent henv S (C.denot env m)).mpr hshape
+
+def exi_val_denot_is_bool_independent {env : TypeEnv s}
+  (henv : TypeEnv.is_bool_independent env)
+  (T : Ty .exi s) :
+  (Ty.exi_val_denot env T).is_bool_independent := by
+  cases T with
+  | typ T =>
+    simp [Ty.exi_val_denot]
+    exact capt_val_denot_is_bool_independent henv T
+  | exi T =>
+    intro m
+    simp only [Ty.exi_val_denot]
+    -- For btrue and bfalse, resolve returns some btrue/bfalse, which are not pack
+    -- So both sides evaluate to False
+    simp [resolve]
+
 def capt_exp_denot_is_monotonic {env : TypeEnv s}
-  (henv : env.IsMonotonic)
+  (henv_mono : env.IsMonotonic)
+  (henv_bool : env.is_bool_independent)
   (T : Ty .capt s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -1936,17 +2017,16 @@ def capt_exp_denot_is_monotonic {env : TypeEnv s}
   simp [Ty.capt_exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
-    exact capt_val_denot_is_monotonic henv T
-  · -- TODO: Prove that value denotations are bool-independent
-    -- This should hold because value denotations don't distinguish between
-    -- different boolean values in mutable cells (they only care about the shape)
-    sorry
+    exact capt_val_denot_is_monotonic henv_mono T
+  · apply Denot.as_mpost_is_bool_independent
+    exact capt_val_denot_is_bool_independent henv_bool T
   · exact hmem
   · exact hwf
   · exact ht
 
 def exi_exp_denot_is_monotonic {env : TypeEnv s}
-  (henv : env.IsMonotonic)
+  (henv_mono : env.IsMonotonic)
+  (henv_bool : env.is_bool_independent)
   (T : Ty .exi s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -1957,11 +2037,9 @@ def exi_exp_denot_is_monotonic {env : TypeEnv s}
   simp [Ty.exi_exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
-    exact exi_val_denot_is_monotonic henv T
-  · -- TODO: Prove that value denotations are bool-independent
-    -- This should hold because value denotations don't distinguish between
-    -- different boolean values in mutable cells (they only care about the shape)
-    sorry
+    exact exi_val_denot_is_monotonic henv_mono T
+  · apply Denot.as_mpost_is_bool_independent
+    exact exi_val_denot_is_bool_independent henv_bool T
   · exact hmem
   · exact hwf
   · exact ht
@@ -2558,36 +2636,6 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
             simp [resolve_reachability]
             exact CapabilitySet.Subset.refl
           · exact hbody
-
-theorem shape_val_denot_is_bool_independent {env : TypeEnv s}
-  (henv : env.is_bool_independent)
-  (T : Ty .shape s) :
-  ∀ C, (Ty.shape_val_denot env T C).is_bool_independent := by
-  intro C m
-  cases T with
-  | top =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve_reachability]
-    intro _
-    constructor <;> intro
-    · apply Exp.WfInHeap.wf_bfalse
-    · apply Exp.WfInHeap.wf_btrue
-  | tvar X =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent]
-    exact henv X C
-  | unit =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
-  | cap =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent]
-  | bool =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
-  | cell =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent]
-  | arrow T1 T2 =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
-  | poly T1 T2 =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
-  | cpoly B T =>
-    simp [Ty.shape_val_denot, Denot.is_bool_independent, resolve]
 
 theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
   (hts : EnvTyping Γ env m) :

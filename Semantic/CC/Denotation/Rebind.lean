@@ -117,6 +117,9 @@ def rebind_shape_val_denot
     apply PreDenot.eq_to_equiv
     funext A
     simp [Ty.shape_val_denot, Ty.rename]
+  | .cell => by
+    intro A s0 e0
+    simp [Ty.shape_val_denot, Ty.rename]
   | .arrow T1 T2 => by
     have ih1 := rebind_capt_val_denot ρ T1
     intro A s0 e0
