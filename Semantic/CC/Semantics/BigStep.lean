@@ -70,15 +70,18 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
+  x ∈ C ->
   m.lookup x = some (.capability (.mcell b)) ->
   Q (if b then .btrue else .bfalse) m ->
   Eval C m (.read (.free x)) Q
 | eval_write_true {m : Memory} {x y : Nat} :
+  x ∈ C ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
   Q .unit (m.update_mcell x true ⟨b0, hx⟩) ->
   Eval C m (.write (.free x) (.free y)) Q
 | eval_write_false {m : Memory} {x y : Nat} :
+  x ∈ C ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
   Q .unit (m.update_mcell x false ⟨b0, hx⟩) ->
@@ -253,7 +256,7 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Exp.wf_subst hwf2_ext
         -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
         apply Subst.wf_unpack hwf_cs hwf_x
-  case eval_read hx hQ =>
+  case eval_read hmem hx hQ =>
     -- Name the unnamed variables
     rename_i Q_eval C_eval m_eval x b
     -- From subsumption, m2 must also have an mcell at x (possibly different boolean)
@@ -276,7 +279,7 @@ theorem eval_monotonic {m1 m2 : Memory}
         -- Need to show: Q_eval (if b' then .btrue else .bfalse) m2
         -- We have: Q_eval (if b then .btrue else .bfalse) m_eval
         -- Use bool independence: Q_eval treats btrue and bfalse the same
-        apply Eval.eval_read hx2
+        apply Eval.eval_read hmem hx2
         -- Goal: Q_eval (if b' then .btrue else .bfalse) m2
         by_cases hb : b
         · -- b = true, so we have Q_eval .btrue m_eval
@@ -310,7 +313,7 @@ theorem eval_monotonic {m1 m2 : Memory}
             subst hb'
             simp
             exact hpred (by constructor) hsub hQ
-  case eval_write_true hx hy hQ =>
+  case eval_write_true hmem hx hy hQ =>
     -- From subsumption, m2 must also have an mcell at x (possibly different value)
     -- and the same val at y
     obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
@@ -331,7 +334,7 @@ theorem eval_monotonic {m1 m2 : Memory}
         simp [Cell.subsumes] at hsub_y
         subst hsub_y
         -- Now we can apply eval_write_true with m2
-        apply Eval.eval_write_true (hx := hx2) hy2
+        apply Eval.eval_write_true hmem (hx := hx2) hy2
         -- Need to show: Q .unit (m2.update_mcell x true ⟨b', hx2⟩)
         -- We have: Q .unit (m1.update_mcell x true ⟨_, hx⟩)
         -- Use monotonicity with update_mcell_subsumes_compat
@@ -344,7 +347,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     case masked =>
       -- Contradiction: masked cannot subsume mcell
       simp [Cell.subsumes] at hsub_x
-  case eval_write_false hx hy hQ =>
+  case eval_write_false hmem hx hy hQ =>
     -- Symmetric to eval_write_true
     obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
     obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
@@ -358,7 +361,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       case mcell b' =>
         simp [Cell.subsumes] at hsub_y
         subst hsub_y
-        apply Eval.eval_write_false (hx := hx2) hy2
+        apply Eval.eval_write_false hmem (hx := hx2) hy2
         apply hpred
         · constructor
         · apply Memory.update_mcell_subsumes_compat _ _
@@ -464,16 +467,16 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_val hs1 hwf_x hwf_cs hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
-  case eval_read hx hQ =>
-    apply Eval.eval_read hx
+  case eval_read hmem hx hQ =>
+    apply Eval.eval_read hmem hx
     apply himp _ _ _ hQ
     apply Memory.subsumes_refl
-  case eval_write_true hx hy hQ =>
-    apply Eval.eval_write_true hx hy
+  case eval_write_true hmem hx hy hQ =>
+    apply Eval.eval_write_true hmem hx hy
     apply himp _ _ _ hQ
     apply Memory.update_mcell_subsumes
-  case eval_write_false hx hy hQ =>
-    apply Eval.eval_write_false hx hy
+  case eval_write_false hmem hx hy hQ =>
+    apply Eval.eval_write_false hmem hx hy
     apply himp _ _ _ hQ
     apply Memory.update_mcell_subsumes
   case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
@@ -535,12 +538,13 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       exact ih_val hs1 hwf_x hwf_cs hq1 hsub
-  case eval_read hlookup hQ =>
-    exact Eval.eval_read hlookup hQ
-  case eval_write_true hlookup_x hlookup_y hQ =>
-    exact Eval.eval_write_true hlookup_x hlookup_y hQ
-  case eval_write_false hlookup_x hlookup_y hQ =>
-    exact Eval.eval_write_false hlookup_x hlookup_y hQ
+  case eval_read hmem hlookup hQ =>
+    exact Eval.eval_read (CapabilitySet.subset_preserves_mem hsub hmem) hlookup hQ
+  case eval_write_true hmem hlookup_x hlookup_y hQ =>
+    exact Eval.eval_write_true (CapabilitySet.subset_preserves_mem hsub hmem) hlookup_x hlookup_y hQ
+  case eval_write_false hmem hlookup_x hlookup_y hQ =>
+    have hmem' := CapabilitySet.subset_preserves_mem hsub hmem
+    exact Eval.eval_write_false hmem' hlookup_x hlookup_y hQ
   case eval_cond Q1 hpred_guard hbool_guard heval_e1 h_nonstuck h_true h_false
       ih_e1 ih_true ih_false =>
     apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard (ih_e1 hsub)
