@@ -15,9 +15,9 @@ import Semantic.Capybara.Fundamental
 import Semantic.Capybara.Safety
 
 /-!
-# Semantic Type Soundness for Capture Calculus
+# Semantic Type Soundness for Capybara
 
-This module develops semantic type soundness of System Capless.
+This module develops semantic type soundness of System Capybara. It is based on System Capless.
 
 `Semantic.Capybara.Syntax` defines the syntax of the system, in de Bruijn style.
 Infrastructure for debruijn indices is defined in `Semantic.Capybara.Debruijn`.
