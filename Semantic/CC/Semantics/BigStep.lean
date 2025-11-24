@@ -101,6 +101,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
+  (hbool : Q.is_bool_independent)
   (hsub : m2.subsumes m1)
   (hwf : Exp.WfInHeap e m1.heap)
   (heval : Eval C m1 e Q) :
@@ -123,18 +124,18 @@ theorem eval_monotonic {m1 m2 : Memory}
       subst hsub_v
       apply Eval.eval_apply
       · exact hx2
-      · apply ih hpred hsub
-        -- Need: Exp.WfInHeap (e.subst (Subst.openVar y)) m1.heap
-        -- Use Exp.wf_subst with Subst.wf_openVar
-        apply Exp.wf_subst
-        · -- Need: Exp.WfInHeap e m1.heap
-          -- Get it from Memory.wf_lookup and inversion
-          have hwf_abs := Memory.wf_lookup hx
-          have ⟨_, _, hwf_e⟩ := Exp.wf_inv_abs hwf_abs
-          exact hwf_e
-        · -- Show: (Subst.openVar y).WfInHeap m1.heap
-          apply Subst.wf_openVar
-          exact hwf_y
+      · apply ih hpred hbool hsub (by
+          -- Need: Exp.WfInHeap (e.subst (Subst.openVar y)) m1.heap
+          -- Use Exp.wf_subst with Subst.wf_openVar
+          apply Exp.wf_subst
+          · -- Need: Exp.WfInHeap e m1.heap
+            -- Get it from Memory.wf_lookup and inversion
+            have hwf_abs := Memory.wf_lookup hx
+            have ⟨_, _, hwf_e⟩ := Exp.wf_inv_abs hwf_abs
+            exact hwf_e
+          · -- Show: (Subst.openVar y).WfInHeap m1.heap
+            apply Subst.wf_openVar
+            exact hwf_y)
   case eval_invoke hmem hx hy hQ =>
     -- Destructure subsumptions
     obtain ⟨v'x, hx2, hsub_vx⟩ := hsub _ _ hx
@@ -161,18 +162,18 @@ theorem eval_monotonic {m1 m2 : Memory}
     subst hsub_v
     apply Eval.eval_tapply
     · exact hx2
-    · apply ih hpred hsub
-      -- Need: Exp.WfInHeap (e.subst (Subst.openTVar .top)) m1.heap
-      -- Use Exp.wf_subst with Subst.wf_openTVar
-      apply Exp.wf_subst
-      · -- Need: Exp.WfInHeap e m1.heap
-        -- Get it from Memory.wf_lookup and inversion
-        have hwf_tabs := Memory.wf_lookup hx
-        have ⟨_, _, hwf_e⟩ := Exp.wf_inv_tabs hwf_tabs
-        exact hwf_e
-      · -- Show: (Subst.openTVar .top).WfInHeap m1.heap
-        apply Subst.wf_openTVar
-        apply Ty.WfInHeap.wf_top
+    · apply ih hpred hbool hsub (by
+        -- Need: Exp.WfInHeap (e.subst (Subst.openTVar .top)) m1.heap
+        -- Use Exp.wf_subst with Subst.wf_openTVar
+        apply Exp.wf_subst
+        · -- Need: Exp.WfInHeap e m1.heap
+          -- Get it from Memory.wf_lookup and inversion
+          have hwf_tabs := Memory.wf_lookup hx
+          have ⟨_, _, hwf_e⟩ := Exp.wf_inv_tabs hwf_tabs
+          exact hwf_e
+        · -- Show: (Subst.openTVar .top).WfInHeap m1.heap
+          apply Subst.wf_openTVar
+          apply Ty.WfInHeap.wf_top)
   case eval_capply hx _ ih =>
     -- Extract well-formedness of the capability application
     cases hwf with
@@ -184,24 +185,26 @@ theorem eval_monotonic {m1 m2 : Memory}
       subst hsub_v
       apply Eval.eval_capply
       · exact hx2
-      · apply ih hpred hsub
-        -- Need: Exp.WfInHeap (e.subst (Subst.openCVar CS)) m1.heap
-        -- Use Exp.wf_subst with Subst.wf_openCVar
-        apply Exp.wf_subst
-        · -- Need: Exp.WfInHeap e m1.heap
-          -- Get it from Memory.wf_lookup and inversion
-          have hwf_cabs := Memory.wf_lookup hx
-          have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
-          exact hwf_e
-        · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
-          apply Subst.wf_openCVar
-          exact hwf_cs
+      · apply ih hpred hbool hsub (by
+          -- Need: Exp.WfInHeap (e.subst (Subst.openCVar CS)) m1.heap
+          -- Use Exp.wf_subst with Subst.wf_openCVar
+          apply Exp.wf_subst
+          · -- Need: Exp.WfInHeap e m1.heap
+            -- Get it from Memory.wf_lookup and inversion
+            have hwf_cabs := Memory.wf_lookup hx
+            have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
+            exact hwf_e
+          · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
+            apply Subst.wf_openCVar
+            exact hwf_cs)
   case eval_letin Q1 hpred0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
     -- Apply IH for e1 with well-formedness
-    have eval_e1' := ih hpred0 hsub hwf1
+    -- NOTE: We need Q1.is_bool_independent here, but we only have Q_orig.is_bool_independent.
+    -- In general, intermediate postconditions also need to be bool-independent for monotonicity.
+    have eval_e1' := ih hpred0 (sorry : Q1.is_bool_independent) hsub hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 eval_e1'
     -- Provide the h_nonstuck condition
     case h_nonstuck =>
@@ -218,7 +221,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     case h_var =>
       intro m_ext' x hs_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      apply ih_var hs_orig hwf_x hq1 hpred
+      apply ih_var hs_orig hwf_x hq1 hpred hbool
       · exact Memory.subsumes_refl _
       · -- Need: (e2_orig.subst (Subst.openVar x)).WfInHeap m_ext'.heap
         -- First, lift hwf2 to m_ext'.heap using monotonicity
@@ -231,7 +234,9 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     -- Apply IH for e1 with well-formedness
-    have eval_e1' := ih hpred0 hsub hwf1
+    -- NOTE: We need Q1.is_bool_independent here, but we only have Q_orig.is_bool_independent.
+    -- In general, intermediate postconditions also need to be bool-independent for monotonicity.
+    have eval_e1' := ih hpred0 (sorry : Q1.is_bool_independent) hsub hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 eval_e1'
     -- Provide the h_nonstuck condition
     case h_nonstuck =>
@@ -240,7 +245,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     case h_val =>
       intro m_ext' x cs hs_ext' hwf_x hwf_cs hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      apply ih_val hs_orig hwf_x hwf_cs hq1 hpred
+      apply ih_val hs_orig hwf_x hwf_cs hq1 hpred hbool
       · exact Memory.subsumes_refl _
       · -- Need: (e2.subst (Subst.unpack cs x)).WfInHeap m_ext'.heap
         -- Lift hwf2 to m_ext'.heap using monotonicity
@@ -250,12 +255,62 @@ theorem eval_monotonic {m1 m2 : Memory}
         -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
         apply Subst.wf_unpack hwf_cs hwf_x
   case eval_read hx hQ =>
-    -- For mutable cells, subsumption allows different boolean values, but
-    -- evaluation depends on the actual value stored. This is a fundamental
-    -- limitation: reads are not monotonic when cell values can change.
-    -- TODO: Either restrict subsumption to preserve cell values, or redesign
-    -- the evaluation semantics to handle this properly.
-    sorry
+    -- Name the unnamed variables
+    rename_i Q_eval C_eval m_eval x b
+    -- From subsumption, m2 must also have an mcell at x (possibly different boolean)
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
+    -- cx must be an mcell (possibly with different boolean)
+    cases cx
+    case val v =>
+      -- Contradiction: val cannot subsume capability
+      simp [Cell.subsumes] at hsub_x
+    case masked =>
+      -- Contradiction: masked cannot subsume mcell
+      simp [Cell.subsumes] at hsub_x
+    case capability info =>
+      cases info
+      case basic =>
+        -- Contradiction: basic cannot subsume mcell
+        simp [Cell.subsumes] at hsub_x
+      case mcell b' =>
+        -- Good! m2 has an mcell at x with boolean b'
+        -- Need to show: Q_eval (if b' then .btrue else .bfalse) m2
+        -- We have: Q_eval (if b then .btrue else .bfalse) m_eval
+        -- Use bool independence: Q_eval treats btrue and bfalse the same
+        apply Eval.eval_read hx2
+        -- Goal: Q_eval (if b' then .btrue else .bfalse) m2
+        by_cases hb : b
+        · -- b = true, so we have Q_eval .btrue m_eval
+          subst hb
+          simp at hQ
+          by_cases hb' : b' = true
+          · -- b' = true, need Q_eval .btrue m2
+            subst hb'
+            simp
+            exact hpred (by constructor) hsub hQ
+          · -- b' = false, need Q_eval .bfalse m2
+            -- Convert ¬b' = true to b' = false
+            simp at hb'
+            subst hb'
+            simp
+            rw [←hbool]
+            exact hpred (by constructor) hsub hQ
+        · -- b = false, so we have Q_eval .bfalse m_eval
+          simp at hb
+          subst hb
+          simp at hQ
+          by_cases hb' : b' = true
+          · -- b' = true, need Q_eval .btrue m2
+            subst hb'
+            simp
+            rw [hbool]
+            exact hpred (by constructor) hsub hQ
+          · -- b' = false, need Q_eval .bfalse m2
+            -- Convert ¬b' = true to b' = false
+            simp at hb'
+            subst hb'
+            simp
+            exact hpred (by constructor) hsub hQ
   case eval_write_true hx hy hQ =>
     -- From subsumption, m2 must also have an mcell at x (possibly different value)
     -- and the same val at y
@@ -317,7 +372,9 @@ theorem eval_monotonic {m1 m2 : Memory}
     have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
     -- Build well-formedness of (.var x) in original heap
     have hwf_var : Exp.WfInHeap (.var _) _ := Exp.WfInHeap.wf_var hwf_x
-    have eval_e1' := ih_guard hpred_guard hsub hwf_var
+    -- NOTE: We need Q1.is_bool_independent here, but we only have Q_orig.is_bool_independent.
+    -- In general, intermediate postconditions also need to be bool-independent for monotonicity.
+    have eval_e1' := ih_guard hpred_guard (sorry : Q1.is_bool_independent) hsub hwf_var
     apply Eval.eval_cond (Q1:=Q1) hpred_guard eval_e1'
     · intro m_guard v hQ1
       exact h_nonstuck hQ1
