@@ -541,9 +541,11 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_read hcov hlookup hQ =>
     exact Eval.eval_read (CapabilitySet.subset_preserves_covers hsub hcov) hlookup hQ
   case eval_write_true hcov hlookup_x hlookup_y hQ =>
-    exact Eval.eval_write_true (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
+    exact Eval.eval_write_true
+      (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
   case eval_write_false hcov hlookup_x hlookup_y hQ =>
-    exact Eval.eval_write_false (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
+    exact Eval.eval_write_false
+      (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
   case eval_cond Q1 hpred_guard hbool_guard heval_e1 h_nonstuck h_true h_false
       ih_e1 ih_true ih_false =>
     apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard (ih_e1 hsub)

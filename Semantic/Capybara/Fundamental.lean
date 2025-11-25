@@ -195,7 +195,8 @@ theorem shape_denot_with_var_reachability
 
 theorem sem_typ_var
   (hx : Γ.LookupVar x (.capt C S)) :
-  (.var .epsilon (.bound x)) # Γ ⊨ (Exp.var (.bound x)) : (.typ (.capt (.var .epsilon (.bound x)) S)) := by
+  (.var .epsilon (.bound x)) # Γ ⊨ (Exp.var (.bound x)) :
+    (.typ (.capt (.var .epsilon (.bound x)) S)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot]
   apply Eval.eval_var
@@ -781,7 +782,8 @@ theorem unit_val_denot_inv
 
 theorem cell_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env .cell A store (.var x)) :
-  ∃ fx b0, x = .free fx ∧ store.heap fx = some (.capability (.mcell b0)) ∧ A.covers .epsilon fx := by
+  ∃ fx b0, x = .free fx ∧ store.heap fx = some (.capability (.mcell b0)) ∧
+    A.covers .epsilon fx := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -868,7 +870,8 @@ theorem sem_typ_tapp
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   {S : Ty .shape s} -- Type argument
   {T : Ty .exi (s,X)} -- Result type (depends on type variable X)
-  (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) : .typ (.capt (.var .epsilon (.bound x)) (.poly S T))) :
+  (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) :
+    .typ (.capt (.var .epsilon (.bound x)) (.poly S T))) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
   intro env store hts
 
