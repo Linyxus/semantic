@@ -2177,4 +2177,12 @@ def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
 | .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
 | .cap _ x => {x}
 
+def Heap.not_mutated (init after : Heap) : Prop :=
+  ∀ l b,
+    init l = some (.capability (.mcell b)) ->
+    after l = some (.capability (.mcell b))
+
+def Memory.not_mutated (init after : Memory) : Prop :=
+  init.heap.not_mutated after.heap
+
 end Capybara

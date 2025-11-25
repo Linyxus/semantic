@@ -1680,4 +1680,9 @@ theorem eval_reduce_exists_answer
             obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
             exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
 
+theorem step_immutable {C : CapabilitySet}
+  (himm : C.HasKind .ro)
+  (hstep : Step C m1 e1 m2 e2) :
+  m1.not_mutated m2 := sorry
+
 end Capybara
