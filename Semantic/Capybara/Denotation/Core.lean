@@ -252,12 +252,13 @@ theorem Subst.from_TypeEnv_empty :
   · intro X; cases X
   · intro C; cases C
 
-/-- Compute denotation for a ground capture set. -/
+/-- Compute denotation for a ground capture set.
+    Applies the mutability from each captured variable to the result. -/
 def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 | .empty => fun _ => {}
 | .union cs1 cs2 => fun m =>
   (cs1.ground_denot m) ∪ (cs2.ground_denot m)
-| .var _ (.free x) => fun m => reachability_of_loc m.heap x
+| .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyMut m'
 
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
@@ -1534,6 +1535,7 @@ theorem ground_denot_is_monotonic {C : CaptureSet {}} :
   induction C with
   | empty =>
     -- Empty set denotes {} at all memories
+    unfold CaptureSet.ground_denot
     rfl
   | union cs1 cs2 ih1 ih2 =>
     -- Union: use IH on both components
@@ -1551,7 +1553,7 @@ theorem ground_denot_is_monotonic {C : CaptureSet {}} :
       simp at hwf
       cases hwf with
       | wf_var_free hex =>
-        exact (reachability_of_loc_monotonic hsub x hex).symm
+        exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub x hex).symm
   | cvar m c => cases c  -- No capture variables in empty signature
 
 theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
@@ -1561,7 +1563,8 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
   induction C with
   | empty =>
     -- Empty set denotes {} at all memories
-    rfl
+    unfold CaptureSet.denot
+    simp [CaptureSet.subst, CaptureSet.ground_denot]
   | union C1 C2 ih1 ih2 =>
     -- Union: use IH on both components
     unfold CaptureSet.denot
@@ -1584,7 +1587,8 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
       | wf_var_free hex =>
         -- hex : m1.heap (ρ.lookup_var x) = some _
         -- Memory.lookup is definitionally equal to heap access
-        exact (reachability_of_loc_monotonic hsub (ρ.lookup_var x) hex).symm
+        have h := reachability_of_loc_monotonic hsub (ρ.lookup_var x) hex
+        exact congrArg (CapabilitySet.applyMut m) h.symm
     | free x =>
       -- Free variable: stays as free variable
       unfold CaptureSet.denot
@@ -1595,7 +1599,7 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
       | wf_var_free hex =>
         -- hex : m1.heap x = some _
         -- Memory.lookup is definitionally equal to heap access
-        exact (reachability_of_loc_monotonic hsub x hex).symm
+        exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub x hex).symm
   | cvar m c =>
     -- Capture variable: after substitution becomes ground capture set
     unfold CaptureSet.denot

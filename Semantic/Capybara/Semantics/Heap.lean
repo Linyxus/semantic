@@ -38,6 +38,19 @@ def singleton (m : Mutability) (l : Nat) : CapabilitySet :=
 instance instSingleton : Singleton Nat CapabilitySet :=
   ⟨CapabilitySet.singleton .ro⟩
 
+/-- Apply read-only mutability to all elements in a capability set. -/
+def applyRO : CapabilitySet -> CapabilitySet
+| .empty => .empty
+| .cap _ l => .cap .ro l
+| .union C1 C2 => .union C1.applyRO C2.applyRO
+
+/-- Apply a mutability to all elements in a capability set.
+    epsilon is identity, ro applies read-only. -/
+def applyMut (m : Mutability) (C : CapabilitySet) : CapabilitySet :=
+  match m with
+  | .epsilon => C
+  | .ro => C.applyRO
+
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C
@@ -736,14 +749,15 @@ def reachability_of_loc
   | some .masked => CapabilitySet.singleton .epsilon l
   | none => {}
 
-/-- Resolve reachability of each element of the capture set. -/
+/-- Resolve reachability of each element of the capture set.
+    Applies the mutability from each captured variable to the result. -/
 def expand_captures
   (h : Heap)
   (cs : CaptureSet {}) :
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var _ (.free loc) => reachability_of_loc h loc
+  | .var m (.free loc) => (reachability_of_loc h loc).applyMut m
   | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
 
 /-- Compute reachability for a heap value. -/
@@ -858,7 +872,7 @@ theorem expand_captures_monotonic
       cases hwf with
       | wf_var_free hex =>
         -- We have hex : h1 loc = some cell_val
-        exact reachability_of_loc_monotonic hsub loc hex
+        exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub loc hex)
   | cvar m C =>
     -- Impossible: no capability variables in empty signature
     cases C
@@ -994,7 +1008,7 @@ theorem expand_captures_update_mcell (h : Heap) (l : Nat)
     | bound bv => cases bv
     | free loc =>
       simp [expand_captures]
-      exact reachability_of_loc_update_mcell h l hexists b loc
+      exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_update_mcell h l hexists b loc)
   | union cs1 cs2 ih1 ih2 =>
     simp [expand_captures, ih1, ih2]
   | cvar m c => cases c
