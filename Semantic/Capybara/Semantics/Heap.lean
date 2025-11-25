@@ -108,6 +108,30 @@ theorem covers_imp_singleton_subset {C : CapabilitySet} {m : Mutability} {x : Na
       apply Subset.trans (ih2 h)
       apply Subset.union_right_right
 
+/-- If a capability set covers a location with .epsilon mutability,
+    then the epsilon singleton is a subset of the set. -/
+theorem covers_eps_imp_singleton_eps_subset {C : CapabilitySet} {x : Nat}
+  (hcov : covers .epsilon x C) :
+  singleton .epsilon x ⊆ C := by
+  -- singleton .epsilon x = cap .epsilon x
+  induction C with
+  | empty => cases hcov
+  | cap m' y =>
+    cases hcov
+    case here hle =>
+      -- covers .epsilon x (cap m' x) with .epsilon ≤ m'
+      -- This means m' = .epsilon (since .epsilon is maximal)
+      cases hle
+      exact Subset.refl
+  | union C1 C2 ih1 ih2 =>
+    cases hcov with
+    | left h =>
+      apply Subset.trans (ih1 h)
+      apply Subset.union_right_left
+    | right h =>
+      apply Subset.trans (ih2 h)
+      apply Subset.union_right_right
+
 end CapabilitySet
 
 /-- A heap value.
@@ -707,9 +731,9 @@ def reachability_of_loc
   (l : Nat) :
   CapabilitySet :=
   match h l with
-  | some (.capability _) => {l}
+  | some (.capability _) => CapabilitySet.singleton .epsilon l
   | some (.val ⟨_, _, R⟩) => R
-  | some .masked => {l}
+  | some .masked => CapabilitySet.singleton .epsilon l
   | none => {}
 
 /-- Resolve reachability of each element of the capture set. -/

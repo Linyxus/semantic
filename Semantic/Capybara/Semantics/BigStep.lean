@@ -17,7 +17,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m (e.subst (Subst.openVar y)) Q ->
   Eval C m (.app (.free x) y) Q
 | eval_invoke {m : Memory} {x : Nat} :
-  x ∈ C ->
+  C.covers .epsilon x ->
   m.lookup x = some (.capability .basic) ->
   m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
   Q .unit m ->
@@ -70,18 +70,18 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
-  x ∈ C ->
+  C.covers .ro x ->
   m.lookup x = some (.capability (.mcell b)) ->
   Q (if b then .btrue else .bfalse) m ->
   Eval C m (.read (.free x)) Q
 | eval_write_true {m : Memory} {x y : Nat} :
-  x ∈ C ->
+  C.covers .epsilon x ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
   Q .unit (m.update_mcell x true ⟨b0, hx⟩) ->
   Eval C m (.write (.free x) (.free y)) Q
 | eval_write_false {m : Memory} {x y : Nat} :
-  x ∈ C ->
+  C.covers .epsilon x ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
   Q .unit (m.update_mcell x false ⟨b0, hx⟩) ->
@@ -516,8 +516,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     exact Eval.eval_var hQ
   case eval_apply hlookup _ ih =>
     exact Eval.eval_apply hlookup (ih hsub)
-  case eval_invoke hmem hlookup_x hlookup_y hQ =>
-    exact Eval.eval_invoke (CapabilitySet.subset_preserves_mem hsub hmem) hlookup_x hlookup_y hQ
+  case eval_invoke hcov hlookup_x hlookup_y hQ =>
+    exact Eval.eval_invoke (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
   case eval_tapply hlookup _ ih =>
     exact Eval.eval_tapply hlookup (ih hsub)
   case eval_capply hlookup _ ih =>
@@ -538,13 +538,12 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       exact ih_val hs1 hwf_x hwf_cs hq1 hsub
-  case eval_read hmem hlookup hQ =>
-    exact Eval.eval_read (CapabilitySet.subset_preserves_mem hsub hmem) hlookup hQ
-  case eval_write_true hmem hlookup_x hlookup_y hQ =>
-    exact Eval.eval_write_true (CapabilitySet.subset_preserves_mem hsub hmem) hlookup_x hlookup_y hQ
-  case eval_write_false hmem hlookup_x hlookup_y hQ =>
-    have hmem' := CapabilitySet.subset_preserves_mem hsub hmem
-    exact Eval.eval_write_false hmem' hlookup_x hlookup_y hQ
+  case eval_read hcov hlookup hQ =>
+    exact Eval.eval_read (CapabilitySet.subset_preserves_covers hsub hcov) hlookup hQ
+  case eval_write_true hcov hlookup_x hlookup_y hQ =>
+    exact Eval.eval_write_true (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
+  case eval_write_false hcov hlookup_x hlookup_y hQ =>
+    exact Eval.eval_write_false (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
   case eval_cond Q1 hpred_guard hbool_guard heval_e1 h_nonstuck h_true h_false
       ih_e1 ih_true ih_false =>
     apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard (ih_e1 hsub)

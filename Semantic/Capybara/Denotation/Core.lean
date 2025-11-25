@@ -311,14 +311,14 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
   ∃ label : Nat,
     e = .var (.free label) ∧
     m.lookup label = some (.capability .basic) ∧
-    label ∈ A
+    A.covers .epsilon label
 | _, .bool => fun _ m e =>
   resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
 | _, .cell => fun R m e =>
   ∃ l b0,
     e = .var (.free l) ∧
     m.lookup l = some (.capability (.mcell b0)) ∧
-    l ∈ R
+    R.covers .epsilon l
 | env, .arrow T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
   ∃ cs T0 t0,
@@ -2202,8 +2202,8 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
       simp [Memory.lookup] at hlookup
       exact hlookup
     simp [reachability_of_loc, hlookup']
-    -- Goal: {l} ⊆ R, which follows from l ∈ R
-    exact CapabilitySet.mem_imp_singleton_subset hmem
+    -- Goal: singleton .epsilon l ⊆ R, which follows from R.covers .epsilon l
+    exact CapabilitySet.covers_eps_imp_singleton_eps_subset hmem
   | unit =>
     -- For .unit, resolve_reachability returns empty set or reachability from heap
     simp [Ty.shape_val_denot] at hdenot
@@ -2251,8 +2251,8 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
       simp [Memory.lookup] at hcap
       exact hcap
     simp [reachability_of_loc, hcap']
-    -- Goal: {label} ⊆ R, which follows from label ∈ R
-    exact CapabilitySet.mem_imp_singleton_subset hmem
+    -- Goal: singleton .epsilon label ⊆ R, which follows from R.covers .epsilon label
+    exact CapabilitySet.covers_eps_imp_singleton_eps_subset hmem
   | arrow T1 T2 =>
     -- For arrow types, e resolves to an abstraction with capture set cs
     simp [Ty.shape_val_denot] at hdenot
@@ -2377,7 +2377,7 @@ theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
     simp only [Ty.shape_val_denot] at hdenot ⊢
     obtain ⟨l, b0, heq, hlookup, hmem⟩ := hdenot
     use l, b0
-    exact ⟨heq, hlookup, CapabilitySet.subset_preserves_mem hsub hmem⟩
+    exact ⟨heq, hlookup, CapabilitySet.subset_preserves_covers hsub hmem⟩
   | unit =>
     simp [Ty.shape_val_denot] at hdenot ⊢
     exact hdenot
@@ -2387,7 +2387,7 @@ theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
     constructor
     · exact hwf_e
     · exists label, heq, hcap
-      exact CapabilitySet.subset_preserves_mem hsub hmem
+      exact CapabilitySet.subset_preserves_covers hsub hmem
   | arrow T1 T2 =>
     simp [Ty.shape_val_denot] at hdenot ⊢
     have ⟨hwf_e, cs, T0, t0, hres, hwf_cs, hR0_R1, hfun⟩ := hdenot
@@ -2547,7 +2547,7 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
       · exact hlookup
       · simp [Memory.lookup] at hlookup
         simp [reachability_of_loc, hlookup]
-        exact CapabilitySet.mem.here
+        exact CapabilitySet.covers.here Mutability.Le.refl
   | cap =>
     simp [Ty.shape_val_denot, reachability_of_loc, Memory.lookup] at ht ⊢
     obtain ⟨hwf, hmem, hin⟩ := ht
@@ -2556,7 +2556,7 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
     · constructor
       · exact hmem
       · simp [hmem]
-        exact CapabilitySet.mem.here
+        exact CapabilitySet.covers.here Mutability.Le.refl
   | arrow T1 T2 =>
     simp [Ty.shape_val_denot] at ht ⊢
     have ⟨hwf, cs, T0, t0, hresolve, hwf_cs, hR0_sub, hbody⟩ := ht
