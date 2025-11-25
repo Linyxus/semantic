@@ -11,6 +11,18 @@ inductive Mutability : Type where
 | epsilon : Mutability  -- default mode, read-write
 | ro : Mutability       -- read-only
 
+namespace Mutability
+
+inductive Le : Mutability -> Mutability -> Prop where
+| refl {m : Mutability} :
+    Le m m
+| ro_eps :
+    Le .ro .epsilon
+
+instance instLE : LE Mutability := ⟨Mutability.Le⟩
+
+end Mutability
+
 /-- A variable, either bound (de Bruijn indexed) or free (heap pointer). -/
 inductive Var : Kind -> Sig -> Type where
 | bound : BVar s k -> Var k s
