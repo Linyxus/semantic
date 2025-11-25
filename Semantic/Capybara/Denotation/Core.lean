@@ -269,6 +269,7 @@ def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
 
 inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
 | top :
+  C.HasKind m ->
   CapabilitySet.BoundedBy C (.top m)
 | set :
   C1 ⊆ C2 ->
@@ -280,8 +281,12 @@ inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop 
 | set :
   C1 ⊆ C2 ->
   CapabilityBound.SubsetEq (CapabilityBound.set C1) (CapabilityBound.set C2)
-| top :
-  CapabilityBound.SubsetEq B (.top m)
+| set_top :
+  C.HasKind m ->
+  CapabilityBound.SubsetEq (.set C) (.top m)
+| top_top :
+  m1 ≤ m2 ->
+  CapabilityBound.SubsetEq (.top m1) (.top m2)
 
 instance : HasSubset CapabilityBound where
   Subset := CapabilityBound.SubsetEq
@@ -298,7 +303,25 @@ theorem CapabilitySet.BoundedBy.trans
     | set hbound_set =>
       exact CapabilitySet.BoundedBy.set
         (CapabilitySet.Subset.trans hbound_set hsub_set)
-  | top => exact CapabilitySet.BoundedBy.top
+  | set_top hkind =>
+    cases hbound with
+    | set hbound_set =>
+      -- C ⊆ C' and C'.HasKind m, so C.HasKind m
+      cases hkind with
+      | eps => exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
+      | ro_empty =>
+        exact CapabilitySet.BoundedBy.top
+          (CapabilitySet.HasKind.subset_ro hbound_set HasKind.ro_empty)
+      | ro_cap =>
+        exact CapabilitySet.BoundedBy.top
+          (CapabilitySet.HasKind.subset_ro hbound_set HasKind.ro_cap)
+      | ro_union hk1 hk2 =>
+        exact CapabilitySet.BoundedBy.top
+          (CapabilitySet.HasKind.subset_ro hbound_set (HasKind.ro_union hk1 hk2))
+  | top_top hle =>
+    cases hbound with
+    | top hkind =>
+      exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
 
 mutual
 

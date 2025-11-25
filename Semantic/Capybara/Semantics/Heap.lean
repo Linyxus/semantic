@@ -94,12 +94,50 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
 
-/-- A capability set has a certain mutability kind. -/
+/-- A capability set has a certain mutability kind.
+    HasKind C .ro means all capabilities in C have mutability .ro.
+    HasKind C .epsilon is always true. -/
 inductive HasKind : CapabilitySet -> Mutability -> Prop where
 | eps :
   HasKind C .epsilon
-| ro {C : CapabilitySet} :
-  HasKind C.applyRO .ro
+| ro_empty :
+  HasKind .empty .ro
+| ro_cap :
+  HasKind (.cap .ro l) .ro
+| ro_union :
+  HasKind C1 .ro ->
+  HasKind C2 .ro ->
+  HasKind (C1 ∪ C2) .ro
+
+/-- applyRO always produces a capability set with kind .ro -/
+theorem HasKind.applyRO {C : CapabilitySet} : C.applyRO.HasKind .ro := by
+  induction C with
+  | empty => exact HasKind.ro_empty
+  | cap _ _ => exact HasKind.ro_cap
+  | union _ _ ih1 ih2 => exact HasKind.ro_union ih1 ih2
+
+/-- Weakening: if C has kind m1 and m1 ≤ m2, then C has kind m2. -/
+theorem HasKind.weaken {C : CapabilitySet} {m1 m2 : Mutability}
+    (hkind : C.HasKind m1) (hle : m1 ≤ m2) : C.HasKind m2 := by
+  cases hle with
+  | refl => exact hkind
+  | ro_eps => exact HasKind.eps
+
+/-- Subset preserves HasKind .ro -/
+theorem HasKind.subset_ro {C1 C2 : CapabilitySet}
+    (hsub : C1 ⊆ C2) (hkind : C2.HasKind .ro) : C1.HasKind .ro := by
+  induction hsub with
+  | refl => exact hkind
+  | empty => exact HasKind.ro_empty
+  | trans _ _ ih1 ih2 => exact ih1 (ih2 hkind)
+  | union_left _ _ ih1 ih2 => exact HasKind.ro_union (ih1 hkind) (ih2 hkind)
+  | union_right_left =>
+    cases hkind with
+    | ro_union hk1 _ => exact hk1
+  | union_right_right =>
+    cases hkind with
+    | ro_union _ hk2 => exact hk2
+  | cap_ro => exact HasKind.ro_cap
 
 /-- applyRO gives a subset: C.applyRO ⊆ C.applyMut m for any m. -/
 theorem applyRO_subset_applyMut {C : CapabilitySet} {m : Mutability} :

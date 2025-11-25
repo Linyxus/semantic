@@ -186,7 +186,7 @@ theorem env_typing_of_platform {N : Nat} :
           apply CaptureBound.WfInHeap.wf_unbound
         · constructor
           · -- cs.ground_denot bounded by unbound denot
-            apply CapabilitySet.BoundedBy.top
+            exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
           · -- Recursive: platform N types in platform (N+1) memory
             apply env_typing_platform_monotonic (N := N) (M := N + 1)
             · omega
@@ -427,5 +427,22 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
     apply reduce_preserves_eval hdenot hred
   -- Progressive: Eval implies progressive
   exact eval_implies_progressive heval'
+
+/-- If C has kind `.ro`,
+    then any execution of any program under `C` does not mutate the memory. -/
+theorem immutability_platform {e : Exp (Sig.platform_of N)}
+  {C : CaptureSet (Sig.platform_of N)}
+  (hclosed : C.IsClosed)
+  (hkind : HasKind (Ctx.platform_of N) C .ro) :
+  ∀ M1 e1,
+    Reduce C.to_platform_capability_set (Memory.platform_of N)
+      (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
+    (Memory.platform_of N).not_mutated M1 := by
+  intro M1 e1 hred
+  have hwf : C.WfInHeap (Heap.platform_of N) := CaptureSet.wf_of_closed hclosed
+  have hsem := fundamental_haskind hkind (TypeEnv.platform_of N) (Memory.platform_of N)
+    env_typing_of_platform
+  rw [capture_set_denot_eq_platform hwf] at hsem
+  exact reduce_immutable hsem hred
 
 end Capybara

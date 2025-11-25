@@ -1715,6 +1715,29 @@ theorem fundamental_subcapt
   case sc_ro => exact sem_sc_ro
   case sc_ro_mono ih => exact sem_sc_ro_mono ih
 
+theorem fundamental_haskind
+  (hkind : HasKind Γ C m) :
+  SemHasKind Γ C m := by
+  induction hkind with
+  | eps =>
+    intro env mem htyping
+    exact CapabilitySet.HasKind.eps
+  | ro =>
+    intro env mem htyping
+    simp only [CaptureSet.denot, CaptureSet.applyRO_subst]
+    rw [← ground_denot_applyRO_comm]
+    exact CapabilitySet.HasKind.applyRO
+  | cvar_ro hlookup =>
+    intro env mem htyping
+    simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv]
+    -- Need to show that the denotation of the capture variable has kind .ro
+    -- Since c is bounded by .unbound .ro, its denotation is bounded by .top .ro
+    have hbound := typed_env_lookup_cvar_aux htyping hlookup
+    simp [CaptureBound.denot] at hbound
+    -- hbound : BoundedBy ... (.top .ro), which requires HasKind .ro
+    cases hbound with
+    | top hkind => exact hkind
+
 lemma sem_subtyp_top {T : Ty .shape s} :
   SemSubtyp Γ T .top := by
   -- Unfold SemSubtyp for shape types
@@ -2053,18 +2076,20 @@ lemma fundamental_subbound
     --   CapabilityBound.set (C2.denot env m)
     have hsem := fundamental_subcapt hsubcapt
     exact CapabilityBound.SubsetEq.set (hsem env m htyping)
-  | kind _ =>
+  | kind hkind =>
     -- Subbound Γ (.bound C) (.unbound m) from HasKind Γ C m
     intro env m htyping
     simp [CaptureBound.denot]
-    -- .unbound m denotes CapabilityBound.top m, which is the largest bound
-    apply CapabilityBound.SubsetEq.top
-  | mode _ =>
+    -- .unbound m denotes CapabilityBound.top m
+    -- We need to show .set (C.denot env m) ⊆ .top m
+    have hsem := fundamental_haskind hkind env m htyping
+    exact CapabilityBound.SubsetEq.set_top hsem
+  | mode hle =>
     -- Subbound Γ (.unbound m1) (.unbound m2) from m1 ≤ m2
     intro env m htyping
     simp [CaptureBound.denot]
-    -- .top m1 ⊆ .top m2 by SubsetEq.top
-    apply CapabilityBound.SubsetEq.top
+    -- .top m1 ⊆ .top m2
+    exact CapabilityBound.SubsetEq.top_top hle
 
 lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
   (hB : SemSubbound Γ cb1 cb2) -- contravariant in bound (cb1 <: cb2)
@@ -2247,7 +2272,7 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
             · constructor
               · -- Need: (CS.ground_denot m).BoundedBy (CaptureBound.unbound.denot env m)
                 simp [CaptureBound.denot]
-                apply CapabilitySet.BoundedBy.top
+                exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
               · exact env_typing_monotonic htyping hsubsumes
 
         -- Apply semantic subtyping
@@ -2594,7 +2619,7 @@ theorem sem_typ_unpack
               · -- Show: cs.ground_denot m1 ⊆ ⟦unbound⟧_[env] m1
                 -- Unbound denotes the top capability bound, so every set is bounded by it
                 simp [CaptureBound.denot]
-                exact CapabilitySet.BoundedBy.top
+                exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
               · -- Show: EnvTyping Γ env m1
                 exact env_typing_monotonic hts hs1
 

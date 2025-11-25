@@ -1698,12 +1698,24 @@ theorem applyRO_not_covers_epsilon {C : CapabilitySet} {l : Nat} :
     | left h => exact ih1 h
     | right h => exact ih2 h
 
--- Helper: HasKind .ro implies no epsilon coverage
+-- Helper lemma: if C has kind .ro, then C.covers .epsilon l is false
 theorem hasKind_ro_not_covers_epsilon {C : CapabilitySet} {l : Nat}
     (hkind : C.HasKind .ro) :
     C.covers .epsilon l -> False := by
-  cases hkind with
-  | ro => exact applyRO_not_covers_epsilon
+  intro hcov
+  induction C with
+  | empty => cases hcov
+  | cap m x =>
+    cases hkind with
+    | ro_cap =>
+      cases hcov with
+      | here hle => cases hle
+  | union C1 C2 ih1 ih2 =>
+    cases hkind with
+    | ro_union hk1 hk2 =>
+      cases hcov with
+      | left h => exact ih1 hk1 h
+      | right h => exact ih2 hk2 h
 
 theorem step_immutable {C : CapabilitySet}
   (himm : C.HasKind .ro)
