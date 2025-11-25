@@ -9,16 +9,16 @@ def Sig.platform_of : Nat -> Sig
 | 0 => {}
 | n+1 => ((Sig.platform_of n),C),x
 
-/-- A platform context with `n` ground capabilities. -/
+/-- A platform context with `n` mutable boolean cells. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C<:.unbound .epsilon),x:(.capt (.cvar .epsilon .here) .cap)
+| n+1 => ((Ctx.platform_of n),C<:.unbound .epsilon),x:(.capt (.cvar .epsilon .here) .cell)
 
-/-- A platform heap with `n` ground capabilities (basic capabilities). -/
+/-- A platform heap with `n` mutable boolean cells (initialized to false). -/
 def Heap.platform_of (N : Nat) : Heap :=
   fun i =>
     if i < N then
-      .some (.capability .basic)
+      .some (.capability (.mcell false))
     else
       .none
 
@@ -99,10 +99,13 @@ theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   (Memory.platform_of M).subsumes (Memory.platform_of N) := by
   intro l v hlookup
   unfold Memory.platform_of Heap.platform_of at hlookup ⊢
-  simp at hlookup ⊢
+  simp at hlookup
+  obtain ⟨hl, hv⟩ := hlookup
+  exists .capability (.mcell false)
+  simp
   constructor
   · omega
-  · exact hlookup.2
+  · rw [← hv]; simp [Cell.subsumes]
 
 /-- EnvTyping for platform is monotonic: platform N types in platform M memory when M ≥ N. -/
 theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
@@ -129,7 +132,7 @@ theorem env_typing_of_platform {N : Nat} :
     unfold Ctx.platform_of TypeEnv.platform_of EnvTyping
     simp [TypeEnv.extend_cvar, TypeEnv.extend_var]
     constructor
-    · -- Term variable x : .capt (.cvar .here) .cap at location N
+    · -- Term variable x : .capt (.cvar .here) .cell at location N
       unfold Ty.capt_val_denot
       constructor
       · -- Is simple answer
@@ -138,46 +141,40 @@ theorem env_typing_of_platform {N : Nat} :
         · -- Well-formed in heap
           apply Exp.WfInHeap.wf_var
           apply Var.WfInHeap.wf_free
-          show (Heap.platform_of (N + 1)) N = some (.capability .basic)
+          show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
           unfold Heap.platform_of
           simp
         · constructor
           · -- Capture set after substitution is well-formed
             simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
             apply CaptureSet.WfInHeap.wf_var_free
-            show (Heap.platform_of (N + 1)) N = some (.capability .basic)
+            show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
             unfold Heap.platform_of
             simp
-          · -- Shape typing: N is a capability with reachability {N}
+          · -- Shape typing: N is an mcell with reachability {N}
+            -- .cell denotation: ∃ l b0, e = .var (.free l) ∧
+            --   m.lookup l = some (.capability (.mcell b0)) ∧ R.covers .epsilon l
             unfold Ty.shape_val_denot
+            use N, false
             constructor
-            · -- Well-formed
-              apply Exp.WfInHeap.wf_var
-              apply Var.WfInHeap.wf_free
-              show (Heap.platform_of (N + 1)) N = some (.capability .basic)
-              unfold Heap.platform_of
-              simp
-            · -- Exists label N that is a capability
-              use N
-              constructor
-              · rfl
-              · constructor
-                · -- m.lookup N = some .capability
-                  unfold Memory.lookup Memory.platform_of Heap.platform_of
-                  simp
-                · -- N is in the authority set from capture set denot
-                  simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
-                    TypeEnv.lookup_cvar, TypeEnv.lookup,
-                    CaptureSet.ground_denot, reachability_of_loc,
-                    Memory.platform_of]
-                  unfold Heap.platform_of
-                  simp
-                  apply CapabilitySet.covers.here Mutability.Le.refl
+            · rfl
+            · constructor
+              · -- m.lookup N = some (.capability (.mcell false))
+                unfold Memory.lookup Memory.platform_of Heap.platform_of
+                simp
+              · -- N is in the authority set from capture set denot
+                simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
+                  TypeEnv.lookup_cvar, TypeEnv.lookup,
+                  CaptureSet.ground_denot, reachability_of_loc,
+                  Memory.platform_of]
+                unfold Heap.platform_of
+                simp
+                apply CapabilitySet.covers.here Mutability.Le.refl
     · -- Capture variable C with bound .unbound
       constructor
       · -- cs.WfInHeap
         apply CaptureSet.WfInHeap.wf_var_free
-        show (Heap.platform_of (N + 1)) N = some (.capability .basic)
+        show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
         unfold Heap.platform_of
         simp
       · constructor
