@@ -94,6 +94,13 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
 
+/-- A capability set has a certain mutability kind. -/
+inductive HasKind : CapabilitySet -> Mutability -> Prop where
+| eps :
+  HasKind C .epsilon
+| ro {C : CapabilitySet} :
+  HasKind C.applyRO .ro
+
 /-- applyRO gives a subset: C.applyRO ⊆ C.applyMut m for any m. -/
 theorem applyRO_subset_applyMut {C : CapabilitySet} {m : Mutability} :
   C.applyRO ⊆ C.applyMut m := by

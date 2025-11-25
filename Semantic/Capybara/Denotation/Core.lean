@@ -15,7 +15,7 @@ def CapDenot := Memory -> CapabilitySet
 
 /-- A bound on capability sets. It can either be a concrete set of the top element. -/
 inductive CapabilityBound : Type where
-| top : CapabilityBound
+| top : Mutability -> CapabilityBound
 | set : CapabilitySet -> CapabilityBound
 
 /-- Capture bound denotation. -/
@@ -264,12 +264,12 @@ def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
-| _, .unbound => fun _ => .top
+| _, .unbound m => fun _ => .top m
 | env, .bound cs => fun m => .set (cs.denot env m)
 
 inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
 | top :
-  CapabilitySet.BoundedBy C CapabilityBound.top
+  CapabilitySet.BoundedBy C (.top m)
 | set :
   C1 ⊆ C2 ->
   CapabilitySet.BoundedBy C1 (CapabilityBound.set C2)
@@ -281,7 +281,7 @@ inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop 
   C1 ⊆ C2 ->
   CapabilityBound.SubsetEq (CapabilityBound.set C1) (CapabilityBound.set C2)
 | top :
-  CapabilityBound.SubsetEq B CapabilityBound.top
+  CapabilityBound.SubsetEq B (.top m)
 
 instance : HasSubset CapabilityBound where
   Subset := CapabilityBound.SubsetEq
@@ -2161,6 +2161,11 @@ def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   ∀ env m,
     EnvTyping Γ env m ->
     C1.denot env m ⊆ C2.denot env m
+
+def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
+  ∀ env m,
+    EnvTyping Γ env m ->
+    CapabilitySet.HasKind (C.denot env m) mode
 
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
