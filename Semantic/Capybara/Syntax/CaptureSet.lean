@@ -67,13 +67,19 @@ theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rena
     · simp [CaptureSet.rename, Var.rename]
   case cvar m x => simp [CaptureSet.rename, Rename.comp]
 
+/-- Applies read-only mutability to all elements in a capture set. -/
+def CaptureSet.applyRO : CaptureSet s -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => .union (cs1.applyRO) (cs2.applyRO)
+| .var _ x => .var .ro x
+| .cvar _ x => .cvar .ro x
+
 /-- Applies a mutability to all elements in a capture set.
   This is used to preserve mutability during substitution. -/
-def CaptureSet.applyMut (m : Mutability) : CaptureSet s -> CaptureSet s
-| .empty => .empty
-| .union cs1 cs2 => .union (cs1.applyMut m) (cs2.applyMut m)
-| .var _ x => .var m x
-| .cvar _ x => .cvar m x
+def CaptureSet.applyMut (m : Mutability) (cs : CaptureSet s) : CaptureSet s :=
+  match m with
+  | .epsilon => cs
+  | .ro => cs.applyRO
 
 /-- applyMut on a singleton cvar. -/
 @[simp]
