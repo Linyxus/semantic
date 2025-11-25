@@ -1680,9 +1680,62 @@ theorem eval_reduce_exists_answer
             obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
             exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
 
+-- Helper: applyRO cannot cover epsilon
+theorem applyRO_not_covers_epsilon {C : CapabilitySet} {l : Nat} :
+    C.applyRO.covers .epsilon l -> False := by
+  intro hcov
+  induction C with
+  | empty => cases hcov
+  | cap m x =>
+    simp [CapabilitySet.applyRO] at hcov
+    cases hcov with
+    | here hle =>
+      -- hle : .epsilon ≤ .ro, but this is false
+      cases hle
+  | union C1 C2 ih1 ih2 =>
+    simp [CapabilitySet.applyRO] at hcov
+    cases hcov with
+    | left h => exact ih1 h
+    | right h => exact ih2 h
+
+-- Helper: HasKind .ro implies no epsilon coverage
+theorem hasKind_ro_not_covers_epsilon {C : CapabilitySet} {l : Nat}
+    (hkind : C.HasKind .ro) :
+    C.covers .epsilon l -> False := by
+  cases hkind with
+  | ro => exact applyRO_not_covers_epsilon
+
 theorem step_immutable {C : CapabilitySet}
   (himm : C.HasKind .ro)
   (hstep : Step C m1 e1 m2 e2) :
-  m1.not_mutated m2 := sorry
+  m1.not_mutated m2 := by
+  intro l b hinit
+  induction hstep with
+  | step_apply _ => exact hinit
+  | step_invoke _ _ _ => exact hinit
+  | step_tapply _ => exact hinit
+  | step_capply _ => exact hinit
+  | step_cond_var_true _ => exact hinit
+  | step_cond_var_false _ => exact hinit
+  | step_read _ _ => exact hinit
+  | step_write_true hcov _ _ =>
+    -- hcov : C.covers .epsilon x, but C.HasKind .ro
+    exact absurd hcov (hasKind_ro_not_covers_epsilon himm)
+  | step_write_false hcov _ _ =>
+    exact absurd hcov (hasKind_ro_not_covers_epsilon himm)
+  | step_ctx_letin _ ih => exact ih himm hinit
+  | step_ctx_unpack _ ih => exact ih himm hinit
+  | step_rename => exact hinit
+  | step_lift hv hwf hfresh =>
+    -- Memory.extend preserves mcells
+    rename_i l'
+    simp [Memory.extend, Heap.extend]
+    -- l ≠ l' because l has an mcell but l' is fresh (none)
+    have hne : l ≠ l' := by
+      intro heq
+      rw [heq] at hinit
+      simp [hfresh] at hinit
+    simp [hne, hinit]
+  | step_unpack => exact hinit
 
 end Capybara
