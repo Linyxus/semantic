@@ -112,7 +112,7 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
   Subbound Γ (.bound C1) (.bound C2)
 | kind :
   HasKind Γ C m ->
-  Subbound Γ (.unbound m) (.bound C)
+  Subbound Γ (.bound C) (.unbound m)
 | mode {m1 m2 : Mutability} :
   m1 ≤ m2 ->
   -------------------
