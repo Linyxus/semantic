@@ -510,11 +510,8 @@ theorem Subst.from_TypeEnv_weaken_open_cvar
     case here =>
       simp only [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
         TypeEnv.extend_cvar, TypeEnv.lookup_cvar, CaptureSet.subst,
-        TypeEnv.extend, TypeEnv.lookup]
-      -- Goal: cs.applyMut .epsilon = cs
-      -- This requires that cs already has all epsilon mutabilities
-      -- For now, we need a lemma for this
-      sorry
+        TypeEnv.lookup]
+      rfl
     case there C' =>
       simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
         TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
@@ -572,8 +569,7 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         -- This is unpack.cvar (.there .here) = cs by definition
         rw [Subst.lift_there_cvar_eq]
         simp [Subst.lift, CaptureSet.subst, CaptureSet.rename]
-        -- Goal involves applyMut .epsilon cs = cs
-        sorry
+        rfl
       case there c0 =>
         -- LHS: comp maps .there (.there c0) through unpack then lift.lift
         simp [Subst.comp, Subst.unpack]

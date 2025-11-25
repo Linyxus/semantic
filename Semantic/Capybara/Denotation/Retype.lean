@@ -119,10 +119,8 @@ theorem Retype.liftCVar
       apply cweaken_shape_val_denot
   cvar := fun
     | .here => by
-      simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
-      -- Goal: cs = (σ.lift.cvar .here).subst (from_TypeEnv _)
-      -- This involves applyMut .epsilon cs = cs
-      sorry
+      simp [TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup, Subst.lift,
+        CaptureSet.subst, Subst.from_TypeEnv]
     | .there C => by
       simp [TypeEnv.extend_cvar, Subst.lift]
       change env1.lookup_cvar C = _
@@ -307,8 +305,12 @@ def retype_resolved_capture_set
       simp [CaptureSet.subst, Var.subst]
   case cvar m C =>
     simp [CaptureSet.subst]
-    -- Goal involves applyMut
-    sorry
+    cases m
+    · -- epsilon case: applyMut .epsilon is identity
+      exact ρ.cvar C
+    · -- ro case: applyMut .ro applies applyRO
+      conv => lhs; simp only [Subst.from_TypeEnv]; rw [ρ.cvar C]
+      simp [CaptureSet.applyRO_subst]
 
 def retype_captureset_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
@@ -430,10 +432,8 @@ def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
       simp [Ty.shape_val_denot, TypeEnv.lookup_tvar]
   cvar := fun
     | .there C => by
-      simp [TypeEnv.extend_var, Subst.openVar]
-      unfold TypeEnv.lookup_cvar
-      -- Goal involves applyMut
-      sorry
+      simp [TypeEnv.extend_var, Subst.openVar, TypeEnv.lookup_cvar, TypeEnv.lookup,
+        CaptureSet.subst, Subst.from_TypeEnv]
 
 theorem open_arg_shape_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .shape (s,x)} :
   Ty.shape_val_denot (env.extend_var (interp_var env y)) T ≈
@@ -472,10 +472,8 @@ def Retype.open_targ {env : TypeEnv s} {S : Ty .shape s} :
       rfl
   cvar := fun
     | .there C => by
-      simp [TypeEnv.extend_tvar, Subst.openTVar]
-      unfold TypeEnv.lookup_cvar
-      -- Goal involves applyMut
-      sorry
+      simp [TypeEnv.extend_tvar, Subst.openTVar, TypeEnv.lookup_cvar, TypeEnv.lookup,
+        CaptureSet.subst, Subst.from_TypeEnv]
 
 theorem open_targ_shape_val_denot {env : TypeEnv s} {S : Ty .shape s} {T : Ty .shape (s,X)} :
   Ty.shape_val_denot (env.extend_tvar (Ty.shape_val_denot env S)) T ≈
@@ -514,8 +512,6 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} :
     | .there C => by
       simp [Subst.openCVar, TypeEnv.lookup_cvar, TypeEnv.extend_cvar,
         TypeEnv.lookup, CaptureSet.subst, Subst.from_TypeEnv]
-      -- Goal involves applyMut
-      sorry
 
 theorem open_carg_shape_val_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .shape (s,C)} :
   Ty.shape_val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env))) T ≈

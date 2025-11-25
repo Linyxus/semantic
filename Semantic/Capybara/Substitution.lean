@@ -371,14 +371,19 @@ theorem Var.subst_comp {x : Var .var s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3}
   | bound x => rfl
   | free n => rfl
 
+/-- applyRO distributes over substitution. -/
+theorem CaptureSet.applyRO_subst {cs : CaptureSet s1} {σ : Subst s1 s2} :
+    cs.applyRO.subst σ = (cs.subst σ).applyRO := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp [subst, ih1, ih2]
+  | var _ x => simp [subst]
+  | cvar _ x => simp [subst, applyMut_applyRO]
+
 /-- applyMut distributes over substitution. -/
 theorem CaptureSet.applyMut_subst {cs : CaptureSet s1} {σ : Subst s1 s2} {m : Mutability} :
     (cs.applyMut m).subst σ = (cs.subst σ).applyMut m := by
-  induction cs with
-  | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp [applyMut, subst, ih1, ih2]
-  | var _ x => simp [applyMut, subst]
-  | cvar _ x => simp [applyMut, subst, CaptureSet.applyMut_applyMut]
+  cases m <;> simp [applyRO_subst]
 
 /-- Substitution on capture sets distributes over composition of substitutions. -/
 theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
@@ -466,10 +471,10 @@ theorem CaptureSet.subst_id {cs : CaptureSet s} :
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp [CaptureSet.subst, ih1, ih2]
-  | var x =>
+  | var m x =>
     simp [CaptureSet.subst, Var.subst_id]
-  | cvar C =>
-    simp [CaptureSet.subst, Subst.id]
+  | cvar m C =>
+    cases m <;> simp [CaptureSet.subst, Subst.id]
 
 /-- Substituting with the identity substitution leaves a capture bound unchanged. -/
 theorem CaptureBound.subst_id {cb : CaptureBound s} :
@@ -585,10 +590,10 @@ theorem CaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
-  | var x =>
+  | var m x =>
     simp [CaptureSet.subst, CaptureSet.rename, Var.subst_asSubst]
-  | cvar C =>
-    simp [CaptureSet.subst, CaptureSet.rename, Rename.asSubst]
+  | cvar m C =>
+    cases m <;> simp [CaptureSet.subst, CaptureSet.rename, Rename.asSubst]
 
 /-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :

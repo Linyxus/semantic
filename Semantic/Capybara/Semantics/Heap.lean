@@ -1317,6 +1317,19 @@ theorem Var.wf_subst
       apply Var.WfInHeap.wf_free
       exact hex
 
+/-- applyRO preserves well-formedness of capture sets. -/
+theorem CaptureSet.wf_applyRO
+  {cs : CaptureSet s}
+  {H : Heap}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap cs.applyRO H := by
+  induction hwf with
+  | wf_empty => exact WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 => exact WfInHeap.wf_union ih1 ih2
+  | wf_var_free hex => exact WfInHeap.wf_var_free hex
+  | wf_var_bound => exact WfInHeap.wf_var_bound
+  | wf_cvar => exact WfInHeap.wf_cvar
+
 /-- applyMut preserves well-formedness of capture sets. -/
 theorem CaptureSet.wf_applyMut
   {cs : CaptureSet s}
@@ -1324,25 +1337,7 @@ theorem CaptureSet.wf_applyMut
   {m : Mutability}
   (hwf : CaptureSet.WfInHeap cs H) :
   CaptureSet.WfInHeap (cs.applyMut m) H := by
-  induction hwf with
-  | wf_empty =>
-    simp [CaptureSet.applyMut]
-    apply CaptureSet.WfInHeap.wf_empty
-  | wf_union _ _ ih1 ih2 =>
-    simp [CaptureSet.applyMut]
-    apply CaptureSet.WfInHeap.wf_union
-    · exact ih1
-    · exact ih2
-  | wf_var_free hex =>
-    simp [CaptureSet.applyMut]
-    apply CaptureSet.WfInHeap.wf_var_free
-    exact hex
-  | wf_var_bound =>
-    simp [CaptureSet.applyMut]
-    apply CaptureSet.WfInHeap.wf_var_bound
-  | wf_cvar =>
-    simp [CaptureSet.applyMut]
-    apply CaptureSet.WfInHeap.wf_cvar
+  cases m <;> simp [wf_applyRO hwf, hwf]
 
 /-- Well-formed substitutions preserve well-formedness of capture sets. -/
 theorem CaptureSet.wf_subst

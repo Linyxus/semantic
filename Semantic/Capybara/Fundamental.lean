@@ -859,8 +859,7 @@ theorem closed_captureset_subst_denot
     rw [congrFun ih1 m, congrFun ih2 m]
   | cvar =>
     rename_i m cv
-    simp only [CaptureSet.subst, CaptureSet.denot, Subst.from_TypeEnv, CaptureSet.applyMut]
-    sorry  -- requires applyMut identity lemmas
+    cases m <;> simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
   | var_bound =>
     rename_i m xb
     simp only [CaptureSet.subst, CaptureSet.denot, Var.subst, Subst.from_TypeEnv]
@@ -1675,8 +1674,9 @@ theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   SemSubcapt Γ (.cvar .epsilon c) C := by
   intro env m hts
   unfold CaptureSet.denot
-  simp only [CaptureSet.subst, Subst.from_TypeEnv, CaptureSet.applyMut]
-  sorry  -- requires applyMut identity lemma
+  simp only [CaptureSet.subst, Subst.from_TypeEnv]
+  -- applyMut .epsilon is identity, so this simplifies
+  exact typed_env_lookup_cvar hts hlookup
 
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :

@@ -81,44 +81,56 @@ def CaptureSet.applyMut (m : Mutability) (cs : CaptureSet s) : CaptureSet s :=
   | .epsilon => cs
   | .ro => cs.applyRO
 
-/-- applyMut on a singleton cvar. -/
-@[simp]
-theorem CaptureSet.applyMut_cvar {m m' : Mutability} {x : BVar s .cvar} :
-    (CaptureSet.cvar m' x).applyMut m = .cvar m x := rfl
+-- applyRO simp lemmas (definitional)
+@[simp] theorem CaptureSet.applyRO_empty : (CaptureSet.empty (s:=s)).applyRO = .empty := rfl
+@[simp] theorem CaptureSet.applyRO_union {cs1 cs2 : CaptureSet s} :
+    (cs1.union cs2).applyRO = cs1.applyRO.union cs2.applyRO := rfl
+@[simp] theorem CaptureSet.applyRO_var {m : Mutability} {x : Var .var s} :
+    (CaptureSet.var m x).applyRO = .var .ro x := rfl
+@[simp] theorem CaptureSet.applyRO_cvar {m : Mutability} {x : BVar s .cvar} :
+    (CaptureSet.cvar m x).applyRO = .cvar .ro x := rfl
 
-/-- applyMut on a singleton var. -/
-@[simp]
-theorem CaptureSet.applyMut_var {m m' : Mutability} {x : Var .var s} :
-    (CaptureSet.var m' x).applyMut m = .var m x := rfl
+-- applyMut simp lemmas
+@[simp] theorem CaptureSet.applyMut_epsilon {cs : CaptureSet s} :
+    cs.applyMut .epsilon = cs := rfl
+@[simp] theorem CaptureSet.applyMut_ro {cs : CaptureSet s} :
+    cs.applyMut .ro = cs.applyRO := rfl
 
-/-- applyMut on empty. -/
+/-- Applying applyRO twice is idempotent. -/
 @[simp]
-theorem CaptureSet.applyMut_empty {m : Mutability} :
-    (CaptureSet.empty (s:=s)).applyMut m = .empty := rfl
-
-/-- applyMut on union. -/
-@[simp]
-theorem CaptureSet.applyMut_union {m : Mutability} {cs1 cs2 : CaptureSet s} :
-    (cs1.union cs2).applyMut m = (cs1.applyMut m).union (cs2.applyMut m) := rfl
-
-/-- Applying applyMut twice simplifies to the outer application. -/
-@[simp]
-theorem CaptureSet.applyMut_applyMut {cs : CaptureSet s} {m m' : Mutability} :
-    (cs.applyMut m').applyMut m = cs.applyMut m := by
+theorem CaptureSet.applyRO_applyRO {cs : CaptureSet s} :
+    cs.applyRO.applyRO = cs.applyRO := by
   induction cs with
   | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp [applyMut, ih1, ih2]
+  | union cs1 cs2 ih1 ih2 => simp [ih1, ih2]
   | var _ x => rfl
   | cvar _ x => rfl
+
+/-- Applying applyMut after applyRO simplifies. -/
+@[simp]
+theorem CaptureSet.applyRO_applyMut {cs : CaptureSet s} {m : Mutability} :
+    cs.applyRO.applyMut m = cs.applyRO := by
+  cases m <;> simp [applyRO_applyRO]
+
+/-- Applying applyRO after applyMut gives applyRO. -/
+@[simp]
+theorem CaptureSet.applyMut_applyRO {cs : CaptureSet s} {m : Mutability} :
+    (cs.applyMut m).applyRO = cs.applyRO := by
+  cases m <;> simp [applyRO_applyRO]
+
+/-- applyRO distributes over rename. -/
+theorem CaptureSet.applyRO_rename {cs : CaptureSet s1} {f : Rename s1 s2} :
+    cs.applyRO.rename f = (cs.rename f).applyRO := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp [rename, ih1, ih2]
+  | var _ x => simp [rename]
+  | cvar _ x => simp [rename]
 
 /-- applyMut distributes over rename. -/
 theorem CaptureSet.applyMut_rename {cs : CaptureSet s1} {f : Rename s1 s2} {m : Mutability} :
     (cs.applyMut m).rename f = (cs.rename f).applyMut m := by
-  induction cs with
-  | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp [applyMut, rename, ih1, ih2]
-  | var _ x => simp [applyMut, rename]
-  | cvar _ x => simp [applyMut, rename]
+  cases m <;> simp [applyRO_rename]
 
 /-- The subset relation on capture sets. -/
 inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
@@ -155,9 +167,9 @@ inductive CaptureSet.IsClosed : CaptureSet s -> Prop where
 | cvar : CaptureSet.IsClosed (.cvar m x)
 | var_bound : CaptureSet.IsClosed (.var m (.bound x))
 
-/-- applyMut preserves closedness. -/
-theorem CaptureSet.applyMut_isClosed {cs : CaptureSet s} {m : Mutability}
-    (hc : cs.IsClosed) : (cs.applyMut m).IsClosed := by
+/-- applyRO preserves closedness. -/
+theorem CaptureSet.applyRO_isClosed {cs : CaptureSet s}
+    (hc : cs.IsClosed) : cs.applyRO.IsClosed := by
   induction cs with
   | empty => exact IsClosed.empty
   | union cs1 cs2 ih1 ih2 =>
@@ -168,5 +180,10 @@ theorem CaptureSet.applyMut_isClosed {cs : CaptureSet s} {m : Mutability}
     exact IsClosed.var_bound
   | cvar m' c =>
     exact IsClosed.cvar
+
+/-- applyMut preserves closedness. -/
+theorem CaptureSet.applyMut_isClosed {cs : CaptureSet s} {m : Mutability}
+    (hc : cs.IsClosed) : (cs.applyMut m).IsClosed := by
+  cases m <;> simp [applyRO_isClosed hc, hc]
 
 end Capybara

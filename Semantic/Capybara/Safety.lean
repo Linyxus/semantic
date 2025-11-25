@@ -400,11 +400,8 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     simp only [Subst.from_TypeEnv]
     rw [TypeEnv.lookup_cvar_platform]
     unfold CaptureSet.ground_denot Memory.platform_of
-    simp
-    -- Goal: reachability_of_loc (Heap.platform_of N) (c.level / 2) = {c.level / 2}
     have hlevel : c.level / 2 < N := BVar.level_cvar_bound
-    rw [reachability_of_loc_platform hlevel]
-    rfl
+    cases m <;> (simp [reachability_of_loc_platform hlevel]; rfl)
 
 /-- Adequacy of semantic typing on platform contexts.
     Requires that the capture set is closed (contains no free variables). -/
