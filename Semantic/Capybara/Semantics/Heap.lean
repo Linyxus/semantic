@@ -8,23 +8,21 @@ namespace Capybara
   they are the set of capabilities a program at most uses. -/
 inductive CapabilitySet : Type where
 | empty : CapabilitySet
-| cap : Nat -> CapabilitySet
+| cap : Mutability -> Nat -> CapabilitySet
 | union : CapabilitySet -> CapabilitySet -> CapabilitySet
 
 namespace CapabilitySet
 
-inductive mem : Nat -> CapabilitySet -> Prop where
-| here : CapabilitySet.mem l (CapabilitySet.cap l)
-| left {l C1 C2} :
-  CapabilitySet.mem l C1 ->
-  CapabilitySet.mem l (CapabilitySet.union C1 C2)
-| right {l C1 C2} :
-  CapabilitySet.mem l C2 ->
-  CapabilitySet.mem l (CapabilitySet.union C1 C2)
-
-@[simp]
-instance instMembership : Membership Nat CapabilitySet :=
-  ⟨fun C l => CapabilitySet.mem l C⟩
+/-- `covers m l C` means capability set `C` covers location `l` with at least mutability `m`.
+    If `m = .ro`, any capability at `l` suffices. If `m = .epsilon`, we need read-write access. -/
+inductive covers : Mutability -> Nat -> CapabilitySet -> Prop where
+| here : m1 ≤ m2 -> CapabilitySet.covers m1 l (CapabilitySet.cap m2 l)
+| left {m l C1 C2} :
+  CapabilitySet.covers m l C1 ->
+  CapabilitySet.covers m l (CapabilitySet.union C1 C2)
+| right {m l C1 C2} :
+  CapabilitySet.covers m l C2 ->
+  CapabilitySet.covers m l (CapabilitySet.union C1 C2)
 
 @[simp]
 instance instEmptyCollection : EmptyCollection CapabilitySet :=
@@ -34,11 +32,11 @@ instance instEmptyCollection : EmptyCollection CapabilitySet :=
 instance instUnion : Union CapabilitySet :=
   ⟨CapabilitySet.union⟩
 
-def singleton (l : Nat) : CapabilitySet :=
-  .cap l
+def singleton (m : Mutability) (l : Nat) : CapabilitySet :=
+  .cap m l
 
 instance instSingleton : Singleton Nat CapabilitySet :=
-  ⟨CapabilitySet.singleton⟩
+  ⟨CapabilitySet.singleton .ro⟩
 
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
@@ -57,48 +55,56 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
   Subset C1 (C1 ∪ C2)
 | union_right_right :
   Subset C1 (C2 ∪ C1)
+| cap_ro :
+  Subset (.cap .ro l) (.cap .epsilon l)
 
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
 
-theorem subset_preserves_mem {C1 C2 : CapabilitySet} {x : Nat}
+theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : Mutability} {x : Nat}
   (hsub : C1 ⊆ C2)
-  (hmem : x ∈ C1) :
-  x ∈ C2 := by
-  induction hsub generalizing x
-  case refl => exact hmem
-  case trans ih1 ih2 => apply ih2 (ih1 hmem)
-  case empty => cases hmem
+  (hcov : covers m x C1) :
+  covers m x C2 := by
+  induction hsub generalizing x m
+  case refl => exact hcov
+  case trans ih1 ih2 => exact ih2 (ih1 hcov)
+  case empty => cases hcov
   case union_left ih1 ih2 =>
-    cases hmem
+    cases hcov
     case left h => exact ih1 h
     case right h => exact ih2 h
-  case union_right_left => exact mem.left hmem
-  case union_right_right => exact mem.right hmem
+  case union_right_left => exact covers.left hcov
+  case union_right_right => exact covers.right hcov
+  case cap_ro =>
+    cases hcov
+    case here hle =>
+      -- hle : m ≤ .ro, need to show covers m x (cap .epsilon x)
+      -- By cases on hle, m must be .ro (since only .ro ≤ .ro by refl)
+      cases hle
+      -- Now m = .ro, goal is covers .ro x (cap .epsilon x)
+      exact covers.here Mutability.Le.ro_eps
 
-/-- If an element is in a set, then the singleton of that element is a subset of the set. -/
-theorem mem_imp_singleton_subset {C : CapabilitySet} {x : Nat}
-  (hmem : x ∈ C) :
+/-- If a capability set covers a location, then the singleton is a subset of the set. -/
+theorem covers_imp_singleton_subset {C : CapabilitySet} {m : Mutability} {x : Nat}
+  (hcov : covers m x C) :
   {x} ⊆ C := by
-  -- We need to prove that the singleton {x} is a subset of C
-  -- This requires case analysis on C and use of the subset constructors
+  -- {x} = cap .ro x, so we need cap .ro x ⊆ C
   induction C with
-  | empty => cases hmem
-  | cap y =>
-    -- C = {y}, and x ∈ {y}, so x = y
-    cases hmem
-    -- x = y, so {x} = {y} = C
-    apply Subset.refl
+  | empty => cases hcov
+  | cap m' y =>
+    cases hcov
+    case here hle =>
+      -- covers m x (cap m' x) with m ≤ m'
+      -- Need: cap .ro x ⊆ cap m' x
+      cases m'
+      · exact Subset.cap_ro  -- .epsilon case
+      · exact Subset.refl    -- .ro case
   | union C1 C2 ih1 ih2 =>
-    cases hmem with
+    cases hcov with
     | left h =>
-      -- x ∈ C1, so by IH: {x} ⊆ C1
-      -- Need: {x} ⊆ (C1 ∪ C2)
       apply Subset.trans (ih1 h)
       apply Subset.union_right_left
     | right h =>
-      -- x ∈ C2, so by IH: {x} ⊆ C2
-      -- Need: {x} ⊆ (C1 ∪ C2)
       apply Subset.trans (ih2 h)
       apply Subset.union_right_right
 
@@ -2061,6 +2067,6 @@ def Heap.mask_caps (H : Heap) (d : Finset Nat) : Heap :=
 def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
 | .empty => {}
 | .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
-| .cap x => {x}
+| .cap _ x => {x}
 
 end Capybara
