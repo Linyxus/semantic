@@ -85,6 +85,13 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupCVar Γ c (.bound C) ->
   ----------------------------------
   Subcapt Γ (.cvar .epsilon c) C
+| sc_ro :
+  ----------------------------------
+  Subcapt Γ C.applyRO C
+| sc_ro_mono :
+  Subcapt Γ C1 C2 ->
+  ----------------------------------
+  Subcapt Γ C1.applyRO C2.applyRO
 
 inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
 | capset :
@@ -208,7 +215,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | read :
   HasType (.var .epsilon x) Γ (.var x) (.typ (.capt C .cell)) ->
   ----------------------------
-  HasType (.var .epsilon x) Γ (.read x) (.typ (.capt {} .bool))
+  HasType (.var .ro x) Γ (.read x) (.typ (.capt {} .bool))
 | write :
   HasType (.var .epsilon x) Γ (.var x) (.typ (.capt Cx .cell)) ->
   HasType (.var .epsilon y) Γ (.var y) (.typ (.capt {} .bool)) ->
