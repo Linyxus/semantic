@@ -262,11 +262,11 @@ inductive CaptureSet.WfInHeap : CaptureSet s -> Heap -> Prop where
   CaptureSet.WfInHeap (C1 ∪ C2) H
 | wf_var_free :
   H x = some val ->
-  CaptureSet.WfInHeap (CaptureSet.var (.free x)) H
+  CaptureSet.WfInHeap (CaptureSet.var m (.free x)) H
 | wf_var_bound :
-  CaptureSet.WfInHeap (CaptureSet.var (.bound x)) H
+  CaptureSet.WfInHeap (CaptureSet.var m (.bound x)) H
 | wf_cvar :
-  CaptureSet.WfInHeap (CaptureSet.cvar x) H
+  CaptureSet.WfInHeap (CaptureSet.cvar m x) H
 
 inductive Var.WfInHeap : Var k s -> Heap -> Prop where
 | wf_bound :
@@ -713,7 +713,7 @@ def expand_captures
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var (.free loc) => reachability_of_loc h loc
+  | .var _ (.free loc) => reachability_of_loc h loc
   | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
 
 /-- Compute reachability for a heap value. -/
@@ -816,7 +816,7 @@ theorem expand_captures_monotonic
   | empty =>
     -- Base case: empty capture set expands to empty in any heap
     rfl
-  | var x =>
+  | var m x =>
     cases x with
     | bound x =>
       -- Impossible: no bound variables in empty signature
@@ -829,7 +829,7 @@ theorem expand_captures_monotonic
       | wf_var_free hex =>
         -- We have hex : h1 loc = some cell_val
         exact reachability_of_loc_monotonic hsub loc hex
-  | cvar C =>
+  | cvar m C =>
     -- Impossible: no capability variables in empty signature
     cases C
   | union cs1 cs2 ih1 ih2 =>
@@ -959,7 +959,7 @@ theorem expand_captures_update_mcell (h : Heap) (l : Nat)
   expand_captures h cs := by
   induction cs with
   | empty => rfl
-  | var x =>
+  | var m x =>
     cases x with
     | bound bv => cases bv
     | free loc =>
@@ -967,7 +967,7 @@ theorem expand_captures_update_mcell (h : Heap) (l : Nat)
       exact reachability_of_loc_update_mcell h l hexists b loc
   | union cs1 cs2 ih1 ih2 =>
     simp [expand_captures, ih1, ih2]
-  | cvar c => cases c
+  | cvar m c => cases c
 
 /-- Updating an mcell preserves compute_reachability. -/
 theorem compute_reachability_update_mcell (h : Heap) (l : Nat)
@@ -1251,10 +1251,11 @@ theorem Exp.wf_rename
 
 /-- A well-formed variable yields a well-formed capture set. -/
 theorem CaptureSet.wf_of_var
+  {m : Mutability}
   {x : Var .var s}
   {H : Heap}
   (hwf : Var.WfInHeap x H) :
-  CaptureSet.WfInHeap (.var x) H := by
+  CaptureSet.WfInHeap (.var m x) H := by
   cases hwf with
   | wf_bound =>
     apply CaptureSet.WfInHeap.wf_var_bound
@@ -1316,6 +1317,33 @@ theorem Var.wf_subst
       apply Var.WfInHeap.wf_free
       exact hex
 
+/-- applyMut preserves well-formedness of capture sets. -/
+theorem CaptureSet.wf_applyMut
+  {cs : CaptureSet s}
+  {H : Heap}
+  {m : Mutability}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap (cs.applyMut m) H := by
+  induction hwf with
+  | wf_empty =>
+    simp [CaptureSet.applyMut]
+    apply CaptureSet.WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 =>
+    simp [CaptureSet.applyMut]
+    apply CaptureSet.WfInHeap.wf_union
+    · exact ih1
+    · exact ih2
+  | wf_var_free hex =>
+    simp [CaptureSet.applyMut]
+    apply CaptureSet.WfInHeap.wf_var_free
+    exact hex
+  | wf_var_bound =>
+    simp [CaptureSet.applyMut]
+    apply CaptureSet.WfInHeap.wf_var_bound
+  | wf_cvar =>
+    simp [CaptureSet.applyMut]
+    apply CaptureSet.WfInHeap.wf_cvar
+
 /-- Well-formed substitutions preserve well-formedness of capture sets. -/
 theorem CaptureSet.wf_subst
   {cs : CaptureSet s1}
@@ -1346,6 +1374,7 @@ theorem CaptureSet.wf_subst
     · exact hwf_σ
   | wf_cvar =>
     simp [CaptureSet.subst]
+    apply CaptureSet.wf_applyMut
     exact hwf_σ.wf_cvar _
 
 /-- Well-formed substitutions preserve well-formedness of capture bounds. -/

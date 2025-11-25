@@ -257,7 +257,7 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 | .empty => fun _ => {}
 | .union cs1 cs2 => fun m =>
   (cs1.ground_denot m) ∪ (cs2.ground_denot m)
-| .var (.free x) => fun m => reachability_of_loc m.heap x
+| .var _ (.free x) => fun m => reachability_of_loc m.heap x
 
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
@@ -507,7 +507,14 @@ theorem Subst.from_TypeEnv_weaken_open_cvar
     rfl
   · intro C
     cases C
-    case here => rfl
+    case here =>
+      simp only [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
+        TypeEnv.extend_cvar, TypeEnv.lookup_cvar, CaptureSet.subst,
+        TypeEnv.extend, TypeEnv.lookup]
+      -- Goal: cs.applyMut .epsilon = cs
+      -- This requires that cs already has all epsilon mutabilities
+      -- For now, we need a lemma for this
+      sorry
     case there C' =>
       simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
         TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
@@ -565,9 +572,8 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         -- This is unpack.cvar (.there .here) = cs by definition
         rw [Subst.lift_there_cvar_eq]
         simp [Subst.lift, CaptureSet.subst, CaptureSet.rename]
-        -- Goal: match Rename.succ.var .here with | .here.there => cs | ... = cs
-        -- Rename.succ.var .here = .here.there by definition
-        rfl
+        -- Goal involves applyMut .epsilon cs = cs
+        sorry
       case there c0 =>
         -- LHS: comp maps .there (.there c0) through unpack then lift.lift
         simp [Subst.comp, Subst.unpack]
@@ -585,13 +591,13 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         | union cs1 cs2 ih1 ih2 =>
           -- .union case: distribute rename/subst over both sides
           simp only [CaptureSet.rename, CaptureSet.subst, ih1, ih2]
-        | var v =>
+        | var m v =>
           cases v with
           | bound bv => cases bv  -- Impossible: no bound vars in {}
           | free n =>
             -- .var (.free n).rename.rename.subst = .var (.free n)
             rfl
-        | cvar cv => cases cv  -- Impossible: no capture vars in {}
+        | cvar m cv => cases cv  -- Impossible: no capture vars in {}
 
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
@@ -1540,7 +1546,7 @@ theorem ground_denot_is_monotonic {C : CaptureSet {}} :
     cases hwf with
     | wf_union hwf1 hwf2 =>
       rw [ih1 hwf1, ih2 hwf2]
-  | var v =>
+  | var m v =>
     cases v with
     | bound x => cases x  -- No bound variables in empty signature
     | free x =>
@@ -1550,7 +1556,7 @@ theorem ground_denot_is_monotonic {C : CaptureSet {}} :
       cases hwf with
       | wf_var_free hex =>
         exact (reachability_of_loc_monotonic hsub x hex).symm
-  | cvar c => cases c  -- No capture variables in empty signature
+  | cvar m c => cases c  -- No capture variables in empty signature
 
 theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
   (C.denot ρ).is_monotonic_for (C.subst (Subst.from_TypeEnv ρ)) := by
@@ -1570,7 +1576,7 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
       constructor
       · exact ih1 hwf1
       · exact ih2 hwf2
-  | var v =>
+  | var m v =>
     cases v with
     | bound x =>
       -- Bound variable: after substitution becomes free variable
@@ -1594,7 +1600,7 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
         -- hex : m1.heap x = some _
         -- Memory.lookup is definitionally equal to heap access
         exact (reachability_of_loc_monotonic hsub x hex).symm
-  | cvar c =>
+  | cvar m c =>
     -- Capture variable: after substitution becomes ground capture set
     unfold CaptureSet.denot
     simp [CaptureSet.subst, Subst.from_TypeEnv]

@@ -42,7 +42,7 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
     simp [CaptureSet.subst, CaptureSet.rename]
   | union C1 C2 ih1 ih2 =>
     simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
-  | var x =>
+  | var m x =>
     cases x with
     | free n =>
       simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
@@ -54,7 +54,7 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
         simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
               Subst.from_TypeEnv, TypeEnv.lookup_var, k]
         rw [<-h]
-  | cvar x =>
+  | cvar m x =>
     have h := ρ.var x
     cases k1 : env1.lookup x with
     | cvar cs1 =>

@@ -80,11 +80,11 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_var :
   Ctx.LookupVar Γ x (.capt C S) ->
   ----------------------------------
-  Subcapt Γ (.var (.bound x)) C
+  Subcapt Γ (.var .epsilon (.bound x)) C
 | sc_cvar :
   Ctx.LookupCVar Γ c (.bound C) ->
   ----------------------------------
-  Subcapt Γ (.cvar c) C
+  Subcapt Γ (.cvar .epsilon c) C
 
 inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
 | capset :
@@ -146,10 +146,10 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   Γ.IsClosed ->
   Γ.LookupVar x (.capt C S) ->
   ----------------------------
-  HasType (.var (.bound x)) Γ (.var (.bound x)) (.typ (.capt (.var (.bound x)) S))
+  HasType (.var .epsilon (.bound x)) Γ (.var (.bound x)) (.typ (.capt (.var .epsilon (.bound x)) S))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
-  HasType (cs.rename Rename.succ ∪ (.var (.bound .here))) (Γ,x:T1) e T2 ->
+  HasType (cs.rename Rename.succ ∪ (.var .epsilon (.bound .here))) (Γ,x:T1) e T2 ->
   ----------------------------
   HasType {} Γ (.abs cs T1 e) (.typ (.capt cs (.arrow T1 T2)))
 | tabs {S : Ty .shape s} :
@@ -164,24 +164,24 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.cabs cs cb e) (.typ (.capt cs (.cpoly cb T)))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
-  HasType (.var x) Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
-  HasType (.var x) Γ (.pack C x) (.exi T)
+  HasType (.var .epsilon x) Γ (.pack C x) (.exi T)
 | app :
-  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) (.arrow T1 T2))) ->
-  HasType (.var y) Γ (.var y) (.typ T1) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.arrow T1 T2))) ->
+  HasType (.var .epsilon y) Γ (.var y) (.typ T1) ->
   ----------------------------
-  HasType ((.var x) ∪ (.var y)) Γ (.app x y) (T2.subst (Subst.openVar y))
+  HasType ((.var .epsilon x) ∪ (.var .epsilon y)) Γ (.app x y) (T2.subst (Subst.openVar y))
 | tapp {S : Ty .shape s} :
   S.IsClosed ->
-  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) (.poly S T))) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.poly S T))) ->
   ----------------------------
-  HasType (.var x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
+  HasType (.var .epsilon x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
 | capp {D : CaptureSet s} :
   D.IsClosed ->
-  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) (.cpoly (.bound D) T))) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.cpoly (.bound D) T))) ->
   ----------------------------
-  HasType (.var x) Γ (.capp x D) (T.subst (Subst.openCVar D))
+  HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin :
   HasType C Γ e1 (.typ T) ->
   HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
@@ -206,14 +206,14 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.bfalse) (.typ (.capt {} .bool))
 | read :
-  HasType (.var x) Γ (.var x) (.typ (.capt C .cell)) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt C .cell)) ->
   ----------------------------
-  HasType (.var x) Γ (.read x) (.typ (.capt {} .bool))
+  HasType (.var .epsilon x) Γ (.read x) (.typ (.capt {} .bool))
 | write :
-  HasType (.var x) Γ (.var x) (.typ (.capt Cx .cell)) ->
-  HasType (.var y) Γ (.var y) (.typ (.capt {} .bool)) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt Cx .cell)) ->
+  HasType (.var .epsilon y) Γ (.var y) (.typ (.capt {} .bool)) ->
   ----------------------------
-  HasType ((.var x) ∪ (.var y)) Γ (.write x y) (.typ (.capt {} .unit))
+  HasType ((.var .epsilon x) ∪ (.var .epsilon y)) Γ (.write x y) (.typ (.capt {} .unit))
 | cond :
   HasType C1 Γ (.var x) (.typ (.capt Cb .bool)) ->
   HasType C2 Γ e2 T ->
@@ -221,10 +221,10 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
 | invoke :
-  HasType (.var x) Γ (.var x) (.typ (.capt (.var x) .cap)) ->
-  HasType (.var y) Γ (.var y) (.typ (.capt (.var y) .unit)) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) .cap)) ->
+  HasType (.var .epsilon y) Γ (.var y) (.typ (.capt (.var .epsilon y) .unit)) ->
   ------------------------------------------------
-  HasType ((.var x) ∪ (.var y)) Γ (.app x y) (.typ (.capt {} .unit))
+  HasType ((.var .epsilon x) ∪ (.var .epsilon y)) Γ (.app x y) (.typ (.capt {} .unit))
 | subtyp :
   HasType C1 Γ e E1 ->
   Subcapt Γ C1 C2 ->

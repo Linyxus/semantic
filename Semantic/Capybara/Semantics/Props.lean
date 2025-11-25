@@ -1032,12 +1032,10 @@ theorem CaptureSet.wf_masked
     apply CaptureSet.WfInHeap.wf_empty
   | wf_union _ _ ih1 ih2 =>
     apply CaptureSet.WfInHeap.wf_union <;> assumption
-  | wf_var_free hex =>
+  | @wf_var_free H0 _ m x hex =>
     -- Same approach as Var.wf_masked: prove that a free var in masked heap maps to something
-    rename_i H_orig val x
-    have hwf_var : Var.WfInHeap (Var.free (k := .var) (s := {}) x) (H_orig.mask_caps D) := by
-      apply Var.wf_masked
-      exact Var.WfInHeap.wf_free hex
+    have hwf_var : Var.WfInHeap (.free (k := .var) (s := {}) x) (H0.mask_caps D) :=
+      Var.wf_masked (D := D) (Var.WfInHeap.wf_free (k := .var) (s := {}) hex)
     cases hwf_var with
     | wf_free hex' =>
       exact CaptureSet.WfInHeap.wf_var_free hex'
@@ -1173,7 +1171,7 @@ theorem expand_captures_masked {H : Heap} (cs : CaptureSet {}) :
   | empty =>
     unfold expand_captures
     rfl
-  | var x =>
+  | var m x =>
     cases x with
     | free loc =>
       unfold expand_captures
@@ -1182,7 +1180,7 @@ theorem expand_captures_masked {H : Heap} (cs : CaptureSet {}) :
   | union cs1 cs2 ih1 ih2 =>
     unfold expand_captures
     rw [ih1, ih2]
-  | cvar x => nomatch x
+  | cvar m x => nomatch x
 
 theorem masked_compute_reachability {H : Heap} :
   compute_reachability H v hv = compute_reachability (H.mask_caps D) v hv := by
