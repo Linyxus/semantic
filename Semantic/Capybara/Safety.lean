@@ -4,7 +4,7 @@ namespace Capybara
 
 /-! The following defines _platforms_. -/
 
-/-- Context signature of a platform of `n` ground capabilities. -/
+/-- Context signature of a platform of `n` mutable boolean cells. -/
 def Sig.platform_of : Nat -> Sig
 | 0 => {}
 | n+1 => ((Sig.platform_of n),C),x
