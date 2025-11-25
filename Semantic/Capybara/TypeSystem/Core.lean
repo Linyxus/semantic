@@ -93,14 +93,30 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   ----------------------------------
   Subcapt Γ C1.applyRO C2.applyRO
 
+inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
+| eps :
+  -------------------
+  HasKind Γ C .epsilon
+| ro {C : CaptureSet s} :
+  -------------------
+  HasKind Γ C.applyRO .ro
+| cvar_ro :
+  Ctx.LookupCVar Γ c (.unbound .ro) ->
+  -------------------
+  HasKind Γ (.cvar .epsilon c) .ro
+
 inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
 | capset :
   Subcapt Γ C1 C2 ->
   -------------------
   Subbound Γ (.bound C1) (.bound C2)
-| top :
+| kind :
+  HasKind Γ C m ->
+  Subbound Γ (.unbound m) (.bound C)
+| mode {m1 m2 : Mutability} :
+  m1 ≤ m2 ->
   -------------------
-  Subbound Γ B .unbound
+  Subbound Γ (.unbound m1) (.unbound m2)
 
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | top {T : Ty .shape s} :
@@ -140,7 +156,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.capt C1 S1) (.capt C2 S2)
 | exi :
-  Subtyp (Γ,C<:.unbound) T1 T2 ->
+  Subtyp (Γ,C<:.unbound .epsilon) T1 T2 ->
   --------------------------
   Subtyp Γ (.exi T1) (.exi T2)
 | typ :
@@ -198,7 +214,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType C Γ t (.exi T) ->
   HasType
     ((C.rename Rename.succ).rename Rename.succ)
-    (Γ,C<:.unbound,x:T)
+    (Γ,C<:.unbound .epsilon,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------

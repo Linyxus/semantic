@@ -49,7 +49,7 @@ def CaptureSet.subst : CaptureSet s1 -> Subst s1 s2 -> CaptureSet s2
 
 /-- Applies a substitution to a capture bound. -/
 def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
-| .unbound, _ => .unbound
+| .unbound m, _ => .unbound m
 | .bound cs, σ => .bound (cs.subst σ)
 
 /-- Applies a substitution to a type. -/

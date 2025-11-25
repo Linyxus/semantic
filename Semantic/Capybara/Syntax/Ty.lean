@@ -42,7 +42,7 @@ inductive Ty : TySort -> Sig -> Type where
 
 /-- Applies a renaming to a capture bound. -/
 def CaptureBound.rename : CaptureBound s1 -> Rename s1 s2 -> CaptureBound s2
-| .unbound, _ => .unbound
+| .unbound m, _ => .unbound m
 | .bound cs, f => .bound (cs.rename f)
 
 /-- Renaming by the identity renaming leaves a capture bound unchanged. -/
@@ -118,7 +118,7 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 
 /-- A capture bound is closed if it contains no heap pointers. -/
 inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
-| unbound : CaptureBound.IsClosed .unbound
+| unbound : CaptureBound.IsClosed (.unbound m)
 | bound : CaptureSet.IsClosed cs -> CaptureBound.IsClosed (.bound cs)
 
 /-- A type is closed if it contains no heap pointers. -/
