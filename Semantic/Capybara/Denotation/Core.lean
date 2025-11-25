@@ -2167,6 +2167,11 @@ def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
     EnvTyping Γ env m ->
     CapabilitySet.HasKind (C.denot env m) mode
 
+def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
+  ∀ env m,
+    EnvTyping Γ env m ->
+    B1.denot env m ⊆ B2.denot env m
+
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
   | .shape =>
