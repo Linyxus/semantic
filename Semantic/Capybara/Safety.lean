@@ -42,11 +42,11 @@ def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> Ca
 | .empty => .empty
 | .union cs1 cs2 =>
     (cs1.to_platform_capability_set) ∪ (cs2.to_platform_capability_set)
-| .var _m x =>
+| .var m x =>
     match x with
-    | .bound b => .cap (b.level / 2)
-    | .free n => .cap n
-| .cvar _m c => .cap (c.level / 2)
+    | .bound b => .cap m (b.level / 2)
+    | .free n => .cap m n
+| .cvar m c => .cap m (c.level / 2)
 
 /-- Type environment for a platform with `N` ground capabilities.
   Maps each pair `(C, x)` to capability `i` at heap location `i`:
@@ -172,7 +172,7 @@ theorem env_typing_of_platform {N : Nat} :
                     Memory.platform_of]
                   unfold Heap.platform_of
                   simp
-                  apply CapabilitySet.mem.here
+                  apply CapabilitySet.covers.here Mutability.Le.refl
     · -- Capture variable C with bound .unbound
       constructor
       · -- cs.WfInHeap
@@ -202,7 +202,7 @@ def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
 
 /-- Reachability of a location in platform heap is just the singleton set. -/
 theorem reachability_of_loc_platform {l : Nat} (hl : l < N) :
-  reachability_of_loc (Heap.platform_of N) l = {l} := by
+  reachability_of_loc (Heap.platform_of N) l = CapabilitySet.singleton .epsilon l := by
   unfold reachability_of_loc Heap.platform_of
   simp [hl]
 
@@ -376,7 +376,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
       unfold Memory.platform_of
       simp
       rw [reachability_of_loc_platform hlevel]
-      rfl
+      simp [CapabilitySet.singleton]
     | free n =>
       -- Free term variable - extract proof that n < N from hwf
       cases hwf with
@@ -393,7 +393,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
           case isTrue h => exact h
           case isFalse => contradiction
         rw [reachability_of_loc_platform hn]
-        rfl
+        simp [CapabilitySet.singleton]
   | cvar m c =>
     -- Capture variable
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set

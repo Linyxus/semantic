@@ -12,7 +12,7 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
   Step C m (.app (.free x) (.free y)) m (e.subst (Subst.openVar (.free y)))
 | step_invoke :
-  x ∈ C ->
+  C.covers .epsilon x ->
   m.lookup x = some (.capability .basic) ->
   m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
   Step C m (.app (.free x) (.free y)) m .unit
@@ -29,16 +29,16 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   m.lookup x = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.cond (.free x) e1 e2) m e2
 | step_read :
-  x ∈ C ->
+  C.covers .ro x ->
   m.lookup x = some (.capability (.mcell b)) ->
   Step C m (.read (.free x)) m (if b then .btrue else .bfalse)
 | step_write_true :
-  x ∈ C ->
+  C.covers .epsilon x ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
   Step C m (.write (.free x) (.free y)) (m.update_mcell x true ⟨b0, hx⟩) .unit
 | step_write_false :
-  x ∈ C ->
+  C.covers .epsilon x ->
   (hx : m.lookup x = some (.capability (.mcell b0))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.write (.free x) (.free y)) (m.update_mcell x false ⟨b0, hx⟩) .unit

@@ -27,7 +27,7 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     apply Step.step_apply hlookup
   | step_invoke hmem hlookup_x hlookup_y =>
     apply Step.step_invoke
-    · exact CapabilitySet.subset_preserves_mem hsub hmem
+    · exact CapabilitySet.subset_preserves_covers hsub hmem
     · exact hlookup_x
     · exact hlookup_y
   | step_tapply hlookup =>
@@ -39,11 +39,11 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
   | step_cond_var_false hlookup =>
     apply Step.step_cond_var_false hlookup
   | step_read hmem hlookup =>
-    apply Step.step_read (CapabilitySet.subset_preserves_mem hsub hmem) hlookup
+    apply Step.step_read (CapabilitySet.subset_preserves_covers hsub hmem) hlookup
   | step_write_true hmem hx hy =>
-    apply Step.step_write_true (CapabilitySet.subset_preserves_mem hsub hmem) hx hy
+    apply Step.step_write_true (CapabilitySet.subset_preserves_covers hsub hmem) hx hy
   | step_write_false hmem hx hy =>
-    apply Step.step_write_false (CapabilitySet.subset_preserves_mem hsub hmem) hx hy
+    apply Step.step_write_false (CapabilitySet.subset_preserves_covers hsub hmem) hx hy
   | step_ctx_letin _ ih =>
     apply Step.step_ctx_letin
     exact ih hsub
@@ -1175,7 +1175,7 @@ theorem expand_captures_masked {H : Heap} (cs : CaptureSet {}) :
     cases x with
     | free loc =>
       unfold expand_captures
-      exact reachability_of_loc_masked loc
+      exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_masked loc)
     | bound x => nomatch x
   | union cs1 cs2 ih1 ih2 =>
     unfold expand_captures
@@ -1247,18 +1247,18 @@ theorem masked_lookup_cap {m : Memory} {M : Finset Nat} {l : Nat} {info : Capabi
   rw [hlookup]
   simp [hmem]
 
--- Helper lemma: membership in CapabilitySet implies membership in to_finset
-theorem mem_to_finset {x : Nat} {C : CapabilitySet} :
-  x ∈ C → x ∈ C.to_finset := by
-  intro hmem
-  induction hmem with
+-- Helper lemma: covers in CapabilitySet implies membership in to_finset
+theorem covers_to_finset {x : Nat} {C : CapabilitySet} {m : Mutability} :
+  C.covers m x → x ∈ C.to_finset := by
+  intro hcov
+  induction hcov with
   | here =>
     simp [CapabilitySet.to_finset]
-  | left h ih =>
+  | left _ ih =>
     simp [CapabilitySet.to_finset]
     left
     exact ih
-  | right h ih =>
+  | right _ ih =>
     simp [CapabilitySet.to_finset]
     right
     exact ih
@@ -1366,7 +1366,7 @@ theorem step_masked
     exact masked_lookup_val hlookup
   | step_invoke hx hlookup_x hlookup_y =>
     apply Step.step_invoke hx
-    · exact masked_lookup_cap hlookup_x (mem_to_finset hx)
+    · exact masked_lookup_cap hlookup_x (covers_to_finset hx)
     · exact masked_lookup_val hlookup_y
   | step_tapply hlookup =>
     apply Step.step_tapply
@@ -1404,21 +1404,21 @@ theorem step_masked
   | step_read hmem hlookup =>
     -- With x ∈ C, masking preserves the mcell lookup
     apply Step.step_read hmem
-    exact masked_lookup_cap hlookup (mem_to_finset hmem)
+    exact masked_lookup_cap hlookup (covers_to_finset hmem)
   | step_write_true hmem hx hy =>
     -- With x ∈ C, masking preserves the mcell lookup and commutes with update_mcell
     rename_i x m y b0 hv R
-    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (mem_to_finset hmem)]
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
     apply Step.step_write_true hmem
     · -- Need to show the masked memory still has the mcell at x
-      exact masked_lookup_cap hx (mem_to_finset hmem)
+      exact masked_lookup_cap hx (covers_to_finset hmem)
     · exact masked_lookup_val hy
   | step_write_false hmem hx hy =>
     -- Symmetric to step_write_true
     rename_i x m y b0 hv R
-    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (mem_to_finset hmem)]
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
     apply Step.step_write_false hmem
-    · exact masked_lookup_cap hx (mem_to_finset hmem)
+    · exact masked_lookup_cap hx (covers_to_finset hmem)
     · exact masked_lookup_val hy
 
 theorem reduce_masked

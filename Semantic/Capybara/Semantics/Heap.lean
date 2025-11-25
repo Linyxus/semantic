@@ -59,6 +59,18 @@ theorem applyRO_applyRO {C : CapabilitySet} : C.applyRO.applyRO = C.applyRO := b
   | cap _ l => rfl
   | union C1 C2 ih1 ih2 => simp only [applyRO, ih1, ih2]
 
+/-- Applying mutability m to an epsilon singleton gives an m singleton. -/
+@[simp]
+theorem applyMut_singleton_epsilon {m : Mutability} {l : Nat} :
+    (singleton .epsilon l).applyMut m = singleton m l := by
+  cases m <;> rfl
+
+/-- Applying mutability m to an epsilon cap gives an m cap. -/
+@[simp]
+theorem applyMut_cap_epsilon {m : Mutability} {l : Nat} :
+    (cap .epsilon l).applyMut m = cap m l := by
+  cases m <;> rfl
+
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C
