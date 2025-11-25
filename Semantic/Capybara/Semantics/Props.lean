@@ -1738,4 +1738,23 @@ theorem step_immutable {C : CapabilitySet}
     simp [hne, hinit]
   | step_unpack => exact hinit
 
+theorem not_mutated_refl {m : Memory} : m.not_mutated m := by
+  intro l b hinit
+  exact hinit
+
+theorem not_mutated_trans {m1 m2 m3 : Memory}
+    (h12 : m1.not_mutated m2) (h23 : m2.not_mutated m3) :
+    m1.not_mutated m3 := by
+  intro l b hinit
+  exact h23 l b (h12 l b hinit)
+
+theorem reduce_immutable {C : CapabilitySet}
+    (himm : C.HasKind .ro)
+    (hred : Reduce C m1 e1 m2 e2) :
+    m1.not_mutated m2 := by
+  induction hred with
+  | refl => exact not_mutated_refl
+  | step hstep _ ih =>
+    exact not_mutated_trans (step_immutable himm hstep) ih
+
 end Capybara
