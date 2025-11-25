@@ -34,8 +34,8 @@ def BVar.level : BVar s k -> Nat
 | .there x => x.level
 
 /-- Convert a capture set in a platform context to a concrete capability set.
-  Platform contexts have `N` capabilities arranged as pairs `(C, x)` at levels
-  `(0,1), (2,3), ..., (2N-2, 2N-1)`, where capability `i` corresponds to
+  Platform contexts have `N` mutable cells arranged as pairs `(C, x)` at levels
+  `(0,1), (2,3), ..., (2N-2, 2N-1)`, where cell `i` corresponds to
   variables at levels `2i` and `2i+1`. Bound variables map via `level / 2`,
   while free variables directly reference heap locations. -/
 def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> CapabilitySet
@@ -48,15 +48,15 @@ def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> Ca
     | .free n => .cap m n
 | .cvar m c => .cap m (c.level / 2)
 
-/-- Type environment for a platform with `N` ground capabilities.
-  Maps each pair `(C, x)` to capability `i` at heap location `i`:
+/-- Type environment for a platform with `N` mutable cells.
+  Maps each pair `(C, x)` to cell `i` at heap location `i`:
   capture variable `C` maps to singleton ground capture set `{i}`,
   term variable `x` maps to heap location `i`. -/
 def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
 | N+1 => ((TypeEnv.platform_of N).extend_cvar (.var .epsilon (.free N))).extend_var N
 
-/-- The platform heap is well-formed: it contains only capabilities, no values. -/
+/-- The platform heap is well-formed: it contains only mutable cells, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
   constructor
   · -- wf_val: no values in the platform heap
@@ -88,7 +88,7 @@ theorem Heap.platform_of_has_fin_dom (N : Nat) :
     case isTrue => simp
     case isFalse hf => omega
 
-/-- Platform memory with `N` ground capabilities. -/
+/-- Platform memory with `N` mutable boolean cells. -/
 def Memory.platform_of (N : Nat) : Memory where
   heap := Heap.platform_of N
   wf := Heap.platform_of_wf N
@@ -189,15 +189,16 @@ theorem env_typing_of_platform {N : Nat} :
             · omega
             · exact ih
 
-/-- An expression `e` is safe with a platform environment of `N` ground
-    capabilities under permission `P` iff for any possible reduction state
-    starting from `e` on the platform, it is progressive. -/
+/-- An expression `e` is safe with a platform environment of `N` mutable cells
+    under permission `P` iff for any possible reduction state starting from `e`
+    on the platform, it is progressive. -/
 def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
   ∀ M1 e1,
     Reduce P (Memory.platform_of N) e M1 e1 ->
     IsProgressive P M1 e1
 
-/-- Reachability of a location in platform heap is just the singleton set. -/
+/-- Reachability of a location in platform heap is just the singleton set
+    (since mutable cells have no internal references). -/
 theorem reachability_of_loc_platform {l : Nat} (hl : l < N) :
   reachability_of_loc (Heap.platform_of N) l = CapabilitySet.singleton .epsilon l := by
   unfold reachability_of_loc Heap.platform_of
