@@ -51,6 +51,14 @@ def applyMut (m : Mutability) (C : CapabilitySet) : CapabilitySet :=
   | .epsilon => C
   | .ro => C.applyRO
 
+/-- applyRO is idempotent. -/
+@[simp]
+theorem applyRO_applyRO {C : CapabilitySet} : C.applyRO.applyRO = C.applyRO := by
+  induction C with
+  | empty => rfl
+  | cap _ l => rfl
+  | union C1 C2 ih1 ih2 => simp only [applyRO, ih1, ih2]
+
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C
@@ -73,6 +81,49 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
+
+/-- applyRO gives a subset: C.applyRO ⊆ C.applyMut m for any m. -/
+theorem applyRO_subset_applyMut {C : CapabilitySet} {m : Mutability} :
+  C.applyRO ⊆ C.applyMut m := by
+  cases m
+  case epsilon =>
+    -- C.applyRO ⊆ C
+    simp only [applyMut]
+    induction C with
+    | empty => exact Subset.refl
+    | cap m' l =>
+      -- .cap .ro l ⊆ .cap m' l
+      cases m'
+      · exact Subset.cap_ro
+      · exact Subset.refl
+    | union C1 C2 ih1 ih2 =>
+      simp only [applyRO]
+      apply Subset.union_left
+      · exact Subset.trans ih1 Subset.union_right_left
+      · exact Subset.trans ih2 Subset.union_right_right
+  case ro =>
+    simp only [applyMut]
+    exact Subset.refl
+
+/-- applyRO is monotonic with respect to subset. -/
+theorem applyRO_mono {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2) :
+  C1.applyRO ⊆ C2.applyRO := by
+  induction hsub with
+  | refl => exact Subset.refl
+  | empty => exact Subset.empty
+  | trans _ _ ih1 ih2 => exact Subset.trans ih1 ih2
+  | union_left _ _ ih1 ih2 =>
+    simp only [applyRO]
+    exact Subset.union_left ih1 ih2
+  | union_right_left =>
+    simp only [applyRO]
+    exact Subset.union_right_left
+  | union_right_right =>
+    simp only [applyRO]
+    exact Subset.union_right_right
+  | cap_ro =>
+    simp only [applyRO]
+    exact Subset.refl
 
 theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : Mutability} {x : Nat}
   (hsub : C1 ⊆ C2)

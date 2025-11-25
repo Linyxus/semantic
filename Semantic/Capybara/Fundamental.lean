@@ -741,7 +741,7 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
 
 theorem cap_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env .cap A store (.var x)) :
-  ∃ fx, x = .free fx ∧ store.heap fx = some (.capability .basic) ∧ fx ∈ A := by
+  ∃ fx, x = .free fx ∧ store.heap fx = some (.capability .basic) ∧ A.covers .epsilon fx := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -781,7 +781,7 @@ theorem unit_val_denot_inv
 
 theorem cell_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env .cell A store (.var x)) :
-  ∃ fx b0, x = .free fx ∧ store.heap fx = some (.capability (.mcell b0)) ∧ fx ∈ A := by
+  ∃ fx b0, x = .free fx ∧ store.heap fx = some (.capability (.mcell b0)) ∧ A.covers .epsilon fx := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -1081,14 +1081,15 @@ theorem sem_typ_invoke
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
         Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
 
-  -- Show env.lookup_var x is in the union of capability sets
-  have hmem :
-    env.lookup_var x ∈ CaptureSet.denot env (.var .epsilon (.bound x) ∪ .var .epsilon (.bound y)) store := by
-    apply CapabilitySet.mem.left
+  -- Show env.lookup_var x is covered in the union of capability sets
+  have hcov :
+    (CaptureSet.denot env (.var .epsilon (.bound x) ∪ .var .epsilon (.bound y)) store).covers
+      .epsilon (env.lookup_var x) := by
+    apply CapabilitySet.covers.left
     exact hmem_cap
 
   -- Apply eval_invoke
-  apply Eval.eval_invoke hmem hlk_cap hlk_unit
+  apply Eval.eval_invoke hcov hlk_cap hlk_unit
 
   -- Show the postcondition holds for unit
   constructor
@@ -1267,7 +1268,7 @@ theorem sem_typ_bfalse :
 theorem sem_typ_read
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) : .typ (.capt C .cell)) :
-  (.var .epsilon (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ (.capt {} .bool) := by
+  (.var .ro (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ (.capt {} .bool) := by
   intro env store hts
 
   -- Extract cell denotation from hx
@@ -1287,15 +1288,17 @@ theorem sem_typ_read
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
         Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
 
-  -- Apply eval_read with membership proof
-  -- The membership proof: env.lookup_var x ∈ reachability_of_loc store.heap (env.lookup_var x)
-  -- Since store contains a capability at that location, reachability is {env.lookup_var x}
-  have hmem : env.lookup_var x ∈
-    ((CaptureSet.var .epsilon (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot store := by
-    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
-          reachability_of_loc, hlk_cell]
-    exact CapabilitySet.mem.here
-  apply Eval.eval_read hmem hlk_cell
+  -- Apply eval_read with covers proof
+  -- The covers proof: the capture set covers env.lookup_var x with .ro mutability
+  -- Since store contains a capability at that location, reachability is singleton .epsilon
+  have hcov :
+    (((CaptureSet.var .ro (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot store).covers
+      .ro (env.lookup_var x) := by
+    simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
+          CapabilitySet.applyMut, CapabilitySet.applyRO, reachability_of_loc, hlk_cell,
+          CapabilitySet.singleton]
+    exact CapabilitySet.covers.here Mutability.Le.refl
+  apply Eval.eval_read hcov hlk_cell
 
   -- Show the postcondition holds for the boolean result
   constructor
@@ -1352,19 +1355,19 @@ theorem sem_typ_write
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
         Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
 
-  -- Prove membership: env.lookup_var x is in the denotation of the write's capture set
-  have hmem : env.lookup_var x ∈
-    (((CaptureSet.var .epsilon (Var.bound x)).union (CaptureSet.var .epsilon (Var.bound y))).subst
-      (Subst.from_TypeEnv env)).ground_denot store := by
-    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
-          reachability_of_loc, hlk_cell]
-    apply CapabilitySet.mem.left
-    exact CapabilitySet.mem.here
+  -- Prove covers: env.lookup_var x is covered by the denotation of the write's capture set
+  have hcov :
+    ((((CaptureSet.var .epsilon (Var.bound x)).union (CaptureSet.var .epsilon (Var.bound y))).subst
+      (Subst.from_TypeEnv env)).ground_denot store).covers .epsilon (env.lookup_var x) := by
+    simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
+          CapabilitySet.applyMut, reachability_of_loc, hlk_cell, CapabilitySet.singleton]
+    apply CapabilitySet.covers.left
+    exact CapabilitySet.covers.here Mutability.Le.refl
 
   -- Apply eval_write based on the boolean value
   cases b
   · -- b = false
-    apply Eval.eval_write_false hmem (hx := hlk_cell) hlk_bool
+    apply Eval.eval_write_false hcov (hx := hlk_cell) hlk_bool
     -- Show the postcondition holds for unit
     constructor
     · apply Exp.IsSimpleAns.is_simple_val
@@ -1376,7 +1379,7 @@ theorem sem_typ_write
       exact CaptureSet.WfInHeap.wf_empty
     · simp [resolve]
   · -- b = true
-    apply Eval.eval_write_true hmem (hx := hlk_cell) hlk_bool
+    apply Eval.eval_write_true hcov (hx := hlk_cell) hlk_bool
     -- Show the postcondition holds for unit
     constructor
     · apply Exp.IsSimpleAns.is_simple_val
@@ -1678,6 +1681,25 @@ theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   -- applyMut .epsilon is identity, so this simplifies
   exact typed_env_lookup_cvar hts hlookup
 
+/-- applyRO on CaptureSet gives a subset in denotation. -/
+theorem sem_sc_ro {C : CaptureSet s} :
+  SemSubcapt Γ C.applyRO C := by
+  intro env m _hts
+  unfold CaptureSet.denot
+  simp only [CaptureSet.applyRO_subst]
+  -- Need: (C.subst σ).applyRO.ground_denot m ⊆ (C.subst σ).ground_denot m
+  exact ground_denot_applyRO_subset
+
+/-- applyRO is monotonic for subcapturing. -/
+theorem sem_sc_ro_mono {C1 C2 : CaptureSet s}
+  (hsub : SemSubcapt Γ C1 C2) :
+  SemSubcapt Γ C1.applyRO C2.applyRO := by
+  intro env m hts
+  unfold CaptureSet.denot
+  simp only [CaptureSet.applyRO_subst]
+  -- Need: (C1.subst σ).applyRO.ground_denot m ⊆ (C2.subst σ).applyRO.ground_denot m
+  exact ground_denot_applyRO_mono (hsub env m hts)
+
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
   SemSubcapt Γ C1 C2 := by
@@ -1687,6 +1709,8 @@ theorem fundamental_subcapt
   case sc_union ih1 ih2 => exact sem_sc_union ih1 ih2
   case sc_cvar hlookup => exact sem_sc_cvar hlookup
   case sc_var hlookup => exact sem_sc_var hlookup
+  case sc_ro => exact sem_sc_ro
+  case sc_ro_mono ih => exact sem_sc_ro_mono ih
 
 lemma sem_subtyp_top {T : Ty .shape s} :
   SemSubtyp Γ T .top := by

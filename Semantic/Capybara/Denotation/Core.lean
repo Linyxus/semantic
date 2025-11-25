@@ -1608,6 +1608,51 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
     -- This follows from ground_denot_is_monotonic
     exact ground_denot_is_monotonic hwf hsub
 
+/-- ground_denot of applyRO is a subset: C.applyRO.ground_denot m ⊆ C.ground_denot m -/
+theorem ground_denot_applyRO_subset {C : CaptureSet {}} {m : Memory} :
+  C.applyRO.ground_denot m ⊆ C.ground_denot m := by
+  induction C with
+  | empty =>
+    simp only [CaptureSet.applyRO, CaptureSet.ground_denot]
+    exact CapabilitySet.Subset.refl
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO, CaptureSet.ground_denot]
+    apply CapabilitySet.Subset.union_left
+    · exact CapabilitySet.Subset.trans ih1 CapabilitySet.Subset.union_right_left
+    · exact CapabilitySet.Subset.trans ih2 CapabilitySet.Subset.union_right_right
+  | var m' v =>
+    cases v with
+    | bound x => cases x
+    | free x =>
+      simp only [CaptureSet.applyRO, CaptureSet.ground_denot]
+      exact CapabilitySet.applyRO_subset_applyMut
+  | cvar m' c => cases c
+
+/-- Key lemma: (C.ground_denot m).applyRO = C.applyRO.ground_denot m -/
+theorem ground_denot_applyRO_comm {C : CaptureSet {}} {m : Memory} :
+  (C.ground_denot m).applyRO = C.applyRO.ground_denot m := by
+  induction C with
+  | empty => rfl
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO, CaptureSet.ground_denot, CapabilitySet.applyRO, ih1, ih2]
+    rfl
+  | var m' v =>
+    cases v with
+    | bound x => cases x
+    | free x =>
+      simp only [CaptureSet.applyRO, CaptureSet.ground_denot]
+      -- LHS: ((reachability_of_loc m.heap x).applyMut m').applyRO
+      -- RHS: (reachability_of_loc m.heap x).applyMut .ro = (reachability_of_loc m.heap x).applyRO
+      cases m' <;> simp [CapabilitySet.applyMut, CapabilitySet.applyRO_applyRO]
+  | cvar m' c => cases c
+
+/-- ground_denot of applyRO is monotonic: if C1 ⊆ C2 then C1.applyRO ⊆ C2.applyRO -/
+theorem ground_denot_applyRO_mono {C1 C2 : CaptureSet {}} {m : Memory}
+  (hsub : C1.ground_denot m ⊆ C2.ground_denot m) :
+  C1.applyRO.ground_denot m ⊆ C2.applyRO.ground_denot m := by
+  rw [← ground_denot_applyRO_comm, ← ground_denot_applyRO_comm]
+  exact CapabilitySet.applyRO_mono hsub
+
 theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
   (hwf : (B.subst (Subst.from_TypeEnv ρ)).WfInHeap m1.heap)
   (hsub : m2.subsumes m1) :
