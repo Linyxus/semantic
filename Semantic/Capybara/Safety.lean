@@ -430,7 +430,7 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
 
 /-- If C has kind `.ro`,
     then any execution of any program under `C` does not mutate the memory. -/
-theorem immutability_platform {e : Exp (Sig.platform_of N)}
+theorem immutability_adequacy_platform {e : Exp (Sig.platform_of N)}
   {C : CaptureSet (Sig.platform_of N)}
   (hclosed : C.IsClosed)
   (hkind : HasKind (Ctx.platform_of N) C .ro) :
