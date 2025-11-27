@@ -1712,7 +1712,11 @@ theorem eval_reduce_exists_answer
       -- Show the capability subset: C_mid is equiv to C1 ∪ ({} ∪ C2)
       -- We need C_mid ⊆ C, which follows from C1 ⊆ C and C2 ⊆ C
       rename_i C0 _ _ _
-      have hsub_final : C_mid ⊆ C0 := by sorry
+      have hsub_union : C1 ∪ ({} ∪ C2) ⊆ C0 :=
+        CapabilitySet.union_subset_of_subset_of_subset hsub1
+          (CapabilitySet.union_subset_of_subset_of_subset
+            CapabilitySet.empty_subset hsub2)
+      have hsub_final : C_mid ⊆ C0 := CapabilitySet.subset_of_equiv_subset heq_mid hsub_union
       exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
     | is_var =>
       -- e1 reduced to a variable
@@ -1734,7 +1738,11 @@ theorem eval_reduce_exists_answer
           have hred_after_rename := Reduce.step hstep_rename hred2
           obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_rename
           rename_i C0 _ _ _
-          have hsub_final : C_mid ⊆ C0 := by sorry
+          have hsub_union : C1 ∪ ({} ∪ C2) ⊆ C0 :=
+            CapabilitySet.union_subset_of_subset_of_subset hsub1
+              (CapabilitySet.union_subset_of_subset_of_subset
+                CapabilitySet.empty_subset hsub2)
+          have hsub_final : C_mid ⊆ C0 := CapabilitySet.subset_of_equiv_subset heq_mid hsub_union
           exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
   | eval_unpack hpred hbool eval_e1 h_nonstuck h_val ih_e1 ih_val =>
     rename_i _ _ _ e2_body m_start _
@@ -1765,7 +1773,11 @@ theorem eval_reduce_exists_answer
           have hred_after_unpack := Reduce.step hstep_unpack hred2
           obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_unpack
           rename_i C0 _ _ _
-          have hsub_final : C_mid ⊆ C0 := by sorry
+          have hsub_union : C1 ∪ ({} ∪ C2) ⊆ C0 :=
+            CapabilitySet.union_subset_of_subset_of_subset hsub1
+              (CapabilitySet.union_subset_of_subset_of_subset
+                CapabilitySet.empty_subset hsub2)
+          have hsub_final : C_mid ⊆ C0 := CapabilitySet.subset_of_equiv_subset heq_mid hsub_union
           exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
   | eval_read hmem hlookup hQ =>
     rename_i b
