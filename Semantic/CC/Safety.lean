@@ -427,7 +427,7 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
       (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
     simp only [HasExpDenotation.interp] at hdenot
     unfold Ty.exi_exp_denot at hdenot
-    apply reduce_preserves_eval hdenot hred
+    apply reduce_preserves_eval hdenot hred CapabilitySet.subset_refl
   -- Progressive: Eval implies progressive
   exact eval_implies_progressive heval'
 

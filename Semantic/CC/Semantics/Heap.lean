@@ -102,6 +102,116 @@ theorem mem_imp_singleton_subset {C : CapabilitySet} {x : Nat}
       apply Subset.trans (ih2 h)
       apply Subset.union_right_right
 
+-- Subset lemmas
+
+theorem subset_refl {C : CapabilitySet} : C ⊆ C := Subset.refl
+
+theorem subset_trans {C1 C2 C3 : CapabilitySet} (h1 : C1 ⊆ C2) (h2 : C2 ⊆ C3) : C1 ⊆ C3 :=
+  Subset.trans h1 h2
+
+theorem empty_subset : (.empty : CapabilitySet) ⊆ C := Subset.empty
+
+theorem union_subset_of_subset_of_subset {C1 C2 C : CapabilitySet}
+  (h1 : C1 ⊆ C)
+  (h2 : C2 ⊆ C) :
+  (C1 ∪ C2) ⊆ C := Subset.union_left h1 h2
+
+theorem subset_union_left {C1 C2 : CapabilitySet} : C1 ⊆ (C1 ∪ C2) := Subset.union_right_left
+
+theorem subset_union_right {C1 C2 : CapabilitySet} : C2 ⊆ (C1 ∪ C2) := Subset.union_right_right
+
+-- Equivalence relation: two sets are equivalent iff they have the same members
+def equiv (C1 C2 : CapabilitySet) : Prop :=
+  ∀ x, x ∈ C1 ↔ x ∈ C2
+
+infix:50 " ≈ " => equiv
+
+theorem equiv_refl : C ≈ C := fun _ => Iff.rfl
+
+theorem equiv_symm (h : C1 ≈ C2) : C2 ≈ C1 := fun x => (h x).symm
+
+theorem equiv_trans (h1 : C1 ≈ C2) (h2 : C2 ≈ C3) : C1 ≈ C3 :=
+  fun x => (h1 x).trans (h2 x)
+
+-- Empty union equivalences
+theorem empty_union_equiv : (∅ ∪ C) ≈ C := by
+  intro x
+  constructor
+  · intro hmem
+    cases hmem with
+    | left h => cases h
+    | right h => exact h
+  · intro hmem
+    exact mem.right hmem
+
+theorem union_empty_equiv : (C ∪ ∅) ≈ C := by
+  intro x
+  constructor
+  · intro hmem
+    cases hmem with
+    | left h => exact h
+    | right h => cases h
+  · intro hmem
+    exact mem.left hmem
+
+-- Subset implies membership preservation (already have subset_preserves_mem)
+
+-- Syntactic subset implies semantic containment
+-- (already proven as subset_preserves_mem)
+
+-- For equivalence: if C1 ≈ C2, then syntactically they may differ but
+-- semantically they're the same. We can build a syntactic subset proof
+-- by induction on the structure.
+
+-- Union associativity equivalence
+theorem union_assoc_equiv : ((C1 ∪ C2) ∪ C3) ≈ (C1 ∪ (C2 ∪ C3)) := by
+  intro x
+  constructor
+  · intro hmem
+    cases hmem with
+    | left h =>
+      cases h with
+      | left h1 => exact mem.left h1
+      | right h2 => exact mem.right (mem.left h2)
+    | right h3 => exact mem.right (mem.right h3)
+  · intro hmem
+    cases hmem with
+    | left h1 => exact mem.left (mem.left h1)
+    | right h =>
+      cases h with
+      | left h2 => exact mem.left (mem.right h2)
+      | right h3 => exact mem.right h3
+
+/-- Helper: If all elements of C1 are in C2, and C2 ⊆ C, then C1 ⊆ C2.
+    This is proven by structural induction on C1. -/
+private theorem subset_of_mem_transfer {C1 C2 : CapabilitySet}
+  (hmem : ∀ x, x ∈ C1 → x ∈ C2) :
+  C1 ⊆ C2 := by
+  induction C1 with
+  | empty => exact Subset.empty
+  | cap x =>
+    have hx : x ∈ C2 := hmem x mem.here
+    exact mem_imp_singleton_subset hx
+  | union C1a C1b ih1 ih2 =>
+    apply Subset.union_left
+    · apply ih1
+      intro y hy
+      exact hmem y (mem.left hy)
+    · apply ih2
+      intro y hy
+      exact hmem y (mem.right hy)
+
+/-- If C1 ≈ C2 and C2 ⊆ C, then C1 ⊆ C.
+    This allows transferring subset through equivalence. -/
+theorem subset_of_equiv_subset {C1 C2 C : CapabilitySet}
+  (heq : C1 ≈ C2)
+  (hsub : C2 ⊆ C) :
+  C1 ⊆ C := by
+  -- First show C1 ⊆ C2 using the equivalence
+  have hsub12 : C1 ⊆ C2 := subset_of_mem_transfer (fun x hx => (heq x).mp hx)
+  -- Then use transitivity
+  exact Subset.trans hsub12 hsub
+
 end CapabilitySet
 
 /-- A heap value.

@@ -17,89 +17,56 @@ theorem Memory.lookup_deterministic {m : Memory}
   simp [Memory.lookup] at hlookup1 hlookup2
   apply Heap.lookup_deterministic hlookup1 hlookup2
 
-/-- Step is monotonic with respect to capability sets:
-    if a step can happen under authority R1, it can happen under any larger authority R2. -/
-theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
-  (hstep : Step R1 m e m' e') (hsub : R1 ⊆ R2) :
-  Step R2 m e m' e' := by
+/-- Extract the precise capability set used by a step. -/
+theorem step_capability_set_precise (hstep : Step C m e m' e') :
+  (∃ x, C = .cap x) ∨ C = {} := by
   induction hstep with
-  | step_apply hlookup =>
-    apply Step.step_apply hlookup
-  | step_invoke hmem hlookup_x hlookup_y =>
-    apply Step.step_invoke
-    · exact CapabilitySet.subset_preserves_mem hsub hmem
-    · exact hlookup_x
-    · exact hlookup_y
-  | step_tapply hlookup =>
-    apply Step.step_tapply hlookup
-  | step_capply hlookup =>
-    apply Step.step_capply hlookup
-  | step_cond_var_true hlookup =>
-    apply Step.step_cond_var_true hlookup
-  | step_cond_var_false hlookup =>
-    apply Step.step_cond_var_false hlookup
-  | step_read hmem hlookup =>
-    apply Step.step_read (CapabilitySet.subset_preserves_mem hsub hmem) hlookup
-  | step_write_true hmem hx hy =>
-    apply Step.step_write_true (CapabilitySet.subset_preserves_mem hsub hmem) hx hy
-  | step_write_false hmem hx hy =>
-    apply Step.step_write_false (CapabilitySet.subset_preserves_mem hsub hmem) hx hy
-  | step_ctx_letin _ ih =>
-    apply Step.step_ctx_letin
-    exact ih hsub
-  | step_ctx_unpack _ ih =>
-    apply Step.step_ctx_unpack
-    exact ih hsub
-  | step_rename =>
-    apply Step.step_rename
-  | step_lift hv hwf hfresh =>
-    apply Step.step_lift hv hwf hfresh
-  | step_unpack =>
-    apply Step.step_unpack
+  | step_apply _ => right; rfl
+  | step_invoke _ _ => left; exact ⟨_, rfl⟩
+  | step_tapply _ => right; rfl
+  | step_capply _ => right; rfl
+  | step_cond_var_true _ => right; rfl
+  | step_cond_var_false _ => right; rfl
+  | step_read _ => left; exact ⟨_, rfl⟩
+  | step_write_true _ _ => left; exact ⟨_, rfl⟩
+  | step_write_false _ _ => left; exact ⟨_, rfl⟩
+  | step_ctx_letin _ ih => exact ih
+  | step_ctx_unpack _ ih => exact ih
+  | step_rename => right; rfl
+  | step_lift _ _ _ => right; rfl
+  | step_unpack => right; rfl
 
-/-- Reduce (multi-step reduction) is monotonic with respect to capability sets:
-    if a reduction can happen under authority R1, it can happen under any larger authority R2. -/
-theorem small_step_capability_set_monotonic {R1 R2 : CapabilitySet}
-  (hred : Reduce R1 m e m' e') (hsub : R1 ⊆ R2) :
-  Reduce R2 m e m' e' := by
-  induction hred generalizing R2 with
-  | refl =>
-    apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · exact step_capability_set_monotonic h hsub
-    · exact ih hsub
+-- Note: With precise capability sets, monotonicity for Reduce no longer holds in the
+-- traditional sense. The capability set precisely tracks what was used, not an upper bound.
+-- Use reduce_trans for combining reductions.
 
 /-- Helper: Congruence for Reduce in letin context. -/
 theorem reduce_ctx_letin
   (hred : Reduce C m e1 m' e1') :
   Reduce C m (.letin e1 e2) m' (.letin e1' e2) := by
   induction hred with
-  | refl => apply Reduce.refl
+  | refl => exact Reduce.refl
   | step h rest ih =>
-    apply Reduce.step
-    · apply Step.step_ctx_letin h
-    · exact ih
+    exact Reduce.step (Step.step_ctx_letin h) ih
 
 /-- Helper: Congruence for Reduce in unpack context. -/
 theorem reduce_ctx_unpack
   (hred : Reduce C m e1 m' e1') :
   Reduce C m (.unpack e1 e2) m' (.unpack e1' e2) := by
   induction hred with
-  | refl => apply Reduce.refl
+  | refl => exact Reduce.refl
   | step h rest ih =>
-    apply Reduce.step
-    · apply Step.step_ctx_unpack h
-    · exact ih
+    exact Reduce.step (Step.step_ctx_unpack h) ih
 
-/-- Helper: Variables cannot step, so reduction is reflexive. -/
+/-- Helper: Variables cannot step, so reduction is reflexive.
+    With precise capabilities, C must be {} for var reduction. -/
 theorem reduce_var_inv
   (hred : Reduce C m (.var x) m' v') :
-  m' = m ∧ v' = .var x := by
+  m' = m ∧ v' = .var x ∧ C = {} := by
   generalize he : Exp.var x = e at hred
   induction hred with
-  | refl => exact ⟨rfl, he ▸ rfl⟩
-  | step hstep _ ih =>
+  | refl => exact ⟨rfl, he ▸ rfl, rfl⟩
+  | step hstep rest ih =>
     -- No Step rule applies to a bare variable
     subst he
     cases hstep
@@ -110,14 +77,14 @@ theorem step_memory_monotonic
   m2.subsumes m1 := by
   induction hstep with
   | step_apply => exact Memory.subsumes_refl _
-  | step_invoke => exact Memory.subsumes_refl _
+  | step_invoke _ _ => exact Memory.subsumes_refl _
   | step_tapply => exact Memory.subsumes_refl _
   | step_capply => exact Memory.subsumes_refl _
   | step_cond_var_true _ => exact Memory.subsumes_refl _
   | step_cond_var_false _ => exact Memory.subsumes_refl _
-  | step_read _ _ => exact Memory.subsumes_refl _
-  | step_write_true _ hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
-  | step_write_false _ hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
+  | step_read _ => exact Memory.subsumes_refl _
+  | step_write_true hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
+  | step_write_false hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
   | step_ctx_letin _ ih => exact ih
   | step_ctx_unpack _ ih => exact ih
   | step_rename => exact Memory.subsumes_refl _
@@ -162,16 +129,20 @@ theorem reduce_ans_eq
     have habsurd : False := step_ans_absurd hans h
     contradiction
 
+/-- Inversion lemma for letin reduction with precise capability tracking.
+    The capability set C is precisely the union of capabilities used in each sub-reduction. -/
 theorem reduce_letin_inv
   (hred : Reduce C m (.letin e1 e2) m' a)
   (hans : a.IsAns) :
-  (∃ m0 y0, Reduce C m e1 m0 (.var (.free y0)) ∧
-     Reduce C m0 (e2.subst (Subst.openVar (.free y0))) m' a) ∨
-  (∃ (m0 : Memory) (v0 : Exp {}) (hv : v0.IsSimpleVal) (hwf : Exp.WfInHeap v0 m0.heap)
+  (∃ C1 C2 m0 y0, (C1 ∪ C2).equiv C ∧
+     Reduce C1 m e1 m0 (.var (.free y0)) ∧
+     Reduce C2 m0 (e2.subst (Subst.openVar (.free y0))) m' a) ∨
+  (∃ (C1 : CapabilitySet) (C2 : CapabilitySet) (m0 : Memory) (v0 : Exp {})
+     (hv : v0.IsSimpleVal) (hwf : Exp.WfInHeap v0 m0.heap)
      (l0 : Nat) (hfresh : m0.heap l0 = none),
-    Reduce C m e1 m0 v0 ∧
-    Reduce
-      C
+    (C1 ∪ C2).equiv C ∧
+    Reduce C1 m e1 m0 v0 ∧
+    Reduce C2
       (m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf rfl hfresh)
       (e2.subst (Subst.openVar (.free l0)))
       m' a) := by
@@ -185,58 +156,89 @@ theorem reduce_letin_inv
     cases hans with
     | is_val hv => cases hv
   | step hstep rest ih =>
-    -- We have a step from e_full, and e_full = .letin e1 e2
+    -- We have: Step C1 m e_full m_mid e_mid, Reduce C2 m_mid e_mid m' a
+    -- and C = C1 ∪ C2
     rw [←hgen] at hstep
     -- Case analysis on what step was taken from letin
     cases hstep with
     | step_ctx_letin hstep_e1 =>
-      -- e1 steps to e1', and we have rest: Reduce C m2 (.letin e1' e2) m' a
-      -- Apply IH to the rest of the reduction
-      rename_i m_step e1'
+      -- e1 steps to e1', and we have rest: Reduce C2 m_mid (.letin e1' e2) m' a
       have ih_result := ih hans rfl
-      -- Extract the result from IH
       cases ih_result with
       | inl h_var =>
-        -- Variable case from IH
-        obtain ⟨m0, y0, hred_e1', hred_body⟩ := h_var
+        -- Variable case from IH: ∃ C1' C2', (C1' ∪ C2').equiv C_rest ∧ ...
+        -- where C_rest is the capability from rest (C2✝ in goal)
+        obtain ⟨C1', C2', m0, y0, heq_rest, hred_e1', hred_body⟩ := h_var
         apply Or.inl
-        exists m0, y0
+        refine ⟨_ ∪ C1', C2', m0, y0, ?_, Reduce.step hstep_e1 hred_e1', hred_body⟩
+        -- Need: ((C_step ∪ C1') ∪ C2').equiv (C_step ∪ C_rest)
+        -- heq_rest : (C1' ∪ C2').equiv C_rest
+        intro x
         constructor
-        · -- Need to show: Reduce C m_step e1 m0 (.var (.free y0))
-          -- We have: hstep_e1 : Step C m_step e1 _ e1'
-          -- and: hred_e1' : Reduce C _ e1' m0 (.var (.free y0))
-          apply Reduce.step hstep_e1 hred_e1'
-        · exact hred_body
+        · intro hmem
+          -- Forward: x ∈ (C_step ∪ C1') ∪ C2' → x ∈ C_step ∪ C_rest
+          cases hmem with
+          | left h =>
+            cases h with
+            | left h1 => exact CapabilitySet.mem.left h1
+            | right h1' =>
+              -- h1' : x ∈ C1' → x ∈ C1' ∪ C2' → x ∈ C_rest
+              have : x ∈ C1' ∪ C2' := CapabilitySet.mem.left h1'
+              exact CapabilitySet.mem.right ((heq_rest x).mp this)
+          | right h2 =>
+            -- h2 : x ∈ C2' → x ∈ C1' ∪ C2' → x ∈ C_rest
+            have : x ∈ C1' ∪ C2' := CapabilitySet.mem.right h2
+            exact CapabilitySet.mem.right ((heq_rest x).mp this)
+        · intro hmem
+          -- Backward: x ∈ C_step ∪ C_rest → x ∈ (C_step ∪ C1') ∪ C2'
+          cases hmem with
+          | left h => exact CapabilitySet.mem.left (CapabilitySet.mem.left h)
+          | right h =>
+            -- h : x ∈ C_rest → x ∈ C1' ∪ C2'
+            have h' := (heq_rest x).mpr h
+            cases h' with
+            | left h1' => exact CapabilitySet.mem.left (CapabilitySet.mem.right h1')
+            | right h2 => exact CapabilitySet.mem.right h2
       | inr h_val =>
         -- Value case from IH
-        obtain ⟨m0, v0, hv, hwf, l0, hfresh, hred_e1', hred_body⟩ := h_val
+        obtain ⟨C1', C2', m0, v0, hv, hwf, l0, hfresh, heq_rest, hred_e1', hred_body⟩ := h_val
         apply Or.inr
-        exists m0, v0, hv, hwf, l0, hfresh
+        refine ⟨_ ∪ C1', C2', m0, v0, hv, hwf, l0, hfresh, ?_,
+                Reduce.step hstep_e1 hred_e1', hred_body⟩
+        -- Same equivalence proof as the variable case
+        intro x
         constructor
-        · -- Reduction from e1 to v0
-          apply Reduce.step hstep_e1 hred_e1'
-        · exact hred_body
+        · intro hmem
+          cases hmem with
+          | left h =>
+            cases h with
+            | left h1 => exact CapabilitySet.mem.left h1
+            | right h1' =>
+              have : x ∈ C1' ∪ C2' := CapabilitySet.mem.left h1'
+              exact CapabilitySet.mem.right ((heq_rest x).mp this)
+          | right h2 =>
+            have : x ∈ C1' ∪ C2' := CapabilitySet.mem.right h2
+            exact CapabilitySet.mem.right ((heq_rest x).mp this)
+        · intro hmem
+          cases hmem with
+          | left h => exact CapabilitySet.mem.left (CapabilitySet.mem.left h)
+          | right h =>
+            have h' := (heq_rest x).mpr h
+            cases h' with
+            | left h1' => exact CapabilitySet.mem.left (CapabilitySet.mem.right h1')
+            | right h2 => exact CapabilitySet.mem.right h2
     | step_rename =>
       -- e1 = .var (.free y), stepped to e2.subst (openVar (.free y))
-      -- This is the variable case
-      -- Unnamed variables in order: m1✝, e1✝, m3✝, e3✝, y✝
-      rename_i m_src _ _ _ y
+      -- step_rename uses {} capability
       apply Or.inl
-      exists m_src, y
-      constructor
-      · apply Reduce.refl
-      · exact rest
+      refine ⟨{}, _, _, _, ?_, Reduce.refl, rest⟩
+      exact CapabilitySet.equiv_refl
     | step_lift hv hwf hfresh =>
       -- e1 is a simple value v, allocated at l
-      -- This is the value case
-      -- Unnamed vars: m3✝(dst), e3✝(ans), l✝(loc), m1✝(src), e1✝
-      rename_i mem_src _ mem_dst _ location
+      -- step_lift uses {} capability
       apply Or.inr
-      exists mem_src, e1, hv, hwf, location, hfresh
-      constructor
-      · -- e1 is already the value, so reduction is reflexive
-        apply Reduce.refl
-      · exact rest
+      refine ⟨{}, _, _, e1, hv, hwf, _, hfresh, ?_, Reduce.refl, rest⟩
+      exact CapabilitySet.equiv_refl
 
 theorem step_preserves_wf
   (hstep : Step C m1 e1 m2 e2)
@@ -258,7 +260,7 @@ theorem step_preserves_wf
       have hwf_subst := Subst.wf_openVar hwf_y
       -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
-  | step_invoke hmem hlookup_x hlookup_y =>
+  | step_invoke hlookup_x hlookup_y =>
     -- e1 = .app (.free x) (.free y), e2 = .unit
     -- Unit is always well-formed
     apply Exp.WfInHeap.wf_unit
@@ -300,18 +302,18 @@ theorem step_preserves_wf
   | step_cond_var_false hlookup =>
     have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
     exact hwf_else
-  | step_read _ hlookup =>
+  | step_read hlookup =>
     -- e1 = .read (.free x), e2 = .btrue or .bfalse
     -- Boolean values are always well-formed
-    rename_i b _
+    rename_i b
     by_cases hb : b
     · simp [hb]; exact Exp.WfInHeap.wf_btrue
     · simp [hb]; exact Exp.WfInHeap.wf_bfalse
-  | step_write_true _ hx hy =>
+  | step_write_true hx hy =>
     -- e1 = .write (.free x) (.free y), e2 = .unit
     -- Unit is always well-formed in any heap
     exact Exp.WfInHeap.wf_unit
-  | step_write_false _ hx hy =>
+  | step_write_false hx hy =>
     -- e1 = .write (.free x) (.free y), e2 = .unit
     -- Unit is always well-formed in any heap
     exact Exp.WfInHeap.wf_unit
@@ -390,13 +392,14 @@ theorem reduce_preserves_wf
     have hwf_mid := step_preserves_wf hstep hwf
     exact ih hwf_mid
 
-/-- Inversion lemma for reduction of unpack expressions -/
+/-- Inversion lemma for reduction of unpack expressions with precise capability tracking. -/
 theorem reduce_unpack_inv
   (hred : Reduce C m (.unpack e1 e2) m' a)
   (hans : a.IsAns) :
-  ∃ (m0 : Memory) (cs : CaptureSet {}) (x : Nat),
-    Reduce C m e1 m0 (.pack cs (.free x)) ∧
-    Reduce C m0 (e2.subst (Subst.unpack cs (.free x))) m' a := by
+  ∃ (C1 : CapabilitySet) (C2 : CapabilitySet) (m0 : Memory) (cs : CaptureSet {}) (x : Nat),
+    (C1 ∪ C2).equiv C ∧
+    Reduce C1 m e1 m0 (.pack cs (.free x)) ∧
+    Reduce C2 m0 (e2.subst (Subst.unpack cs (.free x))) m' a := by
   -- Use generalization to make induction work
   generalize hgen : Exp.unpack e1 e2 = e_full at hred
   induction hred generalizing e1 e2 with
@@ -411,31 +414,43 @@ theorem reduce_unpack_inv
     cases hstep with
     | step_ctx_unpack hstep_e1 =>
       -- e1 steps to e1', then continue with induction
-      rename_i e1'
-      have ih_result := ih (e1 := e1') (e2 := e2) hans rfl
-      obtain ⟨m0, cs, x, hred_e1', hred_body⟩ := ih_result
-      -- Build the reduction from e1 to pack
-      -- hstep_e1 : Step C m1✝ e1 m2✝ e1'
-      -- hred_e1' : Reduce C m2✝ e1' m0 (pack cs x)
-      -- Combine them to get: Reduce C m1✝ e1 m0 (pack cs x)
-      have hred_e1 : Reduce C _ e1 m0 (.pack cs (.free x)) :=
-        Reduce.step hstep_e1 hred_e1'
-      exact ⟨m0, cs, x, hred_e1, hred_body⟩
+      have ih_result := ih hans rfl
+      obtain ⟨C1', C2', m0, cs, x, heq_rest, hred_e1', hred_body⟩ := ih_result
+      -- Build the reduction from e1 to pack using Reduce.step
+      refine ⟨_ ∪ C1', C2', m0, cs, x, ?_, Reduce.step hstep_e1 hred_e1', hred_body⟩
+      -- Equivalence proof: ((C_step ∪ C1') ∪ C2').equiv (C_step ∪ C_rest)
+      intro y
+      constructor
+      · intro hmem
+        cases hmem with
+        | left h =>
+          cases h with
+          | left h1 => exact CapabilitySet.mem.left h1
+          | right h1' =>
+            have : y ∈ C1' ∪ C2' := CapabilitySet.mem.left h1'
+            exact CapabilitySet.mem.right ((heq_rest y).mp this)
+        | right h2 =>
+          have : y ∈ C1' ∪ C2' := CapabilitySet.mem.right h2
+          exact CapabilitySet.mem.right ((heq_rest y).mp this)
+      · intro hmem
+        cases hmem with
+        | left h => exact CapabilitySet.mem.left (CapabilitySet.mem.left h)
+        | right h =>
+          have h' := (heq_rest y).mpr h
+          cases h' with
+          | left h1' => exact CapabilitySet.mem.left (CapabilitySet.mem.right h1')
+          | right h2 => exact CapabilitySet.mem.right h2
     | step_unpack =>
-      -- e1 is already .pack cs (.free x)
-      rename_i cs x
-      -- rest is the reduction from the substituted body
-      -- rest : Reduce C m1✝ (e2.subst (Subst.unpack cs x)) m3✝ e3✝
-      -- We need: Reduce C m1✝ e1 m1✝ (pack cs x)
-      -- Since e1 = pack cs x, this is Reduce.refl
-      exact ⟨_, cs, x, Reduce.refl, rest⟩
+      -- e1 is already .pack cs (.free x), step_unpack uses {} capability
+      refine ⟨{}, _, _, _, _, CapabilitySet.equiv_refl, Reduce.refl, rest⟩
 
 inductive IsProgressive : CapabilitySet -> Memory -> Exp {} -> Prop where
 | done :
   e.IsAns ->
   IsProgressive R m e
 | step :
-  Step C m e m' e' ->
+  Step C' m e m' e' ->
+  C' ⊆ C ->
   IsProgressive C m e
 
 /-- If an answer has an evaluation, then the postcondition holds for it. -/
@@ -478,20 +493,18 @@ theorem eval_implies_progressive
     match y with
     | .bound idx => cases idx
     | .free y' =>
-      apply IsProgressive.step
-      exact @Step.step_apply C' m' x y' cs T e_abs hv R hlookup
+      apply IsProgressive.step (Step.step_apply hlookup) CapabilitySet.Subset.empty
   | eval_invoke hmem hlookup_x hlookup_y hQ =>
     -- e = .app (.free x) (.free y), can step via step_invoke
-    apply IsProgressive.step
-    exact Step.step_invoke hmem hlookup_x hlookup_y
+    -- Need: (.cap x) ⊆ C, which follows from hmem (x ∈ C)
+    apply IsProgressive.step (Step.step_invoke hlookup_x hlookup_y)
+    exact CapabilitySet.mem_imp_singleton_subset hmem
   | eval_tapply hlookup eval_body ih =>
     -- e = .tapp (.free x) S, can step via step_tapply
-    apply IsProgressive.step
-    apply Step.step_tapply hlookup
+    apply IsProgressive.step (Step.step_tapply hlookup) CapabilitySet.Subset.empty
   | eval_capply hlookup eval_body ih =>
     -- e = .capp (.free x) CS, can step via step_capply
-    apply IsProgressive.step
-    apply Step.step_capply hlookup
+    apply IsProgressive.step (Step.step_capply hlookup) CapabilitySet.Subset.empty
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 _ _ =>
     -- e = .letin e1 e2
     -- By IH, e1 is progressive
@@ -510,21 +523,17 @@ theorem eval_implies_progressive
         -- The heap is finite, so there are infinitely many fresh locations
         rename_i m0 _ _ _
         have ⟨l0, hfresh⟩ := Memory.exists_fresh m0
-        apply IsProgressive.step
-        apply Step.step_lift (l := l0) hv hwf
-        exact hfresh
+        apply IsProgressive.step (Step.step_lift (l := l0) hv hwf hfresh) CapabilitySet.Subset.empty
       | is_var =>
         -- e1 is a variable, we need to show it's a free variable
         rename_i x_var
         cases x_var with
         | bound idx => cases idx
         | free y =>
-          apply IsProgressive.step
-          apply Step.step_rename
-    | step hstep =>
+          apply IsProgressive.step Step.step_rename CapabilitySet.Subset.empty
+    | step hstep hsub =>
       -- e1 can step, so letin e1 e2 can step via step_ctx_letin
-      apply IsProgressive.step
-      exact Step.step_ctx_letin hstep
+      apply IsProgressive.step (Step.step_ctx_letin hstep) hsub
   | eval_unpack hpred hbool eval_e1 h_nonstuck h_val ih_e1 _ =>
     -- e = .unpack e1 e2
     -- By IH, e1 is progressive
@@ -543,12 +552,10 @@ theorem eval_implies_progressive
         cases x_var with
         | bound idx => cases idx
         | free x =>
-          apply IsProgressive.step
-          apply Step.step_unpack
-    | step hstep =>
+          apply IsProgressive.step Step.step_unpack CapabilitySet.Subset.empty
+    | step hstep hsub =>
       -- e1 can step, so unpack e1 e2 can step via step_ctx_unpack
-      apply IsProgressive.step
-      exact Step.step_ctx_unpack hstep
+      apply IsProgressive.step (Step.step_ctx_unpack hstep) hsub
   | @eval_cond _ x_guard _ _ _ m0 _ hpred hbool eval_e1 h_nonstuck h_true h_false ih_e1 _ _ =>
     -- e = .cond x e2 e3 where x : Var
     cases ih_e1 with
@@ -575,8 +582,9 @@ theorem eval_implies_progressive
                   simpa [resolve, hcell] using hbtrue
                 cases hunwrap
                 apply IsProgressive.step
-                refine Step.step_cond_var_true (hv := hsimple) (R := reach) (by
-                  simp [Memory.lookup, hcell])
+                  (Step.step_cond_var_true (hv := hsimple) (R := reach)
+                    (by simp [Memory.lookup, hcell]))
+                  CapabilitySet.Subset.empty
             | capability =>
               simp [resolve, hcell] at hbtrue
             | masked =>
@@ -594,8 +602,9 @@ theorem eval_implies_progressive
                   simpa [resolve, hcell] using hbfalse
                 cases hunwrap
                 apply IsProgressive.step
-                refine Step.step_cond_var_false (hv := hsimple) (R := reach) (by
-                  simp [Memory.lookup, hcell])
+                  (Step.step_cond_var_false (hv := hsimple) (R := reach)
+                    (by simp [Memory.lookup, hcell]))
+                  CapabilitySet.Subset.empty
             | capability =>
               simp [resolve, hcell] at hbfalse
             | masked =>
@@ -605,20 +614,22 @@ theorem eval_implies_progressive
       exact absurd hstep step_var_absurd
   | eval_read hmem hlookup hQ =>
     -- e = .read (.free x), can step via step_read
-    apply IsProgressive.step
-    exact Step.step_read hmem hlookup
+    -- Need: (.cap x) ⊆ C, which follows from hmem (x ∈ C)
+    apply IsProgressive.step (Step.step_read hlookup)
+    exact CapabilitySet.mem_imp_singleton_subset hmem
   | eval_write_true hmem hx hy hQ =>
     -- e = .write (.free x) (.free y), can step via step_write_true
-    apply IsProgressive.step
-    exact Step.step_write_true hmem hx hy
+    apply IsProgressive.step (Step.step_write_true hx hy)
+    exact CapabilitySet.mem_imp_singleton_subset hmem
   | eval_write_false hmem hx hy hQ =>
     -- e = .write (.free x) (.free y), can step via step_write_false
-    apply IsProgressive.step
-    exact Step.step_write_false hmem hx hy
+    apply IsProgressive.step (Step.step_write_false hx hy)
+    exact CapabilitySet.mem_imp_singleton_subset hmem
 
 theorem step_preserves_eval
   (he : Eval C m1 e1 Q)
-  (hstep : Step C m1 e1 m2 e2) :
+  (hstep : Step C' m1 e1 m2 e2)
+  (hsub : C' ⊆ C) :
   Eval C m2 e2 Q := by
   induction he generalizing m2 e2 with
   | eval_val hv hQ =>
@@ -650,10 +661,10 @@ theorem step_preserves_eval
       rw [←heq_body]
       -- Now we have the same expression that was already evaluated
       exact heval
-    | step_invoke hmem hlookup_x hlookup_y =>
+    | step_invoke hlookup_x' hlookup_y' =>
       -- step_invoke says x contains a capability, but hlookup says x contains an abstraction
       -- This is a contradiction
-      have heq := Memory.lookup_deterministic hlookup hlookup_x
+      have heq := Memory.lookup_deterministic hlookup hlookup_x'
       cases heq
   | eval_invoke hmem hlookup_x hlookup_y hQ =>
     -- e1 = .app (.free x) (.free y) where x contains a capability
@@ -664,7 +675,7 @@ theorem step_preserves_eval
       -- This is a contradiction
       have heq := Memory.lookup_deterministic hlookup_x hlookup'
       cases heq
-    | step_invoke hmem' hlookup_x' hlookup_y' =>
+    | step_invoke hlookup_x' hlookup_y' =>
       -- Stepped to .unit
       -- The postcondition holds by hQ
       apply Eval.eval_val
@@ -713,22 +724,22 @@ theorem step_preserves_eval
     | step_ctx_letin hstep_e1 =>
       -- e1' steps to some e1''
       -- Apply IH to get the new evaluation of e1''
-      have heval_e1'' := ih_e1 hstep_e1
+      have heval_e1'' := ih_e1 hstep_e1 hsub
       -- Rebuild eval_letin with the new evaluation
       -- First, we need to show that memory is monotonic
-      have hsub := step_memory_monotonic hstep_e1
+      have hsub_mem := step_memory_monotonic hstep_e1
       -- The handlers need to be updated for the new memory
       -- h_val and h_var already work with any memory that subsumes m, so they're still valid
       apply Eval.eval_letin hpred hbool heval_e1'' h_nonstuck
       · -- h_val case
         intro m1 v hsub1 hv hwf_v hQ1 l' hfresh
         -- m1 subsumes m2 which subsumes m, so m1 subsumes m
-        have hsub_full := Memory.subsumes_trans hsub1 hsub
+        have hsub_full := Memory.subsumes_trans hsub1 hsub_mem
         exact h_val hsub_full hv hwf_v hQ1 l' hfresh
       · -- h_var case
         intro m1 x hsub1 hwf_x hQ1
         -- m1 subsumes m2 which subsumes m, so m1 subsumes m
-        have hsub_full := Memory.subsumes_trans hsub1 hsub
+        have hsub_full := Memory.subsumes_trans hsub1 hsub_mem
         exact h_var hsub_full hwf_x hQ1
     | step_rename =>
       -- e1' = .var (.free y), stepped to e2'.subst (openVar y)
@@ -760,14 +771,14 @@ theorem step_preserves_eval
     | step_ctx_unpack hstep_e1 =>
       -- e1' steps to some e1''
       -- Apply IH to get the new evaluation of e1''
-      have heval_e1'' := ih_e1 hstep_e1
+      have heval_e1'' := ih_e1 hstep_e1 hsub
       -- Rebuild eval_unpack with the new evaluation
-      have hsub := step_memory_monotonic hstep_e1
+      have hsub_mem := step_memory_monotonic hstep_e1
       apply Eval.eval_unpack hpred hbool heval_e1'' h_nonstuck
       -- The pack handler needs to work with the new memory
       intro m1 x cs hsub1 hwf_x hwf_cs hQ1
       -- m1 subsumes m2 which subsumes m, so m1 subsumes m
-      have hsub_full := Memory.subsumes_trans hsub1 hsub
+      have hsub_full := Memory.subsumes_trans hsub1 hsub_mem
       exact h_pack hsub_full hwf_x hwf_cs hQ1
     | step_unpack =>
       -- e1' = .pack cs (.free x), stepped to e2'.subst (unpack cs x)
@@ -812,14 +823,14 @@ theorem step_preserves_eval
   | eval_read _ hlookup hQ =>
     -- e = .read (.free x), can only step via step_read
     cases hstep with
-    | step_read _ hlookup' =>
+    | step_read hlookup' =>
       -- The step produces the same boolean value
       have heq := Memory.lookup_deterministic hlookup hlookup'
       injection heq with heq_cell
       -- The cells are equal, so the booleans must be the same
       cases heq_cell
       -- The result is a value, so use eval_val
-      rename_i b _ _
+      rename_i b _
       by_cases hb : b
       · simp only [hb, ↓reduceIte] at hQ ⊢
         exact Eval.eval_val Exp.IsVal.btrue hQ
@@ -828,11 +839,11 @@ theorem step_preserves_eval
   | eval_write_true _ hx hy hQ =>
     -- e = .write (.free x) (.free y), can only step via step_write_true or step_write_false
     cases hstep with
-    | step_write_true _ hx' hy' =>
+    | step_write_true hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
       exact Eval.eval_val Exp.IsVal.unit hQ
-    | step_write_false _ hx' hy' =>
+    | step_write_false hx' hy' =>
       -- y is looked up as btrue in eval, but bfalse in step - contradiction
       have heq_y := Memory.lookup_deterministic hy hy'
       -- The cells must be equal
@@ -843,7 +854,7 @@ theorem step_preserves_eval
   | eval_write_false _ hx hy hQ =>
     -- e = .write (.free x) (.free y), can only step via step_write_false
     cases hstep with
-    | step_write_true _ hx' hy' =>
+    | step_write_true hx' hy' =>
       -- y is looked up as bfalse in eval, but btrue in step - contradiction
       have heq_y := Memory.lookup_deterministic hy hy'
       -- The cells must be equal
@@ -851,35 +862,40 @@ theorem step_preserves_eval
       -- The ValPairs must be equal, extract unwrap field
       have h_unwrap : Exp.bfalse = Exp.btrue := congrArg (·.unwrap) heq_val
       cases h_unwrap
-    | step_write_false _ hx' hy' =>
+    | step_write_false hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
       exact Eval.eval_val Exp.IsVal.unit hQ
 
+/-- Reduction preserves evaluation when the reduction uses a subset of available capabilities. -/
 theorem reduce_preserves_eval
   (he : Eval C m1 e1 Q)
-  (hred : Reduce C m1 e1 m2 e2) :
+  (hred : Reduce C' m1 e1 m2 e2)
+  (hsub : C' ⊆ C) :
   Eval C m2 e2 Q := by
-  induction hred with
+  induction hred generalizing C with
   | refl =>
     -- No reduction, so evaluation remains the same
     exact he
   | step hstep rest ih =>
-    -- Apply step_preserves_eval to the step
-    have heval_step := step_preserves_eval he hstep
-    -- Apply IH to the rest of the reduction
-    exact ih heval_step
+    -- hstep : Step C1 m1 e1 m_mid e_mid
+    -- rest : Reduce C2 m_mid e_mid m2 e2
+    -- C' = C1 ∪ C2, hsub : C1 ∪ C2 ⊆ C
+    -- Need to show: Eval C m2 e2 Q
+    have h_c1_sub : _ ⊆ C := CapabilitySet.subset_trans CapabilitySet.subset_union_left hsub
+    have heval_mid := step_preserves_eval he hstep h_c1_sub
+    have h_c2_sub : _ ⊆ C := CapabilitySet.subset_trans CapabilitySet.subset_union_right hsub
+    exact ih heval_mid h_c2_sub
 
 theorem eval_to_reduce
-  (heval : Eval C m1 e1 Q)
-  (_hwf : e1.WfInHeap m1.heap) :
+  (heval : Eval C m1 e1 Q) (hsub : C' ⊆ C) :
   ∀ m2 e2,
     e2.IsAns ->
-    Reduce C m1 e1 m2 e2 ->
+    Reduce C' m1 e1 m2 e2 ->
     Q e2 m2 := by
   intro m2 e2 hans hred
   -- Reductions preserve evaluations, then any answer satisfies its postcondition.
-  have heval' : Eval C m2 e2 Q := reduce_preserves_eval heval hred
+  have heval' : Eval C m2 e2 Q := reduce_preserves_eval heval hred hsub
   exact eval_ans_holds_post heval' hans
 
 theorem Heap.restricted_has_capdom {H : Heap}
@@ -1265,6 +1281,10 @@ theorem mem_to_finset {x : Nat} {C : CapabilitySet} :
     right
     exact ih
 
+-- Helper lemma: x is in the to_finset of .cap x
+theorem CapabilitySet.mem_cap_to_finset {x : Nat} : x ∈ (CapabilitySet.cap x).to_finset := by
+  simp [CapabilitySet.to_finset]
+
 -- Helper lemma: freshness is preserved by masking
 theorem masked_preserves_fresh {m : Memory} {M : Finset Nat} {l : Nat} :
   m.heap l = none → (m.masked_caps M).heap l = none := by
@@ -1357,6 +1377,31 @@ theorem Memory.masked_update_mcell_comm {m : Memory} {l : Nat} {b : Bool} {M : F
   simp
   exact Heap.masked_update_mcell_comm hmem
 
+-- Helper lemma: x ∈ C1.to_finset implies x ∈ C1
+theorem finset_mem_imp_cap_mem {C1 : CapabilitySet} {x : Nat}
+  (hx : x ∈ C1.to_finset) : x ∈ C1 := by
+  induction C1 with
+  | empty => simp [CapabilitySet.to_finset] at hx
+  | cap y =>
+    simp [CapabilitySet.to_finset] at hx
+    rw [hx]
+    exact CapabilitySet.mem.here
+  | union cs1 cs2 ih1 ih2 =>
+    simp [CapabilitySet.to_finset] at hx
+    cases hx with
+    | inl h1 =>
+      apply CapabilitySet.mem.left
+      exact ih1 h1
+    | inr h2 =>
+      apply CapabilitySet.mem.right
+      exact ih2 h2
+
+-- Helper lemma: subset of capability sets implies subset of to_finset
+theorem CapabilitySet.subset_to_finset {C1 C : CapabilitySet}
+  (hsub : C1 ⊆ C) : C1.to_finset ⊆ C.to_finset := by
+  intro x hx
+  exact mem_to_finset (CapabilitySet.subset_preserves_mem hsub (finset_mem_imp_cap_mem hx))
+
 theorem step_masked
   (hstep : Step C m1 e1 m2 e2) :
   let M := C.to_finset
@@ -1366,9 +1411,9 @@ theorem step_masked
   | step_apply hlookup =>
     apply Step.step_apply
     exact masked_lookup_val hlookup
-  | step_invoke hx hlookup_x hlookup_y =>
-    apply Step.step_invoke hx
-    · exact masked_lookup_cap hlookup_x (mem_to_finset hx)
+  | step_invoke hlookup_x hlookup_y =>
+    apply Step.step_invoke
+    · exact masked_lookup_cap hlookup_x (CapabilitySet.mem_cap_to_finset)
     · exact masked_lookup_val hlookup_y
   | step_tapply hlookup =>
     apply Step.step_tapply
@@ -1403,38 +1448,115 @@ theorem step_masked
     apply Step.step_lift hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
   | step_unpack =>
     apply Step.step_unpack
-  | step_read hmem hlookup =>
+  | step_read hlookup =>
     -- With x ∈ C, masking preserves the mcell lookup
-    apply Step.step_read hmem
-    exact masked_lookup_cap hlookup (mem_to_finset hmem)
-  | step_write_true hmem hx hy =>
+    apply Step.step_read
+    exact masked_lookup_cap hlookup (CapabilitySet.mem_cap_to_finset)
+  | step_write_true hx hy =>
     -- With x ∈ C, masking preserves the mcell lookup and commutes with update_mcell
     rename_i x m y b0 hv R
-    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (mem_to_finset hmem)]
-    apply Step.step_write_true hmem
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (CapabilitySet.mem_cap_to_finset)]
+    apply Step.step_write_true
     · -- Need to show the masked memory still has the mcell at x
-      exact masked_lookup_cap hx (mem_to_finset hmem)
+      exact masked_lookup_cap hx (CapabilitySet.mem_cap_to_finset)
     · exact masked_lookup_val hy
-  | step_write_false hmem hx hy =>
+  | step_write_false hx hy =>
     -- Symmetric to step_write_true
     rename_i x m y b0 hv R
-    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (mem_to_finset hmem)]
-    apply Step.step_write_false hmem
-    · exact masked_lookup_cap hx (mem_to_finset hmem)
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (CapabilitySet.mem_cap_to_finset)]
+    apply Step.step_write_false
+    · exact masked_lookup_cap hx (CapabilitySet.mem_cap_to_finset)
     · exact masked_lookup_val hy
+
+-- Variant of step_masked that allows masking with a superset capability set
+theorem step_masked_superset
+  (hstep : Step C1 m1 e1 m2 e2)
+  (hsub : C1 ⊆ C) :
+  Step C1 (m1.masked_caps C.to_finset) e1 (m2.masked_caps C.to_finset) e2 := by
+  -- For capability operations, we need to show the capability x is in C.to_finset
+  -- Since C1 = .cap x and C1 ⊆ C, we have x ∈ C, so x ∈ C.to_finset
+  induction hstep with
+  | step_apply hlookup =>
+    apply Step.step_apply
+    exact masked_lookup_val hlookup
+  | step_invoke hlookup_x hlookup_y =>
+    -- C1 = .cap x, so x ∈ C1 ⊆ C, so x ∈ C.to_finset
+    have hmem : _ ∈ C.to_finset :=
+      mem_to_finset (CapabilitySet.subset_preserves_mem hsub CapabilitySet.mem.here)
+    apply Step.step_invoke
+    · exact masked_lookup_cap hlookup_x hmem
+    · exact masked_lookup_val hlookup_y
+  | step_tapply hlookup =>
+    apply Step.step_tapply
+    exact masked_lookup_val hlookup
+  | step_capply hlookup =>
+    apply Step.step_capply
+    exact masked_lookup_val hlookup
+  | step_cond_var_true hlookup =>
+    apply Step.step_cond_var_true
+    exact masked_lookup_val hlookup
+  | step_cond_var_false hlookup =>
+    apply Step.step_cond_var_false
+    exact masked_lookup_val hlookup
+  | step_ctx_letin hstep' ih =>
+    apply Step.step_ctx_letin
+    exact ih hsub
+  | step_ctx_unpack hstep' ih =>
+    apply Step.step_ctx_unpack
+    exact ih hsub
+  | step_rename =>
+    apply Step.step_rename
+  | step_lift hv hwf hfresh =>
+    rw [Memory.masked_extend_comm hwf rfl hfresh]
+    rw [Memory.extend_heapval_reachability_irrel (Exp.wf_masked hwf)
+         (by simp [Memory.masked_caps];
+             exact rfl.trans masked_compute_reachability)
+         rfl
+         (masked_preserves_fresh hfresh)]
+    apply Step.step_lift hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
+  | step_unpack =>
+    apply Step.step_unpack
+  | step_read hlookup =>
+    have hmem : _ ∈ C.to_finset :=
+      mem_to_finset (CapabilitySet.subset_preserves_mem hsub CapabilitySet.mem.here)
+    apply Step.step_read
+    exact masked_lookup_cap hlookup hmem
+  | step_write_true hx hy =>
+    rename_i x m y b0 hv R
+    have hmem : x ∈ C.to_finset :=
+      mem_to_finset (CapabilitySet.subset_preserves_mem hsub CapabilitySet.mem.here)
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) hmem]
+    apply Step.step_write_true
+    · exact masked_lookup_cap hx hmem
+    · exact masked_lookup_val hy
+  | step_write_false hx hy =>
+    rename_i x m y b0 hv R
+    have hmem : x ∈ C.to_finset :=
+      mem_to_finset (CapabilitySet.subset_preserves_mem hsub CapabilitySet.mem.here)
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) hmem]
+    apply Step.step_write_false
+    · exact masked_lookup_cap hx hmem
+    · exact masked_lookup_val hy
+
+-- Generalized version: reduce works with any superset mask
+theorem reduce_masked_superset
+  (hred : Reduce C m1 e1 m2 e2)
+  (hsub : C ⊆ C') :
+  Reduce C (m1.masked_caps C'.to_finset) e1 (m2.masked_caps C'.to_finset) e2 := by
+  induction hred with
+  | refl =>
+    exact Reduce.refl
+  | step hstep hrest ih =>
+    apply Reduce.step
+    · have hsub1 := CapabilitySet.subset_trans CapabilitySet.subset_union_left hsub
+      exact step_masked_superset hstep hsub1
+    · exact ih (CapabilitySet.subset_trans CapabilitySet.subset_union_right hsub)
 
 theorem reduce_masked
   (hred : Reduce C m1 e1 m2 e2) :
   let M := C.to_finset
-  Reduce C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by
-  intro M
-  induction hred with
-  | refl =>
-    apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · exact step_masked h
-    · exact ih
+  Reduce C (m1.masked_caps M) e1 (m2.masked_caps M) e2 :=
+  reduce_masked_superset hred CapabilitySet.subset_refl
 
 /-- If Eval C m e Q holds, then there exist m' and e' such that e' is an answer,
     the memory m' subsumes m, and Q e' m' holds. -/
@@ -1519,115 +1641,176 @@ theorem eval_exists_answer
       obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
       exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
 
-/-- If Eval C m1 e1 Q holds, then there exist m2 and e2 such that
-    e1 reduces to e2 (an answer) under capability set C, and Q e2 m2 holds. -/
+/-- If Eval C m1 e1 Q holds, then there exist C' ⊆ C, m2 and e2 such that
+    e1 reduces to e2 (an answer) using capabilities C', and Q e2 m2 holds. -/
 theorem eval_reduce_exists_answer
   (heval : Eval C m1 e1 Q) :
-  ∃ m2 e2, Reduce C m1 e1 m2 e2 ∧ e2.IsAns ∧ Q e2 m2 := by
+  ∃ C' m2 e2, C' ⊆ C ∧ Reduce C' m1 e1 m2 e2 ∧ e2.IsAns ∧ Q e2 m2 := by
   induction heval with
   | eval_val hv hQ =>
-    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_val hv, hQ⟩
+    exact ⟨{}, _, _, CapabilitySet.empty_subset, Reduce.refl, Exp.IsAns.is_val hv, hQ⟩
   | eval_var hQ =>
-    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_var, hQ⟩
+    exact ⟨{}, _, _, CapabilitySet.empty_subset, Reduce.refl, Exp.IsAns.is_var, hQ⟩
   | eval_apply hlookup _ ih =>
-    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
+    obtain ⟨C', m2, e2, hsub, hred, hans, hQ⟩ := ih
     rename_i y _ _ _ _
     cases y with
     | bound idx => cases idx
     | free fy =>
-      exact ⟨m2, e2, Reduce.step (Step.step_apply hlookup) hred, hans, hQ⟩
+      -- step_apply uses {} capability, rest uses C'
+      exact ⟨{} ∪ C', m2, e2,
+             CapabilitySet.union_subset_of_subset_of_subset CapabilitySet.empty_subset hsub,
+             Reduce.step (Step.step_apply hlookup) hred,
+             hans, hQ⟩
   | eval_invoke hmem hlookup_x hlookup_y hQ =>
-    exact ⟨_, _, Reduce.step (Step.step_invoke hmem hlookup_x hlookup_y) Reduce.refl,
+    -- step_invoke uses {x} capability, refl uses {}
+    exact ⟨.cap _ ∪ {}, _, _,
+           CapabilitySet.union_subset_of_subset_of_subset
+             (CapabilitySet.mem_imp_singleton_subset hmem) CapabilitySet.empty_subset,
+           Reduce.step (Step.step_invoke hlookup_x hlookup_y) Reduce.refl,
            Exp.IsAns.is_val Exp.IsVal.unit, hQ⟩
   | eval_tapply hlookup _ ih =>
-    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
-    exact ⟨m2, e2, Reduce.step (Step.step_tapply hlookup) hred, hans, hQ⟩
+    obtain ⟨C', m2, e2, hsub, hred, hans, hQ⟩ := ih
+    exact ⟨{} ∪ C', m2, e2,
+           CapabilitySet.union_subset_of_subset_of_subset CapabilitySet.empty_subset hsub,
+           Reduce.step (Step.step_tapply hlookup) hred,
+           hans, hQ⟩
   | eval_capply hlookup _ ih =>
-    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
-    exact ⟨m2, e2, Reduce.step (Step.step_capply hlookup) hred, hans, hQ⟩
+    obtain ⟨C', m2, e2, hsub, hred, hans, hQ⟩ := ih
+    exact ⟨{} ∪ C', m2, e2,
+           CapabilitySet.union_subset_of_subset_of_subset CapabilitySet.empty_subset hsub,
+           Reduce.step (Step.step_capply hlookup) hred,
+           hans, hQ⟩
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
-    rename_i C_case _ _ e2_cont _ _
-    -- Get reduction of e1 to an answer, WITH postcondition
-    obtain ⟨m1', v1, hred1, hans1, hQ1⟩ := ih_e1
+    rename_i _ _ _ e2_body m_start _
+    -- ih_e1 gives: ∃ C1 m2 e2, C1 ⊆ C ∧ Reduce C1 m_start e1 m2 e2 ∧ e2.IsAns ∧ Q1 e2 m2
+    obtain ⟨C1, m1', v1, hsub1, hred1, hans1, hQ1⟩ := ih_e1
     have ⟨hsimple, hwf1⟩ := h_nonstuck hQ1
-    -- Lift reduction through letin context
-    have hred_ctx := reduce_ctx_letin (e2 := e2_cont) hred1
+    -- Memory monotonicity: m1' subsumes m_start
+    have hsub_mem : m1'.subsumes m_start := reduce_memory_monotonic hred1
     cases hsimple with
     | is_simple_val hv =>
-      -- v1 is a simple value, allocate it and continue
+      -- e1 reduced to a simple value v1
       obtain ⟨l', hfresh⟩ := Memory.exists_fresh m1'
       have hfresh' : m1'.heap l' = none := by
         simp [Memory.lookup] at hfresh
         exact hfresh
-      -- Step from letin v1 e2 to e2.subst with allocation
-      have hstep_lift := Step.step_lift (e := e2_cont) (C := C_case) (l := l') hv hwf1 hfresh'
-      -- Get IH for continuation
-      have hsub1 := reduce_memory_monotonic hred1
-      have ih_cont := ih_val hsub1 hv hwf1 hQ1 l' hfresh'
-      obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
-      -- Combine: letin e1 e2 -> letin v1 e2 -> e2.subst... -> answer
-      exact ⟨m2, e2, reduce_trans hred_ctx (Reduce.step hstep_lift hred2), hans2, hQ2⟩
+      -- Get continuation reduction from ih_val
+      have ih_cont := ih_val hsub_mem hv hwf1 hQ1 l' hfresh'
+      obtain ⟨C2, m_final, e_final, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+      -- Build the full reduction:
+      -- 1. Reduce C1 m_start (.letin e1 e2_body) m1' (.letin v1 e2_body) via context
+      have hred_ctx := reduce_ctx_letin (e2 := e2_body) hred1
+      -- 2. Step {} m1' (.letin v1 e2_body) extended_mem (e2_body.subst ...) via step_lift
+      have hstep_lift := Step.step_lift (e := e2_body) hv hwf1 hfresh'
+      -- 3. Compose: ctx reduction then (lift step then continuation)
+      -- First combine step_lift with hred2
+      have hred_after_lift := Reduce.step hstep_lift hred2
+      -- Then combine ctx reduction with the rest
+      obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_lift
+      -- Show the capability subset: C_mid is equiv to C1 ∪ ({} ∪ C2)
+      -- We need C_mid ⊆ C, which follows from C1 ⊆ C and C2 ⊆ C
+      rename_i C0 _ _ _
+      have hsub_union : C1 ∪ ({} ∪ C2) ⊆ C0 :=
+        CapabilitySet.union_subset_of_subset_of_subset hsub1
+          (CapabilitySet.union_subset_of_subset_of_subset
+            CapabilitySet.empty_subset hsub2)
+      have hsub_final : C_mid ⊆ C0 := CapabilitySet.subset_of_equiv_subset heq_mid hsub_union
+      exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
     | is_var =>
-      -- v1 is a variable
+      -- e1 reduced to a variable
       rename_i x
       cases x with
       | bound idx => cases idx
       | free fx =>
-        -- Step from letin (var x) e2 to e2.subst x
-        have hstep_rename := Step.step_rename (C := C_case) (m := m1') (y := fx) (e := e2_cont)
-        -- Get IH for continuation
-        have hsub1 := reduce_memory_monotonic hred1
         cases hwf1 with
         | wf_var hwf_x =>
-          have ih_cont := ih_var hsub1 hwf_x hQ1
-          obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
-          -- Combine: letin e1 e2 -> letin (var x) e2 -> e2.subst x -> answer
-          exact ⟨m2, e2, reduce_trans hred_ctx (Reduce.step hstep_rename hred2), hans2, hQ2⟩
+          -- Get continuation reduction from ih_var
+          have ih_cont := ih_var hsub_mem hwf_x hQ1
+          obtain ⟨C2, m_final, e_final, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+          -- Build the full reduction:
+          -- 1. Reduce C1 m_start (.letin e1 e2_body) m1' (.letin (.var (.free fx)) e2_body)
+          have hred_ctx := reduce_ctx_letin (e2 := e2_body) hred1
+          -- 2. Step {} m1' (.letin (.var (.free fx)) e2_body) m1' (e2_body.subst ...)
+          have hstep_rename := Step.step_rename (m:=m1') (e := e2_body) (y := fx)
+          -- 3. Compose
+          have hred_after_rename := Reduce.step hstep_rename hred2
+          obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_rename
+          rename_i C0 _ _ _
+          have hsub_union : C1 ∪ ({} ∪ C2) ⊆ C0 :=
+            CapabilitySet.union_subset_of_subset_of_subset hsub1
+              (CapabilitySet.union_subset_of_subset_of_subset
+                CapabilitySet.empty_subset hsub2)
+          have hsub_final : C_mid ⊆ C0 := CapabilitySet.subset_of_equiv_subset heq_mid hsub_union
+          exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
   | eval_unpack hpred hbool eval_e1 h_nonstuck h_val ih_e1 ih_val =>
-    rename_i C_case _ _ e2_cont _ _
-    -- Get reduction of e1 to an answer (a pack), WITH postcondition
-    obtain ⟨m1', v1, hred1, hans1, hQ1⟩ := ih_e1
+    rename_i _ _ _ e2_body m_start _
+    -- ih_e1 gives: ∃ C1 m2 e2, C1 ⊆ C ∧ Reduce C1 m_start e1 m2 e2 ∧ e2.IsAns ∧ Q1 e2 m2
+    obtain ⟨C1, m1', v1, hsub1, hred1, hans1, hQ1⟩ := ih_e1
     have ⟨hpack, hwf1⟩ := h_nonstuck hQ1
-    -- Lift reduction through unpack context
-    have hred_ctx := reduce_ctx_unpack (e2 := e2_cont) hred1
+    -- Memory monotonicity
+    have hsub_mem : m1'.subsumes m_start := reduce_memory_monotonic hred1
+    -- v1 is a pack: .pack cs (.free x)
     cases hpack with
-      | pack =>
-        rename_i cs x
-        cases x with
-        | bound idx => cases idx
-        | free fx =>
-          -- Step from unpack (pack cs x) e2 to e2.subst
-          have hstep_unpack :=
-            Step.step_unpack (C := C_case) (m := m1') (cs := cs) (x := fx) (e := e2_cont)
-          -- Get IH for continuation
-          have hsub1 := reduce_memory_monotonic hred1
-          cases hwf1 with
-          | wf_pack hwf_cs hwf_x =>
-            have ih_cont := ih_val hsub1 hwf_x hwf_cs hQ1
-            obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
-            -- Combine: unpack e1 e2 -> unpack (pack cs x) e2 -> e2.subst -> answer
-            exact ⟨m2, e2, reduce_trans hred_ctx (Reduce.step hstep_unpack hred2), hans2, hQ2⟩
+    | pack =>
+      rename_i cs x_pack
+      -- x_pack must be .free since we're closed
+      cases x_pack with
+      | bound idx => cases idx
+      | free x_nat =>
+        cases hwf1 with
+        | wf_pack hwf_cs hwf_x =>
+          -- Get continuation reduction from ih_val
+          have ih_cont := ih_val hsub_mem hwf_x hwf_cs hQ1
+          obtain ⟨C2, m_final, e_final, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+          -- Build the full reduction:
+          -- 1. Reduce C1 m_start (.unpack e1 e2_body) m1' (.unpack (.pack cs x_nat) e2_body)
+          have hred_ctx := reduce_ctx_unpack (e2 := e2_body) hred1
+          -- 2. Step {} m1' (.unpack (.pack cs x_nat) e2_body) m1' (e2_body.subst ...)
+          have hstep_unpack := Step.step_unpack (m:=m1') (e := e2_body) (cs := cs) (x := x_nat)
+          -- 3. Compose
+          have hred_after_unpack := Reduce.step hstep_unpack hred2
+          obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_unpack
+          rename_i C0 _ _ _
+          have hsub_union : C1 ∪ ({} ∪ C2) ⊆ C0 :=
+            CapabilitySet.union_subset_of_subset_of_subset hsub1
+              (CapabilitySet.union_subset_of_subset_of_subset
+                CapabilitySet.empty_subset hsub2)
+          have hsub_final : C_mid ⊆ C0 := CapabilitySet.subset_of_equiv_subset heq_mid hsub_union
+          exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
   | eval_read hmem hlookup hQ =>
     rename_i b
     cases b with
     | true =>
-      exact ⟨_, _, Reduce.step (Step.step_read hmem hlookup) Reduce.refl,
+      exact ⟨.cap _ ∪ {}, _, _,
+             CapabilitySet.union_subset_of_subset_of_subset
+               (CapabilitySet.mem_imp_singleton_subset hmem) CapabilitySet.empty_subset,
+             Reduce.step (Step.step_read hlookup) Reduce.refl,
              Exp.IsAns.is_val Exp.IsVal.btrue, hQ⟩
     | false =>
-      exact ⟨_, _, Reduce.step (Step.step_read hmem hlookup) Reduce.refl,
+      exact ⟨.cap _ ∪ {}, _, _,
+             CapabilitySet.union_subset_of_subset_of_subset
+               (CapabilitySet.mem_imp_singleton_subset hmem) CapabilitySet.empty_subset,
+             Reduce.step (Step.step_read hlookup) Reduce.refl,
              Exp.IsAns.is_val Exp.IsVal.bfalse, hQ⟩
   | eval_write_true hmem hx hy hQ =>
-    exact ⟨_, _, Reduce.step (Step.step_write_true hmem hx hy) Reduce.refl,
+    exact ⟨.cap _ ∪ {}, _, _,
+           CapabilitySet.union_subset_of_subset_of_subset
+             (CapabilitySet.mem_imp_singleton_subset hmem) CapabilitySet.empty_subset,
+           Reduce.step (Step.step_write_true hx hy) Reduce.refl,
            Exp.IsAns.is_val Exp.IsVal.unit, hQ⟩
   | eval_write_false hmem hx hy hQ =>
-    exact ⟨_, _, Reduce.step (Step.step_write_false hmem hx hy) Reduce.refl,
+    exact ⟨.cap _ ∪ {}, _, _,
+           CapabilitySet.union_subset_of_subset_of_subset
+             (CapabilitySet.mem_imp_singleton_subset hmem) CapabilitySet.empty_subset,
+           Reduce.step (Step.step_write_false hx hy) Reduce.refl,
            Exp.IsAns.is_val Exp.IsVal.unit, hQ⟩
   | eval_cond hpred hbool eval_guard h_nonstuck h_true h_false ih_guard ih_true ih_false =>
     -- Guard is a variable .var x, get postcondition from IH
     rename_i C_case x_guard e_true Q_res e_false m_start Q1
-    obtain ⟨m_guard, v_guard, hred_guard, hans_guard, hQ1⟩ := ih_guard
+    obtain ⟨C_guard, m_guard, v_guard, hsub_guard, hred_guard, hans_guard, hQ1⟩ := ih_guard
     -- Use reduce_var_inv to show reduction of variable is reflexive
-    have ⟨hm_eq, hv_eq⟩ := reduce_var_inv hred_guard
+    have ⟨hm_eq, hv_eq, hc_eq⟩ := reduce_var_inv hred_guard
     subst hm_eq hv_eq
     -- Now v_guard = .var x_guard and m_guard = original memory
     have hres := h_nonstuck hQ1
@@ -1655,10 +1838,15 @@ theorem eval_reduce_exists_answer
             have hlookup : m_guard.lookup fx = some (.val ⟨.btrue, isVal, reachability⟩) := by
               simp only [Memory.lookup, hcell]
             have hstep :=
-              Step.step_cond_var_true (C := C_case) (e1 := e_true) (e2 := e_false) hlookup
+              Step.step_cond_var_true (e1 := e_true) (e2 := e_false) hlookup
             have ih_cont := ih_true hsub1 hQ1 hbtrue
-            obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
-            exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
+            obtain ⟨C2, m2, e2, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+            -- step_cond_var_true uses {} capability
+            exact ⟨{} ∪ C2, m2, e2,
+                   CapabilitySet.union_subset_of_subset_of_subset
+                     CapabilitySet.empty_subset hsub2,
+                   Reduce.step hstep hred2,
+                   hans2, hQ2⟩
       | inr hbfalse =>
         -- Guard resolves to false (symmetric)
         cases hcell : m_guard.heap fx with
@@ -1677,9 +1865,112 @@ theorem eval_reduce_exists_answer
             have hlookup : m_guard.lookup fx = some (.val ⟨.bfalse, isVal, reachability⟩) := by
               simp only [Memory.lookup, hcell]
             have hstep :=
-              Step.step_cond_var_false (C := C_case) (e1 := e_true) (e2 := e_false) hlookup
+              Step.step_cond_var_false (e1 := e_true) (e2 := e_false) hlookup
             have ih_cont := ih_false hsub1 hQ1 hbfalse
-            obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
-            exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
+            obtain ⟨C2, m2, e2, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+            -- step_cond_var_false uses {} capability
+            exact ⟨{} ∪ C2, m2, e2,
+                   CapabilitySet.union_subset_of_subset_of_subset
+                     CapabilitySet.empty_subset hsub2,
+                   Reduce.step hstep hred2,
+                   hans2, hQ2⟩
+
+theorem eval_bounds_step_capability
+  (heval : Eval C m e Q)
+  (hred : Step C' m e m' e') :
+  C' ⊆ C := by
+  induction heval generalizing C' m' e' with
+  | eval_val hv hQ =>
+    -- Values don't step - contradiction
+    have hans : Exp.IsAns _ := Exp.IsAns.is_val hv
+    exact absurd hred (step_ans_absurd hans)
+  | eval_var hQ =>
+    -- Variables don't step - contradiction
+    rename_i x
+    have hans : Exp.IsAns (.var x) := Exp.IsAns.is_var
+    exact absurd hred (step_ans_absurd hans)
+  | eval_apply hlookup heval ih =>
+    -- Can step via step_apply (uses {}) or step_invoke (contradiction)
+    cases hred with
+    | step_apply => exact CapabilitySet.empty_subset
+    | step_invoke hlookup' _ =>
+      -- Contradiction: hlookup says x maps to value, hlookup' says x maps to capability
+      simp [Memory.lookup] at hlookup hlookup'
+      rw [hlookup] at hlookup'
+      cases hlookup'
+  | eval_invoke hmem hlookup_x hlookup_y hQ =>
+    -- Can step via step_invoke (uses {x}) or step_apply (contradiction)
+    rename_i x
+    cases hred with
+    | step_invoke => exact CapabilitySet.mem_imp_singleton_subset hmem
+    | step_apply hlookup' =>
+      -- Contradiction: hlookup_x says x maps to capability, hlookup' says x maps to value
+      simp [Memory.lookup] at hlookup_x hlookup'
+      rw [hlookup_x] at hlookup'
+      cases hlookup'
+  | eval_tapply hlookup heval ih =>
+    -- Can step via step_tapply (uses {})
+    cases hred with
+    | step_tapply => exact CapabilitySet.empty_subset
+  | eval_capply hlookup heval ih =>
+    -- Can step via step_capply (uses {})
+    cases hred with
+    | step_capply => exact CapabilitySet.empty_subset
+  | eval_letin hpred hbool heval h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
+    -- Can step via step_ctx_letin, step_lift, or step_rename
+    cases hred with
+    | step_ctx_letin hstep => exact ih_e1 hstep
+    | step_lift => exact CapabilitySet.empty_subset
+    | step_rename => exact CapabilitySet.empty_subset
+  | eval_unpack hpred hbool heval h_nonstuck h_val ih_e1 ih_val =>
+    -- Can step via step_ctx_unpack or step_unpack
+    cases hred with
+    | step_ctx_unpack hstep => exact ih_e1 hstep
+    | step_unpack => exact CapabilitySet.empty_subset
+  | eval_read hmem hlookup hQ =>
+    -- Can step via step_read (uses {x})
+    rename_i x
+    cases hred with
+    | step_read => exact CapabilitySet.mem_imp_singleton_subset hmem
+  | eval_write_true hmem hlookup_x hlookup_y hQ =>
+    -- Can step via step_write_true or step_write_false (both use {x})
+    rename_i x
+    cases hred with
+    | step_write_true => exact CapabilitySet.mem_imp_singleton_subset hmem
+    | step_write_false _ hlookup_y' =>
+      -- Both are possible, both use {x}
+      exact CapabilitySet.mem_imp_singleton_subset hmem
+  | eval_write_false hmem hlookup_x hlookup_y hQ =>
+    -- Can step via step_write_false or step_write_true (both use {x})
+    rename_i x
+    cases hred with
+    | step_write_false => exact CapabilitySet.mem_imp_singleton_subset hmem
+    | step_write_true _ hlookup_y' =>
+      -- Both are possible, both use {x}
+      exact CapabilitySet.mem_imp_singleton_subset hmem
+  | eval_cond hpred hbool heval h_nonstuck h_true h_false ih_cond ih_true ih_false =>
+    -- Can step via step_cond_var_true or step_cond_var_false (use {})
+    cases hred with
+    | step_cond_var_true => exact CapabilitySet.empty_subset
+    | step_cond_var_false => exact CapabilitySet.empty_subset
+
+theorem eval_bounds_reduce_capability
+  (heval : Eval C m e Q)
+  (hred : Reduce C' m e m' e') :
+  C' ⊆ C := by
+  induction hred generalizing C with
+  | refl => exact CapabilitySet.empty_subset
+  | step hstep hred_rest ih =>
+    -- Have: Step C1 m1 e1 m2 e2 and Reduce C2 m2 e2 m3 e3, with C' = C1 ∪ C2
+    -- Need: C1 ∪ C2 ⊆ C
+    -- From trace_state:
+    --   hstep : Step C1✝ m1✝ e1✝ m2✝ e2✝
+    --   hred_rest : Reduce C2✝ m2✝ e2✝ m3✝ e3✝
+    --   heval : Eval C m1✝ e1✝ Q
+    rename_i C1 m1 e1 m2 e2 C2 m3 e3
+    have hsub1 : C1 ⊆ C := eval_bounds_step_capability heval hstep
+    have heval2 : Eval C m2 e2 Q := step_preserves_eval heval hstep hsub1
+    have hsub2 : C2 ⊆ C := ih heval2
+    exact CapabilitySet.union_subset_of_subset_of_subset hsub1 hsub2
 
 end CC
