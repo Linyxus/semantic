@@ -182,40 +182,35 @@ theorem union_assoc_equiv : ((C1 ∪ C2) ∪ C3) ≈ (C1 ∪ (C2 ∪ C3)) := by
       | left h2 => exact mem.left (mem.right h2)
       | right h3 => exact mem.right h3
 
+/-- Helper: If all elements of C1 are in C2, and C2 ⊆ C, then C1 ⊆ C2.
+    This is proven by structural induction on C1. -/
+private theorem subset_of_mem_transfer {C1 C2 : CapabilitySet}
+  (hmem : ∀ x, x ∈ C1 → x ∈ C2) :
+  C1 ⊆ C2 := by
+  induction C1 with
+  | empty => exact Subset.empty
+  | cap x =>
+    have hx : x ∈ C2 := hmem x mem.here
+    exact mem_imp_singleton_subset hx
+  | union C1a C1b ih1 ih2 =>
+    apply Subset.union_left
+    · apply ih1
+      intro y hy
+      exact hmem y (mem.left hy)
+    · apply ih2
+      intro y hy
+      exact hmem y (mem.right hy)
+
 /-- If C1 ≈ C2 and C2 ⊆ C, then C1 ⊆ C.
     This allows transferring subset through equivalence. -/
 theorem subset_of_equiv_subset {C1 C2 C : CapabilitySet}
   (heq : C1 ≈ C2)
   (hsub : C2 ⊆ C) :
   C1 ⊆ C := by
-  induction C1 with
-  | empty => exact Subset.empty
-  | cap x =>
-    -- {x} ⊆ C iff x ∈ C
-    -- From heq: x ∈ {x} ↔ x ∈ C2, so x ∈ C2
-    -- From hsub: x ∈ C2 → x ∈ C
-    have hx_in_C2 : x ∈ C2 := (heq x).mp mem.here
-    have hx_in_C : x ∈ C := subset_preserves_mem hsub hx_in_C2
-    exact mem_imp_singleton_subset hx_in_C
-  | union C1a C1b ih1 ih2 =>
-    -- C1a ∪ C1b ⊆ C iff C1a ⊆ C and C1b ⊆ C
-    apply Subset.union_left
-    · apply ih1
-      intro y
-      constructor
-      · intro hy
-        exact (heq y).mp (mem.left hy)
-      · intro hy
-        have hy' := (heq y).mpr hy
-        cases hy' with
-        | left h => exact h
-        | right h =>
-          -- y ∈ C1b but we need y ∈ C1a - contradiction isn't always available
-          -- Actually this direction isn't necessarily true!
-          -- If y ∈ C2 doesn't imply y ∈ C1a, we can't prove this
-          -- Let me reconsider the proof structure
-          sorry
-    · sorry
+  -- First show C1 ⊆ C2 using the equivalence
+  have hsub12 : C1 ⊆ C2 := subset_of_mem_transfer (fun x hx => (heq x).mp hx)
+  -- Then use transitivity
+  exact Subset.trans hsub12 hsub
 
 end CapabilitySet
 
