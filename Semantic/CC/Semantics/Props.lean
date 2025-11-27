@@ -888,15 +888,14 @@ theorem reduce_preserves_eval
     exact ih heval_mid h_c2_sub
 
 theorem eval_to_reduce
-  (heval : Eval C m1 e1 Q)
-  (_hwf : e1.WfInHeap m1.heap) :
+  (heval : Eval C m1 e1 Q) (hsub : C' ⊆ C) :
   ∀ m2 e2,
     e2.IsAns ->
-    Reduce C m1 e1 m2 e2 ->
+    Reduce C' m1 e1 m2 e2 ->
     Q e2 m2 := by
   intro m2 e2 hans hred
   -- Reductions preserve evaluations, then any answer satisfies its postcondition.
-  have heval' : Eval C m2 e2 Q := reduce_preserves_eval heval hred CapabilitySet.subset_refl
+  have heval' : Eval C m2 e2 Q := reduce_preserves_eval heval hred hsub
   exact eval_ans_holds_post heval' hans
 
 theorem Heap.restricted_has_capdom {H : Heap}
