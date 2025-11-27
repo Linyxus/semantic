@@ -102,7 +102,12 @@ theorem mem_imp_singleton_subset {C : CapabilitySet} {x : Nat}
       apply Subset.trans (ih2 h)
       apply Subset.union_right_right
 
--- Subset lemmas for unions
+-- Subset lemmas
+
+theorem subset_refl {C : CapabilitySet} : C ⊆ C := Subset.refl
+
+theorem subset_trans {C1 C2 C3 : CapabilitySet} (h1 : C1 ⊆ C2) (h2 : C2 ⊆ C3) : C1 ⊆ C3 :=
+  Subset.trans h1 h2
 
 theorem empty_subset : (.empty : CapabilitySet) ⊆ C := Subset.empty
 
