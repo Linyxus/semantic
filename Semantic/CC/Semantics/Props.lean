@@ -1954,4 +1954,23 @@ theorem eval_bounds_step_capability
     | step_cond_var_true => exact CapabilitySet.empty_subset
     | step_cond_var_false => exact CapabilitySet.empty_subset
 
+theorem eval_bounds_reduce_capability
+  (heval : Eval C m e Q)
+  (hred : Reduce C' m e m' e') :
+  C' ⊆ C := by
+  induction hred generalizing C with
+  | refl => exact CapabilitySet.empty_subset
+  | step hstep hred_rest ih =>
+    -- Have: Step C1 m1 e1 m2 e2 and Reduce C2 m2 e2 m3 e3, with C' = C1 ∪ C2
+    -- Need: C1 ∪ C2 ⊆ C
+    -- From trace_state:
+    --   hstep : Step C1✝ m1✝ e1✝ m2✝ e2✝
+    --   hred_rest : Reduce C2✝ m2✝ e2✝ m3✝ e3✝
+    --   heval : Eval C m1✝ e1✝ Q
+    rename_i C1 m1 e1 m2 e2 C2 m3 e3
+    have hsub1 : C1 ⊆ C := eval_bounds_step_capability heval hstep
+    have heval2 : Eval C m2 e2 Q := step_preserves_eval heval hstep hsub1
+    have hsub2 : C2 ⊆ C := ih heval2
+    exact CapabilitySet.union_subset_of_subset_of_subset hsub1 hsub2
+
 end CC
