@@ -1875,4 +1875,83 @@ theorem eval_reduce_exists_answer
                    Reduce.step hstep hred2,
                    hans2, hQ2⟩
 
+theorem eval_bounds_step_capability
+  (heval : Eval C m e Q)
+  (hred : Step C' m e m' e') :
+  C' ⊆ C := by
+  induction heval generalizing C' m' e' with
+  | eval_val hv hQ =>
+    -- Values don't step - contradiction
+    have hans : Exp.IsAns _ := Exp.IsAns.is_val hv
+    exact absurd hred (step_ans_absurd hans)
+  | eval_var hQ =>
+    -- Variables don't step - contradiction
+    rename_i x
+    have hans : Exp.IsAns (.var x) := Exp.IsAns.is_var
+    exact absurd hred (step_ans_absurd hans)
+  | eval_apply hlookup heval ih =>
+    -- Can step via step_apply (uses {}) or step_invoke (contradiction)
+    cases hred with
+    | step_apply => exact CapabilitySet.empty_subset
+    | step_invoke hlookup' _ =>
+      -- Contradiction: hlookup says x maps to value, hlookup' says x maps to capability
+      simp [Memory.lookup] at hlookup hlookup'
+      rw [hlookup] at hlookup'
+      cases hlookup'
+  | eval_invoke hmem hlookup_x hlookup_y hQ =>
+    -- Can step via step_invoke (uses {x}) or step_apply (contradiction)
+    rename_i x
+    cases hred with
+    | step_invoke => exact CapabilitySet.mem_imp_singleton_subset hmem
+    | step_apply hlookup' =>
+      -- Contradiction: hlookup_x says x maps to capability, hlookup' says x maps to value
+      simp [Memory.lookup] at hlookup_x hlookup'
+      rw [hlookup_x] at hlookup'
+      cases hlookup'
+  | eval_tapply hlookup heval ih =>
+    -- Can step via step_tapply (uses {})
+    cases hred with
+    | step_tapply => exact CapabilitySet.empty_subset
+  | eval_capply hlookup heval ih =>
+    -- Can step via step_capply (uses {})
+    cases hred with
+    | step_capply => exact CapabilitySet.empty_subset
+  | eval_letin hpred hbool heval h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
+    -- Can step via step_ctx_letin, step_lift, or step_rename
+    cases hred with
+    | step_ctx_letin hstep => exact ih_e1 hstep
+    | step_lift => exact CapabilitySet.empty_subset
+    | step_rename => exact CapabilitySet.empty_subset
+  | eval_unpack hpred hbool heval h_nonstuck h_val ih_e1 ih_val =>
+    -- Can step via step_ctx_unpack or step_unpack
+    cases hred with
+    | step_ctx_unpack hstep => exact ih_e1 hstep
+    | step_unpack => exact CapabilitySet.empty_subset
+  | eval_read hmem hlookup hQ =>
+    -- Can step via step_read (uses {x})
+    rename_i x
+    cases hred with
+    | step_read => exact CapabilitySet.mem_imp_singleton_subset hmem
+  | eval_write_true hmem hlookup_x hlookup_y hQ =>
+    -- Can step via step_write_true or step_write_false (both use {x})
+    rename_i x
+    cases hred with
+    | step_write_true => exact CapabilitySet.mem_imp_singleton_subset hmem
+    | step_write_false _ hlookup_y' =>
+      -- Both are possible, both use {x}
+      exact CapabilitySet.mem_imp_singleton_subset hmem
+  | eval_write_false hmem hlookup_x hlookup_y hQ =>
+    -- Can step via step_write_false or step_write_true (both use {x})
+    rename_i x
+    cases hred with
+    | step_write_false => exact CapabilitySet.mem_imp_singleton_subset hmem
+    | step_write_true _ hlookup_y' =>
+      -- Both are possible, both use {x}
+      exact CapabilitySet.mem_imp_singleton_subset hmem
+  | eval_cond hpred hbool heval h_nonstuck h_true h_false ih_cond ih_true ih_false =>
+    -- Can step via step_cond_var_true or step_cond_var_false (use {})
+    cases hred with
+    | step_cond_var_true => exact CapabilitySet.empty_subset
+    | step_cond_var_false => exact CapabilitySet.empty_subset
+
 end CC
