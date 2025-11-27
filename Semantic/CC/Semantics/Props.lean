@@ -1539,21 +1539,25 @@ theorem step_masked_superset
     · exact masked_lookup_cap hx hmem
     · exact masked_lookup_val hy
 
--- TODO: This theorem needs restructuring for precise capability tracking.
--- The issue is that the IH gives us masked with C2.to_finset but we need (C1 ∪ C2).to_finset.
--- For now we use sorry; this should be revisited.
+-- Generalized version: reduce works with any superset mask
+theorem reduce_masked_superset
+  (hred : Reduce C m1 e1 m2 e2)
+  (hsub : C ⊆ C') :
+  Reduce C (m1.masked_caps C'.to_finset) e1 (m2.masked_caps C'.to_finset) e2 := by
+  induction hred with
+  | refl =>
+    exact Reduce.refl
+  | step hstep hrest ih =>
+    apply Reduce.step
+    · have hsub1 := CapabilitySet.subset_trans CapabilitySet.subset_union_left hsub
+      exact step_masked_superset hstep hsub1
+    · exact ih (CapabilitySet.subset_trans CapabilitySet.subset_union_right hsub)
+
 theorem reduce_masked
   (hred : Reduce C m1 e1 m2 e2) :
   let M := C.to_finset
-  Reduce C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by
-  intro M
-  induction hred with
-  | refl =>
-    apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · exact step_masked_superset h CapabilitySet.subset_union_left
-    · sorry -- The IH gives us masked with C2.to_finset, need (C1 ∪ C2).to_finset
+  Reduce C (m1.masked_caps M) e1 (m2.masked_caps M) e2 :=
+  reduce_masked_superset hred CapabilitySet.subset_refl
 
 /-- If Eval C m e Q holds, then there exist m' and e' such that e' is an answer,
     the memory m' subsumes m, and Q e' m' holds. -/
@@ -1678,11 +1682,91 @@ theorem eval_reduce_exists_answer
            CapabilitySet.union_subset_of_subset_of_subset CapabilitySet.empty_subset hsub,
            Reduce.step (Step.step_capply hlookup) hred,
            hans, hQ⟩
-  -- TODO: The following cases need to be updated for precise capability tracking.
-  -- The IH now returns (C', m2, e2, subset, reduce, ans, Q) instead of (m2, e2, reduce, ans, Q).
-  -- Additionally, reduce_trans now returns an existential with equivalence.
-  | eval_letin _ _ _ _ _ _ _ _ _ => sorry
-  | eval_unpack _ _ _ _ _ _ _ => sorry
+  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
+    rename_i _ _ _ e2_body m_start _
+    -- ih_e1 gives: ∃ C1 m2 e2, C1 ⊆ C ∧ Reduce C1 m_start e1 m2 e2 ∧ e2.IsAns ∧ Q1 e2 m2
+    obtain ⟨C1, m1', v1, hsub1, hred1, hans1, hQ1⟩ := ih_e1
+    have ⟨hsimple, hwf1⟩ := h_nonstuck hQ1
+    -- Memory monotonicity: m1' subsumes m_start
+    have hsub_mem : m1'.subsumes m_start := reduce_memory_monotonic hred1
+    cases hsimple with
+    | is_simple_val hv =>
+      -- e1 reduced to a simple value v1
+      obtain ⟨l', hfresh⟩ := Memory.exists_fresh m1'
+      have hfresh' : m1'.heap l' = none := by
+        simp [Memory.lookup] at hfresh
+        exact hfresh
+      -- Get continuation reduction from ih_val
+      have ih_cont := ih_val hsub_mem hv hwf1 hQ1 l' hfresh'
+      obtain ⟨C2, m_final, e_final, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+      -- Build the full reduction:
+      -- 1. Reduce C1 m_start (.letin e1 e2_body) m1' (.letin v1 e2_body) via context
+      have hred_ctx := reduce_ctx_letin (e2 := e2_body) hred1
+      -- 2. Step {} m1' (.letin v1 e2_body) extended_mem (e2_body.subst ...) via step_lift
+      have hstep_lift := Step.step_lift (e := e2_body) hv hwf1 hfresh'
+      -- 3. Compose: ctx reduction then (lift step then continuation)
+      -- First combine step_lift with hred2
+      have hred_after_lift := Reduce.step hstep_lift hred2
+      -- Then combine ctx reduction with the rest
+      obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_lift
+      -- Show the capability subset: C_mid is equiv to C1 ∪ ({} ∪ C2)
+      -- We need C_mid ⊆ C, which follows from C1 ⊆ C and C2 ⊆ C
+      rename_i C0 _ _ _
+      have hsub_final : C_mid ⊆ C0 := by sorry
+      exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
+    | is_var =>
+      -- e1 reduced to a variable
+      rename_i x
+      cases x with
+      | bound idx => cases idx
+      | free fx =>
+        cases hwf1 with
+        | wf_var hwf_x =>
+          -- Get continuation reduction from ih_var
+          have ih_cont := ih_var hsub_mem hwf_x hQ1
+          obtain ⟨C2, m_final, e_final, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+          -- Build the full reduction:
+          -- 1. Reduce C1 m_start (.letin e1 e2_body) m1' (.letin (.var (.free fx)) e2_body)
+          have hred_ctx := reduce_ctx_letin (e2 := e2_body) hred1
+          -- 2. Step {} m1' (.letin (.var (.free fx)) e2_body) m1' (e2_body.subst ...)
+          have hstep_rename := Step.step_rename (m:=m1') (e := e2_body) (y := fx)
+          -- 3. Compose
+          have hred_after_rename := Reduce.step hstep_rename hred2
+          obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_rename
+          rename_i C0 _ _ _
+          have hsub_final : C_mid ⊆ C0 := by sorry
+          exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
+  | eval_unpack hpred hbool eval_e1 h_nonstuck h_val ih_e1 ih_val =>
+    rename_i _ _ _ e2_body m_start _
+    -- ih_e1 gives: ∃ C1 m2 e2, C1 ⊆ C ∧ Reduce C1 m_start e1 m2 e2 ∧ e2.IsAns ∧ Q1 e2 m2
+    obtain ⟨C1, m1', v1, hsub1, hred1, hans1, hQ1⟩ := ih_e1
+    have ⟨hpack, hwf1⟩ := h_nonstuck hQ1
+    -- Memory monotonicity
+    have hsub_mem : m1'.subsumes m_start := reduce_memory_monotonic hred1
+    -- v1 is a pack: .pack cs (.free x)
+    cases hpack with
+    | pack =>
+      rename_i cs x_pack
+      -- x_pack must be .free since we're closed
+      cases x_pack with
+      | bound idx => cases idx
+      | free x_nat =>
+        cases hwf1 with
+        | wf_pack hwf_cs hwf_x =>
+          -- Get continuation reduction from ih_val
+          have ih_cont := ih_val hsub_mem hwf_x hwf_cs hQ1
+          obtain ⟨C2, m_final, e_final, hsub2, hred2, hans2, hQ2⟩ := ih_cont
+          -- Build the full reduction:
+          -- 1. Reduce C1 m_start (.unpack e1 e2_body) m1' (.unpack (.pack cs x_nat) e2_body)
+          have hred_ctx := reduce_ctx_unpack (e2 := e2_body) hred1
+          -- 2. Step {} m1' (.unpack (.pack cs x_nat) e2_body) m1' (e2_body.subst ...)
+          have hstep_unpack := Step.step_unpack (m:=m1') (e := e2_body) (cs := cs) (x := x_nat)
+          -- 3. Compose
+          have hred_after_unpack := Reduce.step hstep_unpack hred2
+          obtain ⟨C_mid, heq_mid, hred_mid⟩ := reduce_trans hred_ctx hred_after_unpack
+          rename_i C0 _ _ _
+          have hsub_final : C_mid ⊆ C0 := by sorry
+          exact ⟨C_mid, m_final, e_final, hsub_final, hred_mid, hans2, hQ2⟩
   | eval_read hmem hlookup hQ =>
     rename_i b
     cases b with
