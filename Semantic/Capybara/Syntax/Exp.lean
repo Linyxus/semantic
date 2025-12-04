@@ -44,6 +44,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .read x, f => .read (x.rename f)
 | .write x y, f => .write (x.rename f) (y.rename f)
 | .cond x e2 e3, f => .cond (x.rename f) (e2.rename f) (e3.rename f)
+| .par e1 e2, f => .par (e1.rename f) (e2.rename f)
 
 /-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
@@ -142,5 +143,6 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | read : Var.IsClosed x -> Exp.IsClosed (.read x)
 | write : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.write x y)
 | cond : Var.IsClosed x -> Exp.IsClosed e2 -> Exp.IsClosed e3 -> Exp.IsClosed (.cond x e2 e3)
+| par : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.par e1 e2)
 
 end Capybara

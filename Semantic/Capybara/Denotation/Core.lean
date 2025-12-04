@@ -1757,6 +1757,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     | read _ => simp [resolve] at ht
     | write _ _ => simp [resolve] at ht
     | cond _ _ _ => simp [resolve] at ht
+    | par _ _ => simp [resolve] at ht
   | cap =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1845,6 +1846,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | read _ => cases hr
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
+        | par _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -1895,6 +1897,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | read _ => cases hr
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
+        | par _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -1955,6 +1958,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | read _ => cases hr
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
+        | par _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor

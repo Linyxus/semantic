@@ -533,6 +533,10 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap e2 H ->
   Exp.WfInHeap e3 H ->
   Exp.WfInHeap (.cond x e2 e3) H
+| wf_par :
+  Exp.WfInHeap e1 H ->
+  Exp.WfInHeap e2 H ->
+  Exp.WfInHeap (.par e1 e2) H
 
 -- Closedness implies well-formedness in any heap
 
@@ -639,6 +643,8 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
     · exact Var.wf_of_closed hx
     · assumption
     · assumption
+  | par _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_par <;> assumption
 
 -- Monotonicity theorems: WfInHeap is preserved under heap subsumption
 
@@ -780,6 +786,10 @@ theorem Exp.wf_monotonic
     · exact Var.wf_monotonic hsub hwf_x
     · exact ih2 hsub
     · exact ih3 hsub
+  | wf_par _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_par
+    · exact ih1 hsub
+    · exact ih2 hsub
 
 -- Inversion theorems for Exp.WfInHeap
 
@@ -1046,6 +1056,8 @@ theorem resolve_reachability_monotonic
   | write _ _ =>
     simp [resolve_reachability]
   | cond _ _ _ =>
+    simp [resolve_reachability]
+  | par _ _ =>
     simp [resolve_reachability]
 
 /-- Computing reachability of a value in a bigger heap yields the same result.
@@ -1398,6 +1410,11 @@ theorem Exp.wf_rename
     · exact Var.wf_rename hwf_x
     · exact ih2
     · exact ih3
+  | wf_par _ _ ih1 ih2 =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_par
+    · exact ih1
+    · exact ih2
 
 -- Substitution well-formedness preservation
 
@@ -1682,6 +1699,11 @@ theorem Exp.wf_subst
     · exact Var.wf_subst hwf_x hwf_σ
     · exact ih2 hwf_σ
     · exact ih3 hwf_σ
+  | wf_par _ _ ih1 ih2 =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_par
+    · exact ih1 hwf_σ
+    · exact ih2 hwf_σ
 
 -- Well-formedness of opening substitutions
 
