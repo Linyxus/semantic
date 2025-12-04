@@ -24,6 +24,7 @@ inductive Exp : Sig -> Type where
 | read : Var .var s -> Exp s
 | write : Var .var s -> Var .var s -> Exp s
 | cond : Var .var s -> Exp s -> Exp s -> Exp s
+| par : Exp s -> Exp s -> Exp s
 
 /-- Applies a renaming to all bound variables in an expression. -/
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
