@@ -212,6 +212,8 @@ theorem HasType.use_set_is_closed
     exact CaptureSet.IsClosed.union ih_x ih_y
   case cond ih1 ih2 ih3 =>
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
+  case par ih1 ih2 =>
+    exact CaptureSet.IsClosed.union ih1 ih2
 
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
