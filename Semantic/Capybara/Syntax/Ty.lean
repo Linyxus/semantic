@@ -40,7 +40,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .tvar x, f => .tvar (f.var x)
 | .arrow T1 T2, f => .arrow (T1.rename f) (T2.rename (f.lift))
 | .poly T1 T2, f => .poly (T1.rename f) (T2.rename (f.lift))
-| .cpoly T, f => .cpoly (T.rename (f.lift))
+| .cpoly m T, f => .cpoly m (T.rename (f.lift))
 | .unit, _ => .unit
 | .cap, _ => .cap
 | .bool, _ => .bool
@@ -99,7 +99,7 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | tvar : Ty.IsClosed (.tvar x)
 | arrow : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.arrow T1 T2)
 | poly : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.poly T1 T2)
-| cpoly : Ty.IsClosed T -> Ty.IsClosed (.cpoly T)
+| cpoly : Ty.IsClosed T -> Ty.IsClosed (.cpoly m T)
 | unit : Ty.IsClosed .unit
 | cap : Ty.IsClosed .cap
 | bool : Ty.IsClosed .bool
