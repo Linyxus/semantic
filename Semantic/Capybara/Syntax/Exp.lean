@@ -11,7 +11,7 @@ inductive Exp : Sig -> Type where
 | var : Var .var s -> Exp s
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> Ty .shape s -> Exp (s,X) -> Exp s
-| cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
+| cabs : CaptureSet s -> Exp (s,C) -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> Ty .shape s -> Exp s
@@ -31,7 +31,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
 | .abs cs T e, f => .abs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
-| .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
+| .cabs cs e, f => .cabs (cs.rename f) (e.rename (f.lift))
 | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
@@ -50,7 +50,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
-| cabs : Exp.IsVal (.cabs cs cb e)
+| cabs : Exp.IsVal (.cabs cs e)
 | pack : Exp.IsVal (.pack cs x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
@@ -61,7 +61,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 inductive Exp.IsSimpleVal : Exp s -> Prop where
 | abs : Exp.IsSimpleVal (.abs cs T e)
 | tabs : Exp.IsSimpleVal (.tabs cs T e)
-| cabs : Exp.IsSimpleVal (.cabs cs cb e)
+| cabs : Exp.IsSimpleVal (.cabs cs e)
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
 | bfalse : Exp.IsSimpleVal .bfalse
@@ -91,7 +91,7 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     <;> try (solve
       | rfl
       | simp [Exp.rename, Ty.rename_id, Var.rename_id,
-              CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
+              CaptureSet.rename_id, Rename.lift_id]
         try aesop)
 
 /-- Renaming distributes over composition of renamings. -/
@@ -106,7 +106,7 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     <;> try (solve
       | rfl
       | simp [Exp.rename, Ty.rename_comp, Var.rename_comp,
-              CaptureSet.rename_comp, CaptureBound.rename_comp, Rename.lift_comp]
+              CaptureSet.rename_comp, Rename.lift_comp]
         try aesop)
 
 /-- Weakening commutes with renaming under a binder. -/
@@ -129,8 +129,8 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.abs cs T e)
 | tabs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
     Exp.IsClosed (.tabs cs T e)
-| cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
-    Exp.IsClosed (.cabs cs cb e)
+| cabs : CaptureSet.IsClosed cs -> Exp.IsClosed e ->
+    Exp.IsClosed (.cabs cs e)
 | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> Ty.IsClosed T -> Exp.IsClosed (.tapp x T)
