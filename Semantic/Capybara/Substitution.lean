@@ -53,7 +53,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .tvar x, s => s.tvar x
 | .arrow T1 T2, s => .arrow (T1.subst s) (T2.subst s.lift)
 | .poly T1 T2, s => .poly (T1.subst s) (T2.subst s.lift)
-| .cpoly T, s => .cpoly (T.subst s.lift)
+| .cpoly m T, s => .cpoly m (T.subst s.lift)
 | .unit, _ => .unit
 | .cap, _ => .cap
 | .bool, _ => .bool
@@ -67,7 +67,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
 | .abs cs T e, s => .abs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
-| .cabs cs e, s => .cabs (cs.subst s) (e.subst s.lift)
+| .cabs cs m e, s => .cabs (cs.subst s) m (e.subst s.lift)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
@@ -263,7 +263,7 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X) (k0:=k0)
     simp [Ty.subst, Ty.rename, ih1]
     exact ih2
-  | .cpoly T =>
+  | .cpoly m T =>
     have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
     simp [Ty.subst, Ty.rename]
     exact ih
@@ -395,7 +395,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
   | poly T1 T2 ih1 ih2 =>
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
-  | cpoly T ih =>
+  | cpoly m T ih =>
     simp [Ty.subst, ih, Subst.comp_lift]
   | unit => rfl
   | cap => rfl
@@ -417,7 +417,7 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
   | tabs cs T e ih_e =>
     simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
-  | cabs cs e ih_e =>
+  | cabs cs m e ih_e =>
     simp [Exp.subst, CaptureSet.subst_comp, ih_e, Subst.comp_lift]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
@@ -479,7 +479,7 @@ theorem Ty.subst_id {T : Ty sort s} :
     simp [Ty.subst, ih1, ih2, Subst.lift_id]
   | poly T1 T2 ih1 ih2 =>
     simp [Ty.subst, ih1, ih2, Subst.lift_id]
-  | cpoly T ih =>
+  | cpoly m T ih =>
     simp [Ty.subst, ih, Subst.lift_id]
   | unit => rfl
   | cap => rfl
@@ -502,7 +502,7 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
   | tabs cs T e ih =>
     simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
-  | cabs cs e ih =>
+  | cabs cs m e ih =>
     simp [Exp.subst, CaptureSet.subst_id, ih, Subst.lift_id]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_id, Var.subst_id]
@@ -584,7 +584,7 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | poly T1 T2 ih1 ih2 =>
     simp [Ty.subst, Ty.rename, ih1]
     rw [<-Rename.asSubst_lift, ih2]
-  | cpoly T ih =>
+  | cpoly m T ih =>
     simp [Ty.subst, Ty.rename]
     rw [<-Rename.asSubst_lift, ih]
   | unit => rfl
@@ -611,7 +611,7 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   | tabs cs T e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
     rw [<-Rename.asSubst_lift, ih]
-  | cabs cs e ih =>
+  | cabs cs m e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst]
     rw [<-Rename.asSubst_lift, ih]
   | pack cs x =>
@@ -790,7 +790,7 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   | poly S T ih1 ih2 =>
     cases hc with | poly h1 h2 =>
     exact IsClosed.poly (ih1 h1) (ih2 h2)
-  | cpoly T ih =>
+  | cpoly m T ih =>
     cases hc with | cpoly hT =>
     exact IsClosed.cpoly (ih hT)
   | unit => exact IsClosed.unit
@@ -839,7 +839,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     cases hc with | poly h1 h2 =>
     simp [Ty.subst]
     exact IsClosed.poly (ih1 h1 hsubst) (ih2 h2 (Subst.lift_closed hsubst))
-  | cpoly T ih =>
+  | cpoly m T ih =>
     cases hc with | cpoly hT =>
     simp [Ty.subst]
     exact IsClosed.cpoly (ih hT (Subst.lift_closed hsubst))
@@ -884,7 +884,7 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     · exact CaptureSet.is_closed_subst hcs hsubst
     · exact Ty.is_closed_subst hS hsubst
     · exact ih he (Subst.lift_closed hsubst)
-  | cabs cs e ih =>
+  | cabs cs m e ih =>
     cases hc with | cabs hcs he =>
     simp [Exp.subst]
     constructor
@@ -1041,7 +1041,7 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     simp [Ty.subst] at hclosed
     cases hclosed with | poly h1 h2 =>
     exact IsClosed.poly (ih1 h1) (ih2 h2)
-  | cpoly T ih =>
+  | cpoly m T ih =>
     simp [Ty.subst] at hclosed
     cases hclosed with | cpoly hT =>
     exact IsClosed.cpoly (ih hT)
@@ -1079,7 +1079,7 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | tabs hcs hT he =>
     exact IsClosed.tabs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
-  | cabs cs e ih =>
+  | cabs cs m e ih =>
     simp [Exp.subst] at hclosed
     cases hclosed with | cabs hcs he =>
     exact IsClosed.cabs (CaptureSet.subst_closed_inv hcs) (ih he)

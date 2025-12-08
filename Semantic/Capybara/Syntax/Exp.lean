@@ -31,7 +31,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
 | .abs cs T e, f => .abs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
-| .cabs cs e, f => .cabs (cs.rename f) (e.rename (f.lift))
+| .cabs cs m e, f => .cabs (cs.rename f) m (e.rename (f.lift))
 | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
@@ -50,7 +50,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
-| cabs : Exp.IsVal (.cabs cs e)
+| cabs : Exp.IsVal (.cabs cs m e)
 | pack : Exp.IsVal (.pack cs x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
@@ -61,7 +61,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 inductive Exp.IsSimpleVal : Exp s -> Prop where
 | abs : Exp.IsSimpleVal (.abs cs T e)
 | tabs : Exp.IsSimpleVal (.tabs cs T e)
-| cabs : Exp.IsSimpleVal (.cabs cs e)
+| cabs : Exp.IsSimpleVal (.cabs cs m e)
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
 | bfalse : Exp.IsSimpleVal .bfalse
@@ -130,7 +130,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | tabs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> Exp.IsClosed e ->
-    Exp.IsClosed (.cabs cs e)
+    Exp.IsClosed (.cabs cs m e)
 | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> Ty.IsClosed T -> Exp.IsClosed (.tapp x T)
