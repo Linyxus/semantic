@@ -56,7 +56,7 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case tvar => rfl
   case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2]
   case poly ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2]
-  case cpoly cb ih => simp [Ty.rename, Rename.lift_id, ih, CaptureBound.rename_id]
+  case cpoly cb ih => simp [Ty.rename, Rename.lift_id, ih]
   case unit => rfl
   case cap => rfl
   case bool => rfl
@@ -74,7 +74,7 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   case tvar => rfl
   case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2]
   case poly ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2]
-  case cpoly cb ih => simp [Ty.rename, Rename.lift_comp, ih, CaptureBound.rename_comp]
+  case cpoly cb ih => simp [Ty.rename, Rename.lift_comp, ih]
   case unit => rfl
   case cap => rfl
   case bool => rfl
@@ -92,11 +92,6 @@ theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
 def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .capt C _ => C
 
-/-- A capture bound is closed if it contains no heap pointers. -/
-inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
-| unbound : CaptureBound.IsClosed (.unbound m)
-| bound : CaptureSet.IsClosed cs -> CaptureBound.IsClosed (.bound cs)
-
 /-- A type is closed if it contains no heap pointers. -/
 inductive Ty.IsClosed : Ty sort s -> Prop where
 -- shape types
@@ -104,7 +99,7 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | tvar : Ty.IsClosed (.tvar x)
 | arrow : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.arrow T1 T2)
 | poly : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.poly T1 T2)
-| cpoly : CaptureBound.IsClosed cb -> Ty.IsClosed T -> Ty.IsClosed (.cpoly cb T)
+| cpoly : Ty.IsClosed T -> Ty.IsClosed (.cpoly T)
 | unit : Ty.IsClosed .unit
 | cap : Ty.IsClosed .cap
 | bool : Ty.IsClosed .bool
