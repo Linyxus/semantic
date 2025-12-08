@@ -56,17 +56,12 @@ theorem compute_reachability_eq_resolve_reachability
   cases hv <;> rfl
 
 /-- Heap invariant: the reachability stored in a heap value equals the computed
-    reachability for that value.
-
-    This invariant is maintained by the operational semantics, which always uses
-    `compute_reachability` when creating heap values (see eval_letin in BigStep.lean).
-
-    This is a fundamental property connecting operational reachability (stored in
-    the heap) with denotational reachability (computed from expression structure). -/
-axiom Memory.reachability_invariant :
+    reachability for that value. -/
+theorem Memory.reachability_invariant :
   ∀ (m : Memory) (x : Nat) (v : HeapVal),
     m.heap x = some (Cell.val v) ->
-    v.reachability = compute_reachability m.heap v.unwrap v.isVal
+    v.reachability = compute_reachability m.heap v.unwrap v.isVal := fun m x v hx =>
+  m.wf.wf_reach x v.unwrap v.isVal v.reachability hx
 
 /-- Reachability of a heap location equals resolve_reachability of the stored value. -/
 theorem reachability_of_loc_eq_resolve_reachability
