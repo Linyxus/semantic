@@ -1232,6 +1232,30 @@ theorem sem_typ_cond
       exact hcap_eq ▸ helse'
     exact helse_store
 
+theorem sem_typ_par
+  {C1 C2 : CaptureSet s} {Γ : Ctx s}
+  {e1 e2 : Exp s} {E : Ty .exi s}
+  (ht1 : C1 # Γ ⊨ e1 : E)
+  (ht2 : C2 # Γ ⊨ e2 : E) :
+  (C1 ∪ C2) # Γ ⊨ (.par e1 e2) : E := by
+  intro env store hts
+  simp [Exp.subst, Ty.exi_exp_denot]
+  -- Evaluate both branches and combine with eval_par
+  have he1 := ht1 env store hts
+  have he2 := ht2 env store hts
+  simp [Ty.exi_exp_denot] at he1 he2
+  -- Widen authority for branch 1 from C1 to C1 ∪ C2
+  have hsubC1 : CaptureSet.denot env C1 store ⊆ CaptureSet.denot env (C1 ∪ C2) store := by
+    simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+    apply CapabilitySet.Subset.union_right_left
+  have he1' := eval_capability_set_monotonic he1 hsubC1
+  -- Widen authority for branch 2 from C2 to C1 ∪ C2
+  have hsubC2 : CaptureSet.denot env C2 store ⊆ CaptureSet.denot env (C1 ∪ C2) store := by
+    simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+    apply CapabilitySet.Subset.union_right_right
+  have he2' := eval_capability_set_monotonic he2 hsubC2
+  exact Eval.eval_par he1' he2'
+
 theorem sem_typ_btrue :
   {} # Γ ⊨ Exp.btrue : .typ (.capt {} .bool) := by
   intro env store hts
@@ -2794,6 +2818,11 @@ theorem fundamental
       exact sem_typ_write
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
         (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  case par ht1_syn ht2_syn ht1_ih ht2_ih =>
+    -- Extract closedness of both branches
+    cases hclosed_e with
+    | par hclosed_e1 hclosed_e2 =>
+      exact sem_typ_par (ht1_ih hclosed_e1) (ht2_ih hclosed_e2)
   case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
     -- Get closedness of C1 from the syntactic typing derivation
     have hclosed_C1 := HasType.use_set_is_closed ht_syn

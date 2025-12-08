@@ -104,6 +104,10 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     resolve m1.heap v = some .bfalse ->
     Eval C m1 e3 Q) ->
   Eval C m (.cond x e2 e3) Q
+| eval_par :
+  Eval C m e1 Q ->
+  Eval C m e2 Q ->
+  Eval C m (.par e1 e2) Q
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
@@ -385,6 +389,13 @@ theorem eval_monotonic {m1 m2 : Memory}
     · intro m_branch v hs hQ1 hres
       have hs_orig := Memory.subsumes_trans hs hsub
       exact h_false hs_orig hQ1 hres
+  case eval_par ih1 ih2 =>
+    -- Extract well-formedness of both branches
+    cases hwf with
+    | wf_par hwf1 hwf2 =>
+      apply Eval.eval_par
+      · exact ih1 hpred hbool hsub hwf1
+      · exact ih2 hpred hbool hsub hwf2
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -497,6 +508,10 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_false hsub hq1 hres
       apply Mpost.entails_after_subsumes himp
       exact hsub
+  case eval_par ih1 ih2 =>
+    apply Eval.eval_par
+    · exact ih1 himp
+    · exact ih2 himp
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
@@ -555,5 +570,7 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_true hs1 hq1 hres hsub
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
+  case eval_par ih1 ih2 =>
+    exact Eval.eval_par (ih1 hsub) (ih2 hsub)
 
 end Capybara

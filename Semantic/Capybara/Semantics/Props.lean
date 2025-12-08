@@ -56,6 +56,10 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     apply Step.step_lift hv hwf hfresh
   | step_unpack =>
     apply Step.step_unpack
+  | step_par_left =>
+    apply Step.step_par_left
+  | step_par_right =>
+    apply Step.step_par_right
 
 /-- Reduce (multi-step reduction) is monotonic with respect to capability sets:
     if a reduction can happen under authority R1, it can happen under any larger authority R2. -/
@@ -124,6 +128,8 @@ theorem step_memory_monotonic
   | step_lift hv hwf hfresh =>
     exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
   | step_unpack => exact Memory.subsumes_refl _
+  | step_par_left => exact Memory.subsumes_refl _
+  | step_par_right => exact Memory.subsumes_refl _
 
 /-- Helper: Reduction preserves memory subsumption. -/
 theorem reduce_memory_monotonic
@@ -379,6 +385,14 @@ theorem step_preserves_wf
       have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
       -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
+  | step_par_left =>
+    -- e1 = .par e1' e2', e2 = e1'
+    cases hwf with
+    | wf_par hwf1 hwf2 => exact hwf1
+  | step_par_right =>
+    -- e1 = .par e1' e2', e2 = e2'
+    cases hwf with
+    | wf_par hwf1 hwf2 => exact hwf2
 
 theorem reduce_preserves_wf
   (hred : Reduce C m1 e1 m2 e2)
@@ -458,6 +472,7 @@ theorem eval_ans_holds_post
   | eval_read => cases hans; rename_i hv; cases hv
   | eval_write_true => cases hans; rename_i hv; cases hv
   | eval_write_false => cases hans; rename_i hv; cases hv
+  | eval_par => cases hans; rename_i hv; cases hv
 
 theorem eval_implies_progressive
   (heval : Eval C m e Q) :
@@ -615,6 +630,10 @@ theorem eval_implies_progressive
     -- e = .write (.free x) (.free y), can step via step_write_false
     apply IsProgressive.step
     exact Step.step_write_false hmem hx hy
+  | eval_par _ _ _ _ =>
+    -- e = .par e1 e2, can step via step_par_left
+    apply IsProgressive.step
+    exact Step.step_par_left
 
 theorem step_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -855,6 +874,16 @@ theorem step_preserves_eval
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
       exact Eval.eval_val Exp.IsVal.unit hQ
+  | eval_par heval1 heval2 ih1 ih2 =>
+    -- e = .par e1 e2
+    -- The step can be step_par_left or step_par_right
+    cases hstep with
+    | step_par_left =>
+      -- Stepped to e1, which already has the same postcondition
+      exact heval1
+    | step_par_right =>
+      -- Stepped to e2, which already has the same postcondition
+      exact heval2
 
 theorem reduce_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -1149,6 +1178,8 @@ theorem Exp.wf_masked
     apply Exp.WfInHeap.wf_write
     · exact Var.wf_masked hwf_x
     · exact Var.wf_masked hwf_y
+  | wf_par _ _ ih1 ih2 =>
+    apply Exp.WfInHeap.wf_par <;> assumption
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
@@ -1420,6 +1451,10 @@ theorem step_masked
     apply Step.step_write_false hmem
     · exact masked_lookup_cap hx (covers_to_finset hmem)
     · exact masked_lookup_val hy
+  | step_par_left =>
+    apply Step.step_par_left
+  | step_par_right =>
+    apply Step.step_par_right
 
 theorem reduce_masked
   (hred : Reduce C m1 e1 m2 e2) :
@@ -1516,6 +1551,9 @@ theorem eval_exists_answer
       have ih_cont := ih_false hsub1 hQ1 hbfalse
       obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
       exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
+  | eval_par _ _ ih1 _ =>
+    -- For par, we can use either branch; let's use the left branch
+    exact ih1
 
 /-- If Eval C m1 e1 Q holds, then there exist m2 and e2 such that
     e1 reduces to e2 (an answer) under capability set C, and Q e2 m2 holds. -/
@@ -1679,6 +1717,10 @@ theorem eval_reduce_exists_answer
             have ih_cont := ih_false hsub1 hQ1 hbfalse
             obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
             exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
+  | eval_par _ _ ih1 _ =>
+    -- For par, we can pick the left branch
+    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih1
+    exact ⟨m2, e2, Reduce.step Step.step_par_left hred, hans, hQ⟩
 
 -- Helper: applyRO cannot cover epsilon
 theorem applyRO_not_covers_epsilon {C : CapabilitySet} {l : Nat} :
@@ -1749,6 +1791,8 @@ theorem step_immutable {C : CapabilitySet}
       simp [hfresh] at hinit
     simp [hne, hinit]
   | step_unpack => exact hinit
+  | step_par_left => exact hinit
+  | step_par_right => exact hinit
 
 theorem not_mutated_refl {m : Memory} : m.not_mutated m := by
   intro l b hinit

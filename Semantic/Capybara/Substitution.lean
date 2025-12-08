@@ -85,6 +85,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .read x, s => .read (x.subst s)
 | .write x y, s => .write (x.subst s) (y.subst s)
 | .cond x e2 e3, s => .cond (x.subst s) (e2.subst s) (e3.subst s)
+| .par e1 e2, s => .par (e1.subst s) (e2.subst s)
 
 /-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
@@ -456,6 +457,8 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | write x y => simp [Exp.subst, Var.subst_comp]
   | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst, Var.subst_comp, ih2, ih3]
+  | par e1 e2 ih1 ih2 =>
+    simp [Exp.subst, ih1, ih2]
 
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem Var.subst_id {x : Var .var s} :
@@ -551,6 +554,8 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, Var.subst_id]
   | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst, Var.subst_id, ih2, ih3]
+  | par e1 e2 ih1 ih2 =>
+    simp [Exp.subst, ih1, ih2]
 
 /-- Converts a renaming to a substitution. -/
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
@@ -670,6 +675,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | cond x e2 e3 ih2 ih3 =>
     simp [Exp.subst, Exp.rename, Var.subst_asSubst, ih2, ih3]
+  | par e1 e2 ih1 ih2 =>
+    simp [Exp.subst, Exp.rename, ih1, ih2]
 
 theorem Subst.weaken_openVar {z : Var .var s} :
   Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
@@ -993,6 +1000,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     cases hc with | cond hx h2 h3 =>
     simp [Exp.subst]
     exact IsClosed.cond (Var.is_closed_subst hx hsubst) (ih2 h2 hsubst) (ih3 h3 hsubst)
+  | par e1 e2 ih1 ih2 =>
+    cases hc with | par h1 h2 =>
+    simp [Exp.subst]
+    exact IsClosed.par (ih1 h1 hsubst) (ih2 h2 hsubst)
 
 /-- The openVar substitution is closed if the variable is closed. -/
 theorem Subst.openVar_is_closed {z : Var .var s}
@@ -1185,5 +1196,9 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | cond hx h2 h3 =>
     exact IsClosed.cond (Var.subst_closed_inv hx) (ih2 h2) (ih3 h3)
+  | par e1 e2 ih1 ih2 =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | par h1 h2 =>
+    exact IsClosed.par (ih1 h1) (ih2 h2)
 
 end Capybara
