@@ -16,12 +16,6 @@ inductive TySort : Type where
 /-- existential types -/
 | exi : TySort
 
-/-- A capture bound, either unbound or bounded by a capture set.
-  It bounds capture set parameters. -/
-inductive CaptureBound : Sig -> Type where
-| unbound : Mutability -> CaptureBound s
-| bound : CaptureSet s -> CaptureBound s
-
 /-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
 inductive Ty : TySort -> Sig -> Type where
 -- shape types
@@ -29,7 +23,7 @@ inductive Ty : TySort -> Sig -> Type where
 | tvar : BVar s .tvar -> Ty .shape s
 | arrow : Ty .capt s -> Ty .exi (s,x) -> Ty .shape s
 | poly : Ty .shape s -> Ty .exi (s,X) -> Ty .shape s
-| cpoly : CaptureBound s -> Ty .exi (s,C) -> Ty .shape s
+| cpoly : Ty .exi (s,C) -> Ty .shape s
 | unit : Ty .shape s
 | cap : Ty .shape s
 | bool : Ty .shape s
@@ -40,31 +34,13 @@ inductive Ty : TySort -> Sig -> Type where
 | exi : Ty .capt (s,C) -> Ty .exi s
 | typ : Ty .capt s -> Ty .exi s
 
-/-- Applies a renaming to a capture bound. -/
-def CaptureBound.rename : CaptureBound s1 -> Rename s1 s2 -> CaptureBound s2
-| .unbound m, _ => .unbound m
-| .bound cs, f => .bound (cs.rename f)
-
-/-- Renaming by the identity renaming leaves a capture bound unchanged. -/
-def CaptureBound.rename_id {cb : CaptureBound s} : cb.rename (Rename.id) = cb := by
-  cases cb
-  case unbound => rfl
-  case bound cs => simp [CaptureBound.rename, CaptureSet.rename_id]
-
-/-- Renaming distributes over composition of renamings. -/
-theorem CaptureBound.rename_comp {cb : CaptureBound s1} {f : Rename s1 s2} {g : Rename s2 s3} :
-    (cb.rename f).rename g = cb.rename (f.comp g) := by
-  cases cb
-  case unbound => rfl
-  case bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
-
 /-- Applies a renaming to all bound variables in a type. -/
 def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
 | .arrow T1 T2, f => .arrow (T1.rename f) (T2.rename (f.lift))
 | .poly T1 T2, f => .poly (T1.rename f) (T2.rename (f.lift))
-| .cpoly cb T, f => .cpoly (cb.rename f) (T.rename (f.lift))
+| .cpoly T, f => .cpoly (T.rename (f.lift))
 | .unit, _ => .unit
 | .cap, _ => .cap
 | .bool, _ => .bool
