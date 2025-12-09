@@ -12,7 +12,7 @@ def Sig.platform_of : Nat -> Sig
 /-- A platform context with `n` mutable boolean cells. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C<:.unbound .epsilon),x:(.capt (.cvar .epsilon .here) .cell)
+| n+1 => ((Ctx.platform_of n),C<:.epsilon),x:(.capt (.cvar .epsilon .here) .cell)
 
 /-- A platform heap with `n` mutable boolean cells (initialized to false). -/
 def Heap.platform_of (N : Nat) : Heap :=
@@ -178,16 +178,12 @@ theorem env_typing_of_platform {N : Nat} :
         unfold Heap.platform_of
         simp
       · constructor
-        · -- Bound substituted is well-formed
-          simp [CaptureBound.subst]
-          apply CaptureBound.WfInHeap.wf_unbound
-        · constructor
-          · -- cs.ground_denot bounded by unbound denot
-            exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
-          · -- Recursive: platform N types in platform (N+1) memory
-            apply env_typing_platform_monotonic (N := N) (M := N + 1)
-            · omega
-            · exact ih
+        · -- cs.ground_denot bounded by Mutability.denot (.epsilon)
+          exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
+        · -- Recursive: platform N types in platform (N+1) memory
+          apply env_typing_platform_monotonic (N := N) (M := N + 1)
+          · omega
+          · exact ih
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
     under permission `P` iff for any possible reduction state starting from `e`

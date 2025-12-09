@@ -295,7 +295,7 @@ theorem step_preserves_wf
       have hwf_cabs : Exp.WfInHeap (.cabs cs B e_body) m1.heap :=
         m1.wf.wf_val _ _ hlookup
       -- Extract well-formedness of the body
-      have ⟨_, _, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
+      have ⟨_, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
       -- Build well-formed substitution
       have hwf_subst := Subst.wf_openCVar hwf_CS
       -- Apply substitution preservation
@@ -1073,16 +1073,6 @@ theorem CaptureSet.wf_masked
   | wf_cvar =>
     apply CaptureSet.WfInHeap.wf_cvar
 
-theorem CaptureBound.wf_masked
-  (hwf : CaptureBound.WfInHeap cb H) :
-  CaptureBound.WfInHeap cb (H.mask_caps D) := by
-  cases hwf with
-  | wf_unbound =>
-    apply CaptureBound.WfInHeap.wf_unbound
-  | wf_bound hwf_cs =>
-    apply CaptureBound.WfInHeap.wf_bound
-    exact CaptureSet.wf_masked hwf_cs
-
 theorem Ty.wf_masked
   (hwf : Ty.WfInHeap T H) :
   Ty.WfInHeap T (H.mask_caps D) := by
@@ -1095,10 +1085,9 @@ theorem Ty.wf_masked
     apply Ty.WfInHeap.wf_arrow <;> assumption
   | wf_poly _ _ ih1 ih2 =>
     apply Ty.WfInHeap.wf_poly <;> assumption
-  | wf_cpoly hwf_cb _ ih_T =>
+  | wf_cpoly _ ih_T =>
     apply Ty.WfInHeap.wf_cpoly
-    · exact CaptureBound.wf_masked hwf_cb
-    · exact ih_T
+    exact ih_T
   | wf_unit =>
     apply Ty.WfInHeap.wf_unit
   | wf_cap =>
@@ -1135,10 +1124,9 @@ theorem Exp.wf_masked
     · exact CaptureSet.wf_masked hwf_cs
     · exact Ty.wf_masked hwf_T
     · exact ih
-  | wf_cabs hwf_cs hwf_cb _ ih =>
+  | wf_cabs hwf_cs _ ih =>
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_masked hwf_cs
-    · exact CaptureBound.wf_masked hwf_cb
     · exact ih
   | wf_pack hwf_cs hwf_x =>
     apply Exp.WfInHeap.wf_pack

@@ -76,17 +76,9 @@ theorem rebind_captureset_denot
   congr 1
   exact rebind_resolved_capture_set ρ
 
-theorem rebind_capturebound_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (B : CaptureBound s1) :
-  CaptureBound.denot env1 B = CaptureBound.denot env2 (B.rename f) := by
-  cases B
-  case unbound => rfl
-  case bound C =>
-    simp [CaptureBound.denot, CaptureBound.rename]
-    funext m
-    congr 1
-    exact congrFun (rebind_captureset_denot ρ C) m
+-- Mutability.denot doesn't depend on environment, so rebinding is trivial
+theorem rebind_mutability_denot (B : Mutability) :
+  B.denot = B.denot := rfl
 
 mutual
 
@@ -201,9 +193,9 @@ def rebind_shape_val_denot
             specialize hd H' denot hsub hproper himply'
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
   | .cpoly B T => by
-    have hB := rebind_capturebound_denot ρ B
+    -- B : Mutability, and Mutability.denot doesn't depend on environment
     intro A s0 e0
-    simp [Ty.shape_val_denot, Ty.rename, hB]
+    simp [Ty.shape_val_denot, Ty.rename]
     intro hwf_e
     constructor
     · intro h

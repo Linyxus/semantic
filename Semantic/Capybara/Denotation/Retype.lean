@@ -233,9 +233,9 @@ def retype_shape_val_denot
             specialize hd H' denot hsub hproper himply'
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
   | .cpoly B T => by
-    have hB := retype_capturebound_denot ρ B
+    -- B : Mutability, and Mutability.denot doesn't depend on environment
     intro A s0 e0
-    simp [Ty.shape_val_denot, Ty.subst, hB]
+    simp [Ty.shape_val_denot, Ty.subst]
     intro hwf_e
     constructor
     · intro h
@@ -265,17 +265,9 @@ def retype_shape_val_denot
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
 
-def retype_capturebound_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (B : CaptureBound s1) :
-  CaptureBound.denot env1 B = CaptureBound.denot env2 (B.subst σ) := by
-  cases B
-  case unbound => rfl
-  case bound C =>
-    simp [CaptureBound.denot, CaptureBound.subst]
-    funext m
-    congr 1
-    exact congrFun (retype_captureset_denot ρ C) m
+-- Mutability.denot doesn't depend on environment, so retyping is trivial
+def retype_mutability_denot (B : Mutability) :
+  B.denot = B.denot := rfl
 
 def retype_resolved_capture_set
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
