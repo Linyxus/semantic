@@ -202,7 +202,7 @@ theorem eval_monotonic {m1 m2 : Memory}
           · -- Need: Exp.WfInHeap e m1.heap
             -- Get it from Memory.wf_lookup and inversion
             have hwf_cabs := Memory.wf_lookup hx
-            have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
+            have ⟨_, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
             exact hwf_e
           · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
             apply Subst.wf_openCVar
