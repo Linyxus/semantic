@@ -110,6 +110,7 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
   case cap => exact IsClosed.cap
   case bool => exact IsClosed.bool
   case cell => exact IsClosed.cell
+  case reader => exact IsClosed.reader
   case capt C S ihC ihS =>
     cases h with | capt hC hS =>
     exact IsClosed.capt (CaptureSet.rename_closed hC) (ihS hS)
@@ -143,6 +144,7 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
   case cap => exact IsClosed.cap
   case bool => exact IsClosed.bool
   case cell => exact IsClosed.cell
+  case reader => exact IsClosed.reader
   case capt C S ihC ihS =>
     simp [Ty.rename] at h
     cases h; rename_i hC hS
@@ -189,6 +191,7 @@ theorem HasType.exp_is_closed
   e.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [Exp.IsClosed])
   case var => constructor; constructor
+  case reader => exact Exp.IsClosed.reader Var.IsClosed.bound
   case read ih_x =>
     -- ih_x : (.var x).IsClosed, need to extract x.IsClosed
     cases ih_x with
@@ -295,6 +298,12 @@ theorem HasType.type_is_closed
       constructor
     · -- S.IsClosed
       exact hS
+  case reader =>
+    -- Goal: (.typ (.capt (.var .ro (.bound x)) .reader)).IsClosed
+    constructor
+    constructor
+    · exact CaptureSet.IsClosed.var_bound
+    · exact Ty.IsClosed.reader
   case abs T1_closed ht_body ih =>
     constructor
     constructor
@@ -316,7 +325,7 @@ theorem HasType.type_is_closed
     · -- cs.IsClosed where cs.rename Rename.succ typed the body
       have h_use := HasType.use_set_is_closed ht_body
       exact CaptureSet.rename_closed_inv h_use
-    · constructor <;> assumption
+    · constructor; assumption
   case pack hC ih =>
     constructor
     -- ih : (T✝.subst (Subst.openCVar C✝)).typ.IsClosed
