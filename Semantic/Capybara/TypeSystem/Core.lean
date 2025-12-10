@@ -219,10 +219,12 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.poly S T))) ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
-| capp {D : CaptureSet s} {m : Mutability} :
+| capp {D : CaptureSet s} {m : Mutability} {I : CaptureSet s} :
   D.IsClosed ->
   HasKind Γ D m ->
   HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.cpoly m T))) ->
+  (Ty.capt (.var .epsilon x) (.cpoly m T)).interfere_set = some I ->
+  SepCheck Γ D I ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin :
