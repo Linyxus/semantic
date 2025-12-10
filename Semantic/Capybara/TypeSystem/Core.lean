@@ -153,6 +153,15 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   Γ.LookupVar x (.capt C S) ->
   ----------------------------
   HasType (.var .epsilon (.bound x)) Γ (.var (.bound x)) (.typ (.capt (.var .epsilon (.bound x)) S))
+| reader :
+  Γ.IsClosed ->
+  Γ.LookupVar x (.capt C .cell) ->
+  ---------------------------------
+  HasType
+    (.var .ro (.bound x))
+    Γ
+    (.reader (.bound x))
+    (.typ (.capt (.var .ro (.bound x)) .reader))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
   HasType (cs.rename Rename.succ ∪ (.var .epsilon (.bound .here))) (Γ,x:T1) e T2 ->
@@ -212,9 +221,9 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.bfalse) (.typ (.capt {} .bool))
 | read :
-  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt C .cell)) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt C .reader)) ->
   ----------------------------
-  HasType (.var .ro x) Γ (.read x) (.typ (.capt {} .bool))
+  HasType (.var .epsilon x) Γ (.read x) (.typ (.capt {} .bool))
 | write :
   HasType (.var .epsilon x) Γ (.var x) (.typ (.capt Cx .cell)) ->
   HasType (.var .epsilon y) Γ (.var y) (.typ (.capt {} .bool)) ->
