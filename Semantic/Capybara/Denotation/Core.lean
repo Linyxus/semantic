@@ -1639,8 +1639,7 @@ theorem ground_denot_applyRO_mono {C1 C2 : CaptureSet {}} {m : Memory}
   rw [← ground_denot_applyRO_comm, ← ground_denot_applyRO_comm]
   exact CapabilitySet.applyRO_mono hsub
 
-theorem mutability_denot_is_monotonic {B : Mutability}
-  (hsub : m2.subsumes m1) :
+theorem mutability_denot_is_monotonic {B : Mutability} :
   B.denot m1 = B.denot m2 := by
   -- Mutability denotes .top at all memories, so trivially monotonic
   rfl
@@ -2124,7 +2123,7 @@ theorem env_typing_monotonic
               have h_denot_eq := ground_denot_is_monotonic hwf hmem
               -- Get B.denot mem1 = B.denot mem2 (trivially true for Mutability)
               have h_bound_eq : B.denot mem1 = B.denot mem2 :=
-                mutability_denot_is_monotonic hmem
+                mutability_denot_is_monotonic
               -- Combine the equalities
               rw [<-h_denot_eq, <-h_bound_eq]
               exact hsub
@@ -2141,7 +2140,7 @@ def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
     EnvTyping Γ env m ->
     CapabilitySet.HasKind (C.denot env m) mode
 
-def SemSubbound (Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
+def SemSubbound (_Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
   ∀ m,
     B1.denot m ⊆ B2.denot m
 
