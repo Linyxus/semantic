@@ -33,6 +33,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .abs cs T e, f => .abs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .cabs cs m e, f => .cabs (cs.rename f) m (e.rename (f.lift))
+| .reader x, f => .reader (x.rename f)
 | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
@@ -132,6 +133,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> Exp.IsClosed e ->
     Exp.IsClosed (.cabs cs m e)
+| reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> Ty.IsClosed T -> Exp.IsClosed (.tapp x T)

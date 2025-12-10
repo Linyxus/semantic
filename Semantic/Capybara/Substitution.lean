@@ -58,6 +58,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .cap, _ => .cap
 | .bool, _ => .bool
 | .cell, _ => .cell
+| .reader, _ => .reader
 | .capt cs T, s => .capt (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
@@ -68,6 +69,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .abs cs T e, s => .abs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .cabs cs m e, s => .cabs (cs.subst s) m (e.subst s.lift)
+| .reader x, s => .reader (x.subst s)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
@@ -271,6 +273,7 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   | .cap => rfl
   | .bool => rfl
   | .cell => rfl
+  | .reader => rfl
   | .capt cs T =>
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -401,6 +404,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | reader => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp]
   | exi T ih =>
@@ -419,6 +423,7 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
   | cabs cs m e ih_e =>
     simp [Exp.subst, CaptureSet.subst_comp, ih_e, Subst.comp_lift]
+  | reader x => simp [Exp.subst, Var.subst_comp]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp [Exp.subst, Var.subst_comp]
@@ -485,6 +490,7 @@ theorem Ty.subst_id {T : Ty sort s} :
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | reader => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_id]
   | exi T ih =>
@@ -504,6 +510,8 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
   | cabs cs m e ih =>
     simp [Exp.subst, CaptureSet.subst_id, ih, Subst.lift_id]
+  | reader x =>
+    simp [Exp.subst, Var.subst_id]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_id, Var.subst_id]
   | app x y =>
@@ -591,6 +599,7 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | reader => rfl
   | capt cs T ih =>
     simp [Ty.subst, Ty.rename, ih, CaptureSet.subst_asSubst]
   | exi T ih =>
@@ -614,6 +623,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   | cabs cs m e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst]
     rw [<-Rename.asSubst_lift, ih]
+  | reader x =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | pack cs x =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
   | app x y =>
@@ -797,6 +808,7 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | reader => exact IsClosed.reader
   | capt cs T ih =>
     cases hc with | capt h1 h2 =>
     exact IsClosed.capt (CaptureSet.rename_closed_any h1) (ih h2)
@@ -847,6 +859,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | reader => exact IsClosed.reader
   | capt cs S ih =>
     cases hc with | capt h1 h2 =>
     simp [Ty.subst]
@@ -890,6 +903,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     constructor
     · exact CaptureSet.is_closed_subst hcs hsubst
     · exact ih he (Subst.lift_closed hsubst)
+  | reader x =>
+    cases hc with | reader hx =>
+    simp [Exp.subst]
+    exact IsClosed.reader (Var.is_closed_subst hx hsubst)
   | pack cs x =>
     cases hc with | pack hcs hx =>
     simp [Exp.subst]
@@ -1049,6 +1066,7 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | reader => exact IsClosed.reader
   | capt cs T ih =>
     simp [Ty.subst] at hclosed
     cases hclosed with | capt h1 h2 =>
@@ -1083,6 +1101,10 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | cabs hcs he =>
     exact IsClosed.cabs (CaptureSet.subst_closed_inv hcs) (ih he)
+  | reader x =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | reader hx =>
+    exact IsClosed.reader (Var.subst_closed_inv hx)
   | pack cs x =>
     simp [Exp.subst] at hclosed
     cases hclosed with | pack hcs hx =>
