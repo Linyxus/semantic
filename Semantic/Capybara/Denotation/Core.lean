@@ -16,7 +16,6 @@ def CapDenot := Memory -> CapabilitySet
 /-- A bound on capability sets. It can either be a concrete set of the top element. -/
 inductive CapabilityBound : Type where
 | top : Mutability -> CapabilityBound
-| set : CapabilitySet -> CapabilityBound
 
 /-- Capture bound denotation. -/
 def CapBoundDenot := Memory -> CapabilityBound
