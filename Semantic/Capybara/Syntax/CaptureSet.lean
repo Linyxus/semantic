@@ -207,4 +207,11 @@ def CaptureSet.drop_here_var : CaptureSet (s,x) -> CaptureSet s
 | .var m (.free n) => .var m (.free n)
 | .cvar m (.there c) => .cvar m c
 
+def CaptureSet.drop_here_tvar : CaptureSet (s,X) -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => .union (cs1.drop_here_tvar) (cs2.drop_here_tvar)
+| .var m (.free x) => .var m (.free x)
+| .var m (.bound (.there x)) => .var m (.bound x)
+| .cvar m (.there c) => .cvar m c
+
 end Capybara

@@ -1153,4 +1153,20 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     cases hclosed with | par h1 h2 =>
     exact IsClosed.par (ih1 h1) (ih2 h2)
 
+/-- Read the interfere set of type. -/
+def Ty.interfere_set : Ty sort s -> CaptureSet s
+| .top => .empty
+| .tvar _ => .empty
+| .arrow (.capt C1 _) T2 => C1 ∪ (T2.interfere_set).drop_here_var
+| .poly _ T2 => T2.interfere_set.drop_here_tvar
+| .cpoly _ T => T.interfere_set.subst (Subst.openCVar {})
+| .unit => .empty
+| .cap => .empty
+| .bool => .empty
+| .cell => .empty
+| .reader => .empty
+| .capt C S => C ∪ S.interfere_set
+| .exi T => T.interfere_set.subst (Subst.openCVar {})
+| .typ T => T.interfere_set
+
 end Capybara
