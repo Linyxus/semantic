@@ -70,8 +70,9 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
-  C.covers .ro x ->
-  m.lookup x = some (.capability (.mcell b)) ->
+  C.covers .ro y ->
+  m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell b)) ->
   Q (if b then .btrue else .bfalse) m ->
   Eval C m (.read (.free x)) Q
 | eval_write_true {m : Memory} {x y : Nat} :
