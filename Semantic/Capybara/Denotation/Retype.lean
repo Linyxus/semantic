@@ -152,6 +152,9 @@ def retype_shape_val_denot
   | .cell => by
     apply PreDenot.eq_to_equiv
     simp [Ty.shape_val_denot, Ty.subst]
+  | .reader => by
+    apply PreDenot.eq_to_equiv
+    simp [Ty.shape_val_denot, Ty.subst]
   | .arrow T1 T2 => by
     have ih1 := retype_capt_val_denot ρ T1
     intro A s0 e0

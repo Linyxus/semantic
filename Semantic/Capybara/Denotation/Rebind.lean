@@ -112,6 +112,9 @@ def rebind_shape_val_denot
   | .cell => by
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename]
+  | .reader => by
+    intro A s0 e0
+    simp [Ty.shape_val_denot, Ty.rename]
   | .arrow T1 T2 => by
     have ih1 := rebind_capt_val_denot ρ T1
     intro A s0 e0
