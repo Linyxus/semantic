@@ -888,6 +888,7 @@ def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
   | .abs cs _ _ => expand_captures H cs
   | .tabs cs _ _ => expand_captures H cs
   | .cabs cs _ _ => expand_captures H cs
+  | .reader (.free x) => CapabilitySet.singleton .ro x
   | _ => {}  -- Other expressions have no reachability
 
 theorem resolve_monotonic {H1 H2 : Heap}
