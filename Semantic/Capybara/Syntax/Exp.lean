@@ -12,6 +12,7 @@ inductive Exp : Sig -> Type where
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> Ty .shape s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> Mutability -> Exp (s,C) -> Exp s
+| reader : Var .var s -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> Ty .shape s -> Exp s

@@ -28,6 +28,7 @@ inductive Ty : TySort -> Sig -> Type where
 | cap : Ty .shape s
 | bool : Ty .shape s
 | cell : Ty .shape s
+| reader : Ty .shape s
 -- capturing types
 | capt : CaptureSet s -> Ty .shape s -> Ty .capt s
 -- existential types
