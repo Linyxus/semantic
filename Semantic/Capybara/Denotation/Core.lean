@@ -264,19 +264,10 @@ inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop whe
 | top :
   C.HasKind m ->
   CapabilitySet.BoundedBy C (.top m)
-| set :
-  C1 ⊆ C2 ->
-  CapabilitySet.BoundedBy C1 (CapabilityBound.set C2)
 
 inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop where
 | refl :
   CapabilityBound.SubsetEq B B
-| set :
-  C1 ⊆ C2 ->
-  CapabilityBound.SubsetEq (CapabilityBound.set C1) (CapabilityBound.set C2)
-| set_top :
-  C.HasKind m ->
-  CapabilityBound.SubsetEq (.set C) (.top m)
 | top_top :
   m1 ≤ m2 ->
   CapabilityBound.SubsetEq (.top m1) (.top m2)
@@ -291,26 +282,6 @@ theorem CapabilitySet.BoundedBy.trans
   CapabilitySet.BoundedBy C B2 := by
   cases hsub with
   | refl => exact hbound
-  | set hsub_set =>
-    cases hbound with
-    | set hbound_set =>
-      exact CapabilitySet.BoundedBy.set
-        (CapabilitySet.Subset.trans hbound_set hsub_set)
-  | set_top hkind =>
-    cases hbound with
-    | set hbound_set =>
-      -- C ⊆ C' and C'.HasKind m, so C.HasKind m
-      cases hkind with
-      | eps => exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
-      | ro_empty =>
-        exact CapabilitySet.BoundedBy.top
-          (CapabilitySet.HasKind.subset_ro hbound_set HasKind.ro_empty)
-      | ro_cap =>
-        exact CapabilitySet.BoundedBy.top
-          (CapabilitySet.HasKind.subset_ro hbound_set HasKind.ro_cap)
-      | ro_union hk1 hk2 =>
-        exact CapabilitySet.BoundedBy.top
-          (CapabilitySet.HasKind.subset_ro hbound_set (HasKind.ro_union hk1 hk2))
   | top_top hle =>
     cases hbound with
     | top hkind =>
