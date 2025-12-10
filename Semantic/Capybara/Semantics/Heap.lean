@@ -268,6 +268,7 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
   | .abs _ _ _, .abs => .abs
   | .tabs _ _ _, .tabs => .tabs
   | .cabs _ _ _, .cabs => .cabs
+  | .reader _, .reader => .reader
   | .unit, .unit => .unit
   | .btrue, .btrue => .btrue
   | .bfalse, .bfalse => .bfalse
@@ -855,6 +856,7 @@ def compute_reachability
   | .abs cs _ _ => expand_captures h cs
   | .tabs cs _ _ => expand_captures h cs
   | .cabs cs _ _ => expand_captures h cs
+  | .reader (.free loc) => .cap .ro loc
   | .unit => {}
   | .btrue => {}
   | .bfalse => {}

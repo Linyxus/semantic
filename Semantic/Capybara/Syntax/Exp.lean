@@ -54,6 +54,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
 | pack : Exp.IsVal (.pack cs x)
+| reader : Exp.IsVal (.reader x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
 | bfalse : Exp.IsVal .bfalse
@@ -67,6 +68,7 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
 | bfalse : Exp.IsSimpleVal .bfalse
+| reader : Exp.IsSimpleVal (.reader x)
 
 inductive Exp.IsSimpleAns : Exp s -> Prop where
 | is_simple_val :
