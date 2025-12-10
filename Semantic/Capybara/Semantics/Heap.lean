@@ -888,7 +888,7 @@ def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
   | .abs cs _ _ => expand_captures H cs
   | .tabs cs _ _ => expand_captures H cs
   | .cabs cs _ _ => expand_captures H cs
-  | .reader (.free x) => CapabilitySet.singleton .ro x
+  | .reader (.free x) => .singleton .ro x
   | _ => {}  -- Other expressions have no reachability
 
 theorem resolve_monotonic {H1 H2 : Heap}
@@ -1017,8 +1017,11 @@ theorem resolve_reachability_monotonic
     cases hwf with
     | wf_cabs hwf_cs _ =>
       exact expand_captures_monotonic hsub cs hwf_cs
-  | reader _ =>
-    simp [resolve_reachability]
+  | reader x =>
+    -- The variable must be free in the empty signature
+    cases x with
+    | free loc => simp [resolve_reachability]
+    | bound bx => cases bx
   | pack _ _ =>
     simp [resolve_reachability]
   | unit =>
