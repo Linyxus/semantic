@@ -147,6 +147,34 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.typ T1) (.typ T2)
 
+inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| sep_symm :
+  SepCheck Γ C1 C2 ->
+  -------------------
+  SepCheck Γ C2 C1
+| sep_sc :
+  Subcapt Γ C1 C2 ->
+  SepCheck Γ C2 C3 ->
+  -------------------
+  SepCheck Γ C1 C3
+| sep_union :
+  SepCheck Γ C1 C3 ->
+  SepCheck Γ C2 C3 ->
+  -------------------
+  SepCheck Γ (C1 ∪ C2) C3
+| sep_empty :
+  -------------------
+  SepCheck Γ {} C
+| sep_ro :
+  HasKind Γ C1 .ro ->
+  HasKind Γ C2 .ro ->
+  -------------------
+  SepCheck Γ C1 C2
+| sep_distinct_roots :
+  c1 ≠ c2 ->
+  --------------------
+  SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
+
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
   Γ.IsClosed ->
