@@ -198,4 +198,13 @@ theorem CaptureSet.applyMut_isClosed {cs : CaptureSet s} {m : Mutability}
     (hc : cs.IsClosed) : (cs.applyMut m).IsClosed := by
   cases m <;> simp [applyRO_isClosed hc, hc]
 
+/-- Drops the outermost bound variable from a capture set. -/
+def CaptureSet.drop_here_var : CaptureSet (s,x) -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => .union (cs1.drop_here_var) (cs2.drop_here_var)
+| .var _ (.bound .here) => .empty
+| .var m (.bound (.there x)) => .var m (.bound x)
+| .var m (.free n) => .var m (.free n)
+| .cvar m (.there c) => .cvar m c
+
 end Capybara
