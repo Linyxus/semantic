@@ -2803,7 +2803,7 @@ theorem fundamental
       exact sem_typ_tapp
         (hx (Exp.IsClosed.var Var.IsClosed.bound))
   case capp =>
-    rename_i hD_closed_syn hD_kind hx_syn hih
+    rename_i hD_closed_syn hD_kind hx_syn _ _ hih
     cases hclosed_e with
     | capp hx_closed hD_closed_exp =>
       cases hx_closed

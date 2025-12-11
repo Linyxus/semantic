@@ -373,8 +373,8 @@ theorem HasType.type_is_closed
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openTVar S)).IsClosed
     exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
-  case capp hD_closed _ ht_x ih =>
-    rename_i x D T
+  case capp hD_closed _ _ _ _ ih =>
+    rename_i x D m T
     -- ih : (Ty.capt (CaptureSet.var x) (Ty.cpoly m T)).typ.IsClosed
     -- hD_closed : D.IsClosed
     -- Extract: T.IsClosed
