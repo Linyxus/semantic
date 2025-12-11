@@ -2225,4 +2225,21 @@ def Heap.not_mutated (init after : Heap) : Prop :=
 def Memory.not_mutated (init after : Memory) : Prop :=
   init.heap.not_mutated after.heap
 
+/-- Non-interference checking for capability sets. -/
+inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
+| ni_symm :
+  Noninterference cs1 cs2 ->
+  Noninterference cs2 cs1
+| ni_empty :
+  Noninterference {} cs
+| ni_union :
+  Noninterference cs1 C ->
+  Noninterference cs2 C ->
+  Noninterference (cs1 ∪ cs2) C
+| ni_ro :
+  Noninterference (.cap .ro l1) (.cap .ro l2)
+| ni_disj :
+  (l1 ≠ l2) ->
+  Noninterference (.cap m1 l1) (.cap m2 l2)
+
 end Capybara
