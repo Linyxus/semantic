@@ -268,6 +268,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | par :
   HasType C1 Γ e1 E ->
   HasType C2 Γ e2 E ->
+  SepCheck Γ C1 C2 ->
   ----------------------------
   HasType (C1 ∪ C2) Γ (.par e1 e2) E
 | invoke :
