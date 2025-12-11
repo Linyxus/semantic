@@ -106,9 +106,9 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Eval C m1 e3 Q) ->
   Eval C m (.cond x e2 e3) Q
 | eval_par :
-  Eval C m e1 Q ->
-  Eval C m e2 Q ->
-  Eval C m (.par e1 e2) Q
+  Eval C1 m e1 Q ->
+  Eval C2 m e2 Q ->
+  Eval (C1 ∪ C2) m (.par e1 e2) Q
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
