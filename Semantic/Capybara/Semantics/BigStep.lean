@@ -108,6 +108,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_par :
   Eval C1 m e1 Q ->
   Eval C2 m e2 Q ->
+  CapabilitySet.Noninterference C1 C2 ->
   (C1 ∪ C2) ⊆ C' ->
   Eval C' m (.par e1 e2) Q
 
