@@ -1334,6 +1334,7 @@ theorem sem_typ_par
     apply CapabilitySet.Subset.union_right_right
   have he2' := eval_capability_set_monotonic he2 hsubC2
   exact Eval.eval_par he1' he2'
+    (CapabilitySet.Subset.union_left CapabilitySet.Subset.refl CapabilitySet.Subset.refl)
 
 theorem sem_typ_btrue :
   {} # Γ ⊨ Exp.btrue : .typ (.capt {} .bool) := by

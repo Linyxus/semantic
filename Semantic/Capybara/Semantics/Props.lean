@@ -876,16 +876,19 @@ theorem step_preserves_eval
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
       exact Eval.eval_val Exp.IsVal.unit hQ
-  | eval_par heval1 heval2 ih1 ih2 =>
+  | eval_par heval1 heval2 hsub_cap ih1 ih2 =>
     -- e = .par e1 e2
     -- The step can be step_par_left or step_par_right
+    -- hsub_cap : C1 ∪ C2 ⊆ C'
     cases hstep with
     | step_par_left =>
-      -- Stepped to e1, which already has the same postcondition
-      exact heval1
+      -- Stepped to e1, need to boost from C1 to C'
+      have h1 := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_cap
+      exact eval_capability_set_monotonic heval1 h1
     | step_par_right =>
-      -- Stepped to e2, which already has the same postcondition
-      exact heval2
+      -- Stepped to e2, need to boost from C2 to C'
+      have h2 := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hsub_cap
+      exact eval_capability_set_monotonic heval2 h2
 
 theorem reduce_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -1567,7 +1570,7 @@ theorem eval_exists_answer
       have ih_cont := ih_false hsub1 hQ1 hbfalse
       obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
       exact ⟨m2, e2, hans2, Memory.subsumes_trans hsub2 hsub1, hQ2⟩
-  | eval_par _ _ ih1 _ =>
+  | eval_par _ _ _ ih1 _ =>
     -- For par, we can use either branch; let's use the left branch
     exact ih1
 
@@ -1733,10 +1736,13 @@ theorem eval_reduce_exists_answer
             have ih_cont := ih_false hsub1 hQ1 hbfalse
             obtain ⟨m2, e2, hred2, hans2, hQ2⟩ := ih_cont
             exact ⟨m2, e2, Reduce.step hstep hred2, hans2, hQ2⟩
-  | eval_par _ _ ih1 _ =>
+  | eval_par _ _ hsub_cap ih1 _ =>
     -- For par, we can pick the left branch
+    -- ih1 gives Reduce C1, we need Reduce C'
     obtain ⟨m2, e2, hred, hans, hQ⟩ := ih1
-    exact ⟨m2, e2, Reduce.step Step.step_par_left hred, hans, hQ⟩
+    have h1 := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_cap
+    have hred' := small_step_capability_set_monotonic hred h1
+    exact ⟨m2, e2, Reduce.step Step.step_par_left hred', hans, hQ⟩
 
 -- Helper: applyRO cannot cover epsilon
 theorem applyRO_not_covers_epsilon {C : CapabilitySet} {l : Nat} :
