@@ -70,8 +70,9 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
-  C.covers .ro x ->
-  m.lookup x = some (.capability (.mcell b)) ->
+  C.covers .ro y ->
+  m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell b)) ->
   Q (if b then .btrue else .bfalse) m ->
   Eval C m (.read (.free x)) Q
 | eval_write_true {m : Memory} {x y : Nat} :
@@ -105,9 +106,10 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Eval C m1 e3 Q) ->
   Eval C m (.cond x e2 e3) Q
 | eval_par :
-  Eval C m e1 Q ->
-  Eval C m e2 Q ->
-  Eval C m (.par e1 e2) Q
+  Eval C1 m e1 Q ->
+  Eval C2 m e2 Q ->
+  (C1 ∪ C2) ⊆ C' ->
+  Eval C' m (.par e1 e2) Q
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
@@ -202,7 +204,7 @@ theorem eval_monotonic {m1 m2 : Memory}
           · -- Need: Exp.WfInHeap e m1.heap
             -- Get it from Memory.wf_lookup and inversion
             have hwf_cabs := Memory.wf_lookup hx
-            have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
+            have ⟨_, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
             exact hwf_e
           · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
             apply Subst.wf_openCVar
@@ -260,58 +262,67 @@ theorem eval_monotonic {m1 m2 : Memory}
         apply Exp.wf_subst hwf2_ext
         -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
         apply Subst.wf_unpack hwf_cs hwf_x
-  case eval_read hmem hx hQ =>
-    -- Name the unnamed variables
-    rename_i Q_eval C_eval m_eval x b
-    -- From subsumption, m2 must also have an mcell at x (possibly different boolean)
-    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
-    -- cx must be an mcell (possibly with different boolean)
-    cases cx
+  case eval_read hcov hmem hx hQ =>
+    -- New rule: first lookup reader at x, then lookup mcell at y (where reader points)
+    -- hcov : C.covers .ro y
+    -- hmem : m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩)
+    -- hx : m.lookup y = some (.capability (.mcell b))
+    -- hQ : Q (if b then .btrue else .bfalse) m
+    rename_i y hv R m_orig b
+    -- From subsumption, m2 must have the same reader val at x
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hmem
+    -- For value cells, subsumption requires equality
+    simp [Cell.subsumes] at hsub_x
+    subst hsub_x
+    -- From subsumption, m2 must also have an mcell at y (possibly different boolean)
+    obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hx
+    -- cy must be an mcell (possibly with different boolean)
+    cases cy
     case val v =>
       -- Contradiction: val cannot subsume capability
-      simp [Cell.subsumes] at hsub_x
+      simp [Cell.subsumes] at hsub_y
     case masked =>
       -- Contradiction: masked cannot subsume mcell
-      simp [Cell.subsumes] at hsub_x
+      simp [Cell.subsumes] at hsub_y
     case capability info =>
       cases info
       case basic =>
         -- Contradiction: basic cannot subsume mcell
-        simp [Cell.subsumes] at hsub_x
+        simp [Cell.subsumes] at hsub_y
       case mcell b' =>
-        -- Good! m2 has an mcell at x with boolean b'
-        -- Need to show: Q_eval (if b' then .btrue else .bfalse) m2
-        -- We have: Q_eval (if b then .btrue else .bfalse) m_eval
-        -- Use bool independence: Q_eval treats btrue and bfalse the same
-        apply Eval.eval_read hmem hx2
-        -- Goal: Q_eval (if b' then .btrue else .bfalse) m2
+        -- Good! m2 has an mcell at y with boolean b'
+        -- Need to show: Q (if b' then .btrue else .bfalse) m2
+        -- We have: Q (if b then .btrue else .bfalse) m_orig
+        -- Use bool independence: Q treats btrue and bfalse the same
+        apply Eval.eval_read hcov hx2 hy2
+        -- Goal: Q (if b' then .btrue else .bfalse) m2
         by_cases hb : b
-        · -- b = true, so we have Q_eval .btrue m_eval
+        · -- b = true, so we have Q .btrue m_orig
           subst hb
           simp at hQ
           by_cases hb' : b' = true
-          · -- b' = true, need Q_eval .btrue m2
+          · -- b' = true, need Q .btrue m2
             subst hb'
             simp
             exact hpred (by constructor) hsub hQ
-          · -- b' = false, need Q_eval .bfalse m2
+          · -- b' = false, need Q .bfalse m2
             -- Convert ¬b' = true to b' = false
             simp at hb'
             subst hb'
             simp
             rw [←hbool]
             exact hpred (by constructor) hsub hQ
-        · -- b = false, so we have Q_eval .bfalse m_eval
+        · -- b = false, so we have Q .bfalse m_orig
           simp at hb
           subst hb
           simp at hQ
           by_cases hb' : b' = true
-          · -- b' = true, need Q_eval .btrue m2
+          · -- b' = true, need Q .btrue m2
             subst hb'
             simp
             rw [hbool]
             exact hpred (by constructor) hsub hQ
-          · -- b' = false, need Q_eval .bfalse m2
+          · -- b' = false, need Q .bfalse m2
             -- Convert ¬b' = true to b' = false
             simp at hb'
             subst hb'
@@ -389,13 +400,14 @@ theorem eval_monotonic {m1 m2 : Memory}
     · intro m_branch v hs hQ1 hres
       have hs_orig := Memory.subsumes_trans hs hsub
       exact h_false hs_orig hQ1 hres
-  case eval_par ih1 ih2 =>
+  case eval_par hsub_cap ih1 ih2 =>
     -- Extract well-formedness of both branches
     cases hwf with
     | wf_par hwf1 hwf2 =>
       apply Eval.eval_par
       · exact ih1 hpred hbool hsub hwf1
       · exact ih2 hpred hbool hsub hwf2
+      · exact hsub_cap
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -478,8 +490,8 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_val hs1 hwf_x hwf_cs hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
-  case eval_read hmem hx hQ =>
-    apply Eval.eval_read hmem hx
+  case eval_read hcov hmem hx hQ =>
+    apply Eval.eval_read hcov hmem hx
     apply himp _ _ _ hQ
     apply Memory.subsumes_refl
   case eval_write_true hmem hx hy hQ =>
@@ -508,10 +520,11 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_false hsub hq1 hres
       apply Mpost.entails_after_subsumes himp
       exact hsub
-  case eval_par ih1 ih2 =>
+  case eval_par hsub_cap ih1 ih2 =>
     apply Eval.eval_par
     · exact ih1 himp
     · exact ih2 himp
+    · exact hsub_cap
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
@@ -553,8 +566,9 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       exact ih_val hs1 hwf_x hwf_cs hq1 hsub
-  case eval_read hcov hlookup hQ =>
-    exact Eval.eval_read (CapabilitySet.subset_preserves_covers hsub hcov) hlookup hQ
+  case eval_read hcov hlookup_reader hlookup_mcell hQ =>
+    exact Eval.eval_read
+      (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_reader hlookup_mcell hQ
   case eval_write_true hcov hlookup_x hlookup_y hQ =>
     exact Eval.eval_write_true
       (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
@@ -570,7 +584,17 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_true hs1 hq1 hres hsub
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
-  case eval_par ih1 ih2 =>
-    exact Eval.eval_par (ih1 hsub) (ih2 hsub)
+  case eval_par hsub_cap ih1 ih2 =>
+    -- hsub_cap : C1 ∪ C2 ⊆ C'  (where C' = A1)
+    -- hsub : C' ⊆ A2
+    -- Need to show C1 ⊆ A2 and C2 ⊆ A2 for the IHs
+    have h1 : _ ⊆ A2 := CapabilitySet.Subset.trans
+      (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_cap) hsub
+    have h2 : _ ⊆ A2 := CapabilitySet.Subset.trans
+      (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hsub_cap) hsub
+    apply Eval.eval_par
+    · exact ih1 h1
+    · exact ih2 h2
+    · exact CapabilitySet.Subset.union_left CapabilitySet.Subset.refl CapabilitySet.Subset.refl
 
 end Capybara

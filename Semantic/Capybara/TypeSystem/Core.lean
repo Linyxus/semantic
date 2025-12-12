@@ -6,12 +6,12 @@ namespace Capybara
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : Ty .shape s -> Binding s .tvar
-| cvar : CaptureBound s -> Binding s .cvar
+| cvar : Mutability -> Binding s .cvar
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
 | .tvar T, f => .tvar (T.rename f)
-| .cvar cb, f => .cvar (cb.rename f)
+| .cvar m, _ => .cvar m
 
 inductive Ctx : Sig -> Type where
 | empty : Ctx {}
@@ -23,8 +23,8 @@ def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 def Ctx.push_tvar : Ctx s -> Ty .shape s -> Ctx (s,X)
 | Γ, T => Γ.push (.tvar T)
 
-def Ctx.push_cvar : Ctx s -> CaptureBound s -> Ctx (s,C)
-| Γ, cb => Γ.push (.cvar cb)
+def Ctx.push_cvar : Ctx s -> Mutability -> Ctx (s,C)
+| Γ, m => Γ.push (.cvar m)
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
@@ -34,7 +34,7 @@ infixl:65 ",C<:" => Ctx.push_cvar
 inductive Binding.IsClosed : Binding s k -> Prop where
 | var : T.IsClosed -> Binding.IsClosed (.var T)
 | tvar : T.IsClosed -> Binding.IsClosed (.tvar T)
-| cvar : cb.IsClosed -> Binding.IsClosed (.cvar cb)
+| cvar : Binding.IsClosed (.cvar m)
 
 /-- A context is closed if all bindings in it are closed. -/
 inductive Ctx.IsClosed : Ctx s -> Prop where
@@ -55,12 +55,12 @@ inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
   Ctx.LookupVar Γ x T ->
   Ctx.LookupVar (.push Γ b) (.there x) (T.rename Rename.succ)
 
-inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> CaptureBound s -> Prop
+inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> Mutability -> Prop
 | here :
-  Ctx.LookupCVar (.push Γ (.cvar cb)) .here (cb.rename Rename.succ)
+  Ctx.LookupCVar (.push Γ (.cvar m)) .here m
 | there {b : Binding s k} :
-  Ctx.LookupCVar Γ c cb ->
-  Ctx.LookupCVar (.push Γ b0) (.there c) (cb.rename Rename.succ)
+  Ctx.LookupCVar Γ c m ->
+  Ctx.LookupCVar (.push Γ b0) (.there c) m
 
 inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_trans :
@@ -81,10 +81,6 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x (.capt C S) ->
   ----------------------------------
   Subcapt Γ (.var .epsilon (.bound x)) C
-| sc_cvar :
-  Ctx.LookupCVar Γ c (.bound C) ->
-  ----------------------------------
-  Subcapt Γ (.cvar .epsilon c) C
 | sc_ro :
   ----------------------------------
   Subcapt Γ C.applyRO C
@@ -101,22 +97,9 @@ inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
   -------------------
   HasKind Γ C.applyRO .ro
 | cvar_ro :
-  Ctx.LookupCVar Γ c (.unbound .ro) ->
+  Ctx.LookupCVar Γ c .ro ->
   -------------------
   HasKind Γ (.cvar .epsilon c) .ro
-
-inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
-| capset :
-  Subcapt Γ C1 C2 ->
-  -------------------
-  Subbound Γ (.bound C1) (.bound C2)
-| kind :
-  HasKind Γ C m ->
-  Subbound Γ (.bound C) (.unbound m)
-| mode {m1 m2 : Mutability} :
-  m1 ≤ m2 ->
-  -------------------
-  Subbound Γ (.unbound m1) (.unbound m2)
 
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | top {T : Ty .shape s} :
@@ -146,17 +129,17 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.poly S1 T1) (.poly S2 T2)
 | cpoly :
-  Subbound Γ cb2 cb1 ->
-  Subtyp (Γ,C<:cb2) T1 T2 ->
+  m2 ≤ m1 ->
+  Subtyp (Γ,C<:m2) T1 T2 ->
   ----------------------------------------
-  Subtyp Γ (.cpoly cb1 T1) (.cpoly cb2 T2)
+  Subtyp Γ (.cpoly m1 T1) (.cpoly m2 T2)
 | capt :
   Subcapt Γ C1 C2 ->
   Subtyp Γ S1 S2 ->
   --------------------------
   Subtyp Γ (.capt C1 S1) (.capt C2 S2)
 | exi :
-  Subtyp (Γ,C<:.unbound .epsilon) T1 T2 ->
+  Subtyp (Γ,C<:.epsilon) T1 T2 ->
   --------------------------
   Subtyp Γ (.exi T1) (.exi T2)
 | typ :
@@ -164,12 +147,49 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.typ T1) (.typ T2)
 
+inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| sep_symm :
+  SepCheck Γ C1 C2 ->
+  -------------------
+  SepCheck Γ C2 C1
+| sep_sc :
+  Subcapt Γ C1 C2 ->
+  SepCheck Γ C2 C3 ->
+  -------------------
+  SepCheck Γ C1 C3
+| sep_union :
+  SepCheck Γ C1 C3 ->
+  SepCheck Γ C2 C3 ->
+  -------------------
+  SepCheck Γ (C1 ∪ C2) C3
+| sep_empty :
+  -------------------
+  SepCheck Γ {} C
+| sep_ro :
+  HasKind Γ C1 .ro ->
+  HasKind Γ C2 .ro ->
+  -------------------
+  SepCheck Γ C1 C2
+| sep_distinct_roots :
+  c1 ≠ c2 ->
+  --------------------
+  SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
+
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
   Γ.IsClosed ->
   Γ.LookupVar x (.capt C S) ->
   ----------------------------
   HasType (.var .epsilon (.bound x)) Γ (.var (.bound x)) (.typ (.capt (.var .epsilon (.bound x)) S))
+| reader :
+  Γ.IsClosed ->
+  Γ.LookupVar x (.capt C .cell) ->
+  ---------------------------------
+  HasType
+    (.var .ro (.bound x))
+    Γ
+    (.reader (.bound x))
+    (.typ (.capt (.var .ro (.bound x)) .reader))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
   HasType (cs.rename Rename.succ ∪ (.var .epsilon (.bound .here))) (Γ,x:T1) e T2 ->
@@ -180,11 +200,10 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
   HasType {} Γ (.tabs cs S e) (.typ (.capt cs (.poly S T)))
-| cabs {cb : CaptureBound s} :
-  cb.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
+| cabs {m : Mutability} :
+  HasType (cs.rename Rename.succ) (Γ,C<:m) e T ->
   -----------------------------
-  HasType {} Γ (.cabs cs cb e) (.typ (.capt cs (.cpoly cb T)))
+  HasType {} Γ (.cabs cs m e) (.typ (.capt cs (.cpoly m T)))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   HasType (.var .epsilon x) Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
@@ -200,9 +219,12 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.poly S T))) ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
-| capp {D : CaptureSet s} :
+| capp {D : CaptureSet s} {m : Mutability} {I : CaptureSet s} :
   D.IsClosed ->
-  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.cpoly (.bound D) T))) ->
+  HasKind Γ D m ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt (.var .epsilon x) (.cpoly m T))) ->
+  (Ty.capt (.var .epsilon x) (.cpoly m T)).interfere_set = some I ->
+  SepCheck Γ D I ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin :
@@ -214,7 +236,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType C Γ t (.exi T) ->
   HasType
     ((C.rename Rename.succ).rename Rename.succ)
-    (Γ,C<:.unbound .epsilon,x:T)
+    (Γ,C<:.epsilon,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
@@ -229,9 +251,9 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.bfalse) (.typ (.capt {} .bool))
 | read :
-  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt C .cell)) ->
+  HasType (.var .epsilon x) Γ (.var x) (.typ (.capt C .reader)) ->
   ----------------------------
-  HasType (.var .ro x) Γ (.read x) (.typ (.capt {} .bool))
+  HasType (.var .epsilon x) Γ (.read x) (.typ (.capt {} .bool))
 | write :
   HasType (.var .epsilon x) Γ (.var x) (.typ (.capt Cx .cell)) ->
   HasType (.var .epsilon y) Γ (.var y) (.typ (.capt {} .bool)) ->
@@ -246,6 +268,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | par :
   HasType C1 Γ e1 E ->
   HasType C2 Γ e2 E ->
+  SepCheck Γ C1 C2 ->
   ----------------------------
   HasType (C1 ∪ C2) Γ (.par e1 e2) E
 | invoke :

@@ -47,22 +47,18 @@ def CaptureSet.subst : CaptureSet s1 -> Subst s1 s2 -> CaptureSet s2
 | .var m x, σ => .var m (x.subst σ)
 | .cvar m x, σ => (σ.cvar x).applyMut m
 
-/-- Applies a substitution to a capture bound. -/
-def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
-| .unbound m, _ => .unbound m
-| .bound cs, σ => .bound (cs.subst σ)
-
 /-- Applies a substitution to a type. -/
 def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, s => s.tvar x
 | .arrow T1 T2, s => .arrow (T1.subst s) (T2.subst s.lift)
 | .poly T1 T2, s => .poly (T1.subst s) (T2.subst s.lift)
-| .cpoly cb T, s => .cpoly (cb.subst s) (T.subst s.lift)
+| .cpoly m T, s => .cpoly m (T.subst s.lift)
 | .unit, _ => .unit
 | .cap, _ => .cap
 | .bool, _ => .bool
 | .cell, _ => .cell
+| .reader, _ => .reader
 | .capt cs T, s => .capt (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
@@ -72,7 +68,8 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
 | .abs cs T e, s => .abs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
-| .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
+| .cabs cs m e, s => .cabs (cs.subst s) m (e.subst s.lift)
+| .reader x, s => .reader (x.subst s)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
@@ -252,14 +249,6 @@ theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : 
     rw [CaptureSet.applyMut_rename]
     rw [CVar.weaken_subst_comm_liftMany]
 
-theorem CaptureBound.weaken_subst_comm_liftMany {cb : CaptureBound (s1 ++ K)} {σ : Subst s1 s2} :
-  (cb.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
-  (cb.rename (Rename.succ.liftMany K)).subst (σ.lift (k:=k0).liftMany K) := by
-  cases cb with
-  | unbound => rfl
-  | bound cs =>
-    simp [CaptureBound.subst, CaptureBound.rename, CaptureSet.weaken_subst_comm_liftMany]
-
 theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
     (T.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K) := by
@@ -276,15 +265,15 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X) (k0:=k0)
     simp [Ty.subst, Ty.rename, ih1]
     exact ih2
-  | .cpoly cb T =>
-    have ihCB := CaptureBound.weaken_subst_comm_liftMany (cb:=cb) (σ:=σ) (K:=K) (k0:=k0)
-    have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
-    simp [Ty.subst, Ty.rename, ihCB]
-    exact ihT
+  | .cpoly m T =>
+    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
+    simp [Ty.subst, Ty.rename]
+    exact ih
   | .unit => rfl
   | .cap => rfl
   | .bool => rfl
   | .cell => rfl
+  | .reader => rfl
   | .capt cs T =>
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -399,13 +388,6 @@ theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Su
   | cvar m C =>
     simp [CaptureSet.subst, Subst.comp, CaptureSet.applyMut_subst]
 
-/-- Substitution on capture bounds distributes over composition of substitutions. -/
-theorem CaptureBound.subst_comp {cb : CaptureBound s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
-  (cb.subst σ1).subst σ2 = cb.subst (σ1.comp σ2) := by
-  cases cb with
-  | unbound => rfl
-  | bound cs => simp [CaptureBound.subst, CaptureSet.subst_comp]
-
 /-- Substitution on types distributes over composition of substitutions. -/
 theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (T.subst σ1).subst σ2 = T.subst (σ1.comp σ2) := by
@@ -416,12 +398,13 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
   | poly T1 T2 ih1 ih2 =>
     simp [Ty.subst, ih1, ih2, Subst.comp_lift]
-  | cpoly cb T ih =>
-    simp [Ty.subst, ih, CaptureBound.subst_comp, Subst.comp_lift]
+  | cpoly m T ih =>
+    simp [Ty.subst, ih, Subst.comp_lift]
   | unit => rfl
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | reader => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp]
   | exi T ih =>
@@ -438,8 +421,9 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
   | tabs cs T e ih_e =>
     simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
-  | cabs cs cb e ih_e =>
-    simp [Exp.subst, CaptureSet.subst_comp, CaptureBound.subst_comp, ih_e, Subst.comp_lift]
+  | cabs cs m e ih_e =>
+    simp [Exp.subst, CaptureSet.subst_comp, ih_e, Subst.comp_lift]
+  | reader x => simp [Exp.subst, Var.subst_comp]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp [Exp.subst, Var.subst_comp]
@@ -479,13 +463,6 @@ theorem CaptureSet.subst_id {cs : CaptureSet s} :
   | cvar m C =>
     cases m <;> simp [CaptureSet.subst, Subst.id]
 
-/-- Substituting with the identity substitution leaves a capture bound unchanged. -/
-theorem CaptureBound.subst_id {cb : CaptureBound s} :
-  cb.subst Subst.id = cb := by
-  cases cb with
-  | unbound => rfl
-  | bound cs => simp [CaptureBound.subst, CaptureSet.subst_id]
-
 /-- Lifting the identity substitution yields the identity. -/
 theorem Subst.lift_id :
   (Subst.id (s:=s)).lift (k:=k) = Subst.id := by
@@ -507,12 +484,13 @@ theorem Ty.subst_id {T : Ty sort s} :
     simp [Ty.subst, ih1, ih2, Subst.lift_id]
   | poly T1 T2 ih1 ih2 =>
     simp [Ty.subst, ih1, ih2, Subst.lift_id]
-  | cpoly cb T ih =>
-    simp [Ty.subst, ih, Subst.lift_id, CaptureBound.subst_id]
+  | cpoly m T ih =>
+    simp [Ty.subst, ih, Subst.lift_id]
   | unit => rfl
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | reader => rfl
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_id]
   | exi T ih =>
@@ -530,8 +508,10 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
   | tabs cs T e ih =>
     simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
-  | cabs cs cb e ih =>
-    simp [Exp.subst, CaptureSet.subst_id, CaptureBound.subst_id, ih, Subst.lift_id]
+  | cabs cs m e ih =>
+    simp [Exp.subst, CaptureSet.subst_id, ih, Subst.lift_id]
+  | reader x =>
+    simp [Exp.subst, Var.subst_id]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_id, Var.subst_id]
   | app x y =>
@@ -601,13 +581,6 @@ theorem CaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
     cases m <;> simp [CaptureSet.subst, CaptureSet.rename, Rename.asSubst]
 
 /-- Substituting a substitution lifted from a renaming is the same as renaming. -/
-theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :
-  cb.subst (f.asSubst) = cb.rename f := by
-  cases cb with
-  | unbound => rfl
-  | bound cs => simp [CaptureBound.subst, CaptureBound.rename, CaptureSet.subst_asSubst]
-
-/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   T.subst (f.asSubst) = T.rename f := by
   induction T generalizing s2 with
@@ -619,13 +592,14 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | poly T1 T2 ih1 ih2 =>
     simp [Ty.subst, Ty.rename, ih1]
     rw [<-Rename.asSubst_lift, ih2]
-  | cpoly cb T ih =>
-    simp [Ty.subst, Ty.rename, CaptureBound.subst_asSubst]
+  | cpoly m T ih =>
+    simp [Ty.subst, Ty.rename]
     rw [<-Rename.asSubst_lift, ih]
   | unit => rfl
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | reader => rfl
   | capt cs T ih =>
     simp [Ty.subst, Ty.rename, ih, CaptureSet.subst_asSubst]
   | exi T ih =>
@@ -646,9 +620,11 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   | tabs cs T e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
     rw [<-Rename.asSubst_lift, ih]
-  | cabs cs cb e ih =>
-    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, CaptureBound.subst_asSubst]
+  | cabs cs m e ih =>
+    simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst]
     rw [<-Rename.asSubst_lift, ih]
+  | reader x =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | pack cs x =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
   | app x y =>
@@ -795,18 +771,6 @@ def CaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : Subst s1 s2}
     | free n =>
       cases h_var
 
-/-- Substitution preserves closedness for capture bounds. -/
-def CaptureBound.is_closed_subst {cb : CaptureBound s1} {σ : Subst s1 s2}
-  (hc : cb.IsClosed) (hsubst : Subst.IsClosed σ) :
-  (cb.subst σ).IsClosed := by
-  cases cb with
-  | unbound =>
-    exact IsClosed.unbound
-  | bound cs =>
-    cases hc with | bound h_cs =>
-    simp [CaptureBound.subst]
-    exact IsClosed.bound (CaptureSet.is_closed_subst h_cs hsubst)
-
 -- Helper lemmas for renaming closedness (minimal versions needed here)
 private theorem Var.rename_closed_any {x : Var .var s1} {f : Rename s1 s2}
   (hc : x.IsClosed) : (x.rename f).IsClosed := by
@@ -826,12 +790,6 @@ private theorem CaptureSet.rename_closed_any {cs : CaptureSet s1} {f : Rename s1
     cases hc with | var_bound =>
     exact IsClosed.var_bound
 
-private theorem CaptureBound.rename_closed_any {cb : CaptureBound s1} {f : Rename s1 s2}
-  (hc : cb.IsClosed) : (cb.rename f).IsClosed := by
-  cases cb <;> cases hc
-  case unbound.unbound => exact IsClosed.unbound
-  case bound.bound cs h_cs => exact IsClosed.bound (CaptureSet.rename_closed_any h_cs)
-
 private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   (hc : T.IsClosed) : (T.rename f).IsClosed := by
   induction T generalizing s2 with
@@ -843,13 +801,14 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   | poly S T ih1 ih2 =>
     cases hc with | poly h1 h2 =>
     exact IsClosed.poly (ih1 h1) (ih2 h2)
-  | cpoly cb T ih =>
-    cases hc with | cpoly hcb hT =>
-    exact IsClosed.cpoly (CaptureBound.rename_closed_any hcb) (ih hT)
+  | cpoly m T ih =>
+    cases hc with | cpoly hT =>
+    exact IsClosed.cpoly (ih hT)
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | reader => exact IsClosed.reader
   | capt cs T ih =>
     cases hc with | capt h1 h2 =>
     exact IsClosed.capt (CaptureSet.rename_closed_any h1) (ih h2)
@@ -892,16 +851,15 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     cases hc with | poly h1 h2 =>
     simp [Ty.subst]
     exact IsClosed.poly (ih1 h1 hsubst) (ih2 h2 (Subst.lift_closed hsubst))
-  | cpoly cb T ih =>
-    cases hc with | cpoly hcb hT =>
+  | cpoly m T ih =>
+    cases hc with | cpoly hT =>
     simp [Ty.subst]
-    exact IsClosed.cpoly
-      (CaptureBound.is_closed_subst hcb hsubst)
-      (ih hT (Subst.lift_closed hsubst))
+    exact IsClosed.cpoly (ih hT (Subst.lift_closed hsubst))
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | reader => exact IsClosed.reader
   | capt cs S ih =>
     cases hc with | capt h1 h2 =>
     simp [Ty.subst]
@@ -939,13 +897,16 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     · exact CaptureSet.is_closed_subst hcs hsubst
     · exact Ty.is_closed_subst hS hsubst
     · exact ih he (Subst.lift_closed hsubst)
-  | cabs cs cb e ih =>
-    cases hc with | cabs hcs hcb he =>
+  | cabs cs m e ih =>
+    cases hc with | cabs hcs he =>
     simp [Exp.subst]
     constructor
     · exact CaptureSet.is_closed_subst hcs hsubst
-    · exact CaptureBound.is_closed_subst hcb hsubst
     · exact ih he (Subst.lift_closed hsubst)
+  | reader x =>
+    cases hc with | reader hx =>
+    simp [Exp.subst]
+    exact IsClosed.reader (Var.is_closed_subst hx hsubst)
   | pack cs x =>
     cases hc with | pack hcs hx =>
     simp [Exp.subst]
@@ -1082,17 +1043,6 @@ theorem CaptureSet.subst_closed_inv {cs : CaptureSet s1} {σ : Subst s1 s2}
       simp [CaptureSet.subst, Var.subst] at hclosed
       cases hclosed
 
-/-- If the result of substitution is closed, the original capture bound was closed. -/
-theorem CaptureBound.subst_closed_inv {cb : CaptureBound s1} {σ : Subst s1 s2}
-  (hclosed : (cb.subst σ).IsClosed) :
-  cb.IsClosed := by
-  cases cb with
-  | unbound => exact IsClosed.unbound
-  | bound cs =>
-    simp [CaptureBound.subst] at hclosed
-    cases hclosed with | bound h_cs =>
-    exact IsClosed.bound (CaptureSet.subst_closed_inv h_cs)
-
 /-- If the result of substitution is closed, the original type was closed. -/
 theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   (hclosed : (T.subst σ).IsClosed) :
@@ -1108,14 +1058,15 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     simp [Ty.subst] at hclosed
     cases hclosed with | poly h1 h2 =>
     exact IsClosed.poly (ih1 h1) (ih2 h2)
-  | cpoly cb T ih =>
+  | cpoly m T ih =>
     simp [Ty.subst] at hclosed
-    cases hclosed with | cpoly hcb hT =>
-    exact IsClosed.cpoly (CaptureBound.subst_closed_inv hcb) (ih hT)
+    cases hclosed with | cpoly hT =>
+    exact IsClosed.cpoly (ih hT)
   | unit => exact IsClosed.unit
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | reader => exact IsClosed.reader
   | capt cs T ih =>
     simp [Ty.subst] at hclosed
     cases hclosed with | capt h1 h2 =>
@@ -1146,13 +1097,14 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | tabs hcs hT he =>
     exact IsClosed.tabs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
-  | cabs cs cb e ih =>
+  | cabs cs m e ih =>
     simp [Exp.subst] at hclosed
-    cases hclosed with | cabs hcs hcb he =>
-    exact IsClosed.cabs
-      (CaptureSet.subst_closed_inv hcs)
-      (CaptureBound.subst_closed_inv hcb)
-      (ih he)
+    cases hclosed with | cabs hcs he =>
+    exact IsClosed.cabs (CaptureSet.subst_closed_inv hcs) (ih he)
+  | reader x =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | reader hx =>
+    exact IsClosed.reader (Var.subst_closed_inv hx)
   | pack cs x =>
     simp [Exp.subst] at hclosed
     cases hclosed with | pack hcs hx =>
@@ -1200,5 +1152,26 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | par h1 h2 =>
     exact IsClosed.par (ih1 h1) (ih2 h2)
+
+/-- Read the interfere set of type. -/
+def Ty.interfere_set : Ty sort s -> Option (CaptureSet s)
+| .top => some .empty
+| .tvar _ => none
+| .arrow (.capt C1 _) T2 =>
+    T2.interfere_set.map (fun cs => C1 ∪ cs.drop_here_var)
+| .poly _ T2 =>
+    T2.interfere_set.map (fun cs => cs.drop_here_tvar)
+| .cpoly _ T =>
+    T.interfere_set.map (fun cs => cs.subst (Subst.openCVar {}))
+| .unit => some .empty
+| .cap => some .empty
+| .bool => some .empty
+| .cell => some .empty
+| .reader => some .empty
+| .capt C S =>
+    S.interfere_set.map (fun cs => C ∪ cs)
+| .exi T =>
+    T.interfere_set.map (fun cs => cs.subst (Subst.openCVar {}))
+| .typ T => T.interfere_set
 
 end Capybara

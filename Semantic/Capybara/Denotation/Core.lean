@@ -16,7 +16,6 @@ def CapDenot := Memory -> CapabilitySet
 /-- A bound on capability sets. It can either be a concrete set of the top element. -/
 inductive CapabilityBound : Type where
 | top : Mutability -> CapabilityBound
-| set : CapabilitySet -> CapabilityBound
 
 /-- Capture bound denotation. -/
 def CapBoundDenot := Memory -> CapabilityBound
@@ -53,7 +52,18 @@ def Denot.is_proper (d : Denot) : Prop :=
 theorem compute_reachability_eq_resolve_reachability
   (h : Heap) (v : Exp {}) (hv : v.IsSimpleVal) :
   compute_reachability h v hv = resolve_reachability h v := by
-  cases hv <;> rfl
+  cases hv with
+  | abs => rfl
+  | tabs => rfl
+  | cabs => rfl
+  | unit => rfl
+  | btrue => rfl
+  | bfalse => rfl
+  | reader =>
+    rename_i x
+    cases x with
+    | free loc => rfl
+    | bound bx => cases bx
 
 /-- Heap invariant: the reachability stored in a heap value equals the computed
     reachability for that value. -/
@@ -258,27 +268,17 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
-def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
-| _, .unbound m => fun _ => .top m
-| env, .bound cs => fun m => .set (cs.denot env m)
+def Mutability.denot : Mutability -> CapBoundDenot
+| m => fun _ => .top m
 
 inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
 | top :
   C.HasKind m ->
   CapabilitySet.BoundedBy C (.top m)
-| set :
-  C1 ⊆ C2 ->
-  CapabilitySet.BoundedBy C1 (CapabilityBound.set C2)
 
 inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop where
 | refl :
   CapabilityBound.SubsetEq B B
-| set :
-  C1 ⊆ C2 ->
-  CapabilityBound.SubsetEq (CapabilityBound.set C1) (CapabilityBound.set C2)
-| set_top :
-  C.HasKind m ->
-  CapabilityBound.SubsetEq (.set C) (.top m)
 | top_top :
   m1 ≤ m2 ->
   CapabilityBound.SubsetEq (.top m1) (.top m2)
@@ -293,26 +293,6 @@ theorem CapabilitySet.BoundedBy.trans
   CapabilitySet.BoundedBy C B2 := by
   cases hsub with
   | refl => exact hbound
-  | set hsub_set =>
-    cases hbound with
-    | set hbound_set =>
-      exact CapabilitySet.BoundedBy.set
-        (CapabilitySet.Subset.trans hbound_set hsub_set)
-  | set_top hkind =>
-    cases hbound with
-    | set hbound_set =>
-      -- C ⊆ C' and C'.HasKind m, so C.HasKind m
-      cases hkind with
-      | eps => exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
-      | ro_empty =>
-        exact CapabilitySet.BoundedBy.top
-          (CapabilitySet.HasKind.subset_ro hbound_set HasKind.ro_empty)
-      | ro_cap =>
-        exact CapabilitySet.BoundedBy.top
-          (CapabilitySet.HasKind.subset_ro hbound_set HasKind.ro_cap)
-      | ro_union hk1 hk2 =>
-        exact CapabilitySet.BoundedBy.top
-          (CapabilitySet.HasKind.subset_ro hbound_set (HasKind.ro_union hk1 hk2))
   | top_top hle =>
     cases hbound with
     | top hkind =>
@@ -331,6 +311,12 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     e = .var (.free label) ∧
     m.lookup label = some (.capability .basic) ∧
     A.covers .epsilon label
+| _, .reader => fun A m e =>
+  e.WfInHeap m.heap ∧
+  ∃ (label : Nat) (b0 : Bool),
+    resolve m.heap e = some (.reader (.free label)) ∧
+    m.lookup label = some (.capability (.mcell b0)) ∧
+    A.covers .ro label
 | _, .bool => fun _ m e =>
   resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
 | _, .cell => fun R m e =>
@@ -376,7 +362,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       CS.WfInHeap m'.heap ->
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
-      ((A0 m').BoundedBy (B.denot env m')) ->
+      ((A0 m').BoundedBy (B.denot m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS)
         T R0 m' (t0.subst (Subst.openCVar CS)))
@@ -438,9 +424,9 @@ instance instCaptureSetHasDenotation :
   interp := CaptureSet.denot
 
 @[simp]
-instance instCaptureBoundHasDenotation :
-  HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
-  interp := CaptureBound.denot
+instance instMutabilityHasDenotation :
+  HasDenotation Mutability Unit CapBoundDenot where
+  interp := fun () m => m.denot
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
@@ -453,8 +439,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs), m =>
   (cs.WfInHeap m.heap) ∧
-  ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
-  ((cs.ground_denot m).BoundedBy (⟦B⟧_[env] m)) ∧
+  ((cs.ground_denot m).BoundedBy (B.denot m)) ∧
   EnvTyping Γ env m
 
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
@@ -706,7 +691,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar cs =>
           unfold EnvTyping at htyping
-          have ⟨hwf, hwf_bound, hsub, htyping'⟩ := htyping
+          have ⟨hwf, hsub, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -964,7 +949,7 @@ theorem typed_env_is_monotonic
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -1021,7 +1006,7 @@ theorem typed_env_is_transparent
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1078,7 +1063,7 @@ theorem typed_env_is_bool_independent
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
@@ -1134,7 +1119,7 @@ theorem typed_env_is_reachability_safe
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_reachability_safe] at ih_result ⊢
           intro x
@@ -1190,7 +1175,7 @@ theorem typed_env_is_reachability_monotonic
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
           intro x
@@ -1246,7 +1231,7 @@ theorem typed_env_is_implying_wf
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
@@ -1299,7 +1284,7 @@ theorem typed_env_is_tight
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨_, _, _, ht'⟩ := ht
+          have ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           intro X
           cases X with
@@ -1399,6 +1384,20 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
     have hval := v.isVal
     rw [heq] at hval
     cases hval
+  | reader =>
+    intro C m x v hx ht
+    simp only [Ty.shape_val_denot] at ht ⊢
+    obtain ⟨hwf, label, b0, hres, hlookup, hcov⟩ := ht
+    have hx' : m.heap x = some (.val v) := by
+      simp [Memory.lookup] at hx
+      exact hx
+    have heq := resolve_var_heap_trans hx'
+    rw [heq]
+    refine ⟨?_, label, b0, hres, hlookup, hcov⟩
+    -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
+    constructor
+    constructor
+    exact hx'
   | poly T1 T2 =>
     intro C m x v hx ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1457,6 +1456,9 @@ theorem shape_val_denot_is_bool_independent {env : TypeEnv s}
     simp [Ty.shape_val_denot, resolve]
   | cell =>
     simp [Ty.shape_val_denot]
+  | reader =>
+    -- btrue and bfalse cannot resolve to a reader, so both sides are False
+    simp [Ty.shape_val_denot, resolve]
   | arrow T1 T2 =>
     simp [Ty.shape_val_denot, resolve]
   | poly T1 T2 =>
@@ -1671,24 +1673,10 @@ theorem ground_denot_applyRO_mono {C1 C2 : CaptureSet {}} {m : Memory}
   rw [← ground_denot_applyRO_comm, ← ground_denot_applyRO_comm]
   exact CapabilitySet.applyRO_mono hsub
 
-theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
-  (hwf : (B.subst (Subst.from_TypeEnv ρ)).WfInHeap m1.heap)
-  (hsub : m2.subsumes m1) :
-  B.denot ρ m1 = B.denot ρ m2 := by
-  cases B with
-  | unbound =>
-    -- Unbound denotes CapabilitySet.any at all memories
-    unfold CaptureBound.denot
-    rfl
-  | bound cs =>
-    -- Bounded case: use capture_set_denot_is_monotonic
-    unfold CaptureBound.denot
-    -- Extract well-formedness of the capture set from hwf
-    simp [CaptureBound.subst] at hwf
-    cases hwf with
-    | wf_bound hwf_cs =>
-      simp only []
-      rw [capture_set_denot_is_monotonic hwf_cs hsub]
+theorem mutability_denot_is_monotonic {B : Mutability} :
+  B.denot m1 = B.denot m2 := by
+  -- Mutability denotes .top at all memories, so trivially monotonic
+  rfl
 
 mutual
 
@@ -1753,6 +1741,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     | write _ _ => simp [resolve] at ht
     | cond _ _ _ => simp [resolve] at ht
     | par _ _ => simp [resolve] at ht
+    | reader _ => simp [resolve] at ht
   | cap =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1803,6 +1792,26 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         refine ⟨l, b', heq, ?_, hmem_l⟩
         simp [Memory.lookup]
         exact hc'
+  | reader =>
+    intro m1 m2 e hmem ht
+    simp only [Ty.shape_val_denot] at ht ⊢
+    obtain ⟨hwf_e, label, b0, hres, hlookup, hcov⟩ := ht
+    constructor
+    · exact Exp.wf_monotonic hmem hwf_e
+    · -- The mcell at label may have a different boolean in m2
+      have hsub : m2.heap.subsumes m1.heap := hmem
+      simp [Memory.lookup] at hlookup
+      obtain ⟨c', hc', hsub_c⟩ := hsub label (Cell.capability (.mcell b0)) hlookup
+      cases c' with
+      | val v => simp [Cell.subsumes] at hsub_c
+      | masked => simp [Cell.subsumes] at hsub_c
+      | capability info =>
+        cases info with
+        | basic => simp [Cell.subsumes] at hsub_c
+        | mcell b' =>
+          refine ⟨label, b', ?_, ?_, hcov⟩
+          · exact resolve_monotonic hmem hres
+          · simp [Memory.lookup]; exact hc'
   | arrow T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -1842,6 +1851,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
         | par _ _ => cases hr
+        | reader _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -1893,6 +1903,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
         | par _ _ => cases hr
+        | reader _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -1954,6 +1965,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
         | par _ _ => cases hr
+        | reader _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -2158,25 +2170,22 @@ theorem env_typing_monotonic
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, ht'⟩ := ht
           constructor
           · -- Prove: cs.WfInHeap mem2.heap
             exact CaptureSet.wf_monotonic hmem hwf
           · constructor
-            · -- Prove: (B.subst (Subst.from_TypeEnv env')).WfInHeap mem2.heap
-              exact CaptureBound.wf_monotonic hmem hwf_bound
-            · constructor
-              · -- Need: cs.ground_denot mem2 ⊆ ⟦B⟧_[env'] mem2
-                -- Have: cs.ground_denot mem1 ⊆ ⟦B⟧_[env'] mem1
-                -- Get cs.ground_denot mem1 = cs.ground_denot mem2
-                have h_denot_eq := ground_denot_is_monotonic hwf hmem
-                -- Get ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2
-                have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
-                  capture_bound_denot_is_monotonic hwf_bound hmem
-                -- Combine the equalities
-                rw [<-h_denot_eq, <-h_bound_eq]
-                exact hsub
-              · exact ih ht'
+            · -- Need: cs.ground_denot mem2 ⊆ B.denot mem2
+              -- Have: cs.ground_denot mem1 ⊆ B.denot mem1
+              -- Get cs.ground_denot mem1 = cs.ground_denot mem2
+              have h_denot_eq := ground_denot_is_monotonic hwf hmem
+              -- Get B.denot mem1 = B.denot mem2 (trivially true for Mutability)
+              have h_bound_eq : B.denot mem1 = B.denot mem2 :=
+                mutability_denot_is_monotonic
+              -- Combine the equalities
+              rw [<-h_denot_eq, <-h_bound_eq]
+              exact hsub
+            · exact ih ht'
 
 /-- Semantic subcapturing. -/
 def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
@@ -2189,10 +2198,9 @@ def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
     EnvTyping Γ env m ->
     CapabilitySet.HasKind (C.denot env m) mode
 
-def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
-  ∀ env m,
-    EnvTyping Γ env m ->
-    B1.denot env m ⊆ B2.denot env m
+def SemSubbound (_Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
+  ∀ m,
+    B1.denot m ⊆ B2.denot m
 
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
@@ -2269,6 +2277,8 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
                   simpa [compute_reachability] using hreach
                 simp [resolve_reachability, reachability_of_loc, hcell, hreach_empty]
                 exact CapabilitySet.Subset.empty
+              | reader =>
+                simp [resolve, hcell] at hdenot ⊢
     | _ =>
       -- Other expressions cannot resolve to a boolean
       simp [resolve] at hdenot
@@ -2318,6 +2328,47 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
       | bound bx => cases bx
     | _ =>
       simp [resolve] at hdenot
+  | reader =>
+    -- For .reader, e resolves to a reader pointing to a location with an mcell
+    simp only [Ty.shape_val_denot] at hdenot
+    obtain ⟨hwf_e, label, b0, hres, hlookup, hcov⟩ := hdenot
+    -- resolve_reachability for a reader value is singleton .ro label
+    -- Need: resolve_reachability m.heap e ⊆ R
+    cases e with
+    | reader x =>
+      cases x with
+      | free loc =>
+        simp [resolve] at hres
+        obtain ⟨rfl⟩ := hres
+        simp [resolve_reachability]
+        exact CapabilitySet.covers_imp_singleton_subset hcov
+      | bound bx => cases bx
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hfx : m.heap fx with
+        | none => simp [hfx] at hres
+        | some cell =>
+          simp [hfx] at hres
+          cases cell with
+          | capability => simp at hres
+          | masked => simp at hres
+          | val v =>
+            simp at hres
+            cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
+            case reader x =>
+              cases x with
+              | free loc =>
+                obtain ⟨rfl⟩ := hres
+                simp [resolve_reachability]
+                have hv_heap : m.heap fx = some (Cell.val v) := hfx
+                rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
+                simp [resolve_reachability, hunwrap]
+                exact CapabilitySet.covers_imp_singleton_subset hcov
+              | bound bx => cases bx
+      | bound bx => cases bx
+    | _ => cases hres
   | cap =>
     -- For .cap, e is a variable pointing to a capability
     simp [Ty.shape_val_denot] at hdenot
@@ -2459,6 +2510,13 @@ theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
     obtain ⟨l, b0, heq, hlookup, hmem⟩ := hdenot
     use l, b0
     exact ⟨heq, hlookup, CapabilitySet.subset_preserves_covers hsub hmem⟩
+  | reader =>
+    simp only [Ty.shape_val_denot] at hdenot ⊢
+    obtain ⟨hwf_e, label, b0, hres, hlookup, hcov⟩ := hdenot
+    constructor
+    · exact hwf_e
+    · use label, b0
+      exact ⟨hres, hlookup, CapabilitySet.subset_preserves_covers hsub hcov⟩
   | unit =>
     simp [Ty.shape_val_denot] at hdenot ⊢
     exact hdenot
@@ -2575,6 +2633,9 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
     apply Var.WfInHeap.wf_free
     · simp [Memory.lookup] at hlookup
       exact hlookup
+  | reader =>
+    simp only [Ty.shape_val_denot] at hdenot
+    exact hdenot.1
   | cap =>
     simp [Ty.shape_val_denot] at hdenot
     have ⟨hwf_e, label, heq, hlookup, _⟩ := hdenot
@@ -2629,6 +2690,32 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
       · simp [Memory.lookup] at hlookup
         simp [reachability_of_loc, hlookup]
         exact CapabilitySet.covers.here Mutability.Le.refl
+  | reader =>
+    simp only [Ty.shape_val_denot] at ht ⊢
+    obtain ⟨hwf, label, b0, hres, hlookup, hcov⟩ := ht
+    constructor
+    · exact hwf
+    · use label, b0
+      constructor
+      · exact hres
+      · constructor
+        · exact hlookup
+        · -- Need: reachability_of_loc m.heap fx .covers .ro label
+          -- Since resolve m.heap (.var (.free fx)) = some (.reader (.free label)),
+          -- the heap value unwraps to .reader (.free label)
+          -- So reachability_of_loc m.heap fx = singleton .ro label
+          have : ∃ v, m.heap fx = some (Cell.val v) ∧ v.unwrap = .reader (.free label) := by
+            unfold resolve at hres
+            cases heq : m.heap fx
+            · simp [heq] at hres
+            · next cell =>
+              cases cell <;> simp [heq] at hres
+              exact ⟨_, rfl, hres⟩
+          obtain ⟨v, hv, hunwrap⟩ := this
+          have heq := reachability_of_loc_eq_resolve_reachability m fx v hv
+          rw [heq, hunwrap]
+          simp [resolve_reachability]
+          exact CapabilitySet.covers.here Mutability.Le.refl
   | cap =>
     simp [Ty.shape_val_denot, reachability_of_loc, Memory.lookup] at ht ⊢
     obtain ⟨hwf, hmem, hin⟩ := ht

@@ -29,8 +29,9 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   m.lookup x = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.cond (.free x) e1 e2) m e2
 | step_read :
-  C.covers .ro x ->
-  m.lookup x = some (.capability (.mcell b)) ->
+  C.covers .ro y ->
+  m.lookup x = some (.val ⟨.reader (.free y), hv_reader, R_reader⟩) ->
+  m.lookup y = some (.capability (.mcell b)) ->
   Step C m (.read (.free x)) m (if b then .btrue else .bfalse)
 | step_write_true :
   C.covers .epsilon x ->

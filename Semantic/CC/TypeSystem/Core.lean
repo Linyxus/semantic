@@ -3,16 +3,19 @@ import Semantic.CC.Substitution
 
 namespace CC
 
+/-- A binding in a context, which can be a variable, type variable, or capture variable. -/
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : Ty .shape s -> Binding s .tvar
 | cvar : CaptureBound s -> Binding s .cvar
 
+/-- Apply a renaming function to a binding. -/
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
 | .tvar T, f => .tvar (T.rename f)
 | .cvar cb, f => .cvar (cb.rename f)
 
+/-- Type context. -/
 inductive Ctx : Sig -> Type where
 | empty : Ctx {}
 | push : Ctx s -> Binding s k -> Ctx (s,,k)
