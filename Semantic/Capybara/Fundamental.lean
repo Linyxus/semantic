@@ -1323,18 +1323,10 @@ theorem sem_typ_par
   have he1 := ht1 env store hts
   have he2 := ht2 env store hts
   simp [Ty.exi_exp_denot] at he1 he2
-  -- Widen authority for branch 1 from C1 to C1 ∪ C2
-  have hsubC1 : CaptureSet.denot env C1 store ⊆ CaptureSet.denot env (C1 ∪ C2) store := by
-    simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
-    apply CapabilitySet.Subset.union_right_left
-  have he1' := eval_capability_set_monotonic he1 hsubC1
-  -- Widen authority for branch 2 from C2 to C1 ∪ C2
-  have hsubC2 : CaptureSet.denot env C2 store ⊆ CaptureSet.denot env (C1 ∪ C2) store := by
-    simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
-    apply CapabilitySet.Subset.union_right_right
-  have he2' := eval_capability_set_monotonic he2 hsubC2
-  exact Eval.eval_par he1' he2'
-    (CapabilitySet.Subset.union_left CapabilitySet.Subset.refl CapabilitySet.Subset.refl)
+  have hni : CapabilitySet.Noninterference (CaptureSet.denot env C1 store)
+                                           (CaptureSet.denot env C2 store) := by
+    sorry
+  exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
 
 theorem sem_typ_btrue :
   {} # Γ ⊨ Exp.btrue : .typ (.capt {} .bool) := by
