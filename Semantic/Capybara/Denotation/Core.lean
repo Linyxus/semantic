@@ -271,6 +271,9 @@ def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
 def Mutability.denot : Mutability -> CapBoundDenot
 | m => fun _ => .top m
 
+def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
+  sorry
+
 inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
 | top :
   C.HasKind m ->
