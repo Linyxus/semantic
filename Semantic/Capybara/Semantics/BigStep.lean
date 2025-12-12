@@ -400,13 +400,14 @@ theorem eval_monotonic {m1 m2 : Memory}
     · intro m_branch v hs hQ1 hres
       have hs_orig := Memory.subsumes_trans hs hsub
       exact h_false hs_orig hQ1 hres
-  case eval_par ih1 ih2 =>
+  case eval_par hsub_cap ih1 ih2 =>
     -- Extract well-formedness of both branches
     cases hwf with
     | wf_par hwf1 hwf2 =>
       apply Eval.eval_par
       · exact ih1 hpred hbool hsub hwf1
       · exact ih2 hpred hbool hsub hwf2
+      · exact hsub_cap
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -519,10 +520,11 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_false hsub hq1 hres
       apply Mpost.entails_after_subsumes himp
       exact hsub
-  case eval_par ih1 ih2 =>
+  case eval_par hsub_cap ih1 ih2 =>
     apply Eval.eval_par
     · exact ih1 himp
     · exact ih2 himp
+    · exact hsub_cap
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
@@ -582,7 +584,17 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_true hs1 hq1 hres hsub
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
-  case eval_par ih1 ih2 =>
-    exact Eval.eval_par (ih1 hsub) (ih2 hsub)
+  case eval_par hsub_cap ih1 ih2 =>
+    -- hsub_cap : C1 ∪ C2 ⊆ C'  (where C' = A1)
+    -- hsub : C' ⊆ A2
+    -- Need to show C1 ⊆ A2 and C2 ⊆ A2 for the IHs
+    have h1 : _ ⊆ A2 := CapabilitySet.Subset.trans
+      (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_cap) hsub
+    have h2 : _ ⊆ A2 := CapabilitySet.Subset.trans
+      (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hsub_cap) hsub
+    apply Eval.eval_par
+    · exact ih1 h1
+    · exact ih2 h2
+    · exact CapabilitySet.Subset.union_left CapabilitySet.Subset.refl CapabilitySet.Subset.refl
 
 end Capybara
