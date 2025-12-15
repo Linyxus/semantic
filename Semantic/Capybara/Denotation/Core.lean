@@ -479,17 +479,69 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   ((cs.ground_denot m).BoundedBy (B.denot m)) ∧
   EnvTyping Γ env m
 
+/-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
+theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
+    (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Mutability) :
+    CaptureSet.peaks Γ (.var m0 (.bound x)) = (ρ.lookup_var x).2.cs.applyMut m0 := by
+  match s, Γ, ρ, x with
+  | _, .push Γ' (.var (.capt C S)), .extend ρ' (.var n ps), .here =>
+    simp only [EnvTyping] at h
+    obtain ⟨_, hps, _⟩ := h
+    -- hps : ps = CaptureSet.peakset Γ' (Ty.capt C S).captureSet
+    -- Note: (Ty.capt C S).captureSet = C by definition
+    simp only [Ty.captureSet] at hps
+    -- Now hps : ps = CaptureSet.peakset Γ' C = ⟨peaks Γ' C, _⟩
+    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    -- Goal: applyMut m0 ((peaks Γ' C).rename ...) = applyMut m0 (ps.cs.rename ...)
+    rw [hps]
+    simp only [CaptureSet.peakset]
+  | _, .push Γ' (.var (.capt C S)), .extend ρ' (.var n ps), .there x' =>
+    simp only [EnvTyping] at h
+    obtain ⟨_, _, h'⟩ := h
+    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    rw [peaks_var_bound_eq h' x' m0]
+    exact CaptureSet.applyMut_rename
+  | _, .push Γ' (.tvar S), .extend ρ' (.tvar denot), .there x' =>
+    simp only [EnvTyping] at h
+    obtain ⟨_, _, h'⟩ := h
+    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    rw [peaks_var_bound_eq h' x' m0]
+    exact CaptureSet.applyMut_rename
+  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs), .there x' =>
+    simp only [EnvTyping] at h
+    obtain ⟨_, _, h'⟩ := h
+    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    rw [peaks_var_bound_eq h' x' m0]
+    exact CaptureSet.applyMut_rename
+termination_by sizeOf x
+
 theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
   ∀ C, CaptureSet.peaks Γ C = compute_peaks ρ C := by
   intro C
   induction C
   case empty => simp [CaptureSet.peaks, compute_peaks]
-  case union ih1 ih2 => sorry
+  case union ih1 ih2 =>
+    simp only [CaptureSet.peaks, compute_peaks, Union.union]
+    rw [ih1, ih2]
   case cvar m c => simp [CaptureSet.peaks, compute_peaks]
-  case var m c => sorry
+  case var m c =>
+    cases c with
+    | free n => simp [CaptureSet.peaks, compute_peaks]
+    | bound x =>
+      -- Use the helper lemma
+      simp only [compute_peaks]
+      exact peaks_var_bound_eq h x m
 
 theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
-  ∀ C, C.peakset Γ = compute_peakset ρ C := sorry
+  ∀ C, C.peakset Γ = compute_peakset ρ C := by
+  intro C
+  -- peakset Γ C = ⟨peaks Γ C, peaks_peaksOnly Γ C⟩
+  -- compute_peakset ρ C = ⟨compute_peaks ρ C, compute_peaks_is_peak ρ C⟩
+  -- By compute_peaks_correct: peaks Γ C = compute_peaks ρ C
+  simp only [CaptureSet.peakset, compute_peakset]
+  -- Two PeakSet values with equal cs fields are equal (proof irrelevance)
+  congr 1
+  exact compute_peaks_correct h C
 
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
