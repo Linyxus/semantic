@@ -367,11 +367,11 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     cs.WfInHeap m.heap ∧
     let R0 := expand_captures m.heap cs
     R0 ⊆ A ∧
-    (∀ (arg : Nat) (ps : PeakSet s) (m' : Memory),
+    (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
-        (env.extend_var arg ps)
+        (env.extend_var arg (compute_peakset env T1.captureSet))
         T2 (R0 ∪ (reachability_of_loc m'.heap arg)) m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
