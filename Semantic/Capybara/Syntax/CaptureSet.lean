@@ -232,4 +232,30 @@ structure PeakSet (s : Sig) where
   cs : CaptureSet s
   h : cs.PeaksOnly
 
+/-- PeaksOnly is preserved under renaming. -/
+theorem CaptureSet.PeaksOnly.rename {cs : CaptureSet s} (h : cs.PeaksOnly) (ρ : Rename s s') :
+    (cs.rename ρ).PeaksOnly := by
+  induction h with
+  | empty => exact PeaksOnly.empty
+  | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
+  | cvar => exact PeaksOnly.cvar
+
+/-- PeaksOnly is preserved under applyRO. -/
+theorem CaptureSet.PeaksOnly.applyRO {cs : CaptureSet s} (h : cs.PeaksOnly) :
+    cs.applyRO.PeaksOnly := by
+  induction h with
+  | empty => exact PeaksOnly.empty
+  | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
+  | cvar => exact PeaksOnly.cvar
+
+/-- PeaksOnly is preserved under applyMut. -/
+theorem CaptureSet.PeaksOnly.applyMut {cs : CaptureSet s} (h : cs.PeaksOnly) (m : Mutability) :
+    (cs.applyMut m).PeaksOnly := by
+  cases m with
+  | epsilon => exact h
+  | ro => exact h.applyRO
+
+def PeakSet.rename {s1 s2 : Sig} (ps : PeakSet s1) (ρ : Rename s1 s2) : PeakSet s2 :=
+  ⟨ps.cs.rename ρ, ps.h.rename ρ⟩
+
 end Capybara
