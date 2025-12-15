@@ -214,4 +214,18 @@ def CaptureSet.drop_here_tvar : CaptureSet (s,X) -> CaptureSet s
 | .var m (.bound (.there x)) => .var m (.bound x)
 | .cvar m (.there c) => .cvar m c
 
+/-- Whether a capture set contains only peaks (capture variables). -/
+inductive CaptureSet.PeaksOnly : CaptureSet s -> Prop where
+| empty :
+  ---------------------
+  PeaksOnly .empty
+| union {C1 C2 : CaptureSet s} :
+  PeaksOnly C1 ->
+  PeaksOnly C2 ->
+  ---------------------
+  PeaksOnly (C1.union C2)
+| cvar {m : Mutability} {c : BVar s .cvar} :
+  ---------------------
+  PeaksOnly (.cvar m c)
+
 end Capybara
