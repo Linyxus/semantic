@@ -432,8 +432,9 @@ instance instMutabilityHasDenotation :
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
-| .push Γ (.var T), .extend env (.var n _), m =>
+| .push Γ (.var T), .extend env (.var n ps), m =>
   ⟦T⟧_[env] m (.var (.free n)) ∧
+  ps = T.captureSet.peakset Γ ∧
   EnvTyping Γ env m
 | .push Γ (.tvar S), .extend env (.tvar denot), m =>
   denot.is_proper ∧
