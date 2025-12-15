@@ -169,16 +169,19 @@ def retype_shape_val_denot
         · exact hwf
         · constructor
           · exact hR0_sub
-          · intro arg ps2 H' hsub harg
+          · intro arg m' hsub harg
             cases T1
             case capt C S =>
+              -- Use computed peaksets: (Ty.capt C S).captureSet = C
+              let ps1 := compute_peakset env1 C
+              let ps2 := compute_peakset env2 (C.subst σ)
               have ih2 := retype_exi_exp_denot
-                (ρ.liftVar (x:=arg) (ps1:=⟨.empty,.empty⟩) (ps2:=ps2)) T2
-              have harg' := (ih1 H' (.var (.free arg))).mpr harg
-              specialize hd arg ⟨.empty,.empty⟩ H' hsub harg'
+                (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2
+              have harg' := (ih1 m' (.var (.free arg))).mpr harg
+              specialize hd arg m' hsub harg'
               -- The capability set uses expand_captures
               exact (ih2 (expand_captures s0.heap cs ∪
-                         (reachability_of_loc H'.heap arg)) H' _).mp hd
+                         (reachability_of_loc m'.heap arg)) m' _).mp hd
     · intro h
       obtain ⟨cs0, T0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, T0, t0
@@ -188,16 +191,19 @@ def retype_shape_val_denot
         · exact hwf
         · constructor
           · exact hR0_sub
-          · intro arg ps1 H' hsub harg
+          · intro arg m' hsub harg
             cases T1
             case capt C S =>
+              -- Use computed peaksets: (Ty.capt C S).captureSet = C
+              let ps1 := compute_peakset env1 C
+              let ps2 := compute_peakset env2 (C.subst σ)
               have ih2 := retype_exi_exp_denot
-                (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=⟨.empty,.empty⟩)) T2
-              have harg' := (ih1 H' (.var (.free arg))).mp harg
-              specialize hd arg ⟨.empty,.empty⟩ H' hsub harg'
+                (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2
+              have harg' := (ih1 m' (.var (.free arg))).mp harg
+              specialize hd arg m' hsub harg'
               -- The capability set uses expand_captures
               exact (ih2 (expand_captures s0.heap cs0 ∪
-                         (reachability_of_loc H'.heap arg)) H' _).mpr hd
+                         (reachability_of_loc m'.heap arg)) m' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := retype_shape_val_denot ρ T1
     intro A s0 e0

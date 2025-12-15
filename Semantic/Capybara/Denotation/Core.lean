@@ -1963,11 +1963,11 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
             have heq := expand_captures_monotonic hmem cs hwf_cs
             rw [heq]
             exact hR0_sub
-          · intro arg ps m' hs' harg
+          · intro arg m' hs' harg
             have hs0 := Memory.subsumes_trans hs' hmem
             -- Use convert with expand_captures monotonicity
             have heq' := expand_captures_monotonic hmem cs hwf_cs
-            convert hfun arg ps m' hs0 harg using 2
+            convert hfun arg m' hs0 harg using 2
   | poly T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
