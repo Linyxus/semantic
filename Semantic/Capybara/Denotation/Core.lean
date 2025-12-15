@@ -206,16 +206,16 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
   d2 m e := by
   apply himp e ht
 
-inductive TypeInfo : Kind -> Type where
-| var : Nat -> TypeInfo .var
-| tvar : PreDenot -> TypeInfo .tvar
-| cvar : CaptureSet {} -> TypeInfo .cvar
+inductive TypeInfo : Sig -> Kind -> Type where
+| var : Nat -> TypeInfo s .var
+| tvar : PreDenot -> TypeInfo s .tvar
+| cvar : CaptureSet {} -> TypeInfo s .cvar
 
 inductive TypeEnv : Sig -> Type where
 | empty : TypeEnv {}
 | extend :
   TypeEnv s ->
-  TypeInfo k ->
+  TypeInfo s k ->
   TypeEnv (s,,k)
 
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
@@ -270,9 +270,6 @@ def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
 
 def Mutability.denot : Mutability -> CapBoundDenot
 | m => fun _ => .top m
-
-def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
-  sorry
 
 inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
 | top :
