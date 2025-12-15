@@ -166,4 +166,51 @@ def CaptureSet.peaks : Ctx s -> CaptureSet s -> CaptureSet s
     (peaks Γ (.var m (.bound x))).rename Rename.succ
 termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 
+/-- PeaksOnly is preserved under renaming. -/
+theorem CaptureSet.PeaksOnly.rename {cs : CaptureSet s} (h : cs.PeaksOnly) (ρ : Rename s s') :
+    (cs.rename ρ).PeaksOnly := by
+  induction h with
+  | empty => exact PeaksOnly.empty
+  | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
+  | cvar => exact PeaksOnly.cvar
+
+/-- PeaksOnly is preserved under applyRO. -/
+theorem CaptureSet.PeaksOnly.applyRO {cs : CaptureSet s} (h : cs.PeaksOnly) :
+    cs.applyRO.PeaksOnly := by
+  induction h with
+  | empty => exact PeaksOnly.empty
+  | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
+  | cvar => exact PeaksOnly.cvar
+
+/-- PeaksOnly is preserved under applyMut. -/
+theorem CaptureSet.PeaksOnly.applyMut {cs : CaptureSet s} (h : cs.PeaksOnly) (m : Mutability) :
+    (cs.applyMut m).PeaksOnly := by
+  cases m with
+  | epsilon => exact h
+  | ro => exact h.applyRO
+
+/-- The peaks function always returns a PeaksOnly capture set. -/
+theorem CaptureSet.peaks_peaksOnly (Γ : Ctx s) (cs : CaptureSet s) :
+    (peaks Γ cs).PeaksOnly := by
+  match Γ, cs with
+  | _, .empty =>
+    simp only [peaks]
+    exact PeaksOnly.empty
+  | Γ, .union cs1 cs2 =>
+    simp only [peaks]
+    exact PeaksOnly.union (peaks_peaksOnly Γ cs1) (peaks_peaksOnly Γ cs2)
+  | _, .cvar m c =>
+    simp only [peaks]
+    exact PeaksOnly.cvar
+  | _, .var _ (.free _) =>
+    simp only [peaks]
+    exact PeaksOnly.empty
+  | .push Γ (.var (.capt C _)), .var m (.bound .here) =>
+    simp only [peaks]
+    exact (peaks_peaksOnly Γ C).rename Rename.succ |>.applyMut m
+  | .push Γ _, .var m (.bound (.there x)) =>
+    simp only [peaks]
+    exact (peaks_peaksOnly Γ (.var m (.bound x))).rename Rename.succ
+termination_by (sizeOf Γ, sizeOf cs)
+
 end Capybara
