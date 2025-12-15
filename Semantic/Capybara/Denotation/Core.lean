@@ -206,9 +206,13 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
   d2 m e := by
   apply himp e ht
 
+/-- Type information for each kind of variable bindings in type context. -/
 inductive TypeInfo : Sig -> Kind -> Type where
-| var : Nat -> TypeInfo s .var
+/-- Type information for a variable is a store location plus a peak set. -/
+| var : Nat -> PeakSet s -> TypeInfo s .var
+/-- Type information for a type variable is a pre-denotation. -/
 | tvar : PreDenot -> TypeInfo s .tvar
+/-- Type information for a capture variable is a ground capture set. -/
 | cvar : CaptureSet {} -> TypeInfo s .cvar
 
 inductive TypeEnv : Sig -> Type where
@@ -218,8 +222,8 @@ inductive TypeEnv : Sig -> Type where
   TypeInfo s k ->
   TypeEnv (s,,k)
 
-def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
-  Γ.extend (.var x)
+def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (ps : PeakSet s) : TypeEnv (s,x) :=
+  Γ.extend (.var x ps)
 
 def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : PreDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
@@ -229,9 +233,11 @@ def TypeEnv.extend_cvar
   TypeEnv (s,C) :=
   Γ.extend (.cvar ground)
 
-def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> Nat
-| .extend _ (.var n), .here => n
-| .extend Γ _, .there x => Γ.lookup_var x
+def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSet s)
+| .extend _ (.var n ps), .here => (n, ps.rename Rename.succ)
+| .extend Γ _, .there x =>
+  match Γ.lookup_var x with
+  | (n, ps) => (n, ps.rename Rename.succ)
 
 def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> PreDenot
 | .extend _ (.tvar T), .here => T
