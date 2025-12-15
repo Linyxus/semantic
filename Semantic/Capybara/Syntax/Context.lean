@@ -61,4 +61,16 @@ inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> Mutability -> Prop
   Ctx.LookupCVar Γ c m ->
   Ctx.LookupCVar (.push Γ b0) (.there c) m
 
+def Ctx.lookup_tvar : Ctx s -> BVar s .tvar -> Ty .shape s
+| .push _ (.tvar S), .here => S.rename Rename.succ
+| .push Γ _, .there x => (Γ.lookup_tvar x).rename Rename.succ
+
+def Ctx.lookup_var : Ctx s -> BVar s .var -> Ty .capt s
+| .push _ (.var T), .here => T.rename Rename.succ
+| .push Γ _, .there x => (Γ.lookup_var x).rename Rename.succ
+
+def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> Mutability
+| .push _ (.cvar m), .here => m
+| .push Γ _, .there c => Γ.lookup_cvar c
+
 end Capybara
