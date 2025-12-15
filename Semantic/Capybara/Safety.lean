@@ -56,7 +56,8 @@ def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
 | N+1 =>
   let env := (TypeEnv.platform_of N).extend_cvar (.var .epsilon (.free N))
-  env.extend_var N ⟨.empty, .empty⟩
+  -- Peak set for type (.capt (.cvar .epsilon .here) .cell) is (.cvar .epsilon .here)
+  env.extend_var N ⟨.cvar .epsilon .here, .cvar⟩
 
 /-- The platform heap is well-formed: it contains only mutable cells, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
@@ -172,20 +173,27 @@ theorem env_typing_of_platform {N : Nat} :
                 unfold Heap.platform_of
                 simp
                 apply CapabilitySet.covers.here Mutability.Le.refl
-    · -- Capture variable C with bound .unbound
+    · -- Second conjunct: ps = T.captureSet.peakset Γ ∧ EnvTyping ...
       constructor
-      · -- cs.WfInHeap
-        apply CaptureSet.WfInHeap.wf_var_free
-        show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
-        unfold Heap.platform_of
-        simp
-      · constructor
-        · -- cs.ground_denot bounded by Mutability.denot (.epsilon)
-          exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
-        · -- Recursive: platform N types in platform (N+1) memory
-          apply env_typing_platform_monotonic (N := N) (M := N + 1)
-          · omega
-          · exact ih
+      · -- Peak set equality: ps = T.captureSet.peakset Γ
+        -- ps = ⟨.cvar .epsilon .here, .cvar⟩
+        -- T.captureSet = .cvar .epsilon .here
+        -- peakset Γ (.cvar .epsilon .here) = ⟨.cvar .epsilon .here, .cvar⟩
+        simp only [Ty.captureSet, CaptureSet.peakset, CaptureSet.peaks]
+      · -- Capture variable C with bound .epsilon
+        constructor
+        · -- cs.WfInHeap
+          apply CaptureSet.WfInHeap.wf_var_free
+          show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
+          unfold Heap.platform_of
+          simp
+        · constructor
+          · -- cs.ground_denot bounded by Mutability.denot (.epsilon)
+            exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
+          · -- Recursive: platform N types in platform (N+1) memory
+            apply env_typing_platform_monotonic (N := N) (M := N + 1)
+            · omega
+            · exact ih
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
     under permission `P` iff for any possible reduction state starting from `e`
