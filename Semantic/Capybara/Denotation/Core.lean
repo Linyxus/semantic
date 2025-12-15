@@ -267,7 +267,29 @@ def compute_peaks (ρ : TypeEnv s) : CaptureSet s -> CaptureSet s
 | .var m (.bound x) => (ρ.lookup_var x).2.cs.applyMut m
 | .var _ (.free _) => .empty
 
-def compute_peakset (ρ : TypeEnv s) (cs : CaptureSet s) : PeakSet s := sorry
+theorem compute_peaks_is_peak (ρ : TypeEnv s) (cs : CaptureSet s)
+  : (compute_peaks ρ cs).PeaksOnly := by
+  induction cs with
+  | empty =>
+    simp [compute_peaks]
+    constructor
+  | union _ _ ih1 ih2 =>
+    simp [compute_peaks]
+    exact .union ih1 ih2
+  | cvar =>
+    simp [compute_peaks]
+    constructor
+  | var m x =>
+    cases x
+    case bound b =>
+      simp [compute_peaks]
+      exact (ρ.lookup_var b).2.h.applyMut m
+    case free f =>
+      simp [compute_peaks]
+      constructor
+
+def compute_peakset (ρ : TypeEnv s) (cs : CaptureSet s) : PeakSet s :=
+  ⟨compute_peaks ρ cs, compute_peaks_is_peak ρ cs⟩
 
 /-- Compute denotation for a ground capture set.
     Applies the mutability from each captured variable to the result. -/
