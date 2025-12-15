@@ -146,7 +146,7 @@ theorem env_typing_of_platform {N : Nat} :
           simp
         · constructor
           · -- Capture set after substitution is well-formed
-            simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
+            simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar]
             apply CaptureSet.WfInHeap.wf_var_free
             show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
             unfold Heap.platform_of
@@ -164,7 +164,7 @@ theorem env_typing_of_platform {N : Nat} :
                 simp
               · -- N is in the authority set from capture set denot
                 simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
-                  TypeEnv.lookup_cvar, TypeEnv.lookup,
+                  TypeEnv.lookup_cvar,
                   CaptureSet.ground_denot, reachability_of_loc,
                   Memory.platform_of]
                 unfold Heap.platform_of
@@ -228,7 +228,7 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
       -- where Sig.platform_of (N+1) = ((platform_of N),C),x
       -- With new BVar.level definition: .here.level = ((platform_of N),C).length = 2*N + 1
       unfold TypeEnv.platform_of TypeEnv.lookup_var TypeEnv.extend_var TypeEnv.extend_cvar
-      simp [TypeEnv.lookup, BVar.level, Sig.size]
+      simp [BVar.level, Sig.size]
       -- Goal: N = List.length (Sig.platform_of N,C) / 2
       -- (Sig.platform_of N,C).length = 1 + (Sig.platform_of N).length = 1 + 2*N = 2*N + 1
       unfold Sig.extend_cvar
@@ -240,12 +240,10 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
       cases x' with
       | there x'' =>
         -- x'' : BVar (Sig.platform_of N) .var (skipping over the C)
-        unfold TypeEnv.lookup_var TypeEnv.lookup TypeEnv.extend_var TypeEnv.extend_cvar
-        simp [TypeEnv.lookup]
+        simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_var]
         have h := ih (x := x'')
-        unfold TypeEnv.lookup_var at h
-        rw [h]
         simp only [BVar.level]
+        exact h
 
 /-- Lookup of capture variable in platform environment. -/
 theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
@@ -268,28 +266,23 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
       | here =>
         -- This is the most recent capture variable C_N
         -- c = .there .here, where .here refers to C in (platform N, C)
-        unfold TypeEnv.lookup_cvar TypeEnv.extend_var TypeEnv.extend_cvar
-        simp [TypeEnv.lookup]
-        -- After simp, goal is: .var (.free N) = .var (.free (BVar.here.there.level / 2))
+        simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
+        -- Goal: .var (.free N) = .var (.free (BVar.here.there.level / 2))
         -- .there preserves level, so .here.there.level = .here.level
         -- .here.level = length of (platform_of N) = 2*N
         simp only [BVar.level, Sig.size]
         -- Goal: N = List.length (Sig.platform_of N) / 2
         rw [Sig.platform_of_length]
         -- Goal: N = (2 * N) / 2
-        omega
+        simp
       | there c'' =>
         -- c'' : BVar (Sig.platform_of N) .cvar
         -- c = .there (.there c'')
         -- By definition of BVar.level, .there preserves level
         -- So c.level = c''.level
-        unfold TypeEnv.lookup_cvar TypeEnv.extend_var TypeEnv.extend_cvar
-        simp [TypeEnv.lookup]
-        -- Now the lookup simplifies to lookup in the base environment
+        simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
         have h := ih (c := c'')
-        unfold TypeEnv.lookup_cvar at h
-        -- The goal now mentions c''.there.there.level which equals c''.level
-        simp only [BVar.level] at h ⊢
+        simp only [BVar.level]
         exact h
 
 /-- For any bound term variable in a platform signature, its level divided by 2 is less than N. -/
