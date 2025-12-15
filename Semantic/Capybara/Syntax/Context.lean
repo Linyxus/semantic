@@ -73,4 +73,52 @@ def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> Mutability
 | .push _ (.cvar m), .here => m
 | .push Γ _, .there c => Γ.lookup_cvar c
 
+/-- The functional lookup satisfies the inductive predicate. -/
+theorem Ctx.lookup_tvar_spec (Γ : Ctx s) (x : BVar s .tvar) :
+    Ctx.LookupTVar Γ x (Γ.lookup_tvar x) := by
+  match Γ, x with
+  | .push _ (.tvar _), .here => exact LookupTVar.here
+  | .push Γ' _, .there x' =>
+    simp only [lookup_tvar]
+    exact LookupTVar.there (lookup_tvar_spec Γ' x')
+
+/-- If the inductive predicate holds, the type equals the functional lookup. -/
+theorem Ctx.LookupTVar.eq_lookup {Γ : Ctx s} {x : BVar s .tvar} {T : Ty .shape s}
+    (h : Ctx.LookupTVar Γ x T) : T = Γ.lookup_tvar x := by
+  induction h with
+  | here => rfl
+  | there _ ih => simp only [Ctx.lookup_tvar, ih]
+
+/-- The functional lookup satisfies the inductive predicate. -/
+theorem Ctx.lookup_var_spec (Γ : Ctx s) (x : BVar s .var) :
+    Ctx.LookupVar Γ x (Γ.lookup_var x) := by
+  match Γ, x with
+  | .push _ (.var _), .here => exact LookupVar.here
+  | .push Γ' _, .there x' =>
+    simp only [lookup_var]
+    exact LookupVar.there (lookup_var_spec Γ' x')
+
+/-- If the inductive predicate holds, the type equals the functional lookup. -/
+theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
+    (h : Ctx.LookupVar Γ x T) : T = Γ.lookup_var x := by
+  induction h with
+  | here => rfl
+  | there _ ih => simp only [Ctx.lookup_var, ih]
+
+/-- The functional lookup satisfies the inductive predicate. -/
+theorem Ctx.lookup_cvar_spec (Γ : Ctx s) (c : BVar s .cvar) :
+    Ctx.LookupCVar Γ c (Γ.lookup_cvar c) := by
+  match Γ, c with
+  | .push _ (.cvar _), .here => exact LookupCVar.here
+  | .push Γ' b, .there c' =>
+    simp only [lookup_cvar]
+    exact LookupCVar.there (b := b) (lookup_cvar_spec Γ' c')
+
+/-- If the inductive predicate holds, the mutability equals the functional lookup. -/
+theorem Ctx.LookupCVar.eq_lookup {Γ : Ctx s} {c : BVar s .cvar} {m : Mutability}
+    (h : Ctx.LookupCVar Γ c m) : m = Γ.lookup_cvar c := by
+  induction h with
+  | here => rfl
+  | there _ ih => simp only [Ctx.lookup_cvar, ih]
+
 end Capybara
