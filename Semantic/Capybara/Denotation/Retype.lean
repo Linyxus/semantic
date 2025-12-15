@@ -61,7 +61,6 @@ theorem Retype.liftVar
   cvar := fun
     | .there C => by
       simp only [TypeEnv.extend_var, Subst.lift, TypeEnv.lookup_cvar]
-      change env1.lookup_cvar C = _
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set (Rebind.weaken (ps:=ps2))
 
@@ -173,7 +172,8 @@ def retype_shape_val_denot
           · intro arg ps2 H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=⟨.empty,.empty⟩) (ps2:=ps2)) T2
+              have ih2 := retype_exi_exp_denot
+                (ρ.liftVar (x:=arg) (ps1:=⟨.empty,.empty⟩) (ps2:=ps2)) T2
               have harg' := (ih1 H' (.var (.free arg))).mpr harg
               specialize hd arg ⟨.empty,.empty⟩ H' hsub harg'
               -- The capability set uses expand_captures
@@ -191,7 +191,8 @@ def retype_shape_val_denot
           · intro arg ps1 H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=⟨.empty,.empty⟩)) T2
+              have ih2 := retype_exi_exp_denot
+                (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=⟨.empty,.empty⟩)) T2
               have harg' := (ih1 H' (.var (.free arg))).mp harg
               specialize hd arg ⟨.empty,.empty⟩ H' hsub harg'
               -- The capability set uses expand_captures

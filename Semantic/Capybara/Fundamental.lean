@@ -251,7 +251,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                 apply CapabilitySet.Subset.refl
               · -- Show the function property
                 intro arg ps H' hsubsume harg
-                rw [Exp.from_TypeEnv_weaken_open]
+                rw [Exp.from_TypeEnv_weaken_open (ps:=ps)]
                 -- Apply the hypothesis
                 have henv :
                   EnvTyping (Γ,x:T1) (env.extend_var arg ps) H' := by
@@ -264,7 +264,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                 have hcap_rename :
                   (Cf.rename Rename.succ).denot (env.extend_var arg ps)
                   = Cf.denot env := by
-                  have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=arg) (ps:=ps)) Cf
+                  have := rebind_captureset_denot
+                    (Rebind.weaken (env:=env) (x:=arg) (ps:=ps)) Cf
                   exact this.symm
                 -- Variable .here denotes to the reachability we stored
                 have hcap_var :
@@ -2617,7 +2618,8 @@ theorem sem_typ_unpack
         -- Use rebind to show double-renamed C equals original C
         have h1 := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=cs)) C
         have h2 := rebind_captureset_denot
-          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=⟨.empty,.empty⟩)) (C.rename Rename.succ)
+          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=⟨.empty,.empty⟩))
+          (C.rename Rename.succ)
         calc
           ((C.rename Rename.succ).rename Rename.succ).denot
             ((env.extend_cvar cs).extend_var fx ⟨.empty, .empty⟩) m1
@@ -2636,7 +2638,8 @@ theorem sem_typ_unpack
           ((U.rename Rename.succ).rename Rename.succ) := by
         have heqv1 := rebind_exi_val_denot (Rebind.cweaken (env:=env) (cs:=cs)) U
         have heqv2 := rebind_exi_val_denot
-          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=⟨.empty,.empty⟩)) (U.rename Rename.succ)
+          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=⟨.empty,.empty⟩))
+          (U.rename Rename.succ)
         intro m e
         rw [heqv1, heqv2]
 
