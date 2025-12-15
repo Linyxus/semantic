@@ -3,8 +3,14 @@ namespace Capybara
 
 structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Prop where
   var :
-    ∀ (x : BVar s1 k),
-      env1.lookup x = env2.lookup (f.var x)
+    ∀ (x : BVar s1 .var),
+      env1.lookup_var x = env2.lookup_var (f.var x)
+  tvar :
+    ∀ (x : BVar s1 .tvar),
+      env1.lookup_tvar x = env2.lookup_tvar (f.var x)
+  cvar :
+    ∀ (x : BVar s1 .cvar),
+      env1.lookup_cvar x = env2.lookup_cvar (f.var x)
 
 def Rebind.liftVar
   (ρ : Rebind env1 f env2) :
@@ -12,26 +18,50 @@ def Rebind.liftVar
   var := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup]
+      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_var]
       exact ρ.var y
+  tvar := fun
+    | .there y => by
+      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_tvar]
+      exact ρ.tvar y
+  cvar := fun
+    | .there y => by
+      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_cvar]
+      exact ρ.cvar y
 
 def Rebind.liftTVar
   (ρ : Rebind env1 f env2) :
   Rebind (env1.extend_tvar d) (f.lift) (env2.extend_tvar d) where
   var := fun
+    | .there y => by
+      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_var]
+      exact ρ.var y
+  tvar := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup]
-      exact ρ.var y
+      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_tvar]
+      exact ρ.tvar y
+  cvar := fun
+    | .there y => by
+      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_cvar]
+      exact ρ.cvar y
 
 def Rebind.liftCVar
   (ρ : Rebind env1 f env2) (cs : CaptureSet {}) :
   Rebind (env1.extend_cvar cs) (f.lift) (env2.extend_cvar cs) where
   var := fun
+    | .there y => by
+      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_var]
+      exact ρ.var y
+  tvar := fun
+    | .there y => by
+      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_tvar]
+      exact ρ.tvar y
+  cvar := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup]
-      exact ρ.var y
+      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_cvar]
+      exact ρ.cvar y
 
 theorem rebind_resolved_capture_set {C : CaptureSet s1}
   (ρ : Rebind env1 f env2) :
@@ -48,23 +78,13 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
       simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
     | bound x =>
       have h := ρ.var x
-      cases k : env1.lookup x with
-      | var n =>
-        rw [k] at h
-        simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
-              Subst.from_TypeEnv, TypeEnv.lookup_var, k]
-        rw [<-h]
+      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
+            Subst.from_TypeEnv]
+      rw [<-h]
   | cvar m x =>
-    have h := ρ.var x
-    cases k1 : env1.lookup x with
-    | cvar cs1 =>
-      rw [k1] at h
-      cases k2 : env2.lookup (f.var x) with
-      | cvar cs2 =>
-        rw [k2] at h
-        cases h
-        simp [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv,
-              TypeEnv.lookup_cvar, k1, k2]
+    have h := ρ.cvar x
+    simp [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv]
+    rw [<-h]
 
 /- Rebinding for CaptureSet.denot -/
 theorem rebind_captureset_denot
@@ -93,11 +113,8 @@ def rebind_shape_val_denot
     simp [Ty.shape_val_denot, Ty.rename]
   | .tvar X => by
     apply PreDenot.eq_to_equiv
-    have h := ρ.var X
-    cases k : env1.lookup X
-    case tvar d =>
-      simp [k] at h
-      simp [Ty.shape_val_denot, Ty.rename, TypeEnv.lookup_tvar, k, h]
+    have h := ρ.tvar X
+    simp [Ty.shape_val_denot, Ty.rename, h]
   | .unit => by
     apply PreDenot.eq_to_equiv
     funext A
@@ -327,14 +344,20 @@ end
 def Rebind.weaken {env : TypeEnv s} {x : Nat} :
   Rebind env Rename.succ (env.extend_var x) where
   var := fun _ => rfl
+  tvar := fun _ => rfl
+  cvar := fun _ => rfl
 
 def Rebind.tweaken {env : TypeEnv s} {d : PreDenot} :
   Rebind env Rename.succ (env.extend_tvar d) where
   var := fun _ => rfl
+  tvar := fun _ => rfl
+  cvar := fun _ => rfl
 
 def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} :
   Rebind env Rename.succ (env.extend_cvar cs) where
   var := fun _ => rfl
+  tvar := fun _ => rfl
+  cvar := fun _ => rfl
 
 lemma weaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
   Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_var x) (T.rename Rename.succ) := by

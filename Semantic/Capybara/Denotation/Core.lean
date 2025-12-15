@@ -229,21 +229,17 @@ def TypeEnv.extend_cvar
   TypeEnv (s,C) :=
   Γ.extend (.cvar ground)
 
-def TypeEnv.lookup : (Γ : TypeEnv s) -> (x : BVar s k) -> TypeInfo k
-| .extend _ info, .here => info
-| .extend Γ _,    .there x => Γ.lookup x
+def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> Nat
+| .extend _ (.var n), .here => n
+| .extend Γ _, .there x => Γ.lookup_var x
 
-def TypeEnv.lookup_var (Γ : TypeEnv s) (x : BVar s .var) : Nat :=
-  match Γ.lookup x with
-  | .var y => y
+def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> PreDenot
+| .extend _ (.tvar T), .here => T
+| .extend Γ _, .there x => Γ.lookup_tvar x
 
-def TypeEnv.lookup_tvar (Γ : TypeEnv s) (x : BVar s .tvar) : PreDenot :=
-  match Γ.lookup x with
-  | .tvar T => T
-
-def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} :=
-  match Γ.lookup x with
-  | .cvar cs => cs
+def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {}
+| .extend _ (.cvar cs), .here => cs
+| .extend Γ _, .there x => Γ.lookup_cvar x
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x)
@@ -462,7 +458,7 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
     cases C with
     | there C' =>
       simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openVar,
-        TypeEnv.extend_var, TypeEnv.lookup_cvar, TypeEnv.lookup]
+        TypeEnv.extend_var, TypeEnv.lookup_cvar]
       exact CaptureSet.weaken_openVar
 
 theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
@@ -488,7 +484,7 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : PreDenot} :
     cases C with
     | there C' =>
       simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openTVar,
-        TypeEnv.extend_tvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+        TypeEnv.extend_tvar, TypeEnv.lookup_cvar]
       exact CaptureSet.weaken_openTVar
 
 theorem Exp.from_TypeEnv_weaken_open_tvar
@@ -513,12 +509,11 @@ theorem Subst.from_TypeEnv_weaken_open_cvar
     cases C
     case here =>
       simp only [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
-        TypeEnv.extend_cvar, TypeEnv.lookup_cvar, CaptureSet.subst,
-        TypeEnv.lookup]
+        TypeEnv.extend_cvar, TypeEnv.lookup_cvar, CaptureSet.subst]
       rfl
     case there C' =>
       simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openCVar,
-        TypeEnv.extend_cvar, TypeEnv.lookup_cvar, TypeEnv.lookup]
+        TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
       exact CaptureSet.weaken_openCVar
 
 theorem Exp.from_TypeEnv_weaken_open_cvar
@@ -549,8 +544,8 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         -- Now show lift.lift.var (.there (.there v)) for from_TypeEnv evaluates correctly
         rw [Subst.lift_there_var_eq]
         rw [Subst.lift_there_var_eq]
-        simp [Subst.from_TypeEnv, Var.rename, TypeEnv.lookup_var]
-        simp [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup]
+        simp [Subst.from_TypeEnv, Var.rename]
+        simp [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_var]
   · -- tvar case
     intro X
     cases X
@@ -581,10 +576,10 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         rw [Subst.lift_there_cvar_eq]
         -- Generalize before simplifying
         simp only [Subst.from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar,
-          TypeEnv.lookup_cvar, TypeEnv.lookup]
+          TypeEnv.lookup_cvar]
         -- Now the goal has ρ.lookup_cvar c0 expanded to match expression
         -- Let's generalize this ground capture set
-        generalize (match ρ.lookup c0 with | TypeInfo.cvar cs => cs) = ground_cs
+        generalize ρ.lookup_cvar c0 = ground_cs
         -- Goal: double rename + subst on ground_cs equals ground_cs
         induction ground_cs with
         | empty => rfl  -- .empty.rename.rename.subst = .empty
@@ -645,10 +640,10 @@ theorem from_TypeEnv_wf_in_heap
               · intro x
                 cases x with
                 | here =>
-                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var]
                   exact hwf_var
                 | there x' =>
-                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var]
                   exact ih_wf.wf_var x'
               · intro X
                 cases X with
@@ -671,7 +666,7 @@ theorem from_TypeEnv_wf_in_heap
           · intro x
             cases x with
             | there x' =>
-              simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+              simp [Subst.from_TypeEnv, TypeEnv.lookup_var]
               exact ih_wf.wf_var x'
           · intro X
             cases X with
@@ -697,7 +692,7 @@ theorem from_TypeEnv_wf_in_heap
           · intro x
             cases x with
             | there x' =>
-              simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
+              simp [Subst.from_TypeEnv, TypeEnv.lookup_var]
               exact ih_wf.wf_var x'
           · intro X
             cases X with
@@ -707,7 +702,7 @@ theorem from_TypeEnv_wf_in_heap
           · intro C_var
             cases C_var with
             | here =>
-              simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
+              simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar]
               exact hwf
             | there C' =>
               simp [Subst.from_TypeEnv]
@@ -925,7 +920,7 @@ theorem typed_env_is_monotonic
           · intro x
             cases x with
             | there x =>
-              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              simp [TypeEnv.lookup_tvar]
               exact ih_result.tvar x
       | tvar S =>
         cases info with
@@ -937,13 +932,13 @@ theorem typed_env_is_monotonic
           · intro x
             cases x with
             | here =>
-              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              simp [TypeEnv.lookup_tvar]
               -- hproper says d.is_proper
               -- We need d.is_monotonic
               intro C
               exact (hproper.2.2.2.2 C).1
             | there x =>
-              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              simp [TypeEnv.lookup_tvar]
               exact ih_result.tvar x
       | cvar B =>
         cases info with
@@ -955,7 +950,7 @@ theorem typed_env_is_monotonic
           · intro x
             cases x with
             | there x =>
-              simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+              simp [TypeEnv.lookup_tvar]
               exact ih_result.tvar x
 
 theorem typed_env_is_transparent
@@ -982,7 +977,7 @@ theorem typed_env_is_transparent
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | tvar S =>
         cases info with
@@ -994,13 +989,13 @@ theorem typed_env_is_transparent
           intro x
           cases x with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             -- hproper says d.is_proper
             -- We need d.is_transparent
             intro C
             exact (hproper.2.2.2.2 C).2.1
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | cvar B =>
         cases info with
@@ -1012,7 +1007,7 @@ theorem typed_env_is_transparent
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
 
 theorem typed_env_is_bool_independent
@@ -1039,7 +1034,7 @@ theorem typed_env_is_bool_independent
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | tvar S =>
         cases info with
@@ -1051,13 +1046,13 @@ theorem typed_env_is_bool_independent
           intro x
           cases x with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             -- hproper says d.is_proper
             -- We need d.is_bool_independent
             intro C
             exact (hproper.2.2.2.2 C).2.2
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | cvar B =>
         cases info with
@@ -1069,7 +1064,7 @@ theorem typed_env_is_bool_independent
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
 
 theorem typed_env_is_reachability_safe
@@ -1096,7 +1091,7 @@ theorem typed_env_is_reachability_safe
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | tvar S =>
         cases info with
@@ -1108,12 +1103,12 @@ theorem typed_env_is_reachability_safe
           intro x
           cases x with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             -- hproper says d.is_proper, which is d.is_reachability_safe ∧ ∀ C, (d C).is_proper
             -- We need d.is_reachability_safe
             exact hproper.1
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | cvar B =>
         cases info with
@@ -1125,7 +1120,7 @@ theorem typed_env_is_reachability_safe
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
 
 theorem typed_env_is_reachability_monotonic
@@ -1152,7 +1147,7 @@ theorem typed_env_is_reachability_monotonic
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | tvar S =>
         cases info with
@@ -1164,12 +1159,12 @@ theorem typed_env_is_reachability_monotonic
           intro x
           cases x with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             -- hproper says d.is_proper
             -- We need d.is_reachability_monotonic, which is hproper.2.1
             exact hproper.2.1
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | cvar B =>
         cases info with
@@ -1181,7 +1176,7 @@ theorem typed_env_is_reachability_monotonic
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
 
 theorem typed_env_is_implying_wf
@@ -1208,7 +1203,7 @@ theorem typed_env_is_implying_wf
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | tvar S =>
         cases info with
@@ -1220,12 +1215,12 @@ theorem typed_env_is_implying_wf
           intro x
           cases x with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             -- hproper says d.is_proper
             -- We need d.implies_wf
             exact hproper.2.2.1
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
       | cvar B =>
         cases info with
@@ -1237,7 +1232,7 @@ theorem typed_env_is_implying_wf
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result x
 
 theorem typed_env_is_tight
@@ -1262,7 +1257,7 @@ theorem typed_env_is_tight
           intro X
           cases X with
           | there X' =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result X'
       | tvar S =>
         cases info with
@@ -1273,12 +1268,12 @@ theorem typed_env_is_tight
           intro X
           cases X with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             -- hproper says d.is_proper
             -- We need d.is_tight
             exact hproper.2.2.2.1
           | there X' =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result X'
       | cvar B =>
         cases info with
@@ -1289,7 +1284,7 @@ theorem typed_env_is_tight
           intro X
           cases X with
           | there X' =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp [TypeEnv.lookup_tvar]
             exact ih_result X'
 
 theorem shape_val_denot_is_transparent {env : TypeEnv s}
@@ -1917,11 +1912,11 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
               · intro X
                 cases X with
                 | here =>
-                  simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                  simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar]
                   intro C
                   exact (hdenot_proper.2.2.2.2 C).1
                 | there X' =>
-                  simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                  simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar]
                   exact henv.tvar X'
             -- Use convert with expand_captures monotonicity
             have heq' := expand_captures_monotonic hmem cs hwf_cs
@@ -2038,7 +2033,7 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
             · intro X
               cases X with
               | there X' =>
-                simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+                simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar]
                 exact henv.tvar X'
           exact capt_val_denot_is_monotonic henv' T hmem ht_body
       all_goals {
