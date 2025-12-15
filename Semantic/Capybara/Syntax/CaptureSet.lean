@@ -228,4 +228,8 @@ inductive CaptureSet.PeaksOnly : CaptureSet s -> Prop where
   ---------------------
   PeaksOnly (.cvar m c)
 
+structure PeakSet (s : Sig) where
+  cs : CaptureSet s
+  h : cs.PeaksOnly
+
 end Capybara

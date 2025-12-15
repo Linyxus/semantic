@@ -213,4 +213,7 @@ theorem CaptureSet.peaks_peaksOnly (Γ : Ctx s) (cs : CaptureSet s) :
     exact (peaks_peaksOnly Γ (.var m (.bound x))).rename Rename.succ
 termination_by (sizeOf Γ, sizeOf cs)
 
+def CaptureSet.peakset (Γ : Ctx s) (cs : CaptureSet s) : PeakSet s :=
+  ⟨peaks Γ cs, CaptureSet.peaks_peaksOnly Γ cs⟩
+
 end Capybara
