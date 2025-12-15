@@ -159,7 +159,7 @@ def CaptureSet.peaks : Ctx s -> CaptureSet s -> CaptureSet s
 | _, .empty => .empty
 | Γ, .union cs1 cs2 => (peaks Γ cs1) ∪ (peaks Γ cs2)
 | _, .cvar m c => .cvar m c
-| _, .var m (.free x) => .var m (.free x)
+| _, .var _ (.free x) => {}   -- This is ill-formed, but we just return empty
 | .push Γ (.var (.capt C _)), .var m (.bound .here) =>
     (peaks Γ C).rename Rename.succ |> .applyMut m
 | .push Γ _, .var m (.bound (.there x)) =>
