@@ -288,6 +288,7 @@ theorem compute_peaks_is_peak (ρ : TypeEnv s) (cs : CaptureSet s)
       simp [compute_peaks]
       constructor
 
+
 def compute_peakset (ρ : TypeEnv s) (cs : CaptureSet s) : PeakSet s :=
   ⟨compute_peaks ρ cs, compute_peaks_is_peak ρ cs⟩
 
@@ -316,7 +317,6 @@ inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop 
 | top_top :
   m1 ≤ m2 ->
   CapabilityBound.SubsetEq (.top m1) (.top m2)
-
 
 instance : HasSubset CapabilityBound where
   Subset := CapabilityBound.SubsetEq
@@ -478,6 +478,18 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   (cs.WfInHeap m.heap) ∧
   ((cs.ground_denot m).BoundedBy (B.denot m)) ∧
   EnvTyping Γ env m
+
+theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
+  ∀ C, CaptureSet.peaks Γ C = compute_peaks ρ C := by
+  intro C
+  induction C
+  case empty => simp [CaptureSet.peaks, compute_peaks]
+  case union ih1 ih2 => sorry
+  case cvar m c => simp [CaptureSet.peaks, compute_peaks]
+  case var m c => sorry
+
+theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
+  ∀ C, C.peakset Γ = compute_peakset ρ C := sorry
 
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
