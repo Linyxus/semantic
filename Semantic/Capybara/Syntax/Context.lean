@@ -147,11 +147,23 @@ theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
   | .push _ (.var _), .here => rfl
   | .push _ _, .there _ => simp only [lookup_var, lookup_var']
 
-/-- The lookup equals the primed lookup (no renaming needed for Mutability). -/
+/-- The lookup equals the primed lookup. -/
 theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
     Γ.lookup_cvar c = Γ.lookup_cvar' c := by
   match Γ, c with
   | .push _ (.cvar _), .here => rfl
   | .push _ _, .there _ => simp only [lookup_cvar, lookup_cvar']
+
+/-- Recursively expand variable references until reaching capture variables (peaks). -/
+def CaptureSet.peaks : Ctx s -> CaptureSet s -> CaptureSet s
+| _, .empty => .empty
+| Γ, .union cs1 cs2 => (peaks Γ cs1) ∪ (peaks Γ cs2)
+| _, .cvar m c => .cvar m c
+| _, .var m (.free x) => .var m (.free x)
+| .push Γ (.var (.capt C _)), .var m (.bound .here) =>
+    (peaks Γ C).rename Rename.succ |> .applyMut m
+| .push Γ _, .var m (.bound (.there x)) =>
+    (peaks Γ (.var m (.bound x))).rename Rename.succ
+termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 
 end Capybara
