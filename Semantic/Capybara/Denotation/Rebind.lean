@@ -4,7 +4,7 @@ namespace Capybara
 structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Prop where
   var :
     ∀ (x : BVar s1 .var),
-      env1.lookup_var x = env2.lookup_var (f.var x)
+      (env1.lookup_var x).1 = (env2.lookup_var (f.var x)).1
   tvar :
     ∀ (x : BVar s1 .tvar),
       env1.lookup_tvar x = env2.lookup_tvar (f.var x)
@@ -13,20 +13,21 @@ structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Pr
       env1.lookup_cvar x = env2.lookup_cvar (f.var x)
 
 def Rebind.liftVar
-  (ρ : Rebind env1 f env2) :
-  Rebind (env1.extend_var x) (f.lift) (env2.extend_var x) where
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {env2 : TypeEnv s2} {f : Rename s1 s2}
+  (ρ : Rebind env1 f env2) {x : Nat} (ps1 : PeakSet s1) (ps2 : PeakSet s2) :
+  Rebind (env1.extend_var x ps1) (f.lift) (env2.extend_var x ps2) where
   var := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_var]
+      simp only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_var]
       exact ρ.var y
   tvar := fun
     | .there y => by
-      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_tvar]
+      simp only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_tvar]
       exact ρ.tvar y
   cvar := fun
     | .there y => by
-      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_cvar]
+      simp only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
 
 def Rebind.liftTVar
@@ -34,16 +35,16 @@ def Rebind.liftTVar
   Rebind (env1.extend_tvar d) (f.lift) (env2.extend_tvar d) where
   var := fun
     | .there y => by
-      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_var]
+      simp only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_var]
       exact ρ.var y
   tvar := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_tvar]
+      simp only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_tvar]
       exact ρ.tvar y
   cvar := fun
     | .there y => by
-      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_cvar]
+      simp only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
 
 def Rebind.liftCVar
@@ -51,16 +52,16 @@ def Rebind.liftCVar
   Rebind (env1.extend_cvar cs) (f.lift) (env2.extend_cvar cs) where
   var := fun
     | .there y => by
-      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_var]
+      simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_var]
       exact ρ.var y
   tvar := fun
     | .there y => by
-      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_tvar]
+      simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_tvar]
       exact ρ.tvar y
   cvar := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_cvar]
+      simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
 
 theorem rebind_resolved_capture_set {C : CaptureSet s1}
@@ -147,12 +148,13 @@ def rebind_shape_val_denot
         · exact hwf
         · constructor
           · exact hR0_sub
-          · intro arg H' hsub harg
+          · intro arg ps2 H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              -- Use any ps1 for the source environment since rebind only cares about .1
+              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ⟨.empty, .empty⟩ ps2) T2
               have harg' := (ih1 _ _).mpr harg
-              specialize hd arg H' hsub harg'
+              specialize hd arg ⟨.empty, .empty⟩ H' hsub harg'
               -- The capability set uses expand_captures
               exact (ih2 (expand_captures s0.heap cs ∪
                          (reachability_of_loc H'.heap arg)) H' _).mp hd
@@ -165,12 +167,13 @@ def rebind_shape_val_denot
         · exact hwf
         · constructor
           · exact hR0_sub
-          · intro arg H' hsub harg
+          · intro arg ps1 H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              -- Use any ps2 for the target environment since rebind only cares about .1
+              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ⟨.empty, .empty⟩) T2
               have harg' := (ih1 _ _).mp harg
-              specialize hd arg H' hsub harg'
+              specialize hd arg ⟨.empty, .empty⟩ H' hsub harg'
               -- The capability set uses expand_captures
               exact (ih2 (expand_captures s0.heap cs0 ∪
                          (reachability_of_loc H'.heap arg)) H' _).mpr hd
@@ -341,8 +344,8 @@ def rebind_exi_exp_denot
 
 end
 
-def Rebind.weaken {env : TypeEnv s} {x : Nat} :
-  Rebind env Rename.succ (env.extend_var x) where
+def Rebind.weaken {env : TypeEnv s} {x : Nat} {ps : PeakSet s} :
+  Rebind env Rename.succ (env.extend_var x ps) where
   var := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
@@ -359,16 +362,16 @@ def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} :
   tvar := fun _ => rfl
   cvar := fun _ => rfl
 
-lemma weaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :
-  Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_var x) (T.rename Rename.succ) := by
+lemma weaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} {x : Nat} {ps : PeakSet s} :
+  Ty.shape_val_denot env T ≈ Ty.shape_val_denot (env.extend_var x ps) (T.rename Rename.succ) := by
   apply rebind_shape_val_denot (ρ:=Rebind.weaken) (T:=T)
 
-lemma weaken_capt_val_denot {env : TypeEnv s} {T : Ty .capt s} :
-  Ty.capt_val_denot env T ≈ Ty.capt_val_denot (env.extend_var x) (T.rename Rename.succ) := by
+lemma weaken_capt_val_denot {env : TypeEnv s} {T : Ty .capt s} {x : Nat} {ps : PeakSet s} :
+  Ty.capt_val_denot env T ≈ Ty.capt_val_denot (env.extend_var x ps) (T.rename Rename.succ) := by
   apply rebind_capt_val_denot (ρ:=Rebind.weaken) (T:=T)
 
-lemma weaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
-  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_var x) (T.rename Rename.succ) := by
+lemma weaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} {x : Nat} {ps : PeakSet s} :
+  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_var x ps) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.weaken) (T:=T)
 
 lemma tweaken_shape_val_denot {env : TypeEnv s} {T : Ty .shape s} :

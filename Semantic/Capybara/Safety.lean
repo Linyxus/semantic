@@ -54,7 +54,9 @@ def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> Ca
   term variable `x` maps to heap location `i`. -/
 def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
-| N+1 => ((TypeEnv.platform_of N).extend_cvar (.var .epsilon (.free N))).extend_var N
+| N+1 =>
+  let env := (TypeEnv.platform_of N).extend_cvar (.var .epsilon (.free N))
+  env.extend_var N ⟨.empty, .empty⟩
 
 /-- The platform heap is well-formed: it contains only mutable cells, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
@@ -212,7 +214,7 @@ theorem Sig.platform_of_length : (Sig.platform_of N).length = 2 * N := by
 
 /-- Lookup of term variable in platform environment. -/
 theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
-  (TypeEnv.platform_of N).lookup_var x = x.level / 2 := by
+  ((TypeEnv.platform_of N).lookup_var x).1 = x.level / 2 := by
   induction N with
   | zero =>
     -- No variables in empty signature

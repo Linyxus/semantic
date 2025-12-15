@@ -6,12 +6,12 @@ namespace Capybara
 def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
   match x with
   | .free n => n
-  | .bound x => env.lookup_var x
+  | .bound x => (env.lookup_var x).1
 
 structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
   var :
     ∀ (x : BVar s1 .var),
-      env1.lookup_var x = interp_var env2 (σ.var x)
+      (env1.lookup_var x).1 = interp_var env2 (σ.var x)
 
   tvar :
     ∀ (X : BVar s1 .tvar),
@@ -21,8 +21,8 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
     ∀ (C : BVar s1 .cvar),
       env1.lookup_cvar C = (σ.cvar C).subst (Subst.from_TypeEnv env2)
 
-lemma weaken_interp_var {x : Var .var s} :
-  interp_var env x = interp_var (env.extend_var n) (x.rename Rename.succ) := by
+lemma weaken_interp_var {x : Var .var s} {ps : PeakSet s} :
+  interp_var env x = interp_var (env.extend_var n ps) (x.rename Rename.succ) := by
   cases x <;> rfl
 
 lemma tweaken_interp_var {x : Var .var s} :
@@ -34,36 +34,36 @@ lemma cweaken_interp_var {cs : CaptureSet {}} {x : Var .var s} :
   cases x <;> rfl
 
 theorem Retype.liftVar
-  {x : Nat}
+  {x : Nat} {ps1 : PeakSet s1} {ps2 : PeakSet s2}
   (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_var x) (σ.lift) (env2.extend_var x) where
+  Retype (env1.extend_var x ps1) (σ.lift) (env2.extend_var x ps2) where
   var := fun
     | .here => rfl
     | .there y => by
       conv =>
         lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_var]
+        simp only [TypeEnv.extend_var, TypeEnv.lookup_var]
       conv =>
         rhs
-        simp [Subst.lift]
-        simp [<-weaken_interp_var]
+        simp only [Subst.lift]
+        simp only [<-weaken_interp_var (ps:=ps2)]
       exact ρ.var y
   tvar := fun
     | .there X => by
       conv =>
         lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_tvar]
+        simp only [TypeEnv.extend_var, TypeEnv.lookup_tvar]
       conv =>
         rhs
-        simp [Subst.lift]
+        simp only [Subst.lift]
       apply PreDenot.equiv_trans _ _ _ (ρ.tvar X)
-      apply weaken_shape_val_denot
+      apply weaken_shape_val_denot (ps:=ps2)
   cvar := fun
     | .there C => by
-      simp [TypeEnv.extend_var, Subst.lift]
+      simp only [TypeEnv.extend_var, Subst.lift, TypeEnv.lookup_cvar]
       change env1.lookup_cvar C = _
       rw [ρ.cvar C]
-      apply rebind_resolved_capture_set Rebind.weaken
+      apply rebind_resolved_capture_set (Rebind.weaken (ps:=ps2))
 
 theorem Retype.liftTVar
   {d : PreDenot}
@@ -170,12 +170,12 @@ def retype_shape_val_denot
         · exact hwf
         · constructor
           · exact hR0_sub
-          · intro arg H' hsub harg
+          · intro arg ps2 H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=⟨.empty,.empty⟩) (ps2:=ps2)) T2
               have harg' := (ih1 H' (.var (.free arg))).mpr harg
-              specialize hd arg H' hsub harg'
+              specialize hd arg ⟨.empty,.empty⟩ H' hsub harg'
               -- The capability set uses expand_captures
               exact (ih2 (expand_captures s0.heap cs ∪
                          (reachability_of_loc H'.heap arg)) H' _).mp hd
@@ -188,12 +188,12 @@ def retype_shape_val_denot
         · exact hwf
         · constructor
           · exact hR0_sub
-          · intro arg H' hsub harg
+          · intro arg ps1 H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=⟨.empty,.empty⟩)) T2
               have harg' := (ih1 H' (.var (.free arg))).mp harg
-              specialize hd arg H' hsub harg'
+              specialize hd arg ⟨.empty,.empty⟩ H' hsub harg'
               -- The capability set uses expand_captures
               exact (ih2 (expand_captures s0.heap cs0 ∪
                          (reachability_of_loc H'.heap arg)) H' _).mpr hd
@@ -409,9 +409,9 @@ def retype_exi_exp_denot
 
 end
 
-def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
+def Retype.open_arg {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} :
   Retype
-    (env.extend_var (interp_var env y))
+    (env.extend_var (interp_var env y) ps)
     (Subst.openVar y)
     env where
   var := fun x => by cases x <;> rfl
@@ -430,23 +430,27 @@ def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
       simp [TypeEnv.extend_var, Subst.openVar, TypeEnv.lookup_cvar,
         CaptureSet.subst, Subst.from_TypeEnv]
 
-theorem open_arg_shape_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .shape (s,x)} :
-  Ty.shape_val_denot (env.extend_var (interp_var env y)) T ≈
+theorem open_arg_shape_val_denot
+    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .shape (s,x)} :
+  Ty.shape_val_denot (env.extend_var (interp_var env y) ps) T ≈
     Ty.shape_val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_shape_val_denot Retype.open_arg
 
-theorem open_arg_capt_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .capt (s,x)} :
-  Ty.capt_val_denot (env.extend_var (interp_var env y)) T ≈
+theorem open_arg_capt_val_denot
+    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .capt (s,x)} :
+  Ty.capt_val_denot (env.extend_var (interp_var env y) ps) T ≈
     Ty.capt_val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_capt_val_denot Retype.open_arg
 
-theorem open_arg_exi_val_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .exi (s,x)} :
-  Ty.exi_val_denot (env.extend_var (interp_var env y)) T ≈
+theorem open_arg_exi_val_denot
+    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .exi (s,x)} :
+  Ty.exi_val_denot (env.extend_var (interp_var env y) ps) T ≈
     Ty.exi_val_denot env (T.subst (Subst.openVar y)) := by
   apply retype_exi_val_denot Retype.open_arg
 
-theorem open_arg_exi_exp_denot {env : TypeEnv s} {y : Var .var s} {T : Ty .exi (s,x)} :
-  Ty.exi_exp_denot (env.extend_var (interp_var env y)) T ≈
+theorem open_arg_exi_exp_denot
+    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .exi (s,x)} :
+  Ty.exi_exp_denot (env.extend_var (interp_var env y) ps) T ≈
     Ty.exi_exp_denot env (T.subst (Subst.openVar y)) := by
   apply retype_exi_exp_denot Retype.open_arg
 

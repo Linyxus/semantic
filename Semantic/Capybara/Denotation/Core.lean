@@ -248,7 +248,7 @@ def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {
 | .extend Γ _, .there x => Γ.lookup_cvar x
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
-  var := fun x => .free (env.lookup_var x)
+  var := fun x => .free (env.lookup_var x).1
   tvar := fun _ => .top
   cvar := fun c => env.lookup_cvar c
 
@@ -333,11 +333,11 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     cs.WfInHeap m.heap ∧
     let R0 := expand_captures m.heap cs
     R0 ⊆ A ∧
-    (∀ (arg : Nat) (m' : Memory),
+    (∀ (arg : Nat) (ps : PeakSet s) (m' : Memory),
       m'.subsumes m ->
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
-        (env.extend_var arg)
+        (env.extend_var arg ps)
         T2 (R0 ∪ (reachability_of_loc m'.heap arg)) m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
@@ -432,7 +432,7 @@ instance instMutabilityHasDenotation :
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
-| .push Γ (.var T), .extend env (.var n), m =>
+| .push Γ (.var T), .extend env (.var n ps), m =>
   ⟦T⟧_[env] m (.var (.free n)) ∧
   EnvTyping Γ env m
 | .push Γ (.tvar S), .extend env (.tvar denot), m =>
@@ -451,12 +451,16 @@ def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) :
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
-theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
+theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} {ps : PeakSet s} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
-    Subst.from_TypeEnv (env.extend_var x) := by
+    Subst.from_TypeEnv (env.extend_var x ps) := by
   apply Subst.funext
   · intro y
-    cases y <;> rfl
+    cases y with
+    | here => rfl
+    | there y' =>
+      simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openVar,
+        TypeEnv.extend_var, TypeEnv.lookup_var, Var.rename, Var.subst]
   · intro X
     cases X
     rfl
@@ -467,9 +471,9 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
         TypeEnv.extend_var, TypeEnv.lookup_cvar]
       exact CaptureSet.weaken_openVar
 
-theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
+theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} {ps : PeakSet s} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
-    e.subst (Subst.from_TypeEnv (env.extend_var x)) := by
+    e.subst (Subst.from_TypeEnv (env.extend_var x ps)) := by
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open]
 
@@ -529,9 +533,9 @@ theorem Exp.from_TypeEnv_weaken_open_cvar
   rw [Exp.subst_comp]
   rw [Subst.from_TypeEnv_weaken_open_cvar]
 
-theorem Subst.from_TypeEnv_weaken_unpack :
+theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
   (Subst.from_TypeEnv ρ).lift.lift.comp (Subst.unpack cs (.free x)) =
-    Subst.from_TypeEnv ((ρ.extend_cvar cs).extend_var x) := by
+    Subst.from_TypeEnv ((ρ.extend_cvar cs).extend_var x ps) := by
   apply Subst.funext
   · -- var case
     intro y
@@ -550,8 +554,8 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         -- Now show lift.lift.var (.there (.there v)) for from_TypeEnv evaluates correctly
         rw [Subst.lift_there_var_eq]
         rw [Subst.lift_there_var_eq]
-        simp [Subst.from_TypeEnv, Var.rename]
-        simp [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_var]
+        simp [Subst.from_TypeEnv, Var.rename, TypeEnv.extend_var, TypeEnv.extend_cvar,
+          TypeEnv.lookup_var]
   · -- tvar case
     intro X
     cases X
@@ -1606,9 +1610,9 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
       unfold CaptureSet.ground_denot
       cases hwf with
       | wf_var_free hex =>
-        -- hex : m1.heap (ρ.lookup_var x) = some _
+        -- hex : m1.heap (ρ.lookup_var x).1 = some _
         -- Memory.lookup is definitionally equal to heap access
-        have h := reachability_of_loc_monotonic hsub (ρ.lookup_var x) hex
+        have h := reachability_of_loc_monotonic hsub (ρ.lookup_var x).1 hex
         exact congrArg (CapabilitySet.applyMut m) h.symm
     | free x =>
       -- Free variable: stays as free variable
@@ -1860,11 +1864,11 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
             have heq := expand_captures_monotonic hmem cs hwf_cs
             rw [heq]
             exact hR0_sub
-          · intro arg m' hs' harg
+          · intro arg ps m' hs' harg
             have hs0 := Memory.subsumes_trans hs' hmem
             -- Use convert with expand_captures monotonicity
             have heq' := expand_captures_monotonic hmem cs hwf_cs
-            convert hfun arg m' hs0 harg using 2
+            convert hfun arg ps m' hs0 harg using 2
   | poly T1 T2 =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
