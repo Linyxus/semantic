@@ -233,6 +233,7 @@ def TypeEnv.extend_cvar
   TypeEnv (s,C) :=
   Γ.extend (.cvar ground)
 
+
 def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSet s)
 | .extend _ (.var n ps), .here => (n, ps.rename Rename.succ)
 | .extend Γ _, .there x =>
@@ -258,6 +259,15 @@ theorem Subst.from_TypeEnv_empty :
   · intro x; cases x
   · intro X; cases X
   · intro C; cases C
+
+def compute_peaks (ρ : TypeEnv s) : CaptureSet s -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => (compute_peaks ρ cs1).union (compute_peaks ρ cs2)
+| .cvar m c => .cvar m c
+| .var m (.bound x) => (ρ.lookup_var x).2.cs.applyMut m
+| .var _ (.free _) => .empty
+
+def compute_peakset (ρ : TypeEnv s) (cs : CaptureSet s) : PeakSet s := sorry
 
 /-- Compute denotation for a ground capture set.
     Applies the mutability from each captured variable to the result. -/
@@ -285,6 +295,7 @@ inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop 
   m1 ≤ m2 ->
   CapabilityBound.SubsetEq (.top m1) (.top m2)
 
+
 instance : HasSubset CapabilityBound where
   Subset := CapabilityBound.SubsetEq
 
@@ -299,6 +310,7 @@ theorem CapabilitySet.BoundedBy.trans
     cases hbound with
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
+
 
 mutual
 
