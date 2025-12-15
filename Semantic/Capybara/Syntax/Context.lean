@@ -73,6 +73,18 @@ def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> Mutability
 | .push _ (.cvar m), .here => m
 | .push Γ _, .there c => Γ.lookup_cvar c
 
+def Ctx.lookup_tvar' : Ctx (s,,k) -> BVar (s,,k) .tvar -> Ty .shape s
+| .push _ (.tvar S), .here => S
+| .push Γ _, .there x => Γ.lookup_tvar x
+
+def Ctx.lookup_var' : Ctx (s,,k) -> BVar (s,,k) .var -> Ty .capt s
+| .push _ (.var T), .here => T
+| .push Γ _, .there x => Γ.lookup_var x
+
+def Ctx.lookup_cvar' : Ctx (s,,k) -> BVar (s,,k) .cvar -> Mutability
+| .push _ (.cvar m), .here => m
+| .push Γ _, .there c => Γ.lookup_cvar c
+
 /-- The functional lookup satisfies the inductive predicate. -/
 theorem Ctx.lookup_tvar_spec (Γ : Ctx s) (x : BVar s .tvar) :
     Ctx.LookupTVar Γ x (Γ.lookup_tvar x) := by
@@ -120,5 +132,26 @@ theorem Ctx.LookupCVar.eq_lookup {Γ : Ctx s} {c : BVar s .cvar} {m : Mutability
   induction h with
   | here => rfl
   | there _ ih => simp only [Ctx.lookup_cvar, ih]
+
+/-- The lookup equals the primed lookup renamed by succ. -/
+theorem Ctx.lookup_tvar_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) :
+    Γ.lookup_tvar x = (Γ.lookup_tvar' x).rename Rename.succ := by
+  match Γ, x with
+  | .push _ (.tvar _), .here => rfl
+  | .push _ _, .there _ => simp only [lookup_tvar, lookup_tvar']
+
+/-- The lookup equals the primed lookup renamed by succ. -/
+theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
+    Γ.lookup_var x = (Γ.lookup_var' x).rename Rename.succ := by
+  match Γ, x with
+  | .push _ (.var _), .here => rfl
+  | .push _ _, .there _ => simp only [lookup_var, lookup_var']
+
+/-- The lookup equals the primed lookup (no renaming needed for Mutability). -/
+theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
+    Γ.lookup_cvar c = Γ.lookup_cvar' c := by
+  match Γ, c with
+  | .push _ (.cvar _), .here => rfl
+  | .push _ _, .there _ => simp only [lookup_cvar, lookup_cvar']
 
 end Capybara
