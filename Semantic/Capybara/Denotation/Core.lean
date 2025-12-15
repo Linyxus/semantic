@@ -634,9 +634,9 @@ theorem from_TypeEnv_wf_in_heap
       | var T =>
         -- Variable binding: extract well-formedness from typing
         cases info with
-        | var n =>
+        | var n ps =>
           unfold EnvTyping at htyping
-          have ⟨htype, htyping'⟩ := htyping
+          obtain ⟨htype, _, htyping'⟩ := htyping
           -- htype : ⟦T⟧_[ρ'] m (.var (.free n))
           cases T with
           | capt C S =>
@@ -923,9 +923,9 @@ theorem typed_env_is_monotonic
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          obtain ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -980,9 +980,9 @@ theorem typed_env_is_transparent
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          obtain ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1037,9 +1037,9 @@ theorem typed_env_is_bool_independent
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          obtain ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
@@ -1094,9 +1094,9 @@ theorem typed_env_is_reachability_safe
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          obtain ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_reachability_safe] at ih_result ⊢
           intro x
@@ -1150,9 +1150,9 @@ theorem typed_env_is_reachability_monotonic
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          obtain ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
           intro x
@@ -1206,9 +1206,9 @@ theorem typed_env_is_implying_wf
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          obtain ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
@@ -1261,9 +1261,9 @@ theorem typed_env_is_tight
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           simp [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
+          obtain ⟨_, _, ht'⟩ := ht
           have ih_result := ih ht'
           intro X
           cases X with
@@ -2151,16 +2151,18 @@ theorem env_typing_monotonic
       cases k with
       | var T =>
         cases info with
-        | var n =>
+        | var n ps =>
           -- Unfold EnvTyping to get the conjunction
           unfold EnvTyping at ht ⊢
-          have ⟨hval, ht'⟩ := ht
+          obtain ⟨hval, hps, ht'⟩ := ht
           constructor
           · -- Prove: ⟦T⟧_[env', φ] mem2 (.var (.free n))
             have henv := typed_env_is_monotonic ht'
             exact capt_val_denot_is_monotonic henv T hmem hval
-          · -- Prove: EnvTyping Γ env' mem2
-            exact ih ht'
+          · -- Prove: peakset consistency and EnvTyping Γ env' mem2
+            constructor
+            · simpa using hps
+            · exact ih ht'
       | tvar S =>
         cases info with
         | tvar d =>
