@@ -333,7 +333,6 @@ theorem CapabilitySet.BoundedBy.trans
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
 
-
 mutual
 
 def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
