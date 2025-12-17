@@ -124,20 +124,13 @@ def PreDenot.is_proper (pd : PreDenot) : Prop :=
 def Denot.implies_wf (d : Denot) : Prop :=
   ∀ m e, d m e -> e.WfInHeap m.heap
 
-/-- For Denot (without capability set parameter), reachability safety is trivially true.
-    This is because the capability set bound is now derived from the type's capture set. -/
-def Denot.is_reachability_safe (d : Denot) : Prop :=
-  True
-
-/-- For Denot (without capability set parameter), reachability monotonicity is trivially true.
-    This is because the capability set bound is now derived from the type's capture set. -/
-def Denot.is_reachability_monotonic (d : Denot) : Prop :=
-  True
-
-/-- For Denot (without capability set parameter), tightness is trivially true.
-    This is because the capability set bound is now derived from the type's capture set. -/
-def Denot.is_tight (d : Denot) : Prop :=
-  True
+-- NOTE: The following definitions are no longer needed after the type hierarchy collapse.
+-- The capability set bound is now derived from the type's capture set, making these
+-- properties trivially true. They are kept commented out for reference.
+--
+-- def Denot.is_reachability_safe (d : Denot) : Prop := True
+-- def Denot.is_reachability_monotonic (d : Denot) : Prop := True
+-- def Denot.is_tight (d : Denot) : Prop := True
 
 lemma Denot.as_mpost_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
@@ -1116,17 +1109,16 @@ def TypeEnv.is_bool_independent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_bool_independent
 
-def TypeEnv.is_reachability_safe (env : TypeEnv s) : Prop :=
-  ∀ (X : BVar s .tvar),
-    (env.lookup_tvar X).is_reachability_safe
-
-def TypeEnv.is_reachability_monotonic (env : TypeEnv s) : Prop :=
-  ∀ (X : BVar s .tvar),
-    (env.lookup_tvar X).is_reachability_monotonic
-
-def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
-  ∀ (X : BVar s .tvar),
-    (env.lookup_tvar X).is_tight
+-- NOTE: The following TypeEnv properties are no longer needed after the type hierarchy collapse.
+-- They relied on Denot.is_reachability_safe, Denot.is_reachability_monotonic, and Denot.is_tight
+-- which are now trivially true.
+--
+-- def TypeEnv.is_reachability_safe (env : TypeEnv s) : Prop :=
+--   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_reachability_safe
+-- def TypeEnv.is_reachability_monotonic (env : TypeEnv s) : Prop :=
+--   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_reachability_monotonic
+-- def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
+--   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_tight
 
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env mem) :
@@ -1298,166 +1290,16 @@ theorem typed_env_is_bool_independent
             simp [TypeEnv.lookup_tvar]
             exact ih_result x
 
-theorem typed_env_is_reachability_safe
-  (ht : EnvTyping Γ env mem) :
-  env.is_reachability_safe := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp [TypeEnv.is_reachability_safe]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n ps =>
-          simp [EnvTyping] at ht
-          obtain ⟨_, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_reachability_safe] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp [EnvTyping] at ht
-          have ⟨hproper, _, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_reachability_safe] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp [TypeEnv.lookup_tvar]
-            -- Denot.is_reachability_safe is now trivially True
-            trivial
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_reachability_safe] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-
-theorem typed_env_is_reachability_monotonic
-  (ht : EnvTyping Γ env mem) :
-  env.is_reachability_monotonic := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp [TypeEnv.is_reachability_monotonic]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n ps =>
-          simp [EnvTyping] at ht
-          obtain ⟨_, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp [EnvTyping] at ht
-          have ⟨hproper, _, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp [TypeEnv.lookup_tvar]
-            -- Denot.is_reachability_monotonic is trivially True
-            trivial
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-
-theorem typed_env_is_tight
-  (ht : EnvTyping Γ env mem) :
-  env.is_tight := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      intro X
-      cases X
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n ps =>
-          simp [EnvTyping] at ht
-          obtain ⟨_, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          intro X
-          cases X with
-          | there X' =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result X'
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp [EnvTyping] at ht
-          have ⟨hproper, _, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          intro X
-          cases X with
-          | here =>
-            simp [TypeEnv.lookup_tvar]
-            -- Denot.is_tight is trivially True
-            trivial
-          | there X' =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result X'
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp [EnvTyping] at ht
-          have ⟨_, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          intro X
-          cases X with
-          | there X' =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result X'
+-- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
+-- They relied on TypeEnv.is_reachability_safe, TypeEnv.is_reachability_monotonic,
+-- and TypeEnv.is_tight which are now trivially provable.
+--
+-- theorem typed_env_is_reachability_safe
+--   (ht : EnvTyping Γ env mem) : env.is_reachability_safe := ...
+-- theorem typed_env_is_reachability_monotonic
+--   (ht : EnvTyping Γ env mem) : env.is_reachability_monotonic := ...
+-- theorem typed_env_is_tight
+--   (ht : EnvTyping Γ env mem) : env.is_tight := ...
 
 theorem val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -2357,33 +2199,22 @@ def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
     ∀ env H, EnvTyping Γ env H ->
       (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
 
-/-- Ported from old shape_val_denot_is_reachability_safe.
-    Now trivial since Denot.is_reachability_safe is True. -/
-theorem val_denot_is_reachability_safe {env : TypeEnv s}
-  (_hts : env.is_reachability_safe)
-  (T : Ty .capt s) :
-  (Ty.val_denot env T).is_reachability_safe := trivial
-
-/-- Alias for backward compatibility. -/
-theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
-  (hts : env.is_reachability_safe)
-  (T : Ty .capt s) :
-  (Ty.val_denot env T).is_reachability_safe :=
-  val_denot_is_reachability_safe hts T
-
-/-- Ported from old shape_val_denot_is_reachability_monotonic.
-    Now trivial since Denot.is_reachability_monotonic is True. -/
-theorem val_denot_is_reachability_monotonic {env : TypeEnv s}
-  (_hts : env.is_reachability_monotonic)
-  (T : Ty .capt s) :
-  (Ty.val_denot env T).is_reachability_monotonic := trivial
-
-/-- Alias for backward compatibility. -/
-theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
-  (hts : env.is_reachability_monotonic)
-  (T : Ty .capt s) :
-  (Ty.val_denot env T).is_reachability_monotonic :=
-  val_denot_is_reachability_monotonic hts T
+-- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
+-- They relied on Denot.is_reachability_safe and Denot.is_reachability_monotonic which are now
+-- trivially True.
+--
+-- theorem val_denot_is_reachability_safe {env : TypeEnv s}
+--   (_hts : env.is_reachability_safe) (T : Ty .capt s) :
+--   (Ty.val_denot env T).is_reachability_safe := trivial
+-- theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
+--   (hts : env.is_reachability_safe) (T : Ty .capt s) :
+--   (Ty.val_denot env T).is_reachability_safe := val_denot_is_reachability_safe hts T
+-- theorem val_denot_is_reachability_monotonic {env : TypeEnv s}
+--   (_hts : env.is_reachability_monotonic) (T : Ty .capt s) :
+--   (Ty.val_denot env T).is_reachability_monotonic := trivial
+-- theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
+--   (hts : env.is_reachability_monotonic) (T : Ty .capt s) :
+--   (Ty.val_denot env T).is_reachability_monotonic := val_denot_is_reachability_monotonic hts T
 
 /-- If the type environment is well-typed, then the denotation of any shape type is proper.
     A PreDenot is proper if it is reachability-safe, monotonic, and transparent. This theorem
@@ -2495,24 +2326,15 @@ theorem val_denot_implies_wf {env : TypeEnv s}
     simp [Ty.val_denot] at hdenot
     exact hdenot.1
 
-/-- Alias for backward compatibility. -/
-theorem shape_val_denot_implies_wf {env : TypeEnv s}
-  (hts : env.is_implying_wf)
-  (T : Ty .capt s) :
-  (Ty.val_denot env T).implies_wf :=
-  val_denot_implies_wf hts T
-
-/-- Ported from old shape_val_denot_is_tight.
-    Now trivial since Denot.is_tight is True. -/
-theorem val_denot_is_tight {env : TypeEnv s}
-  (_hts : env.is_tight) (T : Ty .capt s) :
-  (Ty.val_denot env T).is_tight := trivial
-
-/-- Alias for backward compatibility. -/
-theorem shape_val_denot_is_tight {env : TypeEnv s}
-  (hts : env.is_tight) (T : Ty .capt s) :
-  (Ty.val_denot env T).is_tight :=
-  val_denot_is_tight hts T
+-- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
+-- They relied on Denot.is_tight which is now trivially True.
+--
+-- theorem val_denot_is_tight {env : TypeEnv s}
+--   (_hts : env.is_tight) (T : Ty .capt s) :
+--   (Ty.val_denot env T).is_tight := trivial
+-- theorem shape_val_denot_is_tight {env : TypeEnv s}
+--   (hts : env.is_tight) (T : Ty .capt s) :
+--   (Ty.val_denot env T).is_tight := val_denot_is_tight hts T
 
 /-- Ported from old shape_val_denot_is_proper.
     Now uses Denot.is_proper which is simpler (monotonic ∧ transparent ∧ bool_independent). -/
@@ -2528,14 +2350,6 @@ theorem val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
     · -- Prove: (Ty.val_denot env T).is_bool_independent
       exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
 
-/-- Alias for backward compatibility. -/
-theorem shape_val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
-  (hts : EnvTyping Γ env m) :
-  (Ty.val_denot env T).is_proper :=
-  val_denot_is_proper hts
-
-/-- Ported from old capt_denot_implyafter_lift.
-    Now uses val_denot and exp_denot since type hierarchy is collapsed. -/
 theorem val_denot_implyafter_lift {cs : CaptureSet s}
   (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
   (Ty.exp_denot env T1 cs).ImplyAfter H (Ty.exp_denot env T2 cs) := by
@@ -2544,12 +2358,6 @@ theorem val_denot_implyafter_lift {cs : CaptureSet s}
   apply eval_post_monotonic_general _ heval
   have himp' := Denot.imply_after_to_m_entails_after himp
   exact Mpost.entails_after_subsumes himp' hsub
-
-/-- Alias for backward compatibility. -/
-theorem capt_denot_implyafter_lift {cs : CaptureSet s}
-  (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
-  (Ty.exp_denot env T1 cs).ImplyAfter H (Ty.exp_denot env T2 cs) :=
-  val_denot_implyafter_lift himp
 
 /-- Ported from old exi_denot_implyafter_lift.
     Updated to use new exp_denot signature with CaptureSet. -/
