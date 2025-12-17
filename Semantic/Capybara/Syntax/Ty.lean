@@ -135,6 +135,22 @@ structure PureTy (s : Sig) where
   core : Ty .capt s
   p : Ty.IsPureType core
 
+/-- Creates a pure type from a type variable. Type variables have empty capture sets. -/
+def PureTy.tvar (x : BVar s .tvar) : PureTy s :=
+  ⟨.tvar x, CaptureSet.IsEmpty.empty⟩
+
+/-- Top type is pure. -/
+def PureTy.top : PureTy s :=
+  ⟨.top, CaptureSet.IsEmpty.empty⟩
+
+/-- Unit type is pure. -/
+def PureTy.unit : PureTy s :=
+  ⟨.unit, CaptureSet.IsEmpty.empty⟩
+
+/-- Bool type is pure. -/
+def PureTy.bool : PureTy s :=
+  ⟨.bool, CaptureSet.IsEmpty.empty⟩
+
 /-- Renames a pure type. -/
 def PureTy.rename (T : PureTy s1) (f : Rename s1 s2) : PureTy s2 :=
   ⟨T.core.rename f, T.p.rename f⟩
