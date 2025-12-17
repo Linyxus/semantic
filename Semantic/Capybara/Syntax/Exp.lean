@@ -10,12 +10,12 @@ namespace Capybara
 inductive Exp : Sig -> Type where
 | var : Var .var s -> Exp s
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
-| tabs : CaptureSet s -> Ty .shape s -> Exp (s,X) -> Exp s
+| tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> Mutability -> Exp (s,C) -> Exp s
 | reader : Var .var s -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
-| tapp : Var .var s -> Ty .shape s -> Exp s
+| tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
 | unpack : Exp s -> Exp ((s,C),x) -> Exp s
@@ -94,7 +94,7 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   induction e
     <;> try (solve
       | rfl
-      | simp [Exp.rename, Ty.rename_id, Var.rename_id,
+      | simp [Exp.rename, Ty.rename_id, PureTy.rename_id, Var.rename_id,
               CaptureSet.rename_id, Rename.lift_id]
         try aesop)
 
@@ -109,7 +109,7 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   induction e generalizing s2 s3
     <;> try (solve
       | rfl
-      | simp [Exp.rename, Ty.rename_comp, Var.rename_comp,
+      | simp [Exp.rename, Ty.rename_comp, PureTy.rename_comp, Var.rename_comp,
               CaptureSet.rename_comp, Rename.lift_comp]
         try aesop)
 
@@ -131,14 +131,14 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | var : Var.IsClosed x -> Exp.IsClosed (.var x)
 | abs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
     Exp.IsClosed (.abs cs T e)
-| tabs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
+| tabs : CaptureSet.IsClosed cs -> PureTy.IsClosed T -> Exp.IsClosed e ->
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> Exp.IsClosed e ->
     Exp.IsClosed (.cabs cs m e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
-| tapp : Var.IsClosed x -> Ty.IsClosed T -> Exp.IsClosed (.tapp x T)
+| tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
 | letin : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.letin e1 e2)
 | unpack : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack e1 e2)

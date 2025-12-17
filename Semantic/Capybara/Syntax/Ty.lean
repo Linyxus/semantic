@@ -139,6 +139,15 @@ structure PureTy (s : Sig) where
 def PureTy.rename (T : PureTy s1) (f : Rename s1 s2) : PureTy s2 :=
   ⟨T.core.rename f, T.p.rename f⟩
 
+/-- Renaming by the identity renaming leaves a pure type unchanged. -/
+theorem PureTy.rename_id {T : PureTy s} : T.rename Rename.id = T := by
+  simp only [PureTy.rename, Ty.rename_id]
+
+/-- Renaming distributes over composition of renamings for pure types. -/
+theorem PureTy.rename_comp {T : PureTy s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+    (T.rename f).rename g = T.rename (f.comp g) := by
+  simp only [PureTy.rename, Ty.rename_comp]
+
 /-- A pure type is closed if its core is closed. -/
 def PureTy.IsClosed (T : PureTy s) : Prop :=
   T.core.IsClosed
