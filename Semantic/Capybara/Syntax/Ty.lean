@@ -24,11 +24,11 @@ inductive Ty : TySort -> Sig -> Type where
 | arrow : Ty .capt s -> Ty .exi (s,x) -> Ty .shape s
 | poly : Ty .shape s -> Ty .exi (s,X) -> Ty .shape s
 | cpoly : Mutability -> Ty .exi (s,C) -> Ty .shape s
-| unit : Ty .shape s
 | cap : Ty .shape s
-| bool : Ty .shape s
 | cell : Ty .shape s
 | reader : Ty .shape s
+| unit : Ty .shape s
+| bool : Ty .shape s
 -- capturing types
 | capt : CaptureSet s -> Ty .shape s -> Ty .capt s
 -- existential types
