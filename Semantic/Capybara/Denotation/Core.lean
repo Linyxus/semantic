@@ -365,6 +365,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
   resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
 | env, .cap cs => fun m e =>
   e.WfInHeap m.heap ∧
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ label : Nat,
     e = .var (.free label) ∧
     m.lookup label = some (.capability .basic) ∧
