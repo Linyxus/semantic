@@ -4,7 +4,7 @@ namespace Capybara
 
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
-| tvar : Ty .shape s -> Binding s .tvar
+| tvar : PureTy s -> Binding s .tvar
 | cvar : Mutability -> Binding s .cvar
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
