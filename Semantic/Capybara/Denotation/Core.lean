@@ -713,6 +713,66 @@ theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
             rfl
         | cvar m cv => cases cv  -- Impossible: no capture vars in {}
 
+/-- All type variable denotations in the environment imply well-formedness. -/
+def TypeEnv.is_implying_wf (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).implies_wf
+
+/-- An environment typing implies that all type variable denotations imply well-formedness. -/
+theorem typed_env_is_implying_wf
+  (ht : EnvTyping Γ env mem) :
+  env.is_implying_wf := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.is_implying_wf]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n ps =>
+          simp [EnvTyping] at ht
+          obtain ⟨_, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_implying_wf] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨_, himplies, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_implying_wf] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar]
+            exact himplies
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+      | cvar B =>
+        cases info with
+        | cvar cs =>
+          simp [EnvTyping] at ht
+          have ⟨hwf, hsub, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_implying_wf] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
 via `Subst.from_TypeEnv` is well-formed in the heap.
@@ -757,7 +817,10 @@ theorem from_TypeEnv_wf_in_heap
             | tvar X =>
               -- For tvar, we need the denotation to be proper
               -- This is guaranteed by EnvTyping for the lookup_tvar
-              sorry -- TODO: need typed_env_implies_wf lemma
+              unfold Ty.val_denot at htype
+              have himplying := typed_env_is_implying_wf htyping'
+              unfold TypeEnv.is_implying_wf at himplying
+              exact himplying X m (.var (.free n)) htype
             | unit =>
               unfold Ty.val_denot at htype
               simp only [resolve] at htype
@@ -1054,10 +1117,6 @@ def TypeEnv.is_reachability_monotonic (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_reachability_monotonic
 
-def TypeEnv.is_implying_wf (env : TypeEnv s) : Prop :=
-  ∀ (X : BVar s .tvar),
-    (env.lookup_tvar X).implies_wf
-
 def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_tight
@@ -1336,60 +1395,6 @@ theorem typed_env_is_reachability_monotonic
           have ⟨hwf, hsub, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_reachability_monotonic] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-
-theorem typed_env_is_implying_wf
-  (ht : EnvTyping Γ env mem) :
-  env.is_implying_wf := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp [TypeEnv.is_implying_wf]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n ps =>
-          simp [EnvTyping] at ht
-          obtain ⟨_, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_implying_wf] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp [EnvTyping] at ht
-          have ⟨_, himplies, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_implying_wf] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp [TypeEnv.lookup_tvar]
-            exact himplies
-          | there x =>
-            simp [TypeEnv.lookup_tvar]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
           cases x with
           | there x =>
@@ -1886,8 +1891,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
           exact hc'
         · -- Need to show: (cs.denot env m2).covers .epsilon label
           -- hmemin : (cs.denot env m1).covers .epsilon label
-          -- If cs is well-formed, then cs.denot env m1 = cs.denot env m2
-          sorry -- TODO: need capture set well-formedness assumption
+          sorry
   | bool =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
