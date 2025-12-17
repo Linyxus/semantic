@@ -11,26 +11,22 @@ namespace Capybara
 inductive TySort : Type where
 /-- capturing types -/
 | capt : TySort
-/-- shape types -/
-| shape : TySort
 /-- existential types -/
 | exi : TySort
 
 /-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
 inductive Ty : TySort -> Sig -> Type where
 -- shape types
-| top : Ty .shape s
-| tvar : BVar s .tvar -> Ty .shape s
-| arrow : Ty .capt s -> Ty .exi (s,x) -> Ty .shape s
-| poly : Ty .shape s -> Ty .exi (s,X) -> Ty .shape s
-| cpoly : Mutability -> Ty .exi (s,C) -> Ty .shape s
-| cap : Ty .shape s
-| cell : Ty .shape s
-| reader : Ty .shape s
-| unit : Ty .shape s
-| bool : Ty .shape s
--- capturing types
-| capt : CaptureSet s -> Ty .shape s -> Ty .capt s
+| top : Ty .capt s
+| tvar : BVar s .tvar -> Ty .capt s
+| arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
+| poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
+| cpoly : Mutability -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+| cap : CaptureSet s -> Ty .capt s
+| cell : CaptureSet s -> Ty .capt s
+| reader : CaptureSet s -> Ty .capt s
+| unit : Ty .capt s
+| bool : Ty .capt s
 -- existential types
 | exi : Ty .capt (s,C) -> Ty .exi s
 | typ : Ty .capt s -> Ty .exi s
