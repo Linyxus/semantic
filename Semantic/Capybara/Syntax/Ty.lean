@@ -97,6 +97,18 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .unit => .empty
 | .bool => .empty
 
+def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
+| .top, _ => .top
+| .tvar x, _ => .tvar x
+| .arrow T1 _ T2, cs => .arrow T1 cs T2
+| .poly T1 _ T2, cs => .poly T1 cs T2
+| .cpoly m _ T, cs => .cpoly m cs T
+| .cap _, cs => .cap cs
+| .cell _, cs => .cell cs
+| .reader _, cs => .reader cs
+| .unit, _ => .unit
+| .bool, _ => .bool
+
 /-- A type is closed if it contains no heap pointers. -/
 inductive Ty.IsClosed : Ty sort s -> Prop where
 | top : Ty.IsClosed .top

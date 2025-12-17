@@ -19,9 +19,9 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   -------------------
   Subcapt Γ (.union C1 C2) C3
 | sc_var :
-  Ctx.LookupVar Γ x (.capt C S) ->
+  Ctx.LookupVar Γ x T ->
   ----------------------------------
-  Subcapt Γ (.var .epsilon (.bound x)) C
+  Subcapt Γ (.var .epsilon (.bound x)) T.captureSet
 | sc_ro :
   ----------------------------------
   Subcapt Γ C.applyRO C
@@ -43,7 +43,8 @@ inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
   HasKind Γ (.cvar .epsilon c) .ro
 
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
-| top {T : Ty .shape s} :
+| top {T : Ty .capt s} :
+  T.IsPureType ->
   -------------------
   Subtyp Γ T .top
 | refl :
@@ -58,7 +59,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | tvar :
   Ctx.LookupTVar Γ X S ->
   -------------------
-  Subtyp Γ (.tvar X) S
+  Subtyp Γ (.tvar X) S.core
 | arrow :
   Subtyp Γ T2 T1 ->
   Subtyp (Γ,x:T2) U1 U2 ->
@@ -119,9 +120,9 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
   Γ.IsClosed ->
-  Γ.LookupVar x (.capt C S) ->
+  Γ.LookupVar x T ->
   ----------------------------
-  HasType (.var .epsilon (.bound x)) Γ (.var (.bound x)) (.typ (.capt (.var .epsilon (.bound x)) S))
+  HasType (.var .epsilon (.bound x)) Γ (.var (.bound x)) (.typ (T.refineCaptureSet (.var .epsilon (.bound x))))
 | reader :
   Γ.IsClosed ->
   Γ.LookupVar x (.capt C .cell) ->
