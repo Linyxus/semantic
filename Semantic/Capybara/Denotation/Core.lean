@@ -372,17 +372,20 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (cs.denot env m).covers .epsilon label
 | env, .reader cs => fun m e =>
   e.WfInHeap m.heap ∧
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ (label : Nat) (b0 : Bool),
     resolve m.heap e = some (.reader (.free label)) ∧
     m.lookup label = some (.capability (.mcell b0)) ∧
     (cs.denot env m).covers .ro label
 | env, .cell cs => fun m e =>
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ l b0,
     e = .var (.free l) ∧
     m.lookup l = some (.capability (.mcell b0)) ∧
     (cs.denot env m).covers .epsilon l
 | env, .arrow T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' T0 t0,
     resolve m.heap e = some (.abs cs' T0 t0) ∧
     cs'.WfInHeap m.heap ∧
@@ -398,6 +401,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' S0 t0,
     resolve m.heap e = some (.tabs cs' S0 t0) ∧
     cs'.WfInHeap m.heap ∧
@@ -414,6 +418,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         m' (t0.subst (Subst.openTVar .top)))
 | env, .cpoly B cs T => fun m e =>
   e.WfInHeap m.heap ∧
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' B0 t0,
     resolve m.heap e = some (.cabs cs' B0 t0) ∧
     cs'.WfInHeap m.heap ∧
@@ -849,8 +854,9 @@ theorem from_TypeEnv_wf_in_heap
               exact htype.1
             | cell cs =>
               unfold Ty.val_denot at htype
-              obtain ⟨l, _, hl, hlookup, _⟩ := htype
+              obtain ⟨_, l, _, hl, hlookup, _⟩ := htype
               cases hl
+              simp [Memory.lookup] at hlookup
               exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hlookup)
             | arrow T1 cs T2 =>
               unfold Ty.val_denot at htype
@@ -1483,7 +1489,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | cap cs =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    have ⟨_, label, hlabel, hcap, hmem⟩ := ht
+    have ⟨_, _, label, hlabel, hcap, hmem⟩ := ht
     -- v.unwrap = .var (.free label), but v.isVal says it's a simple value
     -- Variables are not simple values, so this is a contradiction
     have hval := v.isVal
@@ -1530,7 +1536,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | cell cs =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨l, b0, heq, hlookup_and_mem⟩ := ht
+    obtain ⟨_, l, b0, heq, hlookup_and_mem⟩ := ht
     -- v.unwrap = .var (.free l), but v.isVal says it's a simple value
     -- Variables are not simple values, so this is a contradiction
     have hval := v.isVal
@@ -1539,13 +1545,13 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | reader cs =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf, label, b0, hres, hlookup, hcov⟩ := ht
+    obtain ⟨hwf, hwf_cs, label, b0, hres, hlookup, hcov⟩ := ht
     have hx' : m.heap x = some (.val v) := by
       simp [Memory.lookup] at hx
       exact hx
     have heq := resolve_var_heap_trans hx'
     rw [heq]
-    refine ⟨?_, label, b0, hres, hlookup, hcov⟩
+    refine ⟨?_, hwf_cs, label, b0, hres, hlookup, hcov⟩
     -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
     constructor
     constructor
@@ -1559,12 +1565,14 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     have heq := resolve_var_heap_trans hx'
     rw [heq]
     -- Split ht into well-formedness and existential parts
-    have ⟨hwf_unwrap, hexists⟩ := ht
+    have ⟨hwf_unwrap, hwf_cs, hexists⟩ := ht
     constructor
     · -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
       constructor
       constructor
       exact hx'
+    constructor
+    · exact hwf_cs
     · -- The existential part remains the same
       exact hexists
   | cpoly B cs T =>
@@ -1576,12 +1584,14 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     have heq := resolve_var_heap_trans hx'
     rw [heq]
     -- Split ht into well-formedness and existential parts
-    have ⟨hwf_unwrap, hexists⟩ := ht
+    have ⟨hwf_unwrap, hwf_cs, hexists⟩ := ht
     constructor
     · -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
       constructor
       constructor
       exact hx'
+    constructor
+    · exact hwf_cs
     · -- The existential part remains the same
       exact hexists
 
@@ -1875,24 +1885,30 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | cap cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    have ⟨hwf_e, label, heq, hcap, hmemin⟩ := ht
+    have ⟨hwf_e, hwf_cs, label, heq, hcap, hmemin⟩ := ht
     constructor
     · -- Prove e.WfInHeap m2.heap
       exact Exp.wf_monotonic hmem hwf_e
+    constructor
+    · -- Prove (cs.subst ...).WfInHeap m2.heap
+      exact CaptureSet.wf_monotonic hmem hwf_cs
     · use label
       constructor
       · exact heq
-      · constructor
-        · have hsub : m2.heap.subsumes m1.heap := hmem
-          obtain ⟨c', hc', hsub_c⟩ := hsub label (Cell.capability .basic) hcap
-          -- For basic capability cells, subsumption requires equality
-          simp [Cell.subsumes] at hsub_c
-          subst hsub_c
-          simp [Memory.lookup]
-          exact hc'
-        · -- Need to show: (cs.denot env m2).covers .epsilon label
-          -- hmemin : (cs.denot env m1).covers .epsilon label
-          sorry
+      constructor
+      · have hsub : m2.heap.subsumes m1.heap := hmem
+        obtain ⟨c', hc', hsub_c⟩ := hsub label (Cell.capability .basic) hcap
+        -- For basic capability cells, subsumption requires equality
+        simp [Cell.subsumes] at hsub_c
+        subst hsub_c
+        simp [Memory.lookup]
+        exact hc'
+      · -- Need to show: (cs.denot env m2).covers .epsilon label
+        -- hmemin : (cs.denot env m1).covers .epsilon label
+        -- hwf_cs : (cs.subst ...).WfInHeap m1.heap
+        have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+        rw [← hcs_eq]
+        exact hmemin
   | bool =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -1906,7 +1922,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | cell cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨l, b0, heq, hlookup, hmem_l⟩ := ht
+    obtain ⟨hwf_cs, l, b0, heq, hlookup, hcov⟩ := ht
     -- m2.lookup l = some (.capability (.mcell ...))
     have hsub : m2.heap.subsumes m1.heap := hmem
     simp [Memory.lookup] at hlookup
@@ -1921,15 +1937,22 @@ def val_denot_is_monotonic {env : TypeEnv s}
       | mcell b' =>
         -- Cell.subsumes says mcell-to-mcell is True
         -- The boolean value b' might differ from b0, which is fine
+        constructor
+        · exact CaptureSet.wf_monotonic hmem hwf_cs
         refine ⟨l, b', heq, ?_, ?_⟩
         · simp [Memory.lookup]; exact hc'
-        · sorry -- TODO: need capture set well-formedness for monotonicity
+        · -- Use capture_set_denot_is_monotonic for equality
+          have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+          rw [← hcs_eq]
+          exact hcov
   | reader cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf_e, label, b0, hres, hlookup, hcov⟩ := ht
+    obtain ⟨hwf_e, hwf_cs, label, b0, hres, hlookup, hcov⟩ := ht
     constructor
     · exact Exp.wf_monotonic hmem hwf_e
+    constructor
+    · exact CaptureSet.wf_monotonic hmem hwf_cs
     · -- The mcell at label may have a different boolean in m2
       have hsub : m2.heap.subsumes m1.heap := hmem
       simp [Memory.lookup] at hlookup
@@ -1944,14 +1967,19 @@ def val_denot_is_monotonic {env : TypeEnv s}
           refine ⟨label, b', ?_, ?_, ?_⟩
           · exact resolve_monotonic hmem hres
           · simp [Memory.lookup]; exact hc'
-          · sorry -- TODO: need capture set well-formedness for monotonicity
+          · -- Use capture_set_denot_is_monotonic for equality
+            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+            rw [← hcs_eq]
+            exact hcov
   | arrow T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    have ⟨hwf_e, cs', T0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
+    have ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
     constructor
     · -- Prove e.WfInHeap m2.heap
       exact Exp.wf_monotonic hmem hwf_e
+    constructor
+    · exact CaptureSet.wf_monotonic hmem hwf_cs
     · use cs', T0, t0
       constructor
       · cases e with
@@ -1986,20 +2014,25 @@ def val_denot_is_monotonic {env : TypeEnv s}
         | par _ _ => cases hr
         | reader _ => cases hr
       · constructor
-        · exact CaptureSet.wf_monotonic hmem hwf_cs
+        · exact CaptureSet.wf_monotonic hmem hwf_cs'
         · constructor
           · -- Prove: expand_captures m2.heap cs' ⊆ cs.denot env m2
-            sorry -- TODO: need capture set monotonicity for cs
+            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+            have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+            rw [← hcs_eq, hcs'_eq]
+            exact hR0_sub
           · intro arg m' hs' harg
             have hs0 := Memory.subsumes_trans hs' hmem
             exact hfun arg m' hs0 harg
   | poly T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    have ⟨hwf_e, cs', S0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
+    have ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
     constructor
     · -- Prove e.WfInHeap m2.heap
       exact Exp.wf_monotonic hmem hwf_e
+    constructor
+    · exact CaptureSet.wf_monotonic hmem hwf_cs
     · use cs', S0, t0
       constructor
       · cases e with
@@ -2034,20 +2067,25 @@ def val_denot_is_monotonic {env : TypeEnv s}
         | par _ _ => cases hr
         | reader _ => cases hr
       · constructor
-        · exact CaptureSet.wf_monotonic hmem hwf_cs
+        · exact CaptureSet.wf_monotonic hmem hwf_cs'
         · constructor
           · -- Prove: expand_captures m2.heap cs' ⊆ cs.denot env m2
-            sorry -- TODO: need capture set monotonicity for cs
+            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+            have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+            rw [← hcs_eq, hcs'_eq]
+            exact hR0_sub
           · intro m' denot msub hdenot_proper himply
             have hs0 := Memory.subsumes_trans msub hmem
             exact hfun m' denot hs0 hdenot_proper himply
   | cpoly B cs T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    have ⟨hwf_e, cs', B0, t0, hr, hwf_cs, hR0_sub, hfun⟩ := ht
+    have ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
     constructor
     · -- Prove e.WfInHeap m2.heap
       exact Exp.wf_monotonic hmem hwf_e
+    constructor
+    · exact CaptureSet.wf_monotonic hmem hwf_cs
     · use cs', B0, t0
       constructor
       · cases e with
@@ -2082,10 +2120,13 @@ def val_denot_is_monotonic {env : TypeEnv s}
         | par _ _ => cases hr
         | reader _ => cases hr
       · constructor
-        · exact CaptureSet.wf_monotonic hmem hwf_cs
+        · exact CaptureSet.wf_monotonic hmem hwf_cs'
         · constructor
           · -- Prove: expand_captures m2.heap cs' ⊆ cs.denot env m2
-            sorry -- TODO: need capture set monotonicity for cs
+            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+            have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+            rw [← hcs_eq, hcs'_eq]
+            exact hR0_sub
           · intro m' CS hwf _ msub hbounded
             have hs0 := Memory.subsumes_trans msub hmem
             exact hfun m' CS hwf hs0 hbounded
@@ -2432,7 +2473,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
     exact wf_from_resolve_unit hdenot
   | cell cs =>
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨l, b0, heq, hlookup, _⟩ := hdenot
+    obtain ⟨_, l, b0, heq, hlookup, _⟩ := hdenot
     rw [heq]
     apply Exp.WfInHeap.wf_var
     apply Var.WfInHeap.wf_free
