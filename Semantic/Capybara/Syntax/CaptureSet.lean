@@ -258,4 +258,16 @@ theorem CaptureSet.PeaksOnly.applyMut {cs : CaptureSet s} (h : cs.PeaksOnly) (m 
 def PeakSet.rename {s1 s2 : Sig} (ps : PeakSet s1) (ρ : Rename s1 s2) : PeakSet s2 :=
   ⟨ps.cs.rename ρ, ps.h.rename ρ⟩
 
+/-- Whether this capture set is equivalent to an empty set. -/
+inductive CaptureSet.IsEmpty : CaptureSet s -> Prop where
+| empty :
+  ----------------
+  IsEmpty .empty
+| union :
+  IsEmpty cs1 ->
+  IsEmpty cs2 ->
+  ----------------
+  IsEmpty (cs1.union cs2)
+
+
 end Capybara

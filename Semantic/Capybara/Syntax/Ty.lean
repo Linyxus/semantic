@@ -35,15 +35,14 @@ inductive Ty : TySort -> Sig -> Type where
 def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
-| .arrow T1 T2, f => .arrow (T1.rename f) (T2.rename (f.lift))
-| .poly T1 T2, f => .poly (T1.rename f) (T2.rename (f.lift))
-| .cpoly m T, f => .cpoly m (T.rename (f.lift))
+| .arrow T1 cs T2, f => .arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift))
+| .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
+| .cpoly m cs T, f => .cpoly m (cs.rename f) (T.rename (f.lift))
 | .unit, _ => .unit
-| .cap, _ => .cap
+| .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
-| .cell, _ => .cell
-| .reader, _ => .reader
-| .capt cs T, f => .capt (cs.rename f) (T.rename f)
+| .cell cs, f => .cell (cs.rename f)
+| .reader cs, f => .reader (cs.rename f)
 | .exi T, f => .exi (T.rename (f.lift))
 | .typ T, f => .typ (T.rename f)
 
@@ -52,16 +51,14 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   induction T
   case top => rfl
   case tvar => rfl
-  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2]
-  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2]
-  case cpoly cb ih => simp [Ty.rename, Rename.lift_id, ih]
+  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1, ih2]
+  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1, ih2]
+  case cpoly ih => simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih]
   case unit => rfl
-  case cap => rfl
+  case cap => simp [Ty.rename, CaptureSet.rename_id]
   case bool => rfl
-  case cell => rfl
-  case reader => rfl
-  case capt ih2 =>
-    simp [Ty.rename, ih2, CaptureSet.rename_id]
+  case cell => simp [Ty.rename, CaptureSet.rename_id]
+  case reader => simp [Ty.rename, CaptureSet.rename_id]
   case exi ih => simp [Ty.rename, Rename.lift_id, ih]
   case typ ih => simp [Ty.rename, ih]
 
@@ -71,15 +68,14 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   induction T generalizing s2 s3
   case top => rfl
   case tvar => rfl
-  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2]
-  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2]
-  case cpoly cb ih => simp [Ty.rename, Rename.lift_comp, ih]
+  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih1, ih2]
+  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih1, ih2]
+  case cpoly ih => simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih]
   case unit => rfl
-  case cap => rfl
+  case cap => simp [Ty.rename, CaptureSet.rename_comp]
   case bool => rfl
-  case cell => rfl
-  case reader => rfl
-  case capt ih => simp [Ty.rename, CaptureSet.rename_comp, ih]
+  case cell => simp [Ty.rename, CaptureSet.rename_comp]
+  case reader => simp [Ty.rename, CaptureSet.rename_comp]
   case exi ih => simp [Ty.rename, Rename.lift_comp, ih]
   case typ ih => simp [Ty.rename, ih]
 
@@ -90,25 +86,41 @@ theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
 
 /-- Extracts the capture set from a capturing type. -/
 def Ty.captureSet : Ty .capt s -> CaptureSet s
-| .capt C _ => C
+| .top => .empty
+| .tvar _ => .empty
+| .arrow _ cs _ => cs
+| .poly _ cs _ => cs
+| .cpoly _ cs _ => cs
+| .cap cs => cs
+| .cell cs => cs
+| .reader cs => cs
+| .unit => .empty
+| .bool => .empty
 
 /-- A type is closed if it contains no heap pointers. -/
 inductive Ty.IsClosed : Ty sort s -> Prop where
--- shape types
 | top : Ty.IsClosed .top
 | tvar : Ty.IsClosed (.tvar x)
-| arrow : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.arrow T1 T2)
-| poly : Ty.IsClosed T1 -> Ty.IsClosed T2 -> Ty.IsClosed (.poly T1 T2)
-| cpoly : Ty.IsClosed T -> Ty.IsClosed (.cpoly m T)
+| arrow : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
+    Ty.IsClosed (.arrow T1 cs T2)
+| poly : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
+    Ty.IsClosed (.poly T1 cs T2)
+| cpoly : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.cpoly m cs T)
 | unit : Ty.IsClosed .unit
-| cap : Ty.IsClosed .cap
+| cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool
-| cell : Ty.IsClosed .cell
-| reader : Ty.IsClosed .reader
--- capturing types
-| capt : CaptureSet.IsClosed cs -> Ty.IsClosed S -> Ty.IsClosed (.capt cs S)
--- existential types
+| cell : CaptureSet.IsClosed cs -> Ty.IsClosed (.cell cs)
+| reader : CaptureSet.IsClosed cs -> Ty.IsClosed (.reader cs)
 | exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
 | typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
+
+/-- The predicate that a capturing type is pure. -/
+def Ty.IsPureType (T : Ty .capt s) : Prop :=
+  T.captureSet.IsEmpty
+
+/-- A pure capturing type. -/
+structure PureTy (s : Sig) where
+  core : Ty .capt s
+  p : Ty.IsPureType core
 
 end Capybara
