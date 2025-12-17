@@ -19,7 +19,7 @@ inductive Ctx : Sig -> Type where
 def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 | Γ, T => Γ.push (.var T)
 
-def Ctx.push_tvar : Ctx s -> Ty .shape s -> Ctx (s,X)
+def Ctx.push_tvar : Ctx s -> PureTy s -> Ctx (s,X)
 | Γ, T => Γ.push (.tvar T)
 
 def Ctx.push_cvar : Ctx s -> Mutability -> Ctx (s,C)
@@ -40,10 +40,10 @@ inductive Ctx.IsClosed : Ctx s -> Prop where
 | empty : Ctx.IsClosed .empty
 | push : Ctx.IsClosed Γ -> b.IsClosed -> Ctx.IsClosed (.push Γ b)
 
-inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> Ty .shape s -> Prop
+inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> PureTy s -> Prop
 | here :
   Ctx.LookupTVar (.push Γ (.tvar S)) .here (S.rename Rename.succ)
-| there {S : Ty .shape s} {b : Binding s k} :
+| there {S : PureTy s} {b : Binding s k} :
   Ctx.LookupTVar Γ X S ->
   Ctx.LookupTVar (.push Γ b) (.there X) (S.rename Rename.succ)
 
@@ -61,7 +61,7 @@ inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> Mutability -> Prop
   Ctx.LookupCVar Γ c m ->
   Ctx.LookupCVar (.push Γ b0) (.there c) m
 
-def Ctx.lookup_tvar : Ctx s -> BVar s .tvar -> Ty .shape s
+def Ctx.lookup_tvar : Ctx s -> BVar s .tvar -> PureTy s
 | .push _ (.tvar S), .here => S.rename Rename.succ
 | .push Γ _, .there x => (Γ.lookup_tvar x).rename Rename.succ
 
@@ -73,7 +73,7 @@ def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> Mutability
 | .push _ (.cvar m), .here => m
 | .push Γ _, .there c => Γ.lookup_cvar c
 
-def Ctx.lookup_tvar' : Ctx (s,,k) -> BVar (s,,k) .tvar -> Ty .shape s
+def Ctx.lookup_tvar' : Ctx (s,,k) -> BVar (s,,k) .tvar -> PureTy s
 | .push _ (.tvar S), .here => S
 | .push Γ _, .there x => Γ.lookup_tvar x
 
@@ -95,7 +95,7 @@ theorem Ctx.lookup_tvar_spec (Γ : Ctx s) (x : BVar s .tvar) :
     exact LookupTVar.there (lookup_tvar_spec Γ' x')
 
 /-- If the inductive predicate holds, the type equals the functional lookup. -/
-theorem Ctx.LookupTVar.eq_lookup {Γ : Ctx s} {x : BVar s .tvar} {T : Ty .shape s}
+theorem Ctx.LookupTVar.eq_lookup {Γ : Ctx s} {x : BVar s .tvar} {T : PureTy s}
     (h : Ctx.LookupTVar Γ x T) : T = Γ.lookup_tvar x := by
   induction h with
   | here => rfl
@@ -160,8 +160,8 @@ def CaptureSet.peaks : Ctx s -> CaptureSet s -> CaptureSet s
 | Γ, .union cs1 cs2 => (peaks Γ cs1) ∪ (peaks Γ cs2)
 | _, .cvar m c => .cvar m c
 | _, .var _ (.free x) => {}   -- This is ill-formed, but we just return empty
-| .push Γ (.var (.capt C _)), .var m (.bound .here) =>
-    (peaks Γ C).rename Rename.succ |> .applyMut m
+| .push Γ (.var T), .var m (.bound .here) =>
+    (peaks Γ T.captureSet).rename Rename.succ |> .applyMut m
 | .push Γ _, .var m (.bound (.there x)) =>
     (peaks Γ (.var m (.bound x))).rename Rename.succ
 termination_by Γ cs => (sizeOf Γ, sizeOf cs)
@@ -182,9 +182,9 @@ theorem CaptureSet.peaks_peaksOnly (Γ : Ctx s) (cs : CaptureSet s) :
   | _, .var _ (.free _) =>
     simp only [peaks]
     exact PeaksOnly.empty
-  | .push Γ (.var (.capt C _)), .var m (.bound .here) =>
+  | .push Γ (.var T), .var m (.bound .here) =>
     simp only [peaks]
-    exact (peaks_peaksOnly Γ C).rename Rename.succ |>.applyMut m
+    exact (peaks_peaksOnly Γ T.captureSet).rename Rename.succ |>.applyMut m
   | .push Γ _, .var m (.bound (.there x)) =>
     simp only [peaks]
     exact (peaks_peaksOnly Γ (.var m (.bound x))).rename Rename.succ

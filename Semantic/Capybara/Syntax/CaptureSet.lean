@@ -269,5 +269,11 @@ inductive CaptureSet.IsEmpty : CaptureSet s -> Prop where
   ----------------
   IsEmpty (cs1.union cs2)
 
+/-- Renaming preserves emptiness. -/
+theorem CaptureSet.IsEmpty.rename {cs : CaptureSet s1} (h : cs.IsEmpty) (ρ : Rename s1 s2) :
+    (cs.rename ρ).IsEmpty := by
+  induction h with
+  | empty => exact IsEmpty.empty
+  | union _ _ ih1 ih2 => exact IsEmpty.union ih1 ih2
 
 end Capybara

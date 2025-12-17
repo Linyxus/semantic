@@ -114,13 +114,33 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
 | typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
 
+/-- The capture set of a renamed type equals the renamed capture set. -/
+theorem Ty.captureSet_rename {T : Ty .capt s1} {f : Rename s1 s2} :
+    (T.rename f).captureSet = T.captureSet.rename f := by
+  cases T <;> simp [Ty.rename, Ty.captureSet, CaptureSet.rename]
+
 /-- The predicate that a capturing type is pure. -/
 def Ty.IsPureType (T : Ty .capt s) : Prop :=
   T.captureSet.IsEmpty
+
+/-- Renaming preserves purity. -/
+theorem Ty.IsPureType.rename {T : Ty .capt s1} (h : T.IsPureType) (f : Rename s1 s2) :
+    (T.rename f).IsPureType := by
+  unfold IsPureType at *
+  rw [Ty.captureSet_rename]
+  exact h.rename f
 
 /-- A pure capturing type. -/
 structure PureTy (s : Sig) where
   core : Ty .capt s
   p : Ty.IsPureType core
+
+/-- Renames a pure type. -/
+def PureTy.rename (T : PureTy s1) (f : Rename s1 s2) : PureTy s2 :=
+  ⟨T.core.rename f, T.p.rename f⟩
+
+/-- A pure type is closed if its core is closed. -/
+def PureTy.IsClosed (T : PureTy s) : Prop :=
+  T.core.IsClosed
 
 end Capybara
