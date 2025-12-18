@@ -2435,6 +2435,7 @@ theorem exi_denot_implyafter_lift {cs : CaptureSet s}
   exact Mpost.entails_after_subsumes himp' hsub
 
 set_option maxHeartbeats 400000 in
+-- This is a large case analysis proof.
 theorem val_denot_enforces_captures {T : Ty .capt s}
   (hts : EnvTyping Γ env m) :
   ∀ e, (Ty.val_denot env T) m e ->
