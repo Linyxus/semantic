@@ -560,7 +560,7 @@ theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m ->
-    Ty.exi_exp_denot ρ E C m (e.subst (Subst.from_TypeEnv ρ))
+    Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
@@ -1943,6 +1943,8 @@ def val_denot_is_monotonic {env : TypeEnv s}
             exact hR0_sub
           · intro arg m' hs' harg
             have hs0 := Memory.subsumes_trans hs' hmem
+            have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+            rw [hcs'_eq]
             exact hfun arg m' hs0 harg
   | poly T1 cs T2 =>
     intro m1 m2 e hmem ht
@@ -1996,6 +1998,8 @@ def val_denot_is_monotonic {env : TypeEnv s}
             exact hR0_sub
           · intro m' denot msub hdenot_proper himply
             have hs0 := Memory.subsumes_trans msub hmem
+            have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+            rw [hcs'_eq]
             exact hfun m' denot hs0 hdenot_proper himply
   | cpoly B cs T =>
     intro m1 m2 e hmem ht
@@ -2049,6 +2053,8 @@ def val_denot_is_monotonic {env : TypeEnv s}
             exact hR0_sub
           · intro m' CS hwf _ msub hbounded
             have hs0 := Memory.subsumes_trans msub hmem
+            have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+            rw [hcs'_eq]
             exact hfun m' CS hwf hs0 hbounded
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
@@ -2114,27 +2120,19 @@ def exi_val_denot_is_bool_independent {env : TypeEnv s}
     -- So both sides evaluate to False
     simp [resolve]
 
-/-- Ported from old capt_exp_denot_is_monotonic.
-    Now an alias for exp_denot_is_monotonic since the type hierarchy is collapsed.
-    Note: With CaptureSet instead of CapabilitySet, we need well-formedness to ensure
-    the capture set denotation is invariant under memory subsumption. -/
-def capt_exp_denot_is_monotonic {env : TypeEnv s}
+/-- Expression denotation is monotonic with respect to memory subsumption.
+    Since exp_denot now takes CapabilitySet directly, the proof is simpler. -/
+def exp_denot_is_monotonic {env : TypeEnv s}
   (henv_mono : env.IsMonotonic)
   (henv_bool : env.is_bool_independent)
   (T : Ty .capt s) :
-  ∀ {cs : CaptureSet s} {m1 m2 : Memory} {e : Exp {}},
-    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m1.heap ->
+  ∀ {R : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
     m2.subsumes m1 ->
-    (Ty.exp_denot env T cs) m1 e ->
-    (Ty.exp_denot env T cs) m2 e := by
-  intro cs m1 m2 e hwf_cs hwf hmem ht
+    (Ty.exp_denot env T R) m1 e ->
+    (Ty.exp_denot env T R) m2 e := by
+  intro R m1 m2 e hwf hmem ht
   simp only [Ty.exp_denot] at ht ⊢
-  -- Use capture set well-formedness to show cs.denot env m1 = cs.denot env m2
-  have hcs_eq : cs.denot env m1 = cs.denot env m2 := by
-    unfold CaptureSet.denot
-    exact ground_denot_is_monotonic hwf_cs hmem
-  rw [← hcs_eq]
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
     exact val_denot_is_monotonic henv_mono T
@@ -2144,27 +2142,19 @@ def capt_exp_denot_is_monotonic {env : TypeEnv s}
   · exact hwf
   · exact ht
 
-/-- Ported from old exi_exp_denot_is_monotonic.
-    Updated to use CaptureSet instead of CapabilitySet since type hierarchy is collapsed.
-    Note: With CaptureSet instead of CapabilitySet, we need well-formedness to ensure
-    the capture set denotation is invariant under memory subsumption. -/
+/-- Existential expression denotation is monotonic with respect to memory subsumption.
+    Since exi_exp_denot now takes CapabilitySet directly, the proof is simpler. -/
 def exi_exp_denot_is_monotonic {env : TypeEnv s}
   (henv_mono : env.IsMonotonic)
   (henv_bool : env.is_bool_independent)
   (T : Ty .exi s) :
-  ∀ {cs : CaptureSet s} {m1 m2 : Memory} {e : Exp {}},
-    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m1.heap ->
+  ∀ {R : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
     m2.subsumes m1 ->
-    (Ty.exi_exp_denot env T cs) m1 e ->
-    (Ty.exi_exp_denot env T cs) m2 e := by
-  intro cs m1 m2 e hwf_cs hwf hmem ht
+    (Ty.exi_exp_denot env T R) m1 e ->
+    (Ty.exi_exp_denot env T R) m2 e := by
+  intro R m1 m2 e hwf hmem ht
   simp only [Ty.exi_exp_denot] at ht ⊢
-  -- Use capture set well-formedness to show cs.denot env m1 = cs.denot env m2
-  have hcs_eq : cs.denot env m1 = cs.denot env m2 := by
-    unfold CaptureSet.denot
-    exact ground_denot_is_monotonic hwf_cs hmem
-  rw [← hcs_eq]
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
     exact exi_val_denot_is_monotonic henv_mono T
@@ -2414,20 +2404,19 @@ theorem val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
     · -- Prove: (Ty.val_denot env T).is_bool_independent
       exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
 
-theorem val_denot_implyafter_lift {cs : CaptureSet s}
+theorem val_denot_implyafter_lift {R : CapabilitySet}
   (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
-  (Ty.exp_denot env T1 cs).ImplyAfter H (Ty.exp_denot env T2 cs) := by
+  (Ty.exp_denot env T1 R).ImplyAfter H (Ty.exp_denot env T2 R) := by
   intro m' hsub e heval
   simp [Ty.exp_denot] at heval ⊢
   apply eval_post_monotonic_general _ heval
   have himp' := Denot.imply_after_to_m_entails_after himp
   exact Mpost.entails_after_subsumes himp' hsub
 
-/-- Ported from old exi_denot_implyafter_lift.
-    Updated to use new exp_denot signature with CaptureSet. -/
-theorem exi_denot_implyafter_lift {cs : CaptureSet s}
+/-- Existential expression denotation implication lift. -/
+theorem exi_denot_implyafter_lift {R : CapabilitySet}
   (himp : (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)) :
-  (Ty.exi_exp_denot env T1 cs).ImplyAfter H (Ty.exi_exp_denot env T2 cs) := by
+  (Ty.exi_exp_denot env T1 R).ImplyAfter H (Ty.exi_exp_denot env T2 R) := by
   intro m' hsub e heval
   simp [Ty.exi_exp_denot] at heval ⊢
   apply eval_post_monotonic_general _ heval
@@ -2717,10 +2706,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition
-      -- The body uses tracking set (.var .epsilon x).rename instead of cs.rename
-      -- This requires showing the body only uses capabilities from (.var .epsilon x)
-      sorry
+    · -- Body condition - now uses R0 directly, same for both original and refined types
+      exact hbody
   | poly T1 cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
@@ -2760,8 +2747,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition
-      sorry
+    · -- Body condition - now uses R0 directly, same for both original and refined types
+      exact hbody
   | cpoly B cs T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
@@ -2799,8 +2786,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition
-      sorry
+    · -- Body condition - now uses R0 directly, same for both original and refined types
+      exact hbody
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
