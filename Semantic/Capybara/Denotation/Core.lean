@@ -2655,6 +2655,241 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env)))) :
   (Ty.val_denot env (T.refineCaptureSet (.var .epsilon x)))
     m
-    (.var (x.subst (Subst.from_TypeEnv env))) := sorry
+    (.var (x.subst (Subst.from_TypeEnv env))) := by
+  cases T with
+  | top =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    exact hdenot
+  | tvar X =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    exact hdenot
+  | unit =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    exact hdenot
+  | bool =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    exact hdenot
+  | arrow T1 cs T2 =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
+    refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
+    · -- WfInHeap for (.var .epsilon x).subst
+      simp only [CaptureSet.subst]
+      cases hwf_e with
+      | wf_var hwf_var =>
+        exact CaptureSet.wf_of_var hwf_var
+    · -- expand_captures m.heap cs' ⊆ (.var .epsilon x).denot env m
+      -- Key: use wf_reach to show expand_captures = reachability_of_loc
+      simp only [resolve] at hres
+      cases hv : x.subst (Subst.from_TypeEnv env) with
+      | free n =>
+        simp only [hv] at hres hwf_e ⊢
+        cases hcell : m.heap n with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            -- hres : v.unwrap = .abs cs' x0 t0
+            -- By wf_reach: v.reachability = compute_reachability m.heap v.unwrap v.isVal
+            have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
+            -- Transport v.isVal along hres to get IsSimpleVal for the abs
+            have habs_isval : (Exp.abs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
+            -- compute_reachability for abs is expand_captures
+            have hcomp : compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
+              calc compute_reachability m.heap v.unwrap v.isVal
+                  = compute_reachability m.heap (Exp.abs cs' x0 t0) habs_isval := by simp only [hres]
+                _ = expand_captures m.heap cs' := rfl
+            -- reachability_of_loc = v.reachability
+            have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
+              simp only [reachability_of_loc, hcell]
+            -- Chain: expand_captures = compute_reachability = v.reachability = reachability_of_loc
+            have heq : expand_captures m.heap cs' = reachability_of_loc m.heap n := by
+              rw [hreach_loc, hwf_reach, hcomp]
+            -- (.var .epsilon x).denot env m = reachability_of_loc m.heap n
+            simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
+                       CapabilitySet.applyMut]
+            rw [heq]
+            exact CapabilitySet.Subset.refl
+          | capability _ => simp at hres
+          | masked => simp at hres
+      | bound bx => cases bx
+    · -- Body condition
+      -- The body uses tracking set (.var .epsilon x).rename instead of cs.rename
+      -- This requires showing the body only uses capabilities from (.var .epsilon x)
+      sorry
+  | poly T1 cs T2 =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
+    refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
+    · -- WfInHeap for (.var .epsilon x).subst
+      simp only [CaptureSet.subst]
+      cases hwf_e with
+      | wf_var hwf_var =>
+        exact CaptureSet.wf_of_var hwf_var
+    · -- expand_captures ⊆ (.var .epsilon x).denot - same reasoning as arrow
+      simp only [resolve] at hres
+      cases hv : x.subst (Subst.from_TypeEnv env) with
+      | free n =>
+        simp only [hv] at hres hwf_e ⊢
+        cases hcell : m.heap n with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
+            have htabs_isval : (Exp.tabs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
+            have hcomp : compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
+              calc compute_reachability m.heap v.unwrap v.isVal
+                  = compute_reachability m.heap (Exp.tabs cs' x0 t0) htabs_isval := by simp only [hres]
+                _ = expand_captures m.heap cs' := rfl
+            have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
+              simp only [reachability_of_loc, hcell]
+            have heq : expand_captures m.heap cs' = reachability_of_loc m.heap n := by
+              rw [hreach_loc, hwf_reach, hcomp]
+            simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
+                       CapabilitySet.applyMut]
+            rw [heq]; exact CapabilitySet.Subset.refl
+          | capability _ => simp at hres
+          | masked => simp at hres
+      | bound bx => cases bx
+    · -- Body condition
+      sorry
+  | cpoly B cs T =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
+    refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
+    · simp only [CaptureSet.subst]
+      cases hwf_e with
+      | wf_var hwf_var =>
+        exact CaptureSet.wf_of_var hwf_var
+    · simp only [resolve] at hres
+      cases hv : x.subst (Subst.from_TypeEnv env) with
+      | free n =>
+        simp only [hv] at hres hwf_e ⊢
+        cases hcell : m.heap n with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
+            have hcabs_isval : (Exp.cabs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
+            have hcomp : compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
+              calc compute_reachability m.heap v.unwrap v.isVal
+                  = compute_reachability m.heap (Exp.cabs cs' x0 t0) hcabs_isval := by simp only [hres]
+                _ = expand_captures m.heap cs' := rfl
+            have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
+              simp only [reachability_of_loc, hcell]
+            have heq : expand_captures m.heap cs' = reachability_of_loc m.heap n := by
+              rw [hreach_loc, hwf_reach, hcomp]
+            simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
+                       CapabilitySet.applyMut]
+            rw [heq]; exact CapabilitySet.Subset.refl
+          | capability _ => simp at hres
+          | masked => simp at hres
+      | bound bx => cases bx
+    · -- Body condition
+      sorry
+  | cap cs =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
+    -- heq : Exp.var (x.subst ...) = Exp.var (Var.free label)
+    -- Extract variable equality via injection
+    simp only [Exp.var.injEq] at heq
+    -- Now heq : x.subst (Subst.from_TypeEnv env) = Var.free label
+    refine ⟨hwf_e, ?_, label, ?_, hlookup, ?_⟩
+    · -- WfInHeap for (.var .epsilon x).subst
+      simp only [CaptureSet.subst]
+      cases hwf_e with
+      | wf_var hwf_var =>
+        exact CaptureSet.wf_of_var hwf_var
+    · -- e = .var (.free label)
+      simp only [heq]
+    · -- covers .epsilon label ((.var .epsilon x).denot env m)
+      simp only [CaptureSet.denot, CaptureSet.subst, heq, CaptureSet.ground_denot, CapabilitySet.applyMut]
+      -- reachability_of_loc for capability cell is singleton .epsilon label
+      simp [Memory.lookup] at hlookup
+      cases hcell : m.heap label with
+      | none => simp [hcell] at hlookup
+      | some cell =>
+        simp [reachability_of_loc, hcell]
+        cases cell with
+        | val v => simp [hcell] at hlookup
+        | capability cap =>
+          exact CapabilitySet.covers.here Mutability.Le.refl
+        | masked => simp [hcell] at hlookup
+  | cell cs =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    obtain ⟨hwf_cs, label, b0, heq, hlookup, hcov⟩ := hdenot
+    -- heq : Exp.var (x.subst ...) = Exp.var (Var.free label)
+    simp only [Exp.var.injEq] at heq
+    refine ⟨?_, label, b0, ?_, hlookup, ?_⟩
+    · -- WfInHeap for (.var .epsilon x).subst
+      simp only [CaptureSet.subst]
+      -- x.subst gives us (.free label), which is well-formed
+      rw [heq]
+      exact CaptureSet.WfInHeap.wf_var_free (by simp [Memory.lookup] at hlookup; exact hlookup)
+    · -- e = .var (.free label)
+      simp only [heq]
+    · -- covers .epsilon label ((.var .epsilon x).denot env m)
+      simp only [CaptureSet.denot, CaptureSet.subst, heq, CaptureSet.ground_denot, CapabilitySet.applyMut]
+      simp [Memory.lookup] at hlookup
+      cases hcell : m.heap label with
+      | none => simp [hcell] at hlookup
+      | some cell =>
+        simp [reachability_of_loc, hcell]
+        cases cell with
+        | val v => simp [hcell] at hlookup
+        | capability cap =>
+          exact CapabilitySet.covers.here Mutability.Le.refl
+        | masked => simp [hcell] at hlookup
+  | reader cs =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    obtain ⟨hwf_e, hwf_cs, loc, label, hres, hlookup, hcov⟩ := hdenot
+    refine ⟨hwf_e, ?_, loc, label, hres, hlookup, ?_⟩
+    · -- WfInHeap for (.var .epsilon x).subst
+      simp only [CaptureSet.subst]
+      cases hwf_e with
+      | wf_var hwf_var =>
+        exact CaptureSet.wf_of_var hwf_var
+    · -- Need: covers .ro label ((.var .epsilon x).denot env m)
+      simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot, CapabilitySet.applyMut]
+      -- The expression e = .var (x.subst ...) resolves to .reader (.free label)
+      -- x.subst gives us the location, and reachability_of_loc gives the reachability
+      simp only [resolve] at hres
+      cases hv : x.subst (Subst.from_TypeEnv env) with
+      | free n =>
+        simp only [hv] at hres hwf_e ⊢
+        cases hcell : m.heap n with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            -- v.unwrap = .reader (.free loc)
+            -- By wf_reach: v.reachability = compute_reachability = .cap .ro loc
+            have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
+            have hreader_isval : (Exp.reader (Var.free loc)).IsSimpleVal := hres ▸ v.isVal
+            have hcomp : compute_reachability m.heap v.unwrap v.isVal = .cap .ro loc := by
+              calc compute_reachability m.heap v.unwrap v.isVal
+                  = compute_reachability m.heap (Exp.reader (Var.free loc)) hreader_isval := by simp only [hres]
+                _ = .cap .ro loc := rfl
+            have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
+              simp only [reachability_of_loc, hcell]
+            have heq : reachability_of_loc m.heap n = .cap .ro loc := by
+              rw [hreach_loc, hwf_reach, hcomp]
+            -- ground_denot for (.var .epsilon (Var.free n)) = reachability_of_loc m.heap n
+            simp only [CaptureSet.ground_denot, CapabilitySet.applyMut]
+            rw [heq]
+            exact CapabilitySet.covers.here Mutability.Le.refl
+          | capability _ => simp at hres
+          | masked => simp at hres
+      | bound bx => cases bx
 
 end Capybara
