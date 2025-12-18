@@ -2697,9 +2697,11 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             -- Transport v.isVal along hres to get IsSimpleVal for the abs
             have habs_isval : (Exp.abs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
             -- compute_reachability for abs is expand_captures
-            have hcomp : compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
+            have hcomp :
+                compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
-                  = compute_reachability m.heap (Exp.abs cs' x0 t0) habs_isval := by simp only [hres]
+                  = compute_reachability m.heap (Exp.abs cs' x0 t0) habs_isval := by
+                      simp only [hres]
                 _ = expand_captures m.heap cs' := rfl
             -- reachability_of_loc = v.reachability
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
@@ -2742,9 +2744,11 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             simp at hres
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
             have htabs_isval : (Exp.tabs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
-            have hcomp : compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
+            have hcomp :
+                compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
-                  = compute_reachability m.heap (Exp.tabs cs' x0 t0) htabs_isval := by simp only [hres]
+                  = compute_reachability m.heap (Exp.tabs cs' x0 t0) htabs_isval := by
+                      simp only [hres]
                 _ = expand_captures m.heap cs' := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
@@ -2779,9 +2783,11 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             simp at hres
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
             have hcabs_isval : (Exp.cabs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
-            have hcomp : compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
+            have hcomp :
+                compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
-                  = compute_reachability m.heap (Exp.cabs cs' x0 t0) hcabs_isval := by simp only [hres]
+                  = compute_reachability m.heap (Exp.cabs cs' x0 t0) hcabs_isval := by
+                      simp only [hres]
                 _ = expand_captures m.heap cs' := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
@@ -2811,7 +2817,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
     · -- e = .var (.free label)
       simp only [heq]
     · -- covers .epsilon label ((.var .epsilon x).denot env m)
-      simp only [CaptureSet.denot, CaptureSet.subst, heq, CaptureSet.ground_denot, CapabilitySet.applyMut]
+      simp only [CaptureSet.denot, CaptureSet.subst, heq,
+                 CaptureSet.ground_denot, CapabilitySet.applyMut]
       -- reachability_of_loc for capability cell is singleton .epsilon label
       simp [Memory.lookup] at hlookup
       cases hcell : m.heap label with
@@ -2837,7 +2844,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
     · -- e = .var (.free label)
       simp only [heq]
     · -- covers .epsilon label ((.var .epsilon x).denot env m)
-      simp only [CaptureSet.denot, CaptureSet.subst, heq, CaptureSet.ground_denot, CapabilitySet.applyMut]
+      simp only [CaptureSet.denot, CaptureSet.subst, heq,
+                 CaptureSet.ground_denot, CapabilitySet.applyMut]
       simp [Memory.lookup] at hlookup
       cases hcell : m.heap label with
       | none => simp [hcell] at hlookup
@@ -2858,7 +2866,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       | wf_var hwf_var =>
         exact CaptureSet.wf_of_var hwf_var
     · -- Need: covers .ro label ((.var .epsilon x).denot env m)
-      simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot, CapabilitySet.applyMut]
+      simp only [CaptureSet.denot, CaptureSet.subst]
       -- The expression e = .var (x.subst ...) resolves to .reader (.free label)
       -- x.subst gives us the location, and reachability_of_loc gives the reachability
       simp only [resolve] at hres
@@ -2876,9 +2884,11 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             -- By wf_reach: v.reachability = compute_reachability = .cap .ro loc
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
             have hreader_isval : (Exp.reader (Var.free loc)).IsSimpleVal := hres ▸ v.isVal
-            have hcomp : compute_reachability m.heap v.unwrap v.isVal = .cap .ro loc := by
+            have hcomp :
+                compute_reachability m.heap v.unwrap v.isVal = .cap .ro loc := by
               calc compute_reachability m.heap v.unwrap v.isVal
-                  = compute_reachability m.heap (Exp.reader (Var.free loc)) hreader_isval := by simp only [hres]
+                  = compute_reachability m.heap (Exp.reader (Var.free loc)) hreader_isval := by
+                      simp only [hres]
                 _ = .cap .ro loc := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
