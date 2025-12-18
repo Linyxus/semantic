@@ -517,7 +517,7 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     exact CaptureSet.applyMut_rename
   | _, .push Γ' (.tvar S), .extend ρ' (.tvar denot), .there x' =>
     simp only [EnvTyping] at h
-    obtain ⟨_, _, _, h'⟩ := h
+    obtain ⟨_, _, _, _, h'⟩ := h
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
@@ -756,7 +756,7 @@ theorem typed_env_is_implying_wf
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨_, himplies, _, ht'⟩ := ht
+          have ⟨_, himplies, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
@@ -896,7 +896,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | tvar denot =>
           unfold EnvTyping at htyping
-          have ⟨_, _, _, htyping'⟩ := htyping
+          have ⟨_, _, _, _, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -1157,7 +1157,7 @@ theorem typed_env_is_monotonic
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨hproper, _, _, ht'⟩ := ht
+          have ⟨hproper, _, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -1214,7 +1214,7 @@ theorem typed_env_is_transparent
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨hproper, _, _, ht'⟩ := ht
+          have ⟨hproper, _, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1271,7 +1271,7 @@ theorem typed_env_is_bool_independent
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨hproper, _, _, ht'⟩ := ht
+          have ⟨hproper, _, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
@@ -2136,14 +2136,16 @@ theorem env_typing_monotonic
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hproper, himply_wf, himply, ht'⟩ := ht
+          have ⟨hproper, himply_wf, himply, hpure, ht'⟩ := ht
           constructor
           · exact hproper
           · constructor
             · exact himply_wf
             · constructor
               · apply Denot.imply_after_subsumes himply hmem
-              · exact ih ht'
+              · constructor
+                · exact hpure
+                · exact ih ht'
       | cvar B =>
         cases info with
         | cvar cs =>
