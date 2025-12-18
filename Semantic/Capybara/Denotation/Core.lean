@@ -356,7 +356,7 @@ mutual
 /-- Value denotation for capturing types. -/
 def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
 | _, .top => fun m e =>
-  e.WfInHeap m.heap
+  e.WfInHeap m.heap ∧ resolve_reachability m.heap e ⊆ .empty
 | env, .tvar X => env.lookup_tvar X
 | _, .unit => fun m e =>
   resolve m.heap e = some .unit
