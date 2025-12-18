@@ -146,36 +146,26 @@ def rebind_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub harg
-      -- Use the computed peaksets for the rebind
+      -- The capability set R0 ∪ (reachability_of_loc m'.heap arg) is a ground CapabilitySet
+      -- that is the same on both sides since it doesn't depend on the signature
+      let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
       have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2) T2
-        (cs.rename Rename.succ ∪ .var .epsilon (.bound .here))
+        (R0 ∪ (reachability_of_loc m'.heap arg))
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
       specialize hd arg m' hsub harg'
-      -- Use CaptureSet.weaken_rename_comm to show capture sets are equal
-      have hcs_eq : ((cs.rename Rename.succ ∪ .var .epsilon (.bound .here)).rename f.lift) =
-                    ((cs.rename f).rename Rename.succ ∪ .var .epsilon (.bound .here)) := by
-        conv_lhs => simp only [CaptureSet.rename]
-        rw [CaptureSet.weaken_rename_comm]
-        simp only [Var.rename, Rename.lift]; rfl
-      rw [hcs_eq] at ih2
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub harg
+      let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
       have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2) T2
-        (cs.rename Rename.succ ∪ .var .epsilon (.bound .here))
+        (R0 ∪ (reachability_of_loc m'.heap arg))
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub harg'
-      have hcs_eq : ((cs.rename Rename.succ ∪ .var .epsilon (.bound .here)).rename f.lift) =
-                    ((cs.rename f).rename Rename.succ ∪ .var .epsilon (.bound .here)) := by
-        conv_lhs => simp only [CaptureSet.rename]
-        rw [CaptureSet.weaken_rename_comm]
-        simp only [Var.rename, Rename.lift]; rfl
-      rw [hcs_eq] at ih2
       exact (ih2 m' _).mpr hd
   | .poly T1 cs T2 => by
     have ih1 := rebind_val_denot ρ T1
@@ -187,30 +177,22 @@ def rebind_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' denot hsub hproper himply hpure
-      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
-        (cs.rename (Rename.succ (k:=.tvar)))
+      let R0 := expand_captures m.heap cs'
+      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hproper himply' hpure
-      have hcs_eq : (cs.rename (Rename.succ (k:=.tvar))).rename (f.lift (k:=.tvar)) =
-                    (cs.rename f).rename (Rename.succ (k:=.tvar)) :=
-        CaptureSet.weaken_rename_comm
-      rw [hcs_eq] at ih2
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' denot hsub hproper himply hpure
-      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
-        (cs.rename (Rename.succ (k:=.tvar)))
+      let R0 := expand_captures m.heap cs'
+      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.rename f)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hproper himply' hpure
-      have hcs_eq : (cs.rename (Rename.succ (k:=.tvar))).rename (f.lift (k:=.tvar)) =
-                    (cs.rename f).rename (Rename.succ (k:=.tvar)) :=
-        CaptureSet.weaken_rename_comm
-      rw [hcs_eq] at ih2
       exact (ih2 m' _).mpr hd
   | .cpoly B cs T => by
     intro m e
@@ -221,24 +203,16 @@ def rebind_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hsub_bound
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
-        (cs.rename (Rename.succ (k:=.cvar)))
+      let R0 := expand_captures m.heap cs'
+      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
-      have hcs_eq : (cs.rename (Rename.succ (k:=.cvar))).rename (f.lift (k:=.cvar)) =
-                    (cs.rename f).rename (Rename.succ (k:=.cvar)) :=
-        CaptureSet.weaken_rename_comm
-      rw [hcs_eq] at ih2
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hsub_bound
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
-        (cs.rename (Rename.succ (k:=.cvar)))
+      let R0 := expand_captures m.heap cs'
+      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
-      have hcs_eq : (cs.rename (Rename.succ (k:=.cvar))).rename (f.lift (k:=.cvar)) =
-                    (cs.rename f).rename (Rename.succ (k:=.cvar)) :=
-        CaptureSet.weaken_rename_comm
-      rw [hcs_eq] at ih2
       exact (ih2 m' _).mpr hd
 
 def rebind_exi_val_denot
@@ -275,13 +249,11 @@ def rebind_exi_val_denot
 
 def rebind_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (T : Ty .capt s1) (cs : CaptureSet s1) :
-  Ty.exp_denot env1 T cs ≈ Ty.exp_denot env2 (T.rename f) (cs.rename f) := by
+  (ρ : Rebind env1 f env2) (T : Ty .capt s1) (R : CapabilitySet) :
+  Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.rename f) R := by
   have ih := rebind_val_denot ρ T
-  have hcs := rebind_captureset_denot ρ cs
   intro m e
   simp [Ty.exp_denot]
-  rw [← hcs]
   constructor
   · intro h
     apply eval_post_monotonic _ h
@@ -294,13 +266,11 @@ def rebind_exp_denot
 
 def rebind_exi_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (T : Ty .exi s1) (cs : CaptureSet s1) :
-  Ty.exi_exp_denot env1 T cs ≈ Ty.exi_exp_denot env2 (T.rename f) (cs.rename f) := by
+  (ρ : Rebind env1 f env2) (T : Ty .exi s1) (R : CapabilitySet) :
+  Ty.exi_exp_denot env1 T R ≈ Ty.exi_exp_denot env2 (T.rename f) R := by
   have ih := rebind_exi_val_denot ρ T
-  have hcs := rebind_captureset_denot ρ cs
   intro m e
   simp [Ty.exi_exp_denot]
-  rw [← hcs]
   constructor
   · intro h
     apply eval_post_monotonic _ h
