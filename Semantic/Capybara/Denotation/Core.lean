@@ -820,7 +820,7 @@ theorem from_TypeEnv_wf_in_heap
             cases T with
             | top =>
               unfold Ty.val_denot at htype
-              exact htype
+              exact htype.1
             | tvar X =>
               -- For tvar, we need the denotation to be proper
               -- This is guaranteed by EnvTyping for the lookup_tvar
@@ -1317,14 +1317,19 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | top =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    -- ht : v.unwrap.WfInHeap m.heap
-    -- Goal: (.var (.free x)).WfInHeap m.heap
     have hx_heap : m.heap x = some (Cell.val v) := by
       simp [Memory.lookup] at hx
       exact hx
-    apply Exp.WfInHeap.wf_var
-    apply Var.WfInHeap.wf_free
-    exact hx_heap
+    constructor
+    · apply Exp.WfInHeap.wf_var
+      apply Var.WfInHeap.wf_free
+      exact hx_heap
+    · -- resolve_reachability of var equals resolve_reachability of stored value
+      have heq : resolve_reachability m.heap (.var (.free x)) =
+                 resolve_reachability m.heap v.unwrap :=
+        reachability_of_loc_eq_resolve_reachability m x v hx_heap
+      rw [heq]
+      exact ht.2
   | tvar X =>
     unfold Ty.val_denot
     exact henv X
@@ -1454,8 +1459,12 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
   | top =>
     unfold Ty.val_denot
     constructor <;> intro
-    · apply Exp.WfInHeap.wf_bfalse
-    · apply Exp.WfInHeap.wf_btrue
+    · constructor
+      · apply Exp.WfInHeap.wf_bfalse
+      · simp [resolve_reachability]; exact CapabilitySet.Subset.refl
+    · constructor
+      · apply Exp.WfInHeap.wf_btrue
+      · simp [resolve_reachability]; exact CapabilitySet.Subset.refl
   | tvar X =>
     unfold Ty.val_denot
     exact henv X
@@ -1686,9 +1695,10 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | top =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    -- ht : e.WfInHeap m1.heap
-    -- Goal: e.WfInHeap m2.heap
-    exact Exp.wf_monotonic hmem ht
+    constructor
+    · exact Exp.wf_monotonic hmem ht.1
+    · rw [resolve_reachability_monotonic hmem e ht.1]
+      exact ht.2
   | tvar X =>
     unfold Ty.val_denot
     exact henv.tvar X
@@ -2250,7 +2260,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
   cases T with
   | top =>
     simp [Ty.val_denot] at hdenot
-    exact hdenot
+    exact hdenot.1
   | tvar X =>
     simp [Ty.val_denot] at hdenot
     exact hts X m e hdenot
@@ -2363,5 +2373,10 @@ theorem exi_denot_implyafter_lift {cs : CaptureSet s}
   apply eval_post_monotonic_general _ heval
   have himp' := Denot.imply_after_to_m_entails_after himp
   exact Mpost.entails_after_subsumes himp' hsub
+
+theorem val_denot_enforces_captures {T : Ty .capt s}
+  (hts : EnvTyping Γ env m) :
+  ∀ e, (Ty.val_denot env T) m e ->
+    resolve_reachability m.heap e ⊆ (T.captureSet).denot env m := sorry
 
 end Capybara
