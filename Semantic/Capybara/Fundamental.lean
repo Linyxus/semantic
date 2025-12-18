@@ -74,47 +74,22 @@ theorem typed_env_lookup_var_reachability
   simp only [resolve_reachability] at hreach
   exact hreach
 
-/-
-
-theorem shape_denot_with_var_reachability
-  {C : CaptureSet s} {S : Ty .shape s}
-  (hts : EnvTyping Γ env m)
-  (hd : Ty.shape_val_denot env S (C.denot env m) m (.var (.free (env.lookup_var x).1))) :
-  Ty.shape_val_denot env S (reachability_of_loc m.heap (env.lookup_var x).1) m
-    (.var (.free (env.lookup_var x).1)) := by
-  -- Direct application of the is_tight property of shape_val_denot
-  exact shape_val_denot_is_tight (typed_env_is_tight hts) (C.denot env m) m (env.lookup_var x).1 hd
-
 theorem sem_typ_var
-  (hx : Γ.LookupVar x (.capt C S)) :
+  (hx : Γ.LookupVar x T) :
   (.var .epsilon (.bound x)) # Γ ⊨ (Exp.var (.bound x)) :
-    (.typ (.capt (.var .epsilon (.bound x)) S)) := by
-  intro env store hts
-  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot]
+    (.typ (T.refineCaptureSet (.var .epsilon (.bound x)))) := by
+  intro env m hts
+  simp only [Ty.exi_exp_denot, Ty.exi_val_denot]
   apply Eval.eval_var
-  simp [Denot.as_mpost]
-  -- From typed_env_lookup_var, we get that .var (.free n) satisfies .capt C S
+  simp only [Denot.as_mpost]
+  -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
   have h_lookup := typed_env_lookup_var hts hx
-  simp [Ty.capt_val_denot] at h_lookup ⊢
-  obtain ⟨hsimple, hwf, hwf_C, hshape⟩ := h_lookup
-  constructor
-  · -- Prove IsSimpleAns: variables are simple answers
-    exact hsimple
-  constructor
-  · exact hwf
-  constructor
-  · -- (.var .epsilon (.bound x)).subst env becomes (.var (.free n)) which is well-formed
-    -- Need: CaptureSet.var (.free n) is well-formed, which requires heap lookup
-    simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv]
-    cases hwf with
-    | wf_var hwf_var =>
-      cases hwf_var with
-      | wf_free hlookup =>
-        exact CaptureSet.WfInHeap.wf_var_free hlookup
-  · -- Use the key lemma: shape with C.denot implies shape with reachability_of_loc
-    simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
-      CaptureSet.ground_denot]
-    exact shape_denot_with_var_reachability hts hshape
+  -- Use val_denot_refine to get the refined type denotation
+  have h_refined := val_denot_refine (x := .bound x) h_lookup
+  simp only [Var.subst, Subst.from_TypeEnv] at h_refined
+  exact h_refined
+
+/-
 
 theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
   expand_captures m.heap cs = cs.ground_denot m := by
@@ -2625,144 +2600,146 @@ theorem sem_typ_unpack
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
 
+-/
+
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (ht : C # Γ ⊢ e : T) :
   C # Γ ⊨ e : T := by
   have hclosed_e := HasType.exp_is_closed ht
   induction ht
-  case var hx => apply sem_typ_var hx
-  case reader hΓ_closed hx =>
-    exact sem_typ_reader hΓ_closed hx
-  case abs =>
-    apply sem_typ_abs
-    · exact hclosed_e
-    · cases hclosed_e; aesop
-  case tabs =>
-    apply sem_typ_tabs
-    · exact hclosed_e
-    · cases hclosed_e; aesop
-  case cabs =>
-    apply sem_typ_cabs
-    · exact hclosed_e
-    · cases hclosed_e; aesop
-  case pack =>
-    rename_i ih
-    apply sem_typ_pack
-    · exact hclosed_e
-    · cases hclosed_e with | pack _ hx_closed =>
-      apply ih
-      constructor
-      exact hx_closed
-  case unit => exact sem_typ_unit
-  case btrue => exact sem_typ_btrue
-  case bfalse => exact sem_typ_bfalse
-  case cond ht1 ht2 ht3 ih1 ih2 ih3 =>
-    -- hclosed_e gives closedness of cond e1 e2 e3
-    cases hclosed_e with
-    | cond hclosed_guard hclosed_then hclosed_else =>
-      have hclosedC1 := HasType.use_set_is_closed ht1
-      have hclosedC2 := HasType.use_set_is_closed ht2
-      have hclosedC3 := HasType.use_set_is_closed ht3
-      exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
-        (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
-  case app =>
-    rename_i hx hy
-    -- From closedness of (app x y), extract that x and y are closed variables
-    cases hclosed_e with
-    | app hx_closed hy_closed =>
-      -- Closed variables must be bound (not free heap pointers)
-      cases hx_closed
-      cases hy_closed
-      -- Apply IHs to get semantic typing for the variables
-      -- Then apply sem_typ_app theorem
-      exact sem_typ_app
-        (hx (Exp.IsClosed.var Var.IsClosed.bound))
-        (hy (Exp.IsClosed.var Var.IsClosed.bound))
-  case invoke =>
-    rename_i hx hy
-    -- From closedness of (app x y), extract that x and y are closed
-    cases hclosed_e with
-    | app hx_closed hy_closed =>
-      -- Closed variables must be bound (not free heap pointers)
-      cases hx_closed
-      cases hy_closed
-      -- Apply IHs to get semantic typing for the variables
-      -- Then apply sem_typ_invoke theorem
-      exact sem_typ_invoke
-        (hx (Exp.IsClosed.var Var.IsClosed.bound))
-        (hy (Exp.IsClosed.var Var.IsClosed.bound))
-  case tapp =>
-    rename_i hS_closed hx
-    -- From closedness of (tapp x S), extract that x and S are closed
-    cases hclosed_e with
-    | tapp hx_closed hS_closed =>
-      -- Closed variables must be bound (not free heap pointers)
-      cases hx_closed
-      -- Apply IH to get semantic typing for the variable
-      -- Then apply sem_typ_tapp theorem
-      exact sem_typ_tapp
-        (hx (Exp.IsClosed.var Var.IsClosed.bound))
-  case capp =>
-    rename_i hD_closed_syn hD_kind hx_syn _ _ hih
-    cases hclosed_e with
-    | capp hx_closed hD_closed_exp =>
-      cases hx_closed
-      exact sem_typ_capp hD_closed_exp hD_kind
-        (hih (Exp.IsClosed.var Var.IsClosed.bound))
-  case letin =>
-    rename_i ht1_syn ht2_syn ht1_ih ht2_ih
-    cases hclosed_e with
-    | letin he1_closed he2_closed =>
-      exact sem_typ_letin
-        (HasType.use_set_is_closed ht1_syn)
-        (Exp.IsClosed.letin he1_closed he2_closed)
-        (ht1_ih he1_closed)
-        (ht2_ih he2_closed)
-  case unpack =>
-    rename_i ht_syn hu_syn ht_ih hu_ih
-    cases hclosed_e with
-    | unpack ht_closed hu_closed =>
-      exact sem_typ_unpack
-        (HasType.use_set_is_closed ht_syn)
-        (ht_ih ht_closed)
-        (hu_ih hu_closed)
-  case read =>
-    rename_i hx_syn hx_ih
-    -- From closedness of (read x), extract that x is closed
-    cases hclosed_e with
-    | read hx_closed =>
-      -- Closed variables must be bound (not free heap pointers)
-      cases hx_closed
-      -- Apply IH to get semantic typing for the variable
-      exact sem_typ_read
-        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
-  case write =>
-    rename_i hx_syn hy_syn hx_ih hy_ih
-    -- From closedness of (write x y), extract that x and y are closed
-    cases hclosed_e with
-    | write hx_closed hy_closed =>
-      -- Closed variables must be bound (not free heap pointers)
-      cases hx_closed
-      cases hy_closed
-      -- Apply IHs to get semantic typing for the variables
-      exact sem_typ_write
-        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
-        (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
-  case par ht1_syn ht2_syn ht1_ih ht2_ih =>
-    -- Extract closedness of both branches
-    cases hclosed_e with
-    | par hclosed_e1 hclosed_e2 =>
-      exact sem_typ_par (ht1_ih hclosed_e1) (ht2_ih hclosed_e2)
-  case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
-    -- Get closedness of C1 from the syntactic typing derivation
-    have hclosed_C1 := HasType.use_set_is_closed ht_syn
-    -- Get closedness of E1 from the syntactic typing derivation
-    have hclosed_E1 := HasType.type_is_closed ht_syn
-    -- Apply the semantic subtyping lemma
-    apply sem_typ_subtyp (ht_ih hclosed_e) hsubcapt hsubtyp
-      hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
-
--/
+  case var hx =>
+    exact sem_typ_var hx
+  all_goals sorry
+  -- case reader hΓ_closed hx =>
+  --   exact sem_typ_reader hΓ_closed hx
+  -- case abs =>
+  --   apply sem_typ_abs
+  --   · exact hclosed_e
+  --   · cases hclosed_e; aesop
+  -- case tabs =>
+  --   apply sem_typ_tabs
+  --   · exact hclosed_e
+  --   · cases hclosed_e; aesop
+  -- case cabs =>
+  --   apply sem_typ_cabs
+  --   · exact hclosed_e
+  --   · cases hclosed_e; aesop
+  -- case pack =>
+  --   rename_i ih
+  --   apply sem_typ_pack
+  --   · exact hclosed_e
+  --   · cases hclosed_e with | pack _ hx_closed =>
+  --     apply ih
+  --     constructor
+  --     exact hx_closed
+  -- case unit => exact sem_typ_unit
+  -- case btrue => exact sem_typ_btrue
+  -- case bfalse => exact sem_typ_bfalse
+  -- case cond ht1 ht2 ht3 ih1 ih2 ih3 =>
+  --   -- hclosed_e gives closedness of cond e1 e2 e3
+  --   cases hclosed_e with
+  --   | cond hclosed_guard hclosed_then hclosed_else =>
+  --     have hclosedC1 := HasType.use_set_is_closed ht1
+  --     have hclosedC2 := HasType.use_set_is_closed ht2
+  --     have hclosedC3 := HasType.use_set_is_closed ht3
+  --     exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
+  --       (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
+  -- case app =>
+  --   rename_i hx hy
+  --   -- From closedness of (app x y), extract that x and y are closed variables
+  --   cases hclosed_e with
+  --   | app hx_closed hy_closed =>
+  --     -- Closed variables must be bound (not free heap pointers)
+  --     cases hx_closed
+  --     cases hy_closed
+  --     -- Apply IHs to get semantic typing for the variables
+  --     -- Then apply sem_typ_app theorem
+  --     exact sem_typ_app
+  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
+  --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
+  -- case invoke =>
+  --   rename_i hx hy
+  --   -- From closedness of (app x y), extract that x and y are closed
+  --   cases hclosed_e with
+  --   | app hx_closed hy_closed =>
+  --     -- Closed variables must be bound (not free heap pointers)
+  --     cases hx_closed
+  --     cases hy_closed
+  --     -- Apply IHs to get semantic typing for the variables
+  --     -- Then apply sem_typ_invoke theorem
+  --     exact sem_typ_invoke
+  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
+  --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
+  -- case tapp =>
+  --   rename_i hS_closed hx
+  --   -- From closedness of (tapp x S), extract that x and S are closed
+  --   cases hclosed_e with
+  --   | tapp hx_closed hS_closed =>
+  --     -- Closed variables must be bound (not free heap pointers)
+  --     cases hx_closed
+  --     -- Apply IH to get semantic typing for the variable
+  --     -- Then apply sem_typ_tapp theorem
+  --     exact sem_typ_tapp
+  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
+  -- case capp =>
+  --   rename_i hD_closed_syn hD_kind hx_syn _ _ hih
+  --   cases hclosed_e with
+  --   | capp hx_closed hD_closed_exp =>
+  --     cases hx_closed
+  --     exact sem_typ_capp hD_closed_exp hD_kind
+  --       (hih (Exp.IsClosed.var Var.IsClosed.bound))
+  -- case letin =>
+  --   rename_i ht1_syn ht2_syn ht1_ih ht2_ih
+  --   cases hclosed_e with
+  --   | letin he1_closed he2_closed =>
+  --     exact sem_typ_letin
+  --       (HasType.use_set_is_closed ht1_syn)
+  --       (Exp.IsClosed.letin he1_closed he2_closed)
+  --       (ht1_ih he1_closed)
+  --       (ht2_ih he2_closed)
+  -- case unpack =>
+  --   rename_i ht_syn hu_syn ht_ih hu_ih
+  --   cases hclosed_e with
+  --   | unpack ht_closed hu_closed =>
+  --     exact sem_typ_unpack
+  --       (HasType.use_set_is_closed ht_syn)
+  --       (ht_ih ht_closed)
+  --       (hu_ih hu_closed)
+  -- case read =>
+  --   rename_i hx_syn hx_ih
+  --   -- From closedness of (read x), extract that x is closed
+  --   cases hclosed_e with
+  --   | read hx_closed =>
+  --     -- Closed variables must be bound (not free heap pointers)
+  --     cases hx_closed
+  --     -- Apply IH to get semantic typing for the variable
+  --     exact sem_typ_read
+  --       (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  -- case write =>
+  --   rename_i hx_syn hy_syn hx_ih hy_ih
+  --   -- From closedness of (write x y), extract that x and y are closed
+  --   cases hclosed_e with
+  --   | write hx_closed hy_closed =>
+  --     -- Closed variables must be bound (not free heap pointers)
+  --     cases hx_closed
+  --     cases hy_closed
+  --     -- Apply IHs to get semantic typing for the variables
+  --     exact sem_typ_write
+  --       (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  --       (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  -- case par ht1_syn ht2_syn ht1_ih ht2_ih =>
+  --   -- Extract closedness of both branches
+  --   cases hclosed_e with
+  --   | par hclosed_e1 hclosed_e2 =>
+  --     exact sem_typ_par (ht1_ih hclosed_e1) (ht2_ih hclosed_e2)
+  -- case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
+  --   -- Get closedness of C1 from the syntactic typing derivation
+  --   have hclosed_C1 := HasType.use_set_is_closed ht_syn
+  --   -- Get closedness of E1 from the syntactic typing derivation
+  --   have hclosed_E1 := HasType.type_is_closed ht_syn
+  --   -- Apply the semantic subtyping lemma
+  --   apply sem_typ_subtyp (ht_ih hclosed_e) hsubcapt hsubtyp
+  --     hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
 
 end Capybara
