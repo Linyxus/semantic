@@ -396,7 +396,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
         T2
-        (cs.rename Rename.succ ∪ (.var .epsilon (.bound .here)))
+        (R0 ∪ (reachability_of_loc m'.heap arg))
         m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
@@ -414,7 +414,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       Ty.exi_exp_denot
         (env.extend_tvar denot)
         T2
-        (cs.rename Rename.succ)
+        R0
         m' (t0.subst (Subst.openTVar .top)))
 | env, .cpoly B cs T => fun m e =>
   e.WfInHeap m.heap ∧
@@ -432,7 +432,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       Ty.exi_exp_denot
         (env.extend_cvar CS)
         T
-        (cs.rename Rename.succ)
+        R0
         m' (t0.subst (Subst.openCVar CS)))
 
 /-- Value denotation for existential types. -/
@@ -447,15 +447,15 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
 
 /-- Expression denotation for capturing types.
     Takes an explicit capture set (the use set from the typing judgment). -/
-def Ty.exp_denot : TypeEnv s -> Ty .capt s -> CaptureSet s -> Denot
-| ρ, T, cs => fun m (e : Exp {}) =>
-  Eval (cs.denot ρ m) m e (Ty.val_denot ρ T).as_mpost
+def Ty.exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
+| ρ, T, R => fun m (e : Exp {}) =>
+  Eval R m e (Ty.val_denot ρ T).as_mpost
 
 /-- Expression denotation for existential types.
     Takes an explicit capture set (the use set from the typing judgment). -/
-def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> CaptureSet s -> Denot
-| ρ, T, cs => fun m (e : Exp {}) =>
-  Eval (cs.denot ρ m) m e (Ty.exi_val_denot ρ T).as_mpost
+def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
+| ρ, T, R => fun m (e : Exp {}) =>
+  Eval R m e (Ty.exi_val_denot ρ T).as_mpost
 
 end
 
