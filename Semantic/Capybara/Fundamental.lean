@@ -1546,11 +1546,11 @@ theorem sem_typ_letin
     intro m1 m2 e hwf hsub hQ
     simp [Denot.as_mpost] at hQ ⊢
     have henv_mono := typed_env_is_monotonic hts
-    exact capt_val_denot_is_monotonic henv_mono T hsub hQ
+    exact val_denot_is_monotonic henv_mono T hsub hQ
   case hbool =>
     -- Show (Ty.capt_val_denot env T).as_mpost is bool independent
     apply Denot.as_mpost_is_bool_independent
-    exact capt_val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
+    exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
   case a =>
     -- Show Eval ... store (e1.subst ...) (Ty.capt_val_denot env T).as_mpost
     have h1 := ht1 env store hts
@@ -1618,14 +1618,14 @@ theorem sem_typ_letin
 
         -- Step 2: Lift hQ1 to extended memory using monotonicity
         have henv_mono := typed_env_is_monotonic hts
-        have hQ1_lifted : Ty.capt_val_denot env T
+        have hQ1_lifted : Ty.val_denot env T
           (m1.extend_val l' heapval hwf_v rfl hfresh) v :=
-          capt_val_denot_is_monotonic henv_mono T hext hQ1
+          val_denot_is_monotonic henv_mono T hext hQ1
 
         -- Step 3: Apply transparency
         have henv_trans := typed_env_is_transparent hts
-        have htrans : (Ty.capt_val_denot env T).is_transparent :=
-          capt_val_denot_is_transparent henv_trans T
+        have htrans : (Ty.val_denot env T).is_transparent :=
+          val_denot_is_transparent henv_trans T
 
         -- Step 4: Use the memory lookup fact
         have hlookup : (m1.extend_val l' heapval hwf_v rfl hfresh).lookup l' =
