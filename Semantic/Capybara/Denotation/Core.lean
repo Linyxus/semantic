@@ -2651,4 +2651,10 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
       | bound bx => cases bx
     | _ => simp [resolve] at hres
 
+theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
+  (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env)))) :
+  (Ty.val_denot env (T.refineCaptureSet (.var .epsilon x)))
+    m
+    (.var (x.subst (Subst.from_TypeEnv env))) := sorry
+
 end Capybara
