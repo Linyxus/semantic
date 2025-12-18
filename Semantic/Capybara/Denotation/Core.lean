@@ -345,6 +345,12 @@ theorem CapabilitySet.BoundedBy.trans
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
 
+/-- Whether this denotation enforces purity of the value. -/
+def Denot.enforce_pure (d : Denot) : Prop :=
+  ∀ m e,
+    d m e ->
+    resolve_reachability m.heap e ⊆ .empty
+
 mutual
 
 /-- Value denotation for capturing types. -/
@@ -404,6 +410,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       m'.subsumes m ->
       denot.is_proper ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
+      denot.enforce_pure ->
       Ty.exi_exp_denot
         (env.extend_tvar denot)
         T2
@@ -482,6 +489,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.is_proper ∧
   denot.implies_wf ∧
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
+  denot.enforce_pure ∧
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs), m =>
   (cs.WfInHeap m.heap) ∧
@@ -2021,22 +2029,6 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         simp [hresolve1] at ht
       }
 
-/-- Ported from old capt_val_denot_is_bool_independent.
-    Now simply an alias for val_denot_is_bool_independent since the type hierarchy is collapsed. -/
-def capt_val_denot_is_bool_independent {env : TypeEnv s}
-  (henv : TypeEnv.is_bool_independent env)
-  (T : Ty .capt s) :
-  (Ty.val_denot env T).is_bool_independent :=
-  val_denot_is_bool_independent henv T
-
-/-- Ported from old capt_val_denot_is_monotonic.
-    Now simply an alias for val_denot_is_monotonic since the type hierarchy is collapsed. -/
-def capt_val_denot_is_monotonic {env : TypeEnv s}
-  (henv : env.IsMonotonic)
-  (T : Ty .capt s) :
-  (Ty.val_denot env T).is_monotonic :=
-  val_denot_is_monotonic henv T
-
 def exi_val_denot_is_bool_independent {env : TypeEnv s}
   (henv : TypeEnv.is_bool_independent env)
   (T : Ty .exi s) :
@@ -2044,7 +2036,7 @@ def exi_val_denot_is_bool_independent {env : TypeEnv s}
   cases T with
   | typ T =>
     simp [Ty.exi_val_denot]
-    exact capt_val_denot_is_bool_independent henv T
+    exact val_denot_is_bool_independent henv T
   | exi T =>
     intro m
     simp only [Ty.exi_val_denot]
@@ -2135,7 +2127,7 @@ theorem env_typing_monotonic
           constructor
           · -- Prove: ⟦T⟧_[env', φ] mem2 (.var (.free n))
             have henv := typed_env_is_monotonic ht'
-            exact capt_val_denot_is_monotonic henv T hmem hval
+            exact val_denot_is_monotonic henv T hmem hval
           · -- Prove: peakset consistency and EnvTyping Γ env' mem2
             constructor
             · simpa using hps
