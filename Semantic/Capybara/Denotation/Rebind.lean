@@ -186,13 +186,13 @@ def rebind_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hproper himply
+      intro m' denot hsub hproper himply hpure
       have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
         (cs.rename (Rename.succ (k:=.tvar)))
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hproper himply'
+      specialize hd m' denot hsub hproper himply' hpure
       have hcs_eq : (cs.rename (Rename.succ (k:=.tvar))).rename (f.lift (k:=.tvar)) =
                     (cs.rename f).rename (Rename.succ (k:=.tvar)) :=
         CaptureSet.weaken_rename_comm
@@ -200,13 +200,13 @@ def rebind_val_denot
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hproper himply
+      intro m' denot hsub hproper himply hpure
       have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
         (cs.rename (Rename.succ (k:=.tvar)))
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.rename f)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hproper himply'
+      specialize hd m' denot hsub hproper himply' hpure
       have hcs_eq : (cs.rename (Rename.succ (k:=.tvar))).rename (f.lift (k:=.tvar)) =
                     (cs.rename f).rename (Rename.succ (k:=.tvar)) :=
         CaptureSet.weaken_rename_comm
