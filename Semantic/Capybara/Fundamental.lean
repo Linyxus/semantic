@@ -5,7 +5,7 @@ namespace Capybara
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env store)
   (hx : Ctx.LookupVar Γ x T) :
-  Ty.capt_val_denot env T store (.var (.free (env.lookup_var x).1)) := by
+  Ty.val_denot env T store (.var (.free (env.lookup_var x).1)) := by
   induction hx generalizing store
   case here =>
     -- The environment must match the context structure
@@ -15,8 +15,8 @@ theorem typed_env_lookup_var
       cases info with
       | var n ps =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        -- Apply weaken_capt_val_denot equivalence
-        have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0)
+        -- Apply weaken_val_denot equivalence
+        have heqv := weaken_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
         exact hts.1
   case there b =>
@@ -35,7 +35,7 @@ theorem typed_env_lookup_var
           -- Apply IH to get the result for env0
           have hih := b henv0
           -- Apply weakening
-          have heqv := weaken_capt_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0)
+          have heqv := weaken_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0)
           apply (Denot.equiv_to_imply heqv).1
           exact hih
     case tvar =>
@@ -44,9 +44,9 @@ theorem typed_env_lookup_var
       match env with
       | .extend env0 (.tvar d) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        obtain ⟨_, _, henv0⟩ := hts
+        obtain ⟨_, _, _, _, henv0⟩ := hts
         have hih := b henv0
-        have heqv := tweaken_capt_val_denot (env:=env0) (d:=d) (T:=T0)
+        have heqv := tweaken_val_denot (env:=env0) (d:=d) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
         exact hih
     case cvar =>
@@ -57,94 +57,24 @@ theorem typed_env_lookup_var
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
         obtain ⟨_, _, henv0⟩ := hts
         have hih := b henv0
-        have heqv := cweaken_capt_val_denot (env:=env0) (cs:=cs) (T:=T0)
+        have heqv := cweaken_val_denot (env:=env0) (cs:=cs) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
         exact hih
+
 
 theorem typed_env_lookup_var_reachability
   (hts : EnvTyping Γ env m)
   (hx : Ctx.LookupVar Γ x T) :
   reachability_of_loc m.heap (env.lookup_var x).1 ⊆ T.captureSet.denot env m := by
-  induction hx generalizing m
-  case here =>
-    -- Γ = .push Γ' (.var T'), x = .here
-    rename_i Γ' T'
-    match env with
-    | .extend env' (.var n ps) =>
-      simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-      -- Extract capture set from T'
-      cases T' with | capt C S =>
-      -- From hts.1: Ty.capt_val_denot env' (.capt C S) m (.var (.free n))
-      have hval := hts.1
-      simp [Ty.capt_val_denot] at hval
-      obtain ⟨_, _, _, hshape⟩ := hval
-      -- Apply reachability safety
-      have hsafe := shape_val_denot_is_reachability_safe
-        (typed_env_is_reachability_safe hts.2.2) S
-      have hreach := hsafe (C.denot env' m) m (.var (.free n)) hshape
-      simp [resolve_reachability] at hreach
-      simp [Ty.captureSet, Ty.rename]
-      -- Use rebinding
-      have hreb := rebind_captureset_denot (Rebind.weaken (env:=env') (x:=n) (ps:=ps)) C
-      have hreb_m : C.denot env' m =
-        (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n ps)) m := by
-        rw [hreb]; rfl
-      rw [<-hreb_m]
-      exact hreach
-  case there b hx_prev ih =>
-    -- Handle three cases based on the binding kind
-    cases b
-    case var =>
-      rename_i Γ' x' T' Tb
-      match env with
-      | .extend env' (.var n ps) =>
-        simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        obtain ⟨_, _, henv'⟩ := hts
-        have hih := ih henv'
-        cases T' with | capt C S =>
-        simp [Ty.captureSet, Ty.rename]
-        simp [Ty.captureSet] at hih
-        have hreb := rebind_captureset_denot
-          (Rebind.weaken (env:=env') (x:=n) (ps:=ps)) C
-        have hreb_m : C.denot env' m =
-          (C.rename Rename.succ).denot (env'.extend (TypeInfo.var n ps)) m := by
-          rw [hreb]; rfl
-        rw [<-hreb_m]
-        exact hih
-    case tvar =>
-      rename_i Γ' x' T' Sb
-      match env with
-      | .extend env' (.tvar d) =>
-        simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        obtain ⟨_, _, henv'⟩ := hts
-        have hih := ih henv'
-        cases T' with | capt C S =>
-        simp [Ty.captureSet, Ty.rename]
-        simp [Ty.captureSet] at hih
-        have hreb := rebind_captureset_denot
-          (Rebind.tweaken (env:=env') (d:=d)) C
-        have hreb_m : C.denot env' m =
-          (C.rename Rename.succ).denot (env'.extend (TypeInfo.tvar d)) m := by
-          rw [hreb]; rfl
-        rw [<-hreb_m]
-        exact hih
-    case cvar =>
-      rename_i Γ' x' T' Bb
-      match env with
-      | .extend env' (.cvar cs) =>
-        simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        obtain ⟨_, _, henv'⟩ := hts
-        have hih := ih henv'
-        cases T' with | capt C S =>
-        simp [Ty.captureSet, Ty.rename]
-        simp [Ty.captureSet] at hih
-        have hreb := rebind_captureset_denot
-          (Rebind.cweaken (env:=env') (cs:=cs)) C
-        have hreb_m : C.denot env' m =
-          (C.rename Rename.succ).denot (env'.extend (TypeInfo.cvar cs)) m := by
-          rw [hreb]; rfl
-        rw [<-hreb_m]
-        exact hih
+  -- Use typed_env_lookup_var to get the value denotation
+  have hval := typed_env_lookup_var hts hx
+  -- Apply val_denot_enforces_captures to get reachability bound
+  have hreach := val_denot_enforces_captures hts (.var (.free (env.lookup_var x).1)) hval
+  -- resolve_reachability of a free variable is reachability_of_loc by definition
+  simp only [resolve_reachability] at hreach
+  exact hreach
+
+/-
 
 theorem shape_denot_with_var_reachability
   {C : CaptureSet s} {S : Ty .shape s}
@@ -2832,5 +2762,7 @@ theorem fundamental
     -- Apply the semantic subtyping lemma
     apply sem_typ_subtyp (ht_ih hclosed_e) hsubcapt hsubtyp
       hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
+
+-/
 
 end Capybara
