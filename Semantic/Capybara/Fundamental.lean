@@ -89,7 +89,6 @@ theorem sem_typ_var
   simp only [Var.subst, Subst.from_TypeEnv] at h_refined
   exact h_refined
 
-/-
 
 theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
   expand_captures m.heap cs = cs.ground_denot m := by
@@ -106,132 +105,115 @@ theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
 theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
   (ht : (Cf.rename Rename.succ ∪ .var .epsilon (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
-  ∅ # Γ ⊨ Exp.abs Cf T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := by
+  ∅ # Γ ⊨ Exp.abs Cf T1 e : (T1.arrow Cf T2).typ := by
   intro env store hts
-  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
+  simp only [Ty.exi_exp_denot, Ty.exi_val_denot]
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
-  · simp [Denot.as_mpost]
+  · simp only [Denot.as_mpost, Ty.val_denot]
+    -- Goal structure for arrow val_denot:
+    -- 1. e.WfInHeap m.heap
+    -- 2. (cs.subst ...).WfInHeap m.heap
+    -- 3. ∃ cs' T0 t0, resolve ... = some (.abs cs' T0 t0) ∧ ...
     constructor
-    · -- Prove IsSimpleAns: abs is a simple value
-      simp [Exp.subst]
-      apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.abs
-    constructor
-    · -- Prove well-formedness: closed expressions remain well-formed after substitution
-      -- Strategy: (1) closed => wf, (2) typed env => wf subst, (3) wf subst preserves wf
+    · -- 1. Prove (abs ...).WfInHeap store.heap
       apply Exp.wf_subst
-      · -- Closedness implies well-formedness in any heap
-        apply Exp.wf_of_closed hclosed_abs
-      · -- The substitution from typed environment is well-formed
-        apply from_TypeEnv_wf_in_heap hts
-    · -- Provide the arrow denotation structure
-      constructor
-      · -- Prove WfInHeap for the capture set
+      · apply Exp.wf_of_closed hclosed_abs
+      · apply from_TypeEnv_wf_in_heap hts
+    · constructor
+      · -- 2. Prove (Cf.subst ...).WfInHeap store.heap
         apply CaptureSet.wf_subst
         · apply CaptureSet.wf_of_closed
           cases hclosed_abs
           assumption
         · apply from_TypeEnv_wf_in_heap hts
-      · -- Provide the shape_val_denot structure
+      · -- 3. Provide existential witnesses: cs', T0, t0
+        use (Cf.subst (Subst.from_TypeEnv env)), (T1.subst (Subst.from_TypeEnv env)),
+          (e.subst (Subst.from_TypeEnv env).lift)
         constructor
-        · -- Prove e.WfInHeap m.heap
-          apply Exp.wf_subst
-          · apply Exp.wf_of_closed hclosed_abs
-          · apply from_TypeEnv_wf_in_heap hts
-        · -- Provide existential witnesses: cs, T0, t0
-          use (Cf.subst (Subst.from_TypeEnv env)), (T1.subst (Subst.from_TypeEnv env)),
-            (e.subst (Subst.from_TypeEnv env).lift)
-          constructor
-          · -- Show that resolve gives back the abstraction
-            simp [resolve, Exp.subst]
+        · -- Show that resolve gives back the abstraction
+          simp [resolve, Exp.subst]
+        · constructor
+          · -- Prove cs'.WfInHeap store.heap
+            apply CaptureSet.wf_subst
+            · apply CaptureSet.wf_of_closed
+              cases hclosed_abs
+              assumption
+            · apply from_TypeEnv_wf_in_heap hts
           · constructor
-            · -- Prove cs.WfInHeap m.heap
-              apply CaptureSet.wf_subst
-              · apply CaptureSet.wf_of_closed
-                cases hclosed_abs
-                assumption
-              · apply from_TypeEnv_wf_in_heap hts
-            · constructor
-              · -- Prove expand_captures ... ⊆ ...
-                -- By expand_captures_eq_ground_denot and denot definition
-                rw [expand_captures_eq_ground_denot]
-                simp [CaptureSet.denot]
-                apply CapabilitySet.Subset.refl
-              · -- Show the function property
-                intro arg m' hsub harg
-                -- Use compute_peakset which equals peakset by compute_peakset_correct
-                let ps := compute_peakset env T1.captureSet
-                rw [Exp.from_TypeEnv_weaken_open (ps:=ps)]
-                -- Build EnvTyping using the computed peak set
-                have henv :
-                  EnvTyping (Γ,x:T1) (env.extend_var arg ps) m' := by
-                  constructor
-                  · exact harg
-                  · constructor
-                    · exact (compute_peakset_correct hts T1.captureSet).symm
-                    · apply env_typing_monotonic hts hsub
-                -- Apply the hypothesis directly (no Rebind needed)
-                have htyped := ht (env.extend_var arg ps) m' henv
-                simp [Ty.exi_exp_denot] at htyped ⊢
-                -- Show capability sets match
-                have hcap_rename :
-                  (Cf.rename Rename.succ).denot (env.extend_var arg ps)
-                  = Cf.denot env := by
-                  have := rebind_captureset_denot
-                    (Rebind.weaken (env:=env) (x:=arg) (ps:=ps)) Cf
-                  exact this.symm
-                -- Variable .here denotes to the reachability we stored
-                have hcap_var :
-                  (CaptureSet.var .epsilon (.bound .here)).denot (env.extend_var arg ps) m'
-                  = reachability_of_loc m'.heap arg := by
-                  simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
-                        Subst.from_TypeEnv, Var.subst]
-                  rfl
-                -- Use monotonicity to relate capture set denotations at different memories
-                have hCf_mono : Cf.denot env store = Cf.denot env m' := by
-                  -- Extract closedness of Cf from hclosed_abs
-                  have hCf_closed : Cf.IsClosed := by
-                    cases hclosed_abs
-                    assumption
-                  -- Closed capture sets are well-formed in any heap
-                  have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-                    apply CaptureSet.wf_subst
-                    · apply CaptureSet.wf_of_closed hCf_closed
-                    · apply from_TypeEnv_wf_in_heap hts
-                  exact capture_set_denot_is_monotonic hwf_Cf hsub
-                -- Show the authority matches by rewriting with equalities
-                have hauthority :
-                  (Cf.rename Rename.succ ∪ .var .epsilon (.bound .here)).denot
-                    (env.extend_var arg ps) m' =
-                  (expand_captures store.heap
-                    (Cf.subst (Subst.from_TypeEnv env))).union
-                    (reachability_of_loc m'.heap arg) := by
-                  calc (Cf.rename Rename.succ ∪ .var .epsilon (.bound .here)).denot
-                        (env.extend_var arg ps) m'
-                    _ = (Cf.rename Rename.succ).denot (env.extend_var arg ps) m' ∪
-                        (CaptureSet.var .epsilon (.bound .here)).denot
-                          (env.extend_var arg ps) m' := by
-                      simp [CaptureSet.denot, CaptureSet.ground_denot,
-                            CaptureSet.subst]
-                    _ = Cf.denot env m' ∪ reachability_of_loc m'.heap arg := by
-                      rw [congrFun hcap_rename m', hcap_var]
-                    _ = Cf.denot env store ∪
-                        reachability_of_loc m'.heap arg := by
-                      rw [← hCf_mono]
-                    _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store ∪
-                        reachability_of_loc m'.heap arg := by
-                      simp [CaptureSet.denot]
-                    _ = expand_captures store.heap
-                          (Cf.subst (Subst.from_TypeEnv env)) ∪
-                        reachability_of_loc m'.heap arg := by
-                      rw [← expand_captures_eq_ground_denot]
-                    _ = (expand_captures store.heap
-                          (Cf.subst (Subst.from_TypeEnv env))).union
-                        (reachability_of_loc m'.heap arg) := by
-                      rfl
-                rw [← hauthority]
-                exact htyped
+            · -- Prove expand_captures ... ⊆ Cf.denot env store
+              rw [expand_captures_eq_ground_denot]
+              simp [CaptureSet.denot]
+              apply CapabilitySet.Subset.refl
+            · -- Show the function property
+              intro arg m' hsub harg
+              -- Use compute_peakset which equals peakset by compute_peakset_correct
+              let ps := compute_peakset env T1.captureSet
+              rw [Exp.from_TypeEnv_weaken_open (ps:=ps)]
+              -- Build EnvTyping using the computed peak set
+              have henv :
+                EnvTyping (Γ,x:T1) (env.extend_var arg ps) m' := by
+                constructor
+                · exact harg
+                · constructor
+                  · exact (compute_peakset_correct hts T1.captureSet).symm
+                  · apply env_typing_monotonic hts hsub
+              -- Apply the hypothesis directly (no Rebind needed)
+              have htyped := ht (env.extend_var arg ps) m' henv
+              simp only [Ty.exi_exp_denot] at htyped ⊢
+              -- Show capability sets match
+              have hcap_rename :
+                (Cf.rename Rename.succ).denot (env.extend_var arg ps)
+                = Cf.denot env := by
+                have := rebind_captureset_denot
+                  (Rebind.weaken (env:=env) (x:=arg) (ps:=ps)) Cf
+                exact this.symm
+              -- Variable .here denotes to the reachability we stored
+              have hcap_var :
+                (CaptureSet.var .epsilon (.bound .here)).denot (env.extend_var arg ps) m'
+                = reachability_of_loc m'.heap arg := by
+                simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
+                      Subst.from_TypeEnv, Var.subst]
+                rfl
+              -- Use monotonicity to relate capture set denotations at different memories
+              have hCf_mono : Cf.denot env store = Cf.denot env m' := by
+                -- Extract closedness of Cf from hclosed_abs
+                have hCf_closed : Cf.IsClosed := by
+                  cases hclosed_abs
+                  assumption
+                -- Closed capture sets are well-formed in any heap
+                have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
+                  apply CaptureSet.wf_subst
+                  · apply CaptureSet.wf_of_closed hCf_closed
+                  · apply from_TypeEnv_wf_in_heap hts
+                exact capture_set_denot_is_monotonic hwf_Cf hsub
+              -- Show the authority matches by rewriting with equalities
+              have hauthority :
+                (Cf.rename Rename.succ ∪ .var .epsilon (.bound .here)).denot
+                  (env.extend_var arg ps) m' =
+                expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) ∪
+                  reachability_of_loc m'.heap arg := by
+                calc (Cf.rename Rename.succ ∪ .var .epsilon (.bound .here)).denot
+                      (env.extend_var arg ps) m'
+                  _ = (Cf.rename Rename.succ).denot (env.extend_var arg ps) m' ∪
+                      (CaptureSet.var .epsilon (.bound .here)).denot
+                        (env.extend_var arg ps) m' := by
+                    simp [CaptureSet.denot, CaptureSet.ground_denot,
+                          CaptureSet.subst]
+                  _ = Cf.denot env m' ∪ reachability_of_loc m'.heap arg := by
+                    rw [congrFun hcap_rename m', hcap_var]
+                  _ = Cf.denot env store ∪
+                      reachability_of_loc m'.heap arg := by
+                    rw [← hCf_mono]
+                  _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store ∪
+                      reachability_of_loc m'.heap arg := by
+                    simp [CaptureSet.denot]
+                  _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) ∪
+                      reachability_of_loc m'.heap arg := by
+                    rw [← expand_captures_eq_ground_denot]
+              rw [← hauthority]
+              exact htyped
+
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
@@ -329,6 +311,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
                       rw [← expand_captures_eq_ground_denot]
                 rw [← hauthority]
                 exact this
+
 
 theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
   (hclosed_cabs : (Exp.cabs Cf cb e).IsClosed)
@@ -431,6 +414,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
                 rw [Exp.from_TypeEnv_weaken_open_cvar (cs:=CS)]
                 rw [← hauthority]
                 exact this
+
+/-
 
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
@@ -2610,13 +2595,13 @@ theorem fundamental
   induction ht
   case var hx =>
     exact sem_typ_var hx
+  case abs ih =>
+    apply sem_typ_abs
+    · exact hclosed_e
+    · cases hclosed_e
+      rename_i hclosed_cs hclosed_T1 hclosed_e0
+      exact ih hclosed_e0
   all_goals sorry
-  -- case reader hΓ_closed hx =>
-  --   exact sem_typ_reader hΓ_closed hx
-  -- case abs =>
-  --   apply sem_typ_abs
-  --   · exact hclosed_e
-  --   · cases hclosed_e; aesop
   -- case tabs =>
   --   apply sem_typ_tabs
   --   · exact hclosed_e
@@ -2625,6 +2610,8 @@ theorem fundamental
   --   apply sem_typ_cabs
   --   · exact hclosed_e
   --   · cases hclosed_e; aesop
+  -- case reader hΓ_closed hx =>
+  --   exact sem_typ_reader hΓ_closed hx
   -- case pack =>
   --   rename_i ih
   --   apply sem_typ_pack
