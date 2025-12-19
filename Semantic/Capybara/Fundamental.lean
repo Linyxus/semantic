@@ -266,26 +266,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                 constructor
                 · exact hproper
                 · constructor
-                  · -- denot.implies_wf
-                    -- NOTE: This requires implies_wf which is not provided by the body
-                    -- condition in val_denot for poly. This seems to be a gap in the
-                    -- definitions. For now, we derive it using ImplyAfter + monotonicity.
-                    intro m0 e0 hde0
-                    have hts_wf := typed_env_is_implying_wf hts
-                    have hvd_wf := val_denot_implies_wf hts_wf S.core
-                    -- Use monotonicity: if m0 < m', then denot m0 e0 -> denot m' e0
-                    -- Then use ImplyAfter to get val_denot m' e0, and val_denot_implies_wf
-                    -- However, this only gives WfInHeap m'.heap, not m0.heap when m0 < m'
-                    -- Since execution only proceeds forward from m' (the current memory),
-                    -- and denot is only "used" at memories >= m', this should be safe.
-                    by_cases hm0 : m0.subsumes m'
-                    · -- Case m0 >= m': use ImplyAfter directly
-                      have himp_at := himply m0 hm0 e0 hde0
-                      exact hvd_wf m0 e0 himp_at
-                    · -- Case m0 < m': use monotonicity to lift to m'
-                      -- This case shouldn't happen in practice during forward execution
-                      -- but we need to handle it for the universal quantifier
-                      sorry
+                  · -- denot.implies_wf: now included in is_proper
+                    exact hproper.2.2.2
                   · constructor
                     · exact himply
                     · constructor

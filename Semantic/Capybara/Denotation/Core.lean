@@ -1343,8 +1343,8 @@ theorem typed_env_is_bool_independent
             simp [TypeEnv.lookup_tvar]
             -- hproper says d.is_proper
             -- We need d.is_bool_independent
-            -- Denot.is_proper = is_monotonic ∧ is_transparent ∧ is_bool_independent
-            exact hproper.2.2
+            -- Denot.is_proper = is_monotonic ∧ is_transparent ∧ is_bool_independent ∧ implies_wf
+            exact hproper.2.2.1
           | there x =>
             simp [TypeEnv.lookup_tvar]
             exact ih_result x
@@ -2394,7 +2394,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
 --   (Ty.val_denot env T).is_tight := val_denot_is_tight hts T
 
 /-- Ported from old shape_val_denot_is_proper.
-    Now uses Denot.is_proper which is simpler (monotonic ∧ transparent ∧ bool_independent). -/
+    Now uses Denot.is_proper (monotonic ∧ transparent ∧ bool_independent ∧ implies_wf). -/
 theorem val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
   (hts : EnvTyping Γ env m) :
   (Ty.val_denot env T).is_proper := by
@@ -2404,8 +2404,11 @@ theorem val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
   · constructor
     · -- Prove: (Ty.val_denot env T).is_transparent
       exact val_denot_is_transparent (typed_env_is_transparent hts) T
-    · -- Prove: (Ty.val_denot env T).is_bool_independent
-      exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
+    · constructor
+      · -- Prove: (Ty.val_denot env T).is_bool_independent
+        exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
+      · -- Prove: (Ty.val_denot env T).implies_wf
+        exact val_denot_implies_wf (typed_env_is_implying_wf hts) T
 
 theorem val_denot_implyafter_lift {R : CapabilitySet}
   (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
