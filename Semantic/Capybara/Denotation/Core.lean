@@ -45,8 +45,15 @@ def Denot.is_bool_independent (d : Denot) : Prop :=
   ∀ {m : Memory},
     d m .btrue <-> d m .bfalse
 
+/-- The denotation entails heap well-formedness. -/
+def Denot.implies_wf (d : Denot) : Prop :=
+  ∀ m e, d m e -> e.WfInHeap m.heap
+
 def Denot.is_proper (d : Denot) : Prop :=
-  d.is_monotonic ∧ d.is_transparent ∧ d.is_bool_independent
+  d.is_monotonic
+  ∧ d.is_transparent
+  ∧ d.is_bool_independent
+  ∧ d.implies_wf
 
 /-- For simple values, compute_reachability equals resolve_reachability. -/
 theorem compute_reachability_eq_resolve_reachability
@@ -119,10 +126,6 @@ def PreDenot.is_proper (pd : PreDenot) : Prop :=
   ∧ pd.implies_wf
   ∧ pd.is_tight
   ∧ ∀ C, (pd C).is_proper
-
-/-- The denotation entails heap well-formedness. -/
-def Denot.implies_wf (d : Denot) : Prop :=
-  ∀ m e, d m e -> e.WfInHeap m.heap
 
 -- NOTE: The following definitions are no longer needed after the type hierarchy collapse.
 -- The capability set bound is now derived from the type's capture set, making these
