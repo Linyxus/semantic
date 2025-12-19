@@ -49,6 +49,8 @@ def Denot.is_bool_independent (d : Denot) : Prop :=
 def Denot.implies_wf (d : Denot) : Prop :=
   ∀ m e, d m e -> e.WfInHeap m.heap
 
+/-- The denotation is proper if it is monotonic, transparent,
+  bool-independent, and implies heap well-formedness. -/
 def Denot.is_proper (d : Denot) : Prop :=
   d.is_monotonic
   ∧ d.is_transparent
