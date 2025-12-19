@@ -28,4 +28,3 @@ The module [Fsub](Semantic/Fsub.lean) includes a semantic type soundness formula
 ## System Capless
 
 The module [CC](Semantic/CC.lean) mechanises semantic type soundness for System Capless.
-
