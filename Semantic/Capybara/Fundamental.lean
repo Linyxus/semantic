@@ -398,7 +398,6 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Mutabil
               rw [← hauthority]
               exact htyped
 
-/-
 
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
@@ -440,19 +439,18 @@ theorem sem_typ_pack
       rw [this] at hx
       cases hx
       case eval_var hQ =>
-        -- hQ : (capt_val_denot env (T.subst (Subst.openCVar cs))).as_mpost ...
+        -- hQ : (val_denot env (T.subst (Subst.openCVar cs))).as_mpost ...
         simp [Denot.as_mpost] at hQ
-        -- hQ : capt_val_denot env (T.subst (Subst.openCVar cs)) store (var (x.subst ...))
+        -- hQ : val_denot env (T.subst (Subst.openCVar cs)) store (var (x.subst ...))
         -- Now use retype lemma to convert from T.subst (Subst.openCVar cs) at env
         -- to T at env.extend_cvar (cs.subst ...)
-        have hretype := @retype_capt_val_denot (s,C) s
-          (env.extend_cvar (cs.subst (Subst.from_TypeEnv env)))
-          (Subst.openCVar cs) env
-          (@Retype.open_carg s env cs) T
+        have hretype := @open_carg_val_denot s env cs T
         exact (hretype store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ
       case eval_val =>
         -- Variables can only use eval_var, not eval_val
         contradiction
+
+/-
 
 theorem abs_val_denot_inv {A : CapabilitySet}
   (hv : Ty.shape_val_denot env (.arrow T1 T2) A store (.var x)) :
@@ -2596,6 +2594,11 @@ theorem fundamental
     · cases hclosed_e
       rename_i hclosed_cs hclosed_e0
       exact ih hclosed_e0
+  case pack ih =>
+    apply sem_typ_pack
+    · exact hclosed_e
+    · cases hclosed_e with | pack _ hx_closed =>
+      exact ih (Exp.IsClosed.var hx_closed)
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
