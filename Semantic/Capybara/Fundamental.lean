@@ -798,7 +798,7 @@ theorem sem_typ_app
 
   apply Eval.eval_apply hlk happ''
 
-
+/-
 theorem sem_typ_tapp
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   {S : Ty .shape s} -- Type argument
@@ -844,8 +844,6 @@ theorem sem_typ_tapp
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
 
   apply Eval.eval_tapply hlk happ''
-
-/-
 
 -- Moved here from later in the file to avoid forward reference in sem_typ_capp
 theorem typed_env_lookup_cvar_aux
@@ -2613,20 +2611,22 @@ theorem fundamental
     · cases hclosed_e with | pack _ hx_closed =>
       exact ih (Exp.IsClosed.var hx_closed)
   case app =>
-  -- OLD PROOF OF THIS CASE
-  --   rename_i hx hy
-  --   -- From closedness of (app x y), extract that x and y are closed variables
-  --   cases hclosed_e with
-  --   | app hx_closed hy_closed =>
-  --     -- Closed variables must be bound (not free heap pointers)
-  --     cases hx_closed
-  --     cases hy_closed
-  --     -- Apply IHs to get semantic typing for the variables
-  --     -- Then apply sem_typ_app theorem
-  --     exact sem_typ_app
-  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
-  --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
-    sorry
+    rename_i hx hy
+    -- From closedness of (app x y), extract that x and y are closed variables
+    cases hclosed_e with
+    | app hx_closed hy_closed =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      cases hy_closed
+      -- Apply IHs to get semantic typing for the variables
+      have ih_x := hx (Exp.IsClosed.var Var.IsClosed.bound)
+      have ih_y := hy (Exp.IsClosed.var Var.IsClosed.bound)
+      -- The types should match definitionally when refineCaptureSet is applied
+      -- (Ty.arrow T1 cs T2).refineCaptureSet cs = Ty.arrow T1 cs T2
+      apply sem_typ_app
+      · trace_state; sorry
+      · sorry
+      all_goals sorry
   case tapp =>
   --   rename_i hS_closed hx
   --   -- From closedness of (tapp x S), extract that x and S are closed
