@@ -798,13 +798,11 @@ theorem sem_typ_app
 
   apply Eval.eval_apply hlk happ''
 
-/-
 theorem sem_typ_tapp
+  {S : PureTy s} {T : Ty .exi (s,X)}
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
-  {S : Ty .shape s} -- Type argument
-  {T : Ty .exi (s,X)} -- Result type (depends on type variable X)
   (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) :
-    .typ (.capt (.var .epsilon (.bound x)) (.poly S T))) :
+    .typ (Ty.poly S.core (.var .epsilon (.bound x)) T)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
   intro env store hts
 
@@ -812,10 +810,10 @@ theorem sem_typ_tapp
   have h1 := hx env store hts
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
   have h1' := var_exp_denot_inv h1
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+  simp only [Ty.exi_val_denot] at h1'
 
-  -- Extract the poly structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
-  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hR0_sub, hfun⟩ := tabs_val_denot_inv h1'.2.2.2
+  -- Extract the poly structure
+  have ⟨fx, hfx, cs, S0, e0, hval, R, hlk, hR0_sub, hfun⟩ := tabs_val_denot_inv h1'
 
   -- Determine concrete location
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -824,19 +822,18 @@ theorem sem_typ_tapp
   -- Simplify goal
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, Ty.exi_exp_denot]
 
-  -- Apply the polymorphic function to the type argument S
-  -- We need to provide: denot.is_proper and denot.ImplyAfter
-  have happ := hfun store (Ty.shape_val_denot env S) (Memory.subsumes_refl store)
-    (shape_val_denot_is_proper hts)  -- Shape type denotations are proper
-    (by intro C m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter is reflexive
+  -- Apply the polymorphic function to the type argument S.core
+  -- We need to provide: denot.is_proper, denot.ImplyAfter, and denot.enforce_pure
+  have happ := hfun store (Ty.val_denot env S.core) (Memory.subsumes_refl store)
+    (val_denot_is_proper hts)  -- Type denotations are proper
+    (by intro m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter is reflexive
+    sorry  -- TODO: prove that pure types satisfy enforce_pure
 
   -- The opening lemma relates extended environment to substituted type
-  have heqv := open_targ_exi_exp_denot (env:=env) (S:=S) (T:=T)
+  have heqv := open_targ_exi_exp_denot (env:=env) (S:=S) (T:=T) (R:=expand_captures store.heap cs)
 
   -- Convert the denotation using the equivalence
-  have happ' :=
-    (heqv (expand_captures store.heap cs)
-      store (e0.subst (Subst.openTVar .top))).1 happ
+  have happ' := (heqv store (e0.subst (Subst.openTVar .top))).1 happ
 
   simp [Ty.exi_exp_denot] at happ'
 
@@ -844,6 +841,8 @@ theorem sem_typ_tapp
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
 
   apply Eval.eval_tapply hlk happ''
+
+/-
 
 -- Moved here from later in the file to avoid forward reference in sem_typ_capp
 theorem typed_env_lookup_cvar_aux
@@ -2628,17 +2627,16 @@ theorem fundamental
       · exact ih_x
       · exact ih_y
   case tapp =>
-  --   rename_i hS_closed hx
-  --   -- From closedness of (tapp x S), extract that x and S are closed
-  --   cases hclosed_e with
-  --   | tapp hx_closed hS_closed =>
-  --     -- Closed variables must be bound (not free heap pointers)
-  --     cases hx_closed
-  --     -- Apply IH to get semantic typing for the variable
-  --     -- Then apply sem_typ_tapp theorem
-  --     exact sem_typ_tapp
-  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
-    sorry
+    rename_i hS_closed hx
+    -- From closedness of (tapp x S), extract that x and S are closed
+    cases hclosed_e with
+    | tapp hx_closed hS_closed =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      -- Apply IH to get semantic typing for the variable
+      have ih_x := hx (Exp.IsClosed.var Var.IsClosed.bound)
+      -- Apply sem_typ_tapp theorem
+      exact sem_typ_tapp ih_x
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
