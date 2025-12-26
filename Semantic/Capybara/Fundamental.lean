@@ -730,10 +730,10 @@ theorem closed_captureset_subst_denot
 
 
 theorem sem_typ_app
-  {T1 : Ty .capt s} {cs : CaptureSet s} {T2 : Ty .exi (s,x)}
+  {T1 : Ty .capt s} {T2 : Ty .exi (s,x)}
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) :
-    .typ ((Ty.arrow T1 cs T2).refineCaptureSet (.var .epsilon (.bound x))))
+    .typ ((Ty.arrow T1 (.var .epsilon (.bound x)) T2)))
   (hy : (.var .epsilon (.bound y)) # Γ ⊨ Exp.var (.bound y) : .typ T1) :
   ((.var .epsilon (.bound x)) ∪ (.var .epsilon (.bound y))) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
@@ -746,7 +746,7 @@ theorem sem_typ_app
   -- refineCaptureSet for arrow replaces the capture set:
   --   (Ty.arrow T1 cs T2).refineCaptureSet cs' = Ty.arrow T1 cs' T2
   -- So h1' : Ty.val_denot env (Ty.arrow T1 (.var .epsilon (.bound x)) T2) ...
-  simp only [Ty.exi_val_denot, Ty.refineCaptureSet] at h1'
+  simp only [Ty.exi_val_denot] at h1'
 
   -- Extract the arrow structure
   have ⟨fx, hfx, cs', T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'
@@ -2623,10 +2623,10 @@ theorem fundamental
       have ih_y := hy (Exp.IsClosed.var Var.IsClosed.bound)
       -- The types should match definitionally when refineCaptureSet is applied
       -- (Ty.arrow T1 cs T2).refineCaptureSet cs = Ty.arrow T1 cs T2
+      -- sem_typ_app needs cs parameter - but it should unify from the hypotheses
       apply sem_typ_app
-      · trace_state; sorry
-      · sorry
-      all_goals sorry
+      · exact ih_x
+      · exact ih_y
   case tapp =>
   --   rename_i hS_closed hx
   --   -- From closedness of (tapp x S), extract that x and S are closed
