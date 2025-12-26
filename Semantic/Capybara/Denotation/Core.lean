@@ -2897,4 +2897,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
 
+theorem pure_ty_enforce_pure {T : Ty .capt s}
+  (hpure : T.IsPureType) :
+  (Ty.val_denot env T).enforce_pure := by sorry
+
 end Capybara
