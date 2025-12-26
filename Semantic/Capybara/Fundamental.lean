@@ -798,7 +798,6 @@ theorem sem_typ_app
 
   apply Eval.eval_apply hlk happ''
 
-/-
 
 theorem sem_typ_tapp
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
@@ -845,6 +844,8 @@ theorem sem_typ_tapp
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
 
   apply Eval.eval_tapply hlk happ''
+
+/-
 
 -- Moved here from later in the file to avoid forward reference in sem_typ_capp
 theorem typed_env_lookup_cvar_aux
@@ -2626,6 +2627,18 @@ theorem fundamental
   --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
   --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
     sorry
+  case tapp =>
+  --   rename_i hS_closed hx
+  --   -- From closedness of (tapp x S), extract that x and S are closed
+  --   cases hclosed_e with
+  --   | tapp hx_closed hS_closed =>
+  --     -- Closed variables must be bound (not free heap pointers)
+  --     cases hx_closed
+  --     -- Apply IH to get semantic typing for the variable
+  --     -- Then apply sem_typ_tapp theorem
+  --     exact sem_typ_tapp
+  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
+    sorry
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
@@ -2662,17 +2675,6 @@ theorem fundamental
   --     exact sem_typ_invoke
   --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
   --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
-  -- case tapp =>
-  --   rename_i hS_closed hx
-  --   -- From closedness of (tapp x S), extract that x and S are closed
-  --   cases hclosed_e with
-  --   | tapp hx_closed hS_closed =>
-  --     -- Closed variables must be bound (not free heap pointers)
-  --     cases hx_closed
-  --     -- Apply IH to get semantic typing for the variable
-  --     -- Then apply sem_typ_tapp theorem
-  --     exact sem_typ_tapp
-  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
   -- case capp =>
   --   rename_i hD_closed_syn hD_kind hx_syn _ _ hih
   --   cases hclosed_e with
