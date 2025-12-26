@@ -728,12 +728,12 @@ theorem closed_captureset_subst_denot
     rename_i m xb
     simp only [CaptureSet.subst, CaptureSet.denot, Var.subst, Subst.from_TypeEnv]
 
-/-
 
 theorem sem_typ_app
+  {T1 : Ty .capt s} {cs : CaptureSet s} {T2 : Ty .exi (s,x)}
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) :
-    .typ (.capt (.var .epsilon (.bound x)) (.arrow T1 T2)))
+    .typ ((Ty.arrow T1 cs T2).refineCaptureSet (.var .epsilon (.bound x))))
   (hy : (.var .epsilon (.bound y)) # Γ ⊨ Exp.var (.bound y) : .typ T1) :
   ((.var .epsilon (.bound x)) ∪ (.var .epsilon (.bound y))) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
@@ -743,10 +743,13 @@ theorem sem_typ_app
   have h1 := hx env store hts
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
   have h1' := var_exp_denot_inv h1
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+  -- refineCaptureSet for arrow replaces the capture set:
+  --   (Ty.arrow T1 cs T2).refineCaptureSet cs' = Ty.arrow T1 cs' T2
+  -- So h1' : Ty.val_denot env (Ty.arrow T1 (.var .epsilon (.bound x)) T2) ...
+  simp only [Ty.exi_val_denot, Ty.refineCaptureSet] at h1'
 
-  -- Extract the arrow structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
-  have ⟨fx, hfx, cs, T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'.2.2.2
+  -- Extract the arrow structure
+  have ⟨fx, hfx, cs', T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'
 
   -- Extract argument denotation
   have h2 := hy env store hts
@@ -767,7 +770,8 @@ theorem sem_typ_app
 
   -- The opening lemma relates extended environment to substituted type
   let ps := compute_peakset env T1.captureSet
-  have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (ps:=ps) (T:=T2)
+  let R := expand_captures store.heap cs' ∪ reachability_of_loc store.heap fy
+  have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (ps:=ps) (T:=T2) (R:=R)
 
   -- Note that interp_var env (Var.bound y) = env.lookup_var y = fy
   have hinterp : interp_var env (Var.bound y) = fy := rfl
@@ -775,14 +779,15 @@ theorem sem_typ_app
   -- Convert the denotation using the equivalence
   rw [hinterp] at heqv
   have happ' :=
-    (heqv (expand_captures store.heap cs ∪
-           reachability_of_loc store.heap fy)
-      store (e0.subst (Subst.openVar (Var.free fy)))).1 happ
+    (heqv store (e0.subst (Subst.openVar (Var.free fy)))).1 happ
 
   simp [Ty.exi_exp_denot] at happ'
 
   -- Widen the authority using union monotonicity
-  have hunion_mono : expand_captures store.heap cs ∪ reachability_of_loc store.heap fy ⊆
+  -- We have: hR0_sub : expand_captures store.heap cs' ⊆ (.var .epsilon (.bound x)).denot env store
+  -- R = expand_captures store.heap cs' ∪ reachability_of_loc store.heap fy
+  -- Goal: R ⊆ (.var .epsilon (.bound x)).denot env store ∪ reachability_of_loc store.heap fy
+  have hunion_mono : R ⊆
                      CaptureSet.denot env (CaptureSet.var .epsilon (Var.bound x)) store ∪
                      reachability_of_loc store.heap fy := by
     apply CapabilitySet.Subset.union_left
@@ -793,6 +798,7 @@ theorem sem_typ_app
 
   apply Eval.eval_apply hlk happ''
 
+/-
 
 theorem sem_typ_tapp
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
@@ -2605,6 +2611,21 @@ theorem fundamental
     · exact hclosed_e
     · cases hclosed_e with | pack _ hx_closed =>
       exact ih (Exp.IsClosed.var hx_closed)
+  case app =>
+  -- OLD PROOF OF THIS CASE
+  --   rename_i hx hy
+  --   -- From closedness of (app x y), extract that x and y are closed variables
+  --   cases hclosed_e with
+  --   | app hx_closed hy_closed =>
+  --     -- Closed variables must be bound (not free heap pointers)
+  --     cases hx_closed
+  --     cases hy_closed
+  --     -- Apply IHs to get semantic typing for the variables
+  --     -- Then apply sem_typ_app theorem
+  --     exact sem_typ_app
+  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
+  --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
+    sorry
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
@@ -2628,19 +2649,6 @@ theorem fundamental
   --     have hclosedC3 := HasType.use_set_is_closed ht3
   --     exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
   --       (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
-  -- case app =>
-  --   rename_i hx hy
-  --   -- From closedness of (app x y), extract that x and y are closed variables
-  --   cases hclosed_e with
-  --   | app hx_closed hy_closed =>
-  --     -- Closed variables must be bound (not free heap pointers)
-  --     cases hx_closed
-  --     cases hy_closed
-  --     -- Apply IHs to get semantic typing for the variables
-  --     -- Then apply sem_typ_app theorem
-  --     exact sem_typ_app
-  --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
-  --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
   -- case invoke =>
   --   rename_i hx hy
   --   -- From closedness of (app x y), extract that x and y are closed
