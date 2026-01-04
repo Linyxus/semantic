@@ -842,9 +842,6 @@ theorem sem_typ_tapp
 
   apply Eval.eval_tapply hlk happ''
 
-/-
-
--- Moved here from later in the file to avoid forward reference in sem_typ_capp
 theorem typed_env_lookup_cvar_aux
   (hts : EnvTyping Γ env m)
   (hc : Ctx.LookupCVar Γ c cb) :
@@ -872,7 +869,7 @@ theorem typed_env_lookup_cvar_aux
       match env with
       | .extend env' (.tvar d) =>
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
-        obtain ⟨_, _, henv'⟩ := hts
+        obtain ⟨_, _, _, _, henv'⟩ := hts
         have hih := ih henv'
         exact hih
     case cvar =>
@@ -892,7 +889,7 @@ theorem sem_typ_capp
   (hD_closed : D.IsClosed)
   (hD_kind : HasKind Γ D m)
   (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) :
-    .typ (.capt (.var .epsilon (.bound x)) (.cpoly m T))) :
+    .typ (.cpoly m (.var .epsilon (.bound x)) T)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
   intro env store hts
 
@@ -900,10 +897,10 @@ theorem sem_typ_capp
   have h1 := hx env store hts
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
   have h1' := var_exp_denot_inv h1
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+  simp only [Ty.exi_val_denot] at h1'
 
-  -- Extract the cpoly structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
-  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hR0_sub, hfun⟩ := cabs_val_denot_inv h1'.2.2.2
+  -- Extract the cpoly structure
+  have ⟨fx, hfx, cs, B0, e0, hval, R, hlk, hR0_sub, hfun⟩ := cabs_val_denot_inv h1'
 
   -- Determine concrete location
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -957,12 +954,11 @@ theorem sem_typ_capp
         | top hkind => exact hkind)
 
   -- Now apply the opening lemma
-  have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T)
+  have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T) (R:=expand_captures store.heap cs)
 
   -- Convert using the equivalence
   have happ2 :=
-    (heqv (expand_captures store.heap cs)
-      store (e0.subst (Subst.openCVar D'))).1 happ
+    (heqv store (e0.subst (Subst.openCVar D'))).1 happ
 
   simp [Ty.exi_exp_denot] at happ2
 
@@ -970,6 +966,8 @@ theorem sem_typ_capp
   have happ3 := eval_capability_set_monotonic happ2 hR0_sub
 
   apply Eval.eval_capply hlk happ3
+
+/-
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -2637,6 +2635,17 @@ theorem fundamental
       have ih_x := hx (Exp.IsClosed.var Var.IsClosed.bound)
       -- Apply sem_typ_tapp theorem
       exact sem_typ_tapp ih_x
+  case capp =>
+    rename_i _ _ _ _ _ _ _ _ hD_closed hD_kind _ _ _ ih_x
+    -- From closedness of (capp x D), extract that x and D are closed
+    cases hclosed_e with
+    | capp hx_closed hD_closed_exp =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      -- Apply IH to get semantic typing for the variable
+      have hx := ih_x (Exp.IsClosed.var Var.IsClosed.bound)
+      -- Apply sem_typ_capp theorem
+      exact sem_typ_capp hD_closed_exp hD_kind hx
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
@@ -2673,13 +2682,6 @@ theorem fundamental
   --     exact sem_typ_invoke
   --       (hx (Exp.IsClosed.var Var.IsClosed.bound))
   --       (hy (Exp.IsClosed.var Var.IsClosed.bound))
-  -- case capp =>
-  --   rename_i hD_closed_syn hD_kind hx_syn _ _ hih
-  --   cases hclosed_e with
-  --   | capp hx_closed hD_closed_exp =>
-  --     cases hx_closed
-  --     exact sem_typ_capp hD_closed_exp hD_kind
-  --       (hih (Exp.IsClosed.var Var.IsClosed.bound))
   -- case letin =>
   --   rename_i ht1_syn ht2_syn ht1_ih ht2_ih
   --   cases hclosed_e with
