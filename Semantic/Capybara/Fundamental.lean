@@ -1244,6 +1244,60 @@ theorem sem_typ_read
   simp only [Denot.as_mpost, Ty.val_denot, resolve]
   cases b0 <;> simp
 
+theorem sem_typ_write
+  {x y : BVar s .var}
+  (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) : .typ (.cell Cx))
+  (hy : (.var .epsilon (.bound y)) # Γ ⊨ Exp.var (.bound y) : .typ .bool) :
+  ((.var .epsilon (.bound x)) ∪ (.var .epsilon (.bound y))) # Γ ⊨
+    Exp.write (.bound x) (.bound y) : .typ .unit := by
+  intro env store hts
+
+  -- Extract cell denotation from hx
+  have h1 := hx env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
+  have h1' := var_exp_denot_inv h1
+  simp only [Ty.exi_val_denot] at h1'
+
+  -- Extract the cell structure
+  have ⟨fx, b0, hfx, hlk_cell, hmem_cell⟩ := cell_val_denot_inv h1'
+
+  -- Extract bool denotation from hy
+  have h2 := hy env store hts
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h2
+  have h2' := var_exp_denot_inv h2
+  simp only [Ty.exi_val_denot] at h2'
+
+  -- Extract the bool structure
+  have ⟨fy, b, hval, R, hfy, hlk_bool⟩ := bool_val_denot_inv h2'
+
+  -- Determine concrete locations
+  have : fx = (env.lookup_var x).1 := by cases hfx; rfl
+  subst this
+  have : fy = (env.lookup_var y).1 := by cases hfy; rfl
+  subst this
+
+  -- Simplify goal
+  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
+        CaptureSet.denot]
+
+  -- Prove covers: env.lookup_var x is covered by the denotation of the write's capture set
+  have hcov :
+    ((((CaptureSet.var .epsilon (Var.bound x)).union (CaptureSet.var .epsilon (Var.bound y))).subst
+      (Subst.from_TypeEnv env)).ground_denot store).covers .epsilon (env.lookup_var x).1 := by
+    simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
+          CapabilitySet.applyMut, reachability_of_loc, hlk_cell, CapabilitySet.singleton]
+    apply CapabilitySet.covers.left
+    exact CapabilitySet.covers.here Mutability.Le.refl
+
+  -- Apply eval_write based on the boolean value
+  cases b
+  · -- b = false
+    apply Eval.eval_write_false hcov (hx := hlk_cell) hlk_bool
+    simp only [Denot.as_mpost, Ty.val_denot, resolve]
+  · -- b = true
+    apply Eval.eval_write_true hcov (hx := hlk_cell) hlk_bool
+    simp only [Denot.as_mpost, Ty.val_denot, resolve]
+
 
 /-
 
@@ -1263,78 +1317,6 @@ theorem sem_typ_par
                                            (CaptureSet.denot env C2 store) := by
     sorry
   exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
-
-theorem sem_typ_write
-  {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-  (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) : .typ (.capt Cx .cell))
-  (hy : (.var .epsilon (.bound y)) # Γ ⊨ Exp.var (.bound y) : .typ (.capt {} .bool)) :
-  ((.var .epsilon (.bound x)) ∪ (.var .epsilon (.bound y))) # Γ ⊨
-    Exp.write (.bound x) (.bound y) : .typ (.capt {} .unit) := by
-  intro env store hts
-
-  -- Extract cell denotation from hx
-  have h1 := hx env store hts
-  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
-  have h1' := var_exp_denot_inv h1
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
-
-  -- Extract the cell structure
-  have ⟨fx, b0, hfx, hlk_cell, hmem_cell⟩ := cell_val_denot_inv h1'.2.2.2
-
-  -- Extract bool denotation from hy
-  have h2 := hy env store hts
-  simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h2
-  have h2' := var_exp_denot_inv h2
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h2'
-
-  -- Extract the bool structure
-  have ⟨fy, b, hval, R, hfy, hlk_bool⟩ := bool_val_denot_inv h2'.2.2.2
-
-  -- Determine concrete locations
-  have : fx = (env.lookup_var x).1 := by cases hfx; rfl
-  subst this
-  have : fy = (env.lookup_var y).1 := by cases hfy; rfl
-  subst this
-
-  -- Simplify goal
-  simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
-        Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
-
-  -- Prove covers: env.lookup_var x is covered by the denotation of the write's capture set
-  have hcov :
-    ((((CaptureSet.var .epsilon (Var.bound x)).union (CaptureSet.var .epsilon (Var.bound y))).subst
-      (Subst.from_TypeEnv env)).ground_denot store).covers .epsilon (env.lookup_var x).1 := by
-    simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
-          CapabilitySet.applyMut, reachability_of_loc, hlk_cell, CapabilitySet.singleton]
-    apply CapabilitySet.covers.left
-    exact CapabilitySet.covers.here Mutability.Le.refl
-
-  -- Apply eval_write based on the boolean value
-  cases b
-  · -- b = false
-    apply Eval.eval_write_false hcov (hx := hlk_cell) hlk_bool
-    -- Show the postcondition holds for unit
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    constructor
-    · simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
-  · -- b = true
-    apply Eval.eval_write_true hcov (hx := hlk_cell) hlk_bool
-    -- Show the postcondition holds for unit
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    constructor
-    · simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
 
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
@@ -2609,6 +2591,15 @@ theorem fundamental
       cases hx_closed
       exact sem_typ_read
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  case write =>
+    rename_i hx_syn hy_syn hx_ih hy_ih
+    cases hclosed_e with
+    | write hx_closed hy_closed =>
+      cases hx_closed
+      cases hy_closed
+      exact sem_typ_write
+        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+        (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
