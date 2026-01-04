@@ -10,9 +10,9 @@ import Semantic.Capybara.Semantics
 
 import Semantic.Capybara.Denotation
 
-import Semantic.Capybara.Fundamental
-
-import Semantic.Capybara.Safety
+-- WIP
+--import Semantic.Capybara.Fundamental
+--import Semantic.Capybara.Safety
 
 /-!
 # Semantic Type Soundness for Capybara
