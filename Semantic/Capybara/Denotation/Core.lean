@@ -2904,26 +2904,43 @@ inductive CapabilitySet.IsEmpty : CapabilitySet -> Prop where
   CapabilitySet.IsEmpty cs2 ->
   CapabilitySet.IsEmpty (cs1 ∪ cs2)
 
+/-- Empty capability sets are subsets of the empty set. -/
+theorem CapabilitySet.IsEmpty.subset_empty (h : CapabilitySet.IsEmpty cs) :
+    cs ⊆ .empty := by
+  induction h with
+  | empty => exact CapabilitySet.Subset.refl
+  | union _ _ ih1 ih2 => exact CapabilitySet.Subset.union_left ih1 ih2
+
+/-- Subsets of empty capability sets are empty. -/
+theorem CapabilitySet.IsEmpty.subset_of_subset
+    (hempty : CapabilitySet.IsEmpty cs) (hsub : R ⊆ cs) : R ⊆ .empty :=
+  CapabilitySet.Subset.trans hsub hempty.subset_empty
+
 /-- Empty capture sets have empty ground denotations. -/
 theorem CaptureSet.IsEmpty.ground_denot_empty {cs : CaptureSet {}}
-  (h : cs.IsEmpty) : cs.ground_denot m = {} := by
+  (h : cs.IsEmpty) : CapabilitySet.IsEmpty (cs.ground_denot m) := by
   induction h with
-  | empty => rfl
+  | empty => exact CapabilitySet.IsEmpty.empty
   | union _ _ ih1 ih2 =>
     simp only [CaptureSet.ground_denot]
-    rw [ih1, ih2]
-    sorry
+    exact CapabilitySet.IsEmpty.union ih1 ih2
 
 /-- Empty capture sets have empty denotations. -/
 theorem CaptureSet.IsEmpty.denot_empty {cs : CaptureSet s}
-  (h : cs.IsEmpty) : cs.denot env m = {} := by
+  (h : cs.IsEmpty) : CapabilitySet.IsEmpty (cs.denot env m) := by
   unfold CaptureSet.denot
   exact (h.subst _).ground_denot_empty
 
 /-- covers cannot hold for the empty capability set. -/
-theorem CapabilitySet.not_covers_empty : ¬ CapabilitySet.covers m l {} := by
-  intro h
-  cases h
+theorem CapabilitySet.not_covers_empty
+    (h : CapabilitySet.IsEmpty cs) : ¬ CapabilitySet.covers m l cs := by
+  intro hcov
+  induction h with
+  | empty => cases hcov
+  | union _ _ ih1 ih2 =>
+    cases hcov with
+    | left hcov1 => exact ih1 hcov1
+    | right hcov2 => exact ih2 hcov2
 
 theorem pure_ty_enforce_pure {T : Ty .capt s}
   (henv : env.is_enforcing_pure)
@@ -2994,34 +3011,31 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, hcov⟩ := hdenot
-    rw [hpure.denot_empty] at hcov
-    exact absurd hcov CapabilitySet.not_covers_empty
+    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
   case cell cs =>
     -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, label, _, _, _, hcov⟩ := hdenot
-    rw [hpure.denot_empty] at hcov
-    exact absurd hcov CapabilitySet.not_covers_empty
+    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
   case reader cs =>
     -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, _, hcov⟩ := hdenot
-    rw [hpure.denot_empty] at hcov
-    exact absurd hcov CapabilitySet.not_covers_empty
+    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
   case arrow T1 cs T2 =>
-    -- If cs.IsEmpty, then R0 ⊆ cs.denot = {} means R0 = {}
+    -- If cs.IsEmpty, then R0 ⊆ cs.denot means R0 ⊆ .empty
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
-    rw [hpure.denot_empty] at hR0_sub
+    have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
     cases e with
     | abs cs0 _ _ =>
       simp only [resolve, Option.some.injEq, Exp.abs.injEq] at hres
       obtain ⟨rfl, _, _⟩ := hres
       simp [resolve_reachability]
-      exact hR0_sub
+      exact hR0_empty
     | var x =>
       cases x with
       | free fx =>
@@ -3044,13 +3058,13 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
-    rw [hpure.denot_empty] at hR0_sub
+    have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
     cases e with
     | tabs cs0 _ _ =>
       simp only [resolve, Option.some.injEq, Exp.tabs.injEq] at hres
       obtain ⟨rfl, _, _⟩ := hres
       simp [resolve_reachability]
-      exact hR0_sub
+      exact hR0_empty
     | var x =>
       cases x with
       | free fx =>
@@ -3073,13 +3087,13 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
-    rw [hpure.denot_empty] at hR0_sub
+    have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
     cases e with
     | cabs cs0 _ _ =>
       simp only [resolve, Option.some.injEq, Exp.cabs.injEq] at hres
       obtain ⟨rfl, _, _⟩ := hres
       simp [resolve_reachability]
-      exact hR0_sub
+      exact hR0_empty
     | var x =>
       cases x with
       | free fx =>
@@ -3093,7 +3107,15 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
             simp at hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            sorry
+            cases hv : v.unwrap
+            case cabs cs0 _ _ =>
+              simp only [resolve_reachability]
+              simp_all only [Exp.cabs.injEq]
+            case abs => simp_all
+            case tabs => simp_all
+            case var => simp_all
+            case reader => simp_all
+            all_goals simp [resolve_reachability]; exact CapabilitySet.Subset.empty
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
