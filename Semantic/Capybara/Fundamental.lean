@@ -1321,43 +1321,40 @@ theorem sem_typ_letin
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
   (hclosed_C : C.IsClosed)
   (_hclosed_e : (Exp.letin e1 e2).IsClosed)
-  (ht1 : C # Γ ⊨ e1 : T.typ)
+  (ht1 : C # Γ ⊨ e1 : .typ T)
   (ht2 : C.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
   C # Γ ⊨ (Exp.letin e1 e2) : U := by
   intro env store hts
   simp [Exp.subst]
   simp [Ty.exi_exp_denot]
-  -- Use Eval.eval_letin with Q1 = (Ty.capt_val_denot env T).as_mpost
-  apply Eval.eval_letin (Q1 := (Ty.capt_val_denot env T).as_mpost)
+  -- Use Eval.eval_letin with Q1 = (Ty.val_denot env T).as_mpost
+  apply Eval.eval_letin (Q1 := (Ty.val_denot env T).as_mpost)
   case hpred =>
-    -- Show (Ty.capt_val_denot env T).as_mpost is monotonic
+    -- Show (Ty.val_denot env T).as_mpost is monotonic
     intro m1 m2 e hwf hsub hQ
     simp [Denot.as_mpost] at hQ ⊢
     have henv_mono := typed_env_is_monotonic hts
     exact val_denot_is_monotonic henv_mono T hsub hQ
   case hbool =>
-    -- Show (Ty.capt_val_denot env T).as_mpost is bool independent
+    -- Show (Ty.val_denot env T).as_mpost is bool independent
     apply Denot.as_mpost_is_bool_independent
     exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
   case a =>
-    -- Show Eval ... store (e1.subst ...) (Ty.capt_val_denot env T).as_mpost
+    -- Show Eval ... store (e1.subst ...) (Ty.val_denot env T).as_mpost
     have h1 := ht1 env store hts
     simp [Ty.exi_exp_denot, Ty.exi_val_denot] at h1
     exact h1
   case h_nonstuck =>
     intro m1 v hQ1
     simp [Denot.as_mpost] at hQ1
-    -- hQ1 : Ty.capt_val_denot env T m1 v
-    -- Unfold capt_val_denot to get well-formedness and shape info
-    cases T with
-    | capt C_T S =>
-      simp [Ty.capt_val_denot] at hQ1
-      obtain ⟨hsimple, hwf_v, hwf_C, h_shape⟩ := hQ1
-      constructor
-      · -- Prove v.IsSimpleAns
-        exact hsimple
-      · -- Prove v.WfInHeap m1.heap
-        exact hwf_v
+    -- hQ1 : Ty.val_denot env T m1 v
+    constructor
+    · -- Prove v.IsSimpleAns
+      -- TODO: Need val_denot_implies_simple_ans theorem which requires adding
+      -- Denot.implies_simple_ans, TypeEnv.is_implying_simple_ans to the infrastructure
+      sorry
+    · -- Prove v.WfInHeap m1.heap
+      exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1
   case h_val =>
     -- Handle the value case: e1 evaluated to a simple value v
     intro m1 v hs1 hv hwf_v hQ1 l' hfresh
@@ -2605,6 +2602,15 @@ theorem fundamental
     cases hclosed_e with
     | par hclosed_e1 hclosed_e2 =>
       exact sem_typ_par (ht1_ih hclosed_e1) (ht2_ih hclosed_e2)
+  case letin =>
+    rename_i ht1_syn ht2_syn ht1_ih ht2_ih
+    cases hclosed_e with
+    | letin he1_closed he2_closed =>
+      exact sem_typ_letin
+        (HasType.use_set_is_closed ht1_syn)
+        (Exp.IsClosed.letin he1_closed he2_closed)
+        (ht1_ih he1_closed)
+        (ht2_ih he2_closed)
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
