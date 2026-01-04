@@ -2899,6 +2899,41 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
 
 theorem pure_ty_enforce_pure {T : Ty .capt s}
   (hpure : T.IsPureType) :
-  (Ty.val_denot env T).enforce_pure := by sorry
+  (Ty.val_denot env T).enforce_pure := by
+  intro m e hdenot
+  -- hpure means T.captureSet.IsEmpty
+  unfold Ty.IsPureType at hpure
+  -- Proceed by cases on T
+  cases T
+  case top =>
+    trace_state
+    sorry
+  case tvar =>
+    trace_state
+    sorry
+  case arrow T1 cs T2 =>
+    trace_state
+    sorry
+  case poly =>
+    trace_state
+    sorry
+  case cpoly =>
+    trace_state
+    sorry
+  case cap cs =>
+    trace_state
+    sorry
+  case cell cs =>
+    trace_state
+    sorry
+  case reader cs =>
+    trace_state
+    sorry
+  case unit =>
+    trace_state
+    sorry
+  case bool =>
+    trace_state
+    sorry
 
 end Capybara
