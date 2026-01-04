@@ -1019,26 +1019,35 @@ theorem sem_typ_invoke
   -- Show the postcondition holds for unit: resolve returns .unit
   simp only [Denot.as_mpost, resolve]
 
-/-
 
 theorem sem_typ_unit :
-  {} # Γ ⊨ Exp.unit : .typ (.capt {} .unit) := by
+  {} # Γ ⊨ Exp.unit : .typ .unit := by
   intro env store hts
-  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot,
-        Exp.subst, CaptureSet.denot]
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Exp.subst, CaptureSet.denot]
   apply Eval.eval_val
   · exact Exp.IsVal.unit
-  · constructor
-    · -- Prove IsSimpleAns: unit is a simple value
-      apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_TypeEnv_wf_in_heap hts
-      · simp [resolve]
+  · simp only [Denot.as_mpost, Ty.val_denot, resolve]
+
+theorem sem_typ_btrue :
+  {} # Γ ⊨ Exp.btrue : .typ .bool := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Exp.subst, CaptureSet.denot]
+  apply Eval.eval_val
+  · exact Exp.IsVal.btrue
+  · simp only [Denot.as_mpost, Ty.val_denot, resolve]
+    left; trivial
+
+theorem sem_typ_bfalse :
+  {} # Γ ⊨ Exp.bfalse : .typ .bool := by
+  intro env store hts
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Exp.subst, CaptureSet.denot]
+  apply Eval.eval_val
+  · exact Exp.IsVal.bfalse
+  · simp only [Denot.as_mpost, Ty.val_denot, resolve]
+    right; trivial
+
+
+/-
 
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
@@ -1162,42 +1171,6 @@ theorem sem_typ_par
                                            (CaptureSet.denot env C2 store) := by
     sorry
   exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
-
-theorem sem_typ_btrue :
-  {} # Γ ⊨ Exp.btrue : .typ (.capt {} .bool) := by
-  intro env store hts
-  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot,
-        Exp.subst, CaptureSet.denot]
-  apply Eval.eval_val
-  · exact Exp.IsVal.btrue
-  · constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.btrue
-    constructor
-    · exact Exp.WfInHeap.wf_btrue
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_TypeEnv_wf_in_heap hts
-      · simp [resolve]
-
-theorem sem_typ_bfalse :
-  {} # Γ ⊨ Exp.bfalse : .typ (.capt {} .bool) := by
-  intro env store hts
-  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot,
-        Exp.subst, CaptureSet.denot]
-  apply Eval.eval_val
-  · exact Exp.IsVal.bfalse
-  · constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.bfalse
-    constructor
-    · exact Exp.WfInHeap.wf_bfalse
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_TypeEnv_wf_in_heap hts
-      · simp [resolve]
 
 theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
@@ -2650,6 +2623,9 @@ theorem fundamental
       have hy := ih_y (Exp.IsClosed.var Var.IsClosed.bound)
       -- Apply sem_typ_invoke theorem
       exact sem_typ_invoke hx hy
+  case unit => exact sem_typ_unit
+  case btrue => exact sem_typ_btrue
+  case bfalse => exact sem_typ_bfalse
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
