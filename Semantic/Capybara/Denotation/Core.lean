@@ -2897,6 +2897,13 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
 
+inductive CapabilitySet.IsEmpty : CapabilitySet -> Prop where
+| empty : CapabilitySet.IsEmpty {}
+| union :
+  CapabilitySet.IsEmpty cs1 ->
+  CapabilitySet.IsEmpty cs2 ->
+  CapabilitySet.IsEmpty (cs1 ∪ cs2)
+
 /-- Empty capture sets have empty ground denotations. -/
 theorem CaptureSet.IsEmpty.ground_denot_empty {cs : CaptureSet {}}
   (h : cs.IsEmpty) : cs.ground_denot m = {} := by
