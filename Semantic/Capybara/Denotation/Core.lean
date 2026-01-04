@@ -2897,7 +2897,29 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
 
+/-- Empty capture sets have empty ground denotations. -/
+theorem CaptureSet.IsEmpty.ground_denot_empty {cs : CaptureSet {}}
+  (h : cs.IsEmpty) : cs.ground_denot m = {} := by
+  induction h with
+  | empty => rfl
+  | union _ _ ih1 ih2 =>
+    simp only [CaptureSet.ground_denot]
+    rw [ih1, ih2]
+    sorry
+
+/-- Empty capture sets have empty denotations. -/
+theorem CaptureSet.IsEmpty.denot_empty {cs : CaptureSet s}
+  (h : cs.IsEmpty) : cs.denot env m = {} := by
+  unfold CaptureSet.denot
+  exact (h.subst _).ground_denot_empty
+
+/-- covers cannot hold for the empty capability set. -/
+theorem CapabilitySet.not_covers_empty : ¬ CapabilitySet.covers m l {} := by
+  intro h
+  cases h
+
 theorem pure_ty_enforce_pure {T : Ty .capt s}
+  (henv : env.is_enforcing_pure)
   (hpure : T.IsPureType) :
   (Ty.val_denot env T).enforce_pure := by
   intro m e hdenot
@@ -2906,34 +2928,167 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
   -- Proceed by cases on T
   cases T
   case top =>
-    trace_state
-    sorry
-  case tvar =>
-    trace_state
-    sorry
-  case arrow T1 cs T2 =>
-    trace_state
-    sorry
-  case poly =>
-    trace_state
-    sorry
-  case cpoly =>
-    trace_state
-    sorry
-  case cap cs =>
-    trace_state
-    sorry
-  case cell cs =>
-    trace_state
-    sorry
-  case reader cs =>
-    trace_state
-    sorry
+    -- Denotation directly gives resolve_reachability ⊆ .empty
+    simp only [Ty.val_denot] at hdenot
+    exact hdenot.2
+  case tvar X =>
+    -- Type variable denotation enforces purity by hypothesis
+    simp only [Ty.val_denot] at hdenot
+    exact henv X m e hdenot
   case unit =>
-    trace_state
-    sorry
+    -- Unit values have empty reachability
+    simp only [Ty.val_denot] at hdenot
+    cases e with
+    | unit => simp [resolve_reachability]; exact CapabilitySet.Subset.refl
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hdenot
+        cases hcell : m.heap fx with
+        | none => simp [hcell] at hdenot
+        | some cell =>
+          simp [hcell] at hdenot
+          cases cell with
+          | val v =>
+            simp at hdenot
+            simp [resolve_reachability]
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
+            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            all_goals exact CapabilitySet.Subset.refl
+          | _ => simp at hdenot
+      | bound bx => cases bx
+    | _ => simp [resolve] at hdenot
   case bool =>
-    trace_state
-    sorry
+    -- Bool values have empty reachability
+    simp only [Ty.val_denot] at hdenot
+    cases e with
+    | btrue => simp [resolve_reachability]; exact CapabilitySet.Subset.refl
+    | bfalse => simp [resolve_reachability]; exact CapabilitySet.Subset.refl
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hdenot
+        cases hcell : m.heap fx with
+        | none => simp [hcell] at hdenot
+        | some cell =>
+          simp [hcell] at hdenot
+          cases cell with
+          | val v =>
+            simp at hdenot
+            simp [resolve_reachability]
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
+            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            all_goals exact CapabilitySet.Subset.refl
+          | _ => simp at hdenot
+      | bound bx => cases bx
+    | _ => simp [resolve] at hdenot
+  case cap cs =>
+    -- If cs.IsEmpty, then covers cannot hold on empty set
+    simp only [Ty.captureSet] at hpure
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, _, label, _, _, hcov⟩ := hdenot
+    rw [hpure.denot_empty] at hcov
+    exact absurd hcov CapabilitySet.not_covers_empty
+  case cell cs =>
+    -- If cs.IsEmpty, then covers cannot hold on empty set
+    simp only [Ty.captureSet] at hpure
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, label, _, _, _, hcov⟩ := hdenot
+    rw [hpure.denot_empty] at hcov
+    exact absurd hcov CapabilitySet.not_covers_empty
+  case reader cs =>
+    -- If cs.IsEmpty, then covers cannot hold on empty set
+    simp only [Ty.captureSet] at hpure
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, _, label, _, _, _, hcov⟩ := hdenot
+    rw [hpure.denot_empty] at hcov
+    exact absurd hcov CapabilitySet.not_covers_empty
+  case arrow T1 cs T2 =>
+    -- If cs.IsEmpty, then R0 ⊆ cs.denot = {} means R0 = {}
+    simp only [Ty.captureSet] at hpure
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
+    rw [hpure.denot_empty] at hR0_sub
+    cases e with
+    | abs cs0 _ _ =>
+      simp only [resolve, Option.some.injEq, Exp.abs.injEq] at hres
+      obtain ⟨rfl, _, _⟩ := hres
+      simp [resolve_reachability]
+      exact hR0_sub
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hcell : m.heap fx with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            simp [resolve_reachability]
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
+            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+          | _ => simp at hres
+      | bound bx => cases bx
+    | _ => simp [resolve] at hres
+  case poly T1 cs T2 =>
+    -- Same pattern as arrow
+    simp only [Ty.captureSet] at hpure
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
+    rw [hpure.denot_empty] at hR0_sub
+    cases e with
+    | tabs cs0 _ _ =>
+      simp only [resolve, Option.some.injEq, Exp.tabs.injEq] at hres
+      obtain ⟨rfl, _, _⟩ := hres
+      simp [resolve_reachability]
+      exact hR0_sub
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hcell : m.heap fx with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            simp [resolve_reachability]
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
+            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+          | _ => simp at hres
+      | bound bx => cases bx
+    | _ => simp [resolve] at hres
+  case cpoly B cs T =>
+    -- Same pattern as arrow/poly
+    simp only [Ty.captureSet] at hpure
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
+    rw [hpure.denot_empty] at hR0_sub
+    cases e with
+    | cabs cs0 _ _ =>
+      simp only [resolve, Option.some.injEq, Exp.cabs.injEq] at hres
+      obtain ⟨rfl, _, _⟩ := hres
+      simp [resolve_reachability]
+      exact hR0_sub
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hcell : m.heap fx with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            simp [resolve_reachability]
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
+            sorry
+          | _ => simp at hres
+      | bound bx => cases bx
+    | _ => simp [resolve] at hres
 
 end Capybara
