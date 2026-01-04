@@ -1153,75 +1153,56 @@ theorem sem_typ_cond
 
 theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
-  (hx : Γ.LookupVar x (.capt C .cell)) :
+  (hx : Γ.LookupVar x (.cell C)) :
   (.var .ro (.bound x)) # Γ ⊨ Exp.reader (.bound x) :
-    (.typ (.capt (.var .ro (.bound x)) .reader)) := by
+    (.typ (.reader (.var .ro (.bound x)))) := by
   intro env store hts
-  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Exp.subst, CaptureSet.denot]
+  simp [Ty.exi_exp_denot, Ty.exi_val_denot, Exp.subst, CaptureSet.denot]
   apply Eval.eval_val
   · exact Exp.IsVal.reader
-  · simp [Denot.as_mpost]
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.reader
-    constructor
-    · -- WfInHeap for the reader expression
-      have hcell := typed_env_lookup_var hts hx
-      simp [Ty.capt_val_denot] at hcell
-      obtain ⟨_, hwf_var, _, _⟩ := hcell
-      cases hwf_var with
-      | wf_var hwf_var =>
-        cases hwf_var with
-        | wf_free hlookup =>
-          exact Exp.WfInHeap.wf_reader (Var.WfInHeap.wf_free hlookup)
-    · constructor
-      · -- Capture set well-formedness for .var .ro (.free env.lookup_var x)
-        have hcell := typed_env_lookup_var hts hx
-        simp [Ty.capt_val_denot] at hcell
-        obtain ⟨_, hwf_var, _, _⟩ := hcell
-        cases hwf_var with
-        | wf_var hwf_var =>
-          cases hwf_var with
-          | wf_free hlookup =>
-            exact CaptureSet.WfInHeap.wf_var_free hlookup
-      · -- Shape denotation for reader type
-        have hcell := typed_env_lookup_var hts hx
-        simp [Ty.capt_val_denot] at hcell
-        obtain ⟨_, hwf_var, _, hshape_cell⟩ := hcell
-        have ⟨_, b0, rfl, hlookup_cell, _⟩ := cell_val_denot_inv hshape_cell
-        simp only [Ty.shape_val_denot]
-        refine And.intro ?hwf ?hexists
-        · exact Exp.WfInHeap.wf_reader (Var.WfInHeap.wf_free hlookup_cell)
-        · refine ⟨(env.lookup_var x).1, b0, ?hres, ?hlookup, ?hcover⟩
-          · simp [resolve, Var.subst, Subst.from_TypeEnv]
-          · simpa [Memory.lookup] using hlookup_cell
-          · have hden :
-              ((CaptureSet.var .ro (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot store
-                = CapabilitySet.singleton .ro (env.lookup_var x).1 := by
-              simp [CaptureSet.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.ground_denot,
-                    CapabilitySet.applyMut, CapabilitySet.applyRO, CapabilitySet.singleton,
-                    reachability_of_loc, hlookup_cell]
-            have hcov_singleton :
-                CapabilitySet.covers .ro (env.lookup_var x).1
-                  (CapabilitySet.singleton .ro (env.lookup_var x).1) :=
-              CapabilitySet.covers.here (l:=(env.lookup_var x).1) Mutability.Le.refl
-            simpa [hden] using hcov_singleton
+  · simp only [Denot.as_mpost, Ty.val_denot]
+    -- Get the cell denotation from the lookup
+    have hcell := typed_env_lookup_var hts hx
+    -- hcell : Ty.val_denot env (.cell C) store (.var (.free (env.lookup_var x).1))
+    have ⟨_, b0, rfl, hlookup_cell, _⟩ := cell_val_denot_inv hcell
+    -- Ty.val_denot .reader cs = e.WfInHeap ∧ cs'.WfInHeap ∧ ∃ label b0, ...
+    refine ⟨?hwf_e, ?hwf_cs, (env.lookup_var x).1, b0, ?hres, ?hlookup, ?hcover⟩
+    · -- e.WfInHeap
+      exact Exp.WfInHeap.wf_reader (Var.WfInHeap.wf_free hlookup_cell)
+    · -- cs.subst.WfInHeap
+      exact CaptureSet.WfInHeap.wf_var_free hlookup_cell
+    · -- resolve = some (.reader (.free label))
+      simp [resolve, Var.subst, Subst.from_TypeEnv]
+    · -- lookup = .capability (.mcell b0)
+      simpa [Memory.lookup] using hlookup_cell
+    · -- covers .ro label
+      have hden :
+        CaptureSet.denot env (CaptureSet.var .ro (Var.bound x)) store
+          = CapabilitySet.singleton .ro (env.lookup_var x).1 := by
+        simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv, Var.subst,
+              CaptureSet.ground_denot, CapabilitySet.applyMut, CapabilitySet.applyRO,
+              CapabilitySet.singleton, reachability_of_loc, hlookup_cell]
+      have hcov_singleton :
+          CapabilitySet.covers .ro (env.lookup_var x).1
+            (CapabilitySet.singleton .ro (env.lookup_var x).1) :=
+        CapabilitySet.covers.here (l:=(env.lookup_var x).1) Mutability.Le.refl
+      simpa [hden] using hcov_singleton
 
 theorem sem_typ_read
-  {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
-  (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) : .typ (.capt C .reader)) :
-  (.var .epsilon (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ (.capt {} .bool) := by
+  {x : BVar s .var}
+  (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) : .typ (.reader C)) :
+  (.var .epsilon (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ .bool := by
   intro env store hts
 
   -- Extract reader denotation from hx
   have h1 := hx env store hts
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
   have h1' := var_exp_denot_inv h1
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+  simp only [Ty.exi_val_denot] at h1'
 
   -- Extract the reader structure
   have ⟨fx, y, b0, hval_reader, R, hfx, hlookup_reader, hlookup_cell, hcov_reader⟩ :=
-    reader_val_denot_inv h1'.2.2.2
+    reader_val_denot_inv h1'
 
   -- Determine concrete location
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -1229,7 +1210,7 @@ theorem sem_typ_read
 
   -- Simplify goal
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
-        Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
+        CaptureSet.denot]
 
   -- The reachability stored with the reader gives the needed .ro capability
   have hreach :
@@ -1260,23 +1241,8 @@ theorem sem_typ_read
   apply Eval.eval_read hcov hlookup_reader' hlookup_cell'
 
   -- Show the postcondition holds for the boolean result
-  constructor
-  · -- Prove IsSimpleAns for the boolean
-    apply Exp.IsSimpleAns.is_simple_val
-    cases b0
-    · exact Exp.IsSimpleVal.bfalse
-    · exact Exp.IsSimpleVal.btrue
-  constructor
-  · -- WfInHeap for the boolean
-    cases b0
-    · exact Exp.WfInHeap.wf_bfalse
-    · exact Exp.WfInHeap.wf_btrue
-  constructor
-  · -- Empty capture set is always well-formed
-    simp only [CaptureSet.subst]
-    exact CaptureSet.WfInHeap.wf_empty
-  · -- The result is btrue or bfalse
-    cases b0 <;> simp [resolve]
+  simp only [Denot.as_mpost, Ty.val_denot, resolve]
+  cases b0 <;> simp
 
 
 /-
@@ -2634,6 +2600,15 @@ theorem fundamental
       have hclosedC3 := HasType.use_set_is_closed ht3
       exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
         (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
+  case reader hΓ_closed hx =>
+    exact sem_typ_reader hΓ_closed hx
+  case read =>
+    rename_i hx_syn hx_ih
+    cases hclosed_e with
+    | read hx_closed =>
+      cases hx_closed
+      exact sem_typ_read
+        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
