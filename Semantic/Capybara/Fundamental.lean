@@ -1047,31 +1047,30 @@ theorem sem_typ_bfalse :
     right; trivial
 
 
-/-
 
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
-  {x : Var .var s} {e2 e3 : Exp s} {T : Ty .exi s} {Cb : CaptureSet s}
+  {x : Var .var s} {e2 e3 : Exp s} {T : Ty .exi s}
   (hclosed_C1 : C1.IsClosed)
   (hclosed_C2 : C2.IsClosed)
   (hclosed_C3 : C3.IsClosed)
   (_hclosed_guard : x.IsClosed)
   (_hclosed_then : e2.IsClosed)
   (_hclosed_else : e3.IsClosed)
-  (ht1 : C1 # Γ ⊨ (.var x) : .typ (.capt Cb .bool))
+  (ht1 : C1 # Γ ⊨ (.var x) : .typ .bool)
   (ht2 : C2 # Γ ⊨ e2 : T)
   (ht3 : C3 # Γ ⊨ e3 : T) :
   (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond x e2 e3) : T := by
   intro env store hts
   simp [Exp.subst, Ty.exi_exp_denot]
   -- Let Q1 be the guard postcondition
-  set Q1 := (Ty.exi_val_denot env (.typ (.capt Cb .bool))).as_mpost
+  set Q1 := (Ty.exi_val_denot env (.typ .bool)).as_mpost
   -- Monotonicity of Q1
   have hpred : Q1.is_monotonic := Denot.as_mpost_is_monotonic
-    (exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.typ (.capt Cb .bool)))
+    (exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.typ .bool))
   -- Bool independence of Q1
   have hbool : Q1.is_bool_independent := Denot.as_mpost_is_bool_independent
-    (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.typ (.capt Cb .bool)))
+    (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.typ .bool))
   -- Evaluate the guard under base authority
   have hguard_base := ht1 env store hts
   simp [Ty.exi_exp_denot] at hguard_base
@@ -1089,13 +1088,10 @@ theorem sem_typ_cond
   refine Eval.eval_cond (Q1 := Q1) hpred hbool hguard ?h_nonstuck ?h_true ?h_false
   · -- non-stuck: guard evaluates to a literal boolean
     intro m1 v hQ1
-    have hQ1' : Ty.capt_val_denot env (.capt Cb .bool) m1 v := by
-      simpa [Q1, Denot.as_mpost, Ty.exi_val_denot] using hQ1
-    have hshape : resolve m1.heap v = some .btrue ∨ resolve m1.heap v = some .bfalse := by
-      have h := hQ1'
-      simp [Ty.capt_val_denot, Ty.shape_val_denot] at h
-      exact h.2.2.2
-    exact hshape
+    -- hQ1 : Q1 v m1 = Ty.val_denot env .bool m1 v
+    -- Ty.val_denot .bool = resolve m.heap e = .btrue ∨ resolve m.heap e = .bfalse
+    simp only [Q1, Denot.as_mpost, Ty.exi_val_denot, Ty.val_denot] at hQ1
+    exact hQ1
   · -- true branch
     intro m1 v hsub hQtrue hres
     have hts' : EnvTyping Γ env m1 := env_typing_monotonic hts hsub
@@ -1154,23 +1150,6 @@ theorem sem_typ_cond
           (e3.subst (Subst.from_TypeEnv env)) (Ty.exi_val_denot env T).as_mpost := by
       exact hcap_eq ▸ helse'
     exact helse_store
-
-theorem sem_typ_par
-  {C1 C2 : CaptureSet s} {Γ : Ctx s}
-  {e1 e2 : Exp s} {E : Ty .exi s}
-  (ht1 : C1 # Γ ⊨ e1 : E)
-  (ht2 : C2 # Γ ⊨ e2 : E) :
-  (C1 ∪ C2) # Γ ⊨ (.par e1 e2) : E := by
-  intro env store hts
-  simp [Exp.subst, Ty.exi_exp_denot]
-  -- Evaluate both branches and combine with eval_par
-  have he1 := ht1 env store hts
-  have he2 := ht2 env store hts
-  simp [Ty.exi_exp_denot] at he1 he2
-  have hni : CapabilitySet.Noninterference (CaptureSet.denot env C1 store)
-                                           (CaptureSet.denot env C2 store) := by
-    sorry
-  exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
 
 theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
@@ -1298,6 +1277,26 @@ theorem sem_typ_read
     exact CaptureSet.WfInHeap.wf_empty
   · -- The result is btrue or bfalse
     cases b0 <;> simp [resolve]
+
+
+/-
+
+theorem sem_typ_par
+  {C1 C2 : CaptureSet s} {Γ : Ctx s}
+  {e1 e2 : Exp s} {E : Ty .exi s}
+  (ht1 : C1 # Γ ⊨ e1 : E)
+  (ht2 : C2 # Γ ⊨ e2 : E) :
+  (C1 ∪ C2) # Γ ⊨ (.par e1 e2) : E := by
+  intro env store hts
+  simp [Exp.subst, Ty.exi_exp_denot]
+  -- Evaluate both branches and combine with eval_par
+  have he1 := ht1 env store hts
+  have he2 := ht2 env store hts
+  simp [Ty.exi_exp_denot] at he1 he2
+  have hni : CapabilitySet.Noninterference (CaptureSet.denot env C1 store)
+                                           (CaptureSet.denot env C2 store) := by
+    sorry
+  exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
 
 theorem sem_typ_write
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -2626,6 +2625,15 @@ theorem fundamental
   case unit => exact sem_typ_unit
   case btrue => exact sem_typ_btrue
   case bfalse => exact sem_typ_bfalse
+  case cond ht1 ht2 ht3 ih1 ih2 ih3 =>
+    -- hclosed_e gives closedness of cond e1 e2 e3
+    cases hclosed_e with
+    | cond hclosed_guard hclosed_then hclosed_else =>
+      have hclosedC1 := HasType.use_set_is_closed ht1
+      have hclosedC2 := HasType.use_set_is_closed ht2
+      have hclosedC3 := HasType.use_set_is_closed ht3
+      exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
+        (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
