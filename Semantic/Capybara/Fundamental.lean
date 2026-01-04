@@ -967,35 +967,34 @@ theorem sem_typ_capp
 
   apply Eval.eval_capply hlk happ3
 
-/-
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : (.var .epsilon (.bound x)) # Γ ⊨ Exp.var (.bound x) :
-    .typ (.capt (.var .epsilon (.bound x)) .cap))
+    .typ (.cap (.var .epsilon (.bound x))))
   (hy : (.var .epsilon (.bound y)) # Γ ⊨ Exp.var (.bound y) :
-    .typ (.capt (.var .epsilon (.bound y)) .unit)) :
+    .typ .unit) :
   ((.var .epsilon (.bound x)) ∪ (.var .epsilon (.bound y))) # Γ ⊨
-    Exp.app (.bound x) (.bound y) : .typ (.capt {} .unit) := by
+    Exp.app (.bound x) (.bound y) : .typ .unit := by
   intro env store hts
 
   -- Extract capability denotation from hx
   have h1 := hx env store hts
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h1
   have h1' := var_exp_denot_inv h1
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+  simp only [Ty.exi_val_denot] at h1'
 
-  -- Extract the capability structure (now at h1'.2.2.2 due to extra IsSimpleAns conjunct)
-  have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'.2.2.2
+  -- Extract the capability structure
+  have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'
 
   -- Extract unit denotation from hy
   have h2 := hy env store hts
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst] at h2
   have h2' := var_exp_denot_inv h2
-  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h2'
+  simp only [Ty.exi_val_denot] at h2'
 
-  -- Extract the unit structure (now at h2'.2.2.2 due to extra IsSimpleAns conjunct)
-  have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'.2.2.2
+  -- Extract the unit structure
+  have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'
 
   -- Determine concrete locations
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -1005,7 +1004,7 @@ theorem sem_typ_invoke
 
   -- Simplify goal
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
-        Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
+        Ty.val_denot, CaptureSet.denot]
 
   -- Show env.lookup_var x is covered in the union of capability sets
   have hcov :
@@ -1017,18 +1016,10 @@ theorem sem_typ_invoke
   -- Apply eval_invoke
   apply Eval.eval_invoke hcov hlk_cap hlk_unit
 
-  -- Show the postcondition holds for unit
-  constructor
-  · -- Prove IsSimpleAns for unit
-    apply Exp.IsSimpleAns.is_simple_val
-    apply Exp.IsSimpleVal.unit
-  constructor
-  · exact Exp.WfInHeap.wf_unit
-  constructor
-  · -- Empty capture set is always well-formed
-    simp only [CaptureSet.subst]
-    exact CaptureSet.WfInHeap.wf_empty
-  · simp [resolve]
+  -- Show the postcondition holds for unit: resolve returns .unit
+  simp only [Denot.as_mpost, resolve]
+
+/-
 
 theorem sem_typ_unit :
   {} # Γ ⊨ Exp.unit : .typ (.capt {} .unit) := by
@@ -2646,6 +2637,19 @@ theorem fundamental
       have hx := ih_x (Exp.IsClosed.var Var.IsClosed.bound)
       -- Apply sem_typ_capp theorem
       exact sem_typ_capp hD_closed_exp hD_kind hx
+  case invoke =>
+    rename_i ih_x ih_y
+    -- From closedness of (app x y), extract that x and y are closed
+    cases hclosed_e with
+    | app hx_closed hy_closed =>
+      -- Closed variables must be bound (not free heap pointers)
+      cases hx_closed
+      cases hy_closed
+      -- Apply IHs to get semantic typing for the variables
+      have hx := ih_x (Exp.IsClosed.var Var.IsClosed.bound)
+      have hy := ih_y (Exp.IsClosed.var Var.IsClosed.bound)
+      -- Apply sem_typ_invoke theorem
+      exact sem_typ_invoke hx hy
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
