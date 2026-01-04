@@ -827,7 +827,7 @@ theorem sem_typ_tapp
   have happ := hfun store (Ty.val_denot env S.core) (Memory.subsumes_refl store)
     (val_denot_is_proper hts)  -- Type denotations are proper
     (by intro m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter is reflexive
-    sorry  -- TODO: prove that pure types satisfy enforce_pure
+    (pure_ty_enforce_pure (typed_env_enforces_pure hts) S.p)  -- Pure types enforce purity
 
   -- The opening lemma relates extended environment to substituted type
   have heqv := open_targ_exi_exp_denot (env:=env) (S:=S) (T:=T) (R:=expand_captures store.heap cs)
