@@ -1298,9 +1298,6 @@ theorem sem_typ_write
     apply Eval.eval_write_true hcov (hx := hlk_cell) hlk_bool
     simp only [Denot.as_mpost, Ty.val_denot, resolve]
 
-
-/-
-
 theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
   {e1 e2 : Exp s} {E : Ty .exi s}
@@ -1317,6 +1314,7 @@ theorem sem_typ_par
                                            (CaptureSet.denot env C2 store) := by
     sorry
   exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
+
 
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
@@ -1478,6 +1476,8 @@ theorem sem_typ_letin
           · rfl
           · -- Show: EnvTyping Γ env m1
             exact env_typing_monotonic hts hs1
+
+/-
 
 theorem sem_sc_trans
   (hsub1 : SemSubcapt Γ C1 C2)
@@ -2600,6 +2600,11 @@ theorem fundamental
       exact sem_typ_write
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
         (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  case par ht1_syn ht2_syn ht1_ih ht2_ih =>
+    -- Extract closedness of both branches
+    cases hclosed_e with
+    | par hclosed_e1 hclosed_e2 =>
+      exact sem_typ_par (ht1_ih hclosed_e1) (ht2_ih hclosed_e2)
   all_goals sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
@@ -2675,11 +2680,6 @@ theorem fundamental
   --     exact sem_typ_write
   --       (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
   --       (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
-  -- case par ht1_syn ht2_syn ht1_ih ht2_ih =>
-  --   -- Extract closedness of both branches
-  --   cases hclosed_e with
-  --   | par hclosed_e1 hclosed_e2 =>
-  --     exact sem_typ_par (ht1_ih hclosed_e1) (ht2_ih hclosed_e2)
   -- case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
   --   -- Get closedness of C1 from the syntactic typing derivation
   --   have hclosed_C1 := HasType.use_set_is_closed ht_syn
