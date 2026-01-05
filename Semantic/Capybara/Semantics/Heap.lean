@@ -94,6 +94,9 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
 
+instance instTransSubset : Trans (α := CapabilitySet) (· ⊆ ·) (· ⊆ ·) (· ⊆ ·) where
+  trans := CapabilitySet.Subset.trans
+
 /-- A capability set has a certain mutability kind.
     HasKind C .ro means all capabilities in C have mutability .ro.
     HasKind C .epsilon is always true. -/
@@ -428,37 +431,37 @@ inductive Var.WfInHeap : Var k s -> Heap -> Prop where
   Var.WfInHeap (.free n) H
 
 inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
--- Shape types
 | wf_top :
   Ty.WfInHeap .top H
 | wf_tvar :
   Ty.WfInHeap (.tvar x) H
 | wf_arrow :
   Ty.WfInHeap T1 H ->
+  CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T2 H ->
-  Ty.WfInHeap (.arrow T1 T2) H
+  Ty.WfInHeap (.arrow T1 cs T2) H
 | wf_poly :
   Ty.WfInHeap T1 H ->
+  CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T2 H ->
-  Ty.WfInHeap (.poly T1 T2) H
+  Ty.WfInHeap (.poly T1 cs T2) H
 | wf_cpoly :
+  CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T H ->
-  Ty.WfInHeap (.cpoly m T) H
+  Ty.WfInHeap (.cpoly m cs T) H
 | wf_unit :
   Ty.WfInHeap .unit H
 | wf_cap :
-  Ty.WfInHeap .cap H
+  CaptureSet.WfInHeap cs H ->
+  Ty.WfInHeap (.cap cs) H
 | wf_bool :
   Ty.WfInHeap .bool H
 | wf_cell :
-  Ty.WfInHeap .cell H
-| wf_reader :
-  Ty.WfInHeap .reader H
--- Capturing types
-| wf_capt :
   CaptureSet.WfInHeap cs H ->
-  Ty.WfInHeap T H ->
-  Ty.WfInHeap (.capt cs T) H
+  Ty.WfInHeap (.cell cs) H
+| wf_reader :
+  CaptureSet.WfInHeap cs H ->
+  Ty.WfInHeap (.reader cs) H
 -- Existential types
 | wf_exi :
   Ty.WfInHeap T H ->
@@ -466,6 +469,9 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
 | wf_typ :
   Ty.WfInHeap T H ->
   Ty.WfInHeap (.typ T) H
+
+def PureTy.WfInHeap (T : PureTy s) (H : Heap) : Prop :=
+  Ty.WfInHeap T.core H
 
 inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
 | wf_var :
@@ -478,7 +484,7 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap (.abs cs T e) H
 | wf_tabs :
   CaptureSet.WfInHeap cs H ->
-  Ty.WfInHeap T H ->
+  PureTy.WfInHeap T H ->
   Exp.WfInHeap e H ->
   Exp.WfInHeap (.tabs cs T e) H
 | wf_cabs :
@@ -498,7 +504,7 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap (.app x y) H
 | wf_tapp :
   Var.WfInHeap x H ->
-  Ty.WfInHeap T H ->
+  PureTy.WfInHeap T H ->
   Exp.WfInHeap (.tapp x T) H
 | wf_capp :
   Var.WfInHeap x H ->
@@ -561,20 +567,25 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   induction hclosed with
   | top => apply Ty.WfInHeap.wf_top
   | tvar => apply Ty.WfInHeap.wf_tvar
-  | arrow _ _ ih1 ih2 => apply Ty.WfInHeap.wf_arrow <;> assumption
-  | poly _ _ ih1 ih2 => apply Ty.WfInHeap.wf_poly <;> assumption
-  | cpoly _ ih =>
+  | arrow _ hcs _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_arrow
+    · exact ih1
+    · exact CaptureSet.wf_of_closed hcs
+    · exact ih2
+  | poly _ hcs _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_poly
+    · exact ih1
+    · exact CaptureSet.wf_of_closed hcs
+    · exact ih2
+  | cpoly hcs _ ih =>
     apply Ty.WfInHeap.wf_cpoly
-    exact ih
-  | unit => apply Ty.WfInHeap.wf_unit
-  | cap => apply Ty.WfInHeap.wf_cap
-  | bool => apply Ty.WfInHeap.wf_bool
-  | cell => apply Ty.WfInHeap.wf_cell
-  | reader => apply Ty.WfInHeap.wf_reader
-  | capt hcs _ ih =>
-    apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_of_closed hcs
     · exact ih
+  | unit => apply Ty.WfInHeap.wf_unit
+  | cap hcs => apply Ty.WfInHeap.wf_cap; exact CaptureSet.wf_of_closed hcs
+  | bool => apply Ty.WfInHeap.wf_bool
+  | cell hcs => apply Ty.WfInHeap.wf_cell; exact CaptureSet.wf_of_closed hcs
+  | reader hcs => apply Ty.WfInHeap.wf_reader; exact CaptureSet.wf_of_closed hcs
   | exi _ ih => apply Ty.WfInHeap.wf_exi; exact ih
   | typ _ ih => apply Ty.WfInHeap.wf_typ; exact ih
 
@@ -677,26 +688,25 @@ theorem Ty.wf_monotonic
   induction hwf generalizing h2 with
   | wf_top => apply Ty.WfInHeap.wf_top
   | wf_tvar => apply Ty.WfInHeap.wf_tvar
-  | wf_arrow _ _ ih1 ih2 =>
+  | wf_arrow _ hwf_cs _ ih1 ih2 =>
     apply Ty.WfInHeap.wf_arrow
     · exact ih1 hsub
+    · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact ih2 hsub
-  | wf_poly _ _ ih1 ih2 =>
+  | wf_poly _ hwf_cs _ ih1 ih2 =>
     apply Ty.WfInHeap.wf_poly
     · exact ih1 hsub
+    · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact ih2 hsub
-  | wf_cpoly hwf_T ih_T =>
+  | wf_cpoly hwf_cs _ ih_T =>
     apply Ty.WfInHeap.wf_cpoly
-    exact ih_T hsub
-  | wf_unit => apply Ty.WfInHeap.wf_unit
-  | wf_cap => apply Ty.WfInHeap.wf_cap
-  | wf_bool => apply Ty.WfInHeap.wf_bool
-  | wf_cell => apply Ty.WfInHeap.wf_cell
-  | wf_reader => apply Ty.WfInHeap.wf_reader
-  | wf_capt hwf_cs hwf_T ih_T =>
-    apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact ih_T hsub
+  | wf_unit => apply Ty.WfInHeap.wf_unit
+  | wf_cap hwf_cs => apply Ty.WfInHeap.wf_cap; exact CaptureSet.wf_monotonic hsub hwf_cs
+  | wf_bool => apply Ty.WfInHeap.wf_bool
+  | wf_cell hwf_cs => apply Ty.WfInHeap.wf_cell; exact CaptureSet.wf_monotonic hsub hwf_cs
+  | wf_reader hwf_cs => apply Ty.WfInHeap.wf_reader; exact CaptureSet.wf_monotonic hsub hwf_cs
   | wf_exi hwf ih => apply Ty.WfInHeap.wf_exi; exact ih hsub
   | wf_typ hwf ih => apply Ty.WfInHeap.wf_typ; exact ih hsub
 
@@ -813,9 +823,9 @@ theorem Exp.wf_inv_abs
 /-- Inversion for type abstraction: if `Λ(cs) (X <: T). e` is well-formed,
     then its capture set, type bound, and body are all well-formed. -/
 theorem Exp.wf_inv_tabs
-  {cs : CaptureSet s} {T : Ty .shape s} {e : Exp (s,X)} {H : Heap}
+  {cs : CaptureSet s} {T : PureTy s} {e : Exp (s,X)} {H : Heap}
   (hwf : Exp.WfInHeap (.tabs cs T e) H) :
-  CaptureSet.WfInHeap cs H ∧ Ty.WfInHeap T H ∧ Exp.WfInHeap e H := by
+  CaptureSet.WfInHeap cs H ∧ PureTy.WfInHeap T H ∧ Exp.WfInHeap e H := by
   cases hwf with
   | wf_tabs hwf_cs hwf_T hwf_e => exact ⟨hwf_cs, hwf_T, hwf_e⟩
 
@@ -833,7 +843,7 @@ structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
     ∀ x, Var.WfInHeap (s.var x) H
 
   wf_tvar :
-    ∀ X, Ty.WfInHeap (s.tvar X) H
+    ∀ X, PureTy.WfInHeap (s.tvar X) H
 
   wf_cvar :
     ∀ C, CaptureSet.WfInHeap (s.cvar C) H
@@ -1272,40 +1282,41 @@ theorem Ty.wf_rename
   | wf_tvar =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_tvar
-  | wf_arrow _ _ ih1 ih2 =>
+  | wf_arrow _ hwf_cs _ ih1 ih2 =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_arrow
     · exact ih1
+    · exact CaptureSet.wf_rename hwf_cs
     · exact ih2
-  | wf_poly _ _ ih1 ih2 =>
+  | wf_poly _ hwf_cs _ ih1 ih2 =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_poly
     · exact ih1
+    · exact CaptureSet.wf_rename hwf_cs
     · exact ih2
-  | wf_cpoly _ ih_T =>
+  | wf_cpoly hwf_cs _ ih_T =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_cpoly
-    exact ih_T
+    · exact CaptureSet.wf_rename hwf_cs
+    · exact ih_T
   | wf_unit =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_unit
-  | wf_cap =>
+  | wf_cap hwf_cs =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_cap
+    exact CaptureSet.wf_rename hwf_cs
   | wf_bool =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_bool
-  | wf_cell =>
+  | wf_cell hwf_cs =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_cell
-  | wf_reader =>
+    exact CaptureSet.wf_rename hwf_cs
+  | wf_reader hwf_cs =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_reader
-  | wf_capt hwf_cs _ ih_T =>
-    simp [Ty.rename]
-    apply Ty.WfInHeap.wf_capt
-    · exact CaptureSet.wf_rename hwf_cs
-    · exact ih_T
+    exact CaptureSet.wf_rename hwf_cs
   | wf_exi _ ih =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_exi
@@ -1548,40 +1559,41 @@ theorem Ty.wf_subst
   | wf_tvar =>
     simp [Ty.subst]
     exact hwf_σ.wf_tvar _
-  | wf_arrow _ _ ih1 ih2 =>
+  | wf_arrow _ hwf_cs _ ih1 ih2 =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_arrow
     · exact ih1 hwf_σ
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact ih2 (Subst.wf_lift hwf_σ)
-  | wf_poly _ _ ih1 ih2 =>
+  | wf_poly _ hwf_cs _ ih1 ih2 =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_poly
     · exact ih1 hwf_σ
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact ih2 (Subst.wf_lift hwf_σ)
-  | wf_cpoly _ ih_T =>
+  | wf_cpoly hwf_cs _ ih_T =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_cpoly
-    exact ih_T (Subst.wf_lift hwf_σ)
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact ih_T (Subst.wf_lift hwf_σ)
   | wf_unit =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_unit
-  | wf_cap =>
+  | wf_cap hwf_cs =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_cap
+    exact CaptureSet.wf_subst hwf_cs hwf_σ
   | wf_bool =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_bool
-  | wf_cell =>
+  | wf_cell hwf_cs =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_cell
-  | wf_reader =>
+    exact CaptureSet.wf_subst hwf_cs hwf_σ
+  | wf_reader hwf_cs =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_reader
-  | wf_capt hwf_cs _ ih_T =>
-    simp [Ty.subst]
-    apply Ty.WfInHeap.wf_capt
-    · exact CaptureSet.wf_subst hwf_cs hwf_σ
-    · exact ih_T hwf_σ
+    exact CaptureSet.wf_subst hwf_cs hwf_σ
   | wf_exi _ ih =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_exi
@@ -1715,9 +1727,9 @@ theorem Subst.wf_openVar
 
 /-- Opening substitution for type variables is well-formed if the type is well-formed. -/
 theorem Subst.wf_openTVar
-  {U : Ty .shape s}
+  {U : PureTy s}
   {H : Heap}
-  (hwf_U : Ty.WfInHeap U H) :
+  (hwf_U : PureTy.WfInHeap U H) :
   (Subst.openTVar U).WfInHeap H := by
   constructor
   · intro x
@@ -1732,6 +1744,7 @@ theorem Subst.wf_openTVar
       exact hwf_U
     | there X0 =>
       simp [Subst.openTVar]
+      unfold PureTy.WfInHeap
       apply Ty.WfInHeap.wf_tvar
   · intro C
     cases C with
