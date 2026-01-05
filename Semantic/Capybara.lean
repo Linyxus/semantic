@@ -12,8 +12,7 @@ import Semantic.Capybara.Denotation
 
 import Semantic.Capybara.Fundamental
 
--- WIP
---import Semantic.Capybara.Safety
+import Semantic.Capybara.Safety
 
 /-!
 # Semantic Type Soundness for Capybara

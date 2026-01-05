@@ -12,7 +12,7 @@ def Sig.platform_of : Nat -> Sig
 /-- A platform context with `n` mutable boolean cells. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C<:.epsilon),x:(.capt (.cvar .epsilon .here) .cell)
+| n+1 => ((Ctx.platform_of n),C<:.epsilon),x:(.cell (.cvar .epsilon .here))
 
 /-- A platform heap with `n` mutable boolean cells (initialized to false). -/
 def Heap.platform_of (N : Nat) : Heap :=
@@ -135,44 +135,34 @@ theorem env_typing_of_platform {N : Nat} :
     unfold Ctx.platform_of TypeEnv.platform_of EnvTyping
     simp [TypeEnv.extend_cvar, TypeEnv.extend_var]
     constructor
-    · -- Term variable x : .capt (.cvar .here) .cell at location N
-      unfold Ty.capt_val_denot
+    · -- Term variable x : .cell (.cvar .epsilon .here) at location N
+      -- After type hierarchy collapse, Ty.val_denot for .cell cs is:
+      -- (cs.subst ...).WfInHeap m.heap ∧ ∃ l b0, e = .var (.free l) ∧
+      --   m.lookup l = some (.capability (.mcell b0)) ∧ (cs.denot env m).covers .epsilon l
+      unfold Ty.val_denot
       constructor
-      · -- Is simple answer
-        apply Exp.IsSimpleAns.is_var
-      · constructor
-        · -- Well-formed in heap
-          apply Exp.WfInHeap.wf_var
-          apply Var.WfInHeap.wf_free
-          show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
-          unfold Heap.platform_of
-          simp
+      · -- Capture set after substitution is well-formed
+        simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar]
+        apply CaptureSet.WfInHeap.wf_var_free
+        show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
+        unfold Heap.platform_of
+        simp
+      · -- ∃ l b0, e = .var (.free l) ∧ m.lookup l = some (.capability (.mcell b0)) ∧ ...
+        use N, false
+        constructor
+        · rfl
         · constructor
-          · -- Capture set after substitution is well-formed
-            simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar]
-            apply CaptureSet.WfInHeap.wf_var_free
-            show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
+          · -- m.lookup N = some (.capability (.mcell false))
+            unfold Memory.lookup Memory.platform_of Heap.platform_of
+            simp
+          · -- N is in the authority set from capture set denot
+            simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
+              TypeEnv.lookup_cvar,
+              CaptureSet.ground_denot, reachability_of_loc,
+              Memory.platform_of]
             unfold Heap.platform_of
             simp
-          · -- Shape typing: N is an mcell with reachability {N}
-            -- .cell denotation: ∃ l b0, e = .var (.free l) ∧
-            --   m.lookup l = some (.capability (.mcell b0)) ∧ R.covers .epsilon l
-            unfold Ty.shape_val_denot
-            use N, false
-            constructor
-            · rfl
-            · constructor
-              · -- m.lookup N = some (.capability (.mcell false))
-                unfold Memory.lookup Memory.platform_of Heap.platform_of
-                simp
-              · -- N is in the authority set from capture set denot
-                simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
-                  TypeEnv.lookup_cvar,
-                  CaptureSet.ground_denot, reachability_of_loc,
-                  Memory.platform_of]
-                unfold Heap.platform_of
-                simp
-                apply CapabilitySet.covers.here Mutability.Le.refl
+            apply CapabilitySet.covers.here Mutability.Le.refl
     · -- Second conjunct: ps = T.captureSet.peakset Γ ∧ EnvTyping ...
       constructor
       · -- Peak set equality: ps = T.captureSet.peakset Γ
@@ -419,7 +409,6 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   -- Preservation: Eval is preserved under reduction
   have heval' : Eval C.to_platform_capability_set M1 e1
       (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
-    simp only [HasExpDenotation.interp] at hdenot
     unfold Ty.exi_exp_denot at hdenot
     apply reduce_preserves_eval hdenot hred
   -- Progressive: Eval implies progressive
