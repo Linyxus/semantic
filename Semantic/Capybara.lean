@@ -10,8 +10,9 @@ import Semantic.Capybara.Semantics
 
 import Semantic.Capybara.Denotation
 
+import Semantic.Capybara.Fundamental
+
 -- WIP
---import Semantic.Capybara.Fundamental
 --import Semantic.Capybara.Safety
 
 /-!
