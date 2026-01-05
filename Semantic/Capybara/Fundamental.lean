@@ -1774,6 +1774,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
           · -- Need to show: expand_captures m'.heap cs' ⊆ cs2.denot env m'
             -- We have: hR0_subset_cs1 : expand_captures m'.heap cs' ⊆ cs1.denot env m'
             -- We have: hcs : SemSubcapt Γ cs1 cs2, which gives cs1.denot ⊆ cs2.denot
+            have hcs_sem := hcs env m' (env_typing_monotonic htyping hsubsumes)
             sorry
           · -- Need to prove the body property with contravariant arg and covariant result
             intro arg m'' hsub harg_T2
