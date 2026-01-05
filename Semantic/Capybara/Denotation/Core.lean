@@ -2319,8 +2319,7 @@ def SemSubbound (_Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
   ∀ m,
     B1.denot m ⊆ B2.denot m
 
-/-- Semantic subtyping relation. Ported from old version.
-    The .shape case is now merged into .capt since the type hierarchy is collapsed. -/
+/-- Semantic subtyping relation. -/
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
   | .capt =>
