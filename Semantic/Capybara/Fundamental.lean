@@ -1775,7 +1775,10 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             -- We have: hR0_subset_cs1 : expand_captures m'.heap cs' ⊆ cs1.denot env m'
             -- We have: hcs : SemSubcapt Γ cs1 cs2, which gives cs1.denot ⊆ cs2.denot
             have hcs_sem := hcs env m' (env_typing_monotonic htyping hsubsumes)
-            sorry
+            -- Use calc mode with Trans instance for CapabilitySet.Subset
+            calc expand_captures m'.heap cs'
+              _ ⊆ cs1.denot env m' := hR0_subset_cs1
+              _ ⊆ cs2.denot env m' := hcs_sem
           · -- Need to prove the body property with contravariant arg and covariant result
             intro arg m'' hsub harg_T2
             -- Use the computed peak sets

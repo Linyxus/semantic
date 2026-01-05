@@ -94,6 +94,9 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
 
+instance instTransSubset : Trans (α := CapabilitySet) (· ⊆ ·) (· ⊆ ·) (· ⊆ ·) where
+  trans := CapabilitySet.Subset.trans
+
 /-- A capability set has a certain mutability kind.
     HasKind C .ro means all capabilities in C have mutability .ro.
     HasKind C .epsilon is always true. -/
