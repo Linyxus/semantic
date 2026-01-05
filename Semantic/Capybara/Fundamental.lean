@@ -1585,34 +1585,40 @@ theorem fundamental_haskind
     | top hkind => exact hkind
 
 
-lemma sem_subtyp_top {T : Ty .shape s} :
+lemma sem_subtyp_top {T : Ty .capt s}
+  (hpure : T.IsPureType) :
   SemSubtyp Γ T .top := by
-  -- Unfold SemSubtyp for shape types
+  -- Unfold SemSubtyp for capturing types
   simp [SemSubtyp]
   -- Introduce the environment, memory, and typing assumption
   intro env H htyping
   -- Unfold ImplyAfter to handle memory subsumption
-  simp [PreDenot.ImplyAfter]
-  intro R
   simp [Denot.ImplyAfter]
   intro m' hsubsumes
   -- Unfold ImplyAt to get the implication at a specific memory
   simp [Denot.ImplyAt]
   intro e hdenot_T
-  -- Need to prove: Ty.shape_val_denot env .top R m' e
-  -- Which unfolds to: e.WfInHeap m'.heap ∧ resolve_reachability m'.heap e ⊆ R
-  simp [Ty.shape_val_denot]
+  -- Need to prove: Ty.val_denot env .top m' e
+  -- Which unfolds to: e.IsSimpleAns ∧ e.WfInHeap m'.heap ∧ resolve_reachability m'.heap e ⊆ .empty
+  simp [Ty.val_denot]
+  constructor
+  · -- Prove IsSimpleAns
+    have himply_simple := val_denot_implies_simple_ans (typed_env_is_implying_simple_ans htyping) T
+    exact himply_simple m' e hdenot_T
   constructor
   · -- Prove well-formedness: e.WfInHeap m'.heap
-    -- Use the theorem that shape denotations imply well-formedness
     have hwf_env := typed_env_is_implying_wf htyping
-    have hwf_denot := shape_val_denot_implies_wf hwf_env T
-    exact hwf_denot R m' e hdenot_T
-  · -- Prove reachability bound: resolve_reachability m'.heap e ⊆ R
-    -- Use the theorem that shape denotations are reachability safe
-    have hsafe_env := typed_env_is_reachability_safe htyping
-    have hsafe_denot := shape_val_denot_is_reachability_safe hsafe_env T
-    exact hsafe_denot R m' e hdenot_T
+    have hwf_denot := val_denot_implies_wf hwf_env T
+    exact hwf_denot m' e hdenot_T
+  · -- Prove reachability bound: resolve_reachability m'.heap e ⊆ .empty
+    -- First get the typing for m' (need monotonicity)
+    have htyping' := env_typing_monotonic htyping hsubsumes
+    -- Use val_denot_enforces_captures to bound reachability by T.captureSet
+    have hbound := val_denot_enforces_captures htyping' e hdenot_T
+    -- Since T is pure, T.captureSet is empty, so its denotation is empty
+    unfold Ty.IsPureType at hpure
+    have hempty := hpure.denot_empty (env := env) (m := m')
+    exact hempty.subset_of_subset hbound
 
 /-
 
@@ -2178,11 +2184,7 @@ theorem fundamental_subtyp
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
   induction hsub
-  case top =>
-    -- T1 is some shape type, T2 is .top
-    -- apply sem_subtyp_top
-    trace_state
-    sorry
+  case top hpure => exact sem_subtyp_top hpure
   all_goals sorry
   -- case refl =>
   --   -- T1 = T2
