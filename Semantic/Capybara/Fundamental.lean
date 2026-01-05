@@ -1745,6 +1745,7 @@ lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
 lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
   (hcs : SemSubcapt Γ cs1 cs2)
+  (hcs2_closed : CaptureSet.IsClosed cs2)
   (hres : SemSubtyp (Γ,x:T2) U1 U2) :
   SemSubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2) := by
   -- Unfold SemSubtyp for capturing types
@@ -1761,10 +1762,16 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
   constructor
   · exact hwf  -- Well-formedness is preserved
   · constructor
-    · -- Need to show cs2 is well-formed
-      -- Should follow from closedness of (.arrow T2 cs2 U2) and EnvTyping
-      -- TODO: Need a lemma connecting IsClosed and WfInHeap for substituted capture sets
-      sorry
+    · -- Need to show cs2 is well-formed in m'.heap
+      -- First show it's well-formed at H.heap
+      have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
+        apply CaptureSet.wf_subst
+        · -- cs2.WfInHeap H.heap follows from closedness
+          apply CaptureSet.wf_of_closed hcs2_closed
+        · -- (Subst.from_TypeEnv env).WfInHeap H.heap follows from EnvTyping
+          exact from_TypeEnv_wf_in_heap htyping
+      -- Then lift to m'.heap using monotonicity
+      exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
     · use cs', T0, t0
       constructor
       · exact hresolve  -- Same resolution
@@ -2199,6 +2206,8 @@ theorem fundamental_subtyp
       exact ih_arg hT2_arg_closed hT1_arg_closed
     · -- Prove SemSubcapt Γ cs1 cs2
       exact fundamental_subcapt hsub_cs
+    · -- Prove closedness of cs2
+      exact hcs2_closed
     · -- Prove SemSubtyp (Γ,x:T2_arg) U1 U2 (covariant)
       exact ih_res hU1_closed hU2_closed
   all_goals sorry
