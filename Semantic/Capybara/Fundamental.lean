@@ -1728,7 +1728,6 @@ lemma sem_subtyp_tvar {X : BVar s .tvar} {S : PureTy s}
   -- The result follows directly from himply
   exact himply
 
-/-
 
 -- Helper lemma: PreDenot.ImplyAfter is monotonic in the starting memory
 lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
@@ -1743,91 +1742,99 @@ lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
   have hsub_H : m'.subsumes H := Memory.subsumes_trans hsub_m' hsub
   exact himply C m' hsub_H
 
-lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
+lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
+  (hcs : SemSubcapt Γ cs1 cs2)
   (hres : SemSubtyp (Γ,x:T2) U1 U2) :
-  SemSubtyp Γ (.arrow T1 U1) (.arrow T2 U2) := by
-  -- Unfold SemSubtyp for shape types
+  SemSubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2) := by
+  -- Unfold SemSubtyp for capturing types
   simp [SemSubtyp]
   intro env H htyping
-  -- Need to prove PreDenot.ImplyAfter for arrow types
-  simp [PreDenot.ImplyAfter]
-  intro A
-  -- Need to prove Denot.ImplyAfter for arrow types at capability set A
+  -- Need to prove Denot.ImplyAfter for arrow types
   simp [Denot.ImplyAfter]
-  intro m' hsubsumes e h_arrow_T1_U1
+  intro m' hsubsumes e h_arrow_T1_cs1_U1
   -- Unfold the denotation of arrow types
-  simp [Ty.shape_val_denot] at h_arrow_T1_U1 ⊢
-  -- Extract the components from the T1 -> U1 denotation
-  obtain ⟨hwf, cs, T0, t0, hresolve, hcs_wf, hR0_subset, hbody⟩ := h_arrow_T1_U1
-  -- Construct the proof for T2 -> U2
+  simp [Ty.val_denot] at h_arrow_T1_cs1_U1 ⊢
+  -- Extract the components from the (.arrow T1 cs1 U1) denotation
+  obtain ⟨hwf, hcs1_wf, cs', T0, t0, hresolve, hcs'_wf, hR0_subset_cs1, hbody⟩ := h_arrow_T1_cs1_U1
+  -- Construct the proof for (.arrow T2 cs2 U2)
   constructor
   · exact hwf  -- Well-formedness is preserved
-  · use cs, T0, t0
-    constructor
-    · exact hresolve  -- Same resolution
-    · constructor
-      · exact hcs_wf  -- Capture set well-formedness preserved
+  · constructor
+    · -- Need to show cs2 is well-formed
+      -- Should follow from closedness of (.arrow T2 cs2 U2) and EnvTyping
+      -- TODO: Need a lemma connecting IsClosed and WfInHeap for substituted capture sets
+      sorry
+    · use cs', T0, t0
+      constructor
+      · exact hresolve  -- Same resolution
       · constructor
-        · exact hR0_subset  -- Same capture subset constraint
-        · -- Need to prove the body property with contravariant arg and covariant result
-          intro arg m'' hsub harg_T2
-          -- Use the computed peak sets
-          let psT1 := compute_peakset env T1.captureSet
-          let psT2 := compute_peakset env T2.captureSet
-          -- Apply contravariance: if arg satisfies T2, it also satisfies T1
-          have harg_T1 : Ty.capt_val_denot env T1 m'' (.var (.free arg)) := by
-            have harg_sem := harg env H htyping
-            have hsub_H_m'' := Memory.subsumes_trans hsub hsubsumes
-            exact harg_sem m'' hsub_H_m'' (.var (.free arg)) harg_T2
-          -- Define the authority sets
-          let R0 := expand_captures m'.heap cs
-          let R := R0 ∪ (reachability_of_loc m''.heap arg)
-          -- Apply hbody at the T1 peak set
-          have hbody_spec := hbody arg m'' hsub harg_T1
-          simp only [Ty.exi_exp_denot] at hbody_spec
-          -- Transport from psT1 to psT2 using Rebind
-          have hrebind :
-              Rebind (env.extend_var arg psT1) Rename.id (env.extend_var arg psT2) :=
-            { var := by
-                intro x
-                cases x <;> simp [TypeEnv.extend_var, TypeEnv.lookup_var, Rename.id]
-              tvar := by
-                intro X
-                cases X; simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, Rename.id]
-              cvar := by
-                intro C
-                cases C; simp [TypeEnv.extend_var, TypeEnv.lookup_cvar, Rename.id] }
-          have heq_val := rebind_exi_val_denot (ρ:=hrebind) U1
-          -- Lift the evaluation along the exi-val equivalence
-          have h_entails_body :
-              Mpost.entails_after
-                (Ty.exi_val_denot (env.extend_var arg psT1) U1).as_mpost m''
-                (Ty.exi_val_denot (env.extend_var arg psT2) U1).as_mpost := by
-            apply Mpost.entails_to_entails_after
-            apply Denot.imply_to_entails _ _
-            have heqv := Denot.equiv_to_imply (by simpa [Ty.rename_id] using heq_val)
-            exact heqv.1
-          have hbody_psT2 :
-              Eval R m'' (t0.subst (Subst.openVar (.free arg)))
-                (Ty.exi_val_denot (env.extend_var arg psT2) U1).as_mpost :=
-            eval_post_monotonic_general h_entails_body hbody_spec
-          -- Apply covariance: if body satisfies U1, it also satisfies U2
-          -- Build EnvTyping for the extended context with T2's peak set
-          have htyping_ext : EnvTyping (Γ,x:T2) (env.extend_var arg psT2) m'' := by
-            simp [TypeEnv.extend_var]
-            constructor
-            · exact harg_T2
-            · constructor
-              · exact (compute_peakset_correct htyping T2.captureSet).symm
-              · have hsub_H_m'' := Memory.subsumes_trans hsub hsubsumes
-                exact env_typing_monotonic htyping hsub_H_m''
-          -- Apply semantic subtyping for the result
-          have hres_sem := hres (env.extend_var arg psT2) m'' htyping_ext
-          have himply_entails := Denot.imply_after_to_m_entails_after hres_sem
-          -- Apply monotonicity - goal is already at psT2, no back-rebind needed
-          unfold Ty.exi_exp_denot at hbody_psT2 ⊢
-          exact eval_post_monotonic_general himply_entails hbody_psT2
+        · exact hcs'_wf  -- Capture set well-formedness preserved for cs'
+        · constructor
+          · -- Need to show: expand_captures m'.heap cs' ⊆ cs2.denot env m'
+            -- We have: hR0_subset_cs1 : expand_captures m'.heap cs' ⊆ cs1.denot env m'
+            -- We have: hcs : SemSubcapt Γ cs1 cs2, which gives cs1.denot ⊆ cs2.denot
+            sorry
+          · -- Need to prove the body property with contravariant arg and covariant result
+            intro arg m'' hsub harg_T2
+            -- Use the computed peak sets
+            let psT1 := compute_peakset env T1.captureSet
+            let psT2 := compute_peakset env T2.captureSet
+            -- Apply contravariance: if arg satisfies T2, it also satisfies T1
+            have harg_T1 : Ty.val_denot env T1 m'' (.var (.free arg)) := by
+              have harg_sem := harg env H htyping
+              have hsub_H_m'' := Memory.subsumes_trans hsub hsubsumes
+              exact harg_sem m'' hsub_H_m'' (.var (.free arg)) harg_T2
+            -- Define the authority sets
+            let R0 := expand_captures m'.heap cs'
+            let R := R0 ∪ (reachability_of_loc m''.heap arg)
+            -- Apply hbody at the T1 peak set
+            have hbody_spec := hbody arg m'' hsub harg_T1
+            simp only [Ty.exi_exp_denot] at hbody_spec
+            -- Transport from psT1 to psT2 using Rebind
+            have hrebind :
+                Rebind (env.extend_var arg psT1) Rename.id (env.extend_var arg psT2) :=
+              { var := by
+                  intro x
+                  cases x <;> simp [TypeEnv.extend_var, TypeEnv.lookup_var, Rename.id]
+                tvar := by
+                  intro X
+                  cases X; simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, Rename.id]
+                cvar := by
+                  intro C
+                  cases C; simp [TypeEnv.extend_var, TypeEnv.lookup_cvar, Rename.id] }
+            have heq_val := rebind_exi_val_denot (ρ:=hrebind) U1
+            -- Lift the evaluation along the exi-val equivalence
+            have h_entails_body :
+                Mpost.entails_after
+                  (Ty.exi_val_denot (env.extend_var arg psT1) U1).as_mpost m''
+                  (Ty.exi_val_denot (env.extend_var arg psT2) U1).as_mpost := by
+              apply Mpost.entails_to_entails_after
+              apply Denot.imply_to_entails _ _
+              have heqv := Denot.equiv_to_imply (by simpa [Ty.rename_id] using heq_val)
+              exact heqv.1
+            have hbody_psT2 :
+                Eval R m'' (t0.subst (Subst.openVar (.free arg)))
+                  (Ty.exi_val_denot (env.extend_var arg psT2) U1).as_mpost :=
+              eval_post_monotonic_general h_entails_body hbody_spec
+            -- Apply covariance: if body satisfies U1, it also satisfies U2
+            -- Build EnvTyping for the extended context with T2's peak set
+            have htyping_ext : EnvTyping (Γ,x:T2) (env.extend_var arg psT2) m'' := by
+              simp [TypeEnv.extend_var]
+              constructor
+              · exact harg_T2
+              · constructor
+                · exact (compute_peakset_correct htyping T2.captureSet).symm
+                · have hsub_H_m'' := Memory.subsumes_trans hsub hsubsumes
+                  exact env_typing_monotonic htyping hsub_H_m''
+            -- Apply semantic subtyping for the result
+            have hres_sem := hres (env.extend_var arg psT2) m'' htyping_ext
+            have himply_entails := Denot.imply_after_to_m_entails_after hres_sem
+            -- Apply monotonicity - goal is already at psT2, no back-rebind needed
+            unfold Ty.exi_exp_denot at hbody_psT2 ⊢
+            exact eval_post_monotonic_general himply_entails hbody_psT2
+
+/-
 
 lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   (h12 : SemSubtyp Γ T1 T2)
@@ -2173,10 +2180,23 @@ theorem fundamental_subtyp
   SemSubtyp Γ T1 T2 := by
   induction hsub
   case top hpure => exact sem_subtyp_top hpure
-  case tvar hlookup =>
-    -- T1 is (.tvar X), T2 is S.core for some PureTy S
-    -- hlookup : Ctx.LookupTVar Γ X S
-    exact sem_subtyp_tvar hlookup
+  case tvar hlookup => exact sem_subtyp_tvar hlookup
+  case arrow hsub_arg hsub_cs hsub_res ih_arg ih_res =>
+    -- T1 = (.arrow T1_arg cs1 U1), T2 = (.arrow T2_arg cs2 U2)
+    -- hsub_arg : Subtyp Γ T2_arg T1_arg (contravariant)
+    -- hsub_cs : Subcapt Γ cs1 cs2 (covariant)
+    -- hsub_res : Subtyp (Γ,x:T2_arg) U1 U2 (covariant)
+    -- Extract closedness from arrow types
+    cases hT1 with | arrow hT1_arg_closed hcs1_closed hU1_closed =>
+    cases hT2 with | arrow hT2_arg_closed hcs2_closed hU2_closed =>
+    -- Apply sem_subtyp_arrow
+    apply sem_subtyp_arrow
+    · -- Prove SemSubtyp Γ T2_arg T1_arg (contravariant)
+      exact ih_arg hT2_arg_closed hT1_arg_closed
+    · -- Prove SemSubcapt Γ cs1 cs2
+      exact fundamental_subcapt hsub_cs
+    · -- Prove SemSubtyp (Γ,x:T2_arg) U1 U2 (covariant)
+      exact ih_res hU1_closed hU2_closed
   all_goals sorry
   -- case refl =>
   --   -- T1 = T2
