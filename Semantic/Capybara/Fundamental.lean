@@ -1620,37 +1620,35 @@ lemma sem_subtyp_top {T : Ty .capt s}
     have hempty := hpure.denot_empty (env := env) (m := m')
     exact hempty.subset_of_subset hbound
 
-/-
 
 -- Helper lemma for extracting type variable bounds from EnvTyping
-lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {env : TypeEnv s} {m : Memory}
+lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s} {m : Memory}
   (hlookup : Ctx.LookupTVar Γ X S)
   (htyping : EnvTyping Γ env m) :
-  (env.lookup_tvar X).ImplyAfter m (Ty.shape_val_denot env S) := by
+  (env.lookup_tvar X).ImplyAfter m (Ty.val_denot env S.core) := by
   induction hlookup generalizing m
   case here Γ S =>
     match env with
     | .extend env0 (.tvar d) =>
       simp only [EnvTyping, TypeEnv.lookup_tvar] at htyping ⊢
-      obtain ⟨hproper, himply, htyping'⟩ := htyping
-      -- Need: d.ImplyAfter m (shape_val_denot (env0.extend_tvar d) (S.rename Rename.succ))
-      -- Have: d.ImplyAfter m (Ty.shape_val_denot env0 S)
+      obtain ⟨hproper, himply_wf, himply_simple, himply, hpure, htyping'⟩ := htyping
+      -- Need: d.ImplyAfter m (Ty.val_denot (env0.extend_tvar d) (S.rename Rename.succ).core)
+      -- Have: d.ImplyAfter m (Ty.val_denot env0 S.core)
+      -- Note: (S.rename Rename.succ).core = S.core.rename Rename.succ
       -- Use weakening theorem to relate the denotations
-      have hw : Ty.shape_val_denot env0 S ≈
-                Ty.shape_val_denot (env0.extend_tvar d) (S.rename Rename.succ) :=
-        tweaken_shape_val_denot (d := d)
+      have hw : Ty.val_denot env0 S.core ≈
+                Ty.val_denot (env0.extend_tvar d) (S.core.rename Rename.succ) :=
+        tweaken_val_denot (d := d)
       simp [TypeEnv.extend_tvar] at hw
-      -- Convert equivalence to implication and compose
-      simp [PreDenot.ImplyAfter]
-      intro C
-      simp [PreDenot.ImplyAfter] at himply
-      specialize himply C
-      simp [PreDenot.equiv_def] at hw
-      specialize hw C
-      have himply_right := (Denot.equiv_to_imply hw).1
-      intro m' hsub e hd
-      apply himply_right m' e
-      apply himply m' hsub e hd
+      -- The result follows by transitivity: himply gives d ⊑ val_denot env0 S.core,
+      -- hw gives val_denot env0 S.core ≈ val_denot (env0.extend_tvar d) (S.core.rename Rename.succ)
+      -- Compose ImplyAfter with equivalence
+      simp [Denot.ImplyAfter] at himply ⊢
+      intro m' hsub
+      simp [Denot.ImplyAt]
+      intro e hd
+      have himply_spec := himply m' hsub e hd
+      exact (Denot.equiv_to_imply hw).1 m' e himply_spec
   case there Γ X S b a a_ih =>
     -- Need to case split on what kind of binding b is
     cases b with
@@ -1663,46 +1661,38 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {env : TypeEnv
         -- Apply IH to get the result for the smaller environment
         have ih_result := a_ih htyping'
         -- Use weakening lemma for var extension
-        have hw : Ty.shape_val_denot env0 S ≈
-                  Ty.shape_val_denot (env0.extend_var v ps0) (S.rename Rename.succ) :=
-          weaken_shape_val_denot (x := v) (ps := ps0)
+        have hw : Ty.val_denot env0 S.core ≈
+                  Ty.val_denot (env0.extend_var v ps0) (S.core.rename Rename.succ) :=
+          weaken_val_denot (x := v) (ps := ps0)
         simp [TypeEnv.extend_var] at hw
-        -- Convert equivalence to implication and compose
-        simp [PreDenot.ImplyAfter]
-        intro C
-        simp [PreDenot.ImplyAfter] at ih_result
-        specialize ih_result C
-        simp [PreDenot.equiv_def] at hw
-        specialize hw C
-        have himply_right := (Denot.equiv_to_imply hw).1
-        intro m' hsub e hd
-        apply himply_right m' e
-        apply ih_result m' hsub e hd
+        -- Compose IH with weakening
+        simp [Denot.ImplyAfter] at ih_result ⊢
+        intro m' hsub
+        simp [Denot.ImplyAt]
+        intro e hd
+        have himply_spec := ih_result m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
 
     | tvar T =>
       -- Context extended with a type variable
       match env with
       | .extend env0 (.tvar d) =>
         simp only [EnvTyping, TypeEnv.lookup_tvar] at htyping ⊢
-        obtain ⟨hproper, himply_bound, htyping'⟩ := htyping
+        obtain ⟨hproper, himply_wf, himply_simple, himply_bound, hpure, htyping'⟩ := htyping
         -- Apply IH
         have ih_result := a_ih htyping'
         -- Use tweaken for tvar extension
-        have hw : Ty.shape_val_denot env0 S ≈
-                  Ty.shape_val_denot (env0.extend_tvar d) (S.rename Rename.succ) :=
-          tweaken_shape_val_denot (d := d)
+        have hw : Ty.val_denot env0 S.core ≈
+                  Ty.val_denot (env0.extend_tvar d) (S.core.rename Rename.succ) :=
+          tweaken_val_denot (d := d)
         simp [TypeEnv.extend_tvar] at hw
-        -- Convert and compose
-        simp [PreDenot.ImplyAfter]
-        intro C
-        simp [PreDenot.ImplyAfter] at ih_result
-        specialize ih_result C
-        simp [PreDenot.equiv_def] at hw
-        specialize hw C
-        have himply_right := (Denot.equiv_to_imply hw).1
-        intro m' hsub e hd
-        apply himply_right m' e
-        apply ih_result m' hsub e hd
+        -- Compose IH with weakening
+        simp [Denot.ImplyAfter] at ih_result ⊢
+        intro m' hsub
+        simp [Denot.ImplyAt]
+        intro e hd
+        have himply_spec := ih_result m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
 
     | cvar cb =>
       -- Context extended with a capture variable
@@ -1713,34 +1703,32 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {env : TypeEnv
         -- Apply IH
         have ih_result := a_ih htyping'
         -- Use cweaken for cvar extension
-        have hw : Ty.shape_val_denot env0 S ≈
-                  Ty.shape_val_denot (env0.extend_cvar cs) (S.rename Rename.succ) :=
-          cweaken_shape_val_denot (cs := cs)
+        have hw : Ty.val_denot env0 S.core ≈
+                  Ty.val_denot (env0.extend_cvar cs) (S.core.rename Rename.succ) :=
+          cweaken_val_denot (cs := cs)
         simp [TypeEnv.extend_cvar] at hw
-        -- Convert and compose
-        simp [PreDenot.ImplyAfter]
-        intro C
-        simp [PreDenot.ImplyAfter] at ih_result
-        specialize ih_result C
-        simp [PreDenot.equiv_def] at hw
-        specialize hw C
-        have himply_right := (Denot.equiv_to_imply hw).1
-        intro m' hsub e hd
-        apply himply_right m' e
-        apply ih_result m' hsub e hd
+        -- Compose IH with weakening
+        simp [Denot.ImplyAfter] at ih_result ⊢
+        intro m' hsub
+        simp [Denot.ImplyAt]
+        intro e hd
+        have himply_spec := ih_result m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
 
-lemma sem_subtyp_tvar {X : BVar s .tvar} {S : Ty .shape s}
+lemma sem_subtyp_tvar {X : BVar s .tvar} {S : PureTy s}
   (hlookup : Ctx.LookupTVar Γ X S) :
-  SemSubtyp Γ (.tvar X) S := by
-  -- Unfold SemSubtyp for shape types
+  SemSubtyp Γ (.tvar X) S.core := by
+  -- Unfold SemSubtyp for capturing types
   simp [SemSubtyp]
   intro env H htyping
   -- Extract the type variable bound using the helper lemma
   have himply := env_typing_lookup_tvar hlookup htyping
   -- Unfold the denotations
-  simp [Ty.shape_val_denot]
+  simp [Ty.val_denot]
   -- The result follows directly from himply
   exact himply
+
+/-
 
 -- Helper lemma: PreDenot.ImplyAfter is monotonic in the starting memory
 lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
@@ -2185,6 +2173,10 @@ theorem fundamental_subtyp
   SemSubtyp Γ T1 T2 := by
   induction hsub
   case top hpure => exact sem_subtyp_top hpure
+  case tvar hlookup =>
+    -- T1 is (.tvar X), T2 is S.core for some PureTy S
+    -- hlookup : Ctx.LookupTVar Γ X S
+    exact sem_subtyp_tvar hlookup
   all_goals sorry
   -- case refl =>
   --   -- T1 = T2
