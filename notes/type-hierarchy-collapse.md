@@ -6,11 +6,16 @@ The Capybara module underwent a type hierarchy simplification: the `.shape` sort
 
 ## Current Status (Branch: no-capt-types)
 
-**All core denotation files compile cleanly:**
+**All files compile cleanly:**
 - `Semantic/Capybara/Denotation/Core.lean`
 - `Semantic/Capybara/Denotation/Rebind.lean`
 - `Semantic/Capybara/Denotation/Retype.lean`
-- `Semantic/Capybara/Fundamental.lean` (var case proven, others pending)
+- `Semantic/Capybara/Fundamental.lean`
+
+**Fundamental theorem progress:**
+- Proven cases in `fundamental`: var, abs, tabs, cabs, app, tapp, capp, pack, unpack, subtyp
+- All `fundamental_subtyp` cases proven: top, refl, trans, arrow, cpoly, poly, exi, typ
+- Remaining: read, write, par, etc. (some depend on `sem_typ_par` which has sorry)
 
 ## Type System Changes
 
@@ -50,6 +55,95 @@ inductive Ty : TySort -> Sig -> Type where
 
 Key: Capture sets embedded directly in `arrow`, `poly`, `cpoly`, `cap`, `cell`, `reader`.
 
+## Key Semantic Subtyping Lemmas
+
+All updated for collapsed hierarchy. Note the patterns:
+
+### sem_subtyp_arrow
+```lean
+lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty .exi (s,x)}
+  (harg : SemSubtyp Γ T2 T1)           -- contravariant
+  (hcs : SemSubcapt Γ cs1 cs2)         -- covariant
+  (hcs2_closed : CaptureSet.IsClosed cs2)  -- closedness for wf monotonicity
+  (hres : SemSubtyp (Γ,x:T2) U1 U2) :
+  SemSubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2)
+```
+
+### sem_subtyp_poly (uses PureTy.core)
+```lean
+lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .exi (s,X)}
+  (hS : SemSubtyp Γ S2.core S1.core)   -- contravariant bounds
+  (hcs : SemSubcapt Γ cs1 cs2)
+  (hcs2_closed : CaptureSet.IsClosed cs2)
+  (hT : SemSubtyp (Γ,X<:S2) T1 T2) :
+  SemSubtyp Γ (.poly S1.core cs1 T1) (.poly S2.core cs2 T2)
+```
+
+### sem_subtyp_cpoly
+```lean
+lemma sem_subtyp_cpoly {m1 m2 : Mutability} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .exi (s,C)}
+  (hB : m2 ≤ m1)                       -- contravariant mutability
+  (hcs : SemSubcapt Γ cs1 cs2)
+  (hcs2_closed : CaptureSet.IsClosed cs2)
+  (hT : SemSubtyp (Γ,C<:m2) T1 T2) :
+  SemSubtyp Γ (.cpoly m1 cs1 T1) (.cpoly m2 cs2 T2)
+```
+
+### sem_subtyp_trans/refl
+Only handle `capt` and `exi` cases (no `shape`):
+```lean
+cases k with
+| capt => ...
+| exi => ...
+```
+
+## Key Patterns
+
+### 1. Closedness Premise for Capture Set Well-formedness
+When proving wf monotonicity for capture sets in subtyping:
+```lean
+(hcs2_closed : CaptureSet.IsClosed cs2)
+-- Used as:
+have hwf := CaptureSet.wf_of_closed hcs2_closed
+have hwf_subst := CaptureSet.wf_subst hwf (from_TypeEnv_wf_in_heap hts)
+exact CaptureSet.wf_monotonic hwf_subst hsub
+```
+
+### 2. val_denot_implies_wf for Extracting Well-formedness
+Instead of case analysis on all `Ty .capt` constructors:
+```lean
+-- OLD (broken after collapse):
+cases T with
+| capt C_T S => ...  -- only handles old wrapper
+
+-- NEW (works with all constructors):
+have hwf_env : (env.extend_cvar CS).is_implying_wf := by
+  intro X
+  cases X with
+  | there X' =>
+    simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar]
+    exact typed_env_is_implying_wf hts X'
+have hwf_exp := val_denot_implies_wf hwf_env T m (.var x) hdenot
+cases hwf_exp with
+| wf_var hwf_v => exact hwf_v
+```
+
+### 3. extend_cvar Preserves is_implying_wf
+For any tvar `X : BVar (s,C) .tvar` in a cvar-extended environment, it must be `.there X'`:
+```lean
+(env.extend_cvar CS).lookup_tvar (.there X') = env.lookup_tvar X'
+```
+
+### 4. EnvTyping for tvar Binding
+Structure: `is_proper`, `implies_wf` (derive from `is_proper.2.2.2`), `implies_simple_ans`, `ImplyAfter`, `enforce_pure`
+
+### 5. Explicit Kind Annotations
+```lean
+cs.rename (Rename.succ (k:=.var))   -- for arrow
+cs.rename (Rename.succ (k:=.tvar)) -- for poly
+cs.rename (Rename.succ (k:=.cvar)) -- for cpoly
+```
+
 ## Denotation Architecture
 
 ### Key Types
@@ -68,33 +162,6 @@ def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
 | ρ, T, R => fun m e => Eval R m e (Ty.exi_val_denot ρ T).as_mpost
 ```
 
-The `R : CapabilitySet` is a **ground** capability set (no signature parameter).
-
-### Body Conditions in val_denot Use Ground R0
-
-For arrow/poly/cpoly, body conditions use `R0 := expand_captures m.heap cs'`:
-
-```lean
-| env, .arrow T1 cs T2 => fun m e =>
-  e.WfInHeap m.heap ∧
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ cs' T0 t0,
-    resolve m.heap e = some (.abs cs' T0 t0) ∧
-    cs'.WfInHeap m.heap ∧
-    let R0 := expand_captures m.heap cs'
-    R0 ⊆ (cs.denot env m) ∧
-    (∀ (arg : Nat) (m' : Memory),
-      m'.subsumes m ->
-      Ty.val_denot env T1 m' (.var (.free arg)) ->
-      Ty.exi_exp_denot
-        (env.extend_var arg (compute_peakset env T1.captureSet))
-        T2
-        (R0 ∪ (reachability_of_loc m'.heap arg))  -- ground CapabilitySet!
-        m' (t0.subst (Subst.openVar (.free arg))))
-```
-
-For poly/cpoly, body uses just `R0` (no union with reachability).
-
 ### SemanticTyping Converts CaptureSet to CapabilitySet
 ```lean
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
@@ -103,81 +170,18 @@ def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) :
     Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
 ```
 
-## Key Theorems
-
-### val_denot_refine (Core.lean:2643)
-Transforms value denotation for `T` to `T.refineCaptureSet`:
+### Body Conditions Use Ground R0
 ```lean
-theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
-  (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env)))) :
-  (Ty.val_denot env (T.refineCaptureSet (.var .epsilon x)))
-    m (.var (x.subst (Subst.from_TypeEnv env)))
-```
-
-### Rebind/Retype Theorems (Simplified)
-Since `R : CapabilitySet` is ground, rebinding/retyping doesn't change it:
-```lean
-def rebind_exp_denot (ρ : Rebind env1 f env2) (T : Ty .capt s1) (R : CapabilitySet) :
-  Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.rename f) R
-
-def retype_exp_denot (ρ : Retype env1 σ env2) (T : Ty .capt s1) (R : CapabilitySet) :
-  Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.subst σ) R
-```
-
-Body conditions in rebind_val_denot/retype_val_denot just pass `R0` directly (no CaptureSet renaming/substitution needed).
-
-## Fundamental Theorem Progress
-
-### Proven Cases
-- **var**: Uses `sem_typ_var` which applies `typed_env_lookup_var` + `val_denot_refine`
-
-### sem_typ_var Structure
-```lean
-theorem sem_typ_var (hx : Γ.LookupVar x T) :
-  (.var .epsilon (.bound x)) # Γ ⊨ (Exp.var (.bound x)) :
-    (.typ (T.refineCaptureSet (.var .epsilon (.bound x)))) := by
-  intro env m hts
-  simp only [Ty.exi_exp_denot, Ty.exi_val_denot]
-  apply Eval.eval_var
-  simp only [Denot.as_mpost]
-  have h_lookup := typed_env_lookup_var hts hx
-  have h_refined := val_denot_refine (x := .bound x) h_lookup
-  simp only [Var.subst, Subst.from_TypeEnv] at h_refined
-  exact h_refined
-```
-
-## Common Patterns
-
-### 1. Body Conditions Use Ground CapabilitySet
-```lean
--- In rebind_val_denot/retype_val_denot arrow case:
 let R0 := expand_captures m.heap cs'
-have ih2 := rebind_exi_exp_denot (ρ.liftVar ...) T2
-  (R0 ∪ (reachability_of_loc m'.heap arg))  -- pass ground set directly
-exact (ih2 m' _).mp hd
-
--- For poly/cpoly, just R0:
-have ih2 := rebind_exi_exp_denot (ρ.liftTVar ...) T2 R0
+-- For arrow: R0 ∪ (reachability_of_loc m'.heap arg)
+-- For poly/cpoly: just R0
 ```
 
-### 2. Explicit Kind Annotations
-```lean
--- For arrow: (k:=.var)
-cs.rename (Rename.succ (k:=.var))
-
--- For poly: (k:=.tvar)
-cs.rename (Rename.succ (k:=.tvar))
-
--- For cpoly: (k:=.cvar)
-cs.rename (Rename.succ (k:=.cvar))
-```
-
-### 3. Removed Definitions
+## Removed Definitions
 These are commented out in Core.lean (no longer needed):
 - `Ty.shape_val_denot`, `Ty.capt_val_denot` (replaced by `Ty.val_denot`)
 - `Denot.is_reachability_safe/monotonic/tight`
 - `TypeEnv.is_reachability_safe/monotonic/tight`
-- Related `*_is_tight`, `*_is_monotonic` theorems
 
 ## Tips
 
@@ -185,3 +189,4 @@ These are commented out in Core.lean (no longer needed):
 2. Use `trace_state` to inspect goal context
 3. Variables with `✝` suffix are unnamed - use `rename_i` (names from bottom of context)
 4. `CapabilitySet` is ground - no need for renaming/substitution in rebind/retype proofs
+5. When doing case analysis on `TySort`, only `capt` and `exi` cases exist now
