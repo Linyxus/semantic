@@ -1845,7 +1845,6 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             unfold Ty.exi_exp_denot at hbody_psT2 ⊢
             exact eval_post_monotonic_general himply_entails hbody_psT2
 
-/-
 
 lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   (h12 : SemSubtyp Γ T1 T2)
@@ -1855,44 +1854,21 @@ lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   simp [SemSubtyp] at h12 h23 ⊢
   -- Match on the type sort
   cases k with
-  | shape =>
-    -- For shape types: prove (Ty.shape_val_denot env T1).ImplyAfter H (Ty.shape_val_denot env T3)
-    intro env H htyping
-    -- Extract the hypotheses for T1→T2 and T2→T3
-    have h12' := h12 env H htyping
-    have h23' := h23 env H htyping
-    -- Unfold PreDenot.ImplyAfter
-    simp [PreDenot.ImplyAfter] at h12' h23' ⊢
-    intro R
-    -- Extract the Denot.ImplyAfter hypotheses for this specific R
-    have h12_R := h12' R
-    have h23_R := h23' R
-    -- Unfold Denot.ImplyAfter
-    simp [Denot.ImplyAfter] at h12_R h23_R ⊢
-    intro m' hsubsumes
-    -- Apply transitivity of ImplyAt
-    exact Denot.implyat_trans (h12_R m' hsubsumes) (h23_R m' hsubsumes)
   | capt =>
-    -- For capturing types: prove (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T3)
+    -- For capturing types
     intro env H htyping
-    -- Extract the hypotheses for T1→T2 and T2→T3
     have h12' := h12 env H htyping
     have h23' := h23 env H htyping
-    -- Unfold Denot.ImplyAfter
     simp [Denot.ImplyAfter] at h12' h23' ⊢
     intro m' hsubsumes
-    -- Apply transitivity of ImplyAt
     exact Denot.implyat_trans (h12' m' hsubsumes) (h23' m' hsubsumes)
   | exi =>
-    -- For existential types: prove (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T3)
+    -- For existential types
     intro env H htyping
-    -- Extract the hypotheses for T1→T2 and T2→T3
     have h12' := h12 env H htyping
     have h23' := h23 env H htyping
-    -- Unfold Denot.ImplyAfter
     simp [Denot.ImplyAfter] at h12' h23' ⊢
     intro m' hsubsumes
-    -- Apply transitivity of ImplyAt
     exact Denot.implyat_trans (h12' m' hsubsumes) (h23' m' hsubsumes)
 
 lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
@@ -1901,29 +1877,20 @@ lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
   simp [SemSubtyp]
   -- Match on the type sort
   cases k with
-  | shape =>
-    -- For shape types, prove (Ty.shape_val_denot env T).ImplyAfter H (Ty.shape_val_denot env T)
-    intro env H htyping
-    simp [PreDenot.ImplyAfter]
-    intro R
-    simp [Denot.ImplyAfter]
-    intro m' hsubsumes
-    -- Apply reflexivity of implication
-    exact Denot.imply_implyat (Denot.imply_refl _)
   | capt =>
-    -- For capturing types, prove (Ty.capt_val_denot env T).ImplyAfter H (Ty.capt_val_denot env T)
+    -- For capturing types
     intro env H htyping
     simp [Denot.ImplyAfter]
     intro m' hsubsumes
-    -- Apply reflexivity of implication
     exact Denot.imply_implyat (Denot.imply_refl _)
   | exi =>
-    -- For existential types, prove (Ty.exi_val_denot env T).ImplyAfter H (Ty.exi_val_denot env T)
+    -- For existential types
     intro env H htyping
     simp [Denot.ImplyAfter]
     intro m' hsubsumes
-    -- Apply reflexivity of implication
     exact Denot.imply_implyat (Denot.imply_refl _)
+
+/-
 
 -- Semantic subtyping for mutability bounds
 -- Since Mutability.denot m = .top m, we have m1.denot ⊆ m2.denot iff m1 ≤ m2
@@ -2210,16 +2177,16 @@ theorem fundamental_subtyp
       exact hcs2_closed
     · -- Prove SemSubtyp (Γ,x:T2_arg) U1 U2 (covariant)
       exact ih_res hU1_closed hU2_closed
+  case refl =>
+    -- T1 = T2
+    exact sem_subtyp_refl
+  case trans hT2_mid _hsub12 _hsub23 ih12 ih23 =>
+    -- hsub is (T1 <: T2_mid <: T2), where T2_mid is the middle type
+    -- hT2_mid : T2_mid.IsClosed (provided by the trans rule)
+    -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
+    -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
+    exact sem_subtyp_trans (ih12 hT1 hT2_mid) (ih23 hT2_mid hT2)
   all_goals sorry
-  -- case refl =>
-  --   -- T1 = T2
-  --   apply sem_subtyp_refl
-  -- case trans T2_mid hT2_mid _hsub12 _hsub23 ih12 ih23 =>
-  --   -- hsub is (T1 <: T2_mid <: T2), where T2_mid is the middle type
-  --   -- hT2_mid : T2_mid.IsClosed (provided by the trans rule)
-  --   -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
-  --   -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
-  --   apply sem_subtyp_trans (ih12 hT1 hT2_mid) (ih23 hT2_mid hT2)
   -- case tvar hlookup =>
   --   -- T1 is a type variable, T2 is looked up from context
   --   apply sem_subtyp_tvar hlookup
