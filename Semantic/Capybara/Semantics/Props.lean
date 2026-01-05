@@ -281,7 +281,7 @@ theorem step_preserves_wf
       -- Extract well-formedness of the body
       have ⟨_, _, hwf_body⟩ := Exp.wf_inv_tabs hwf_tabs
       -- Build well-formed substitution: .top is always well-formed
-      have hwf_top : Ty.WfInHeap (.top : Ty .shape ∅) m1.heap :=
+      have hwf_top : PureTy.WfInHeap (PureTy.top (s:=∅)) m1.heap :=
         Ty.WfInHeap.wf_top
       have hwf_subst := Subst.wf_openTVar hwf_top
       -- Apply substitution preservation
@@ -1086,27 +1086,33 @@ theorem Ty.wf_masked
     apply Ty.WfInHeap.wf_top
   | wf_tvar =>
     apply Ty.WfInHeap.wf_tvar
-  | wf_arrow _ _ ih1 ih2 =>
-    apply Ty.WfInHeap.wf_arrow <;> assumption
-  | wf_poly _ _ ih1 ih2 =>
-    apply Ty.WfInHeap.wf_poly <;> assumption
-  | wf_cpoly _ ih_T =>
+  | wf_arrow hwf_T1 hwf_cs _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_arrow
+    · exact ih1
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact ih2
+  | wf_poly hwf_T1 hwf_cs _ ih1 ih2 =>
+    apply Ty.WfInHeap.wf_poly
+    · exact ih1
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact ih2
+  | wf_cpoly hwf_cs _ ih_T =>
     apply Ty.WfInHeap.wf_cpoly
-    exact ih_T
-  | wf_unit =>
-    apply Ty.WfInHeap.wf_unit
-  | wf_cap =>
-    apply Ty.WfInHeap.wf_cap
-  | wf_bool =>
-    apply Ty.WfInHeap.wf_bool
-  | wf_cell =>
-    apply Ty.WfInHeap.wf_cell
-  | wf_reader =>
-    apply Ty.WfInHeap.wf_reader
-  | wf_capt hwf_cs _ ih_T =>
-    apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_masked hwf_cs
     · exact ih_T
+  | wf_unit =>
+    apply Ty.WfInHeap.wf_unit
+  | wf_cap hwf_cs =>
+    apply Ty.WfInHeap.wf_cap
+    exact CaptureSet.wf_masked hwf_cs
+  | wf_bool =>
+    apply Ty.WfInHeap.wf_bool
+  | wf_cell hwf_cs =>
+    apply Ty.WfInHeap.wf_cell
+    exact CaptureSet.wf_masked hwf_cs
+  | wf_reader hwf_cs =>
+    apply Ty.WfInHeap.wf_reader
+    exact CaptureSet.wf_masked hwf_cs
   | wf_exi _ ih =>
     apply Ty.WfInHeap.wf_exi
     exact ih
