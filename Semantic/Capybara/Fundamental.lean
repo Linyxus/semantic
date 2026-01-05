@@ -44,7 +44,7 @@ theorem typed_env_lookup_var
       match env with
       | .extend env0 (.tvar d) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        obtain ⟨_, _, _, _, henv0⟩ := hts
+        obtain ⟨_, _, _, _, _, henv0⟩ := hts
         have hih := b henv0
         have heqv := tweaken_val_denot (env:=env0) (d:=d) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
@@ -259,7 +259,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
               simp [CaptureSet.denot]
               apply CapabilitySet.Subset.refl
             · -- Show the polymorphic function property
-              intro m' denot hsub hproper himply hpure
+              intro m' denot hsub hproper himply_simple_ans himply hpure
               rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
               -- Build EnvTyping using the type denotation
               have henv : EnvTyping (Γ,X<:S) (env.extend_tvar denot) m' := by
@@ -269,10 +269,12 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                   · -- denot.implies_wf: now included in is_proper
                     exact hproper.2.2.2
                   · constructor
-                    · exact himply
+                    · exact himply_simple_ans
                     · constructor
-                      · exact hpure
-                      · apply env_typing_monotonic hts hsub
+                      · exact himply
+                      · constructor
+                        · exact hpure
+                        · apply env_typing_monotonic hts hsub
               -- Apply the hypothesis
               have htyped := ht (env.extend_tvar denot) m' henv
               simp only [Ty.exi_exp_denot] at htyped ⊢
@@ -498,6 +500,7 @@ theorem tabs_val_denot_inv
     ∧ (∀ (m' : Memory) (denot : Denot),
       m'.subsumes store ->
       denot.is_proper ->
+      denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
       denot.enforce_pure ->
       Ty.exi_exp_denot
@@ -823,11 +826,13 @@ theorem sem_typ_tapp
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, Ty.exi_exp_denot]
 
   -- Apply the polymorphic function to the type argument S.core
-  -- We need to provide: denot.is_proper, denot.ImplyAfter, and denot.enforce_pure
+  -- We need to provide: is_proper, implies_simple_ans, ImplyAfter, enforce_pure
+  have himply_simple := val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) S.core
   have happ := hfun store (Ty.val_denot env S.core) (Memory.subsumes_refl store)
     (val_denot_is_proper hts)  -- Type denotations are proper
-    (by intro m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter is reflexive
-    (pure_ty_enforce_pure (typed_env_enforces_pure hts) S.p)  -- Pure types enforce purity
+    himply_simple  -- implies_simple_ans
+    (by intro m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter
+    (pure_ty_enforce_pure (typed_env_enforces_pure hts) S.p)  -- enforce_pure
 
   -- The opening lemma relates extended environment to substituted type
   have heqv := open_targ_exi_exp_denot (env:=env) (S:=S) (T:=T) (R:=expand_captures store.heap cs)
@@ -869,7 +874,7 @@ theorem typed_env_lookup_cvar_aux
       match env with
       | .extend env' (.tvar d) =>
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
-        obtain ⟨_, _, _, _, henv'⟩ := hts
+        obtain ⟨_, _, _, _, _, henv'⟩ := hts
         have hih := ih henv'
         exact hih
     case cvar =>
@@ -1350,9 +1355,7 @@ theorem sem_typ_letin
     -- hQ1 : Ty.val_denot env T m1 v
     constructor
     · -- Prove v.IsSimpleAns
-      -- TODO: Need val_denot_implies_simple_ans theorem which requires adding
-      -- Denot.implies_simple_ans, TypeEnv.is_implying_simple_ans to the infrastructure
-      sorry
+      exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T m1 v hQ1
     · -- Prove v.WfInHeap m1.heap
       exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1
   case h_val =>

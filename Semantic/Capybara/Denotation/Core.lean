@@ -49,6 +49,10 @@ def Denot.is_bool_independent (d : Denot) : Prop :=
 def Denot.implies_wf (d : Denot) : Prop :=
   ∀ m e, d m e -> e.WfInHeap m.heap
 
+/-- The denotation entails that the expression is a simple answer (value or variable). -/
+def Denot.implies_simple_ans (d : Denot) : Prop :=
+  ∀ m e, d m e -> e.IsSimpleAns
+
 /-- The denotation is proper if it is monotonic, transparent,
   bool-independent, and implies heap well-formedness. -/
 def Denot.is_proper (d : Denot) : Prop :=
@@ -361,7 +365,7 @@ mutual
 /-- Value denotation for capturing types. -/
 def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
 | _, .top => fun m e =>
-  e.WfInHeap m.heap ∧ resolve_reachability m.heap e ⊆ .empty
+  e.IsSimpleAns ∧ e.WfInHeap m.heap ∧ resolve_reachability m.heap e ⊆ .empty
 | env, .tvar X => env.lookup_tvar X
 | _, .unit => fun m e =>
   resolve m.heap e = some .unit
@@ -414,6 +418,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (m' : Memory) (denot : Denot),
       m'.subsumes m ->
       denot.is_proper ->
+      denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
       denot.enforce_pure ->
       Ty.exi_exp_denot
@@ -493,6 +498,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .push Γ (.tvar S), .extend env (.tvar denot), m =>
   denot.is_proper ∧
   denot.implies_wf ∧
+  denot.implies_simple_ans ∧
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
@@ -522,7 +528,7 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     exact CaptureSet.applyMut_rename
   | _, .push Γ' (.tvar S), .extend ρ' (.tvar denot), .there x' =>
     simp only [EnvTyping] at h
-    obtain ⟨_, _, _, _, h'⟩ := h
+    obtain ⟨_, _, _, _, _, h'⟩ := h
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
@@ -730,6 +736,66 @@ def TypeEnv.is_implying_wf (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).implies_wf
 
+/-- All type variable denotations in the environment imply simple answer. -/
+def TypeEnv.is_implying_simple_ans (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).implies_simple_ans
+
+/-- An environment typing implies that all type variable denotations imply simple answer. -/
+theorem typed_env_is_implying_simple_ans
+  (ht : EnvTyping Γ env mem) :
+  env.is_implying_simple_ans := by
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty =>
+      simp [TypeEnv.is_implying_simple_ans]
+      intro x
+      cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n ps =>
+          simp [EnvTyping] at ht
+          obtain ⟨_, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_implying_simple_ans] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          have ⟨_, _, himplies, _, _, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_implying_simple_ans] at ih_result ⊢
+          intro x
+          cases x with
+          | here =>
+            simp [TypeEnv.lookup_tvar]
+            exact himplies
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+      | cvar B =>
+        cases info with
+        | cvar cs =>
+          simp [EnvTyping] at ht
+          have ⟨hwf, hsub, ht'⟩ := ht
+          have ih_result := ih ht'
+          simp [TypeEnv.is_implying_simple_ans] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+
 /-- An environment typing implies that all type variable denotations imply well-formedness. -/
 theorem typed_env_is_implying_wf
   (ht : EnvTyping Γ env mem) :
@@ -761,7 +827,7 @@ theorem typed_env_is_implying_wf
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨_, himplies, _, _, ht'⟩ := ht
+          have ⟨_, himplies, _, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
@@ -821,7 +887,7 @@ theorem typed_env_enforces_pure
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨_, _, _, hpure, ht'⟩ := ht
+          have ⟨_, _, _, _, hpure, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_enforcing_pure] at ih_result ⊢
           intro x
@@ -885,7 +951,7 @@ theorem from_TypeEnv_wf_in_heap
             cases T with
             | top =>
               unfold Ty.val_denot at htype
-              exact htype.1
+              exact htype.2.1
             | tvar X =>
               -- For tvar, we need the denotation to be proper
               -- This is guaranteed by EnvTyping for the lookup_tvar
@@ -961,7 +1027,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | tvar denot =>
           unfold EnvTyping at htyping
-          have ⟨_, _, _, _, htyping'⟩ := htyping
+          have ⟨_, _, _, _, _, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -1222,7 +1288,7 @@ theorem typed_env_is_monotonic
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨hproper, _, _, _, ht'⟩ := ht
+          have ⟨hproper, _, _, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -1279,7 +1345,7 @@ theorem typed_env_is_transparent
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨hproper, _, _, _, ht'⟩ := ht
+          have ⟨hproper, _, _, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1336,7 +1402,7 @@ theorem typed_env_is_bool_independent
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht
-          have ⟨hproper, _, _, _, ht'⟩ := ht
+          have ⟨hproper, _, _, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
@@ -1386,6 +1452,8 @@ theorem val_denot_is_transparent {env : TypeEnv s}
       simp [Memory.lookup] at hx
       exact hx
     constructor
+    · exact Exp.IsSimpleAns.is_var
+    constructor
     · apply Exp.WfInHeap.wf_var
       apply Var.WfInHeap.wf_free
       exact hx_heap
@@ -1394,7 +1462,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
                  resolve_reachability m.heap v.unwrap :=
         reachability_of_loc_eq_resolve_reachability m x v hx_heap
       rw [heq]
-      exact ht.2
+      exact ht.2.2
   | tvar X =>
     unfold Ty.val_denot
     exact henv X
@@ -1524,11 +1592,13 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
   | top =>
     unfold Ty.val_denot
     constructor <;> intro
-    · constructor
-      · apply Exp.WfInHeap.wf_bfalse
+    · refine ⟨?_, ?_, ?_⟩
+      · exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.bfalse
+      · exact Exp.WfInHeap.wf_bfalse
       · simp [resolve_reachability]; exact CapabilitySet.Subset.refl
-    · constructor
-      · apply Exp.WfInHeap.wf_btrue
+    · refine ⟨?_, ?_, ?_⟩
+      · exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.btrue
+      · exact Exp.WfInHeap.wf_btrue
       · simp [resolve_reachability]; exact CapabilitySet.Subset.refl
   | tvar X =>
     unfold Ty.val_denot
@@ -1760,10 +1830,10 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | top =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    constructor
-    · exact Exp.wf_monotonic hmem ht.1
-    · rw [resolve_reachability_monotonic hmem e ht.1]
-      exact ht.2
+    refine ⟨ht.1, ?_, ?_⟩
+    · exact Exp.wf_monotonic hmem ht.2.1
+    · rw [resolve_reachability_monotonic hmem e ht.2.1]
+      exact ht.2.2
   | tvar X =>
     unfold Ty.val_denot
     exact henv.tvar X
@@ -2201,16 +2271,18 @@ theorem env_typing_monotonic
         cases info with
         | tvar d =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hproper, himply_wf, himply, hpure, ht'⟩ := ht
+          have ⟨hproper, himply_wf, himply_simple_ans, himply, hpure, ht'⟩ := ht
           constructor
           · exact hproper
           · constructor
             · exact himply_wf
             · constructor
-              · apply Denot.imply_after_subsumes himply hmem
+              · exact himply_simple_ans
               · constructor
-                · exact hpure
-                · exact ih ht'
+                · apply Denot.imply_after_subsumes himply hmem
+                · constructor
+                  · exact hpure
+                  · exact ih ht'
       | cvar B =>
         cases info with
         | cvar cs =>
@@ -2275,10 +2347,64 @@ def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
 --   (hts : env.is_reachability_monotonic) (T : Ty .capt s) :
 --   (Ty.val_denot env T).is_reachability_monotonic := val_denot_is_reachability_monotonic hts T
 
-/-- If the type environment is well-typed, then the denotation of any shape type is proper.
-    A PreDenot is proper if it is reachability-safe, monotonic, and transparent. This theorem
-    combines the reachability safety, monotonicity, and transparency results for shape type
-    denotations. -/
+/-- If resolve succeeds with a simple value, the expression is a simple answer.
+    This works because resolve returns the expression itself for non-variables,
+    or looks up the stored value for variables. -/
+lemma simple_ans_from_resolve
+  {H : Heap} {e : Exp {}} {v : Exp {}}
+  (hresolve : resolve H e = some v)
+  (hv : v.IsSimpleVal) :
+  e.IsSimpleAns := by
+  cases e with
+  | var x => exact Exp.IsSimpleAns.is_var
+  | unit => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.unit
+  | btrue => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.btrue
+  | bfalse => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.bfalse
+  | abs cs T t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.abs
+  | tabs cs S t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.tabs
+  | cabs cs B t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.cabs
+  | reader x => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.reader
+  | pack cs x =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | app f x =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | tapp f T =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | capp f cs =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | letin e1 e2 =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | unpack e1 e2 =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | read x =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | write x y =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | cond x e1 e2 =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | par e1 e2 =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+
 lemma wf_from_resolve_unit
   {m : Memory} {e : Exp {}}
   (hresolve : resolve m.heap e = some .unit) :
@@ -2315,7 +2441,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
   cases T with
   | top =>
     simp [Ty.val_denot] at hdenot
-    exact hdenot.1
+    exact hdenot.2.1
   | tvar X =>
     simp [Ty.val_denot] at hdenot
     exact hts X m e hdenot
@@ -2385,6 +2511,54 @@ theorem val_denot_implies_wf {env : TypeEnv s}
     simp [Ty.val_denot] at hdenot
     exact hdenot.1
 
+/-- Value denotation implies simple answer for all types. -/
+theorem val_denot_implies_simple_ans {env : TypeEnv s}
+  (hts : env.is_implying_simple_ans)
+  (T : Ty .capt s) :
+  (Ty.val_denot env T).implies_simple_ans := by
+  intro m e hdenot
+  cases T with
+  | top =>
+    simp [Ty.val_denot] at hdenot
+    exact hdenot.1
+  | tvar X =>
+    simp [Ty.val_denot] at hdenot
+    exact hts X m e hdenot
+  | bool =>
+    simp [Ty.val_denot] at hdenot
+    cases hdenot with
+    | inl h => exact simple_ans_from_resolve h Exp.IsSimpleVal.btrue
+    | inr h => exact simple_ans_from_resolve h Exp.IsSimpleVal.bfalse
+  | unit =>
+    simp [Ty.val_denot] at hdenot
+    exact simple_ans_from_resolve hdenot Exp.IsSimpleVal.unit
+  | cell cs =>
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, l, _, heq, _, _⟩ := hdenot
+    rw [heq]
+    exact Exp.IsSimpleAns.is_var
+  | reader cs =>
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, _, _, _, hres, _, _⟩ := hdenot
+    exact simple_ans_from_resolve hres Exp.IsSimpleVal.reader
+  | cap cs =>
+    simp [Ty.val_denot] at hdenot
+    obtain ⟨_, _, _, heq, _, _⟩ := hdenot
+    rw [heq]
+    exact Exp.IsSimpleAns.is_var
+  | arrow T1 cs T2 =>
+    simp [Ty.val_denot] at hdenot
+    obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
+    exact simple_ans_from_resolve hres Exp.IsSimpleVal.abs
+  | poly T1 cs T2 =>
+    simp [Ty.val_denot] at hdenot
+    obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
+    exact simple_ans_from_resolve hres Exp.IsSimpleVal.tabs
+  | cpoly B cs T =>
+    simp [Ty.val_denot] at hdenot
+    obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
+    exact simple_ans_from_resolve hres Exp.IsSimpleVal.cabs
+
 -- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
 -- They relied on Denot.is_tight which is now trivially True.
 --
@@ -2443,7 +2617,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     -- captureSet = .empty, denotation gives resolve_reachability ⊆ .empty
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     simp only [Ty.val_denot] at ht
-    exact ht.2
+    exact ht.2.2
   | tvar X =>
     -- captureSet = .empty, type variable denotation enforces purity
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
@@ -2954,7 +3128,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
   case top =>
     -- Denotation directly gives resolve_reachability ⊆ .empty
     simp only [Ty.val_denot] at hdenot
-    exact hdenot.2
+    exact hdenot.2.2
   case tvar X =>
     -- Type variable denotation enforces purity by hypothesis
     simp only [Ty.val_denot] at hdenot
