@@ -2253,7 +2253,6 @@ theorem fundamental_subtyp
     -- Apply sem_subtyp_typ
     exact sem_subtyp_typ (ih_body hT1_body_closed hT2_body_closed)
 
-/-
 
 theorem sem_typ_subtyp
   {C1 C2 : CaptureSet s} {E1 E2 : Ty .exi s}
@@ -2290,6 +2289,8 @@ theorem sem_typ_subtyp
 
   -- Lift the evaluation from E1 to E2 using postcondition monotonicity
   exact eval_post_monotonic_general h_entails h_eval_E1_at_C2
+
+/-
 
 lemma simple_val_not_pack {e : Exp s}
   (hsimple : e.IsSimpleVal)
@@ -2634,7 +2635,14 @@ theorem fundamental
         (Exp.IsClosed.letin he1_closed he2_closed)
         (ht1_ih he1_closed)
         (ht2_ih he2_closed)
-  all_goals sorry
+  case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
+    -- Get closedness of C1 and E1 from the syntactic typing derivation
+    have hclosed_C1 := HasType.use_set_is_closed ht_syn
+    have hclosed_E1 := HasType.type_is_closed ht_syn
+    -- Apply the semantic subtyping lemma
+    exact sem_typ_subtyp (ht_ih hclosed_e) hsubcapt hsubtyp
+      hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
+  case unpack => sorry
   -- case reader hΓ_closed hx =>
   --   exact sem_typ_reader hΓ_closed hx
   -- case pack =>
