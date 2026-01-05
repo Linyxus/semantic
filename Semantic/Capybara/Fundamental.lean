@@ -1890,7 +1890,6 @@ lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
     intro m' hsubsumes
     exact Denot.imply_implyat (Denot.imply_refl _)
 
-/-
 
 -- Semantic subtyping for mutability bounds
 -- Since Mutability.denot m = .top m, we have m1.denot ⊆ m2.denot iff m1 ≤ m2
@@ -1901,66 +1900,80 @@ lemma fundamental_subbound
   simp [Mutability.denot]
   exact CapabilityBound.SubsetEq.top_top hle
 
-lemma sem_subtyp_cpoly {m1 m2 : Mutability} {T1 T2 : Ty .exi (s,C)}
-  (hB : SemSubbound Γ m1 m2) -- contravariant in bound (m1 ≤ m2)
-  (hT : SemSubtyp (Γ,C<:m1) T1 T2) -- covariant in body under tighter bound
-  : SemSubtyp Γ (.cpoly m2 T1) (.cpoly m1 T2) := by
-  -- Unfold SemSubtyp for shape types
+
+lemma sem_subtyp_cpoly {m1 m2 : Mutability} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .exi (s,C)}
+  (hB : m2 ≤ m1) -- contravariant in bound
+  (hcs : SemSubcapt Γ cs1 cs2) -- covariant in capture set
+  (hcs2_closed : CaptureSet.IsClosed cs2) -- cs2 is closed
+  (hT : SemSubtyp (Γ,C<:m2) T1 T2) -- covariant in body under tighter bound
+  : SemSubtyp Γ (.cpoly m1 cs1 T1) (.cpoly m2 cs2 T2) := by
+  -- Unfold SemSubtyp for capturing types
   simp [SemSubtyp]
   intro env H htyping
-  -- Need to prove PreDenot.ImplyAfter for cpoly types
-  simp [PreDenot.ImplyAfter]
-  intro A
-  -- Need to prove Denot.ImplyAfter for cpoly types at capability set A
+  -- Need to prove Denot.ImplyAfter for cpoly types
   simp [Denot.ImplyAfter]
-  intro m' hsubsumes e h_cpoly_m2_T1
+  intro m' hsubsumes e h_cpoly_m1_cs1_T1
   -- Unfold the denotation of cpoly types
-  simp [Ty.shape_val_denot] at h_cpoly_m2_T1 ⊢
-  -- Extract the components from m2 ∀C T1 denotation (left side)
-  obtain ⟨hwf, cs, B0, t0, hresolve, hcs_wf, hR0_subset, hbody⟩ := h_cpoly_m2_T1
-  -- Construct the proof for m1 ∀C T2 (right side)
+  simp [Ty.val_denot] at h_cpoly_m1_cs1_T1 ⊢
+  -- Extract the components from (.cpoly m1 cs1 T1) denotation
+  obtain ⟨hwf, hcs1_wf, cs', B0, t0, hresolve, hcs'_wf, hR0_subset_cs1, hbody⟩ := h_cpoly_m1_cs1_T1
+  -- Construct the proof for (.cpoly m2 cs2 T2)
   constructor
   · exact hwf  -- Well-formedness is preserved
-  · use cs, B0, t0
-    constructor
-    · exact hresolve  -- Same resolution
-    · constructor
-      · exact hcs_wf  -- Capture set well-formedness preserved
+  · constructor
+    · -- Need to show cs2 is well-formed in m'.heap
+      have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
+        apply CaptureSet.wf_subst
+        · apply CaptureSet.wf_of_closed hcs2_closed
+        · exact from_TypeEnv_wf_in_heap htyping
+      exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
+    · use cs', B0, t0
+      constructor
+      · exact hresolve  -- Same resolution
       · constructor
-        · exact hR0_subset  -- Same capture subset constraint
-        · -- Need to prove the body property with contravariant bound and covariant body
-          intro m'' CS hCS_wf hsub_m'' hCS_satisfies_m1
-          -- hbody expects: (A0 m'').BoundedBy (m2.denot m'')
-          -- We have hCS_satisfies_m1 : (A0 m'').BoundedBy (m1.denot m'')
-          -- And hB : SemSubbound Γ m1 m2, i.e., m1.denot ⊆ m2.denot
-          let A0 := CS.denot TypeEnv.empty
-          have hCS_satisfies_m2 : (A0 m'').BoundedBy (m2.denot m'') := by
-            -- Apply contravariance: m1.denot m'' ⊆ m2.denot m''
-            exact CapabilitySet.BoundedBy.trans hCS_satisfies_m1 (hB m'')
-          -- Apply the original function body with this CS
-          have heval1 := hbody m'' CS hCS_wf hsub_m'' hCS_satisfies_m2
-          -- Now use covariance hT
-          have henv' : EnvTyping (Γ,C<:m1) (env.extend_cvar CS) m'' := by
-            simp [TypeEnv.extend_cvar]
-            constructor
-            · exact hCS_wf
-            · constructor
-              · -- Convert hCS_satisfies_m1 from CS.denot TypeEnv.empty to CS.ground_denot
-                have : CS.denot TypeEnv.empty = CS.ground_denot := by
-                  simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
-                rw [← this]
-                exact hCS_satisfies_m1
-              · have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
-                exact env_typing_monotonic htyping hB_trans
-          have hT_sem := hT (env.extend_cvar CS) m'' henv'
-          -- hT_sem : (Ty.exi_val_denot (env.extend_cvar CS) T1).ImplyAfter m'' ...
-          let R0 := expand_captures m'.heap cs
-          -- Convert to postcondition entailment
-          have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
-          -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
-          unfold Ty.exi_exp_denot at heval1 ⊢
-          apply eval_post_monotonic_general _ heval1
-          exact himply_entails
+        · exact hcs'_wf  -- Capture set well-formedness preserved for cs'
+        · constructor
+          · -- Need to show: expand_captures m'.heap cs' ⊆ cs2.denot env m'
+            have hcs_sem := hcs env m' (env_typing_monotonic htyping hsubsumes)
+            calc expand_captures m'.heap cs'
+              _ ⊆ cs1.denot env m' := hR0_subset_cs1
+              _ ⊆ cs2.denot env m' := hcs_sem
+          · -- Need to prove the body property with contravariant bound and covariant body
+            intro m'' CS hCS_wf hsub_m'' hCS_satisfies_m2
+            -- hbody expects: (A0 m'').BoundedBy (m1.denot m'')
+            -- We have hCS_satisfies_m2 : (A0 m'').BoundedBy (m2.denot m'')
+            -- And hB : m2 ≤ m1
+            let A0 := CS.denot TypeEnv.empty
+            have hCS_satisfies_m1 : (A0 m'').BoundedBy (m1.denot m'') := by
+              -- Apply contravariance: m2.denot m'' ⊆ m1.denot m''
+              have hbound : m2.denot m'' ⊆ m1.denot m'' := by
+                simp [Mutability.denot]
+                exact CapabilityBound.SubsetEq.top_top hB
+              exact CapabilitySet.BoundedBy.trans hCS_satisfies_m2 hbound
+            -- Apply the original function body with this CS
+            have heval1 := hbody m'' CS hCS_wf hsub_m'' hCS_satisfies_m1
+            -- Now use covariance hT
+            have henv' : EnvTyping (Γ,C<:m2) (env.extend_cvar CS) m'' := by
+              simp [TypeEnv.extend_cvar]
+              constructor
+              · exact hCS_wf
+              · constructor
+                · -- Convert hCS_satisfies_m2 from CS.denot TypeEnv.empty to CS.ground_denot
+                  have : CS.denot TypeEnv.empty = CS.ground_denot := by
+                    simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
+                  rw [← this]
+                  exact hCS_satisfies_m2
+                · have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
+                  exact env_typing_monotonic htyping hB_trans
+            have hT_sem := hT (env.extend_cvar CS) m'' henv'
+            -- Convert to postcondition entailment
+            have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+            -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
+            unfold Ty.exi_exp_denot at heval1 ⊢
+            apply eval_post_monotonic_general _ heval1
+            exact himply_entails
+
+/-
 
 lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
   (hC : SemSubcapt Γ C1 C2) -- covariant in capture set
@@ -2186,6 +2199,20 @@ theorem fundamental_subtyp
     -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
     -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
     exact sem_subtyp_trans (ih12 hT1 hT2_mid) (ih23 hT2_mid hT2)
+  case cpoly hle hsub_cs hsub_body ih_body =>
+    -- T1 = (.cpoly m1 cs1 T1_body), T2 = (.cpoly m2 cs2 T2_body)
+    -- hle : m2 ≤ m1 (contravariant)
+    -- hsub_cs : Subcapt Γ cs1 cs2 (covariant)
+    -- hsub_body : Subtyp (Γ,C<:m2) T1_body T2_body (covariant)
+    -- Extract closedness from cpoly types
+    cases hT1 with | cpoly hcs1_closed hT1_body_closed =>
+    cases hT2 with | cpoly hcs2_closed hT2_body_closed =>
+    -- Apply sem_subtyp_cpoly
+    apply sem_subtyp_cpoly
+    · exact hle
+    · exact fundamental_subcapt hsub_cs
+    · exact hcs2_closed
+    · exact ih_body hT1_body_closed hT2_body_closed
   all_goals sorry
   -- case tvar hlookup =>
   --   -- T1 is a type variable, T2 is looked up from context
