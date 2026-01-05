@@ -1477,8 +1477,6 @@ theorem sem_typ_letin
           · -- Show: EnvTyping Γ env m1
             exact env_typing_monotonic hts hs1
 
-/-
-
 theorem sem_sc_trans
   (hsub1 : SemSubcapt Γ C1 C2)
   (hsub2 : SemSubcapt Γ C2 C3) :
@@ -1523,12 +1521,9 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
   · exact hsub1 env m hts
   · exact hsub2 env m hts
 
--- typed_env_lookup_cvar removed: no longer have concrete capture set bounds (.bound C)
--- sem_sc_cvar removed: no sc_cvar rule in type system with only Mutability bounds
-
-theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s}
-  (hlookup : Γ.LookupVar x (.capt C S)) :
-  SemSubcapt Γ (.var .epsilon (.bound x)) C := by
+theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
+  (hlookup : Γ.LookupVar x T) :
+  SemSubcapt Γ (.var .epsilon (.bound x)) T.captureSet := by
   intro env m hts
   unfold CaptureSet.denot
   simp [CaptureSet.subst, Subst.from_TypeEnv]
@@ -1589,6 +1584,7 @@ theorem fundamental_haskind
     cases hbound with
     | top hkind => exact hkind
 
+
 lemma sem_subtyp_top {T : Ty .shape s} :
   SemSubtyp Γ T .top := by
   -- Unfold SemSubtyp for shape types
@@ -1617,6 +1613,8 @@ lemma sem_subtyp_top {T : Ty .shape s} :
     have hsafe_env := typed_env_is_reachability_safe htyping
     have hsafe_denot := shape_val_denot_is_reachability_safe hsafe_env T
     exact hsafe_denot R m' e hdenot_T
+
+/-
 
 -- Helper lemma for extracting type variable bounds from EnvTyping
 lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {env : TypeEnv s} {m : Memory}
@@ -2173,6 +2171,8 @@ lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
           apply eval_post_monotonic_general _ heval1
           exact himply_entails
 
+-/
+
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
   (hsub : Subtyp Γ T1 T2) :
@@ -2180,60 +2180,65 @@ theorem fundamental_subtyp
   induction hsub
   case top =>
     -- T1 is some shape type, T2 is .top
-    apply sem_subtyp_top
-  case refl =>
-    -- T1 = T2
-    apply sem_subtyp_refl
-  case trans T2_mid hT2_mid _hsub12 _hsub23 ih12 ih23 =>
-    -- hsub is (T1 <: T2_mid <: T2), where T2_mid is the middle type
-    -- hT2_mid : T2_mid.IsClosed (provided by the trans rule)
-    -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
-    -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
-    apply sem_subtyp_trans (ih12 hT1 hT2_mid) (ih23 hT2_mid hT2)
-  case tvar hlookup =>
-    -- T1 is a type variable, T2 is looked up from context
-    apply sem_subtyp_tvar hlookup
-  case arrow T1_arg T2_arg U1 U2 hsub_arg hsub_res ih_arg ih_res =>
-    -- T1 = .arrow T1_arg U1, T2 = .arrow T2_arg U2
-    -- Extract closedness from arrow types
-    cases hT1 with | arrow hT1_arg_closed hU1_closed =>
-    cases hT2 with | arrow hT2_arg_closed hU2_closed =>
-    apply sem_subtyp_arrow (ih_arg hT2_arg_closed hT1_arg_closed) (ih_res hU1_closed hU2_closed)
-  case poly S1 S2 T1_body T2_body hsub_bound hsub_body ih_bound ih_body =>
-    -- T1 = .poly S1 T1_body, T2 = .poly S2 T2_body
-    -- Extract closedness from poly types
-    cases hT1 with | poly hS1_closed hT1_body_closed =>
-    cases hT2 with | poly hS2_closed hT2_body_closed =>
-    apply sem_subtyp_poly (ih_bound hS2_closed hS1_closed) (ih_body hT1_body_closed hT2_body_closed)
-  case cpoly hsub_bound hsub_body ih_body =>
-    -- The subtyping rule is: m2 ≤ m1 -> Subtyp (Γ,C<:m2) T1 T2
-    --                        -> Subtyp Γ (.cpoly m1 T1) (.cpoly m2 T2)
-    -- Extract closedness from cpoly types (Mutability bound has no closedness)
-    cases hT1 with | cpoly hT1_body_closed =>
-    cases hT2 with | cpoly hT2_body_closed =>
-    apply sem_subtyp_cpoly (fundamental_subbound hsub_bound)
-      (ih_body hT1_body_closed hT2_body_closed)
-  case capt C1 C2 S1 S2 hsub_capt hsub_shape ih_shape =>
-    -- Extract closedness from capt types
-    cases hT1 with | capt hC1_closed hS1_closed =>
-    cases hT2 with | capt hC2_closed hS2_closed =>
-    -- Convert syntactic subcapture to semantic
-    have ih_capt := fundamental_subcapt hsub_capt
-    -- Apply the lemma
-    apply sem_subtyp_capt ih_capt (ih_shape hS1_closed hS2_closed) hC2_closed
-  case exi T1_body T2_body hsub_body ih_body =>
-    -- Extract closedness from exi types
-    cases hT1 with | exi hT1_body_closed =>
-    cases hT2 with | exi hT2_body_closed =>
-    -- Apply the lemma
-    apply sem_subtyp_exi (ih_body hT1_body_closed hT2_body_closed)
-  case typ T1_body T2_body hsub_body ih_body =>
-    -- T1 = .typ T1_body, T2 = .typ T2_body
-    -- Extract closedness from typ types
-    cases hT1 with | typ hT1_body_closed =>
-    cases hT2 with | typ hT2_body_closed =>
-    -- Apply the lemma
-    apply sem_subtyp_typ (ih_body hT1_body_closed hT2_body_closed)
+    -- apply sem_subtyp_top
+    trace_state
+    sorry
+  all_goals sorry
+  -- case refl =>
+  --   -- T1 = T2
+  --   apply sem_subtyp_refl
+  -- case trans T2_mid hT2_mid _hsub12 _hsub23 ih12 ih23 =>
+  --   -- hsub is (T1 <: T2_mid <: T2), where T2_mid is the middle type
+  --   -- hT2_mid : T2_mid.IsClosed (provided by the trans rule)
+  --   -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
+  --   -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
+  --   apply sem_subtyp_trans (ih12 hT1 hT2_mid) (ih23 hT2_mid hT2)
+  -- case tvar hlookup =>
+  --   -- T1 is a type variable, T2 is looked up from context
+  --   apply sem_subtyp_tvar hlookup
+  -- case arrow T1_arg T2_arg U1 U2 hsub_arg hsub_res ih_arg ih_res =>
+  --   -- T1 = .arrow T1_arg U1, T2 = .arrow T2_arg U2
+  --   -- Extract closedness from arrow types
+  --   cases hT1 with | arrow hT1_arg_closed hU1_closed =>
+  --   cases hT2 with | arrow hT2_arg_closed hU2_closed =>
+  --   apply sem_subtyp_arrow (ih_arg hT2_arg_closed hT1_arg_closed) (ih_res hU1_closed hU2_closed)
+  -- case poly S1 S2 T1_body T2_body hsub_bound hsub_body ih_bound ih_body =>
+  --   -- T1 = .poly S1 T1_body, T2 = .poly S2 T2_body
+  --   -- Extract closedness from poly types
+  --   cases hT1 with | poly hS1_closed hT1_body_closed =>
+  --   cases hT2 with | poly hS2_closed hT2_body_closed =>
+  --   apply sem_subtyp_poly (ih_bound hS2_closed hS1_closed) (ih_body hT1_body_closed hT2_body_closed)
+  -- case cpoly hsub_bound hsub_body ih_body =>
+  --   -- The subtyping rule is: m2 ≤ m1 -> Subtyp (Γ,C<:m2) T1 T2
+  --   --                        -> Subtyp Γ (.cpoly m1 T1) (.cpoly m2 T2)
+  --   -- Extract closedness from cpoly types (Mutability bound has no closedness)
+  --   cases hT1 with | cpoly hT1_body_closed =>
+  --   cases hT2 with | cpoly hT2_body_closed =>
+  --   apply sem_subtyp_cpoly (fundamental_subbound hsub_bound)
+  --     (ih_body hT1_body_closed hT2_body_closed)
+  -- case capt C1 C2 S1 S2 hsub_capt hsub_shape ih_shape =>
+  --   -- Extract closedness from capt types
+  --   cases hT1 with | capt hC1_closed hS1_closed =>
+  --   cases hT2 with | capt hC2_closed hS2_closed =>
+  --   -- Convert syntactic subcapture to semantic
+  --   have ih_capt := fundamental_subcapt hsub_capt
+  --   -- Apply the lemma
+  --   apply sem_subtyp_capt ih_capt (ih_shape hS1_closed hS2_closed) hC2_closed
+  -- case exi T1_body T2_body hsub_body ih_body =>
+  --   -- Extract closedness from exi types
+  --   cases hT1 with | exi hT1_body_closed =>
+  --   cases hT2 with | exi hT2_body_closed =>
+  --   -- Apply the lemma
+  --   apply sem_subtyp_exi (ih_body hT1_body_closed hT2_body_closed)
+  -- case typ T1_body T2_body hsub_body ih_body =>
+  --   -- T1 = .typ T1_body, T2 = .typ T2_body
+  --   -- Extract closedness from typ types
+  --   cases hT1 with | typ hT1_body_closed =>
+  --   cases hT2 with | typ hT2_body_closed =>
+  --   -- Apply the lemma
+  --   apply sem_subtyp_typ (ih_body hT1_body_closed hT2_body_closed)
+
+/-
 
 theorem sem_typ_subtyp
   {C1 C2 : CaptureSet s} {E1 E2 : Ty .exi s}
