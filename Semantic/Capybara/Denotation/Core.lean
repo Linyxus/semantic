@@ -99,48 +99,6 @@ theorem reachability_of_loc_eq_resolve_reachability
   -- compute_reachability = resolve_reachability for simple values
   exact compute_reachability_eq_resolve_reachability m.heap v.unwrap v.isVal
 
-/-- This pre-denotation actually enforces the reachability bound. -/
-def PreDenot.is_reachability_safe (denot : PreDenot) : Prop :=
-  ∀ R m e,
-    denot R m e ->
-    resolve_reachability m.heap e ⊆ R
-
-/-- This pre-denotation is monotonic over reachability sets. -/
-def PreDenot.is_reachability_monotonic (pd : PreDenot) : Prop :=
-  ∀ R1 R2,
-    R1 ⊆ R2 ->
-    ∀ m e,
-      pd R1 m e ->
-      pd R2 m e
-
-/-- This pre-denotation entails heap well-formedness. -/
-def PreDenot.implies_wf (pd : PreDenot) : Prop :=
-  ∀ R m e,
-    pd R m e ->
-    e.WfInHeap m.heap
-
-/-- This pre-denotation is "tight" on reachability sets. -/
-def PreDenot.is_tight (pd : PreDenot) : Prop :=
-  ∀ R m fx,
-    pd R m (.var (.free fx)) ->
-    pd (reachability_of_loc m.heap fx) m (.var (.free fx))
-
-/-- This is a proper pre-denotation. -/
-def PreDenot.is_proper (pd : PreDenot) : Prop :=
-  pd.is_reachability_safe
-  ∧ pd.is_reachability_monotonic
-  ∧ pd.implies_wf
-  ∧ pd.is_tight
-  ∧ ∀ C, (pd C).is_proper
-
--- NOTE: The following definitions are no longer needed after the type hierarchy collapse.
--- The capability set bound is now derived from the type's capture set, making these
--- properties trivially true. They are kept commented out for reference.
---
--- def Denot.is_reachability_safe (d : Denot) : Prop := True
--- def Denot.is_reachability_monotonic (d : Denot) : Prop := True
--- def Denot.is_tight (d : Denot) : Prop := True
-
 lemma Denot.as_mpost_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
   d.as_mpost.is_monotonic := by
@@ -160,21 +118,11 @@ def Denot.Imply (d1 d2 : Denot) : Prop :=
     (d1 m e) ->
     (d2 m e)
 
-def PreDenot.Imply (pd1 pd2 : PreDenot) : Prop :=
-  ∀ C,
-    (pd1 C).Imply (pd2 C)
-
 def Denot.ImplyAt (d1 : Denot) (m : Memory) (d2 : Denot) : Prop :=
   ∀ e, d1 m e -> d2 m e
 
-def PreDenot.ImplyAt (pd1 pd2 : PreDenot) (m : Memory) : Prop :=
-  ∀ C, (pd1 C).ImplyAt m (pd2 C)
-
 def Denot.ImplyAfter (d1 : Denot) (m : Memory) (d2 : Denot) : Prop :=
   ∀ m', m'.subsumes m -> d1.ImplyAt m' d2
-
-def PreDenot.ImplyAfter (pd1 : PreDenot) (m : Memory) (pd2 : PreDenot) : Prop :=
-  ∀ C, (pd1 C).ImplyAfter m (pd2 C)
 
 theorem Denot.imply_implyat {d1 d2 : Denot}
   (himp : d1.Imply d2) :
@@ -1147,42 +1095,6 @@ theorem Denot.imply_to_entails (d1 d2 : Denot)
   intro m e h1
   apply himp m e h1
 
-/- Equivalence for PreDenot -/
-def PreDenot.Equiv (pd1 pd2 : PreDenot) : Prop :=
-  ∀ A, (pd1 A) ≈ (pd2 A)
-
-instance PreDenot.instHasEquiv : HasEquiv PreDenot where
-  Equiv := PreDenot.Equiv
-
-theorem PreDenot.equiv_def {pd1 pd2 : PreDenot} :
-  pd1 ≈ pd2 ↔ ∀ A m e, (pd1 A m e) ↔ (pd2 A m e) := by
-  constructor
-  · intro h A m e
-    exact (h A) m e
-  · intro h A
-    intro m e
-    exact h A m e
-
-theorem PreDenot.eq_to_equiv {pd1 pd2 : PreDenot} (h : pd1 = pd2) : pd1 ≈ pd2 := by
-  intro A
-  intro m e
-  rw [h]
-
-theorem PreDenot.equiv_refl (pd : PreDenot) : pd ≈ pd := by
-  intro A
-  apply Denot.equiv_refl
-
-theorem PreDenot.equiv_symm (pd1 pd2 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd1 := by
-  intro h A
-  apply Denot.equiv_symm
-  exact h A
-
-theorem PreDenot.equiv_trans (pd1 pd2 pd3 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd3 -> pd1 ≈ pd3 := by
-  intro h12 h23 A
-  apply Denot.equiv_trans _ (pd2 A) _
-  · exact h12 A
-  · exact h23 A
-
 theorem Denot.imply_refl (d : Denot) : d.Imply d := by
   intro m e h
   exact h
@@ -1226,15 +1138,6 @@ theorem resolve_ans_to_val
     rw [h]
     apply Exp.IsAns.is_var
   case inr h => aesop
-
-def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
-  ∀ C, (pd C).is_monotonic
-
-def PreDenot.is_transparent (pd : PreDenot) : Prop :=
-  ∀ C, (pd C).is_transparent
-
-def PreDenot.is_bool_independent (pd : PreDenot) : Prop :=
-  ∀ C, (pd C).is_bool_independent
 
 structure TypeEnv.IsMonotonic (env : TypeEnv s) : Prop where
   tvar : ∀ (X : BVar s .tvar),

@@ -1728,20 +1728,6 @@ lemma sem_subtyp_tvar {X : BVar s .tvar} {S : PureTy s}
   -- The result follows directly from himply
   exact himply
 
-
--- Helper lemma: PreDenot.ImplyAfter is monotonic in the starting memory
-lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
-  (himply : pd1.ImplyAfter H pd2)
-  (hsub : m.subsumes H) :
-  pd1.ImplyAfter m pd2 := by
-  simp [PreDenot.ImplyAfter] at himply ⊢
-  intro C
-  simp [Denot.ImplyAfter] at himply ⊢
-  intro m' hsub_m'
-  -- m' subsumes m, and m subsumes H, so m' subsumes H by transitivity
-  have hsub_H : m'.subsumes H := Memory.subsumes_trans hsub_m' hsub
-  exact himply C m' hsub_H
-
 lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
   (hcs : SemSubcapt Γ cs1 cs2)
