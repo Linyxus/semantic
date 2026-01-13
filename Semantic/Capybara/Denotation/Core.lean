@@ -465,9 +465,10 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar cs _), m =>
+| .push Γ (.cvar B), .extend env (.cvar cs cap), m =>
   (cs.WfInHeap m.heap) ∧
   ((cs.ground_denot m).BoundedBy (B.denot m)) ∧
+  cap = cs.ground_denot m ∧
   EnvTyping Γ env m
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
