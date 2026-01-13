@@ -861,7 +861,7 @@ theorem sem_typ_tapp
 theorem typed_env_lookup_cvar_aux
   (hts : EnvTyping Γ env m)
   (hc : Ctx.LookupCVar Γ c cb) :
-  ((env.lookup_cvar c).ground_denot m).BoundedBy (cb.denot m) := by
+  ((env.lookup_cvar c).1.ground_denot m).BoundedBy (cb.denot m) := by
   -- Mutability.denot doesn't depend on environment, so rebinding is trivial
   induction hc generalizing m
   case here =>

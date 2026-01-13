@@ -220,14 +220,14 @@ def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> Denot
 | .extend _ (.tvar T), .here => T
 | .extend Γ _, .there x => Γ.lookup_tvar x
 
-def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {}
-| .extend _ (.cvar cs _), .here => cs
+def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {} × CapabilitySet
+| .extend _ (.cvar cs cap), .here => (cs, cap)
 | .extend Γ _, .there x => Γ.lookup_cvar x
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x).1
   tvar := fun _ => .top
-  cvar := fun c => env.lookup_cvar c
+  cvar := fun c => (env.lookup_cvar c).1
 
 theorem Subst.from_TypeEnv_empty :
   Subst.from_TypeEnv TypeEnv.empty = Subst.id := by
@@ -726,7 +726,7 @@ theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
           TypeEnv.lookup_cvar]
         -- Now the goal has ρ.lookup_cvar c0 expanded to match expression
         -- Let's generalize this ground capture set
-        generalize ρ.lookup_cvar c0 = ground_cs
+        generalize (ρ.lookup_cvar c0).1 = ground_cs
         -- Goal: double rename + subst on ground_cs equals ground_cs
         induction ground_cs with
         | empty => rfl  -- .empty.rename.rename.subst = .empty

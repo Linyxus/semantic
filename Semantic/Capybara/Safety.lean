@@ -254,9 +254,11 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
         simp only [BVar.level]
         exact h
 
-/-- Lookup of capture variable in platform environment. -/
+/-- Lookup of capture variable in platform environment returns the ground capture set
+    and the corresponding capability set. -/
 theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
-  (TypeEnv.platform_of N).lookup_cvar c = .var .epsilon (.free (c.level / 2)) := by
+  (TypeEnv.platform_of N).lookup_cvar c =
+    (.var .epsilon (.free (c.level / 2)), CapabilitySet.singleton .epsilon (c.level / 2)) := by
   induction N with
   | zero =>
     -- No capture variables in empty signature
@@ -276,13 +278,9 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
         -- This is the most recent capture variable C_N
         -- c = .there .here, where .here refers to C in (platform N, C)
         simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
-        -- Goal: .var (.free N) = .var (.free (BVar.here.there.level / 2))
-        -- .there preserves level, so .here.there.level = .here.level
-        -- .here.level = length of (platform_of N) = 2*N
+        -- Goal: (.var (.free N), singleton N) = (.var (.free (level / 2)), singleton (level / 2))
         simp only [BVar.level, Sig.size]
-        -- Goal: N = List.length (Sig.platform_of N) / 2
         rw [Sig.platform_of_length]
-        -- Goal: N = (2 * N) / 2
         simp
       | there c'' =>
         -- c'' : BVar (Sig.platform_of N) .cvar

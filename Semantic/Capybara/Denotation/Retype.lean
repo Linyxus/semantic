@@ -19,7 +19,7 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
 
   cvar :
     ∀ (C : BVar s1 .cvar),
-      env1.lookup_cvar C = (σ.cvar C).subst (Subst.from_TypeEnv env2)
+      (env1.lookup_cvar C).1 = (σ.cvar C).subst (Subst.from_TypeEnv env2)
 
 lemma weaken_interp_var {x : Var .var s} {ps : PeakSet s} :
   interp_var env x = interp_var (env.extend_var n ps) (x.rename Rename.succ) := by
@@ -94,7 +94,7 @@ theorem Retype.liftTVar
   cvar := fun
     | .there C => by
       simp [TypeEnv.extend_tvar, Subst.lift]
-      change env1.lookup_cvar C = _
+      change (env1.lookup_cvar C).1 = _
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.tweaken
 
@@ -122,7 +122,7 @@ theorem Retype.liftCVar
         CaptureSet.subst, Subst.from_TypeEnv]
     | .there C => by
       simp [TypeEnv.extend_cvar, Subst.lift]
-      change env1.lookup_cvar C = _
+      change (env1.lookup_cvar C).1 = _
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
 
