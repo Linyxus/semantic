@@ -374,7 +374,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Mutabil
               -- Show capability sets match
               have hcap_rename :
                 (Cf.rename Rename.succ).denot (env.extend_cvar CS) = Cf.denot env := by
-                have := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=CS) (cap:=.empty)) Cf
+                have :=
+                  rebind_captureset_denot
+                    (Rebind.cweaken (env:=env) (cs:=CS) (cap:=.empty)) Cf
                 exact this.symm
               -- Use monotonicity
               have hCf_mono : Cf.denot env store = Cf.denot env m' := by
