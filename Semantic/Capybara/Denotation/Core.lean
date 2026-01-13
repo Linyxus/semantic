@@ -355,13 +355,14 @@ theorem CapabilitySet.BoundedBy.trans
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
 
--- WIP, commented out for now
--- def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
---   ∀ m1 c1 m2 c2,
---     (.cvar m1 c1) ⊆ dom ->
---     (.cvar m2 c2) ⊆ dom ->
---     (c1 ≠ c2) ->
---     True
+def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
+  ∀ m1 c1 m2 c2,
+    (.cvar m1 c1) ⊆ dom ->
+    (.cvar m2 c2) ⊆ dom ->
+    (c1 ≠ c2) ->
+    CapabilitySet.Noninterference
+      ((env.lookup_cvar c1).2.applyMut m1)
+      ((env.lookup_cvar c2).2.applyMut m2)
 
 /-- Whether this denotation enforces purity of the value. -/
 def Denot.enforce_pure (d : Denot) : Prop :=
