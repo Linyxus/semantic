@@ -178,11 +178,19 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 /-- Type information for each kind of variable bindings in type context. -/
 inductive TypeInfo : Sig -> Kind -> Type where
 /-- Type information for a variable is a store location plus a peak set. -/
-| var : Nat -> PeakSet s -> TypeInfo s .var
+| var :
+  Nat ->
+  PeakSet s ->
+  TypeInfo s .var
 /-- Type information for a type variable is a denotation. -/
-| tvar : Denot -> TypeInfo s .tvar
+| tvar :
+  Denot ->
+  TypeInfo s .tvar
 /-- Type information for a capture variable is a ground capture set. -/
-| cvar : CaptureSet {} -> TypeInfo s .cvar
+| cvar :
+  CaptureSet {} ->
+  CapabilitySet ->
+  TypeInfo s .cvar
 
 inductive TypeEnv : Sig -> Type where
 | empty : TypeEnv {}
@@ -301,7 +309,13 @@ theorem CapabilitySet.BoundedBy.trans
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
 
-def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop := True
+-- WIP, commented out for now
+-- def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
+--   ∀ m1 c1 m2 c2,
+--     (.cvar m1 c1) ⊆ dom ->
+--     (.cvar m2 c2) ⊆ dom ->
+--     (c1 ≠ c2) ->
+--     True
 
 /-- Whether this denotation enforces purity of the value. -/
 def Denot.enforce_pure (d : Denot) : Prop :=
