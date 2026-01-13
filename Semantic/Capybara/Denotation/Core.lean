@@ -208,7 +208,7 @@ def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
 def TypeEnv.extend_cvar
   (Γ : TypeEnv s) (ground : CaptureSet {}) :
   TypeEnv (s,C) :=
-  Γ.extend (.cvar ground)
+  Γ.extend (.cvar ground .empty)
 
 def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSet s)
 | .extend _ (.var n ps), .here => (n, ps.rename Rename.succ)
@@ -221,7 +221,7 @@ def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> Denot
 | .extend Γ _, .there x => Γ.lookup_tvar x
 
 def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {}
-| .extend _ (.cvar cs), .here => cs
+| .extend _ (.cvar cs _), .here => cs
 | .extend Γ _, .there x => Γ.lookup_cvar x
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
@@ -465,7 +465,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar cs), m =>
+| .push Γ (.cvar B), .extend env (.cvar cs _), m =>
   (cs.WfInHeap m.heap) ∧
   ((cs.ground_denot m).BoundedBy (B.denot m)) ∧
   EnvTyping Γ env m
@@ -495,7 +495,7 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
-  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs), .there x' =>
+  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, h'⟩ := h
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
