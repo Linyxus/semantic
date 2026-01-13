@@ -202,7 +202,6 @@ def TypeEnv.extend_cvar
   TypeEnv (s,C) :=
   Γ.extend (.cvar ground)
 
-
 def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSet s)
 | .extend _ (.var n ps), .here => (n, ps.rename Rename.succ)
 | .extend Γ _, .there x =>
@@ -301,6 +300,8 @@ theorem CapabilitySet.BoundedBy.trans
     cases hbound with
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
+
+def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop := True
 
 /-- Whether this denotation enforces purity of the value. -/
 def Denot.enforce_pure (d : Denot) : Prop :=
@@ -2996,8 +2997,8 @@ theorem CaptureSet.IsEmpty.denot_empty {cs : CaptureSet s}
   unfold CaptureSet.denot
   exact (h.subst _).ground_denot_empty
 
-/-- covers cannot hold for the empty capability set. -/
-theorem CapabilitySet.not_covers_empty
+/-- covers cannot hold for a capability set that is empty (via IsEmpty). -/
+theorem CapabilitySet.not_covers_of_isEmpty
     (h : CapabilitySet.IsEmpty cs) : ¬ CapabilitySet.covers m l cs := by
   intro hcov
   induction h with
@@ -3076,19 +3077,19 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, hcov⟩ := hdenot
-    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
+    exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case cell cs =>
     -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, label, _, _, _, hcov⟩ := hdenot
-    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
+    exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case reader cs =>
     -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, _, hcov⟩ := hdenot
-    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
+    exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case arrow T1 cs T2 =>
     -- If cs.IsEmpty, then R0 ⊆ cs.denot means R0 ⊆ .empty
     simp only [Ty.captureSet] at hpure
