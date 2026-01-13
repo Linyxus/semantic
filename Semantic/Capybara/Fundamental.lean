@@ -869,6 +869,8 @@ theorem typed_env_lookup_cvar_aux
     match env with
     | .extend env' (.cvar cs _) =>
       simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
+      -- hts.2.1 : cap.BoundedBy, hts.2.2.1 : cap = cs.ground_denot m
+      rw [<- hts.2.2.1]
       exact hts.2.1
   case there b0 b hc_prev ih =>
     cases b0

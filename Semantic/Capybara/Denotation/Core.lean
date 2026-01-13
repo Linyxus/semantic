@@ -2253,15 +2253,12 @@ theorem env_typing_monotonic
           · -- Prove: cs.WfInHeap mem2.heap
             exact CaptureSet.wf_monotonic hmem hwf
           constructor
-          · -- Need: cs.ground_denot mem2 ⊆ B.denot mem2
-            -- Have: cs.ground_denot mem1 ⊆ B.denot mem1
-            -- Get cs.ground_denot mem1 = cs.ground_denot mem2
-            have h_denot_eq := ground_denot_is_monotonic hwf hmem
-            -- Get B.denot mem1 = B.denot mem2 (trivially true for Mutability)
+          · -- Need: cap.BoundedBy (B.denot mem2)
+            -- Have: cap.BoundedBy (B.denot mem1)
+            -- B.denot mem1 = B.denot mem2 (trivially true for Mutability)
             have h_bound_eq : B.denot mem1 = B.denot mem2 :=
               mutability_denot_is_monotonic
-            -- Combine the equalities
-            rw [<-h_denot_eq, <-h_bound_eq]
+            rw [<-h_bound_eq]
             exact hsub
           constructor
           · rw [hcap, ground_denot_is_monotonic hwf hmem]
