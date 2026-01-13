@@ -204,14 +204,14 @@ def rebind_val_denot
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hsub_bound
       let R0 := expand_captures m.heap cs'
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T R0
+      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hsub_bound
       let R0 := expand_captures m.heap cs'
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T R0
+      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
       exact (ih2 m' _).mpr hd
 
@@ -240,7 +240,7 @@ def rebind_exi_val_denot
         simp
         -- Goal: CS.WfInHeap m.heap → (... ↔ ...)
         intro _hwf
-        have ih := rebind_val_denot (ρ.liftCVar CS) T
+        have ih := rebind_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m)) T
         exact ih m (Exp.var y)
       all_goals {
         -- resolve returned non-pack
