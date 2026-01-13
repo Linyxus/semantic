@@ -13,7 +13,7 @@ def PreDenot := CapabilitySet -> Denot
 /-- Capture-denotation. Given any memory, it produces a set of capabilities. -/
 def CapDenot := Memory -> CapabilitySet
 
-/-- A bound on capability sets. It can either be a concrete set of the top element. -/
+/-- A bound on capability sets. -/
 inductive CapabilityBound : Type where
 | top : Mutability -> CapabilityBound
 
@@ -1150,17 +1150,6 @@ def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
 def TypeEnv.is_bool_independent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_bool_independent
-
--- NOTE: The following TypeEnv properties are no longer needed after the type hierarchy collapse.
--- They relied on Denot.is_reachability_safe, Denot.is_reachability_monotonic, and Denot.is_tight
--- which are now trivially true.
---
--- def TypeEnv.is_reachability_safe (env : TypeEnv s) : Prop :=
---   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_reachability_safe
--- def TypeEnv.is_reachability_monotonic (env : TypeEnv s) : Prop :=
---   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_reachability_monotonic
--- def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
---   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_tight
 
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env mem) :
