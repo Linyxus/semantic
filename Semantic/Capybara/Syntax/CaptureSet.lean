@@ -21,6 +21,18 @@ inductive Le : Mutability -> Mutability -> Prop where
 
 instance instLE : LE Mutability := ⟨Mutability.Le⟩
 
+/-- Transitivity of mutability ordering. -/
+theorem Le.trans {m1 m2 m3 : Mutability} (h1 : m1 ≤ m2) (h2 : m2 ≤ m3) : m1 ≤ m3 := by
+  cases h1 with
+  | refl => exact h2
+  | ro_eps => cases h2; exact .ro_eps
+
+/-- Read-only is less than or equal to any mutability. -/
+theorem Le.ro_le {m : Mutability} : .ro ≤ m := by
+  cases m with
+  | epsilon => exact .ro_eps
+  | ro => exact .refl
+
 end Mutability
 
 /-- A variable, either bound (de Bruijn indexed) or free (heap pointer). -/
