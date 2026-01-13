@@ -206,9 +206,9 @@ def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar
-  (Γ : TypeEnv s) (ground : CaptureSet {}) :
+  (Γ : TypeEnv s) (ground : CaptureSet {}) (cap : CapabilitySet := .empty) :
   TypeEnv (s,C) :=
-  Γ.extend (.cvar ground .empty)
+  Γ.extend (.cvar ground cap)
 
 def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSet s)
 | .extend _ (.var n ps), .here => (n, ps.rename Rename.succ)

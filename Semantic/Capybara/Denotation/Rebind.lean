@@ -48,8 +48,8 @@ def Rebind.liftTVar
       exact ρ.cvar y
 
 def Rebind.liftCVar
-  (ρ : Rebind env1 f env2) (cs : CaptureSet {}) :
-  Rebind (env1.extend_cvar cs) (f.lift) (env2.extend_cvar cs) where
+  (ρ : Rebind env1 f env2) (cs : CaptureSet {}) (cap : CapabilitySet := .empty) :
+  Rebind (env1.extend_cvar cs cap) (f.lift) (env2.extend_cvar cs cap) where
   var := fun
     | .there y => by
       simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_var]
@@ -295,8 +295,8 @@ def Rebind.tweaken {env : TypeEnv s} {d : Denot} :
   tvar := fun _ => rfl
   cvar := fun _ => rfl
 
-def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} :
-  Rebind env Rename.succ (env.extend_cvar cs) where
+def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet} :
+  Rebind env Rename.succ (env.extend_cvar cs cap) where
   var := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
@@ -317,16 +317,16 @@ lemma tweaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
   Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_tvar d) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.tweaken) (T:=T)
 
-lemma cweaken_val_denot {env : TypeEnv s} {cs : CaptureSet {}}
+lemma cweaken_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
   {T : Ty .capt s} :
   Ty.val_denot env T ≈
-    Ty.val_denot (env.extend_cvar cs) (T.rename Rename.succ) := by
+    Ty.val_denot (env.extend_cvar cs cap) (T.rename Rename.succ) := by
   apply rebind_val_denot (ρ:=Rebind.cweaken) (T:=T)
 
-lemma cweaken_exi_val_denot {env : TypeEnv s} {cs : CaptureSet {}}
+lemma cweaken_exi_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
   {T : Ty .exi s} :
   Ty.exi_val_denot env T ≈
-    Ty.exi_val_denot (env.extend_cvar cs) (T.rename Rename.succ) := by
+    Ty.exi_val_denot (env.extend_cvar cs cap) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.cweaken) (T:=T)
 
 end Capybara

@@ -53,11 +53,11 @@ theorem typed_env_lookup_var
       -- binding is .cvar Bb
       rename_i Bb
       match env with
-      | .extend env0 (.cvar cs) =>
+      | .extend env0 (.cvar cs cap) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
         obtain ⟨_, _, henv0⟩ := hts
         have hih := b henv0
-        have heqv := cweaken_val_denot (env:=env0) (cs:=cs) (T:=T0)
+        have heqv := cweaken_val_denot (env:=env0) (cs:=cs) (cap:=cap) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
         exact hih
 
@@ -374,7 +374,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Mutabil
               -- Show capability sets match
               have hcap_rename :
                 (Cf.rename Rename.succ).denot (env.extend_cvar CS) = Cf.denot env := by
-                have := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=CS)) Cf
+                have := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=CS) (cap:=.empty)) Cf
                 exact this.symm
               -- Use monotonicity
               have hCf_mono : Cf.denot env store = Cf.denot env m' := by
@@ -856,7 +856,7 @@ theorem typed_env_lookup_cvar_aux
   case here =>
     rename_i Γ' cb'
     match env with
-    | .extend env' (.cvar cs) =>
+    | .extend env' (.cvar cs _) =>
       simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
       exact hts.2.1
   case there b0 b hc_prev ih =>
@@ -880,7 +880,7 @@ theorem typed_env_lookup_cvar_aux
     case cvar =>
       rename_i Γ' c' cb' Bb
       match env with
-      | .extend env' (.cvar cs) =>
+      | .extend env' (.cvar cs _) =>
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
         obtain ⟨_, _, henv'⟩ := hts
         have hih := ih henv'
@@ -1697,15 +1697,15 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
     | cvar cb =>
       -- Context extended with a capture variable
       match env with
-      | .extend env0 (.cvar cs) =>
+      | .extend env0 (.cvar cs cap) =>
         simp only [EnvTyping, TypeEnv.lookup_tvar] at htyping ⊢
         obtain ⟨hwf_cb, hbound, htyping'⟩ := htyping
         -- Apply IH
         have ih_result := a_ih htyping'
         -- Use cweaken for cvar extension
         have hw : Ty.val_denot env0 S.core ≈
-                  Ty.val_denot (env0.extend_cvar cs) (S.core.rename Rename.succ) :=
-          cweaken_val_denot (cs := cs)
+                  Ty.val_denot (env0.extend_cvar cs cap) (S.core.rename Rename.succ) :=
+          cweaken_val_denot (cs := cs) (cap := cap)
         simp [TypeEnv.extend_cvar] at hw
         -- Compose IH with weakening
         simp [Denot.ImplyAfter] at ih_result ⊢
@@ -2460,7 +2460,7 @@ theorem sem_typ_unpack
           ((env.extend_cvar cs).extend_var fx ps) m1 =
         C.denot env store := by
         -- Use rebind to show double-renamed C equals original C
-        have h1 := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=cs)) C
+        have h1 := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=cs) (cap:=.empty)) C
         have h2 := rebind_captureset_denot
           (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=ps))
           (C.rename Rename.succ)
@@ -2480,7 +2480,7 @@ theorem sem_typ_unpack
       have heqv_composed : Ty.exi_val_denot env U ≈
         Ty.exi_val_denot ((env.extend_cvar cs).extend_var fx ps)
           ((U.rename Rename.succ).rename Rename.succ) := by
-        have heqv1 := rebind_exi_val_denot (Rebind.cweaken (env:=env) (cs:=cs)) U
+        have heqv1 := rebind_exi_val_denot (Rebind.cweaken (env:=env) (cs:=cs) (cap:=.empty)) U
         have heqv2 := rebind_exi_val_denot
           (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=ps))
           (U.rename Rename.succ)
