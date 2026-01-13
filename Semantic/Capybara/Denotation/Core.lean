@@ -514,7 +514,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs cap), m =>
   (cs.WfInHeap m.heap) ∧
-  ((cs.ground_denot m).BoundedBy (B.denot m)) ∧
+  (cap.BoundedBy (B.denot m)) ∧
   cap = cs.ground_denot m ∧
   EnvTyping Γ env m
 
