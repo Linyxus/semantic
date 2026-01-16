@@ -2519,6 +2519,10 @@ theorem sem_typ_unpack
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
 
+theorem fundamental_sepcheck
+  (hsep : SepCheck Γ C1 C2) :
+  SemSepCheck Γ C1 C2 := by sorry
+
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (ht : C # Γ ⊢ e : T) :
