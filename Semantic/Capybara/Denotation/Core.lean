@@ -3267,22 +3267,65 @@ namespace TypeEnv.HasSepDom
 
 theorem union_inv_left {env : TypeEnv s} {C1 C2 : CaptureSet s}
   (h : env.HasSepDom (C1 ∪ C2)) :
-  env.HasSepDom C1 := sorry
+  env.HasSepDom C1 := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  apply h
+  · exact CaptureSet.Subset.union_right_left hsub1
+  · exact CaptureSet.Subset.union_right_left hsub2
+  · exact hne
 
 theorem union_inv_right {env : TypeEnv s} {C1 C2 : CaptureSet s}
   (h : env.HasSepDom (C1 ∪ C2)) :
-  env.HasSepDom C2 := sorry
+  env.HasSepDom C2 := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  apply h
+  · exact CaptureSet.Subset.union_right_right hsub1
+  · exact CaptureSet.Subset.union_right_right hsub2
+  · exact hne
 
 theorem union_intro {env : TypeEnv s} {C1 C2 : CaptureSet s}
-  (h1 : env.HasSepDom C1) (h2 : env.HasSepDom C2) :
+  (h1 : env.HasSepDom C1) (h2 : env.HasSepDom C2)
+  (hcross : ∀ m1 c1 m2 c2,
+    (.cvar m1 c1) ⊆ C1 → (.cvar m2 c2) ⊆ C2 → c1 ≠ c2 →
+    CapabilitySet.Noninterference
+      ((env.lookup_cvar c1).2.applyMut m1)
+      ((env.lookup_cvar c2).2.applyMut m2)) :
   env.HasSepDom (C1 ∪ C2) := by
-  sorry
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  -- Case analysis on where each cvar comes from
+  cases hsub1 with
+  | union_right_left hsub1' =>
+    cases hsub2 with
+    | union_right_left hsub2' =>
+      -- Both in C1: use h1
+      exact h1 m1 c1 m2 c2 hsub1' hsub2' hne
+    | union_right_right hsub2' =>
+      -- c1 in C1, c2 in C2: use hcross
+      exact hcross m1 c1 m2 c2 hsub1' hsub2' hne
+  | union_right_right hsub1' =>
+    cases hsub2 with
+    | union_right_left hsub2' =>
+      -- c1 in C2, c2 in C1: use hcross with symmetry
+      apply CapabilitySet.Noninterference.ni_symm
+      exact hcross m2 c2 m1 c1 hsub2' hsub1' (Ne.symm hne)
+    | union_right_right hsub2' =>
+      -- Both in C2: use h2
+      exact h2 m1 c1 m2 c2 hsub1' hsub2' hne
 
 theorem union_comm {env : TypeEnv s} {C1 C2 : CaptureSet s}
   (h : env.HasSepDom (C2 ∪ C1)) :
   env.HasSepDom (C1 ∪ C2) := by
   intro m1 c1 m2 c2 hsub1 hsub2 hne
-  sorry
+  -- Convert subset from (C1 ∪ C2) to (C2 ∪ C1)
+  have hsub1' : (.cvar m1 c1) ⊆ (C2 ∪ C1) := by
+    cases hsub1 with
+    | union_right_left h1 => exact CaptureSet.Subset.union_right_right h1
+    | union_right_right h1 => exact CaptureSet.Subset.union_right_left h1
+  have hsub2' : (.cvar m2 c2) ⊆ (C2 ∪ C1) := by
+    cases hsub2 with
+    | union_right_left h2 => exact CaptureSet.Subset.union_right_right h2
+    | union_right_right h2 => exact CaptureSet.Subset.union_right_left h2
+  exact h m1 c1 m2 c2 hsub1' hsub2' hne
 
 end TypeEnv.HasSepDom
 
