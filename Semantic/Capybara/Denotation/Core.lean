@@ -2270,14 +2270,23 @@ def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
     EnvTyping Γ env m ->
     C1.denot env m ⊆ C2.denot env m
 
+/-- Semantic capture kinding. -/
 def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
   ∀ env m,
     EnvTyping Γ env m ->
     CapabilitySet.HasKind (C.denot env m) mode
 
-def SemSubbound (_Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
+set_option linter.unusedVariables false in
+/-- Semantic sub-bounding -/
+def SemSubbound (Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
   ∀ m,
     B1.denot m ⊆ B2.denot m
+
+/-- Semantic separation check. -/
+def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
+  ∀ env H,
+    EnvTyping Γ env H ->
+    CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
 /-- Semantic subtyping relation. -/
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
