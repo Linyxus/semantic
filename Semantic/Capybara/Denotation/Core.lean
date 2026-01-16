@@ -3263,4 +3263,27 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
       | bound bx => cases bx
     | _ => simp [resolve] at hres
 
+namespace TypeEnv.HasSepDom
+
+theorem union_inv_left {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom (C1 ∪ C2)) :
+  env.HasSepDom C1 := sorry
+
+theorem union_inv_right {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom (C1 ∪ C2)) :
+  env.HasSepDom C2 := sorry
+
+theorem union_intro {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h1 : env.HasSepDom C1) (h2 : env.HasSepDom C2) :
+  env.HasSepDom (C1 ∪ C2) := by
+  sorry
+
+theorem union_comm {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom (C2 ∪ C1)) :
+  env.HasSepDom (C1 ∪ C2) := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  sorry
+
+end TypeEnv.HasSepDom
+
 end Capybara

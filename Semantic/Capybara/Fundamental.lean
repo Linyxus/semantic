@@ -2519,9 +2519,56 @@ theorem sem_typ_unpack
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
 
+theorem sem_sepcheck_symm
+  (ih : SemSepCheck Γ C1 C2) :
+  SemSepCheck Γ C2 C1 := by
+  intro env H hts hsep
+  apply CapabilitySet.Noninterference.ni_symm
+  exact ih env H hts (TypeEnv.HasSepDom.union_comm hsep)
+
+theorem sem_sepcheck_sc
+  (hsc : Subcapt Γ C1 C2)
+  (ih : SemSepCheck Γ C2 C3) :
+  SemSepCheck Γ C1 C3 := by
+  sorry
+
+theorem sem_sepcheck_union
+  (ih1 : SemSepCheck Γ C1 C3)
+  (ih2 : SemSepCheck Γ C2 C3) :
+  SemSepCheck Γ (C1 ∪ C2) C3 := by
+  sorry
+
+theorem sem_sepcheck_empty :
+  SemSepCheck Γ {} C := by
+  sorry
+
+theorem sem_sepcheck_ro
+  (hk1 : HasKind Γ C1 .ro)
+  (hk2 : HasKind Γ C2 .ro) :
+  SemSepCheck Γ C1 C2 := by
+  sorry
+
+theorem sem_sepcheck_distinct_roots
+  (hne : c1 ≠ c2) :
+  SemSepCheck Γ (.cvar m1 c1) (.cvar m2 c2) := by
+  sorry
+
 theorem fundamental_sepcheck
   (hsep : SepCheck Γ C1 C2) :
-  SemSepCheck Γ C1 C2 := by sorry
+  SemSepCheck Γ C1 C2 := by
+  induction hsep with
+  | sep_symm _ ih =>
+    exact sem_sepcheck_symm ih
+  | sep_sc hsc _ ih =>
+    exact sem_sepcheck_sc hsc ih
+  | sep_union _ _ ih1 ih2 =>
+    exact sem_sepcheck_union ih1 ih2
+  | sep_empty =>
+    exact sem_sepcheck_empty
+  | sep_ro hk1 hk2 =>
+    exact sem_sepcheck_ro hk1 hk2
+  | sep_distinct_roots hne =>
+    exact sem_sepcheck_distinct_roots hne
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
