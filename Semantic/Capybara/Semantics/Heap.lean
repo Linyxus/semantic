@@ -2428,4 +2428,13 @@ inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
   (l1 ≠ l2) ->
   Noninterference (.cap m1 l1) (.cap m2 l2)
 
+namespace CapabilitySet.Noninterference
+
+theorem subset_left
+  (hni : Noninterference cs1 cs2)
+  (hsub : cs1' ⊆ cs1) :
+  Noninterference cs1' cs2 := by sorry
+
+end CapabilitySet.Noninterference
+
 end Capybara
