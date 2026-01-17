@@ -2430,10 +2430,40 @@ inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
 
 namespace CapabilitySet.Noninterference
 
+theorem split_union
+  (hni : Noninterference R1 R2) :
+  (∀ cs1 cs2,
+    R1 = cs1 ∪ cs2 ->
+    Noninterference cs1 R2 ∧ Noninterference cs2 R2) ∧
+  (∀ cs1 cs2,
+    R2 = cs1 ∪ cs2 ->
+    Noninterference R1 cs1 ∧ Noninterference R1 cs2) := sorry
+
 theorem subset_left
   (hni : Noninterference cs1 cs2)
-  (hsub : cs1' ⊆ cs1) :
-  Noninterference cs1' cs2 := by sorry
+  (hsub : cs0 ⊆ cs1) :
+  Noninterference cs0 cs2 := by
+  induction hsub with
+  | refl =>
+    exact hni
+  | empty =>
+    exact ni_empty
+  | trans _ _ ih1 ih2 =>
+    exact ih1 (ih2 hni)
+  | union_left _ _ ih1 ih2 =>
+    exact ni_union (ih1 hni) (ih2 hni)
+  | union_right_left =>
+    sorry
+  | union_right_right =>
+    sorry
+  | cap_ro =>
+    sorry
+
+theorem subset_right
+  (hni : Noninterference cs1 cs2)
+  (hsub : cs2' ⊆ cs2) :
+  Noninterference cs1 cs2' :=
+  ni_symm (subset_left (ni_symm hni) hsub)
 
 end CapabilitySet.Noninterference
 
