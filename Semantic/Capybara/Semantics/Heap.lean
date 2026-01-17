@@ -2495,11 +2495,42 @@ theorem subset_left
   | union_left _ _ ih1 ih2 =>
     exact ni_union (ih1 hni) (ih2 hni)
   | union_right_left =>
-    sorry
+    exact (split_union_left hni).left
   | union_right_right =>
-    sorry
-  | cap_ro =>
-    sorry
+    exact (split_union_left hni).right
+  | @cap_ro l =>
+    exact weaken_epsilon_ro hni
+where
+  weaken_epsilon_ro_aux {l : Nat} {cs1 cs2 : CapabilitySet}
+    (hni : Noninterference cs1 cs2) :
+    (cs1 = .cap .epsilon l → Noninterference (.cap .ro l) cs2) ∧
+    (cs2 = .cap .epsilon l → Noninterference cs1 (.cap .ro l)) := by
+    induction hni with
+    | ni_symm _ ih =>
+      exact ⟨fun h => ni_symm (ih.2 h), fun h => ni_symm (ih.1 h)⟩
+    | ni_empty =>
+      constructor
+      · intro h; cases h
+      · intro _; exact ni_empty
+    | ni_union _ _ ih1 ih2 =>
+      constructor
+      · intro h; cases h
+      · intro h
+        exact ni_union (ih1.2 h) (ih2.2 h)
+    | ni_ro =>
+      constructor <;> (intro h; cases h)
+    | ni_disj hne =>
+      constructor
+      · intro h
+        cases h
+        exact ni_disj hne
+      · intro h
+        cases h
+        exact ni_disj hne
+  weaken_epsilon_ro {l : Nat} {cs : CapabilitySet}
+    (hni : Noninterference (.cap .epsilon l) cs) :
+    Noninterference (.cap .ro l) cs :=
+    (weaken_epsilon_ro_aux hni).1 rfl
 
 theorem subset_right
   (hni : Noninterference cs1 cs2)
