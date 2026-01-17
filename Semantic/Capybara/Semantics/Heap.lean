@@ -2437,7 +2437,49 @@ theorem split_union
     Noninterference cs1 R2 ∧ Noninterference cs2 R2) ∧
   (∀ cs1 cs2,
     R2 = cs1 ∪ cs2 ->
-    Noninterference R1 cs1 ∧ Noninterference R1 cs2) := sorry
+    Noninterference R1 cs1 ∧ Noninterference R1 cs2) := by
+  induction hni with
+  | ni_symm _ ih =>
+    constructor
+    · intro cs1 cs2 heq
+      have ⟨_, h⟩ := ih
+      have ⟨h1, h2⟩ := h cs1 cs2 heq
+      exact ⟨ni_symm h1, ni_symm h2⟩
+    · intro cs1 cs2 heq
+      have ⟨h, _⟩ := ih
+      have ⟨h1, h2⟩ := h cs1 cs2 heq
+      exact ⟨ni_symm h1, ni_symm h2⟩
+  | ni_empty =>
+    constructor
+    · intro cs1 cs2 heq
+      cases heq
+    · intro cs1 cs2 heq
+      exact ⟨ni_empty, ni_empty⟩
+  | ni_union hni1 hni2 ih1 ih2 =>
+    constructor
+    · intro cs1 cs2 heq
+      cases heq
+      exact ⟨hni1, hni2⟩
+    · intro cs1 cs2 heq
+      have ⟨_, h1⟩ := ih1
+      have ⟨_, h2⟩ := ih2
+      have ⟨h1a, h1b⟩ := h1 cs1 cs2 heq
+      have ⟨h2a, h2b⟩ := h2 cs1 cs2 heq
+      exact ⟨ni_union h1a h2a, ni_union h1b h2b⟩
+  | ni_ro =>
+    constructor <;> (intro cs1 cs2 heq; cases heq)
+  | ni_disj hne =>
+    constructor <;> (intro cs1 cs2 heq; cases heq)
+
+theorem split_union_left
+  (hni : Noninterference (cs1 ∪ cs2) R) :
+  Noninterference cs1 R ∧ Noninterference cs2 R :=
+  (split_union hni).left cs1 cs2 rfl
+
+theorem split_union_right
+  (hni : Noninterference R (cs1 ∪ cs2)) :
+  Noninterference R cs1 ∧ Noninterference R cs2 :=
+  (split_union hni).right cs1 cs2 rfl
 
 theorem subset_left
   (hni : Noninterference cs1 cs2)
