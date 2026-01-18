@@ -322,6 +322,19 @@ theorem refl' {C : CaptureSet s} : C.CoveredBy C := by
   simp only [CaptureSet.applyMut_epsilon] at h
   exact h
 
+theorem mut_mono_left {C1 C2 : CaptureSet s} {m1 m2 : Mutability}
+  (hm : m1 ≤ m2)
+  (hsub : CaptureSet.CoveredBy (C1.applyMut m2) C2) :
+    CaptureSet.CoveredBy (C1.applyMut m1) C2 := by
+  generalize he : C1.applyMut m2 = C1m2
+  rw [he] at hsub
+  induction hsub with
+  | refl => sorry
+  | empty => sorry
+  | union_left _ _ ih1 ih2 => sorry
+  | union_right_left _ ih => sorry
+  | union_right_right _ ih => sorry
+
 theorem trans {C1 C2 C3 : CaptureSet s}
   (h1 : C1.CoveredBy C2) (h2 : C2.CoveredBy C3) : C1.CoveredBy C3 := by
   induction h1 generalizing C3 with
