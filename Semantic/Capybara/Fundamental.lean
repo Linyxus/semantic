@@ -2519,9 +2519,130 @@ theorem sem_typ_unpack
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
 
+-- Helper: transitivity of CaptureSet.Subset
+-- This proof requires well-founded recursion which is complex to set up.
+-- For now, we use sorry and rely on the semantic interpretation.
+theorem CaptureSet.Subset.trans {C1 C2 C3 : CaptureSet s}
+  (h1 : C1 ⊆ C2) (h2 : C2 ⊆ C3) : C1 ⊆ C3 := by
+  sorry
+
+-- Helper: rename preserves subset
+theorem CaptureSet.Subset.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
+  (hsub : C1 ⊆ C2) : C1.rename f ⊆ C2.rename f := by
+  induction hsub with
+  | refl => exact .refl
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.rename]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.rename]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.rename]
+    exact .union_right_right ih
+
+-- Helper: peaks is monotonic w.r.t. CaptureSet.Subset
+theorem peaks_mono {Γ : Ctx s} {C1 C2 : CaptureSet s}
+  (hsub : C1 ⊆ C2) : (C1.peaks Γ) ⊆ (C2.peaks Γ) := by
+  induction hsub with
+  | refl => exact .refl
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.peaks]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_right ih
+
+-- Helper: peaks commutes with rename and context extension (subset version)
+-- This shows that computing peaks then renaming is a subset of
+-- renaming then computing peaks in extended context
+theorem peaks_rename_succ_sub {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
+  (C.peaks Γ).rename Rename.succ ⊆ (C.rename Rename.succ).peaks (Γ.push b) := by
+  induction C generalizing k with
+  | empty =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .refl
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .union_left (.union_right_left ih1) (.union_right_right ih2)
+  | cvar m c =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .refl
+  | var m v =>
+    cases v with
+    | free _ =>
+      simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename]
+      exact .refl
+    | bound x =>
+      cases Γ with
+      | empty => cases x
+      | push Γ' bd =>
+        cases bd with
+        | var T =>
+          cases x with
+          | here =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+        | tvar T =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+        | cvar cm =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+
+-- Helper: peaks of applyRO is subset of peaks
+theorem peaks_applyRO_sub {Γ : Ctx s} {C : CaptureSet s} :
+  (C.applyRO.peaks Γ) ⊆ (C.peaks Γ) := by
+  sorry
+
+-- Helper: peaks respects applyRO monotonically
+theorem peaks_applyRO_mono {Γ : Ctx s} {C1 C2 : CaptureSet s}
+  (hsub : C1.peaks Γ ⊆ C2.peaks Γ) : (C1.applyRO.peaks Γ) ⊆ (C2.applyRO.peaks Γ) := by
+  sorry -- TODO: prove applyRO monotonicity on peaks
+
 theorem subcapt_peaks
   (hsc : Subcapt Γ C1 C2) :
-  (C1.peaks Γ) ⊆ (C2.peaks Γ) := by sorry
+  (C1.peaks Γ) ⊆ (C2.peaks Γ) := by
+  induction hsc with
+  | sc_trans _ _ ih1 ih2 =>
+    exact CaptureSet.Subset.trans ih1 ih2
+  | sc_elem hsub =>
+    exact peaks_mono hsub
+  | sc_union _ _ ih1 ih2 =>
+    conv_lhs => simp only [Union.union]; unfold CaptureSet.peaks
+    simp only [Union.union]
+    exact CaptureSet.Subset.union_left ih1 ih2
+  | sc_var hlk =>
+    -- peaks (.var .epsilon (.bound x)) Γ ⊆ peaks T.captureSet Γ
+    -- The peaks of a variable equals peaks of the looked-up type's capture set
+    -- This follows from the definition of peaks which unrolls variable references
+    induction hlk with
+    | here =>
+      simp only [CaptureSet.peaks, CaptureSet.applyMut_epsilon]
+      rw [Ty.captureSet_rename]
+      exact peaks_rename_succ_sub
+    | @there s k Γ' x T b _ ih =>
+      simp only [CaptureSet.peaks]
+      rw [Ty.captureSet_rename]
+      -- By transitivity, we get the goal
+      have ih' : (CaptureSet.peaks Γ' (CaptureSet.var Mutability.epsilon (Var.bound x))) ⊆
+                 (CaptureSet.peaks Γ' T.captureSet) := @ih Γ' .empty .empty
+      have h1 := CaptureSet.Subset.rename (s2 := (s,,k)) (f := Rename.succ) ih'
+      exact CaptureSet.Subset.trans h1 peaks_rename_succ_sub
+  | sc_ro =>
+    exact peaks_applyRO_sub
+  | sc_ro_mono _ ih =>
+    exact peaks_applyRO_mono ih
 
 theorem sem_sepcheck_symm
   (ih : SemSepCheck Γ C1 C2) :
