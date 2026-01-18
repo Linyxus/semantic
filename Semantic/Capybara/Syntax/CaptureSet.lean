@@ -314,23 +314,25 @@ inductive CaptureSet.CoveredBy : CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   CoveredBy C (C1.union C2)
 
+namespace CaptureSet.CoveredBy
+
 -- Helper: reflexivity for CoveredBy (any C covers itself)
-theorem CaptureSet.CoveredBy.refl' {C : CaptureSet s} : C.CoveredBy C := by
+theorem refl' {C : CaptureSet s} : C.CoveredBy C := by
   have h : (C.applyMut .epsilon).CoveredBy (C.applyMut .epsilon) := .refl Mutability.Le.refl
   simp only [CaptureSet.applyMut_epsilon] at h
   exact h
 
-theorem CaptureSet.CoveredBy.trans {C1 C2 C3 : CaptureSet s}
+theorem trans {C1 C2 C3 : CaptureSet s}
   (h1 : C1.CoveredBy C2) (h2 : C2.CoveredBy C3) : C1.CoveredBy C3 := by
   induction h1 generalizing C3 with
   | refl hm1 => sorry
-  | empty => exact CaptureSet.CoveredBy.empty
+  | empty => exact empty
   | union_left _ _ ih1 ih2 => sorry
   | union_right_left _ ih => sorry
   | union_right_right _ ih => sorry
 
 -- Helper: rename preserves CoveredBy
-theorem CaptureSet.CoveredBy.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
+theorem rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
   (hcov : C1.CoveredBy C2) : (C1.rename f).CoveredBy (C2.rename f) := by
   induction hcov with
   | refl hm =>
@@ -350,12 +352,12 @@ theorem CaptureSet.CoveredBy.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
     exact .union_right_right ih
 
 -- Helper: applyRO preserves CoveredBy
-theorem CaptureSet.CoveredBy.applyRO_mono {C1 C2 : CaptureSet s}
+theorem applyRO_mono {C1 C2 : CaptureSet s}
   (hcov : C1.CoveredBy C2) : C1.applyRO.CoveredBy C2.applyRO := by
   induction hcov with
   | refl hm =>
     simp only [CaptureSet.applyMut_applyRO]
-    exact .refl'
+    exact refl'
   | empty =>
     simp only [CaptureSet.applyRO]
     exact .empty
@@ -370,10 +372,12 @@ theorem CaptureSet.CoveredBy.applyRO_mono {C1 C2 : CaptureSet s}
     exact .union_right_right ih
 
 -- Helper: applyMut preserves CoveredBy
-theorem CaptureSet.CoveredBy.applyMut_mono {C1 C2 : CaptureSet s} {m : Mutability}
+theorem applyMut_mono {C1 C2 : CaptureSet s} {m : Mutability}
   (hcov : C1.CoveredBy C2) : (C1.applyMut m).CoveredBy (C2.applyMut m) := by
   cases m with
   | epsilon => simp only [CaptureSet.applyMut_epsilon]; exact hcov
   | ro => simp only [CaptureSet.applyMut_ro]; exact hcov.applyRO_mono
+
+end CaptureSet.CoveredBy
 
 end Capybara
