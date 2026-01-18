@@ -2286,7 +2286,7 @@ def SemSubbound (Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   ∀ env H,
     EnvTyping Γ env H ->
-    env.HasSepDom (C1 ∪ C2) ->
+    env.HasSepDom ((C1 ∪ C2).peaks Γ) ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
 /-- Semantic subtyping relation. -/
