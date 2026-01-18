@@ -291,4 +291,27 @@ theorem CaptureSet.IsEmpty.rename {cs : CaptureSet s1} (h : cs.IsEmpty) (ρ : Re
   | empty => exact IsEmpty.empty
   | union _ _ ih1 ih2 => exact IsEmpty.union ih1 ih2
 
+/-- The subset relation on capture sets. -/
+inductive CaptureSet.CoveredBy : CaptureSet s -> CaptureSet s -> Prop where
+| refl {C : CaptureSet s} {m1 m2 : Mutability} :
+  (hm : m1 ≤ m2) ->
+  --------------------
+  CoveredBy (C.applyMut m1) (C.applyMut m2)
+| empty :
+  --------------------
+  CoveredBy .empty C
+| union_left :
+  CoveredBy C1 C ->
+  CoveredBy C2 C ->
+  --------------------
+  CoveredBy (C1.union C2) C
+| union_right_left :
+  CoveredBy C C1 ->
+  --------------------
+  CoveredBy C (C1.union C2)
+| union_right_right {C1 : CaptureSet s} :
+  CoveredBy C C2 ->
+  --------------------
+  CoveredBy C (C1.union C2)
+
 end Capybara
