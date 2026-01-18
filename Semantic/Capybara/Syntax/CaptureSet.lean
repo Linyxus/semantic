@@ -161,6 +161,9 @@ inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
 | refl :
   --------------------
   Subset C C
+| empty :
+  --------------------
+  Subset .empty C
 | union_left :
   Subset C1 C ->
   Subset C2 C ->
