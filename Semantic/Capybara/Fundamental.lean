@@ -2519,6 +2519,10 @@ theorem sem_typ_unpack
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
 
+theorem subcapt_peaks
+  (hsc : Subcapt Γ C1 C2) :
+  (C1.peaks Γ) ⊆ (C2.peaks Γ) := by sorry
+
 theorem sem_sepcheck_symm
   (ih : SemSepCheck Γ C1 C2) :
   SemSepCheck Γ C2 C1 := by
