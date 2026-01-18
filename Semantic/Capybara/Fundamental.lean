@@ -1506,6 +1506,12 @@ theorem sem_sc_elem {C1 C2 : CaptureSet s}
   intro env m hts
   unfold CaptureSet.denot
   induction hmem
+  case empty =>
+    -- ∅.subst σ = ∅
+    simp [CaptureSet.subst]
+    -- ∅.ground_denot m = ∅
+    simp [CaptureSet.ground_denot]
+    exact CapabilitySet.Subset.empty
   case refl =>
     exact CapabilitySet.Subset.refl
   case union_left ih1 ih2 =>
@@ -2540,6 +2546,9 @@ theorem CaptureSet.Subset.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
   | union_right_right _ ih =>
     simp only [CaptureSet.rename]
     exact .union_right_right ih
+  | empty =>
+    simp only [CaptureSet.rename]
+    exact .empty
 
 -- Helper: peaks is monotonic w.r.t. CaptureSet.Subset
 theorem peaks_mono {Γ : Ctx s} {C1 C2 : CaptureSet s}
@@ -2555,6 +2564,9 @@ theorem peaks_mono {Γ : Ctx s} {C1 C2 : CaptureSet s}
   | union_right_right _ ih =>
     simp only [CaptureSet.peaks]
     exact .union_right_right ih
+  | empty =>
+    simp only [CaptureSet.peaks]
+    exact .empty
 
 -- Helper: peaks commutes with rename and context extension (subset version)
 -- This shows that computing peaks then renaming is a subset of
