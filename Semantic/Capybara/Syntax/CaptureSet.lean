@@ -320,14 +320,14 @@ theorem CaptureSet.CoveredBy.refl' {C : CaptureSet s} : C.CoveredBy C := by
   simp only [CaptureSet.applyMut_epsilon] at h
   exact h
 
--- Helper: transitivity of CaptureSet.CoveredBy
--- This proof is complex due to the structure of the refl constructor.
--- The key difficulty is that when chaining (C.applyMut m1 ⊆ C.applyMut m2) with
--- (C'.applyMut m1' ⊆ C'.applyMut m2'), we need to relate C and C' through the
--- equality C.applyMut m2 = C'.applyMut m1', which doesn't give us C = C'.
 theorem CaptureSet.CoveredBy.trans {C1 C2 C3 : CaptureSet s}
   (h1 : C1.CoveredBy C2) (h2 : C2.CoveredBy C3) : C1.CoveredBy C3 := by
-  sorry
+  induction h1 generalizing C3 with
+  | refl hm1 => sorry
+  | empty => exact CaptureSet.CoveredBy.empty
+  | union_left _ _ ih1 ih2 => sorry
+  | union_right_left _ ih => sorry
+  | union_right_right _ ih => sorry
 
 -- Helper: rename preserves CoveredBy
 theorem CaptureSet.CoveredBy.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
