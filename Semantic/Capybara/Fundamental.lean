@@ -2612,49 +2612,162 @@ theorem peaks_rename_succ_sub {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} 
             simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
             exact .refl
 
--- Helper: peaks of applyRO is subset of peaks
-theorem peaks_applyRO_sub {Γ : Ctx s} {C : CaptureSet s} :
-  (C.applyRO.peaks Γ) ⊆ (C.peaks Γ) := by
-  sorry
+-- Helper: peaks commutes with applyRO (using well-founded recursion like peaks)
+theorem peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
+  C.applyRO.peaks Γ = (C.peaks Γ).applyRO := by
+  match Γ, C with
+  | _, .empty => simp only [CaptureSet.applyRO, CaptureSet.peaks]
+  | Γ, .union C1 C2 =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    rw [peaks_applyRO_comm Γ C1, peaks_applyRO_comm Γ C2]
+    rfl
+  | _, .cvar _ _ => simp only [CaptureSet.applyRO, CaptureSet.peaks]
+  | _, .var _ (.free _) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    rfl
+  | .push Γ' (.var T), .var m (.bound .here) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks,
+      CaptureSet.applyMut_ro, CaptureSet.applyMut_applyRO]
+  | .push Γ' _, .var m (.bound (.there x')) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
+    simp only [CaptureSet.applyRO] at ih
+    rw [ih, CaptureSet.applyRO_rename]
+termination_by (sizeOf Γ, sizeOf C)
 
--- Helper: peaks respects applyRO monotonically
-theorem peaks_applyRO_mono {Γ : Ctx s} {C1 C2 : CaptureSet s}
-  (hsub : C1.peaks Γ ⊆ C2.peaks Γ) : (C1.applyRO.peaks Γ) ⊆ (C2.applyRO.peaks Γ) := by
-  sorry -- TODO: prove applyRO monotonicity on peaks
+-- Helper: peaks commutes with applyMut
+theorem peaks_applyMut_comm {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} :
+  (C.applyMut m).peaks Γ = (C.peaks Γ).applyMut m := by
+  cases m with
+  | epsilon => simp only [CaptureSet.applyMut_epsilon]
+  | ro =>
+    simp only [CaptureSet.applyMut_ro]
+    exact peaks_applyRO_comm Γ C
+
+-- Helper: peaks is monotonic w.r.t. CaptureSet.CoveredBy
+theorem peaks_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
+  (hcov : C1.CoveredBy C2) : (C1.peaks Γ).CoveredBy (C2.peaks Γ) := by
+  induction hcov with
+  | refl hm =>
+    rw [peaks_applyMut_comm, peaks_applyMut_comm]
+    exact .refl hm
+  | empty =>
+    simp only [CaptureSet.peaks]
+    exact .empty
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.peaks]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_right ih
+
+-- Helper: peaks commutes with rename and context extension (CoveredBy version)
+theorem peaks_rename_succ_coveredby {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
+  (C.peaks Γ).rename Rename.succ |>.CoveredBy <| (C.rename Rename.succ).peaks (Γ.push b) := by
+  induction C generalizing k with
+  | empty =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .empty
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .union_left (.union_right_left ih1) (.union_right_right ih2)
+  | cvar m c =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .refl'
+  | var m v =>
+    cases v with
+    | free _ =>
+      simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename]
+      exact .empty
+    | bound x =>
+      cases Γ with
+      | empty => cases x
+      | push Γ' bd =>
+        cases bd with
+        | var T =>
+          cases x with
+          | here =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+        | tvar T =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+        | cvar cm =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+
+-- Helper: Subset implies CoveredBy (Subset is stricter)
+theorem CaptureSet.Subset.coveredby {C1 C2 : CaptureSet s}
+  (hsub : C1 ⊆ C2) : C1.CoveredBy C2 := by
+  induction hsub with
+  | refl => exact .refl'
+  | empty => exact .empty
+  | union_left _ _ ih1 ih2 => exact .union_left ih1 ih2
+  | union_right_left _ ih => exact .union_right_left ih
+  | union_right_right _ ih => exact .union_right_right ih
+
+-- Helper: peaks of applyRO is covered by peaks (key lemma using CoveredBy)
+theorem peaks_applyRO_coveredby {Γ : Ctx s} {C : CaptureSet s} :
+  (C.applyRO.peaks Γ).CoveredBy (C.peaks Γ) := by
+  rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
+  -- Goal: ((C.peaks Γ).applyMut .ro).CoveredBy (C.peaks Γ)
+  -- C.peaks Γ = (C.peaks Γ).applyMut .epsilon
+  conv_rhs => rw [<-CaptureSet.applyMut_epsilon (cs := C.peaks Γ)]
+  exact .refl Mutability.Le.ro_le
+
+-- Helper: peaks respects applyRO monotonically (CoveredBy version)
+theorem peaks_applyRO_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
+  (hcov : (C1.peaks Γ).CoveredBy (C2.peaks Γ)) :
+  (C1.applyRO.peaks Γ).CoveredBy (C2.applyRO.peaks Γ) := by
+  rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
+  rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
+  exact hcov.applyMut_mono
 
 theorem subcapt_peaks
   (hsc : Subcapt Γ C1 C2) :
-  (C1.peaks Γ) ⊆ (C2.peaks Γ) := by
+  (C1.peaks Γ).CoveredBy (C2.peaks Γ) := by
   induction hsc with
   | sc_trans _ _ ih1 ih2 =>
-    exact CaptureSet.Subset.trans ih1 ih2
+    exact CaptureSet.CoveredBy.trans ih1 ih2
   | sc_elem hsub =>
-    exact peaks_mono hsub
+    exact peaks_mono hsub |>.coveredby
   | sc_union _ _ ih1 ih2 =>
     conv_lhs => simp only [Union.union]; unfold CaptureSet.peaks
     simp only [Union.union]
-    exact CaptureSet.Subset.union_left ih1 ih2
+    exact CaptureSet.CoveredBy.union_left ih1 ih2
   | sc_var hlk =>
-    -- peaks (.var .epsilon (.bound x)) Γ ⊆ peaks T.captureSet Γ
+    -- peaks (.var .epsilon (.bound x)) Γ CoveredBy peaks T.captureSet Γ
     -- The peaks of a variable equals peaks of the looked-up type's capture set
     -- This follows from the definition of peaks which unrolls variable references
     induction hlk with
     | here =>
       simp only [CaptureSet.peaks, CaptureSet.applyMut_epsilon]
       rw [Ty.captureSet_rename]
-      exact peaks_rename_succ_sub
+      exact peaks_rename_succ_coveredby
     | @there s k Γ' x T b _ ih =>
       simp only [CaptureSet.peaks]
       rw [Ty.captureSet_rename]
       -- By transitivity, we get the goal
-      have ih' : (CaptureSet.peaks Γ' (CaptureSet.var Mutability.epsilon (Var.bound x))) ⊆
+      have ih' : (CaptureSet.peaks Γ' (CaptureSet.var Mutability.epsilon (Var.bound x))).CoveredBy
                  (CaptureSet.peaks Γ' T.captureSet) := @ih Γ' .empty .empty
-      have h1 := CaptureSet.Subset.rename (s2 := (s,,k)) (f := Rename.succ) ih'
-      exact CaptureSet.Subset.trans h1 peaks_rename_succ_sub
+      have h1 : ((CaptureSet.peaks Γ' (.var .epsilon (.bound x))).rename Rename.succ).CoveredBy
+                ((CaptureSet.peaks Γ' T.captureSet).rename Rename.succ) :=
+        CaptureSet.CoveredBy.rename (s2 := (s,,k)) ih'
+      exact CaptureSet.CoveredBy.trans h1 peaks_rename_succ_coveredby
   | sc_ro =>
-    exact peaks_applyRO_sub
+    exact peaks_applyRO_coveredby
   | sc_ro_mono _ ih =>
-    exact peaks_applyRO_mono ih
+    exact peaks_applyRO_mono_coveredby ih
 
 theorem sem_sepcheck_symm
   (ih : SemSepCheck Γ C1 C2) :
