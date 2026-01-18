@@ -166,6 +166,12 @@ def CaptureSet.peaks : Ctx s -> CaptureSet s -> CaptureSet s
     (peaks Γ (.var m (.bound x))).rename Rename.succ
 termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 
+@[simp]
+theorem CaptureSet.peaks_union (Γ : Ctx s) (cs1 cs2 : CaptureSet s) :
+    CaptureSet.peaks Γ (cs1 ∪ cs2) = CaptureSet.peaks Γ cs1 ∪ CaptureSet.peaks Γ cs2 := by
+  conv_lhs => simp only [Union.union]; unfold peaks
+  simp only [Union.union]
+
 /-- The peaks function always returns a PeaksOnly capture set. -/
 theorem CaptureSet.peaks_peaksOnly (Γ : Ctx s) (cs : CaptureSet s) :
     (peaks Γ cs).PeaksOnly := by

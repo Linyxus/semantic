@@ -2524,12 +2524,18 @@ theorem sem_sepcheck_symm
   SemSepCheck Γ C2 C1 := by
   intro env H hts hsep
   apply CapabilitySet.Noninterference.ni_symm
-  exact ih env H hts (TypeEnv.HasSepDom.union_comm hsep)
+  simp only [CaptureSet.peaks_union] at hsep
+  apply ih env H hts
+  simp only [CaptureSet.peaks_union]
+  exact TypeEnv.HasSepDom.union_comm hsep
 
 theorem sem_sepcheck_sc
   (hsc : Subcapt Γ C1 C2)
   (ih : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ C1 C3 := by
+  intro env H hts hsep
+  have hsubcapt := fundamental_subcapt hsc env H hts
+  apply CapabilitySet.Noninterference.subset_left _ hsubcapt
   sorry
 
 theorem sem_sepcheck_union
