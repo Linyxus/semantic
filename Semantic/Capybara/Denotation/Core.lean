@@ -3327,6 +3327,11 @@ theorem union_comm {env : TypeEnv s} {C1 C2 : CaptureSet s}
     | union_right_right h2 => exact CaptureSet.Subset.union_right_left h2
   exact h m1 c1 m2 c2 hsub1' hsub2' hne
 
+theorem coveredby_mono {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom C2)
+  (hs : C1.CoveredBy C2) :
+  env.HasSepDom C1 := by sorry
+
 end TypeEnv.HasSepDom
 
 end Capybara
