@@ -2808,11 +2808,58 @@ theorem sem_sepcheck_distinct_roots
   intro env H hts hsep
   sorry
 
+-- Helper: variable subcaptures its type's capture set with matching mutability
+theorem var_subcapt_captureSet_applyMut
+  (hlk : Γ.LookupVar x T) :
+  Subcapt Γ (.var m (.bound x)) (T.captureSet.applyMut m) := by
+  cases m with
+  | epsilon =>
+    simp only [CaptureSet.applyMut_epsilon]
+    exact .sc_var hlk
+  | ro =>
+    simp only [CaptureSet.applyMut_ro]
+    have h := Subcapt.sc_var hlk
+    exact .sc_ro_mono h
+
+-- Helper: for well-typed variables, the denotation is bounded by the type's capture set
+theorem var_denot_subset_captureSet_denot
+  (hlk : Γ.LookupVar x T)
+  (henv : EnvTyping Γ env H) :
+  (CaptureSet.var m (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H := by
+  sorry
+
+-- Helper: transfer HasSepDom from variable peaks to type's capture set peaks
+theorem var_peaks_hassepdom
+  {C : CaptureSet s}
+  (hlk : Γ.LookupVar x T)
+  (henv : EnvTyping Γ env H)
+  (hsep : env.HasSepDom ((CaptureSet.var m (.bound x)).peaks Γ ∪ C.peaks Γ)) :
+  env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) := by
+  sorry
+
 theorem sem_sepcheck_var
   (hlk : Γ.LookupVar x T)
   (ih : SemSepCheck Γ (T.captureSet.applyMut m) C) :
-  SemSepCheck Γ (.var m (.bound x)) C := by
-  sorry
+  SemSepCheck Γ (CaptureSet.var m (.bound x)) C := by
+  intro env H henv hsep_goal
+  -- Get the denotation subset relationship
+  have hsub : (CaptureSet.var m (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H :=
+    var_denot_subset_captureSet_denot hlk henv
+  -- Rewrite peaks_union in the preconditions
+  simp only [CaptureSet.peaks_union] at hsep_goal
+  -- Transfer HasSepDom from variable peaks to type's capture set peaks
+  have hsep_ih : env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) :=
+    var_peaks_hassepdom hlk henv hsep_goal
+  -- Convert to the form expected by SemSepCheck (peaks of union = union of peaks)
+  have hsep_ih' : env.HasSepDom (((T.captureSet.applyMut m) ∪ C).peaks Γ) := by
+    rw [CaptureSet.peaks_union]
+    exact hsep_ih
+  -- Apply IH to get noninterference for type's capture set
+  have hni_cs : CapabilitySet.Noninterference
+                  ((T.captureSet.applyMut m).denot env H) (C.denot env H) :=
+    ih env H henv hsep_ih'
+  -- Use subset to transfer noninterference
+  exact CapabilitySet.Noninterference.subset_left hni_cs hsub
 
 theorem fundamental_sepcheck
   (hsep : SepCheck Γ C1 C2) :
