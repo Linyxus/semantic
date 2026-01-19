@@ -2808,15 +2808,20 @@ theorem sem_sepcheck_distinct_roots
   intro env H hts hsep
   sorry
 
+theorem sem_sepcheck_var
+  (hlk : Γ.LookupVar x T)
+  (ih : SemSepCheck Γ (T.captureSet.applyMut m) C) :
+  SemSepCheck Γ (.var m (.bound x)) C := by
+  sorry
+
 theorem fundamental_sepcheck
   (hsep : SepCheck Γ C1 C2) :
   SemSepCheck Γ C1 C2 := by
   induction hsep with
   | sep_symm _ ih =>
     exact sem_sepcheck_symm ih
-  | sep_var ih =>
-    trace_state
-    sorry
+  | sep_var hlk _ ih =>
+    exact sem_sepcheck_var hlk ih
   | sep_union _ _ ih1 ih2 =>
     exact sem_sepcheck_union ih1 ih2
   | sep_empty =>
