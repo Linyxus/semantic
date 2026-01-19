@@ -2860,6 +2860,35 @@ theorem sem_sepcheck_union
   -- Use ni_union to combine
   exact CapabilitySet.Noninterference.ni_union hni1 hni2
 
+-- Helper: two capability sets with kind .ro are non-interfering
+theorem CapabilitySet.noninterference_of_ro_ro
+  (hk1 : CapabilitySet.HasKind C1 .ro)
+  (hk2 : CapabilitySet.HasKind C2 .ro) :
+  CapabilitySet.Noninterference C1 C2 := by
+  induction C1 with
+  | empty => exact .ni_empty
+  | cap m l =>
+    cases hk1 with
+    | ro_cap =>
+      -- C1 = .cap .ro l, need to show Noninterference (.cap .ro l) C2
+      induction C2 with
+      | empty => exact .ni_symm .ni_empty
+      | cap m' l' =>
+        cases hk2 with
+        | ro_cap => exact .ni_ro
+      | union C2a C2b ih2a ih2b =>
+        cases hk2 with
+        | ro_union hk2a hk2b =>
+          have hni2a := ih2a hk2a
+          have hni2b := ih2b hk2b
+          exact .ni_symm (.ni_union (.ni_symm hni2a) (.ni_symm hni2b))
+  | union C1a C1b ih1a ih1b =>
+    cases hk1 with
+    | ro_union hk1a hk1b =>
+      have hni1a := ih1a hk1a
+      have hni1b := ih1b hk1b
+      exact .ni_union hni1a hni1b
+
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
   intro env H hts hsep
@@ -2872,7 +2901,12 @@ theorem sem_sepcheck_ro
   (hk2 : HasKind Γ C2 .ro) :
   SemSepCheck Γ C1 C2 := by
   intro env H hts hsep
-  sorry
+  -- From fundamental_haskind, get semantic kinding
+  have hsem_k1 := fundamental_haskind hk1 env H hts
+  have hsem_k2 := fundamental_haskind hk2 env H hts
+  -- hsem_k1 : (C1.denot env H).HasKind .ro
+  -- hsem_k2 : (C2.denot env H).HasKind .ro
+  exact CapabilitySet.noninterference_of_ro_ro hsem_k1 hsem_k2
 
 theorem sem_sepcheck_distinct_roots
   (hne : c1 ≠ c2) :
