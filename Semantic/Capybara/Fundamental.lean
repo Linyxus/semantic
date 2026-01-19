@@ -899,6 +899,39 @@ theorem typed_env_lookup_cvar_aux
         have hih := ih henv'
         exact hih
 
+theorem typed_env_cvar_cap_eq
+  {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
+  (hts : EnvTyping Γ env m)
+  (c : BVar s .cvar) :
+  (env.lookup_cvar c).2 = (env.lookup_cvar c).1.ground_denot m := by
+  induction Γ with
+  | empty =>
+    cases c
+  | push Γ' b ih =>
+    cases b
+    case var T =>
+      match env with
+      | .extend env' (.var n ps) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case tvar S =>
+      match env with
+      | .extend env' (.tvar d) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, _, _, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case cvar B =>
+      match env with
+      | .extend env' (.cvar cs cap) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, hcap_eq, henv'⟩ := hts
+        cases c with
+        | here => exact hcap_eq
+        | there c' => exact ih henv' c'
+
 theorem sem_typ_capp
   {x : BVar s .var}
   {T : Ty .exi (s,C)}
@@ -1064,8 +1097,6 @@ theorem sem_typ_bfalse :
   · exact Exp.IsVal.bfalse
   · simp only [Denot.as_mpost, Ty.val_denot, resolve]
     right; trivial
-
-
 
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
@@ -2845,9 +2876,35 @@ theorem sem_sepcheck_ro
 
 theorem sem_sepcheck_distinct_roots
   (hne : c1 ≠ c2) :
-  SemSepCheck Γ (.cvar m1 c1) (.cvar m2 c2) := by
+  SemSepCheck Γ (CaptureSet.cvar m1 c1) (CaptureSet.cvar m2 c2) := by
   intro env H hts hsep
-  sorry
+  -- hsep : env.HasSepDom (((CaptureSet.cvar m1 c1) ∪ (CaptureSet.cvar m2 c2)).peaks Γ)
+  -- Simplify peaks for cvar: (CaptureSet.cvar m c).peaks Γ = CaptureSet.cvar m c
+  simp only [CaptureSet.peaks_union, CaptureSet.peaks] at hsep
+  -- hsep : env.HasSepDom (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
+  -- Show (CaptureSet.cvar m1 c1) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
+  have hsub1 : (CaptureSet.cvar m1 c1) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2) :=
+    CaptureSet.Subset.union_right_left CaptureSet.Subset.refl
+  -- Show (CaptureSet.cvar m2 c2) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
+  have hsub2 : (CaptureSet.cvar m2 c2) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2) :=
+    CaptureSet.Subset.union_right_right CaptureSet.Subset.refl
+  -- From HasSepDom, get noninterference for the capability sets
+  have hni_cap := hsep m1 c1 m2 c2 hsub1 hsub2 hne
+  -- Now show: cvar.denot env H = (env.lookup_cvar c).2.applyMut m
+  -- From EnvTyping: cap = cs.ground_denot H, so use ground_denot_applyMut_comm
+  simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv]
+  -- Goal: Noninterference (((env.lookup_cvar c1).1.applyMut m1).ground_denot H)
+  --                       (((env.lookup_cvar c2).1.applyMut m2).ground_denot H)
+  rw [ground_denot_applyMut_comm, ground_denot_applyMut_comm]
+  -- Goal: Noninterference (((env.lookup_cvar c1).1.ground_denot H).applyMut m1)
+  --                       (((env.lookup_cvar c2).1.ground_denot H).applyMut m2)
+  -- From EnvTyping, extract the equality cap = cs.ground_denot H
+  have heq1 : (env.lookup_cvar c1).2 = (env.lookup_cvar c1).1.ground_denot H :=
+    typed_env_cvar_cap_eq hts c1
+  have heq2 : (env.lookup_cvar c2).2 = (env.lookup_cvar c2).1.ground_denot H :=
+    typed_env_cvar_cap_eq hts c2
+  rw [← heq1, ← heq2]
+  exact hni_cap
 
 -- Helper: variable subcaptures its type's capture set with matching mutability
 theorem var_subcapt_captureSet_applyMut
