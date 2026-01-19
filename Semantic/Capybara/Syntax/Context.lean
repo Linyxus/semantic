@@ -199,4 +199,8 @@ termination_by (sizeOf Γ, sizeOf cs)
 def CaptureSet.peakset (Γ : Ctx s) (cs : CaptureSet s) : PeakSet s :=
   ⟨peaks Γ cs, CaptureSet.peaks_peaksOnly Γ cs⟩
 
+theorem CaptureSet.var_peaks {Γ : Ctx s}
+  (hb : Γ.LookupVar x T) :
+  (CaptureSet.peaks Γ (CaptureSet.var m (.bound x))) = (T.captureSet.applyMut m).peaks Γ := sorry
+
 end Capybara
