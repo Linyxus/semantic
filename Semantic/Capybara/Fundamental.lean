@@ -2772,34 +2772,45 @@ theorem sem_sepcheck_symm
   simp only [CaptureSet.peaks_union]
   exact TypeEnv.HasSepDom.union_comm hsep
 
+theorem ground_denot_applyMut_comm {C : CaptureSet {}} {m : Memory} {mu : Mutability} :
+  (C.applyMut mu).ground_denot m = (C.ground_denot m).applyMut mu := by
+  cases mu with
+  | epsilon =>
+    simp only [CaptureSet.applyMut, CapabilitySet.applyMut]
+  | ro =>
+    simp only [CaptureSet.applyMut, CapabilitySet.applyMut]
+    exact ground_denot_applyRO_comm.symm
+
 theorem sem_sepcheck_sc
   (hsc : Subcapt Γ C1 C2)
   (ih : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ C1 C3 := by
   intro env H hts hsep
-  have hsubcapt := fundamental_subcapt hsc env H hts
-  apply CapabilitySet.Noninterference.subset_left _ hsubcapt
   sorry
 
 theorem sem_sepcheck_union
   (ih1 : SemSepCheck Γ C1 C3)
   (ih2 : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ (C1 ∪ C2) C3 := by
+  intro env H hts hsep
   sorry
 
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
+  intro env H hts hsep
   sorry
 
 theorem sem_sepcheck_ro
   (hk1 : HasKind Γ C1 .ro)
   (hk2 : HasKind Γ C2 .ro) :
   SemSepCheck Γ C1 C2 := by
+  intro env H hts hsep
   sorry
 
 theorem sem_sepcheck_distinct_roots
   (hne : c1 ≠ c2) :
   SemSepCheck Γ (.cvar m1 c1) (.cvar m2 c2) := by
+  intro env H hts hsep
   sorry
 
 theorem fundamental_sepcheck
