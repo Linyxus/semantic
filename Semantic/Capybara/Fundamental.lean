@@ -2781,27 +2781,6 @@ theorem ground_denot_applyMut_comm {C : CaptureSet {}} {m : Memory} {mu : Mutabi
     simp only [CaptureSet.applyMut, CapabilitySet.applyMut]
     exact ground_denot_applyRO_comm.symm
 
-theorem sem_sepcheck_sc
-  (hsc : Subcapt Γ C1 C2)
-  (ih : SemSepCheck Γ C2 C3) :
-  SemSepCheck Γ C1 C3 := by
-  intro env H hts hsep
-  -- Get C1.denot ⊆ C2.denot from fundamental_subcapt
-  have hsub_denot := fundamental_subcapt hsc env H hts
-  -- The key insight: we need to show Noninterference (C1.denot) (C3.denot)
-  -- We have: C1.denot ⊆ C2.denot
-  -- And: HasSepDom ((C1 ∪ C3).peaks Γ)
-  --
-  -- The issue is we can't apply ih directly because it needs HasSepDom ((C2 ∪ C3).peaks)
-  -- which we can't derive from HasSepDom ((C1 ∪ C3).peaks).
-  --
-  -- However, since C1.peaks.CoveredBy C2.peaks (from subcapt_peaks), and we have separation
-  -- for (C1 ∪ C3).peaks, the capabilities in C1.denot and C3.denot come from cvars
-  -- that are all covered by the separation domain.
-  --
-  -- The proof needs a lemma connecting HasSepDom directly to Noninterference of denotations.
-  sorry
-
 theorem sem_sepcheck_union
   (ih1 : SemSepCheck Γ C1 C3)
   (ih2 : SemSepCheck Γ C2 C3) :
@@ -2835,8 +2814,9 @@ theorem fundamental_sepcheck
   induction hsep with
   | sep_symm _ ih =>
     exact sem_sepcheck_symm ih
-  | sep_sc hsc _ ih =>
-    exact sem_sepcheck_sc hsc ih
+  | sep_var ih =>
+    trace_state
+    sorry
   | sep_union _ _ ih1 ih2 =>
     exact sem_sepcheck_union ih1 ih2
   | sep_empty =>

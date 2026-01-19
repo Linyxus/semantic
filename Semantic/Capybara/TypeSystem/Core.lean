@@ -92,11 +92,11 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   SepCheck Γ C1 C2 ->
   -------------------
   SepCheck Γ C2 C1
-| sep_sc :
-  Subcapt Γ C1 C2 ->
-  SepCheck Γ C2 C3 ->
+| sep_var :
+  Ctx.LookupVar Γ x T ->
+  SepCheck Γ (T.captureSet.applyMut m) C ->
   -------------------
-  SepCheck Γ C1 C3
+  SepCheck Γ (.var m (.bound x)) C
 | sep_union :
   SepCheck Γ C1 C3 ->
   SepCheck Γ C2 C3 ->
