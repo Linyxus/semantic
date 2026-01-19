@@ -412,6 +412,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
       Ty.val_denot env T1 m' (.var (.free arg)) ->
+      env.HasSepDom (T1.captureSet.union cs) ->
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
         T2
@@ -431,6 +432,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
       denot.enforce_pure ->
+      env.HasSepDom cs ->
       Ty.exi_exp_denot
         (env.extend_tvar denot)
         T2
@@ -449,6 +451,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
       ((A0 m').BoundedBy (B.denot m')) ->
+      env.HasSepDom cs ->
       Ty.exi_exp_denot
         (env.extend_cvar CS (cap := CS.ground_denot m'))
         T
