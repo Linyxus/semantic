@@ -2786,6 +2786,20 @@ theorem sem_sepcheck_sc
   (ih : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ C1 C3 := by
   intro env H hts hsep
+  -- Get C1.denot ⊆ C2.denot from fundamental_subcapt
+  have hsub_denot := fundamental_subcapt hsc env H hts
+  -- The key insight: we need to show Noninterference (C1.denot) (C3.denot)
+  -- We have: C1.denot ⊆ C2.denot
+  -- And: HasSepDom ((C1 ∪ C3).peaks Γ)
+  --
+  -- The issue is we can't apply ih directly because it needs HasSepDom ((C2 ∪ C3).peaks)
+  -- which we can't derive from HasSepDom ((C1 ∪ C3).peaks).
+  --
+  -- However, since C1.peaks.CoveredBy C2.peaks (from subcapt_peaks), and we have separation
+  -- for (C1 ∪ C3).peaks, the capabilities in C1.denot and C3.denot come from cvars
+  -- that are all covered by the separation domain.
+  --
+  -- The proof needs a lemma connecting HasSepDom directly to Noninterference of denotations.
   sorry
 
 theorem sem_sepcheck_union
@@ -2798,7 +2812,9 @@ theorem sem_sepcheck_union
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
   intro env H hts hsep
-  sorry
+  -- {}.denot env H = {} (the empty CapabilitySet)
+  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+  exact .ni_empty
 
 theorem sem_sepcheck_ro
   (hk1 : HasKind Γ C1 .ro)
