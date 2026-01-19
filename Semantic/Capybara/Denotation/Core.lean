@@ -3330,7 +3330,30 @@ theorem union_comm {env : TypeEnv s} {C1 C2 : CaptureSet s}
 theorem coveredby_mono {env : TypeEnv s} {C1 C2 : CaptureSet s}
   (h : env.HasSepDom C2)
   (hs : C1.CoveredBy C2) :
-  env.HasSepDom C1 := by sorry
+  env.HasSepDom C1 := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  -- Use cvar_subset_coveredby to find cvars in C2
+  obtain ⟨m1', hle1, hsub1'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby hsub1 hs
+  obtain ⟨m2', hle2, hsub2'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby hsub2 hs
+  -- From h, get noninterference for the cvars in C2
+  have hni := h m1' c1 m2' c2 hsub1' hsub2' hne
+  -- Now show that (env.lookup_cvar c).2.applyMut m ⊆ (env.lookup_cvar c).2.applyMut m'
+  -- when m ≤ m'
+  have hsub_cap1 : (env.lookup_cvar c1).2.applyMut m1 ⊆ (env.lookup_cvar c1).2.applyMut m1' := by
+    cases hle1 with
+    | refl => exact CapabilitySet.Subset.refl
+    | ro_eps =>
+      simp only [CapabilitySet.applyMut]
+      exact @CapabilitySet.applyRO_subset_applyMut _ .epsilon
+  have hsub_cap2 : (env.lookup_cvar c2).2.applyMut m2 ⊆ (env.lookup_cvar c2).2.applyMut m2' := by
+    cases hle2 with
+    | refl => exact CapabilitySet.Subset.refl
+    | ro_eps =>
+      simp only [CapabilitySet.applyMut]
+      exact @CapabilitySet.applyRO_subset_applyMut _ .epsilon
+  -- Use Noninterference.subset_left and subset_right
+  exact CapabilitySet.Noninterference.subset_right
+    (CapabilitySet.Noninterference.subset_left hni hsub_cap1) hsub_cap2
 
 end TypeEnv.HasSepDom
 

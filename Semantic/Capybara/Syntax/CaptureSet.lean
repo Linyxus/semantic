@@ -537,6 +537,110 @@ theorem applyMut_mono {C1 C2 : CaptureSet s} {m : Mutability}
   | epsilon => simp only [CaptureSet.applyMut_epsilon]; exact hcov
   | ro => simp only [CaptureSet.applyMut_ro]; exact hcov.applyRO_mono
 
+/-- Helper: if (.cvar m c) ⊆ D, then (.cvar .ro c) ⊆ D.applyRO -/
+private theorem cvar_subset_applyRO {m : Mutability} {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar m c) ⊆ D) : (.cvar .ro c) ⊆ D.applyRO := by
+  induction D with
+  | empty => cases hsub
+  | union D1 D2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO]
+    cases hsub with
+    | union_right_left h => exact .union_right_left (ih1 h)
+    | union_right_right h => exact .union_right_right (ih2 h)
+  | var _ _ => cases hsub
+  | cvar m' c' =>
+    cases hsub
+    simp only [CaptureSet.applyRO]
+    exact .refl
+
+/-- Helper: extract original mutability from (.cvar .ro c) ⊆ D.applyRO -/
+private theorem cvar_subset_of_applyRO {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar .ro c) ⊆ D.applyRO) : ∃ m, (.cvar m c) ⊆ D := by
+  induction D with
+  | empty =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | union D1 D2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub with
+    | union_right_left h =>
+      obtain ⟨m, hm⟩ := ih1 h
+      exact ⟨m, .union_right_left hm⟩
+    | union_right_right h =>
+      obtain ⟨m, hm⟩ := ih2 h
+      exact ⟨m, .union_right_right hm⟩
+  | var m' x =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | cvar m' c' =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+    exact ⟨m', .refl⟩
+
+/-- Helper: if (.cvar m c) ⊆ D.applyRO, then m = .ro -/
+private theorem cvar_mut_of_applyRO_subset {m : Mutability} {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar m c) ⊆ D.applyRO) : m = .ro := by
+  induction D with
+  | empty =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | union D1 D2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub with
+    | union_right_left h => exact ih1 h
+    | union_right_right h => exact ih2 h
+  | var m' x =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | cvar m' c' =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+    rfl
+
+/-- If a cvar is a subset of C1 and C1 is covered by C2, then the cvar (possibly with
+    a weaker mutability) is a subset of C2. -/
+theorem cvar_subset_coveredby {m : Mutability} {c : BVar s .cvar} {C1 C2 : CaptureSet s}
+  (hsub : (.cvar m c) ⊆ C1)
+  (hcov : C1.CoveredBy C2) :
+  ∃ m', m ≤ m' ∧ (.cvar m' c) ⊆ C2 := by
+  induction hcov generalizing m with
+  | refl hm =>
+    rename_i D m1 m2
+    cases m1 with
+    | epsilon =>
+      simp only [CaptureSet.applyMut_epsilon] at hsub
+      cases m2 with
+      | epsilon =>
+        simp only [CaptureSet.applyMut_epsilon]
+        exact ⟨m, Mutability.Le.refl, hsub⟩
+      | ro =>
+        -- hm : .epsilon ≤ .ro is false, this case is impossible
+        cases hm
+    | ro =>
+      simp only [CaptureSet.applyMut_ro] at hsub
+      have hm_eq : m = .ro := cvar_mut_of_applyRO_subset hsub
+      subst hm_eq
+      cases m2 with
+      | epsilon =>
+        simp only [CaptureSet.applyMut_epsilon]
+        obtain ⟨m_orig, h⟩ := cvar_subset_of_applyRO hsub
+        exact ⟨m_orig, Mutability.Le.ro_le, h⟩
+      | ro =>
+        simp only [CaptureSet.applyMut_ro]
+        exact ⟨.ro, Mutability.Le.refl, hsub⟩
+  | empty =>
+    cases hsub
+  | union_left _ _ ih1 ih2 =>
+    cases hsub with
+    | union_right_left hsub' => exact ih1 hsub'
+    | union_right_right hsub' => exact ih2 hsub'
+  | union_right_left _ ih =>
+    obtain ⟨m', hle, hsub'⟩ := ih hsub
+    exact ⟨m', hle, .union_right_left hsub'⟩
+  | union_right_right _ ih =>
+    obtain ⟨m', hle, hsub'⟩ := ih hsub
+    exact ⟨m', hle, .union_right_right hsub'⟩
+
 end CaptureSet.CoveredBy
 
 end Capybara
