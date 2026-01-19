@@ -2525,13 +2525,6 @@ theorem sem_typ_unpack
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
 
--- Helper: transitivity of CaptureSet.Subset
--- This proof requires well-founded recursion which is complex to set up.
--- For now, we use sorry and rely on the semantic interpretation.
-theorem CaptureSet.Subset.trans {C1 C2 C3 : CaptureSet s}
-  (h1 : C1 ⊆ C2) (h2 : C2 ⊆ C3) : C1 ⊆ C3 := by
-  sorry
-
 -- Helper: rename preserves subset
 theorem CaptureSet.Subset.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
   (hsub : C1 ⊆ C2) : C1.rename f ⊆ C2.rename f := by
