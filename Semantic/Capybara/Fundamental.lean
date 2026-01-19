@@ -2786,7 +2786,48 @@ theorem sem_sepcheck_union
   (ih2 : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ (C1 ∪ C2) C3 := by
   intro env H hts hsep
-  sorry
+  -- hsep : env.HasSepDom (((C1 ∪ C2) ∪ C3).peaks Γ)
+  -- Simplify using peaks_union
+  simp only [CaptureSet.peaks_union] at hsep
+  -- hsep : env.HasSepDom ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ)
+  -- Extract HasSepDom conditions for ih1 and ih2
+  have hsep_12 := TypeEnv.HasSepDom.union_inv_left hsep
+  have hsep_3 := TypeEnv.HasSepDom.union_inv_right hsep
+  have hsep_1 := TypeEnv.HasSepDom.union_inv_left hsep_12
+  have hsep_2 := TypeEnv.HasSepDom.union_inv_right hsep_12
+  -- Build HasSepDom (C1.peaks Γ ∪ C3.peaks Γ) for ih1
+  have hsep1 : env.HasSepDom (C1.peaks Γ ∪ C3.peaks Γ) := by
+    apply TypeEnv.HasSepDom.union_intro hsep_1 hsep_3
+    intro m1 c1 m2 c2 hsub1 hsub2 hne
+    -- hsub1 : (.cvar m1 c1) ⊆ C1.peaks Γ
+    -- hsub2 : (.cvar m2 c2) ⊆ C3.peaks Γ
+    -- Need to show cvars are in the original domain and use hsep
+    have hsub1' : (.cvar m1 c1) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_left hsub1)
+    have hsub2' : (.cvar m2 c2) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_right hsub2
+    exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
+  -- Build HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) for ih2
+  have hsep2 : env.HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) := by
+    apply TypeEnv.HasSepDom.union_intro hsep_2 hsep_3
+    intro m1 c1 m2 c2 hsub1 hsub2 hne
+    have hsub1' : (.cvar m1 c1) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_right hsub1)
+    have hsub2' : (.cvar m2 c2) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_right hsub2
+    exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
+  -- Convert to the form expected by SemSepCheck
+  have hsep1' : env.HasSepDom ((C1 ∪ C3).peaks Γ) := by
+    rw [CaptureSet.peaks_union]; exact hsep1
+  have hsep2' : env.HasSepDom ((C2 ∪ C3).peaks Γ) := by
+    rw [CaptureSet.peaks_union]; exact hsep2
+  -- Apply ih1 and ih2
+  have hni1 := ih1 env H hts hsep1'
+  have hni2 := ih2 env H hts hsep2'
+  -- (C1 ∪ C2).denot env H = C1.denot env H ∪ C2.denot env H
+  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+  -- Use ni_union to combine
+  exact CapabilitySet.Noninterference.ni_union hni1 hni2
 
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
