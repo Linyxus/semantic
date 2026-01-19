@@ -2830,12 +2830,12 @@ theorem var_denot_subset_captureSet_denot
 
 -- Helper: transfer HasSepDom from variable peaks to type's capture set peaks
 theorem var_peaks_hassepdom
-  {C : CaptureSet s}
+  {Γ : Ctx s} {env : TypeEnv s} {C : CaptureSet s}
   (hlk : Γ.LookupVar x T)
-  (henv : EnvTyping Γ env H)
   (hsep : env.HasSepDom ((CaptureSet.var m (.bound x)).peaks Γ ∪ C.peaks Γ)) :
   env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) := by
-  sorry
+  rw [CaptureSet.var_peaks hlk] at hsep
+  exact hsep
 
 theorem sem_sepcheck_var
   (hlk : Γ.LookupVar x T)
@@ -2849,7 +2849,7 @@ theorem sem_sepcheck_var
   simp only [CaptureSet.peaks_union] at hsep_goal
   -- Transfer HasSepDom from variable peaks to type's capture set peaks
   have hsep_ih : env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) :=
-    var_peaks_hassepdom hlk henv hsep_goal
+    var_peaks_hassepdom hlk hsep_goal
   -- Convert to the form expected by SemSepCheck (peaks of union = union of peaks)
   have hsep_ih' : env.HasSepDom (((T.captureSet.applyMut m) ∪ C).peaks Γ) := by
     rw [CaptureSet.peaks_union]
