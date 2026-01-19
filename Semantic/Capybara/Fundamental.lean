@@ -2821,12 +2821,36 @@ theorem var_subcapt_captureSet_applyMut
     have h := Subcapt.sc_var hlk
     exact .sc_ro_mono h
 
+-- Helper: applyMut is monotonic for CapabilitySet.Subset
+theorem CapabilitySet.applyMut_mono {C1 C2 : CapabilitySet} {m : Mutability}
+  (hsub : C1 ⊆ C2) : C1.applyMut m ⊆ C2.applyMut m := by
+  cases m with
+  | epsilon => simp only [CapabilitySet.applyMut]; exact hsub
+  | ro => simp only [CapabilitySet.applyMut]; exact CapabilitySet.applyRO_mono hsub
+
 -- Helper: for well-typed variables, the denotation is bounded by the type's capture set
 theorem var_denot_subset_captureSet_denot
   (hlk : Γ.LookupVar x T)
   (henv : EnvTyping Γ env H) :
   (CaptureSet.var m (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H := by
-  sorry
+  -- From typed_env_lookup_var_reachability:
+  -- reachability_of_loc H.heap (env.lookup_var x).1 ⊆ T.captureSet.denot env H
+  have hreach := typed_env_lookup_var_reachability henv hlk
+  -- Apply applyMut m to both sides (monotonicity)
+  have hreach_mut : (reachability_of_loc H.heap (env.lookup_var x).1).applyMut m ⊆
+                    (T.captureSet.denot env H).applyMut m :=
+    CapabilitySet.applyMut_mono (m := m) hreach
+  -- LHS: (CaptureSet.var m (.bound x)).denot env H
+  --    = (reachability_of_loc H.heap (env.lookup_var x).1).applyMut m
+  simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
+             CaptureSet.ground_denot]
+  -- RHS: (T.captureSet.applyMut m).denot env H
+  --    = (T.captureSet.subst ...).applyMut m).ground_denot H   (by applyMut_subst)
+  --    = (T.captureSet.subst ...).ground_denot H).applyMut m   (by ground_denot_applyMut_comm.symm)
+  --    = (T.captureSet.denot env H).applyMut m
+  simp only [CaptureSet.applyMut_subst]
+  rw [ground_denot_applyMut_comm]
+  exact hreach_mut
 
 -- Helper: transfer HasSepDom from variable peaks to type's capture set peaks
 theorem var_peaks_hassepdom
