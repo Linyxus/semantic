@@ -24,6 +24,66 @@ inductive covers : Mutability -> Nat -> CapabilitySet -> Prop where
   CapabilitySet.covers m l C2 ->
   CapabilitySet.covers m l (CapabilitySet.union C1 C2)
 
+/-- `hasmem m l C` means capability set `C` contains capability `(m, l)` exactly. -/
+inductive hasmem : Mutability -> Nat -> CapabilitySet -> Prop where
+| here : CapabilitySet.hasmem m l (CapabilitySet.cap m l)
+| left {m l C1 C2} :
+  CapabilitySet.hasmem m l C1 ->
+  CapabilitySet.hasmem m l (CapabilitySet.union C1 C2)
+| right {m l C1 C2} :
+  CapabilitySet.hasmem m l C2 ->
+  CapabilitySet.hasmem m l (CapabilitySet.union C1 C2)
+
+/-- Nothing is a member of the empty capability set. -/
+theorem not_hasmem_empty : ¬ hasmem m l .empty := by
+  intro h
+  cases h
+
+/-- Nothing is covered by the empty capability set. -/
+theorem not_covers_empty : ¬ covers m l .empty := by
+  intro h
+  cases h
+
+/-- Exact membership implies coverage with the same mutability. -/
+theorem hasmem_implies_covers : hasmem m l C -> covers m l C := by
+  intro h
+  induction h with
+  | here => exact .here Mutability.Le.refl
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
+/-- Coverage can be weakened to a smaller mutability. -/
+theorem covers_weaken (h : covers m1 l C) (hle : m2 ≤ m1) : covers m2 l C := by
+  induction h with
+  | here hle' => exact .here (Mutability.Le.trans hle hle')
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
+/-- Membership with greater mutability implies coverage. -/
+theorem covers_of_hasmem_le (h : hasmem m2 l C) (hle : m1 ≤ m2) : covers m1 l C := by
+  exact covers_weaken (hasmem_implies_covers h) hle
+
+/-- Characterization of membership in a singleton. -/
+theorem hasmem_cap_iff : hasmem m l (.cap m' l') ↔ m = m' ∧ l = l' := by
+  constructor
+  · intro h
+    cases h
+    exact ⟨rfl, rfl⟩
+  · intro ⟨hm, hl⟩
+    subst hm hl
+    exact .here
+
+/-- Characterization of coverage in a singleton. -/
+theorem covers_cap_iff : covers m l (.cap m' l') ↔ m ≤ m' ∧ l = l' := by
+  constructor
+  · intro h
+    cases h
+    rename_i hle
+    exact ⟨hle, rfl⟩
+  · intro ⟨hle, hl⟩
+    subst hl
+    exact .here hle
+
 @[simp]
 instance instEmptyCollection : EmptyCollection CapabilitySet :=
   ⟨CapabilitySet.empty⟩
@@ -31,6 +91,46 @@ instance instEmptyCollection : EmptyCollection CapabilitySet :=
 @[simp]
 instance instUnion : Union CapabilitySet :=
   ⟨CapabilitySet.union⟩
+
+/-- Membership in a union is membership in either component. -/
+theorem hasmem_union_iff : hasmem m l (C1 ∪ C2) ↔ hasmem m l C1 ∨ hasmem m l C2 := by
+  constructor
+  · intro h
+    cases h with
+    | left h => exact Or.inl h
+    | right h => exact Or.inr h
+  · intro h
+    cases h with
+    | inl h => exact .left h
+    | inr h => exact .right h
+
+/-- Coverage by a union is coverage by either component. -/
+theorem covers_union_iff : covers m l (C1 ∪ C2) ↔ covers m l C1 ∨ covers m l C2 := by
+  constructor
+  · intro h
+    cases h with
+    | left h => exact Or.inl h
+    | right h => exact Or.inr h
+  · intro h
+    cases h with
+    | inl h => exact .left h
+    | inr h => exact .right h
+
+/-- Membership is preserved when extending to a union on the left. -/
+theorem hasmem_union_left (h : hasmem m l C1) : hasmem m l (C1 ∪ C2) :=
+  .left h
+
+/-- Membership is preserved when extending to a union on the right. -/
+theorem hasmem_union_right (h : hasmem m l C2) : hasmem m l (C1 ∪ C2) :=
+  .right h
+
+/-- Coverage is preserved when extending to a union on the left. -/
+theorem covers_union_left (h : covers m l C1) : covers m l (C1 ∪ C2) :=
+  .left h
+
+/-- Coverage is preserved when extending to a union on the right. -/
+theorem covers_union_right (h : covers m l C2) : covers m l (C1 ∪ C2) :=
+  .right h
 
 def singleton (m : Mutability) (l : Nat) : CapabilitySet :=
   .cap m l
@@ -70,6 +170,79 @@ theorem applyMut_singleton_epsilon {m : Mutability} {l : Nat} :
 theorem applyMut_cap_epsilon {m : Mutability} {l : Nat} :
     (cap .epsilon l).applyMut m = cap m l := by
   cases m <;> rfl
+
+/-- Membership at location l in C implies ro-membership at l in C.applyRO. -/
+theorem hasmem_applyRO_of_hasmem {C : CapabilitySet} : hasmem m l C -> hasmem .ro l C.applyRO := by
+  intro h
+  induction h with
+  | here => exact .here
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
+/-- Membership in C.applyRO is always at ro mutability. -/
+theorem hasmem_applyRO_ro {C : CapabilitySet} : hasmem m l C.applyRO -> m = .ro := by
+  intro h
+  induction C with
+  | empty => cases h
+  | cap m' l' =>
+    simp only [applyRO] at h
+    cases h
+    rfl
+  | union C1 C2 ih1 ih2 =>
+    simp only [applyRO] at h
+    cases h with
+    | left h => exact ih1 h
+    | right h => exact ih2 h
+
+/-- Characterization of membership in C.applyRO. -/
+theorem hasmem_applyRO_iff {C : CapabilitySet} :
+    hasmem m l C.applyRO ↔ m = .ro ∧ ∃ m', hasmem m' l C := by
+  constructor
+  · intro h
+    constructor
+    · exact hasmem_applyRO_ro h
+    · induction C with
+      | empty => cases h
+      | cap m' l' =>
+        simp only [applyRO] at h
+        cases h
+        exact ⟨m', .here⟩
+      | union C1 C2 ih1 ih2 =>
+        simp only [applyRO] at h
+        cases h with
+        | left h =>
+          obtain ⟨m', hm'⟩ := ih1 h
+          exact ⟨m', .left hm'⟩
+        | right h =>
+          obtain ⟨m', hm'⟩ := ih2 h
+          exact ⟨m', .right hm'⟩
+  · intro ⟨hm, m', hm'⟩
+    subst hm
+    exact hasmem_applyRO_of_hasmem hm'
+
+/-- Coverage in C implies coverage in C.applyRO (ro covers everything ro covers). -/
+theorem covers_applyRO_of_covers_ro {C : CapabilitySet}
+    (h : covers .ro l C) : covers .ro l C.applyRO := by
+  induction h with
+  | here _ => exact .here Mutability.Le.refl
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
+/-- Coverage in C.applyRO implies coverage in C (since applyRO only weakens). -/
+theorem covers_of_covers_applyRO {C : CapabilitySet}
+    (h : covers m l C.applyRO) : covers m l C := by
+  induction C with
+  | empty => cases h
+  | cap m' l' =>
+    simp only [applyRO] at h
+    cases h
+    rename_i hle
+    exact .here (Mutability.Le.trans hle Mutability.Le.ro_le)
+  | union C1 C2 ih1 ih2 =>
+    simp only [applyRO] at h
+    cases h with
+    | left h => exact .left (ih1 h)
+    | right h => exact .right (ih2 h)
 
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
@@ -2254,5 +2427,117 @@ inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
 | ni_disj :
   (l1 ≠ l2) ->
   Noninterference (.cap m1 l1) (.cap m2 l2)
+
+namespace CapabilitySet.Noninterference
+
+theorem split_union
+  (hni : Noninterference R1 R2) :
+  (∀ cs1 cs2,
+    R1 = cs1 ∪ cs2 ->
+    Noninterference cs1 R2 ∧ Noninterference cs2 R2) ∧
+  (∀ cs1 cs2,
+    R2 = cs1 ∪ cs2 ->
+    Noninterference R1 cs1 ∧ Noninterference R1 cs2) := by
+  induction hni with
+  | ni_symm _ ih =>
+    constructor
+    · intro cs1 cs2 heq
+      have ⟨_, h⟩ := ih
+      have ⟨h1, h2⟩ := h cs1 cs2 heq
+      exact ⟨ni_symm h1, ni_symm h2⟩
+    · intro cs1 cs2 heq
+      have ⟨h, _⟩ := ih
+      have ⟨h1, h2⟩ := h cs1 cs2 heq
+      exact ⟨ni_symm h1, ni_symm h2⟩
+  | ni_empty =>
+    constructor
+    · intro cs1 cs2 heq
+      cases heq
+    · intro cs1 cs2 heq
+      exact ⟨ni_empty, ni_empty⟩
+  | ni_union hni1 hni2 ih1 ih2 =>
+    constructor
+    · intro cs1 cs2 heq
+      cases heq
+      exact ⟨hni1, hni2⟩
+    · intro cs1 cs2 heq
+      have ⟨_, h1⟩ := ih1
+      have ⟨_, h2⟩ := ih2
+      have ⟨h1a, h1b⟩ := h1 cs1 cs2 heq
+      have ⟨h2a, h2b⟩ := h2 cs1 cs2 heq
+      exact ⟨ni_union h1a h2a, ni_union h1b h2b⟩
+  | ni_ro =>
+    constructor <;> (intro cs1 cs2 heq; cases heq)
+  | ni_disj hne =>
+    constructor <;> (intro cs1 cs2 heq; cases heq)
+
+theorem split_union_left
+  (hni : Noninterference (cs1 ∪ cs2) R) :
+  Noninterference cs1 R ∧ Noninterference cs2 R :=
+  (split_union hni).left cs1 cs2 rfl
+
+theorem split_union_right
+  (hni : Noninterference R (cs1 ∪ cs2)) :
+  Noninterference R cs1 ∧ Noninterference R cs2 :=
+  (split_union hni).right cs1 cs2 rfl
+
+theorem subset_left
+  (hni : Noninterference cs1 cs2)
+  (hsub : cs0 ⊆ cs1) :
+  Noninterference cs0 cs2 := by
+  induction hsub with
+  | refl =>
+    exact hni
+  | empty =>
+    exact ni_empty
+  | trans _ _ ih1 ih2 =>
+    exact ih1 (ih2 hni)
+  | union_left _ _ ih1 ih2 =>
+    exact ni_union (ih1 hni) (ih2 hni)
+  | union_right_left =>
+    exact (split_union_left hni).left
+  | union_right_right =>
+    exact (split_union_left hni).right
+  | @cap_ro l =>
+    exact weaken_epsilon_ro hni
+where
+  weaken_epsilon_ro_aux {l : Nat} {cs1 cs2 : CapabilitySet}
+    (hni : Noninterference cs1 cs2) :
+    (cs1 = .cap .epsilon l → Noninterference (.cap .ro l) cs2) ∧
+    (cs2 = .cap .epsilon l → Noninterference cs1 (.cap .ro l)) := by
+    induction hni with
+    | ni_symm _ ih =>
+      exact ⟨fun h => ni_symm (ih.2 h), fun h => ni_symm (ih.1 h)⟩
+    | ni_empty =>
+      constructor
+      · intro h; cases h
+      · intro _; exact ni_empty
+    | ni_union _ _ ih1 ih2 =>
+      constructor
+      · intro h; cases h
+      · intro h
+        exact ni_union (ih1.2 h) (ih2.2 h)
+    | ni_ro =>
+      constructor <;> (intro h; cases h)
+    | ni_disj hne =>
+      constructor
+      · intro h
+        cases h
+        exact ni_disj hne
+      · intro h
+        cases h
+        exact ni_disj hne
+  weaken_epsilon_ro {l : Nat} {cs : CapabilitySet}
+    (hni : Noninterference (.cap .epsilon l) cs) :
+    Noninterference (.cap .ro l) cs :=
+    (weaken_epsilon_ro_aux hni).1 rfl
+
+theorem subset_right
+  (hni : Noninterference cs1 cs2)
+  (hsub : cs2' ⊆ cs2) :
+  Noninterference cs1 cs2' :=
+  ni_symm (subset_left (ni_symm hni) hsub)
+
+end CapabilitySet.Noninterference
 
 end Capybara

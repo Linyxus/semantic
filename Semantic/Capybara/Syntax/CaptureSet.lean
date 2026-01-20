@@ -21,6 +21,18 @@ inductive Le : Mutability -> Mutability -> Prop where
 
 instance instLE : LE Mutability := ⟨Mutability.Le⟩
 
+/-- Transitivity of mutability ordering. -/
+theorem Le.trans {m1 m2 m3 : Mutability} (h1 : m1 ≤ m2) (h2 : m2 ≤ m3) : m1 ≤ m3 := by
+  cases h1 with
+  | refl => exact h2
+  | ro_eps => cases h2; exact .ro_eps
+
+/-- Read-only is less than or equal to any mutability. -/
+theorem Le.ro_le {m : Mutability} : .ro ≤ m := by
+  cases m with
+  | epsilon => exact .ro_eps
+  | ro => exact .refl
+
 end Mutability
 
 /-- A variable, either bound (de Bruijn indexed) or free (heap pointer). -/
@@ -149,6 +161,9 @@ inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
 | refl :
   --------------------
   Subset C C
+| empty :
+  --------------------
+  Subset .empty C
 | union_left :
   Subset C1 C ->
   Subset C2 C ->
@@ -275,5 +290,357 @@ theorem CaptureSet.IsEmpty.rename {cs : CaptureSet s1} (h : cs.IsEmpty) (ρ : Re
   induction h with
   | empty => exact IsEmpty.empty
   | union _ _ ih1 ih2 => exact IsEmpty.union ih1 ih2
+
+/-- The subset relation on capture sets. -/
+inductive CaptureSet.CoveredBy : CaptureSet s -> CaptureSet s -> Prop where
+| refl {C : CaptureSet s} {m1 m2 : Mutability} :
+  (hm : m1 ≤ m2) ->
+  --------------------
+  CoveredBy (C.applyMut m1) (C.applyMut m2)
+| empty :
+  --------------------
+  CoveredBy .empty C
+| union_left :
+  CoveredBy C1 C ->
+  CoveredBy C2 C ->
+  --------------------
+  CoveredBy (C1.union C2) C
+| union_right_left :
+  CoveredBy C C1 ->
+  --------------------
+  CoveredBy C (C1.union C2)
+| union_right_right {C1 : CaptureSet s} :
+  CoveredBy C C2 ->
+  --------------------
+  CoveredBy C (C1.union C2)
+
+namespace CaptureSet.CoveredBy
+
+-- Helper: reflexivity for CoveredBy (any C covers itself)
+theorem refl' {C : CaptureSet s} : C.CoveredBy C := by
+  have h : (C.applyMut .epsilon).CoveredBy (C.applyMut .epsilon) := .refl Mutability.Le.refl
+  simp only [CaptureSet.applyMut_epsilon] at h
+  exact h
+
+theorem mut_mono_left {C1 C2 : CaptureSet s} {m1 m2 : Mutability}
+  (hm : m1 ≤ m2)
+  (hsub : CaptureSet.CoveredBy (C1.applyMut m2) C2) :
+    CaptureSet.CoveredBy (C1.applyMut m1) C2 := by
+  cases hm with
+  | refl => exact hsub
+  | ro_eps =>
+    -- m1 = .ro, m2 = .epsilon
+    -- hsub : C1.CoveredBy C2
+    -- Goal: C1.applyRO.CoveredBy C2
+    simp only [CaptureSet.applyMut_epsilon] at hsub
+    simp only [CaptureSet.applyMut_ro]
+    induction hsub with
+    | refl hm' =>
+      simp only [CaptureSet.applyMut_applyRO]
+      exact .refl Mutability.Le.ro_le
+    | empty =>
+      simp only [CaptureSet.applyRO]
+      exact .empty
+    | union_left _ _ ih1 ih2 =>
+      simp only [CaptureSet.applyRO]
+      exact .union_left ih1 ih2
+    | union_right_left _ ih =>
+      exact .union_right_left ih
+    | union_right_right _ ih =>
+      exact .union_right_right ih
+
+-- General helper: extract from union equality
+private theorem union_coveredby_left_aux {AB A B C : CaptureSet s}
+  (he : A.union B = AB)
+  (h : AB.CoveredBy C) : A.CoveredBy C := by
+  induction h generalizing A B with
+  | refl hm =>
+    rename_i D m1 m2
+    -- he : A.union B = D.applyMut m1
+    -- Goal: A.CoveredBy (D.applyMut m2)
+    cases m1 with
+    | epsilon =>
+      simp only [CaptureSet.applyMut_epsilon] at he
+      subst he
+      -- Goal: A.CoveredBy ((A.union B).applyMut m2)
+      cases hm with
+      | refl =>
+        simp only [CaptureSet.applyMut_epsilon]
+        exact .union_right_left refl'
+    | ro =>
+      simp only [CaptureSet.applyMut_ro] at he
+      -- he : A.union B = D.applyRO
+      -- Case split on D to handle the equality
+      cases D with
+      | empty =>
+        simp only [CaptureSet.applyRO] at he
+        exact absurd he CaptureSet.noConfusion
+      | union D1 D2 =>
+        simp only [CaptureSet.applyRO] at he
+        injection he with hA hB
+        subst hA
+        -- Goal: D1.applyRO.CoveredBy ((D1.union D2).applyMut m2)
+        cases m2 with
+        | epsilon =>
+          simp only [CaptureSet.applyMut_epsilon]
+          -- Goal: D1.applyRO.CoveredBy (D1.union D2)
+          have h1 : D1.applyRO.CoveredBy D1 := .refl Mutability.Le.ro_eps
+          exact .union_right_left h1
+        | ro =>
+          simp only [CaptureSet.applyMut_ro, CaptureSet.applyRO]
+          exact .union_right_left refl'
+      | var m x =>
+        simp only [CaptureSet.applyRO] at he
+        exact absurd he CaptureSet.noConfusion
+      | cvar m c =>
+        simp only [CaptureSet.applyRO] at he
+        exact absurd he CaptureSet.noConfusion
+  | empty =>
+    exact absurd he CaptureSet.noConfusion
+  | union_left h1 _ _ _ =>
+    injection he with hA _
+    subst hA
+    exact h1
+  | union_right_left _ ih =>
+    exact .union_right_left (ih he)
+  | union_right_right _ ih =>
+    exact .union_right_right (ih he)
+
+-- Helper: if a union is covered by C, so is the left component
+theorem union_coveredby_left {A B C : CaptureSet s}
+  (h : (A ∪ B).CoveredBy C) : A.CoveredBy C :=
+  union_coveredby_left_aux rfl h
+
+-- General helper: extract from union equality (right component)
+private theorem union_coveredby_right_aux {AB A B C : CaptureSet s}
+  (he : A.union B = AB)
+  (h : AB.CoveredBy C) : B.CoveredBy C := by
+  induction h generalizing A B with
+  | refl hm =>
+    rename_i D m1 m2
+    cases m1 with
+    | epsilon =>
+      simp only [CaptureSet.applyMut_epsilon] at he
+      subst he
+      cases hm with
+      | refl =>
+        simp only [CaptureSet.applyMut_epsilon]
+        exact .union_right_right refl'
+    | ro =>
+      simp only [CaptureSet.applyMut_ro] at he
+      cases D with
+      | empty =>
+        simp only [CaptureSet.applyRO] at he
+        exact absurd he CaptureSet.noConfusion
+      | union D1 D2 =>
+        simp only [CaptureSet.applyRO] at he
+        injection he with _ hB
+        subst hB
+        cases m2 with
+        | epsilon =>
+          simp only [CaptureSet.applyMut_epsilon]
+          have h1 : D2.applyRO.CoveredBy D2 := .refl Mutability.Le.ro_eps
+          exact .union_right_right h1
+        | ro =>
+          simp only [CaptureSet.applyMut_ro, CaptureSet.applyRO]
+          exact .union_right_right refl'
+      | var m x =>
+        simp only [CaptureSet.applyRO] at he
+        exact absurd he CaptureSet.noConfusion
+      | cvar m c =>
+        simp only [CaptureSet.applyRO] at he
+        exact absurd he CaptureSet.noConfusion
+  | empty =>
+    exact absurd he CaptureSet.noConfusion
+  | union_left _ h2 _ _ =>
+    injection he with _ hB
+    subst hB
+    exact h2
+  | union_right_left _ ih =>
+    exact .union_right_left (ih he)
+  | union_right_right _ ih =>
+    exact .union_right_right (ih he)
+
+-- Helper: if a union is covered by C, so is the right component
+theorem union_coveredby_right {A B C : CaptureSet s}
+  (h : (A ∪ B).CoveredBy C) : B.CoveredBy C :=
+  union_coveredby_right_aux rfl h
+
+theorem trans {C1 C2 C3 : CaptureSet s}
+  (h1 : C1.CoveredBy C2) (h2 : C2.CoveredBy C3) : C1.CoveredBy C3 := by
+  induction h1 generalizing C3 with
+  | refl hm1 =>
+    -- C1 = D.applyMut m1, C2 = D.applyMut m2, hm1 : m1 ≤ m2
+    -- h2 : (D.applyMut m2).CoveredBy C3
+    -- Goal: (D.applyMut m1).CoveredBy C3
+    exact mut_mono_left hm1 h2
+  | empty => exact empty
+  | union_left _ _ ih1 ih2 =>
+    -- C1 = C1a ∪ C1b
+    -- Goal: (C1a ∪ C1b).CoveredBy C3
+    exact .union_left (ih1 h2) (ih2 h2)
+  | union_right_left _ ih =>
+    -- C2 = C1' ∪ C2' where original h1 came from C1.CoveredBy C1'
+    -- h2 : (C1' ∪ C2').CoveredBy C3
+    -- ih : C1'.CoveredBy C3 → C1.CoveredBy C3
+    exact ih (union_coveredby_left h2)
+  | union_right_right _ ih =>
+    -- C2 = C1' ∪ C2' where original h1 came from C1.CoveredBy C2'
+    -- h2 : (C1' ∪ C2').CoveredBy C3
+    -- ih : C2'.CoveredBy C3 → C1.CoveredBy C3
+    exact ih (union_coveredby_right h2)
+
+-- Helper: rename preserves CoveredBy
+theorem rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
+  (hcov : C1.CoveredBy C2) : (C1.rename f).CoveredBy (C2.rename f) := by
+  induction hcov with
+  | refl hm =>
+    simp only [CaptureSet.applyMut_rename]
+    exact .refl hm
+  | empty =>
+    simp only [CaptureSet.rename]
+    exact .empty
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.rename]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.rename]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.rename]
+    exact .union_right_right ih
+
+-- Helper: applyRO preserves CoveredBy
+theorem applyRO_mono {C1 C2 : CaptureSet s}
+  (hcov : C1.CoveredBy C2) : C1.applyRO.CoveredBy C2.applyRO := by
+  induction hcov with
+  | refl hm =>
+    simp only [CaptureSet.applyMut_applyRO]
+    exact refl'
+  | empty =>
+    simp only [CaptureSet.applyRO]
+    exact .empty
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.applyRO]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.applyRO]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.applyRO]
+    exact .union_right_right ih
+
+-- Helper: applyMut preserves CoveredBy
+theorem applyMut_mono {C1 C2 : CaptureSet s} {m : Mutability}
+  (hcov : C1.CoveredBy C2) : (C1.applyMut m).CoveredBy (C2.applyMut m) := by
+  cases m with
+  | epsilon => simp only [CaptureSet.applyMut_epsilon]; exact hcov
+  | ro => simp only [CaptureSet.applyMut_ro]; exact hcov.applyRO_mono
+
+/-- Helper: if (.cvar m c) ⊆ D, then (.cvar .ro c) ⊆ D.applyRO -/
+private theorem cvar_subset_applyRO {m : Mutability} {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar m c) ⊆ D) : (.cvar .ro c) ⊆ D.applyRO := by
+  induction D with
+  | empty => cases hsub
+  | union D1 D2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO]
+    cases hsub with
+    | union_right_left h => exact .union_right_left (ih1 h)
+    | union_right_right h => exact .union_right_right (ih2 h)
+  | var _ _ => cases hsub
+  | cvar m' c' =>
+    cases hsub
+    simp only [CaptureSet.applyRO]
+    exact .refl
+
+/-- Helper: extract original mutability from (.cvar .ro c) ⊆ D.applyRO -/
+private theorem cvar_subset_of_applyRO {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar .ro c) ⊆ D.applyRO) : ∃ m, (.cvar m c) ⊆ D := by
+  induction D with
+  | empty =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | union D1 D2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub with
+    | union_right_left h =>
+      obtain ⟨m, hm⟩ := ih1 h
+      exact ⟨m, .union_right_left hm⟩
+    | union_right_right h =>
+      obtain ⟨m, hm⟩ := ih2 h
+      exact ⟨m, .union_right_right hm⟩
+  | var m' x =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | cvar m' c' =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+    exact ⟨m', .refl⟩
+
+/-- Helper: if (.cvar m c) ⊆ D.applyRO, then m = .ro -/
+private theorem cvar_mut_of_applyRO_subset {m : Mutability} {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar m c) ⊆ D.applyRO) : m = .ro := by
+  induction D with
+  | empty =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | union D1 D2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub with
+    | union_right_left h => exact ih1 h
+    | union_right_right h => exact ih2 h
+  | var m' x =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+  | cvar m' c' =>
+    simp only [CaptureSet.applyRO] at hsub
+    cases hsub
+    rfl
+
+/-- If a cvar is a subset of C1 and C1 is covered by C2, then the cvar (possibly with
+    a weaker mutability) is a subset of C2. -/
+theorem cvar_subset_coveredby {m : Mutability} {c : BVar s .cvar} {C1 C2 : CaptureSet s}
+  (hsub : (.cvar m c) ⊆ C1)
+  (hcov : C1.CoveredBy C2) :
+  ∃ m', m ≤ m' ∧ (.cvar m' c) ⊆ C2 := by
+  induction hcov generalizing m with
+  | refl hm =>
+    rename_i D m1 m2
+    cases m1 with
+    | epsilon =>
+      simp only [CaptureSet.applyMut_epsilon] at hsub
+      cases m2 with
+      | epsilon =>
+        simp only [CaptureSet.applyMut_epsilon]
+        exact ⟨m, Mutability.Le.refl, hsub⟩
+      | ro =>
+        -- hm : .epsilon ≤ .ro is false, this case is impossible
+        cases hm
+    | ro =>
+      simp only [CaptureSet.applyMut_ro] at hsub
+      have hm_eq : m = .ro := cvar_mut_of_applyRO_subset hsub
+      subst hm_eq
+      cases m2 with
+      | epsilon =>
+        simp only [CaptureSet.applyMut_epsilon]
+        obtain ⟨m_orig, h⟩ := cvar_subset_of_applyRO hsub
+        exact ⟨m_orig, Mutability.Le.ro_le, h⟩
+      | ro =>
+        simp only [CaptureSet.applyMut_ro]
+        exact ⟨.ro, Mutability.Le.refl, hsub⟩
+  | empty =>
+    cases hsub
+  | union_left _ _ ih1 ih2 =>
+    cases hsub with
+    | union_right_left hsub' => exact ih1 hsub'
+    | union_right_right hsub' => exact ih2 hsub'
+  | union_right_left _ ih =>
+    obtain ⟨m', hle, hsub'⟩ := ih hsub
+    exact ⟨m', hle, .union_right_left hsub'⟩
+  | union_right_right _ ih =>
+    obtain ⟨m', hle, hsub'⟩ := ih hsub
+    exact ⟨m', hle, .union_right_right hsub'⟩
+
+end CaptureSet.CoveredBy
 
 end Capybara

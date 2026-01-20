@@ -55,7 +55,10 @@ def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> Ca
 def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
 | N+1 =>
-  let env := (TypeEnv.platform_of N).extend_cvar (.var .epsilon (.free N))
+  -- The capture set for cell N is {ε N}, with ground denotation singleton {ε N}
+  let cs : CaptureSet {} := .var .epsilon (.free N)
+  let cap := CapabilitySet.singleton .epsilon N
+  let env := (TypeEnv.platform_of N).extend_cvar cs (cap := cap)
   -- Peak set for type (.capt (.cvar .epsilon .here) .cell) is (.cvar .epsilon .here)
   env.extend_var N ⟨.cvar .epsilon .here, .cvar⟩
 
@@ -180,10 +183,16 @@ theorem env_typing_of_platform {N : Nat} :
         · constructor
           · -- cs.ground_denot bounded by Mutability.denot (.epsilon)
             exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
-          · -- Recursive: platform N types in platform (N+1) memory
-            apply env_typing_platform_monotonic (N := N) (M := N + 1)
-            · omega
-            · exact ih
+          · constructor
+            · -- cap = cs.ground_denot m
+              simp only [CaptureSet.ground_denot, reachability_of_loc,
+                Memory.platform_of]
+              unfold Heap.platform_of
+              simp
+            · -- Recursive: platform N types in platform (N+1) memory
+              apply env_typing_platform_monotonic (N := N) (M := N + 1)
+              · omega
+              · exact ih
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
     under permission `P` iff for any possible reduction state starting from `e`
@@ -245,9 +254,11 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
         simp only [BVar.level]
         exact h
 
-/-- Lookup of capture variable in platform environment. -/
+/-- Lookup of capture variable in platform environment returns the ground capture set
+    and the corresponding capability set. -/
 theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
-  (TypeEnv.platform_of N).lookup_cvar c = .var .epsilon (.free (c.level / 2)) := by
+  (TypeEnv.platform_of N).lookup_cvar c =
+    (.var .epsilon (.free (c.level / 2)), CapabilitySet.singleton .epsilon (c.level / 2)) := by
   induction N with
   | zero =>
     -- No capture variables in empty signature
@@ -267,13 +278,9 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
         -- This is the most recent capture variable C_N
         -- c = .there .here, where .here refers to C in (platform N, C)
         simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
-        -- Goal: .var (.free N) = .var (.free (BVar.here.there.level / 2))
-        -- .there preserves level, so .here.there.level = .here.level
-        -- .here.level = length of (platform_of N) = 2*N
+        -- Goal: (.var (.free N), singleton N) = (.var (.free (level / 2)), singleton (level / 2))
         simp only [BVar.level, Sig.size]
-        -- Goal: N = List.length (Sig.platform_of N) / 2
         rw [Sig.platform_of_length]
-        -- Goal: N = (2 * N) / 2
         simp
       | there c'' =>
         -- c'' : BVar (Sig.platform_of N) .cvar

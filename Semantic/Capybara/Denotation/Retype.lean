@@ -19,7 +19,7 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
 
   cvar :
     ∀ (C : BVar s1 .cvar),
-      env1.lookup_cvar C = (σ.cvar C).subst (Subst.from_TypeEnv env2)
+      (env1.lookup_cvar C).1 = (σ.cvar C).subst (Subst.from_TypeEnv env2)
 
 lemma weaken_interp_var {x : Var .var s} {ps : PeakSet s} :
   interp_var env x = interp_var (env.extend_var n ps) (x.rename Rename.succ) := by
@@ -29,8 +29,8 @@ lemma tweaken_interp_var {x : Var .var s} :
   interp_var env x = interp_var (env.extend_tvar d) (x.rename Rename.succ) := by
   cases x <;> rfl
 
-lemma cweaken_interp_var {cs : CaptureSet {}} {x : Var .var s} :
-  interp_var env x = interp_var (env.extend_cvar cs) (x.rename Rename.succ) := by
+lemma cweaken_interp_var {cs : CaptureSet {}} {cap : CapabilitySet} {x : Var .var s} :
+  interp_var env x = interp_var (env.extend_cvar cs cap) (x.rename Rename.succ) := by
   cases x <;> rfl
 
 theorem Retype.liftVar
@@ -94,14 +94,13 @@ theorem Retype.liftTVar
   cvar := fun
     | .there C => by
       simp [TypeEnv.extend_tvar, Subst.lift]
-      change env1.lookup_cvar C = _
+      change (env1.lookup_cvar C).1 = _
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.tweaken
 
 theorem Retype.liftCVar
-  {cs : CaptureSet {}}
-  (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_cvar cs) (σ.lift) (env2.extend_cvar cs) where
+  (ρ : Retype env1 σ env2) (cs : CaptureSet {}) (cap : CapabilitySet := .empty) :
+  Retype (env1.extend_cvar cs cap) (σ.lift) (env2.extend_cvar cs cap) where
   var := fun
     | .there x => by
       conv => lhs; simp [TypeEnv.extend_cvar, TypeEnv.lookup_var]
@@ -123,7 +122,7 @@ theorem Retype.liftCVar
         CaptureSet.subst, Subst.from_TypeEnv]
     | .there C => by
       simp [TypeEnv.extend_cvar, Subst.lift]
-      change env1.lookup_cvar C = _
+      change (env1.lookup_cvar C).1 = _
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
 
@@ -278,14 +277,14 @@ def retype_val_denot
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hsub_bound
       let R0 := expand_captures m.heap cs'
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS)) T R0
+      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot m')) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hsub_bound
       let R0 := expand_captures m.heap cs'
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS)) T R0
+      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot m')) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
       exact (ih2 m' _).mpr hd
 
@@ -314,7 +313,7 @@ def retype_exi_val_denot
         simp
         -- Goal: CS.WfInHeap s.heap → (... ↔ ...)
         intro _hwf
-        have ih := retype_val_denot (ρ.liftCVar (cs:=CS)) T
+        have ih := retype_val_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot s)) T
         exact ih s (Exp.var y)
       all_goals {
         -- resolve returned non-pack
@@ -438,9 +437,9 @@ theorem open_targ_exi_exp_denot
     Ty.exi_exp_denot env (T.subst (Subst.openTVar S)) R := by
   apply retype_exi_exp_denot Retype.open_targ
 
-def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} :
+def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet := .empty) :
   Retype
-    (env.extend_cvar (C.subst (Subst.from_TypeEnv env)))
+    (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap)
     (Subst.openCVar C)
     env where
   var := fun x => by cases x; rfl
@@ -459,20 +458,23 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} :
       simp [Subst.openCVar, TypeEnv.lookup_cvar, TypeEnv.extend_cvar,
         CaptureSet.subst, Subst.from_TypeEnv]
 
-theorem open_carg_val_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .capt (s,C)} :
-  Ty.val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env))) T ≈
+theorem open_carg_val_denot
+    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .capt (s,C)} (cap : CapabilitySet := .empty) :
+  Ty.val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap) T ≈
     Ty.val_denot env (T.subst (Subst.openCVar C)) := by
-  apply retype_val_denot Retype.open_carg
+  apply retype_val_denot (Retype.open_carg cap)
 
-theorem open_carg_exi_val_denot {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} :
-  Ty.exi_val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env))) T ≈
+theorem open_carg_exi_val_denot
+    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} (cap : CapabilitySet := .empty) :
+  Ty.exi_val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap) T ≈
     Ty.exi_val_denot env (T.subst (Subst.openCVar C)) := by
-  apply retype_exi_val_denot Retype.open_carg
+  apply retype_exi_val_denot (Retype.open_carg cap)
 
 theorem open_carg_exi_exp_denot
-    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} {R : CapabilitySet} :
-  Ty.exi_exp_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env))) T R ≈
+    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} {R : CapabilitySet}
+    (cap : CapabilitySet := .empty) :
+  Ty.exi_exp_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap) T R ≈
     Ty.exi_exp_denot env (T.subst (Subst.openCVar C)) R := by
-  apply retype_exi_exp_denot Retype.open_carg
+  apply retype_exi_exp_denot (Retype.open_carg cap)
 
 end Capybara

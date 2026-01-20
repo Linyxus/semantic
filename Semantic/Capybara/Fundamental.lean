@@ -53,11 +53,11 @@ theorem typed_env_lookup_var
       -- binding is .cvar Bb
       rename_i Bb
       match env with
-      | .extend env0 (.cvar cs) =>
+      | .extend env0 (.cvar cs cap) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        obtain ⟨_, _, henv0⟩ := hts
+        obtain ⟨_, _, _, henv0⟩ := hts
         have hih := b henv0
-        have heqv := cweaken_val_denot (env:=env0) (cs:=cs) (T:=T0)
+        have heqv := cweaken_val_denot (env:=env0) (cs:=cs) (cap:=cap) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
         exact hih
 
@@ -357,24 +357,30 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Mutabil
               intro m' CS hwf hsub hsub_bound
               rw [Exp.from_TypeEnv_weaken_open_cvar (cs:=CS)]
               -- Build EnvTyping
-              have henv : EnvTyping (Γ,C<:cb) (env.extend_cvar CS) m' := by
+              have henv : EnvTyping (Γ,C<:cb)
+                  (env.extend_cvar CS (cap := CS.ground_denot m')) m' := by
                 constructor
                 · exact hwf  -- CS.WfInHeap m'.heap
-                · constructor
-                  · -- Need to show: (CS.ground_denot m').BoundedBy (cb.denot m')
-                    have heq : CS.ground_denot = CaptureSet.denot TypeEnv.empty CS := by
-                      funext m
-                      simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
-                    rw [heq]
-                    exact hsub_bound
-                  · apply env_typing_monotonic hts hsub
+                constructor
+                · -- Need to show: (CS.ground_denot m').BoundedBy (cb.denot m')
+                  have heq : CS.ground_denot = CaptureSet.denot TypeEnv.empty CS := by
+                    funext m
+                    simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
+                  rw [heq]
+                  exact hsub_bound
+                constructor
+                · rfl
+                · apply env_typing_monotonic hts hsub
               -- Apply the hypothesis
-              have htyped := ht (env.extend_cvar CS) m' henv
+              have htyped := ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv
               simp only [Ty.exi_exp_denot] at htyped ⊢
               -- Show capability sets match
               have hcap_rename :
-                (Cf.rename Rename.succ).denot (env.extend_cvar CS) = Cf.denot env := by
-                have := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=CS)) Cf
+                  (Cf.rename Rename.succ).denot
+                    (env.extend_cvar CS (cap := CS.ground_denot m')) = Cf.denot env := by
+                have :=
+                  rebind_captureset_denot
+                    (Rebind.cweaken (env:=env) (cs:=CS) (cap:=CS.ground_denot m')) Cf
                 exact this.symm
               -- Use monotonicity
               have hCf_mono : Cf.denot env store = Cf.denot env m' := by
@@ -387,10 +393,11 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Mutabil
                   · apply from_TypeEnv_wf_in_heap hts
                 exact capture_set_denot_is_monotonic hwf_Cf hsub
               -- Show the authority matches
+              let env' := env.extend_cvar CS (cap := CS.ground_denot m')
               have hauthority :
-                (Cf.rename Rename.succ).denot (env.extend_cvar CS) m' =
-                expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
-                calc (Cf.rename Rename.succ).denot (env.extend_cvar CS) m'
+                  (Cf.rename Rename.succ).denot env' m' =
+                  expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
+                calc (Cf.rename Rename.succ).denot env' m'
                   _ = Cf.denot env m' := by rw [congrFun hcap_rename m']
                   _ = Cf.denot env store := by rw [← hCf_mono]
                   _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store := by
@@ -398,6 +405,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Mutabil
                   _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
                     rw [← expand_captures_eq_ground_denot]
               rw [← hauthority]
+              rw [Subst.from_TypeEnv_extend_cvar_cap_irrelevant
+                (cap := .empty) (cap' := CS.ground_denot m')]
               exact htyped
 
 
@@ -446,7 +455,9 @@ theorem sem_typ_pack
         -- hQ : val_denot env (T.subst (Subst.openCVar cs)) store (var (x.subst ...))
         -- Now use retype lemma to convert from T.subst (Subst.openCVar cs) at env
         -- to T at env.extend_cvar (cs.subst ...)
-        have hretype := @open_carg_val_denot s env cs T
+        let cs' := cs.subst (Subst.from_TypeEnv env)
+        have hretype := open_carg_val_denot (env := env) (cap := cs'.ground_denot store)
+          (C := cs) (T := T)
         exact (hretype store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ
       case eval_val =>
         -- Variables can only use eval_var, not eval_val
@@ -542,7 +553,7 @@ theorem cabs_val_denot_inv
       m'.subsumes store ->
       ((CS.denot TypeEnv.empty m').BoundedBy (B.denot m')) ->
       Ty.exi_exp_denot
-        (env.extend_cvar CS)
+        (env.extend_cvar CS (cap := CS.ground_denot m'))
         T (expand_captures store.heap cs') m'
         (e0.subst (Subst.openCVar CS))) := by
   cases x with
@@ -850,14 +861,16 @@ theorem sem_typ_tapp
 theorem typed_env_lookup_cvar_aux
   (hts : EnvTyping Γ env m)
   (hc : Ctx.LookupCVar Γ c cb) :
-  ((env.lookup_cvar c).ground_denot m).BoundedBy (cb.denot m) := by
+  ((env.lookup_cvar c).1.ground_denot m).BoundedBy (cb.denot m) := by
   -- Mutability.denot doesn't depend on environment, so rebinding is trivial
   induction hc generalizing m
   case here =>
     rename_i Γ' cb'
     match env with
-    | .extend env' (.cvar cs) =>
+    | .extend env' (.cvar cs _) =>
       simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
+      -- hts.2.1 : cap.BoundedBy, hts.2.2.1 : cap = cs.ground_denot m
+      rw [<- hts.2.2.1]
       exact hts.2.1
   case there b0 b hc_prev ih =>
     cases b0
@@ -880,11 +893,44 @@ theorem typed_env_lookup_cvar_aux
     case cvar =>
       rename_i Γ' c' cb' Bb
       match env with
-      | .extend env' (.cvar cs) =>
+      | .extend env' (.cvar cs _) =>
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
-        obtain ⟨_, _, henv'⟩ := hts
+        obtain ⟨_, _, _, henv'⟩ := hts
         have hih := ih henv'
         exact hih
+
+theorem typed_env_cvar_cap_eq
+  {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
+  (hts : EnvTyping Γ env m)
+  (c : BVar s .cvar) :
+  (env.lookup_cvar c).2 = (env.lookup_cvar c).1.ground_denot m := by
+  induction Γ with
+  | empty =>
+    cases c
+  | push Γ' b ih =>
+    cases b
+    case var T =>
+      match env with
+      | .extend env' (.var n ps) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case tvar S =>
+      match env with
+      | .extend env' (.tvar d) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, _, _, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case cvar B =>
+      match env with
+      | .extend env' (.cvar cs cap) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, hcap_eq, henv'⟩ := hts
+        cases c with
+        | here => exact hcap_eq
+        | there c' => exact ih henv' c'
 
 theorem sem_typ_capp
   {x : BVar s .var}
@@ -959,7 +1005,8 @@ theorem sem_typ_capp
         | top hkind => exact hkind)
 
   -- Now apply the opening lemma
-  have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T) (R:=expand_captures store.heap cs)
+  have heqv := open_carg_exi_exp_denot (env:=env) (C:=D) (T:=T)
+    (R:=expand_captures store.heap cs) (cap := D'.ground_denot store)
 
   -- Convert using the equivalence
   have happ2 :=
@@ -1050,8 +1097,6 @@ theorem sem_typ_bfalse :
   · exact Exp.IsVal.bfalse
   · simp only [Denot.as_mpost, Ty.val_denot, resolve]
     right; trivial
-
-
 
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
@@ -1492,6 +1537,12 @@ theorem sem_sc_elem {C1 C2 : CaptureSet s}
   intro env m hts
   unfold CaptureSet.denot
   induction hmem
+  case empty =>
+    -- ∅.subst σ = ∅
+    simp [CaptureSet.subst]
+    -- ∅.ground_denot m = ∅
+    simp [CaptureSet.ground_denot]
+    exact CapabilitySet.Subset.empty
   case refl =>
     exact CapabilitySet.Subset.refl
   case union_left ih1 ih2 =>
@@ -1697,15 +1748,15 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
     | cvar cb =>
       -- Context extended with a capture variable
       match env with
-      | .extend env0 (.cvar cs) =>
+      | .extend env0 (.cvar cs cap) =>
         simp only [EnvTyping, TypeEnv.lookup_tvar] at htyping ⊢
-        obtain ⟨hwf_cb, hbound, htyping'⟩ := htyping
+        obtain ⟨hwf_cb, hbound, _, htyping'⟩ := htyping
         -- Apply IH
         have ih_result := a_ih htyping'
         -- Use cweaken for cvar extension
         have hw : Ty.val_denot env0 S.core ≈
-                  Ty.val_denot (env0.extend_cvar cs) (S.core.rename Rename.succ) :=
-          cweaken_val_denot (cs := cs)
+                  Ty.val_denot (env0.extend_cvar cs cap) (S.core.rename Rename.succ) :=
+          cweaken_val_denot (cs := cs) (cap := cap)
         simp [TypeEnv.extend_cvar] at hw
         -- Compose IH with weakening
         simp [Denot.ImplyAfter] at ih_result ⊢
@@ -1727,20 +1778,6 @@ lemma sem_subtyp_tvar {X : BVar s .tvar} {S : PureTy s}
   simp [Ty.val_denot]
   -- The result follows directly from himply
   exact himply
-
-
--- Helper lemma: PreDenot.ImplyAfter is monotonic in the starting memory
-lemma pre_denot_imply_after_monotonic {pd1 pd2 : PreDenot} {H m : Memory}
-  (himply : pd1.ImplyAfter H pd2)
-  (hsub : m.subsumes H) :
-  pd1.ImplyAfter m pd2 := by
-  simp [PreDenot.ImplyAfter] at himply ⊢
-  intro C
-  simp [Denot.ImplyAfter] at himply ⊢
-  intro m' hsub_m'
-  -- m' subsumes m, and m subsumes H, so m' subsumes H by transitivity
-  have hsub_H : m'.subsumes H := Memory.subsumes_trans hsub_m' hsub
-  exact himply C m' hsub_H
 
 lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
@@ -1953,19 +1990,22 @@ lemma sem_subtyp_cpoly {m1 m2 : Mutability} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty
             -- Apply the original function body with this CS
             have heval1 := hbody m'' CS hCS_wf hsub_m'' hCS_satisfies_m1
             -- Now use covariance hT
-            have henv' : EnvTyping (Γ,C<:m2) (env.extend_cvar CS) m'' := by
+            have henv' : EnvTyping (Γ,C<:m2)
+                (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' := by
               simp [TypeEnv.extend_cvar]
               constructor
               · exact hCS_wf
-              · constructor
-                · -- Convert hCS_satisfies_m2 from CS.denot TypeEnv.empty to CS.ground_denot
-                  have : CS.denot TypeEnv.empty = CS.ground_denot := by
-                    simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
-                  rw [← this]
-                  exact hCS_satisfies_m2
-                · have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
-                  exact env_typing_monotonic htyping hB_trans
-            have hT_sem := hT (env.extend_cvar CS) m'' henv'
+              constructor
+              · -- Convert hCS_satisfies_m2 from CS.denot TypeEnv.empty to CS.ground_denot
+                have : CS.denot TypeEnv.empty = CS.ground_denot := by
+                  simp [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id]
+                rw [← this]
+                exact hCS_satisfies_m2
+              constructor
+              · rfl
+              · have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
+                exact env_typing_monotonic htyping hB_trans
+            have hT_sem := hT (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' henv'
             -- Convert to postcondition entailment
             have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
             -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
@@ -2062,20 +2102,23 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
       · exact hwf_CS
 
       · -- Construct EnvTyping for the extended context
-        have henv' : EnvTyping (Γ,C<:.epsilon) (env.extend_cvar CS) m := by
+        have henv' : EnvTyping (Γ,C<:.epsilon)
+            (env.extend_cvar CS (cap := CS.ground_denot m)) m := by
           simp [TypeEnv.extend_cvar]
           constructor
           · -- Need: CS.WfInHeap m.heap
             exact hwf_CS
-          · constructor
-            · -- Need: (CS.ground_denot m).BoundedBy (.epsilon.denot m)
-              -- .epsilon.denot m = .top .epsilon, and any set has kind .epsilon
-              simp [Mutability.denot]
-              exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
-            · exact env_typing_monotonic htyping hsubsumes
+          constructor
+          · -- Need: (CS.ground_denot m).BoundedBy (.epsilon.denot m)
+            -- .epsilon.denot m = .top .epsilon, and any set has kind .epsilon
+            simp [Mutability.denot]
+            exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
+          constructor
+          · rfl
+          · exact env_typing_monotonic htyping hsubsumes
 
         -- Apply semantic subtyping
-        have hT_sem := hT (env.extend_cvar CS) m henv'
+        have hT_sem := hT (env.extend_cvar CS (cap := CS.ground_denot m)) m henv'
         simp [Denot.ImplyAfter, Denot.ImplyAt] at hT_sem
         exact hT_sem m (Memory.subsumes_refl m) (.var x) h_body_T1
     | _ =>
@@ -2402,9 +2445,9 @@ theorem sem_typ_unpack
       · -- Prove CS.WfInHeap m1.heap
         exact hwf_CS
       · -- Prove x_pack.WfInHeap m1.heap
-        -- Extract from hQ1_body : Ty.val_denot (env.extend_cvar CS) T m1 (Exp.var x_pack)
+        -- Extract from hQ1_body : Ty.val_denot (env.extend_cvar CS cap) T m1 (Exp.var x_pack)
         -- Use val_denot_implies_wf to get (Exp.var x_pack).WfInHeap m1.heap
-        have hwf_env : (env.extend_cvar CS).is_implying_wf := by
+        have hwf_env : (env.extend_cvar CS (cap := CS.ground_denot m1)).is_implying_wf := by
           intro X
           -- X : BVar (s,C) .tvar, must be .there X' for some X'
           cases X with
@@ -2433,13 +2476,13 @@ theorem sem_typ_unpack
 
       let ps := CaptureSet.peakset (Γ,C<:.epsilon) T.captureSet
       -- Apply hu with doubly extended environment
-      have hu' := hu ((env.extend_cvar cs).extend_var fx ps) m1
+      have hu' := hu ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps) m1
       simp [Ty.exi_exp_denot] at hu' ⊢
 
       -- First, construct the typing context for hu'
       -- Need to show: EnvTyping (Γ,C<:unbound,x:T) (extended environment) m1
-      have hts_extended :
-        EnvTyping (Γ,C<:.epsilon,x:T) ((env.extend_cvar cs).extend_var fx ps) m1 := by
+      have hts_extended : EnvTyping (Γ,C<:.epsilon,x:T)
+          ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps) m1 := by
         -- This unfolds to a conjunction by EnvTyping definition
         constructor
         · -- Show: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var (.free fx))
@@ -2447,41 +2490,44 @@ theorem sem_typ_unpack
         · constructor
           · rfl
           · -- Show: EnvTyping (Γ,C<:.epsilon) (env.extend_cvar cs) m1
-            -- This is a 3-tuple: (cs.WfInHeap, bound check, env typing)
+            -- This is a 4-tuple: (cs.WfInHeap, bound check, cap eq, env typing)
             constructor
             · -- Show: cs.WfInHeap m1.heap
               exact hwf_cs
-            · constructor
-              · -- Show: (cs.ground_denot m1).BoundedBy (.epsilon.denot m1)
-                -- .epsilon.denot m1 = .top .epsilon, and every set has kind .epsilon
-                simp [Mutability.denot]
-                exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
-              · -- Show: EnvTyping Γ env m1
-                exact env_typing_monotonic hts hs1
+            constructor
+            · -- Show: (cs.ground_denot m1).BoundedBy (.epsilon.denot m1)
+              -- .epsilon.denot m1 = .top .epsilon, and every set has kind .epsilon
+              simp [Mutability.denot]
+              exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
+            constructor
+            · rfl
+            · -- Show: EnvTyping Γ env m1
+              exact env_typing_monotonic hts hs1
 
       -- Apply hu' with the typing context
       have hu'' := hu' hts_extended
 
       -- Expression substitution equality
       have hexp_eq :
-        (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
-          u.subst (Subst.from_TypeEnv ((env.extend_cvar cs).extend_var fx ps)) := by
+          (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
+          u.subst (Subst.from_TypeEnv
+            ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps)) := by
         rw [Exp.subst_comp, Subst.from_TypeEnv_weaken_unpack (ps:=ps)]
+        rw [Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant]
 
       -- Capture set equality via rebinding
+      let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
       have hcap_eq :
-        ((C.rename Rename.succ).rename Rename.succ).denot
-          ((env.extend_cvar cs).extend_var fx ps) m1 =
+        ((C.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1 =
         C.denot env store := by
         -- Use rebind to show double-renamed C equals original C
-        have h1 := rebind_captureset_denot (Rebind.cweaken (env:=env) (cs:=cs)) C
+        have h1 := rebind_captureset_denot
+          (Rebind.cweaken (env:=env) (cs:=cs) (cap:=cs.ground_denot m1)) C
         have h2 := rebind_captureset_denot
-          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=ps))
-          (C.rename Rename.succ)
+          (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (C.rename Rename.succ)
         calc
-          ((C.rename Rename.succ).rename Rename.succ).denot
-            ((env.extend_cvar cs).extend_var fx ps) m1
-          _ = (C.rename Rename.succ).denot (env.extend_cvar cs) m1 := by rw [<-h2]
+          ((C.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
+          _ = (C.rename Rename.succ).denot env' m1 := by rw [<-h2]
           _ = C.denot env m1 := by rw [<-h1]
           _ = C.denot env store := by
             have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
@@ -2492,12 +2538,12 @@ theorem sem_typ_unpack
 
       -- Type equivalence via double rebind
       have heqv_composed : Ty.exi_val_denot env U ≈
-        Ty.exi_val_denot ((env.extend_cvar cs).extend_var fx ps)
+        Ty.exi_val_denot (env'.extend_var fx ps)
           ((U.rename Rename.succ).rename Rename.succ) := by
-        have heqv1 := rebind_exi_val_denot (Rebind.cweaken (env:=env) (cs:=cs)) U
+        have heqv1 := rebind_exi_val_denot
+          (Rebind.cweaken (env:=env) (cs:=cs) (cap:=cs.ground_denot m1)) U
         have heqv2 := rebind_exi_val_denot
-          (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx) (ps:=ps))
-          (U.rename Rename.succ)
+          (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (U.rename Rename.succ)
         intro m e
         rw [heqv1, heqv2]
 
@@ -2509,6 +2555,484 @@ theorem sem_typ_unpack
       apply eval_post_monotonic _ hu''
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
+
+-- Helper: rename preserves subset
+theorem CaptureSet.Subset.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
+  (hsub : C1 ⊆ C2) : C1.rename f ⊆ C2.rename f := by
+  induction hsub with
+  | refl => exact .refl
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.rename]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.rename]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.rename]
+    exact .union_right_right ih
+  | empty =>
+    simp only [CaptureSet.rename]
+    exact .empty
+
+-- Helper: peaks is monotonic w.r.t. CaptureSet.Subset
+theorem peaks_mono {Γ : Ctx s} {C1 C2 : CaptureSet s}
+  (hsub : C1 ⊆ C2) : (C1.peaks Γ) ⊆ (C2.peaks Γ) := by
+  induction hsub with
+  | refl => exact .refl
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.peaks]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_right ih
+  | empty =>
+    simp only [CaptureSet.peaks]
+    exact .empty
+
+-- Helper: peaks commutes with rename and context extension (subset version)
+-- This shows that computing peaks then renaming is a subset of
+-- renaming then computing peaks in extended context
+theorem peaks_rename_succ_sub {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
+  (C.peaks Γ).rename Rename.succ ⊆ (C.rename Rename.succ).peaks (Γ.push b) := by
+  induction C generalizing k with
+  | empty =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .refl
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .union_left (.union_right_left ih1) (.union_right_right ih2)
+  | cvar m c =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .refl
+  | var m v =>
+    cases v with
+    | free _ =>
+      simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename]
+      exact .refl
+    | bound x =>
+      cases Γ with
+      | empty => cases x
+      | push Γ' bd =>
+        cases bd with
+        | var T =>
+          cases x with
+          | here =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+        | tvar T =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+        | cvar cm =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
+
+-- Helper: peaks commutes with applyRO (using well-founded recursion like peaks)
+theorem peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
+  C.applyRO.peaks Γ = (C.peaks Γ).applyRO := by
+  match Γ, C with
+  | _, .empty => simp only [CaptureSet.applyRO, CaptureSet.peaks]
+  | Γ, .union C1 C2 =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    rw [peaks_applyRO_comm Γ C1, peaks_applyRO_comm Γ C2]
+    rfl
+  | _, .cvar _ _ => simp only [CaptureSet.applyRO, CaptureSet.peaks]
+  | _, .var _ (.free _) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    rfl
+  | .push Γ' (.var T), .var m (.bound .here) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks,
+      CaptureSet.applyMut_ro, CaptureSet.applyMut_applyRO]
+  | .push Γ' _, .var m (.bound (.there x')) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
+    simp only [CaptureSet.applyRO] at ih
+    rw [ih, CaptureSet.applyRO_rename]
+termination_by (sizeOf Γ, sizeOf C)
+
+-- Helper: peaks commutes with applyMut
+theorem peaks_applyMut_comm {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} :
+  (C.applyMut m).peaks Γ = (C.peaks Γ).applyMut m := by
+  cases m with
+  | epsilon => simp only [CaptureSet.applyMut_epsilon]
+  | ro =>
+    simp only [CaptureSet.applyMut_ro]
+    exact peaks_applyRO_comm Γ C
+
+-- Helper: peaks is monotonic w.r.t. CaptureSet.CoveredBy
+theorem peaks_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
+  (hcov : C1.CoveredBy C2) : (C1.peaks Γ).CoveredBy (C2.peaks Γ) := by
+  induction hcov with
+  | refl hm =>
+    rw [peaks_applyMut_comm, peaks_applyMut_comm]
+    exact .refl hm
+  | empty =>
+    simp only [CaptureSet.peaks]
+    exact .empty
+  | union_left _ _ ih1 ih2 =>
+    simp only [CaptureSet.peaks]
+    exact .union_left ih1 ih2
+  | union_right_left _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_left ih
+  | union_right_right _ ih =>
+    simp only [CaptureSet.peaks]
+    exact .union_right_right ih
+
+-- Helper: peaks commutes with rename and context extension (CoveredBy version)
+theorem peaks_rename_succ_coveredby {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
+  (C.peaks Γ).rename Rename.succ |>.CoveredBy <| (C.rename Rename.succ).peaks (Γ.push b) := by
+  induction C generalizing k with
+  | empty =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .empty
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .union_left (.union_right_left ih1) (.union_right_right ih2)
+  | cvar m c =>
+    simp only [CaptureSet.peaks, CaptureSet.rename]
+    exact .refl'
+  | var m v =>
+    cases v with
+    | free _ =>
+      simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename]
+      exact .empty
+    | bound x =>
+      cases Γ with
+      | empty => cases x
+      | push Γ' bd =>
+        cases bd with
+        | var T =>
+          cases x with
+          | here =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+        | tvar T =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+        | cvar cm =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+
+-- Helper: Subset implies CoveredBy (Subset is stricter)
+theorem CaptureSet.Subset.coveredby {C1 C2 : CaptureSet s}
+  (hsub : C1 ⊆ C2) : C1.CoveredBy C2 := by
+  induction hsub with
+  | refl => exact .refl'
+  | empty => exact .empty
+  | union_left _ _ ih1 ih2 => exact .union_left ih1 ih2
+  | union_right_left _ ih => exact .union_right_left ih
+  | union_right_right _ ih => exact .union_right_right ih
+
+-- Helper: peaks of applyRO is covered by peaks (key lemma using CoveredBy)
+theorem peaks_applyRO_coveredby {Γ : Ctx s} {C : CaptureSet s} :
+  (C.applyRO.peaks Γ).CoveredBy (C.peaks Γ) := by
+  rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
+  -- Goal: ((C.peaks Γ).applyMut .ro).CoveredBy (C.peaks Γ)
+  -- C.peaks Γ = (C.peaks Γ).applyMut .epsilon
+  conv_rhs => rw [<-CaptureSet.applyMut_epsilon (cs := C.peaks Γ)]
+  exact .refl Mutability.Le.ro_le
+
+-- Helper: peaks respects applyRO monotonically (CoveredBy version)
+theorem peaks_applyRO_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
+  (hcov : (C1.peaks Γ).CoveredBy (C2.peaks Γ)) :
+  (C1.applyRO.peaks Γ).CoveredBy (C2.applyRO.peaks Γ) := by
+  rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
+  rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
+  exact hcov.applyMut_mono
+
+theorem subcapt_peaks
+  (hsc : Subcapt Γ C1 C2) :
+  (C1.peaks Γ).CoveredBy (C2.peaks Γ) := by
+  induction hsc with
+  | sc_trans _ _ ih1 ih2 =>
+    exact CaptureSet.CoveredBy.trans ih1 ih2
+  | sc_elem hsub =>
+    exact peaks_mono hsub |>.coveredby
+  | sc_union _ _ ih1 ih2 =>
+    conv_lhs => simp only [Union.union]; unfold CaptureSet.peaks
+    simp only [Union.union]
+    exact CaptureSet.CoveredBy.union_left ih1 ih2
+  | sc_var hlk =>
+    -- peaks (.var .epsilon (.bound x)) Γ CoveredBy peaks T.captureSet Γ
+    -- The peaks of a variable equals peaks of the looked-up type's capture set
+    -- This follows from the definition of peaks which unrolls variable references
+    induction hlk with
+    | here =>
+      simp only [CaptureSet.peaks, CaptureSet.applyMut_epsilon]
+      rw [Ty.captureSet_rename]
+      exact peaks_rename_succ_coveredby
+    | @there s k Γ' x T b _ ih =>
+      simp only [CaptureSet.peaks]
+      rw [Ty.captureSet_rename]
+      -- By transitivity, we get the goal
+      have ih' : (CaptureSet.peaks Γ' (CaptureSet.var Mutability.epsilon (Var.bound x))).CoveredBy
+                 (CaptureSet.peaks Γ' T.captureSet) := @ih Γ' .empty .empty
+      have h1 : ((CaptureSet.peaks Γ' (.var .epsilon (.bound x))).rename Rename.succ).CoveredBy
+                ((CaptureSet.peaks Γ' T.captureSet).rename Rename.succ) :=
+        CaptureSet.CoveredBy.rename (s2 := (s,,k)) ih'
+      exact CaptureSet.CoveredBy.trans h1 peaks_rename_succ_coveredby
+  | sc_ro =>
+    exact peaks_applyRO_coveredby
+  | sc_ro_mono _ ih =>
+    exact peaks_applyRO_mono_coveredby ih
+
+theorem sem_sepcheck_symm
+  (ih : SemSepCheck Γ C1 C2) :
+  SemSepCheck Γ C2 C1 := by
+  intro env H hts hsep
+  apply CapabilitySet.Noninterference.ni_symm
+  simp only [CaptureSet.peaks_union] at hsep
+  apply ih env H hts
+  simp only [CaptureSet.peaks_union]
+  exact TypeEnv.HasSepDom.union_comm hsep
+
+theorem ground_denot_applyMut_comm {C : CaptureSet {}} {m : Memory} {mu : Mutability} :
+  (C.applyMut mu).ground_denot m = (C.ground_denot m).applyMut mu := by
+  cases mu with
+  | epsilon =>
+    simp only [CaptureSet.applyMut, CapabilitySet.applyMut]
+  | ro =>
+    simp only [CaptureSet.applyMut, CapabilitySet.applyMut]
+    exact ground_denot_applyRO_comm.symm
+
+theorem sem_sepcheck_union
+  (ih1 : SemSepCheck Γ C1 C3)
+  (ih2 : SemSepCheck Γ C2 C3) :
+  SemSepCheck Γ (C1 ∪ C2) C3 := by
+  intro env H hts hsep
+  -- hsep : env.HasSepDom (((C1 ∪ C2) ∪ C3).peaks Γ)
+  -- Simplify using peaks_union
+  simp only [CaptureSet.peaks_union] at hsep
+  -- hsep : env.HasSepDom ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ)
+  -- Extract HasSepDom conditions for ih1 and ih2
+  have hsep_12 := TypeEnv.HasSepDom.union_inv_left hsep
+  have hsep_3 := TypeEnv.HasSepDom.union_inv_right hsep
+  have hsep_1 := TypeEnv.HasSepDom.union_inv_left hsep_12
+  have hsep_2 := TypeEnv.HasSepDom.union_inv_right hsep_12
+  -- Build HasSepDom (C1.peaks Γ ∪ C3.peaks Γ) for ih1
+  have hsep1 : env.HasSepDom (C1.peaks Γ ∪ C3.peaks Γ) := by
+    apply TypeEnv.HasSepDom.union_intro hsep_1 hsep_3
+    intro m1 c1 m2 c2 hsub1 hsub2 hne
+    -- hsub1 : (.cvar m1 c1) ⊆ C1.peaks Γ
+    -- hsub2 : (.cvar m2 c2) ⊆ C3.peaks Γ
+    -- Need to show cvars are in the original domain and use hsep
+    have hsub1' : (.cvar m1 c1) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_left hsub1)
+    have hsub2' : (.cvar m2 c2) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_right hsub2
+    exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
+  -- Build HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) for ih2
+  have hsep2 : env.HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) := by
+    apply TypeEnv.HasSepDom.union_intro hsep_2 hsep_3
+    intro m1 c1 m2 c2 hsub1 hsub2 hne
+    have hsub1' : (.cvar m1 c1) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_right hsub1)
+    have hsub2' : (.cvar m2 c2) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
+      CaptureSet.Subset.union_right_right hsub2
+    exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
+  -- Convert to the form expected by SemSepCheck
+  have hsep1' : env.HasSepDom ((C1 ∪ C3).peaks Γ) := by
+    rw [CaptureSet.peaks_union]; exact hsep1
+  have hsep2' : env.HasSepDom ((C2 ∪ C3).peaks Γ) := by
+    rw [CaptureSet.peaks_union]; exact hsep2
+  -- Apply ih1 and ih2
+  have hni1 := ih1 env H hts hsep1'
+  have hni2 := ih2 env H hts hsep2'
+  -- (C1 ∪ C2).denot env H = C1.denot env H ∪ C2.denot env H
+  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+  -- Use ni_union to combine
+  exact CapabilitySet.Noninterference.ni_union hni1 hni2
+
+-- Helper: two capability sets with kind .ro are non-interfering
+theorem CapabilitySet.noninterference_of_ro_ro
+  (hk1 : CapabilitySet.HasKind C1 .ro)
+  (hk2 : CapabilitySet.HasKind C2 .ro) :
+  CapabilitySet.Noninterference C1 C2 := by
+  induction C1 with
+  | empty => exact .ni_empty
+  | cap m l =>
+    cases hk1 with
+    | ro_cap =>
+      -- C1 = .cap .ro l, need to show Noninterference (.cap .ro l) C2
+      induction C2 with
+      | empty => exact .ni_symm .ni_empty
+      | cap m' l' =>
+        cases hk2 with
+        | ro_cap => exact .ni_ro
+      | union C2a C2b ih2a ih2b =>
+        cases hk2 with
+        | ro_union hk2a hk2b =>
+          have hni2a := ih2a hk2a
+          have hni2b := ih2b hk2b
+          exact .ni_symm (.ni_union (.ni_symm hni2a) (.ni_symm hni2b))
+  | union C1a C1b ih1a ih1b =>
+    cases hk1 with
+    | ro_union hk1a hk1b =>
+      have hni1a := ih1a hk1a
+      have hni1b := ih1b hk1b
+      exact .ni_union hni1a hni1b
+
+theorem sem_sepcheck_empty :
+  SemSepCheck Γ {} C := by
+  intro env H hts hsep
+  -- {}.denot env H = {} (the empty CapabilitySet)
+  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+  exact .ni_empty
+
+theorem sem_sepcheck_ro
+  (hk1 : HasKind Γ C1 .ro)
+  (hk2 : HasKind Γ C2 .ro) :
+  SemSepCheck Γ C1 C2 := by
+  intro env H hts hsep
+  -- From fundamental_haskind, get semantic kinding
+  have hsem_k1 := fundamental_haskind hk1 env H hts
+  have hsem_k2 := fundamental_haskind hk2 env H hts
+  -- hsem_k1 : (C1.denot env H).HasKind .ro
+  -- hsem_k2 : (C2.denot env H).HasKind .ro
+  exact CapabilitySet.noninterference_of_ro_ro hsem_k1 hsem_k2
+
+theorem sem_sepcheck_distinct_roots
+  (hne : c1 ≠ c2) :
+  SemSepCheck Γ (CaptureSet.cvar m1 c1) (CaptureSet.cvar m2 c2) := by
+  intro env H hts hsep
+  -- hsep : env.HasSepDom (((CaptureSet.cvar m1 c1) ∪ (CaptureSet.cvar m2 c2)).peaks Γ)
+  -- Simplify peaks for cvar: (CaptureSet.cvar m c).peaks Γ = CaptureSet.cvar m c
+  simp only [CaptureSet.peaks_union, CaptureSet.peaks] at hsep
+  -- hsep : env.HasSepDom (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
+  -- Show (CaptureSet.cvar m1 c1) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
+  have hsub1 : (CaptureSet.cvar m1 c1) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2) :=
+    CaptureSet.Subset.union_right_left CaptureSet.Subset.refl
+  -- Show (CaptureSet.cvar m2 c2) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
+  have hsub2 : (CaptureSet.cvar m2 c2) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2) :=
+    CaptureSet.Subset.union_right_right CaptureSet.Subset.refl
+  -- From HasSepDom, get noninterference for the capability sets
+  have hni_cap := hsep m1 c1 m2 c2 hsub1 hsub2 hne
+  -- Now show: cvar.denot env H = (env.lookup_cvar c).2.applyMut m
+  -- From EnvTyping: cap = cs.ground_denot H, so use ground_denot_applyMut_comm
+  simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv]
+  -- Goal: Noninterference (((env.lookup_cvar c1).1.applyMut m1).ground_denot H)
+  --                       (((env.lookup_cvar c2).1.applyMut m2).ground_denot H)
+  rw [ground_denot_applyMut_comm, ground_denot_applyMut_comm]
+  -- Goal: Noninterference (((env.lookup_cvar c1).1.ground_denot H).applyMut m1)
+  --                       (((env.lookup_cvar c2).1.ground_denot H).applyMut m2)
+  -- From EnvTyping, extract the equality cap = cs.ground_denot H
+  have heq1 : (env.lookup_cvar c1).2 = (env.lookup_cvar c1).1.ground_denot H :=
+    typed_env_cvar_cap_eq hts c1
+  have heq2 : (env.lookup_cvar c2).2 = (env.lookup_cvar c2).1.ground_denot H :=
+    typed_env_cvar_cap_eq hts c2
+  rw [← heq1, ← heq2]
+  exact hni_cap
+
+-- Helper: variable subcaptures its type's capture set with matching mutability
+theorem var_subcapt_captureSet_applyMut
+  (hlk : Γ.LookupVar x T) :
+  Subcapt Γ (.var m (.bound x)) (T.captureSet.applyMut m) := by
+  cases m with
+  | epsilon =>
+    simp only [CaptureSet.applyMut_epsilon]
+    exact .sc_var hlk
+  | ro =>
+    simp only [CaptureSet.applyMut_ro]
+    have h := Subcapt.sc_var hlk
+    exact .sc_ro_mono h
+
+-- Helper: applyMut is monotonic for CapabilitySet.Subset
+theorem CapabilitySet.applyMut_mono {C1 C2 : CapabilitySet} {m : Mutability}
+  (hsub : C1 ⊆ C2) : C1.applyMut m ⊆ C2.applyMut m := by
+  cases m with
+  | epsilon => simp only [CapabilitySet.applyMut]; exact hsub
+  | ro => simp only [CapabilitySet.applyMut]; exact CapabilitySet.applyRO_mono hsub
+
+-- Helper: for well-typed variables, the denotation is bounded by the type's capture set
+theorem var_denot_subset_captureSet_denot
+  (hlk : Γ.LookupVar x T)
+  (henv : EnvTyping Γ env H) :
+  (CaptureSet.var m (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H := by
+  -- From typed_env_lookup_var_reachability:
+  -- reachability_of_loc H.heap (env.lookup_var x).1 ⊆ T.captureSet.denot env H
+  have hreach := typed_env_lookup_var_reachability henv hlk
+  -- Apply applyMut m to both sides (monotonicity)
+  have hreach_mut : (reachability_of_loc H.heap (env.lookup_var x).1).applyMut m ⊆
+                    (T.captureSet.denot env H).applyMut m :=
+    CapabilitySet.applyMut_mono (m := m) hreach
+  -- LHS: (CaptureSet.var m (.bound x)).denot env H
+  --    = (reachability_of_loc H.heap (env.lookup_var x).1).applyMut m
+  simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
+             CaptureSet.ground_denot]
+  -- RHS: (T.captureSet.applyMut m).denot env H
+  --    = (T.captureSet.subst ...).applyMut m).ground_denot H   (by applyMut_subst)
+  --    = (T.captureSet.subst ...).ground_denot H).applyMut m   (by ground_denot_applyMut_comm.symm)
+  --    = (T.captureSet.denot env H).applyMut m
+  simp only [CaptureSet.applyMut_subst]
+  rw [ground_denot_applyMut_comm]
+  exact hreach_mut
+
+-- Helper: transfer HasSepDom from variable peaks to type's capture set peaks
+theorem var_peaks_hassepdom
+  {Γ : Ctx s} {env : TypeEnv s} {C : CaptureSet s}
+  (hlk : Γ.LookupVar x T)
+  (hsep : env.HasSepDom ((CaptureSet.var m (.bound x)).peaks Γ ∪ C.peaks Γ)) :
+  env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) := by
+  rw [CaptureSet.var_peaks hlk] at hsep
+  exact hsep
+
+theorem sem_sepcheck_var
+  (hlk : Γ.LookupVar x T)
+  (ih : SemSepCheck Γ (T.captureSet.applyMut m) C) :
+  SemSepCheck Γ (CaptureSet.var m (.bound x)) C := by
+  intro env H henv hsep_goal
+  -- Get the denotation subset relationship
+  have hsub : (CaptureSet.var m (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H :=
+    var_denot_subset_captureSet_denot hlk henv
+  -- Rewrite peaks_union in the preconditions
+  simp only [CaptureSet.peaks_union] at hsep_goal
+  -- Transfer HasSepDom from variable peaks to type's capture set peaks
+  have hsep_ih : env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) :=
+    var_peaks_hassepdom hlk hsep_goal
+  -- Convert to the form expected by SemSepCheck (peaks of union = union of peaks)
+  have hsep_ih' : env.HasSepDom (((T.captureSet.applyMut m) ∪ C).peaks Γ) := by
+    rw [CaptureSet.peaks_union]
+    exact hsep_ih
+  -- Apply IH to get noninterference for type's capture set
+  have hni_cs : CapabilitySet.Noninterference
+                  ((T.captureSet.applyMut m).denot env H) (C.denot env H) :=
+    ih env H henv hsep_ih'
+  -- Use subset to transfer noninterference
+  exact CapabilitySet.Noninterference.subset_left hni_cs hsub
+
+theorem fundamental_sepcheck
+  (hsep : SepCheck Γ C1 C2) :
+  SemSepCheck Γ C1 C2 := by
+  induction hsep with
+  | sep_symm _ ih =>
+    exact sem_sepcheck_symm ih
+  | sep_var hlk _ ih =>
+    exact sem_sepcheck_var hlk ih
+  | sep_union _ _ ih1 ih2 =>
+    exact sem_sepcheck_union ih1 ih2
+  | sep_empty =>
+    exact sem_sepcheck_empty
+  | sep_ro hk1 hk2 =>
+    exact sem_sepcheck_ro hk1 hk2
+  | sep_distinct_roots hne =>
+    exact sem_sepcheck_distinct_roots hne
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental

@@ -13,7 +13,7 @@ def PreDenot := CapabilitySet -> Denot
 /-- Capture-denotation. Given any memory, it produces a set of capabilities. -/
 def CapDenot := Memory -> CapabilitySet
 
-/-- A bound on capability sets. It can either be a concrete set of the top element. -/
+/-- A bound on capability sets. -/
 inductive CapabilityBound : Type where
 | top : Mutability -> CapabilityBound
 
@@ -99,48 +99,6 @@ theorem reachability_of_loc_eq_resolve_reachability
   -- compute_reachability = resolve_reachability for simple values
   exact compute_reachability_eq_resolve_reachability m.heap v.unwrap v.isVal
 
-/-- This pre-denotation actually enforces the reachability bound. -/
-def PreDenot.is_reachability_safe (denot : PreDenot) : Prop :=
-  ∀ R m e,
-    denot R m e ->
-    resolve_reachability m.heap e ⊆ R
-
-/-- This pre-denotation is monotonic over reachability sets. -/
-def PreDenot.is_reachability_monotonic (pd : PreDenot) : Prop :=
-  ∀ R1 R2,
-    R1 ⊆ R2 ->
-    ∀ m e,
-      pd R1 m e ->
-      pd R2 m e
-
-/-- This pre-denotation entails heap well-formedness. -/
-def PreDenot.implies_wf (pd : PreDenot) : Prop :=
-  ∀ R m e,
-    pd R m e ->
-    e.WfInHeap m.heap
-
-/-- This pre-denotation is "tight" on reachability sets. -/
-def PreDenot.is_tight (pd : PreDenot) : Prop :=
-  ∀ R m fx,
-    pd R m (.var (.free fx)) ->
-    pd (reachability_of_loc m.heap fx) m (.var (.free fx))
-
-/-- This is a proper pre-denotation. -/
-def PreDenot.is_proper (pd : PreDenot) : Prop :=
-  pd.is_reachability_safe
-  ∧ pd.is_reachability_monotonic
-  ∧ pd.implies_wf
-  ∧ pd.is_tight
-  ∧ ∀ C, (pd C).is_proper
-
--- NOTE: The following definitions are no longer needed after the type hierarchy collapse.
--- The capability set bound is now derived from the type's capture set, making these
--- properties trivially true. They are kept commented out for reference.
---
--- def Denot.is_reachability_safe (d : Denot) : Prop := True
--- def Denot.is_reachability_monotonic (d : Denot) : Prop := True
--- def Denot.is_tight (d : Denot) : Prop := True
-
 lemma Denot.as_mpost_is_monotonic {d : Denot}
   (hmon : d.is_monotonic) :
   d.as_mpost.is_monotonic := by
@@ -160,21 +118,11 @@ def Denot.Imply (d1 d2 : Denot) : Prop :=
     (d1 m e) ->
     (d2 m e)
 
-def PreDenot.Imply (pd1 pd2 : PreDenot) : Prop :=
-  ∀ C,
-    (pd1 C).Imply (pd2 C)
-
 def Denot.ImplyAt (d1 : Denot) (m : Memory) (d2 : Denot) : Prop :=
   ∀ e, d1 m e -> d2 m e
 
-def PreDenot.ImplyAt (pd1 pd2 : PreDenot) (m : Memory) : Prop :=
-  ∀ C, (pd1 C).ImplyAt m (pd2 C)
-
 def Denot.ImplyAfter (d1 : Denot) (m : Memory) (d2 : Denot) : Prop :=
   ∀ m', m'.subsumes m -> d1.ImplyAt m' d2
-
-def PreDenot.ImplyAfter (pd1 : PreDenot) (m : Memory) (pd2 : PreDenot) : Prop :=
-  ∀ C, (pd1 C).ImplyAfter m (pd2 C)
 
 theorem Denot.imply_implyat {d1 d2 : Denot}
   (himp : d1.Imply d2) :
@@ -230,11 +178,19 @@ lemma Denot.apply_imply_at {d1 d2 : Denot}
 /-- Type information for each kind of variable bindings in type context. -/
 inductive TypeInfo : Sig -> Kind -> Type where
 /-- Type information for a variable is a store location plus a peak set. -/
-| var : Nat -> PeakSet s -> TypeInfo s .var
+| var :
+  Nat ->
+  PeakSet s ->
+  TypeInfo s .var
 /-- Type information for a type variable is a denotation. -/
-| tvar : Denot -> TypeInfo s .tvar
+| tvar :
+  Denot ->
+  TypeInfo s .tvar
 /-- Type information for a capture variable is a ground capture set. -/
-| cvar : CaptureSet {} -> TypeInfo s .cvar
+| cvar :
+  CaptureSet {} ->
+  CapabilitySet ->
+  TypeInfo s .cvar
 
 inductive TypeEnv : Sig -> Type where
 | empty : TypeEnv {}
@@ -250,10 +206,9 @@ def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar
-  (Γ : TypeEnv s) (ground : CaptureSet {}) :
+  (Γ : TypeEnv s) (ground : CaptureSet {}) (cap : CapabilitySet := .empty) :
   TypeEnv (s,C) :=
-  Γ.extend (.cvar ground)
-
+  Γ.extend (.cvar ground cap)
 
 def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSet s)
 | .extend _ (.var n ps), .here => (n, ps.rename Rename.succ)
@@ -265,14 +220,14 @@ def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> Denot
 | .extend _ (.tvar T), .here => T
 | .extend Γ _, .there x => Γ.lookup_tvar x
 
-def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {}
-| .extend _ (.cvar cs), .here => cs
+def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {} × CapabilitySet
+| .extend _ (.cvar cs cap), .here => (cs, cap)
 | .extend Γ _, .there x => Γ.lookup_cvar x
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x).1
   tvar := fun _ => .top
-  cvar := fun c => env.lookup_cvar c
+  cvar := fun c => (env.lookup_cvar c).1
 
 theorem Subst.from_TypeEnv_empty :
   Subst.from_TypeEnv TypeEnv.empty = Subst.id := by
@@ -280,6 +235,52 @@ theorem Subst.from_TypeEnv_empty :
   · intro x; cases x
   · intro X; cases X
   · intro C; cases C
+
+/-- The substitution from TypeEnv is independent of the cap parameter in extend_cvar. -/
+theorem Subst.from_TypeEnv_extend_cvar_cap_irrelevant
+  {env : TypeEnv s} {cs : CaptureSet {}} {cap cap' : CapabilitySet} :
+  Subst.from_TypeEnv (env.extend_cvar cs cap) =
+  Subst.from_TypeEnv (env.extend_cvar cs cap') := by
+  apply Subst.funext
+  · intro x
+    cases x with
+    | there x => simp [from_TypeEnv, TypeEnv.extend_cvar, TypeEnv.lookup_var]
+  · intro X
+    cases X with
+    | there X => simp [from_TypeEnv, TypeEnv.extend_cvar]
+  · intro C
+    cases C with
+    | here => simp [from_TypeEnv, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
+    | there C => simp [from_TypeEnv, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
+
+/-- Cap-irrelevance extends to environments further extended with extend_var. -/
+theorem Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant
+  {env : TypeEnv s} {cs : CaptureSet {}} {cap cap' : CapabilitySet}
+  {x : Nat} {ps : PeakSet (s,C)} :
+  Subst.from_TypeEnv ((env.extend_cvar cs cap).extend_var x ps) =
+  Subst.from_TypeEnv ((env.extend_cvar cs cap').extend_var x ps) := by
+  apply Subst.funext
+  · intro y
+    cases y with
+    | here => rfl
+    | there y =>
+      -- y : BVar (s,C) .var, and since (s,C) has cvar at the end, y must be .there y'
+      cases y with
+      | there y' =>
+        simp [from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_var]
+  · intro X
+    cases X with
+    | there X =>
+      cases X with
+      | there X' =>
+        simp [from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar]
+  · intro C
+    cases C with
+    | there C =>
+      cases C with
+      | here => rfl
+      | there C' =>
+        simp [from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
 
 def compute_peaks (ρ : TypeEnv s) : CaptureSet s -> CaptureSet s
 | .empty => .empty
@@ -353,6 +354,15 @@ theorem CapabilitySet.BoundedBy.trans
     cases hbound with
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
+
+def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
+  ∀ m1 c1 m2 c2,
+    (.cvar m1 c1) ⊆ dom ->
+    (.cvar m2 c2) ⊆ dom ->
+    (c1 ≠ c2) ->
+    CapabilitySet.Noninterference
+      ((env.lookup_cvar c1).2.applyMut m1)
+      ((env.lookup_cvar c2).2.applyMut m2)
 
 /-- Whether this denotation enforces purity of the value. -/
 def Denot.enforce_pure (d : Denot) : Prop :=
@@ -440,7 +450,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       m'.subsumes m ->
       ((A0 m').BoundedBy (B.denot m')) ->
       Ty.exi_exp_denot
-        (env.extend_cvar CS)
+        (env.extend_cvar CS (cap := CS.ground_denot m'))
         T
         R0
         m' (t0.subst (Subst.openCVar CS)))
@@ -452,7 +462,7 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
   match resolve m.heap e with
   | some (.pack CS x) =>
     CS.WfInHeap m.heap ∧
-    Ty.val_denot (ρ.extend_cvar CS) T m (.var x)
+    Ty.val_denot (ρ.extend_cvar CS (cap := CS.ground_denot m)) T m (.var x)
   | _ => False
 
 /-- Expression denotation for capturing types.
@@ -502,9 +512,10 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar cs), m =>
+| .push Γ (.cvar B), .extend env (.cvar cs cap), m =>
   (cs.WfInHeap m.heap) ∧
-  ((cs.ground_denot m).BoundedBy (B.denot m)) ∧
+  (cap.BoundedBy (B.denot m)) ∧
+  cap = cs.ground_denot m ∧
   EnvTyping Γ env m
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
@@ -532,9 +543,9 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
-  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs), .there x' =>
+  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
-    obtain ⟨_, _, h'⟩ := h
+    obtain ⟨_, _, _, h'⟩ := h
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
@@ -716,7 +727,7 @@ theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
           TypeEnv.lookup_cvar]
         -- Now the goal has ρ.lookup_cvar c0 expanded to match expression
         -- Let's generalize this ground capture set
-        generalize ρ.lookup_cvar c0 = ground_cs
+        generalize (ρ.lookup_cvar c0).1 = ground_cs
         -- Goal: double rename + subst on ground_cs equals ground_cs
         induction ground_cs with
         | empty => rfl  -- .empty.rename.rename.subst = .empty
@@ -787,7 +798,7 @@ theorem typed_env_is_implying_simple_ans
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_simple_ans] at ih_result ⊢
           intro x
@@ -842,7 +853,7 @@ theorem typed_env_is_implying_wf
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
@@ -902,7 +913,7 @@ theorem typed_env_enforces_pure
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_enforcing_pure] at ih_result ⊢
           intro x
@@ -1053,7 +1064,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar cs =>
           unfold EnvTyping at htyping
-          have ⟨hwf, hsub, htyping'⟩ := htyping
+          have ⟨hwf, hsub, _, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -1147,42 +1158,6 @@ theorem Denot.imply_to_entails (d1 d2 : Denot)
   intro m e h1
   apply himp m e h1
 
-/- Equivalence for PreDenot -/
-def PreDenot.Equiv (pd1 pd2 : PreDenot) : Prop :=
-  ∀ A, (pd1 A) ≈ (pd2 A)
-
-instance PreDenot.instHasEquiv : HasEquiv PreDenot where
-  Equiv := PreDenot.Equiv
-
-theorem PreDenot.equiv_def {pd1 pd2 : PreDenot} :
-  pd1 ≈ pd2 ↔ ∀ A m e, (pd1 A m e) ↔ (pd2 A m e) := by
-  constructor
-  · intro h A m e
-    exact (h A) m e
-  · intro h A
-    intro m e
-    exact h A m e
-
-theorem PreDenot.eq_to_equiv {pd1 pd2 : PreDenot} (h : pd1 = pd2) : pd1 ≈ pd2 := by
-  intro A
-  intro m e
-  rw [h]
-
-theorem PreDenot.equiv_refl (pd : PreDenot) : pd ≈ pd := by
-  intro A
-  apply Denot.equiv_refl
-
-theorem PreDenot.equiv_symm (pd1 pd2 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd1 := by
-  intro h A
-  apply Denot.equiv_symm
-  exact h A
-
-theorem PreDenot.equiv_trans (pd1 pd2 pd3 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd3 -> pd1 ≈ pd3 := by
-  intro h12 h23 A
-  apply Denot.equiv_trans _ (pd2 A) _
-  · exact h12 A
-  · exact h23 A
-
 theorem Denot.imply_refl (d : Denot) : d.Imply d := by
   intro m e h
   exact h
@@ -1227,15 +1202,6 @@ theorem resolve_ans_to_val
     apply Exp.IsAns.is_var
   case inr h => aesop
 
-def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
-  ∀ C, (pd C).is_monotonic
-
-def PreDenot.is_transparent (pd : PreDenot) : Prop :=
-  ∀ C, (pd C).is_transparent
-
-def PreDenot.is_bool_independent (pd : PreDenot) : Prop :=
-  ∀ C, (pd C).is_bool_independent
-
 structure TypeEnv.IsMonotonic (env : TypeEnv s) : Prop where
   tvar : ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_monotonic
@@ -1247,17 +1213,6 @@ def TypeEnv.is_transparent (env : TypeEnv s) : Prop :=
 def TypeEnv.is_bool_independent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_bool_independent
-
--- NOTE: The following TypeEnv properties are no longer needed after the type hierarchy collapse.
--- They relied on Denot.is_reachability_safe, Denot.is_reachability_monotonic, and Denot.is_tight
--- which are now trivially true.
---
--- def TypeEnv.is_reachability_safe (env : TypeEnv s) : Prop :=
---   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_reachability_safe
--- def TypeEnv.is_reachability_monotonic (env : TypeEnv s) : Prop :=
---   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_reachability_monotonic
--- def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
---   ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_tight
 
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env mem) :
@@ -1306,7 +1261,7 @@ theorem typed_env_is_monotonic
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -1363,7 +1318,7 @@ theorem typed_env_is_transparent
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1420,7 +1375,7 @@ theorem typed_env_is_bool_independent
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
@@ -1647,7 +1602,8 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
     -- Rewrite resolve m.heap (var (free x))
     change match resolve m.heap (.var (.free x)) with
       | some (.pack CS x) =>
-        CS.WfInHeap m.heap ∧ Ty.val_denot (env.extend_cvar CS) T m (.var x)
+        CS.WfInHeap m.heap ∧
+          Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m)) T m (.var x)
       | _ => False
     simp only [resolve, hlookup]
     -- Now goal is: match (some v.unwrap) with ...
@@ -2155,25 +2111,30 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         -- resolve m1.heap e = some (pack CS y)
         rename_i CS y
         simp [hresolve1] at ht
-        -- ht now says: CS.WfInHeap m1.heap ∧ Ty.val_denot (env.extend_cvar CS) T m1 (var y)
+        -- ht now says: CS.WfInHeap m1.heap ∧
+        --   Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m1)) T m1 (var y)
         obtain ⟨hwf_CS_m1, ht_body⟩ := ht
         -- Use resolve_monotonic to show resolve m2.heap e = some (pack CS y)
         have hresolve2 : resolve m2.heap e = some (Exp.pack CS y) := by
           apply resolve_monotonic hmem hresolve1
         simp [hresolve2]
-        -- Now need to show:
-        -- CS.WfInHeap m2.heap ∧ Ty.val_denot (env.extend_cvar CS) T m2 (var y)
+        -- Now need to show: CS.WfInHeap m2.heap ∧
+        --   Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m2)) T m2 (var y)
         constructor
         · -- Well-formedness is monotonic
           exact CaptureSet.wf_monotonic hmem hwf_CS_m1
         · -- Use monotonicity of val_denot
-          have henv' : (env.extend_cvar CS).IsMonotonic := by
+          -- First show ground_denot is monotonic
+          have hcap_eq : CS.ground_denot m1 = CS.ground_denot m2 :=
+            ground_denot_is_monotonic hwf_CS_m1 hmem
+          have henv' : (env.extend_cvar CS (cap := CS.ground_denot m1)).IsMonotonic := by
             constructor
             · intro X
               cases X with
               | there X' =>
                 simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar]
                 exact henv.tvar X'
+          rw [← hcap_eq]
           exact val_denot_is_monotonic henv' T hmem ht_body
       all_goals {
         -- resolve returned non-pack, so ht is False
@@ -2287,22 +2248,21 @@ theorem env_typing_monotonic
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hwf, hsub, ht'⟩ := ht
+          have ⟨hwf, hsub, hcap, ht'⟩ := ht
           constructor
           · -- Prove: cs.WfInHeap mem2.heap
             exact CaptureSet.wf_monotonic hmem hwf
-          · constructor
-            · -- Need: cs.ground_denot mem2 ⊆ B.denot mem2
-              -- Have: cs.ground_denot mem1 ⊆ B.denot mem1
-              -- Get cs.ground_denot mem1 = cs.ground_denot mem2
-              have h_denot_eq := ground_denot_is_monotonic hwf hmem
-              -- Get B.denot mem1 = B.denot mem2 (trivially true for Mutability)
-              have h_bound_eq : B.denot mem1 = B.denot mem2 :=
-                mutability_denot_is_monotonic
-              -- Combine the equalities
-              rw [<-h_denot_eq, <-h_bound_eq]
-              exact hsub
-            · exact ih ht'
+          constructor
+          · -- Need: cap.BoundedBy (B.denot mem2)
+            -- Have: cap.BoundedBy (B.denot mem1)
+            -- B.denot mem1 = B.denot mem2 (trivially true for Mutability)
+            have h_bound_eq : B.denot mem1 = B.denot mem2 :=
+              mutability_denot_is_monotonic
+            rw [<-h_bound_eq]
+            exact hsub
+          constructor
+          · rw [hcap, ground_denot_is_monotonic hwf hmem]
+          · exact ih ht'
 
 /-- Semantic subcapturing. -/
 def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
@@ -2310,14 +2270,24 @@ def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
     EnvTyping Γ env m ->
     C1.denot env m ⊆ C2.denot env m
 
+/-- Semantic capture kinding. -/
 def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
   ∀ env m,
     EnvTyping Γ env m ->
     CapabilitySet.HasKind (C.denot env m) mode
 
-def SemSubbound (_Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
+set_option linter.unusedVariables false in
+/-- Semantic sub-bounding -/
+def SemSubbound (Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
   ∀ m,
     B1.denot m ⊆ B2.denot m
+
+/-- Semantic separation check. -/
+def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
+  ∀ env H,
+    EnvTyping Γ env H ->
+    env.HasSepDom ((C1 ∪ C2).peaks Γ) ->
+    CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
 /-- Semantic subtyping relation. -/
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
@@ -3104,8 +3074,8 @@ theorem CaptureSet.IsEmpty.denot_empty {cs : CaptureSet s}
   unfold CaptureSet.denot
   exact (h.subst _).ground_denot_empty
 
-/-- covers cannot hold for the empty capability set. -/
-theorem CapabilitySet.not_covers_empty
+/-- covers cannot hold for a capability set that is empty (via IsEmpty). -/
+theorem CapabilitySet.not_covers_of_isEmpty
     (h : CapabilitySet.IsEmpty cs) : ¬ CapabilitySet.covers m l cs := by
   intro hcov
   induction h with
@@ -3184,19 +3154,19 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, hcov⟩ := hdenot
-    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
+    exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case cell cs =>
     -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, label, _, _, _, hcov⟩ := hdenot
-    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
+    exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case reader cs =>
     -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, _, hcov⟩ := hdenot
-    exact absurd hcov (CapabilitySet.not_covers_empty hpure.denot_empty)
+    exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case arrow T1 cs T2 =>
     -- If cs.IsEmpty, then R0 ⊆ cs.denot means R0 ⊆ .empty
     simp only [Ty.captureSet] at hpure
@@ -3292,5 +3262,99 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
+
+namespace TypeEnv.HasSepDom
+
+theorem union_inv_left {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom (C1 ∪ C2)) :
+  env.HasSepDom C1 := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  apply h
+  · exact CaptureSet.Subset.union_right_left hsub1
+  · exact CaptureSet.Subset.union_right_left hsub2
+  · exact hne
+
+theorem union_inv_right {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom (C1 ∪ C2)) :
+  env.HasSepDom C2 := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  apply h
+  · exact CaptureSet.Subset.union_right_right hsub1
+  · exact CaptureSet.Subset.union_right_right hsub2
+  · exact hne
+
+theorem union_intro {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h1 : env.HasSepDom C1) (h2 : env.HasSepDom C2)
+  (hcross : ∀ m1 c1 m2 c2,
+    (.cvar m1 c1) ⊆ C1 → (.cvar m2 c2) ⊆ C2 → c1 ≠ c2 →
+    CapabilitySet.Noninterference
+      ((env.lookup_cvar c1).2.applyMut m1)
+      ((env.lookup_cvar c2).2.applyMut m2)) :
+  env.HasSepDom (C1 ∪ C2) := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  -- Case analysis on where each cvar comes from
+  cases hsub1 with
+  | union_right_left hsub1' =>
+    cases hsub2 with
+    | union_right_left hsub2' =>
+      -- Both in C1: use h1
+      exact h1 m1 c1 m2 c2 hsub1' hsub2' hne
+    | union_right_right hsub2' =>
+      -- c1 in C1, c2 in C2: use hcross
+      exact hcross m1 c1 m2 c2 hsub1' hsub2' hne
+  | union_right_right hsub1' =>
+    cases hsub2 with
+    | union_right_left hsub2' =>
+      -- c1 in C2, c2 in C1: use hcross with symmetry
+      apply CapabilitySet.Noninterference.ni_symm
+      exact hcross m2 c2 m1 c1 hsub2' hsub1' (Ne.symm hne)
+    | union_right_right hsub2' =>
+      -- Both in C2: use h2
+      exact h2 m1 c1 m2 c2 hsub1' hsub2' hne
+
+theorem union_comm {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom (C2 ∪ C1)) :
+  env.HasSepDom (C1 ∪ C2) := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  -- Convert subset from (C1 ∪ C2) to (C2 ∪ C1)
+  have hsub1' : (.cvar m1 c1) ⊆ (C2 ∪ C1) := by
+    cases hsub1 with
+    | union_right_left h1 => exact CaptureSet.Subset.union_right_right h1
+    | union_right_right h1 => exact CaptureSet.Subset.union_right_left h1
+  have hsub2' : (.cvar m2 c2) ⊆ (C2 ∪ C1) := by
+    cases hsub2 with
+    | union_right_left h2 => exact CaptureSet.Subset.union_right_right h2
+    | union_right_right h2 => exact CaptureSet.Subset.union_right_left h2
+  exact h m1 c1 m2 c2 hsub1' hsub2' hne
+
+theorem coveredby_mono {env : TypeEnv s} {C1 C2 : CaptureSet s}
+  (h : env.HasSepDom C2)
+  (hs : C1.CoveredBy C2) :
+  env.HasSepDom C1 := by
+  intro m1 c1 m2 c2 hsub1 hsub2 hne
+  -- Use cvar_subset_coveredby to find cvars in C2
+  obtain ⟨m1', hle1, hsub1'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby hsub1 hs
+  obtain ⟨m2', hle2, hsub2'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby hsub2 hs
+  -- From h, get noninterference for the cvars in C2
+  have hni := h m1' c1 m2' c2 hsub1' hsub2' hne
+  -- Now show that (env.lookup_cvar c).2.applyMut m ⊆ (env.lookup_cvar c).2.applyMut m'
+  -- when m ≤ m'
+  have hsub_cap1 : (env.lookup_cvar c1).2.applyMut m1 ⊆ (env.lookup_cvar c1).2.applyMut m1' := by
+    cases hle1 with
+    | refl => exact CapabilitySet.Subset.refl
+    | ro_eps =>
+      simp only [CapabilitySet.applyMut]
+      exact @CapabilitySet.applyRO_subset_applyMut _ .epsilon
+  have hsub_cap2 : (env.lookup_cvar c2).2.applyMut m2 ⊆ (env.lookup_cvar c2).2.applyMut m2' := by
+    cases hle2 with
+    | refl => exact CapabilitySet.Subset.refl
+    | ro_eps =>
+      simp only [CapabilitySet.applyMut]
+      exact @CapabilitySet.applyRO_subset_applyMut _ .epsilon
+  -- Use Noninterference.subset_left and subset_right
+  exact CapabilitySet.Noninterference.subset_right
+    (CapabilitySet.Noninterference.subset_left hni hsub_cap1) hsub_cap2
+
+end TypeEnv.HasSepDom
 
 end Capybara

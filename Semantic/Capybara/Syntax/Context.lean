@@ -166,6 +166,12 @@ def CaptureSet.peaks : Ctx s -> CaptureSet s -> CaptureSet s
     (peaks Γ (.var m (.bound x))).rename Rename.succ
 termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 
+@[simp]
+theorem CaptureSet.peaks_union (Γ : Ctx s) (cs1 cs2 : CaptureSet s) :
+    CaptureSet.peaks Γ (cs1 ∪ cs2) = CaptureSet.peaks Γ cs1 ∪ CaptureSet.peaks Γ cs2 := by
+  conv_lhs => simp only [Union.union]; unfold peaks
+  simp only [Union.union]
+
 /-- The peaks function always returns a PeaksOnly capture set. -/
 theorem CaptureSet.peaks_peaksOnly (Γ : Ctx s) (cs : CaptureSet s) :
     (peaks Γ cs).PeaksOnly := by
@@ -192,5 +198,82 @@ termination_by (sizeOf Γ, sizeOf cs)
 
 def CaptureSet.peakset (Γ : Ctx s) (cs : CaptureSet s) : PeakSet s :=
   ⟨peaks Γ cs, CaptureSet.peaks_peaksOnly Γ cs⟩
+
+theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
+  (C.rename Rename.succ).peaks (Γ.push b) = (C.peaks Γ).rename Rename.succ := by
+  induction C generalizing k with
+  | empty =>
+    simp only [CaptureSet.rename, CaptureSet.peaks]
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.rename, CaptureSet.peaks]
+    rw [ih1, ih2]
+    rfl
+  | cvar m c =>
+    simp only [CaptureSet.rename, CaptureSet.peaks]
+  | var m v =>
+    cases v with
+    | free _ =>
+      simp only [CaptureSet.rename, Var.rename, CaptureSet.peaks]
+      rfl
+    | bound x =>
+      cases Γ with
+      | empty => cases x
+      | push Γ' bd =>
+        cases bd with
+        | var T =>
+          cases x with
+          | here =>
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks]
+          | there x' =>
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks]
+        | tvar T =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks]
+        | cvar cm =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks]
+
+theorem CaptureSet.peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
+  C.applyRO.peaks Γ = (C.peaks Γ).applyRO := by
+  match Γ, C with
+  | _, .empty => simp only [CaptureSet.applyRO, CaptureSet.peaks]
+  | Γ, .union C1 C2 =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    rw [peaks_applyRO_comm Γ C1, peaks_applyRO_comm Γ C2]
+    rfl
+  | _, .cvar _ _ => simp only [CaptureSet.applyRO, CaptureSet.peaks]
+  | _, .var _ (.free _) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    rfl
+  | .push Γ' (.var T), .var m (.bound .here) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks,
+      CaptureSet.applyMut_ro, CaptureSet.applyMut_applyRO]
+  | .push Γ' _, .var m (.bound (.there x')) =>
+    simp only [CaptureSet.applyRO, CaptureSet.peaks]
+    have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
+    simp only [CaptureSet.applyRO] at ih
+    rw [ih, CaptureSet.applyRO_rename]
+termination_by (sizeOf Γ, sizeOf C)
+
+theorem CaptureSet.peaks_applyMut_comm {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} :
+  (C.applyMut m).peaks Γ = (C.peaks Γ).applyMut m := by
+  cases m with
+  | epsilon => simp only [CaptureSet.applyMut_epsilon]
+  | ro =>
+    simp only [CaptureSet.applyMut_ro]
+    exact peaks_applyRO_comm Γ C
+
+theorem CaptureSet.var_peaks {Γ : Ctx s}
+  (hb : Γ.LookupVar x T) :
+  (CaptureSet.peaks Γ (CaptureSet.var m (.bound x))) = (T.captureSet.applyMut m).peaks Γ := by
+  induction hb with
+  | here =>
+    simp only [CaptureSet.peaks, Ty.captureSet_rename,
+               peaks_rename_succ_eq, peaks_applyMut_comm]
+  | there hb' ih =>
+    simp only [CaptureSet.peaks, Ty.captureSet_rename]
+    rw [ih, ← CaptureSet.applyMut_rename, peaks_rename_succ_eq]
 
 end Capybara
