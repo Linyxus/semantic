@@ -8,8 +8,8 @@ This module defines classifiers in CaplessK.
 namespace CaplessK
 
 /-- Classifiers represent nodes in the infinite classifier tree.
-    Essentially, they are a sequence of natural numbers, representing the indicies of the children to walk
-    on the path from the root to the node. -/
+    Essentially, they are a sequence of natural numbers, representing the
+    indicies of the children to walk on the path from the root to the node. -/
 inductive Classifier : Type where
   | top : Classifier
   | child : Nat -> Classifier -> Classifier
@@ -42,7 +42,8 @@ theorem Classifier.StrictSub.weaken (hs : StrictSub a b) : Subclass a b := by
   case child => apply Subclass.parent_l .rfl
   case parent_l hp ih => apply Subclass.parent_l ih
 
-theorem Classifier.StrictSub.size (hs : StrictSub a b) : sizeOf a > sizeOf b := by induction hs <;> (simp; try omega)
+theorem Classifier.StrictSub.size (hs : StrictSub a b) : sizeOf a > sizeOf b := by
+  induction hs <;> (simp; try omega)
 
 theorem Classifier.StrictSub.neq (hs : StrictSub a b) : a ≠ b := by
   apply Ne.intro
@@ -103,7 +104,8 @@ theorem Classifier.StrictSub.antisymm (hs : StrictSub a b) (hs2 : Subclass b a) 
   have h2 := hs2.size
   omega
 
-theorem Classifier.StrictSub.subclass_r (hss : StrictSub a b) (hs : Subclass b c) : StrictSub a c := by
+theorem Classifier.StrictSub.subclass_r
+    (hss : StrictSub a b) (hs : Subclass b c) : StrictSub a c := by
   induction hss
   case child n a =>
     induction hs generalizing n
@@ -111,12 +113,13 @@ theorem Classifier.StrictSub.subclass_r (hss : StrictSub a b) (hs : Subclass b c
     case parent_l m k ih =>
       apply parent_l ih
   case parent_l n a ih =>
-    apply! parent_l $ ih _
+    apply! parent_l <| ih _
 
-theorem Classifier.StrictSub.subclass_l (hss : StrictSub a b) (hs : Subclass c a) : StrictSub c b := by
+theorem Classifier.StrictSub.subclass_l
+    (hss : StrictSub a b) (hs : Subclass c a) : StrictSub c b := by
   cases hs.might_strict <;> rename_i hs
-  . simp_all
-  . apply hs.subclass_r hss.weaken
+  · simp_all
+  · apply hs.subclass_r hss.weaken
 
 theorem Classifier.Disjoint.symm (hd : Disjoint a b) : Disjoint b a := by
   induction hd
@@ -131,13 +134,15 @@ theorem Classifier.Disjoint.refines_subclass_r
   induction hs
   case rfl => assumption
   case parent_l hs ih =>
-    apply right $ ih hd
+    apply right <| ih hd
 
-theorem Classifier.Disjoint.refines_subclass_l (hd : Disjoint a2 b) (hs : Subclass a1 a2) : Disjoint a1 b := by
+theorem Classifier.Disjoint.refines_subclass_l
+    (hd : Disjoint a2 b) (hs : Subclass a1 a2) : Disjoint a1 b := by
   apply symm
   apply refines_subclass_r hd.symm hs
 
-theorem Classifier.Disjoint.left_inv (hd : Disjoint (child n a) b) : Subclass b a ∨ Disjoint a b := by
+theorem Classifier.Disjoint.left_inv
+    (hd : Disjoint (child n a) b) : Subclass b a ∨ Disjoint a b := by
   cases hd
   case base m _ => left; constructor; constructor;
   case left => right; assumption
@@ -160,8 +165,8 @@ theorem Classifier.Disjoint.not_subclass (hd : Disjoint a b) (hs : Subclass a b)
       case rfl =>
         cases hd
         case base => aesop
-        case left hs => apply ih2 hs.symm $ .parent_l .rfl
-        case right hs => apply ih2 hs $ .parent_l .rfl
+        case left hs => apply ih2 hs.symm <| .parent_l .rfl
+        case right hs => apply ih2 hs <| .parent_l .rfl
       case parent_l hs =>
         cases hd
         case base => have h := hs.size; simp at h
@@ -183,8 +188,8 @@ theorem Classifier.Disjoint.to_subclass (hd : Disjoint a b) (hs : Subclass c b) 
     apply ih hd
 
 /-- Each pair of classifier nodes are either subclass of the other, or they are disjoint. -/
-theorem Classifier.subclass_or_disjoint a b:
-  Subclass a b ∨ StrictSub b a ∨ Disjoint a b := by
+theorem Classifier.subclass_or_disjoint a b :
+    Subclass a b ∨ StrictSub b a ∨ Disjoint a b := by
   induction a
   case top =>
     cases Subclass.of_top (a:=b).might_strict
@@ -202,12 +207,14 @@ theorem Classifier.subclass_or_disjoint a b:
         { rename_i ih1; have ⟨m, ih1⟩ := ih1;
           generalize h : (n == m) = h0;
           cases h0
-          right; right;
-          apply Disjoint.refines_subclass_r; apply Disjoint.base (m:=m); aesop; assumption
-          have h0 := LawfulBEq.eq_of_beq h; subst_vars
-          cases ih1.might_strict
-          . left; subst_vars; exact .rfl
-          . aesop
+          · right; right
+            apply Disjoint.refines_subclass_r
+            · apply Disjoint.base (m:=m); aesop
+            · assumption
+          · have h0 := LawfulBEq.eq_of_beq h; subst_vars
+            cases ih1.might_strict
+            · left; subst_vars; exact .rfl
+            · aesop
         }
       case inr ih =>
         right; right; apply Disjoint.left ih
@@ -217,15 +224,15 @@ def Classifier.subclass (a : Classifier) (b : Classifier) :=
   if a == b then true
   else match a with
     | .top => false
-    | .child n p => p.subclass b
+    | .child _n p => p.subclass b
 
 theorem Classifier.subclass_is_Subclass : Subclass a b ↔ a.subclass b := by
   apply Iff.intro
-  . intro hs
+  · intro hs
     induction hs
     case rfl => unfold subclass; simp
     case parent_l n p => unfold subclass; simp; right; assumption
-  . intro hs
+  · intro hs
     unfold subclass at hs
     split at hs
     case isTrue h =>
@@ -234,16 +241,16 @@ theorem Classifier.subclass_is_Subclass : Subclass a b ↔ a.subclass b := by
       constructor
     case isFalse h =>
       split at hs
-      . contradiction
-      . rename_i p
+      · contradiction
+      · rename_i p
         constructor
         rw [subclass_is_Subclass (a:=p)]
         assumption
 
 instance Classifier.Subclass.decidable (a b : Classifier) : Decidable (a.Subclass b) := by
   cases h : a.subclass b
-  . apply Decidable.isFalse; rw [Classifier.subclass_is_Subclass]; simp_all
-  . apply Decidable.isTrue; simp [Classifier.subclass_is_Subclass, h]
+  · apply Decidable.isFalse; rw [Classifier.subclass_is_Subclass]; simp_all
+  · apply Decidable.isTrue; simp [Classifier.subclass_is_Subclass, h]
 
 /-- The disjoint relation as a deterministic boolean function. -/
 def Classifier.disjoint (a : Classifier) (b : Classifier) :=
@@ -258,7 +265,7 @@ def Classifier.disjoint (a : Classifier) (b : Classifier) :=
 
 theorem Classifier.disjoint_is_Disjoint {a b : Classifier} : Disjoint a b ↔ a.disjoint b := by
   apply Iff.intro
-  . intro hs
+  · intro hs
     induction hs with
     | base hne =>
       unfold disjoint
@@ -270,11 +277,11 @@ theorem Classifier.disjoint_is_Disjoint {a b : Classifier} : Disjoint a b ↔ a.
       | .child m q =>
         simp only
         split
-        . rename_i heq
+        · rename_i heq
           have h1 := LawfulBEq.eq_of_beq heq
           subst_vars
-          cases ha.symm.not_subclass $ .parent_l .rfl
-        . simp [ih]
+          cases ha.symm.not_subclass <| .parent_l .rfl
+        · simp [ih]
     | @right a' b' m ha ih =>
       unfold disjoint
       match a' with
@@ -289,23 +296,23 @@ theorem Classifier.disjoint_is_Disjoint {a b : Classifier} : Disjoint a b ↔ a.
       | .child n p =>
         simp only
         split
-        . rename_i heq
+        · rename_i heq
           have heq' := LawfulBEq.eq_of_beq heq
           subst heq'
-          cases ha.not_subclass $ .parent_l .rfl
-        . simp [ih]
-  . intro hs
+          cases ha.not_subclass <| .parent_l .rfl
+        · simp [ih]
+  · intro hs
     unfold disjoint at hs
     split at hs
-    . cases hs
-    . split at hs
-      . cases hs
-      . split at hs
-        . rename_i h
+    · cases hs
+    · split at hs
+      · cases hs
+      · split at hs
+        · rename_i h
           have h1 := LawfulBEq.eq_of_beq h
           subst_vars
           apply! Disjoint.base
-        . simp at hs
+        · simp at hs
           cases hs
           case inl hs =>
             apply Disjoint.right
@@ -323,11 +330,12 @@ instance Classifier.Disjoint.decidable : Decidable (Disjoint a b) := by
   case false => apply isFalse; rw[disjoint_is_Disjoint]; simp [h]
 
 /-- Same as `subclass_or_disjoint`, but with the functions. -/
-theorem Classifier.subclass_or_disjoint' (a b : Classifier) : a.subclass b ∨ b.subclass a ∨ a.disjoint b := by
+theorem Classifier.subclass_or_disjoint' (a b : Classifier) :
+    a.subclass b ∨ b.subclass a ∨ a.disjoint b := by
   cases subclass_or_disjoint a b <;> rename_i h
-  . simp_all [Classifier.subclass_is_Subclass]
-  . cases h <;> rename_i h
-    . have h0 := h.weaken; simp_all [subclass_is_Subclass]
-    . simp_all [disjoint_is_Disjoint]
+  · simp_all [Classifier.subclass_is_Subclass]
+  · cases h <;> rename_i h
+    · have h0 := h.weaken; simp_all [subclass_is_Subclass]
+    · simp_all [disjoint_is_Disjoint]
 
 end CaplessK
