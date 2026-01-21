@@ -7,7 +7,8 @@ namespace CaplessK
 -- **
 
 /-- A subtree of a single root and an exclusion list.
-    Notionally, it represents the subtree rooted at `root`, excluding the subtrees rooted at `excls`. -/
+    Notionally, it represents the subtree rooted at `root`,
+    excluding the subtrees rooted at `excls`. -/
 structure Subtree : Type where
   root  : Classifier
   excls : List Classifier
@@ -28,7 +29,9 @@ def Kind.node (c : Classifier) (excls : List Classifier) : Kind := [Subtree.mk c
 @[simp]
 def Kind.classifier (c : Classifier) := Kind.node c []
 
-/-- The empty kind. Note that non-empty kinds can still represent an empty set of nodes. See `IsEmpty`. -/
+/-- The empty kind.
+    Note that non-empty kinds can still represent an empty set of nodes.
+    See `IsEmpty`. -/
 @[simp]
 def Kind.empty : Kind := []
 
@@ -66,7 +69,8 @@ theorem ContainsSupOf.append_r (h : ContainsSupOf ys b) : ContainsSupOf (xs ++ y
   | nil => exact h
   | cons _ _ ih => exact .there ih
 
-theorem ContainsSupOf.insert (h : ContainsSupOf (xs ++ ys) b) : ContainsSupOf (xs ++ zs ++ ys) b := by
+theorem ContainsSupOf.insert
+    (h : ContainsSupOf (xs ++ ys) b) : ContainsSupOf (xs ++ zs ++ ys) b := by
   induction xs generalizing ys with
   | nil => apply! append_r
   | cons x xs ih =>
@@ -74,12 +78,14 @@ theorem ContainsSupOf.insert (h : ContainsSupOf (xs ++ ys) b) : ContainsSupOf (x
     case here => apply! here
     case there => apply there; apply! ih
 
-theorem ContainsSupOf.trans_subclass (h : ContainsSupOf xs a) (hs : b.Subclass a) : ContainsSupOf xs b := by
+theorem ContainsSupOf.trans_subclass
+    (h : ContainsSupOf xs a) (hs : b.Subclass a) : ContainsSupOf xs b := by
   induction h with
   | here hs' => exact .here (hs.trans hs')
   | there _ ih => exact .there (ih hs)
 
-theorem ContainsSupOf.of_append (h : ContainsSupOf (xs ++ ys) b) : ContainsSupOf xs b ∨ ContainsSupOf ys b := by
+theorem ContainsSupOf.of_append
+    (h : ContainsSupOf (xs ++ ys) b) : ContainsSupOf xs b ∨ ContainsSupOf ys b := by
   induction xs with
   | nil => exact .inr h
   | cons a xs ih =>
@@ -129,7 +135,7 @@ theorem Kind.IsEmpty.append_inv (he : IsEmpty (R1 ++ R2)) : IsEmpty R1 ∧ IsEmp
     rename_i he1 he2
     have ⟨_, _⟩ := ih he2
     apply And.intro
-    . apply! absurd
-    . aesop
+    · apply! absurd
+    · aesop
 
 end CaplessK
