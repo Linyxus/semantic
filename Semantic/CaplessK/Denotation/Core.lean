@@ -373,10 +373,6 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
     Ty.capt_val_denot (ρ.extend_cvar CS) T m (.var x)
   | _ => False
 
-def Ty.capt_exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
-| ρ, T => fun A m (e : Exp {}) =>
-  Eval A m e (Ty.capt_val_denot ρ T).as_mpost
-
 def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
 | ρ, T => fun A m (e : Exp {}) =>
   Eval A m e (Ty.exi_val_denot ρ T).as_mpost
@@ -387,11 +383,6 @@ end
 instance instCaptHasDenotation :
   HasDenotation (Ty .capt s) (TypeEnv s) Denot where
   interp := Ty.capt_val_denot
-
-@[simp]
-instance instCaptHasExpDenotation :
-  HasExpDenotation (Ty .capt s) (TypeEnv s) PreDenot where
-  interp := Ty.capt_exp_denot
 
 @[simp]
 instance instExiHasDenotation :
@@ -1995,26 +1986,6 @@ def exi_val_denot_is_bool_independent {env : TypeEnv s}
     -- So both sides evaluate to False
     simp [resolve]
 
-def capt_exp_denot_is_monotonic {env : TypeEnv s}
-  (henv_mono : env.IsMonotonic)
-  (henv_bool : env.is_bool_independent)
-  (T : Ty .capt s) :
-  ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
-    Exp.WfInHeap e m1.heap ->
-    m2.subsumes m1 ->
-    (Ty.capt_exp_denot env T) C m1 e ->
-    (Ty.capt_exp_denot env T) C m2 e := by
-  intro C m1 m2 e hwf hmem ht
-  simp [Ty.capt_exp_denot] at ht ⊢
-  apply eval_monotonic
-  · apply Denot.as_mpost_is_monotonic
-    exact capt_val_denot_is_monotonic henv_mono T
-  · apply Denot.as_mpost_is_bool_independent
-    exact capt_val_denot_is_bool_independent henv_bool T
-  · exact hmem
-  · exact hwf
-  · exact ht
-
 def exi_exp_denot_is_monotonic {env : TypeEnv s}
   (henv_mono : env.IsMonotonic)
   (henv_bool : env.is_bool_independent)
@@ -2651,18 +2622,6 @@ theorem shape_val_denot_is_proper {env : TypeEnv s} {S : Ty .shape s}
           · constructor
             · exact shape_val_denot_is_transparent (typed_env_is_transparent hts) S C
             · exact shape_val_denot_is_bool_independent (typed_env_is_bool_independent hts) S C
-
-theorem capt_denot_implyafter_lift
-  (himp : (Ty.capt_val_denot env T1).ImplyAfter H (Ty.capt_val_denot env T2)) :
-  (Ty.capt_exp_denot env T1).ImplyAfter H (Ty.capt_exp_denot env T2) := by
-  intro C m' hsub e heval
-  simp [Ty.capt_exp_denot] at heval ⊢
-  -- heval : Eval C m' e (capt_val_denot env T1).as_mpost
-  -- Goal: Eval C m' e (capt_val_denot env T2).as_mpost
-  apply eval_post_monotonic_general _ heval
-  -- Need: (capt_val_denot env T1).as_mpost.entails_after m' (capt_val_denot env T2).as_mpost
-  have himp' := Denot.imply_after_to_m_entails_after himp
-  exact Mpost.entails_after_subsumes himp' hsub
 
 theorem exi_denot_implyafter_lift
   (himp : (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)) :

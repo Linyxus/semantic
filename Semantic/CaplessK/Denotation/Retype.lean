@@ -373,23 +373,6 @@ def retype_exi_val_denot
         simp
       }
 
-def retype_capt_exp_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (T : Ty .capt s1) :
-  Ty.capt_exp_denot env1 T ≈ Ty.capt_exp_denot env2 (T.subst σ) := by
-  have ih := retype_capt_val_denot ρ T
-  intro A s e
-  simp [Ty.capt_exp_denot]
-  constructor
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).1
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).2
-
 def retype_exi_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
   (ρ : Retype env1 σ env2) (T : Ty .exi s1) :

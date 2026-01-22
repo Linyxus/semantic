@@ -293,23 +293,6 @@ def rebind_exi_val_denot
         simp
       }
 
-def rebind_capt_exp_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (T : Ty .capt s1) :
-  Ty.capt_exp_denot env1 T ≈ Ty.capt_exp_denot env2 (T.rename f) := by
-  have ih := rebind_capt_val_denot ρ T
-  intro A s e
-  simp [Ty.capt_exp_denot]
-  constructor
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).1
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).2
-
 def rebind_exi_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
   (ρ : Rebind env1 f env2) (T : Ty .exi s1) :
