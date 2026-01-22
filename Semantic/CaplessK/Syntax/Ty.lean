@@ -1,5 +1,6 @@
 import Semantic.CaplessK.Debruijn
 import Semantic.CaplessK.Syntax.CaptureSet
+import Semantic.CaplessK.Syntax.Classifier
 
 /-!
 Type definitions and operations for CaplessK.
@@ -19,7 +20,7 @@ inductive TySort : Type where
 /-- A capture bound, either unbound or bounded by a capture set.
   It bounds capture set parameters. -/
 inductive CaptureBound : Sig -> Type where
-| unbound : CaptureBound s
+| unbound : CapKind -> CaptureBound s
 | bound : CaptureSet s -> CaptureBound s
 
 /-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
