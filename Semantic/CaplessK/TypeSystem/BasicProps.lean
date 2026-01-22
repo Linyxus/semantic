@@ -63,7 +63,7 @@ theorem Subbound.refl {Γ : Ctx s} {cb : CaptureBound s} :
     Subbound Γ cb cb := by
   cases cb
   case unbound =>
-    apply Subbound.top
+    apply Subbound.unbound
   case bound C =>
     apply Subbound.capset
     apply Subcapt.refl

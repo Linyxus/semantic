@@ -94,9 +94,12 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
   Subcapt Γ C1 C2 ->
   -------------------
   Subbound Γ (.bound C1) (.bound C2)
+| unbound :
+  -------------------
+  Subbound Γ (.unbound k) (.unbound k)
 | top :
   -------------------
-  Subbound Γ B .unbound
+  Subbound Γ B (.unbound .top)
 
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | top {T : Ty .shape s} :
@@ -136,7 +139,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.capt C1 S1) (.capt C2 S2)
 | exi :
-  Subtyp (Γ,C<:.unbound) T1 T2 ->
+  Subtyp (Γ,C<:(.unbound .top)) T1 T2 ->
   --------------------------
   Subtyp Γ (.exi T1) (.exi T2)
 | typ :
@@ -194,7 +197,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType C Γ t (.exi T) ->
   HasType
     ((C.rename Rename.succ).rename Rename.succ)
-    (Γ,C<:.unbound,x:T)
+    (Γ,C<:(.unbound .top),x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------

@@ -33,7 +33,8 @@ theorem CapKind.Intersect.subkind_r
   have h := Intersect.lawful K L
   apply h.is_ssubkind_r
 
-theorem CapKind.Subkind.reorder_union_4 : Subkind ((A ++ B) ++ (C ++ D)) ((A ++ C) ++ (B ++ D)) := by
+theorem CapKind.Subkind.reorder_union_4 :
+    Subkind ((A ++ B) ++ (C ++ D)) ((A ++ C) ++ (B ++ D)) := by
   apply union_l
   · apply union_l
     · apply trans .union_rl .union_rl

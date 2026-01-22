@@ -258,7 +258,7 @@ def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
-| _, .unbound => fun _ => .top
+| _, .unbound _ => fun _ => .top
 | env, .bound cs => fun m => .set (cs.denot env m)
 
 inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
@@ -1608,12 +1608,11 @@ theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
     rfl
   | bound cs =>
     -- Bounded case: use capture_set_denot_is_monotonic
-    unfold CaptureBound.denot
+    simp only [CaptureBound.denot]
     -- Extract well-formedness of the capture set from hwf
     simp [CaptureBound.subst] at hwf
     cases hwf with
     | wf_bound hwf_cs =>
-      simp only []
       rw [capture_set_denot_is_monotonic hwf_cs hsub]
 
 mutual

@@ -2028,6 +2028,11 @@ lemma fundamental_subbound
     --   CapabilityBound.set (C2.denot env m)
     have hsem := fundamental_subcapt hsubcapt
     exact CapabilityBound.SubsetEq.set (hsem env m htyping)
+  | unbound =>
+    -- Subbound Γ (.unbound k) (.unbound k)
+    intro env m htyping
+    simp [CaptureBound.denot]
+    apply CapabilityBound.SubsetEq.refl
   | top =>
     -- Subbound Γ B .unbound
     intro env m htyping
@@ -2176,7 +2181,7 @@ lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
       exact hS_at_H m hsubsumes e hS1_at_C2
 
 lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
-  (hT : SemSubtyp (Γ,C<:.unbound) T1 T2) -- covariant in body
+  (hT : SemSubtyp (Γ,C<:(.unbound .top)) T1 T2) -- covariant in body
   : SemSubtyp Γ (.exi T1) (.exi T2) := by
   -- Unfold SemSubtyp for exi types
   simp [SemSubtyp]
@@ -2204,7 +2209,7 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
       · exact hwf_CS
 
       · -- Construct EnvTyping for the extended context
-        have henv' : EnvTyping (Γ,C<:.unbound) (env.extend_cvar CS) m := by
+        have henv' : EnvTyping (Γ,C<:(.unbound .top)) (env.extend_cvar CS) m := by
           simp [TypeEnv.extend_cvar]
           constructor
           · -- Need: CS.WfInHeap m.heap
@@ -2463,7 +2468,7 @@ theorem sem_typ_unpack
   (hclosed_C : C.IsClosed)
   (ht : C # Γ ⊨ t : .exi T)
   (hu : (C.rename Rename.succ).rename Rename.succ #
-        (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
+        (Γ,C<:(.unbound .top),x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts
   simp [Exp.subst]
@@ -2545,12 +2550,12 @@ theorem sem_typ_unpack
       -- First, construct the typing context for hu'
       -- Need to show: EnvTyping (Γ,C<:unbound,x:T) (extended environment) m1
       have hts_extended :
-        EnvTyping (Γ,C<:.unbound,x:T) ((env.extend_cvar cs).extend_var fx) m1 := by
+        EnvTyping (Γ,C<:(.unbound .top),x:T) ((env.extend_cvar cs).extend_var fx) m1 := by
         -- This unfolds to a conjunction by EnvTyping definition
         constructor
         · -- Show: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var (.free fx))
           exact hQ1_body
-        · -- Show: EnvTyping (Γ,C<:.unbound) (env.extend_cvar cs) m1
+        · -- Show: EnvTyping (Γ,C<:(.unbound .top)) (env.extend_cvar cs) m1
           -- This is also a conjunction
           constructor
           · -- Show: cs.WfInHeap m1.heap

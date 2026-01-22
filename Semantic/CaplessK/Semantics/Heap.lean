@@ -387,7 +387,7 @@ inductive Var.WfInHeap : Var k s -> Heap -> Prop where
 
 inductive CaptureBound.WfInHeap : CaptureBound s -> Heap -> Prop where
 | wf_unbound :
-  CaptureBound.WfInHeap .unbound H
+  CaptureBound.WfInHeap (.unbound K) H
 | wf_bound :
   CaptureSet.WfInHeap cs H ->
   CaptureBound.WfInHeap (.bound cs) H

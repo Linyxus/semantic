@@ -12,7 +12,7 @@ def Sig.platform_of : Nat -> Sig
 /-- A platform context with `n` ground capabilities. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C<:.unbound),x:(.capt (.cvar .here) .cap)
+| n+1 => ((Ctx.platform_of n),C<:(.unbound .top)),x:(.capt (.cvar .here) .cap)
 
 /-- A platform heap with `n` ground capabilities (basic capabilities). -/
 def Heap.platform_of (N : Nat) : Heap :=
