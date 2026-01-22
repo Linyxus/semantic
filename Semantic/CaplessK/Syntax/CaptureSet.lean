@@ -98,4 +98,11 @@ inductive CaptureSet.IsClosed : CaptureSet s -> Prop where
 | cvar : CaptureSet.IsClosed (.cvar x K)
 | var_bound : CaptureSet.IsClosed (.var (.bound x) K)
 
+def CaptureSet.proj (c : CaptureSet s) (K : CapKind) :=
+  match c with
+  | empty => empty
+  | union c1 c2 => union (c1.proj K) (c2.proj K)
+  | var x p => var x (p.intersect K)
+  | cvar c p => cvar c (p.intersect K)
+
 end CaplessK

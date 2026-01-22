@@ -65,6 +65,43 @@ inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> CaptureBound s -> Prop
   Ctx.LookupCVar Γ c cb ->
   Ctx.LookupCVar (.push Γ b0) (.there c) (cb.rename Rename.succ)
 
+inductive HasKind : Ctx s -> CaptureSet s -> CapKind -> Prop where
+| var :
+  Ctx.LookupVar Γ x (.capt C S) ->
+  HasKind Γ (C.proj L) K ->
+  ----------------------------------
+  HasKind Γ (.var (.bound x) L) K
+| cvar_unbound :
+  Ctx.LookupCVar Γ c (.unbound K) ->
+  -----------------------------------
+  HasKind Γ (.cvar c L) (K.intersect L)
+| cvar_bound :
+  Ctx.LookupCVar Γ c (.bound C) ->
+  HasKind Γ (C.proj L) K ->
+  -----------------------------------
+  HasKind Γ (.cvar c L) K
+| sub :
+  HasKind Γ C K1 ->
+  CapKind.Subkind K1 K2 ->
+  ----------------------------
+  HasKind Γ C K2
+| empty :
+  ----------------------------
+  HasKind Γ .empty K
+| union :
+  HasKind Γ C1 K ->
+  HasKind Γ C2 K ->
+  ----------------------------
+  HasKind Γ (C1.union C2) K
+| var_empty {K : CapKind} :
+  K.IsEmpty ->
+  ----------------------------
+  HasKind Γ (.var x K) L
+| cvar_empty {K : CapKind} :
+  K.IsEmpty ->
+  ----------------------------
+  HasKind Γ (.cvar c K) L
+
 inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_trans :
   Subcapt Γ C1 C2 ->
