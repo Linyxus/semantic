@@ -124,7 +124,8 @@ theorem CapKind.Contains.append_r (hc : Contains as x) : Contains (as ++ bs) x :
     case here => apply! here
     case there => apply there; apply! ih
 
-theorem CapKind.Contains.append_inv (hc : Contains (as ++ bs) x) : Contains as x ∨ Contains bs x := by
+theorem CapKind.Contains.append_inv
+    (hc : Contains (as ++ bs) x) : Contains as x ∨ Contains bs x := by
   induction as generalizing bs
   case nil => simp_all
   case cons a as ih =>

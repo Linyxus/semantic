@@ -44,7 +44,8 @@ theorem Subtree.Intersect.lawful : Intersect s t (s.intersect t) := by
 def CapKind.intersect (k : CapKind) (l : CapKind) : CapKind :=
   List.flatMap (fun x => List.flatMap (fun y => x.intersect y) l) k
 
-theorem CapKind.intersect.cons_l : intersect (x :: xs) K = intersect [x] K ++ intersect xs K := by simp
+theorem CapKind.intersect.cons_l :
+    intersect (x :: xs) K = intersect [x] K ++ intersect xs K := by simp
 
 theorem CapKind.intersect.append_l :
     intersect (xs1 ++ xs2) K = intersect xs1 K ++ intersect xs2 K := by simp
