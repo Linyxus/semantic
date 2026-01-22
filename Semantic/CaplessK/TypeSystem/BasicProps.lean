@@ -90,7 +90,7 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
     rename_i h1 h2
     exact IsClosed.union (ih1 h1) (ih2 h2)
   case cvar => exact IsClosed.cvar
-  case var v =>
+  case var v K =>
     cases v
     case bound => exact IsClosed.var_bound
     case free =>

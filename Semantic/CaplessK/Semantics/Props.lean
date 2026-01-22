@@ -1050,7 +1050,7 @@ theorem CaptureSet.wf_masked
     apply CaptureSet.WfInHeap.wf_union <;> assumption
   | wf_var_free hex =>
     -- Same approach as Var.wf_masked: prove that a free var in masked heap maps to something
-    rename_i H_orig val x
+    rename_i H_orig val x K
     have hwf_var : Var.WfInHeap (Var.free (k := .var) (s := {}) x) (H_orig.mask_caps D) := by
       apply Var.wf_masked
       exact Var.WfInHeap.wf_free hex

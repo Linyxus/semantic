@@ -372,11 +372,11 @@ inductive CaptureSet.WfInHeap : CaptureSet s -> Heap -> Prop where
   CaptureSet.WfInHeap (C1 ∪ C2) H
 | wf_var_free :
   H x = some val ->
-  CaptureSet.WfInHeap (CaptureSet.var (.free x)) H
+  CaptureSet.WfInHeap (CaptureSet.var (.free x) K) H
 | wf_var_bound :
-  CaptureSet.WfInHeap (CaptureSet.var (.bound x)) H
+  CaptureSet.WfInHeap (CaptureSet.var (.bound x) K) H
 | wf_cvar :
-  CaptureSet.WfInHeap (CaptureSet.cvar x) H
+  CaptureSet.WfInHeap (CaptureSet.cvar x K) H
 
 inductive Var.WfInHeap : Var k s -> Heap -> Prop where
 | wf_bound :
@@ -803,7 +803,7 @@ structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
     ∀ X, Ty.WfInHeap (s.tvar X) H
 
   wf_cvar :
-    ∀ C, CaptureSet.WfInHeap (s.cvar C) H
+    ∀ C K, CaptureSet.WfInHeap (s.cvar C K) H
 
 /-- Lookup the reachability set of a location. -/
 def reachability_of_loc
@@ -823,7 +823,7 @@ def expand_captures
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var (.free loc) => reachability_of_loc h loc
+  | .var (.free loc) _ => reachability_of_loc h loc
   | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
 
 /-- Compute reachability for a heap value. -/
@@ -1362,9 +1362,10 @@ theorem Exp.wf_rename
 /-- A well-formed variable yields a well-formed capture set. -/
 theorem CaptureSet.wf_of_var
   {x : Var .var s}
+  {K : CapKind}
   {H : Heap}
   (hwf : Var.WfInHeap x H) :
-  CaptureSet.WfInHeap (.var x) H := by
+  CaptureSet.WfInHeap (.var x K) H := by
   cases hwf with
   | wf_bound =>
     apply CaptureSet.WfInHeap.wf_var_bound
@@ -1397,7 +1398,7 @@ theorem Subst.wf_lift
       simp [Subst.lift]
       apply Ty.wf_rename
       exact hwf_σ.wf_tvar X
-  · intro C
+  · intro C K
     cases C with
     | here =>
       simp [Subst.lift]
@@ -1405,7 +1406,7 @@ theorem Subst.wf_lift
     | there C =>
       simp [Subst.lift]
       apply CaptureSet.wf_rename
-      exact hwf_σ.wf_cvar C
+      exact hwf_σ.wf_cvar C K
 
 /-- Well-formed substitutions preserve well-formedness of variables. -/
 theorem Var.wf_subst
@@ -1454,9 +1455,9 @@ theorem CaptureSet.wf_subst
     apply Var.wf_subst
     · apply Var.WfInHeap.wf_bound
     · exact hwf_σ
-  | wf_cvar =>
+  | @wf_cvar x K _ =>
     simp [CaptureSet.subst]
-    exact hwf_σ.wf_cvar _
+    exact hwf_σ.wf_cvar x K
 
 /-- Well-formed substitutions preserve well-formedness of capture bounds. -/
 theorem CaptureBound.wf_subst
@@ -1639,7 +1640,7 @@ theorem Subst.wf_openVar
     | there X0 =>
       simp [Subst.openVar]
       apply Ty.WfInHeap.wf_tvar
-  · intro C
+  · intro C K
     cases C with
     | there C0 =>
       simp [Subst.openVar]
@@ -1665,7 +1666,7 @@ theorem Subst.wf_openTVar
     | there X0 =>
       simp [Subst.openTVar]
       apply Ty.WfInHeap.wf_tvar
-  · intro C
+  · intro C K
     cases C with
     | there C0 =>
       simp [Subst.openTVar]
@@ -1688,7 +1689,7 @@ theorem Subst.wf_openCVar
     | there X0 =>
       simp [Subst.openCVar]
       apply Ty.WfInHeap.wf_tvar
-  · intro C_var
+  · intro C_var K
     cases C_var with
     | here =>
       simp [Subst.openCVar]
@@ -1726,7 +1727,7 @@ theorem Subst.wf_unpack
         -- .there (.there X0) maps to .tvar X0
         simp [Subst.unpack]
         apply Ty.WfInHeap.wf_tvar
-  · intro C_var
+  · intro C_var K
     cases C_var with
     | there C' =>
       cases C' with

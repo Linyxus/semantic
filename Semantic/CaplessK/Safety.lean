@@ -12,7 +12,7 @@ def Sig.platform_of : Nat -> Sig
 /-- A platform context with `n` ground capabilities. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C<:(.unbound .top)),x:(.capt (.cvar .here) .cap)
+| n+1 => ((Ctx.platform_of n),C<:(.unbound .top)),x:(.capt (.cvar .here .top) .cap)
 
 /-- A platform heap with `n` ground capabilities (basic capabilities). -/
 def Heap.platform_of (N : Nat) : Heap :=
@@ -42,11 +42,11 @@ def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> Ca
 | .empty => .empty
 | .union cs1 cs2 =>
     (cs1.to_platform_capability_set) ∪ (cs2.to_platform_capability_set)
-| .var x =>
+| .var x _ =>
     match x with
     | .bound b => .cap (b.level / 2)
     | .free n => .cap n
-| .cvar c => .cap (c.level / 2)
+| .cvar c _ => .cap (c.level / 2)
 
 /-- Type environment for a platform with `N` ground capabilities.
   Maps each pair `(C, x)` to capability `i` at heap location `i`:
@@ -54,7 +54,7 @@ def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> Ca
   term variable `x` maps to heap location `i`. -/
 def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
-| N+1 => ((TypeEnv.platform_of N).extend_cvar (.var (.free N))).extend_var N
+| N+1 => ((TypeEnv.platform_of N).extend_cvar (.var (.free N) .top)).extend_var N
 
 /-- The platform heap is well-formed: it contains only capabilities, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
@@ -255,7 +255,7 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
 
 /-- Lookup of capture variable in platform environment. -/
 theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
-  (TypeEnv.platform_of N).lookup_cvar c = .var (.free (c.level / 2)) := by
+  (TypeEnv.platform_of N).lookup_cvar c = .var (.free (c.level / 2)) .top := by
   induction N with
   | zero =>
     -- No capture variables in empty signature

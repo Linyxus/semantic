@@ -19,7 +19,7 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
 
   cvar :
     ∀ (C : BVar s1 .cvar),
-      env1.lookup_cvar C = (σ.cvar C).subst (Subst.from_TypeEnv env2)
+      env1.lookup_cvar C = (σ.cvar C .top).subst (Subst.from_TypeEnv env2)
 
 lemma weaken_interp_var {x : Var .var s} :
   interp_var env x = interp_var (env.extend_var n) (x.rename Rename.succ) := by
@@ -285,7 +285,7 @@ def retype_resolved_capture_set
   case empty => rfl
   case union C1 C2 ih1 ih2 =>
     simp [CaptureSet.subst, ih1, ih2]
-  case var x =>
+  case var x ck =>
     cases x
     case bound x =>
       simp [CaptureSet.subst, Var.subst]
@@ -303,9 +303,9 @@ def retype_resolved_capture_set
         rw [this]
     case free n =>
       simp [CaptureSet.subst, Var.subst]
-  case cvar C =>
+  case cvar C ck =>
     simp [CaptureSet.subst]
-    exact ρ.cvar C
+    sorry -- CLAUDE: Need to update for new cvar signature
 
 def retype_captureset_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}

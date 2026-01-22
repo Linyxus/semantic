@@ -238,7 +238,7 @@ def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} :=
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x)
   tvar := fun _ => .top
-  cvar := fun c => env.lookup_cvar c
+  cvar := fun c _ => env.lookup_cvar c
 
 theorem Subst.from_TypeEnv_empty :
   Subst.from_TypeEnv TypeEnv.empty = Subst.id := by
@@ -252,7 +252,7 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 | .empty => fun _ => {}
 | .union cs1 cs2 => fun m =>
   (cs1.ground_denot m) ∪ (cs2.ground_denot m)
-| .var (.free x) => fun m => reachability_of_loc m.heap x
+| .var (.free x) _ => fun m => reachability_of_loc m.heap x
 
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
@@ -449,7 +449,7 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
   · intro X
     cases X
     rfl
-  · intro C
+  · intro C K
     cases C with
     | there C' =>
       simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openVar,
@@ -475,7 +475,7 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : PreDenot} :
     case there X' =>
       simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openTVar,
         TypeEnv.extend_tvar, Ty.subst, Ty.rename]
-  · intro C
+  · intro C K
     cases C with
     | there C' =>
       simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openTVar,
@@ -500,7 +500,7 @@ theorem Subst.from_TypeEnv_weaken_open_cvar
   · intro X
     cases X
     rfl
-  · intro C
+  · intro C K
     cases C
     case here => rfl
     case there C' =>
@@ -547,7 +547,7 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         -- Both sides map to .top
         rfl
   · -- cvar case
-    intro c
+    intro c K
     cases c
     case there c' =>
       cases c'
@@ -558,7 +558,6 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         simp [Subst.comp, Subst.unpack]
         -- Need to show: (lift.lift.cvar (.there .here)).subst unpack = cs
         -- This is unpack.cvar (.there .here) = cs by definition
-        rw [Subst.lift_there_cvar_eq]
         simp [Subst.lift, CaptureSet.subst, CaptureSet.rename]
         -- Goal: match Rename.succ.var .here with | .here.there => cs | ... = cs
         -- Rename.succ.var .here = .here.there by definition
@@ -566,11 +565,9 @@ theorem Subst.from_TypeEnv_weaken_unpack :
       case there c0 =>
         -- LHS: comp maps .there (.there c0) through unpack then lift.lift
         simp [Subst.comp, Subst.unpack]
-        rw [Subst.lift_there_cvar_eq]
-        rw [Subst.lift_there_cvar_eq]
         -- Generalize before simplifying
         simp only [Subst.from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar,
-          TypeEnv.lookup_cvar, TypeEnv.lookup]
+          TypeEnv.lookup_cvar, TypeEnv.lookup, Subst.lift]
         -- Now the goal has ρ.lookup_cvar c0 expanded to match expression
         -- Let's generalize this ground capture set
         generalize (match ρ.lookup c0 with | TypeInfo.cvar cs => cs) = ground_cs
@@ -580,13 +577,13 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         | union cs1 cs2 ih1 ih2 =>
           -- .union case: distribute rename/subst over both sides
           simp only [CaptureSet.rename, CaptureSet.subst, ih1, ih2]
-        | var v =>
+        | var v ck =>
           cases v with
           | bound bv => cases bv  -- Impossible: no bound vars in {}
           | free n =>
             -- .var (.free n).rename.rename.subst = .var (.free n)
             rfl
-        | cvar cv => cases cv  -- Impossible: no capture vars in {}
+        | cvar cv ck => cases cv  -- Impossible: no capture vars in {}
 
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
@@ -608,7 +605,7 @@ theorem from_TypeEnv_wf_in_heap
       constructor
       · intro x; cases x
       · intro X; cases X
-      · intro C; cases C
+      · intro C K; cases C
   | push Γ' k ih =>
     -- Inductive case: handle each kind of binding
     cases ρ with
@@ -644,11 +641,11 @@ theorem from_TypeEnv_wf_in_heap
                 | there X' =>
                   simp [Subst.from_TypeEnv]
                   exact ih_wf.wf_tvar X'
-              · intro C_var
+              · intro C_var K
                 cases C_var with
                 | there C' =>
                   simp [Subst.from_TypeEnv]
-                  exact ih_wf.wf_cvar C'
+                  exact ih_wf.wf_cvar C' K
       | tvar S =>
         -- Type variable binding: doesn't affect term variable substitution
         cases info with
@@ -670,11 +667,11 @@ theorem from_TypeEnv_wf_in_heap
             | there X' =>
               simp [Subst.from_TypeEnv]
               exact ih_wf.wf_tvar X'
-          · intro C_var
+          · intro C_var K
             cases C_var with
             | there C' =>
               simp [Subst.from_TypeEnv]
-              exact ih_wf.wf_cvar C'
+              exact ih_wf.wf_cvar C' K
       | cvar B =>
         -- Capture variable binding: doesn't affect term variable substitution
         cases info with
@@ -693,14 +690,14 @@ theorem from_TypeEnv_wf_in_heap
             | there X' =>
               simp [Subst.from_TypeEnv]
               exact ih_wf.wf_tvar X'
-          · intro C_var
+          · intro C_var K
             cases C_var with
             | here =>
               simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
               exact hwf
             | there C' =>
               simp [Subst.from_TypeEnv]
-              exact ih_wf.wf_cvar C'
+              exact ih_wf.wf_cvar C' K
 
 def Denot.Equiv (d1 d2 : Denot) : Prop :=
   ∀ m e,

@@ -195,7 +195,7 @@ theorem shape_denot_with_var_reachability
 
 theorem sem_typ_var
   (hx : Γ.LookupVar x (.capt C S)) :
-  (.var (.bound x)) # Γ ⊨ (.var (.bound x)) : (.typ (.capt (.var (.bound x)) S)) := by
+  (.var (.bound x) .top) # Γ ⊨ (.var (.bound x)) : (.typ (.capt (.var (.bound x) .top) S)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot]
   apply Eval.eval_var
@@ -237,7 +237,7 @@ theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
 
 theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
-  (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
+  (ht : (Cf.rename Rename.succ ∪ .var (.bound .here) .top) # Γ,x:T1 ⊨ e : T2) :
   ∅ # Γ ⊨ Exp.abs Cf T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
@@ -309,7 +309,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   exact this.symm
                 -- Variable .here denotes to the reachability we stored
                 have hcap_var :
-                  (CaptureSet.var (.bound .here)).denot (env.extend_var arg) H'
+                  (CaptureSet.var (.bound .here) .top).denot (env.extend_var arg) H'
                   = reachability_of_loc H'.heap arg := by
                   simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
                         Subst.from_TypeEnv, Var.subst, TypeEnv.lookup_var]
@@ -328,15 +328,15 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   exact capture_set_denot_is_monotonic hwf_Cf hsubsume
                 -- Show the authority matches by rewriting with equalities
                 have hauthority :
-                  (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
+                  (Cf.rename Rename.succ ∪ .var (.bound .here) .top).denot
                     (env.extend_var arg) H' =
                   (expand_captures store.heap
                     (Cf.subst (Subst.from_TypeEnv env))).union
                     (reachability_of_loc H'.heap arg) := by
-                  calc (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
+                  calc (Cf.rename Rename.succ ∪ .var (.bound .here) .top).denot
                         (env.extend_var arg) H'
                     _ = (Cf.rename Rename.succ).denot (env.extend_var arg) H' ∪
-                        (CaptureSet.var (.bound .here)).denot
+                        (CaptureSet.var (.bound .here) .top).denot
                           (env.extend_var arg) H' := by
                       simp [CaptureSet.denot, CaptureSet.ground_denot,
                             CaptureSet.subst]
@@ -526,8 +526,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
                         constructor
                         · intro x; exact Var.wf_monotonic hsubsume (hwf_subst_store.wf_var x)
                         · intro X; exact Ty.wf_monotonic hsubsume (hwf_subst_store.wf_tvar X)
-                        · intro C
-                          exact CaptureSet.wf_monotonic hsubsume (hwf_subst_store.wf_cvar C)
+                        · intro C K
+                          exact CaptureSet.wf_monotonic hsubsume (hwf_subst_store.wf_cvar C K)
                     · constructor
                       · -- Rewrite hsub_bound to match expected type
                         -- Need to show: CS.ground_denot H' ⊆ ⟦cb⟧_[env] H'
@@ -575,8 +575,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
   (hclosed_e : (Exp.pack cs x).IsClosed)
-  (ht : CaptureSet.var x # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
-  CaptureSet.var x # Γ ⊨ Exp.pack cs x : T.exi := by
+  (ht : CaptureSet.var x .top # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
+  CaptureSet.var x .top # Γ ⊨ Exp.pack cs x : T.exi := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot]
   -- pack cs x is a value, so we use eval_val
@@ -869,8 +869,8 @@ theorem sem_typ_tapp
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   {S : Ty .shape s} -- Type argument
   {T : Ty .exi (s,X)} -- Result type (depends on type variable X)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.poly S T))) :
-  (.var (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
+  (hx : (.var (.bound x) .top) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x) .top) (.poly S T))) :
+  (.var (.bound x) .top) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
   intro env store hts
 
   -- Extract function denotation
@@ -915,9 +915,9 @@ theorem sem_typ_capp
   {T : Ty .exi (s,C)}
   {D : CaptureSet s}
   (hD_closed : D.IsClosed)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) :
-    .typ (.capt (.var (.bound x)) (.cpoly (.bound D) T))) :
-  (.var (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
+  (hx : (.var (.bound x) .top) # Γ ⊨ .var (.bound x) :
+    .typ (.capt (.var (.bound x) .top) (.cpoly (.bound D) T))) :
+  (.var (.bound x) .top) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
   intro env store hts
 
   -- Extract function denotation
@@ -984,9 +984,9 @@ theorem sem_typ_capp
 
 theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.arrow T1 T2)))
-  (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ T1) :
-  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
+  (hx : (.var (.bound x) .top) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x) .top) (.arrow T1 T2)))
+  (hy : (.var (.bound y) .top) # Γ ⊨ .var (.bound y) : .typ T1) :
+  ((.var (.bound x) .top) ∪ (.var (.bound y) .top)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
   intro env store hts
 
@@ -1033,7 +1033,7 @@ theorem sem_typ_app
 
   -- Widen the authority using union monotonicity
   have hunion_mono : expand_captures store.heap cs ∪ reachability_of_loc store.heap fy ⊆
-                     CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪
+                     CaptureSet.denot env (CaptureSet.var (Var.bound x) .top) store ∪
                      reachability_of_loc store.heap fy := by
     apply CapabilitySet.Subset.union_left
     · exact CapabilitySet.Subset.trans hR0_sub CapabilitySet.Subset.union_right_left
@@ -1045,9 +1045,9 @@ theorem sem_typ_app
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) .cap))
-  (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ (.capt (.var (.bound y)) .unit)) :
-  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
+  (hx : (.var (.bound x) .top) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x) .top) .cap))
+  (hy : (.var (.bound y) .top) # Γ ⊨ .var (.bound y) : .typ (.capt (.var (.bound y) .top) .unit)) :
+  ((.var (.bound x) .top) ∪ (.var (.bound y) .top)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : .typ (.capt {} .unit) := by
   intro env store hts
 
@@ -1081,7 +1081,7 @@ theorem sem_typ_invoke
 
   -- Show env.lookup_var x is in the union of capability sets
   have hmem :
-    env.lookup_var x ∈ CaptureSet.denot env (.var (.bound x) ∪ .var (.bound y)) store := by
+    env.lookup_var x ∈ CaptureSet.denot env (.var (.bound x) .top ∪ .var (.bound y) .top) store := by
     apply CapabilitySet.mem.left
     exact hmem_cap
 
@@ -1264,8 +1264,8 @@ theorem sem_typ_bfalse :
 
 theorem sem_typ_read
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt C .cell)) :
-  (.var (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ (.capt {} .bool) := by
+  (hx : (.var (.bound x) .top) # Γ ⊨ .var (.bound x) : .typ (.capt C .cell)) :
+  (.var (.bound x) .top) # Γ ⊨ Exp.read (.bound x) : .typ (.capt {} .bool) := by
   intro env store hts
 
   -- Extract cell denotation from hx
@@ -1289,7 +1289,7 @@ theorem sem_typ_read
   -- The membership proof: env.lookup_var x ∈ reachability_of_loc store.heap (env.lookup_var x)
   -- Since store contains a capability at that location, reachability is {env.lookup_var x}
   have hmem : env.lookup_var x ∈
-    ((CaptureSet.var (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot store := by
+    ((CaptureSet.var (Var.bound x) .top).subst (Subst.from_TypeEnv env)).ground_denot store := by
     simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
           reachability_of_loc, hlk_cell]
     exact CapabilitySet.mem.here
@@ -1316,9 +1316,9 @@ theorem sem_typ_read
 
 theorem sem_typ_write
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt Cx .cell))
-  (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ (.capt {} .bool)) :
-  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
+  (hx : (.var (.bound x) .top) # Γ ⊨ .var (.bound x) : .typ (.capt Cx .cell))
+  (hy : (.var (.bound y) .top) # Γ ⊨ .var (.bound y) : .typ (.capt {} .bool)) :
+  ((.var (.bound x) .top) ∪ (.var (.bound y) .top)) # Γ ⊨
     Exp.write (.bound x) (.bound y) : .typ (.capt {} .unit) := by
   intro env store hts
 
@@ -1352,7 +1352,7 @@ theorem sem_typ_write
 
   -- Prove membership: env.lookup_var x is in the denotation of the write's capture set
   have hmem : env.lookup_var x ∈
-    (((CaptureSet.var (Var.bound x)).union (CaptureSet.var (Var.bound y))).subst
+    (((CaptureSet.var (Var.bound x) .top).union (CaptureSet.var (Var.bound y) .top)).subst
       (Subst.from_TypeEnv env)).ground_denot store := by
     simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
           reachability_of_loc, hlk_cell]
@@ -1659,7 +1659,7 @@ theorem typed_env_lookup_cvar
 
 theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s}
   (hlookup : Γ.LookupVar x (.capt C S)) :
-  SemSubcapt Γ (.var (.bound x)) C := by
+  SemSubcapt Γ (.var (.bound x) .top) C := by
   intro env m hts
   unfold CaptureSet.denot
   simp [CaptureSet.subst, Subst.from_TypeEnv]
@@ -1669,7 +1669,7 @@ theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s}
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   (hlookup : Γ.LookupCVar c (.bound C)) :
-  SemSubcapt Γ (.cvar c) C := by
+  SemSubcapt Γ (.cvar c .top) C := by
   intro env m hts
   unfold CaptureSet.denot
   simp [CaptureSet.subst, Subst.from_TypeEnv]
