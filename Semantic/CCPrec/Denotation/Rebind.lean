@@ -141,9 +141,8 @@ def rebind_shape_val_denot
               have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
               have harg' := (ih1 _ _).mpr harg
               specialize hd arg H' hsub harg'
-              -- The capability set uses expand_captures
-              exact (ih2 (expand_captures s0.heap cs ∪
-                         (reachability_of_loc H'.heap arg)) H' _).mp hd
+              -- In precise capabilities, authority is just expand_captures (no union)
+              exact (ih2 (expand_captures s0.heap cs) H' _).mp hd
     · intro h
       obtain ⟨cs0, T0, t0, hr, hwf, hR0_sub, hd⟩ := h
       use cs0, T0, t0
@@ -159,9 +158,8 @@ def rebind_shape_val_denot
               have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
               have harg' := (ih1 _ _).mp harg
               specialize hd arg H' hsub harg'
-              -- The capability set uses expand_captures
-              exact (ih2 (expand_captures s0.heap cs0 ∪
-                         (reachability_of_loc H'.heap arg)) H' _).mpr hd
+              -- In precise capabilities, authority is just expand_captures (no union)
+              exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
   | .poly T1 T2 => by
     have ih1 := rebind_shape_val_denot ρ T1
     intro A s0 e0

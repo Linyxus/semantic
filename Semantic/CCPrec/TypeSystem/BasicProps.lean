@@ -199,18 +199,45 @@ theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt
     have hT := ih hΓ_prev
     exact Ty.rename_closed hT
 
+/-- Variables that can be typed must be bound (not free heap pointers). -/
+theorem HasType.var_is_bound
+  (ht : C # Γ ⊢ (.var x) : T) :
+  ∃ bx, x = .bound bx := by
+  -- Induction on the typing derivation
+  generalize he : Exp.var x = e at ht
+  induction ht <;> simp_all
+
+/-- Helper: if a variable can appear in a typed expression, it must be bound. -/
+theorem CaptureSet.var_closed_of_typed {x : Var .var s}
+  (ht : C # Γ ⊢ (.var x) : T) :
+  (CaptureSet.var x).IsClosed := by
+  obtain ⟨bx, hx⟩ := HasType.var_is_bound ht
+  subst hx
+  exact CaptureSet.IsClosed.var_bound
+
 theorem HasType.use_set_is_closed
   (ht : C # Γ ⊢ e : T) :
   C.IsClosed := by
-  induction ht <;> try (solve | constructor | grind only [CaptureSet.IsClosed])
-  case app ih_x ih_y =>
-    exact CaptureSet.IsClosed.union ih_x ih_y
-  case invoke ih_x ih_y =>
-    exact CaptureSet.IsClosed.union ih_x ih_y
-  case write ih_x ih_y =>
-    exact CaptureSet.IsClosed.union ih_x ih_y
-  case cond ih1 ih2 ih3 =>
+  induction ht with
+  | var => constructor
+  | abs _ _ => constructor
+  | tabs _ _ => constructor
+  | cabs _ _ => constructor
+  | pack _ _ => constructor
+  | app ht_x _ _ _ => exact CaptureSet.var_closed_of_typed ht_x
+  | tapp _ ht_x _ => exact CaptureSet.var_closed_of_typed ht_x
+  | capp _ ht_x _ => exact CaptureSet.var_closed_of_typed ht_x
+  | letin _ _ ih_e1 _ => exact ih_e1
+  | unpack _ _ ih_e1 _ => exact ih_e1
+  | unit => constructor
+  | btrue => constructor
+  | bfalse => constructor
+  | read ht_x _ => exact CaptureSet.var_closed_of_typed ht_x
+  | write ht_x ht_y ih_x ih_y => exact CaptureSet.IsClosed.union ih_x ih_y
+  | cond _ _ _ ih1 ih2 ih3 =>
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
+  | invoke ht_x _ _ _ => exact CaptureSet.var_closed_of_typed ht_x
+  | subtyp _ _ _ hC2 _ _ => exact hC2
 
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
@@ -243,11 +270,9 @@ theorem HasType.exp_is_closed
   case abs T1 ih =>
     rename_i T1_closed
     constructor
-    · -- cs✝.IsClosed
+    · -- cs✝.IsClosed: use set is now cs.rename Rename.succ (no union)
       have h_use := HasType.use_set_is_closed T1
-      cases h_use with
-      | union h_cs_renamed h_var =>
-        exact CaptureSet.rename_closed_inv h_cs_renamed
+      exact CaptureSet.rename_closed_inv h_use
     · -- T1✝.IsClosed
       exact T1_closed
     · -- e✝.IsClosed
@@ -329,10 +354,9 @@ theorem HasType.type_is_closed
   case abs T1_closed ht_body ih =>
     constructor
     constructor
-    · -- cs.IsClosed where cs.rename Rename.succ ∪ ... typed the body
+    · -- cs.IsClosed: use set is now cs.rename Rename.succ (no union)
       have h_use := HasType.use_set_is_closed ht_body
-      cases h_use with | union h_cs_renamed h_var =>
-      exact CaptureSet.rename_closed_inv h_cs_renamed
+      exact CaptureSet.rename_closed_inv h_use
     · constructor <;> assumption
   case tabs S_closed ht_body ih =>
     constructor

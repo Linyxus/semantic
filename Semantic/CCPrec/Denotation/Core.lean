@@ -324,9 +324,10 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
     (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
+      -- In precise capabilities, we don't include arg's reachability in the authority
       Ty.exi_exp_denot
         (env.extend_var arg)
-        T2 (R0 ∪ (reachability_of_loc m'.heap arg)) m' (t0.subst (Subst.openVar (.free arg))))
+        T2 R0 m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
   ∃ cs S0 t0,
