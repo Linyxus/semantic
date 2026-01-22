@@ -6,7 +6,7 @@ namespace CaplessK
 structure Subst (s1 s2 : Sig) where
   var : BVar s1 .var -> Var .var s2
   tvar : BVar s1 .tvar -> Ty .shape s2
-  cvar : BVar s1 .cvar -> CaptureSet s2
+  cvar : BVar s1 .cvar -> CapKind -> CaptureSet s2
 
 /-- Lifts a substitution under a binder. The newly bound variable maps to itself. -/
 def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
@@ -18,10 +18,10 @@ def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
     cases x
     case here => exact .tvar .here
     case there x => exact (s.tvar x).rename Rename.succ
-  cvar := fun x => by
+  cvar := fun x K => by
     cases x
-    case here => exact .cvar .here
-    case there x => exact (s.cvar x).rename Rename.succ
+    case here => exact .cvar .here K
+    case there x => exact (s.cvar x K).rename Rename.succ
 
 /-- Lifts a substitution under multiple binders. -/
 def Subst.liftMany (s : Subst s1 s2) (K : Sig) : Subst (s1 ++ K) (s2 ++ K) :=
@@ -33,7 +33,7 @@ def Subst.liftMany (s : Subst s1 s2) (K : Sig) : Subst (s1 ++ K) (s2 ++ K) :=
 def Subst.id {s : Sig} : Subst s s where
   var := fun x => .bound x
   tvar := fun x => .tvar x
-  cvar := fun x => .cvar x
+  cvar := fun x K => .cvar x K
 
 /-- Applies a substitution to a variable. Free variables remain unchanged. -/
 def Var.subst : Var .var s1 -> Subst s1 s2 -> Var .var s2
@@ -44,8 +44,8 @@ def Var.subst : Var .var s1 -> Subst s1 s2 -> Var .var s2
 def CaptureSet.subst : CaptureSet s1 -> Subst s1 s2 -> CaptureSet s2
 | .empty, _ => .empty
 | .union cs1 cs2, σ => .union (cs1.subst σ) (cs2.subst σ)
-| .var x, σ => .var (x.subst σ)
-| .cvar x, σ => σ.cvar x
+| .var x K, σ => .var (x.subst σ) K
+| .cvar x K, σ => σ.cvar x K
 
 /-- Applies a substitution to a capture bound. -/
 def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
@@ -94,7 +94,7 @@ def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   tvar := fun
     | .there x0 => .tvar x0
   cvar := fun
-    | .there x0 => .cvar x0
+    | .there x0 => fun K => .cvar x0 K
 
 /-- Opens a type variable binder, substituting `U` for the innermost bound. -/
 def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
@@ -104,7 +104,7 @@ def Subst.openTVar (U : Ty .shape s) : Subst (s,X) s where
     | .here => U
     | .there x => .tvar x
   cvar := fun
-    | .there x => .cvar x
+    | .there x => fun K => .cvar x K
 
 /-- Opens a capture variable binder, substituting `C` for the innermost bound. -/
 def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
@@ -113,8 +113,8 @@ def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
   tvar := fun
     | .there x => .tvar x
   cvar := fun
-    | .here => C
-    | .there x => .cvar x
+    | .here => fun _ => C
+    | .there x => fun K => .cvar x K
 
 /-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
 def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
@@ -122,8 +122,8 @@ def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
     | .here => x
     | .there (.there x0) => .bound x0
   cvar := fun
-    | .there (.here) => C
-    | .there (.there c0) => .cvar c0
+    | .there (.here) => fun _ => C
+    | .there (.there c0) => fun K => .cvar c0 K
   tvar := fun
     | .there (.there X0) => .tvar X0
 
@@ -132,7 +132,7 @@ def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
 theorem Subst.funext {σ1 σ2 : Subst s1 s2}
   (hvar : ∀ x, σ1.var x = σ2.var x)
   (htvar : ∀ x, σ1.tvar x = σ2.tvar x)
-  (hcvar : ∀ x, σ1.cvar x = σ2.cvar x) :
+  (hcvar : ∀ x K, σ1.cvar x K = σ2.cvar x K) :
   σ1 = σ2 := by
   cases σ1; cases σ2
   simp only [Subst.mk.injEq]
@@ -140,13 +140,13 @@ theorem Subst.funext {σ1 σ2 : Subst s1 s2}
   · funext x; exact hvar x
   constructor
   · funext x; exact htvar x
-  · funext x; exact hcvar x
+  · funext x K; exact hcvar x K
 
 /-- Composition of substitutions. -/
 def Subst.comp (σ1 : Subst s1 s2) (σ2 : Subst s2 s3) : Subst s1 s3 where
   var := fun x => (σ1.var x).subst σ2
   tvar := fun x => (σ1.tvar x).subst σ2
-  cvar := fun x => (σ1.cvar x).subst σ2
+  cvar := fun x K => (σ1.cvar x K).subst σ2
 
 theorem Subst.lift_there_var_eq {σ : Subst s1 s2} {x : BVar s1 .var} :
   (σ.lift (k:=k)).var (.there x) = (σ.var x).rename Rename.succ := by
@@ -164,8 +164,8 @@ theorem Rename.lift_there_var_eq {f : Rename s1 s2} {x : BVar s1 .var} :
   (f.lift (k:=k)).var (.there x) = (f.var x).there := by
   rfl
 
-theorem Subst.lift_there_cvar_eq {σ : Subst s1 s2} {C : BVar s1 .cvar} :
-  (σ.lift (k:=k)).cvar (.there C) = (σ.cvar C).rename Rename.succ := by
+theorem Subst.lift_there_cvar_eq {σ : Subst s1 s2} {C : BVar s1 .cvar} {K : CapKind} :
+  (σ.lift (k:=k)).cvar (.there C) K = (σ.cvar C K).rename Rename.succ := by
   rfl
 
 theorem Rename.lift_there_cvar_eq {f : Rename s1 s2} {C : BVar s1 .cvar} :
@@ -217,9 +217,10 @@ theorem Var.weaken_subst_comm_liftMany {x : Var .var (s1 ++ K)} {σ : Subst s1 s
         congr
     | free n => simp [Var.subst, Var.rename]
 
-theorem CVar.weaken_subst_comm_liftMany {C : BVar (s1 ++ K) .cvar} {σ : Subst s1 s2} :
-  ((σ.liftMany K).cvar C).rename ((Rename.succ (k:=k0)).liftMany K) =
-  (σ.lift (k:=k0).liftMany K).cvar ((Rename.succ (k:=k0).liftMany K).var C) := by
+theorem CVar.weaken_subst_comm_liftMany
+    {C : BVar (s1 ++ K) .cvar} {σ : Subst s1 s2} {ck : CapKind} :
+    ((σ.liftMany K).cvar C ck).rename ((Rename.succ (k:=k0)).liftMany K) =
+    (σ.lift (k:=k0).liftMany K).cvar ((Rename.succ (k:=k0).liftMany K).var C) ck := by
   induction K with
   | nil =>
     simp [Subst.liftMany, Rename.liftMany]
@@ -234,7 +235,7 @@ theorem CVar.weaken_subst_comm_liftMany {C : BVar (s1 ++ K) .cvar} {σ : Subst s
       simp [Rename.lift_there_cvar_eq]
       simp [Subst.lift_there_cvar_eq]
       simp [CaptureSet.weaken_rename_comm]
-      grind
+      rw [ih]
 
 theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : Subst s1 s2} :
   (cs.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -243,10 +244,10 @@ theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : 
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
-  | var x =>
+  | var x ck =>
     simp [CaptureSet.subst, CaptureSet.rename]
     exact Var.weaken_subst_comm_liftMany
-  | cvar C =>
+  | cvar C ck =>
     simp [CaptureSet.subst, CaptureSet.rename]
     exact CVar.weaken_subst_comm_liftMany
 
@@ -305,9 +306,9 @@ theorem Var.weaken_subst_comm_base {x : Var .var s1} {σ : Subst s1 s2} :
   | bound x => rfl
   | free n => rfl
 
-theorem CVar.weaken_subst_comm_base {C : BVar s1 .cvar} {σ : Subst s1 s2} :
-  (σ.cvar C).rename (Rename.succ (k:=k)) =
-  (σ.lift (k:=k)).cvar ((Rename.succ (k:=k)).var C) := by
+theorem CVar.weaken_subst_comm_base {C : BVar s1 .cvar} {σ : Subst s1 s2} {ck : CapKind} :
+  (σ.cvar C ck).rename (Rename.succ (k:=k)) =
+  (σ.lift (k:=k)).cvar ((Rename.succ (k:=k)).var C) ck := by
   cases C with
   | here => simp [Subst.lift, Rename.succ]
   | there C => rfl
@@ -318,10 +319,10 @@ theorem CaptureSet.weaken_subst_comm_base {cs : CaptureSet s1} {σ : Subst s1 s2
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
-  | var x =>
+  | var x ck =>
     simp [CaptureSet.subst, CaptureSet.rename]
     exact Var.weaken_subst_comm_base
-  | cvar C =>
+  | cvar C ck =>
     simp [CaptureSet.subst, CaptureSet.rename]
     exact CVar.weaken_subst_comm_base
 
@@ -345,7 +346,7 @@ theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
         lhs; simp only [Subst.comp, Subst.lift_there_tvar_eq]
       simp only [Subst.lift_there_tvar_eq]
       simp only [Ty.weaken_subst_comm_base, Subst.comp]
-  · intro C
+  · intro C ck
     cases C with
     | here => simp [Subst.comp, Subst.lift, CaptureSet.subst]
     | there C0 =>
@@ -475,7 +476,7 @@ theorem Subst.lift_id :
     cases x <;> rfl
   · intro X
     cases X <;> rfl
-  · intro C
+  · intro C ck
     cases C <;> rfl
 
 /-- Substituting with the identity substitution leaves a type unchanged. -/
@@ -540,7 +541,7 @@ theorem Exp.subst_id {e : Exp s} :
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
   var := fun x => .bound (f.var x)
   tvar := fun X => .tvar (f.var X)
-  cvar := fun C => .cvar (f.var C)
+  cvar := fun C K => .cvar (f.var C) K
 
 /-- Lifting a renaming and then converting to a substitution is the same as
   converting to a substitution and then lifting the substitution. -/
@@ -555,7 +556,7 @@ theorem Rename.asSubst_lift {f : Rename s1 s2} :
     cases X
     · rfl
     · rfl
-  · intro C
+  · intro C ck
     cases C
     · rfl
     · rfl
@@ -660,21 +661,21 @@ theorem Subst.weaken_openVar {z : Var .var s} :
   apply Subst.funext
   · intro x; rfl
   · intro X; rfl
-  · intro C; rfl
+  · intro C ck; rfl
 
 theorem Subst.weaken_openTVar {U : Ty .shape s} :
   Rename.succ.asSubst.comp (Subst.openTVar U) = Subst.id := by
   apply Subst.funext
   · intro x; rfl
   · intro X; rfl
-  · intro C; rfl
+  · intro C ck; rfl
 
 theorem Subst.weaken_openCVar {C : CaptureSet s} :
   Rename.succ.asSubst.comp (Subst.openCVar C) = Subst.id := by
   apply Subst.funext
   · intro x; rfl
   · intro X; rfl
-  · intro C; rfl
+  · intro C' ck; rfl
 
 theorem CaptureSet.weaken_openVar {C : CaptureSet (s)} {z : Var .var s} :
   (C.rename Rename.succ).subst (Subst.openVar z) = C := by
@@ -733,7 +734,7 @@ theorem CaptureSet.ground_subst_invariant {C : CaptureSet {}} :
 structure Subst.IsClosed (σ : Subst s1 s2) : Prop where
   var_closed : ∀ x, (σ.var x).IsClosed
   tvar_closed : ∀ X, (σ.tvar X).IsClosed
-  cvar_closed : ∀ C, (σ.cvar C).IsClosed
+  cvar_closed : ∀ C K, (σ.cvar C K).IsClosed
 
 /-- Substitution preserves closedness for variables. -/
 def Var.is_closed_subst {x : Var .var s1} {σ : Subst s1 s2}
@@ -755,10 +756,10 @@ def CaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : Subst s1 s2}
     cases hc with | union h1 h2 =>
     simp [CaptureSet.subst]
     exact IsClosed.union (ih1 h1) (ih2 h2)
-  | cvar C =>
+  | cvar C ck =>
     simp [CaptureSet.subst]
-    exact hsubst.cvar_closed C
-  | var x =>
+    exact hsubst.cvar_closed C ck
+  | var x ck =>
     cases hc with | var_bound =>
     rename_i bx
     simp [CaptureSet.subst, Var.subst]
@@ -847,10 +848,10 @@ theorem Subst.lift_closed {σ : Subst s1 s2} (hσ : σ.IsClosed) :
     cases X with
     | here => exact Ty.IsClosed.tvar
     | there X => simp [Subst.lift]; exact Ty.rename_closed_any (hσ.tvar_closed X)
-  · intro C
+  · intro C ck
     cases C with
     | here => exact CaptureSet.IsClosed.cvar
-    | there C => simp [Subst.lift]; exact CaptureSet.rename_closed_any (hσ.cvar_closed C)
+    | there C => exact CaptureSet.rename_closed_any (hσ.cvar_closed C ck)
 
 /-- Substitution preserves closedness for types. -/
 def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
@@ -987,7 +988,7 @@ theorem Subst.openVar_is_closed {z : Var .var s}
   tvar_closed := fun X => by
     cases X with
     | there X => exact Ty.IsClosed.tvar
-  cvar_closed := fun C => by
+  cvar_closed := fun C K => by
     cases C with
     | there C => exact CaptureSet.IsClosed.cvar
 
@@ -1002,7 +1003,7 @@ theorem Subst.openTVar_is_closed {U : Ty .shape s}
     cases X with
     | here => exact hU
     | there X => exact Ty.IsClosed.tvar
-  cvar_closed := fun C => by
+  cvar_closed := fun C K => by
     cases C with
     | there C => exact CaptureSet.IsClosed.cvar
 
@@ -1016,7 +1017,7 @@ theorem Subst.openCVar_is_closed {C : CaptureSet s}
   tvar_closed := fun X => by
     cases X with
     | there X => exact Ty.IsClosed.tvar
-  cvar_closed := fun c => by
+  cvar_closed := fun c K => by
     cases c with
     | here => exact hC
     | there c => exact CaptureSet.IsClosed.cvar
