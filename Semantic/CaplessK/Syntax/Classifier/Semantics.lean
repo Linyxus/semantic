@@ -86,15 +86,15 @@ theorem Subtree.Contains.append_excl_inv
     have ⟨ih1, ih2⟩ := ih hc2
     apply And.intro (.incl hc1 ih1) ih2
 
-inductive Kind.Contains : Kind -> Classifier -> Prop where
+inductive CapKind.Contains : CapKind -> Classifier -> Prop where
   | here : t.Contains x -> Contains (t :: ts) x
   | there : Contains ts x -> Contains (t :: ts) x
 
-theorem Kind.Contains.not_cons
+theorem CapKind.Contains.not_cons
     (hc1 : ¬ t.Contains x) (hc2 : ¬ Contains ts x) : ¬ Contains (t :: ts) x := by
   intro h; cases h <;> aesop
 
-instance Kind.Contains.decidable : Decidable (Contains k c) := by
+instance CapKind.Contains.decidable : Decidable (Contains k c) := by
   cases k
   case nil => apply isFalse; intro h; cases h
   case cons x xs =>
@@ -106,17 +106,17 @@ instance Kind.Contains.decidable : Decidable (Contains k c) := by
       case isFalse hNotThere =>
         apply isFalse; intro h; cases h <;> aesop
 
-theorem Kind.Contains.is_singleton (hc : Contains [t] x) : t.Contains x := by
+theorem CapKind.Contains.is_singleton (hc : Contains [t] x) : t.Contains x := by
   cases hc
   case here => aesop
   case there hc => cases hc
 
-theorem Kind.Contains.append_l (hc : Contains as x) : Contains (bs ++ as) x := by
+theorem CapKind.Contains.append_l (hc : Contains as x) : Contains (bs ++ as) x := by
   induction bs
   case nil => simp_all
   case cons => rw [List.cons_append]; apply! Contains.there
 
-theorem Kind.Contains.append_r (hc : Contains as x) : Contains (as ++ bs) x := by
+theorem CapKind.Contains.append_r (hc : Contains as x) : Contains (as ++ bs) x := by
   induction as
   case nil => cases hc
   case cons b bs ih =>
@@ -124,7 +124,7 @@ theorem Kind.Contains.append_r (hc : Contains as x) : Contains (as ++ bs) x := b
     case here => apply! here
     case there => apply there; apply! ih
 
-theorem Kind.Contains.append_inv (hc : Contains (as ++ bs) x) : Contains as x ∨ Contains bs x := by
+theorem CapKind.Contains.append_inv (hc : Contains (as ++ bs) x) : Contains as x ∨ Contains bs x := by
   induction as generalizing bs
   case nil => simp_all
   case cons a as ih =>
@@ -135,11 +135,11 @@ theorem Kind.Contains.append_inv (hc : Contains (as ++ bs) x) : Contains as x �
       · left; apply! there
       · aesop
 
-theorem Kind.Contains.not_append
+theorem CapKind.Contains.not_append
     (hc1 : ¬ Contains as x) (hc2 : ¬ Contains bs x) :  ¬ Contains (as ++ bs) x := by
   intro h; cases h.append_inv <;> aesop
 
-theorem Kind.Contains.not_append_inv
+theorem CapKind.Contains.not_append_inv
     (hc : ¬ Contains (as ++ bs) x) : ¬ Contains as x ∧ ¬ Contains bs x := by
   have h : ¬ (Contains as x ∨ Contains bs x) := by
     intro h; cases h; apply! hc (append_r _); apply! hc (append_l _)
@@ -150,9 +150,9 @@ theorem Kind.Contains.not_append_inv
 def Subtree.SEmpty (s : Subtree) : Prop := ∀ x, ¬ s.Contains x
 
 @[simp]
-def Kind.SEmpty (k : Kind) : Prop := ∀ x, ¬ k.Contains x
+def CapKind.SEmpty (k : CapKind) : Prop := ∀ x, ¬ k.Contains x
 
-theorem Kind.SEmpty.cons_inv (hs : SEmpty (x :: xs)) : x.SEmpty ∧ SEmpty xs := by
+theorem CapKind.SEmpty.cons_inv (hs : SEmpty (x :: xs)) : x.SEmpty ∧ SEmpty xs := by
   apply And.intro
   · intro c h
     apply hs c (.here h)
@@ -183,7 +183,7 @@ theorem Subtree.SEmpty.is_empty : (mk r exs).SEmpty ↔ ContainsSupOf exs r := b
     case here hs => cases h0.implies_root; contradiction
     case there hsc ih => cases h0.implies_root; apply! ih
 
-theorem Kind.SEmpty.is_empty : SEmpty k ↔ IsEmpty k := by
+theorem CapKind.SEmpty.is_empty : SEmpty k ↔ IsEmpty k := by
   apply Iff.intro <;> intro h
   · induction k
     case nil => constructor
@@ -220,8 +220,8 @@ theorem Subtree.Subtract.contains_or
   case tree r1 ex1 r2 =>
     cases Decidable.em (c.Subclass r2)
     · left; apply! Contains.sub
-    · right; apply! Kind.Contains.here <| Contains.incl _ _
-  case excl_absurd_r hss => right; apply! Kind.Contains.here
+    · right; apply! CapKind.Contains.here <| Contains.incl _ _
+  case excl_absurd_r hss => right; apply! CapKind.Contains.here
   case excl_irrelevant_r hd hs ih =>
     cases ih hca <;> rename_i ih
     · left
@@ -232,11 +232,11 @@ theorem Subtree.Subtract.contains_or
   case excl_subclass_r r1 ex1 r2 ex2 _ a hsa2 hsa1 hs ih =>
     cases ih hca <;> rename_i ih
     · cases Decidable.em (c.Subclass a)
-      · right; apply Kind.Contains.here
+      · right; apply CapKind.Contains.here
         apply! Contains.refine_root hca hsa1
       · left; apply! Contains.incl
-    · right; apply! Kind.Contains.there
-  case excl_subclass_l hsa2 hss1 => right; apply! Kind.Contains.here
+    · right; apply! CapKind.Contains.there
+  case excl_subclass_l hsa2 hss1 => right; apply! CapKind.Contains.here
   case excl_irrelevant_l hsa1 hd1 hs ih =>
     cases ih hca <;> rename_i ih
     · left
@@ -281,7 +281,7 @@ theorem Subtree.Subtract.contains_inv
     apply And.intro ih1
     apply! Contains.not_cons_excl
 
-theorem Kind.Subtract.contains_or'
+theorem CapKind.Subtract.contains_or'
     (hs : Subtract A [b] R1)
     (hc : A.Contains c)
     : b.Contains c ∨ R1.Contains c := by
@@ -300,7 +300,7 @@ theorem Kind.Subtract.contains_or'
       · aesop
       · right; apply! Contains.append_l
 
-theorem Kind.Subtract.contains_or
+theorem CapKind.Subtract.contains_or
     (hs : Subtract A B R1)
     (hc : A.Contains c)
     : B.Contains c ∨ R1.Contains c := by
@@ -320,7 +320,7 @@ theorem Kind.Subtract.contains_or
         · left; apply! Contains.there
         · aesop
 
-theorem Kind.Subtract.contains_inv'
+theorem CapKind.Subtract.contains_inv'
     (hs : Subtract A [b] R1)
     (hc : R1.Contains c)
     : A.Contains c ∧ ¬ b.Contains c := by
@@ -335,7 +335,7 @@ theorem Kind.Subtract.contains_inv'
     · have ⟨h1, h2⟩ := ih ht hc
       apply And.intro (.there h1) h2
 
-theorem Kind.Subtract.contains_inv
+theorem CapKind.Subtract.contains_inv
     (hs : Subtract A B R1)
     (hc : R1.Contains c)
     : A.Contains c ∧ ¬ B.Contains c := by
@@ -354,9 +354,9 @@ theorem Kind.Subtract.contains_inv
       apply And.intro h3; apply! Contains.not_cons
 
 /-- Semantic subkinding. -/
-def Kind.SSubkind (a b : Kind) : Prop := ∀ c, a.Contains c -> b.Contains c
+def CapKind.SSubkind (a b : CapKind) : Prop := ∀ c, a.Contains c -> b.Contains c
 
-theorem Kind.Subtract.is_empty_is_subkind
+theorem CapKind.Subtract.is_empty_is_subkind
     (hs : Subtract A B R)
     : R.IsEmpty ↔ SSubkind A B := by
   apply Iff.intro <;> intro h
@@ -370,9 +370,9 @@ theorem Kind.Subtract.is_empty_is_subkind
     have ⟨h1, h2⟩ := hs.contains_inv hc
     simp_all [h c h1]
 
-theorem Kind.SSubkind.rfl : SSubkind A A := by intro c h; simp_all
+theorem CapKind.SSubkind.rfl : SSubkind A A := by intro c h; simp_all
 
-theorem Kind.SSubkind.trans (hs1 : SSubkind A B) (hs2 : SSubkind B C) : SSubkind A C := by
+theorem CapKind.SSubkind.trans (hs1 : SSubkind A B) (hs2 : SSubkind B C) : SSubkind A C := by
   intro c hc
   apply hs2
   apply hs1
@@ -387,10 +387,10 @@ theorem Subtree.Intersect.contains
     : R.Contains c := by
   induction hi
   case subtree_l hs =>
-    apply Kind.Contains.here
+    apply CapKind.Contains.here
     apply hc1.append_excl (hc2.refine_root hs hc1.subclass_of_root)
   case subtree_r hs =>
-    apply Kind.Contains.here
+    apply CapKind.Contains.here
     apply (hc1.refine_root hs hc2.subclass_of_root).append_excl hc2
   case disjoint hd =>
     cases ((hd.refines_subclass_l hc1.subclass_of_root).refines_subclass_r
@@ -409,7 +409,7 @@ theorem Subtree.Intersect.contains_inv
     apply And.intro (h1.weaken_root hs) h2
   case disjoint hd => cases hc
 
-theorem Kind.Intersect.contains
+theorem CapKind.Intersect.contains
     (hi : Intersect A B R)
     (hc1 : A.Contains c)
     (hc2 : B.Contains c)
@@ -427,7 +427,7 @@ theorem Kind.Intersect.contains
     case there hc2 => apply Contains.append_l; apply! ihb
   case singleton hi => apply hi.contains hc1.is_singleton hc2.is_singleton
 
-theorem Kind.Intersect.contains_inv
+theorem CapKind.Intersect.contains_inv
     (hi : Intersect A B R)
     (hc : R.Contains c)
     : A.Contains c ∧ B.Contains c := by
@@ -450,17 +450,17 @@ theorem Kind.Intersect.contains_inv
     have ⟨h1, h2⟩ := hi.contains_inv hc
     apply And.intro <;> apply! Contains.here
 
-theorem Kind.Intersect.is_ssubkind_l
+theorem CapKind.Intersect.is_ssubkind_l
     (hi : Intersect A B R)
     : SSubkind R A := by
   intro c hc; simp_all [hi.contains_inv hc]
 
-theorem Kind.Intersect.is_ssubkind_r
+theorem CapKind.Intersect.is_ssubkind_r
     (hi : Intersect A B R)
     : SSubkind R B := by
   intro c hc; simp_all [hi.contains_inv hc]
 
-theorem Kind.Intersect.with_ssubkind_l
+theorem CapKind.Intersect.with_ssubkind_l
     (hs : SSubkind A B)
     (hi1 : Intersect L A R1)
     (hi2 : Intersect L B R2)
@@ -469,7 +469,7 @@ theorem Kind.Intersect.with_ssubkind_l
   have ⟨h1, h2⟩ := hi1.contains_inv hc
   apply hi2.contains h1 (hs c h2)
 
-theorem Kind.Intersect.with_ssubkind_r
+theorem CapKind.Intersect.with_ssubkind_r
     (hs : SSubkind A B)
     (hi1 : Intersect A L R1)
     (hi2 : Intersect B L R2)
@@ -478,7 +478,7 @@ theorem Kind.Intersect.with_ssubkind_r
   have ⟨h1, h2⟩ := hi1.contains_inv hc
   apply hi2.contains (hs c h1) h2
 
-theorem Kind.intersect.is_empty_r
+theorem CapKind.intersect.is_empty_r
     (he : IsEmpty L)
     : IsEmpty (.intersect K L) := by
   rw [← SEmpty.is_empty] at *
@@ -487,7 +487,7 @@ theorem Kind.intersect.is_empty_r
   have ⟨h1, h2⟩ := h.contains_inv hc
   apply he c h2
 
-theorem Kind.intersect.is_empty_l
+theorem CapKind.intersect.is_empty_l
     (he : IsEmpty K)
     : IsEmpty (.intersect K L) := by
   rw [← SEmpty.is_empty] at *

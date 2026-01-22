@@ -1,10 +1,10 @@
-import Semantic.CaplessK.Syntax.Classifier.Kind
+import Semantic.CaplessK.Syntax.Classifier.CapKind
 
 namespace CaplessK
 
 /-- This file defines the "subtraction" operation between two kind sets. -/
 
-inductive Subtree.Subtract : Subtree -> Subtree -> Kind -> Prop where
+inductive Subtree.Subtract : Subtree -> Subtree -> CapKind -> Prop where
   -- Basically we follow a few broad strokes:
   -- - A \ (B \ C) = (A \ B) ∪ (A ∩ B ∩ C)
   -- - For B of the form (.node r []) (no exclusion):
@@ -43,8 +43,8 @@ inductive Subtree.Subtract : Subtree -> Subtree -> Kind -> Prop where
     Subtract (.mk r1 ex1) (.mk r2 ex2) R ->
     Subtract (.mk r1 ex1) (.mk r2 (a :: ex2)) R
 
-/-- Subtraction: `K.Subtract L` gives a Kind that contains all nodes in `K` but not in `L`. -/
-inductive Kind.Subtract : Kind -> Kind -> Kind -> Prop where
+/-- Subtraction: `K.Subtract L` gives a CapKind that contains all nodes in `K` but not in `L`. -/
+inductive CapKind.Subtract : CapKind -> CapKind -> CapKind -> Prop where
   | empty_r : Subtract K .empty K
   | union_r :
     Subtract K [y] R1 ->
@@ -53,21 +53,21 @@ inductive Kind.Subtract : Kind -> Kind -> Kind -> Prop where
   | empty_l : Subtract .empty [y] .empty
   | union_l : x.Subtract y R1 -> Subtract xs [y] R2 -> Subtract (x::xs) [y] (R1 ++ R2)
 
-theorem Kind.Subtract.singleton (hs : x.Subtract y R) : Subtract [x] [y] R := by
+theorem CapKind.Subtract.singleton (hs : x.Subtract y R) : Subtract [x] [y] R := by
   have h := union_l hs .empty_l
   simp at h
   apply h
 
-theorem Kind.Subtract.is_singleton (hs : Subtract [x] [y] R) : x.Subtract y R := by
+theorem CapKind.Subtract.is_singleton (hs : Subtract [x] [y] R) : x.Subtract y R := by
   cases hs
   case union_l ha hb => cases hb; simp_all
 
 theorem Subtree.Subtract.is_empty_l
-    (hs : Subtract x y R) (hsc : Kind.IsEmpty [x]) : Kind.IsEmpty R := by
+    (hs : Subtract x y R) (hsc : CapKind.IsEmpty [x]) : CapKind.IsEmpty R := by
   have hsc' := hsc.is_absurd
   induction hs
   case tree =>
-    apply Kind.IsEmpty.node
+    apply CapKind.IsEmpty.node
     apply! ContainsSupOf.there
   case excl_absurd_r => assumption
   case excl_irrelevant_r ih => apply! ih
@@ -75,21 +75,21 @@ theorem Subtree.Subtract.is_empty_l
     constructor
     · apply hsc'.trans_subclass hs1
     · apply! ih
-  case excl_subclass_l hs2 hss1 => apply! Kind.IsEmpty.node
+  case excl_subclass_l hs2 hss1 => apply! CapKind.IsEmpty.node
   case excl_irrelevant_l hd2 hd1 hs ih => apply! ih
 
-theorem Kind.Subtract.is_empty_l (hs : Subtract K1 K2 R) (he : IsEmpty K1) : IsEmpty R := by
+theorem CapKind.Subtract.is_empty_l (hs : Subtract K1 K2 R) (he : IsEmpty K1) : IsEmpty R := by
   induction hs
   case empty_l => constructor
   case union_l ha hb ih =>
     cases he
-    apply! Kind.IsEmpty.append (ha.is_empty_l <| .node _) (ih _)
+    apply! CapKind.IsEmpty.append (ha.is_empty_l <| .node _) (ih _)
   case empty_r => assumption
   case union_r ha hb =>
     apply hb
     apply! ha
 
-theorem Kind.Subtract.empty_l' : Subtract [] K [] := by
+theorem CapKind.Subtract.empty_l' : Subtract [] K [] := by
   induction K
   case nil => apply empty_r
   case cons x xs ih =>
@@ -97,13 +97,13 @@ theorem Kind.Subtract.empty_l' : Subtract [] K [] := by
     case nil => apply empty_l
     case cons => apply union_r .empty_l ih
 
-theorem Kind.Subtract.absurd_l
+theorem CapKind.Subtract.absurd_l
     (hs : Subtract (.node r1 ex1) K R) (hsc : ContainsSupOf ex1 r1) : IsEmpty R := by
   apply hs.is_empty_l
   apply IsEmpty.node
   assumption
 
-theorem Kind.Subtract.empty_l_inv (hs : Subtract [] K R) : R = [] := by
+theorem CapKind.Subtract.empty_l_inv (hs : Subtract [] K R) : R = [] := by
   induction K generalizing R
   case nil => cases hs; simp
   case cons y ys ih =>
@@ -156,7 +156,7 @@ theorem Subtree.Subtract.empty_r_inv
       · cases hd1.not_subclass hs
     case there => apply! ih
 
-theorem Kind.Subtract.empty_r_inv
+theorem CapKind.Subtract.empty_r_inv
     (hs : Subtract K1 K2 R) (he : IsEmpty R) (hek2 : IsEmpty K2) : IsEmpty K1 := by
   induction hs
   case empty_l => constructor
@@ -202,7 +202,7 @@ theorem Subtree.Subtract.exists' : ∃ R, Subtract (mk r1 ex1) (mk r2 ex2) R := 
 theorem Subtree.Subtract.exists (a b : Subtree) : ∃R, Subtract a b R :=
   exists' (r1:=a.root) (ex1:= a.excls) (r2:=b.root) (ex2:=b.excls)
 
-theorem Kind.Subtract.exists' (a : Kind) (b : Subtree) : ∃ R, Subtract a [b] R := by
+theorem CapKind.Subtract.exists' (a : CapKind) (b : Subtree) : ∃ R, Subtract a [b] R := by
   induction a
   case nil => exists .empty; apply empty_l
   case cons x xs ih =>
@@ -211,7 +211,7 @@ theorem Kind.Subtract.exists' (a : Kind) (b : Subtree) : ∃ R, Subtract a [b] R
     exists R1 ++ R2
     apply union_l h1 h2
 
-theorem Kind.Subtract.exists (a : Kind) (b : Kind) : ∃ R, Subtract a b R := by
+theorem CapKind.Subtract.exists (a : CapKind) (b : CapKind) : ∃ R, Subtract a b R := by
   induction b generalizing a
   case nil => exists a; apply empty_r
   case cons y ys ihb =>
@@ -301,7 +301,7 @@ theorem Subtree.Subtract.inj
     apply ih
     apply! hs2.excl_irrelevant_l_inv
 
-theorem Kind.Subtract.inj
+theorem CapKind.Subtract.inj
   (hs1 : Subtract K1 K2 R1)
   (hs2 : Subtract K1 K2 R2)
   : R1 = R2 := by
@@ -329,7 +329,7 @@ theorem Subtree.Subtract.is_empty_insert
   case nil =>
     cases hs1
     cases hs2
-    apply Kind.IsEmpty.node
+    apply CapKind.IsEmpty.node
     cases he.is_absurd
     case here => apply! ContainsSupOf.here
     case there => apply! ContainsSupOf.there (.insert _)
@@ -337,7 +337,7 @@ theorem Subtree.Subtract.is_empty_insert
     cases hs1
     case excl_absurd_r hss =>
       apply hs2.is_empty_l
-      apply Kind.IsEmpty.node (.insert he.is_absurd)
+      apply CapKind.IsEmpty.node (.insert he.is_absurd)
     case excl_irrelevant_r hd2 hs1 => apply ih hs1 he; apply! excl_irrelevant_r_inv
     case excl_subclass_r hsa1 hsa2 hs1 =>
       cases he
@@ -348,27 +348,27 @@ theorem Subtree.Subtract.is_empty_insert
       · apply! ih
     case excl_subclass_l =>
       apply hs2.is_empty_l
-      apply Kind.IsEmpty.node (.insert he.is_absurd)
+      apply CapKind.IsEmpty.node (.insert he.is_absurd)
     case excl_irrelevant_l hs1 => apply! ih hs1 _ (hs2.excl_irrelevant_l_inv _ _)
 
 theorem Subtree.Subtract.rfl
   (hs : Subtract a a R)
   : R.IsEmpty := by
   cases hs
-  case tree => apply Kind.IsEmpty.node <| .here .rfl
+  case tree => apply CapKind.IsEmpty.node <| .here .rfl
   case excl_absurd_r hss =>
-    apply Kind.IsEmpty.node <| .here hss.weaken
+    apply CapKind.IsEmpty.node <| .here hss.weaken
   case excl_irrelevant_r r1 ex2 a hd hs =>
     have ⟨R, h⟩ := Subtract.exists (mk r1 ex2) (mk r1 ex2)
     apply h.is_empty_insert (xs:=[]) (zs:=[a]) h.rfl hs
   case excl_subclass_r r1 ex2 _ _ _ hsa hs =>
     have ⟨R, h⟩ := Subtract.exists (mk r1 ex2) (mk r1 ex2)
-    apply Kind.IsEmpty.absurd (.here .rfl)
+    apply CapKind.IsEmpty.absurd (.here .rfl)
     apply h.is_empty_insert (xs:=[]) (zs:=[_]) h.rfl hs
   case excl_subclass_l hss hs => cases hss.antisymm hs
   case excl_irrelevant_l hd hs _ => cases hd.symm.not_subclass hs
 
-theorem Kind.Subtract.append_l'
+theorem CapKind.Subtract.append_l'
   (hs1 : Subtract K1 [y] R1)
   (hs2 : Subtract K2 [y] R2)
   : Subtract (K1 ++ K2) [y] (R1 ++ R2) := by
@@ -382,7 +382,7 @@ theorem Kind.Subtract.append_l'
     apply union_l hs1a
     apply ih hs1b hs2
 
-theorem Kind.Subtract.append_l
+theorem CapKind.Subtract.append_l
   (hs1 : Subtract K1 L R1)
   (hs2 : Subtract K2 L R2)
   : Subtract (K1 ++ K2) L (R1 ++ R2) := by
@@ -399,7 +399,7 @@ theorem Kind.Subtract.append_l
       · apply append_l' hs1a hs2a
       · apply ih hs1b hs2b
 
-theorem Kind.Subtract.append_l_inv'
+theorem CapKind.Subtract.append_l_inv'
     (hs : Subtract (K1 ++ K2) [y] R) (hs1 : Subtract K1 [y] R1)
     : ∃ R2, R = R1 ++ R2 ∧ Subtract K2 [y] R2 := by
   induction K1 generalizing K2 R R1
@@ -415,7 +415,7 @@ theorem Kind.Subtract.append_l_inv'
     exists R
     apply And.intro <;> simp_all
 
-theorem Kind.Subtract.append_l_inv
+theorem CapKind.Subtract.append_l_inv
     (hs : Subtract (K1 ++ K2) L R) (hs1 : Subtract K1 L R1)
     : ∃ R2, R = R1 ++ R2 ∧ Subtract K2 L R2 := by
   induction L generalizing K1 K2 R R1
@@ -442,25 +442,25 @@ theorem Kind.Subtract.append_l_inv
       simp_all
       apply! union_r
 
-theorem Kind.Subtract.cons_l_inv
+theorem CapKind.Subtract.cons_l_inv
     (hs : Subtract (K :: K1) L R) (hs1 : Subtract [K] L R1)
     : ∃ R2, R = R1 ++ R2 ∧ Subtract K1 L R2 := by
   apply append_l_inv hs hs1
-theorem Kind.Subtract.cons_l_inv'
+theorem CapKind.Subtract.cons_l_inv'
     (hs : Subtract (x :: K1) [y] R) (hs1 : x.Subtract y R1)
     : ∃ R2, R = R1 ++ R2 ∧ Subtract K1 [y] R2 := by
   have ⟨R, h1, h2⟩ := cons_l_inv hs (.union_l hs1 .empty_l)
   simp at h1
   aesop
 
-theorem Kind.Subtract.cons_l_split
+theorem CapKind.Subtract.cons_l_split
     (hs : Subtract (K :: K1) L R)
     : ∃ R1 R2, R = R1 ++ R2 ∧ Subtract [K] L R1 ∧ Subtract K1 L R2 := by
   have ⟨Rp, hp⟩ := Subtract.exists [K] L
   have ⟨Rt, ht⟩ := hs.cons_l_inv hp
   exists Rp, Rt
   simp_all
-theorem Kind.Subtract.append_l_split
+theorem CapKind.Subtract.append_l_split
     (hs : Subtract (K1 ++ K2) L R)
     : ∃ R1 R2, R = R1 ++ R2 ∧ Subtract K1 L R1 ∧ Subtract K2 L R2 := by
   have ⟨Rp, hp⟩ := Subtract.exists K1 L
@@ -476,13 +476,13 @@ theorem Subtree.Subtract.is_empty_subroot_l
   : R2.IsEmpty := by
   induction hs1 generalizing R2
   case tree =>
-    cases hs2; simp_all; apply Kind.IsEmpty.node
+    cases hs2; simp_all; apply CapKind.IsEmpty.node
     cases he1.is_absurd
     case here hsub2 => apply ContainsSupOf.here <| hsub.trans hsub2
     case there hsc => apply ContainsSupOf.there <| hsc.trans_subclass hsub
   case excl_absurd_r hss =>
     cases hs2.excl_absurd_r_inv hss
-    apply! Kind.IsEmpty.node <| he1.is_absurd.trans_subclass _
+    apply! CapKind.IsEmpty.node <| he1.is_absurd.trans_subclass _
   case excl_irrelevant_r hd hs1 ih =>
     have hs2 := hs2.excl_irrelevant_r_inv hd
     apply! ih
@@ -497,12 +497,12 @@ theorem Subtree.Subtract.is_empty_subroot_l
       · apply! ih
     · cases hc <;> rename_i hc
       · cases hs2.excl_subclass_l_inv hc hsa2
-        apply! Kind.IsEmpty.node (ContainsSupOf.trans_subclass _ hc.weaken)
+        apply! CapKind.IsEmpty.node (ContainsSupOf.trans_subclass _ hc.weaken)
       · have hs2 := hs2.excl_irrelevant_l_inv hc.symm hsa2
         apply! ih
   case excl_subclass_l hsa2 hss1 =>
     cases hs2.excl_subclass_l_inv (hss1.subclass_l hsub) hsa2
-    apply! Kind.IsEmpty.node <| he1.is_absurd.trans_subclass _
+    apply! CapKind.IsEmpty.node <| he1.is_absurd.trans_subclass _
   case excl_irrelevant_l hsa2 hd1 hs1 ih =>
     have hs2 := hs2.excl_irrelevant_l_inv (hd1.refines_subclass_l hsub) hsa2
     apply! ih
@@ -521,12 +521,12 @@ theorem Subtree.Subtract.is_empty_middle
     have ⟨R0, h0⟩ := Subtract.exists (mk a ex1) y
     have ⟨R', _, hs3'⟩ := hs3.cons_l_inv' h0
     subst_vars
-    apply Kind.IsEmpty.append <| hs1.is_empty_subroot_l he1 h0 hsa1
+    apply CapKind.IsEmpty.append <| hs1.is_empty_subroot_l he1 h0 hsa1
     apply! ih
   case excl_subclass_l hsa2 hss1 => cases hs1.inj hs3.is_singleton; simp_all
   case excl_irrelevant_l hsa2 hd1 hs2 ih => apply! ih
 
-theorem Kind.Subtract.is_empty_middle'
+theorem CapKind.Subtract.is_empty_middle'
   (hs1 : Subtract K [y] R1)
   (he1 : R1.IsEmpty)
   (hs2 : Subtract K [z] R2)
@@ -539,14 +539,14 @@ theorem Kind.Subtract.is_empty_middle'
     cases hs2
     rename_i hs1a hs1b R2 R1 hs2a hs2b
     have ⟨he1a, he1b⟩ := he1.append_inv
-    have ⟨Rl, hl⟩ := Kind.Subtract.exists R1 [y]
+    have ⟨Rl, hl⟩ := CapKind.Subtract.exists R1 [y]
     have ⟨R3', _, hs3'⟩ := hs3.append_l_inv hl
     subst_vars
     apply IsEmpty.append
     · apply! hs1a.is_empty_middle
     · apply! ih
 
-theorem Kind.Subtract.is_empty_transform_internal
+theorem CapKind.Subtract.is_empty_transform_internal
   (hs1 : Subtract (.node r1 (xs ++ ys)) L R1)
   (he1 : R1.IsEmpty)
   (hs2 : Subtract (.node c (xs ++ zs ++ ys)) L R2)
@@ -603,14 +603,14 @@ theorem Kind.Subtract.is_empty_transform_internal
       apply ih he1 (.singleton ha1) hb1 (.singleton ha2) hb2 ha2 (.refl _)
 termination_by (L.length)
 
-theorem Kind.Subtract.is_empty_append'
+theorem CapKind.Subtract.is_empty_append'
   (hs1 : Subtract (.node r1 ex1) L R1)
   (he1 : R1.IsEmpty)
   (hs2 : Subtract (.node r1 (a :: ex1)) L R2)
   : R2.IsEmpty := by
   apply hs1.is_empty_transform_internal (xs:=[]) (zs:=[_]) he1 hs2 .rfl
 
-theorem Kind.Subtract.is_empty_subroot_l'
+theorem CapKind.Subtract.is_empty_subroot_l'
   (hs1 : Subtract (.node r1 ex1) L R1)
   (he1 : R1.IsEmpty)
   (hs2 : Subtract (.node c ex1) L R2)
@@ -619,7 +619,7 @@ theorem Kind.Subtract.is_empty_subroot_l'
   apply hs1.is_empty_transform_internal (xs:=[]) (zs:=[]) he1 hs2 hsub
 
 
-theorem Kind.Subtract.is_empty_cons_r'
+theorem CapKind.Subtract.is_empty_cons_r'
   (hs1 : Subtract [x] L R1)
   (he1 : R1.IsEmpty)
   (hs2 : Subtract [x] (l :: L) R2)
@@ -650,7 +650,7 @@ theorem Kind.Subtract.is_empty_cons_r'
     case excl_irrelevant_l hsa2 hd1 ha ih =>
       apply! ih _ (.singleton ha)
 
-theorem Kind.Subtract.is_empty_cons_r
+theorem CapKind.Subtract.is_empty_cons_r
   (hs1 : Subtract K L R1)
   (he1 : R1.IsEmpty)
   (hs2 : Subtract K (l :: L) R2)
@@ -668,7 +668,7 @@ theorem Kind.Subtract.is_empty_cons_r
     · apply! hp1.is_empty_cons_r'
     · apply! ih
 
-theorem Kind.Subtract.rfl (hs : Subtract K K R) : R.IsEmpty := by
+theorem CapKind.Subtract.rfl (hs : Subtract K K R) : R.IsEmpty := by
   cases hs
   case empty_r => constructor
   case union_l ha hb =>
@@ -685,13 +685,13 @@ theorem Kind.Subtract.rfl (hs : Subtract K K R) : R.IsEmpty := by
     · have ⟨R', h'⟩ := Subtract.exists (y' :: ys) (y' :: ys)
       apply is_empty_cons_r h' h'.rfl (.union_r ht ht1)
 
-theorem Kind.Subtract.cons_l
+theorem CapKind.Subtract.cons_l
   (hs1 : Subtract [x] L R1)
   (hs2 : Subtract xs L R2)
   : Subtract (x :: xs) L (R1 ++ R2) := by
   apply append_l hs1 hs2
 
-theorem Kind.Subtract.append_r
+theorem CapKind.Subtract.append_r
   (hs1 : Subtract K L1 R1)
   (hs2 : Subtract R1 L2 R2)
   : Subtract K (L1 ++ L2) R2 := by
@@ -822,7 +822,7 @@ theorem Subtree.Subtract.is_empty_trans
   case tree =>
     cases hs3
     cases hs1.is_empty_cases he1 <;> rename_i hs1
-    · apply Kind.IsEmpty.node (.there hs1)
+    · apply CapKind.IsEmpty.node (.there hs1)
     · have ⟨hs1, hsc1⟩ := hs1
       cases he2.is_absurd
       case there he2 => have he2 := he2.trans_subclass hs1; contradiction
@@ -830,7 +830,7 @@ theorem Subtree.Subtract.is_empty_trans
   case excl_absurd_r hss =>
     cases hs3.excl_absurd_r_inv hss;
     apply hs3.is_empty_l
-    apply Kind.IsEmpty.node
+    apply CapKind.IsEmpty.node
     apply hs1.empty_r_inv he1 he2.is_absurd
   case excl_irrelevant_r hd2 hs2 ih =>
     have hs3 := hs3.excl_irrelevant_r_inv hd2
@@ -841,7 +841,7 @@ theorem Subtree.Subtract.is_empty_trans
     cases x.subclass_or_disjoint a.root <;> rename_i hx
     · have ⟨R0, _, h0⟩ := hs3.excl_subclass_r_inv hx hsa2
       subst_vars
-      apply Kind.IsEmpty.absurd
+      apply CapKind.IsEmpty.absurd
       · cases hs1.is_empty_cases he1 <;> rename_i hsc1
         · apply! hsc1.trans_subclass
         · have ⟨hx1, hy⟩ := hsc1; simp_all
@@ -849,13 +849,13 @@ theorem Subtree.Subtract.is_empty_trans
       · apply! ih
     · cases hx <;> rename_i hx
       · cases hs3.excl_subclass_l_inv hx hsa2
-        apply Kind.IsEmpty.node
+        apply CapKind.IsEmpty.node
         apply! is_empty_remaining_superroot hs1 he1
       · have hs3 := hs3.excl_irrelevant_l_inv hx.symm hsa2
         apply! ih
   case excl_subclass_l hsa2 hss1 =>
     apply hs3.is_empty_l
-    apply Kind.IsEmpty.node
+    apply CapKind.IsEmpty.node
     apply hs1.empty_r_inv he1 he2.is_absurd
   case excl_irrelevant_l r1 ex1 r2 ex2 _ x hsa2 hd1 hs2 ih =>
     simp_all
@@ -871,14 +871,14 @@ theorem Subtree.Subtract.is_empty_trans
       · apply! ih
     · cases hx <;> rename_i hx
       · cases hs3.excl_subclass_l_inv hx hsa2
-        apply Kind.IsEmpty.node
+        apply CapKind.IsEmpty.node
         cases hs1.empty_implies_subclass he1 <;> rename_i hs1
         · aesop
         · cases ((hd1.refines_subclass_l hs1).refines_subclass_r hx.weaken).not_subclass .rfl
       · have hs3 := hs3.excl_irrelevant_l_inv hx.symm hsa2
         apply! ih
 
-theorem Kind.Subtract.is_empty_trans''
+theorem CapKind.Subtract.is_empty_trans''
   (hs1 : Subtract A [b] R1)
   (he1 : R1.IsEmpty)
   (hs2 : b.Subtract c R2)
@@ -896,7 +896,7 @@ theorem Kind.Subtract.is_empty_trans''
     · apply hh1.is_singleton.is_empty_trans he1h hs2 he2 hh3.is_singleton
     · apply! ih
 
-theorem Kind.Subtract.union_r_inv
+theorem CapKind.Subtract.union_r_inv
   (hs : Subtract A (b :: b' :: bs) R)
   : ∃ R1, Subtract A [b] R1 ∧ Subtract R1 (b' :: bs) R := by
   cases hs
