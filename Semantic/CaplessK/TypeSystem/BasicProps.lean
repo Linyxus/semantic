@@ -62,8 +62,9 @@ theorem Subcapt.refl {Γ : Ctx s} {C : CaptureSet s} :
 theorem Subbound.refl {Γ : Ctx s} {cb : CaptureBound s} :
     Subbound Γ cb cb := by
   cases cb
-  case unbound =>
+  case unbound k =>
     apply Subbound.unbound
+    exact CapKind.Subkind.rfl
   case bound C =>
     apply Subbound.capset
     apply Subcapt.refl
