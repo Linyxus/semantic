@@ -39,8 +39,8 @@ def Var.rename : Var k s1 -> Rename s1 s2 -> Var k s2
 def CaptureSet.rename : CaptureSet s1 -> Rename s1 s2 -> CaptureSet s2
 | .empty, _ => .empty
 | .union cs1 cs2, ρ => .union (cs1.rename ρ) (cs2.rename ρ)
-| .var x, ρ => .var (x.rename ρ)
-| .cvar x, ρ => .cvar (ρ.var x)
+| .var x K, ρ => .var (x.rename ρ) K
+| .cvar x K, ρ => .cvar (ρ.var x) K
 
 /-- Renaming by the identity renaming leaves a capture set unchanged. -/
 theorem CaptureSet.rename_id {cs : CaptureSet s} :
@@ -48,8 +48,8 @@ theorem CaptureSet.rename_id {cs : CaptureSet s} :
   induction cs
   case empty => rfl
   case union ih1 ih2 => simp [CaptureSet.rename, ih1, ih2]
-  case var x => cases x <;> rfl
-  case cvar x => simp [CaptureSet.rename, Rename.id]
+  case var x _ => cases x <;> rfl
+  case cvar => simp [CaptureSet.rename, Rename.id]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -57,7 +57,7 @@ theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rena
   induction cs generalizing s2 s3
   case empty => rfl
   case union ih1 ih2 => simp [CaptureSet.rename, ih1, ih2]
-  case var x =>
+  case var x _ =>
     cases x
     · simp [CaptureSet.rename, Var.rename]; rfl
     · simp [CaptureSet.rename, Var.rename]
@@ -95,7 +95,7 @@ inductive CaptureSet.IsClosed : CaptureSet s -> Prop where
 | empty : CaptureSet.IsClosed .empty
 | union : CaptureSet.IsClosed cs1 -> CaptureSet.IsClosed cs2 ->
     CaptureSet.IsClosed (cs1.union cs2)
-| cvar : CaptureSet.IsClosed (.cvar x)
-| var_bound : CaptureSet.IsClosed (.var (.bound x))
+| cvar : CaptureSet.IsClosed (.cvar x K)
+| var_bound : CaptureSet.IsClosed (.var (.bound x) K)
 
 end CaplessK
