@@ -1,4 +1,5 @@
 import Semantic.CaplessK.Debruijn
+import Semantic.CaplessK.Syntax.Classifier
 
 /-!
 This module defines the capture set syntax of CC.
@@ -15,8 +16,8 @@ inductive Var : Kind -> Sig -> Type where
 inductive CaptureSet : Sig -> Type where
 | empty : CaptureSet s
 | union : CaptureSet s -> CaptureSet s -> CaptureSet s
-| var : Var .var s -> CaptureSet s
-| cvar : BVar s .cvar -> CaptureSet s
+| var : Var .var s -> CapKind -> CaptureSet s
+| cvar : BVar s .cvar -> CapKind -> CaptureSet s
 
 /-- Provides `{}` notation for the empty capture set. -/
 @[simp]
