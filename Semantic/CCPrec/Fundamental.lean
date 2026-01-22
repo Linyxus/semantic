@@ -195,7 +195,7 @@ theorem shape_denot_with_var_reachability
 
 theorem sem_typ_var
   (hx : Γ.LookupVar x (.capt C S)) :
-  (.var (.bound x)) # Γ ⊨ (.var (.bound x)) : (.typ (.capt (.var (.bound x)) S)) := by
+  ∅ # Γ ⊨ (.var (.bound x)) : (.typ (.capt (.var (.bound x)) S)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot]
   apply Eval.eval_var
@@ -237,7 +237,7 @@ theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
 
 theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
-  (ht : (Cf.rename Rename.succ ∪ .var (.bound .here)) # Γ,x:T1 ⊨ e : T2) :
+  (ht : (Cf.rename Rename.succ) # Γ,x:T1 ⊨ e : T2) :
   ∅ # Γ ⊨ Exp.abs Cf T1 e : .typ (Ty.capt Cf (T1.arrow T2)) := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot, Ty.shape_val_denot]
@@ -307,13 +307,6 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   = Cf.denot env := by
                   have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=arg)) Cf
                   exact this.symm
-                -- Variable .here denotes to the reachability we stored
-                have hcap_var :
-                  (CaptureSet.var (.bound .here)).denot (env.extend_var arg) H'
-                  = reachability_of_loc H'.heap arg := by
-                  simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
-                        Subst.from_TypeEnv, Var.subst, TypeEnv.lookup_var]
-                  rfl
                 -- Use monotonicity to relate capture set denotations at different memories
                 have hCf_mono : Cf.denot env store = Cf.denot env H' := by
                   -- Extract closedness of Cf from hclosed_abs
@@ -326,37 +319,19 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                     · apply CaptureSet.wf_of_closed hCf_closed
                     · apply from_TypeEnv_wf_in_heap hts
                   exact capture_set_denot_is_monotonic hwf_Cf hsubsume
-                -- Show the authority matches by rewriting with equalities
-                have hauthority :
-                  (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
-                    (env.extend_var arg) H' =
-                  (expand_captures store.heap
-                    (Cf.subst (Subst.from_TypeEnv env))).union
-                    (reachability_of_loc H'.heap arg) := by
-                  calc (Cf.rename Rename.succ ∪ .var (.bound .here)).denot
-                        (env.extend_var arg) H'
-                    _ = (Cf.rename Rename.succ).denot (env.extend_var arg) H' ∪
-                        (CaptureSet.var (.bound .here)).denot
-                          (env.extend_var arg) H' := by
-                      simp [CaptureSet.denot, CaptureSet.ground_denot,
-                            CaptureSet.subst]
-                    _ = Cf.denot env H' ∪ reachability_of_loc H'.heap arg := by
-                      rw [congrFun hcap_rename H', hcap_var]
-                    _ = Cf.denot env store ∪
-                        reachability_of_loc H'.heap arg := by
-                      rw [← hCf_mono]
-                    _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store ∪
-                        reachability_of_loc H'.heap arg := by
-                      simp [CaptureSet.denot]
-                    _ = expand_captures store.heap
-                          (Cf.subst (Subst.from_TypeEnv env)) ∪
-                        reachability_of_loc H'.heap arg := by
-                      rw [← expand_captures_eq_ground_denot]
-                    _ = (expand_captures store.heap
-                          (Cf.subst (Subst.from_TypeEnv env))).union
-                        (reachability_of_loc H'.heap arg) := by
-                      rfl
-                rw [← hauthority]
+                -- Show the authority from ht equals the required authority
+                have hauthority_eq :
+                  (Cf.rename Rename.succ).denot (env.extend_var arg) H' =
+                  expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
+                  calc (Cf.rename Rename.succ).denot (env.extend_var arg) H'
+                    _ = Cf.denot env H' := by rw [congrFun hcap_rename H']
+                    _ = Cf.denot env store := by rw [← hCf_mono]
+                    _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store := by
+                        simp [CaptureSet.denot]
+                    _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
+                        rw [← expand_captures_eq_ground_denot]
+                -- Rewrite the authority and apply
+                rw [hauthority_eq] at this
                 exact this
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
@@ -575,8 +550,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
   (hclosed_e : (Exp.pack cs x).IsClosed)
-  (ht : CaptureSet.var x # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
-  CaptureSet.var x # Γ ⊨ Exp.pack cs x : T.exi := by
+  (ht : ∅ # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
+  ∅ # Γ ⊨ Exp.pack cs x : T.exi := by
   intro env store hts
   simp [Ty.exi_exp_denot, Ty.exi_val_denot]
   -- pack cs x is a value, so we use eval_val
@@ -635,9 +610,10 @@ theorem abs_val_denot_inv {A : CapabilitySet}
     ∧ (∀ (arg : Nat) (m' : Memory),
       m'.subsumes store ->
       Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
+      -- In precise capabilities, no union with arg's reachability
       Ty.exi_exp_denot
         (env.extend_var arg)
-        T2 (expand_captures store.heap cs ∪ (reachability_of_loc m'.heap arg)) m'
+        T2 (expand_captures store.heap cs) m'
         (e0.subst (Subst.openVar (.free arg)))) := by
   cases x with
   | bound bx => cases bx
@@ -869,7 +845,7 @@ theorem sem_typ_tapp
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   {S : Ty .shape s} -- Type argument
   {T : Ty .exi (s,X)} -- Result type (depends on type variable X)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.poly S T))) :
+  (hx : ∅ # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.poly S T))) :
   (.var (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
   intro env store hts
 
@@ -915,7 +891,7 @@ theorem sem_typ_capp
   {T : Ty .exi (s,C)}
   {D : CaptureSet s}
   (hD_closed : D.IsClosed)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) :
+  (hx : ∅ # Γ ⊨ .var (.bound x) :
     .typ (.capt (.var (.bound x)) (.cpoly (.bound D) T))) :
   (.var (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
   intro env store hts
@@ -984,9 +960,9 @@ theorem sem_typ_capp
 
 theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.arrow T1 T2)))
-  (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ T1) :
-  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
+  (hx : ∅ # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) (.arrow T1 T2)))
+  (hy : ∅ # Γ ⊨ .var (.bound y) : .typ T1) :
+  (.var (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
   intro env store hts
 
@@ -1013,7 +989,7 @@ theorem sem_typ_app
   -- Simplify goal
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, Ty.exi_exp_denot]
 
-  -- Apply function to argument
+  -- Apply function to argument (in precise capabilities, no union with arg reachability)
   have happ := hfun fy store (Memory.subsumes_refl store) h2'
 
   -- The opening lemma relates extended environment to substituted type
@@ -1025,29 +1001,21 @@ theorem sem_typ_app
   -- Convert the denotation using the equivalence
   rw [hinterp] at heqv
   have happ' :=
-    (heqv (expand_captures store.heap cs ∪
-           reachability_of_loc store.heap fy)
+    (heqv (expand_captures store.heap cs)
       store (e0.subst (Subst.openVar (Var.free fy)))).1 happ
 
   simp [Ty.exi_exp_denot] at happ'
 
-  -- Widen the authority using union monotonicity
-  have hunion_mono : expand_captures store.heap cs ∪ reachability_of_loc store.heap fy ⊆
-                     CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪
-                     reachability_of_loc store.heap fy := by
-    apply CapabilitySet.Subset.union_left
-    · exact CapabilitySet.Subset.trans hR0_sub CapabilitySet.Subset.union_right_left
-    · exact CapabilitySet.Subset.union_right_right
-
-  have happ'' := eval_capability_set_monotonic happ' hunion_mono
+  -- Widen the authority: expand_captures cs ⊆ x.denot
+  have happ'' := eval_capability_set_monotonic happ' hR0_sub
 
   apply Eval.eval_apply hlk happ''
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-  (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) .cap))
-  (hy : (.var (.bound y)) # Γ ⊨ .var (.bound y) : .typ (.capt (.var (.bound y)) .unit)) :
-  ((.var (.bound x)) ∪ (.var (.bound y))) # Γ ⊨
+  (hx : ∅ # Γ ⊨ .var (.bound x) : .typ (.capt (.var (.bound x)) .cap))
+  (hy : ∅ # Γ ⊨ .var (.bound y) : .typ (.capt (.var (.bound y)) .unit)) :
+  (.var (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : .typ (.capt {} .unit) := by
   intro env store hts
 
@@ -1079,14 +1047,11 @@ theorem sem_typ_invoke
   simp [Exp.subst, Subst.from_TypeEnv, Var.subst, Ty.exi_exp_denot, Ty.exi_val_denot,
         Ty.capt_val_denot, Ty.shape_val_denot, CaptureSet.denot]
 
-  -- Show env.lookup_var x is in the union of capability sets
-  have hmem :
-    env.lookup_var x ∈ CaptureSet.denot env (.var (.bound x) ∪ .var (.bound y)) store := by
-    apply CapabilitySet.mem.left
-    exact hmem_cap
+  -- Show env.lookup_var x is in x's capability set (in precise capabilities, no union)
+  -- hmem_cap shows membership in x.denot directly
 
-  -- Apply eval_invoke
-  apply Eval.eval_invoke hmem hlk_cap hlk_unit
+  -- Apply eval_invoke with x's capability set
+  apply Eval.eval_invoke hmem_cap hlk_cap hlk_unit
 
   -- Show the postcondition holds for unit
   constructor
