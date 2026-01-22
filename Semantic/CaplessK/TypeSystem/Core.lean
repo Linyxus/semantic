@@ -120,11 +120,15 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_var :
   Ctx.LookupVar Γ x (.capt C S) ->
   ----------------------------------
-  Subcapt Γ (.var (.bound x) .top) C
+  Subcapt Γ (.var (.bound x) L) (C.proj L)
 | sc_cvar :
   Ctx.LookupCVar Γ c (.bound C) ->
   ----------------------------------
-  Subcapt Γ (.cvar c .top) C
+  Subcapt Γ (.cvar c L) (C.proj L)
+| sc_proj_r :
+  HasKind Γ C K ->
+  -------------------
+  Subcapt Γ C (C.proj K)
 
 inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
 | capset :
@@ -132,11 +136,13 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
   -------------------
   Subbound Γ (.bound C1) (.bound C2)
 | unbound :
+  CapKind.Subkind k1 k2 ->
   -------------------
-  Subbound Γ (.unbound k) (.unbound k)
+  Subbound Γ (.unbound k1) (.unbound k2)
 | top :
+  HasKind Γ C L ->
   -------------------
-  Subbound Γ B (.unbound .top)
+  Subbound Γ (.bound C) (.unbound L)
 
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | top {T : Ty .shape s} :
