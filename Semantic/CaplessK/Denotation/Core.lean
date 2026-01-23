@@ -238,7 +238,7 @@ def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} :=
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x)
   tvar := fun _ => .top
-  cvar := fun c _ => env.lookup_cvar c
+  cvar := fun c K => (env.lookup_cvar c).proj K
 
 theorem Subst.from_TypeEnv_empty :
   Subst.from_TypeEnv TypeEnv.empty = Subst.id := by
