@@ -802,6 +802,18 @@ private theorem CaptureSet.rename_closed_any {cs : CaptureSet s1} {f : Rename s1
     cases hc with | var_bound =>
     exact IsClosed.var_bound
 
+private theorem CaptureSet.proj_closed {cs : CaptureSet s} {K : CapKind}
+  (hc : cs.IsClosed) : (cs.proj K).IsClosed := by
+  induction cs with
+  | empty => exact IsClosed.empty
+  | union cs1 cs2 ih1 ih2 =>
+    cases hc with | union h1 h2 =>
+    exact IsClosed.union (ih1 h1) (ih2 h2)
+  | cvar => exact IsClosed.cvar
+  | var x =>
+    cases hc with | var_bound =>
+    exact IsClosed.var_bound
+
 private theorem CaptureBound.rename_closed_any {cb : CaptureBound s1} {f : Rename s1 s2}
   (hc : cb.IsClosed) : (cb.rename f).IsClosed := by
   cases cb <;> cases hc
@@ -1019,7 +1031,7 @@ theorem Subst.openCVar_is_closed {C : CaptureSet s}
     | there X => exact Ty.IsClosed.tvar
   cvar_closed := fun c K => by
     cases c with
-    | here => exact hC
+    | here => exact CaptureSet.proj_closed hC
     | there c => exact CaptureSet.IsClosed.cvar
 
 /-- If the result of substitution is closed, the original variable was closed. -/
