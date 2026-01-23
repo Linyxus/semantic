@@ -631,6 +631,20 @@ theorem CaptureSet.wf_monotonic
   | wf_var_bound => apply CaptureSet.WfInHeap.wf_var_bound
   | wf_cvar => apply CaptureSet.WfInHeap.wf_cvar
 
+theorem CaptureSet.wf_proj
+  {cs : CaptureSet s} {H : Heap} {K : CapKind}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap (cs.proj K) H := by
+  induction hwf with
+  | wf_empty => apply CaptureSet.WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 =>
+    apply CaptureSet.WfInHeap.wf_union
+    · exact ih1
+    · exact ih2
+  | wf_var_free hex => apply CaptureSet.WfInHeap.wf_var_free hex
+  | wf_var_bound => apply CaptureSet.WfInHeap.wf_var_bound
+  | wf_cvar => apply CaptureSet.WfInHeap.wf_cvar
+
 theorem CaptureBound.wf_monotonic
   {h1 h2 : Heap}
   (hsub : h2.subsumes h1)
@@ -1693,7 +1707,7 @@ theorem Subst.wf_openCVar
     cases C_var with
     | here =>
       simp [Subst.openCVar]
-      exact hwf_C
+      exact CaptureSet.wf_proj hwf_C
     | there C0 =>
       simp [Subst.openCVar]
       apply CaptureSet.WfInHeap.wf_cvar
