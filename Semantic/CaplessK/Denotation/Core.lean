@@ -235,6 +235,23 @@ def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} :=
   match Γ.lookup x with
   | .cvar cs => cs
 
+@[simp]
+theorem TypeEnv.lookup_cvar_extend_var {Γ : TypeEnv s} {x : Nat} {c : BVar s .cvar} :
+    (Γ.extend_var x).lookup_cvar (.there c) = Γ.lookup_cvar c := rfl
+
+@[simp]
+theorem TypeEnv.lookup_cvar_extend_tvar {Γ : TypeEnv s} {T : PreDenot} {c : BVar s .cvar} :
+    (Γ.extend_tvar T).lookup_cvar (.there c) = Γ.lookup_cvar c := rfl
+
+@[simp]
+theorem TypeEnv.lookup_cvar_extend_cvar_here {Γ : TypeEnv s} {cs : CaptureSet {}} :
+    (Γ.extend_cvar cs).lookup_cvar .here = cs := rfl
+
+@[simp]
+theorem TypeEnv.lookup_cvar_extend_cvar_there
+    {Γ : TypeEnv s} {cs : CaptureSet {}} {c : BVar s .cvar} :
+    (Γ.extend_cvar cs).lookup_cvar (.there c) = Γ.lookup_cvar c := rfl
+
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x)
   tvar := fun _ => .top
@@ -246,6 +263,22 @@ theorem Subst.from_TypeEnv_empty :
   · intro x; cases x
   · intro X; cases X
   · intro C; cases C
+
+/-- Projection commutes with substitution by from_TypeEnv. -/
+theorem CaptureSet.proj_subst_from_TypeEnv {cs : CaptureSet s} {env : TypeEnv s} {K : CapKind} :
+    (cs.subst (Subst.from_TypeEnv env)).proj K = (cs.proj K).subst (Subst.from_TypeEnv env) := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [CaptureSet.subst, CaptureSet.proj, ih1, ih2]
+  | var x K' =>
+    cases x
+    case bound x =>
+      simp only [CaptureSet.subst, Var.subst, CaptureSet.proj]
+    case free n =>
+      simp only [CaptureSet.subst, Var.subst, CaptureSet.proj]
+  | cvar c K' =>
+    simp only [CaptureSet.subst, CaptureSet.proj, Subst.from_TypeEnv, CaptureSet.proj_proj]
 
 /-- Compute denotation for a ground capture set. -/
 def CaptureSet.ground_denot : CaptureSet {} -> CapDenot

@@ -105,4 +105,20 @@ def CaptureSet.proj (c : CaptureSet s) (K : CapKind) :=
   | var x p => var x (p.intersect K)
   | cvar c p => cvar c (p.intersect K)
 
+theorem CaptureSet.proj_top {c : CaptureSet s} : c.proj .top = c := by
+  induction c with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 => simp only [proj, ih1, ih2]
+  | var x p => simp only [proj, CapKind.intersect.top_r]
+  | cvar c p => simp only [proj, CapKind.intersect.top_r]
+
+/-- Double projection is equivalent to a single projection with intersection. -/
+theorem CaptureSet.proj_proj {c : CaptureSet s} {K1 K2 : CapKind} :
+    (c.proj K1).proj K2 = c.proj (K1.intersect K2) := by
+  induction c with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 => simp only [proj, ih1, ih2]
+  | var x p => simp only [proj, CapKind.intersect.assoc]
+  | cvar c p => simp only [proj, CapKind.intersect.assoc]
+
 end CaplessK
