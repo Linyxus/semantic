@@ -252,7 +252,8 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 | .empty => fun _ => {}
 | .union cs1 cs2 => fun m =>
   (cs1.ground_denot m) ∪ (cs2.ground_denot m)
-| .var (.free x) _ => fun m => reachability_of_loc m.heap x
+| .var (.free x) _ =>  -- for now, ignore projections in ground_denot. TODO: must be fixed
+  fun m => reachability_of_loc m.heap x
 
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot

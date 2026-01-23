@@ -122,7 +122,7 @@ def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
     | .here => x
     | .there (.there x0) => .bound x0
   cvar := fun
-    | .there (.here) => fun K => C.proj K
+    | .there .here => fun K => C.proj K
     | .there (.there c0) => fun K => .cvar c0 K
   tvar := fun
     | .there (.there X0) => .tvar X0
