@@ -113,7 +113,7 @@ def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
   tvar := fun
     | .there x => .tvar x
   cvar := fun
-    | .here => fun _ => C
+    | .here => fun K => C.proj K
     | .there x => fun K => .cvar x K
 
 /-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
