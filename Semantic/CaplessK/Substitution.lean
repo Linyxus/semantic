@@ -63,6 +63,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .cap, _ => .cap
 | .bool, _ => .bool
 | .cell, _ => .cell
+| .label T, s => .label (T.subst s)
 | .capt cs T, s => .capt (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
@@ -284,6 +285,9 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   | .cap => rfl
   | .bool => rfl
   | .cell => rfl
+  | .label T =>
+    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
+    simp [Ty.subst, Ty.rename, ih]
   | .capt cs T =>
     have ihT := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -406,6 +410,8 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | label T ih =>
+    simp [Ty.subst, ih]
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp]
   | exi T ih =>
@@ -495,6 +501,8 @@ theorem Ty.subst_id {T : Ty sort s} :
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | label T ih =>
+    simp [Ty.subst, ih]
   | capt cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_id]
   | exi T ih =>
@@ -606,6 +614,8 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | cap => rfl
   | bool => rfl
   | cell => rfl
+  | label T ih =>
+    simp [Ty.subst, Ty.rename, ih]
   | capt cs T ih =>
     simp [Ty.subst, Ty.rename, ih, CaptureSet.subst_asSubst]
   | exi T ih =>
@@ -838,6 +848,9 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | label T ih =>
+    cases hc with | label hT =>
+    exact IsClosed.label (ih hT)
   | capt cs T ih =>
     cases hc with | capt h1 h2 =>
     exact IsClosed.capt (CaptureSet.rename_closed_any h1) (ih h2)
@@ -890,6 +903,10 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | label T ih =>
+    cases hc with | label hT =>
+    simp [Ty.subst]
+    exact IsClosed.label (ih hT hsubst)
   | capt cs S ih =>
     cases hc with | capt h1 h2 =>
     simp [Ty.subst]
@@ -1100,6 +1117,10 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   | cap => exact IsClosed.cap
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
+  | label T ih =>
+    simp [Ty.subst] at hclosed
+    cases hclosed with | label hT =>
+    exact IsClosed.label (ih hT)
   | capt cs T ih =>
     simp [Ty.subst] at hclosed
     cases hclosed with | capt h1 h2 =>

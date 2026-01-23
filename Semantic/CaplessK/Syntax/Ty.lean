@@ -72,6 +72,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .cap, _ => .cap
 | .bool, _ => .bool
 | .cell, _ => .cell
+| .label T, f => .label (T.rename f)
 | .capt cs T, f => .capt (cs.rename f) (T.rename f)
 | .exi T, f => .exi (T.rename (f.lift))
 | .typ T, f => .typ (T.rename f)
@@ -88,6 +89,7 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case cap => rfl
   case bool => rfl
   case cell => rfl
+  case label ih => simp [Ty.rename, ih]
   case capt ih2 =>
     simp [Ty.rename, ih2, CaptureSet.rename_id]
   case exi ih => simp [Ty.rename, Rename.lift_id, ih]
@@ -106,6 +108,7 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   case cap => rfl
   case bool => rfl
   case cell => rfl
+  case label ih => simp [Ty.rename, ih]
   case capt ih => simp [Ty.rename, CaptureSet.rename_comp, ih]
   case exi ih => simp [Ty.rename, Rename.lift_comp, ih]
   case typ ih => simp [Ty.rename, ih]
@@ -136,6 +139,7 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | cap : Ty.IsClosed .cap
 | bool : Ty.IsClosed .bool
 | cell : Ty.IsClosed .cell
+| label : Ty.IsClosed T -> Ty.IsClosed (.label T)
 -- capturing types
 | capt : CaptureSet.IsClosed cs -> Ty.IsClosed S -> Ty.IsClosed (.capt cs S)
 -- existential types
