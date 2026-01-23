@@ -567,7 +567,7 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         | empty => rfl  -- .empty.rename.rename.subst = .empty
         | union cs1 cs2 ih1 ih2 =>
           -- .union case: distribute rename/subst over both sides
-          simp only [CaptureSet.rename, CaptureSet.subst, ih1, ih2]
+          simp only [CaptureSet.proj, CaptureSet.rename, CaptureSet.subst, ih1, ih2]
         | var v ck =>
           cases v with
           | bound bv => cases bv  -- Impossible: no bound vars in {}
@@ -685,7 +685,7 @@ theorem from_TypeEnv_wf_in_heap
             cases C_var with
             | here =>
               simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
-              exact hwf
+              exact CaptureSet.wf_proj hwf
             | there C' =>
               simp [Subst.from_TypeEnv]
               exact ih_wf.wf_cvar C' K

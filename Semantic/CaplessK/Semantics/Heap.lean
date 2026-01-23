@@ -1748,7 +1748,7 @@ theorem Subst.wf_unpack
       | here =>
         -- .there .here maps to C
         simp [Subst.unpack]
-        exact hwf_C
+        exact CaptureSet.wf_proj hwf_C
       | there C0 =>
         -- .there (.there C0) maps to .cvar C0
         simp [Subst.unpack]
