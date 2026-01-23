@@ -32,9 +32,11 @@ inductive Ty : TySort -> Sig -> Type where
 | poly : Ty .shape s -> Ty .exi (s,X) -> Ty .shape s
 | cpoly : CaptureBound s -> Ty .exi (s,C) -> Ty .shape s
 | unit : Ty .shape s
-| cap : Ty .shape s
 | bool : Ty .shape s
-| cell : Ty .shape s
+-- ... capability types
+| cell : Ty .shape s  -- Memory cell
+| cap : Ty .shape s  -- A simplistic capability
+| label : Ty .shape s -> Ty .shape s  -- A boundary label
 -- capturing types
 | capt : CaptureSet s -> Ty .shape s -> Ty .capt s
 -- existential types
