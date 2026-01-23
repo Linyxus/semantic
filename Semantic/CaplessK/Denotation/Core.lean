@@ -291,6 +291,28 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
+/-- Projection doesn't change ground_denot (since projections are currently ignored).
+    FIXME: this will no longer hold once projections are properly handled. -/
+theorem CaptureSet.ground_denot_proj_eq {C : CaptureSet {}} {K : CapKind} :
+    (C.proj K).ground_denot = C.ground_denot := by
+  induction C with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 =>
+    simp only [CaptureSet.proj, CaptureSet.ground_denot, ih1, ih2]
+  | var v _ =>
+    cases v with
+    | free x => rfl
+    | bound b => cases b
+  | cvar c => cases c
+
+/-- Projection doesn't change denot (since projections are currently ignored in ground_denot).
+    FIXME: this will no longer hold once projections are properly handled. -/
+theorem CaptureSet.denot_proj_eq {C : CaptureSet s} {env : TypeEnv s} {K : CapKind} :
+    (C.proj K).denot env = C.denot env := by
+  unfold CaptureSet.denot
+  rw [<-CaptureSet.proj_subst_from_TypeEnv]
+  exact CaptureSet.ground_denot_proj_eq
+
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
 | _, .unbound _ => fun _ => .top
 | env, .bound cs => fun m => .set (cs.denot env m)
