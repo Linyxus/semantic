@@ -166,12 +166,11 @@ theorem env_typing_of_platform {N : Nat} :
                   unfold Memory.lookup Memory.platform_of Heap.platform_of
                   simp
                 · -- N is in the authority set from capture set denot
-                  simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
-                    TypeEnv.lookup_cvar, TypeEnv.lookup,
-                    CaptureSet.ground_denot, reachability_of_loc,
-                    Memory.platform_of]
+                  simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
+                    TypeEnv.lookup_cvar, TypeEnv.lookup, Memory.platform_of,
+                    CaptureSet.proj, CaptureSet.ground_denot]
                   unfold Heap.platform_of
-                  simp
+                  simp [reachability_of_loc]
                   apply CapabilitySet.mem.here
     · -- Capture variable C with bound .unbound
       constructor
@@ -394,11 +393,14 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
           case isFalse => contradiction
         rw [reachability_of_loc_platform hn]
         rfl
-  | cvar c =>
+  | cvar c K =>
     -- Capture variable
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
     simp only [Subst.from_TypeEnv]
     rw [TypeEnv.lookup_cvar_platform]
+    -- After substitution we have (.var (.free (c.level / 2)) .top).proj K
+    -- Use ground_denot_proj_eq to eliminate the projection
+    rw [CaptureSet.ground_denot_proj_eq]
     unfold CaptureSet.ground_denot Memory.platform_of
     simp
     -- Goal: reachability_of_loc (Heap.platform_of N) (c.level / 2) = {c.level / 2}
