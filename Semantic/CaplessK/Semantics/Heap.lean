@@ -277,6 +277,7 @@ theorem Cell.subsumes_trans {c1 c2 c3 : Cell}
   all_goals try (subst h12; subst h23; rfl)
   case capability.capability.capability info1 info2 info3 =>
     cases info1 <;> cases info2 <;> cases info3 <;> simp at h12 h23 ⊢
+    all_goals (subst h12; subst h23; rfl)
 
 def Heap.subsumes (big small : Heap) : Prop :=
   ∀ l v, small l = some v -> ∃ v', big l = some v' ∧ v'.subsumes v
