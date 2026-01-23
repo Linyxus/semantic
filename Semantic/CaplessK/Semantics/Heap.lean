@@ -418,6 +418,9 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap .bool H
 | wf_cell :
   Ty.WfInHeap .cell H
+| wf_label :
+  Ty.WfInHeap T H ->
+  Ty.WfInHeap (.label T) H
 -- Capturing types
 | wf_capt :
   CaptureSet.WfInHeap cs H ->
@@ -537,6 +540,7 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   | cap => apply Ty.WfInHeap.wf_cap
   | bool => apply Ty.WfInHeap.wf_bool
   | cell => apply Ty.WfInHeap.wf_cell
+  | label _ ih => apply Ty.WfInHeap.wf_label; exact ih
   | capt hcs _ ih =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_of_closed hcs
@@ -680,6 +684,7 @@ theorem Ty.wf_monotonic
   | wf_cap => apply Ty.WfInHeap.wf_cap
   | wf_bool => apply Ty.WfInHeap.wf_bool
   | wf_cell => apply Ty.WfInHeap.wf_cell
+  | wf_label _ ih => apply Ty.WfInHeap.wf_label; exact ih hsub
   | wf_capt hwf_cs hwf_T ih_T =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_monotonic hsub hwf_cs
@@ -1272,6 +1277,10 @@ theorem Ty.wf_rename
   | wf_cell =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_cell
+  | wf_label _ ih =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_label
+    exact ih
   | wf_capt hwf_cs _ ih_T =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_capt
@@ -1532,6 +1541,10 @@ theorem Ty.wf_subst
   | wf_cell =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_cell
+  | wf_label _ ih =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_label
+    exact ih hwf_σ
   | wf_capt hwf_cs _ ih_T =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_capt
