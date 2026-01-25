@@ -148,6 +148,9 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
   case exi T ih =>
     cases h with | exi hT =>
     exact IsClosed.exi (ih hT)
+  case label T ih =>
+    cases h with | label hT =>
+    exact IsClosed.label (ih hT)
 
 /-- If a renamed type is closed, the original is also closed. -/
 theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
@@ -186,6 +189,10 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     simp [Ty.rename] at h
     cases h; rename_i hT
     exact IsClosed.exi (ih hT)
+  case label T ih =>
+    simp [Ty.rename] at h
+    cases h; rename_i hT
+    exact IsClosed.label (ih hT)
 
 theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
   (hΓ : Γ.IsClosed) (hlookup : Γ.LookupVar x T) :
