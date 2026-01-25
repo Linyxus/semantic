@@ -1096,6 +1096,9 @@ theorem Ty.wf_masked
     apply Ty.WfInHeap.wf_bool
   | wf_cell =>
     apply Ty.WfInHeap.wf_cell
+  | wf_label _ ih =>
+    apply Ty.WfInHeap.wf_label
+    exact ih
   | wf_capt hwf_cs _ ih_T =>
     apply Ty.WfInHeap.wf_capt
     · exact CaptureSet.wf_masked hwf_cs
@@ -1167,6 +1170,10 @@ theorem Exp.wf_masked
     apply Exp.WfInHeap.wf_write
     · exact Var.wf_masked hwf_x
     · exact Var.wf_masked hwf_y
+  | wf_boundary hwf_T _ ih =>
+    apply Exp.WfInHeap.wf_boundary
+    · exact Ty.wf_masked hwf_T
+    · exact ih
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by

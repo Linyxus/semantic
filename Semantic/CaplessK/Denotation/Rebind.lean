@@ -232,6 +232,10 @@ def rebind_shape_val_denot
             have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
+  | .label T => by
+    apply PreDenot.eq_to_equiv
+    funext A
+    simp [Ty.shape_val_denot, Ty.rename]
 
 def rebind_capt_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

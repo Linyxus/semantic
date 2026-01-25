@@ -261,6 +261,9 @@ def retype_shape_val_denot
             have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS)) T
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
+  | .label T => by
+    apply PreDenot.eq_to_equiv
+    simp [Ty.shape_val_denot, Ty.subst]
 
 def retype_capturebound_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
