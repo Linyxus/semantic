@@ -274,6 +274,9 @@ theorem eval_monotonic {m1 m2 : Memory}
       case basic =>
         -- Contradiction: basic cannot subsume mcell
         simp [Cell.subsumes] at hsub_x
+      case label =>
+        -- Contradiction: label cannot subsume mcell
+        simp [Cell.subsumes] at hsub_x
       case mcell b' =>
         -- Good! m2 has an mcell at x with boolean b'
         -- Need to show: Q_eval (if b' then .btrue else .bfalse) m2
@@ -328,6 +331,9 @@ theorem eval_monotonic {m1 m2 : Memory}
       case basic =>
         -- Contradiction: basic cannot subsume mcell
         simp [Cell.subsumes] at hsub_x
+      case label =>
+        -- Contradiction: label cannot subsume mcell
+        simp [Cell.subsumes] at hsub_x
       case mcell b' =>
         -- Good! m2 has an mcell at x
         -- cy must be the same val as in m1 (subsumption is equality for vals)
@@ -357,6 +363,8 @@ theorem eval_monotonic {m1 m2 : Memory}
     case capability info =>
       cases info
       case basic =>
+        simp [Cell.subsumes] at hsub_x
+      case label =>
         simp [Cell.subsumes] at hsub_x
       case mcell b' =>
         simp [Cell.subsumes] at hsub_y
