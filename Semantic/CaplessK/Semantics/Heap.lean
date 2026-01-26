@@ -2215,4 +2215,23 @@ def classifier_of_loc : Heap -> Nat -> Classifier
   | some (.capability info) => info.classifier
   | _ => .top
 
+/-- Project a capability at a given location under a capability kind.
+    Returns whether the capability is kept by the projection. -/
+def proj_capability (H : Heap) (l : Nat) (K : CapKind) : Bool :=
+  let C := classifier_of_loc H l
+  CapKind.subkind (CapKind.classifier C) K
+
+/-- Project a capability set under a capability kind. -/
+def CapabilitySet.proj
+  (C : CapabilitySet)
+  (H : Heap) (K : CapKind) : CapabilitySet :=
+  match C with
+  | .empty => .empty
+  | .union cs1 cs2 => .union (cs1.proj H K) (cs2.proj H K)
+  | .cap l =>
+    if proj_capability H l K then
+      .cap l
+    else
+      .empty
+
 end CaplessK
