@@ -2209,4 +2209,10 @@ def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
 | .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
 | .cap x => {x}
 
+def classifier_of_loc : Heap -> Nat -> Classifier
+| H, l =>
+  match H l with
+  | some (.capability info) => info.classifier
+  | _ => .top
+
 end CaplessK
