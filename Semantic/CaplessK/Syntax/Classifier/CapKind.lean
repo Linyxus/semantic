@@ -58,6 +58,40 @@ instance ContainsSupOf.decidable : Decidable (ContainsSupOf xs a) := by
         intro hx
         cases hx <;> contradiction
 
+/-- Functional version of `ContainsSupOf`: does `xs` contain a superclass of `a`? -/
+def containsSupOf (xs : List Classifier) (a : Classifier) : Bool :=
+  match xs with
+  | [] => false
+  | x :: xs => a.subclass x || containsSupOf xs a
+
+theorem containsSupOf_iff_ContainsSupOf : containsSupOf xs a ↔ ContainsSupOf xs a := by
+  induction xs with
+  | nil =>
+    simp [containsSupOf]
+    intro h; cases h
+  | cons x xs ih =>
+    simp only [containsSupOf, Bool.or_eq_true]
+    constructor
+    · intro h
+      cases h with
+      | inl hsub =>
+        apply ContainsSupOf.here
+        rw [Classifier.subclass_is_Subclass]
+        exact hsub
+      | inr htail =>
+        apply ContainsSupOf.there
+        rw [← ih]
+        exact htail
+    · intro h
+      cases h with
+      | here hsub =>
+        left
+        rw [← Classifier.subclass_is_Subclass]
+        exact hsub
+      | there htail =>
+        right
+        rw [ih]
+        exact htail
 
 theorem ContainsSupOf.append_l (h : ContainsSupOf xs b) : ContainsSupOf (xs ++ ys) b := by
   induction h with
