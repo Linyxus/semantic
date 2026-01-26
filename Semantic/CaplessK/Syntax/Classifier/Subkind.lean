@@ -253,4 +253,10 @@ theorem CapKind.subkind_iff_Subkind : K1.subkind K2 ↔ Subkind K1 K2 := by
       rw [heq]
       exact he
 
+theorem CapKind.subkind_top {K : CapKind} :
+  Subkind K CapKind.top := Subkind.of_top
+
+theorem CapKind.subkind_top' {K : CapKind} :
+  K.subkind .top = true := subkind_iff_Subkind.mpr subkind_top
+
 end CaplessK

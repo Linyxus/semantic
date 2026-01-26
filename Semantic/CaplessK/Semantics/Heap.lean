@@ -2234,4 +2234,14 @@ def CapabilitySet.proj
     else
       .empty
 
+theorem CapabilitySet.proj_top (C : CapabilitySet) (H : Heap) :
+    C.proj H .top = C := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    simp only [proj]
+    simp only [proj_capability, CapKind.subkind_top', ite_true]
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj, ih1, ih2]
+
 end CaplessK
