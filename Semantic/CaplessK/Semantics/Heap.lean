@@ -235,7 +235,13 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
 inductive CapabilityInfo : Type where
 | basic : CapabilityInfo
 | mcell : Bool -> CapabilityInfo
-| label : CapKind -> CapabilityInfo
+| label : Classifier -> CapabilityInfo
+
+/-- Retrieve the classifier of a capability. -/
+def CapabilityInfo.classifier : CapabilityInfo -> Classifier
+| .basic => .top
+| .mcell _ => .top
+| .label k => k
 
 /-- A heap cell. -/
 inductive Cell : Type where
