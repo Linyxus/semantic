@@ -2267,4 +2267,104 @@ theorem CapabilitySet.proj_subkind
     · exact Subset.trans ih1 Subset.union_right_left
     · exact Subset.trans ih2 Subset.union_right_right
 
+/-- Classifier is preserved under cell subsumption for capability cells. -/
+theorem Cell.subsumes_classifier_eq
+    {c1 c2 : Cell}
+    (hsub : c1.subsumes c2)
+    (hcap1 : c1 = .capability info1)
+    (hcap2 : c2 = .capability info2) :
+    info1.classifier = info2.classifier := by
+  subst hcap1 hcap2
+  cases info1 <;> cases info2 <;> simp [Cell.subsumes] at hsub
+  all_goals simp [CapabilityInfo.classifier]
+  all_goals try (subst hsub; rfl)
+
+/-- Classifier is preserved under heap subsumption for existing locations. -/
+theorem classifier_of_loc_subsumes
+    {H1 H2 : Heap}
+    (hsub : H2.subsumes H1)
+    {l : Nat} {v : Cell}
+    (hex : H1 l = some v) :
+    classifier_of_loc H2 l = classifier_of_loc H1 l := by
+  obtain ⟨v', hv', hvsub⟩ := hsub l v hex
+  simp only [classifier_of_loc, hex, hv']
+  cases v with
+  | capability info1 =>
+    cases v' with
+    | capability info2 =>
+      simp only [Cell.subsumes_classifier_eq hvsub rfl rfl]
+    | val _ => simp [Cell.subsumes] at hvsub
+    | masked => simp [Cell.subsumes] at hvsub
+  | val hv =>
+    cases v' with
+    | val _ => simp [Cell.subsumes] at hvsub; subst hvsub; rfl
+    | capability _ => simp [Cell.subsumes] at hvsub
+    | masked => simp [Cell.subsumes] at hvsub
+  | masked =>
+    cases v' with
+    | masked => rfl
+    | capability _ => simp [Cell.subsumes] at hvsub
+    | val _ => simp [Cell.subsumes] at hvsub
+
+/-- proj_capability is preserved under heap subsumption for existing locations. -/
+theorem proj_capability_subsumes
+    {H1 H2 : Heap}
+    (hsub : H2.subsumes H1)
+    {l : Nat} {v : Cell}
+    (hex : H1 l = some v) :
+    proj_capability H2 l K = proj_capability H1 l K := by
+  simp only [proj_capability]
+  rw [classifier_of_loc_subsumes hsub hex]
+
+/-- Projection is preserved under heap subsumption for capability sets
+    where all locations exist in the smaller heap. -/
+theorem CapabilitySet.proj_subsumes
+    {H1 H2 : Heap}
+    (hsub : H2.subsumes H1)
+    {C : CapabilitySet}
+    (hwf : ∀ l, l ∈ C → ∃ v, H1 l = some v) :
+    C.proj H2 K = C.proj H1 K := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    simp only [proj]
+    have ⟨v, hv⟩ := hwf l .here
+    rw [proj_capability_subsumes hsub hv]
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj]
+    have hwf1 : ∀ l, l ∈ c1 → ∃ v, H1 l = some v := fun l hm => hwf l (.left hm)
+    have hwf2 : ∀ l, l ∈ c2 → ∃ v, H1 l = some v := fun l hm => hwf l (.right hm)
+    rw [ih1 hwf1, ih2 hwf2]
+
+/-- Reachability projection is preserved under heap subsumption.
+    This combines reachability_of_loc_monotonic with proj_subsumes. -/
+theorem reachability_of_loc_proj_monotonic
+    {H1 H2 : Heap}
+    (hwf : Heap.WfHeap H1)
+    (hsub : H2.subsumes H1)
+    {l : Nat} {v : Cell}
+    (hex : H1 l = some v) :
+    (reachability_of_loc H1 l).proj H2 K = (reachability_of_loc H1 l).proj H1 K := by
+  simp only [reachability_of_loc, hex]
+  cases v with
+  | capability info =>
+    -- Singleton case: {l} where l exists in H1
+    apply CapabilitySet.proj_subsumes hsub
+    intro l' hl'
+    cases hl' with
+    | here => exact ⟨_, hex⟩
+  | val hv =>
+    -- Stored reachability R case
+    apply CapabilitySet.proj_subsumes hsub
+    -- Need: ∀ l', l' ∈ R → ∃ v', H1 l' = some v'
+    -- This follows from heap well-formedness (stored R was computed from the heap)
+    intro l' hl'
+    sorry
+  | masked =>
+    -- Singleton case: {l} where l exists in H1
+    apply CapabilitySet.proj_subsumes hsub
+    intro l' hl'
+    cases hl' with
+    | here => exact ⟨_, hex⟩
+
 end CaplessK

@@ -291,28 +291,6 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
-/-- Projection doesn't change ground_denot (since projections are currently ignored).
-    FIXME: this will no longer hold once projections are properly handled. -/
-theorem CaptureSet.ground_denot_proj_eq {C : CaptureSet {}} {K : CapKind} :
-    (C.proj K).ground_denot = C.ground_denot := by
-  induction C with
-  | empty => rfl
-  | union c1 c2 ih1 ih2 =>
-    simp only [CaptureSet.proj, CaptureSet.ground_denot, ih1, ih2]
-  | var v _ =>
-    cases v with
-    | free x => rfl
-    | bound b => cases b
-  | cvar c => cases c
-
-/-- Projection doesn't change denot (since projections are currently ignored in ground_denot).
-    FIXME: this will no longer hold once projections are properly handled. -/
-theorem CaptureSet.denot_proj_eq {C : CaptureSet s} {env : TypeEnv s} {K : CapKind} :
-    (C.proj K).denot env = C.denot env := by
-  unfold CaptureSet.denot
-  rw [<-CaptureSet.proj_subst_from_TypeEnv]
-  exact CaptureSet.ground_denot_proj_eq
-
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
 | _, .unbound _ => fun _ => .top
 | env, .bound cs => fun m => .set (cs.denot env m)
@@ -1599,12 +1577,19 @@ theorem ground_denot_is_monotonic {C : CaptureSet {}} :
     cases v with
     | bound x => cases x  -- No bound variables in empty signature
     | free x =>
-      -- Free variable: use reachability_of_loc_monotonic
+      -- Free variable: use reachability_of_loc_proj_monotonic
       unfold CaptureSet.ground_denot
       simp at hwf
       cases hwf with
       | wf_var_free hex =>
-        exact (reachability_of_loc_monotonic hsub x hex).symm
+        -- Goal: (reachability_of_loc m1.heap x).proj m1.heap K
+        --     = (reachability_of_loc m2.heap x).proj m2.heap K
+        -- First, rewrite using reachability_of_loc_monotonic
+        rw [reachability_of_loc_monotonic hsub x hex]
+        -- Now: (reachability_of_loc m1.heap x).proj m1.heap K
+        --    = (reachability_of_loc m1.heap x).proj m2.heap K
+        -- Use reachability_of_loc_proj_monotonic
+        exact (reachability_of_loc_proj_monotonic m1.wf hsub hex).symm
   | cvar c => cases c  -- No capture variables in empty signature
 
 theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
@@ -1630,25 +1615,21 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
     | bound x =>
       -- Bound variable: after substitution becomes free variable
       unfold CaptureSet.denot
-      simp [CaptureSet.subst, Subst.from_TypeEnv] at hwf
-      simp [CaptureSet.subst, Subst.from_TypeEnv]
-      unfold CaptureSet.ground_denot
+      simp only [CaptureSet.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.ground_denot] at hwf ⊢
       cases hwf with
       | wf_var_free hex =>
         -- hex : m1.heap (ρ.lookup_var x) = some _
-        -- Memory.lookup is definitionally equal to heap access
-        exact (reachability_of_loc_monotonic hsub (ρ.lookup_var x) hex).symm
+        rw [reachability_of_loc_monotonic hsub (ρ.lookup_var x) hex]
+        exact (reachability_of_loc_proj_monotonic m1.wf hsub hex).symm
     | free x =>
       -- Free variable: stays as free variable
       unfold CaptureSet.denot
-      simp [CaptureSet.subst] at hwf
-      simp [CaptureSet.subst]
-      unfold CaptureSet.ground_denot
+      simp only [CaptureSet.subst, Var.subst, CaptureSet.ground_denot] at hwf ⊢
       cases hwf with
       | wf_var_free hex =>
         -- hex : m1.heap x = some _
-        -- Memory.lookup is definitionally equal to heap access
-        exact (reachability_of_loc_monotonic hsub x hex).symm
+        rw [reachability_of_loc_monotonic hsub x hex]
+        exact (reachability_of_loc_proj_monotonic m1.wf hsub hex).symm
   | cvar c =>
     -- Capture variable: after substitution becomes ground capture set
     unfold CaptureSet.denot
