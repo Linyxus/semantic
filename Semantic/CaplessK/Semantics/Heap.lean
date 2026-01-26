@@ -855,6 +855,31 @@ def reachability_of_loc
   | some .masked => {l}
   | none => {}
 
+def classifier_of_loc : Heap -> Nat -> Classifier
+| H, l =>
+  match H l with
+  | some (.capability info) => info.classifier
+  | _ => .top
+
+/-- Project a capability at a given location under a capability kind.
+    Returns whether the capability is kept by the projection. -/
+def proj_capability (H : Heap) (l : Nat) (K : CapKind) : Bool :=
+  let C := classifier_of_loc H l
+  CapKind.subkind (CapKind.classifier C) K
+
+/-- Project a capability set under a capability kind. -/
+def CapabilitySet.proj
+  (C : CapabilitySet)
+  (H : Heap) (K : CapKind) : CapabilitySet :=
+  match C with
+  | .empty => .empty
+  | .union cs1 cs2 => .union (cs1.proj H K) (cs2.proj H K)
+  | .cap l =>
+    if proj_capability H l K then
+      .cap l
+    else
+      .empty
+
 /-- Resolve reachability of each element of the capture set. -/
 def expand_captures
   (h : Heap)
@@ -862,7 +887,7 @@ def expand_captures
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var (.free loc) _ => reachability_of_loc h loc
+  | .var (.free loc) K => (reachability_of_loc h loc).proj h K
   | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
 
 /-- Compute reachability for a heap value. -/
@@ -2208,31 +2233,6 @@ def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
 | .empty => {}
 | .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
 | .cap x => {x}
-
-def classifier_of_loc : Heap -> Nat -> Classifier
-| H, l =>
-  match H l with
-  | some (.capability info) => info.classifier
-  | _ => .top
-
-/-- Project a capability at a given location under a capability kind.
-    Returns whether the capability is kept by the projection. -/
-def proj_capability (H : Heap) (l : Nat) (K : CapKind) : Bool :=
-  let C := classifier_of_loc H l
-  CapKind.subkind (CapKind.classifier C) K
-
-/-- Project a capability set under a capability kind. -/
-def CapabilitySet.proj
-  (C : CapabilitySet)
-  (H : Heap) (K : CapKind) : CapabilitySet :=
-  match C with
-  | .empty => .empty
-  | .union cs1 cs2 => .union (cs1.proj H K) (cs2.proj H K)
-  | .cap l =>
-    if proj_capability H l K then
-      .cap l
-    else
-      .empty
 
 theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap} :
     C.proj H .top = C := by
