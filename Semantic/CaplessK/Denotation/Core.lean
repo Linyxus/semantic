@@ -1674,7 +1674,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
       exact Exp.wf_monotonic hmem ht.1
     · -- Prove: resolve_reachability m2.heap e ⊆ C
       -- Use resolve_reachability_monotonic to show they're equal
-      have heq := resolve_reachability_monotonic hmem e ht.1
+      have heq := resolve_reachability_monotonic m1.wf hmem e ht.1
       rw [heq]
       exact ht.2
   | tvar X =>
@@ -1813,13 +1813,13 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
           · -- Prove: expand_captures m2.heap cs ⊆ C
-            have heq := expand_captures_monotonic hmem cs hwf_cs
+            have heq := expand_captures_monotonic m1.wf hmem cs hwf_cs
             rw [heq]
             exact hR0_sub
           · intro arg m' hs' harg
             have hs0 := Memory.subsumes_trans hs' hmem
             -- Use convert with expand_captures monotonicity
-            have heq' := expand_captures_monotonic hmem cs hwf_cs
+            have heq' := expand_captures_monotonic m1.wf hmem cs hwf_cs
             convert hfun arg m' hs0 harg using 2
   | poly T1 T2 =>
     intro m1 m2 e hmem ht
@@ -1864,7 +1864,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
           · -- Prove: expand_captures m2.heap cs ⊆ C
-            have heq := expand_captures_monotonic hmem cs hwf_cs
+            have heq := expand_captures_monotonic m1.wf hmem cs hwf_cs
             rw [heq]
             exact hR0_sub
           · intro m' denot msub hdenot_proper himply
@@ -1880,7 +1880,7 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
                   simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                   exact henv.tvar X'
             -- Use convert with expand_captures monotonicity
-            have heq' := expand_captures_monotonic hmem cs hwf_cs
+            have heq' := expand_captures_monotonic m1.wf hmem cs hwf_cs
             convert hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply using 2
   | cpoly B T =>
     intro m1 m2 e hmem ht
@@ -1925,12 +1925,12 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
           · -- Prove: expand_captures m2.heap cs ⊆ C
-            have heq := expand_captures_monotonic hmem cs hwf_cs
+            have heq := expand_captures_monotonic m1.wf hmem cs hwf_cs
             rw [heq]
             exact hR0_sub
           · intro m' CS hwf msub hA0
             -- Use convert with expand_captures monotonicity
-            have heq' := expand_captures_monotonic hmem cs hwf_cs
+            have heq' := expand_captures_monotonic m1.wf hmem cs hwf_cs
             convert hfun m' CS hwf (Memory.subsumes_trans msub hmem) hA0 using 2
   | label T =>
     intro m1 m2 e hmem ht

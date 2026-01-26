@@ -981,10 +981,117 @@ theorem reachability_of_loc_monotonic
   -- For capability and masked cells, both sides return {l}
   all_goals rfl
 
+/-- A heap is well-formed if all values stored in it contain well-formed expressions
+    and correct reachability sets. -/
+structure Heap.WfHeap (H : Heap) : Prop where
+  wf_val :
+    ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
+  wf_reach :
+    ∀ l v hv R,
+      H l = some (.val ⟨v, hv, R⟩) ->
+        R = compute_reachability H v hv
+
+/-- proj_capability is preserved under heap subsumption for existing locations. -/
+theorem proj_capability_subsumes
+    {H1 H2 : Heap}
+    (hsub : H2.subsumes H1)
+    {l : Nat} {v : Cell}
+    (hex : H1 l = some v) :
+    proj_capability H2 l K = proj_capability H1 l K := by
+  obtain ⟨v', hv', hsub_v⟩ := hsub l v hex
+  simp only [proj_capability, hex, hv']
+  cases v with
+  | capability info =>
+    cases v' with
+    | capability info' =>
+      -- Both are capabilities, need to show classifiers are equal
+      cases info <;> cases info' <;> simp [Cell.subsumes] at hsub_v
+      all_goals simp [CapabilityInfo.classifier]
+      all_goals try (subst hsub_v; rfl)
+    | val _ => simp [Cell.subsumes] at hsub_v
+    | masked => simp [Cell.subsumes] at hsub_v
+  | val _ =>
+    cases v' with
+    | val _ => simp [Cell.subsumes] at hsub_v; subst hsub_v; rfl
+    | capability _ => simp [Cell.subsumes] at hsub_v
+    | masked => simp [Cell.subsumes] at hsub_v
+  | masked =>
+    cases v' with
+    | masked => rfl
+    | capability _ => simp [Cell.subsumes] at hsub_v
+    | val _ => simp [Cell.subsumes] at hsub_v
+
+/-- Projection is preserved under heap subsumption for capability sets
+    where all locations exist in the smaller heap. -/
+theorem CapabilitySet.proj_subsumes
+    {H1 H2 : Heap}
+    (hsub : H2.subsumes H1)
+    {C : CapabilitySet}
+    (hwf : ∀ l, l ∈ C → ∃ v, H1 l = some v) :
+    C.proj H2 K = C.proj H1 K := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    simp only [proj]
+    have ⟨v, hv⟩ := hwf l .here
+    rw [proj_capability_subsumes hsub hv]
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj]
+    have hwf1 : ∀ l, l ∈ c1 → ∃ v, H1 l = some v := fun l hm => hwf l (.left hm)
+    have hwf2 : ∀ l, l ∈ c2 → ∃ v, H1 l = some v := fun l hm => hwf l (.right hm)
+    rw [ih1 hwf1, ih2 hwf2]
+
+/-- All locations in a HeapVal's stored reachability exist in a well-formed heap. -/
+theorem heap_val_reachability_wf
+    {H : Heap}
+    (hwf : H.WfHeap)
+    {l : Nat} {hv : HeapVal}
+    (hex : H l = some (.val hv)) :
+    ∀ l', l' ∈ hv.reachability → ∃ v', H l' = some v' := by
+  -- hv.reachability = compute_reachability H hv.unwrap hv.isVal (by wf_reach)
+  have hreach := hwf.wf_reach l hv.unwrap hv.isVal hv.reachability hex
+  -- The reachability was computed from a well-formed expression
+  have hwf_v := hwf.wf_val l hv hex
+  -- We need to show locations in compute_reachability exist
+  -- This requires induction on the computation
+  intro l' hl'
+  sorry  -- CLAUDE: This requires proving that compute_reachability only produces existing locations
+
+/-- Reachability projection is preserved under heap subsumption.
+    This combines reachability_of_loc_monotonic with proj_subsumes. -/
+theorem reachability_of_loc_proj_monotonic
+    {H1 H2 : Heap}
+    (hwf : H1.WfHeap)
+    (hsub : H2.subsumes H1)
+    {l : Nat} {v : Cell}
+    (hex : H1 l = some v) :
+    (reachability_of_loc H1 l).proj H2 K = (reachability_of_loc H1 l).proj H1 K := by
+  simp only [reachability_of_loc, hex]
+  cases v with
+  | capability info =>
+    -- Singleton case: {l} where l exists in H1
+    apply CapabilitySet.proj_subsumes hsub
+    intro l' hl'
+    cases hl' with
+    | here => exact ⟨_, hex⟩
+  | val hv =>
+    -- Stored reachability R case: hv.reachability
+    apply CapabilitySet.proj_subsumes hsub
+    -- Need: ∀ l', l' ∈ hv.reachability → ∃ v', H1 l' = some v'
+    exact heap_val_reachability_wf hwf hex
+  | masked =>
+    -- Singleton case: {l} where l exists in H1
+    apply CapabilitySet.proj_subsumes hsub
+    intro l' hl'
+    cases hl' with
+    | here => exact ⟨_, hex⟩
+
 /-- Expanding a capture set in a bigger heap yields the same result.
-Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
+Proof by induction on cs. Requires all free locations in cs to exist in h1
+and h1 to be well-formed. -/
 theorem expand_captures_monotonic
   {h1 h2 : Heap}
+  (hwf_heap : h1.WfHeap)
   (hsub : h2.subsumes h1)
   (cs : CaptureSet {})
   (hwf : CaptureSet.WfInHeap cs h1) :
@@ -999,13 +1106,17 @@ theorem expand_captures_monotonic
       -- Impossible: no bound variables in empty signature
       cases x
     | free loc =>
-      -- Variable case: use reachability_of_loc_monotonic
-      simp [expand_captures]
+      -- Variable case: combine reachability_of_loc_monotonic with proj preservation
+      simp only [expand_captures]
+      rename_i K
       -- Extract existence proof from well-formedness
       cases hwf with
       | wf_var_free hex =>
         -- We have hex : h1 loc = some cell_val
-        exact reachability_of_loc_monotonic hsub loc hex
+        -- First, raw reachability is preserved
+        rw [reachability_of_loc_monotonic hsub loc hex]
+        -- Then, projection is preserved under subsumption
+        exact reachability_of_loc_proj_monotonic hwf_heap hsub hex
   | cvar C =>
     -- Impossible: no capability variables in empty signature
     cases C
@@ -1018,6 +1129,7 @@ theorem expand_captures_monotonic
 
 theorem resolve_reachability_monotonic
   {H1 H2 : Heap}
+  (hwf_heap : H1.WfHeap)
   (hsub : H2.subsumes H1)
   (e : Exp {})
   (hwf : e.WfInHeap H1) :
@@ -1037,17 +1149,17 @@ theorem resolve_reachability_monotonic
     simp [resolve_reachability]
     cases hwf with
     | wf_abs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
+      exact expand_captures_monotonic hwf_heap hsub cs hwf_cs
   | tabs cs _ _ =>
     simp [resolve_reachability]
     cases hwf with
     | wf_tabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
+      exact expand_captures_monotonic hwf_heap hsub cs hwf_cs
   | cabs cs _ _ =>
     simp [resolve_reachability]
     cases hwf with
     | wf_cabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
+      exact expand_captures_monotonic hwf_heap hsub cs hwf_cs
   | pack _ _ =>
     simp [resolve_reachability]
   | unit =>
@@ -1079,6 +1191,7 @@ theorem resolve_reachability_monotonic
 Proof by cases on hv, using expand_captures_monotonic. -/
 theorem compute_reachability_monotonic
   {h1 h2 : Heap}
+  (hwf_heap : h1.WfHeap)
   (hsub : h2.subsumes h1)
   (v : Exp {})
   (hv : v.IsSimpleVal)
@@ -1093,19 +1206,19 @@ theorem compute_reachability_monotonic
     -- Extract well-formedness of the capture set
     cases hwf with
     | wf_abs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub _ hwf_cs
+      exact expand_captures_monotonic hwf_heap hsub _ hwf_cs
   | tabs =>
     -- Case: v = .tabs cs T e
     simp [compute_reachability]
     cases hwf with
     | wf_tabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub _ hwf_cs
+      exact expand_captures_monotonic hwf_heap hsub _ hwf_cs
   | cabs =>
     -- Case: v = .cabs cs cb e
     simp [compute_reachability]
     cases hwf with
     | wf_cabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub _ hwf_cs
+      exact expand_captures_monotonic hwf_heap hsub _ hwf_cs
   | unit =>
     -- Case: v = .unit
     -- Both heaps yield empty capability set
@@ -1131,6 +1244,35 @@ theorem reachability_of_loc_update_mcell (h : Heap) (l : Nat)
   · -- l' ≠ l case
     simp [heq]
 
+/-- Updating an mcell preserves proj_capability for all locations.
+    The key insight is that mcell's classifier is always .top, so changing
+    the boolean doesn't affect the classifier. -/
+theorem proj_capability_update_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) (l' : Nat) (K : CapKind) :
+  proj_capability (h.update_cell l (.capability (.mcell b))) l' K =
+  proj_capability h l' K := by
+  simp only [proj_capability, Heap.update_cell]
+  by_cases heq : l' = l
+  · -- l' = l case: both mcells have classifier .top
+    subst heq
+    obtain ⟨b0, hb0⟩ := hexists
+    simp [hb0, CapabilityInfo.classifier]
+  · -- l' ≠ l case: lookup unchanged
+    simp [heq]
+
+/-- Updating an mcell preserves projection of capability sets. -/
+theorem CapabilitySet.proj_update_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool)
+  (C : CapabilitySet) (K : CapKind) :
+  C.proj (h.update_cell l (.capability (.mcell b))) K = C.proj h K := by
+  induction C with
+  | empty => rfl
+  | cap l' =>
+    simp only [proj]
+    rw [proj_capability_update_mcell h l hexists b l' K]
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj, ih1, ih2]
+
 /-- Updating an mcell preserves expand_captures. -/
 theorem expand_captures_update_mcell (h : Heap) (l : Nat)
   (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) (cs : CaptureSet {}) :
@@ -1142,8 +1284,12 @@ theorem expand_captures_update_mcell (h : Heap) (l : Nat)
     cases x with
     | bound bv => cases bv
     | free loc =>
-      simp [expand_captures]
-      exact reachability_of_loc_update_mcell h l hexists b loc
+      simp only [expand_captures]
+      rename_i K
+      -- Goal: (reachability_of_loc h' loc).proj h' K = (reachability_of_loc h loc).proj h K
+      -- where h' = h.update_cell l (.capability (.mcell b))
+      rw [reachability_of_loc_update_mcell h l hexists b loc]
+      exact CapabilitySet.proj_update_mcell h l hexists b _ K
   | union cs1 cs2 ih1 ih2 =>
     simp [expand_captures, ih1, ih2]
   | cvar c => cases c
@@ -1161,15 +1307,6 @@ theorem compute_reachability_update_mcell (h : Heap) (l : Nat)
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
-
-/-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
-structure Heap.WfHeap (H : Heap) : Prop where
-  wf_val :
-    ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
-  wf_reach :
-    ∀ l v hv R,
-      H l = some (.val ⟨v, hv, R⟩) ->
-        R = compute_reachability H v hv
 
 /-- The empty heap is well-formed. -/
 theorem Heap.wf_empty : Heap.WfHeap ∅ := by
@@ -1209,12 +1346,12 @@ theorem Heap.wf_extend
     case isTrue heq =>
       cases hlookup
       -- Use monotonicity to show reachability is the same in extended heap
-      rw [compute_reachability_monotonic (Heap.extend_subsumes hfresh) v' hv' hwf_v]
+      rw [compute_reachability_monotonic hwf_H (Heap.extend_subsumes hfresh) v' hv' hwf_v]
       exact hreach
     case isFalse hneq =>
       have heq := hwf_H.wf_reach l' v' hv' R' hlookup
       rw [heq]
-      exact (compute_reachability_monotonic (Heap.extend_subsumes hfresh) v' hv'
+      exact (compute_reachability_monotonic hwf_H (Heap.extend_subsumes hfresh) v' hv'
         (hwf_H.wf_val l' _ hlookup)).symm
 
 /-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
@@ -1959,7 +2096,7 @@ def extend_cap (m : Memory) (l : Nat)
         -- If l' ≠ l, then the lookup is from the original heap
         have heq := m.wf.wf_reach l' v' hv' R' hlookup
         rw [heq]
-        exact (compute_reachability_monotonic (Heap.extend_cap_subsumes hfresh) v' hv'
+        exact (compute_reachability_monotonic m.wf (Heap.extend_cap_subsumes hfresh) v' hv'
           (m.wf.wf_val l' _ hlookup)).symm
   findom :=
     let ⟨dom, hdom⟩ := m.findom
@@ -2237,15 +2374,37 @@ def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
 | .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
 | .cap x => {x}
 
-theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap} :
+theorem proj_capability_true_of_capability
+    {H : Heap} {l : Nat} {info : CapabilityInfo} {K : CapKind}
+    (hex : H l = some (.capability info)) :
+    proj_capability H l K = (CapKind.classifier info.classifier).subkind K := by
+  simp only [proj_capability, hex]
+
+theorem proj_capability_of_true
+    {H : Heap} {l : Nat} {K : CapKind}
+    (h : proj_capability H l K = true) :
+    ∃ info, H l = some (.capability info) ∧
+      (CapKind.classifier info.classifier).Subkind K := by
+  simp only [proj_capability] at h
+  split at h
+  case h_1 info hex =>
+    exact ⟨info, hex, CapKind.subkind_iff_Subkind.mp h⟩
+  case h_2 => simp at h
+
+theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap}
+    (hwf : ∀ l, l ∈ C → ∃ info, H l = some (.capability info)) :
     C.proj H .top = C := by
   induction C with
   | empty => rfl
   | cap l =>
     simp only [proj]
-    simp only [proj_capability, CapKind.subkind_top', ite_true]
+    have ⟨info, hex⟩ := hwf l .here
+    simp only [proj_capability_true_of_capability hex, CapKind.subkind_top', ite_true]
   | union c1 c2 ih1 ih2 =>
-    simp only [proj, ih1, ih2]
+    simp only [proj]
+    have hwf1 : ∀ l, l ∈ c1 → ∃ info, H l = some (.capability info) := fun l hm => hwf l (.left hm)
+    have hwf2 : ∀ l, l ∈ c2 → ∃ info, H l = some (.capability info) := fun l hm => hwf l (.right hm)
+    simp only [ih1 hwf1, ih2 hwf2]
 
 theorem CapabilitySet.proj_subkind
     {C : CapabilitySet} {H : Heap}
@@ -2258,10 +2417,10 @@ theorem CapabilitySet.proj_subkind
     cases h1 : proj_capability H l K1 with
     | false => simp; exact Subset.empty
     | true =>
+      have ⟨info, hex, hsub1⟩ := proj_capability_of_true h1
       have h2 : proj_capability H l K2 = true := by
-        simp only [proj_capability] at h1 ⊢
-        rw [CapKind.subkind_iff_Subkind] at h1 ⊢
-        exact h1.trans hs
+        rw [proj_capability_true_of_capability hex]
+        exact CapKind.subkind_iff_Subkind.mpr (hsub1.trans hs)
       simp only [h2, ite_true]
       exact Subset.refl
   | union c1 c2 ih1 ih2 =>
@@ -2308,66 +2467,5 @@ theorem classifier_of_loc_subsumes
     | masked => rfl
     | capability _ => simp [Cell.subsumes] at hvsub
     | val _ => simp [Cell.subsumes] at hvsub
-
-/-- proj_capability is preserved under heap subsumption for existing locations. -/
-theorem proj_capability_subsumes
-    {H1 H2 : Heap}
-    (hsub : H2.subsumes H1)
-    {l : Nat} {v : Cell}
-    (hex : H1 l = some v) :
-    proj_capability H2 l K = proj_capability H1 l K := by
-  simp only [proj_capability]
-  rw [classifier_of_loc_subsumes hsub hex]
-
-/-- Projection is preserved under heap subsumption for capability sets
-    where all locations exist in the smaller heap. -/
-theorem CapabilitySet.proj_subsumes
-    {H1 H2 : Heap}
-    (hsub : H2.subsumes H1)
-    {C : CapabilitySet}
-    (hwf : ∀ l, l ∈ C → ∃ v, H1 l = some v) :
-    C.proj H2 K = C.proj H1 K := by
-  induction C with
-  | empty => rfl
-  | cap l =>
-    simp only [proj]
-    have ⟨v, hv⟩ := hwf l .here
-    rw [proj_capability_subsumes hsub hv]
-  | union c1 c2 ih1 ih2 =>
-    simp only [proj]
-    have hwf1 : ∀ l, l ∈ c1 → ∃ v, H1 l = some v := fun l hm => hwf l (.left hm)
-    have hwf2 : ∀ l, l ∈ c2 → ∃ v, H1 l = some v := fun l hm => hwf l (.right hm)
-    rw [ih1 hwf1, ih2 hwf2]
-
-/-- Reachability projection is preserved under heap subsumption.
-    This combines reachability_of_loc_monotonic with proj_subsumes. -/
-theorem reachability_of_loc_proj_monotonic
-    {H1 H2 : Heap}
-    (hwf : Heap.WfHeap H1)
-    (hsub : H2.subsumes H1)
-    {l : Nat} {v : Cell}
-    (hex : H1 l = some v) :
-    (reachability_of_loc H1 l).proj H2 K = (reachability_of_loc H1 l).proj H1 K := by
-  simp only [reachability_of_loc, hex]
-  cases v with
-  | capability info =>
-    -- Singleton case: {l} where l exists in H1
-    apply CapabilitySet.proj_subsumes hsub
-    intro l' hl'
-    cases hl' with
-    | here => exact ⟨_, hex⟩
-  | val hv =>
-    -- Stored reachability R case
-    apply CapabilitySet.proj_subsumes hsub
-    -- Need: ∀ l', l' ∈ R → ∃ v', H1 l' = some v'
-    -- This follows from heap well-formedness (stored R was computed from the heap)
-    intro l' hl'
-    sorry
-  | masked =>
-    -- Singleton case: {l} where l exists in H1
-    apply CapabilitySet.proj_subsumes hsub
-    intro l' hl'
-    cases hl' with
-    | here => exact ⟨_, hex⟩
 
 end CaplessK
