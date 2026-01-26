@@ -146,6 +146,36 @@ instance CapKind.IsEmpty.decidable : Decidable (IsEmpty K) := by
     rename_i h1 h2
     apply isTrue (.absurd h1 h2)
 
+/-- Functional version of `IsEmpty`: is a CapKind empty? -/
+def CapKind.isEmpty (K : CapKind) : Bool :=
+  match K with
+  | [] => true
+  | x :: xs => containsSupOf x.excls x.root && isEmpty xs
+
+theorem CapKind.isEmpty_iff_IsEmpty : isEmpty K ↔ IsEmpty K := by
+  induction K with
+  | nil =>
+    constructor
+    · intro _; exact .empty
+    · intro _; simp [isEmpty]
+  | cons x xs ih =>
+    simp only [isEmpty, Bool.and_eq_true]
+    constructor
+    · intro ⟨hcontains, htail⟩
+      apply IsEmpty.absurd
+      · rw [← containsSupOf_iff_ContainsSupOf]
+        exact hcontains
+      · rw [← ih]
+        exact htail
+    · intro h
+      cases h with
+      | absurd hcontains htail =>
+        constructor
+        · rw [containsSupOf_iff_ContainsSupOf]
+          exact hcontains
+        · rw [ih]
+          exact htail
+
 theorem CapKind.IsEmpty.node (hsc : ContainsSupOf exs r) : IsEmpty [.mk r exs] := absurd hsc .empty
 
 /-- If a `node` is empty, it is absurd. -/
