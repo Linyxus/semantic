@@ -18,6 +18,9 @@ deriving DecidableEq
 /-- The control classifier. -/
 def Classifier.control := child 0 .top
 
+/-- The mutable classifier. -/
+def Classifier.mutable := child 1 .top
+
 /-- Subclass: Is `a` within the subtree rooted at `b`? -/
 inductive Classifier.Subclass : Classifier -> Classifier -> Prop where
   | rfl : Subclass a a
