@@ -990,6 +990,8 @@ structure Heap.WfHeap (H : Heap) : Prop where
     ∀ l v hv R,
       H l = some (.val ⟨v, hv, R⟩) ->
         R = compute_reachability H v hv
+  wf_reachability :
+    ∀ l hv, H l = some (.val hv) → ∀ l', l' ∈ hv.reachability → ∃ v', H l' = some v'
 
 /-- proj_capability is preserved under heap subsumption for existing locations. -/
 theorem proj_capability_subsumes
@@ -1047,15 +1049,8 @@ theorem heap_val_reachability_wf
     (hwf : H.WfHeap)
     {l : Nat} {hv : HeapVal}
     (hex : H l = some (.val hv)) :
-    ∀ l', l' ∈ hv.reachability → ∃ v', H l' = some v' := by
-  -- hv.reachability = compute_reachability H hv.unwrap hv.isVal (by wf_reach)
-  have hreach := hwf.wf_reach l hv.unwrap hv.isVal hv.reachability hex
-  -- The reachability was computed from a well-formed expression
-  have hwf_v := hwf.wf_val l hv hex
-  -- We need to show locations in compute_reachability exist
-  -- This requires induction on the computation
-  intro l' hl'
-  sorry  -- CLAUDE: This requires proving that compute_reachability only produces existing locations
+    ∀ l', l' ∈ hv.reachability → ∃ v', H l' = some v' :=
+  hwf.wf_reachability l hv hex
 
 /-- Reachability projection is preserved under heap subsumption.
     This combines reachability_of_loc_monotonic with proj_subsumes. -/
@@ -1126,6 +1121,118 @@ theorem expand_captures_monotonic
     cases hwf with
     | wf_union hwf1 hwf2 =>
       simp [expand_captures, ih1 hwf1, ih2 hwf2]
+
+/-- Projection preserves location existence: if all locations in C exist in H,
+    then all locations in C.proj H K also exist in H. -/
+theorem CapabilitySet.proj_locations_exist
+    {H : Heap} {C : CapabilitySet}
+    (hex : ∀ l, l ∈ C → ∃ v, H l = some v) :
+    ∀ l, l ∈ C.proj H K → ∃ v, H l = some v := by
+  induction C with
+  | empty =>
+    intro l hl
+    cases hl
+  | cap loc =>
+    intro l hl
+    simp only [proj] at hl
+    split at hl
+    case isTrue =>
+      cases hl
+      exact hex loc .here
+    case isFalse =>
+      cases hl
+  | union c1 c2 ih1 ih2 =>
+    intro l hl
+    simp only [proj] at hl
+    cases hl with
+    | left hm => exact ih1 (fun l hm => hex l (.left hm)) l hm
+    | right hm => exact ih2 (fun l hm => hex l (.right hm)) l hm
+
+/-- Reachability of a location produces only existing locations.
+    This is the key lemma: reachability_of_loc returns {l} for caps/masked (which exist),
+    stored reachability R for values (which exist by wf_reachability), or {} for none. -/
+theorem reachability_of_loc_locations_exist
+    {H : Heap}
+    (hwf : H.WfHeap)
+    {loc : Nat} {v : Cell}
+    (hex : H loc = some v) :
+    ∀ l, l ∈ reachability_of_loc H loc → ∃ v', H l = some v' := by
+  intro l hl
+  simp only [reachability_of_loc, hex] at hl
+  cases v with
+  | capability _ =>
+    -- reachability_of_loc returns {loc}, and loc exists
+    cases hl
+    exact ⟨_, hex⟩
+  | val hv =>
+    -- reachability_of_loc returns hv.reachability
+    -- By wf_reachability, all locations in hv.reachability exist
+    exact hwf.wf_reachability loc hv hex l hl
+  | masked =>
+    -- reachability_of_loc returns {loc}, and loc exists
+    cases hl
+    exact ⟨_, hex⟩
+
+/-- expand_captures produces only existing locations for well-formed capture sets. -/
+theorem expand_captures_locations_exist
+    {H : Heap}
+    (hwf : H.WfHeap)
+    {cs : CaptureSet {}}
+    (hwf_cs : cs.WfInHeap H) :
+    ∀ l, l ∈ expand_captures H cs → ∃ v, H l = some v := by
+  induction cs with
+  | empty =>
+    intro l hl
+    cases hl
+  | var x =>
+    cases x with
+    | bound bx => cases bx
+    | free loc =>
+      intro l hl
+      simp only [expand_captures] at hl
+      cases hwf_cs with
+      | wf_var_free hex =>
+        -- expand_captures returns (reachability_of_loc H loc).proj H K
+        -- First, reachability_of_loc produces existing locations
+        -- Then, proj preserves this property
+        apply CapabilitySet.proj_locations_exist _ l hl
+        exact reachability_of_loc_locations_exist hwf hex
+  | cvar c => cases c
+  | union cs1 cs2 ih1 ih2 =>
+    cases hwf_cs with
+    | wf_union hwf1 hwf2 =>
+      intro l hl
+      simp only [expand_captures] at hl
+      cases hl with
+      | left hm => exact ih1 hwf1 l hm
+      | right hm => exact ih2 hwf2 l hm
+
+/-- compute_reachability produces only existing locations for well-formed expressions. -/
+theorem compute_reachability_locations_exist
+    {H : Heap}
+    (hwf : H.WfHeap)
+    {v : Exp {}} {hv : v.IsSimpleVal}
+    (hwf_v : v.WfInHeap H) :
+    ∀ l, l ∈ compute_reachability H v hv → ∃ v', H l = some v' := by
+  cases hv with
+  | abs =>
+    simp only [compute_reachability]
+    cases hwf_v with
+    | wf_abs hwf_cs _ _ =>
+      exact expand_captures_locations_exist hwf hwf_cs
+  | tabs =>
+    simp only [compute_reachability]
+    cases hwf_v with
+    | wf_tabs hwf_cs _ _ =>
+      exact expand_captures_locations_exist hwf hwf_cs
+  | cabs =>
+    simp only [compute_reachability]
+    cases hwf_v with
+    | wf_cabs hwf_cs _ _ =>
+      exact expand_captures_locations_exist hwf hwf_cs
+  | unit => intro l hl; cases hl
+  | btrue => intro l hl; cases hl
+  | bfalse => intro l hl; cases hl
 
 theorem resolve_reachability_monotonic
   {H1 H2 : Heap}
@@ -1313,6 +1420,7 @@ theorem Heap.wf_empty : Heap.WfHeap ∅ := by
   constructor
   · intro l hv hlookup; cases hlookup
   · intros _ _ _ _ hlookup; cases hlookup
+  · intro l hv hlookup; cases hlookup
 
 /-- Extending a well-formed heap with a well-formed value preserves well-formedness. -/
 theorem Heap.wf_extend
@@ -1320,6 +1428,7 @@ theorem Heap.wf_extend
   (hwf_H : H.WfHeap)
   (hwf_v : Exp.WfInHeap v.unwrap H)
   (hreach : v.reachability = compute_reachability H v.unwrap v.isVal)
+  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ v', H l' = some v')
   (hfresh : H l = none) :
   (H.extend l v).WfHeap := by
   constructor
@@ -1353,6 +1462,25 @@ theorem Heap.wf_extend
       rw [heq]
       exact (compute_reachability_monotonic hwf_H (Heap.extend_subsumes hfresh) v' hv'
         (hwf_H.wf_val l' _ hlookup)).symm
+  · -- wf_reachability case
+    intro l' hv' hlookup
+    unfold Heap.extend at hlookup
+    split at hlookup
+    case isTrue heq =>
+      -- l' = l, so hv' = v
+      cases hlookup
+      intro l'' hl''
+      -- l'' is in v.reachability, so it exists in H by hreach_wf
+      obtain ⟨v'', hv''⟩ := hreach_wf l'' hl''
+      -- Since H subsumes into H.extend l v, l'' also exists there
+      obtain ⟨v''', hv''', _⟩ := Heap.extend_subsumes hfresh l'' v'' hv''
+      exact ⟨v''', hv'''⟩
+    case isFalse hneq =>
+      -- l' ≠ l, so the lookup is in the original heap H
+      intro l'' hl''
+      obtain ⟨v'', hv''⟩ := hwf_H.wf_reachability l' hv' hlookup l'' hl''
+      obtain ⟨v''', hv''', _⟩ := Heap.extend_subsumes hfresh l'' v'' hv''
+      exact ⟨v''', hv'''⟩
 
 /-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
 theorem Heap.wf_lookup
@@ -2046,9 +2174,10 @@ def lookup (m : Memory) (l : Nat) : Option Cell :=
 def extend (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ v', m.heap l' = some v')
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend l v
-  wf := Heap.wf_extend m.wf hwf_v hreach hfresh
+  wf := Heap.wf_extend m.wf hwf_v hreach hreach_wf hfresh
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
@@ -2098,6 +2227,19 @@ def extend_cap (m : Memory) (l : Nat)
         rw [heq]
         exact (compute_reachability_monotonic m.wf (Heap.extend_cap_subsumes hfresh) v' hv'
           (m.wf.wf_val l' _ hlookup)).symm
+    · -- wf_reachability case
+      intro l' hv' hlookup
+      unfold Heap.extend_cap at hlookup
+      split at hlookup
+      case isTrue heq =>
+        -- If l' = l, then we're looking up the capability, which can't be a val
+        cases hlookup
+      case isFalse hneq =>
+        -- If l' ≠ l, then the lookup is from the original heap
+        intro l'' hl''
+        obtain ⟨v'', hv''⟩ := m.wf.wf_reachability l' hv' hlookup l'' hl''
+        obtain ⟨v''', hv''', _⟩ := Heap.extend_cap_subsumes hfresh l'' v'' hv''
+        exact ⟨v''', hv'''⟩
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_cap_has_fin_dom hdom hfresh⟩
@@ -2107,9 +2249,10 @@ def extend_cap (m : Memory) (l : Nat)
 def extend_val (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ v', m.heap l' = some v')
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend l v
-  wf := Heap.wf_extend m.wf hwf_v hreach hfresh
+  wf := Heap.wf_extend m.wf hwf_v hreach hreach_wf hfresh
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
@@ -2154,6 +2297,21 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool)
         -- Show that compute_reachability is preserved
         rw [hreach_orig]
         exact (compute_reachability_update_mcell m.heap l hexists b v' hv').symm
+    · -- wf_reachability case: updating a capability doesn't affect which locations exist
+      intro l' hv' hlookup
+      unfold Heap.update_cell at hlookup
+      split at hlookup
+      case isTrue heq =>
+        -- If l' = l, then we're looking up the updated mcell, which can't be a val
+        cases hlookup
+      case isFalse hneq =>
+        -- If l' ≠ l, then the lookup is from the original heap
+        intro l'' hl''
+        obtain ⟨v'', hv''⟩ := m.wf.wf_reachability l' hv' hlookup l'' hl''
+        have hsub : (m.heap.update_cell l (.capability (.mcell b))).subsumes m.heap :=
+          Heap.update_mcell_subsumes m.heap l hexists b
+        obtain ⟨v''', hv''', _⟩ := hsub l'' v'' hv''
+        exact ⟨v''', hv'''⟩
   findom := by
     -- Domain remains unchanged when updating an existing cell
     obtain ⟨dom, hdom⟩ := m.findom
@@ -2255,16 +2413,18 @@ theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
 theorem extend_lookup_eq (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ v', m.heap l' = some v')
   (hfresh : m.heap l = none) :
-  (m.extend l v hwf_v hreach hfresh).lookup l = some (.val v) := by
+  (m.extend l v hwf_v hreach hreach_wf hfresh).lookup l = some (.val v) := by
   simp [lookup, extend, Heap.extend]
 
 /-- Extension subsumes the original memory. -/
 theorem extend_subsumes (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ v', m.heap l' = some v')
   (hfresh : m.heap l = none) :
-  (m.extend l v hwf_v hreach hfresh).subsumes m := by
+  (m.extend l v hwf_v hreach hreach_wf hfresh).subsumes m := by
   simp [subsumes, extend]
   exact Heap.extend_subsumes hfresh
 
@@ -2272,8 +2432,9 @@ theorem extend_subsumes (m : Memory) (l : Nat) (v : HeapVal)
 theorem extend_val_subsumes (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ v', m.heap l' = some v')
   (hfresh : m.heap l = none) :
-  (m.extend_val l v hwf_v hreach hfresh).subsumes m := by
+  (m.extend_val l v hwf_v hreach hreach_wf hfresh).subsumes m := by
   simp [subsumes, extend_val]
   exact Heap.extend_subsumes hfresh
 

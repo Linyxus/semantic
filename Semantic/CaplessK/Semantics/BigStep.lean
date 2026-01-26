@@ -46,7 +46,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
       (hfresh : m1.lookup l' = none),
       Eval C
         (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩
-          hwf_v rfl hfresh)
+          hwf_v rfl (compute_reachability_locations_exist m1.wf hwf_v) hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
@@ -457,8 +457,8 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       intro m1 v hs1 hv hwf_v hq1 l' hfresh
       apply ih_val hs1 hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
-      apply Memory.subsumes_trans
-        (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh) hs1
+      have hreach_wf := compute_reachability_locations_exist (hv := hv) m1.wf hwf_v
+      apply Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf_v rfl hreach_wf hfresh) hs1
     case h_var =>
       intro m1 x hs1 hwf_x hq1
       apply ih_var hs1 hwf_x hq1
