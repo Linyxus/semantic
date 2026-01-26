@@ -2234,7 +2234,7 @@ def CapabilitySet.proj
     else
       .empty
 
-theorem CapabilitySet.proj_top (C : CapabilitySet) (H : Heap) :
+theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap} :
     C.proj H .top = C := by
   induction C with
   | empty => rfl
@@ -2243,5 +2243,28 @@ theorem CapabilitySet.proj_top (C : CapabilitySet) (H : Heap) :
     simp only [proj_capability, CapKind.subkind_top', ite_true]
   | union c1 c2 ih1 ih2 =>
     simp only [proj, ih1, ih2]
+
+theorem CapabilitySet.proj_subkind
+    {C : CapabilitySet} {H : Heap}
+    (hs : CapKind.Subkind K1 K2) :
+    C.proj H K1 ⊆ C.proj H K2 := by
+  induction C with
+  | empty => exact Subset.empty
+  | cap l =>
+    simp only [proj]
+    cases h1 : proj_capability H l K1 with
+    | false => simp; exact Subset.empty
+    | true =>
+      have h2 : proj_capability H l K2 = true := by
+        simp only [proj_capability] at h1 ⊢
+        rw [CapKind.subkind_iff_Subkind] at h1 ⊢
+        exact h1.trans hs
+      simp only [h2, ite_true]
+      exact Subset.refl
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj]
+    apply Subset.union_left
+    · exact Subset.trans ih1 Subset.union_right_left
+    · exact Subset.trans ih2 Subset.union_right_right
 
 end CaplessK
