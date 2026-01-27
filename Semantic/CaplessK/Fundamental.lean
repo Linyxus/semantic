@@ -1771,7 +1771,7 @@ theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s} {L : CapKind}
   -- Apply monotonicity of projection
   exact CapabilitySet.proj_subset_mono h
 
-theorem sem_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
+theorem fundamental_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
     (hk : HasKind Γ C K) :
     SemHasKind Γ C K := by
   induction hk with
