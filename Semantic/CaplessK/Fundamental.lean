@@ -1738,20 +1738,29 @@ theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s} {L : C
   (hlookup : Γ.LookupVar x (.capt C S)) :
   SemSubcapt Γ (.var (.bound x) L) (C.proj L) := by
   intro env m hts
-  unfold CaptureSet.denot
-  simp [CaptureSet.subst, Subst.from_TypeEnv]
+  -- Get the reachability subset from the typing hypothesis
   have h := typed_env_lookup_var_reachability hts hlookup
   simp [Ty.captureSet] at h
-  simp [Var.subst, CaptureSet.ground_denot]
-  sorry
+  -- Rewrite RHS using denot_proj_eq first
+  rw [CaptureSet.denot_proj_eq]
+  -- Now unfold LHS denotation
+  simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv, Var.subst,
+             CaptureSet.ground_denot]
+  -- Apply monotonicity of projection
+  exact CapabilitySet.proj_subset_mono h
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s} {L : CapKind}
   (hlookup : Γ.LookupCVar c (.bound C)) :
   SemSubcapt Γ (.cvar c L) (C.proj L) := by
-  -- intro env m hts
-  -- unfold CaptureSet.denot
-  -- simp [CaptureSet.subst, Subst.from_TypeEnv, CaptureSet.ground_denot_proj_eq]
-  -- exact typed_env_lookup_cvar hts hlookup
+  intro env m hts
+  -- Get the subset from the typing hypothesis
+  have h := typed_env_lookup_cvar hts hlookup
+  -- Rewrite RHS using denot_proj_eq first
+  rw [CaptureSet.denot_proj_eq]
+  -- Unfold LHS denotation
+  simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
+             CaptureSet.ground_denot]
+  trace_state
   sorry
 
 theorem sem_sc_proj_r {C : CaptureSet s} {K : CapKind} :

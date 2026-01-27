@@ -2700,6 +2700,25 @@ theorem CapabilitySet.proj_subkind
     · exact Subset.trans ih1 Subset.union_right_left
     · exact Subset.trans ih2 Subset.union_right_right
 
+/-- Projection is monotonic with respect to subset. -/
+theorem CapabilitySet.proj_subset_mono
+    {C1 C2 : CapabilitySet} {H : Heap} {K : CapKind}
+    (hsub : C1 ⊆ C2) :
+    C1.proj H K ⊆ C2.proj H K := by
+  induction hsub with
+  | refl => exact Subset.refl
+  | empty => exact Subset.empty
+  | trans _ _ ih1 ih2 => exact Subset.trans ih1 ih2
+  | union_left _ _ ih1 ih2 =>
+    simp only [proj]
+    apply Subset.union_left ih1 ih2
+  | union_right_left =>
+    simp only [proj]
+    exact Subset.union_right_left
+  | union_right_right =>
+    simp only [proj]
+    exact Subset.union_right_right
+
 /-- Classifier is preserved under cell subsumption for capability cells. -/
 theorem Cell.subsumes_classifier_eq
     {c1 c2 : Cell}
