@@ -291,6 +291,29 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
+/-- Syntactic projection commutes with ground denotation via semantic projection. -/
+theorem CaptureSet.ground_denot_proj_eq {cs : CaptureSet {}} {m : Memory} {K : CapKind} :
+    (cs.proj K).ground_denot m = (cs.ground_denot m).proj m.heap K := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [CaptureSet.proj, ground_denot, ih1, ih2, CapabilitySet.proj]
+    rfl
+  | var v K' =>
+    cases v with
+    | free x =>
+      simp only [CaptureSet.proj, ground_denot]
+      rw [← CapabilitySet.proj_proj]
+    | bound bv => cases bv
+  | cvar c K' => cases c
+
+/-- Syntactic projection commutes with denotation via semantic projection. -/
+theorem CaptureSet.denot_proj_eq {cs : CaptureSet s} {env : TypeEnv s} {m : Memory} {K : CapKind} :
+    (cs.proj K).denot env m = (cs.denot env m).proj m.heap K := by
+  simp only [CaptureSet.denot]
+  rw [← CaptureSet.proj_subst_from_TypeEnv]
+  exact CaptureSet.ground_denot_proj_eq
+
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
 | _, .unbound _ => fun _ => .top
 | env, .bound cs => fun m => .set (cs.denot env m)

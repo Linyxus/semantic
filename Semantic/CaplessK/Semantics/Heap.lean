@@ -2585,6 +2585,83 @@ theorem proj_capability_of_true
   case h_2 =>
     simp at h
 
+/-- Classifier subkinding is preserved under intersection. -/
+theorem classifier_subkind_intersect
+    {k : Classifier} {K1 K2 : CapKind} :
+    (CapKind.classifier k).Subkind K1 ∧ (CapKind.classifier k).Subkind K2 ↔
+    (CapKind.classifier k).Subkind (K1.intersect K2) := by
+  rw [CapKind.Subkind.semantics, CapKind.Subkind.semantics, CapKind.Subkind.semantics]
+  constructor
+  · intro ⟨h1, h2⟩
+    intro c hc
+    have hc1 := h1 c hc
+    have hc2 := h2 c hc
+    exact CapKind.Intersect.contains (CapKind.Intersect.lawful K1 K2) hc1 hc2
+  · intro h
+    constructor
+    · intro c hc
+      have hc' := h c hc
+      exact (CapKind.Intersect.contains_inv (CapKind.Intersect.lawful K1 K2) hc').1
+    · intro c hc
+      have hc' := h c hc
+      exact (CapKind.Intersect.contains_inv (CapKind.Intersect.lawful K1 K2) hc').2
+
+/-- proj_capability is compatible with intersection (Bool version). -/
+theorem proj_capability_intersect
+    {H : Heap} {l : Nat} {K1 K2 : CapKind} :
+    (proj_capability H l K1 = true ∧ proj_capability H l K2 = true) ↔
+    proj_capability H l (K1.intersect K2) = true := by
+  simp only [proj_capability]
+  split
+  case h_1 k hk =>
+    -- Convert Bool = true to Subkind using subkind_iff_Subkind
+    constructor
+    · intro ⟨h1, h2⟩
+      have hs1 := CapKind.subkind_iff_Subkind.mp h1
+      have hs2 := CapKind.subkind_iff_Subkind.mp h2
+      exact CapKind.subkind_iff_Subkind.mpr (classifier_subkind_intersect.mp ⟨hs1, hs2⟩)
+    · intro h
+      have hs := CapKind.subkind_iff_Subkind.mp h
+      have ⟨hs1, hs2⟩ := classifier_subkind_intersect.mpr hs
+      exact ⟨CapKind.subkind_iff_Subkind.mpr hs1, CapKind.subkind_iff_Subkind.mpr hs2⟩
+  case h_2 =>
+    simp
+
+/-- Double projection equals single projection with intersection. -/
+theorem CapabilitySet.proj_proj
+    {C : CapabilitySet} {H : Heap} {K1 K2 : CapKind} :
+    (C.proj H K1).proj H K2 = C.proj H (K1.intersect K2) := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    simp only [proj]
+    split
+    case isTrue h1 =>
+      -- h1: proj_capability H l K1 = true
+      simp only [proj]
+      split
+      case isTrue h2 =>
+        -- h2: proj_capability H l K2 = true
+        have h3 := proj_capability_intersect.mp ⟨h1, h2⟩
+        simp only [h3, ite_true]
+      case isFalse h2 =>
+        -- h2: ¬(proj_capability H l K2 = true)
+        split
+        case isTrue h3 =>
+          have hcontra := proj_capability_intersect.mpr h3
+          exact absurd hcontra.2 h2
+        case isFalse => rfl
+    case isFalse h1 =>
+      -- h1: ¬(proj_capability H l K1 = true)
+      simp only [proj]
+      split
+      case isTrue h2 =>
+        have hcontra := proj_capability_intersect.mpr h2
+        exact absurd hcontra.1 h1
+      case isFalse => rfl
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj, ih1, ih2]
+
 theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap}
     (hwf : C.WfInHeap H) :
     C.proj H .top = C := by
