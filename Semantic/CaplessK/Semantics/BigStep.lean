@@ -458,7 +458,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_val hs1 hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
       have hreach_wf := compute_reachability_locations_exist (hv := hv) m1.wf hwf_v
-      apply Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf_v rfl hreach_wf hfresh) hs1
+      apply Memory.subsumes_trans _ hs1
+      exact Memory.extend_val_subsumes m1 l'
+        ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hreach_wf hfresh
     case h_var =>
       intro m1 x hs1 hwf_x hq1
       apply ih_var hs1 hwf_x hq1
