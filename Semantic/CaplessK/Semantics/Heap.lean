@@ -855,19 +855,21 @@ def reachability_of_loc
   | some .masked => {l}
   | none => {}
 
-def classifier_of_loc : Heap -> Nat -> Classifier
+/-- Get the classifier of a heap location. Returns none if
+  the location is not in the heap. -/
+def classifier_of_loc : Heap -> Nat -> Option Classifier
 | H, l =>
   match H l with
-  | some (.capability info) => info.classifier
-  | _ => .top
+  | some (.capability info) => some info.classifier
+  | some _ => some .top
+  | _ => none
 
 /-- Project a capability at a given location under a capability kind.
     Returns whether the capability is kept by the projection. -/
 def proj_capability (H : Heap) (l : Nat) (K : CapKind) : Bool :=
-  match H l with
-  | some (.capability info) =>
-    let C := info.classifier
-    CapKind.subkind (CapKind.classifier C) K
+  match classifier_of_loc H l with
+  | some k =>
+    CapKind.subkind (.classifier k) K
   | _ => false
 
 /-- Project a capability set under a capability kind. -/
