@@ -1443,7 +1443,7 @@ theorem Heap.wf_extend
   (hwf_H : H.WfHeap)
   (hwf_v : Exp.WfInHeap v.unwrap H)
   (hreach : v.reachability = compute_reachability H v.unwrap v.isVal)
-  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ info, H l' = some (.capability info))
+  (hreach_wf : v.reachability.WfInHeap H)
   (hfresh : H l = none) :
   (H.extend l v).WfHeap := by
   constructor
@@ -2276,7 +2276,7 @@ def extend_cap (m : Memory) (l : Nat)
 def extend_val (m : Memory) (l : Nat) (v : HeapVal)
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
-  (hreach_wf : ∀ l', l' ∈ v.reachability → ∃ info, m.heap l' = some (.capability info))
+  (hreach_wf : v.reachability.WfInHeap m.heap)
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend l v
   wf := Heap.wf_extend m.wf hwf_v hreach hreach_wf hfresh
