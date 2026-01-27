@@ -1777,8 +1777,21 @@ theorem fundamental_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
   induction hk with
   | var hlookup _ ih =>
     intro env m hts l hl
-    trace_state
-    sorry
+    -- Get the reachability subset from the typing hypothesis
+    have hreach := typed_env_lookup_var_reachability hts hlookup
+    simp [Ty.captureSet] at hreach
+    -- Convert hl to CapabilitySet membership
+    have hl' := CapabilitySet.mem_to_finset_iff.mp hl
+    -- Unfold the LHS denotation
+    simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv, Var.subst,
+               CaptureSet.ground_denot] at hl'
+    -- hl' : l ∈ (reachability_of_loc (env.lookup_var x)).proj m.heap L
+    -- By monotonicity of proj, this is in (C.denot env m).proj L = (C.proj L).denot env m
+    have hmem := CapabilitySet.subset_preserves_mem (CapabilitySet.proj_subset_mono hreach) hl'
+    -- Rewrite using denot_proj_eq to get membership in (C.proj L).denot env m
+    rw [← CaptureSet.denot_proj_eq] at hmem
+    -- Apply the IH to get proj_capability
+    exact ih env m hts l (CapabilitySet.mem_to_finset_iff.mpr hmem)
   | cvar_unbound hlookup =>
     intro env m hts l hl
     trace_state
