@@ -1005,27 +1005,32 @@ theorem proj_capability_subsumes
     (hex : H1 l = some v) :
     proj_capability H2 l K = proj_capability H1 l K := by
   obtain ⟨v', hv', hsub_v⟩ := hsub l v hex
-  simp only [proj_capability, hex, hv']
-  cases v with
-  | capability info =>
-    cases v' with
-    | capability info' =>
-      -- Both are capabilities, need to show classifiers are equal
-      cases info <;> cases info' <;> simp [Cell.subsumes] at hsub_v
-      all_goals simp [CapabilityInfo.classifier]
-      all_goals try (subst hsub_v; rfl)
-    | val _ => simp [Cell.subsumes] at hsub_v
-    | masked => simp [Cell.subsumes] at hsub_v
-  | val _ =>
-    cases v' with
-    | val _ => simp [Cell.subsumes] at hsub_v; subst hsub_v; rfl
-    | capability _ => simp [Cell.subsumes] at hsub_v
-    | masked => simp [Cell.subsumes] at hsub_v
-  | masked =>
-    cases v' with
-    | masked => rfl
-    | capability _ => simp [Cell.subsumes] at hsub_v
-    | val _ => simp [Cell.subsumes] at hsub_v
+  -- First show classifier_of_loc is preserved
+  have hclass : classifier_of_loc H2 l = classifier_of_loc H1 l := by
+    simp only [classifier_of_loc, hex, hv']
+    cases v with
+    | capability info =>
+      cases v' with
+      | capability info' =>
+        cases info <;> cases info' <;> simp [Cell.subsumes] at hsub_v
+        · rfl  -- basic.basic
+        · rfl  -- mcell.mcell
+        · simp [CapabilityInfo.classifier, hsub_v]  -- label.label
+      | val _ => simp [Cell.subsumes] at hsub_v
+      | masked => simp [Cell.subsumes] at hsub_v
+    | val _ =>
+      cases v' with
+      | val _ => rfl
+      | capability _ => simp [Cell.subsumes] at hsub_v
+      | masked => simp [Cell.subsumes] at hsub_v
+    | masked =>
+      cases v' with
+      | masked => rfl
+      | capability _ => simp [Cell.subsumes] at hsub_v
+      | val _ => simp [Cell.subsumes] at hsub_v
+  -- Now use it to show proj_capability is preserved
+  unfold proj_capability
+  rw [hclass]
 
 /-- Projection is preserved under heap subsumption for capability sets
     where all locations exist in the smaller heap. -/
@@ -1365,14 +1370,17 @@ theorem proj_capability_update_mcell (h : Heap) (l : Nat)
   (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) (l' : Nat) (K : CapKind) :
   proj_capability (h.update_cell l (.capability (.mcell b))) l' K =
   proj_capability h l' K := by
-  simp only [proj_capability, Heap.update_cell]
-  by_cases heq : l' = l
-  · -- l' = l case: both mcells have classifier .top
-    subst heq
-    obtain ⟨b0, hb0⟩ := hexists
-    simp [hb0, CapabilityInfo.classifier]
-  · -- l' ≠ l case: lookup unchanged
-    simp [heq]
+  -- First show classifier_of_loc is preserved
+  have hclass : classifier_of_loc (h.update_cell l (.capability (.mcell b))) l' =
+                classifier_of_loc h l' := by
+    by_cases heq : l' = l
+    · -- l' = l case: both mcells have classifier .top
+      subst heq
+      obtain ⟨b0, hb0⟩ := hexists
+      simp only [classifier_of_loc, Heap.update_cell, ↓reduceIte, hb0, CapabilityInfo.classifier]
+    · -- l' ≠ l case: lookup unchanged
+      simp only [classifier_of_loc, Heap.update_cell, heq, ↓reduceIte]
+  simp only [proj_capability, hclass]
 
 /-- Updating an mcell preserves projection of capability sets. -/
 theorem CapabilitySet.proj_update_mcell (h : Heap) (l : Nat)
@@ -2563,18 +2571,19 @@ theorem proj_capability_true_of_capability
     {H : Heap} {l : Nat} {info : CapabilityInfo} {K : CapKind}
     (hex : H l = some (.capability info)) :
     proj_capability H l K = (CapKind.classifier info.classifier).subkind K := by
-  simp only [proj_capability, hex]
+  simp only [proj_capability, classifier_of_loc, hex]
 
 theorem proj_capability_of_true
     {H : Heap} {l : Nat} {K : CapKind}
     (h : proj_capability H l K = true) :
-    ∃ info, H l = some (.capability info) ∧
-      (CapKind.classifier info.classifier).Subkind K := by
+    ∃ k, classifier_of_loc H l = some k ∧
+      (CapKind.classifier k).Subkind K := by
   simp only [proj_capability] at h
   split at h
-  case h_1 info hex =>
-    exact ⟨info, hex, CapKind.subkind_iff_Subkind.mp h⟩
-  case h_2 => simp at h
+  case h_1 k hk =>
+    exact ⟨k, hk, CapKind.subkind_iff_Subkind.mp h⟩
+  case h_2 =>
+    simp at h
 
 theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap}
     (hwf : ∀ l, l ∈ C → ∃ info, H l = some (.capability info)) :
@@ -2602,9 +2611,9 @@ theorem CapabilitySet.proj_subkind
     cases h1 : proj_capability H l K1 with
     | false => simp; exact Subset.empty
     | true =>
-      have ⟨info, hex, hsub1⟩ := proj_capability_of_true h1
+      have ⟨k, hk, hsub1⟩ := proj_capability_of_true h1
       have h2 : proj_capability H l K2 = true := by
-        rw [proj_capability_true_of_capability hex]
+        simp only [proj_capability, hk]
         exact CapKind.subkind_iff_Subkind.mpr (hsub1.trans hs)
       simp only [h2, ite_true]
       exact Subset.refl
