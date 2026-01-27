@@ -991,7 +991,9 @@ structure Heap.WfHeap (H : Heap) : Prop where
       H l = some (.val ⟨v, hv, R⟩) ->
         R = compute_reachability H v hv
   wf_reachability :
-    ∀ l hv, H l = some (.val hv) → ∀ l', l' ∈ hv.reachability → ∃ v', H l' = some v'
+    ∀ l hv,
+      H l = some (.val hv) →
+      ∀ l', l' ∈ hv.reachability → ∃ info, H l' = some (.capability info)
 
 /-- proj_capability is preserved under heap subsumption for existing locations. -/
 theorem proj_capability_subsumes
