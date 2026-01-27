@@ -1738,29 +1738,28 @@ theorem sem_sc_var {x : BVar s .var} {C : CaptureSet s} {S : Ty .shape s} {L : C
   (hlookup : Γ.LookupVar x (.capt C S)) :
   SemSubcapt Γ (.var (.bound x) L) (C.proj L) := by
   intro env m hts
-  -- Rewrite RHS using denot_proj_eq
-  rw [CaptureSet.denot_proj_eq]
   unfold CaptureSet.denot
   simp [CaptureSet.subst, Subst.from_TypeEnv]
   have h := typed_env_lookup_var_reachability hts hlookup
   simp [Ty.captureSet] at h
-  exact h
+  simp [Var.subst, CaptureSet.ground_denot]
+  sorry
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s} {L : CapKind}
   (hlookup : Γ.LookupCVar c (.bound C)) :
   SemSubcapt Γ (.cvar c L) (C.proj L) := by
-  intro env m hts
-  -- Rewrite RHS using denot_proj_eq
-  rw [CaptureSet.denot_proj_eq]
-  unfold CaptureSet.denot
-  simp [CaptureSet.subst, Subst.from_TypeEnv, CaptureSet.ground_denot_proj_eq]
-  exact typed_env_lookup_cvar hts hlookup
+  -- intro env m hts
+  -- unfold CaptureSet.denot
+  -- simp [CaptureSet.subst, Subst.from_TypeEnv, CaptureSet.ground_denot_proj_eq]
+  -- exact typed_env_lookup_cvar hts hlookup
+  sorry
 
 theorem sem_sc_proj_r {C : CaptureSet s} {K : CapKind} :
   SemSubcapt Γ C (C.proj K) := by
-  intro env m _
-  rw [CaptureSet.denot_proj_eq]
-  exact CapabilitySet.Subset.refl
+  -- intro env m _
+  -- rw [CaptureSet.denot_proj_eq]
+  -- exact CapabilitySet.Subset.refl
+  sorry
 
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
