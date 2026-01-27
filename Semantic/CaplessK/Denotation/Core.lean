@@ -2771,4 +2771,10 @@ theorem exi_denot_implyafter_lift
   have himp' := Denot.imply_after_to_m_entails_after himp
   exact Mpost.entails_after_subsumes himp' hsub
 
+/-- Semantic HasKind: the denotation of C has kind K in the heap. -/
+def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (K : CapKind) : Prop :=
+  ∀ env m,
+    EnvTyping Γ env m ->
+    CapabilitySet.HasKind m.heap (C.denot env m) K
+
 end CaplessK

@@ -327,8 +327,11 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   = reachability_of_loc H'.heap arg := by
                   simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
                         Subst.from_TypeEnv, Var.subst, TypeEnv.lookup_var]
-                  -- Need to show (reachability_of_loc H'.heap arg).proj H'.heap .top = reachability_of_loc H'.heap arg
-                  -- Get cell existence from harg (the argument is well-typed, so it exists in the heap)
+                  -- Need to show:
+                  --   (reachability_of_loc H'.heap arg).proj H'.heap .top
+                  --   = reachability_of_loc H'.heap arg
+                  -- Get cell existence from harg (the argument is well-typed,
+                  -- so it exists in the heap)
                   -- First, match on T1 to unfold Ty.capt_val_denot
                   cases T1 with
                   | capt C S =>
@@ -1524,13 +1527,17 @@ theorem sem_typ_letin
       = C.denot env := by
       have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l')) C
       exact this.symm
-    have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh) := by
+    have hC_mono :
+        C.denot env store
+        = C.denot env (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh) := by
       have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
         apply CaptureSet.wf_subst
         · apply CaptureSet.wf_of_closed hclosed_C
         · apply from_TypeEnv_wf_in_heap hts
-      have hext_subsumes_store : (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh).subsumes store :=
-        Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hreach_wf hfresh) hs1
+      have hext_subsumes_store :
+          (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh).subsumes store :=
+        Memory.subsumes_trans
+          (Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hreach_wf hfresh) hs1
       exact capture_set_denot_is_monotonic hwf_C hext_subsumes_store
     -- Convert postcondition using weaken_exi_val_denot
     rw [hC_mono, ← hcap_rename]
@@ -1763,6 +1770,11 @@ theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s} {L : CapKind}
   rw [CaptureSet.ground_denot_proj_eq]
   -- Apply monotonicity of projection
   exact CapabilitySet.proj_subset_mono h
+
+theorem sem_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
+    (hk : HasKind Γ C K) :
+    SemHasKind Γ C K := by
+  sorry
 
 theorem sem_sc_proj_r {C : CaptureSet s} {K : CapKind}
   (hk : HasKind Γ C K) :
