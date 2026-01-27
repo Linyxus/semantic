@@ -2586,7 +2586,7 @@ theorem proj_capability_of_true
     simp at h
 
 theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap}
-    (hwf : ∀ l, l ∈ C → ∃ info, H l = some (.capability info)) :
+    (hwf : C.WfInHeap H) :
     C.proj H .top = C := by
   induction C with
   | empty => rfl
