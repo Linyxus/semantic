@@ -1061,10 +1061,8 @@ theorem heap_val_reachability_wf
     (hwf : H.WfHeap)
     {l : Nat} {hv : HeapVal}
     (hex : H l = some (.val hv)) :
-    ∀ l', l' ∈ hv.reachability → ∃ v', H l' = some v' := by
-  intro l' hl'
-  obtain ⟨info, hinfo⟩ := hwf.wf_reachability l hv hex l' hl'
-  exact ⟨.capability info, hinfo⟩
+    ∀ l', l' ∈ hv.reachability → ∃ v', H l' = some v' :=
+  hwf.wf_reachability l hv hex
 
 /-- Reachability projection is preserved under heap subsumption.
     This combines reachability_of_loc_monotonic with proj_subsumes. -/
@@ -1180,9 +1178,8 @@ theorem reachability_of_loc_locations_exist
     exact ⟨_, hex⟩
   | val hv =>
     -- reachability_of_loc returns hv.reachability
-    -- By wf_reachability, all locations in hv.reachability are capabilities
-    obtain ⟨info, hinfo⟩ := hwf.wf_reachability loc hv hex l hl
-    exact ⟨.capability info, hinfo⟩
+    -- By wf_reachability, all locations in hv.reachability exist
+    exact hwf.wf_reachability loc hv hex l hl
   | masked =>
     -- reachability_of_loc returns {loc}, and loc exists
     cases hl
@@ -1493,19 +1490,19 @@ theorem Heap.wf_extend
       -- Since l'' exists in H and l is fresh, l'' ≠ l
       have hneq : l'' ≠ l := fun h => by rw [h] at hinfo; exact Option.noConfusion (hfresh ▸ hinfo)
       -- So (H.extend l v) l'' = H l''
-      use info
+      use .capability info
       simp only [Heap.extend, hneq, ↓reduceIte]
       exact hinfo
     case isFalse hneq =>
       -- l' ≠ l, so the lookup is in the original heap H
       intro l'' hl''
-      obtain ⟨info, hinfo⟩ := hwf_H.wf_reachability l' hv' hlookup l'' hl''
+      obtain ⟨cell, hcell⟩ := hwf_H.wf_reachability l' hv' hlookup l'' hl''
       -- Since l'' exists in H and l is fresh, l'' ≠ l
-      have hneq' : l'' ≠ l := fun h => by rw [h] at hinfo; exact Option.noConfusion (hfresh ▸ hinfo)
+      have hneq' : l'' ≠ l := fun h => by rw [h] at hcell; exact Option.noConfusion (hfresh ▸ hcell)
       -- So (H.extend l v) l'' = H l''
-      use info
+      use cell
       simp only [Heap.extend, hneq', ↓reduceIte]
-      exact hinfo
+      exact hcell
 
 /-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
 theorem Heap.wf_lookup
@@ -2337,16 +2334,16 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool)
       case isFalse hneq =>
         -- If l' ≠ l, then the lookup is from the original heap
         intro l'' hl''
-        obtain ⟨info, hinfo⟩ := m.wf.wf_reachability l' hv' hlookup l'' hl''
+        obtain ⟨cell, hcell⟩ := m.wf.wf_reachability l' hv' hlookup l'' hl''
         -- Check if l'' = l or l'' ≠ l
         by_cases h : l'' = l
         · -- l'' = l, so the updated heap has (.capability (.mcell b)) at l''
-          use .mcell b
+          use .capability (.mcell b)
           simp only [Heap.update_cell, h, ↓reduceIte]
         · -- l'' ≠ l, so the cell is unchanged
-          use info
+          use cell
           simp only [Heap.update_cell, h, ↓reduceIte]
-          exact hinfo
+          exact hcell
   findom := by
     -- Domain remains unchanged when updating an existing cell
     obtain ⟨dom, hdom⟩ := m.findom
