@@ -318,12 +318,12 @@ def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
 | _, .unbound _ => fun _ => .top
 | env, .bound cs => fun m => .set (cs.denot env m)
 
-inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
+inductive CapabilitySet.BoundedBy : Heap -> CapabilitySet -> CapabilityBound -> Prop where
 | top :
-  CapabilitySet.BoundedBy C CapabilityBound.top
+  CapabilitySet.BoundedBy H C CapabilityBound.top
 | set :
   C1 ⊆ C2 ->
-  CapabilitySet.BoundedBy C1 (CapabilityBound.set C2)
+  CapabilitySet.BoundedBy H C1 (CapabilityBound.set C2)
 
 inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop where
 | refl :
