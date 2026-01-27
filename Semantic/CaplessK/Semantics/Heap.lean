@@ -2591,14 +2591,14 @@ theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap}
   induction C with
   | empty => rfl
   | cap l =>
-    simp only [proj]
-    have ⟨info, hex⟩ := hwf l .here
-    simp only [proj_capability_true_of_capability hex, CapKind.subkind_top', ite_true]
+    have ⟨cell, hex⟩ := hwf l .here
+    simp only [proj, proj_capability, classifier_of_loc, hex]
+    -- classifier_of_loc returns some _ for any cell, and any k is subkind of .top
+    cases cell <;> simp only [CapKind.subkind_top', ↓reduceIte]
   | union c1 c2 ih1 ih2 =>
-    simp only [proj]
-    have hwf1 : ∀ l, l ∈ c1 → ∃ info, H l = some (.capability info) := fun l hm => hwf l (.left hm)
-    have hwf2 : ∀ l, l ∈ c2 → ∃ info, H l = some (.capability info) := fun l hm => hwf l (.right hm)
-    simp only [ih1 hwf1, ih2 hwf2]
+    have hwf1 : c1.WfInHeap H := fun l hm => hwf l (.left hm)
+    have hwf2 : c2.WfInHeap H := fun l hm => hwf l (.right hm)
+    simp only [proj, ih1 hwf1, ih2 hwf2]
 
 theorem CapabilitySet.proj_subkind
     {C : CapabilitySet} {H : Heap}
