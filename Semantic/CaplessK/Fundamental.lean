@@ -221,7 +221,21 @@ theorem sem_typ_var
   · -- Use the key lemma: shape with C.denot implies shape with reachability_of_loc
     simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
       CaptureSet.ground_denot]
-    exact shape_denot_with_var_reachability hts hshape
+    -- Get the cell existence from hwf to show reachability_of_loc is well-formed
+    cases hwf with
+    | wf_var hwf_var =>
+      cases hwf_var with
+      | wf_free hlookup =>
+        -- reachability_of_loc is well-formed in the heap
+        have hwf_reach : (reachability_of_loc store.heap (env.lookup_var x)).WfInHeap store.heap :=
+          reachability_of_loc_locations_exist store.wf hlookup
+        -- Projecting with .top is identity for well-formed capability sets
+        -- The goal has the unfolded form of CapKind.top, convert it first
+        change Ty.shape_val_denot env S
+          ((reachability_of_loc store.heap (env.lookup_var x)).proj store.heap .top)
+          store (Exp.var (Var.free (env.lookup_var x)))
+        rw [CapabilitySet.proj_top hwf_reach]
+        exact shape_denot_with_var_reachability hts hshape
 
 theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
   expand_captures m.heap cs = cs.ground_denot m := by
