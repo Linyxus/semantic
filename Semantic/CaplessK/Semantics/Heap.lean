@@ -2790,4 +2790,11 @@ theorem classifier_of_loc_subsumes
     | capability _ => simp [Cell.subsumes] at hvsub
     | val _ => simp [Cell.subsumes] at hvsub
 
+def CapabilitySet.HasKind (H : Heap) (C : CapabilitySet) (K : CapKind) : Prop :=
+  ∀ l, (l ∈ C.to_finset) -> proj_capability H l K
+
+theorem CapabilitySet.proj_same_kind {H : Heap} {C : CapabilitySet} {K : CapKind}
+    (hck : C.HasKind H K) :
+    C.proj H K = C := by sorry
+
 end CaplessK
