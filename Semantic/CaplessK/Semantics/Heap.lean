@@ -2719,6 +2719,37 @@ theorem CapabilitySet.proj_subset_mono
     simp only [proj]
     exact Subset.union_right_right
 
+/-- Projection with empty kind gives empty set. -/
+theorem CapabilitySet.proj_empty_kind
+    {C : CapabilitySet} {H : Heap} {K : CapKind}
+    (he : K.IsEmpty) :
+    C.proj H K = .empty := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    simp only [proj]
+    -- proj_capability H l K = false because K is empty
+    have h : proj_capability H l K = false := by
+      simp only [proj_capability]
+      split
+      case h_1 k hk =>
+        -- Need to show (CapKind.classifier k).subkind K = false
+        -- This is true because K is empty, so any subkind check fails
+        have hsub : ¬CapKind.Subkind (CapKind.classifier k) K := by
+          intro hcontra
+          have hne := CapKind.classifier_nonempty k
+          exact hne (CapKind.Subkind.of_empty hcontra he)
+        rw [← CapKind.subkind_iff_Subkind]
+        simp only [Bool.not_eq_eq_eq_not, Bool.not_true, decide_eq_false_iff_not] at hsub
+        exact hsub
+      case h_2 => rfl
+    simp only [h, ite_eq_right_iff]
+    intro hcontra
+    cases hcontra
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj, ih1, ih2]
+    rfl
+
 /-- Classifier is preserved under cell subsumption for capability cells. -/
 theorem Cell.subsumes_classifier_eq
     {c1 c2 : Cell}

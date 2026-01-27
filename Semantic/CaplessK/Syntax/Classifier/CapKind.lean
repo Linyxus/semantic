@@ -182,6 +182,13 @@ theorem CapKind.IsEmpty.node (hsc : ContainsSupOf exs r) : IsEmpty [.mk r exs] :
 theorem CapKind.IsEmpty.is_absurd (he : IsEmpty (.node r exs)) : ContainsSupOf exs r := by
   cases he; assumption
 
+/-- A classifier kind is never empty. -/
+theorem CapKind.classifier_nonempty (k : Classifier) : ¬(CapKind.classifier k).IsEmpty := by
+  intro he
+  simp only [classifier, node] at he
+  have habs := he.is_absurd
+  cases habs
+
 theorem CapKind.IsEmpty.append (he1 : IsEmpty R1) (he2 : IsEmpty R2) : IsEmpty (R1 ++ R2) := by
   induction R1 generalizing R2
   case nil => simp_all
