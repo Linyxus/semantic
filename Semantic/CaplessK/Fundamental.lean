@@ -740,7 +740,7 @@ theorem cabs_val_denot_inv {A : CapabilitySet}
     ∧ (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
       m'.subsumes store ->
-      ((CS.denot TypeEnv.empty m').BoundedBy (B.denot env m')) ->
+      (CapabilitySet.BoundedBy m'.heap (CS.denot TypeEnv.empty m') (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS)
         T (expand_captures store.heap cs) m'
@@ -1672,7 +1672,7 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
 theorem typed_env_lookup_cvar_aux
   (hts : EnvTyping Γ env m)
   (hc : Ctx.LookupCVar Γ c cb) :
-  ((env.lookup_cvar c).ground_denot m).BoundedBy ((cb.denot env) m) := by
+  CapabilitySet.BoundedBy m.heap ((env.lookup_cvar c).ground_denot m) ((cb.denot env) m) := by
   induction hc generalizing m
   case here =>
     -- Γ = .push Γ' (.cvar cb'), c = .here
@@ -2255,7 +2255,8 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
           -- And hB : SemSubbound Γ cb1 cb2, i.e., cb1 <: cb2
           -- So we need: cb1.denot env m'' ⊆ cb2.denot env m''
           let A0 := CS.denot TypeEnv.empty
-          have hCS_satisfies_cb2 : (A0 m'').BoundedBy (cb2.denot env m'') := by
+          have hCS_satisfies_cb2 :
+              CapabilitySet.BoundedBy m''.heap (A0 m'') (cb2.denot env m'') := by
             -- Apply contravariance: cb1.denot env m'' ⊆ cb2.denot env m''
             have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
             have htyping_m'' := env_typing_monotonic htyping hB_trans

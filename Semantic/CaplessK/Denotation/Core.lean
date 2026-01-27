@@ -338,10 +338,10 @@ instance : HasSubset CapabilityBound where
   Subset := CapabilityBound.SubsetEq
 
 theorem CapabilitySet.BoundedBy.trans
-  {C : CapabilitySet} {B1 B2 : CapabilityBound}
-  (hbound : CapabilitySet.BoundedBy C B1)
+  {H : Heap} {C : CapabilitySet} {B1 B2 : CapabilityBound}
+  (hbound : CapabilitySet.BoundedBy H C B1)
   (hsub : B1 ⊆ B2) :
-  CapabilitySet.BoundedBy C B2 := by
+  CapabilitySet.BoundedBy H C B2 := by
   cases hsub with
   | refl => exact hbound
   | set hsub_set =>
@@ -350,6 +350,15 @@ theorem CapabilitySet.BoundedBy.trans
       exact CapabilitySet.BoundedBy.set
         (CapabilitySet.Subset.trans hbound_set hsub_set)
   | top => exact CapabilitySet.BoundedBy.top
+
+/-- BoundedBy is independent of the heap argument. -/
+theorem CapabilitySet.BoundedBy.change_heap
+  {H1 H2 : Heap} {C : CapabilitySet} {B : CapabilityBound}
+  (hbound : CapabilitySet.BoundedBy H1 C B) :
+  CapabilitySet.BoundedBy H2 C B := by
+  cases hbound with
+  | top => exact .top
+  | set hsub => exact .set hsub
 
 mutual
 
@@ -414,7 +423,7 @@ def Ty.shape_val_denot : TypeEnv s -> Ty .shape s -> PreDenot
       CS.WfInHeap m'.heap ->
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
-      ((A0 m').BoundedBy (B.denot env m')) ->
+      (CapabilitySet.BoundedBy m'.heap (A0 m') (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS)
         T R0 m' (t0.subst (Subst.openCVar CS)))
@@ -483,7 +492,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .push Γ (.cvar B), .extend env (.cvar cs), m =>
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
-  ((cs.ground_denot m).BoundedBy (⟦B⟧_[env] m)) ∧
+  (CapabilitySet.BoundedBy m.heap (cs.ground_denot m) (⟦B⟧_[env] m)) ∧
   EnvTyping Γ env m
 
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
@@ -2152,16 +2161,16 @@ theorem env_typing_monotonic
             · -- Prove: (B.subst (Subst.from_TypeEnv env')).WfInHeap mem2.heap
               exact CaptureBound.wf_monotonic hmem hwf_bound
             · constructor
-              · -- Need: cs.ground_denot mem2 ⊆ ⟦B⟧_[env'] mem2
-                -- Have: cs.ground_denot mem1 ⊆ ⟦B⟧_[env'] mem1
+              · -- Need: BoundedBy mem2.heap (cs.ground_denot mem2) (⟦B⟧_[env'] mem2)
+                -- Have: BoundedBy mem1.heap (cs.ground_denot mem1) (⟦B⟧_[env'] mem1)
                 -- Get cs.ground_denot mem1 = cs.ground_denot mem2
                 have h_denot_eq := ground_denot_is_monotonic hwf hmem
                 -- Get ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2
                 have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
                   capture_bound_denot_is_monotonic hwf_bound hmem
-                -- Combine the equalities
+                -- Combine the equalities and change heap
                 rw [<-h_denot_eq, <-h_bound_eq]
-                exact hsub
+                exact hsub.change_heap
               · exact ih ht'
 
 /-- Semantic subcapturing. -/
