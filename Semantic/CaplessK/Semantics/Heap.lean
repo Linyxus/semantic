@@ -983,6 +983,9 @@ theorem reachability_of_loc_monotonic
   -- For capability and masked cells, both sides return {l}
   all_goals rfl
 
+def CapabilitySet.WfInHeap (C : CapabilitySet) (H : Heap) : Prop :=
+  ∀ l, l ∈ C -> ∃ v, H l = some v
+
 /-- A heap is well-formed if all values stored in it contain well-formed expressions
     and correct reachability sets. -/
 structure Heap.WfHeap (H : Heap) : Prop where
@@ -995,7 +998,7 @@ structure Heap.WfHeap (H : Heap) : Prop where
   wf_reachability :
     ∀ l hv,
       H l = some (.val hv) →
-      ∀ l', l' ∈ hv.reachability → ∃ info, H l' = some (.capability info)
+      hv.reachability.WfInHeap H
 
 /-- proj_capability is preserved under heap subsumption for existing locations. -/
 theorem proj_capability_subsumes
