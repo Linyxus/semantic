@@ -327,7 +327,20 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   = reachability_of_loc H'.heap arg := by
                   simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
                         Subst.from_TypeEnv, Var.subst, TypeEnv.lookup_var]
-                  rfl
+                  -- Need to show (reachability_of_loc H'.heap arg).proj H'.heap .top = reachability_of_loc H'.heap arg
+                  -- Get cell existence from harg (the argument is well-typed, so it exists in the heap)
+                  -- First, match on T1 to unfold Ty.capt_val_denot
+                  cases T1 with
+                  | capt C S =>
+                    simp only [Ty.capt_val_denot] at harg
+                    have ⟨_, hwf_arg, _, _⟩ := harg
+                    cases hwf_arg with
+                    | wf_var hwf_var =>
+                      cases hwf_var with
+                      | wf_free hlookup =>
+                        have hwf_reach : (reachability_of_loc H'.heap arg).WfInHeap H'.heap :=
+                          reachability_of_loc_locations_exist H'.wf hlookup
+                        exact CapabilitySet.proj_top hwf_reach
                 -- Use monotonicity to relate capture set denotations at different memories
                 have hCf_mono : Cf.denot env store = Cf.denot env H' := by
                   -- Extract closedness of Cf from hclosed_abs
@@ -1056,7 +1069,32 @@ theorem sem_typ_app
 
   have happ'' := eval_capability_set_monotonic happ' hunion_mono
 
-  apply Eval.eval_apply hlk happ''
+  -- The goal has CaptureSet.denot with .proj .top, need to show equality
+  -- Get well-formedness proofs for the reachability sets
+  -- First case on T1 to unfold Ty.capt_val_denot for h2'
+  cases T1 with
+  | capt C S =>
+    simp only [Ty.capt_val_denot] at h2'
+    have ⟨_, hwf_x, _, _⟩ := h1'
+    have ⟨_, hwf_y, _, _⟩ := h2'
+    cases hwf_x with | wf_var hwf_x' => cases hwf_x' with | wf_free hlk_x =>
+    cases hwf_y with | wf_var hwf_y' => cases hwf_y' with | wf_free hlk_y =>
+    have hwf_reach_x := reachability_of_loc_locations_exist store.wf hlk_x
+    have hwf_reach_y := reachability_of_loc_locations_exist store.wf hlk_y
+    -- Unfold CaptureSet.denot in happ'' to get the proj form
+    simp only [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst, Var.subst,
+               Subst.from_TypeEnv] at happ''
+    -- Now happ'' has: (reachability_of_loc ... x).proj ... .top ∪ reachability_of_loc ... y
+    -- Add .proj .top to the y part using hwf_reach_y
+    have heq_y : reachability_of_loc store.heap (env.lookup_var y) =
+                 (reachability_of_loc store.heap (env.lookup_var y)).proj store.heap .top := by
+      exact (CapabilitySet.proj_top hwf_reach_y).symm
+    rw [heq_y] at happ''
+    -- Convert the goal to use .top instead of the unfolded form
+    change Eval ((reachability_of_loc store.heap (env.lookup_var x)).proj store.heap .top ∪
+                 (reachability_of_loc store.heap (env.lookup_var y)).proj store.heap .top)
+                store _ _
+    exact Eval.eval_apply hlk happ''
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -1307,6 +1345,17 @@ theorem sem_typ_read
     ((CaptureSet.var (Var.bound x) .top).subst (Subst.from_TypeEnv env)).ground_denot store := by
     simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
           reachability_of_loc, hlk_cell]
+    -- Need to show l ∈ (CapabilitySet.cap l).proj H .top
+    -- First prove (cap l).WfInHeap H using hlk_cell
+    have hwf_cap : (CapabilitySet.cap (env.lookup_var x)).WfInHeap store.heap := by
+      intro l' hmem
+      cases hmem
+      exact ⟨.capability (.mcell b0), hlk_cell⟩
+    -- Now use proj_top to show (cap l).proj H .top = cap l
+    -- Use change to convert goal to explicit form, then simp with proj_top
+    change CapabilitySet.mem (env.lookup_var x)
+      ((CapabilitySet.cap (env.lookup_var x)).proj store.heap .top)
+    simp only [CapabilitySet.proj_top hwf_cap]
     exact CapabilitySet.mem.here
   apply Eval.eval_read hmem hlk_cell
 
@@ -1371,7 +1420,17 @@ theorem sem_typ_write
       (Subst.from_TypeEnv env)).ground_denot store := by
     simp [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
           reachability_of_loc, hlk_cell]
+    -- Need to show l ∈ (cap l).proj H .top ∪ (cap l').proj H .top
+    -- First prove (cap l).WfInHeap H using hlk_cell
+    have hwf_cap : (CapabilitySet.cap (env.lookup_var x)).WfInHeap store.heap := by
+      intro l' hmem
+      cases hmem
+      exact ⟨.capability (.mcell b0), hlk_cell⟩
+    -- Use proj_top to show (cap l).proj H .top = cap l
     apply CapabilitySet.mem.left
+    change CapabilitySet.mem (env.lookup_var x)
+      ((CapabilitySet.cap (env.lookup_var x)).proj store.heap .top)
+    simp only [CapabilitySet.proj_top hwf_cap]
     exact CapabilitySet.mem.here
 
   -- Apply eval_write based on the boolean value
@@ -1450,9 +1509,12 @@ theorem sem_typ_letin
     simp [Denot.as_mpost] at hQ1
     -- Construct the HeapVal for v
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
+    -- Prove that the reachability set is well-formed in the heap
+    have hreach_wf : heapval.reachability.WfInHeap m1.heap :=
+      compute_reachability_locations_exist m1.wf hwf_v
     -- Apply ht2 with extended environment and memory
     have ht2' := ht2 (env.extend_var l')
-      (m1.extend_val l' heapval hwf_v rfl hfresh)
+      (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh)
     simp [Ty.exi_exp_denot] at ht2' ⊢
     -- Rewrite to make expressions match
     rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
@@ -1462,13 +1524,13 @@ theorem sem_typ_letin
       = C.denot env := by
       have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l')) C
       exact this.symm
-    have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v rfl hfresh) := by
+    have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh) := by
       have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
         apply CaptureSet.wf_subst
         · apply CaptureSet.wf_of_closed hclosed_C
         · apply from_TypeEnv_wf_in_heap hts
-      have hext_subsumes_store : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes store :=
-        Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh) hs1
+      have hext_subsumes_store : (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh).subsumes store :=
+        Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hreach_wf hfresh) hs1
       exact capture_set_denot_is_monotonic hwf_C hext_subsumes_store
     -- Convert postcondition using weaken_exi_val_denot
     rw [hC_mono, ← hcap_rename]
@@ -1485,13 +1547,13 @@ theorem sem_typ_letin
         -- Strategy: Use monotonicity + transparency
 
         -- Step 1: Prove memory subsumption
-        have hext : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes m1 :=
-          Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
+        have hext : (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh).subsumes m1 :=
+          Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hreach_wf hfresh
 
         -- Step 2: Lift hQ1 to extended memory using monotonicity
         have henv_mono := typed_env_is_monotonic hts
         have hQ1_lifted : Ty.capt_val_denot env T
-          (m1.extend_val l' heapval hwf_v rfl hfresh) v :=
+          (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh) v :=
           capt_val_denot_is_monotonic henv_mono T hext hQ1
 
         -- Step 3: Apply transparency
@@ -1500,19 +1562,19 @@ theorem sem_typ_letin
           capt_val_denot_is_transparent henv_trans T
 
         -- Step 4: Use the memory lookup fact
-        have hlookup : (m1.extend_val l' heapval hwf_v rfl hfresh).lookup l' =
+        have hlookup : (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh).lookup l' =
           some (Cell.val heapval) := by
           simp [Memory.extend_val]
           exact Heap.extend_lookup_eq m1.heap l' heapval
 
         -- Step 5: Apply transparency
         apply htrans hlookup hQ1_lifted
-      · -- Show: EnvTyping Γ env (m1.extend_val l' heapval hwf_v rfl hfresh)
+      · -- Show: EnvTyping Γ env (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh)
         -- Original typing preserved under memory extension
-        have hext : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes m1 :=
-          Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
+        have hext : (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh).subsumes m1 :=
+          Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hreach_wf hfresh
         -- Combine subsumptions: extended memory subsumes m1, m1 subsumes store
-        have hsubsume : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes store :=
+        have hsubsume : (m1.extend_val l' heapval hwf_v rfl hreach_wf hfresh).subsumes store :=
           Memory.subsumes_trans hext hs1
         exact env_typing_monotonic hts hsubsume
   case h_var =>
