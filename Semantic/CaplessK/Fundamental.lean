@@ -1774,7 +1774,67 @@ theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s} {L : CapKind}
 theorem sem_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
     (hk : HasKind Γ C K) :
     SemHasKind Γ C K := by
-  sorry
+  induction hk with
+  | var hlookup _ ih =>
+    intro env m hts l hl
+    trace_state
+    sorry
+  | cvar_unbound hlookup =>
+    intro env m hts l hl
+    trace_state
+    sorry
+  | cvar_bound hlookup _ ih =>
+    intro env m hts l hl
+    trace_state
+    sorry
+  | sub _ hsub ih =>
+    intro env m hts l hl
+    -- From ih we get proj_capability for K1, use subkind transitivity for K2
+    have h1 : proj_capability m.heap l _ = true := ih env m hts l hl
+    have ⟨k, hk, hsub1⟩ := proj_capability_of_true h1
+    simp only [proj_capability, hk]
+    exact CapKind.subkind_iff_Subkind.mpr (hsub1.trans hsub)
+  | empty =>
+    intro env m hts l hl
+    -- The denotation of empty is empty, so hl is absurd
+    simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot,
+               CapabilitySet.to_finset, Finset.notMem_empty] at hl
+  | union _ _ ih1 ih2 =>
+    intro env m hts l hl
+    -- Either l is in C1's denotation or C2's denotation
+    simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot,
+               CapabilitySet.to_finset, Finset.mem_union] at hl
+    cases hl with
+    | inl hl => exact ih1 env m hts l hl
+    | inr hl => exact ih2 env m hts l hl
+  | var_empty he =>
+    intro env m hts l hl
+    -- The denotation of CaptureSet.var x K involves projection by K
+    -- With K empty, the projection gives empty
+    rename_i x L K
+    -- Key insight: .var x K = (.var x .top).proj K because .top.intersect K = K
+    have heq : CaptureSet.var x K = (CaptureSet.var x .top).proj K := by
+      simp only [CaptureSet.proj, CapKind.intersect.top_l]
+    rw [heq, CaptureSet.denot_proj_eq] at hl
+    have hsub := CapabilitySet.proj_empty_kind_subset
+      (C := CaptureSet.denot env (.var x .top) m) (H := m.heap) he
+    -- Convert to_finset membership to CapabilitySet membership
+    have hl' := CapabilitySet.mem_to_finset_iff.mp hl
+    have hmem := CapabilitySet.subset_preserves_mem hsub hl'
+    -- hmem : l ∈ CapabilitySet.empty is impossible
+    cases hmem
+  | cvar_empty he =>
+    intro env m hts l hl
+    -- Similar to var_empty: .cvar c K = (.cvar c .top).proj K
+    rename_i c L K
+    have heq : CaptureSet.cvar c K = (CaptureSet.cvar c .top).proj K := by
+      simp only [CaptureSet.proj, CapKind.intersect.top_l]
+    rw [heq, CaptureSet.denot_proj_eq] at hl
+    have hsub := CapabilitySet.proj_empty_kind_subset
+      (C := CaptureSet.denot env (.cvar c .top) m) (H := m.heap) he
+    have hl' := CapabilitySet.mem_to_finset_iff.mp hl
+    have hmem := CapabilitySet.subset_preserves_mem hsub hl'
+    cases hmem
 
 theorem sem_sc_proj_r {C : CaptureSet s} {K : CapKind}
   (hk : HasKind Γ C K) :

@@ -2567,6 +2567,32 @@ def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
 | .union cs1 cs2 => cs1.to_finset ∪ cs2.to_finset
 | .cap x => {x}
 
+/-- Membership in to_finset is equivalent to CapabilitySet.mem. -/
+theorem CapabilitySet.mem_to_finset_iff {C : CapabilitySet} {l : Nat} :
+    l ∈ C.to_finset ↔ l ∈ C := by
+  induction C with
+  | empty =>
+    simp only [to_finset, Finset.notMem_empty]
+    constructor
+    · intro h; exact h.elim
+    · intro h; cases h
+  | cap x =>
+    simp only [to_finset, Finset.mem_singleton]
+    constructor
+    · intro h; subst h; exact mem.here
+    · intro h; cases h; rfl
+  | union c1 c2 ih1 ih2 =>
+    simp only [to_finset, Finset.mem_union]
+    constructor
+    · intro h
+      cases h with
+      | inl h => exact mem.left (ih1.mp h)
+      | inr h => exact mem.right (ih2.mp h)
+    · intro h
+      cases h with
+      | left h => exact Or.inl (ih1.mpr h)
+      | right h => exact Or.inr (ih2.mpr h)
+
 theorem proj_capability_true_of_capability
     {H : Heap} {l : Nat} {info : CapabilityInfo} {K : CapKind}
     (hex : H l = some (.capability info)) :
