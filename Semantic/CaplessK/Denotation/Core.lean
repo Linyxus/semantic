@@ -351,9 +351,10 @@ theorem CapabilitySet.BoundedBy.trans
         (CapabilitySet.Subset.trans hbound_set hsub_set)
   | top => exact CapabilitySet.BoundedBy.top
 
-/-- BoundedBy is independent of the heap argument. -/
-theorem CapabilitySet.BoundedBy.change_heap
+/-- BoundedBy is monotonic with respect to heap subsumption. -/
+theorem CapabilitySet.BoundedBy.monotonic
   {H1 H2 : Heap} {C : CapabilitySet} {B : CapabilityBound}
+  (_hsub_heap : H2.subsumes H1)
   (hbound : CapabilitySet.BoundedBy H1 C B) :
   CapabilitySet.BoundedBy H2 C B := by
   cases hbound with
@@ -2168,9 +2169,9 @@ theorem env_typing_monotonic
                 -- Get ⟦B⟧_[env'] mem1 = ⟦B⟧_[env'] mem2
                 have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
                   capture_bound_denot_is_monotonic hwf_bound hmem
-                -- Combine the equalities and change heap
+                -- Combine the equalities and use monotonicity
                 rw [<-h_denot_eq, <-h_bound_eq]
-                exact hsub.change_heap
+                exact hsub.monotonic hmem
               · exact ih ht'
 
 /-- Semantic subcapturing. -/
