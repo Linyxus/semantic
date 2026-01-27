@@ -2795,6 +2795,29 @@ def CapabilitySet.HasKind (H : Heap) (C : CapabilitySet) (K : CapKind) : Prop :=
 
 theorem CapabilitySet.proj_same_kind {H : Heap} {C : CapabilitySet} {K : CapKind}
     (hck : C.HasKind H K) :
-    C.proj H K = C := by sorry
+    C.proj H K = C := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    simp only [proj]
+    -- Need to show proj_capability H l K = true
+    have h : proj_capability H l K = true := by
+      apply hck l
+      simp only [to_finset, Finset.mem_singleton]
+    simp only [h, ite_true]
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj]
+    -- Show HasKind for both components
+    have hck1 : c1.HasKind H K := by
+      intro l hl
+      apply hck l
+      simp only [to_finset, Finset.mem_union]
+      left; exact hl
+    have hck2 : c2.HasKind H K := by
+      intro l hl
+      apply hck l
+      simp only [to_finset, Finset.mem_union]
+      right; exact hl
+    rw [ih1 hck1, ih2 hck2]
 
 end CaplessK
