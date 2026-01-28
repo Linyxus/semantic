@@ -2193,7 +2193,7 @@ lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
 def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
   ∀ env m,
     EnvTyping Γ env m ->
-    B1.denot env m ⊆ B2.denot env m
+    CapabilityBound.Subbound m.heap (B1.denot env m) (B2.denot env m)
 
 -- Fundamental theorem for Subbound
 lemma fundamental_subbound
@@ -2204,21 +2204,21 @@ lemma fundamental_subbound
     -- Subbound Γ (.bound C1) (.bound C2) from Subcapt Γ C1 C2
     intro env m htyping
     simp [CaptureBound.denot]
-    -- Need to show: CapabilityBound.set (C1.denot env m) ⊆
-    --   CapabilityBound.set (C2.denot env m)
+    -- Need to show: CapabilityBound.Subbound m.heap (CapabilityBound.set (C1.denot env m))
+    --   (CapabilityBound.set (C2.denot env m))
     have hsem := fundamental_subcapt hsubcapt
-    exact CapabilityBound.SubsetEq.set (hsem env m htyping)
+    exact CapabilityBound.Subbound.set (hsem env m htyping)
   | unbound =>
     -- Subbound Γ (.unbound k) (.unbound k)
     intro env m htyping
     simp [CaptureBound.denot]
-    apply CapabilityBound.SubsetEq.refl
+    apply CapabilityBound.Subbound.refl
   | top =>
     -- Subbound Γ B .unbound
     intro env m htyping
     simp [CaptureBound.denot]
     -- .unbound denotes CapabilityBound.top, which is the largest bound
-    apply CapabilityBound.SubsetEq.top
+    apply CapabilityBound.Subbound.top
 
 lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
   (hB : SemSubbound Γ cb1 cb2) -- contravariant in bound (cb1 <: cb2)
