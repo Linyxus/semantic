@@ -53,7 +53,8 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   Step
     {}
     m (.letin v e)
-    (m.extend l ⟨v, hv, compute_reachability m.heap v hv⟩ hwf rfl hfresh)
+    (m.extend l ⟨v, hv, compute_reachability m.heap v hv⟩ hwf rfl
+      (compute_reachability_locations_exist m.wf hwf) hfresh)
     (e.subst (Subst.openVar (.free l)))
 | step_unpack :
   Step {} m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
