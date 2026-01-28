@@ -1027,9 +1027,12 @@ theorem proj_capability_subsumes
       | val _ => rfl
       | capability _ => simp [Cell.subsumes] at hsub_v
       | masked => simp [Cell.subsumes] at hsub_v
-    | masked =>
+    | masked K1 =>
       cases v' with
-      | masked => rfl
+      | masked K2 =>
+        simp only [Cell.subsumes] at hsub_v
+        injection hsub_v with hK
+        simp [hK]
       | capability _ => simp [Cell.subsumes] at hsub_v
       | val _ => simp [Cell.subsumes] at hsub_v
   -- Now use it to show proj_capability is preserved
@@ -2848,9 +2851,12 @@ theorem classifier_of_loc_subsumes
     | val _ => simp [Cell.subsumes] at hvsub; subst hvsub; rfl
     | capability _ => simp [Cell.subsumes] at hvsub
     | masked => simp [Cell.subsumes] at hvsub
-  | masked =>
+  | masked K1 =>
     cases v' with
-    | masked => rfl
+    | masked K2 =>
+      simp only [Cell.subsumes] at hvsub
+      injection hvsub with hK
+      simp [hK]
     | capability _ => simp [Cell.subsumes] at hvsub
     | val _ => simp [Cell.subsumes] at hvsub
 

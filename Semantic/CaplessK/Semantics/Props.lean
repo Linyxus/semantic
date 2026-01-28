@@ -1039,10 +1039,11 @@ theorem Var.wf_masked
         by_cases h : n ∈ D
         · use Cell.capability info
           simp [h]
-        · use Cell.masked
+        · use Cell.masked info.classifier
           simp [h]
       · -- val = .masked
-        use Cell.masked
+        rename_i K
+        use Cell.masked K
     obtain ⟨val', h_masked⟩ := h_masked
     exact Var.WfInHeap.wf_free h_masked
 
@@ -1252,23 +1253,9 @@ theorem masked_proj {C : CapabilitySet} {H : Heap} {K : CapKind} :
       | capability info =>
         by_cases hmem : l ∈ D
         · simp [h, hmem]
-        · -- Capability outside D: classifier changes from info.classifier to .top
-          simp only [h, hmem, ↓reduceIte]
-          -- After masking, the cell becomes .masked with classifier .top
-          -- LHS uses info.classifier, RHS uses .top
-          -- These may give different results for subkind check with K
-          -- The key observation: if K = .top, both return true (masked_proj_top)
-          -- For other K, we need the two subkind checks to agree.
-          -- This holds when info.classifier = .top, or when both return false.
-          -- For now, we use a case analysis approach.
-          by_cases hK : K = .top
-          · -- For K = .top, both subkind checks return true
-            simp only [hK, CapKind.subkind_top', ↓reduceIte]
-          · -- For K ≠ .top, we need more specific reasoning
-            -- In the context where this is used (expand_captures on value capture sets),
-            -- the K comes from the capture set syntax.
-            sorry
-      | masked => simp [h]
+        · -- Capability outside D: becomes .masked with same classifier
+          simp [h, hmem]
+      | masked K => simp [h]
   | union cs1 cs2 ih1 ih2 =>
     unfold CapabilitySet.proj
     rw [ih1, ih2]
