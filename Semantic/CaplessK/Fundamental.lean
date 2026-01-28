@@ -1823,8 +1823,30 @@ theorem fundamental_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
       exact proj_capability_intersect.mp ⟨hprojK, hprojL⟩
   | cvar_bound hlookup _ ih =>
     intro env m hts l hl
-    trace_state
-    sorry
+    -- There are 5 unnamed vars: c✝, C✝, L✝, K✝, a✝
+    -- rename_i names from the bottom, so we need 5 names
+    rename_i cv Cb Lk Kk _
+    -- ih : SemHasKind Γ (Cb.proj Lk) Kk
+    -- hl : l ∈ (CaptureSet.denot env (.cvar cv Lk) m).to_finset
+    -- Goal: proj_capability m.heap l Kk = true
+    -- From typed_env_lookup_cvar, get subset relation
+    have hsub := typed_env_lookup_cvar hts hlookup
+    -- hsub : (env.lookup_cvar cv).ground_denot m ⊆ Cb.denot env m
+    -- Unfold the denotation of .cvar cv Lk
+    simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv] at hl
+    rw [CaptureSet.ground_denot_proj_eq] at hl
+    -- hl : l ∈ (((env.lookup_cvar cv).ground_denot m).proj m.heap Lk).to_finset
+    have hl' := CapabilitySet.mem_to_finset_iff.mp hl
+    -- By monotonicity of projection: the projection of the cvar denotation is a subset of Cb.proj Lk denotation
+    have hproj_sub : ((env.lookup_cvar cv).ground_denot m).proj m.heap Lk ⊆
+                     (Cb.denot env m).proj m.heap Lk :=
+      CapabilitySet.proj_subset_mono hsub
+    -- l is in the larger set
+    have hl_in_proj := CapabilitySet.subset_preserves_mem hproj_sub hl'
+    -- Rewrite using denot_proj_eq
+    rw [← CaptureSet.denot_proj_eq] at hl_in_proj
+    -- Apply the IH
+    exact ih env m hts l (CapabilitySet.mem_to_finset_iff.mpr hl_in_proj)
   | sub _ hsub ih =>
     intro env m hts l hl
     -- From ih we get proj_capability for K1, use subkind transitivity for K2
