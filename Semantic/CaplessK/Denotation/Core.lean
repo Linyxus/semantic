@@ -291,6 +291,40 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
+/-- Ground denotation of a well-formed closed capture set is well-formed. -/
+theorem CaptureSet.ground_denot_wf {cs : CaptureSet {}} {m : Memory}
+    (hwf : cs.WfInHeap m.heap) :
+    (cs.ground_denot m).WfInHeap m.heap := by
+  induction cs with
+  | empty =>
+    intro l hl
+    cases hl
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [ground_denot]
+    intro l hl
+    cases hl with
+    | left hmem1 =>
+      cases hwf with
+      | wf_union hwf1 hwf2 =>
+        exact ih1 hwf1 l hmem1
+    | right hmem2 =>
+      cases hwf with
+      | wf_union hwf1 hwf2 =>
+        exact ih2 hwf2 l hmem2
+  | var v K =>
+    cases v with
+    | free x =>
+      simp only [ground_denot]
+      intro l hl
+      cases hwf with
+      | wf_var_free hlookup =>
+        have hwf_reach : (reachability_of_loc m.heap x).WfInHeap m.heap :=
+          reachability_of_loc_locations_exist m.wf hlookup
+        have hl_in_orig := CapabilitySet.subset_preserves_mem CapabilitySet.proj_subset_self hl
+        exact hwf_reach l hl_in_orig
+    | bound bv => cases bv
+  | cvar c K => cases c
+
 /-- Syntactic projection commutes with ground denotation via semantic projection. -/
 theorem CaptureSet.ground_denot_proj_eq {cs : CaptureSet {}} {m : Memory} {K : CapKind} :
     (cs.proj K).ground_denot m = (cs.ground_denot m).proj m.heap K := by
@@ -348,18 +382,22 @@ theorem CapabilitySet.BoundedBy.trans
     | set hbound_set =>
       exact CapabilitySet.BoundedBy.set
         (CapabilitySet.Subset.trans hbound_set hsub_set)
-  | kind =>
-    exact CapabilitySet.BoundedBy.top
-  | subkind => sorry
+  | kind hkind =>
+    cases hbound with
+    | set hsub_bound => exact CapabilitySet.BoundedBy.top (hkind.subset hsub_bound)
+  | subkind hsub =>
+    cases hbound with
+    | top hkind => exact CapabilitySet.BoundedBy.top (hkind.subkind hsub)
 
 /-- BoundedBy is monotonic with respect to heap subsumption. -/
 theorem CapabilitySet.BoundedBy.monotonic
   {H1 H2 : Heap} {C : CapabilitySet} {B : CapabilityBound}
-  (_hsub_heap : H2.subsumes H1)
+  (hsub_heap : H2.subsumes H1)
+  (hwf : C.WfInHeap H1)
   (hbound : CapabilitySet.BoundedBy H1 C B) :
   CapabilitySet.BoundedBy H2 C B := by
   cases hbound with
-  | top => exact .top
+  | top hkind => exact .top (hkind.monotonic hsub_heap hwf)
   | set hsub => exact .set hsub
 
 mutual
@@ -2172,7 +2210,8 @@ theorem env_typing_monotonic
                   capture_bound_denot_is_monotonic hwf_bound hmem
                 -- Combine the equalities and use monotonicity
                 rw [<-h_denot_eq, <-h_bound_eq]
-                exact hsub.monotonic hmem
+                have hwf_denot := CaptureSet.ground_denot_wf hwf
+                exact hsub.monotonic hmem hwf_denot
               · exact ih ht'
 
 /-- Semantic subcapturing. -/

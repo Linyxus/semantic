@@ -2745,6 +2745,23 @@ theorem CapabilitySet.proj_subset_mono
     simp only [proj]
     exact Subset.union_right_right
 
+/-- Projection is a subset of the original capability set. -/
+theorem CapabilitySet.proj_subset_self
+    {C : CapabilitySet} {H : Heap} {K : CapKind} :
+    C.proj H K ⊆ C := by
+  induction C with
+  | empty => exact Subset.empty
+  | cap l =>
+    simp only [proj]
+    split
+    · exact Subset.refl
+    · exact Subset.empty
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj]
+    apply Subset.union_left
+    · exact Subset.trans ih1 Subset.union_right_left
+    · exact Subset.trans ih2 Subset.union_right_right
+
 /-- Projection with empty kind is a subset of empty. -/
 theorem CapabilitySet.proj_empty_kind_subset
     {C : CapabilitySet} {H : Heap} {K : CapKind}
@@ -2845,5 +2862,33 @@ theorem CapabilitySet.proj_same_kind {H : Heap} {C : CapabilitySet} {K : CapKind
       simp only [to_finset, Finset.mem_union]
       right; exact hl
     rw [ih1 hck1, ih2 hck2]
+
+theorem CapabilitySet.HasKind.subset {H : Heap} {C C' : CapabilitySet} {K : CapKind}
+    (hck : C.HasKind H K) (hsub : C' ⊆ C) :
+    C'.HasKind H K := by
+  intro l hl
+  apply hck l
+  have hl' := CapabilitySet.mem_to_finset_iff.mp hl
+  exact CapabilitySet.mem_to_finset_iff.mpr (CapabilitySet.subset_preserves_mem hsub hl')
+
+theorem CapabilitySet.HasKind.subkind {H : Heap} {C : CapabilitySet} {K1 K2 : CapKind}
+    (hck : C.HasKind H K1) (hsub : CapKind.Subkind K1 K2) :
+    C.HasKind H K2 := by
+  intro l hl
+  have h1 : proj_capability H l K1 = true := hck l hl
+  have ⟨k, hk, hsub1⟩ := proj_capability_of_true h1
+  simp only [proj_capability, hk]
+  exact CapKind.subkind_iff_Subkind.mpr (hsub1.trans hsub)
+
+theorem CapabilitySet.HasKind.monotonic {H1 H2 : Heap} {C : CapabilitySet} {K : CapKind}
+    (hsub_heap : H2.subsumes H1)
+    (hwf : C.WfInHeap H1)
+    (hck : C.HasKind H1 K) :
+    C.HasKind H2 K := by
+  intro l hl
+  have hl' := mem_to_finset_iff.mp hl
+  have ⟨v, hv⟩ := hwf l hl'
+  rw [proj_capability_subsumes hsub_heap hv]
+  exact hck l hl
 
 end CaplessK
