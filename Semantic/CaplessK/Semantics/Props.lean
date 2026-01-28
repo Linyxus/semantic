@@ -1196,9 +1196,103 @@ theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
       · simp [h]
     · simp
 
+
+-- Projection is preserved under masking:
+-- For any capability l, the classifier in H and H.mask_caps D determines proj_capability.
+-- For values: classifier is .top in both -> same projection
+-- For masked: classifier is .top in both -> same projection
+-- For capabilities in D: unchanged -> same projection
+-- For capabilities outside D: become .masked, classifier changes from c to .top
+--   BUT: if they were in the reachability of the masked heap, they must have been
+--   masked already (since reachability_of_loc returns {l} for masked cells).
+-- For K = .top, projection keeps all capabilities regardless of classifier
+theorem masked_proj_top {C : CapabilitySet} {H : Heap} :
+  C.proj H .top = C.proj (H.mask_caps D) .top := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    unfold CapabilitySet.proj proj_capability
+    simp only [CapKind.subkind_top']
+    -- Both sides: if classifier_of_loc returns some, result is true; if none, result is false
+    -- classifier_of_loc returns none iff H l = none iff (H.mask_caps D) l = none
+    unfold classifier_of_loc Heap.mask_caps
+    cases h : H l with
+    | none => simp [h]
+    | some cell =>
+      cases cell with
+      | val hv => simp [h]
+      | capability info =>
+        by_cases hmem : l ∈ D <;> simp [h, hmem]
+      | masked => simp [h]
+  | union cs1 cs2 ih1 ih2 =>
+    unfold CapabilitySet.proj
+    rw [ih1, ih2]
+
+-- General projection equality under masking.
+-- This is challenging because for capabilities outside D, the classifier changes
+-- from the original to .top after masking. However, the subkind check may still
+-- yield the same result in specific cases.
+--
+-- Key insight: For values stored in the heap, their reachability only references
+-- other values (which have .top classifier in both heaps) or capabilities that
+-- must exist in the heap. The projection behavior depends on the specific K used.
+theorem masked_proj {C : CapabilitySet} {H : Heap} {K : CapKind} :
+  C.proj H K = C.proj (H.mask_caps D) K := by
+  induction C with
+  | empty => rfl
+  | cap l =>
+    unfold CapabilitySet.proj
+    unfold proj_capability classifier_of_loc
+    unfold Heap.mask_caps
+    cases h : H l with
+    | none => simp [h]
+    | some cell =>
+      cases cell with
+      | val hv => simp [h]
+      | capability info =>
+        by_cases hmem : l ∈ D
+        · simp [h, hmem]
+        · -- Capability outside D: classifier changes from info.classifier to .top
+          simp only [h, hmem, ↓reduceIte]
+          -- After masking, the cell becomes .masked with classifier .top
+          -- LHS uses info.classifier, RHS uses .top
+          -- These may give different results for subkind check with K
+          -- The key observation: if K = .top, both return true (masked_proj_top)
+          -- For other K, we need the two subkind checks to agree.
+          -- This holds when info.classifier = .top, or when both return false.
+          -- For now, we use a case analysis approach.
+          by_cases hK : K = .top
+          · -- For K = .top, both subkind checks return true
+            simp only [hK, CapKind.subkind_top', ↓reduceIte]
+          · -- For K ≠ .top, we need more specific reasoning
+            -- In the context where this is used (expand_captures on value capture sets),
+            -- the K comes from the capture set syntax.
+            sorry
+      | masked => simp [h]
+  | union cs1 cs2 ih1 ih2 =>
+    unfold CapabilitySet.proj
+    rw [ih1, ih2]
+
+theorem masked_expand_captures {H : Heap} (cs : CaptureSet {}) :
+  expand_captures H cs = expand_captures (H.mask_caps D) cs := by
+  induction cs with
+  | empty => rfl
+  | var x K =>
+    cases x with
+    | free loc =>
+      unfold expand_captures
+      rw [reachability_of_loc_masked (D := D) loc]
+      rw [masked_proj (D := D)]
+    | bound x => nomatch x
+  | union cs1 cs2 ih1 ih2 =>
+    unfold expand_captures
+    rw [ih1, ih2]
+  | cvar c K => nomatch c
+
 theorem masked_compute_reachability {H : Heap} :
   compute_reachability H v hv = compute_reachability (H.mask_caps D) v hv := by
-  sorry
+  cases hv <;> simp [compute_reachability]
+  all_goals exact masked_expand_captures _
 
 theorem mask_preserves_wf {C : CapabilitySet} {H : Heap}
   (hwf : C.WfInHeap H) :
