@@ -15,7 +15,7 @@ def CapDenot := Memory -> CapabilitySet
 
 /-- A bound on capability sets. It can either be a concrete set of the top element. -/
 inductive CapabilityBound : Type where
-| top : CapabilityBound
+| top : CapKind -> CapabilityBound
 | set : CapabilitySet -> CapabilityBound
 
 /-- Capture bound denotation. -/
@@ -315,27 +315,27 @@ theorem CaptureSet.denot_proj_eq {cs : CaptureSet s} {env : TypeEnv s} {m : Memo
   exact CaptureSet.ground_denot_proj_eq
 
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
-| _, .unbound _ => fun _ => .top
+| _, .unbound K => fun _ => .top K
 | env, .bound cs => fun m => .set (cs.denot env m)
 
 inductive CapabilitySet.BoundedBy : Heap -> CapabilitySet -> CapabilityBound -> Prop where
 | top :
-  CapabilitySet.BoundedBy H C CapabilityBound.top
+  CapabilitySet.HasKind H C K ->
+  CapabilitySet.BoundedBy H C (CapabilityBound.top K)
 | set :
   C1 ⊆ C2 ->
   CapabilitySet.BoundedBy H C1 (CapabilityBound.set C2)
 
 inductive CapabilityBound.Subbound : Heap -> CapabilityBound -> CapabilityBound -> Prop where
-| refl :
-  CapabilityBound.Subbound H B B
 | set :
   C1 ⊆ C2 ->
   CapabilityBound.Subbound H (CapabilityBound.set C1) (CapabilityBound.set C2)
-| top :
-  CapabilityBound.Subbound H B CapabilityBound.top
-
--- instance : HasSubset CapabilityBound where
---   Subset := CapabilityBound.SubsetEq
+| kind :
+  CapabilitySet.HasKind H C K ->
+  CapabilityBound.Subbound H (CapabilityBound.set C) (CapabilityBound.top K)
+| subkind :
+  CapKind.Subkind K1 K2 ->
+  CapabilityBound.Subbound H (CapabilityBound.top K1) (CapabilityBound.top K2)
 
 theorem CapabilitySet.BoundedBy.trans
   {H : Heap} {C : CapabilitySet} {B1 B2 : CapabilityBound}
@@ -343,13 +343,14 @@ theorem CapabilitySet.BoundedBy.trans
   (hsub : CapabilityBound.Subbound H B1 B2) :
   CapabilitySet.BoundedBy H C B2 := by
   cases hsub with
-  | refl => exact hbound
   | set hsub_set =>
     cases hbound with
     | set hbound_set =>
       exact CapabilitySet.BoundedBy.set
         (CapabilitySet.Subset.trans hbound_set hsub_set)
-  | top => exact CapabilitySet.BoundedBy.top
+  | kind =>
+    exact CapabilitySet.BoundedBy.top
+  | subkind => sorry
 
 /-- BoundedBy is monotonic with respect to heap subsumption. -/
 theorem CapabilitySet.BoundedBy.monotonic
