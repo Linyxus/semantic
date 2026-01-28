@@ -1899,7 +1899,16 @@ theorem fundamental_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
 theorem sem_sc_proj_r {C : CaptureSet s} {K : CapKind}
   (hk : HasKind Γ C K) :
   SemSubcapt Γ C (C.proj K) := by
-  sorry
+  -- From hk, derive SemHasKind Γ C K
+  have hsem := fundamental_haskind hk
+  intro env m hts
+  -- hsem gives us: CapabilitySet.HasKind m.heap (C.denot env m) K
+  have hkind := hsem env m hts
+  -- By proj_same_kind: (C.denot env m).proj m.heap K = C.denot env m
+  have heq := CapabilitySet.proj_same_kind hkind
+  -- By denot_proj_eq: (C.proj K).denot env m = (C.denot env m).proj m.heap K
+  rw [CaptureSet.denot_proj_eq, heq]
+  exact CapabilitySet.Subset.refl
 
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
