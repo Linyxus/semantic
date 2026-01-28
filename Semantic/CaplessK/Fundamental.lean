@@ -1794,8 +1794,33 @@ theorem fundamental_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
     exact ih env m hts l (CapabilitySet.mem_to_finset_iff.mpr hmem)
   | cvar_unbound hlookup =>
     intro env m hts l hl
-    trace_state
-    sorry
+    -- Name the unnamed variables: c is the cvar, K is the unbound kind, L is the projection kind
+    rename_i c K L
+    -- From typed_env_lookup_cvar_aux, get BoundedBy for the unbound cvar
+    have hbound := typed_env_lookup_cvar_aux hts hlookup
+    simp [CaptureBound.denot] at hbound
+    -- hbound : BoundedBy m.heap ((env.lookup_cvar c).ground_denot m) (CapabilityBound.top K)
+    -- Extract HasKind from BoundedBy.top
+    cases hbound with
+    | top hkind =>
+      -- hkind : HasKind m.heap ((env.lookup_cvar c).ground_denot m) K
+      -- hl : l ∈ (CaptureSet.denot env (.cvar c L) m).to_finset
+      -- Unfold the denotation of .cvar c L
+      simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv] at hl
+      -- hl : l ∈ ((env.lookup_cvar c).proj L).ground_denot m).to_finset
+      rw [CaptureSet.ground_denot_proj_eq] at hl
+      -- hl : l ∈ (((env.lookup_cvar c).ground_denot m).proj m.heap L).to_finset
+      have hl' := CapabilitySet.mem_to_finset_iff.mp hl
+      -- From projection: l is in the original set
+      have hl_in_orig := CapabilitySet.subset_preserves_mem CapabilitySet.proj_subset_self hl'
+      -- From HasKind: proj_capability m.heap l K = true
+      have hprojK : proj_capability m.heap l K = true :=
+        hkind l (CapabilitySet.mem_to_finset_iff.mpr hl_in_orig)
+      -- From being in projection: proj_capability m.heap l L = true
+      have hprojL : proj_capability m.heap l L = true :=
+        CapabilitySet.mem_proj_implies_proj_capability hl'
+      -- Combine using proj_capability_intersect
+      exact proj_capability_intersect.mp ⟨hprojK, hprojL⟩
   | cvar_bound hlookup _ ih =>
     intro env m hts l hl
     trace_state

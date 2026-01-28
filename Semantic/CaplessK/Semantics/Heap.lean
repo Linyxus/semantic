@@ -2762,6 +2762,26 @@ theorem CapabilitySet.proj_subset_self
     · exact Subset.trans ih1 Subset.union_right_left
     · exact Subset.trans ih2 Subset.union_right_right
 
+/-- Membership in a projection implies the projection predicate holds. -/
+theorem CapabilitySet.mem_proj_implies_proj_capability
+    {C : CapabilitySet} {H : Heap} {K : CapKind} {l : Nat}
+    (hmem : l ∈ C.proj H K) :
+    proj_capability H l K = true := by
+  induction C with
+  | empty => cases hmem
+  | cap l' =>
+    simp only [proj] at hmem
+    split at hmem
+    case isTrue hproj =>
+      cases hmem
+      exact hproj
+    case isFalse => cases hmem
+  | union c1 c2 ih1 ih2 =>
+    simp only [proj] at hmem
+    cases hmem with
+    | left hmem => exact ih1 hmem
+    | right hmem => exact ih2 hmem
+
 /-- Projection with empty kind is a subset of empty. -/
 theorem CapabilitySet.proj_empty_kind_subset
     {C : CapabilitySet} {H : Heap} {K : CapKind}
