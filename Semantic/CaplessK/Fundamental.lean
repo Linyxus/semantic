@@ -1837,7 +1837,7 @@ theorem fundamental_haskind {Γ : Ctx s} {C : CaptureSet s} {K : CapKind}
     rw [CaptureSet.ground_denot_proj_eq] at hl
     -- hl : l ∈ (((env.lookup_cvar cv).ground_denot m).proj m.heap Lk).to_finset
     have hl' := CapabilitySet.mem_to_finset_iff.mp hl
-    -- By monotonicity of projection: the projection of the cvar denotation is a subset of Cb.proj Lk denotation
+    -- By proj monotonicity: cvar denotation proj ⊆ Cb.proj Lk denotation
     have hproj_sub : ((env.lookup_cvar cv).ground_denot m).proj m.heap Lk ⊆
                      (Cb.denot env m).proj m.heap Lk :=
       CapabilitySet.proj_subset_mono hsub
