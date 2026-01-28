@@ -247,7 +247,7 @@ def CapabilityInfo.classifier : CapabilityInfo -> Classifier
 inductive Cell : Type where
 | val : HeapVal -> Cell
 | capability : CapabilityInfo -> Cell
-| masked : Cell
+| masked : Classifier -> Cell
 
 -- A heap is a function from locations to cells
 def Heap : Type := Nat -> Option Cell
@@ -852,7 +852,7 @@ def reachability_of_loc
   match h l with
   | some (.capability _) => {l}
   | some (.val ⟨_, _, R⟩) => R
-  | some .masked => {l}
+  | some (.masked _) => {l}
   | none => {}
 
 /-- Get the classifier of a heap location. Returns none if
@@ -861,6 +861,7 @@ def classifier_of_loc : Heap -> Nat -> Option Classifier
 | H, l =>
   match H l with
   | some (.capability info) => some info.classifier
+  | some (.masked K) => some K
   | some _ => some .top
   | _ => none
 
@@ -2557,7 +2558,7 @@ def Heap.mask_caps (H : Heap) (d : Finset Nat) : Heap :=
   fun l =>
     match H l with
     | some (.capability info) =>
-      if l ∈ d then some (.capability info) else some .masked
+      if l ∈ d then some (.capability info) else some (.masked info.classifier)
     | some v => some v
     | none => none
 
