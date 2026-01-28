@@ -325,22 +325,22 @@ inductive CapabilitySet.BoundedBy : Heap -> CapabilitySet -> CapabilityBound -> 
   C1 ⊆ C2 ->
   CapabilitySet.BoundedBy H C1 (CapabilityBound.set C2)
 
-inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop where
+inductive CapabilityBound.Subbound : Heap -> CapabilityBound -> CapabilityBound -> Prop where
 | refl :
-  CapabilityBound.SubsetEq B B
+  CapabilityBound.Subbound H B B
 | set :
   C1 ⊆ C2 ->
-  CapabilityBound.SubsetEq (CapabilityBound.set C1) (CapabilityBound.set C2)
+  CapabilityBound.Subbound H (CapabilityBound.set C1) (CapabilityBound.set C2)
 | top :
-  CapabilityBound.SubsetEq B CapabilityBound.top
+  CapabilityBound.Subbound H B CapabilityBound.top
 
-instance : HasSubset CapabilityBound where
-  Subset := CapabilityBound.SubsetEq
+-- instance : HasSubset CapabilityBound where
+--   Subset := CapabilityBound.SubsetEq
 
 theorem CapabilitySet.BoundedBy.trans
   {H : Heap} {C : CapabilitySet} {B1 B2 : CapabilityBound}
   (hbound : CapabilitySet.BoundedBy H C B1)
-  (hsub : B1 ⊆ B2) :
+  (hsub : CapabilityBound.Subbound H B1 B2) :
   CapabilitySet.BoundedBy H C B2 := by
   cases hsub with
   | refl => exact hbound
