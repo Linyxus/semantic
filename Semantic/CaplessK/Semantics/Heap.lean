@@ -2891,4 +2891,24 @@ theorem CapabilitySet.HasKind.monotonic {H1 H2 : Heap} {C : CapabilitySet} {K : 
   rw [proj_capability_subsumes hsub_heap hv]
   exact hck l hl
 
+/-- Any well-formed capability set has kind top. -/
+theorem CapabilitySet.HasKind.of_wf_top {H : Heap} {C : CapabilitySet}
+    (hwf : C.WfInHeap H) :
+    C.HasKind H .top := by
+  intro l hl
+  have hl' := mem_to_finset_iff.mp hl
+  have ⟨v, hv⟩ := hwf l hl'
+  -- Need to show proj_capability H l .top = true
+  simp only [proj_capability]
+  -- classifier_of_loc H l = some k for some k since H l = some v
+  have hclass : ∃ k, classifier_of_loc H l = some k := by
+    simp only [classifier_of_loc]
+    cases v with
+    | capability info => exact ⟨info.classifier, by simp [hv]⟩
+    | val _ => simp [hv]
+    | masked => simp [hv]
+  obtain ⟨k, hk⟩ := hclass
+  simp only [hk]
+  exact CapKind.subkind_top'
+
 end CaplessK

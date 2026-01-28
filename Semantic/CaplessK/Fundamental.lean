@@ -2208,17 +2208,20 @@ lemma fundamental_subbound
     --   (CapabilityBound.set (C2.denot env m))
     have hsem := fundamental_subcapt hsubcapt
     exact CapabilityBound.Subbound.set (hsem env m htyping)
-  | unbound =>
-    -- Subbound Γ (.unbound k) (.unbound k)
+  | unbound hsub =>
+    -- Subbound Γ (.unbound k1) (.unbound k2) from Subkind k1 k2
     intro env m htyping
     simp [CaptureBound.denot]
-    apply CapabilityBound.Subbound.refl
-  | top =>
-    -- Subbound Γ B .unbound
+    -- .unbound k denotes CapabilityBound.top k
+    exact CapabilityBound.Subbound.subkind hsub
+  | top hkind =>
+    -- Subbound Γ (.bound C) (.unbound L) from HasKind Γ C L
     intro env m htyping
     simp [CaptureBound.denot]
-    -- .unbound denotes CapabilityBound.top, which is the largest bound
-    apply CapabilityBound.Subbound.top
+    -- .bound C denotes set (C.denot ...), .unbound L denotes top L
+    -- Use fundamental_haskind to get semantic HasKind
+    have hsem := fundamental_haskind hkind
+    exact CapabilityBound.Subbound.kind (hsem env m htyping)
 
 lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
   (hB : SemSubbound Γ cb1 cb2) -- contravariant in bound (cb1 <: cb2)
@@ -2402,7 +2405,10 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
             · constructor
               · -- Need: (CS.ground_denot m).BoundedBy (CaptureBound.unbound.denot env m)
                 simp [CaptureBound.denot]
-                apply CapabilitySet.BoundedBy.top
+                -- .unbound .top denotes CapabilityBound.top .top
+                -- Any well-formed capability set has kind .top
+                have hwf_denot := CaptureSet.ground_denot_wf hwf_CS
+                exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.of_wf_top hwf_denot)
               · exact env_typing_monotonic htyping hsubsumes
 
         -- Apply semantic subtyping
@@ -2749,7 +2755,8 @@ theorem sem_typ_unpack
               · -- Show: cs.ground_denot m1 ⊆ ⟦unbound⟧_[env] m1
                 -- Unbound denotes the top capability bound, so every set is bounded by it
                 simp [CaptureBound.denot]
-                exact CapabilitySet.BoundedBy.top
+                have hwf_denot := CaptureSet.ground_denot_wf hwf_cs
+                exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.of_wf_top hwf_denot)
               · -- Show: EnvTyping Γ env m1
                 exact env_typing_monotonic hts hs1
 
