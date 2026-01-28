@@ -48,6 +48,13 @@ def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> Ca
     | .free n => .cap n
 | .cvar c _ => .cap (c.level / 2)
 
+/-- A predicate asserting all kind annotations in a capture set are .top. -/
+def CaptureSet.AllKindsTop : CaptureSet s -> Prop
+| .empty => True
+| .union cs1 cs2 => cs1.AllKindsTop ∧ cs2.AllKindsTop
+| .var _ K => K = .top
+| .cvar _ K => K = .top
+
 /-- Type environment for a platform with `N` ground capabilities.
   Maps each pair `(C, x)` to capability `i` at heap location `i`:
   capture variable `C` maps to singleton ground capture set `{i}`,
@@ -57,14 +64,17 @@ def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | N+1 => ((TypeEnv.platform_of N).extend_cvar (.var (.free N) .top)).extend_var N
 
 /-- The platform heap is well-formed: it contains only capabilities, no values. -/
-theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
-  constructor
-  · -- wf_val: no values in the platform heap
+theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap where
+  wf_val := by
     intro l hv hlookup
     unfold Heap.platform_of at hlookup
     split at hlookup <;> cases hlookup
-  · -- wf_reach: no values in the platform heap
+  wf_reach := by
     intro l v hv R hlookup
+    unfold Heap.platform_of at hlookup
+    split at hlookup <;> cases hlookup
+  wf_reachability := by
+    intro l hv hlookup
     unfold Heap.platform_of at hlookup
     split at hlookup <;> cases hlookup
 
@@ -93,6 +103,24 @@ def Memory.platform_of (N : Nat) : Memory where
   heap := Heap.platform_of N
   wf := Heap.platform_of_wf N
   findom := ⟨Finset.range N, Heap.platform_of_has_fin_dom N⟩
+
+/-- Reachability of a location in platform heap is just the singleton set. -/
+theorem reachability_of_loc_platform {l : Nat} (hl : l < N) :
+  reachability_of_loc (Heap.platform_of N) l = {l} := by
+  unfold reachability_of_loc Heap.platform_of
+  simp [hl]
+
+/-- Projection of a capability in the platform heap by .top preserves the capability. -/
+theorem proj_platform_top {l : Nat} (hl : l < N) :
+  (CapabilitySet.cap l).proj (Heap.platform_of N) .top = CapabilitySet.cap l := by
+  simp only [CapabilitySet.proj, proj_capability, classifier_of_loc, Heap.platform_of, hl,
+    ↓reduceIte, CapabilityInfo.classifier, CapKind.subkind_top']
+
+/-- Projection by any .top kind preserves capability in platform heap. -/
+theorem proj_platform_kind_top {l : Nat} (hl : l < N) {K : CapKind} (hK : K = .top) :
+  (CapabilitySet.cap l).proj (Heap.platform_of N) K = CapabilitySet.cap l := by
+  subst hK
+  exact proj_platform_top hl
 
 /-- Platform memory M subsumes platform memory N when M ≥ N. -/
 theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
@@ -169,9 +197,18 @@ theorem env_typing_of_platform {N : Nat} :
                   simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
                     TypeEnv.lookup_cvar, TypeEnv.lookup, Memory.platform_of,
                     CaptureSet.proj, CaptureSet.ground_denot]
-                  unfold Heap.platform_of
-                  simp [reachability_of_loc]
-                  apply CapabilitySet.mem.here
+                  -- The kind is intersect .top .top = .top
+                  change N ∈ (reachability_of_loc (Heap.platform_of (N+1)) N).proj
+                    (Heap.platform_of (N+1)) (CapKind.top.intersect CapKind.top)
+                  have hN : N < N + 1 := Nat.lt_succ_self N
+                  rw [CapKind.intersect.top_l, reachability_of_loc_platform hN]
+                  have hwf : (CapabilitySet.cap N).WfInHeap (Heap.platform_of (N + 1)) := by
+                    intro l hl; cases hl
+                    exact ⟨.capability .basic, by unfold Heap.platform_of; simp [hN]⟩
+                  -- Unfold singleton and apply proj_top
+                  change N ∈ (CapabilitySet.cap N).proj (Heap.platform_of (N + 1)) .top
+                  rw [CapabilitySet.proj_top hwf]
+                  exact CapabilitySet.mem.here
     · -- Capture variable C with bound .unbound
       constructor
       · -- cs.WfInHeap
@@ -186,6 +223,24 @@ theorem env_typing_of_platform {N : Nat} :
         · constructor
           · -- cs.ground_denot bounded by unbound denot
             apply CapabilitySet.BoundedBy.top
+            -- Show HasKind for the ground_denot
+            -- First simplify: ground_denot of (var (.free N) .top) is {N}.proj H .top = {N}
+            simp only [CaptureSet.ground_denot, Memory.platform_of]
+            have hN : N < N + 1 := Nat.lt_succ_self N
+            have hwf_cap : (CapabilitySet.cap N).WfInHeap (Heap.platform_of (N + 1)) := by
+              intro l hl; cases hl
+              exact ⟨.capability .basic, by unfold Heap.platform_of; simp [hN]⟩
+            -- Rewrite reachability to get {N}
+            rw [reachability_of_loc_platform hN]
+            -- The projection of {N} by .top equals {N} (proj_top)
+            -- We need to show well-formedness of the projected set
+            have heq : (CapabilitySet.cap N).proj (Heap.platform_of (N + 1)) .top =
+                CapabilitySet.cap N := CapabilitySet.proj_top hwf_cap
+            -- Convert the goal to use cap N directly
+            change CapabilitySet.HasKind (Heap.platform_of (N + 1))
+              ((CapabilitySet.cap N).proj (Heap.platform_of (N + 1)) .top) .top
+            rw [heq]
+            exact CapabilitySet.HasKind.of_wf_top hwf_cap
           · -- Recursive: platform N types in platform (N+1) memory
             apply env_typing_platform_monotonic (N := N) (M := N + 1)
             · omega
@@ -198,12 +253,6 @@ def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
   ∀ M1 e1,
     Reduce P (Memory.platform_of N) e M1 e1 ->
     IsProgressive P M1 e1
-
-/-- Reachability of a location in platform heap is just the singleton set. -/
-theorem reachability_of_loc_platform {l : Nat} (hl : l < N) :
-  reachability_of_loc (Heap.platform_of N) l = {l} := by
-  unfold reachability_of_loc Heap.platform_of
-  simp [hl]
 
 /-- The length of a platform signature is 2*N. -/
 theorem Sig.platform_of_length : (Sig.platform_of N).length = 2 * N := by
@@ -345,9 +394,11 @@ theorem BVar.level_cvar_bound {c : BVar (Sig.platform_of N) .cvar} : c.level / 2
         omega
 
 /-- The denotation of a capture set in the platform environment equals
-    its direct capability set translation, provided the capture set is well-formed. -/
+    its direct capability set translation, provided the capture set is well-formed
+    and all kind annotations are .top. -/
 theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
-  (hwf : C.WfInHeap (Heap.platform_of N)) :
+  (hwf : C.WfInHeap (Heap.platform_of N))
+  (htop : C.AllKindsTop) :
   C.denot (TypeEnv.platform_of N) (Memory.platform_of N) = C.to_platform_capability_set := by
   unfold CaptureSet.denot
   induction C with
@@ -359,60 +410,79 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     -- Union of capture sets
     cases hwf with
     | wf_union hwf1 hwf2 =>
+      simp only [CaptureSet.AllKindsTop] at htop
       unfold CaptureSet.subst CaptureSet.to_platform_capability_set CaptureSet.ground_denot
       unfold CaptureSet.denot at ih1 ih2
-      rw [ih1 hwf1, ih2 hwf2]
-  | var x =>
+      rw [ih1 hwf1 htop.1, ih2 hwf2 htop.2]
+  | var x K =>
     -- Variable (term variable used as capture)
+    simp only [CaptureSet.AllKindsTop] at htop
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
     cases x with
     | bound b =>
-      -- Bound term variable
       unfold Subst.from_TypeEnv Var.subst
-      simp [CaptureSet.ground_denot]
+      simp only [CaptureSet.ground_denot]
       rw [TypeEnv.lookup_var_platform]
       have hlevel : b.level / 2 < N := BVar.level_var_bound
       unfold Memory.platform_of
-      simp
+      simp only
       rw [reachability_of_loc_platform hlevel]
-      rfl
+      -- Now show {l}.proj H K = {l} using K = .top
+      have hwf_cap : (CapabilitySet.cap (b.level / 2)).WfInHeap (Heap.platform_of N) := by
+        intro l hl; cases hl
+        exact ⟨.capability .basic, by unfold Heap.platform_of; simp [hlevel]⟩
+      rw [htop]
+      change (CapabilitySet.cap (b.level / 2)).proj (Heap.platform_of N) .top =
+        CapabilitySet.cap (b.level / 2)
+      exact CapabilitySet.proj_top hwf_cap
     | free n =>
-      -- Free term variable - extract proof that n < N from hwf
       cases hwf with
       | wf_var_free hlookup =>
         unfold Subst.from_TypeEnv Var.subst
-        simp [CaptureSet.ground_denot]
+        simp only [CaptureSet.ground_denot]
         unfold Memory.platform_of
-        simp
-        -- From hlookup: (Heap.platform_of N) n = some val
-        -- This implies n < N
+        simp only
         have hn : n < N := by
           unfold Heap.platform_of at hlookup
           split at hlookup
           case isTrue h => exact h
           case isFalse => contradiction
         rw [reachability_of_loc_platform hn]
-        rfl
+        have hwf_cap : (CapabilitySet.cap n).WfInHeap (Heap.platform_of N) := by
+          intro l hl; cases hl
+          exact ⟨.capability .basic, by unfold Heap.platform_of; simp [hn]⟩
+        rw [htop]
+        change (CapabilitySet.cap n).proj (Heap.platform_of N) .top = CapabilitySet.cap n
+        exact CapabilitySet.proj_top hwf_cap
   | cvar c K =>
     -- Capture variable
+    simp only [CaptureSet.AllKindsTop] at htop
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
     simp only [Subst.from_TypeEnv]
     rw [TypeEnv.lookup_cvar_platform]
-    -- After substitution we have (.var (.free (c.level / 2)) .top).proj K
-    -- Use ground_denot_proj_eq to eliminate the projection
     rw [CaptureSet.ground_denot_proj_eq]
     unfold CaptureSet.ground_denot Memory.platform_of
-    simp
-    -- Goal: reachability_of_loc (Heap.platform_of N) (c.level / 2) = {c.level / 2}
+    simp only
     have hlevel : c.level / 2 < N := BVar.level_cvar_bound
     rw [reachability_of_loc_platform hlevel]
-    rfl
+    have hwf_cap : (CapabilitySet.cap (c.level / 2)).WfInHeap (Heap.platform_of N) := by
+      intro l hl; cases hl
+      exact ⟨.capability .basic, by unfold Heap.platform_of; simp [hlevel]⟩
+    -- Now we have ({l}.proj H .top).proj H K = {l}
+    -- Convert goal to use cap directly
+    change ((CapabilitySet.cap (c.level / 2)).proj (Heap.platform_of N) .top).proj
+        (Heap.platform_of N) K = CapabilitySet.cap (c.level / 2)
+    rw [CapabilitySet.proj_top hwf_cap]
+    -- Then, {l}.proj H K = {l} using K = .top
+    rw [htop, CapabilitySet.proj_top hwf_cap]
 
 /-- Adequacy of semantic typing on platform contexts.
-    Requires that the capture set is closed (contains no free variables). -/
+    Requires that the capture set is closed (contains no free variables)
+    and all kind annotations are .top. -/
 theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   (ht : SemanticTyping C (Ctx.platform_of N) e E)
-  (hclosed : C.IsClosed) :
+  (hclosed : C.IsClosed)
+  (htop : C.AllKindsTop) :
   (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform
     N
     (C.to_platform_capability_set) := by
@@ -423,7 +493,7 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   -- Derive well-formedness from closedness
   have hwf : C.WfInHeap (Heap.platform_of N) := CaptureSet.wf_of_closed hclosed
   -- Rewrite using the equality of capability sets
-  rw [capture_set_denot_eq_platform hwf] at hdenot
+  rw [capture_set_denot_eq_platform hwf htop] at hdenot
   -- Preservation: Eval is preserved under reduction
   have heval' : Eval C.to_platform_capability_set M1 e1
       (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
