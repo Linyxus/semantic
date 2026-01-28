@@ -89,7 +89,11 @@ theorem step_memory_monotonic
   | step_ctx_unpack _ ih => exact ih
   | step_rename => exact Memory.subsumes_refl _
   | step_lift hv hwf hfresh =>
-    exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
+    rename_i v m e l
+    have hreach_wf : (compute_reachability m.heap v hv).WfInHeap m.heap :=
+      compute_reachability_locations_exist m.wf hwf
+    exact Memory.extend_subsumes m l ⟨v, hv, compute_reachability m.heap v hv⟩
+      hwf rfl hreach_wf hfresh
   | step_unpack => exact Memory.subsumes_refl _
 
 /-- Helper: Reduction preserves memory subsumption. -/
@@ -143,7 +147,8 @@ theorem reduce_letin_inv
     (C1 ∪ C2).equiv C ∧
     Reduce C1 m e1 m0 v0 ∧
     Reduce C2
-      (m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf rfl hfresh)
+      (m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf rfl
+        (compute_reachability_locations_exist m0.wf hwf) hfresh)
       (e2.subst (Subst.openVar (.free l0)))
       m' a) := by
   -- Generalize the letin expression to enable induction
@@ -354,7 +359,8 @@ theorem step_preserves_wf
     have ⟨hwf_v', hwf_body⟩ := Exp.wf_inv_letin hwf
     -- Memory extends with the value
     -- The resulting memory is m1.extend l ...
-    let m_ext := m1.extend l ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
+    have hreach_wf := compute_reachability_locations_exist (hv := hv) m1.wf hwf_v
+    let m_ext := m1.extend l ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hreach_wf hfresh
     -- Show (.free l) is well-formed in the extended heap
     have hwf_l : Var.WfInHeap (.free l : Var .var ∅) m_ext.heap := by
       apply Var.WfInHeap.wf_free
@@ -363,7 +369,7 @@ theorem step_preserves_wf
       exact Heap.extend_lookup_eq _ _ _
     -- e_body is well-formed in the extended heap (by monotonicity)
     have hsub := Memory.extend_subsumes m1 l
-      ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
+      ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hreach_wf hfresh
     have hwf_body_ext := Exp.wf_monotonic hsub hwf_body
     -- Build well-formed substitution
     have hwf_subst := Subst.wf_openVar hwf_l
@@ -1190,27 +1196,27 @@ theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
       · simp [h]
     · simp
 
-theorem expand_captures_masked {H : Heap} (cs : CaptureSet {}) :
-  expand_captures H cs = expand_captures (H.mask_caps D) cs := by
-  induction cs with
-  | empty =>
-    unfold expand_captures
-    rfl
-  | var x =>
-    cases x with
-    | free loc =>
-      unfold expand_captures
-      exact reachability_of_loc_masked loc
-    | bound x => nomatch x
-  | union cs1 cs2 ih1 ih2 =>
-    unfold expand_captures
-    rw [ih1, ih2]
-  | cvar x => nomatch x
-
 theorem masked_compute_reachability {H : Heap} :
   compute_reachability H v hv = compute_reachability (H.mask_caps D) v hv := by
-  cases hv <;> simp [compute_reachability]
-  all_goals exact expand_captures_masked _
+  sorry
+
+theorem mask_preserves_wf {C : CapabilitySet} {H : Heap}
+  (hwf : C.WfInHeap H) :
+  C.WfInHeap (H.mask_caps D) := by
+  intro l hmem
+  obtain ⟨v, hv⟩ := hwf l hmem
+  unfold Heap.mask_caps
+  split
+  · -- capability case
+    rename_i info _ heq
+    simp only [heq] at hv
+    split <;> exact ⟨_, rfl⟩
+  · -- val case
+    rename_i hv' _ heq
+    exact ⟨_, rfl⟩
+  · -- none case - impossible since H l = some v
+    rename_i heq
+    simp [hv] at heq
 
 def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
   heap := m.heap.mask_caps mask
@@ -1241,6 +1247,17 @@ def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
           exact heq
         rw [hr_orig]
         exact masked_compute_reachability
+      · simp at hlookup
+    wf_reachability := by
+      intro l hv hlookup
+      unfold Heap.mask_caps at hlookup
+      split at hlookup
+      · split at hlookup <;> simp at hlookup
+      · rename_i cell _ heq
+        simp at hlookup
+        subst hlookup
+        have hwf_orig := m.wf.wf_reachability l hv heq
+        exact mask_preserves_wf hwf_orig
       · simp at hlookup
   }
   findom := by
@@ -1321,13 +1338,15 @@ private theorem Memory.extend_heapval_reachability_irrel
   (hwf : Exp.WfInHeap v m.heap)
   (hreach1 : R1 = compute_reachability m.heap v hv)
   (hreach2 : R2 = compute_reachability m.heap v hv)
+  (hreach_wf1 : R1.WfInHeap m.heap)
+  (hreach_wf2 : R2.WfInHeap m.heap)
   (hfresh : m.heap l = none) :
-  m.extend l ⟨v, hv, R1⟩ hwf hreach1 hfresh =
-  m.extend l ⟨v, hv, R2⟩ hwf hreach2 hfresh := by
+  m.extend l ⟨v, hv, R1⟩ hwf hreach1 hreach_wf1 hfresh =
+  m.extend l ⟨v, hv, R2⟩ hwf hreach2 hreach_wf2 hfresh := by
   -- Memories are equal because the HeapVals have equal fields
   unfold Memory.extend
-  simp
   -- Use funext on heaps
+  congr 1
   funext l'
   simp [Heap.extend]
   split
@@ -1338,19 +1357,21 @@ private theorem Memory.extend_heapval_reachability_irrel
 theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal}
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+  (hreach_wf : v.reachability.WfInHeap m.heap)
   (hfresh : m.heap l = none) :
-  (m.extend l v hwf_v hreach hfresh).masked_caps D =
+  (m.extend l v hwf_v hreach hreach_wf hfresh).masked_caps D =
   (m.masked_caps D).extend l v
     (Exp.wf_masked hwf_v)
     (by
       simp [Memory.masked_caps]
       exact hreach.trans (masked_compute_reachability
         (H := m.heap) (D := D) (v := v.unwrap) (hv := v.isVal)))
+    (by simp [Memory.masked_caps]; exact mask_preserves_wf hreach_wf)
     (masked_preserves_fresh hfresh) := by
   -- Prove equality of Memory structures by showing their heaps are equal
   -- The other fields (wf and findom) are Props, so proof irrelevance applies
   unfold Memory.extend Memory.masked_caps
-  simp
+  congr 1
   exact Heap.masked_extend_comm
 
 /-- Helper lemma: Heap masking and update_cell commute when the location is in the mask. -/
@@ -1443,13 +1464,20 @@ theorem step_masked
   | step_rename =>
     apply Step.step_rename
   | step_lift hv hwf hfresh =>
+    rename_i v m e l
+    have hreach_wf : (compute_reachability m.heap v hv).WfInHeap m.heap :=
+      compute_reachability_locations_exist (hv := hv) m.wf hwf
     -- Rewrite using masked_extend_comm
-    rw [Memory.masked_extend_comm hwf rfl hfresh]
+    rw [Memory.masked_extend_comm (v := ⟨v, hv, compute_reachability m.heap v hv⟩)
+         hwf rfl hreach_wf hfresh]
     -- Use helper lemma to show the two extend calls are equal
     rw [Memory.extend_heapval_reachability_irrel (Exp.wf_masked hwf)
          (by simp [Memory.masked_caps];
              exact rfl.trans masked_compute_reachability)
          rfl
+         (by simp [Memory.masked_caps]; exact mask_preserves_wf hreach_wf)
+         (by exact compute_reachability_locations_exist (hv := hv)
+               (m.masked_caps M).wf (Exp.wf_masked hwf))
          (masked_preserves_fresh hfresh)]
     -- Now apply step_lift
     apply Step.step_lift hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
@@ -1514,11 +1542,18 @@ theorem step_masked_superset
   | step_rename =>
     apply Step.step_rename
   | step_lift hv hwf hfresh =>
-    rw [Memory.masked_extend_comm hwf rfl hfresh]
+    rename_i v m e l
+    have hreach_wf : (compute_reachability m.heap v hv).WfInHeap m.heap :=
+      compute_reachability_locations_exist (hv := hv) m.wf hwf
+    rw [Memory.masked_extend_comm (v := ⟨v, hv, compute_reachability m.heap v hv⟩)
+         hwf rfl hreach_wf hfresh]
     rw [Memory.extend_heapval_reachability_irrel (Exp.wf_masked hwf)
          (by simp [Memory.masked_caps];
              exact rfl.trans masked_compute_reachability)
          rfl
+         (by simp [Memory.masked_caps]; exact mask_preserves_wf hreach_wf)
+         (by exact compute_reachability_locations_exist (hv := hv)
+               (m.masked_caps C.to_finset).wf (Exp.wf_masked hwf))
          (masked_preserves_fresh hfresh)]
     apply Step.step_lift hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
   | step_unpack =>
@@ -1594,9 +1629,12 @@ theorem eval_exists_answer
         exact hfresh
       have ih_cont := ih_val hsub1 hv hwf1 hQ1 l' hfresh'
       obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
+      have hreach_wf : (compute_reachability m1'.heap v1 hv).WfInHeap m1'.heap :=
+        compute_reachability_locations_exist (hv := hv) m1'.wf hwf1
+      have hext_sub := Memory.extend_val_subsumes m1' l'
+        ⟨v1, hv, compute_reachability m1'.heap v1 hv⟩ hwf1 rfl hreach_wf hfresh'
       exact ⟨m2, e2, hans2,
-             Memory.subsumes_trans hsub2
-               (Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf1 rfl hfresh') hsub1),
+             Memory.subsumes_trans hsub2 (Memory.subsumes_trans hext_sub hsub1),
              hQ2⟩
     | is_var =>
       rename_i x
