@@ -92,7 +92,7 @@ mutual
 
 def rebind_shape_val_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {f : Rename s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Rebind ctx1.env f ctx2.env) (T : Ty .shape s1) :
+  (ρ : Rebind ctx1.env f ctx2.env) (hh : ctx1.handlers = ctx2.handlers) (T : Ty .shape s1) :
   Ty.shape_val_denot ctx1 T ≈ Ty.shape_val_denot ctx2 (T.rename f) :=
   match T with
   | .top => by
@@ -122,7 +122,7 @@ def rebind_shape_val_denot
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename]
   | .arrow T1 T2 => by
-    have ih1 := rebind_capt_val_denot ρ T1
+    have ih1 := rebind_capt_val_denot ρ hh T1
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename]
     intro hwf_e
@@ -141,7 +141,7 @@ def rebind_shape_val_denot
             case capt C S =>
               have ih2 := rebind_exi_exp_denot
                 (ctx1:=ctx1.extend_var arg) (ctx2:=ctx2.extend_var arg)
-                (ρ.liftVar (x:=arg)) T2
+                (ρ.liftVar (x:=arg)) hh T2
               have harg' := (ih1 _ _).mpr harg
               specialize hd arg H' hsub harg'
               -- The capability set uses expand_captures
@@ -161,14 +161,14 @@ def rebind_shape_val_denot
             case capt C S =>
               have ih2 := rebind_exi_exp_denot
                 (ctx1:=ctx1.extend_var arg) (ctx2:=ctx2.extend_var arg)
-                (ρ.liftVar (x:=arg)) T2
+                (ρ.liftVar (x:=arg)) hh T2
               have harg' := (ih1 _ _).mp harg
               specialize hd arg H' hsub harg'
               -- The capability set uses expand_captures
               exact (ih2 (expand_captures s0.heap cs0 ∪
                          (reachability_of_loc H'.heap arg)) H' _).mpr hd
   | .poly T1 T2 => by
-    have ih1 := rebind_shape_val_denot ρ T1
+    have ih1 := rebind_shape_val_denot ρ hh T1
     intro A s0 e0
     simp [Ty.shape_val_denot, Ty.rename]
     intro hwf_e
@@ -185,7 +185,7 @@ def rebind_shape_val_denot
           · intro H' denot hsub hproper himply
             have ih2 := rebind_exi_exp_denot
               (ctx1:=ctx1.extend_tvar denot) (ctx2:=ctx2.extend_tvar denot)
-              (ρ.liftTVar (d:=denot)) T2
+              (ρ.liftTVar (d:=denot)) hh T2
             have himply' : denot.ImplyAfter H' (Ty.shape_val_denot ctx1 T1) := by
               intro H'' hsub' A' e hdenot
               exact (ih1 _ _ _).mpr (himply H'' hsub' A' e hdenot)
@@ -203,7 +203,7 @@ def rebind_shape_val_denot
           · intro H' denot hsub hproper himply
             have ih2 := rebind_exi_exp_denot
               (ctx1:=ctx1.extend_tvar denot) (ctx2:=ctx2.extend_tvar denot)
-              (ρ.liftTVar (d:=denot)) T2
+              (ρ.liftTVar (d:=denot)) hh T2
             have himply' : denot.ImplyAfter H' (Ty.shape_val_denot ctx2 (T1.rename f)) := by
               intro H'' hsub' A' e hdenot
               exact (ih1 _ _ _).mp (himply H'' hsub' A' e hdenot)
@@ -227,7 +227,7 @@ def rebind_shape_val_denot
           · intro H' CS hwf hsub hsub_bound
             have ih2 := rebind_exi_exp_denot
               (ctx1:=ctx1.extend_cvar CS) (ctx2:=ctx2.extend_cvar CS)
-              (ρ.liftCVar CS) T
+              (ρ.liftCVar CS) hh T
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mp hd
     · intro h
@@ -242,7 +242,7 @@ def rebind_shape_val_denot
           · intro H' CS hwf hsub hsub_bound
             have ih2 := rebind_exi_exp_denot
               (ctx1:=ctx1.extend_cvar CS) (ctx2:=ctx2.extend_cvar CS)
-              (ρ.liftCVar CS) T
+              (ρ.liftCVar CS) hh T
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
   | .label T => by
@@ -252,12 +252,12 @@ def rebind_shape_val_denot
 
 def rebind_capt_val_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {f : Rename s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Rebind ctx1.env f ctx2.env) (T : Ty .capt s1) :
+  (ρ : Rebind ctx1.env f ctx2.env) (hh : ctx1.handlers = ctx2.handlers) (T : Ty .capt s1) :
   Ty.capt_val_denot ctx1 T ≈ Ty.capt_val_denot ctx2 (T.rename f) :=
   match T with
   | .capt C S => by
     have hC := rebind_captureset_denot ρ C
-    have hS := rebind_shape_val_denot ρ S
+    have hS := rebind_shape_val_denot ρ hh S
     intro s e
     simp [Ty.capt_val_denot, Ty.rename]
     rw [← hC]
@@ -282,11 +282,11 @@ def rebind_capt_val_denot
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {f : Rename s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Rebind ctx1.env f ctx2.env) (T : Ty .exi s1) :
+  (ρ : Rebind ctx1.env f ctx2.env) (hh : ctx1.handlers = ctx2.handlers) (T : Ty .exi s1) :
   Ty.exi_val_denot ctx1 T ≈ Ty.exi_val_denot ctx2 (T.rename f) :=
   match T with
   | .typ T => by
-    have ih := rebind_capt_val_denot ρ T
+    have ih := rebind_capt_val_denot ρ hh T
     intro s e
     simp [Ty.exi_val_denot, Ty.rename]
     exact ih s e
@@ -307,7 +307,7 @@ def rebind_exi_val_denot
         intro _hwf
         have ih := rebind_capt_val_denot
           (ctx1:=ctx1.extend_cvar CS) (ctx2:=ctx2.extend_cvar CS)
-          (ρ.liftCVar CS) T
+          (ρ.liftCVar CS) hh T
         exact ih s (Exp.var y)
       all_goals {
         -- resolve returned non-pack
@@ -316,18 +316,20 @@ def rebind_exi_val_denot
 
 def rebind_exi_exp_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {f : Rename s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Rebind ctx1.env f ctx2.env) (T : Ty .exi s1) :
+  (ρ : Rebind ctx1.env f ctx2.env) (hh : ctx1.handlers = ctx2.handlers) (T : Ty .exi s1) :
   Ty.exi_exp_denot ctx1 T ≈ Ty.exi_exp_denot ctx2 (T.rename f) := by
-  have ih := rebind_exi_val_denot ρ T
+  have ih := rebind_exi_val_denot ρ hh T
   intro A s e
   simp [Ty.exi_exp_denot]
   constructor
-  · intro h
-    apply eval_post_monotonic _ h
+  · intro h hws
+    rw [← hh] at hws
+    apply eval_post_monotonic _ (h hws)
     apply Denot.imply_to_entails
     exact (Denot.equiv_to_imply ih).1
-  · intro h
-    apply eval_post_monotonic _ h
+  · intro h hws
+    rw [hh] at hws
+    apply eval_post_monotonic _ (h hws)
     apply Denot.imply_to_entails
     exact (Denot.equiv_to_imply ih).2
 
@@ -348,49 +350,49 @@ def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} :
 lemma weaken_shape_val_denot {ctx : DenotCtx s} {T : Ty .shape s} :
   Ty.shape_val_denot ctx T ≈
     Ty.shape_val_denot (ctx.extend_var x) (T.rename Rename.succ) := by
-  apply rebind_shape_val_denot (ρ:=Rebind.weaken) (T:=T)
+  exact rebind_shape_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_var x) Rebind.weaken rfl T
 
 lemma weaken_capt_val_denot {ctx : DenotCtx s} {T : Ty .capt s} :
   Ty.capt_val_denot ctx T ≈
     Ty.capt_val_denot (ctx.extend_var x) (T.rename Rename.succ) := by
-  apply rebind_capt_val_denot (ρ:=Rebind.weaken) (T:=T)
+  exact rebind_capt_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_var x) Rebind.weaken rfl T
 
 lemma weaken_exi_val_denot {ctx : DenotCtx s} {T : Ty .exi s} :
   Ty.exi_val_denot ctx T ≈
     Ty.exi_val_denot (ctx.extend_var x) (T.rename Rename.succ) := by
-  apply rebind_exi_val_denot (ρ:=Rebind.weaken) (T:=T)
+  exact rebind_exi_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_var x) Rebind.weaken rfl T
 
 lemma tweaken_shape_val_denot {ctx : DenotCtx s} {T : Ty .shape s} :
   Ty.shape_val_denot ctx T ≈
     Ty.shape_val_denot (ctx.extend_tvar d) (T.rename Rename.succ) := by
-  apply rebind_shape_val_denot (ρ:=Rebind.tweaken) (T:=T)
+  exact rebind_shape_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_tvar d) Rebind.tweaken rfl T
 
 lemma tweaken_capt_val_denot {ctx : DenotCtx s} {T : Ty .capt s} :
   Ty.capt_val_denot ctx T ≈
     Ty.capt_val_denot (ctx.extend_tvar d) (T.rename Rename.succ) := by
-  apply rebind_capt_val_denot (ρ:=Rebind.tweaken) (T:=T)
+  exact rebind_capt_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_tvar d) Rebind.tweaken rfl T
 
 lemma tweaken_exi_val_denot {ctx : DenotCtx s} {T : Ty .exi s} :
   Ty.exi_val_denot ctx T ≈
     Ty.exi_val_denot (ctx.extend_tvar d) (T.rename Rename.succ) := by
-  apply rebind_exi_val_denot (ρ:=Rebind.tweaken) (T:=T)
+  exact rebind_exi_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_tvar d) Rebind.tweaken rfl T
 
 lemma cweaken_shape_val_denot {ctx : DenotCtx s} {cs : CaptureSet {}}
   {T : Ty .shape s} :
   Ty.shape_val_denot ctx T ≈
     Ty.shape_val_denot (ctx.extend_cvar cs) (T.rename Rename.succ) := by
-  apply rebind_shape_val_denot (ρ:=Rebind.cweaken) (T:=T)
+  exact rebind_shape_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_cvar cs) Rebind.cweaken rfl T
 
 lemma cweaken_capt_val_denot {ctx : DenotCtx s} {cs : CaptureSet {}}
   {T : Ty .capt s} :
   Ty.capt_val_denot ctx T ≈
     Ty.capt_val_denot (ctx.extend_cvar cs) (T.rename Rename.succ) := by
-  apply rebind_capt_val_denot (ρ:=Rebind.cweaken) (T:=T)
+  exact rebind_capt_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_cvar cs) Rebind.cweaken rfl T
 
 lemma cweaken_exi_val_denot {ctx : DenotCtx s} {cs : CaptureSet {}}
   {T : Ty .exi s} :
   Ty.exi_val_denot ctx T ≈
     Ty.exi_val_denot (ctx.extend_cvar cs) (T.rename Rename.succ) := by
-  apply rebind_exi_val_denot (ρ:=Rebind.cweaken) (T:=T)
+  exact rebind_exi_val_denot (ctx1:=ctx) (ctx2:=ctx.extend_cvar cs) Rebind.cweaken rfl T
 
 end CaplessK
