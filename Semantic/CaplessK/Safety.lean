@@ -63,6 +63,9 @@ def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
 | N+1 => ((TypeEnv.platform_of N).extend_cvar (.var (.free N) .top)).extend_var N
 
+def DenotCtx.platform_of (N : Nat) : DenotCtx (Sig.platform_of N) :=
+  ⟨TypeEnv.platform_of N⟩
+
 /-- The platform heap is well-formed: it contains only capabilities, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap where
   wf_val := by
@@ -133,10 +136,10 @@ theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   · exact hlookup.2
 
 /-- EnvTyping for platform is monotonic: platform N types in platform M memory when M ≥ N. -/
-theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
+theorem env_typing_platform_monotonic {Γ : Ctx s} {ctx : DenotCtx s} {N M : Nat}
   (hNM : N ≤ M)
-  (ht : EnvTyping Γ env (Memory.platform_of N)) :
-  EnvTyping Γ env (Memory.platform_of M) := by
+  (ht : EnvTyping Γ ctx (Memory.platform_of N)) :
+  EnvTyping Γ ctx (Memory.platform_of M) := by
   -- Use the existing monotonicity theorem for EnvTyping
   apply env_typing_monotonic
   · exact ht
@@ -145,16 +148,16 @@ theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
 theorem env_typing_of_platform {N : Nat} :
   EnvTyping
     (Ctx.platform_of N)
-    (TypeEnv.platform_of N)
+    (DenotCtx.platform_of N)
     (Memory.platform_of N) := by
   induction N with
   | zero =>
     -- Base case: empty environment
-    unfold Ctx.platform_of TypeEnv.platform_of
+    unfold Ctx.platform_of DenotCtx.platform_of TypeEnv.platform_of
     exact True.intro
   | succ N ih =>
     -- Inductive case: add capture variable C and term variable x
-    unfold Ctx.platform_of TypeEnv.platform_of EnvTyping
+    unfold Ctx.platform_of DenotCtx.platform_of TypeEnv.platform_of EnvTyping
     simp [TypeEnv.extend_cvar, TypeEnv.extend_var]
     constructor
     · -- Term variable x : .capt (.cvar .here) .cap at location N
@@ -171,7 +174,7 @@ theorem env_typing_of_platform {N : Nat} :
           simp
         · constructor
           · -- Capture set after substitution is well-formed
-            simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
+            simp [CaptureSet.subst]
             apply CaptureSet.WfInHeap.wf_var_free
             show (Heap.platform_of (N + 1)) N = some (.capability .basic)
             unfold Heap.platform_of
@@ -194,9 +197,8 @@ theorem env_typing_of_platform {N : Nat} :
                   unfold Memory.lookup Memory.platform_of Heap.platform_of
                   simp
                 · -- N is in the authority set from capture set denot
-                  simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
-                    TypeEnv.lookup_cvar, TypeEnv.lookup, Memory.platform_of,
-                    CaptureSet.proj, CaptureSet.ground_denot]
+                  simp only [CaptureSet.denot, CaptureSet.subst,
+                    Memory.platform_of]
                   -- The kind is intersect .top .top = .top
                   change N ∈ (reachability_of_loc (Heap.platform_of (N+1)) N).proj
                     (Heap.platform_of (N+1)) (CapKind.top.intersect CapKind.top)
@@ -399,7 +401,7 @@ theorem BVar.level_cvar_bound {c : BVar (Sig.platform_of N) .cvar} : c.level / 2
 theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
   (hwf : C.WfInHeap (Heap.platform_of N))
   (htop : C.AllKindsTop) :
-  C.denot (TypeEnv.platform_of N) (Memory.platform_of N) = C.to_platform_capability_set := by
+  C.denot (DenotCtx.platform_of N) (Memory.platform_of N) = C.to_platform_capability_set := by
   unfold CaptureSet.denot
   induction C with
   | empty =>
@@ -420,6 +422,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
     cases x with
     | bound b =>
+      simp only [Subst.from_DenotCtx, DenotCtx.platform_of]
       unfold Subst.from_TypeEnv Var.subst
       simp only [CaptureSet.ground_denot]
       rw [TypeEnv.lookup_var_platform]
@@ -438,6 +441,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     | free n =>
       cases hwf with
       | wf_var_free hlookup =>
+        simp only [Subst.from_DenotCtx, DenotCtx.platform_of]
         unfold Subst.from_TypeEnv Var.subst
         simp only [CaptureSet.ground_denot]
         unfold Memory.platform_of
@@ -458,7 +462,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     -- Capture variable
     simp only [CaptureSet.AllKindsTop] at htop
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
-    simp only [Subst.from_TypeEnv]
+    simp only [Subst.from_DenotCtx, DenotCtx.platform_of, Subst.from_TypeEnv]
     rw [TypeEnv.lookup_cvar_platform]
     rw [CaptureSet.ground_denot_proj_eq]
     unfold CaptureSet.ground_denot Memory.platform_of
@@ -483,20 +487,20 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   (ht : SemanticTyping C (Ctx.platform_of N) e E)
   (hclosed : C.IsClosed)
   (htop : C.AllKindsTop) :
-  (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform
+  (e.subst (Subst.from_DenotCtx (DenotCtx.platform_of N))).SafeWithPlatform
     N
     (C.to_platform_capability_set) := by
   unfold Exp.SafeWithPlatform
   intro M1 e1 hred
   -- Apply semantic typing with platform environment
-  have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N) env_typing_of_platform
+  have hdenot := ht (DenotCtx.platform_of N) (Memory.platform_of N) env_typing_of_platform
   -- Derive well-formedness from closedness
   have hwf : C.WfInHeap (Heap.platform_of N) := CaptureSet.wf_of_closed hclosed
   -- Rewrite using the equality of capability sets
   rw [capture_set_denot_eq_platform hwf htop] at hdenot
   -- Preservation: Eval is preserved under reduction
   have heval' : Eval C.to_platform_capability_set M1 e1
-      (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
+      (Ty.exi_val_denot (DenotCtx.platform_of N) E).as_mpost := by
     simp only [HasExpDenotation.interp] at hdenot
     unfold Ty.exi_exp_denot at hdenot
     apply reduce_preserves_eval hdenot hred CapabilitySet.subset_refl
