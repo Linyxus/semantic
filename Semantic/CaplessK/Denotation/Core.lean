@@ -244,13 +244,13 @@ def TypeEnv.lookup_cvar (Γ : TypeEnv s) (x : BVar s .cvar) : CaptureSet {} :=
   | .cvar cs => cs
 
 def DenotCtx.extend_var (ctx : DenotCtx s) (x : Nat) : DenotCtx (s,x) :=
-  ⟨ctx.env.extend_var x⟩
+  ⟨ctx.env.extend_var x, ctx.handlers⟩
 
 def DenotCtx.extend_tvar (ctx : DenotCtx s) (T : PreDenot) : DenotCtx (s,X) :=
-  ⟨ctx.env.extend_tvar T⟩
+  ⟨ctx.env.extend_tvar T, ctx.handlers⟩
 
 def DenotCtx.extend_cvar (ctx : DenotCtx s) (ground : CaptureSet {}) : DenotCtx (s,C) :=
-  ⟨ctx.env.extend_cvar ground⟩
+  ⟨ctx.env.extend_cvar ground, ctx.handlers⟩
 
 def DenotCtx.lookup_var (ctx : DenotCtx s) (x : BVar s .var) : Nat :=
   ctx.env.lookup_var x
@@ -261,7 +261,7 @@ def DenotCtx.lookup_tvar (ctx : DenotCtx s) (x : BVar s .tvar) : PreDenot :=
 def DenotCtx.lookup_cvar (ctx : DenotCtx s) (x : BVar s .cvar) : CaptureSet {} :=
   ctx.env.lookup_cvar x
 
-def DenotCtx.empty : DenotCtx {} := ⟨TypeEnv.empty⟩
+def DenotCtx.empty : DenotCtx {} := ⟨TypeEnv.empty, Finmap.empty⟩
 
 @[simp]
 theorem TypeEnv.lookup_cvar_extend_var {Γ : TypeEnv s} {x : Nat} {c : BVar s .cvar} :
@@ -560,18 +560,18 @@ instance instCaptureBoundHasDenotation :
   interp := CaptureBound.denot
 
 def EnvTyping : Ctx s -> DenotCtx s -> Memory -> Prop
-| .empty, ⟨.empty⟩, _ => True
-| .push Γ (.var T), ⟨.extend env (.var n)⟩, m =>
-  let ctx : DenotCtx _ := ⟨env⟩
+| .empty, ⟨.empty, _⟩, _ => True
+| .push Γ (.var T), ⟨.extend env (.var n), handlers⟩, m =>
+  let ctx : DenotCtx _ := ⟨env, handlers⟩
   ⟦T⟧_[ctx] m (.var (.free n)) ∧
   EnvTyping Γ ctx m
-| .push Γ (.tvar S), ⟨.extend env (.tvar denot)⟩, m =>
-  let ctx : DenotCtx _ := ⟨env⟩
+| .push Γ (.tvar S), ⟨.extend env (.tvar denot), handlers⟩, m =>
+  let ctx : DenotCtx _ := ⟨env, handlers⟩
   denot.is_proper ∧
   denot.ImplyAfter m ⟦S⟧_[ctx] ∧
   EnvTyping Γ ctx m
-| .push Γ (.cvar B), ⟨.extend env (.cvar cs)⟩, m =>
-  let ctx : DenotCtx _ := ⟨env⟩
+| .push Γ (.cvar B), ⟨.extend env (.cvar cs), handlers⟩, m =>
+  let ctx : DenotCtx _ := ⟨env, handlers⟩
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_DenotCtx ctx)).WfInHeap m.heap) ∧
   (CapabilitySet.BoundedBy m.heap (cs.ground_denot m) (⟦B⟧_[ctx] m)) ∧
@@ -870,7 +870,7 @@ theorem from_DenotCtx_wf_in_heap
   | empty =>
     -- Base case: empty context has no variables
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         constructor
@@ -880,7 +880,7 @@ theorem from_DenotCtx_wf_in_heap
   | push Γ' k ih =>
     -- Inductive case: handle each kind of binding
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend ρ' info =>
         cases k with
@@ -1197,14 +1197,14 @@ theorem typed_env_is_monotonic
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         constructor
         · intro x; cases x
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -1257,7 +1257,7 @@ theorem typed_env_is_transparent
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         simp [DenotCtx.is_transparent, DenotCtx.lookup_tvar]
@@ -1265,7 +1265,7 @@ theorem typed_env_is_transparent
         cases x
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -1318,7 +1318,7 @@ theorem typed_env_is_bool_independent
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         simp [DenotCtx.is_bool_independent, DenotCtx.lookup_tvar]
@@ -1326,7 +1326,7 @@ theorem typed_env_is_bool_independent
         cases x
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -1379,7 +1379,7 @@ theorem typed_env_is_reachability_safe
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         simp [DenotCtx.is_reachability_safe, DenotCtx.lookup_tvar]
@@ -1387,7 +1387,7 @@ theorem typed_env_is_reachability_safe
         cases x
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -1439,7 +1439,7 @@ theorem typed_env_is_reachability_monotonic
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         simp [DenotCtx.is_reachability_monotonic, DenotCtx.lookup_tvar]
@@ -1447,7 +1447,7 @@ theorem typed_env_is_reachability_monotonic
         cases x
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -1499,7 +1499,7 @@ theorem typed_env_is_implying_wf
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         simp [DenotCtx.is_implying_wf, DenotCtx.lookup_tvar]
@@ -1507,7 +1507,7 @@ theorem typed_env_is_implying_wf
         cases x
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -1559,14 +1559,14 @@ theorem typed_env_is_tight
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty =>
         intro X
         cases X
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -2394,12 +2394,12 @@ theorem env_typing_monotonic
   induction Γ with
   | empty =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | empty => trivial
   | push Γ k ih =>
     cases ctx with
-    | mk env =>
+    | mk env handlers =>
       cases env with
       | extend env' info =>
         cases k with
@@ -2440,7 +2440,7 @@ theorem env_typing_monotonic
               · constructor
                 · -- Need: BoundedBy mem2.heap (cs.ground_denot mem2) (⟦B⟧_[⟨env'⟩] mem2)
                   -- Have: BoundedBy mem1.heap (cs.ground_denot mem1) (⟦B⟧_[⟨env'⟩] mem1)
-                  let ctx' : DenotCtx _ := ⟨env'⟩
+                  let ctx' : DenotCtx _ := ⟨env', handlers⟩
                   -- Get cs.ground_denot mem1 = cs.ground_denot mem2
                   have h_denot_eq := ground_denot_is_monotonic hwf hmem
                   -- Get ⟦B⟧_[ctx'] mem1 = ⟦B⟧_[ctx'] mem2

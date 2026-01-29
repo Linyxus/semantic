@@ -64,7 +64,7 @@ def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | N+1 => ((TypeEnv.platform_of N).extend_cvar (.var (.free N) .top)).extend_var N
 
 def DenotCtx.platform_of (N : Nat) : DenotCtx (Sig.platform_of N) :=
-  ⟨TypeEnv.platform_of N⟩
+  ⟨TypeEnv.platform_of N, Finmap.empty⟩
 
 /-- The platform heap is well-formed: it contains only capabilities, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap where

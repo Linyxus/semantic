@@ -139,7 +139,9 @@ def rebind_shape_val_denot
           · intro arg H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              have ih2 := rebind_exi_exp_denot
+                (ctx1:=ctx1.extend_var arg) (ctx2:=ctx2.extend_var arg)
+                (ρ.liftVar (x:=arg)) T2
               have harg' := (ih1 _ _).mpr harg
               specialize hd arg H' hsub harg'
               -- The capability set uses expand_captures
@@ -157,7 +159,9 @@ def rebind_shape_val_denot
           · intro arg H' hsub harg
             cases T1
             case capt C S =>
-              have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg)) T2
+              have ih2 := rebind_exi_exp_denot
+                (ctx1:=ctx1.extend_var arg) (ctx2:=ctx2.extend_var arg)
+                (ρ.liftVar (x:=arg)) T2
               have harg' := (ih1 _ _).mp harg
               specialize hd arg H' hsub harg'
               -- The capability set uses expand_captures
@@ -179,7 +183,9 @@ def rebind_shape_val_denot
         · constructor
           · exact hR0_sub
           · intro H' denot hsub hproper himply
-            have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
+            have ih2 := rebind_exi_exp_denot
+              (ctx1:=ctx1.extend_tvar denot) (ctx2:=ctx2.extend_tvar denot)
+              (ρ.liftTVar (d:=denot)) T2
             have himply' : denot.ImplyAfter H' (Ty.shape_val_denot ctx1 T1) := by
               intro H'' hsub' A' e hdenot
               exact (ih1 _ _ _).mpr (himply H'' hsub' A' e hdenot)
@@ -195,7 +201,9 @@ def rebind_shape_val_denot
         · constructor
           · exact hR0_sub
           · intro H' denot hsub hproper himply
-            have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2
+            have ih2 := rebind_exi_exp_denot
+              (ctx1:=ctx1.extend_tvar denot) (ctx2:=ctx2.extend_tvar denot)
+              (ρ.liftTVar (d:=denot)) T2
             have himply' : denot.ImplyAfter H' (Ty.shape_val_denot ctx2 (T1.rename f)) := by
               intro H'' hsub' A' e hdenot
               exact (ih1 _ _ _).mp (himply H'' hsub' A' e hdenot)
@@ -217,7 +225,9 @@ def rebind_shape_val_denot
         · constructor
           · exact hR0_sub
           · intro H' CS hwf hsub hsub_bound
-            have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
+            have ih2 := rebind_exi_exp_denot
+              (ctx1:=ctx1.extend_cvar CS) (ctx2:=ctx2.extend_cvar CS)
+              (ρ.liftCVar CS) T
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mp hd
     · intro h
@@ -230,7 +240,9 @@ def rebind_shape_val_denot
         · constructor
           · exact hR0_sub
           · intro H' CS hwf hsub hsub_bound
-            have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS) T
+            have ih2 := rebind_exi_exp_denot
+              (ctx1:=ctx1.extend_cvar CS) (ctx2:=ctx2.extend_cvar CS)
+              (ρ.liftCVar CS) T
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
   | .label T => by
@@ -293,7 +305,9 @@ def rebind_exi_val_denot
         simp
         -- Goal: CS.WfInHeap s.heap → (... ↔ ...)
         intro _hwf
-        have ih := rebind_capt_val_denot (ρ.liftCVar CS) T
+        have ih := rebind_capt_val_denot
+          (ctx1:=ctx1.extend_cvar CS) (ctx2:=ctx2.extend_cvar CS)
+          (ρ.liftCVar CS) T
         exact ih s (Exp.var y)
       all_goals {
         -- resolve returned non-pack

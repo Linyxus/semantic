@@ -8,19 +8,19 @@ def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
   | .free n => n
   | .bound x => env.lookup_var x
 
-structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
+structure Retype (ctx1 : DenotCtx s1) (σ : Subst s1 s2) (ctx2 : DenotCtx s2) where
   var :
     ∀ (x : BVar s1 .var),
-      env1.lookup_var x = interp_var env2 (σ.var x)
+      ctx1.env.lookup_var x = interp_var ctx2.env (σ.var x)
 
   tvar :
     ∀ (X : BVar s1 .tvar),
-      env1.lookup_tvar X ≈ Ty.shape_val_denot (⟨env2⟩ : DenotCtx s2) (σ.tvar X)
+      ctx1.env.lookup_tvar X ≈ Ty.shape_val_denot ctx2 (σ.tvar X)
 
   cvar :
     ∀ (C : BVar s1 .cvar) (K : CapKind),
-      (env1.lookup_cvar C).proj K =
-        (σ.cvar C K).subst (Subst.from_DenotCtx (⟨env2⟩ : DenotCtx s2))
+      (ctx1.env.lookup_cvar C).proj K =
+        (σ.cvar C K).subst (Subst.from_DenotCtx ctx2)
 
 lemma weaken_interp_var {x : Var .var s} :
   interp_var env x = interp_var (env.extend_var n) (x.rename Rename.succ) := by
@@ -36,24 +36,24 @@ lemma cweaken_interp_var {cs : CaptureSet {}} {x : Var .var s} :
 
 theorem Retype.liftVar
   {x : Nat}
-  (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_var x) (σ.lift) (env2.extend_var x) where
+  (ρ : Retype ctx1 σ ctx2) :
+  Retype (ctx1.extend_var x) (σ.lift) (ctx2.extend_var x) where
   var := fun
     | .here => rfl
     | .there y => by
       conv =>
         lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_var, TypeEnv.lookup]
+        simp [DenotCtx.extend_var, TypeEnv.extend_var, TypeEnv.lookup_var, TypeEnv.lookup]
       conv =>
         rhs
-        simp [Subst.lift]
+        simp [DenotCtx.extend_var, Subst.lift]
         simp [<-weaken_interp_var]
       exact ρ.var y
   tvar := fun
     | .there X => by
       conv =>
         lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
+        simp [DenotCtx.extend_var, TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
       conv =>
         rhs
         simp [Subst.lift]
@@ -61,31 +61,35 @@ theorem Retype.liftVar
       apply weaken_shape_val_denot
   cvar := fun
     | .there C => fun K => by
-      simp only [TypeEnv.lookup_cvar_extend_var, Subst.lift]
+      simp only [DenotCtx.extend_var, TypeEnv.lookup_cvar_extend_var, Subst.lift]
       rw [ρ.cvar C K]
       apply rebind_resolved_capture_set Rebind.weaken
 
 theorem Retype.liftTVar
   {d : PreDenot}
-  (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_tvar d) (σ.lift) (env2.extend_tvar d) where
+  (ρ : Retype ctx1 σ ctx2) :
+  Retype (ctx1.extend_tvar d) (σ.lift) (ctx2.extend_tvar d) where
   var := fun
     | .there x => by
-      conv => lhs; simp [TypeEnv.extend_tvar, TypeEnv.lookup_var, TypeEnv.lookup]
-      conv => rhs; simp [Subst.lift, <-tweaken_interp_var]
+      conv => lhs; simp [DenotCtx.extend_tvar, TypeEnv.extend_tvar,
+        TypeEnv.lookup_var, TypeEnv.lookup]
+      conv => rhs; simp [DenotCtx.extend_tvar, Subst.lift, <-tweaken_interp_var]
       exact ρ.var x
   tvar := fun
     | .here => by
-      conv => lhs; simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      conv => lhs; simp [DenotCtx.extend_tvar, TypeEnv.extend_tvar,
+        TypeEnv.lookup_tvar, TypeEnv.lookup]
       conv =>
         rhs
-        simp [Subst.lift, Ty.shape_val_denot]
-        simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+        simp [Subst.lift, Ty.shape_val_denot, DenotCtx.lookup_tvar]
+        simp [DenotCtx.extend_tvar, TypeEnv.extend_tvar,
+          TypeEnv.lookup_tvar, TypeEnv.lookup]
       apply PreDenot.equiv_refl
     | .there X => by
       conv =>
         lhs
-        simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+        simp [DenotCtx.extend_tvar, TypeEnv.extend_tvar,
+          TypeEnv.lookup_tvar, TypeEnv.lookup]
       conv =>
         rhs
         simp [Subst.lift]
@@ -93,24 +97,26 @@ theorem Retype.liftTVar
       apply tweaken_shape_val_denot
   cvar := fun
     | .there C => fun K => by
-      simp only [TypeEnv.lookup_cvar_extend_tvar, Subst.lift]
+      simp only [DenotCtx.extend_tvar, TypeEnv.lookup_cvar_extend_tvar, Subst.lift]
       rw [ρ.cvar C K]
       apply rebind_resolved_capture_set Rebind.tweaken
 
 theorem Retype.liftCVar
   {cs : CaptureSet {}}
-  (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_cvar cs) (σ.lift) (env2.extend_cvar cs) where
+  (ρ : Retype ctx1 σ ctx2) :
+  Retype (ctx1.extend_cvar cs) (σ.lift) (ctx2.extend_cvar cs) where
   var := fun
     | .there x => by
-      conv => lhs; simp [TypeEnv.extend_cvar, TypeEnv.lookup_var, TypeEnv.lookup]
-      conv => rhs; simp [Subst.lift, <-cweaken_interp_var]
+      conv => lhs; simp [DenotCtx.extend_cvar, TypeEnv.extend_cvar,
+        TypeEnv.lookup_var, TypeEnv.lookup]
+      conv => rhs; simp [DenotCtx.extend_cvar, Subst.lift, <-cweaken_interp_var]
       exact ρ.var x
   tvar := fun
     | .there X => by
       conv =>
         lhs
-        simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+        simp [DenotCtx.extend_cvar, TypeEnv.extend_cvar,
+          TypeEnv.lookup_tvar, TypeEnv.lookup]
       conv =>
         rhs
         simp [Subst.lift]
@@ -118,10 +124,12 @@ theorem Retype.liftCVar
       apply cweaken_shape_val_denot
   cvar := fun
     | .here => fun K => by
-      simp only [TypeEnv.lookup_cvar_extend_cvar_here, Subst.lift, CaptureSet.subst,
+      simp only [DenotCtx.extend_cvar, TypeEnv.lookup_cvar_extend_cvar_here,
+        Subst.lift, CaptureSet.subst,
         Subst.from_DenotCtx, Subst.from_TypeEnv, TypeEnv.lookup_cvar_extend_cvar_here]
     | .there C => fun K => by
-      simp only [TypeEnv.lookup_cvar_extend_cvar_there, Subst.lift, Subst.from_DenotCtx]
+      simp only [DenotCtx.extend_cvar, TypeEnv.lookup_cvar_extend_cvar_there,
+        Subst.lift, Subst.from_DenotCtx]
       rw [ρ.cvar C K]
       apply rebind_resolved_capture_set Rebind.cweaken
 
@@ -129,7 +137,7 @@ mutual
 
 def retype_shape_val_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {σ : Subst s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Retype ctx1.env σ ctx2.env) (T : Ty .shape s1) :
+  (ρ : Retype ctx1 σ ctx2) (T : Ty .shape s1) :
   Ty.shape_val_denot ctx1 T ≈ Ty.shape_val_denot ctx2 (T.subst σ) :=
   match T with
   | .top => by
@@ -268,7 +276,7 @@ def retype_shape_val_denot
 
 def retype_capturebound_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {σ : Subst s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Retype ctx1.env σ ctx2.env) (B : CaptureBound s1) :
+  (ρ : Retype ctx1 σ ctx2) (B : CaptureBound s1) :
   CaptureBound.denot ctx1 B = CaptureBound.denot ctx2 (B.subst σ) := by
   cases B
   case unbound => rfl
@@ -279,9 +287,9 @@ def retype_capturebound_denot
     exact congrFun (retype_captureset_denot ρ C) m
 
 def retype_resolved_capture_set
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (C : CaptureSet s1) :
-  C.subst (Subst.from_TypeEnv env1) = (C.subst σ).subst (Subst.from_TypeEnv env2) := by
+  {s1 s2 : Sig} {ctx1 : DenotCtx s1} {σ : Subst s1 s2} {ctx2 : DenotCtx s2}
+  (ρ : Retype ctx1 σ ctx2) (C : CaptureSet s1) :
+  C.subst (Subst.from_TypeEnv ctx1.env) = (C.subst σ).subst (Subst.from_TypeEnv ctx2.env) := by
   induction C
   case empty => rfl
   case union C1 C2 ih1 ih2 =>
@@ -310,7 +318,7 @@ def retype_resolved_capture_set
 
 def retype_captureset_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {σ : Subst s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Retype ctx1.env σ ctx2.env) (C : CaptureSet s1) :
+  (ρ : Retype ctx1 σ ctx2) (C : CaptureSet s1) :
   CaptureSet.denot ctx1 C = CaptureSet.denot ctx2 (C.subst σ) := by
   unfold CaptureSet.denot
   congr 1
@@ -318,7 +326,7 @@ def retype_captureset_denot
 
 def retype_capt_val_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {σ : Subst s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Retype ctx1.env σ ctx2.env) (T : Ty .capt s1) :
+  (ρ : Retype ctx1 σ ctx2) (T : Ty .capt s1) :
   Ty.capt_val_denot ctx1 T ≈ Ty.capt_val_denot ctx2 (T.subst σ) :=
   match T with
   | .capt C S => by
@@ -346,7 +354,7 @@ def retype_capt_val_denot
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {σ : Subst s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Retype ctx1.env σ ctx2.env) (T : Ty .exi s1) :
+  (ρ : Retype ctx1 σ ctx2) (T : Ty .exi s1) :
   Ty.exi_val_denot ctx1 T ≈ Ty.exi_val_denot ctx2 (T.subst σ) :=
   match T with
   | .typ T => by
@@ -378,7 +386,7 @@ def retype_exi_val_denot
 
 def retype_exi_exp_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {σ : Subst s1 s2} {ctx2 : DenotCtx s2}
-  (ρ : Retype ctx1.env σ ctx2.env) (T : Ty .exi s1) :
+  (ρ : Retype ctx1 σ ctx2) (T : Ty .exi s1) :
   Ty.exi_exp_denot ctx1 T ≈ Ty.exi_exp_denot ctx2 (T.subst σ) := by
   have ih := retype_exi_val_denot ρ T
   intro A s e
@@ -395,17 +403,19 @@ def retype_exi_exp_denot
 
 end
 
-def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
+def Retype.open_arg {ctx : DenotCtx s} {y : Var .var s} :
   Retype
-    (env.extend_var (interp_var env y))
+    (ctx.extend_var (interp_var ctx.env y))
     (Subst.openVar y)
-    env where
-  var := fun x => by cases x <;> rfl
+    ctx where
+  var := fun x => by
+    simp only [DenotCtx.extend_var]
+    cases x <;> rfl
   tvar := fun
     | .there X => by
       conv =>
         lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
+        simp [DenotCtx.extend_var, TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
       conv =>
         rhs
         simp [Subst.openVar]
@@ -413,7 +423,7 @@ def Retype.open_arg {env : TypeEnv s} {y : Var .var s} :
       simp [Ty.shape_val_denot, DenotCtx.lookup_tvar, TypeEnv.lookup_tvar]
   cvar := fun
     | .there C => fun K => by
-      simp only [TypeEnv.extend_var, Subst.openVar, CaptureSet.subst,
+      simp only [DenotCtx.extend_var, TypeEnv.extend_var, Subst.openVar, CaptureSet.subst,
         Subst.from_DenotCtx, Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
 
 theorem open_arg_shape_val_denot {ctx : DenotCtx s} {y : Var .var s} {T : Ty .shape (s,x)} :
@@ -436,24 +446,28 @@ theorem open_arg_exi_exp_denot {ctx : DenotCtx s} {y : Var .var s} {T : Ty .exi 
     Ty.exi_exp_denot ctx (T.subst (Subst.openVar y)) := by
   apply retype_exi_exp_denot Retype.open_arg
 
-def Retype.open_targ {env : TypeEnv s} {S : Ty .shape s} :
+def Retype.open_targ {ctx : DenotCtx s} {S : Ty .shape s} :
   Retype
-    (env.extend_tvar (Ty.shape_val_denot ⟨env⟩ S))
+    (ctx.extend_tvar (Ty.shape_val_denot ctx S))
     (Subst.openTVar S)
-    env where
-  var := fun x => by cases x; rfl
+    ctx where
+  var := fun x => by
+    simp only [DenotCtx.extend_tvar]
+    cases x; rfl
   tvar := fun
     | .here => by
+      simp only [DenotCtx.extend_tvar]
       apply PreDenot.eq_to_equiv
       rfl
     | .there X => by
       apply PreDenot.eq_to_equiv
-      simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      simp [DenotCtx.extend_tvar, TypeEnv.extend_tvar,
+        TypeEnv.lookup_tvar, TypeEnv.lookup]
       simp [Subst.openTVar, Ty.shape_val_denot, DenotCtx.lookup_tvar]
       rfl
   cvar := fun
     | .there C => fun K => by
-      simp only [TypeEnv.extend_tvar, Subst.openTVar, CaptureSet.subst,
+      simp only [DenotCtx.extend_tvar, TypeEnv.extend_tvar, Subst.openTVar, CaptureSet.subst,
         Subst.from_DenotCtx, Subst.from_TypeEnv, TypeEnv.lookup_cvar, TypeEnv.lookup]
 
 theorem open_targ_shape_val_denot {ctx : DenotCtx s} {S : Ty .shape s} {T : Ty .shape (s,X)} :
@@ -476,24 +490,27 @@ theorem open_targ_exi_exp_denot {ctx : DenotCtx s} {S : Ty .shape s} {T : Ty .ex
     Ty.exi_exp_denot ctx (T.subst (Subst.openTVar S)) := by
   apply retype_exi_exp_denot Retype.open_targ
 
-def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} :
+def Retype.open_carg {ctx : DenotCtx s} {C : CaptureSet s} :
   Retype
-    (env.extend_cvar (C.subst (Subst.from_DenotCtx ⟨env⟩)))
+    (ctx.extend_cvar (C.subst (Subst.from_DenotCtx ctx)))
     (Subst.openCVar C)
-    env where
-  var := fun x => by cases x; rfl
+    ctx where
+  var := fun x => by
+    simp only [DenotCtx.extend_cvar]
+    cases x; rfl
   tvar := fun
     | .there X => by
       apply PreDenot.eq_to_equiv
-      simp [TypeEnv.lookup_tvar, Subst.openCVar, TypeEnv.extend_cvar,
-        TypeEnv.lookup, Ty.shape_val_denot, DenotCtx.lookup_tvar]
+      simp [DenotCtx.extend_cvar, TypeEnv.lookup_tvar, Subst.openCVar,
+        TypeEnv.extend_cvar, TypeEnv.lookup, Ty.shape_val_denot, DenotCtx.lookup_tvar]
   cvar := fun
     | .here => fun K => by
-      simp only [TypeEnv.lookup_cvar_extend_cvar_here, Subst.openCVar,
-        Subst.from_DenotCtx, Subst.from_TypeEnv]
+      simp only [DenotCtx.extend_cvar, TypeEnv.lookup_cvar_extend_cvar_here,
+        Subst.openCVar, Subst.from_DenotCtx, Subst.from_TypeEnv]
       exact CaptureSet.proj_subst_from_TypeEnv
     | .there c => fun K => by
-      simp only [TypeEnv.lookup_cvar_extend_cvar_there, Subst.openCVar, CaptureSet.subst,
+      simp only [DenotCtx.extend_cvar, TypeEnv.lookup_cvar_extend_cvar_there,
+        Subst.openCVar, CaptureSet.subst,
         Subst.from_DenotCtx, Subst.from_TypeEnv, TypeEnv.lookup_cvar_extend_cvar_there]
 
 theorem open_carg_shape_val_denot {ctx : DenotCtx s} {C : CaptureSet s} {T : Ty .shape (s,C)} :

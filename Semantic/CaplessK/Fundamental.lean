@@ -10,13 +10,13 @@ theorem typed_env_lookup_var
   case here =>
     -- The environment must match the context structure
     rename_i Γ0 T0
-    cases ctx with | mk env =>
+    cases ctx with | mk env handlers =>
     cases env; rename_i info0 env0
     cases info0; rename_i n
     simp only [EnvTyping] at hts
     simp [TypeEnv.lookup_var, TypeEnv.lookup]
     -- Apply weaken_capt_val_denot equivalence
-    have heqv := weaken_capt_val_denot (ctx:=⟨env0⟩) (x:=n) (T:=T0)
+    have heqv := weaken_capt_val_denot (ctx:=⟨env0, handlers⟩) (x:=n) (T:=T0)
     apply (Denot.equiv_to_imply heqv).1
     exact hts.1
   case there b =>
@@ -26,7 +26,7 @@ theorem typed_env_lookup_var
     case var =>
       -- binding is .var Tb
       rename_i Tb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info0 env0
       cases info0; rename_i n
       simp only [EnvTyping] at hts
@@ -36,33 +36,33 @@ theorem typed_env_lookup_var
       -- Show that lookup_var .there reduces correctly
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
       -- Apply weakening
-      have heqv := weaken_capt_val_denot (ctx:=⟨env0⟩) (x:=n) (T:=T0)
+      have heqv := weaken_capt_val_denot (ctx:=⟨env0, handlers⟩) (x:=n) (T:=T0)
       apply (Denot.equiv_to_imply heqv).1
       exact hih
     case tvar =>
       -- binding is .tvar Sb
       rename_i Sb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info0 env0
       cases info0; rename_i d
       simp only [EnvTyping] at hts
       obtain ⟨_, _, henv0⟩ := hts
       have hih := b henv0
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      have heqv := tweaken_capt_val_denot (ctx:=⟨env0⟩) (d:=d) (T:=T0)
+      have heqv := tweaken_capt_val_denot (ctx:=⟨env0, handlers⟩) (d:=d) (T:=T0)
       apply (Denot.equiv_to_imply heqv).1
       exact hih
     case cvar =>
       -- binding is .cvar Bb
       rename_i Bb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info0 env0
       cases info0; rename_i cs
       simp only [EnvTyping] at hts
       obtain ⟨_, _, _, henv0⟩ := hts
       have hih := b henv0
       simp [TypeEnv.lookup_var, TypeEnv.lookup]
-      have heqv := cweaken_capt_val_denot (ctx:=⟨env0⟩) (cs:=cs) (T:=T0)
+      have heqv := cweaken_capt_val_denot (ctx:=⟨env0, handlers⟩) (cs:=cs) (T:=T0)
       apply (Denot.equiv_to_imply heqv).1
       exact hih
 
@@ -74,7 +74,7 @@ theorem typed_env_lookup_var_reachability
   case here =>
     -- Γ = .push Γ' (.var T'), x = .here
     rename_i Γ' T'
-    cases ctx with | mk env =>
+    cases ctx with | mk env handlers =>
     cases env; rename_i info' env'
     cases info'; rename_i n
     simp only [EnvTyping] at hts
@@ -94,27 +94,27 @@ theorem typed_env_lookup_var_reachability
     --   resolve_reachability m.heap (.var (.free n)) ⊆ C.denot env' m
     have hsafe := shape_val_denot_is_reachability_safe
       (typed_env_is_reachability_safe hts.2) S
-    have hreach := hsafe (C.denot ⟨env'⟩ m) m (.var (.free n)) hshape
+    have hreach := hsafe (C.denot ⟨env', handlers⟩ m) m (.var (.free n)) hshape
     -- resolve_reachability for variables equals reachability_of_loc
     simp [resolve_reachability] at hreach
     -- Simplify the goal to show it matches the expected form
     simp [Ty.captureSet, Ty.rename]
     -- Use rebinding to relate C.denot ⟨env'⟩ with
     -- (C.rename Rename.succ).denot ⟨env'.extend n⟩
-    have hreb := rebind_captureset_denot (Rebind.weaken (env:=env') (x:=n)) C
+    have hreb := rebind_captureset_denot
+      (ctx1:=⟨env', handlers⟩) (ctx2:=⟨env'.extend_var n, handlers⟩)
+      (Rebind.weaken (env:=env') (x:=n)) C
     -- hreb : C.denot ⟨env'⟩ = (C.rename Rename.succ).denot ⟨env'.extend_var n⟩
     -- Need to apply this to memory m
-    have hreb_m : C.denot ⟨env'⟩ m =
-      (C.rename Rename.succ).denot ⟨env'.extend (TypeInfo.var n)⟩ m := by
-      rw [hreb]
-    rw [<-hreb_m]
+    conv => rhs; rw [show env'.extend (TypeInfo.var n) = env'.extend_var n from rfl]
+    rw [<-hreb]
     exact hreach
   case there b hx_prev ih =>
     -- Handle three cases based on the binding kind
     cases b
     case var =>
       rename_i Γ' x' T' Tb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info' env'
       cases info'; rename_i n
       simp only [EnvTyping] at hts
@@ -131,15 +131,15 @@ theorem typed_env_lookup_var_reachability
       simp [Ty.captureSet, Ty.rename]
       simp [Ty.captureSet] at hih
       have hreb := rebind_captureset_denot
+        (ctx1:=⟨env', handlers⟩)
+        (ctx2:=⟨env'.extend_var n, handlers⟩)
         (Rebind.weaken (env:=env') (x:=n)) C
-      have hreb_m : C.denot ⟨env'⟩ m =
-        (C.rename Rename.succ).denot ⟨env'.extend (TypeInfo.var n)⟩ m := by
-        rw [hreb]
-      rw [<-hreb_m]
+      conv => rhs; rw [show env'.extend (TypeInfo.var n) = env'.extend_var n from rfl]
+      rw [<-hreb]
       exact hih
     case tvar =>
       rename_i Γ' x' T' Sb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info' env'
       cases info'; rename_i d
       simp only [EnvTyping] at hts
@@ -156,15 +156,15 @@ theorem typed_env_lookup_var_reachability
       simp [Ty.captureSet, Ty.rename]
       simp [Ty.captureSet] at hih
       have hreb := rebind_captureset_denot
+        (ctx1:=⟨env', handlers⟩)
+        (ctx2:=⟨env'.extend_tvar d, handlers⟩)
         (Rebind.tweaken (env:=env') (d:=d)) C
-      have hreb_m : C.denot ⟨env'⟩ m =
-        (C.rename Rename.succ).denot ⟨env'.extend (TypeInfo.tvar d)⟩ m := by
-        rw [hreb]
-      rw [<-hreb_m]
+      conv => rhs; rw [show env'.extend (TypeInfo.tvar d) = env'.extend_tvar d from rfl]
+      rw [<-hreb]
       exact hih
     case cvar =>
       rename_i Γ' x' T' Bb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info' env'
       cases info'; rename_i cs
       simp only [EnvTyping] at hts
@@ -181,11 +181,11 @@ theorem typed_env_lookup_var_reachability
       simp [Ty.captureSet, Ty.rename]
       simp [Ty.captureSet] at hih
       have hreb := rebind_captureset_denot
+        (ctx1:=⟨env', handlers⟩)
+        (ctx2:=⟨env'.extend_cvar cs, handlers⟩)
         (Rebind.cweaken (env:=env') (cs:=cs)) C
-      have hreb_m : C.denot ⟨env'⟩ m =
-        (C.rename Rename.succ).denot ⟨env'.extend (TypeInfo.cvar cs)⟩ m := by
-        rw [hreb]
-      rw [<-hreb_m]
+      conv => rhs; rw [show env'.extend (TypeInfo.cvar cs) = env'.extend_cvar cs from rfl]
+      rw [<-hreb]
       exact hih
 
 theorem shape_denot_with_var_reachability
@@ -324,7 +324,9 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                 have hcap_rename :
                   (Cf.rename Rename.succ).denot (ctx.extend_var arg)
                   = Cf.denot ctx := by
-                  have := rebind_captureset_denot (Rebind.weaken (env:=ctx.env) (x:=arg)) Cf
+                  have := rebind_captureset_denot
+                    (ctx1:=ctx) (ctx2:=ctx.extend_var arg)
+                    (Rebind.weaken (env:=ctx.env) (x:=arg)) Cf
                   exact this.symm
                 -- Variable .here denotes to the reachability we stored
                 have hcap_var :
@@ -462,7 +464,9 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
                 -- Show capability sets match
                 have hcap_rename :
                   (Cf.rename Rename.succ).denot (ctx.extend_tvar denot) = Cf.denot ctx := by
-                  have := rebind_captureset_denot (Rebind.tweaken (env:=ctx.env) (d:=denot)) Cf
+                  have := rebind_captureset_denot
+                    (ctx1:=ctx) (ctx2:=ctx.extend_tvar denot)
+                    (Rebind.tweaken (env:=ctx.env) (d:=denot)) Cf
                   exact this.symm
                 -- Use monotonicity to relate capture set denotations at different memories
                 have hCf_mono : Cf.denot ctx store = Cf.denot ctx H' := by
@@ -580,7 +584,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
                 -- Show capability sets match
                 have hcap_rename :
                   (Cf.rename Rename.succ).denot (ctx.extend_cvar CS) = Cf.denot ctx := by
-                  have := rebind_captureset_denot (Rebind.cweaken (env:=ctx.env) (cs:=CS)) Cf
+                  have := rebind_captureset_denot
+                    (ctx1:=ctx) (ctx2:=ctx.extend_cvar CS)
+                    (Rebind.cweaken (env:=ctx.env) (cs:=CS)) Cf
                   exact this.symm
                 -- Use monotonicity
                 have hCf_mono : Cf.denot ctx store = Cf.denot ctx H' := by
@@ -655,7 +661,7 @@ theorem sem_typ_pack
         have hretype := @retype_capt_val_denot (s,C) s
           (ctx.extend_cvar (cs.subst (Subst.from_DenotCtx ctx)))
           (Subst.openCVar cs) ctx
-          (@Retype.open_carg s ctx.env cs) T
+          (@Retype.open_carg s ctx cs) T
         exact (hretype store (Exp.var (x.subst (Subst.from_DenotCtx ctx)))).mpr hQ
       case eval_val =>
         -- Variables can only use eval_var, not eval_val
@@ -1531,7 +1537,9 @@ theorem sem_typ_letin
     have hcap_rename :
       (C.rename Rename.succ).denot (ctx.extend_var l')
       = C.denot ctx := by
-      have := rebind_captureset_denot (Rebind.weaken (env:=ctx.env) (x:=l')) C
+      have := rebind_captureset_denot
+        (ctx1:=ctx) (ctx2:=ctx.extend_var l')
+        (Rebind.weaken (env:=ctx.env) (x:=l')) C
       exact this.symm
     have hC_mono :
         C.denot ctx store
@@ -1609,7 +1617,9 @@ theorem sem_typ_letin
       have hcap_rename :
         (C.rename Rename.succ).denot (ctx.extend_var fx)
         = C.denot ctx := by
-        have := rebind_captureset_denot (Rebind.weaken (env:=ctx.env) (x:=fx)) C
+        have := rebind_captureset_denot
+          (ctx1:=ctx) (ctx2:=ctx.extend_var fx)
+          (Rebind.weaken (env:=ctx.env) (x:=fx)) C
         exact this.symm
       have hC_mono : C.denot ctx store = C.denot ctx m1 := by
         have hwf_C : (C.subst (Subst.from_DenotCtx ctx)).WfInHeap store.heap := by
@@ -1684,7 +1694,7 @@ theorem typed_env_lookup_cvar_aux
     -- Γ = .push Γ' (.cvar cb'), c = .here
     -- cb = cb'.rename Rename.succ
     rename_i Γ' cb'
-    cases ctx with | mk env =>
+    cases ctx with | mk env handlers =>
     cases env; rename_i info' env'
     cases info'; rename_i cs
     simp only [EnvTyping] at hts
@@ -1692,7 +1702,10 @@ theorem typed_env_lookup_cvar_aux
     -- Need: cs.ground_denot m ⊆ (cb'.rename Rename.succ).denot (env'.extend (TypeInfo.cvar cs)) m
     -- We have: cs.ground_denot m ⊆ cb'.denot env' m (from hts.2.2.1)
     -- Use rebinding: cb'.denot env' = (cb'.rename Rename.succ).denot (env'.extend_cvar cs)
-    have hreb := rebind_capturebound_denot (Rebind.cweaken (env:=env') (cs:=cs)) cb'
+    have hreb := rebind_capturebound_denot
+      (ctx1:=⟨env', handlers⟩) (ctx2:=⟨env'.extend_cvar cs, handlers⟩)
+      (Rebind.cweaken (env:=env') (cs:=cs)) cb'
+    unfold TypeEnv.extend_cvar at hreb
     rw [<-hreb]
     exact hts.2.2.1
   case there b0 b hc_prev ih =>
@@ -1701,7 +1714,7 @@ theorem typed_env_lookup_cvar_aux
     case var =>
       -- Name the unnamed variables including cb'
       rename_i Γ' c' cb' Tb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info' env'
       cases info'; rename_i x
       simp only [EnvTyping] at hts
@@ -1710,31 +1723,40 @@ theorem typed_env_lookup_cvar_aux
       have hih := ih henv'
       simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
       -- Use rebind lemma to relate denots in predecessor and extended env
-      have hreb := rebind_capturebound_denot (Rebind.weaken (env:=env') (x:=x)) cb'
+      have hreb := rebind_capturebound_denot
+        (ctx1:=⟨env', handlers⟩) (ctx2:=⟨env'.extend_var x, handlers⟩)
+        (Rebind.weaken (env:=env') (x:=x)) cb'
+      unfold TypeEnv.extend_var at hreb
       rw [<-hreb]
       exact hih
     case tvar =>
       rename_i Γ' c' cb' Sb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info' env'
       cases info'; rename_i d
       simp only [EnvTyping] at hts
       obtain ⟨_, _, henv'⟩ := hts
       have hih := ih henv'
       simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
-      have hreb := rebind_capturebound_denot (Rebind.tweaken (env:=env') (d:=d)) cb'
+      have hreb := rebind_capturebound_denot
+        (ctx1:=⟨env', handlers⟩) (ctx2:=⟨env'.extend_tvar d, handlers⟩)
+        (Rebind.tweaken (env:=env') (d:=d)) cb'
+      unfold TypeEnv.extend_tvar at hreb
       rw [<-hreb]
       exact hih
     case cvar =>
       rename_i Γ' c' cb' Bb
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info' env'
       cases info'; rename_i cs
       simp only [EnvTyping] at hts
       obtain ⟨_, _, _, henv'⟩ := hts
       have hih := ih henv'
       simp [TypeEnv.lookup_cvar, TypeEnv.lookup]
-      have hreb := rebind_capturebound_denot (Rebind.cweaken (env:=env') (cs:=cs)) cb'
+      have hreb := rebind_capturebound_denot
+        (ctx1:=⟨env', handlers⟩) (ctx2:=⟨env'.extend_cvar cs, handlers⟩)
+        (Rebind.cweaken (env:=env') (cs:=cs)) cb'
+      unfold TypeEnv.extend_cvar at hreb
       rw [<-hreb]
       exact hih
 
@@ -1963,7 +1985,7 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
   (ctx.env.lookup_tvar X).ImplyAfter m (Ty.shape_val_denot ctx S) := by
   induction hlookup generalizing m
   case here Γ S =>
-    cases ctx with | mk env =>
+    cases ctx with | mk env handlers =>
     cases env; rename_i info0 env0
     cases info0; rename_i d
     simp only [EnvTyping] at htyping
@@ -1973,8 +1995,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
     -- Need: d.ImplyAfter m (shape_val_denot (env0.extend_tvar d) (S.rename Rename.succ))
     -- Have: d.ImplyAfter m (Ty.shape_val_denot ⟨env0⟩ S)
     -- Use weakening theorem to relate the denotations
-    have hw : Ty.shape_val_denot ⟨env0⟩ S ≈
-              Ty.shape_val_denot ⟨env0.extend_tvar d⟩ (S.rename Rename.succ) :=
+    have hw : Ty.shape_val_denot ⟨env0, handlers⟩ S ≈
+              Ty.shape_val_denot ⟨env0.extend_tvar d, handlers⟩ (S.rename Rename.succ) :=
       tweaken_shape_val_denot (d := d)
     -- Need to convert equiv to implication at the PreDenot level
     -- Unfold PreDenot.ImplyAfter and PreDenot.equiv_def
@@ -2000,7 +2022,7 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
     cases b with
     | var T =>
       -- Context extended with a term variable
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info env0
       cases info; rename_i v
       simp only [EnvTyping] at htyping
@@ -2014,8 +2036,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
       --       (Ty.shape_val_denot (env0.extend_var v) (S.rename Rename.succ))
       -- Have: (env0.lookup_tvar X).ImplyAfter m (Ty.shape_val_denot ⟨env0⟩ S)
       -- Use weakening lemma for var extension
-      have hw : Ty.shape_val_denot ⟨env0⟩ S ≈
-                Ty.shape_val_denot ⟨env0.extend_var v⟩ (S.rename Rename.succ) :=
+      have hw : Ty.shape_val_denot ⟨env0, handlers⟩ S ≈
+                Ty.shape_val_denot ⟨env0.extend_var v, handlers⟩ (S.rename Rename.succ) :=
         weaken_shape_val_denot (x := v)
       -- Convert equivalence to implication and compose
       simp [PreDenot.ImplyAfter]
@@ -2031,7 +2053,7 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
 
     | tvar T =>
       -- Context extended with a type variable
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info env0
       cases info; rename_i d
       simp only [EnvTyping] at htyping
@@ -2042,8 +2064,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
       have ih_result := a_ih htyping'
       simp [TypeEnv.lookup_tvar] at ih_result
       -- Use tweaken for tvar extension
-      have hw : Ty.shape_val_denot ⟨env0⟩ S ≈
-                Ty.shape_val_denot ⟨env0.extend_tvar d⟩ (S.rename Rename.succ) :=
+      have hw : Ty.shape_val_denot ⟨env0, handlers⟩ S ≈
+                Ty.shape_val_denot ⟨env0.extend_tvar d, handlers⟩ (S.rename Rename.succ) :=
         tweaken_shape_val_denot (d := d)
       -- Convert and compose
       simp [PreDenot.ImplyAfter]
@@ -2059,7 +2081,7 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
 
     | cvar cb =>
       -- Context extended with a capture variable
-      cases ctx with | mk env =>
+      cases ctx with | mk env handlers =>
       cases env; rename_i info env0
       cases info; rename_i cs
       simp only [EnvTyping] at htyping
@@ -2070,8 +2092,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : Ty .shape s} {m : Memory}
       have ih_result := a_ih htyping'.2
       simp [TypeEnv.lookup_tvar] at ih_result
       -- Use cweaken for cvar extension
-      have hw : Ty.shape_val_denot ⟨env0⟩ S ≈
-                Ty.shape_val_denot ⟨env0.extend_cvar cs⟩ (S.rename Rename.succ) :=
+      have hw : Ty.shape_val_denot ⟨env0, handlers⟩ S ≈
+                Ty.shape_val_denot ⟨env0.extend_cvar cs, handlers⟩ (S.rename Rename.succ) :=
         cweaken_shape_val_denot (cs := cs)
       -- Convert and compose
       simp [PreDenot.ImplyAfter]
@@ -2834,17 +2856,19 @@ theorem sem_typ_unpack
           ((ctx.extend_cvar cs).extend_var fx) m1 =
         C.denot ctx store := by
         -- Use rebind to show double-renamed C equals original C
-        have h1 := rebind_captureset_denot (Rebind.cweaken (env:=ctx.env) (cs:=cs)) C
+        have h1 := rebind_captureset_denot
+          (ctx1:=ctx) (ctx2:=ctx.extend_cvar cs)
+          (Rebind.cweaken (env:=ctx.env) (cs:=cs)) C
         have h2 := rebind_captureset_denot
+          (ctx1:=ctx.extend_cvar cs)
+          (ctx2:=(ctx.extend_cvar cs).extend_var fx)
           (Rebind.weaken (env:=(ctx.extend_cvar cs).env) (x:=fx)) (C.rename Rename.succ)
         calc
           ((C.rename Rename.succ).rename Rename.succ).denot
             ((ctx.extend_cvar cs).extend_var fx) m1
           _ = (C.rename Rename.succ).denot (ctx.extend_cvar cs) m1 := by
-            simp only [DenotCtx.extend_var, TypeEnv.extend_var]
             rw [<-h2]
           _ = C.denot ctx m1 := by
-            simp only [DenotCtx.extend_cvar, TypeEnv.extend_cvar]
             rw [<-h1]
           _ = C.denot ctx store := by
             have hwf_C : (C.subst (Subst.from_DenotCtx ctx)).WfInHeap store.heap := by
@@ -2857,8 +2881,12 @@ theorem sem_typ_unpack
       have heqv_composed : Ty.exi_val_denot ctx U ≈
         Ty.exi_val_denot ((ctx.extend_cvar cs).extend_var fx)
           ((U.rename Rename.succ).rename Rename.succ) := by
-        have heqv1 := rebind_exi_val_denot (Rebind.cweaken (env:=ctx.env) (cs:=cs)) U
+        have heqv1 := rebind_exi_val_denot
+          (ctx1:=ctx) (ctx2:=ctx.extend_cvar cs)
+          (Rebind.cweaken (env:=ctx.env) (cs:=cs)) U
         have heqv2 := rebind_exi_val_denot
+          (ctx1:=ctx.extend_cvar cs)
+          (ctx2:=(ctx.extend_cvar cs).extend_var fx)
           (Rebind.weaken (env:=(ctx.extend_cvar cs).env) (x:=fx)) (U.rename Rename.succ)
         intro m e
         -- Compose the two equivalences (definitionally equal on the connecting side)
