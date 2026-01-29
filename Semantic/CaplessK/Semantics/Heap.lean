@@ -2707,6 +2707,19 @@ theorem CapabilitySet.proj_top {C : CapabilitySet} {H : Heap}
     have hwf2 : c2.WfInHeap H := fun l hm => hwf l (.right hm)
     simp only [proj, ih1 hwf1, ih2 hwf2]
 
+/-- If l ∈ C and l exists in the heap, then l ∈ C.proj H .top. -/
+theorem CapabilitySet.mem_proj_top_of_mem
+    {C : CapabilitySet} {H : Heap} {l : Nat}
+    (hmem : l ∈ C) (hex : ∃ v, H l = some v) :
+    l ∈ C.proj H .top := by
+  induction hmem with
+  | here =>
+    have hwf : (CapabilitySet.cap l).WfInHeap H := fun l' hm => by cases hm; exact hex
+    rw [CapabilitySet.proj_top hwf]
+    exact CapabilitySet.mem.here
+  | left _ ih => exact CapabilitySet.mem.left ih
+  | right _ ih => exact CapabilitySet.mem.right ih
+
 theorem CapabilitySet.proj_subkind
     {C : CapabilitySet} {H : Heap}
     (hs : CapKind.Subkind K1 K2) :

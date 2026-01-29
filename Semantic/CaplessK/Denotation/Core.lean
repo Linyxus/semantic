@@ -437,6 +437,41 @@ def CapabilitySet.WellScoped (H : Heap) (C : CapabilitySet) (dom : Finset Nat) :
       H l = some (.capability (.label K))) ->
     l ∈ dom
 
+/-- WellScoped is anti-monotonic in the capability set: a subset of a well-scoped set
+    is also well-scoped. -/
+theorem CapabilitySet.WellScoped.subset
+    {C1 C2 : CapabilitySet} {H : Heap} {dom : Finset Nat}
+    (hsub : C1 ⊆ C2) (hws : C2.WellScoped H dom) : C1.WellScoped H dom := by
+  intro l hl hlab
+  exact hws l (CapabilitySet.subset_preserves_mem hsub hl) hlab
+
+/-- WellScoped transfers from a smaller heap to a bigger heap, given WfInHeap at the smaller heap.
+    If all label capabilities in C are registered in dom w.r.t. the smaller heap H1,
+    and C's elements exist in H1, and H2 subsumes H1,
+    then C is also well-scoped w.r.t. H2. -/
+theorem CapabilitySet.WellScoped.heap_mono
+    {C : CapabilitySet} {H1 H2 : Heap} {dom : Finset Nat}
+    (hws : C.WellScoped H1 dom) (hwf : C.WfInHeap H1) (hsub : Heap.subsumes H2 H1) :
+    C.WellScoped H2 dom := by
+  intro l hl ⟨K, hK⟩
+  apply hws l hl
+  obtain ⟨cell, hcell⟩ := hwf l hl
+  obtain ⟨cell', hcell', hsub_cell⟩ := hsub l cell hcell
+  have heq : cell' = .capability (.label K) := by
+    have h1 := hcell'
+    rw [h1] at hK
+    exact Option.some.inj hK
+  subst heq
+  have : cell = .capability (.label K) := by
+    revert hsub_cell; cases cell with
+    | val _ => simp [Cell.subsumes]
+    | capability info => cases info with
+      | basic => simp [Cell.subsumes]
+      | label => simp [Cell.subsumes]; intro h; exact h.symm
+      | mcell => simp [Cell.subsumes]
+    | masked _ => simp [Cell.subsumes]
+  exact ⟨K, by subst this; exact hcell⟩
+
 /-- BoundedBy is monotonic with respect to heap subsumption. -/
 theorem CapabilitySet.BoundedBy.monotonic
   {H1 H2 : Heap} {C : CapabilitySet} {B : CapabilityBound}
