@@ -208,6 +208,9 @@ inductive TypeEnv : Sig -> Type where
   TypeInfo k ->
   TypeEnv (s,,k)
 
+structure DenotCtx (s : Sig) where
+  env : TypeEnv s
+
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
   Γ.extend (.var x)
 
