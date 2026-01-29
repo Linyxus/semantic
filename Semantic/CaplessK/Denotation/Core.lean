@@ -428,6 +428,15 @@ theorem CapabilitySet.BoundedBy.trans
     cases hbound with
     | top hkind => exact CapabilitySet.BoundedBy.top (hkind.subkind hsub)
 
+/-- Given `H` a heap and `dom` a set of registered labels in `DenotCtx`,
+  a capability set `C` is well-scoped if every label capability in it is registered in `dom`. -/
+def CapabilitySet.WellScoped (H : Heap) (C : CapabilitySet) (dom : Finset Nat) : Prop :=
+  ∀ l,
+    l ∈ C ->
+    (∃ K,
+      H l = some (.capability (.label K))) ->
+    l ∈ dom
+
 /-- BoundedBy is monotonic with respect to heap subsumption. -/
 theorem CapabilitySet.BoundedBy.monotonic
   {H1 H2 : Heap} {C : CapabilitySet} {B : CapabilityBound}
@@ -525,6 +534,7 @@ def Ty.exi_val_denot : DenotCtx s -> Ty .exi s -> Denot
 
 def Ty.exi_exp_denot : DenotCtx s -> Ty .exi s -> PreDenot
 | ctx, T => fun A m (e : Exp {}) =>
+  A.WellScoped m.heap (ctx.handlers.dom) ->
   Eval A m e (Ty.exi_val_denot ctx T).as_mpost
 
 end
