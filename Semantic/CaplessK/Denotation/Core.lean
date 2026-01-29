@@ -2386,6 +2386,17 @@ def exi_exp_denot_is_monotonic {ctx : DenotCtx s}
     (Ty.exi_exp_denot ctx T) C m2 e := by
   intro C m1 m2 e hwf hmem ht
   simp [Ty.exi_exp_denot] at ht ⊢
+  intro hws
+  have hws1 : C.WellScoped m1.heap ctx.handlers.dom := by
+    intro l hl ⟨K, hK⟩
+    apply hws l hl
+    obtain ⟨v', hv', hsub⟩ := hmem l _ hK
+    have : v' = .capability (.label K) := by
+      revert hsub; cases v' with
+      | val _ => simp [Cell.subsumes]
+      | capability info => cases info <;> simp [Cell.subsumes]
+      | masked _ => simp [Cell.subsumes]
+    exact ⟨K, by subst this; exact hv'⟩
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
     exact exi_val_denot_is_monotonic henv_mono T
@@ -2393,7 +2404,7 @@ def exi_exp_denot_is_monotonic {ctx : DenotCtx s}
     exact exi_val_denot_is_bool_independent henv_bool T
   · exact hmem
   · exact hwf
-  · exact ht
+  · exact ht hws1
 
 end
 
@@ -3062,10 +3073,11 @@ theorem exi_denot_implyafter_lift
   (Ty.exi_exp_denot ctx T1).ImplyAfter H (Ty.exi_exp_denot ctx T2) := by
   intro C m' hsub e heval
   simp [Ty.exi_exp_denot] at heval ⊢
-  -- heval : Eval C m' e (exi_val_denot env T1).as_mpost
-  -- Goal: Eval C m' e (exi_val_denot env T2).as_mpost
-  apply eval_post_monotonic_general _ heval
-  -- Need: (exi_val_denot env T1).as_mpost.entails_after m' (exi_val_denot env T2).as_mpost
+  -- heval : WellScoped ... → Eval C m' e (exi_val_denot ctx T1).as_mpost
+  -- Goal: WellScoped ... → Eval C m' e (exi_val_denot ctx T2).as_mpost
+  intro hws
+  apply eval_post_monotonic_general _ (heval hws)
+  -- Need: (exi_val_denot ctx T1).as_mpost.entails_after m' (exi_val_denot ctx T2).as_mpost
   have himp' := Denot.imply_after_to_m_entails_after himp
   exact Mpost.entails_after_subsumes himp' hsub
 
