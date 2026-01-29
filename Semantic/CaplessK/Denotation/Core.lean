@@ -208,8 +208,13 @@ inductive TypeEnv : Sig -> Type where
   TypeInfo k ->
   TypeEnv (s,,k)
 
+/-- Context for computing denotation of types. -/
 structure DenotCtx (s : Sig) where
+  /-- Context for type environment. -/
   env : TypeEnv s
+  /-- Handlers maps a label to a denotation, which specifies
+    what value the handler of the label accepts. -/
+  handlers : Finmap Nat Denot
 
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
   Γ.extend (.var x)
