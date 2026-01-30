@@ -87,6 +87,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .write x y, s => .write (x.subst s) (y.subst s)
 | .cond x e2 e3, s => .cond (x.subst s) (e2.subst s) (e3.subst s)
 | .boundary k T e, s => .boundary k (T.subst s) (e.subst s.lift.lift)
+| .throw x y, s => .throw (x.subst s) (y.subst s)
 
 /-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
@@ -450,6 +451,7 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, Var.subst_comp, ih2, ih3]
   | boundary k T e ih_e =>
     simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
+  | throw x y => simp [Exp.subst, Var.subst_comp]
 
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem Var.subst_id {x : Var .var s} :
@@ -549,6 +551,8 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, Var.subst_id, ih2, ih3]
   | boundary k T e ih =>
     simp [Exp.subst, Ty.subst_id, ih, Subst.lift_id]
+  | throw x y =>
+    simp [Exp.subst, Var.subst_id]
 
 /-- Converts a renaming to a substitution. -/
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
@@ -673,6 +677,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   | boundary k T e ih =>
     simp [Exp.subst, Exp.rename, Ty.subst_asSubst]
     rw [<-Rename.asSubst_lift, <-Rename.asSubst_lift, ih]
+  | throw x y =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
 
 theorem Subst.weaken_openVar {z : Var .var s} :
   Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
@@ -1018,6 +1024,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst]
     exact IsClosed.boundary (Ty.is_closed_subst hT hsubst)
       (ih he (Subst.lift_closed (Subst.lift_closed hsubst)))
+  | throw x y =>
+    cases hc with | throw hx hy =>
+    simp [Exp.subst]
+    exact IsClosed.throw (Var.is_closed_subst hx hsubst) (Var.is_closed_subst hy hsubst)
 
 /-- The openVar substitution is closed if the variable is closed. -/
 theorem Subst.openVar_is_closed {z : Var .var s}
@@ -1218,5 +1228,9 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | boundary hT he =>
     exact IsClosed.boundary (Ty.subst_closed_inv hT) (ih he)
+  | throw x y =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | throw hx hy =>
+    exact IsClosed.throw (Var.subst_closed_inv hx) (Var.subst_closed_inv hy)
 
 end CaplessK
