@@ -52,6 +52,28 @@ def Denot.is_bool_independent (d : Denot) : Prop :=
 def Denot.is_proper (d : Denot) : Prop :=
   d.is_monotonic ∧ d.is_transparent ∧ d.is_bool_independent
 
+lemma Denot.Or.is_monotonic {d1 d2 : Denot}
+    (h1 : d1.is_monotonic) (h2 : d2.is_monotonic) :
+    (d1.Or d2).is_monotonic := by
+  intro m1 m2 e hmem hor
+  cases hor with
+  | inl h => exact Or.inl (h1 hmem h)
+  | inr h => exact Or.inr (h2 hmem h)
+
+lemma Denot.Or.is_bool_independent {d1 d2 : Denot}
+    (h1 : d1.is_bool_independent) (h2 : d2.is_bool_independent) :
+    (d1.Or d2).is_bool_independent := by
+  intro m
+  constructor
+  · intro hor
+    cases hor with
+    | inl h => exact Or.inl (h1.mp h)
+    | inr h => exact Or.inr (h2.mp h)
+  · intro hor
+    cases hor with
+    | inl h => exact Or.inl (h1.mpr h)
+    | inr h => exact Or.inr (h2.mpr h)
+
 /-- For simple values, compute_reachability equals resolve_reachability. -/
 theorem compute_reachability_eq_resolve_reachability
   (h : Heap) (v : Exp {}) (hv : v.IsSimpleVal) :
@@ -179,6 +201,22 @@ lemma Denot.imply_after_subsumes {d1 d2 : Denot}
   apply himp M
   apply Memory.subsumes_trans hs hmem
 
+lemma Denot.Imply.or_right {d1 d2 : Denot}
+    (himp : d1.Imply d2) (h : Denot) :
+    (d1.Or h).Imply (d2.Or h) := by
+  intro m e hor
+  cases hor with
+  | inl h1 => exact Or.inl (himp m e h1)
+  | inr h2 => exact Or.inr h2
+
+lemma Denot.ImplyAfter.or_right {d1 d2 : Denot} {H : Memory}
+    (himp : d1.ImplyAfter H d2) (h : Denot) :
+    (d1.Or h).ImplyAfter H (d2.Or h) := by
+  intro m' hsub e hor
+  cases hor with
+  | inl h1 => exact Or.inl (himp m' hsub e h1)
+  | inr h2 => exact Or.inr h2
+
 lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
   (himp : d1.ImplyAfter m d2) :
   d1.ImplyAt m d2 := by
@@ -226,6 +264,20 @@ def denot_of_handlers (handlers : Finmap Nat Denot) : Denot :=
       handlers.apply l = some D ∧
       e = .throw (.free l) x ∧
       D m (.var x)
+
+lemma denot_of_handlers_is_bool_independent (handlers : Finmap Nat Denot) :
+    (denot_of_handlers handlers).is_bool_independent := by
+  intro m
+  constructor
+  · intro ⟨_, _, _, _, heq, _⟩; cases heq
+  · intro ⟨_, _, _, _, heq, _⟩; cases heq
+
+lemma denot_of_handlers_is_monotonic (handlers : Finmap Nat Denot)
+    (hmono : ∀ l D, handlers.apply l = some D → D.is_monotonic) :
+    (denot_of_handlers handlers).is_monotonic := by
+  intro m1 m2 e hmem h
+  obtain ⟨l, D, x, happly, heq, hD⟩ := h
+  exact ⟨l, D, x, happly, heq, hmono l D happly hmem hD⟩
 
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
   Γ.extend (.var x)
@@ -2428,6 +2480,7 @@ def exi_val_denot_is_bool_independent {ctx : DenotCtx s}
 def exi_exp_denot_is_monotonic {ctx : DenotCtx s}
   (henv_mono : ctx.IsMonotonic)
   (henv_bool : ctx.is_bool_independent)
+  (hhandlers_mono : ∀ l D, ctx.handlers.apply l = some D → D.is_monotonic)
   (T : Ty .exi s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -2449,9 +2502,13 @@ def exi_exp_denot_is_monotonic {ctx : DenotCtx s}
     exact ⟨K, by subst this; exact hv'⟩
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
-    exact exi_val_denot_is_monotonic henv_mono T
+    apply Denot.Or.is_monotonic
+    · exact exi_val_denot_is_monotonic henv_mono T
+    · exact denot_of_handlers_is_monotonic ctx.handlers hhandlers_mono
   · apply Denot.as_mpost_is_bool_independent
-    exact exi_val_denot_is_bool_independent henv_bool T
+    apply Denot.Or.is_bool_independent
+    · exact exi_val_denot_is_bool_independent henv_bool T
+    · exact denot_of_handlers_is_bool_independent ctx.handlers
   · exact hmem
   · exact hwf
   · exact ht hws1
@@ -3127,8 +3184,9 @@ theorem exi_denot_implyafter_lift
   -- Goal: WellScoped ... → Eval C m' e (exi_val_denot ctx T2).as_mpost
   intro hws
   apply eval_post_monotonic_general _ (heval hws)
-  -- Need: (exi_val_denot ctx T1).as_mpost.entails_after m' (exi_val_denot ctx T2).as_mpost
-  have himp' := Denot.imply_after_to_m_entails_after himp
+  -- Need: (exi_val_denot ctx T1).Or h entails (exi_val_denot ctx T2).Or h
+  have himp_or := himp.or_right (denot_of_handlers ctx.handlers)
+  have himp' := Denot.imply_after_to_m_entails_after himp_or
   exact Mpost.entails_after_subsumes himp' hsub
 
 /-- Semantic HasKind: the denotation of C has kind K in the heap. -/
