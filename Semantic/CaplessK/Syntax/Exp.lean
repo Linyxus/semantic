@@ -25,6 +25,7 @@ inductive Exp : Sig -> Type where
 | write : Var .var s -> Var .var s -> Exp s
 | cond : Var .var s -> Exp s -> Exp s -> Exp s
 | boundary : CapKind -> Ty .shape s -> Exp (s,C,x) -> Exp s
+| throw : Var .var s -> Var .var s -> Exp s
 
 /-- Applies a renaming to all bound variables in an expression. -/
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
