@@ -46,6 +46,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .write x y, f => .write (x.rename f) (y.rename f)
 | .cond x e2 e3, f => .cond (x.rename f) (e2.rename f) (e3.rename f)
 | .boundary k T e, f => .boundary k (T.rename f) (e.rename (f.lift.lift))
+| .throw x y, f => .throw (x.rename f) (y.rename f)
 
 /-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
@@ -145,5 +146,6 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | write : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.write x y)
 | cond : Var.IsClosed x -> Exp.IsClosed e2 -> Exp.IsClosed e3 -> Exp.IsClosed (.cond x e2 e3)
 | boundary : Ty.IsClosed T -> Exp.IsClosed e -> Exp.IsClosed (.boundary k T e)
+| throw : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.throw x y)
 
 end CaplessK
