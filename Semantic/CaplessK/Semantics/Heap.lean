@@ -507,6 +507,10 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Ty.WfInHeap T H ->
   Exp.WfInHeap e H ->
   Exp.WfInHeap (.boundary k T e) H
+| wf_throw :
+  Var.WfInHeap x H ->
+  Var.WfInHeap y H ->
+  Exp.WfInHeap (.throw x y) H
 
 -- Closedness implies well-formedness in any heap
 
@@ -618,6 +622,10 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
     apply Exp.WfInHeap.wf_boundary
     · exact Ty.wf_of_closed hT
     · exact ih
+  | throw hx hy =>
+    apply Exp.WfInHeap.wf_throw
+    · exact Var.wf_of_closed hx
+    · exact Var.wf_of_closed hy
 
 -- Monotonicity theorems: WfInHeap is preserved under heap subsumption
 
@@ -778,6 +786,10 @@ theorem Exp.wf_monotonic
     apply Exp.WfInHeap.wf_boundary
     · exact Ty.wf_monotonic hsub hwf_T
     · exact ih_e hsub
+  | wf_throw hwf_x hwf_y =>
+    apply Exp.WfInHeap.wf_throw
+    · exact Var.wf_monotonic hsub hwf_x
+    · exact Var.wf_monotonic hsub hwf_y
 
 -- Inversion theorems for Exp.WfInHeap
 
@@ -1309,6 +1321,8 @@ theorem resolve_reachability_monotonic
     simp [resolve_reachability]
   | boundary _ _ _ =>
     simp [resolve_reachability]
+  | throw _ _ =>
+    simp [resolve_reachability]
 
 /-- Computing reachability of a value in a bigger heap yields the same result.
 Proof by cases on hv, using expand_captures_monotonic. -/
@@ -1725,6 +1739,11 @@ theorem Exp.wf_rename
     apply Exp.WfInHeap.wf_boundary
     · exact Ty.wf_rename hwf_T
     · exact ih_e
+  | wf_throw hwf_x hwf_y =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_throw
+    · exact Var.wf_rename hwf_x
+    · exact Var.wf_rename hwf_y
 
 -- Substitution well-formedness preservation
 
@@ -1995,6 +2014,11 @@ theorem Exp.wf_subst
     apply Exp.WfInHeap.wf_boundary
     · exact Ty.wf_subst hwf_T hwf_σ
     · exact ih_e (Subst.wf_lift (Subst.wf_lift hwf_σ))
+  | wf_throw hwf_x hwf_y =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_throw
+    · exact Var.wf_subst hwf_x hwf_σ
+    · exact Var.wf_subst hwf_y hwf_σ
 
 -- Well-formedness of opening substitutions
 
