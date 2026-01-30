@@ -503,7 +503,15 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
       (Ty.exi_val_denot (DenotCtx.platform_of N) E).as_mpost := by
     simp only [HasExpDenotation.interp] at hdenot
     unfold Ty.exi_exp_denot at hdenot
-    apply reduce_preserves_eval hdenot hred CapabilitySet.subset_refl
+    have hws : CapabilitySet.WellScoped
+        (Memory.platform_of N).heap
+        C.to_platform_capability_set
+        (DenotCtx.platform_of N).handlers.dom := by
+      intro l _ ⟨K, hK⟩
+      exfalso
+      simp [Memory.platform_of, Heap.platform_of] at hK
+    apply reduce_preserves_eval (hdenot hws) hred
+      CapabilitySet.subset_refl
   -- Progressive: Eval implies progressive
   exact eval_implies_progressive heval'
 
