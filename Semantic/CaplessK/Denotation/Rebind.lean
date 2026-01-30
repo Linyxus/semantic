@@ -326,12 +326,14 @@ def rebind_exi_exp_denot
     rw [← hh] at hws
     apply eval_post_monotonic _ (h hws)
     apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).1
+    rw [hh]
+    exact ((Denot.equiv_to_imply ih).1).or_right _
   · intro h hws
     rw [hh] at hws
     apply eval_post_monotonic _ (h hws)
     apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).2
+    rw [← hh]
+    exact ((Denot.equiv_to_imply ih).2).or_right _
 
 end
 
