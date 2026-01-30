@@ -216,6 +216,14 @@ structure DenotCtx (s : Sig) where
     what value the handler of the label accepts. -/
   handlers : Finmap Nat Denot
 
+/-- Denotation for throw forms that can be handled by the given handlers. -/
+def denot_of_handlers (handlers : Finmap Nat Denot) : Denot :=
+  fun m e =>
+    ∃ l D x,
+      handlers.apply l = some D ∧
+      e = .throw (.free l) x ∧
+      D m (.var x)
+
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
   Γ.extend (.var x)
 
@@ -2066,6 +2074,7 @@ def shape_val_denot_is_monotonic {ctx : DenotCtx s}
     | write _ _ => simp [resolve] at ht
     | cond _ _ _ => simp [resolve] at ht
     | boundary _ _ _ => simp [resolve] at ht
+    | throw _ _ => simp [resolve] at ht
   | cap =>
     intro m1 m2 e hmem ht
     simp [Ty.shape_val_denot] at ht ⊢
@@ -2156,6 +2165,7 @@ def shape_val_denot_is_monotonic {ctx : DenotCtx s}
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
         | boundary _ _ _ => cases hr
+        | throw _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -2207,6 +2217,7 @@ def shape_val_denot_is_monotonic {ctx : DenotCtx s}
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
         | boundary _ _ _ => cases hr
+        | throw _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
@@ -2270,6 +2281,7 @@ def shape_val_denot_is_monotonic {ctx : DenotCtx s}
         | write _ _ => cases hr
         | cond _ _ _ => cases hr
         | boundary _ _ _ => cases hr
+        | throw _ _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
         · constructor
