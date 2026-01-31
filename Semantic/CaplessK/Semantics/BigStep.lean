@@ -41,7 +41,8 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m e1 Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
-    v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ->
+    (v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ∨
+    (∃ l res, v = .throw (.free l) (.free res))) ->
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
     (hv : Exp.IsSimpleVal v) ->
@@ -59,6 +60,10 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     (hwf_x : x.WfInHeap m1.heap) ->
     Q1 (.var x) m1 ->
     Eval C m1 (e2.subst (Subst.openVar x)) Q) ->
+  (h_throw : ∀ {m1} {l res : Nat},
+    (m1.subsumes m) ->
+    Q1 (.throw (.free l) (.free res)) m1 ->
+    Q (.throw (.free l) (.free res)) m1) ->
   Eval C m (.letin e1 e2) Q
 | eval_unpack {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
@@ -66,13 +71,18 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Eval C m e1 Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
-    v.IsPack ∧ Exp.WfInHeap v m1.heap) ->
+    (v.IsPack ∧ Exp.WfInHeap v m1.heap) ∨
+    (∃ l res, v = .throw (.free l) (.free res))) ->
   (h_val : ∀ {m1} {x : Var .var {}} {cs : CaptureSet {}},
     (m1.subsumes m) ->
     (hwf_x : x.WfInHeap m1.heap) ->
     (hwf_cs : cs.WfInHeap m1.heap) ->
     Q1 (.pack cs x) m1 ->
     Eval C m1 (e2.subst (Subst.unpack cs x)) Q) ->
+  (h_throw : ∀ {m1} {l res : Nat},
+    (m1.subsumes m) ->
+    Q1 (.throw (.free l) (.free res)) m1 ->
+    Q (.throw (.free l) (.free res)) m1) ->
   Eval C m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
   x ∈ C ->
@@ -214,7 +224,8 @@ theorem eval_monotonic {m1 m2 : Memory}
           · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
             apply Subst.wf_openCVar
             exact hwf_cs)
-  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
+  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig
+      h_throw_orig ih ih_val ih_var =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
@@ -227,31 +238,29 @@ theorem eval_monotonic {m1 m2 : Memory}
       exact h_nonstuck_orig hQ_orig
     case h_val =>
       intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
-      -- We have: m_ext'.subsumes m2 and m2.subsumes m_orig (the original memory)
-      -- Therefore: m_ext'.subsumes m_orig
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      -- Now we can directly apply h_val_orig with all required arguments
-      -- The key is that eval_letin now provides hwf_v: Exp.WfInHeap v m_ext'.heap
       exact h_val_orig hs_orig hv hwf_v hq1 l' hfresh
     case h_var =>
       intro m_ext' x hs_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       apply ih_var hs_orig hwf_x hq1 hpred hbool
       · exact Memory.subsumes_refl _
-      · -- Need: (e2_orig.subst (Subst.openVar x)).WfInHeap m_ext'.heap
-        -- First, lift hwf2 to m_ext'.heap using monotonicity
-        have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
-        -- Then apply substitution preservation
+      · have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap :=
+          Exp.wf_monotonic hs_orig hwf2
         apply Exp.wf_subst hwf2_ext
         apply Subst.wf_openVar hwf_x
-  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih ih_val =>
+    case h_throw =>
+      intro m_ext' l res hs_ext' hq1
+      have hs_orig := Memory.subsumes_trans hs_ext' hsub
+      exact h_throw_orig hs_orig hq1
+  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig
+      h_throw_orig ih ih_val =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
     have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     -- Apply IH for e1 with well-formedness
     have eval_e1' := ih hpred0 hbool0 hsub hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 hbool0 eval_e1'
-    -- Provide the h_nonstuck condition
     case h_nonstuck =>
       intro m1 v hQ_orig
       exact h_nonstuck_orig hQ_orig
@@ -260,13 +269,14 @@ theorem eval_monotonic {m1 m2 : Memory}
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       apply ih_val hs_orig hwf_x hwf_cs hq1 hpred hbool
       · exact Memory.subsumes_refl _
-      · -- Need: (e2.subst (Subst.unpack cs x)).WfInHeap m_ext'.heap
-        -- Lift hwf2 to m_ext'.heap using monotonicity
-        have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
-        -- Apply substitution preservation
+      · have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap :=
+          Exp.wf_monotonic hs_orig hwf2
         apply Exp.wf_subst hwf2_ext
-        -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
         apply Subst.wf_unpack hwf_cs hwf_x
+    case h_throw =>
+      intro m_ext' l res hs_ext' hq1
+      have hs_orig := Memory.subsumes_trans hs_ext' hsub
+      exact h_throw_orig hs_orig hq1
   case eval_read hmem hx hQ =>
     -- Name the unnamed variables
     rename_i Q_eval C_eval m_eval x b
@@ -462,7 +472,8 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_capply hx _ ih =>
     apply Eval.eval_capply hx
     apply ih himp
-  case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var ih ih_val ih_var =>
+  case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var
+      h_throw ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
@@ -472,16 +483,22 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       intro m1 v hs1 hv hwf_v hq1 l' hfresh
       apply ih_val hs1 hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
-      have hreach_wf := compute_reachability_locations_exist (hv := hv) m1.wf hwf_v
+      have hreach_wf :=
+        compute_reachability_locations_exist (hv := hv) m1.wf hwf_v
       apply Memory.subsumes_trans _ hs1
       exact Memory.extend_val_subsumes m1 l'
-        ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hreach_wf hfresh
+        ⟨v, hv, compute_reachability m1.heap v hv⟩
+        hwf_v rfl hreach_wf hfresh
     case h_var =>
       intro m1 x hs1 hwf_x hq1
       apply ih_var hs1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
-  case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
+    case h_throw =>
+      intro m1 l res hs1 hq0
+      exact himp m1 hs1 _ (h_throw hs1 hq0)
+  case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _
+      h_throw ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
@@ -492,6 +509,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_val hs1 hwf_x hwf_cs hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
+    case h_throw =>
+      intro m1 l res hs1 hq0
+      exact himp m1 hs1 _ (h_throw hs1 hq0)
   case eval_read hmem hx hQ =>
     apply Eval.eval_read hmem hx
     apply himp _ _ _ hQ
@@ -551,7 +571,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
   case eval_letin =>
-    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var
+      h_throw ih_e1 ih_val ih_var
     apply Eval.eval_letin hpred_mono hbool_mono (ih_e1 hsub)
     · intro m1 v hQ
       exact h_nonstuck hQ
@@ -559,13 +580,18 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
     · intro m1 x hs1 hwf_x hq1
       exact ih_var hs1 hwf_x hq1 hsub
+    · intro m1 l res hs1 hq1
+      exact h_throw hs1 hq1
   case eval_unpack =>
-    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val
+      h_throw ih_e1 ih_val
     apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
     · intro m1 v hQ
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       exact ih_val hs1 hwf_x hwf_cs hq1 hsub
+    · intro m1 l res hs1 hq1
+      exact h_throw hs1 hq1
   case eval_read hmem hlookup hQ =>
     exact Eval.eval_read (CapabilitySet.subset_preserves_mem hsub hmem) hlookup hQ
   case eval_write_true hmem hlookup_x hlookup_y hQ =>
