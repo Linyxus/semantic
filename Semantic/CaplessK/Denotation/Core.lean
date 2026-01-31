@@ -265,20 +265,6 @@ def denot_of_handlers (handlers : Finmap Nat Denot) : Denot :=
       e = .throw (.free l) x ∧
       D m (.var x)
 
-lemma denot_of_handlers_is_bool_independent (handlers : Finmap Nat Denot) :
-    (denot_of_handlers handlers).is_bool_independent := by
-  intro m
-  constructor
-  · intro ⟨_, _, _, _, heq, _⟩; cases heq
-  · intro ⟨_, _, _, _, heq, _⟩; cases heq
-
-lemma denot_of_handlers_is_monotonic (handlers : Finmap Nat Denot)
-    (hmono : ∀ l D, handlers.apply l = some D → D.is_monotonic) :
-    (denot_of_handlers handlers).is_monotonic := by
-  intro m1 m2 e hmem h
-  obtain ⟨l, D, x, happly, heq, hD⟩ := h
-  exact ⟨l, D, x, happly, heq, hmono l D happly hmem hD⟩
-
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
   Γ.extend (.var x)
 
@@ -672,6 +658,20 @@ def handlers_are_monotonic
   ∀ l D,
     handlers.apply l = some D ->
     D.is_monotonic
+
+lemma denot_of_handlers_is_bool_independent (handlers : Finmap Nat Denot) :
+    (denot_of_handlers handlers).is_bool_independent := by
+  intro m
+  constructor
+  · intro ⟨_, _, _, _, heq, _⟩; cases heq
+  · intro ⟨_, _, _, _, heq, _⟩; cases heq
+
+lemma denot_of_handlers_is_monotonic (handlers : Finmap Nat Denot)
+    (hmono : handlers_are_monotonic handlers) :
+    (denot_of_handlers handlers).is_monotonic := by
+  intro m1 m2 e hmem h
+  obtain ⟨l, D, x, happly, heq, hD⟩ := h
+  exact ⟨l, D, x, happly, heq, hmono l D happly hmem hD⟩
 
 def EnvTyping : Ctx s -> DenotCtx s -> Memory -> Prop
 | .empty, ⟨.empty, handlers⟩, _ => handlers_are_monotonic handlers
@@ -1318,6 +1318,7 @@ theorem typed_env_is_monotonic
       | empty =>
         constructor
         · intro x; cases x
+        · exact ht
   | push Γ k ih =>
     cases ctx with
     | mk env handlers =>
@@ -1336,6 +1337,7 @@ theorem typed_env_is_monotonic
               | there x =>
                 simp [DenotCtx.lookup_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 exact ih_result.tvar x
+            · exact ih_result.handlers
         | tvar S =>
           cases info with
           | tvar d =>
@@ -1354,6 +1356,7 @@ theorem typed_env_is_monotonic
               | there x =>
                 simp [DenotCtx.lookup_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 exact ih_result.tvar x
+            · exact ih_result.handlers
         | cvar B =>
           cases info with
           | cvar cs =>
@@ -1366,6 +1369,7 @@ theorem typed_env_is_monotonic
               | there x =>
                 simp [DenotCtx.lookup_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 exact ih_result.tvar x
+            · exact ih_result.handlers
 
 theorem typed_env_is_transparent
   (ht : EnvTyping Γ ctx mem) :
@@ -2302,6 +2306,7 @@ def shape_val_denot_is_monotonic {ctx : DenotCtx s}
                   simp [DenotCtx.lookup_tvar, DenotCtx.extend_tvar,
                         TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                   exact henv.tvar X'
+              · exact henv.handlers
             -- Use convert with expand_captures monotonicity
             have heq' := expand_captures_monotonic m1.wf hmem cs hwf_cs
             convert hfun m' denot (Memory.subsumes_trans msub hmem) hdenot_proper himply using 2
@@ -2436,6 +2441,7 @@ def exi_val_denot_is_monotonic {ctx : DenotCtx s}
                 simp [DenotCtx.lookup_tvar, DenotCtx.extend_cvar,
                       TypeEnv.extend_cvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
                 exact henv.tvar X'
+            · exact henv.handlers
           exact capt_val_denot_is_monotonic henv' T hmem ht_body
       all_goals {
         -- resolve returned non-pack, so ht is False
@@ -2488,7 +2494,6 @@ def exi_val_denot_is_bool_independent {ctx : DenotCtx s}
 def exi_exp_denot_is_monotonic {ctx : DenotCtx s}
   (henv_mono : ctx.IsMonotonic)
   (henv_bool : ctx.is_bool_independent)
-  (hhandlers_mono : ∀ l D, ctx.handlers.apply l = some D → D.is_monotonic)
   (T : Ty .exi s) :
   ∀ {C : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
@@ -2512,7 +2517,7 @@ def exi_exp_denot_is_monotonic {ctx : DenotCtx s}
   · apply Denot.as_mpost_is_monotonic
     apply Denot.Or.is_monotonic
     · exact exi_val_denot_is_monotonic henv_mono T
-    · exact denot_of_handlers_is_monotonic ctx.handlers hhandlers_mono
+    · exact denot_of_handlers_is_monotonic ctx.handlers henv_mono.handlers
   · apply Denot.as_mpost_is_bool_independent
     apply Denot.Or.is_bool_independent
     · exact exi_val_denot_is_bool_independent henv_bool T
