@@ -205,7 +205,8 @@ theorem sem_typ_var
   simp [Ty.exi_exp_denot, Ty.exi_val_denot, Ty.capt_val_denot]
   intro _
   apply Eval.eval_var
-  simp [Denot.as_mpost]
+  simp [Denot.as_mpost, Denot.Or]
+  left
   -- From typed_env_lookup_var, we get that .var (.free n) satisfies .capt C S
   have h_lookup := typed_env_lookup_var hts hx
   simp [Ty.capt_val_denot] at h_lookup ⊢
@@ -264,7 +265,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   intro _
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
-  · simp [Denot.as_mpost]
+  · simp [Denot.as_mpost, Denot.Or]
+    left
     constructor
     · -- Prove IsSimpleAns: abs is a simple value
       simp [Exp.subst]
@@ -406,7 +408,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   intro _
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
-  · simp [Denot.as_mpost]
+  · simp [Denot.as_mpost, Denot.Or]
+    left
     constructor
     · -- Prove IsSimpleAns: tabs is a simple value
       simp [Exp.subst]
@@ -506,7 +509,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
   intro _
   apply Eval.eval_val
   · simp [Exp.subst]; constructor
-  · simp [Denot.as_mpost]
+  · simp [Denot.as_mpost, Denot.Or]
+    left
     constructor
     · -- Prove IsSimpleAns: cabs is a simple value
       simp [Exp.subst]
@@ -628,7 +632,8 @@ theorem sem_typ_pack
   intro hws
   apply Eval.eval_val
   · constructor -- pack is a value
-  · simp [Denot.as_mpost]
+  · simp [Denot.as_mpost, Denot.Or]
+    left
     -- Goal: match (resolve store.heap (pack cs x).subst ...) with ...
     -- Simplify: resolve of a pack returns the pack itself
     have : (Exp.pack cs x).subst (Subst.from_DenotCtx ctx) =
@@ -659,16 +664,15 @@ theorem sem_typ_pack
       rw [this] at hx
       cases hx
       case eval_var hQ =>
-        -- hQ : (capt_val_denot ctx (T.subst (Subst.openCVar cs))).as_mpost ...
-        simp [Denot.as_mpost] at hQ
-        -- hQ : capt_val_denot ctx (T.subst (Subst.openCVar cs)) store (var (x.subst ...))
-        -- Now use retype lemma to convert from T.subst (Subst.openCVar cs) at env
-        -- to T at ctx.extend_cvar (cs.subst ...)
-        have hretype := @retype_capt_val_denot (s,C) s
-          (ctx.extend_cvar (cs.subst (Subst.from_DenotCtx ctx)))
-          (Subst.openCVar cs) ctx
-          (@Retype.open_carg s ctx cs) rfl T
-        exact (hretype store (Exp.var (x.subst (Subst.from_DenotCtx ctx)))).mpr hQ
+        simp [Denot.as_mpost, Denot.Or] at hQ
+        rcases hQ with hQ | ⟨_, _, _, _, heq, _⟩
+        · have hretype := @retype_capt_val_denot (s,C) s
+            (ctx.extend_cvar (cs.subst (Subst.from_DenotCtx ctx)))
+            (Subst.openCVar cs) ctx
+            (@Retype.open_carg s ctx cs) rfl T
+          exact (hretype store
+            (Exp.var (x.subst (Subst.from_DenotCtx ctx)))).mpr hQ
+        · cases heq
       case eval_val =>
         -- Variables can only use eval_var, not eval_val
         contradiction
@@ -882,9 +886,13 @@ theorem var_exp_denot_inv {A : CapabilitySet}
   Ty.exi_val_denot ctx T store (.var x) := by
   simp [Ty.exi_exp_denot] at hv
   have hv := hv hws
-  cases hv
-  case eval_val _ hQ => exact hQ
-  case eval_var hQ => exact hQ
+  cases hv with
+  | eval_val _ hQ =>
+    simp [Denot.as_mpost, Denot.Or, denot_of_handlers] at hQ
+    exact hQ
+  | eval_var hQ =>
+    simp [Denot.as_mpost, Denot.Or, denot_of_handlers] at hQ
+    exact hQ
 
 theorem closed_var_inv (x : Var .var {}) :
   ∃ fx, x = .free fx := by
@@ -1205,17 +1213,11 @@ theorem sem_typ_invoke
   apply Eval.eval_invoke hmem hlk_cap hlk_unit
 
   -- Show the postcondition holds for unit
-  constructor
-  · -- Prove IsSimpleAns for unit
-    apply Exp.IsSimpleAns.is_simple_val
-    apply Exp.IsSimpleVal.unit
-  constructor
-  · exact Exp.WfInHeap.wf_unit
-  constructor
-  · -- Empty capture set is always well-formed
-    simp only [CaptureSet.subst]
-    exact CaptureSet.WfInHeap.wf_empty
-  · simp [resolve]
+  left
+  exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.unit,
+         Exp.WfInHeap.wf_unit,
+         by { simp only [CaptureSet.subst]; exact CaptureSet.WfInHeap.wf_empty },
+         by simp [resolve]⟩
 
 theorem sem_typ_unit :
   {} # Γ ⊨ Exp.unit : .typ (.capt {} .unit) := by
@@ -1225,17 +1227,11 @@ theorem sem_typ_unit :
   intro _
   apply Eval.eval_val
   · exact Exp.IsVal.unit
-  · constructor
-    · -- Prove IsSimpleAns: unit is a simple value
-      apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_DenotCtx_wf_in_heap hts
-      · simp [resolve]
+  · left
+    exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.unit,
+           Exp.WfInHeap.wf_unit,
+           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty) (from_DenotCtx_wf_in_heap hts),
+           by simp [resolve]⟩
 
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
@@ -1281,8 +1277,26 @@ theorem sem_typ_cond
     have hAB : A ∪ B ⊆ (A ∪ B) ∪ C := CapabilitySet.Subset.union_right_left
     exact CapabilitySet.Subset.trans hA hAB
   have hguard := eval_capability_set_monotonic hguard_base hsubC1
+  -- Strip Or handlers from the guard postcondition
+  -- (safe because the guard is a variable, not a throw)
+  have hguard_val :
+      Eval (CaptureSet.denot ctx (C1 ∪ C2 ∪ C3) store) store
+        ((Exp.var x).subst (Subst.from_DenotCtx ctx)) Q1 := by
+    cases hguard with
+    | eval_val hval hQ =>
+      apply Eval.eval_val hval
+      simp [Denot.as_mpost, Denot.Or,
+        denot_of_handlers, Exp.subst] at hQ
+      simp [Q1, Denot.as_mpost]
+      exact hQ
+    | eval_var hQ =>
+      apply Eval.eval_var
+      simp [Denot.as_mpost, Denot.Or,
+        denot_of_handlers, Exp.subst] at hQ
+      simp [Q1, Denot.as_mpost]
+      exact hQ
   -- Assemble eval_cond
-  refine Eval.eval_cond (Q1 := Q1) hpred hbool hguard ?h_nonstuck ?h_true ?h_false
+  refine Eval.eval_cond (Q1 := Q1) hpred hbool hguard_val ?h_nonstuck ?h_true ?h_false
   · -- non-stuck: guard evaluates to a literal boolean
     intro m1 v hQ1
     have hQ1' : Ty.capt_val_denot ctx (.capt Cb .bool) m1 v := by
@@ -1337,7 +1351,9 @@ theorem sem_typ_cond
         hwf_union hsub).symm
     have hthen_store :
         Eval (CaptureSet.denot ctx (C1 ∪ C2 ∪ C3) store) m1
-          (e2.subst (Subst.from_DenotCtx ctx)) (Ty.exi_val_denot ctx T).as_mpost := by
+          (e2.subst (Subst.from_DenotCtx ctx))
+          ((Ty.exi_val_denot ctx T).Or
+            (denot_of_handlers ctx.handlers)).as_mpost := by
       exact hcap_eq ▸ hthen'
     exact hthen_store
   · -- false branch
@@ -1371,7 +1387,9 @@ theorem sem_typ_cond
         hwf_union hsub).symm
     have helse_store :
         Eval (CaptureSet.denot ctx (C1 ∪ C2 ∪ C3) store) m1
-          (e3.subst (Subst.from_DenotCtx ctx)) (Ty.exi_val_denot ctx T).as_mpost := by
+          (e3.subst (Subst.from_DenotCtx ctx))
+          ((Ty.exi_val_denot ctx T).Or
+            (denot_of_handlers ctx.handlers)).as_mpost := by
       exact hcap_eq ▸ helse'
     exact helse_store
 
@@ -1383,16 +1401,11 @@ theorem sem_typ_btrue :
   intro _
   apply Eval.eval_val
   · exact Exp.IsVal.btrue
-  · constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.btrue
-    constructor
-    · exact Exp.WfInHeap.wf_btrue
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_DenotCtx_wf_in_heap hts
-      · simp [resolve]
+  · left
+    exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.btrue,
+           Exp.WfInHeap.wf_btrue,
+           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty) (from_DenotCtx_wf_in_heap hts),
+           by simp [resolve]⟩
 
 theorem sem_typ_bfalse :
   {} # Γ ⊨ Exp.bfalse : .typ (.capt {} .bool) := by
@@ -1402,16 +1415,11 @@ theorem sem_typ_bfalse :
   intro _
   apply Eval.eval_val
   · exact Exp.IsVal.bfalse
-  · constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.bfalse
-    constructor
-    · exact Exp.WfInHeap.wf_bfalse
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_DenotCtx_wf_in_heap hts
-      · simp [resolve]
+  · left
+    exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.bfalse,
+           Exp.WfInHeap.wf_bfalse,
+           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty) (from_DenotCtx_wf_in_heap hts),
+           by simp [resolve]⟩
 
 theorem sem_typ_read
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
@@ -1463,18 +1471,17 @@ theorem sem_typ_read
   apply Eval.eval_read hmem hlk_cell
 
   -- Show the postcondition holds for the boolean result
-  constructor
+  left
+  refine ⟨?_, ?_, ?_, ?_⟩
   · -- Prove IsSimpleAns for the boolean
     apply Exp.IsSimpleAns.is_simple_val
     cases b0
     · exact Exp.IsSimpleVal.bfalse
     · exact Exp.IsSimpleVal.btrue
-  constructor
   · -- WfInHeap for the boolean
     cases b0
     · exact Exp.WfInHeap.wf_bfalse
     · exact Exp.WfInHeap.wf_btrue
-  constructor
   · -- Empty capture set is always well-formed
     simp only [CaptureSet.subst]
     exact CaptureSet.WfInHeap.wf_empty
@@ -1549,27 +1556,21 @@ theorem sem_typ_write
   · -- b = false
     apply Eval.eval_write_false hmem (hx := hlk_cell) hlk_bool
     -- Show the postcondition holds for unit
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    constructor
-    · simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
+    left
+    exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.unit,
+           Exp.WfInHeap.wf_unit,
+           by { simp only [CaptureSet.subst];
+                exact CaptureSet.WfInHeap.wf_empty },
+           by simp [resolve]⟩
   · -- b = true
     apply Eval.eval_write_true hmem (hx := hlk_cell) hlk_bool
     -- Show the postcondition holds for unit
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    constructor
-    · simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
+    left
+    exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.unit,
+           Exp.WfInHeap.wf_unit,
+           by { simp only [CaptureSet.subst];
+                exact CaptureSet.WfInHeap.wf_empty },
+           by simp [resolve]⟩
 
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
@@ -1664,8 +1665,9 @@ theorem sem_typ_letin
         (CaptureSet.ground_denot_wf hwf_C') hext_sub))
     · -- Show postcondition entailment
       apply Denot.imply_to_entails
-      have heqv := weaken_exi_val_denot (ctx:=ctx) (x:=l') (T:=U)
-      apply (Denot.equiv_to_imply heqv).2
+      have heqv := weaken_exi_val_denot
+        (ctx:=ctx) (x:=l') (T:=U)
+      exact (Denot.equiv_to_imply heqv).2.or_right _
     · -- Show: EnvTyping (Γ,x:T) (ctx.extend_var l')
       --       (m1.extend_val l' heapval hwf_v hfresh)
       constructor
@@ -1742,8 +1744,9 @@ theorem sem_typ_letin
         exact CapabilitySet.WellScoped.heap_mono hws (CaptureSet.ground_denot_wf hwf_C') hs1))
       · -- Show postcondition entailment
         apply Denot.imply_to_entails
-        have heqv := weaken_exi_val_denot (ctx:=ctx) (x:=fx) (T:=U)
-        apply (Denot.equiv_to_imply heqv).2
+        have heqv := weaken_exi_val_denot
+          (ctx:=ctx) (x:=fx) (T:=U)
+        exact (Denot.equiv_to_imply heqv).2.or_right _
       · -- Show: EnvTyping (Γ,x:T) (ctx.extend_var fx) m1
         constructor
         · -- Show: Ty.capt_val_denot ctx T m1 (Exp.var (Var.free fx))
@@ -2297,7 +2300,11 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
           let R0 := expand_captures m'.heap cs
           let R := R0 ∪ (reachability_of_loc m''.heap arg)
           -- Need to convert Denot.ImplyAfter to Mpost.entails_after
-          have himply_entails := Denot.imply_after_to_m_entails_after hres_sem
+          have himply_entails :=
+            Denot.imply_after_to_m_entails_after
+              (hres_sem.or_right
+                (denot_of_handlers
+                  (env.extend_var arg).handlers))
           -- Now use eval_post_monotonic_general to lift hbody from U1 to U2
           -- hbody : Ty.exi_exp_denot ... U1 R m'' (t0.subst...)
           unfold Ty.exi_exp_denot at hbody ⊢
@@ -2491,7 +2498,11 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
           -- hT_sem : (Ty.exi_val_denot (env.extend_cvar CS) T1).ImplyAfter m'' ...
           let R0 := expand_captures m'.heap cs
           -- Convert to postcondition entailment
-          have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+          have himply_entails :=
+            Denot.imply_after_to_m_entails_after
+              (hT_sem.or_right
+                (denot_of_handlers
+                  (env.extend_cvar CS).handlers))
           -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
           unfold Ty.exi_exp_denot at heval1 ⊢
           intro hws_body
@@ -2685,7 +2696,11 @@ lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
           -- hT_sem : (Ty.exi_val_denot (env.extend_tvar denot) T1).ImplyAfter m'' ...
           let R0 := expand_captures m'.heap cs
           -- Convert to postcondition entailment
-          have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+          have himply_entails :=
+            Denot.imply_after_to_m_entails_after
+              (hT_sem.or_right
+                (denot_of_handlers
+                  (env.extend_tvar denot).handlers))
           -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
           unfold Ty.exi_exp_denot at heval1 ⊢
           intro hws_body
@@ -2786,8 +2801,10 @@ theorem sem_typ_subtyp
   -- hsubtyp_sem : (exi_val_denot ctx E1).ImplyAfter m (exi_val_denot ctx E2)
 
   -- Convert ImplyAfter to entailment
-  have h_entails := Denot.imply_after_to_m_entails_after hsubtyp_sem
-  -- h_entails : (exi_val_denot ctx E1).as_mpost.entails_after m (exi_val_denot ctx E2).as_mpost
+  have h_entails :=
+    Denot.imply_after_to_m_entails_after
+      (hsubtyp_sem.or_right
+        (denot_of_handlers env.handlers))
 
   -- Lift the evaluation from E1 to E2 using postcondition monotonicity
   exact eval_post_monotonic_general h_entails h_eval_E1_at_C2
