@@ -469,6 +469,7 @@ theorem eval_ans_holds_post
   | eval_var hQ => exact hQ
   | eval_apply => cases hans; rename_i hv; cases hv
   | eval_invoke => cases hans; rename_i hv; cases hv
+  | eval_throw => cases hans; rename_i hv; cases hv
   | eval_tapply => cases hans; rename_i hv; cases hv
   | eval_capply => cases hans; rename_i hv; cases hv
   | eval_letin => cases hans; rename_i hv; cases hv

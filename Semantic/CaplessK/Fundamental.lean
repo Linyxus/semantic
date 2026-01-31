@@ -1589,43 +1589,51 @@ theorem sem_typ_letin
   intro ctx store hts
   simp [Exp.subst]
   simp [Ty.exi_exp_denot]
-  -- Use Eval.eval_letin with Q1 = (Ty.capt_val_denot ctx T).as_mpost
   intro hws
-  apply Eval.eval_letin (Q1 := (Ty.capt_val_denot ctx T).as_mpost)
+  apply Eval.eval_letin
+    (Q1 := ((Ty.capt_val_denot ctx T).Or
+      (denot_of_handlers ctx.handlers)).as_mpost)
   case hpred =>
-    -- Show (Ty.capt_val_denot ctx T).as_mpost is monotonic
-    intro m1 m2 e hwf hsub hQ
-    simp [Denot.as_mpost] at hQ ⊢
-    have henv_mono := typed_env_is_monotonic hts
-    exact capt_val_denot_is_monotonic henv_mono T hsub hQ
+    apply Denot.as_mpost_is_monotonic
+    apply Denot.Or.is_monotonic
+    · exact capt_val_denot_is_monotonic (typed_env_is_monotonic hts) T
+    · exact denot_of_handlers_is_monotonic ctx.handlers
+        (typed_env_is_monotonic hts).handlers
   case hbool =>
-    -- Show (Ty.capt_val_denot ctx T).as_mpost is bool independent
     apply Denot.as_mpost_is_bool_independent
-    exact capt_val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
+    apply Denot.Or.is_bool_independent
+    · exact capt_val_denot_is_bool_independent
+        (typed_env_is_bool_independent hts) T
+    · exact denot_of_handlers_is_bool_independent ctx.handlers
   case a =>
-    -- Show Eval ... store (e1.subst ...) (Ty.capt_val_denot ctx T).as_mpost
     have h1 := ht1 ctx store hts
     simp [Ty.exi_exp_denot, Ty.exi_val_denot] at h1
-    sorry -- BLOCKED: need throw propagation in eval_letin
+    exact h1 hws
   case h_nonstuck =>
     intro m1 v hQ1
-    simp [Denot.as_mpost] at hQ1
-    -- hQ1 : Ty.capt_val_denot ctx T m1 v
-    -- Unfold capt_val_denot to get well-formedness and shape info
-    cases T with
-    | capt C_T S =>
-      simp [Ty.capt_val_denot] at hQ1
-      obtain ⟨hsimple, hwf_v, hwf_C, h_shape⟩ := hQ1
-      constructor
-      · -- Prove v.IsSimpleAns
-        exact hsimple
-      · -- Prove v.WfInHeap m1.heap
-        exact hwf_v
+    simp [Denot.as_mpost, Denot.Or] at hQ1
+    cases hQ1 with
+    | inl hQ1 =>
+      left
+      cases T with
+      | capt C_T S =>
+        simp [Ty.capt_val_denot] at hQ1
+        obtain ⟨hsimple, hwf_v, _, _⟩ := hQ1
+        exact ⟨hsimple, hwf_v⟩
+    | inr hQ1 =>
+      right
+      obtain ⟨l, _, x, _, hveq, _⟩ := hQ1
+      cases x with
+      | free res => exact ⟨l, res, hveq⟩
+      | bound idx => cases idx
   case h_val =>
-    -- Handle the value case: e1 evaluated to a simple value v
     intro m1 v hs1 hv hwf_v hQ1 l' hfresh
-    -- m1.subsumes store, v is a simple value, Q1 v m1 holds
-    simp [Denot.as_mpost] at hQ1
+    -- Extract capt_val_denot from the Or (SimpleVal can't be a throw)
+    replace hQ1 : Ty.capt_val_denot ctx T m1 v := by
+      simp only [Denot.as_mpost, Denot.Or] at hQ1
+      rcases hQ1 with h | ⟨_, _, _, _, hveq, _⟩
+      · exact h
+      · cases hv <;> cases hveq
     -- Construct the HeapVal for v
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     -- Prove that the reachability set is well-formed in the heap
@@ -1713,10 +1721,13 @@ theorem sem_typ_letin
           Memory.subsumes_trans hext hs1
         exact env_typing_monotonic hts hsubsume
   case h_var =>
-    -- Handle the variable case: e1 evaluated to a variable x
     intro m1 x hs1 hwf_x hQ1
-    simp [Denot.as_mpost] at hQ1
-    -- Extract the free variable number from x
+    -- Extract capt_val_denot from the Or (.var x can't be a throw)
+    replace hQ1 : Ty.capt_val_denot ctx T m1 (.var x) := by
+      simp only [Denot.as_mpost, Denot.Or] at hQ1
+      rcases hQ1 with h | ⟨_, _, _, _, hveq, _⟩
+      · exact h
+      · cases hveq
     cases x
     case bound bv =>
       -- Bound variables in empty signature are impossible
@@ -1759,6 +1770,19 @@ theorem sem_typ_letin
           exact hQ1
         · -- Show: EnvTyping Γ ctx m1
           exact env_typing_monotonic hts hs1
+  case h_throw =>
+    intro m1 l res hs1 hQ1
+    simp [Denot.as_mpost, Denot.Or] at hQ1 ⊢
+    cases hQ1 with
+    | inl h =>
+      -- capt_val_denot requires IsSimpleAns, which is false for throws
+      exfalso
+      cases T with
+      | capt =>
+        simp [Ty.capt_val_denot] at h
+        cases h.1 with
+        | is_simple_val hv => cases hv
+    | inr h => right; exact h
 
 theorem sem_sc_trans
   (hsub1 : SemSubcapt Γ C1 C2)
@@ -2882,62 +2906,68 @@ theorem sem_typ_unpack
   simp [Ty.exi_exp_denot]
   -- Use Eval.eval_unpack with Q1 = (Ty.exi_val_denot ctx (.exi T)).as_mpost
   intro hws
-  apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot ctx (.exi T)).as_mpost)
+  apply Eval.eval_unpack (Q1 := ((Ty.exi_val_denot ctx (.exi T)).Or
+    (denot_of_handlers ctx.handlers)).as_mpost)
   case hpred =>
-    -- Show (Ty.exi_val_denot ctx (.exi T)).as_mpost is monotonic
-    intro m1 m2 e hwf hsub hQ
-    simp [Denot.as_mpost] at hQ ⊢
-    have henv_mono := typed_env_is_monotonic hts
-    exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ
+    apply Denot.as_mpost_is_monotonic
+    apply Denot.Or.is_monotonic
+    · intro m1 m2 e hsub hQ
+      exact exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T) hsub hQ
+    · exact denot_of_handlers_is_monotonic ctx.handlers
+        (typed_env_is_monotonic hts).handlers
   case hbool =>
-    -- Show (Ty.exi_val_denot ctx (.exi T)).as_mpost is bool independent
     apply Denot.as_mpost_is_bool_independent
-    exact exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T)
+    apply Denot.Or.is_bool_independent
+    · exact exi_val_denot_is_bool_independent
+        (typed_env_is_bool_independent hts) (.exi T)
+    · exact denot_of_handlers_is_bool_independent ctx.handlers
   case a =>
-    -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot ctx (.exi T)).as_mpost
     have ht' := ht ctx store hts
     simp [Ty.exi_exp_denot] at ht'
-    sorry -- BLOCKED: need throw propagation in eval_unpack
+    exact ht' hws
   case h_nonstuck =>
-    -- Prove that values satisfying exi_val_denot are packs and well-formed
     intro m1 v hQ1
-    simp [Denot.as_mpost, Ty.exi_val_denot] at hQ1
-    -- hQ1 : match resolve m1.heap v with | some (.pack CS x) => ... | _ => False
-    -- Case analyze on resolve result
-    cases hres : resolve m1.heap v <;> simp [hres] at hQ1
-    rename_i exp
-    cases exp <;> simp at hQ1
-    -- Only pack case is valid
-    rename_i CS x_pack
-    obtain ⟨hwf_CS, hQ1_body⟩ := hQ1
-    constructor
-    · -- Prove v.IsPack
-      -- Use resolve_is_pack: if resolve returns a pack, then v is a pack
-      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-      exact resolve_is_pack hres hpack
-    · -- Prove v.WfInHeap m1.heap
-      -- First show that v = .pack CS x_pack
-      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-      have hv_pack : v.IsPack := resolve_is_pack hres hpack
-      have heq : v = .pack CS x_pack := resolve_pack_eq hres hv_pack
-      -- Now prove well-formedness of the pack
-      rw [heq]
-      apply Exp.WfInHeap.wf_pack
-      · -- Prove CS.WfInHeap m1.heap
-        exact hwf_CS
-      · -- Prove x_pack.WfInHeap m1.heap
-        -- Extract from hQ1_body : Ty.capt_val_denot (ctx.extend_cvar CS) T m1 (Exp.var x_pack)
-        cases T with
-        | capt C_T S =>
-          simp [Ty.capt_val_denot] at hQ1_body
-          obtain ⟨_, hwf_var, _, _⟩ := hQ1_body
-          cases hwf_var with
-          | wf_var hwf_v =>
-            exact hwf_v
+    simp [Denot.as_mpost, Denot.Or] at hQ1
+    cases hQ1 with
+    | inl hQ1 =>
+      left
+      simp [Ty.exi_val_denot] at hQ1
+      cases hres : resolve m1.heap v <;> simp [hres] at hQ1
+      rename_i exp
+      cases exp <;> simp at hQ1
+      rename_i CS x_pack
+      obtain ⟨hwf_CS, hQ1_body⟩ := hQ1
+      constructor
+      · have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
+        exact resolve_is_pack hres hpack
+      · have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
+        have hv_pack : v.IsPack := resolve_is_pack hres hpack
+        have heq : v = .pack CS x_pack := resolve_pack_eq hres hv_pack
+        rw [heq]
+        apply Exp.WfInHeap.wf_pack
+        · exact hwf_CS
+        · cases T with
+          | capt C_T S =>
+            simp [Ty.capt_val_denot] at hQ1_body
+            obtain ⟨_, hwf_var, _, _⟩ := hQ1_body
+            cases hwf_var with
+            | wf_var hwf_v =>
+              exact hwf_v
+    | inr hQ1 =>
+      right
+      obtain ⟨l, _, x, _, hveq, _⟩ := hQ1
+      cases x with
+      | free res => exact ⟨l, res, hveq⟩
+      | bound idx => cases idx
   case h_val =>
     -- Handle the value case: t evaluated to a pack
     intro m1 x cs hs1 hwf_x hwf_cs hQ1
-    simp [Denot.as_mpost] at hQ1
+    -- Extract exi_val_denot from the Or (packs can't be throws)
+    replace hQ1 : Ty.exi_val_denot ctx (.exi T) m1 (.pack cs x) := by
+      simp only [Denot.as_mpost, Denot.Or] at hQ1
+      rcases hQ1 with h | ⟨_, _, _, _, hveq, _⟩
+      · exact h
+      · cases hveq
     -- hQ1 : Ty.exi_val_denot ctx (.exi T) m1 (.pack cs x)
     -- This means: Ty.capt_val_denot (ctx.extend_cvar cs) T m1 (.var x)
     simp [Ty.exi_val_denot] at hQ1
@@ -3052,6 +3082,14 @@ theorem sem_typ_unpack
       apply eval_post_monotonic _ hu''
       apply Denot.imply_to_entails
       apply ((Denot.equiv_to_imply heqv_composed).2).or_right
+  case h_throw =>
+    intro m1 l res hs1 hQ1
+    simp [Denot.as_mpost, Denot.Or] at hQ1 ⊢
+    cases hQ1 with
+    | inl h =>
+      exfalso
+      simp [Ty.exi_val_denot, resolve] at h
+    | inr h => right; exact h
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
