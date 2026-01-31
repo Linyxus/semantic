@@ -667,8 +667,14 @@ instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (DenotCtx s) CapBoundDenot where
   interp := CaptureBound.denot
 
+def handlers_are_monotonic
+  (handlers : Finmap Nat Denot) : Prop :=
+  ∀ l D,
+    handlers.apply l = some D ->
+    D.is_monotonic
+
 def EnvTyping : Ctx s -> DenotCtx s -> Memory -> Prop
-| .empty, ⟨.empty, _⟩, _ => True
+| .empty, ⟨.empty, handlers⟩, _ => handlers_are_monotonic handlers
 | .push Γ (.var T), ⟨.extend env (.var n), handlers⟩, m =>
   let ctx : DenotCtx _ := ⟨env, handlers⟩
   ⟦T⟧_[ctx] m (.var (.free n)) ∧
@@ -1274,6 +1280,8 @@ def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
 structure DenotCtx.IsMonotonic (ctx : DenotCtx s) : Prop where
   tvar : ∀ (X : BVar s .tvar),
     (ctx.lookup_tvar X).is_monotonic
+
+  handlers : handlers_are_monotonic ctx.handlers
 
 def DenotCtx.is_transparent (ctx : DenotCtx s) : Prop :=
   ∀ (X : BVar s .tvar),
