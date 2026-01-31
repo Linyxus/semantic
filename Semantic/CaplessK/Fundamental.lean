@@ -1230,7 +1230,9 @@ theorem sem_typ_unit :
   · left
     exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.unit,
            Exp.WfInHeap.wf_unit,
-           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty) (from_DenotCtx_wf_in_heap hts),
+           CaptureSet.wf_subst
+             (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty)
+             (from_DenotCtx_wf_in_heap hts),
            by simp [resolve]⟩
 
 theorem sem_typ_cond
@@ -1292,7 +1294,7 @@ theorem sem_typ_cond
     | eval_var hQ =>
       apply Eval.eval_var
       simp [Denot.as_mpost, Denot.Or,
-        denot_of_handlers, Exp.subst] at hQ
+        denot_of_handlers] at hQ
       simp [Q1, Denot.as_mpost]
       exact hQ
   -- Assemble eval_cond
@@ -1404,7 +1406,9 @@ theorem sem_typ_btrue :
   · left
     exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.btrue,
            Exp.WfInHeap.wf_btrue,
-           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty) (from_DenotCtx_wf_in_heap hts),
+           CaptureSet.wf_subst
+             (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty)
+             (from_DenotCtx_wf_in_heap hts),
            by simp [resolve]⟩
 
 theorem sem_typ_bfalse :
@@ -1418,7 +1422,9 @@ theorem sem_typ_bfalse :
   · left
     exact ⟨Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.bfalse,
            Exp.WfInHeap.wf_bfalse,
-           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty) (from_DenotCtx_wf_in_heap hts),
+           CaptureSet.wf_subst
+             (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty)
+             (from_DenotCtx_wf_in_heap hts),
            by simp [resolve]⟩
 
 theorem sem_typ_read
@@ -1572,6 +1578,95 @@ theorem sem_typ_write
                 exact CaptureSet.WfInHeap.wf_empty },
            by simp [resolve]⟩
 
+/-- Eval only produces values and variables, never throws.
+    So the `Or (denot_of_handlers handlers)` part of a
+    postcondition is vacuous and can be stripped. -/
+theorem eval_strip_or_handlers
+  {d : Denot} {handlers : Finmap Nat Denot}
+  {C : CapabilitySet} {m : Memory} {e : Exp {}}
+  {Q : Mpost}
+  (heval : Eval C m e Q)
+  (hQ : Q = (d.Or (denot_of_handlers handlers)).as_mpost) :
+  Eval C m e d.as_mpost := by
+  induction heval with
+  | eval_val hv hq =>
+    subst hQ
+    apply Eval.eval_val hv
+    simp [Denot.as_mpost, Denot.Or] at hq ⊢
+    cases hq with
+    | inl h => exact h
+    | inr h =>
+      exfalso; obtain ⟨_, _, _, _, hveq, _⟩ := h
+      cases hv <;> cases hveq
+  | eval_var hq =>
+    subst hQ
+    apply Eval.eval_var
+    simp [Denot.as_mpost, Denot.Or] at hq ⊢
+    cases hq with
+    | inl h => exact h
+    | inr h =>
+      exfalso; obtain ⟨_, _, _, _, hveq, _⟩ := h
+      cases hveq
+  | eval_apply hlookup _ ih =>
+    exact Eval.eval_apply hlookup (ih hQ)
+  | eval_invoke hmem hlookup_cap hlookup_unit hq =>
+    subst hQ
+    apply Eval.eval_invoke hmem hlookup_cap hlookup_unit
+    simp [Denot.as_mpost, Denot.Or] at hq ⊢
+    cases hq with
+    | inl h => exact h
+    | inr h =>
+      exfalso; obtain ⟨_, _, _, _, hveq, _⟩ := h
+      cases hveq
+  | eval_tapply hlookup _ ih =>
+    exact Eval.eval_tapply hlookup (ih hQ)
+  | eval_capply hlookup _ ih =>
+    exact Eval.eval_capply hlookup (ih hQ)
+  | eval_letin hpred hbool heval_e1 h_nonstuck
+      _ _ _ ih_val ih_var =>
+    exact Eval.eval_letin hpred hbool heval_e1
+      h_nonstuck (fun hs hv hwf hq l' hfresh =>
+        ih_val hs hv hwf hq l' hfresh hQ)
+      (fun hs hwf hq => ih_var hs hwf hq hQ)
+  | eval_unpack hpred hbool heval_e1 h_nonstuck
+      _ _ ih_val =>
+    exact Eval.eval_unpack hpred hbool heval_e1
+      h_nonstuck
+      (fun hs hwf_x hwf_cs hq => ih_val hs hwf_x hwf_cs hq hQ)
+  | eval_read hmem hlookup hq =>
+    subst hQ
+    apply Eval.eval_read hmem hlookup
+    simp [Denot.as_mpost, Denot.Or] at hq ⊢
+    cases hq with
+    | inl h => exact h
+    | inr h =>
+      exfalso; obtain ⟨_, _, _, _, hveq, _⟩ := h
+      split at hveq <;> cases hveq
+  | eval_write_true hmem hlookup_x hlookup_y hq =>
+    subst hQ
+    apply Eval.eval_write_true hmem hlookup_x hlookup_y
+    simp [Denot.as_mpost, Denot.Or] at hq ⊢
+    cases hq with
+    | inl h => exact h
+    | inr h =>
+      exfalso; obtain ⟨_, _, _, _, hveq, _⟩ := h
+      cases hveq
+  | eval_write_false hmem hlookup_x hlookup_y hq =>
+    subst hQ
+    apply Eval.eval_write_false hmem hlookup_x hlookup_y
+    simp [Denot.as_mpost, Denot.Or] at hq ⊢
+    cases hq with
+    | inl h => exact h
+    | inr h =>
+      exfalso; obtain ⟨_, _, _, _, hveq, _⟩ := h
+      cases hveq
+  | eval_cond hpred hbool heval_guard h_nonstuck
+      _ _ _ ih_true ih_false =>
+    exact Eval.eval_cond hpred hbool heval_guard
+      h_nonstuck
+      (fun hs hq hres => ih_true hs hq hres hQ)
+      (fun hs hq hres => ih_false hs hq hres hQ)
+
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -1600,7 +1695,7 @@ theorem sem_typ_letin
     -- Show Eval ... store (e1.subst ...) (Ty.capt_val_denot ctx T).as_mpost
     have h1 := ht1 ctx store hts
     simp [Ty.exi_exp_denot, Ty.exi_val_denot] at h1
-    exact h1 hws
+    exact eval_strip_or_handlers (h1 hws) rfl
   case h_nonstuck =>
     intro m1 v hQ1
     simp [Denot.as_mpost] at hQ1
@@ -2891,7 +2986,7 @@ theorem sem_typ_unpack
     -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot ctx (.exi T)).as_mpost
     have ht' := ht ctx store hts
     simp [Ty.exi_exp_denot] at ht'
-    exact ht' hws
+    exact eval_strip_or_handlers (ht' hws) rfl
   case h_nonstuck =>
     -- Prove that values satisfying exi_val_denot are packs and well-formed
     intro m1 v hQ1
@@ -3041,11 +3136,11 @@ theorem sem_typ_unpack
       -- Apply hu'' with conversions
       change Eval (C.denot ctx store) m1
         ((u.subst (Subst.from_DenotCtx ctx).lift.lift).subst (Subst.unpack cs (Var.free fx)))
-        (Ty.exi_val_denot ctx U).as_mpost
+        ((Ty.exi_val_denot ctx U).Or (denot_of_handlers ctx.handlers)).as_mpost
       rw [hexp_eq, <-hcap_eq]
       apply eval_post_monotonic _ hu''
       apply Denot.imply_to_entails
-      apply (Denot.equiv_to_imply heqv_composed).2
+      apply ((Denot.equiv_to_imply heqv_composed).2).or_right
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
