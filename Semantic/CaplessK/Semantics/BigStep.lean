@@ -165,7 +165,12 @@ theorem eval_monotonic {m1 m2 : Memory}
       · apply Exp.WfInHeap.wf_unit
       · exact hsub
       · exact hQ
-  case eval_throw => sorry
+  case eval_throw hmem hlookup hQ =>
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hlookup
+    simp [Cell.subsumes] at hsub_x
+    subst hsub_x
+    apply Eval.eval_throw hmem hx2
+    apply hpred hwf hsub hQ
   case eval_tapply hx _ ih =>
     -- Destructure subsumption to get the value in m2
     obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
@@ -447,7 +452,10 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     apply Eval.eval_invoke hmem hx hy
     apply himp _ _ _ hQ
     apply Memory.subsumes_refl
-  case eval_throw => sorry
+  case eval_throw hmem hlookup hQ =>
+    apply Eval.eval_throw hmem hlookup
+    apply himp _ _ _ hQ
+    apply Memory.subsumes_refl
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply hx
     apply ih himp
@@ -535,7 +543,9 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     exact Eval.eval_apply hlookup (ih hsub)
   case eval_invoke hmem hlookup_x hlookup_y hQ =>
     exact Eval.eval_invoke (CapabilitySet.subset_preserves_mem hsub hmem) hlookup_x hlookup_y hQ
-  case eval_throw => sorry
+  case eval_throw hmem hlookup hQ =>
+    exact Eval.eval_throw
+      (CapabilitySet.subset_preserves_mem hsub hmem) hlookup hQ
   case eval_tapply hlookup _ ih =>
     exact Eval.eval_tapply hlookup (ih hsub)
   case eval_capply hlookup _ ih =>
