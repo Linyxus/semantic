@@ -22,6 +22,11 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
   Q .unit m ->
   Eval C m (.app (.free x) (.free y)) Q
+| eval_throw {m : Memory} {x : Nat} :
+  x ∈ C ->
+  m.lookup x = some (.capability (.label K)) ->
+  Q (.throw (.free x) (.free res)) m ->
+  Eval C m (.throw (.free x) (.free res)) Q
 | eval_tapply {m : Memory} {x : Nat} :
   m.lookup x = some (.val ⟨.tabs cs T0 e, hv, R⟩) ->
   Eval C m (e.subst (Subst.openTVar .top)) Q ->
@@ -160,6 +165,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       · apply Exp.WfInHeap.wf_unit
       · exact hsub
       · exact hQ
+  case eval_throw => sorry
   case eval_tapply hx _ ih =>
     -- Destructure subsumption to get the value in m2
     obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
@@ -441,6 +447,7 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     apply Eval.eval_invoke hmem hx hy
     apply himp _ _ _ hQ
     apply Memory.subsumes_refl
+  case eval_throw => sorry
   case eval_tapply hx _ ih =>
     apply Eval.eval_tapply hx
     apply ih himp
@@ -528,6 +535,7 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     exact Eval.eval_apply hlookup (ih hsub)
   case eval_invoke hmem hlookup_x hlookup_y hQ =>
     exact Eval.eval_invoke (CapabilitySet.subset_preserves_mem hsub hmem) hlookup_x hlookup_y hQ
+  case eval_throw => sorry
   case eval_tapply hlookup _ ih =>
     exact Eval.eval_tapply hlookup (ih hsub)
   case eval_capply hlookup _ ih =>
