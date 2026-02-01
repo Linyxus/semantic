@@ -246,9 +246,20 @@ def rebind_shape_val_denot
             specialize hd H' CS hwf hsub hsub_bound
             exact (ih2 (expand_captures s0.heap cs0) H' _).mpr hd
   | .label T => by
-    apply PreDenot.eq_to_equiv
-    funext A
-    simp [Ty.shape_val_denot, Ty.rename]
+    have ih := rebind_shape_val_denot ρ hh T
+    intro A m e
+    simp only [Ty.shape_val_denot, Ty.rename]
+    constructor
+    · rintro ⟨l, K, D0, heq, hlookup, happly, himply, hmem⟩
+      refine ⟨l, K, D0, heq, hlookup, ?_, ?_, hmem⟩
+      · rw [← hh]; exact happly
+      · intro m' hsub e' hd
+        exact himply m' hsub e' ((ih .empty m' e').mpr hd)
+    · rintro ⟨l, K, D0, heq, hlookup, happly, himply, hmem⟩
+      refine ⟨l, K, D0, heq, hlookup, ?_, ?_, hmem⟩
+      · rw [hh]; exact happly
+      · intro m' hsub e' hd
+        exact himply m' hsub e' ((ih .empty m' e').mp hd)
 
 def rebind_capt_val_denot
   {s1 s2 : Sig} {ctx1 : DenotCtx s1} {f : Rename s1 s2} {ctx2 : DenotCtx s2}
