@@ -1860,7 +1860,7 @@ theorem shape_val_denot_is_transparent {ctx : DenotCtx s}
   | label T =>
     intro C m x v hx ht
     simp only [Ty.shape_val_denot] at ht ⊢
-    obtain ⟨l, K, heq, hlookup_and_mem⟩ := ht
+    obtain ⟨l, K, _, heq, _⟩ := ht
     -- v.unwrap = .var (.free l), but v.isVal says it's a simple value
     -- Variables are not simple values, so this is a contradiction
     have hval := v.isVal
@@ -2366,19 +2366,14 @@ def shape_val_denot_is_monotonic {ctx : DenotCtx s}
   | label T =>
     intro m1 m2 e hmem ht
     simp only [Ty.shape_val_denot] at ht ⊢
-    obtain ⟨l, K, heq, hcap, hmemin⟩ := ht
-    use l, K
-    constructor
-    · exact heq
-    · constructor
-      · have hsub : m2.heap.subsumes m1.heap := hmem
-        obtain ⟨c', hc', hsub_c⟩ := hsub l (Cell.capability (.label K)) hcap
-        -- For label capability cells, subsumption requires equality
-        simp [Cell.subsumes] at hsub_c
-        subst hsub_c
-        simp [Memory.lookup]
-        exact hc'
-      · exact hmemin
+    obtain ⟨l, K, D0, heq, hcap, happly, himply, hmemin⟩ := ht
+    refine ⟨l, K, D0, heq, ?_, happly, Denot.imply_after_subsumes himply hmem, hmemin⟩
+    have hsub : m2.heap.subsumes m1.heap := hmem
+    obtain ⟨c', hc', hsub_c⟩ := hsub l (Cell.capability (.label K)) hcap
+    simp [Cell.subsumes] at hsub_c
+    subst hsub_c
+    simp [Memory.lookup]
+    exact hc'
 
 def capt_val_denot_is_monotonic {ctx : DenotCtx s}
   (henv : ctx.IsMonotonic)
@@ -2844,7 +2839,7 @@ theorem shape_val_denot_is_reachability_safe {ctx : DenotCtx s}
     | _ => cases hres
   | label T =>
     simp only [Ty.shape_val_denot] at hdenot
-    obtain ⟨l, K, heq, hlookup, hmem⟩ := hdenot
+    obtain ⟨l, K, _, heq, hlookup, _, _, hmem⟩ := hdenot
     -- e is a variable pointing to a label capability
     rw [heq]
     simp [resolve_reachability]
@@ -2918,9 +2913,9 @@ theorem shape_val_denot_is_reachability_monotonic {ctx : DenotCtx s}
       · exact hfun
   | label T =>
     simp only [Ty.shape_val_denot] at hdenot ⊢
-    obtain ⟨l, K, heq, hlookup, hmem⟩ := hdenot
-    use l, K, heq, hlookup
-    exact CapabilitySet.subset_preserves_mem hsub hmem
+    obtain ⟨l, K, D0, heq, hlookup, happly, himply, hmem⟩ := hdenot
+    exact ⟨l, K, D0, heq, hlookup, happly, himply,
+      CapabilitySet.subset_preserves_mem hsub hmem⟩
 
 /-- If the type environment is well-typed, then the denotation of any shape type is proper.
     A PreDenot is proper if it is reachability-safe, monotonic, and transparent. This theorem
@@ -3018,7 +3013,7 @@ theorem shape_val_denot_implies_wf {ctx : DenotCtx s}
     exact hwf_e
   | label T =>
     simp only [Ty.shape_val_denot] at hdenot
-    obtain ⟨l, K, heq, hlookup, _⟩ := hdenot
+    obtain ⟨l, K, _, heq, hlookup, _⟩ := hdenot
     rw [heq]
     apply Exp.WfInHeap.wf_var
     apply Var.WfInHeap.wf_free
@@ -3154,17 +3149,13 @@ theorem shape_val_denot_is_tight {ctx : DenotCtx s}
           · exact hbody
   | label T =>
     simp only [Ty.shape_val_denot, reachability_of_loc, Memory.lookup] at ht ⊢
-    obtain ⟨l, K, heq, hlookup, hmem⟩ := ht
+    obtain ⟨l, K, D0, heq, hlookup, happly, himply, hmem⟩ := ht
     -- heq : .var (.free fx) = .var (.free l), so fx = l
     cases heq
     -- Now fx is replaced by l in all hypotheses
-    use fx, K
-    constructor
-    · rfl
-    · constructor
-      · exact hlookup
-      · simp [hlookup]
-        exact CapabilitySet.mem.here
+    refine ⟨fx, K, D0, rfl, hlookup, happly, himply, ?_⟩
+    simp [hlookup]
+    exact CapabilitySet.mem.here
 
 theorem shape_val_denot_is_proper {ctx : DenotCtx s} {S : Ty .shape s}
   (hts : EnvTyping Γ ctx m) :
