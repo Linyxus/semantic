@@ -552,10 +552,12 @@ def Ty.shape_val_denot : DenotCtx s -> Ty .shape s -> PreDenot
     e = .var (.free l) ∧
     m.lookup l = some (.capability (.mcell b0)) ∧
     l ∈ R
-| _, .label _ => fun R m e =>
-  ∃ l K,
+| ctx, .label S => fun R m e =>
+  ∃ l K D0,
     e = .var (.free l) ∧
     m.lookup l = some (.capability (.label K)) ∧
+    ctx.handlers.apply l = some D0 ∧
+    (shape_val_denot ctx S .empty).ImplyAfter m D0 ∧
     l ∈ R
 | ctx, .arrow T1 T2 => fun A m e =>
   e.WfInHeap m.heap ∧
