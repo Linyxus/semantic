@@ -277,6 +277,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | throw :
   HasType (.var x .top) Γ (.var x) (.typ (.capt (.var x .top) (.label S))) ->
   HasType .empty Γ (.var y) (.typ (.capt .empty S)) ->
+  E.IsClosed ->
   --------------------------------------------
   HasType (.var x .top) Γ (.throw x y) E
 | subtyp :

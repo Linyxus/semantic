@@ -317,6 +317,10 @@ theorem HasType.exp_is_closed
       cases ih_x; assumption
     · -- Var.IsClosed y✝
       cases ih_y; assumption
+  case throw ih_x ih_y =>
+    constructor
+    · cases ih_x; assumption
+    · cases ih_y; assumption
 
 theorem HasType.type_is_closed
   (ht : C # Γ ⊢ e : E) :

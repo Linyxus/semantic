@@ -1578,6 +1578,45 @@ theorem sem_typ_write
                 exact CaptureSet.WfInHeap.wf_empty },
            by simp [resolve]⟩
 
+theorem sem_typ_throw
+  {x y : BVar s .var} {S : Ty .shape s} {E : Ty .exi s}
+  (hx : (.var (.bound x) .top) # Γ ⊨ .var (.bound x) :
+    .typ (.capt (.var (.bound x) .top) (.label S)))
+  (hy : .empty # Γ ⊨ .var (.bound y) : .typ (.capt .empty S)) :
+  (.var (.bound x) .top) # Γ ⊨ Exp.throw (.bound x) (.bound y) : E := by
+  intro ctx store hts
+  simp [Ty.exi_exp_denot]
+  intro hws
+  -- Extract label denotation from hx
+  have h1 := hx ctx store hts
+  simp [Exp.subst, Subst.from_DenotCtx, Var.subst] at h1
+  have h1' := var_exp_denot_inv hws h1
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h1'
+  obtain ⟨_, _, _, hshape_x⟩ := h1'
+  simp only [Ty.shape_val_denot] at hshape_x
+  obtain ⟨l, K, D0, heq, hlookup, happly, himply, hmem⟩ := hshape_x
+  have heq_l : l = ctx.env.lookup_var x := by
+    simp only [Subst.from_TypeEnv, Exp.var.injEq, Var.free.injEq] at heq
+    omega
+  subst heq_l
+  -- Extract shape denotation from hy
+  have h2 := hy ctx store hts
+  simp [Exp.subst, Subst.from_DenotCtx, Var.subst] at h2
+  have hws_empty : (CaptureSet.denot ctx .empty store).WellScoped store.heap ctx.handlers.dom := by
+    simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+    intro l hl; cases hl
+  have h2' := var_exp_denot_inv hws_empty h2
+  simp only [Ty.exi_val_denot, Ty.capt_val_denot] at h2'
+  obtain ⟨_, _, _, hshape_y⟩ := h2'
+  -- Use ImplyAfter to derive D0 store (.var (.free (ctx.env.lookup_var y)))
+  have hD0 := himply store (Memory.subsumes_refl store) _ hshape_y
+  -- Simplify goal and apply eval_throw
+  simp [Exp.subst, Subst.from_DenotCtx, Var.subst]
+  apply Eval.eval_throw hmem hlookup
+  -- Show postcondition via Or.inr (denot_of_handlers)
+  right
+  exact ⟨_, D0, .free (ctx.env.lookup_var y), happly, rfl, hD0⟩
+
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -3221,5 +3260,14 @@ theorem fundamental
     -- Apply the semantic subtyping lemma
     apply sem_typ_subtyp (ht_ih hclosed_e) hsubcapt hsubtyp
       hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
+  case throw =>
+    rename_i hx_ih hy_ih
+    cases hclosed_e with
+    | throw hx_closed hy_closed =>
+      cases hx_closed
+      cases hy_closed
+      exact sem_typ_throw
+        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+        (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
 
 end CaplessK
