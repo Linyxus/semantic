@@ -219,6 +219,10 @@ theorem HasType.use_set_is_closed
     exact CaptureSet.IsClosed.union ih_x ih_y
   case cond ih1 ih2 ih3 =>
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
+  case boundary ih =>
+    cases ih with
+    | union h_cs_renamed _ =>
+      exact CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv h_cs_renamed)
 
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
@@ -321,6 +325,9 @@ theorem HasType.exp_is_closed
     constructor
     · cases ih_x; assumption
     · cases ih_y; assumption
+  case boundary ih =>
+    rename_i S_closed _
+    exact Exp.IsClosed.boundary S_closed ih
 
 theorem HasType.type_is_closed
   (ht : C # Γ ⊢ e : E) :
@@ -441,6 +448,9 @@ theorem HasType.type_is_closed
     exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.bool)
   case bfalse =>
     exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.bool)
+  case boundary =>
+    rename_i S_closed _ _
+    exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty S_closed)
 
 -- More context lookup properties
 
