@@ -4,6 +4,14 @@ import Semantic.CaplessK.Semantics.Heap
 
 namespace CaplessK
 
+def Mpost.handle_label (Q : Mpost) (l : Nat) : Mpost :=
+  fun e m =>
+    let m1 := m.mask_this_cap l
+    match e with
+    | .throw (.free l') (.free res) =>
+      if l = l' then Q (.var (.free res)) m1 else Q e m1
+    | _ => Q e m1
+
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_val :
   (hv : Exp.IsVal v) ->
@@ -35,26 +43,14 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
   Eval C m (e.subst (Subst.openCVar CS)) Q ->
   Eval C m (.capp (.free x) CS) Q
-| eval_boundary {m : Memory} {Q1 : Mpost} :
-  (hpred : Q1.is_monotonic) ->
-  (hbool : Q1.is_bool_independent) ->
+| eval_boundary {m : Memory}:
   (hbody :
     ∀ l,
       (hfresh : m.lookup l = none) ->
-      Eval
+      (Eval
         (C ∪ {l})
         (m.extend_label l K hfresh)
-        (e.subst (Subst.unpack (.var (.free l) .top) (.free l))) Q1) ->
-  (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
-    Q1 v m1 ->
-    (v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ∨
-    (∃ l res, v = .throw (.free l) (.free res))) ->
-  (hans : ∀ {m1} {a : Exp {}},
-    (m1.subsumes m) ->
-    (ha : Exp.IsSimpleAns a) ->
-    (hwf_a : Exp.WfInHeap a m1.heap) ->
-    Q1 a m1 ->
-    Q a m1) ->
+        (e.subst (Subst.unpack (.var (.free l) .top) (.free l))) (Q.handle_label l))) ->
   Eval C m (.boundary K S e) Q
 | eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
