@@ -18,6 +18,8 @@ deriving DecidableEq
 /-- The control classifier. -/
 def Classifier.control := child 0 .top
 
+def Classifier.subcontrol (idx : Nat) := child idx .control
+
 /-- The mutable classifier. -/
 def Classifier.mutable := child 1 .top
 
@@ -340,5 +342,9 @@ theorem Classifier.subclass_or_disjoint' (a b : Classifier) :
   · cases h <;> rename_i h
     · have h0 := h.weaken; simp_all [subclass_is_Subclass]
     · simp_all [disjoint_is_Disjoint]
+
+theorem Classifier.subcontrol_subclass_control {idx : Nat} :
+    (Classifier.subcontrol idx).subclass .control := by
+  sorry
 
 end CaplessK
