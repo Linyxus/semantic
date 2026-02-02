@@ -265,6 +265,16 @@ def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
 def Heap.extend_label (h : Heap) (l : Nat) (k : Classifier) : Heap :=
   fun l' => if l' = l then some (.masked k) else h l'
 
+def Heap.mask_this_cap (h : Heap) (l : Nat) : Heap :=
+  fun l' =>
+    if l' = l then
+      match h l' with
+      | some (.capability info) => some (.masked (info.classifier))
+      | some c => some c
+      | none => none
+    else
+      h l'
+
 /-- Update a cell in the heap with a new cell value. -/
 def Heap.update_cell (h : Heap) (l : Nat) (c : Cell) : Heap :=
   fun l' => if l' = l then some c else h l'
@@ -2315,11 +2325,81 @@ def extend_val (m : Memory) (l : Nat) (v : HeapVal)
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
 
+theorem Heap.extend_label_subsumes {H : Heap} {l : Nat} {k : Classifier}
+  (hfresh : H l = none) :
+  (H.extend_label l k).subsumes H := by
+  intro l' v' hlookup
+  unfold Heap.extend_label
+  split
+  case isTrue heq =>
+    subst heq
+    rw [hfresh] at hlookup
+    contradiction
+  case isFalse =>
+    exists v'
+    exact ⟨hlookup, Cell.subsumes_refl v'⟩
+
+theorem Heap.extend_label_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat} {k : Classifier}
+  (hdom : H.HasFinDom dom) (hfresh : H l = none) :
+  (H.extend_label l k).HasFinDom (dom ∪ {l}) := by
+  intro l'
+  unfold Heap.extend_label
+  split
+  case isTrue heq =>
+    subst heq
+    constructor
+    · intro _; simp
+    · intro _; simp
+  case isFalse hneq =>
+    constructor
+    · intro h
+      have : l' ∈ dom := (hdom l').mp h
+      simp [this, hneq]
+    · intro h
+      simp at h
+      rcases h with h | h
+      · contradiction
+      · exact (hdom l').mpr h
+
 def extend_label (m : Memory) (l : Nat) (k : Classifier)
   (hfresh : m.heap l = none) : Memory where
   heap := m.heap.extend_label l k
-  wf := sorry
-  findom := sorry
+  wf := by
+    constructor
+    · -- wf_val: masked cells are not val cells
+      intro l' hv' hlookup
+      unfold Heap.extend_label at hlookup
+      split at hlookup
+      case isTrue heq => cases hlookup
+      case isFalse hneq =>
+        apply Exp.wf_monotonic (Heap.extend_label_subsumes hfresh)
+        exact m.wf.wf_val l' hv' hlookup
+    · -- wf_reach: masked cells are not val cells
+      intro l' v' hv' R' hlookup
+      unfold Heap.extend_label at hlookup
+      split at hlookup
+      case isTrue heq => cases hlookup
+      case isFalse hneq =>
+        have heq := m.wf.wf_reach l' v' hv' R' hlookup
+        rw [heq]
+        exact (compute_reachability_monotonic m.wf (Heap.extend_label_subsumes hfresh) v' hv'
+          (m.wf.wf_val l' _ hlookup)).symm
+    · -- wf_reachability: masked cells are not val cells
+      intro l' hv' hlookup
+      unfold Heap.extend_label at hlookup
+      split at hlookup
+      case isTrue heq => cases hlookup
+      case isFalse hneq =>
+        intro l'' hl''
+        obtain ⟨info, hinfo⟩ := m.wf.wf_reachability l' hv' hlookup l'' hl''
+        have hneq' : l'' ≠ l := fun h => by
+          rw [h] at hinfo; exact Option.noConfusion (hfresh ▸ hinfo)
+        use info
+        simp only [Heap.extend_label, hneq', ↓reduceIte]
+        exact hinfo
+  findom :=
+    let ⟨dom, hdom⟩ := m.findom
+    ⟨dom ∪ {l}, Heap.extend_label_has_fin_dom hdom hfresh⟩
 
 /-- Update a mutable cell in memory with a new boolean value.
     Requires proof that the location contains a mutable cell. -/
