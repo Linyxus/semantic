@@ -345,6 +345,7 @@ theorem Classifier.subclass_or_disjoint' (a b : Classifier) :
 
 theorem Classifier.subcontrol_subclass_control {idx : Nat} :
     (Classifier.subcontrol idx).subclass .control := by
-  sorry
+  rw [← subclass_is_Subclass]
+  exact Subclass.parent_l .rfl
 
 end CaplessK
