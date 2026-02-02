@@ -2401,6 +2401,243 @@ def extend_label (m : Memory) (l : Nat) (k : Classifier)
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_label_has_fin_dom hdom hfresh⟩
 
+/-- mask_this_cap preserves allocation: if a location has a cell, it still has one. -/
+theorem Heap.mask_this_cap_preserves_some {h : Heap} {l n : Nat} {c : Cell}
+    (hex : h n = some c) :
+    ∃ c', (h.mask_this_cap l) n = some c' := by
+  simp only [Heap.mask_this_cap]
+  split
+  case isTrue heq => subst heq; rw [hex]; cases c <;> exact ⟨_, rfl⟩
+  case isFalse => exact ⟨c, hex⟩
+
+/-- mask_this_cap preserves val cells inversely. -/
+theorem Heap.mask_this_cap_val_inv {h : Heap} {l n : Nat} {hv : HeapVal}
+    (hlookup : (h.mask_this_cap l) n = some (.val hv)) :
+    h n = some (.val hv) := by
+  by_cases heq : n = l
+  · subst heq
+    cases hhn : h n with
+    | none => simp [Heap.mask_this_cap, hhn] at hlookup
+    | some c =>
+      cases c with
+      | capability info => simp [Heap.mask_this_cap, hhn] at hlookup
+      | val hv' =>
+        have hmtc : (h.mask_this_cap n) n = some (.val hv') := by
+          simp [Heap.mask_this_cap, hhn]
+        rw [hmtc] at hlookup; cases hlookup; rfl
+      | masked k => simp [Heap.mask_this_cap, hhn] at hlookup
+  · simp [Heap.mask_this_cap, heq] at hlookup; exact hlookup
+
+/-- mask_this_cap preserves reachability_of_loc. -/
+theorem reachability_of_loc_mask_this_cap (h : Heap) (l l' : Nat) :
+    reachability_of_loc (h.mask_this_cap l) l' = reachability_of_loc h l' := by
+  by_cases heq : l' = l
+  · subst heq
+    cases hhl : h l' with
+    | none => simp [reachability_of_loc, Heap.mask_this_cap, hhl]
+    | some c =>
+      cases c with
+      | capability info => simp [reachability_of_loc, Heap.mask_this_cap, hhl]
+      | val hv => simp [reachability_of_loc, Heap.mask_this_cap, hhl]
+      | masked k => simp [reachability_of_loc, Heap.mask_this_cap, hhl]
+  · simp [reachability_of_loc, Heap.mask_this_cap, heq]
+
+/-- mask_this_cap preserves classifier_of_loc. -/
+theorem classifier_of_loc_mask_this_cap (h : Heap) (l l' : Nat) :
+    classifier_of_loc (h.mask_this_cap l) l' = classifier_of_loc h l' := by
+  by_cases heq : l' = l
+  · subst heq
+    cases hhl : h l' with
+    | none => simp [classifier_of_loc, Heap.mask_this_cap, hhl]
+    | some c =>
+      cases c with
+      | capability info => simp [classifier_of_loc, Heap.mask_this_cap, hhl]
+      | val hv => simp [classifier_of_loc, Heap.mask_this_cap, hhl]
+      | masked k => simp [classifier_of_loc, Heap.mask_this_cap, hhl]
+  · simp [classifier_of_loc, Heap.mask_this_cap, heq]
+
+/-- mask_this_cap preserves proj_capability. -/
+theorem proj_capability_mask_this_cap (h : Heap) (l l' : Nat) (K : CapKind) :
+    proj_capability (h.mask_this_cap l) l' K = proj_capability h l' K := by
+  simp only [proj_capability, classifier_of_loc_mask_this_cap]
+
+/-- mask_this_cap preserves CapabilitySet.proj. -/
+theorem CapabilitySet.proj_mask_this_cap (h : Heap) (l : Nat) (C : CapabilitySet) (K : CapKind) :
+    C.proj (h.mask_this_cap l) K = C.proj h K := by
+  induction C with
+  | empty => rfl
+  | cap l' =>
+    simp only [CapabilitySet.proj]
+    rw [proj_capability_mask_this_cap]
+  | union c1 c2 ih1 ih2 =>
+    simp only [CapabilitySet.proj, ih1, ih2]
+
+/-- mask_this_cap preserves expand_captures. -/
+theorem expand_captures_mask_this_cap (h : Heap) (l : Nat) (cs : CaptureSet {}) :
+    expand_captures (h.mask_this_cap l) cs = expand_captures h cs := by
+  induction cs with
+  | empty => rfl
+  | var x =>
+    cases x with
+    | bound bv => cases bv
+    | free loc =>
+      simp only [expand_captures]
+      rw [reachability_of_loc_mask_this_cap, CapabilitySet.proj_mask_this_cap]
+  | union cs1 cs2 ih1 ih2 => simp [expand_captures, ih1, ih2]
+  | cvar c => cases c
+
+/-- mask_this_cap preserves compute_reachability. -/
+theorem compute_reachability_mask_this_cap (h : Heap) (l : Nat)
+    (v : Exp {}) (hv : v.IsSimpleVal) :
+    compute_reachability (h.mask_this_cap l) v hv = compute_reachability h v hv := by
+  cases hv with
+  | abs => simp [compute_reachability]; exact expand_captures_mask_this_cap h l _
+  | tabs => simp [compute_reachability]; exact expand_captures_mask_this_cap h l _
+  | cabs => simp [compute_reachability]; exact expand_captures_mask_this_cap h l _
+  | unit => rfl
+  | btrue => rfl
+  | bfalse => rfl
+
+/-- WfInHeap for variables is preserved by mask_this_cap. -/
+theorem Var.wf_mask_this_cap {h : Heap} {l : Nat} {x : Var k s}
+    (hwf : Var.WfInHeap x h) :
+    Var.WfInHeap x (h.mask_this_cap l) := by
+  cases hwf with
+  | wf_bound => exact .wf_bound
+  | wf_free hex =>
+    obtain ⟨c', hc'⟩ := Heap.mask_this_cap_preserves_some hex
+    exact .wf_free hc'
+
+/-- WfInHeap for capture sets is preserved by mask_this_cap. -/
+theorem CaptureSet.wf_mask_this_cap {h : Heap} {l : Nat} {cs : CaptureSet s}
+    (hwf : CaptureSet.WfInHeap cs h) :
+    CaptureSet.WfInHeap cs (h.mask_this_cap l) := by
+  induction hwf with
+  | wf_empty => exact .wf_empty
+  | wf_union _ _ ih1 ih2 => exact .wf_union ih1 ih2
+  | wf_var_free hex =>
+    obtain ⟨c', hc'⟩ := Heap.mask_this_cap_preserves_some hex
+    exact .wf_var_free hc'
+  | wf_var_bound => exact .wf_var_bound
+  | wf_cvar => exact .wf_cvar
+
+/-- WfInHeap for capture bounds is preserved by mask_this_cap. -/
+theorem CaptureBound.wf_mask_this_cap {h : Heap} {l : Nat} {cb : CaptureBound s}
+    (hwf : CaptureBound.WfInHeap cb h) :
+    CaptureBound.WfInHeap cb (h.mask_this_cap l) := by
+  cases hwf with
+  | wf_unbound => exact .wf_unbound
+  | wf_bound hwf_cs => exact .wf_bound (CaptureSet.wf_mask_this_cap hwf_cs)
+
+/-- WfInHeap for types is preserved by mask_this_cap. -/
+theorem Ty.wf_mask_this_cap {h : Heap} {l : Nat} {T : Ty sort s}
+    (hwf : Ty.WfInHeap T h) :
+    Ty.WfInHeap T (h.mask_this_cap l) := by
+  induction hwf with
+  | wf_top => exact .wf_top
+  | wf_tvar => exact .wf_tvar
+  | wf_arrow _ _ ih1 ih2 => exact .wf_arrow ih1 ih2
+  | wf_poly _ _ ih1 ih2 => exact .wf_poly ih1 ih2
+  | wf_cpoly hwf_cb _ ih_T =>
+    exact .wf_cpoly (CaptureBound.wf_mask_this_cap hwf_cb) ih_T
+  | wf_unit => exact .wf_unit
+  | wf_cap => exact .wf_cap
+  | wf_bool => exact .wf_bool
+  | wf_cell => exact .wf_cell
+  | wf_label _ ih => exact .wf_label ih
+  | wf_capt hwf_cs _ ih_T =>
+    exact .wf_capt (CaptureSet.wf_mask_this_cap hwf_cs) ih_T
+  | wf_exi _ ih => exact .wf_exi ih
+  | wf_typ _ ih => exact .wf_typ ih
+
+/-- WfInHeap for expressions is preserved by mask_this_cap. -/
+theorem Exp.wf_mask_this_cap {h : Heap} {l : Nat} {e : Exp s}
+    (hwf : Exp.WfInHeap e h) :
+    Exp.WfInHeap e (h.mask_this_cap l) := by
+  induction hwf with
+  | wf_var hwf_x => exact .wf_var (Var.wf_mask_this_cap hwf_x)
+  | wf_abs hwf_cs hwf_T _ ih_e =>
+    exact .wf_abs (CaptureSet.wf_mask_this_cap hwf_cs) (Ty.wf_mask_this_cap hwf_T) ih_e
+  | wf_tabs hwf_cs hwf_T _ ih_e =>
+    exact .wf_tabs (CaptureSet.wf_mask_this_cap hwf_cs) (Ty.wf_mask_this_cap hwf_T) ih_e
+  | wf_cabs hwf_cs hwf_cb _ ih_e =>
+    exact .wf_cabs (CaptureSet.wf_mask_this_cap hwf_cs) (CaptureBound.wf_mask_this_cap hwf_cb) ih_e
+  | wf_pack hwf_cs hwf_x =>
+    exact .wf_pack (CaptureSet.wf_mask_this_cap hwf_cs) (Var.wf_mask_this_cap hwf_x)
+  | wf_app hwf_x hwf_y =>
+    exact .wf_app (Var.wf_mask_this_cap hwf_x) (Var.wf_mask_this_cap hwf_y)
+  | wf_tapp hwf_x hwf_T =>
+    exact .wf_tapp (Var.wf_mask_this_cap hwf_x) (Ty.wf_mask_this_cap hwf_T)
+  | wf_capp hwf_x hwf_cs =>
+    exact .wf_capp (Var.wf_mask_this_cap hwf_x) (CaptureSet.wf_mask_this_cap hwf_cs)
+  | wf_letin _ _ ih1 ih2 => exact .wf_letin ih1 ih2
+  | wf_unpack _ _ ih1 ih2 => exact .wf_unpack ih1 ih2
+  | wf_unit => exact .wf_unit
+  | wf_btrue => exact .wf_btrue
+  | wf_bfalse => exact .wf_bfalse
+  | wf_read hwf_x => exact .wf_read (Var.wf_mask_this_cap hwf_x)
+  | wf_write hwf_x hwf_y =>
+    exact .wf_write (Var.wf_mask_this_cap hwf_x) (Var.wf_mask_this_cap hwf_y)
+  | wf_cond hwf_x _ _ ih2 ih3 =>
+    exact .wf_cond (Var.wf_mask_this_cap hwf_x) ih2 ih3
+  | wf_boundary hwf_T _ ih_e =>
+    exact .wf_boundary (Ty.wf_mask_this_cap hwf_T) ih_e
+  | wf_throw hwf_x hwf_y =>
+    exact .wf_throw (Var.wf_mask_this_cap hwf_x) (Var.wf_mask_this_cap hwf_y)
+
+def mask_this_cap (m : Memory) (l : Nat) : Memory where
+  heap := m.heap.mask_this_cap l
+  wf := by
+    constructor
+    · -- wf_val: val cells are preserved
+      intro l' hv' hlookup
+      have hlookup_orig := Heap.mask_this_cap_val_inv hlookup
+      exact Exp.wf_mask_this_cap (m.wf.wf_val l' hv' hlookup_orig)
+    · -- wf_reach: compute_reachability is preserved
+      intro l' v' hv' R' hlookup
+      have hlookup_orig := Heap.mask_this_cap_val_inv hlookup
+      have heq := m.wf.wf_reach l' v' hv' R' hlookup_orig
+      rw [heq]
+      exact (compute_reachability_mask_this_cap m.heap l v' hv').symm
+    · -- wf_reachability: reachable locations still exist
+      intro l' hv' hlookup
+      have hlookup_orig := Heap.mask_this_cap_val_inv hlookup
+      intro l'' hl''
+      obtain ⟨cell, hcell⟩ := m.wf.wf_reachability l' hv' hlookup_orig l'' hl''
+      exact Heap.mask_this_cap_preserves_some hcell
+  findom := by
+    obtain ⟨dom, hdom⟩ := m.findom
+    exists dom
+    intro n
+    constructor
+    · -- Forward: mask_this_cap n ≠ none → n ∈ dom
+      intro hne
+      apply (hdom n).mp
+      intro hhn
+      apply hne
+      simp only [Heap.mask_this_cap]
+      split
+      case isTrue heq => subst heq; rw [hhn]
+      case isFalse => exact hhn
+    · -- Backward: n ∈ dom → mask_this_cap n ≠ none
+      intro hin hm
+      have hhn := (hdom n).mpr hin
+      apply hhn
+      by_cases heq : n = l
+      · subst heq
+        cases hhn' : m.heap n with
+        | none => rfl
+        | some c =>
+          have hmtc : (m.heap.mask_this_cap n) n = match m.heap n with
+            | some (.capability info) => some (.masked (info.classifier))
+            | some c => some c
+            | none => none := by simp [Heap.mask_this_cap]
+          rw [hmtc] at hm; rw [hhn'] at hm
+          cases c <;> cases hm
+      · have hmtc : (m.heap.mask_this_cap l) n = m.heap n := by
+          simp [Heap.mask_this_cap, heq]
+        rw [hmtc] at hm; exact hm
+
 /-- Update a mutable cell in memory with a new boolean value.
     Requires proof that the location contains a mutable cell. -/
 def update_mcell (m : Memory) (l : Nat) (b : Bool)
