@@ -262,6 +262,9 @@ def Heap.extend (h : Heap) (l : Nat) (v : HeapVal) : Heap :=
 def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
   fun l' => if l' = l then some (.capability .basic) else h l'
 
+def Heap.extend_label (h : Heap) (l : Nat) (k : Classifier) : Heap :=
+  fun l' => if l' = l then some (.masked k) else h l'
+
 /-- Update a cell in the heap with a new cell value. -/
 def Heap.update_cell (h : Heap) (l : Nat) (c : Cell) : Heap :=
   fun l' => if l' = l then some c else h l'
@@ -2311,6 +2314,12 @@ def extend_val (m : Memory) (l : Nat) (v : HeapVal)
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
+
+def extend_label (m : Memory) (l : Nat) (k : Classifier)
+  (hfresh : m.heap l = none) : Memory where
+  heap := m.heap.extend_label l k
+  wf := sorry
+  findom := sorry
 
 /-- Update a mutable cell in memory with a new boolean value.
     Requires proof that the location contains a mutable cell. -/
