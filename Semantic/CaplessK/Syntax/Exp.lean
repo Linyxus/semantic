@@ -24,7 +24,7 @@ inductive Exp : Sig -> Type where
 | read : Var .var s -> Exp s
 | write : Var .var s -> Var .var s -> Exp s
 | cond : Var .var s -> Exp s -> Exp s -> Exp s
-| boundary : CapKind -> Ty .shape s -> Exp (s,C,x) -> Exp s
+| boundary : Classifier -> Ty .shape s -> Exp (s,C,x) -> Exp s
 | throw : Var .var s -> Var .var s -> Exp s
 
 /-- Applies a renaming to all bound variables in an expression. -/
