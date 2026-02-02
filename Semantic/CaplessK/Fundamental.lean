@@ -3130,6 +3130,16 @@ theorem sem_typ_unpack
       simp [Ty.exi_val_denot, resolve] at h
     | inr h => right; exact h
 
+theorem sem_typ_boundary
+  {C : CaptureSet s} {Γ : Ctx s} {K : CapKind} {S : Ty .shape s}
+  {e : Exp (s,C,x)}
+  (hS_closed : S.IsClosed)
+  (he : (C.rename Rename.succ).rename Rename.succ ∪ .var (.bound .here) .top #
+        (Γ,C<:(.unbound K),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ))) ⊨
+        e : .typ (.capt .empty ((S.rename Rename.succ).rename Rename.succ))) :
+  C # Γ ⊨ Exp.boundary K S e : .typ (.capt .empty S) := by
+  sorry
+
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (ht : C # Γ ⊢ e : T) :
@@ -3269,5 +3279,10 @@ theorem fundamental
       exact sem_typ_throw
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
         (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  case boundary =>
+    rename_i hS_closed _ he_ih
+    cases hclosed_e with
+    | boundary _ he_closed =>
+      exact sem_typ_boundary hS_closed (he_ih he_closed)
 
 end CaplessK
