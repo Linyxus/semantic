@@ -280,6 +280,15 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   E.IsClosed ->
   --------------------------------------------
   HasType (.var x .top) Γ (.throw x y) E
+| boundary {S : Ty .shape s} {e : Exp (s,C,x)} :
+  S.IsClosed ->
+  HasType
+    ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here) .top))
+    (Γ,C<:(.unbound K),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ)))
+    e
+    (.typ (.capt .empty ((S.rename Rename.succ).rename Rename.succ))) ->
+  --------------------------------------------
+  HasType C Γ (.boundary K S e) (.typ (.capt .empty S))
 | subtyp :
   HasType C1 Γ e E1 ->
   Subcapt Γ C1 C2 ->
