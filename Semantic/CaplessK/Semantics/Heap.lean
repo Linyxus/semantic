@@ -263,7 +263,7 @@ def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
   fun l' => if l' = l then some (.capability .basic) else h l'
 
 def Heap.extend_label (h : Heap) (l : Nat) (k : Classifier) : Heap :=
-  fun l' => if l' = l then some (.masked k) else h l'
+  fun l' => if l' = l then some (.capability (.label k)) else h l'
 
 def Heap.mask_this_cap (h : Heap) (l : Nat) : Heap :=
   fun l' =>

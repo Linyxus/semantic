@@ -547,9 +547,9 @@ theorem eval_monotonic {m1 m2 : Memory}
       · apply Exp.wf_subst
         · exact Exp.wf_monotonic (Memory.Heap.extend_label_subsumes hfresh1) hwf_e
         · apply Subst.wf_unpack
-          · exact CaptureSet.WfInHeap.wf_var_free (val := .masked K)
+          · exact CaptureSet.WfInHeap.wf_var_free (val := .capability (.label K))
               (by simp [Memory.extend_label, Heap.extend_label])
-          · exact Var.WfInHeap.wf_free (val := .masked K)
+          · exact Var.WfInHeap.wf_free (val := .capability (.label K))
               (by simp [Memory.extend_label, Heap.extend_label])
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
