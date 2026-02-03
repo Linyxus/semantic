@@ -12,6 +12,108 @@ def Mpost.handle_label (Q : Mpost) (l : Nat) : Mpost :=
       if l = l' then Q (.var (.free res)) m1 else Q e m1
     | _ => Q e m1
 
+/-- Transfer through handle_label: if Q1 entails Q2 at the masked memory,
+    then handle_label Q1 entails handle_label Q2. -/
+private theorem Mpost.handle_label_transfer
+  {Q1 Q2 : Mpost} {l : Nat} {e : Exp {}} {m : Memory}
+  (h : ∀ e', Q1 e' (m.mask_this_cap l) → Q2 e' (m.mask_this_cap l))
+  (hq : (Q1.handle_label l) e m) :
+  (Q2.handle_label l) e m := by
+  revert hq
+  simp only [Mpost.handle_label]
+  split
+  · split <;> exact fun hq => h _ hq
+  · exact fun hq => h _ hq
+
+private theorem Memory.lookup_none_of_subsumes
+  {m1 m2 : Memory} {l : Nat}
+  (hsub : m2.subsumes m1)
+  (hfresh : m2.lookup l = none) :
+  m1.lookup l = none := by
+  simp only [Memory.lookup] at *
+  rcases h : m1.heap l with _ | v
+  · rfl
+  · obtain ⟨v', hv', _⟩ := hsub _ _ h
+    rw [hv'] at hfresh; simp at hfresh
+
+private theorem Heap.mask_this_cap_subsumes
+  {h1 h2 : Heap} {l : Nat}
+  (hsub : h2.subsumes h1) :
+  (h2.mask_this_cap l).subsumes (h1.mask_this_cap l) := by
+  intro l' v' hl'
+  by_cases heq : l' = l
+  · subst heq
+    simp only [Heap.mask_this_cap, ↓reduceIte] at hl' ⊢
+    rcases hh1 : h1 l' with _ | c1
+    · simp [hh1] at hl'
+    · obtain ⟨c2, hc2, hsub_c⟩ := hsub _ _ hh1
+      simp only [hh1] at hl'
+      simp only [hc2]
+      cases c1 with
+      | capability info1 =>
+        simp at hl'; subst hl'
+        cases c2 with
+        | capability info2 =>
+          exact ⟨_, rfl, by
+            have := Cell.subsumes_classifier_eq hsub_c rfl rfl
+            simp [Cell.subsumes, this]⟩
+        | val _ => simp [Cell.subsumes] at hsub_c
+        | masked _ => simp [Cell.subsumes] at hsub_c
+      | val _ =>
+        simp at hl'; subst hl'
+        simp [Cell.subsumes] at hsub_c; subst hsub_c
+        exact ⟨_, rfl, Cell.subsumes_refl _⟩
+      | masked _ =>
+        simp at hl'; subst hl'
+        simp [Cell.subsumes] at hsub_c; subst hsub_c
+        exact ⟨_, rfl, Cell.subsumes_refl _⟩
+  · simp only [Heap.mask_this_cap, if_neg heq] at hl' ⊢
+    exact hsub l' v' hl'
+
+private theorem Mpost.handle_label_is_monotonic
+  {Q : Mpost} {l : Nat}
+  (hpred : Q.is_monotonic) :
+  (Q.handle_label l).is_monotonic := by
+  intro m1 m2 e hwf_e hsub hq
+  simp only [Mpost.handle_label] at hq ⊢
+  have hmask_sub : (m2.mask_this_cap l).subsumes (m1.mask_this_cap l) :=
+    Heap.mask_this_cap_subsumes hsub
+  split at hq
+  · split at hq
+    · rename_i heq_l
+      subst heq_l
+      rw [if_pos rfl]
+      apply hpred _ hmask_sub hq
+      apply Exp.WfInHeap.wf_var
+      apply Memory.Var.wf_mask_this_cap
+      cases hwf_e with | wf_throw _ hwf_y => exact hwf_y
+    · rename_i hneq_l
+      rw [if_neg hneq_l]
+      exact hpred (Memory.Exp.wf_mask_this_cap hwf_e) hmask_sub hq
+  · exact hpred (Memory.Exp.wf_mask_this_cap hwf_e) hmask_sub hq
+
+private theorem Mpost.handle_label_is_bool_independent
+  {Q : Mpost} {l : Nat}
+  (hbool : Q.is_bool_independent) :
+  (Q.handle_label l).is_bool_independent := by
+  intro m
+  simp only [Mpost.handle_label]
+  exact hbool
+
+private theorem Memory.extend_label_subsumes_of_subsumes
+  {m1 m2 : Memory} {l : Nat} {K : Classifier}
+  (hsub : m2.subsumes m1)
+  (hfresh1 : m1.heap l = none)
+  (hfresh2 : m2.heap l = none) :
+  (m2.extend_label l K hfresh2).subsumes (m1.extend_label l K hfresh1) := by
+  intro l' v' hl'
+  by_cases heq : l' = l
+  · subst heq
+    simp only [Memory.extend_label, Heap.extend_label, ↓reduceIte] at hl' ⊢
+    cases hl'; exact ⟨_, rfl, Cell.subsumes_refl _⟩
+  · simp only [Memory.extend_label, Heap.extend_label, if_neg heq] at hl' ⊢
+    exact hsub l' v' hl'
+
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_val :
   (hv : Exp.IsVal v) ->
@@ -431,6 +533,24 @@ theorem eval_monotonic {m1 m2 : Memory}
     · intro m_branch v hs hQ1 hres
       have hs_orig := Memory.subsumes_trans hs hsub
       exact h_false hs_orig hQ1 hres
+  case eval_boundary =>
+    rename_i _ K _ _ Qb mb hbody hbody_ih
+    cases hwf with
+    | wf_boundary hwf_T hwf_e =>
+      apply Eval.eval_boundary
+      intro l hfresh2
+      have hfresh1 := Memory.lookup_none_of_subsumes hsub hfresh2
+      apply hbody_ih l hfresh1
+      · exact Mpost.handle_label_is_monotonic hpred
+      · exact Mpost.handle_label_is_bool_independent hbool
+      · exact Memory.extend_label_subsumes_of_subsumes hsub hfresh1 hfresh2
+      · apply Exp.wf_subst
+        · exact Exp.wf_monotonic (Memory.Heap.extend_label_subsumes hfresh1) hwf_e
+        · apply Subst.wf_unpack
+          · exact CaptureSet.WfInHeap.wf_var_free (val := .masked K)
+              (by simp [Memory.extend_label, Heap.extend_label])
+          · exact Var.WfInHeap.wf_free (val := .masked K)
+              (by simp [Memory.extend_label, Heap.extend_label])
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -559,6 +679,25 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_false hsub hq1 hres
       apply Mpost.entails_after_subsumes himp
       exact hsub
+  case eval_boundary =>
+    rename_i _ _ _ _ Qb mb hbody hbody_ih
+    apply Eval.eval_boundary
+    intro l hfresh
+    apply hbody_ih l hfresh
+    simp only [Memory.lookup] at hfresh
+    intro m' hsub_m' e_res hq_res
+    have hsub_m : m'.subsumes mb :=
+      Memory.subsumes_trans hsub_m' (by
+        unfold Memory.subsumes
+        exact Memory.Heap.extend_label_subsumes hfresh)
+    have hmask_sub : (m'.mask_this_cap l).subsumes mb := by
+      unfold Memory.subsumes
+      intro l' v' hl'
+      have hne : l' ≠ l := by
+        intro heq; subst heq; simp [hfresh] at hl'
+      obtain ⟨v'', hv'', hsub_v⟩ := hsub_m l' v' hl'
+      exact ⟨v'', by simp [Memory.mask_this_cap, Heap.mask_this_cap, hne]; exact hv'', hsub_v⟩
+    exact Mpost.handle_label_transfer (fun e' hq => himp _ hmask_sub e' hq) hq_res
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
@@ -571,7 +710,7 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   (heval : Eval A1 m e Q)
   (hsub : A1 ⊆ A2) :
   Eval A2 m e Q := by
-  induction heval
+  induction heval generalizing A2
   case eval_val hv hQ =>
     exact Eval.eval_val hv hQ
   case eval_var hQ =>
@@ -625,5 +764,13 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_true hs1 hq1 hres hsub
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
+  case eval_boundary =>
+    rename_i _ _ _ _ _ mb hbody hbody_ih
+    apply Eval.eval_boundary
+    intro l hfresh
+    apply hbody_ih l hfresh
+    exact CapabilitySet.union_subset_of_subset_of_subset
+      (CapabilitySet.subset_trans hsub CapabilitySet.subset_union_left)
+      CapabilitySet.subset_union_right
 
 end CaplessK
