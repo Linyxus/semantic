@@ -284,7 +284,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   S.IsClosed ->
   HasType
     ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here) .top))
-    (Γ,C<:(.unbound K),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ)))
+    (Γ,C<:(.unbound (.classifier K)),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ)))
     e
     (.typ (.capt .empty ((S.rename Rename.succ).rename Rename.succ))) ->
   --------------------------------------------
