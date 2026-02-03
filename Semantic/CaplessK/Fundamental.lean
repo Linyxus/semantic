@@ -3131,12 +3131,13 @@ theorem sem_typ_unpack
     | inr h => right; exact h
 
 theorem sem_typ_boundary
-  {C : CaptureSet s} {Γ : Ctx s} {K : CapKind} {S : Ty .shape s}
+  {C : CaptureSet s} {Γ : Ctx s} {K : Classifier} {S : Ty .shape s}
   {e : Exp (s,C,x)}
   (hS_closed : S.IsClosed)
-  (he : (C.rename Rename.succ).rename Rename.succ ∪ .var (.bound .here) .top #
-        (Γ,C<:(.unbound K),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ))) ⊨
-        e : .typ (.capt .empty ((S.rename Rename.succ).rename Rename.succ))) :
+  (he :
+    (C.rename Rename.succ).rename Rename.succ ∪ .var (.bound .here) .top #
+      (Γ,C<:(.unbound (.classifier K)),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ))) ⊨
+      e : .typ (.capt .empty ((S.rename Rename.succ).rename Rename.succ))) :
   C # Γ ⊨ Exp.boundary K S e : .typ (.capt .empty S) := by
   sorry
 
