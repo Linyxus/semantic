@@ -3130,16 +3130,332 @@ theorem sem_typ_unpack
       simp [Ty.exi_val_denot, resolve] at h
     | inr h => right; exact h
 
+private theorem CaptureSet.IsClosed.of_union_left {C1 C2 : CaptureSet s}
+    (h : (C1 ∪ C2).IsClosed) : C1.IsClosed := by
+  cases h; assumption
+
+-- CLAUDE: handler extension for EnvTyping.
+-- When a fresh label `l` is allocated and its handler `D` is added,
+-- the existing EnvTyping is preserved because:
+-- (1) existing handler lookups are unchanged (l is fresh)
+-- (2) existing values don't reference l
+-- The arrow case requires showing that the body's Eval transfers
+-- to the extended postcondition via eval_post_monotonic.
+theorem env_typing_handler_extend
+    (henv : EnvTyping Γ ctx m)
+    (hm' : m'.subsumes m)
+    (D_mono : D.is_monotonic) :
+    EnvTyping Γ ⟨ctx.env, ctx.handlers.extend l D⟩ m' := by
+  sorry
+
+-- CLAUDE: handler reverse at empty capture.
+-- For empty capture set, shape_val_denot is handler-independent because:
+-- (1) the .label case requires l ∈ .empty which is impossible
+-- (2) the arrow/poly/cpoly cases at R0 ⊆ .empty have R0 = .empty,
+--     and the body's Eval can be transferred via eval_post_monotonic
+--     since the original postcondition entails the extended one.
+theorem shape_val_denot_handler_reverse_empty
+    {ctx : DenotCtx s}
+    (S : Ty .shape s)
+    (D : Denot) (l : Nat) :
+    ∀ m e,
+      Ty.shape_val_denot
+        ⟨ctx.env, ctx.handlers.extend l D⟩ S
+        CapabilitySet.empty m e →
+      Ty.shape_val_denot ctx S CapabilitySet.empty m e := by
+  intro m e h
+  cases S with
+  | top =>
+    simp [Ty.shape_val_denot] at h ⊢; exact h
+  | tvar X =>
+    simp [Ty.shape_val_denot, DenotCtx.lookup_tvar] at h ⊢; exact h
+  | unit =>
+    simp [Ty.shape_val_denot] at h ⊢; exact h
+  | bool =>
+    simp [Ty.shape_val_denot] at h ⊢; exact h
+  | cap =>
+    simp [Ty.shape_val_denot] at h
+    obtain ⟨_, _, _, _, hmem⟩ := h; exact nomatch hmem
+  | cell =>
+    simp [Ty.shape_val_denot] at h
+    obtain ⟨_, _, _, hmem⟩ := h; exact nomatch hmem
+  | label S' =>
+    simp [Ty.shape_val_denot] at h
+    obtain ⟨_, _, _, _, ⟨_, _, hmem⟩⟩ := h; exact nomatch hmem
+  | arrow T1 T2 =>
+    -- Requires capability safety: eval at restricted capability set
+    -- cannot throw to handlers outside that set
+    sorry
+  | poly T1 T2 =>
+    sorry
+  | cpoly B T =>
+    sorry
+
 theorem sem_typ_boundary
   {C : CaptureSet s} {Γ : Ctx s} {K : Classifier} {S : Ty .shape s}
   {e : Exp (s,C,x)}
   (hS_closed : S.IsClosed)
+  (hC_closed : C.IsClosed)
   (he :
     (C.rename Rename.succ).rename Rename.succ ∪ .var (.bound .here) .top #
       (Γ,C<:(.unbound (.classifier K)),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ))) ⊨
       e : .typ (.capt .empty ((S.rename Rename.succ).rename Rename.succ))) :
   C # Γ ⊨ Exp.boundary K S e : .typ (.capt .empty S) := by
-  sorry
+  intro ctx m henv
+  simp [Ty.exi_exp_denot]
+  intro hwf
+  simp only [Exp.subst]
+  apply Eval.eval_boundary
+  intro l hfresh
+  rw [Exp.subst_comp, Subst.from_DenotCtx_weaken_unpack]
+  -- Handler denotation for l: matches outer type for trivial throw transfer
+  set D : Denot := Ty.shape_val_denot ctx S CapabilitySet.empty
+  -- Extended context with handler for l
+  set ctx' : DenotCtx (s,C,x) :=
+    ⟨(ctx.env.extend_cvar (.var (.free l) .top)).extend_var l,
+     ctx.handlers.extend l D⟩
+  -- from_DenotCtx only depends on env, not handlers
+  have hsame_subst : Subst.from_DenotCtx ctx' =
+    Subst.from_DenotCtx ((ctx.extend_cvar (.var (.free l) .top)).extend_var l) := rfl
+  rw [← hsame_subst]
+  set m' := m.extend_label l K hfresh
+  -- Key fact: m'.heap l is the new label capability
+  have hlookup_l : m'.heap l = some (.capability (.label K)) := by
+    simp [m', Memory.extend_label, Heap.extend_label]
+  -- Memory subsumption: m' extends m
+  have hm'_sub : m'.subsumes m := by
+    intro l' v' hl'
+    simp only [m', Memory.extend_label, Heap.extend_label]
+    by_cases h : l' = l
+    · have h1 : m.heap l = some v' := h ▸ hl'
+      have h2 : m.heap l = none := hfresh
+      rw [h2] at h1; cases h1
+    · exact ⟨v', by simp [h, hl'], Cell.subsumes_refl v'⟩
+  -- Construct EnvTyping for the extended context
+  have henv' : EnvTyping
+    (Γ,C<:(.unbound (.classifier K)),x:.capt (.cvar .here .top) (.label (S.rename Rename.succ)))
+    ctx' m' := by
+    refine ⟨?val_denot, ?wf_cs, ?wf_bound, ?bounded, ?base_env⟩
+    case val_denot =>
+      simp only [instCaptHasDenotation, Ty.capt_val_denot]
+      refine ⟨Exp.IsSimpleAns.is_var,
+        Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hlookup_l), ?_, ?_⟩
+      · -- WfInHeap for (.cvar BVar.here .top).subst σ
+        simp only [CaptureSet.subst, Subst.from_DenotCtx, Subst.from_TypeEnv,
+          TypeEnv.lookup_cvar_extend_cvar_here]
+        simp only [CaptureSet.proj, CapKind.intersect.top_l]
+        exact CaptureSet.WfInHeap.wf_var_free hlookup_l
+      · -- shape_val_denot for .label (S↑)
+        simp only [Ty.shape_val_denot]
+        refine ⟨l, K, D, rfl, hlookup_l, ?_, ?_, ?_⟩
+        · -- handlers.apply l = some D
+          simp [Finmap.extend]
+        · -- ImplyAfter: svd ctx_mid (S↑) .empty ≤ svd ctx S .empty
+          intro m'' hm'' e h
+          have hequiv := rebind_shape_val_denot
+            (ctx1 := ⟨ctx.env, ctx.handlers.extend l D⟩)
+            (ctx2 := ⟨ctx.env.extend_cvar (.var (.free l) .top), ctx.handlers.extend l D⟩)
+            (Rebind.cweaken (env := ctx.env) (cs := .var (.free l) .top)) rfl S
+          have h1 := (PreDenot.equiv_def.mp hequiv .empty m'' e).mpr h
+          exact shape_val_denot_handler_reverse_empty S D l m'' e h1
+        · -- l ∈ CaptureSet.denot ctx_mid (.cvar BVar.here .top) m'
+          simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_DenotCtx,
+            Subst.from_TypeEnv, TypeEnv.lookup_cvar_extend_cvar_here,
+            CaptureSet.proj, CaptureSet.ground_denot]
+          -- Now: l ∈ (reachability_of_loc m'.heap l).proj m'.heap (.top ∩ .top)
+          have hreach : reachability_of_loc m'.heap l = CapabilitySet.cap l := by
+            unfold reachability_of_loc; rw [hlookup_l]; rfl
+          rw [hreach, CapKind.intersect.top_l]
+          have hwf_l : (CapabilitySet.cap l).WfInHeap m'.heap :=
+            fun _ hm => ⟨_, by cases hm; exact hlookup_l⟩
+          rw [CapabilitySet.proj_top hwf_l]
+          exact CapabilitySet.mem.here
+    case wf_cs =>
+      -- (CaptureSet.var (Var.free l) CapKind.top).WfInHeap m'.heap
+      exact CaptureSet.WfInHeap.wf_var_free
+        (show m'.heap l = some (.capability (.label K)) from by
+          simp [m', Memory.extend_label, Heap.extend_label])
+    case wf_bound =>
+      -- (.unbound (.classifier K)).subst(...).WfInHeap m'.heap
+      simp [CaptureBound.subst]
+      exact CaptureBound.WfInHeap.wf_unbound
+    case bounded =>
+      change CapabilitySet.BoundedBy m'.heap
+        ((CaptureSet.var (Var.free l) CapKind.top).ground_denot m')
+        (.top (CapKind.classifier K))
+      apply CapabilitySet.BoundedBy.top
+      -- HasKind m'.heap ((reachability_of_loc m'.heap l).proj m'.heap .top) (.classifier K)
+      simp only [CaptureSet.ground_denot]
+      have hreach : reachability_of_loc m'.heap l = CapabilitySet.cap l := by
+        unfold reachability_of_loc; rw [hlookup_l]; rfl
+      rw [hreach]
+      have hwf_l : (CapabilitySet.cap l).WfInHeap m'.heap :=
+        fun _ hm => ⟨_, by cases hm; exact hlookup_l⟩
+      rw [CapabilitySet.proj_top hwf_l]
+      -- HasKind m'.heap (.cap l) (.classifier K)
+      intro l' hl'
+      simp [CapabilitySet.to_finset] at hl'
+      subst hl'
+      simp [proj_capability, classifier_of_loc, hlookup_l, CapabilityInfo.classifier]
+      exact CapKind.subkind_iff_Subkind.mpr CapKind.Subkind.rfl
+    case base_env =>
+      exact env_typing_handler_extend henv hm'_sub
+        (shape_val_denot_is_monotonic (typed_env_is_monotonic henv) S .empty)
+  -- Step 1: Transfer capability set
+  have hcap_sub : CaptureSet.denot ctx'
+    ((C.rename Rename.succ).rename Rename.succ ∪ .var (.bound .here) .top) m' ⊆
+    CaptureSet.denot ctx C m ∪ {l} := by
+    -- Use rebinding: C.rename².rename² denotes the same as C
+    have h1 := rebind_captureset_denot
+      (ctx1:=ctx) (ctx2:=ctx.extend_cvar (.var (.free l) .top))
+      (Rebind.cweaken (env:=ctx.env) (cs:=.var (.free l) .top)) C
+    have h2 := rebind_captureset_denot
+      (ctx1:=ctx.extend_cvar (.var (.free l) .top))
+      (ctx2:=(ctx.extend_cvar (.var (.free l) .top)).extend_var l)
+      (Rebind.weaken (env:=(ctx.extend_cvar (.var (.free l) .top)).env) (x:=l))
+      (C.rename Rename.succ)
+    -- The denot distributes over union
+    simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+    -- Rewrite from_DenotCtx ctx' to from_DenotCtx (ctx.extend_cvar ...).extend_var l
+    -- (they are equal since CaptureSet.denot only uses ctx.env)
+    simp only [CaptureSet.denot] at h1 h2
+    rw [show Subst.from_DenotCtx ctx' =
+      Subst.from_DenotCtx ((ctx.extend_cvar (.var (.free l) .top)).extend_var l) from hsame_subst]
+    rw [← h2, ← h1]
+    -- WfInHeap for C's ground capture set
+    have hwf_C : (C.subst (Subst.from_DenotCtx ctx)).WfInHeap m.heap :=
+      CaptureSet.wf_subst (CaptureSet.wf_of_closed hC_closed) (from_DenotCtx_wf_in_heap henv)
+    -- Monotonicity: C.denot ctx m' = C.denot ctx m
+    have hmono := (capture_set_denot_is_monotonic (C := C) (ρ := ctx) hwf_C hm'_sub).symm
+    -- Split into C part and l part
+    apply CapabilitySet.Subset.union_left
+    · -- C part: (C.subst σ).ground_denot m' ⊆ (C.subst σ).ground_denot m ∪ {l}
+      simp only [CaptureSet.denot] at hmono
+      rw [hmono]
+      exact CapabilitySet.Subset.union_right_left
+    · -- l part: (.var .here .top) denot m' ⊆ ... ∪ {l}
+      -- Simplify the bound var to .free l
+      simp only [Subst.from_DenotCtx, DenotCtx.extend_var, DenotCtx.extend_cvar,
+        Subst.from_TypeEnv, Var.subst, TypeEnv.extend_var, CaptureSet.ground_denot]
+      -- Simplify lookup_var BVar.here to l
+      have hlv : ((ctx.env.extend_cvar (CaptureSet.var (Var.free l) CapKind.top)).extend
+        (TypeInfo.var l)).lookup_var BVar.here = l := rfl
+      rw [hlv]
+      -- Now: (reachability_of_loc m'.heap l).proj m'.heap .top ⊆ ... ∪ {l}
+      have hreach : reachability_of_loc m'.heap l = CapabilitySet.cap l := by
+        unfold reachability_of_loc; rw [hlookup_l]; rfl
+      rw [hreach]
+      have hwf_l : (CapabilitySet.cap l).WfInHeap m'.heap :=
+        fun _ hm => ⟨_, by cases hm; exact hlookup_l⟩
+      rw [CapabilitySet.proj_top hwf_l]
+      exact CapabilitySet.Subset.union_right_right
+  -- Get Eval from the body typing
+  have h_he := he ctx' m' henv'
+  simp [Ty.exi_exp_denot] at h_he
+  -- WellScoped for the extended capability set
+  have hws' : (CaptureSet.denot ctx'
+    ((C.rename Rename.succ).rename Rename.succ ∪ .var (.bound .here) .top) m').WellScoped
+    m'.heap ctx'.handlers.dom := by
+    apply CapabilitySet.WellScoped.subset hcap_sub
+    intro l' hl' ⟨K', hK'⟩
+    cases hl' with
+    | left hl'C =>
+      have hwf_denot : (CaptureSet.denot ctx C m).WfInHeap m.heap := by
+        simp [CaptureSet.denot]
+        exact CaptureSet.ground_denot_wf
+          (CaptureSet.wf_subst (CaptureSet.wf_of_closed hC_closed) (from_DenotCtx_wf_in_heap henv))
+      have hws_C := (CapabilitySet.WellScoped.heap_mono hwf hwf_denot hm'_sub) l' hl'C ⟨K', hK'⟩
+      exact Finset.mem_of_subset (Finset.subset_insert l ctx.handlers.dom) hws_C
+    | right hl'l =>
+      cases hl'l
+      change l ∈ (ctx.handlers.extend l D).dom
+      simp [Finmap.extend]
+  have h_eval := h_he hws'
+  have h_eval' := eval_capability_set_monotonic h_eval hcap_sub
+  -- Step 2: Transfer postcondition
+  apply eval_post_monotonic _ h_eval'
+  -- Q_he.entails (Q_goal.handle_label l)
+  intro m'' e'
+  simp only [Denot.Or, Denot.as_mpost, Mpost.handle_label]
+  intro h
+  -- Case-split the match in the goal first
+  split
+  · -- Case: e' = .throw (.free l') (.free res)
+    rename_i l' res
+    by_cases h_eq : l = l'
+    · -- Throw to the handled label
+      subst h_eq
+      simp only [ite_true]
+      cases h with
+      | inl hval =>
+        exfalso
+        simp [Ty.exi_val_denot, Ty.capt_val_denot] at hval
+        rcases hval.1 with ⟨_, h⟩ | h | h | h <;> exact nomatch h
+      | inr hthrow =>
+        obtain ⟨l0, D0, x0, happly, heq, hD⟩ := hthrow
+        cases heq
+        left
+        simp [ctx', Finmap.extend] at happly
+        subst happly
+        -- hD : D m'' (.var (.free res)) = svd ctx S .empty m'' (.var (.free res))
+        -- Goal: exi_val_denot ctx (.capt .empty S) m'' (.var (.free res))
+        simp [Ty.exi_val_denot, Ty.capt_val_denot]
+        refine ⟨Exp.IsSimpleAns.is_var, ?_, ?_, ?_⟩
+        · -- WfInHeap (.var (.free res))
+          exact shape_val_denot_implies_wf (typed_env_is_implying_wf henv) S _ _ _ hD
+        · -- (.empty.subst σ).WfInHeap
+          exact CaptureSet.WfInHeap.wf_empty
+        · -- svd ctx S (.empty.denot ctx m'') m'' (.var (.free res))
+          convert hD using 1
+    · -- Throw to a different label
+      simp only [if_neg h_eq]
+      cases h with
+      | inl hval =>
+        exfalso
+        simp [Ty.exi_val_denot, Ty.capt_val_denot] at hval
+        rcases hval.1 with ⟨_, h⟩ | h | h | h <;> exact nomatch h
+      | inr hthrow =>
+        obtain ⟨l0, D0, x0, happly, heq, hD⟩ := hthrow
+        cases heq
+        right
+        refine ⟨l', D0, .free res, ?_, rfl, hD⟩
+        simp [ctx', Finmap.extend] at happly
+        rw [if_neg (Ne.symm h_eq)] at happly
+        exact happly
+  · -- Catch-all: e' is not a throw (.free l') (.free res)
+    cases h with
+    | inl hval =>
+      left
+      -- Transfer exi_val_denot from ctx' to ctx via handler_reverse + weaken + cweaken
+      simp only [Ty.exi_val_denot, Ty.capt_val_denot] at hval ⊢
+      obtain ⟨h_simple, h_wf, _, h_svd⟩ := hval
+      refine ⟨h_simple, h_wf, CaptureSet.WfInHeap.wf_empty, ?_⟩
+      -- h_svd : svd ctx' S'' (CaptureSet.denot ctx' .empty m'') m'' e'
+      -- CaptureSet.denot for .empty is CapabilitySet.empty
+      -- Step 1: handler reverse
+      have h1 := shape_val_denot_handler_reverse_empty
+        (ctx := ⟨(ctx.env.extend_cvar (.var (.free l) .top)).extend_var l, ctx.handlers⟩)
+        ((S.rename Rename.succ).rename Rename.succ) D l m'' e'
+      -- Step 2: weaken reverse
+      have h2 := (PreDenot.equiv_def.mp (rebind_shape_val_denot
+        (ctx1 := ⟨ctx.env.extend_cvar (.var (.free l) .top), ctx.handlers⟩)
+        (ctx2 := ⟨(ctx.env.extend_cvar (.var (.free l) .top)).extend_var l, ctx.handlers⟩)
+        (Rebind.weaken (env := ctx.env.extend_cvar (.var (.free l) .top)) (x := l)) rfl
+        (S.rename Rename.succ)) CapabilitySet.empty m'' e').mpr
+      -- Step 3: cweaken reverse
+      have h3 := (PreDenot.equiv_def.mp (rebind_shape_val_denot
+        (ctx1 := ctx)
+        (ctx2 := ⟨ctx.env.extend_cvar (.var (.free l) .top), ctx.handlers⟩)
+        (Rebind.cweaken (env := ctx.env) (cs := .var (.free l) .top)) rfl
+        S) CapabilitySet.empty m'' e').mpr
+      -- Chain: svd ctx' → svd no_handler → svd no_weaken → svd ctx
+      exact h3 (h2 (h1 (by convert h_svd)))
+    | inr hthrow =>
+      obtain ⟨l0, D0, x0, happly, heq, hD⟩ := hthrow
+      -- x0 : Var .var {} can only be .free (BVar {} .var is empty)
+      cases x0 with
+      | bound b => exact nomatch b
+      | free n => subst heq; simp at *
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
@@ -3281,9 +3597,11 @@ theorem fundamental
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
         (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
   case boundary =>
-    rename_i hS_closed _ he_ih
+    rename_i hS_closed ht_body he_ih
+    have hC_closed := CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv
+      (CaptureSet.IsClosed.of_union_left (HasType.use_set_is_closed ht_body)))
     cases hclosed_e with
     | boundary _ he_closed =>
-      exact sem_typ_boundary hS_closed (he_ih he_closed)
+      exact sem_typ_boundary hS_closed hC_closed (he_ih he_closed)
 
 end CaplessK
