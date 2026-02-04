@@ -6,17 +6,16 @@ namespace CaplessK
 
 def Mpost.handle_label (Q : Mpost) (l : Nat) : Mpost :=
   fun e m =>
-    let m1 := m.mask_this_cap l
     match e with
     | .throw (.free l') (.free res) =>
-      if l = l' then Q (.var (.free res)) m1 else Q e m1
-    | _ => Q e m1
+      if l = l' then Q (.var (.free res)) m else Q e m
+    | _ => Q e m
 
-/-- Transfer through handle_label: if Q1 entails Q2 at the masked memory,
+/-- Transfer through handle_label: if Q1 entails Q2,
     then handle_label Q1 entails handle_label Q2. -/
 private theorem Mpost.handle_label_transfer
   {Q1 Q2 : Mpost} {l : Nat} {e : Exp {}} {m : Memory}
-  (h : ∀ e', Q1 e' (m.mask_this_cap l) → Q2 e' (m.mask_this_cap l))
+  (h : ∀ e', Q1 e' m → Q2 e' m)
   (hq : (Q1.handle_label l) e m) :
   (Q2.handle_label l) e m := by
   revert hq
@@ -76,21 +75,18 @@ private theorem Mpost.handle_label_is_monotonic
   (Q.handle_label l).is_monotonic := by
   intro m1 m2 e hwf_e hsub hq
   simp only [Mpost.handle_label] at hq ⊢
-  have hmask_sub : (m2.mask_this_cap l).subsumes (m1.mask_this_cap l) :=
-    Heap.mask_this_cap_subsumes hsub
   split at hq
   · split at hq
     · rename_i heq_l
       subst heq_l
       rw [if_pos rfl]
-      apply hpred _ hmask_sub hq
+      apply hpred _ hsub hq
       apply Exp.WfInHeap.wf_var
-      apply Memory.Var.wf_mask_this_cap
       cases hwf_e with | wf_throw _ hwf_y => exact hwf_y
     · rename_i hneq_l
       rw [if_neg hneq_l]
-      exact hpred (Memory.Exp.wf_mask_this_cap hwf_e) hmask_sub hq
-  · exact hpred (Memory.Exp.wf_mask_this_cap hwf_e) hmask_sub hq
+      exact hpred hwf_e hsub hq
+  · exact hpred hwf_e hsub hq
 
 private theorem Mpost.handle_label_is_bool_independent
   {Q : Mpost} {l : Nat}
@@ -690,14 +686,7 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       Memory.subsumes_trans hsub_m' (by
         unfold Memory.subsumes
         exact Memory.Heap.extend_label_subsumes hfresh)
-    have hmask_sub : (m'.mask_this_cap l).subsumes mb := by
-      unfold Memory.subsumes
-      intro l' v' hl'
-      have hne : l' ≠ l := by
-        intro heq; subst heq; simp [hfresh] at hl'
-      obtain ⟨v'', hv'', hsub_v⟩ := hsub_m l' v' hl'
-      exact ⟨v'', by simp [Memory.mask_this_cap, Heap.mask_this_cap, hne]; exact hv'', hsub_v⟩
-    exact Mpost.handle_label_transfer (fun e' hq => himp _ hmask_sub e' hq) hq_res
+    exact Mpost.handle_label_transfer (himp _ hsub_m) hq_res
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
