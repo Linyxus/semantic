@@ -10,6 +10,8 @@ def Denot := Memory -> Exp {} -> Prop
 def Denot.Or (d1 d2 : Denot) : Denot :=
   fun m e => d1 m e ∨ d2 m e
 
+infixl:65 " ⊔ " => Denot.Or
+
 /-- Pre-denotation. It takes a capability to form a denotation. -/
 def PreDenot := CapabilitySet -> Denot
 
@@ -624,7 +626,7 @@ def Ty.exi_val_denot : DenotCtx s -> Ty .exi s -> Denot
 def Ty.exi_exp_denot : DenotCtx s -> Ty .exi s -> PreDenot
 | ctx, T => fun A m (e : Exp {}) =>
   --A.WellScoped m.heap (ctx.handlers.dom) ->
-  Eval A m e ((Ty.exi_val_denot ctx T).Or (denot_of_handlers ctx.handlers)).as_mpost
+  Eval A m e ((Ty.exi_val_denot ctx T) ⊔ (denot_of_handlers ctx.handlers)).as_mpost
 
 end
 
