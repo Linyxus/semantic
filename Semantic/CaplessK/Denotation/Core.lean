@@ -257,6 +257,9 @@ structure DenotCtx (s : Sig) where
     what value the handler of the label accepts. -/
   handlers : Finmap Nat Denot
 
+def DenotCtx.extend_handlers (ctx : DenotCtx s) (l : Nat) (D : Denot) : DenotCtx s :=
+  ⟨ctx.env, ctx.handlers.extend l D⟩
+
 /-- Denotation for throw forms that can be handled by the given handlers. -/
 def denot_of_handlers (handlers : Finmap Nat Denot) : Denot :=
   fun m e =>
