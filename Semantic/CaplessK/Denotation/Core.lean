@@ -270,6 +270,14 @@ def denot_of_handlers (handlers : Finmap Nat Denot) : Denot :=
       e = .throw (.free l) x ∧
       D m (.var x)
 
+def denot_of_handlers_in (handlers : Finmap Nat Denot) (C : CapabilitySet) : Denot :=
+  fun m e =>
+    ∃ l D x,
+      handlers.apply l = some D ∧
+      e = .throw (.free l) x ∧
+      l ∈ C ∧
+      D m (.var x)
+
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) : TypeEnv (s,x) :=
   Γ.extend (.var x)
 
@@ -626,7 +634,7 @@ def Ty.exi_val_denot : DenotCtx s -> Ty .exi s -> Denot
 def Ty.exi_exp_denot : DenotCtx s -> Ty .exi s -> PreDenot
 | ctx, T => fun A m (e : Exp {}) =>
   --A.WellScoped m.heap (ctx.handlers.dom) ->
-  Eval A m e ((Ty.exi_val_denot ctx T) ⊔ (denot_of_handlers ctx.handlers)).as_mpost
+  Eval A m e ((Ty.exi_val_denot ctx T) ⊔ (denot_of_handlers_in ctx.handlers A)).as_mpost
 
 end
 
