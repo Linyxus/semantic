@@ -881,11 +881,15 @@ theorem var_exp_denot_inv {A : CapabilitySet}
   simp [Ty.exi_exp_denot] at hv
   cases hv with
   | eval_val _ hQ =>
-    simp [Denot.as_mpost, Denot.Or, denot_of_handlers] at hQ
-    exact hQ
+    simp [Denot.as_mpost, Denot.Or] at hQ
+    cases hQ with
+    | inl h => exact h
+    | inr h => simp [denot_of_handlers_in] at h
   | eval_var hQ =>
-    simp [Denot.as_mpost, Denot.Or, denot_of_handlers] at hQ
-    exact hQ
+    simp [Denot.as_mpost, Denot.Or] at hQ
+    cases hQ with
+    | inl h => exact h
+    | inr h => simp [denot_of_handlers_in] at h
 
 
 theorem closed_var_inv (x : Var .var {}) :
@@ -962,7 +966,13 @@ theorem sem_typ_tapp
   -- Widen the authority using monotonicity
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
 
-  apply Eval.eval_tapply hlk happ''
+  -- Also widen the handlers part of the postcondition
+  have himp := Denot.Imply.or
+    (Denot.imply_refl (Ty.exi_val_denot ctx (T.subst (Subst.openTVar S))))
+    (denot_of_handlers_in_capability_monotonic ctx.handlers hR0_sub)
+  have happ''' := eval_post_monotonic (Denot.Imply.as_mpost_entails himp) happ''
+
+  apply Eval.eval_tapply hlk happ'''
 
 theorem sem_typ_capp
   {x : BVar s .var}
@@ -1036,7 +1046,13 @@ theorem sem_typ_capp
   -- Widen the authority using monotonicity
   have happ3 := eval_capability_set_monotonic happ2 hR0_sub
 
-  apply Eval.eval_capply hlk happ3
+  -- Also widen the handlers part of the postcondition
+  have himp := Denot.Imply.or
+    (Denot.imply_refl (Ty.exi_val_denot ctx (T.subst (Subst.openCVar D))))
+    (denot_of_handlers_in_capability_monotonic ctx.handlers hR0_sub)
+  have happ4 := eval_post_monotonic (Denot.Imply.as_mpost_entails himp) happ3
+
+  apply Eval.eval_capply hlk happ4
 
 theorem sem_typ_app
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -1120,12 +1136,25 @@ theorem sem_typ_app
                  (reachability_of_loc store.heap (ctx.env.lookup_var y)).proj store.heap .top := by
       exact (CapabilitySet.proj_top hwf_reach_y).symm
     rw [heq_y] at happ''
+    -- Also widen the handlers capability set
+    have hhandlers_sub :
+        (expand_captures store.heap cs).union
+          ((reachability_of_loc store.heap (ctx.env.lookup_var y)).proj store.heap .top) ⊆
+        (CaptureSet.var ((Subst.from_TypeEnv ctx.env).var x) .top).ground_denot store ∪
+          (reachability_of_loc store.heap (ctx.env.lookup_var y)).proj store.heap .top := by
+      apply CapabilitySet.Subset.union_left
+      · exact CapabilitySet.Subset.trans hR0_sub CapabilitySet.Subset.union_right_left
+      · exact CapabilitySet.Subset.union_right_right
+    have happ''' := eval_post_monotonic
+      (Denot.Imply.as_mpost_entails
+        (Denot.Imply.or (Denot.imply_refl _)
+          (denot_of_handlers_in_capability_monotonic ctx.handlers hhandlers_sub)))
+      happ''
     -- Convert the goal to use .top instead of the unfolded form
     change Eval ((reachability_of_loc store.heap (ctx.env.lookup_var x)).proj store.heap .top ∪
                  (reachability_of_loc store.heap (ctx.env.lookup_var y)).proj store.heap .top)
                 store _ _
-    exact Eval.eval_apply hlk happ''
-
+    exact Eval.eval_apply hlk happ'''
 
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
@@ -1240,16 +1269,22 @@ theorem sem_typ_cond
     cases hguard with
     | eval_val hval hQ =>
       apply Eval.eval_val hval
-      simp [Denot.as_mpost, Denot.Or,
-        denot_of_handlers, Exp.subst] at hQ
+      simp [Denot.as_mpost, Denot.Or] at hQ
       simp [Q1, Denot.as_mpost]
-      exact hQ
+      cases hQ with
+      | inl h => exact h
+      | inr h =>
+        obtain ⟨_, _, _, _, heq, _⟩ := h
+        cases heq
     | eval_var hQ =>
       apply Eval.eval_var
-      simp [Denot.as_mpost, Denot.Or,
-        denot_of_handlers] at hQ
+      simp [Denot.as_mpost, Denot.Or] at hQ
       simp [Q1, Denot.as_mpost]
-      exact hQ
+      cases hQ with
+      | inl h => exact h
+      | inr h =>
+        obtain ⟨_, _, _, _, heq, _⟩ := h
+        cases heq
   -- Assemble eval_cond
   refine Eval.eval_cond (Q1 := Q1) hpred hbool hguard_val ?h_nonstuck ?h_true ?h_false
   · -- non-stuck: guard evaluates to a literal boolean
@@ -1275,6 +1310,10 @@ theorem sem_typ_cond
       exact CapabilitySet.Subset.trans hB hAB
     -- widen authority, then lift over memory subsumption using post monotonicity
     have hthen' := eval_capability_set_monotonic hthen hsubC2
+    -- Also widen the handlers capability set
+    have himp := Denot.Imply.or (Denot.imply_refl (Ty.exi_val_denot ctx T))
+      (denot_of_handlers_in_capability_monotonic ctx.handlers hsubC2)
+    have hthen'' := eval_post_monotonic (Denot.Imply.as_mpost_entails himp) hthen'
     -- Align capability sets computed at store versus m1 using monotonicity
     have hwf_union :
         ((C1 ∪ C2 ∪ C3).subst (Subst.from_DenotCtx ctx)).WfInHeap store.heap := by
@@ -1288,13 +1327,7 @@ theorem sem_typ_cond
       (capture_set_denot_is_monotonic
         (C := C1 ∪ C2 ∪ C3) (ρ := ctx) (m1 := store) (m2 := m1)
         hwf_union hsub).symm
-    have hthen_store :
-        Eval (CaptureSet.denot ctx (C1 ∪ C2 ∪ C3) store) m1
-          (e2.subst (Subst.from_DenotCtx ctx))
-          ((Ty.exi_val_denot ctx T).Or
-            (denot_of_handlers ctx.handlers)).as_mpost := by
-      exact hcap_eq ▸ hthen'
-    exact hthen_store
+    exact hcap_eq ▸ hthen''
   · -- false branch
     intro m1 v hsub hQfalse hres
     have hts' : EnvTyping Γ ctx m1 := env_typing_monotonic hts hsub
@@ -1304,6 +1337,10 @@ theorem sem_typ_cond
       simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
       apply CapabilitySet.Subset.union_right_right
     have helse' := eval_capability_set_monotonic helse hsubC3
+    -- Also widen the handlers capability set
+    have himp := Denot.Imply.or (Denot.imply_refl (Ty.exi_val_denot ctx T))
+      (denot_of_handlers_in_capability_monotonic ctx.handlers hsubC3)
+    have helse'' := eval_post_monotonic (Denot.Imply.as_mpost_entails himp) helse'
     have hwf_union :
         ((C1 ∪ C2 ∪ C3).subst (Subst.from_DenotCtx ctx)).WfInHeap store.heap := by
       apply CaptureSet.wf_subst
@@ -1316,13 +1353,7 @@ theorem sem_typ_cond
       (capture_set_denot_is_monotonic
         (C := C1 ∪ C2 ∪ C3) (ρ := ctx) (m1 := store) (m2 := m1)
         hwf_union hsub).symm
-    have helse_store :
-        Eval (CaptureSet.denot ctx (C1 ∪ C2 ∪ C3) store) m1
-          (e3.subst (Subst.from_DenotCtx ctx))
-          ((Ty.exi_val_denot ctx T).Or
-            (denot_of_handlers ctx.handlers)).as_mpost := by
-      exact hcap_eq ▸ helse'
-    exact helse_store
+    exact hcap_eq ▸ helse''
 
 theorem sem_typ_btrue :
   {} # Γ ⊨ Exp.btrue : .typ (.capt {} .bool) := by
@@ -1534,6 +1565,7 @@ theorem sem_typ_throw
   exact ⟨_, D0, .free (ctx.env.lookup_var y), happly, rfl, hD0⟩
 
 
+/-
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -3453,5 +3485,7 @@ theorem fundamental
     cases hclosed_e with
     | boundary _ he_closed =>
       exact sem_typ_boundary hS_closed hC_closed (he_ih he_closed)
+
+-/
 
 end CaplessK

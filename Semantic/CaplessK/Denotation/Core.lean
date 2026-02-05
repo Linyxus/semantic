@@ -688,6 +688,26 @@ lemma denot_of_handlers_is_monotonic (handlers : Finmap Nat Denot)
   obtain ⟨l, D, x, happly, heq, hD⟩ := h
   exact ⟨l, D, x, happly, heq, hmono l D happly hmem hD⟩
 
+lemma denot_of_handlers_in_is_bool_independent (handlers : Finmap Nat Denot) (C : CapabilitySet) :
+    (denot_of_handlers_in handlers C).is_bool_independent := by
+  intro m
+  constructor
+  · intro ⟨_, _, _, _, heq, _⟩; cases heq
+  · intro ⟨_, _, _, _, heq, _⟩; cases heq
+
+lemma denot_of_handlers_in_is_monotonic (handlers : Finmap Nat Denot) (C : CapabilitySet)
+    (hmono : handlers_are_monotonic handlers) :
+    (denot_of_handlers_in handlers C).is_monotonic := by
+  intro m1 m2 e hmem h
+  obtain ⟨l, D, x, happly, heq, hl, hD⟩ := h
+  exact ⟨l, D, x, happly, heq, hl, hmono l D happly hmem hD⟩
+
+lemma denot_of_handlers_in_capability_monotonic (handlers : Finmap Nat Denot)
+    {A1 A2 : CapabilitySet} (hsub : A1 ⊆ A2) :
+    (denot_of_handlers_in handlers A1).Imply (denot_of_handlers_in handlers A2) := by
+  intro m e ⟨l, D, x, happly, heq, hl, hD⟩
+  exact ⟨l, D, x, happly, heq, CapabilitySet.subset_preserves_mem hsub hl, hD⟩
+
 def EnvTyping : Ctx s -> DenotCtx s -> Memory -> Prop
 | .empty, ⟨.empty, handlers⟩, _ => handlers_are_monotonic handlers
 | .push Γ (.var T), ⟨.extend env (.var n), handlers⟩, m =>
@@ -2516,11 +2536,11 @@ def exi_exp_denot_is_monotonic {ctx : DenotCtx s}
   · apply Denot.as_mpost_is_monotonic
     apply Denot.Or.is_monotonic
     · exact exi_val_denot_is_monotonic henv_mono T
-    · exact denot_of_handlers_is_monotonic ctx.handlers henv_mono.handlers
+    · exact denot_of_handlers_in_is_monotonic ctx.handlers C henv_mono.handlers
   · apply Denot.as_mpost_is_bool_independent
     apply Denot.Or.is_bool_independent
     · exact exi_val_denot_is_bool_independent henv_bool T
-    · exact denot_of_handlers_is_bool_independent ctx.handlers
+    · exact denot_of_handlers_in_is_bool_independent ctx.handlers C
   · exact hmem
   · exact hwf
   · exact ht
@@ -3189,7 +3209,7 @@ theorem exi_denot_implyafter_lift
   intro C m' hsub e heval
   simp [Ty.exi_exp_denot] at heval ⊢
   apply eval_post_monotonic_general _ heval
-  have himp_or := himp.or_right (denot_of_handlers ctx.handlers)
+  have himp_or := himp.or_right (denot_of_handlers_in ctx.handlers C)
   have himp' := Denot.imply_after_to_m_entails_after himp_or
   exact Mpost.entails_after_subsumes himp' hsub
 

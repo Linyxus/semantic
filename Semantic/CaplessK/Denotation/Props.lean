@@ -31,6 +31,20 @@ lemma denot_of_handlers_extend_imply
   have hne : l' ≠ l := fun h => hfresh (h ▸ hl'_in_dom)
   simp [hne, happly]
 
+/-- Extending handlers with a fresh label preserves denot_of_handlers_in (implication). -/
+lemma denot_of_handlers_in_extend_imply
+    {handlers : Finmap Nat Denot} {l : Nat} {D : Denot} {A : CapabilitySet}
+    (hfresh : l ∉ handlers.dom) :
+    (denot_of_handlers_in handlers A).Imply (denot_of_handlers_in (handlers.extend l D) A) := by
+  intro m e ⟨l', D', x, happly, heq, hl', hD⟩
+  refine ⟨l', D', x, ?_, heq, hl', hD⟩
+  simp only [Finmap.extend]
+  -- Since handlers.apply l' = some D', we have l' ∈ handlers.dom
+  have hl'_in_dom : l' ∈ handlers.dom := handlers.hasdom l' |>.mpr ⟨D', happly⟩
+  -- Since l ∉ handlers.dom and l' ∈ handlers.dom, we have l' ≠ l
+  have hne : l' ≠ l := fun h => hfresh (h ▸ hl'_in_dom)
+  simp [hne, happly]
+
 mutual
 
 /-- Extending handlers with a fresh label: the original denotation implies the extended one. -/
@@ -106,7 +120,7 @@ theorem exi_exp_denot_extend_handlers_fresh
   apply Denot.Imply.as_mpost_entails
   apply Denot.Imply.or
   · exact exi_val_denot_extend_handlers_fresh hfresh
-  · exact denot_of_handlers_extend_imply hfresh
+  · exact denot_of_handlers_in_extend_imply hfresh
 
 end
 
