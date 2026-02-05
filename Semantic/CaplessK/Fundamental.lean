@@ -3134,13 +3134,6 @@ private theorem CaptureSet.IsClosed.of_union_left {C1 C2 : CaptureSet s}
     (h : (C1 ∪ C2).IsClosed) : C1.IsClosed := by
   cases h; assumption
 
--- CLAUDE: handler extension for EnvTyping.
--- When a fresh label `l` is allocated and its handler `D` is added,
--- the existing EnvTyping is preserved because:
--- (1) existing handler lookups are unchanged (l is fresh)
--- (2) existing values don't reference l
--- The arrow case requires showing that the body's Eval transfers
--- to the extended postcondition via eval_post_monotonic.
 theorem env_typing_handler_extend
     (henv : EnvTyping Γ ctx m)
     (hm' : m'.subsumes m)
@@ -3148,12 +3141,6 @@ theorem env_typing_handler_extend
     EnvTyping Γ ⟨ctx.env, ctx.handlers.extend l D⟩ m' := by
   sorry
 
--- CLAUDE: handler reverse at empty capture.
--- For empty capture set, shape_val_denot is handler-independent because:
--- (1) the .label case requires l ∈ .empty which is impossible
--- (2) the arrow/poly/cpoly cases at R0 ⊆ .empty have R0 = .empty,
---     and the body's Eval can be transferred via eval_post_monotonic
---     since the original postcondition entails the extended one.
 theorem shape_val_denot_handler_reverse_empty
     {ctx : DenotCtx s}
     (S : Ty .shape s)
@@ -3182,14 +3169,9 @@ theorem shape_val_denot_handler_reverse_empty
   | label S' =>
     simp [Ty.shape_val_denot] at h
     obtain ⟨_, _, _, _, ⟨_, _, hmem⟩⟩ := h; exact nomatch hmem
-  | arrow T1 T2 =>
-    -- Requires capability safety: eval at restricted capability set
-    -- cannot throw to handlers outside that set
-    sorry
-  | poly T1 T2 =>
-    sorry
-  | cpoly B T =>
-    sorry
+  | arrow T1 T2 => sorry
+  | poly T1 T2 => sorry
+  | cpoly B T => sorry
 
 theorem sem_typ_boundary
   {C : CaptureSet s} {Γ : Ctx s} {K : Classifier} {S : Ty .shape s}
