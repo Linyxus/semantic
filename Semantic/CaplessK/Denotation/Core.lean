@@ -620,7 +620,7 @@ def Ty.exi_val_denot : DenotCtx s -> Ty .exi s -> Denot
 
 def Ty.exi_exp_denot : DenotCtx s -> Ty .exi s -> PreDenot
 | ctx, T => fun A m (e : Exp {}) =>
-  A.WellScoped m.heap (ctx.handlers.dom) ->
+  --A.WellScoped m.heap (ctx.handlers.dom) ->
   Eval A m e ((Ty.exi_val_denot ctx T).Or (denot_of_handlers ctx.handlers)).as_mpost
 
 end
