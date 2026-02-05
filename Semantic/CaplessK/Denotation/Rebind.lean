@@ -333,15 +333,13 @@ def rebind_exi_exp_denot
   intro A s e
   simp [Ty.exi_exp_denot]
   constructor
-  · intro h hws
-    rw [← hh] at hws
-    apply eval_post_monotonic _ (h hws)
+  · intro h
+    apply eval_post_monotonic _ h
     apply Denot.imply_to_entails
     rw [hh]
     exact ((Denot.equiv_to_imply ih).1).or_right _
-  · intro h hws
-    rw [hh] at hws
-    apply eval_post_monotonic _ (h hws)
+  · intro h
+    apply eval_post_monotonic _ h
     apply Denot.imply_to_entails
     rw [← hh]
     exact ((Denot.equiv_to_imply ih).2).or_right _
