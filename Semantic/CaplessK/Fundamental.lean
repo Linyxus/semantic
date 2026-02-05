@@ -1560,12 +1560,11 @@ theorem sem_typ_throw
   -- Simplify goal and apply eval_throw
   simp [Exp.subst, Subst.from_DenotCtx, Var.subst]
   apply Eval.eval_throw hmem hlookup
-  -- Show postcondition via Or.inr (denot_of_handlers)
+  -- Show postcondition via Or.inr (denot_of_handlers_in)
+  -- hmem : ctx.env.lookup_var x ∈ CaptureSet.denot ctx (.var (.bound x) .top) store
   right
-  exact ⟨_, D0, .free (ctx.env.lookup_var y), happly, rfl, hD0⟩
+  exact ⟨_, D0, .free (ctx.env.lookup_var y), happly, rfl, hmem, hD0⟩
 
-
-/-
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -1579,19 +1578,19 @@ theorem sem_typ_letin
   simp [Ty.exi_exp_denot]
   apply Eval.eval_letin
     (Q1 := ((Ty.capt_val_denot ctx T).Or
-      (denot_of_handlers ctx.handlers)).as_mpost)
+      (denot_of_handlers_in ctx.handlers (C.denot ctx store))).as_mpost)
   case hpred =>
     apply Denot.as_mpost_is_monotonic
     apply Denot.Or.is_monotonic
     · exact capt_val_denot_is_monotonic (typed_env_is_monotonic hts) T
-    · exact denot_of_handlers_is_monotonic ctx.handlers
+    · exact denot_of_handlers_in_is_monotonic ctx.handlers (C.denot ctx store)
         (typed_env_is_monotonic hts).handlers
   case hbool =>
     apply Denot.as_mpost_is_bool_independent
     apply Denot.Or.is_bool_independent
     · exact capt_val_denot_is_bool_independent
         (typed_env_is_bool_independent hts) T
-    · exact denot_of_handlers_is_bool_independent ctx.handlers
+    · exact denot_of_handlers_in_is_bool_independent ctx.handlers (C.denot ctx store)
   case a =>
     have h1 := ht1 ctx store hts
     simp [Ty.exi_exp_denot, Ty.exi_val_denot] at h1
@@ -1609,7 +1608,7 @@ theorem sem_typ_letin
         exact ⟨hsimple, hwf_v⟩
     | inr hQ1 =>
       right
-      obtain ⟨l, _, x, _, hveq, _⟩ := hQ1
+      obtain ⟨l, _, x, _, hveq, _, _⟩ := hQ1
       cases x with
       | free res => exact ⟨l, res, hveq⟩
       | bound idx => cases idx
@@ -1618,7 +1617,7 @@ theorem sem_typ_letin
     -- Extract capt_val_denot from the Or (SimpleVal can't be a throw)
     replace hQ1 : Ty.capt_val_denot ctx T m1 v := by
       simp only [Denot.as_mpost, Denot.Or] at hQ1
-      rcases hQ1 with h | ⟨_, _, _, _, hveq, _⟩
+      rcases hQ1 with h | ⟨_, _, _, _, hveq, _, _⟩
       · exact h
       · cases hv <;> cases hveq
     -- Construct the HeapVal for v
@@ -1703,7 +1702,7 @@ theorem sem_typ_letin
     -- Extract capt_val_denot from the Or (.var x can't be a throw)
     replace hQ1 : Ty.capt_val_denot ctx T m1 (.var x) := by
       simp only [Denot.as_mpost, Denot.Or] at hQ1
-      rcases hQ1 with h | ⟨_, _, _, _, hveq, _⟩
+      rcases hQ1 with h | ⟨_, _, _, _, hveq, _, _⟩
       · exact h
       · cases hveq
     cases x
@@ -2308,8 +2307,8 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
           have himply_entails :=
             Denot.imply_after_to_m_entails_after
               (hres_sem.or_right
-                (denot_of_handlers
-                  (env.extend_var arg).handlers))
+                (denot_of_handlers_in
+                  (env.extend_var arg).handlers R))
           -- Now use eval_post_monotonic_general to lift hbody from U1 to U2
           -- hbody : Ty.exi_exp_denot ... U1 R m'' (t0.subst...)
           unfold Ty.exi_exp_denot at hbody ⊢
@@ -2506,8 +2505,8 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
           have himply_entails :=
             Denot.imply_after_to_m_entails_after
               (hT_sem.or_right
-                (denot_of_handlers
-                  (env.extend_cvar CS).handlers))
+                (denot_of_handlers_in
+                  (env.extend_cvar CS).handlers R0))
           -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
           unfold Ty.exi_exp_denot at heval1 ⊢
           apply eval_post_monotonic_general _ heval1
@@ -2704,8 +2703,8 @@ lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
           have himply_entails :=
             Denot.imply_after_to_m_entails_after
               (hT_sem.or_right
-                (denot_of_handlers
-                  (env.extend_tvar denot).handlers))
+                (denot_of_handlers_in
+                  (env.extend_tvar denot).handlers R0))
           -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
           unfold Ty.exi_exp_denot at heval1 ⊢
           apply eval_post_monotonic_general _ heval1
@@ -2801,14 +2800,18 @@ theorem sem_typ_subtyp
   have hsubtyp_sem := fundamental_subtyp hclosed_E1 hclosed_E2 hsubtyp env m htyping
   -- hsubtyp_sem : (exi_val_denot ctx E1).ImplyAfter m (exi_val_denot ctx E2)
 
-  -- Convert ImplyAfter to entailment
-  have h_entails :=
+  -- Step 1: Lift from E1 to E2 (keeping handlers at C1)
+  have h_entails_val :=
     Denot.imply_after_to_m_entails_after
       (hsubtyp_sem.or_right
-        (denot_of_handlers env.handlers))
+        (denot_of_handlers_in env.handlers (C1.denot env m)))
+  have h_eval_E2_C1 := eval_post_monotonic_general h_entails_val h_eval_E1_at_C2
 
-  -- Lift the evaluation from E1 to E2 using postcondition monotonicity
-  exact eval_post_monotonic_general h_entails h_eval_E1_at_C2
+  -- Step 2: Widen handlers from C1 to C2
+  have himp := Denot.Imply.or
+    (Denot.imply_refl (Ty.exi_val_denot env E2))
+    (denot_of_handlers_in_capability_monotonic env.handlers hsubcapt_sem)
+  exact eval_post_monotonic (Denot.Imply.as_mpost_entails himp) h_eval_E2_C1
 
 lemma simple_val_not_pack {e : Exp s}
   (hsimple : e.IsSimpleVal)
@@ -2877,20 +2880,20 @@ theorem sem_typ_unpack
   simp [Ty.exi_exp_denot]
   -- Use Eval.eval_unpack with Q1 = (Ty.exi_val_denot ctx (.exi T)).as_mpost
   apply Eval.eval_unpack (Q1 := ((Ty.exi_val_denot ctx (.exi T)).Or
-    (denot_of_handlers ctx.handlers)).as_mpost)
+    (denot_of_handlers_in ctx.handlers (C.denot ctx store))).as_mpost)
   case hpred =>
     apply Denot.as_mpost_is_monotonic
     apply Denot.Or.is_monotonic
     · intro m1 m2 e hsub hQ
       exact exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T) hsub hQ
-    · exact denot_of_handlers_is_monotonic ctx.handlers
+    · exact denot_of_handlers_in_is_monotonic ctx.handlers (C.denot ctx store)
         (typed_env_is_monotonic hts).handlers
   case hbool =>
     apply Denot.as_mpost_is_bool_independent
     apply Denot.Or.is_bool_independent
     · exact exi_val_denot_is_bool_independent
         (typed_env_is_bool_independent hts) (.exi T)
-    · exact denot_of_handlers_is_bool_independent ctx.handlers
+    · exact denot_of_handlers_in_is_bool_independent ctx.handlers (C.denot ctx store)
   case a =>
     have ht' := ht ctx store hts
     simp [Ty.exi_exp_denot] at ht'
@@ -2925,7 +2928,7 @@ theorem sem_typ_unpack
               exact hwf_v
     | inr hQ1 =>
       right
-      obtain ⟨l, _, x, _, hveq, _⟩ := hQ1
+      obtain ⟨l, _, x, _, hveq, _, _⟩ := hQ1
       cases x with
       | free res => exact ⟨l, res, hveq⟩
       | bound idx => cases idx
@@ -2935,7 +2938,7 @@ theorem sem_typ_unpack
     -- Extract exi_val_denot from the Or (packs can't be throws)
     replace hQ1 : Ty.exi_val_denot ctx (.exi T) m1 (.pack cs x) := by
       simp only [Denot.as_mpost, Denot.Or] at hQ1
-      rcases hQ1 with h | ⟨_, _, _, _, hveq, _⟩
+      rcases hQ1 with h | ⟨_, _, _, _, hveq, _, _⟩
       · exact h
       · cases hveq
     -- hQ1 : Ty.exi_val_denot ctx (.exi T) m1 (.pack cs x)
@@ -3033,10 +3036,12 @@ theorem sem_typ_unpack
         exact Iff.trans (heqv1 m e) (heqv2 m e)
 
       -- Apply hu'' with conversions
-      change Eval (C.denot ctx store) m1
+      let A := C.denot ctx store
+      change Eval A m1
         ((u.subst (Subst.from_DenotCtx ctx).lift.lift).subst (Subst.unpack cs (Var.free fx)))
-        ((Ty.exi_val_denot ctx U).Or (denot_of_handlers ctx.handlers)).as_mpost
-      rw [hexp_eq, <-hcap_eq]
+        ((Ty.exi_val_denot ctx U).Or (denot_of_handlers_in ctx.handlers A)).as_mpost
+      simp only [A, ← hcap_eq]
+      rw [hexp_eq]
       apply eval_post_monotonic _ hu''
       apply Denot.imply_to_entails
       apply ((Denot.equiv_to_imply heqv_composed).2).or_right
@@ -3274,7 +3279,7 @@ theorem sem_typ_boundary
         simp [Ty.exi_val_denot, Ty.capt_val_denot] at hval
         rcases hval.1 with ⟨_, h⟩ | h | h | h <;> exact nomatch h
       | inr hthrow =>
-        obtain ⟨l0, D0, x0, happly, heq, hD⟩ := hthrow
+        obtain ⟨l0, D0, x0, happly, heq, _, hD⟩ := hthrow
         cases heq
         left
         simp [ctx', Finmap.extend] at happly
@@ -3297,10 +3302,18 @@ theorem sem_typ_boundary
         simp [Ty.exi_val_denot, Ty.capt_val_denot] at hval
         rcases hval.1 with ⟨_, h⟩ | h | h | h <;> exact nomatch h
       | inr hthrow =>
-        obtain ⟨l0, D0, x0, happly, heq, hD⟩ := hthrow
+        obtain ⟨l0, D0, x0, happly, heq, hl_in, hD⟩ := hthrow
         cases heq
         right
-        refine ⟨l', D0, .free res, ?_, rfl, hD⟩
+        -- Need to show l' ∈ C.denot ctx m (not in the extended context)
+        -- From hcap_sub: ctx' cap ⊆ C.denot ctx m ∪ {l}
+        -- hl_in : l' ∈ ctx' cap, and l' ≠ l (from h_eq)
+        have hl'_in : l' ∈ C.denot ctx m := by
+          have hsub := CapabilitySet.subset_preserves_mem hcap_sub hl_in
+          cases hsub with
+          | left h => exact h
+          | right h => cases h; exact absurd rfl h_eq
+        refine ⟨l', D0, .free res, ?_, rfl, hl'_in, hD⟩
         simp [ctx', Finmap.extend] at happly
         rw [if_neg (Ne.symm h_eq)] at happly
         exact happly
@@ -3485,7 +3498,5 @@ theorem fundamental
     cases hclosed_e with
     | boundary _ he_closed =>
       exact sem_typ_boundary hS_closed hC_closed (he_ih he_closed)
-
--/
 
 end CaplessK
