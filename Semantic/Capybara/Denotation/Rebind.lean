@@ -5,6 +5,9 @@ structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Pr
   var :
     ∀ (x : BVar s1 .var),
       (env1.lookup_var x).1 = (env2.lookup_var (f.var x)).1
+  var_peaks :
+    ∀ (x : BVar s1 .var),
+      (env1.lookup_var x).2.rename f = (env2.lookup_var (f.var x)).2
   tvar :
     ∀ (x : BVar s1 .tvar),
       env1.lookup_tvar x = env2.lookup_tvar (f.var x)
