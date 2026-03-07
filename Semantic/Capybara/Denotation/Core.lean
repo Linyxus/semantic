@@ -355,13 +355,6 @@ theorem CapabilitySet.BoundedBy.trans
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
 
-/-- The HasSepDom domain required by the body of a closure type's denotation. -/
-def Ty.closureSepDom : Ty .capt s → CaptureSet s
-| .arrow _ cs _ => cs
-| .poly _ cs _ => cs
-| .cpoly _ cs _ => cs
-| _ => .empty
-
 /-- The `HasSepDom` property for a type environment. -/
 def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
   ∀ m1 c1 m2 c2,
@@ -2804,7 +2797,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
 
 theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env))))
-  (hsep : env.HasSepDom T.closureSepDom) :
+  (hpeaks : compute_peaks env T.captureSet = compute_peaks env (.var .epsilon x)) :
   (Ty.val_denot env (T.refineCaptureSet (.var .epsilon x)))
     m
     (.var (x.subst (Subst.from_TypeEnv env))) := by
@@ -2869,9 +2862,12 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition: use the original HasSepDom from the hypothesis
-      intro arg m' hsub hval _
-      exact hbody arg m' hsub hval hsep
+    · -- Body condition: convert HasSepDom via peaks equality
+      intro arg m' hsub hval hsep_refined
+      have hsep_orig : env.HasSepDom cs := by
+        simp only [Ty.captureSet] at hpeaks
+        unfold TypeEnv.HasSepDom at hsep_refined ⊢; rw [hpeaks]; exact hsep_refined
+      exact hbody arg m' hsub hval hsep_orig
   | poly T1 cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
@@ -2911,9 +2907,12 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition: use the original HasSepDom from the hypothesis
-      intro m' denot hsub hprop himply_simple himply hpure _
-      exact hbody m' denot hsub hprop himply_simple himply hpure hsep
+    · -- Body condition: convert HasSepDom via peaks equality
+      intro m' denot hsub hprop himply_simple himply hpure hsep_refined
+      have hsep_orig : env.HasSepDom cs := by
+        simp only [Ty.captureSet] at hpeaks
+        unfold TypeEnv.HasSepDom at hsep_refined ⊢; rw [hpeaks]; exact hsep_refined
+      exact hbody m' denot hsub hprop himply_simple himply hpure hsep_orig
   | cpoly B cs T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
@@ -2951,9 +2950,12 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition: use the original HasSepDom from the hypothesis
-      intro m' CS hwf hsub hbdd _
-      exact hbody m' CS hwf hsub hbdd hsep
+    · -- Body condition: convert HasSepDom via peaks equality
+      intro m' CS hwf hsub hbdd hsep_refined
+      have hsep_orig : env.HasSepDom cs := by
+        simp only [Ty.captureSet] at hpeaks
+        unfold TypeEnv.HasSepDom at hsep_refined ⊢; rw [hpeaks]; exact hsep_refined
+      exact hbody m' CS hwf hsub hbdd hsep_orig
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
