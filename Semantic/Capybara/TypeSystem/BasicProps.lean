@@ -195,16 +195,49 @@ theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt
     have hT := ih hΓ_prev
     exact Ty.rename_closed hT
 
+/-- A typed variable expression has a closed variable. -/
+theorem HasType.typed_var_closed
+  {x : Var Kind.var s}
+  (ht : C # Γ ⊢ Exp.var x : T) :
+  x.IsClosed := by
+  generalize he : Exp.var x = e at ht
+  induction ht with
+  | var => cases he; exact Var.IsClosed.bound
+  | subtyp _ _ _ _ _ ih => exact ih he
+  | _ => cases he
+
+/-- The capture set `{m x}` is closed when `x` is a typed variable. -/
+theorem HasType.typed_var_capture_closed
+  {x : Var Kind.var s} {m : Mutability}
+  (ht : C # Γ ⊢ Exp.var x : T) :
+  (CaptureSet.var m x).IsClosed := by
+  have hx := typed_var_closed ht
+  cases x with
+  | bound => exact CaptureSet.IsClosed.var_bound
+  | free => cases hx
+
 theorem HasType.use_set_is_closed
   (ht : C # Γ ⊢ e : T) :
   C.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [CaptureSet.IsClosed])
-  case app ih_x ih_y =>
-    exact CaptureSet.IsClosed.union ih_x ih_y
-  case invoke ih_x ih_y =>
-    exact CaptureSet.IsClosed.union ih_x ih_y
-  case write ih_x ih_y =>
-    exact CaptureSet.IsClosed.union ih_x ih_y
+  case app =>
+    rename_i ht_x _ _ _
+    exact HasType.typed_var_capture_closed ht_x
+  case tapp =>
+    rename_i _ ht_x _
+    exact HasType.typed_var_capture_closed ht_x
+  case capp =>
+    rename_i _ _ ht_x _ _ _
+    exact HasType.typed_var_capture_closed ht_x
+  case read =>
+    rename_i ht_x _
+    exact HasType.typed_var_capture_closed ht_x
+  case write =>
+    rename_i ht_x _ _ _
+    exact HasType.typed_var_capture_closed ht_x
+  case invoke =>
+    rename_i ht_x _ _ _
+    exact HasType.typed_var_capture_closed ht_x
   case cond ih1 ih2 ih3 =>
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
   case par ih1 ih2 =>
@@ -243,10 +276,7 @@ theorem HasType.exp_is_closed
     rename_i T1_closed
     constructor
     · -- cs✝.IsClosed
-      have h_use := HasType.use_set_is_closed T1
-      cases h_use with
-      | union h_cs_renamed h_var =>
-        exact CaptureSet.rename_closed_inv h_cs_renamed
+      exact CaptureSet.rename_closed_inv (HasType.use_set_is_closed T1)
     · -- T1✝.IsClosed
       exact T1_closed
     · -- e✝.IsClosed
@@ -324,8 +354,7 @@ theorem HasType.type_is_closed
     constructor
     -- Need: (.arrow T1 cs T2).IsClosed i.e. T1.IsClosed, cs.IsClosed, T2.IsClosed
     have h_use := HasType.use_set_is_closed ht_body
-    cases h_use with | union h_cs_renamed h_var =>
-    exact Ty.IsClosed.arrow T1_closed (CaptureSet.rename_closed_inv h_cs_renamed) ih
+    exact Ty.IsClosed.arrow T1_closed (CaptureSet.rename_closed_inv h_use) ih
   case tabs S_closed ht_body ih =>
     -- Goal: (.typ (.poly S.core cs T)).IsClosed
     constructor
