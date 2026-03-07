@@ -362,12 +362,11 @@ def Ty.closureSepDom : Ty .capt s → CaptureSet s
 | .cpoly _ cs _ => cs
 | _ => .empty
 
-/-- The `HasSepDom` property for a type environment.
-    Assumes that the domain `dom` is already a peak set. -/
+/-- The `HasSepDom` property for a type environment. -/
 def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
   ∀ m1 c1 m2 c2,
-    (.cvar m1 c1) ⊆ dom ->
-    (.cvar m2 c2) ⊆ dom ->
+    (.cvar m1 c1) ⊆ (compute_peaks env dom) ->
+    (.cvar m2 c2) ⊆ (compute_peaks env dom) ->
     (c1 ≠ c2) ->
     CapabilitySet.Noninterference
       ((env.lookup_cvar c1).2.applyMut m1)
