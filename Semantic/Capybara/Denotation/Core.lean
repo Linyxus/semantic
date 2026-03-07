@@ -412,7 +412,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
       Ty.val_denot env T1 m' (.var (.free arg)) ->
-      env.HasSepDom (T1.captureSet.union cs) ->
+      env.HasSepDom cs ->
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
         T2
