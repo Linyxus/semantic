@@ -415,7 +415,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
         T2
-        (R0 ∪ (reachability_of_loc m'.heap arg))
+        R0
         m' (t0.subst (Subst.openVar (.free arg))))
 | env, .poly T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧

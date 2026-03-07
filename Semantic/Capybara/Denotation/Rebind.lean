@@ -146,13 +146,10 @@ def rebind_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub harg
-      -- The capability set R0 ∪ (reachability_of_loc m'.heap arg) is a ground CapabilitySet
-      -- that is the same on both sides since it doesn't depend on the signature
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
-      have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2) T2
-        (R0 ∪ (reachability_of_loc m'.heap arg))
+      have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
       specialize hd arg m' hsub harg'
       exact (ih2 m' _).mp hd
@@ -162,8 +159,7 @@ def rebind_val_denot
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
-      have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2) T2
-        (R0 ∪ (reachability_of_loc m'.heap arg))
+      have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub harg'
       exact (ih2 m' _).mpr hd
