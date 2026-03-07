@@ -355,6 +355,15 @@ theorem CapabilitySet.BoundedBy.trans
     | top hkind =>
       exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
 
+/-- The HasSepDom domain required by the body of a closure type's denotation. -/
+def Ty.closureSepDom : Ty .capt s → CaptureSet s
+| .arrow _ cs _ => cs
+| .poly _ cs _ => cs
+| .cpoly _ cs _ => cs
+| _ => .empty
+
+/-- The `HasSepDom` property for a type environment.
+    Assumes that the domain `dom` is already a peak set. -/
 def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
   ∀ m1 c1 m2 c2,
     (.cvar m1 c1) ⊆ dom ->
@@ -2795,7 +2804,8 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     | _ => simp [resolve] at hres
 
 theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
-  (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env)))) :
+  (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env))))
+  (hsep : env.HasSepDom T.closureSepDom) :
   (Ty.val_denot env (T.refineCaptureSet (.var .epsilon x)))
     m
     (.var (x.subst (Subst.from_TypeEnv env))) := by
@@ -2860,8 +2870,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition - now uses R0 directly, same for both original and refined types
-      exact hbody
+    · -- Body condition: use the original HasSepDom from the hypothesis
+      intro arg m' hsub hval _
+      exact hbody arg m' hsub hval hsep
   | poly T1 cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
@@ -2901,8 +2912,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition - now uses R0 directly, same for both original and refined types
-      exact hbody
+    · -- Body condition: use the original HasSepDom from the hypothesis
+      intro m' denot hsub hprop himply_simple himply hpure _
+      exact hbody m' denot hsub hprop himply_simple himply hpure hsep
   | cpoly B cs T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
@@ -2940,8 +2952,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition - now uses R0 directly, same for both original and refined types
-      exact hbody
+    · -- Body condition: use the original HasSepDom from the hypothesis
+      intro m' CS hwf hsub hbdd _
+      exact hbody m' CS hwf hsub hbdd hsep
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
@@ -3232,7 +3245,8 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     -- Same pattern as arrow/poly
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
+    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, hbody⟩ := hdenot
+    clear hbody
     have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
     cases e with
     | cabs cs0 _ _ =>
@@ -3253,15 +3267,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
             simp at hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap
-            case cabs cs0 _ _ =>
-              simp only [resolve_reachability]
-              simp_all only [Exp.cabs.injEq]
-            case abs => simp_all
-            case tabs => simp_all
-            case var => simp_all
-            case reader => simp_all
-            all_goals simp [resolve_reachability]; exact CapabilitySet.Subset.empty
+            cases hv : v.unwrap <;> simp_all [resolve_reachability]
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
