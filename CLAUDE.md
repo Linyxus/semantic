@@ -49,3 +49,5 @@ NEVER state an `axiom`. When something is to be assumed, always state a `theorem
 
 Claude always ultrathink deeply like a mathematician for writing proofs.
 
+When writing proof scripts, DO NOT overthink for too long without taking any action. You do not have to know every details before start writing the proof. Build the proof interactively with feedbacks from lean4check. Think, write, check, and iterate.
+
