@@ -1224,12 +1224,12 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
 def Ty.interfere_set : Ty sort s -> Option (CaptureSet s)
 | .top => some .empty
 | .tvar _ => none
-| .arrow T1 _ T2 =>
-    T2.interfere_set.map (fun cs => T1.captureSet ∪ cs.drop_here_var)
-| .poly _ _ T2 =>
-    T2.interfere_set.map (fun cs => cs.drop_here_tvar)
-| .cpoly _ _ T =>
-    T.interfere_set.map (fun cs => cs.subst (Subst.openCVar {}))
+| .arrow _ cs0 T2 =>
+    T2.interfere_set.map (fun cs => cs0 ∪ cs.drop_here_var)
+| .poly _ cs0 T2 =>
+    T2.interfere_set.map (fun cs => cs0 ∪ cs.drop_here_tvar)
+| .cpoly _ cs0 T =>
+    T.interfere_set.map (fun cs => cs0 ∪ cs.subst (Subst.openCVar {}))
 | .unit => some .empty
 | .cap _ => some .empty
 | .bool => some .empty
