@@ -8,7 +8,7 @@ def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
   | .free n => n
   | .bound x => (env.lookup_var x).1
 
-structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) where
+structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) (D : PeakSet s1) where
   var :
     ∀ (x : BVar s1 .var),
       (env1.lookup_var x).1 = interp_var env2 (σ.var x)
@@ -20,6 +20,11 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) wher
   cvar :
     ∀ (C : BVar s1 .cvar),
       (env1.lookup_cvar C).1 = (σ.cvar C).subst (Subst.from_TypeEnv env2)
+
+  hassepdom :
+    ∀ (cs : CaptureSet s1),
+      (compute_peaks env1 cs).CoveredBy D.cs →
+      (env1.HasSepDom cs ↔ env2.HasSepDom (cs.subst σ))
 
 lemma weaken_interp_var {x : Var .var s} {ps : PeakSet s} :
   interp_var env x = interp_var (env.extend_var n ps) (x.rename Rename.succ) := by
@@ -34,9 +39,10 @@ lemma cweaken_interp_var {cs : CaptureSet {}} {cap : CapabilitySet} {x : Var .va
   cases x <;> rfl
 
 theorem Retype.liftVar
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   {x : Nat} {ps1 : PeakSet s1} {ps2 : PeakSet s2}
-  (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_var x ps1) (σ.lift) (env2.extend_var x ps2) where
+  (ρ : Retype env1 σ env2 D) :
+  Retype (env1.extend_var x ps1) (σ.lift) (env2.extend_var x ps2) (D.rename Rename.succ) where
   var := fun
     | .here => rfl
     | .there y => by
@@ -63,11 +69,97 @@ theorem Retype.liftVar
       simp only [TypeEnv.extend_var, Subst.lift, TypeEnv.lookup_cvar]
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set (Rebind.weaken (ps:=ps2))
+  hassepdom := by intros; exact sorry
+
+private lemma subset_to_coveredby {A B : CaptureSet s} (h : A ⊆ B) : A.CoveredBy B := by
+  induction h with
+  | refl => exact CaptureSet.CoveredBy.refl'
+  | empty => exact .empty
+  | union_left _ _ ih1 ih2 => exact .union_left ih1 ih2
+  | union_right_left _ ih => exact .union_right_left ih
+  | union_right_right _ ih => exact .union_right_right ih
+
+private lemma coveredby_rename_cancel {A B : CaptureSet s} {k : Kind}
+    (hpoA : A.PeaksOnly) (hpoB : B.PeaksOnly)
+    (h : (A.rename (Rename.succ (k:=k))).CoveredBy (B.rename (Rename.succ (k:=k)))) :
+    A.CoveredBy B := by
+  induction hpoA with
+  | empty => exact .empty
+  | cvar =>
+    rename_i m c
+    simp only [CaptureSet.rename, Rename.succ] at h
+    obtain ⟨m', hle, hsub'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby CaptureSet.Subset.refl h
+    obtain ⟨c', hfc, hsub''⟩ := hpoB.cvar_subset_rename_inv hsub'
+    cases BVar.there.inj hfc
+    have hcov'' : (CaptureSet.cvar m' c).CoveredBy B := subset_to_coveredby hsub''
+    cases hle with
+    | refl => exact hcov''
+    | ro_eps => exact CaptureSet.CoveredBy.mut_mono_left Mutability.Le.ro_eps hcov''
+  | union _ _ ih1 ih2 =>
+    simp only [CaptureSet.rename] at h
+    exact .union_left (ih1 h.union_coveredby_left) (ih2 h.union_coveredby_right)
+
+-- Drops the innermost cvar binder, mapping .here cvar to .empty
+private def CaptureSet.drop_here_cvar : CaptureSet (s,C) -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => .union cs1.drop_here_cvar cs2.drop_here_cvar
+| .var m (.free n) => .var m (.free n)
+| .var m (.bound (.there x)) => .var m (.bound x)
+| .cvar _ .here => .empty
+| .cvar m (.there c) => .cvar m c
+
+-- When cs' has no .here cvar (i.e. covered by a set with only .there cvars),
+-- drop_here_cvar followed by rename Rename.succ is the identity.
+private lemma drop_here_cvar_rename_succ_of_coveredby
+    {s : Sig} {env : TypeEnv (s,C)} {D : PeakSet s} (cs' : CaptureSet (s,C))
+    (hcov : (compute_peaks env cs').CoveredBy (D.cs.rename (Rename.succ (k := .cvar)))) :
+    cs'.drop_here_cvar.rename (Rename.succ (k := .cvar)) = cs' := by
+  induction cs' with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [compute_peaks, CaptureSet.union] at hcov
+    simp [CaptureSet.drop_here_cvar, CaptureSet.rename,
+          ih1 hcov.union_coveredby_left, ih2 hcov.union_coveredby_right]
+  | var m x => cases x with
+    | free n => simp [CaptureSet.drop_here_cvar, CaptureSet.rename, Var.rename, Rename.succ]
+    | bound x => cases x with
+      | there x => simp [CaptureSet.drop_here_cvar, CaptureSet.rename, Var.rename, Rename.succ]
+  | cvar m c => cases c with
+    | here =>
+      simp only [compute_peaks] at hcov
+      obtain ⟨m', _, hsub⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby CaptureSet.Subset.refl hcov
+      obtain ⟨c', hfc, _⟩ := D.h.cvar_subset_rename_inv hsub
+      simp [Rename.succ] at hfc
+    | there c => simp [CaptureSet.drop_here_cvar, CaptureSet.rename, Rename.succ]
+
+private lemma drop_here_tvar_rename_succ (cs : CaptureSet (s,X)) :
+    cs.drop_here_tvar.rename (Rename.succ (k:=.tvar)) = cs := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp [CaptureSet.drop_here_tvar, CaptureSet.rename, ih1, ih2]
+  | var m x => cases x with
+    | free n => simp [CaptureSet.drop_here_tvar, CaptureSet.rename, Var.rename, Rename.succ]
+    | bound x => cases x with
+      | there x => simp [CaptureSet.drop_here_tvar, CaptureSet.rename, Var.rename, Rename.succ]
+  | cvar m c => cases c with
+    | there c => simp [CaptureSet.drop_here_tvar, CaptureSet.rename, Rename.succ]
+
+private lemma subst_lift_eq_subst_rename {k : Kind} (cs0 : CaptureSet s1) (σ : Subst s1 s2) :
+    (cs0.rename (Rename.succ (k:=k))).subst (σ.lift (k:=k)) = (cs0.subst σ).rename (Rename.succ (k:=k)) := by
+  induction cs0 with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
+  | var m x => cases x with
+    | free n => simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename, Subst.lift, Rename.succ]
+    | bound x => simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename, Subst.lift,
+                       Rename.succ, CaptureSet.applyMut_rename]
+  | cvar m c => simp [CaptureSet.subst, CaptureSet.rename, Subst.lift, Rename.succ, CaptureSet.applyMut_rename]
 
 theorem Retype.liftTVar
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   {d : Denot}
-  (ρ : Retype env1 σ env2) :
-  Retype (env1.extend_tvar d) (σ.lift) (env2.extend_tvar d) where
+  (ρ : Retype env1 σ env2 D) :
+  Retype (env1.extend_tvar d) (σ.lift) (env2.extend_tvar d) (D.rename Rename.succ) where
   var := fun
     | .there x => by
       conv => lhs; simp [TypeEnv.extend_tvar, TypeEnv.lookup_var]
@@ -75,10 +167,6 @@ theorem Retype.liftTVar
       exact ρ.var x
   tvar := fun
     | .here => by
-      -- LHS: (env1.extend_tvar d).lookup_tvar .here = d
-      -- RHS: Ty.val_denot (env2.extend_tvar d) (σ.lift.tvar .here).core
-      --    = Ty.val_denot (env2.extend_tvar d) (.tvar .here)
-      --    = (env2.extend_tvar d).lookup_tvar .here = d
       apply Denot.eq_to_equiv
       simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, Subst.lift,
             PureTy.tvar, Ty.val_denot]
@@ -97,10 +185,32 @@ theorem Retype.liftTVar
       change (env1.lookup_cvar C).1 = _
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.tweaken
+  hassepdom := by
+    intro cs hcov
+    -- hbase1: env1.HasSepDom cs.drop_here_tvar ↔ (env1.extend_tvar d).HasSepDom cs
+    have hbase1 := (Rebind.tweaken (env:=env1) (d:=d)).hassepdom (cs.drop_here_tvar)
+    rw [drop_here_tvar_rename_succ] at hbase1
+    -- hbase2: env2.HasSepDom (cs.drop_here_tvar.subst σ) ↔ (env2.extend_tvar d).HasSepDom (cs.subst σ.lift)
+    have hbase2 := (Rebind.tweaken (env:=env2) (d:=d)).hassepdom (cs.drop_here_tvar.subst σ)
+    have hrhs : (cs.drop_here_tvar.subst σ).rename (Rename.succ (k:=.tvar)) = cs.subst (σ.lift (k:=.tvar)) := by
+      rw [← subst_lift_eq_subst_rename (k:=.tvar), drop_here_tvar_rename_succ]
+    rw [hrhs] at hbase2
+    -- hcov0: (compute_peaks env1 cs.drop_here_tvar).CoveredBy D.cs
+    have hpeaks_eq := rebind_compute_peaks (Rebind.tweaken (env:=env1) (d:=d)) cs.drop_here_tvar
+    rw [drop_here_tvar_rename_succ] at hpeaks_eq
+    have hcov0 : (compute_peaks env1 cs.drop_here_tvar).CoveredBy D.cs := by
+      apply coveredby_rename_cancel (compute_peaks_is_peak env1 _) D.h
+      rw [hpeaks_eq]
+      simp only [PeakSet.rename] at hcov
+      exact hcov
+    -- Chain: env1.ext_tvar.HasSepDom cs ↔ env1.HasSepDom drop ↔ env2.HasSepDom (drop.subst σ) ↔ env2.ext_tvar.HasSepDom (cs.subst σ.lift)
+    rw [← hbase1, ← hbase2]
+    exact ρ.hassepdom cs.drop_here_tvar hcov0
 
 theorem Retype.liftCVar
-  (ρ : Retype env1 σ env2) (cs : CaptureSet {}) (cap : CapabilitySet := .empty) :
-  Retype (env1.extend_cvar cs cap) (σ.lift) (env2.extend_cvar cs cap) where
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (cs : CaptureSet {}) (cap : CapabilitySet := .empty) :
+  Retype (env1.extend_cvar cs cap) (σ.lift) (env2.extend_cvar cs cap) (D.rename Rename.succ) where
   var := fun
     | .there x => by
       conv => lhs; simp [TypeEnv.extend_cvar, TypeEnv.lookup_var]
@@ -125,14 +235,32 @@ theorem Retype.liftCVar
       change (env1.lookup_cvar C).1 = _
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
+  hassepdom := by
+    intro cs' hcov
+    simp only [PeakSet.rename] at hcov
+    have hcs_eq := drop_here_cvar_rename_succ_of_coveredby cs' hcov
+    have hbase1 := (Rebind.cweaken (env := env1) (cs := cs) (cap := cap)).hassepdom cs'.drop_here_cvar
+    rw [hcs_eq] at hbase1
+    have hbase2 := (Rebind.cweaken (env := env2) (cs := cs) (cap := cap)).hassepdom (cs'.drop_here_cvar.subst σ)
+    have hrhs : (cs'.drop_here_cvar.subst σ).rename (Rename.succ (k := .cvar)) =
+        cs'.subst (σ.lift (k := .cvar)) := by
+      rw [← subst_lift_eq_subst_rename (k := .cvar), hcs_eq]
+    rw [hrhs] at hbase2
+    have hpeaks_eq :=
+      rebind_compute_peaks (Rebind.cweaken (env := env1) (cs := cs) (cap := cap)) cs'.drop_here_cvar
+    rw [hcs_eq] at hpeaks_eq
+    have hcov0 : (compute_peaks env1 cs'.drop_here_cvar).CoveredBy D.cs :=
+      coveredby_rename_cancel (compute_peaks_is_peak env1 _) D.h (hpeaks_eq ▸ hcov)
+    rw [← hbase1, ← hbase2]
+    exact ρ.hassepdom cs'.drop_here_cvar hcov0
 
 -- Mutability.denot doesn't depend on environment, so retyping is trivial
 def retype_mutability_denot (B : Mutability) :
   B.denot = B.denot := rfl
 
 def retype_resolved_capture_set
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (C : CaptureSet s1) :
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (C : CaptureSet s1) :
   C.subst (Subst.from_TypeEnv env1) = (C.subst σ).subst (Subst.from_TypeEnv env2) := by
   induction C
   case empty => rfl
@@ -166,18 +294,20 @@ def retype_resolved_capture_set
       simp [CaptureSet.applyRO_subst]
 
 def retype_captureset_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (C : CaptureSet s1) :
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (C : CaptureSet s1) :
   CaptureSet.denot env1 C = CaptureSet.denot env2 (C.subst σ) := by
   unfold CaptureSet.denot
   congr 1
   exact retype_resolved_capture_set ρ C
 
+set_option maxHeartbeats 800000 in
+-- The cpoly case requires more heartbeats due to accumulated elaboration state in the mutual block
 mutual
 
 def retype_val_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (T : Ty .capt s1) :
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (T : Ty .capt s1) :
   Ty.val_denot env1 T ≈ Ty.val_denot env2 (T.subst σ) :=
   match T with
   | .top => by
@@ -218,23 +348,27 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro arg m' hsub harg
+      intro arg m' hsub harg hsep
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
-      specialize hd arg m' hsub harg'
+      have hsep' : env1.HasSepDom cs := by exact sorry
+      specialize hd arg m' hsub harg' hsep'
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro arg m' hsub harg
+      intro arg m' hsub harg hsep
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mp harg
-      specialize hd arg m' hsub harg'
+      have hsep' : env2.HasSepDom (cs.subst σ) := by
+        apply (ρ.hassepdom cs ?_).mp hsep
+        exact sorry
+      specialize hd arg m' hsub harg' hsep'
       exact (ih2 m' _).mpr hd
   | .poly T1 cs T2 => by
     have ih1 := retype_val_denot ρ T1
@@ -245,23 +379,29 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hproper himply_simple_ans himply hpure
+      intro m' denot hsub hproper himply_simple_ans himply hpure hsep
       let R0 := expand_captures m.heap cs'
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hproper himply_simple_ans himply' hpure
+      have hsep' : env1.HasSepDom cs := by
+        apply (ρ.hassepdom cs ?_).mpr hsep
+        exact sorry
+      specialize hd m' denot hsub hproper himply_simple_ans himply' hpure hsep'
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hproper himply_simple_ans himply hpure
+      intro m' denot hsub hproper himply_simple_ans himply hpure hsep
       let R0 := expand_captures m.heap cs'
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.subst σ)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hproper himply_simple_ans himply' hpure
+      have hsep' : env2.HasSepDom (cs.subst σ) := by
+        apply (ρ.hassepdom cs ?_).mp hsep
+        exact sorry
+      specialize hd m' denot hsub hproper himply_simple_ans himply' hpure hsep'
       exact (ih2 m' _).mpr hd
   | .cpoly B cs T => by
     intro m e
@@ -271,22 +411,36 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hsub hsub_bound
+      intro m' CS hwf_CS hsub hsub_bound hsep
       let R0 := expand_captures m.heap cs'
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot m')) T R0
-      specialize hd m' CS hwf_CS hsub hsub_bound
+      let cap1 : CapabilitySet := CS.ground_denot m'
+      let ρ1 : Retype (env1.extend_cvar CS cap1) σ.lift
+                      (env2.extend_cvar CS cap1) (D.rename Rename.succ) :=
+        ρ.liftCVar (cs:=CS) (cap:=cap1)
+      have ih2 := retype_exi_exp_denot ρ1 T R0
+      have hsep' : env1.HasSepDom cs := by
+        apply (ρ.hassepdom cs ?_).mpr hsep
+        exact sorry
+      specialize hd m' CS hwf_CS hsub hsub_bound hsep'
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hsub hsub_bound
+      intro m' CS hwf_CS hsub hsub_bound hsep
       let R0 := expand_captures m.heap cs'
-      have ih2 := retype_exi_exp_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot m')) T R0
-      specialize hd m' CS hwf_CS hsub hsub_bound
+      let cap2 : CapabilitySet := CS.ground_denot m'
+      let ρ2 : Retype (env1.extend_cvar CS cap2) σ.lift
+                      (env2.extend_cvar CS cap2) (D.rename Rename.succ) :=
+        ρ.liftCVar (cs:=CS) (cap:=cap2)
+      have ih2 := retype_exi_exp_denot ρ2 T R0
+      have hsep' : env2.HasSepDom (cs.subst σ) := by
+        apply (ρ.hassepdom cs ?_).mp hsep
+        exact sorry
+      specialize hd m' CS hwf_CS hsub hsub_bound hsep'
       exact (ih2 m' _).mpr hd
 
 def retype_exi_val_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (T : Ty .exi s1) :
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (T : Ty .exi s1) :
   Ty.exi_val_denot env1 T ≈ Ty.exi_val_denot env2 (T.subst σ) :=
   match T with
   | .typ T => by
@@ -317,8 +471,8 @@ def retype_exi_val_denot
       }
 
 def retype_exp_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (T : Ty .capt s1) (R : CapabilitySet) :
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (T : Ty .capt s1) (R : CapabilitySet) :
   Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.subst σ) R := by
   have ih := retype_val_denot ρ T
   intro m e
@@ -334,8 +488,8 @@ def retype_exp_denot
     exact (Denot.equiv_to_imply ih).2
 
 def retype_exi_exp_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2}
-  (ρ : Retype env1 σ env2) (T : Ty .exi s1) (R : CapabilitySet) :
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (T : Ty .exi s1) (R : CapabilitySet) :
   Ty.exi_exp_denot env1 T R ≈ Ty.exi_exp_denot env2 (T.subst σ) R := by
   have ih := retype_exi_val_denot ρ T
   intro m e
@@ -352,19 +506,15 @@ def retype_exi_exp_denot
 
 end
 
-def Retype.open_arg {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} :
+def Retype.open_arg {s : Sig} {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} :
   Retype
     (env.extend_var (interp_var env y) ps)
     (Subst.openVar y)
-    env where
+    env
+    ⟨CaptureSet.empty, .empty⟩ where
   var := fun x => by cases x <;> rfl
   tvar := fun
     | .there X => by
-      -- LHS: (env.extend_var _ ps).lookup_tvar (.there X) = env.lookup_tvar X
-      -- RHS: Ty.val_denot env ((Subst.openVar y).tvar (.there X)).core
-      --    = Ty.val_denot env (PureTy.tvar X).core
-      --    = Ty.val_denot env (.tvar X)
-      --    = env.lookup_tvar X
       apply Denot.eq_to_equiv
       simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, Subst.openVar,
             PureTy.tvar, Ty.val_denot]
@@ -372,6 +522,7 @@ def Retype.open_arg {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} :
     | .there C => by
       simp [TypeEnv.extend_var, Subst.openVar, TypeEnv.lookup_cvar,
         CaptureSet.subst, Subst.from_TypeEnv]
+  hassepdom := by intros; exact sorry
 
 theorem open_arg_val_denot
     {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .capt (s,x)} :
@@ -396,19 +547,14 @@ def Retype.open_targ {env : TypeEnv s} {S : PureTy s} :
   Retype
     (env.extend_tvar (Ty.val_denot env S.core))
     (Subst.openTVar S)
-    env where
+    env
+    ⟨CaptureSet.empty, .empty⟩ where
   var := fun x => by cases x; rfl
   tvar := fun
     | .here => by
-      -- LHS: (env.extend_tvar _).lookup_tvar .here = Ty.val_denot env S.core
-      -- RHS: Ty.val_denot env ((Subst.openTVar S).tvar .here).core
-      --    = Ty.val_denot env S.core
       apply Denot.eq_to_equiv
       simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, Subst.openTVar]
     | .there X => by
-      -- LHS: (env.extend_tvar _).lookup_tvar (.there X) = env.lookup_tvar X
-      -- RHS: Ty.val_denot env ((Subst.openTVar S).tvar (.there X)).core
-      --    = Ty.val_denot env (PureTy.tvar X).core = env.lookup_tvar X
       apply Denot.eq_to_equiv
       simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, Subst.openTVar,
             PureTy.tvar, Ty.val_denot]
@@ -416,6 +562,7 @@ def Retype.open_targ {env : TypeEnv s} {S : PureTy s} :
     | .there C => by
       simp [TypeEnv.extend_tvar, Subst.openTVar, TypeEnv.lookup_cvar,
         CaptureSet.subst, Subst.from_TypeEnv]
+  hassepdom := by intros; exact sorry
 
 theorem open_targ_val_denot {env : TypeEnv s} {S : PureTy s} {T : Ty .capt (s,X)} :
   Ty.val_denot (env.extend_tvar (Ty.val_denot env S.core)) T ≈
@@ -437,13 +584,11 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet :
   Retype
     (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap)
     (Subst.openCVar C)
-    env where
+    env
+    ⟨CaptureSet.empty, .empty⟩ where
   var := fun x => by cases x; rfl
   tvar := fun
     | .there X => by
-      -- LHS: (env.extend_cvar _).lookup_tvar (.there X) = env.lookup_tvar X
-      -- RHS: Ty.val_denot env ((Subst.openCVar C).tvar (.there X)).core
-      --    = Ty.val_denot env (PureTy.tvar X).core = env.lookup_tvar X
       apply Denot.eq_to_equiv
       simp [TypeEnv.lookup_tvar, Subst.openCVar, TypeEnv.extend_cvar,
             PureTy.tvar, Ty.val_denot]
@@ -453,6 +598,7 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet :
     | .there C => by
       simp [Subst.openCVar, TypeEnv.lookup_cvar, TypeEnv.extend_cvar,
         CaptureSet.subst, Subst.from_TypeEnv]
+  hassepdom := by intros; exact sorry
 
 theorem open_carg_val_denot
     {env : TypeEnv s} {C : CaptureSet s} {T : Ty .capt (s,C)} (cap : CapabilitySet := .empty) :
