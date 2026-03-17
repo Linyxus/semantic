@@ -358,6 +358,11 @@ def rebind_val_denot
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
       exact (ih2 m' _).mpr hd
+  | .modal cs Ψ T => by
+    intro m e
+    simp only [Ty.val_denot, Ty.rename]
+    rw [← rebind_resolved_capture_set ρ]
+    rw [← rebind_captureset_denot ρ cs]
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

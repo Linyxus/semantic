@@ -384,6 +384,11 @@ def retype_val_denot
       have ih2 := retype_exi_exp_denot ρ2 T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
       exact (ih2 m' _).mpr hd
+  | .modal cs Ψ T => by
+    intro m e
+    simp only [Ty.val_denot, Ty.subst]
+    rw [← retype_resolved_capture_set ρ]
+    rw [← retype_captureset_denot ρ cs]
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
