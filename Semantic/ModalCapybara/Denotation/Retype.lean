@@ -75,7 +75,8 @@ private lemma subset_to_coveredby {A B : CaptureSet s} (h : A ⊆ B) : A.Covered
 
 private lemma coveredby_rename_cancel {A B : CaptureSet s} {k : Kind}
     (hpoA : A.PeaksOnly) (hpoB : B.PeaksOnly)
-    (h : (A.rename (Rename.succ (k:=k))).CoveredBy (B.rename (Rename.succ (k:=k)))) :
+    (h : (A.rename (Rename.succ (k := k))).CoveredBy
+      (B.rename (Rename.succ (k := k)))) :
     A.CoveredBy B := by
   induction hpoA with
   | empty => exact .empty
@@ -111,7 +112,7 @@ private lemma drop_here_cvar_rename_succ_of_coveredby
   induction cs' with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    simp only [compute_peaks, CaptureSet.union] at hcov
+    simp only [compute_peaks] at hcov
     simp [CaptureSet.drop_here_cvar, CaptureSet.rename,
           ih1 hcov.union_coveredby_left, ih2 hcov.union_coveredby_right]
   | var m x => cases x with
@@ -127,7 +128,7 @@ private lemma drop_here_cvar_rename_succ_of_coveredby
     | there c => simp [CaptureSet.drop_here_cvar, CaptureSet.rename, Rename.succ]
 
 private lemma drop_here_tvar_rename_succ (cs : CaptureSet (s,X)) :
-    cs.drop_here_tvar.rename (Rename.succ (k:=.tvar)) = cs := by
+    cs.drop_here_tvar.rename (Rename.succ (k := .tvar)) = cs := by
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 => simp [CaptureSet.drop_here_tvar, CaptureSet.rename, ih1, ih2]
@@ -138,16 +139,23 @@ private lemma drop_here_tvar_rename_succ (cs : CaptureSet (s,X)) :
   | cvar m c => cases c with
     | there c => simp [CaptureSet.drop_here_tvar, CaptureSet.rename, Rename.succ]
 
-private lemma subst_lift_eq_subst_rename {k : Kind} (cs0 : CaptureSet s1) (σ : Subst s1 s2) :
-    (cs0.rename (Rename.succ (k:=k))).subst (σ.lift (k:=k)) = (cs0.subst σ).rename (Rename.succ (k:=k)) := by
+private lemma subst_lift_eq_subst_rename
+    {k : Kind} (cs0 : CaptureSet s1) (σ : Subst s1 s2) :
+    (cs0.rename (Rename.succ (k := k))).subst (σ.lift (k := k)) =
+      (cs0.subst σ).rename (Rename.succ (k := k)) := by
   induction cs0 with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 => simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
   | var m x => cases x with
-    | free n => simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename, Subst.lift, Rename.succ]
-    | bound x => simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename, Subst.lift,
-                       Rename.succ, CaptureSet.applyMut_rename]
-  | cvar m c => simp [CaptureSet.subst, CaptureSet.rename, Subst.lift, Rename.succ, CaptureSet.applyMut_rename]
+    | free n =>
+      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
+        Subst.lift, Rename.succ]
+    | bound x =>
+      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
+        Subst.lift, Rename.succ]
+  | cvar m c =>
+      simp [CaptureSet.subst, CaptureSet.rename, Subst.lift, Rename.succ,
+        CaptureSet.applyMut_rename]
 
 theorem Retype.liftTVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
