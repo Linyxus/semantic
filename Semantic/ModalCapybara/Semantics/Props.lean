@@ -296,7 +296,7 @@ theorem step_preserves_wf
       have hwf_cabs : Exp.WfInHeap (.cabs cs B e_body) m1.heap :=
         m1.wf.wf_val _ _ hlookup
       -- Extract well-formedness of the body
-      have ⟨_, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
+      have ⟨_, _, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
       -- Build well-formed substitution
       have hwf_subst := Subst.wf_openCVar hwf_CS
       -- Apply substitution preservation

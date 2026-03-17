@@ -15,7 +15,8 @@ def CapDenot := Memory -> CapabilitySet
 
 /-- A bound on capability sets. -/
 inductive CapabilityBound : Type where
-| top : Mutability -> CapabilityBound
+| top : CapabilityBound
+| set : CapabilitySet -> CapabilityBound
 
 /-- Capture bound denotation. -/
 def CapBoundDenot := Memory -> CapabilityBound
@@ -331,20 +332,25 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
-def Mutability.denot : Mutability -> CapBoundDenot
-| m => fun _ => .top m
+def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
+| _, .unbound => fun _ => .top
+| env, .bound cs => fun m => .set (cs.denot env m)
 
 inductive CapabilitySet.BoundedBy : CapabilitySet -> CapabilityBound -> Prop where
 | top :
-  C.HasKind m ->
-  CapabilitySet.BoundedBy C (.top m)
+  CapabilitySet.BoundedBy C .top
+| set :
+  C1 ⊆ C2 ->
+  CapabilitySet.BoundedBy C1 (.set C2)
 
 inductive CapabilityBound.SubsetEq : CapabilityBound -> CapabilityBound -> Prop where
 | refl :
   CapabilityBound.SubsetEq B B
-| top_top :
-  m1 ≤ m2 ->
-  CapabilityBound.SubsetEq (.top m1) (.top m2)
+| set :
+  C1 ⊆ C2 ->
+  CapabilityBound.SubsetEq (.set C1) (.set C2)
+| top :
+  CapabilityBound.SubsetEq B .top
 
 instance : HasSubset CapabilityBound where
   Subset := CapabilityBound.SubsetEq
@@ -356,10 +362,11 @@ theorem CapabilitySet.BoundedBy.trans
   CapabilitySet.BoundedBy C B2 := by
   cases hsub with
   | refl => exact hbound
-  | top_top hle =>
+  | set hsub_set =>
     cases hbound with
-    | top hkind =>
-      exact CapabilitySet.BoundedBy.top (CapabilitySet.HasKind.weaken hkind hle)
+    | set hbound_set =>
+      exact CapabilitySet.BoundedBy.set (CapabilitySet.Subset.trans hbound_set hsub_set)
+  | top => exact CapabilitySet.BoundedBy.top
 
 /-- The `HasSepDom` property for a type environment. -/
 def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
@@ -455,7 +462,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       CS.WfInHeap m'.heap ->
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
-      ((A0 m').BoundedBy (B.denot m')) ->
+      ((A0 m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS (cap := CS.ground_denot m'))
         T
@@ -510,9 +517,9 @@ instance instCaptureSetHasDenotation :
   interp := CaptureSet.denot
 
 @[simp]
-instance instMutabilityHasDenotation :
-  HasDenotation Mutability Unit CapBoundDenot where
-  interp := fun () m => m.denot
+instance instCaptureBoundHasDenotation :
+  HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
+  interp := CaptureBound.denot
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
@@ -529,7 +536,8 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   EnvTyping Γ env m
 | .push Γ (.cvar B), .extend env (.cvar cs cap), m =>
   (cs.WfInHeap m.heap) ∧
-  (cap.BoundedBy (B.denot m)) ∧
+  ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
+  (cap.BoundedBy (B.denot env m)) ∧
   cap = cs.ground_denot m ∧
   EnvTyping Γ env m
 | .push Γ (.lock _), .extend env .lock, m =>
@@ -563,7 +571,7 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     exact CaptureSet.applyMut_rename
   | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
-    obtain ⟨_, _, _, h'⟩ := h
+    obtain ⟨_, _, _, _, h'⟩ := h
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
@@ -821,7 +829,7 @@ theorem typed_env_is_implying_simple_ans
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_simple_ans] at ih_result ⊢
           intro x
@@ -887,7 +895,7 @@ theorem typed_env_is_implying_wf
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
@@ -958,7 +966,7 @@ theorem typed_env_enforces_pure
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_enforcing_pure] at ih_result ⊢
           intro x
@@ -1123,7 +1131,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar cs =>
           unfold EnvTyping at htyping
-          have ⟨hwf, hsub, _, htyping'⟩ := htyping
+          have ⟨hwf, _, hsub, _, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -1342,7 +1350,7 @@ theorem typed_env_is_monotonic
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -1410,7 +1418,7 @@ theorem typed_env_is_transparent
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_transparent] at ih_result ⊢
           intro x
@@ -1478,7 +1486,7 @@ theorem typed_env_is_bool_independent
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht
-          have ⟨hwf, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
           simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
@@ -1859,6 +1867,22 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
     -- This follows from ground_denot_is_monotonic
     exact ground_denot_is_monotonic hwf hsub
 
+theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
+  (hwf : (B.subst (Subst.from_TypeEnv ρ)).WfInHeap m1.heap)
+  (hsub : m2.subsumes m1) :
+  B.denot ρ m1 = B.denot ρ m2 := by
+  cases B with
+  | unbound =>
+    unfold CaptureBound.denot
+    rfl
+  | bound cs =>
+    unfold CaptureBound.denot
+    simp [CaptureBound.subst] at hwf
+    cases hwf with
+    | wf_bound hwf_cs =>
+      change CapabilityBound.set (cs.denot ρ m1) = CapabilityBound.set (cs.denot ρ m2)
+      rw [capture_set_denot_is_monotonic hwf_cs hsub]
+
 /-- ground_denot of applyRO is a subset: C.applyRO.ground_denot m ⊆ C.ground_denot m -/
 theorem ground_denot_applyRO_subset {C : CaptureSet {}} {m : Memory} :
   C.applyRO.ground_denot m ⊆ C.ground_denot m := by
@@ -1903,11 +1927,6 @@ theorem ground_denot_applyRO_mono {C1 C2 : CaptureSet {}} {m : Memory}
   C1.applyRO.ground_denot m ⊆ C2.applyRO.ground_denot m := by
   rw [← ground_denot_applyRO_comm, ← ground_denot_applyRO_comm]
   exact CapabilitySet.applyRO_mono hsub
-
-theorem mutability_denot_is_monotonic {B : Mutability} :
-  B.denot m1 = B.denot m2 := by
-  -- Mutability denotes .top at all memories, so trivially monotonic
-  rfl
 
 mutual
 
@@ -2437,18 +2456,19 @@ theorem env_typing_monotonic
         cases info with
         | cvar cs =>
           simp [EnvTyping] at ht ⊢
-          have ⟨hwf, hsub, hcap, ht'⟩ := ht
+          have ⟨hwf, hwf_bound, hsub, hcap, ht'⟩ := ht
           constructor
           · -- Prove: cs.WfInHeap mem2.heap
             exact CaptureSet.wf_monotonic hmem hwf
           constructor
-          · -- Need: cap.BoundedBy (B.denot mem2)
-            -- Have: cap.BoundedBy (B.denot mem1)
-            -- B.denot mem1 = B.denot mem2 (trivially true for Mutability)
-            have h_bound_eq : B.denot mem1 = B.denot mem2 :=
-              mutability_denot_is_monotonic
-            rw [<-h_bound_eq]
-            exact hsub
+          · exact CaptureBound.wf_monotonic hmem hwf_bound
+          constructor
+          · have h_denot_eq := ground_denot_is_monotonic hwf hmem
+            have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
+              capture_bound_denot_is_monotonic hwf_bound hmem
+            rw [hcap, h_denot_eq] at hsub
+            rw [← h_bound_eq]
+            simpa [hcap, h_denot_eq] using hsub
           constructor
           · rw [hcap, ground_denot_is_monotonic hwf hmem]
           · exact ih ht'
@@ -2473,9 +2493,10 @@ def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
 
 set_option linter.unusedVariables false in
 /-- Semantic sub-bounding -/
-def SemSubbound (Γ : Ctx s) (B1 B2 : Mutability) : Prop :=
-  ∀ m,
-    B1.denot m ⊆ B2.denot m
+def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
+  ∀ env m,
+    EnvTyping Γ env m ->
+    B1.denot env m ⊆ B2.denot env m
 
 /-- Semantic separation check. -/
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=

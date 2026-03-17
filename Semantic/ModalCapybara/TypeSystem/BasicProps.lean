@@ -39,8 +39,8 @@ theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
       have eq := ih h2'
       rw [eq]
 
-theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {m1 m2 : Mutability} :
-    Γ.LookupCVar c m1 -> Γ.LookupCVar c m2 -> m1 = m2 := by
+theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {cb1 cb2 : CaptureBound s} :
+    Γ.LookupCVar c cb1 -> Γ.LookupCVar c cb2 -> cb1 = cb2 := by
   intro h1 h2
   induction h1
   case here =>
@@ -91,6 +91,24 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
       simp [CaptureSet.rename, Var.rename] at h
       cases h
 
+theorem CaptureBound.rename_closed {cb : CaptureBound s1} {f : Rename s1 s2} :
+    cb.IsClosed -> (cb.rename f).IsClosed := by
+  intro h
+  cases h with
+  | unbound => exact CaptureBound.IsClosed.unbound
+  | bound hcs => exact CaptureBound.IsClosed.bound (CaptureSet.rename_closed hcs)
+
+theorem CaptureBound.rename_closed_inv {cb : CaptureBound s1} {f : Rename s1 s2} :
+    (cb.rename f).IsClosed -> cb.IsClosed := by
+  intro h
+  cases cb with
+  | unbound => exact CaptureBound.IsClosed.unbound
+  | bound cs =>
+    simp [CaptureBound.rename] at h
+    cases h with
+    | bound hcs =>
+      exact CaptureBound.IsClosed.bound (CaptureSet.rename_closed_inv hcs)
+
 /-- Renaming preserves closedness of separation contexts. -/
 theorem SepCtx.rename_closed {Ψ : SepCtx s1} {f : Rename s1 s2} :
     Ψ.IsClosed -> (Ψ.rename f).IsClosed := by
@@ -121,7 +139,7 @@ theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
   | tvar => exact IsClosed.tvar
   | arrow h1 _ h2 => exact IsClosed.arrow h1 hcs h2
   | poly h1 _ h2 => exact IsClosed.poly h1 hcs h2
-  | cpoly _ hT' => exact IsClosed.cpoly hcs hT'
+  | cpoly hcb _ hT' => exact IsClosed.cpoly hcb hcs hT'
   | modal _ hΨ hT' => exact IsClosed.modal hcs hΨ hT'
   | unit => exact IsClosed.unit
   | cap _ => exact IsClosed.cap hcs
@@ -141,9 +159,10 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
   case poly S cs T ih1 ih2 =>
     cases h with | poly h1 hcs h2 =>
     exact IsClosed.poly (ih1 h1) (CaptureSet.rename_closed hcs) (ih2 h2)
-  case cpoly m cs T ihT =>
-    cases h with | cpoly hcs hT =>
-    exact IsClosed.cpoly (CaptureSet.rename_closed hcs) (ihT hT)
+  case cpoly cb cs T ihT =>
+    cases h with | cpoly hcb hcs hT =>
+    exact IsClosed.cpoly (CaptureBound.rename_closed hcb)
+      (CaptureSet.rename_closed hcs) (ihT hT)
   case modal cs Ψ T ihT =>
     cases h with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed hcs) (SepCtx.rename_closed hΨ) (ihT hT)
@@ -180,10 +199,11 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     simp [Ty.rename] at h
     cases h; rename_i h1 hcs h2
     exact IsClosed.poly (ih1 h1) (CaptureSet.rename_closed_inv hcs) (ih2 h2)
-  case cpoly m cs T ihT =>
+  case cpoly cb cs T ihT =>
     simp [Ty.rename] at h
-    cases h; rename_i hcs hT
-    exact IsClosed.cpoly (CaptureSet.rename_closed_inv hcs) (ihT hT)
+    cases h; rename_i hcb hcs hT
+    exact IsClosed.cpoly (CaptureBound.rename_closed_inv hcb)
+      (CaptureSet.rename_closed_inv hcs) (ihT hT)
   case modal Ψ T ihT =>
     simp [Ty.rename] at h
     cases h; rename_i hcs hΨ hT
@@ -325,6 +345,7 @@ theorem HasType.exp_is_closed
     · -- cs✝.IsClosed
       have h_use := HasType.use_set_is_closed cb
       exact CaptureSet.rename_closed_inv h_use
+    · assumption
     · -- e✝.IsClosed
       exact ih
   case pack C x T =>
@@ -395,7 +416,8 @@ theorem HasType.type_is_closed
     constructor
     -- Need: (.cpoly m cs T).IsClosed
     have h_use := HasType.use_set_is_closed ht_body
-    exact Ty.IsClosed.cpoly (CaptureSet.rename_closed_inv h_use) ih
+    rename_i hcb_closed
+    exact Ty.IsClosed.cpoly hcb_closed (CaptureSet.rename_closed_inv h_use) ih
   case pack hC ih =>
     constructor
     -- ih : (T✝.subst (Subst.openCVar C✝)).typ.IsClosed
@@ -427,13 +449,13 @@ theorem HasType.type_is_closed
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openTVar S)).IsClosed
     exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
-  case capp hD_closed _ _ _ _ ih =>
-    rename_i x D m T
+  case capp hD_closed _ _ _ ih =>
+    rename_i x D T
     -- ih : (.typ (.cpoly m (.var .epsilon x) T)).IsClosed
     -- hD_closed : D.IsClosed
     -- Extract: T.IsClosed
     cases ih with | typ h =>
-    cases h with | cpoly _ hT =>
+    cases h with | cpoly _ _ hT =>
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openCVar D)).IsClosed
     exact Ty.is_closed_subst hT (Subst.openCVar_is_closed hD_closed)

@@ -152,9 +152,15 @@ theorem rebind_captureset_denot
   congr 1
   exact rebind_resolved_capture_set ρ
 
--- Mutability.denot doesn't depend on environment, so rebinding is trivial
-theorem rebind_mutability_denot (B : Mutability) :
-  B.denot = B.denot := rfl
+theorem rebind_capturebound_denot
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
+  (ρ : Rebind env1 f env2) (B : CaptureBound s1) :
+  CaptureBound.denot env1 B = CaptureBound.denot env2 (B.rename f) := by
+  cases B with
+  | unbound =>
+    simp [CaptureBound.denot, CaptureBound.rename]
+  | bound C =>
+    simp [CaptureBound.denot, CaptureBound.rename, rebind_captureset_denot ρ C]
 
 theorem rebind_compute_peaks
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -339,10 +345,12 @@ def rebind_val_denot
       specialize hd m' denot hsub hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
   | .cpoly B cs T => by
+    have hB := rebind_capturebound_denot ρ B
     intro m e
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]
     rw [← rebind_captureset_denot ρ cs]
+    rw [hB]
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩

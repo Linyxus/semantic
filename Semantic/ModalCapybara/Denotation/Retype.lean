@@ -217,10 +217,6 @@ theorem Retype.liftCVar
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
 
--- Mutability.denot doesn't depend on environment, so retyping is trivial
-def retype_mutability_denot (B : Mutability) :
-  B.denot = B.denot := rfl
-
 def retype_resolved_capture_set
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   (ρ : Retype env1 σ env2 D) (C : CaptureSet s1) :
@@ -263,6 +259,19 @@ def retype_captureset_denot
   unfold CaptureSet.denot
   congr 1
   exact retype_resolved_capture_set ρ C
+
+def retype_capturebound_denot
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (B : CaptureBound s1) :
+  CaptureBound.denot env1 B = CaptureBound.denot env2 (B.subst σ) := by
+  cases B with
+  | unbound =>
+    rfl
+  | bound C =>
+    simp [CaptureBound.denot, CaptureBound.subst]
+    funext m
+    congr 1
+    exact congrFun (retype_captureset_denot ρ C) m
 
 set_option maxHeartbeats 800000 in
 -- The cpoly case requires more heartbeats due to accumulated elaboration state in the mutual block
@@ -357,10 +366,12 @@ def retype_val_denot
       specialize hd m' denot hsub hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
   | .cpoly B cs T => by
+    have hB := retype_capturebound_denot ρ B
     intro m e
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
     rw [← retype_captureset_denot ρ cs]
+    rw [hB]
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩

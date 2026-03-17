@@ -612,6 +612,13 @@ inductive SepCtx.WfInHeap : SepCtx s -> Heap -> Prop where
   CaptureSet.WfInHeap C H ->
   SepCtx.WfInHeap (.cons Ψ C m) H
 
+inductive CaptureBound.WfInHeap : CaptureBound s -> Heap -> Prop where
+| wf_unbound :
+  CaptureBound.WfInHeap .unbound H
+| wf_bound :
+  CaptureSet.WfInHeap cs H ->
+  CaptureBound.WfInHeap (.bound cs) H
+
 inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
 | wf_top :
   Ty.WfInHeap .top H
@@ -628,9 +635,10 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap T2 H ->
   Ty.WfInHeap (.poly T1 cs T2) H
 | wf_cpoly :
+  CaptureBound.WfInHeap cb H ->
   CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T H ->
-  Ty.WfInHeap (.cpoly m cs T) H
+  Ty.WfInHeap (.cpoly cb cs T) H
 | wf_modal :
   CaptureSet.WfInHeap cs H ->
   SepCtx.WfInHeap Ψ H ->
@@ -676,8 +684,9 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap (.tabs cs T e) H
 | wf_cabs :
   CaptureSet.WfInHeap cs H ->
+  CaptureBound.WfInHeap cb H ->
   Exp.WfInHeap e H ->
-  Exp.WfInHeap (.cabs cs m e) H
+  Exp.WfInHeap (.cabs cs cb e) H
 | wf_boxed :
   CaptureSet.WfInHeap cs H ->
   SepCtx.WfInHeap Ψ H ->
@@ -765,6 +774,13 @@ theorem SepCtx.wf_of_closed {Ψ : SepCtx s} {H : Heap}
     · exact ih
     · exact CaptureSet.wf_of_closed hC
 
+theorem CaptureBound.wf_of_closed {cb : CaptureBound s} {H : Heap}
+  (hclosed : cb.IsClosed) :
+  CaptureBound.WfInHeap cb H := by
+  cases hclosed with
+  | unbound => exact CaptureBound.WfInHeap.wf_unbound
+  | bound hcs => exact CaptureBound.WfInHeap.wf_bound (CaptureSet.wf_of_closed hcs)
+
 /-- Closedness implies well-formedness for types. -/
 theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   (hclosed : T.IsClosed) :
@@ -782,8 +798,9 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
     · exact ih1
     · exact CaptureSet.wf_of_closed hcs
     · exact ih2
-  | cpoly hcs _ ih =>
+  | cpoly hcb hcs _ ih =>
     apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_of_closed hcb
     · exact CaptureSet.wf_of_closed hcs
     · exact ih
   | modal hcs hΨ _ ih =>
@@ -815,9 +832,10 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
     · exact CaptureSet.wf_of_closed hcs
     · exact Ty.wf_of_closed hT
     · exact ih
-  | cabs hcs _ ih =>
+  | cabs hcs hcb _ ih =>
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_of_closed hcs
+    · exact CaptureBound.wf_of_closed hcb
     · exact ih
   | boxed hcs hΨ _ ih =>
     apply Exp.WfInHeap.wf_boxed
@@ -910,6 +928,15 @@ theorem SepCtx.wf_monotonic
     · exact ih hsub
     · exact CaptureSet.wf_monotonic hsub hwf_C
 
+theorem CaptureBound.wf_monotonic
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
+  (hwf : CaptureBound.WfInHeap cb h1) :
+  CaptureBound.WfInHeap cb h2 := by
+  cases hwf with
+  | wf_unbound => exact CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs => exact CaptureBound.WfInHeap.wf_bound (CaptureSet.wf_monotonic hsub hwf_cs)
+
 theorem Ty.wf_monotonic
   {h1 h2 : Heap}
   (hsub : h2.subsumes h1)
@@ -928,8 +955,9 @@ theorem Ty.wf_monotonic
     · exact ih1 hsub
     · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact ih2 hsub
-  | wf_cpoly hwf_cs _ ih_T =>
+  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
     apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_monotonic hsub hwf_cb
     · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact ih_T hsub
   | wf_modal hwf_cs hwf_Ψ _ ih_T =>
@@ -964,9 +992,10 @@ theorem Exp.wf_monotonic
     · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact Ty.wf_monotonic hsub hwf_T
     · exact ih_e hsub
-  | wf_cabs hwf_cs hwf_e ih_e =>
+  | wf_cabs hwf_cs hwf_cb hwf_e ih_e =>
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_monotonic hsub hwf_cs
+    · exact CaptureBound.wf_monotonic hsub hwf_cb
     · exact ih_e hsub
   | wf_boxed hwf_cs hwf_Ψ hwf_e ih_e =>
     apply Exp.WfInHeap.wf_boxed
@@ -1072,14 +1101,13 @@ theorem Exp.wf_inv_tabs
   cases hwf with
   | wf_tabs hwf_cs hwf_T hwf_e => exact ⟨hwf_cs, hwf_T, hwf_e⟩
 
-/-- Inversion for capture abstraction: if `λ[cs] (C <: m). e` is well-formed,
-    then its capture set and body are well-formed. -/
+/-- Inversion for capture abstraction. -/
 theorem Exp.wf_inv_cabs
-  {cs : CaptureSet s} {m : Mutability} {e : Exp (s,C)} {H : Heap}
-  (hwf : Exp.WfInHeap (.cabs cs m e) H) :
-  CaptureSet.WfInHeap cs H ∧ Exp.WfInHeap e H := by
+  {cs : CaptureSet s} {cb : CaptureBound s} {e : Exp (s,C)} {H : Heap}
+  (hwf : Exp.WfInHeap (.cabs cs cb e) H) :
+  CaptureSet.WfInHeap cs H ∧ CaptureBound.WfInHeap cb H ∧ Exp.WfInHeap e H := by
   cases hwf with
-  | wf_cabs hwf_cs hwf_e => exact ⟨hwf_cs, hwf_e⟩
+  | wf_cabs hwf_cs hwf_cb hwf_e => exact ⟨hwf_cs, hwf_cb, hwf_e⟩
 
 structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
   wf_var :
@@ -1512,6 +1540,20 @@ theorem SepCtx.wf_rename
     · exact ih
     · exact CaptureSet.wf_rename hwf_C
 
+theorem CaptureBound.wf_rename
+  {cb : CaptureBound s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : CaptureBound.WfInHeap cb H) :
+  CaptureBound.WfInHeap (cb.rename f) H := by
+  cases hwf with
+  | wf_unbound =>
+    simp [CaptureBound.rename]
+    exact CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs =>
+    simp [CaptureBound.rename]
+    exact CaptureBound.WfInHeap.wf_bound (CaptureSet.wf_rename hwf_cs)
+
 /-- Renaming preserves well-formedness of types. -/
 theorem Ty.wf_rename
   {T : Ty sort s1}
@@ -1538,9 +1580,10 @@ theorem Ty.wf_rename
     · exact ih1
     · exact CaptureSet.wf_rename hwf_cs
     · exact ih2
-  | wf_cpoly hwf_cs _ ih_T =>
+  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_rename hwf_cb
     · exact CaptureSet.wf_rename hwf_cs
     · exact ih_T
   | wf_modal hwf_cs hwf_Ψ _ ih_T =>
@@ -1600,10 +1643,11 @@ theorem Exp.wf_rename
     · exact CaptureSet.wf_rename hwf_cs
     · exact Ty.wf_rename hwf_T
     · exact ih_e
-  | wf_cabs hwf_cs _ ih_e =>
+  | wf_cabs hwf_cs hwf_cb _ ih_e =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_rename hwf_cs
+    · exact CaptureBound.wf_rename hwf_cb
     · exact ih_e
   | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
     simp [Exp.rename]
@@ -1821,6 +1865,21 @@ theorem SepCtx.wf_subst
     · exact ih hwf_σ
     · exact CaptureSet.wf_subst hwf_C hwf_σ
 
+theorem CaptureBound.wf_subst
+  {cb : CaptureBound s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_cb : CaptureBound.WfInHeap cb H)
+  (hwf_σ : σ.WfInHeap H) :
+  CaptureBound.WfInHeap (cb.subst σ) H := by
+  cases hwf_cb with
+  | wf_unbound =>
+    simp [CaptureBound.subst]
+    exact CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs =>
+    simp [CaptureBound.subst]
+    exact CaptureBound.WfInHeap.wf_bound (CaptureSet.wf_subst hwf_cs hwf_σ)
+
 /-- Well-formed substitutions preserve well-formedness of types. -/
 theorem Ty.wf_subst
   {T : Ty sort s1}
@@ -1848,9 +1907,10 @@ theorem Ty.wf_subst
     · exact ih1 hwf_σ
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact ih2 (Subst.wf_lift hwf_σ)
-  | wf_cpoly hwf_cs _ ih_T =>
+  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_subst hwf_cb hwf_σ
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact ih_T (Subst.wf_lift hwf_σ)
   | wf_modal hwf_cs hwf_Ψ _ ih_T =>
@@ -1911,10 +1971,11 @@ theorem Exp.wf_subst
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact Ty.wf_subst hwf_T hwf_σ
     · exact ih_e (Subst.wf_lift hwf_σ)
-  | wf_cabs hwf_cs _ ih_e =>
+  | wf_cabs hwf_cs hwf_cb _ ih_e =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact CaptureBound.wf_subst hwf_cb hwf_σ
     · exact ih_e (Subst.wf_lift hwf_σ)
   | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
     simp [Exp.subst]

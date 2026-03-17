@@ -15,6 +15,30 @@ inductive TySort : Type where
 /-- existential types -/
 | exi : TySort
 
+/-- A capture bound, either unbound or bounded by a capture set. -/
+inductive CaptureBound : Sig -> Type where
+| unbound : CaptureBound s
+| bound : CaptureSet s -> CaptureBound s
+
+/-- Applies a renaming to a capture bound. -/
+def CaptureBound.rename : CaptureBound s1 -> Rename s1 s2 -> CaptureBound s2
+| .unbound, _ => .unbound
+| .bound cs, f => .bound (cs.rename f)
+
+/-- Renaming by the identity renaming leaves a capture bound unchanged. -/
+def CaptureBound.rename_id {cb : CaptureBound s} : cb.rename (Rename.id) = cb := by
+  cases cb with
+  | unbound => rfl
+  | bound cs => simp [CaptureBound.rename, CaptureSet.rename_id]
+
+/-- Renaming distributes over composition of renamings. -/
+theorem CaptureBound.rename_comp
+    {cb : CaptureBound s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+    (cb.rename f).rename g = cb.rename (f.comp g) := by
+  cases cb with
+  | unbound => rfl
+  | bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
+
 /-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
 inductive Ty : TySort -> Sig -> Type where
 -- capturing types
@@ -22,7 +46,7 @@ inductive Ty : TySort -> Sig -> Type where
 | tvar : BVar s .tvar -> Ty .capt s
 | arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
-| cpoly : Mutability -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+| cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
 | modal : CaptureSet s -> SepCtx s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
 | cell : CaptureSet s -> Ty .capt s
@@ -39,7 +63,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .tvar x, f => .tvar (f.var x)
 | .arrow T1 cs T2, f => .arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
-| .cpoly m cs T, f => .cpoly m (cs.rename f) (T.rename (f.lift))
+| .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
 | .modal cs Ψ T, f => .modal (cs.rename f) (Ψ.rename f) (T.rename f)
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
@@ -55,7 +79,8 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case tvar =>
     simp [Ty.rename, Rename.id]
   all_goals
-    simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, SepCtx.rename_id, *]
+    simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id,
+      CaptureBound.rename_id, SepCtx.rename_id, *]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -64,7 +89,8 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   case tvar =>
     simp [Ty.rename, Rename.comp]
   all_goals
-    simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, SepCtx.rename_comp, *]
+    simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp,
+      CaptureBound.rename_comp, SepCtx.rename_comp, *]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
@@ -90,13 +116,18 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .tvar x, _ => .tvar x
 | .arrow T1 _ T2, cs => .arrow T1 cs T2
 | .poly T1 _ T2, cs => .poly T1 cs T2
-| .cpoly m _ T, cs => .cpoly m cs T
+| .cpoly cb _ T, cs => .cpoly cb cs T
 | .modal _ Ψ T, cs => .modal cs Ψ T
 | .cap _, cs => .cap cs
 | .cell _, cs => .cell cs
 | .reader _, cs => .reader cs
 | .unit, _ => .unit
 | .bool, _ => .bool
+
+/-- A capture bound is closed if it contains no heap pointers. -/
+inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
+| unbound : CaptureBound.IsClosed .unbound
+| bound : CaptureSet.IsClosed cs -> CaptureBound.IsClosed (.bound cs)
 
 /-- A type is closed if it contains no heap pointers. -/
 inductive Ty.IsClosed : Ty sort s -> Prop where
@@ -106,7 +137,9 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
     Ty.IsClosed (.arrow T1 cs T2)
 | poly : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
     Ty.IsClosed (.poly T1 cs T2)
-| cpoly : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.cpoly m cs T)
+| cpoly :
+    CaptureBound.IsClosed cb -> CaptureSet.IsClosed cs -> Ty.IsClosed T ->
+    Ty.IsClosed (.cpoly cb cs T)
 | modal :
     CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Ty.IsClosed T ->
     Ty.IsClosed (.modal cs Ψ T)
