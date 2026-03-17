@@ -84,8 +84,13 @@ theorem sem_typ_var
   simp only [Denot.as_mpost]
   -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
   have h_lookup := typed_env_lookup_var hts hx
+  have hpeaks :
+      compute_peaks env T.captureSet = compute_peaks env (.var .epsilon (.bound x)) := by
+    rw [← compute_peaks_correct hts T.captureSet]
+    rw [← compute_peaks_correct hts (.var .epsilon (.bound x))]
+    simpa using (CaptureSet.var_peaks (m := .epsilon) (x := x) (T := T) hx).symm
   -- Use val_denot_refine to get the refined type denotation
-  have h_refined := val_denot_refine (x := .bound x) h_lookup
+  have h_refined := val_denot_refine (x := .bound x) h_lookup hpeaks
   simp only [Var.subst, Subst.from_TypeEnv] at h_refined
   exact h_refined
 
@@ -1808,19 +1813,25 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             -- Apply hbody at the T1 peak set
             have hbody_spec := hbody arg m'' hsub harg_T1
             simp only [Ty.exi_exp_denot] at hbody_spec
-            -- Transport from psT1 to psT2 using Rebind
-            have hrebind :
-                Rebind (env.extend_var arg psT1) Rename.id (env.extend_var arg psT2) :=
+            -- Transport from psT1 to psT2 using Retype with the identity substitution.
+            have hretype :
+                Retype (env.extend_var arg psT1) Subst.id
+                  (env.extend_var arg psT2) (psT1.rename Rename.succ) :=
               { var := by
                   intro x
-                  cases x <;> simp [TypeEnv.extend_var, TypeEnv.lookup_var, Rename.id]
+                  cases x <;> simp [TypeEnv.extend_var, TypeEnv.lookup_var, Subst.id, interp_var]
                 tvar := by
                   intro X
-                  cases X; simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, Rename.id]
+                  cases X with
+                  | there X =>
+                    simpa [TypeEnv.extend_var, TypeEnv.lookup_tvar, Subst.id, PureTy.tvar,
+                      Ty.val_denot] using Denot.equiv_refl (env.lookup_tvar X)
                 cvar := by
                   intro C
-                  cases C; simp [TypeEnv.extend_var, TypeEnv.lookup_cvar, Rename.id] }
-            have heq_val := rebind_exi_val_denot (ρ:=hrebind) U1
+                  cases C
+                  simp [TypeEnv.extend_var, TypeEnv.lookup_cvar, Subst.id, CaptureSet.subst,
+                    Subst.from_TypeEnv] }
+            have heq_val := retype_exi_val_denot (ρ := hretype) U1
             -- Lift the evaluation along the exi-val equivalence
             have h_entails_body :
                 Mpost.entails_after
@@ -1828,7 +1839,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                   (Ty.exi_val_denot (env.extend_var arg psT2) U1).as_mpost := by
               apply Mpost.entails_to_entails_after
               apply Denot.imply_to_entails _ _
-              have heqv := Denot.equiv_to_imply (by simpa [Ty.rename_id] using heq_val)
+              have heqv := Denot.equiv_to_imply (by simpa [Ty.subst_id] using heq_val)
               exact heqv.1
             have hbody_psT2 :
                 Eval R m'' (t0.subst (Subst.openVar (.free arg)))
@@ -2799,22 +2810,27 @@ theorem sem_sepcheck_union
   have hsep1 : env.HasSepDom (C1.peaks Γ ∪ C3.peaks Γ) := by
     apply TypeEnv.HasSepDom.union_intro hsep_1 hsep_3
     intro m1 c1 m2 c2 hsub1 hsub2 hne
-    -- hsub1 : (.cvar m1 c1) ⊆ C1.peaks Γ
-    -- hsub2 : (.cvar m2 c2) ⊆ C3.peaks Γ
-    -- Need to show cvars are in the original domain and use hsep
-    have hsub1' : (.cvar m1 c1) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
-      CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_left hsub1)
-    have hsub2' : (.cvar m2 c2) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
-      CaptureSet.Subset.union_right_right hsub2
+    have hsub1' :
+        (.cvar m1 c1) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
+      simp [compute_peaks]
+      exact CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_left hsub1)
+    have hsub2' :
+        (.cvar m2 c2) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
+      simp [compute_peaks]
+      exact CaptureSet.Subset.union_right_right hsub2
     exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
   -- Build HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) for ih2
   have hsep2 : env.HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) := by
     apply TypeEnv.HasSepDom.union_intro hsep_2 hsep_3
     intro m1 c1 m2 c2 hsub1 hsub2 hne
-    have hsub1' : (.cvar m1 c1) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
-      CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_right hsub1)
-    have hsub2' : (.cvar m2 c2) ⊆ (C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ :=
-      CaptureSet.Subset.union_right_right hsub2
+    have hsub1' :
+        (.cvar m1 c1) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
+      simp [compute_peaks]
+      exact CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_right hsub1)
+    have hsub2' :
+        (.cvar m2 c2) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
+      simp [compute_peaks]
+      exact CaptureSet.Subset.union_right_right hsub2
     exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
   -- Convert to the form expected by SemSepCheck
   have hsep1' : env.HasSepDom ((C1 ∪ C3).peaks Γ) := by
