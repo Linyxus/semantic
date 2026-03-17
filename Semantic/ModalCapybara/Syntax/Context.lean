@@ -6,6 +6,7 @@ inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : PureTy s -> Binding s .tvar
 | cvar : Mutability -> Binding s .cvar
+| lock : SepCtx s -> Binding s .lock
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
