@@ -17,12 +17,13 @@ inductive TySort : Type where
 
 /-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
 inductive Ty : TySort -> Sig -> Type where
--- shape types
+-- capturing types
 | top : Ty .capt s
 | tvar : BVar s .tvar -> Ty .capt s
 | arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
 | cpoly : Mutability -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+| modal : SepCtx s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
 | cell : CaptureSet s -> Ty .capt s
 | reader : CaptureSet s -> Ty .capt s
