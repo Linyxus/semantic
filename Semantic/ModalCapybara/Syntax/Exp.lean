@@ -12,11 +12,13 @@ inductive Exp : Sig -> Type where
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> Mutability -> Exp (s,C) -> Exp s
+| boxed : SepCtx s -> Exp s -> Exp s
 | reader : Var .var s -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
+| unwrap : Var .var s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
 | unpack : Exp s -> Exp ((s,C),x) -> Exp s
 | unit : Exp s
