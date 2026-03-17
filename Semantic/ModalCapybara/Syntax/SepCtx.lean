@@ -33,4 +33,9 @@ theorem SepCtx.rename_comp
   | cons K C m ih =>
     simp [SepCtx.rename, ih, CaptureSet.rename_comp]
 
+/-- A separation context is closed if it contains no heap pointers. -/
+inductive SepCtx.IsClosed : SepCtx s -> Prop where
+| empty : SepCtx.IsClosed .empty
+| cons : SepCtx.IsClosed K -> CaptureSet.IsClosed C -> SepCtx.IsClosed (.cons K C m)
+
 end ModalCapybara
