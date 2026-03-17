@@ -1583,6 +1583,18 @@ theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
   simp [Ty.captureSet] at h
   exact h
 
+theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
+  (hlookup : Γ.LookupCVar c (.bound C)) :
+  SemSubcapt Γ (.cvar .epsilon c) C := by
+  intro env m hts
+  unfold CaptureSet.denot
+  simp [CaptureSet.subst, Subst.from_TypeEnv]
+  have hbound := typed_env_lookup_cvar_aux hts hlookup
+  simp [CaptureBound.denot] at hbound
+  cases hbound with
+  | set hsub =>
+    exact hsub
+
 /-- applyRO on CaptureSet gives a subset in denotation. -/
 theorem sem_sc_ro {C : CaptureSet s} :
   SemSubcapt Γ C.applyRO C := by
@@ -1610,6 +1622,7 @@ theorem fundamental_subcapt
   case sc_elem hsub => exact sem_sc_elem hsub
   case sc_union ih1 ih2 => exact sem_sc_union ih1 ih2
   case sc_var hlookup => exact sem_sc_var hlookup
+  case sc_cvar hlookup => exact sem_sc_cvar hlookup
   case sc_ro => exact sem_sc_ro
   case sc_ro_mono ih => exact sem_sc_ro_mono ih
 
@@ -2823,6 +2836,8 @@ theorem subcapt_peaks
                 ((CaptureSet.peaks Γ' T.captureSet).rename Rename.succ) :=
         CaptureSet.CoveredBy.rename (s2 := (s,,k)) ih'
       exact CaptureSet.CoveredBy.trans h1 peaks_rename_succ_coveredby
+  | sc_cvar hlk =>
+    sorry
   | sc_ro =>
     exact peaks_applyRO_coveredby
   | sc_ro_mono _ ih =>
