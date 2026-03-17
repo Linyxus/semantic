@@ -110,6 +110,11 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .cond x e2 e3, s => .cond (x.subst s) (e2.subst s) (e3.subst s)
 | .par e1 e2, s => .par (e1.subst s) (e2.subst s)
 
+/-- Applies a substitution to all bound variables in a constraint. -/
+def Constraint.subst : Constraint s1 -> Subst s1 s2 -> Constraint s2
+| .empty, _ => .empty
+| .cons K C m, σ => .cons (K.subst σ) (C.subst σ) m
+
 /-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   var := fun
@@ -490,6 +495,14 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | par e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2]
 
+/-- Substitution on constraints distributes over composition of substitutions. -/
+theorem Constraint.subst_comp {K : Constraint s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+  (K.subst σ1).subst σ2 = K.subst (σ1.comp σ2) := by
+  induction K generalizing s2 s3 with
+  | empty => rfl
+  | cons K C m ih =>
+    simp [Constraint.subst, ih, CaptureSet.subst_comp]
+
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem Var.subst_id {x : Var .var s} :
   x.subst Subst.id = x := by
@@ -585,6 +598,14 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, Var.subst_id, ih2, ih3]
   | par e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2]
+
+/-- Substituting with the identity substitution leaves a constraint unchanged. -/
+theorem Constraint.subst_id {K : Constraint s} :
+  K.subst Subst.id = K := by
+  induction K with
+  | empty => rfl
+  | cons K C m ih =>
+    simp [Constraint.subst, ih, CaptureSet.subst_id]
 
 /-- Converts a renaming to a substitution. -/
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
@@ -705,6 +726,14 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp [Exp.subst, Exp.rename, Var.subst_asSubst, ih2, ih3]
   | par e1 e2 ih1 ih2 =>
     simp [Exp.subst, Exp.rename, ih1, ih2]
+
+/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
+theorem Constraint.subst_asSubst {K : Constraint s1} {f : Rename s1 s2} :
+  K.subst (f.asSubst) = K.rename f := by
+  induction K generalizing s2 with
+  | empty => rfl
+  | cons K C m ih =>
+    simp [Constraint.subst, Constraint.rename, ih, CaptureSet.subst_asSubst]
 
 theorem Subst.weaken_openVar {z : Var .var s} :
   Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
