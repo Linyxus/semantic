@@ -102,11 +102,13 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .abs cs T e, s => .abs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .cabs cs m e, s => .cabs (cs.subst s) m (e.subst s.lift)
+| .boxed Ψ e, s => .boxed (Ψ.subst s) (e.subst s)
 | .reader x, s => .reader (x.subst s)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
 | .capp x cs, s => .capp (x.subst s) (cs.subst s)
+| .unwrap x, s => .unwrap (x.subst s)
 | .letin e1 e2, s => .letin (e1.subst s) (e2.subst s.lift)
 | .unpack e1 e2, s => .unpack (e1.subst s) (e2.subst s.lift.lift)
 | .unit, _ => .unit
@@ -502,6 +504,13 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Exp.subst, CaptureSet.subst_comp, PureTy.subst_comp, ih_e, Subst.comp_lift]
   | cabs cs m e ih_e =>
     simp [Exp.subst, CaptureSet.subst_comp, ih_e, Subst.comp_lift]
+  | boxed Ψ e ih_e =>
+    have hΨ : (Ψ.subst σ1).subst σ2 = Ψ.subst (σ1.comp σ2) := by
+      induction Ψ with
+      | empty => rfl
+      | cons Ψ C m ihΨ =>
+        simp [SepCtx.subst, ihΨ, CaptureSet.subst_comp]
+    simp [Exp.subst, hΨ, ih_e]
   | reader x => simp [Exp.subst, Var.subst_comp]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
@@ -509,6 +518,8 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | tapp x T => simp [Exp.subst, Var.subst_comp, PureTy.subst_comp]
   | capp x cs =>
     simp [Exp.subst, Var.subst_comp, CaptureSet.subst_comp]
+  | unwrap x =>
+    simp [Exp.subst, Var.subst_comp]
   | letin e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2, Subst.comp_lift]
   | unpack e1 e2 ih1 ih2 =>
@@ -607,6 +618,13 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, CaptureSet.subst_id, PureTy.subst_id, ih, Subst.lift_id]
   | cabs cs m e ih =>
     simp [Exp.subst, CaptureSet.subst_id, ih, Subst.lift_id]
+  | boxed Ψ e ih =>
+    have hΨ : Ψ.subst Subst.id = Ψ := by
+      induction Ψ with
+      | empty => rfl
+      | cons Ψ C m ihΨ =>
+        simp [SepCtx.subst, ihΨ, CaptureSet.subst_id]
+    simp [Exp.subst, hΨ, ih]
   | reader x =>
     simp [Exp.subst, Var.subst_id]
   | pack cs x =>
@@ -617,6 +635,8 @@ theorem Exp.subst_id {e : Exp s} :
     simp [Exp.subst, Var.subst_id, PureTy.subst_id]
   | capp x cs =>
     simp [Exp.subst, Var.subst_id, CaptureSet.subst_id]
+  | unwrap x =>
+    simp [Exp.subst, Var.subst_id]
   | letin e1 e2 ih1 ih2 =>
     simp [Exp.subst, ih1, ih2, Subst.lift_id]
   | unpack e1 e2 ih1 ih2 =>
@@ -738,6 +758,13 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   | cabs cs m e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst]
     rw [<-Rename.asSubst_lift, ih]
+  | boxed Ψ e ih =>
+    have hΨ : Ψ.subst (f.asSubst) = Ψ.rename f := by
+      induction Ψ generalizing s2 with
+      | empty => rfl
+      | cons Ψ C m ihΨ =>
+        simp [SepCtx.subst, SepCtx.rename, ihΨ, CaptureSet.subst_asSubst]
+    simp [Exp.subst, Exp.rename, hΨ, ih]
   | reader x =>
     simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | pack cs x =>
@@ -748,6 +775,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp [Exp.subst, Exp.rename, Var.subst_asSubst, PureTy.subst_asSubst]
   | capp x cs =>
     simp [Exp.subst, Exp.rename, Var.subst_asSubst, CaptureSet.subst_asSubst]
+  | unwrap x =>
+    simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | letin e1 e2 ih1 ih2 =>
     simp [Exp.subst, Exp.rename, ih1]
     rw [<-Rename.asSubst_lift, ih2]
@@ -1064,6 +1093,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     constructor
     · exact CaptureSet.is_closed_subst hcs hsubst
     · exact ih he (Subst.lift_closed hsubst)
+  | boxed Ψ e ih =>
+    cases hc with | boxed hΨ he =>
+    simp [Exp.subst]
+    exact IsClosed.boxed (SepCtx.is_closed_subst hΨ hsubst) (ih he hsubst)
   | reader x =>
     cases hc with | reader hx =>
     simp [Exp.subst]
@@ -1092,6 +1125,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     constructor
     · exact Var.is_closed_subst hx hsubst
     · exact CaptureSet.is_closed_subst hcs hsubst
+  | unwrap x =>
+    cases hc with | unwrap hx =>
+    simp [Exp.subst]
+    exact IsClosed.unwrap (Var.is_closed_subst hx hsubst)
   | letin e1 e2 ih1 ih2 =>
     cases hc with | letin he1 he2 =>
     simp [Exp.subst]
@@ -1282,6 +1319,10 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | cabs hcs he =>
     exact IsClosed.cabs (CaptureSet.subst_closed_inv hcs) (ih he)
+  | boxed Ψ e ih =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | boxed hΨ he =>
+    exact IsClosed.boxed (SepCtx.subst_closed_inv hΨ) (ih he)
   | reader x =>
     simp [Exp.subst] at hclosed
     cases hclosed with | reader hx =>
@@ -1302,6 +1343,10 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp [Exp.subst] at hclosed
     cases hclosed with | capp hx hcs =>
     exact IsClosed.capp (Var.subst_closed_inv hx) (CaptureSet.subst_closed_inv hcs)
+  | unwrap x =>
+    simp [Exp.subst] at hclosed
+    cases hclosed with | unwrap hx =>
+    exact IsClosed.unwrap (Var.subst_closed_inv hx)
   | letin e1 e2 ih1 ih2 =>
     simp [Exp.subst] at hclosed
     cases hclosed with | letin he1 he2 =>
