@@ -1,6 +1,6 @@
 import Semantic.ModalCapybara.Debruijn
 import Semantic.ModalCapybara.Syntax.CaptureSet
-import Semantic.ModalCapybara.Syntax.Constraint
+import Semantic.ModalCapybara.Syntax.SepCtx
 
 /-!
 Type definitions and operations for CC.
