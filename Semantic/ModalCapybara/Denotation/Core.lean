@@ -77,6 +77,7 @@ theorem compute_reachability_eq_resolve_reachability
     cases x with
     | free loc => rfl
     | bound bx => cases bx
+  | boxed => rfl
 
 /-- Heap invariant: the reachability stored in a heap value equals the computed
     reachability for that value. -/
@@ -455,6 +456,14 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         T
         R0
         m' (t0.subst (Subst.openCVar CS)))
+| env, .modal cs _ _ => fun m e =>
+  e.WfInHeap m.heap ∧
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+  ∃ cs0 sepctx0 t0,
+    resolve m.heap e = some (.boxed cs0 sepctx0 t0) ∧
+    cs0.WfInHeap m.heap ∧
+    let R0 := expand_captures m.heap cs0
+    R0 ⊆ (cs.denot env m)
 
 /-- Value denotation for existential types. -/
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
@@ -1011,6 +1020,9 @@ theorem from_TypeEnv_wf_in_heap
             | cpoly B cs T' =>
               unfold Ty.val_denot at htype
               exact htype.1
+            | modal cs Ψ T' =>
+              unfold Ty.val_denot at htype
+              exact htype.1
           cases hwf with
           | wf_var hwf_var =>
             -- hwf_var : Var.WfInHeap (.free n) m.heap
@@ -1538,6 +1550,22 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     · exact hwf_cs
     · -- The existential part remains the same
       exact hexists
+  | modal cs Ψ T =>
+    intro m x v hx ht
+    unfold Ty.val_denot at ht ⊢
+    have hx' : m.heap x = some (.val v) := by
+      simp [Memory.lookup] at hx
+      exact hx
+    have heq := resolve_var_heap_trans hx'
+    rw [heq]
+    have ⟨hwf_unwrap, hwf_cs, cs', sepctx0, t0, hres, hwf_cs', hR0_sub⟩ := ht
+    constructor
+    · constructor
+      constructor
+      exact hx'
+    constructor
+    · exact hwf_cs
+    · refine ⟨cs', sepctx0, t0, hres, hwf_cs', hR0_sub⟩
 
 theorem val_denot_is_bool_independent {env : TypeEnv s}
   (henv : env.is_bool_independent)
@@ -1582,6 +1610,9 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
     unfold Ty.val_denot
     simp [resolve]
   | cpoly B cs T =>
+    unfold Ty.val_denot
+    simp [resolve]
+  | modal cs Ψ T =>
     unfold Ty.val_denot
     simp [resolve]
 
@@ -1821,12 +1852,14 @@ def val_denot_is_monotonic {env : TypeEnv s}
     | abs _ _ _ => simp [resolve] at ht
     | tabs _ _ _ => simp [resolve] at ht
     | cabs _ _ _ => simp [resolve] at ht
+    | boxed _ _ _ => simp [resolve] at ht
     | pack _ _ => simp [resolve] at ht
     | unpack _ _ => simp [resolve] at ht
     | app _ _ => simp [resolve] at ht
     | tapp _ _ => simp [resolve] at ht
     | capp _ _ => simp [resolve] at ht
     | letin _ _ => simp [resolve] at ht
+    | unwrap _ => simp [resolve] at ht
     | btrue => simp [resolve] at ht
     | bfalse => simp [resolve] at ht
     | read _ => simp [resolve] at ht
@@ -1958,6 +1991,8 @@ def val_denot_is_monotonic {env : TypeEnv s}
         | tapp _ _ => cases hr
         | capp _ _ => cases hr
         | letin _ _ => cases hr
+        | boxed _ _ _ => cases hr
+        | unwrap _ => cases hr
         | btrue => cases hr
         | bfalse => cases hr
         | read _ => cases hr
@@ -2013,6 +2048,8 @@ def val_denot_is_monotonic {env : TypeEnv s}
         | tapp _ _ => cases hr
         | capp _ _ => cases hr
         | letin _ _ => cases hr
+        | boxed _ _ _ => cases hr
+        | unwrap _ => cases hr
         | btrue => cases hr
         | bfalse => cases hr
         | read _ => cases hr
@@ -2068,6 +2105,8 @@ def val_denot_is_monotonic {env : TypeEnv s}
         | tapp _ _ => cases hr
         | capp _ _ => cases hr
         | letin _ _ => cases hr
+        | boxed _ _ _ => cases hr
+        | unwrap _ => cases hr
         | btrue => cases hr
         | bfalse => cases hr
         | read _ => cases hr
@@ -2088,6 +2127,54 @@ def val_denot_is_monotonic {env : TypeEnv s}
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [hcs'_eq]
             exact hfun m' CS hwf hs0 hbounded
+  | modal cs Ψ T =>
+    intro m1 m2 e hmem ht
+    unfold Ty.val_denot at ht ⊢
+    have ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs', hR0_sub⟩ := ht
+    constructor
+    · exact Exp.wf_monotonic hmem hwf_e
+    constructor
+    · exact CaptureSet.wf_monotonic hmem hwf_cs
+    · use cs', sepctx0, t0
+      constructor
+      · cases e with
+        | var x =>
+          cases x with
+          | free fx =>
+            simp [resolve] at hr ⊢
+            split at hr <;> try (cases hr)
+            rename_i v heq
+            have hsub : m2.heap.subsumes m1.heap := hmem
+            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
+            simp [Cell.subsumes] at hsub_v
+            subst hsub_v
+            simp [hv', hr]
+          | bound bx => cases bx
+        | boxed _ _ _ => simp [resolve] at hr ⊢; exact hr
+        | abs _ _ _ => cases hr
+        | tabs _ _ _ => cases hr
+        | cabs _ _ _ => cases hr
+        | pack _ _ => cases hr
+        | unit => cases hr
+        | unpack _ _ => cases hr
+        | app _ _ => cases hr
+        | tapp _ _ => cases hr
+        | capp _ _ => cases hr
+        | letin _ _ => cases hr
+        | unwrap _ => cases hr
+        | btrue => cases hr
+        | bfalse => cases hr
+        | read _ => cases hr
+        | write _ _ => cases hr
+        | cond _ _ _ => cases hr
+        | par _ _ => cases hr
+        | reader _ => cases hr
+      · constructor
+        · exact CaptureSet.wf_monotonic hmem hwf_cs'
+        · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+          have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+          rw [← hcs_eq, hcs'_eq]
+          exact hR0_sub
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
@@ -2333,6 +2420,7 @@ lemma simple_ans_from_resolve
   | abs cs T t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.abs
   | tabs cs S t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.tabs
   | cabs cs B t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.cabs
+  | boxed cs Ψ t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.boxed
   | reader x => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.reader
   | pack cs x =>
     simp [resolve] at hresolve
@@ -2355,6 +2443,10 @@ lemma simple_ans_from_resolve
     rw [← hresolve] at hv
     cases hv
   | unpack e1 e2 =>
+    simp [resolve] at hresolve
+    rw [← hresolve] at hv
+    cases hv
+  | unwrap x =>
     simp [resolve] at hresolve
     rw [← hresolve] at hv
     cases hv
@@ -2480,6 +2572,9 @@ theorem val_denot_implies_wf {env : TypeEnv s}
   | cpoly B cs T =>
     simp [Ty.val_denot] at hdenot
     exact hdenot.1
+  | modal cs Ψ T =>
+    simp [Ty.val_denot] at hdenot
+    exact hdenot.1
 
 /-- Value denotation implies simple answer for all types. -/
 theorem val_denot_implies_simple_ans {env : TypeEnv s}
@@ -2516,6 +2611,10 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
     obtain ⟨_, _, _, heq, _, _⟩ := hdenot
     rw [heq]
     exact Exp.IsSimpleAns.is_var
+  | modal cs Ψ T =>
+    unfold Ty.val_denot at hdenot
+    rcases hdenot with ⟨_, _, _, _, _, hres, _, _⟩
+    exact simple_ans_from_resolve hres Exp.IsSimpleVal.boxed
   | arrow T1 cs T2 =>
     simp [Ty.val_denot] at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
@@ -2728,13 +2827,33 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hval := by
+              simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | tabs _ _ _ => simp [resolve] at hres
+    | cabs _ _ _ => simp [resolve] at hres
+    | boxed _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
   | poly T1 cs T2 =>
     -- captureSet = cs, expand_captures cs' ⊆ cs.denot
     simp only [Ty.captureSet]
@@ -2756,13 +2875,33 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hval := by
+              simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | abs _ _ _ => simp [resolve] at hres
+    | cabs _ _ _ => simp [resolve] at hres
+    | boxed _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
   | cpoly B cs T =>
     -- captureSet = cs, expand_captures cs' ⊆ cs.denot
     simp only [Ty.captureSet]
@@ -2784,13 +2923,80 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hval := by
+              simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | abs _ _ _ => simp [resolve] at hres
+    | tabs _ _ _ => simp [resolve] at hres
+    | boxed _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
+  | modal cs Ψ T =>
+    simp only [Ty.captureSet]
+    simp only [Ty.val_denot] at ht
+    obtain ⟨_, _, cs', _, _, hres, _, hR0_sub⟩ := ht
+    cases e with
+    | boxed cs0 _ _ =>
+      simp only [resolve, Option.some.injEq, Exp.boxed.injEq] at hres
+      obtain ⟨rfl, _, _⟩ := hres
+      simp [resolve_reachability]
+      exact hR0_sub
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hcell : m.heap fx with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            have hval := by
+              simpa [resolve, hcell] using hres
+            simp [resolve_reachability]
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_sub
+          | _ => simp at hres
+      | bound bx => cases bx
+    | abs _ _ _ => simp [resolve] at hres
+    | tabs _ _ _ => simp [resolve] at hres
+    | cabs _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
 
 theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env))))
@@ -2944,6 +3150,44 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
     · -- Body condition
       intro m' CS hwf hsub hbdd
       exact hbody m' CS hwf hsub hbdd
+  | modal cs Ψ T =>
+    simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
+    obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hres, hwf_cs', hR0_sub⟩ := hdenot
+    refine ⟨hwf_e, ?_, cs', sepctx0, t0, hres, hwf_cs', ?_⟩
+    · simp only [CaptureSet.subst]
+      cases hwf_e with
+      | wf_var hwf_var =>
+        exact CaptureSet.wf_of_var hwf_var
+    · simp only [resolve] at hres
+      cases hv : x.subst (Subst.from_TypeEnv env) with
+      | free n =>
+        simp only [hv] at hres hwf_e ⊢
+        cases hcell : m.heap n with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            simp at hres
+            have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
+            have hboxed_isval : (Exp.boxed cs' sepctx0 t0).IsSimpleVal := hres ▸ v.isVal
+            have hcomp :
+                compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
+              calc compute_reachability m.heap v.unwrap v.isVal
+                  = compute_reachability m.heap (Exp.boxed cs' sepctx0 t0) hboxed_isval := by
+                      simp only [hres]
+                _ = expand_captures m.heap cs' := rfl
+            have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
+              simp only [reachability_of_loc, hcell]
+            have heq : expand_captures m.heap cs' = reachability_of_loc m.heap n := by
+              rw [hreach_loc, hwf_reach, hcomp]
+            simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
+              CapabilitySet.applyMut]
+            rw [heq]
+            exact CapabilitySet.Subset.refl
+          | capability _ => simp at hres
+          | masked => simp at hres
+      | bound bx => cases bx
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
@@ -3194,13 +3438,33 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hval := by
+              simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_empty
           | _ => simp at hres
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | tabs _ _ _ => simp [resolve] at hres
+    | cabs _ _ _ => simp [resolve] at hres
+    | boxed _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
   case poly T1 cs T2 =>
     -- Same pattern as arrow
     simp only [Ty.captureSet] at hpure
@@ -3223,13 +3487,33 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hval := by
+              simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_empty
           | _ => simp at hres
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | abs _ _ _ => simp [resolve] at hres
+    | cabs _ _ _ => simp [resolve] at hres
+    | boxed _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
   case cpoly B cs T =>
     -- Same pattern as arrow/poly
     simp only [Ty.captureSet] at hpure
@@ -3253,13 +3537,81 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hval := by
+              simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_empty
           | _ => simp at hres
       | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    | abs _ _ _ => simp [resolve] at hres
+    | tabs _ _ _ => simp [resolve] at hres
+    | boxed _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
+  case modal cs Ψ T =>
+    simp only [Ty.captureSet] at hpure
+    simp only [Ty.val_denot] at hdenot
+    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub⟩ := hdenot
+    have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
+    cases e with
+    | boxed cs0 _ _ =>
+      simp only [resolve, Option.some.injEq, Exp.boxed.injEq] at hres
+      obtain ⟨rfl, _, _⟩ := hres
+      simp [resolve_reachability]
+      exact hR0_empty
+    | var x =>
+      cases x with
+      | free fx =>
+        simp [resolve] at hres
+        cases hcell : m.heap fx with
+        | none => simp [hcell] at hres
+        | some cell =>
+          simp [hcell] at hres
+          cases cell with
+          | val v =>
+            have hval := by
+              simpa [resolve, hcell] using hres
+            simp [resolve_reachability]
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
+            rw [hval]
+            simp [resolve_reachability]
+            exact hR0_empty
+          | _ => simp at hres
+      | bound bx => cases bx
+    | abs _ _ _ => simp [resolve] at hres
+    | tabs _ _ _ => simp [resolve] at hres
+    | cabs _ _ _ => simp [resolve] at hres
+    | reader _ => simp [resolve] at hres
+    | pack _ _ => simp [resolve] at hres
+    | app _ _ => simp [resolve] at hres
+    | tapp _ _ => simp [resolve] at hres
+    | capp _ _ => simp [resolve] at hres
+    | unwrap _ => simp [resolve] at hres
+    | letin _ _ => simp [resolve] at hres
+    | unpack _ _ => simp [resolve] at hres
+    | unit => simp [resolve] at hres
+    | btrue => simp [resolve] at hres
+    | bfalse => simp [resolve] at hres
+    | read _ => simp [resolve] at hres
+    | write _ _ => simp [resolve] at hres
+    | cond _ _ _ => simp [resolve] at hres
+    | par _ _ => simp [resolve] at hres
 
 namespace TypeEnv.HasSepDom
 
