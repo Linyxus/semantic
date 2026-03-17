@@ -11,6 +11,45 @@ inductive SepCtx : Sig -> Type where
   Mutability ->
   SepCtx s
 
+/-- Membership in a separation context. -/
+inductive SepCtx.Has : SepCtx s -> CaptureSet s -> Mutability -> Prop where
+| here : SepCtx.Has (.cons K C m) C m
+| there : SepCtx.Has K C m -> SepCtx.Has (.cons K C' m') C m
+
+/-- Two distinct entries occur in a separation context. -/
+inductive SepCtx.HasTwoDistinct :
+    SepCtx s -> CaptureSet s -> Mutability -> CaptureSet s -> Mutability -> Prop where
+| here_there :
+    SepCtx.Has K C2 m2 ->
+    SepCtx.HasTwoDistinct (.cons K C1 m1) C1 m1 C2 m2
+| there :
+    SepCtx.HasTwoDistinct K C1 m1 C2 m2 ->
+    SepCtx.HasTwoDistinct (.cons K C m) C1 m1 C2 m2
+| symm :
+    SepCtx.HasTwoDistinct K C1 m1 C2 m2 ->
+    SepCtx.HasTwoDistinct K C2 m2 C1 m1
+
+private theorem SepCtx.HasTwoDistinct.has_left_right
+    (h : SepCtx.HasTwoDistinct K C1 m1 C2 m2) :
+    SepCtx.Has K C1 m1 ∧ SepCtx.Has K C2 m2 := by
+  induction h with
+  | here_there hhas =>
+    exact ⟨.here, .there hhas⟩
+  | there _ ih =>
+    exact ⟨.there ih.1, .there ih.2⟩
+  | symm _ ih =>
+    exact ⟨ih.2, ih.1⟩
+
+theorem SepCtx.HasTwoDistinct.left
+    (h : SepCtx.HasTwoDistinct K C1 m1 C2 m2) :
+    SepCtx.Has K C1 m1 :=
+  (SepCtx.HasTwoDistinct.has_left_right h).1
+
+theorem SepCtx.HasTwoDistinct.right
+    (h : SepCtx.HasTwoDistinct K C1 m1 C2 m2) :
+    SepCtx.Has K C2 m2 :=
+  (SepCtx.HasTwoDistinct.has_left_right h).2
+
 /-- Applies a renaming to all bound variables in a separation context. -/
 def SepCtx.rename : SepCtx s1 -> Rename s1 s2 -> SepCtx s2
 | .empty, _ => .empty
