@@ -13,6 +13,10 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   CaptureSet.Subset C1 C2 ->
   -------------------
   Subcapt Γ C1 C2
+| sc_mode {C : CaptureSet s} :
+  m1 ≤ m2 ->
+  -------------------
+  Subcapt Γ (C.applyMut m1) (C.applyMut m2)
 | sc_union :
   Subcapt Γ C1 C3 ->
   Subcapt Γ C2 C3 ->
@@ -21,7 +25,7 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_var :
   Ctx.LookupVar Γ x T ->
   ----------------------------------
-  Subcapt Γ (.var .epsilon (.bound x)) T.captureSet
+  Subcapt Γ (.var m (.bound x)) T.captureSet
 | sc_cvar :
   Ctx.LookupCVar Γ c (.bound C) ->
   ----------------------------------
@@ -35,9 +39,27 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Subcapt Γ C1.applyRO C2.applyRO
 
 inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
-| eps :
+| empty {m : Mutability} :
+  -------------------
+  HasKind Γ {} m
+| union {C1 C2 : CaptureSet s} :
+  HasKind Γ C1 m ->
+  HasKind Γ C2 m ->
+  -------------------
+  HasKind Γ (C1 ∪ C2) m
+| sc {C1 C2 : CaptureSet s} :
+  Subcapt Γ C1 C2 ->
+  HasKind Γ C1 m ->
+  -------------------
+  HasKind Γ C2 m
+| rw {C : CaptureSet s} :
   -------------------
   HasKind Γ C .epsilon
+| imm {C : CaptureSet s} :
+  Ctx.LookupLock Γ ℓ Ψ ->
+  SepCtx.Has Ψ C .ro ->
+  -------------------
+  HasKind Γ C .ro
 | ro {C : CaptureSet s} :
   -------------------
   HasKind Γ C.applyRO .ro
@@ -111,13 +133,23 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   SepCheck Γ C2 C3 ->
   -------------------
   SepCheck Γ (C1 ∪ C2) C3
-| sep_empty :
+| sep_empty {C : CaptureSet s} :
   -------------------
   SepCheck Γ {} C
 | sep_ro :
   HasKind Γ C1 .ro ->
   HasKind Γ C2 .ro ->
   -------------------
+  SepCheck Γ C1 C2
+| sep_sc {C1 C2 C1' : CaptureSet s} :
+  SepCheck Γ C1 C2 ->
+  Subcapt Γ C1' C1 ->
+  --------------------
+  SepCheck Γ C1' C2
+| sep_lock {C1 C2 : CaptureSet s} :
+  Ctx.LookupLock Γ ℓ Ψ ->
+  SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
+  --------------------
   SepCheck Γ C1 C2
 | sep_distinct_roots :
   c1 ≠ c2 ->

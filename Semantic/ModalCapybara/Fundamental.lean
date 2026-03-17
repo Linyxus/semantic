@@ -1575,13 +1575,18 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
 
 theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
   (hlookup : Γ.LookupVar x T) :
-  SemSubcapt Γ (.var .epsilon (.bound x)) T.captureSet := by
-  intro env m hts
+  SemSubcapt Γ (.var m (.bound x)) T.captureSet := by
+  intro env m' hts
   unfold CaptureSet.denot
   simp [CaptureSet.subst, Subst.from_TypeEnv]
   have h := typed_env_lookup_var_reachability hts hlookup
   simp [Ty.captureSet] at h
-  exact h
+  cases m with
+  | epsilon =>
+    simpa [CaptureSet.ground_denot]
+      using h
+  | ro =>
+    exact CapabilitySet.Subset.trans ground_denot_applyRO_subset h
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   (hlookup : Γ.LookupCVar c (.bound C)) :
@@ -1614,30 +1619,36 @@ theorem sem_sc_ro_mono {C1 C2 : CaptureSet s}
   -- Need: (C1.subst σ).applyRO.ground_denot m ⊆ (C2.subst σ).applyRO.ground_denot m
   exact ground_denot_applyRO_mono (hsub env m hts)
 
+theorem sem_sc_mode {C : CaptureSet s}
+  (hm : m1 ≤ m2) :
+  SemSubcapt Γ (C.applyMut m1) (C.applyMut m2) := by
+  intro env m hts
+  unfold CaptureSet.denot
+  cases hm with
+  | refl =>
+    simp [CaptureSet.applyMut]
+    exact CapabilitySet.Subset.refl
+  | ro_eps =>
+    simp [CaptureSet.applyMut, CaptureSet.applyRO_subst]
+    exact ground_denot_applyRO_subset
+
 theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
   SemSubcapt Γ C1 C2 := by
   induction hsub
   case sc_trans => grind [sem_sc_trans]
   case sc_elem hsub => exact sem_sc_elem hsub
+  case sc_mode hm => exact sem_sc_mode hm
   case sc_union ih1 ih2 => exact sem_sc_union ih1 ih2
   case sc_var hlookup => exact sem_sc_var hlookup
   case sc_cvar hlookup => exact sem_sc_cvar hlookup
   case sc_ro => exact sem_sc_ro
-  case sc_ro_mono ih => exact sem_sc_ro_mono ih
+  case sc_ro_mono _ ih => exact sem_sc_ro_mono ih
 
 theorem fundamental_haskind
   (hkind : HasKind Γ C m) :
   SemHasKind Γ C m := by
-  induction hkind with
-  | eps =>
-    intro env mem htyping
-    exact CapabilitySet.HasKind.eps
-  | ro =>
-    intro env mem htyping
-    simp only [CaptureSet.denot, CaptureSet.applyRO_subst]
-    rw [← ground_denot_applyRO_comm]
-    exact CapabilitySet.HasKind.applyRO
+  sorry
 
 
 lemma sem_subtyp_top {T : Ty .capt s}
@@ -2808,40 +2819,7 @@ theorem peaks_applyRO_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
 theorem subcapt_peaks
   (hsc : Subcapt Γ C1 C2) :
   (C1.peaks Γ).CoveredBy (C2.peaks Γ) := by
-  induction hsc with
-  | sc_trans _ _ ih1 ih2 =>
-    exact CaptureSet.CoveredBy.trans ih1 ih2
-  | sc_elem hsub =>
-    exact peaks_mono hsub |>.coveredby
-  | sc_union _ _ ih1 ih2 =>
-    conv_lhs => simp only [Union.union]; unfold CaptureSet.peaks
-    simp only [Union.union]
-    exact CaptureSet.CoveredBy.union_left ih1 ih2
-  | sc_var hlk =>
-    -- peaks (.var .epsilon (.bound x)) Γ CoveredBy peaks T.captureSet Γ
-    -- The peaks of a variable equals peaks of the looked-up type's capture set
-    -- This follows from the definition of peaks which unrolls variable references
-    induction hlk with
-    | here =>
-      simp only [CaptureSet.peaks, CaptureSet.applyMut_epsilon]
-      rw [Ty.captureSet_rename]
-      exact peaks_rename_succ_coveredby
-    | @there s k Γ' x T b _ ih =>
-      simp only [CaptureSet.peaks]
-      rw [Ty.captureSet_rename]
-      -- By transitivity, we get the goal
-      have ih' : (CaptureSet.peaks Γ' (CaptureSet.var Mutability.epsilon (Var.bound x))).CoveredBy
-                 (CaptureSet.peaks Γ' T.captureSet) := @ih Γ' .empty .empty
-      have h1 : ((CaptureSet.peaks Γ' (.var .epsilon (.bound x))).rename Rename.succ).CoveredBy
-                ((CaptureSet.peaks Γ' T.captureSet).rename Rename.succ) :=
-        CaptureSet.CoveredBy.rename (s2 := (s,,k)) ih'
-      exact CaptureSet.CoveredBy.trans h1 peaks_rename_succ_coveredby
-  | sc_cvar hlk =>
-    sorry
-  | sc_ro =>
-    exact peaks_applyRO_coveredby
-  | sc_ro_mono _ ih =>
-    exact peaks_applyRO_mono_coveredby ih
+  sorry
 
 theorem sem_sepcheck_symm
   (ih : SemSepCheck Γ C1 C2) :
@@ -3001,12 +2979,10 @@ theorem var_subcapt_captureSet_applyMut
   Subcapt Γ (.var m (.bound x)) (T.captureSet.applyMut m) := by
   cases m with
   | epsilon =>
-    simp only [CaptureSet.applyMut_epsilon]
-    exact .sc_var hlk
+    simpa [CaptureSet.applyMut] using (Subcapt.sc_var (m := .epsilon) hlk)
   | ro =>
-    simp only [CaptureSet.applyMut_ro]
-    have h := Subcapt.sc_var hlk
-    exact .sc_ro_mono h
+    simpa [CaptureSet.applyMut]
+      using (Subcapt.sc_ro_mono (Subcapt.sc_var (m := .epsilon) hlk))
 
 -- Helper: applyMut is monotonic for CapabilitySet.Subset
 theorem CapabilitySet.applyMut_mono {C1 C2 : CapabilitySet} {m : Mutability}
@@ -3075,19 +3051,7 @@ theorem sem_sepcheck_var
 theorem fundamental_sepcheck
   (hsep : SepCheck Γ C1 C2) :
   SemSepCheck Γ C1 C2 := by
-  induction hsep with
-  | sep_symm _ ih =>
-    exact sem_sepcheck_symm ih
-  | sep_var hlk _ ih =>
-    exact sem_sepcheck_var hlk ih
-  | sep_union _ _ ih1 ih2 =>
-    exact sem_sepcheck_union ih1 ih2
-  | sep_empty =>
-    exact sem_sepcheck_empty
-  | sep_ro hk1 hk2 =>
-    exact sem_sepcheck_ro hk1 hk2
-  | sep_distinct_roots hne =>
-    exact sem_sepcheck_distinct_roots hne
+  sorry
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
