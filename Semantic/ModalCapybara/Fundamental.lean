@@ -60,6 +60,15 @@ theorem typed_env_lookup_var
         have heqv := cweaken_val_denot (env:=env0) (cs:=cs) (cap:=cap) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
         exact hih
+    case lock =>
+      rename_i Ψ
+      match env with
+      | .extend env0 (.lock) =>
+        simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
+        have hih := b hts
+        have heqv := lweaken_val_denot (env:=env0) (T:=T0)
+        apply (Denot.equiv_to_imply heqv).1
+        exact hih
 
 
 theorem typed_env_lookup_var_reachability
@@ -875,6 +884,12 @@ theorem typed_env_lookup_cvar_aux
         obtain ⟨_, _, _, henv'⟩ := hts
         have hih := ih henv'
         exact hih
+    case lock =>
+      rename_i Γ' c' cb' Ψ
+      match env with
+      | .extend env' (.lock) =>
+        simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
+        exact ih hts
 
 theorem typed_env_cvar_cap_eq
   {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
@@ -908,6 +923,12 @@ theorem typed_env_cvar_cap_eq
         cases c with
         | here => exact hcap_eq
         | there c' => exact ih henv' c'
+    case lock Ψ =>
+      match env with
+      | .extend env' (.lock) =>
+        simp only [EnvTyping] at hts
+        cases c with
+        | there c' => exact ih hts c'
 
 theorem sem_typ_capp
   {x : BVar s .var}
@@ -1733,6 +1754,22 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
           cweaken_val_denot (cs := cs) (cap := cap)
         simp [TypeEnv.extend_cvar] at hw
         -- Compose IH with weakening
+        simp [Denot.ImplyAfter] at ih_result ⊢
+        intro m' hsub
+        simp [Denot.ImplyAt]
+        intro e hd
+        have himply_spec := ih_result m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
+    | lock Ψ =>
+      -- Context extended with a lock binding
+      match env with
+      | .extend env0 (.lock) =>
+        simp only [EnvTyping, TypeEnv.lookup_tvar] at htyping ⊢
+        have ih_result := a_ih htyping
+        have hw : Ty.val_denot env0 S.core ≈
+                  Ty.val_denot (env0.extend_lock) (S.core.rename Rename.succ) :=
+          lweaken_val_denot
+        simp [TypeEnv.extend_lock] at hw
         simp [Denot.ImplyAfter] at ih_result ⊢
         intro m' hsub
         simp [Denot.ImplyAt]
@@ -2615,6 +2652,11 @@ theorem peaks_rename_succ_sub {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} 
           | there x' =>
             simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
             exact .refl
+        | lock Ψ =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl
 
 -- Helper: peaks commutes with applyRO (using well-founded recursion like peaks)
 theorem peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
@@ -2705,6 +2747,11 @@ theorem peaks_rename_succ_coveredby {Γ : Ctx s} {b : Binding s k} {C : CaptureS
             simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
             exact .refl'
         | cvar cm =>
+          cases x with
+          | there x' =>
+            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
+            exact .refl'
+        | lock Ψ =>
           cases x with
           | there x' =>
             simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]

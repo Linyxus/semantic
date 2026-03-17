@@ -192,6 +192,8 @@ inductive TypeInfo : Sig -> Kind -> Type where
   CaptureSet {} ->
   CapabilitySet ->
   TypeInfo s .cvar
+| lock :
+  TypeInfo s .lock
 
 inductive TypeEnv : Sig -> Type where
 | empty : TypeEnv {}
@@ -210,6 +212,9 @@ def TypeEnv.extend_cvar
   (Γ : TypeEnv s) (ground : CaptureSet {}) (cap : CapabilitySet := .empty) :
   TypeEnv (s,C) :=
   Γ.extend (.cvar ground cap)
+
+def TypeEnv.extend_lock (Γ : TypeEnv s) : TypeEnv (s,,.lock) :=
+  Γ.extend .lock
 
 def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSet s)
 | .extend _ (.var n ps), .here => (n, ps.rename Rename.succ)
@@ -527,6 +532,9 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   (cap.BoundedBy (B.denot m)) ∧
   cap = cs.ground_denot m ∧
   EnvTyping Γ env m
+| .push Γ (.lock _), .extend env .lock, m =>
+  -- TODO(ctx-lock): refine the semantic invariant associated with lock bindings.
+  EnvTyping Γ env m
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
@@ -558,6 +566,11 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     obtain ⟨_, _, _, h'⟩ := h
     simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
     rw [peaks_var_bound_eq h' x' m0]
+    exact CaptureSet.applyMut_rename
+  | _, .push Γ' (.lock _), .extend ρ' (.lock), .there x' =>
+    simp only [EnvTyping] at h
+    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    rw [peaks_var_bound_eq h x' m0]
     exact CaptureSet.applyMut_rename
 termination_by sizeOf x
 
@@ -816,6 +829,17 @@ theorem typed_env_is_implying_simple_ans
           | there x =>
             simp [TypeEnv.lookup_tvar]
             exact ih_result x
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          simp [EnvTyping] at ht
+          have ih_result := ih ht
+          simp [TypeEnv.is_implying_simple_ans] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
 
 /-- An environment typing implies that all type variable denotations imply well-formedness. -/
 theorem typed_env_is_implying_wf
@@ -865,6 +889,17 @@ theorem typed_env_is_implying_wf
           simp [EnvTyping] at ht
           have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
+          simp [TypeEnv.is_implying_wf] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          simp [EnvTyping] at ht
+          have ih_result := ih ht
           simp [TypeEnv.is_implying_wf] at ih_result ⊢
           intro x
           cases x with
@@ -925,6 +960,17 @@ theorem typed_env_enforces_pure
           simp [EnvTyping] at ht
           have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
+          simp [TypeEnv.is_enforcing_pure] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          simp [EnvTyping] at ht
+          have ih_result := ih ht
           simp [TypeEnv.is_enforcing_pure] at ih_result ⊢
           intro x
           cases x with
@@ -1095,6 +1141,28 @@ theorem from_TypeEnv_wf_in_heap
             | here =>
               simp [Subst.from_TypeEnv, TypeEnv.lookup_cvar]
               exact hwf
+            | there C' =>
+              simp [Subst.from_TypeEnv]
+              exact ih_wf.wf_cvar C'
+      | lock Ψ =>
+        -- TODO(ctx-lock): if locks later contribute semantic substitutions,
+        -- strengthen this branch beyond simple context-shape preservation.
+        cases info with
+        | lock =>
+          have ih_wf := ih htyping
+          constructor
+          · intro x
+            cases x with
+            | there x' =>
+              simp [Subst.from_TypeEnv, TypeEnv.lookup_var]
+              exact ih_wf.wf_var x'
+          · intro X
+            cases X with
+            | there X' =>
+              simp [Subst.from_TypeEnv]
+              exact ih_wf.wf_tvar X'
+          · intro C_var
+            cases C_var with
             | there C' =>
               simp [Subst.from_TypeEnv]
               exact ih_wf.wf_cvar C'
@@ -1282,6 +1350,17 @@ theorem typed_env_is_monotonic
             | there x =>
               simp [TypeEnv.lookup_tvar]
               exact ih_result.tvar x
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          simp [EnvTyping] at ht
+          have ih_result := ih ht
+          constructor
+          · intro x
+            cases x with
+            | there x =>
+              simp [TypeEnv.lookup_tvar]
+              exact ih_result.tvar x
 
 theorem typed_env_is_transparent
   (ht : EnvTyping Γ env mem) :
@@ -1339,6 +1418,17 @@ theorem typed_env_is_transparent
           | there x =>
             simp [TypeEnv.lookup_tvar]
             exact ih_result x
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          simp [EnvTyping] at ht
+          have ih_result := ih ht
+          simp [TypeEnv.is_transparent] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
 
 theorem typed_env_is_bool_independent
   (ht : EnvTyping Γ env mem) :
@@ -1390,6 +1480,17 @@ theorem typed_env_is_bool_independent
           simp [EnvTyping] at ht
           have ⟨hwf, hsub, _, ht'⟩ := ht
           have ih_result := ih ht'
+          simp [TypeEnv.is_bool_independent] at ih_result ⊢
+          intro x
+          cases x with
+          | there x =>
+            simp [TypeEnv.lookup_tvar]
+            exact ih_result x
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          simp [EnvTyping] at ht
+          have ih_result := ih ht
           simp [TypeEnv.is_bool_independent] at ih_result ⊢
           intro x
           cases x with
@@ -2351,6 +2452,12 @@ theorem env_typing_monotonic
           constructor
           · rw [hcap, ground_denot_is_monotonic hwf hmem]
           · exact ih ht'
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          -- TODO(ctx-lock): once lock bindings affect semantic environments,
+          -- add the corresponding monotonicity obligations here.
+          simpa [EnvTyping] using ih ht
 
 /-- Semantic subcapturing. -/
 def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=

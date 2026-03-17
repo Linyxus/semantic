@@ -456,6 +456,14 @@ def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet} 
   cvar := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
+def Rebind.lweaken {env : TypeEnv s} :
+  Rebind env Rename.succ (env.extend_lock) where
+  var := fun _ => rfl
+  var_peaks := fun _ => rfl
+  tvar := fun _ => rfl
+  cvar := fun _ => rfl
+  cvar_injective := fun _ _ h => BVar.there.inj h
+
 lemma weaken_val_denot {env : TypeEnv s} {T : Ty .capt s} {x : Nat} {ps : PeakSet s} :
   Ty.val_denot env T ≈ Ty.val_denot (env.extend_var x ps) (T.rename Rename.succ) := by
   apply rebind_val_denot (ρ:=Rebind.weaken) (T:=T)
@@ -483,5 +491,13 @@ lemma cweaken_exi_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {cap : Capabi
   Ty.exi_val_denot env T ≈
     Ty.exi_val_denot (env.extend_cvar cs cap) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.cweaken) (T:=T)
+
+lemma lweaken_val_denot {env : TypeEnv s} {T : Ty .capt s} :
+  Ty.val_denot env T ≈ Ty.val_denot (env.extend_lock) (T.rename Rename.succ) := by
+  apply rebind_val_denot (ρ:=Rebind.lweaken) (T:=T)
+
+lemma lweaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
+  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_lock) (T.rename Rename.succ) := by
+  apply rebind_exi_val_denot (ρ:=Rebind.lweaken) (T:=T)
 
 end ModalCapybara
