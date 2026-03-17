@@ -122,7 +122,7 @@ theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
   | arrow h1 _ h2 => exact IsClosed.arrow h1 hcs h2
   | poly h1 _ h2 => exact IsClosed.poly h1 hcs h2
   | cpoly _ hT' => exact IsClosed.cpoly hcs hT'
-  | modal hΨ hT' => exact IsClosed.modal hΨ hT'
+  | modal _ hΨ hT' => exact IsClosed.modal hcs hΨ hT'
   | unit => exact IsClosed.unit
   | cap _ => exact IsClosed.cap hcs
   | bool => exact IsClosed.bool
@@ -144,9 +144,9 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
   case cpoly m cs T ihT =>
     cases h with | cpoly hcs hT =>
     exact IsClosed.cpoly (CaptureSet.rename_closed hcs) (ihT hT)
-  case modal Ψ T ihT =>
-    cases h with | modal hΨ hT =>
-    exact IsClosed.modal (SepCtx.rename_closed hΨ) (ihT hT)
+  case modal cs Ψ T ihT =>
+    cases h with | modal hcs hΨ hT =>
+    exact IsClosed.modal (CaptureSet.rename_closed hcs) (SepCtx.rename_closed hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
     cases h with | cap hcs =>
@@ -186,8 +186,8 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     exact IsClosed.cpoly (CaptureSet.rename_closed_inv hcs) (ihT hT)
   case modal Ψ T ihT =>
     simp [Ty.rename] at h
-    cases h; rename_i hΨ hT
-    exact IsClosed.modal (SepCtx.rename_closed_inv hΨ) (ihT hT)
+    cases h; rename_i hcs hΨ hT
+    exact IsClosed.modal (CaptureSet.rename_closed_inv hcs) (SepCtx.rename_closed_inv hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
     simp [Ty.rename] at h

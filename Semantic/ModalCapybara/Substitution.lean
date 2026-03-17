@@ -59,7 +59,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .arrow T1 cs T2, s => .arrow (T1.subst s) (cs.subst s) (T2.subst s.lift)
 | .poly T1 cs T2, s => .poly (T1.subst s) (cs.subst s) (T2.subst s.lift)
 | .cpoly m cs T, s => .cpoly m (cs.subst s) (T.subst s.lift)
-| .modal Ψ T, s => .modal (Ψ.subst s) (T.subst s)
+| .modal cs Ψ T, s => .modal (cs.subst s) (Ψ.subst s) (T.subst s)
 | .unit, _ => .unit
 | .cap cs, s => .cap (cs.subst s)
 | .bool, _ => .bool
@@ -81,13 +81,13 @@ theorem Ty.IsPureType.subst {T : Ty .capt s1} (h : T.IsPureType) (σ : Subst s1 
   unfold IsPureType at *
   cases T with
   | top => exact CaptureSet.IsEmpty.empty
-  | tvar x => exact (σ.tvar x).p
+  | tvar x => simpa [Ty.subst, Ty.captureSet] using (σ.tvar x).p
   | unit => exact CaptureSet.IsEmpty.empty
   | bool => exact CaptureSet.IsEmpty.empty
   | arrow _ cs _ => simp [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | poly _ cs _ => simp [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cpoly _ cs _ => simp [Ty.subst, Ty.captureSet] at *; exact h.subst σ
-  | modal _ _ => simp [Ty.subst, Ty.captureSet] at *; exact CaptureSet.IsEmpty.empty
+  | modal _ _ _ => simp [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cap cs => simp [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cell cs => simp [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | reader cs => simp [Ty.subst, Ty.captureSet] at *; exact h.subst σ
@@ -323,10 +323,11 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
     simp [Ty.subst, Ty.rename, ihCS]
     exact ih
-  | .modal Ψ T =>
+  | .modal cs Ψ T =>
+    have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs := cs) (σ := σ) (K := K) (k0 := k0)
     have ihΨ := SepCtx.weaken_subst_comm_liftMany (Ψ := Ψ) (σ := σ) (K := K) (k0 := k0)
     have ih := Ty.weaken_subst_comm (T := T) (σ := σ) (K := K) (k0 := k0)
-    simp [Ty.subst, Ty.rename, ihΨ, ih]
+    simp [Ty.subst, Ty.rename, ihCS, ihΨ, ih]
   | .unit => rfl
   | .cap cs =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -402,7 +403,10 @@ theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
       simp only [Var.weaken_subst_comm_base, Subst.comp]
   · intro X
     cases X with
-    | here => rfl
+    | here =>
+      cases σ1
+      cases σ2
+      rfl
     | there x0 =>
       conv =>
         lhs; simp only [Subst.comp, Subst.lift_there_tvar_eq]
@@ -471,13 +475,13 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp [Ty.subst, ih1, ih2, CaptureSet.subst_comp, Subst.comp_lift]
   | cpoly m cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_comp, Subst.comp_lift]
-  | modal Ψ T ih =>
+  | modal cs Ψ T ih =>
     have hΨ : (Ψ.subst σ1).subst σ2 = Ψ.subst (σ1.comp σ2) := by
       induction Ψ with
       | empty => rfl
       | cons Ψ C m ihΨ =>
         simp [SepCtx.subst, ihΨ, CaptureSet.subst_comp]
-    simp [Ty.subst, ih, hΨ]
+    simp [Ty.subst, CaptureSet.subst_comp, ih, hΨ]
   | unit => rfl
   | cap cs => simp [Ty.subst, CaptureSet.subst_comp]
   | bool => rfl
@@ -576,7 +580,7 @@ theorem Subst.lift_id :
 theorem Ty.subst_id {T : Ty sort s} :
   T.subst Subst.id = T := by
   induction T with
-  | top => rfl
+  | top => simp [Ty.subst]
   | tvar x => simp [Ty.subst, Subst.id, PureTy.tvar]
   | arrow T1 cs T2 ih1 ih2 =>
     simp [Ty.subst, ih1, ih2, CaptureSet.subst_id, Subst.lift_id]
@@ -584,16 +588,16 @@ theorem Ty.subst_id {T : Ty sort s} :
     simp [Ty.subst, ih1, ih2, CaptureSet.subst_id, Subst.lift_id]
   | cpoly m cs T ih =>
     simp [Ty.subst, ih, CaptureSet.subst_id, Subst.lift_id]
-  | modal Ψ T ih =>
+  | modal cs Ψ T ih =>
     have hΨ : Ψ.subst Subst.id = Ψ := by
       induction Ψ with
       | empty => rfl
       | cons Ψ C m ihΨ =>
         simp [SepCtx.subst, ihΨ, CaptureSet.subst_id]
-    simp [Ty.subst, ih, hΨ]
-  | unit => rfl
+    simp [Ty.subst, CaptureSet.subst_id, ih, hΨ]
+  | unit => simp [Ty.subst]
   | cap cs => simp [Ty.subst, CaptureSet.subst_id]
-  | bool => rfl
+  | bool => simp [Ty.subst]
   | cell cs => simp [Ty.subst, CaptureSet.subst_id]
   | reader cs => simp [Ty.subst, CaptureSet.subst_id]
   | exi T ih =>
@@ -720,16 +724,16 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | cpoly m cs T ih =>
     simp [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
     rw [<-Rename.asSubst_lift, ih]
-  | modal Ψ T ih =>
+  | modal cs Ψ T ih =>
     have hΨ : Ψ.subst (f.asSubst) = Ψ.rename f := by
       induction Ψ generalizing s2 with
       | empty => rfl
       | cons Ψ C m ihΨ =>
         simp [SepCtx.subst, SepCtx.rename, ihΨ, CaptureSet.subst_asSubst]
-    simp [Ty.subst, Ty.rename, ih, hΨ]
-  | unit => rfl
+    simp [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ih, hΨ]
+  | unit => simp [Ty.subst, Ty.rename]
   | cap cs => simp [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
-  | bool => rfl
+  | bool => simp [Ty.subst, Ty.rename]
   | cell cs => simp [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | reader cs => simp [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | exi T ih =>
@@ -965,9 +969,9 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   | cpoly m cs T ih =>
     cases hc with | cpoly hcs hT =>
     exact IsClosed.cpoly (CaptureSet.rename_closed_any hcs) (ih hT)
-  | modal Ψ T ih =>
-    cases hc with | modal hΨ hT =>
-    exact IsClosed.modal (SepCtx.rename_closed_any hΨ) (ih hT)
+  | modal cs Ψ T ih =>
+    cases hc with | modal hcs hΨ hT =>
+    exact IsClosed.modal (CaptureSet.rename_closed_any hcs) (SepCtx.rename_closed_any hΨ) (ih hT)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1036,10 +1040,11 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     cases hc with | cpoly hcs hT =>
     simp [Ty.subst]
     exact IsClosed.cpoly (CaptureSet.is_closed_subst hcs hsubst) (ih hT (Subst.lift_closed hsubst))
-  | modal Ψ T ih =>
-    cases hc with | modal hΨ hT =>
+  | modal cs Ψ T ih =>
+    cases hc with | modal hcs hΨ hT =>
     simp [Ty.subst]
-    exact IsClosed.modal (SepCtx.is_closed_subst hΨ hsubst) (ih hT hsubst)
+    exact IsClosed.modal (CaptureSet.is_closed_subst hcs hsubst)
+      (SepCtx.is_closed_subst hΨ hsubst) (ih hT hsubst)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1272,10 +1277,10 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     simp [Ty.subst] at hclosed
     cases hclosed with | cpoly hcs hT =>
     exact IsClosed.cpoly (CaptureSet.subst_closed_inv hcs) (ih hT)
-  | modal Ψ T ih =>
+  | modal cs Ψ T ih =>
     simp [Ty.subst] at hclosed
-    cases hclosed with | modal hΨ hT =>
-    exact IsClosed.modal (SepCtx.subst_closed_inv hΨ) (ih hT)
+    cases hclosed with | modal hcs hΨ hT =>
+    exact IsClosed.modal (CaptureSet.subst_closed_inv hcs) (SepCtx.subst_closed_inv hΨ) (ih hT)
   | unit => exact IsClosed.unit
   | cap cs =>
     simp [Ty.subst] at hclosed
@@ -1390,7 +1395,8 @@ def Ty.interfere_set : Ty sort s -> Option (CaptureSet s)
     T2.interfere_set.map (fun cs => cs0 ∪ cs.drop_here_tvar)
 | .cpoly _ cs0 T =>
     T.interfere_set.map (fun cs => cs0 ∪ cs.subst (Subst.openCVar {}))
-| .modal _ T => T.interfere_set
+| .modal cs _ T =>
+    T.interfere_set.map (fun cs' => cs ∪ cs')
 | .unit => some .empty
 | .cap _ => some .empty
 | .bool => some .empty

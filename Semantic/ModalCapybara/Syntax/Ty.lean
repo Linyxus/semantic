@@ -23,7 +23,7 @@ inductive Ty : TySort -> Sig -> Type where
 | arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
 | cpoly : Mutability -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
-| modal : SepCtx s -> Ty .exi s -> Ty .capt s
+| modal : CaptureSet s -> SepCtx s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
 | cell : CaptureSet s -> Ty .capt s
 | reader : CaptureSet s -> Ty .capt s
@@ -40,7 +40,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .arrow T1 cs T2, f => .arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .cpoly m cs T, f => .cpoly m (cs.rename f) (T.rename (f.lift))
-| .modal Ψ T, f => .modal (Ψ.rename f) (T.rename f)
+| .modal cs Ψ T, f => .modal (cs.rename f) (Ψ.rename f) (T.rename f)
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
@@ -52,37 +52,19 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 /-- Renaming by the identity renaming leaves a type unchanged. -/
 def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   induction T
-  case top => rfl
-  case tvar => rfl
-  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1, ih2]
-  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1, ih2]
-  case cpoly ih => simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih]
-  case modal ih => simp [Ty.rename, SepCtx.rename_id, ih]
-  case unit => rfl
-  case cap => simp [Ty.rename, CaptureSet.rename_id]
-  case bool => rfl
-  case cell => simp [Ty.rename, CaptureSet.rename_id]
-  case reader => simp [Ty.rename, CaptureSet.rename_id]
-  case exi ih => simp [Ty.rename, Rename.lift_id, ih]
-  case typ ih => simp [Ty.rename, ih]
+  case tvar =>
+    simp [Ty.rename, Rename.id]
+  all_goals
+    simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id, SepCtx.rename_id, *]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (T.rename f).rename g = T.rename (f.comp g) := by
   induction T generalizing s2 s3
-  case top => rfl
-  case tvar => rfl
-  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih1, ih2]
-  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih1, ih2]
-  case cpoly ih => simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih]
-  case modal ih => simp [Ty.rename, SepCtx.rename_comp, ih]
-  case unit => rfl
-  case cap => simp [Ty.rename, CaptureSet.rename_comp]
-  case bool => rfl
-  case cell => simp [Ty.rename, CaptureSet.rename_comp]
-  case reader => simp [Ty.rename, CaptureSet.rename_comp]
-  case exi ih => simp [Ty.rename, Rename.lift_comp, ih]
-  case typ ih => simp [Ty.rename, ih]
+  case tvar =>
+    simp [Ty.rename, Rename.comp]
+  all_goals
+    simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, SepCtx.rename_comp, *]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
@@ -96,7 +78,7 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .arrow _ cs _ => cs
 | .poly _ cs _ => cs
 | .cpoly _ cs _ => cs
-| .modal _ _ => .empty
+| .modal cs _ _ => cs
 | .cap cs => cs
 | .cell cs => cs
 | .reader cs => cs
@@ -109,7 +91,7 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .arrow T1 _ T2, cs => .arrow T1 cs T2
 | .poly T1 _ T2, cs => .poly T1 cs T2
 | .cpoly m _ T, cs => .cpoly m cs T
-| .modal Ψ T, _ => .modal Ψ T
+| .modal _ Ψ T, cs => .modal cs Ψ T
 | .cap _, cs => .cap cs
 | .cell _, cs => .cell cs
 | .reader _, cs => .reader cs
@@ -125,7 +107,9 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | poly : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
     Ty.IsClosed (.poly T1 cs T2)
 | cpoly : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.cpoly m cs T)
-| modal : SepCtx.IsClosed Ψ -> Ty.IsClosed T -> Ty.IsClosed (.modal Ψ T)
+| modal :
+    CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Ty.IsClosed T ->
+    Ty.IsClosed (.modal cs Ψ T)
 | unit : Ty.IsClosed .unit
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool

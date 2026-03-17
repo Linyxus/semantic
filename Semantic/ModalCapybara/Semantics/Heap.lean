@@ -632,9 +632,10 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap T H ->
   Ty.WfInHeap (.cpoly m cs T) H
 | wf_modal :
+  CaptureSet.WfInHeap cs H ->
   SepCtx.WfInHeap Ψ H ->
   Ty.WfInHeap T H ->
-  Ty.WfInHeap (.modal Ψ T) H
+  Ty.WfInHeap (.modal cs Ψ T) H
 | wf_unit :
   Ty.WfInHeap .unit H
 | wf_cap :
@@ -785,8 +786,9 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_of_closed hcs
     · exact ih
-  | modal hΨ _ ih =>
+  | modal hcs hΨ _ ih =>
     apply Ty.WfInHeap.wf_modal
+    · exact CaptureSet.wf_of_closed hcs
     · exact SepCtx.wf_of_closed hΨ
     · exact ih
   | unit => apply Ty.WfInHeap.wf_unit
@@ -930,8 +932,9 @@ theorem Ty.wf_monotonic
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact ih_T hsub
-  | wf_modal hwf_Ψ _ ih_T =>
+  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
     apply Ty.WfInHeap.wf_modal
+    · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact SepCtx.wf_monotonic hsub hwf_Ψ
     · exact ih_T hsub
   | wf_unit => apply Ty.WfInHeap.wf_unit
@@ -1540,9 +1543,10 @@ theorem Ty.wf_rename
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_rename hwf_cs
     · exact ih_T
-  | wf_modal hwf_Ψ _ ih_T =>
+  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_modal
+    · exact CaptureSet.wf_rename hwf_cs
     · exact SepCtx.wf_rename hwf_Ψ
     · exact ih_T
   | wf_unit =>
@@ -1849,9 +1853,10 @@ theorem Ty.wf_subst
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact ih_T (Subst.wf_lift hwf_σ)
-  | wf_modal hwf_Ψ _ ih_T =>
+  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_modal
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact SepCtx.wf_subst hwf_Ψ hwf_σ
     · exact ih_T hwf_σ
   | wf_unit =>
