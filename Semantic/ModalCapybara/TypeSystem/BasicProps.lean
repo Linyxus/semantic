@@ -91,6 +91,27 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
       simp [CaptureSet.rename, Var.rename] at h
       cases h
 
+/-- Renaming preserves closedness of separation contexts. -/
+theorem SepCtx.rename_closed {Ψ : SepCtx s1} {f : Rename s1 s2} :
+    Ψ.IsClosed -> (Ψ.rename f).IsClosed := by
+  intro h
+  induction h with
+  | empty => exact SepCtx.IsClosed.empty
+  | cons hΨ hC ih =>
+    exact SepCtx.IsClosed.cons ih (CaptureSet.rename_closed hC)
+
+/-- If a renamed separation context is closed, the original is also closed. -/
+theorem SepCtx.rename_closed_inv {Ψ : SepCtx s1} {f : Rename s1 s2} :
+    (Ψ.rename f).IsClosed -> Ψ.IsClosed := by
+  intro h
+  induction Ψ with
+  | empty => exact SepCtx.IsClosed.empty
+  | cons Ψ C m ih =>
+    simp [SepCtx.rename] at h
+    cases h with
+    | cons hΨ hC =>
+      exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_inv hC)
+
 /-- Refining a closed type with a closed capture set yields a closed type. -/
 theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
     T.IsClosed -> cs.IsClosed -> (T.refineCaptureSet cs).IsClosed := by
@@ -101,6 +122,7 @@ theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
   | arrow h1 _ h2 => exact IsClosed.arrow h1 hcs h2
   | poly h1 _ h2 => exact IsClosed.poly h1 hcs h2
   | cpoly _ hT' => exact IsClosed.cpoly hcs hT'
+  | modal hΨ hT' => exact IsClosed.modal hΨ hT'
   | unit => exact IsClosed.unit
   | cap _ => exact IsClosed.cap hcs
   | bool => exact IsClosed.bool
@@ -122,6 +144,9 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
   case cpoly m cs T ihT =>
     cases h with | cpoly hcs hT =>
     exact IsClosed.cpoly (CaptureSet.rename_closed hcs) (ihT hT)
+  case modal Ψ T ihT =>
+    cases h with | modal hΨ hT =>
+    exact IsClosed.modal (SepCtx.rename_closed hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
     cases h with | cap hcs =>
@@ -159,6 +184,10 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     simp [Ty.rename] at h
     cases h; rename_i hcs hT
     exact IsClosed.cpoly (CaptureSet.rename_closed_inv hcs) (ihT hT)
+  case modal Ψ T ihT =>
+    simp [Ty.rename] at h
+    cases h; rename_i hΨ hT
+    exact IsClosed.modal (SepCtx.rename_closed_inv hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
     simp [Ty.rename] at h

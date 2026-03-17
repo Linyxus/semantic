@@ -444,6 +444,7 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
   | .abs _ _ _, .abs => .abs
   | .tabs _ _ _, .tabs => .tabs
   | .cabs _ _ _, .cabs => .cabs
+  | .boxed _ _ _, .boxed => .boxed
   | .reader _, .reader => .reader
   | .unit, .unit => .unit
   | .btrue, .btrue => .btrue
@@ -603,6 +604,14 @@ inductive Var.WfInHeap : Var k s -> Heap -> Prop where
   H n = some val ->
   Var.WfInHeap (.free n) H
 
+inductive SepCtx.WfInHeap : SepCtx s -> Heap -> Prop where
+| wf_empty :
+  SepCtx.WfInHeap .empty H
+| wf_cons :
+  SepCtx.WfInHeap Ψ H ->
+  CaptureSet.WfInHeap C H ->
+  SepCtx.WfInHeap (.cons Ψ C m) H
+
 inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
 | wf_top :
   Ty.WfInHeap .top H
@@ -622,6 +631,10 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T H ->
   Ty.WfInHeap (.cpoly m cs T) H
+| wf_modal :
+  SepCtx.WfInHeap Ψ H ->
+  Ty.WfInHeap T H ->
+  Ty.WfInHeap (.modal Ψ T) H
 | wf_unit :
   Ty.WfInHeap .unit H
 | wf_cap :
@@ -664,6 +677,11 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   CaptureSet.WfInHeap cs H ->
   Exp.WfInHeap e H ->
   Exp.WfInHeap (.cabs cs m e) H
+| wf_boxed :
+  CaptureSet.WfInHeap cs H ->
+  SepCtx.WfInHeap Ψ H ->
+  Exp.WfInHeap e H ->
+  Exp.WfInHeap (.boxed cs Ψ e) H
 | wf_reader :
   Var.WfInHeap x H ->
   Exp.WfInHeap (.reader x) H
@@ -683,6 +701,9 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Var.WfInHeap x H ->
   CaptureSet.WfInHeap cs H ->
   Exp.WfInHeap (.capp x cs) H
+| wf_unwrap :
+  Var.WfInHeap x H ->
+  Exp.WfInHeap (.unwrap x) H
 | wf_letin :
   Exp.WfInHeap e1 H ->
   Exp.WfInHeap e2 H ->
@@ -733,6 +754,16 @@ theorem CaptureSet.wf_of_closed {cs : CaptureSet s} {H : Heap}
   | cvar => apply CaptureSet.WfInHeap.wf_cvar
   | var_bound => apply CaptureSet.WfInHeap.wf_var_bound
 
+theorem SepCtx.wf_of_closed {Ψ : SepCtx s} {H : Heap}
+  (hclosed : Ψ.IsClosed) :
+  SepCtx.WfInHeap Ψ H := by
+  induction hclosed with
+  | empty => apply SepCtx.WfInHeap.wf_empty
+  | cons hΨ hC ih =>
+    apply SepCtx.WfInHeap.wf_cons
+    · exact ih
+    · exact CaptureSet.wf_of_closed hC
+
 /-- Closedness implies well-formedness for types. -/
 theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   (hclosed : T.IsClosed) :
@@ -753,6 +784,10 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   | cpoly hcs _ ih =>
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_of_closed hcs
+    · exact ih
+  | modal hΨ _ ih =>
+    apply Ty.WfInHeap.wf_modal
+    · exact SepCtx.wf_of_closed hΨ
     · exact ih
   | unit => apply Ty.WfInHeap.wf_unit
   | cap hcs => apply Ty.WfInHeap.wf_cap; exact CaptureSet.wf_of_closed hcs
@@ -782,6 +817,11 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_of_closed hcs
     · exact ih
+  | boxed hcs hΨ _ ih =>
+    apply Exp.WfInHeap.wf_boxed
+    · exact CaptureSet.wf_of_closed hcs
+    · exact SepCtx.wf_of_closed hΨ
+    · exact ih
   | reader hx =>
     apply Exp.WfInHeap.wf_reader
     exact Var.wf_of_closed hx
@@ -801,6 +841,9 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
     apply Exp.WfInHeap.wf_capp
     · exact Var.wf_of_closed hx
     · exact CaptureSet.wf_of_closed hcs
+  | unwrap hx =>
+    apply Exp.WfInHeap.wf_unwrap
+    exact Var.wf_of_closed hx
   | letin _ _ ih1 ih2 => apply Exp.WfInHeap.wf_letin <;> assumption
   | unpack _ _ ih1 ih2 => apply Exp.WfInHeap.wf_unpack <;> assumption
   | unit => apply Exp.WfInHeap.wf_unit
@@ -853,6 +896,18 @@ theorem CaptureSet.wf_monotonic
   | wf_var_bound => apply CaptureSet.WfInHeap.wf_var_bound
   | wf_cvar => apply CaptureSet.WfInHeap.wf_cvar
 
+theorem SepCtx.wf_monotonic
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
+  (hwf : SepCtx.WfInHeap Ψ h1) :
+  SepCtx.WfInHeap Ψ h2 := by
+  induction hwf with
+  | wf_empty => apply SepCtx.WfInHeap.wf_empty
+  | wf_cons hwf_Ψ hwf_C ih =>
+    apply SepCtx.WfInHeap.wf_cons
+    · exact ih hsub
+    · exact CaptureSet.wf_monotonic hsub hwf_C
+
 theorem Ty.wf_monotonic
   {h1 h2 : Heap}
   (hsub : h2.subsumes h1)
@@ -874,6 +929,10 @@ theorem Ty.wf_monotonic
   | wf_cpoly hwf_cs _ ih_T =>
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_monotonic hsub hwf_cs
+    · exact ih_T hsub
+  | wf_modal hwf_Ψ _ ih_T =>
+    apply Ty.WfInHeap.wf_modal
+    · exact SepCtx.wf_monotonic hsub hwf_Ψ
     · exact ih_T hsub
   | wf_unit => apply Ty.WfInHeap.wf_unit
   | wf_cap hwf_cs => apply Ty.WfInHeap.wf_cap; exact CaptureSet.wf_monotonic hsub hwf_cs
@@ -906,6 +965,11 @@ theorem Exp.wf_monotonic
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_monotonic hsub hwf_cs
     · exact ih_e hsub
+  | wf_boxed hwf_cs hwf_Ψ hwf_e ih_e =>
+    apply Exp.WfInHeap.wf_boxed
+    · exact CaptureSet.wf_monotonic hsub hwf_cs
+    · exact SepCtx.wf_monotonic hsub hwf_Ψ
+    · exact ih_e hsub
   | wf_reader hwf_x =>
     apply Exp.WfInHeap.wf_reader
     exact Var.wf_monotonic hsub hwf_x
@@ -925,6 +989,9 @@ theorem Exp.wf_monotonic
     apply Exp.WfInHeap.wf_capp
     · exact Var.wf_monotonic hsub hwf_x
     · exact CaptureSet.wf_monotonic hsub hwf_cs
+  | wf_unwrap hwf_x =>
+    apply Exp.WfInHeap.wf_unwrap
+    exact Var.wf_monotonic hsub hwf_x
   | wf_letin hwf1 hwf2 ih1 ih2 =>
     apply Exp.WfInHeap.wf_letin
     · exact ih1 hsub
@@ -1052,6 +1119,7 @@ def compute_reachability
   | .abs cs _ _ => expand_captures h cs
   | .tabs cs _ _ => expand_captures h cs
   | .cabs cs _ _ => expand_captures h cs
+  | .boxed cs _ _ => expand_captures h cs
   | .reader (.free loc) => .cap .ro loc
   | .unit => {}
   | .btrue => {}
@@ -1071,6 +1139,7 @@ def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
   | .abs cs _ _ => expand_captures H cs
   | .tabs cs _ _ => expand_captures H cs
   | .cabs cs _ _ => expand_captures H cs
+  | .boxed cs _ _ => expand_captures H cs
   | .reader (.free x) => .singleton .ro x
   | _ => {}  -- Other expressions have no reachability
 
@@ -1174,63 +1243,50 @@ theorem resolve_reachability_monotonic
   (e : Exp {})
   (hwf : e.WfInHeap H1) :
   resolve_reachability H2 e = resolve_reachability H1 e := by
-  cases e with
-  | var x =>
-    cases x with
-    | free fx =>
+  cases hwf with
+  | wf_var hwf_x =>
+    cases hwf_x with
+    | wf_bound =>
+      rename_i x
+      cases x
+    | wf_free hex =>
+      rename_i fx
       simp [resolve_reachability]
-      cases hwf with
-      | wf_var hwf_x =>
-        cases hwf_x with
-        | wf_free hex =>
-          exact reachability_of_loc_monotonic hsub fx hex
-    | bound bx => cases bx
-  | abs cs _ _ =>
+      exact reachability_of_loc_monotonic hsub fx hex
+  | wf_abs hwf_cs _ _ =>
     simp [resolve_reachability]
-    cases hwf with
-    | wf_abs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
-  | tabs cs _ _ =>
+    exact expand_captures_monotonic hsub _ hwf_cs
+  | wf_tabs hwf_cs _ _ =>
     simp [resolve_reachability]
-    cases hwf with
-    | wf_tabs hwf_cs _ _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
-  | cabs cs _ _ =>
+    exact expand_captures_monotonic hsub _ hwf_cs
+  | wf_cabs hwf_cs _ =>
     simp [resolve_reachability]
-    cases hwf with
-    | wf_cabs hwf_cs _ =>
-      exact expand_captures_monotonic hsub cs hwf_cs
-  | reader x =>
-    -- The variable must be free in the empty signature
-    cases x with
-    | free loc => simp [resolve_reachability]
-    | bound bx => cases bx
-  | pack _ _ =>
+    exact expand_captures_monotonic hsub _ hwf_cs
+  | wf_boxed hwf_cs _ _ =>
     simp [resolve_reachability]
-  | unit =>
-    simp [resolve_reachability]
-  | btrue =>
-    simp [resolve_reachability]
-  | bfalse =>
-    simp [resolve_reachability]
-  | app _ _ =>
-    simp [resolve_reachability]
-  | tapp _ _ =>
-    simp [resolve_reachability]
-  | capp _ _ =>
-    simp [resolve_reachability]
-  | letin _ _ =>
-    simp [resolve_reachability]
-  | unpack _ _ =>
-    simp [resolve_reachability]
-  | read _ =>
-    simp [resolve_reachability]
-  | write _ _ =>
-    simp [resolve_reachability]
-  | cond _ _ _ =>
-    simp [resolve_reachability]
-  | par _ _ =>
-    simp [resolve_reachability]
+    exact expand_captures_monotonic hsub _ hwf_cs
+  | wf_reader hwf_x =>
+    cases hwf_x with
+    | wf_bound =>
+      rename_i x
+      cases x
+    | wf_free =>
+      rename_i loc hex
+      simp [resolve_reachability]
+  | wf_pack _ _ => simp [resolve_reachability]
+  | wf_app _ _ => simp [resolve_reachability]
+  | wf_tapp _ _ => simp [resolve_reachability]
+  | wf_capp _ _ => simp [resolve_reachability]
+  | wf_unwrap _ => simp [resolve_reachability]
+  | wf_letin _ _ => simp [resolve_reachability]
+  | wf_unpack _ _ => simp [resolve_reachability]
+  | wf_unit => simp [resolve_reachability]
+  | wf_btrue => simp [resolve_reachability]
+  | wf_bfalse => simp [resolve_reachability]
+  | wf_read _ => simp [resolve_reachability]
+  | wf_write _ _ => simp [resolve_reachability]
+  | wf_cond _ _ _ => simp [resolve_reachability]
+  | wf_par _ _ => simp [resolve_reachability]
 
 /-- Computing reachability of a value in a bigger heap yields the same result.
 Proof by cases on hv, using expand_captures_monotonic. -/
@@ -1241,32 +1297,28 @@ theorem compute_reachability_monotonic
   (hv : v.IsSimpleVal)
   (hwf : Exp.WfInHeap v h1) :
   compute_reachability h2 v hv = compute_reachability h1 v hv := by
-  -- Case analysis on the structure of the simple value
   cases hv with
   | abs =>
-    -- Case: v = .abs cs T e
-    -- compute_reachability h v = expand_captures h cs
     simp [compute_reachability]
-    -- Extract well-formedness of the capture set
     cases hwf with
     | wf_abs hwf_cs _ _ =>
       exact expand_captures_monotonic hsub _ hwf_cs
   | tabs =>
-    -- Case: v = .tabs cs T e
     simp [compute_reachability]
     cases hwf with
     | wf_tabs hwf_cs _ _ =>
       exact expand_captures_monotonic hsub _ hwf_cs
   | cabs =>
-    -- Case: v = .cabs cs m e
     simp [compute_reachability]
     cases hwf with
     | wf_cabs hwf_cs _ =>
       exact expand_captures_monotonic hsub _ hwf_cs
+  | boxed =>
+    simp [compute_reachability]
+    cases hwf with
+    | wf_boxed hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub _ hwf_cs
   | reader =>
-    -- Case: v = .reader x
-    -- Reader reachability doesn't depend on heap
-    -- The variable must be free in the empty signature
     rename_i x
     cases x with
     | free loc => simp [compute_reachability]
@@ -1323,8 +1375,8 @@ theorem compute_reachability_update_mcell (h : Heap) (l : Nat)
   | abs => simp [compute_reachability]; exact expand_captures_update_mcell h l hexists b _
   | tabs => simp [compute_reachability]; exact expand_captures_update_mcell h l hexists b _
   | cabs => simp [compute_reachability]; exact expand_captures_update_mcell h l hexists b _
+  | boxed => simp [compute_reachability]; exact expand_captures_update_mcell h l hexists b _
   | reader =>
-    -- The variable must be free in the empty signature
     rename_i x
     cases x with
     | free loc => simp [compute_reachability]
@@ -1441,6 +1493,22 @@ theorem CaptureSet.wf_rename
     simp [CaptureSet.rename]
     apply CaptureSet.WfInHeap.wf_cvar
 
+theorem SepCtx.wf_rename
+  {Ψ : SepCtx s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : SepCtx.WfInHeap Ψ H) :
+  SepCtx.WfInHeap (Ψ.rename f) H := by
+  induction hwf with
+  | wf_empty =>
+    simp [SepCtx.rename]
+    apply SepCtx.WfInHeap.wf_empty
+  | wf_cons hwf_Ψ hwf_C ih =>
+    simp [SepCtx.rename]
+    apply SepCtx.WfInHeap.wf_cons
+    · exact ih
+    · exact CaptureSet.wf_rename hwf_C
+
 /-- Renaming preserves well-formedness of types. -/
 theorem Ty.wf_rename
   {T : Ty sort s1}
@@ -1471,6 +1539,11 @@ theorem Ty.wf_rename
     simp [Ty.rename]
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_rename hwf_cs
+    · exact ih_T
+  | wf_modal hwf_Ψ _ ih_T =>
+    simp [Ty.rename]
+    apply Ty.WfInHeap.wf_modal
+    · exact SepCtx.wf_rename hwf_Ψ
     · exact ih_T
   | wf_unit =>
     simp [Ty.rename]
@@ -1528,6 +1601,12 @@ theorem Exp.wf_rename
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_rename hwf_cs
     · exact ih_e
+  | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_boxed
+    · exact CaptureSet.wf_rename hwf_cs
+    · exact SepCtx.wf_rename hwf_Ψ
+    · exact ih_e
   | wf_reader hwf_x =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_reader
@@ -1552,6 +1631,10 @@ theorem Exp.wf_rename
     apply Exp.WfInHeap.wf_capp
     · exact Var.wf_rename hwf_x
     · exact CaptureSet.wf_rename hwf_cs
+  | wf_unwrap hwf_x =>
+    simp [Exp.rename]
+    apply Exp.WfInHeap.wf_unwrap
+    exact Var.wf_rename hwf_x
   | wf_letin _ _ ih1 ih2 =>
     simp [Exp.rename]
     apply Exp.WfInHeap.wf_letin
@@ -1717,6 +1800,23 @@ theorem CaptureSet.wf_subst
     apply CaptureSet.wf_applyMut
     exact hwf_σ.wf_cvar _
 
+theorem SepCtx.wf_subst
+  {Ψ : SepCtx s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_Ψ : SepCtx.WfInHeap Ψ H)
+  (hwf_σ : σ.WfInHeap H) :
+  SepCtx.WfInHeap (Ψ.subst σ) H := by
+  induction hwf_Ψ with
+  | wf_empty =>
+    simp [SepCtx.subst]
+    apply SepCtx.WfInHeap.wf_empty
+  | wf_cons hwf_Ψ hwf_C ih =>
+    simp [SepCtx.subst]
+    apply SepCtx.WfInHeap.wf_cons
+    · exact ih hwf_σ
+    · exact CaptureSet.wf_subst hwf_C hwf_σ
+
 /-- Well-formed substitutions preserve well-formedness of types. -/
 theorem Ty.wf_subst
   {T : Ty sort s1}
@@ -1749,6 +1849,11 @@ theorem Ty.wf_subst
     apply Ty.WfInHeap.wf_cpoly
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact ih_T (Subst.wf_lift hwf_σ)
+  | wf_modal hwf_Ψ _ ih_T =>
+    simp [Ty.subst]
+    apply Ty.WfInHeap.wf_modal
+    · exact SepCtx.wf_subst hwf_Ψ hwf_σ
+    · exact ih_T hwf_σ
   | wf_unit =>
     simp [Ty.subst]
     apply Ty.WfInHeap.wf_unit
@@ -1806,6 +1911,12 @@ theorem Exp.wf_subst
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
     · exact ih_e (Subst.wf_lift hwf_σ)
+  | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_boxed
+    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    · exact SepCtx.wf_subst hwf_Ψ hwf_σ
+    · exact ih_e hwf_σ
   | wf_reader hwf_x =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_reader
@@ -1830,6 +1941,10 @@ theorem Exp.wf_subst
     apply Exp.WfInHeap.wf_capp
     · exact Var.wf_subst hwf_x hwf_σ
     · exact CaptureSet.wf_subst hwf_cs hwf_σ
+  | wf_unwrap hwf_x =>
+    simp [Exp.subst]
+    apply Exp.WfInHeap.wf_unwrap
+    exact Var.wf_subst hwf_x hwf_σ
   | wf_letin _ _ ih1 ih2 =>
     simp [Exp.subst]
     apply Exp.WfInHeap.wf_letin
