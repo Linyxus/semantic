@@ -3048,15 +3048,6 @@ theorem var_denot_subset_captureSet_denot
   rw [ground_denot_applyMut_comm]
   exact hreach_mut
 
--- Helper: transfer HasSepDom from variable peaks to type's capture set peaks
-theorem var_peaks_hassepdom
-  {Γ : Ctx s} {env : TypeEnv s} {C : CaptureSet s}
-  (hlk : Γ.LookupVar x T)
-  (hsep : env.HasSepDom ((CaptureSet.var m (.bound x)).peaks Γ ∪ C.peaks Γ)) :
-  env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) := by
-  rw [CaptureSet.var_peaks hlk] at hsep
-  exact hsep
-
 theorem sem_sepcheck_var
   (hlk : Γ.LookupVar x T)
   (ih : SemSepCheck Γ (T.captureSet.applyMut m) C) :
