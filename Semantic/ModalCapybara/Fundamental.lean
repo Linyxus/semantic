@@ -1586,7 +1586,13 @@ theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
     simpa [CaptureSet.ground_denot]
       using h
   | ro =>
-    exact CapabilitySet.Subset.trans ground_denot_applyRO_subset h
+    have hro :
+        (CaptureSet.var .ro (Var.free (env.lookup_var x).1)).ground_denot m' ⊆
+        reachability_of_loc m'.heap (env.lookup_var x).1 := by
+      simpa [CaptureSet.applyRO, CaptureSet.ground_denot]
+        using (ground_denot_applyRO_subset
+          (C := CaptureSet.var .epsilon (Var.free (env.lookup_var x).1)) (m := m'))
+    exact CapabilitySet.Subset.trans hro h
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   (hlookup : Γ.LookupCVar c (.bound C)) :
