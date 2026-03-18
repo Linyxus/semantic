@@ -3383,7 +3383,7 @@ theorem fundamental
       -- Apply sem_typ_capp theorem
       exact sem_typ_capp hD_closed_exp hx hI (fundamental_sepcheck hsep)
   case unwrap =>
-    rename_i x cs Ψ E hx hkind hsep ih_x
+    rename_i x Ψ E hx hkind hsep ih_x
     have hx_closed := HasType.typed_var_closed hx
     cases x with
     | free fx =>
@@ -3396,9 +3396,7 @@ theorem fundamental
           | modal _ hclosed_Ψ _ =>
             exact hclosed_Ψ
       exact sem_typ_unwrap (x := bx) hclosed_Ψ
-        (by
-          -- TODO(ctx-lock): coerce the semantic variable premise to the refined modal type.
-          sorry)
+        (ih_x (by constructor; constructor))
         hkind hsep
   case invoke =>
     rename_i ih_x ih_y

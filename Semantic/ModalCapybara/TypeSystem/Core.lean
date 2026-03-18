@@ -210,7 +210,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | unwrap :
-  HasType {} Γ (.var x) (.typ (.modal cs Ψ E)) ->
+  HasType {} Γ (.var x) (.typ (.modal (.var .epsilon x) Ψ E)) ->
   (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
   (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
   ----------------------------
