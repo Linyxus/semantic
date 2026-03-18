@@ -231,6 +231,12 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     cases h; rename_i hT
     exact IsClosed.exi (ih hT)
 
+theorem Exp.rename_closed_inv {e : Exp s1} {f : Rename s1 s2} :
+    (e.rename f).IsClosed -> e.IsClosed := by
+  intro h
+  rw [← Exp.subst_asSubst] at h
+  exact Exp.subst_closed_inv h
+
 theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
   (hΓ : Γ.IsClosed) (hlookup : Γ.LookupVar x T) :
   T.IsClosed := by
@@ -277,6 +283,9 @@ theorem HasType.use_set_is_closed
     exact HasType.typed_var_capture_closed ht_x
   case capp =>
     rename_i _ _ ht_x _ _ _
+    exact HasType.typed_var_capture_closed ht_x
+  case unwrap =>
+    rename_i ht_x _ _ _
     exact HasType.typed_var_capture_closed ht_x
   case read =>
     rename_i ht_x _
@@ -348,6 +357,12 @@ theorem HasType.exp_is_closed
     · assumption
     · -- e✝.IsClosed
       exact ih
+  case wrap hΨ_closed ht_body ih =>
+    constructor
+    · have h_use := HasType.use_set_is_closed ht_body
+      exact CaptureSet.rename_closed_inv h_use
+    · exact hΨ_closed
+    · exact Exp.rename_closed_inv ih
   case pack C x T =>
     constructor
     · -- C✝.IsClosed
@@ -376,6 +391,11 @@ theorem HasType.exp_is_closed
       cases ih_x; assumption
     · -- CaptureSet.IsClosed D✝
       assumption
+  case unwrap =>
+    rename_i _ _ _ ih_x
+    cases ih_x with
+    | var hx_closed =>
+      exact Exp.IsClosed.unwrap hx_closed
   case letin ih1 ih2 => constructor <;> assumption
   case unpack ih1 ih2 => constructor <;> assumption
   case invoke =>
@@ -418,6 +438,13 @@ theorem HasType.type_is_closed
     have h_use := HasType.use_set_is_closed ht_body
     rename_i hcb_closed
     exact Ty.IsClosed.cpoly hcb_closed (CaptureSet.rename_closed_inv h_use) ih
+  case wrap hΨ_closed ht_body ih =>
+    constructor
+    have h_use := HasType.use_set_is_closed ht_body
+    exact Ty.IsClosed.modal
+      (CaptureSet.rename_closed_inv h_use)
+      hΨ_closed
+      (Ty.rename_closed_inv ih)
   case pack hC ih =>
     constructor
     -- ih : (T✝.subst (Subst.openCVar C✝)).typ.IsClosed
@@ -468,6 +495,12 @@ theorem HasType.type_is_closed
     -- Need: U.IsClosed
     apply Ty.rename_closed_inv
     exact Ty.rename_closed_inv ih2
+  case unwrap ht_x hkind hsep ih =>
+    cases ih with
+    | typ hT =>
+      cases hT with
+      | modal _ _ hE =>
+        exact hE
 
 -- More context lookup properties
 

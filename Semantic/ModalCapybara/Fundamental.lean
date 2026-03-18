@@ -416,6 +416,25 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                 (cap := .empty) (cap' := CS.ground_denot m')]
               exact htyped
 
+/-- TODO(ctx-lock): modal introduction needs the intended semantic interpretation of
+lock contexts. -/
+theorem sem_typ_wrap
+  {cs : CaptureSet s} {Ψ : SepCtx s} {e : Exp s} {E : Ty .exi s}
+  (hclosed_e : (Exp.boxed cs Ψ e).IsClosed)
+  (ht : cs.rename Rename.succ # Γ.push_lock Ψ ⊢ e.rename Rename.succ : E.rename Rename.succ) :
+  ∅ # Γ ⊨ Exp.boxed cs Ψ e : (Ty.modal cs Ψ E).typ := by
+  sorry
+
+/-- TODO(ctx-lock): modal elimination needs the semantic connection between lock
+assumptions, separation assumptions, and `unwrap`. -/
+theorem sem_typ_unwrap
+  {x : Var .var s} {cs : CaptureSet s} {Ψ : SepCtx s} {E : Ty .exi s}
+  (hx : ∅ # Γ ⊢ Exp.var x : (Ty.modal cs Ψ E).typ)
+  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m)
+  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) :
+  (CaptureSet.var .epsilon x) # Γ ⊨ Exp.unwrap x : E := by
+  sorry
+
 
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
@@ -3037,6 +3056,9 @@ theorem fundamental
     · cases hclosed_e
       rename_i hclosed_cs hclosed_cb hclosed_e0
       exact ih hclosed_e0
+  case wrap =>
+    rename_i hΨ_closed ht_body ih
+    exact sem_typ_wrap hclosed_e ht_body
   case pack ih =>
     apply sem_typ_pack
     · exact hclosed_e
@@ -3081,6 +3103,9 @@ theorem fundamental
       have hx := ih_x (Exp.IsClosed.var Var.IsClosed.bound)
       -- Apply sem_typ_capp theorem
       exact sem_typ_capp hD_closed_exp hx hI (fundamental_sepcheck hsep)
+  case unwrap =>
+    rename_i hx hkind hsep ih_x
+    exact sem_typ_unwrap hx hkind hsep
   case invoke =>
     rename_i ih_x ih_y
     -- From closedness of (app x y), extract that x and y are closed
