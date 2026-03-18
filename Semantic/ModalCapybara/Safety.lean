@@ -12,7 +12,7 @@ def Sig.platform_of : Nat -> Sig
 /-- A platform context with `n` mutable boolean cells. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C<:.epsilon),x:(.cell (.cvar .epsilon .here))
+| n+1 => ((Ctx.platform_of n),C<:.unbound),x:(.cell (.cvar .epsilon .here))
 
 /-- A platform heap with `n` mutable boolean cells (initialized to false). -/
 def Heap.platform_of (N : Nat) : Heap :=
@@ -173,7 +173,7 @@ theorem env_typing_of_platform {N : Nat} :
         -- T.captureSet = .cvar .epsilon .here
         -- peakset Γ (.cvar .epsilon .here) = ⟨.cvar .epsilon .here, .cvar⟩
         simp only [Ty.captureSet, CaptureSet.peakset, CaptureSet.peaks]
-      · -- Capture variable C with bound .epsilon
+      · -- Capture variable C with unbounded capture bound
         constructor
         · -- cs.WfInHeap
           apply CaptureSet.WfInHeap.wf_var_free
@@ -181,18 +181,19 @@ theorem env_typing_of_platform {N : Nat} :
           unfold Heap.platform_of
           simp
         · constructor
-          · -- cs.ground_denot bounded by Mutability.denot (.epsilon)
-            exact CapabilitySet.BoundedBy.top CapabilitySet.HasKind.eps
+          · -- Capture bound is well-formed
+            exact CaptureBound.WfInHeap.wf_unbound
           · constructor
-            · -- cap = cs.ground_denot m
-              simp only [CaptureSet.ground_denot, reachability_of_loc,
-                Memory.platform_of]
-              unfold Heap.platform_of
-              simp
-            · -- Recursive: platform N types in platform (N+1) memory
-              apply env_typing_platform_monotonic (N := N) (M := N + 1)
-              · omega
-              · exact ih
+            · -- cap is bounded by top
+              exact CapabilitySet.BoundedBy.top
+            · constructor
+              · -- cap = cs.ground_denot m
+                simp [CaptureSet.ground_denot, reachability_of_loc,
+                  Memory.platform_of, Heap.platform_of, CapabilitySet.singleton]
+              · -- Recursive: platform N types in platform (N+1) memory
+                apply env_typing_platform_monotonic (N := N) (M := N + 1)
+                · omega
+                · exact ih
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
     under permission `P` iff for any possible reduction state starting from `e`
