@@ -123,11 +123,6 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   SepCheck Γ C1 C2 ->
   -------------------
   SepCheck Γ C2 C1
-| sep_var :
-  Ctx.LookupVar Γ x T ->
-  SepCheck Γ (T.captureSet.applyMut m) C ->
-  -------------------
-  SepCheck Γ (.var m (.bound x)) C
 | sep_union :
   SepCheck Γ C1 C3 ->
   SepCheck Γ C2 C3 ->
@@ -151,10 +146,6 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
   --------------------
   SepCheck Γ C1 C2
-| sep_distinct_roots :
-  c1 ≠ c2 ->
-  --------------------
-  SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
