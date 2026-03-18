@@ -1655,77 +1655,6 @@ theorem fundamental_subcapt
   case sc_ro => exact sem_sc_ro
   case sc_ro_mono _ ih => exact sem_sc_ro_mono ih
 
-private theorem typed_env_satisfy_rebind
-  {env1 : TypeEnv s1} {env2 : TypeEnv s2} {f : Rename s1 s2}
-  {Ψ : SepCtx s1} {m : Memory}
-  (ρ : Rebind env1 f env2)
-  (hsat : TypeEnv.Satisfy env1 Ψ m) :
-  TypeEnv.Satisfy env2 (Ψ.rename f) m := by
-  constructor
-  · intro C mode hhas
-    obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
-    simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C0)] using
-      hsat.wf C0 mode hhas0
-  · intro C mode hhas
-    obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
-    simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
-      hsat.kind C0 mode hhas0
-  · intro C1 m1 C2 m2 hdistinct
-    obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
-    simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
-      rebind_captureset_denot (ρ := ρ) (C := D2)] using
-      hsat.sep D1 m1 D2 m2 hdistinct0
-
-private theorem typed_env_lookup_lock_satisfy'
-  (hlookup : Ctx.LookupLock Γ ℓ Ψ)
-  (ht : EnvTyping Γ env m) :
-  env.Satisfy Ψ m := by
-  induction hlookup generalizing m with
-  | here =>
-    rename_i Γ0 Ψ0
-    cases env with
-    | extend env0 info =>
-      cases info with
-      | lock =>
-        simp [EnvTyping] at ht
-        exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0)) ht.1
-  | there hlookup ih =>
-    rename_i Ψ0 b
-    cases b with
-    | var T =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | var n ps =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind (Rebind.weaken (env := env0) (x := n) (ps := ps))
-            (ih ht.2.2)
-    | tvar S =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | tvar d =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind (Rebind.tweaken (env := env0) (d := d))
-            (ih ht.2.2.2.2.2)
-    | cvar B =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | cvar cs cap =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind
-            (Rebind.cweaken (env := env0) (cs := cs) (cap := cap))
-            (ih ht.2.2.2.2)
-    | lock Ψ1 =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | lock =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0))
-            (ih ht.2)
-
 private theorem fundamental_haskind_ro
   (hkind : HasKind Γ C mode)
   : mode = .ro -> SemHasKind Γ C .ro := by
@@ -1752,7 +1681,7 @@ private theorem fundamental_haskind_ro
   | imm hlock hhas =>
     intro hm env mem hts
     cases hm
-    exact (typed_env_lookup_lock_satisfy' hlock hts).kind _ _ hhas
+    exact (typed_env_lookup_lock_satisfy hlock hts).kind _ _ hhas
   | ro =>
     rename_i C0
     intro hm env mem hts
@@ -3080,7 +3009,7 @@ theorem fundamental_sepcheck
       (fundamental_subcapt hsub env H henv)
   | sep_lock hlock hdistinct =>
     intro env H henv
-    exact (typed_env_lookup_lock_satisfy' hlock henv).sep _ _ _ _ hdistinct
+    exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental

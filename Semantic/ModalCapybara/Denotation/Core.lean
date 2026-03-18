@@ -558,12 +558,6 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   env.Satisfy sepctx m ∧
   EnvTyping Γ env m
 
-theorem typed_env_lookup_lock_satisfy
-  (hlookup : Ctx.LookupLock Γ ℓ Ψ)
-  (ht : EnvTyping Γ env m) :
-  env.Satisfy Ψ m := by
-  sorry
-
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Mutability) :
