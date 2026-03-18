@@ -117,7 +117,11 @@ theorem SepCtx.HasTwoDistinct.rename_inv
       C1 = D1.rename f ∧
       C2 = D2.rename f ∧
       SepCtx.HasTwoDistinct K D1 m1 D2 m2 := by
-  sorry
+    generalize he0 : K.rename f = K0 at h
+    induction h
+    case here_there hhas => sorry
+    case there => sorry
+    case symm => sorry
 
 /-- A separation context is closed if it contains no heap pointers. -/
 inductive SepCtx.IsClosed : SepCtx s -> Prop where
