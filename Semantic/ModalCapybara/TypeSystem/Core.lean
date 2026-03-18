@@ -49,9 +49,9 @@ inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
   HasKind Γ (C1 ∪ C2) m
 | sc {C1 C2 : CaptureSet s} :
   Subcapt Γ C1 C2 ->
-  HasKind Γ C1 m ->
+  HasKind Γ C2 m ->
   -------------------
-  HasKind Γ C2 m
+  HasKind Γ C1 m
 | rw {C : CaptureSet s} :
   -------------------
   HasKind Γ C .epsilon
