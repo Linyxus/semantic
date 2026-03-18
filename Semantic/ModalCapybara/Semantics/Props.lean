@@ -768,6 +768,7 @@ theorem step_preserves_eval
         | abs => exact Exp.IsVal.abs
         | tabs => exact Exp.IsVal.tabs
         | cabs => exact Exp.IsVal.cabs
+        | boxed => exact Exp.IsVal.boxed
         | reader => exact Exp.IsVal.reader
         | unit => exact Exp.IsVal.unit
         | btrue => exact Exp.IsVal.btrue
@@ -1078,6 +1079,27 @@ theorem CaptureSet.wf_masked
   | wf_cvar =>
     apply CaptureSet.WfInHeap.wf_cvar
 
+theorem SepCtx.wf_masked
+  (hwf : SepCtx.WfInHeap Ψ H) :
+  SepCtx.WfInHeap Ψ (H.mask_caps D) := by
+  induction hwf with
+  | wf_empty =>
+    apply SepCtx.WfInHeap.wf_empty
+  | wf_cons hwf_Ψ hwf_C ih =>
+    apply SepCtx.WfInHeap.wf_cons
+    · exact ih
+    · exact CaptureSet.wf_masked hwf_C
+
+theorem CaptureBound.wf_masked
+  (hwf : CaptureBound.WfInHeap cb H) :
+  CaptureBound.WfInHeap cb (H.mask_caps D) := by
+  induction hwf with
+  | wf_unbound =>
+    apply CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs =>
+    apply CaptureBound.WfInHeap.wf_bound
+    exact CaptureSet.wf_masked hwf_cs
+
 theorem Ty.wf_masked
   (hwf : Ty.WfInHeap T H) :
   Ty.WfInHeap T (H.mask_caps D) := by
@@ -1096,9 +1118,15 @@ theorem Ty.wf_masked
     · exact ih1
     · exact CaptureSet.wf_masked hwf_cs
     · exact ih2
-  | wf_cpoly hwf_cs _ ih_T =>
+  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
     apply Ty.WfInHeap.wf_cpoly
+    · exact CaptureBound.wf_masked hwf_cb
     · exact CaptureSet.wf_masked hwf_cs
+    · exact ih_T
+  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
+    apply Ty.WfInHeap.wf_modal
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact SepCtx.wf_masked hwf_Ψ
     · exact ih_T
   | wf_unit =>
     apply Ty.WfInHeap.wf_unit
@@ -1137,9 +1165,15 @@ theorem Exp.wf_masked
     · exact CaptureSet.wf_masked hwf_cs
     · exact Ty.wf_masked hwf_T
     · exact ih
-  | wf_cabs hwf_cs _ ih =>
+  | wf_cabs hwf_cs hwf_cb _ ih =>
     apply Exp.WfInHeap.wf_cabs
     · exact CaptureSet.wf_masked hwf_cs
+    · exact CaptureBound.wf_masked hwf_cb
+    · exact ih
+  | wf_boxed hwf_cs hwf_Ψ _ ih =>
+    apply Exp.WfInHeap.wf_boxed
+    · exact CaptureSet.wf_masked hwf_cs
+    · exact SepCtx.wf_masked hwf_Ψ
     · exact ih
   | wf_reader hwf_x =>
     apply Exp.WfInHeap.wf_reader
@@ -1160,6 +1194,9 @@ theorem Exp.wf_masked
     apply Exp.WfInHeap.wf_capp
     · exact Var.wf_masked hwf_x
     · exact CaptureSet.wf_masked hwf_cs
+  | wf_unwrap hwf_x =>
+    apply Exp.WfInHeap.wf_unwrap
+    exact Var.wf_masked hwf_x
   | wf_letin _ _ ih1 ih2 =>
     apply Exp.WfInHeap.wf_letin <;> assumption
   | wf_unpack _ _ ih1 ih2 =>
@@ -1229,6 +1266,10 @@ theorem masked_compute_reachability {H : Heap} :
     simpa [compute_reachability] using
       (expand_captures_masked (H := H) (D := D) (cs := cs))
   | cabs =>
+    rename_i cs _ _
+    simpa [compute_reachability] using
+      (expand_captures_masked (H := H) (D := D) (cs := cs))
+  | boxed =>
     rename_i cs _ _
     simpa [compute_reachability] using
       (expand_captures_masked (H := H) (D := D) (cs := cs))
