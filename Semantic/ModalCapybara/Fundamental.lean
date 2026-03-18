@@ -65,7 +65,8 @@ theorem typed_env_lookup_var
       match env with
       | .extend env0 (.lock) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        have hih := b hts
+        obtain ⟨_, henv0⟩ := hts
+        have hih := b henv0
         have heqv := lweaken_val_denot (env:=env0) (T:=T0)
         apply (Denot.equiv_to_imply heqv).1
         exact hih
@@ -909,7 +910,8 @@ theorem typed_env_lookup_cvar_aux
       match env with
       | .extend env' (.lock) =>
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
-        have hih := ih hts
+        obtain ⟨_, henv'⟩ := hts
+        have hih := ih henv'
         have hcb := rebind_capturebound_denot (Rebind.lweaken (env := env')) cb'
         rw [congrFun hcb m] at hih
         simpa [TypeEnv.extend_lock] using hih
@@ -950,8 +952,9 @@ theorem typed_env_cvar_cap_eq
       match env with
       | .extend env' (.lock) =>
         simp only [EnvTyping] at hts
+        obtain ⟨_, henv'⟩ := hts
         cases c with
-        | there c' => exact ih hts c'
+        | there c' => exact ih henv' c'
 
 theorem sem_typ_capp
   {x : BVar s .var}
@@ -1651,10 +1654,121 @@ theorem fundamental_subcapt
   case sc_ro => exact sem_sc_ro
   case sc_ro_mono _ ih => exact sem_sc_ro_mono ih
 
+private theorem typed_env_satisfy_rebind
+  {env1 : TypeEnv s1} {env2 : TypeEnv s2} {f : Rename s1 s2}
+  {Ψ : SepCtx s1} {m : Memory}
+  (ρ : Rebind env1 f env2)
+  (hsat : TypeEnv.Satisfy env1 Ψ m) :
+  TypeEnv.Satisfy env2 (Ψ.rename f) m := by
+  constructor
+  · intro C mode hhas
+    obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
+    simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C0)] using
+      hsat.wf C0 mode hhas0
+  · intro C mode hhas
+    obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
+    simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
+      hsat.kind C0 mode hhas0
+  · intro C1 m1 C2 m2 hdistinct
+    obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
+    simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
+      rebind_captureset_denot (ρ := ρ) (C := D2)] using
+      hsat.sep D1 m1 D2 m2 hdistinct0
+
+private theorem typed_env_lookup_lock_satisfy'
+  (hlookup : Ctx.LookupLock Γ ℓ Ψ)
+  (ht : EnvTyping Γ env m) :
+  env.Satisfy Ψ m := by
+  induction hlookup generalizing m with
+  | here =>
+    rename_i Γ0 Ψ0
+    cases env with
+    | extend env0 info =>
+      cases info with
+      | lock =>
+        simp [EnvTyping] at ht
+        exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0)) ht.1
+  | there hlookup ih =>
+    rename_i Ψ0 b
+    cases b with
+    | var T =>
+      cases env with
+      | extend env0 info =>
+        cases info with
+        | var n ps =>
+          simp [EnvTyping] at ht
+          exact typed_env_satisfy_rebind (Rebind.weaken (env := env0) (x := n) (ps := ps))
+            (ih ht.2.2)
+    | tvar S =>
+      cases env with
+      | extend env0 info =>
+        cases info with
+        | tvar d =>
+          simp [EnvTyping] at ht
+          exact typed_env_satisfy_rebind (Rebind.tweaken (env := env0) (d := d))
+            (ih ht.2.2.2.2.2)
+    | cvar B =>
+      cases env with
+      | extend env0 info =>
+        cases info with
+        | cvar cs cap =>
+          simp [EnvTyping] at ht
+          exact typed_env_satisfy_rebind
+            (Rebind.cweaken (env := env0) (cs := cs) (cap := cap))
+            (ih ht.2.2.2.2)
+    | lock Ψ1 =>
+      cases env with
+      | extend env0 info =>
+        cases info with
+        | lock =>
+          simp [EnvTyping] at ht
+          exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0))
+            (ih ht.2)
+
+private theorem fundamental_haskind_ro
+  (hkind : HasKind Γ C mode)
+  : mode = .ro -> SemHasKind Γ C .ro := by
+  induction hkind with
+  | empty =>
+    intro hm env mem hts
+    cases hm
+    simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+    exact CapabilitySet.HasKind.ro_empty
+  | union h1 h2 ih1 ih2 =>
+    intro hm env mem hts
+    cases hm
+    simp [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+    exact CapabilitySet.HasKind.ro_union (ih1 rfl env mem hts) (ih2 rfl env mem hts)
+  | sc hsub hk ih =>
+    intro hm env mem hts
+    cases hm
+    exact CapabilitySet.HasKind.subset_ro
+      (fundamental_subcapt hsub env mem hts)
+      (ih rfl env mem hts)
+  | rw =>
+    intro hm
+    cases hm
+  | imm hlock hhas =>
+    intro hm env mem hts
+    cases hm
+    exact (typed_env_lookup_lock_satisfy' hlock hts).kind _ _ hhas
+  | ro =>
+    rename_i C0
+    intro hm env mem hts
+    cases hm
+    simpa [CaptureSet.denot, CaptureSet.applyRO_subst, ground_denot_applyRO_comm] using
+      (CapabilitySet.HasKind.applyRO
+        (C := ((C0.subst (Subst.from_TypeEnv env)).ground_denot mem)))
+
 theorem fundamental_haskind
-  (hkind : HasKind Γ C m) :
-  SemHasKind Γ C m := by
-  sorry
+  (hkind : HasKind Γ C mode) :
+  SemHasKind Γ C mode := by
+  cases hmode : mode with
+  | epsilon =>
+    intro env mem hts
+    exact CapabilitySet.HasKind.eps
+  | ro =>
+    simpa [hmode] using fundamental_haskind_ro hkind hmode
 
 
 lemma sem_subtyp_top {T : Ty .capt s}
@@ -1791,7 +1905,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
       match env with
       | .extend env0 (.lock) =>
         simp only [EnvTyping, TypeEnv.lookup_tvar] at htyping ⊢
-        have ih_result := a_ih htyping
+        obtain ⟨_, htyping'⟩ := htyping
+        have ih_result := a_ih htyping'
         have hw : Ty.val_denot env0 S.core ≈
                   Ty.val_denot (env0.extend_lock) (S.core.rename Rename.succ) :=
           lweaken_val_denot
