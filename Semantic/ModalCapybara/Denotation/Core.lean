@@ -387,6 +387,17 @@ def Denot.enforce_pure (d : Denot) : Prop :=
     d m e ->
     resolve_reachability m.heap e ⊆ .empty
 
+structure TypeEnv.Satisfy (env : TypeEnv s) (ctx : SepCtx s) (m : Memory) where
+  wf : ∀ C mode,
+    ctx.Has C mode ->
+    (C.subst (Subst.from_TypeEnv env)).WfInHeap m.heap
+  kind : ∀ C mode,
+    ctx.Has C mode ->
+    CapabilitySet.HasKind (C.denot env m) mode
+  sep : ∀ C1 m1 C2 m2,
+    ctx.HasTwoDistinct C1 m1 C2 m2 ->
+    CapabilitySet.Noninterference (C1.denot env m) (C2.denot env m)
+
 mutual
 
 /-- Value denotation for capturing types. -/
@@ -471,14 +482,28 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         T
         R0
         m' (t0.subst (Subst.openCVar CS)))
-| env, .modal cs _ _ => fun m e =>
+| env, .modal cs Ψ E => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs0 sepctx0 t0,
     resolve m.heap e = some (.boxed cs0 sepctx0 t0) ∧
     cs0.WfInHeap m.heap ∧
+    sepctx0.WfInHeap m.heap ∧
+    (∀ (m' : Memory),
+      m'.subsumes m ->
+      env.Satisfy Ψ m' ->
+      TypeEnv.empty.Satisfy sepctx0 m') ∧
     let R0 := expand_captures m.heap cs0
-    R0 ⊆ (cs.denot env m)
+    R0 ⊆ (cs.denot env m) ∧
+    (∀ (m' : Memory),
+      m'.subsumes m ->
+     (∀ C mode,
+        sepctx0.Has C mode ->
+        CapabilitySet.HasKind (C.ground_denot m') mode) ->
+     (∀ C1 m1 C2 m2,
+        sepctx0.HasTwoDistinct C1 m1 C2 m2 ->
+        CapabilitySet.Noninterference (C1.ground_denot m') (C2.ground_denot m')) ->
+      Ty.exi_exp_denot env E R0 m' t0)
 
 /-- Value denotation for existential types. -/
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
@@ -524,16 +549,6 @@ instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
 
-structure TypeEnv.Satisfy (env : TypeEnv s) (ctx : SepCtx s) (m : Memory) where
-  wf : ∀ C mode,
-    ctx.Has C mode ->
-    (C.subst (Subst.from_TypeEnv env)).WfInHeap m.heap
-  kind : ∀ C mode,
-    ctx.Has C mode ->
-    CapabilitySet.HasKind (C.denot env m) mode
-  sep : ∀ C1 m1 C2 m2,
-    ctx.HasTwoDistinct C1 m1 C2 m2 ->
-    CapabilitySet.Noninterference (C1.denot env m) (C2.denot env m)
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
