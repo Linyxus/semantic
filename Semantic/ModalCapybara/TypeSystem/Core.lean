@@ -181,6 +181,11 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
+| wrap :
+  HasType
+    (cs.rename Rename.succ) (Γ.push_lock Ψ)
+    (e.rename Rename.succ) (E.rename Rename.succ) ->
+  HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
@@ -203,6 +208,12 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   SepCheck Γ D I ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
+| unwrap :
+  HasType {} Γ (.var x) (.typ (.modal cs Ψ E)) ->
+  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
+  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
+  ----------------------------
+  HasType (.var .epsilon x) Γ (.unwrap x) E
 | letin :
   HasType C Γ e1 (.typ T) ->
   HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
