@@ -17,7 +17,8 @@ import Semantic.ModalCapybara.Safety
 /-!
 # Semantic Type Soundness for ModalCapybara
 
-This module develops semantic type soundness of System ModalCapybara. It is based on System Capybara.
+This module develops semantic type soundness of System ModalCapybara.
+It is based on System Capybara.
 
 `Semantic.ModalCapybara.Syntax` defines the syntax of the system, in de Bruijn style.
 Infrastructure for debruijn indices is defined in `Semantic.ModalCapybara.Debruijn`.
