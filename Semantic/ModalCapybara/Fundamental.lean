@@ -2937,20 +2937,11 @@ theorem peaks_applyRO_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
   rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
   exact hcov.applyMut_mono
 
-theorem subcapt_peaks
-  (hsc : Subcapt Γ C1 C2) :
-  (C1.peaks Γ).CoveredBy (C2.peaks Γ) := by
-  sorry
-
 theorem sem_sepcheck_symm
   (ih : SemSepCheck Γ C1 C2) :
   SemSepCheck Γ C2 C1 := by
-  intro env H hts hsep
-  apply CapabilitySet.Noninterference.ni_symm
-  simp only [CaptureSet.peaks_union] at hsep
-  apply ih env H hts
-  simp only [CaptureSet.peaks_union]
-  exact TypeEnv.HasSepDom.union_comm hsep
+  intro env H hts
+  exact CapabilitySet.Noninterference.ni_symm (ih env H hts)
 
 theorem ground_denot_applyMut_comm {C : CaptureSet {}} {m : Memory} {mu : Mutability} :
   (C.applyMut mu).ground_denot m = (C.ground_denot m).applyMut mu := by
@@ -2965,53 +2956,10 @@ theorem sem_sepcheck_union
   (ih1 : SemSepCheck Γ C1 C3)
   (ih2 : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ (C1 ∪ C2) C3 := by
-  intro env H hts hsep
-  -- hsep : env.HasSepDom (((C1 ∪ C2) ∪ C3).peaks Γ)
-  -- Simplify using peaks_union
-  simp only [CaptureSet.peaks_union] at hsep
-  -- hsep : env.HasSepDom ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ)
-  -- Extract HasSepDom conditions for ih1 and ih2
-  have hsep_12 := TypeEnv.HasSepDom.union_inv_left hsep
-  have hsep_3 := TypeEnv.HasSepDom.union_inv_right hsep
-  have hsep_1 := TypeEnv.HasSepDom.union_inv_left hsep_12
-  have hsep_2 := TypeEnv.HasSepDom.union_inv_right hsep_12
-  -- Build HasSepDom (C1.peaks Γ ∪ C3.peaks Γ) for ih1
-  have hsep1 : env.HasSepDom (C1.peaks Γ ∪ C3.peaks Γ) := by
-    apply TypeEnv.HasSepDom.union_intro hsep_1 hsep_3
-    intro m1 c1 m2 c2 hsub1 hsub2 hne
-    have hsub1' :
-        (.cvar m1 c1) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
-      simp [compute_peaks]
-      exact CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_left hsub1)
-    have hsub2' :
-        (.cvar m2 c2) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
-      simp [compute_peaks]
-      exact CaptureSet.Subset.union_right_right hsub2
-    exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
-  -- Build HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) for ih2
-  have hsep2 : env.HasSepDom (C2.peaks Γ ∪ C3.peaks Γ) := by
-    apply TypeEnv.HasSepDom.union_intro hsep_2 hsep_3
-    intro m1 c1 m2 c2 hsub1 hsub2 hne
-    have hsub1' :
-        (.cvar m1 c1) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
-      simp [compute_peaks]
-      exact CaptureSet.Subset.union_right_left (CaptureSet.Subset.union_right_right hsub1)
-    have hsub2' :
-        (.cvar m2 c2) ⊆ compute_peaks env ((C1.peaks Γ ∪ C2.peaks Γ) ∪ C3.peaks Γ) := by
-      simp [compute_peaks]
-      exact CaptureSet.Subset.union_right_right hsub2
-    exact hsep m1 c1 m2 c2 hsub1' hsub2' hne
-  -- Convert to the form expected by SemSepCheck
-  have hsep1' : env.HasSepDom ((C1 ∪ C3).peaks Γ) := by
-    rw [CaptureSet.peaks_union]; exact hsep1
-  have hsep2' : env.HasSepDom ((C2 ∪ C3).peaks Γ) := by
-    rw [CaptureSet.peaks_union]; exact hsep2
-  -- Apply ih1 and ih2
-  have hni1 := ih1 env H hts hsep1'
-  have hni2 := ih2 env H hts hsep2'
-  -- (C1 ∪ C2).denot env H = C1.denot env H ∪ C2.denot env H
+  intro env H hts
+  have hni1 := ih1 env H hts
+  have hni2 := ih2 env H hts
   simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
-  -- Use ni_union to combine
   exact CapabilitySet.Noninterference.ni_union hni1 hni2
 
 -- Helper: two capability sets with kind .ro are non-interfering
@@ -3045,8 +2993,7 @@ theorem CapabilitySet.noninterference_of_ro_ro
 
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
-  intro env H hts hsep
-  -- {}.denot env H = {} (the empty CapabilitySet)
+  intro env H hts
   simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
   exact .ni_empty
 
@@ -3054,45 +3001,10 @@ theorem sem_sepcheck_ro
   (hk1 : HasKind Γ C1 .ro)
   (hk2 : HasKind Γ C2 .ro) :
   SemSepCheck Γ C1 C2 := by
-  intro env H hts hsep
-  -- From fundamental_haskind, get semantic kinding
+  intro env H hts
   have hsem_k1 := fundamental_haskind hk1 env H hts
   have hsem_k2 := fundamental_haskind hk2 env H hts
-  -- hsem_k1 : (C1.denot env H).HasKind .ro
-  -- hsem_k2 : (C2.denot env H).HasKind .ro
   exact CapabilitySet.noninterference_of_ro_ro hsem_k1 hsem_k2
-
-theorem sem_sepcheck_distinct_roots
-  (hne : c1 ≠ c2) :
-  SemSepCheck Γ (CaptureSet.cvar m1 c1) (CaptureSet.cvar m2 c2) := by
-  intro env H hts hsep
-  -- hsep : env.HasSepDom (((CaptureSet.cvar m1 c1) ∪ (CaptureSet.cvar m2 c2)).peaks Γ)
-  -- Simplify peaks for cvar: (CaptureSet.cvar m c).peaks Γ = CaptureSet.cvar m c
-  simp only [CaptureSet.peaks_union, CaptureSet.peaks] at hsep
-  -- hsep : env.HasSepDom (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
-  -- Show (CaptureSet.cvar m1 c1) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
-  have hsub1 : (CaptureSet.cvar m1 c1) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2) :=
-    CaptureSet.Subset.union_right_left CaptureSet.Subset.refl
-  -- Show (CaptureSet.cvar m2 c2) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2)
-  have hsub2 : (CaptureSet.cvar m2 c2) ⊆ (CaptureSet.cvar m1 c1 ∪ CaptureSet.cvar m2 c2) :=
-    CaptureSet.Subset.union_right_right CaptureSet.Subset.refl
-  -- From HasSepDom, get noninterference for the capability sets
-  have hni_cap := hsep m1 c1 m2 c2 hsub1 hsub2 hne
-  -- Now show: cvar.denot env H = (env.lookup_cvar c).2.applyMut m
-  -- From EnvTyping: cap = cs.ground_denot H, so use ground_denot_applyMut_comm
-  simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv]
-  -- Goal: Noninterference (((env.lookup_cvar c1).1.applyMut m1).ground_denot H)
-  --                       (((env.lookup_cvar c2).1.applyMut m2).ground_denot H)
-  rw [ground_denot_applyMut_comm, ground_denot_applyMut_comm]
-  -- Goal: Noninterference (((env.lookup_cvar c1).1.ground_denot H).applyMut m1)
-  --                       (((env.lookup_cvar c2).1.ground_denot H).applyMut m2)
-  -- From EnvTyping, extract the equality cap = cs.ground_denot H
-  have heq1 : (env.lookup_cvar c1).2 = (env.lookup_cvar c1).1.ground_denot H :=
-    typed_env_cvar_cap_eq hts c1
-  have heq2 : (env.lookup_cvar c2).2 = (env.lookup_cvar c2).1.ground_denot H :=
-    typed_env_cvar_cap_eq hts c2
-  rw [← heq1, ← heq2]
-  exact hni_cap
 
 -- Helper: variable subcaptures its type's capture set with matching mutability
 theorem var_subcapt_captureSet_applyMut
@@ -3149,30 +3061,34 @@ theorem sem_sepcheck_var
   (hlk : Γ.LookupVar x T)
   (ih : SemSepCheck Γ (T.captureSet.applyMut m) C) :
   SemSepCheck Γ (CaptureSet.var m (.bound x)) C := by
-  intro env H henv hsep_goal
-  -- Get the denotation subset relationship
+  intro env H henv
   have hsub : (CaptureSet.var m (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H :=
     var_denot_subset_captureSet_denot hlk henv
-  -- Rewrite peaks_union in the preconditions
-  simp only [CaptureSet.peaks_union] at hsep_goal
-  -- Transfer HasSepDom from variable peaks to type's capture set peaks
-  have hsep_ih : env.HasSepDom ((T.captureSet.applyMut m).peaks Γ ∪ C.peaks Γ) :=
-    var_peaks_hassepdom hlk hsep_goal
-  -- Convert to the form expected by SemSepCheck (peaks of union = union of peaks)
-  have hsep_ih' : env.HasSepDom (((T.captureSet.applyMut m) ∪ C).peaks Γ) := by
-    rw [CaptureSet.peaks_union]
-    exact hsep_ih
-  -- Apply IH to get noninterference for type's capture set
   have hni_cs : CapabilitySet.Noninterference
                   ((T.captureSet.applyMut m).denot env H) (C.denot env H) :=
-    ih env H henv hsep_ih'
-  -- Use subset to transfer noninterference
+    ih env H henv
   exact CapabilitySet.Noninterference.subset_left hni_cs hsub
 
 theorem fundamental_sepcheck
   (hsep : SepCheck Γ C1 C2) :
   SemSepCheck Γ C1 C2 := by
-  sorry
+  induction hsep with
+  | sep_symm _ ih =>
+    exact sem_sepcheck_symm ih
+  | sep_union _ _ ih1 ih2 =>
+    exact sem_sepcheck_union ih1 ih2
+  | sep_empty =>
+    exact sem_sepcheck_empty
+  | sep_ro hk1 hk2 =>
+    exact sem_sepcheck_ro hk1 hk2
+  | sep_sc _ hsub ih =>
+    intro env H henv
+    exact CapabilitySet.Noninterference.subset_left
+      (ih env H henv)
+      (fundamental_subcapt hsub env H henv)
+  | sep_lock hlock hdistinct =>
+    intro env H henv
+    exact (typed_env_lookup_lock_satisfy' hlock henv).sep _ _ _ _ hdistinct
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
