@@ -3239,89 +3239,75 @@ theorem fundamental_sepcheck
     exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
 
 theorem sem_typ_unwrap
-  {x : Var .var s} {cs : CaptureSet s} {Ψ : SepCtx s} {E : Ty .exi s}
-  (hx_syn : ∅ # Γ ⊢ Exp.var x : (Ty.modal cs Ψ E).typ)
-  (hx : {} # Γ ⊨ Exp.var x : .typ (.modal cs Ψ E))
+  {x : BVar s .var} {Ψ : SepCtx s} {E : Ty .exi s}
+  (hclosed_Ψ : Ψ.IsClosed)
+  (hx : {} # Γ ⊨ Exp.var (.bound x) :
+    .typ (.modal (.var .epsilon (.bound x)) Ψ E))
   (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m)
   (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) :
-  (CaptureSet.var .epsilon x) # Γ ⊨ Exp.unwrap x : E := by
-  have hx_closed := HasType.typed_var_closed hx_syn
-  cases x with
-  | free fx =>
-    cases hx_closed
-  | bound bx =>
-    have hclosed_modal : (Ty.modal cs Ψ E).IsClosed := by
-      cases HasType.type_is_closed hx_syn with
-      | typ hclosed_modal =>
-        exact hclosed_modal
-    cases hclosed_modal with
-    | modal hclosed_cs hclosed_Ψ hclosed_E =>
-      intro env store hts
-      have hmodal_exp :
-          Ty.exi_exp_denot env (.typ (.modal cs Ψ E))
-            (CaptureSet.denot env {} store) store
-            (.var (.free (env.lookup_var bx).1)) := by
-        simpa [Exp.subst, Var.subst, Subst.from_TypeEnv] using hx env store hts
-      have hmodal := var_exp_denot_inv hmodal_exp
-      simp [Ty.exi_val_denot, Ty.val_denot] at hmodal
-      obtain ⟨_hwf_e, _hwf_cs, cs0, sepctx0, t0, hres, _hwf_cs0,
-        _hwf_sepctx0, hsat_impl, hR0_sub, hbody⟩ := hmodal
-      have hcs_eq : cs = CaptureSet.var .epsilon (.bound bx) := by
-        sorry
-      have hsat_Ψ : env.Satisfy Ψ store := by
-        constructor
-        · intro C mode hhas
-          apply CaptureSet.wf_subst
-          · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
-          · exact from_TypeEnv_wf_in_heap hts
-        · intro C mode hhas
-          exact fundamental_haskind (hkind C mode hhas) env store hts
-        · intro C1 m1 C2 m2 hdistinct
-          exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) env store hts
-      have hsat0 : TypeEnv.empty.Satisfy sepctx0 store :=
-        hsat_impl store (Memory.subsumes_refl store) hsat_Ψ
-      have hbody_eval :
-          Eval (expand_captures store.heap cs0) store t0
-            (Denot.as_mpost (Ty.exi_val_denot env E)) := by
-        simpa [Ty.exi_exp_denot] using
-          hbody store (Memory.subsumes_refl store)
-            (fun C mode hhas =>
-              by
-                simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-                  hsat0.kind C mode hhas)
-            (fun C1 m1 C2 m2 hdistinct =>
-              by
-                simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-                  hsat0.sep C1 m1 C2 m2 hdistinct)
-      simp [Ty.exi_exp_denot, Exp.subst, Var.subst, Subst.from_TypeEnv]
-      simp [resolve] at hres
-      cases hcell : store.heap (env.lookup_var bx).1 with
-      | none =>
-        simp [hcell] at hres
-      | some cell =>
-        simp [hcell] at hres
-        cases cell with
-        | val v =>
-          cases v with
-          | mk unwrap isVal reachability =>
-            simp at hres
-            subst hres
-            exact Eval.eval_unwrap
-              (m := store)
-              (x := (env.lookup_var bx).1)
-              (cs := cs0)
-              (Ψ := sepctx0)
-              (e := t0)
-              (hv := isVal)
-              (R := reachability)
-              (by simp [Memory.lookup, hcell])
-              (by
-                rw [hcs_eq] at hR0_sub
-                exact eval_capability_set_monotonic hbody_eval hR0_sub)
-        | capability cap =>
-          simp at hres
-        | masked =>
-          simp at hres
+  (CaptureSet.var .epsilon (.bound x)) # Γ ⊨ Exp.unwrap (.bound x) : E := by
+  intro env store hts
+  have hmodal_exp :
+      Ty.exi_exp_denot env (.typ (.modal (.var .epsilon (.bound x)) Ψ E))
+        (CaptureSet.denot env {} store) store
+        (.var (.free (env.lookup_var x).1)) := by
+    simpa [Exp.subst, Var.subst, Subst.from_TypeEnv] using hx env store hts
+  have hmodal := var_exp_denot_inv hmodal_exp
+  simp [Ty.exi_val_denot, Ty.val_denot] at hmodal
+  obtain ⟨_hwf_e, _hwf_cs, cs0, sepctx0, t0, hres, _hwf_cs0,
+    _hwf_sepctx0, hsat_impl, hR0_sub, hbody⟩ := hmodal
+  have hsat_Ψ : env.Satisfy Ψ store := by
+    constructor
+    · intro C mode hhas
+      apply CaptureSet.wf_subst
+      · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
+      · exact from_TypeEnv_wf_in_heap hts
+    · intro C mode hhas
+      exact fundamental_haskind (hkind C mode hhas) env store hts
+    · intro C1 m1 C2 m2 hdistinct
+      exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) env store hts
+  have hsat0 : TypeEnv.empty.Satisfy sepctx0 store :=
+    hsat_impl store (Memory.subsumes_refl store) hsat_Ψ
+  have hbody_eval :
+      Eval (expand_captures store.heap cs0) store t0
+        (Denot.as_mpost (Ty.exi_val_denot env E)) := by
+    simpa [Ty.exi_exp_denot] using
+      hbody store (Memory.subsumes_refl store)
+        (fun C mode hhas =>
+          by
+            simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
+              hsat0.kind C mode hhas)
+        (fun C1 m1 C2 m2 hdistinct =>
+          by
+            simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
+              hsat0.sep C1 m1 C2 m2 hdistinct)
+  simp [Ty.exi_exp_denot, Exp.subst, Var.subst, Subst.from_TypeEnv]
+  simp [resolve] at hres
+  cases hcell : store.heap (env.lookup_var x).1 with
+  | none =>
+    simp [hcell] at hres
+  | some cell =>
+    simp [hcell] at hres
+    cases cell with
+    | val v =>
+      cases v with
+      | mk unwrap isVal reachability =>
+        simp at hres
+        subst hres
+        exact Eval.eval_unwrap
+          (m := store)
+          (x := (env.lookup_var x).1)
+          (cs := cs0)
+          (Ψ := sepctx0)
+          (e := t0)
+          (hv := isVal)
+          (R := reachability)
+          (by simp [Memory.lookup, hcell])
+          (by exact eval_capability_set_monotonic hbody_eval hR0_sub)
+    | capability cap =>
+      simp at hres
+    | masked =>
+      simp at hres
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
@@ -3398,7 +3384,22 @@ theorem fundamental
       exact sem_typ_capp hD_closed_exp hx hI (fundamental_sepcheck hsep)
   case unwrap =>
     rename_i x cs Ψ E hx hkind hsep ih_x
-    exact sem_typ_unwrap hx (ih_x (Exp.IsClosed.var (HasType.typed_var_closed hx))) hkind hsep
+    have hx_closed := HasType.typed_var_closed hx
+    cases x with
+    | free fx =>
+      cases hx_closed
+    | bound bx =>
+      have hclosed_Ψ : Ψ.IsClosed := by
+        cases HasType.type_is_closed hx with
+        | typ hclosed_modal =>
+          cases hclosed_modal with
+          | modal _ hclosed_Ψ _ =>
+            exact hclosed_Ψ
+      exact sem_typ_unwrap (x := bx) hclosed_Ψ
+        (by
+          -- TODO(ctx-lock): coerce the semantic variable premise to the refined modal type.
+          sorry)
+        hkind hsep
   case invoke =>
     rename_i ih_x ih_y
     -- From closedness of (app x y), extract that x and y are closed
