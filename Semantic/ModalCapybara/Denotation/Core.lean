@@ -521,6 +521,14 @@ instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
 
+structure TypeEnv.Satisfy (env : TypeEnv s) (ctx : SepCtx s) (m : Memory) where
+  kind : ∀ C mode,
+    ctx.Has C mode ->
+    CapabilitySet.HasKind (C.denot env m) mode
+  sep : ∀ C1 m1 C2 m2,
+    ctx.HasTwoDistinct C1 m1 C2 m2 ->
+    CapabilitySet.Noninterference (C1.denot env m) (C2.denot env m)
+
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
 | .push Γ (.var T), .extend env (.var n ps), m =>
@@ -540,8 +548,8 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   (cap.BoundedBy (B.denot env m)) ∧
   cap = cs.ground_denot m ∧
   EnvTyping Γ env m
-| .push Γ (.lock _), .extend env .lock, m =>
-  -- TODO(ctx-lock): refine the semantic invariant associated with lock bindings.
+| .push Γ (.lock sepctx), .extend env .lock, m =>
+  env.Satisfy sepctx m ∧
   EnvTyping Γ env m
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
