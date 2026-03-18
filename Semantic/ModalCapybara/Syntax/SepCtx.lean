@@ -118,10 +118,29 @@ theorem SepCtx.HasTwoDistinct.rename_inv
       C2 = D2.rename f ∧
       SepCtx.HasTwoDistinct K D1 m1 D2 m2 := by
     generalize he0 : K.rename f = K0 at h
-    induction h
-    case here_there hhas => sorry
-    case there => sorry
-    case symm => sorry
+    induction h generalizing K
+    case here_there hhas =>
+      cases K with
+      | empty =>
+        simp [SepCtx.rename] at he0
+      | cons K1 C0 m0 =>
+        simp [SepCtx.rename] at he0
+        rcases he0 with ⟨hK, hC, hm⟩
+        subst hK hC hm
+        obtain ⟨D2, hD2, hh⟩ := SepCtx.Has.rename_inv hhas
+        exact ⟨C0, D2, rfl, hD2, .here_there hh⟩
+    case there a ih =>
+      cases K with
+      | empty => simp [SepCtx.rename] at he0
+      | cons K1 C0 m0 =>
+        simp [SepCtx.rename] at he0
+        rcases he0 with ⟨hK, hC, hm⟩
+        subst hC hm
+        obtain ⟨D1, D2, hD1, hD2, hh⟩ := ih hK
+        exact ⟨D1, D2, hD1, hD2, .there hh⟩
+    case symm a ih =>
+      obtain ⟨D2, D1, hD2, hD1, hh⟩ := ih he0
+      exact ⟨D1, D2, hD1, hD2, .symm hh⟩
 
 /-- A separation context is closed if it contains no heap pointers. -/
 inductive SepCtx.IsClosed : SepCtx s -> Prop where
