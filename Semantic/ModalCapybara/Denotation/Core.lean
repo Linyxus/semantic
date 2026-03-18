@@ -2309,7 +2309,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | modal cs Ψ T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    have ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs', hR0_sub⟩ := ht
+    have ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs', hwf_sepctx, hsat_impl, hR0_sub, hbody⟩ := ht
     constructor
     · exact Exp.wf_monotonic hmem hwf_e
     constructor
@@ -2350,10 +2350,21 @@ def val_denot_is_monotonic {env : TypeEnv s}
         | reader _ => cases hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs'
-        · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
-          have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
-          rw [← hcs_eq, hcs'_eq]
-          exact hR0_sub
+        · constructor
+          · exact SepCtx.wf_monotonic hmem hwf_sepctx
+          · constructor
+            · intro m' hsubm' hsat
+              exact hsat_impl m' (Memory.subsumes_trans hsubm' hmem) hsat
+            · constructor
+              · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+                have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+                rw [← hcs_eq, hcs'_eq]
+                exact hR0_sub
+              · intro m' hsubm' hkind hsep
+                have hs0 := Memory.subsumes_trans hsubm' hmem
+                have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
+                rw [hcs'_eq]
+                exact hbody m' hs0 hkind hsep
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
@@ -3139,7 +3150,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
   | modal cs Ψ T =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
-    obtain ⟨_, _, cs', _, _, hres, _, hR0_sub⟩ := ht
+    obtain ⟨_, _, cs', _, _, hres, _, _, _, hR0_sub, _⟩ := ht
     cases e with
     | boxed cs0 _ _ =>
       simp only [resolve, Option.some.injEq, Exp.boxed.injEq] at hres
@@ -3338,8 +3349,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       exact hbody m' CS hwf hsub hbdd
   | modal cs Ψ T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
-    obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hres, hwf_cs', hR0_sub⟩ := hdenot
-    refine ⟨hwf_e, ?_, cs', sepctx0, t0, hres, hwf_cs', ?_⟩
+    obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hres, hwf_cs',
+      hwf_sepctx, hsat_impl, hR0_sub, hbody⟩ := hdenot
+    refine ⟨hwf_e, ?_, cs', sepctx0, t0, hres, hwf_cs', hwf_sepctx, hsat_impl, ?_, ?_⟩
     · simp only [CaptureSet.subst]
       cases hwf_e with
       | wf_var hwf_var =>
@@ -3374,6 +3386,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
+    · exact hbody
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
@@ -3753,7 +3766,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
   case modal cs Ψ T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub⟩ := hdenot
+    obtain ⟨_, _, cs', _, t0, hres, _, _, _, hR0_sub, _⟩ := hdenot
     have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
     cases e with
     | boxed cs0 _ _ =>

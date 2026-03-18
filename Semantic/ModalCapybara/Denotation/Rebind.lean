@@ -249,6 +249,45 @@ theorem Rebind.hassepdom
     have := h m1 (f.var c1) m2 (f.var c2) hsub1' hsub2' hne'
     rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
 
+theorem rebind_satisfy_iff
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
+  (ρ : Rebind env1 f env2) (Ψ : SepCtx s1) (m : Memory) :
+  TypeEnv.Satisfy env1 Ψ m ↔ TypeEnv.Satisfy env2 (Ψ.rename f) m := by
+  constructor
+  · intro hsat
+    constructor
+    · intro C mode hhas
+      obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
+      simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C0)] using
+        hsat.wf C0 mode hhas0
+    · intro C mode hhas
+      obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
+      simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
+        hsat.kind C0 mode hhas0
+    · intro C1 m1 C2 m2 hdistinct
+      obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
+      simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
+        rebind_captureset_denot (ρ := ρ) (C := D2)] using
+        hsat.sep D1 m1 D2 m2 hdistinct0
+  · intro hsat
+    constructor
+    · intro C mode hhas
+      have hhas' := hhas.rename (f := f)
+      simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C)] using
+        hsat.wf (C.rename f) mode hhas'
+    · intro C mode hhas
+      have hhas' := hhas.rename (f := f)
+      simpa only [rebind_captureset_denot (ρ := ρ) (C := C)] using
+        hsat.kind (C.rename f) mode hhas'
+    · intro C1 m1 C2 m2 hdistinct
+      have hdistinct' := hdistinct.rename (f := f)
+      simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
+        rebind_captureset_denot (ρ := ρ) (C := C2)] using
+        hsat.sep (C1.rename f) m1 (C2.rename f) m2 hdistinct'
+
+set_option maxHeartbeats 1000000 in
+-- The mutual rebind denotation definitions trigger heavy reducibility checks after the
+-- modal branch started carrying higher-order assumption transport.
 mutual
 
 def rebind_val_denot
@@ -371,6 +410,25 @@ def rebind_val_denot
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]
     rw [← rebind_captureset_denot ρ cs]
+    constructor
+    · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
+        hsat, hR0_sub, hbody⟩
+      refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
+      · intro m' hsub hsat'
+        exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mpr hsat')
+      · intro m' hsub hkind hsep
+        let R0 := expand_captures m.heap cs0
+        have ih := rebind_exi_exp_denot ρ T R0
+        exact (ih m' _).mp (hbody m' hsub hkind hsep)
+    · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
+        hsat, hR0_sub, hbody⟩
+      refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
+      · intro m' hsub hsat'
+        exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mp hsat')
+      · intro m' hsub hkind hsep
+        let R0 := expand_captures m.heap cs0
+        have ih := rebind_exi_exp_denot ρ T R0
+        exact (ih m' _).mpr (hbody m' hsub hkind hsep)
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

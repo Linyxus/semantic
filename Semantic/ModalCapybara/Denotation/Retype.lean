@@ -400,6 +400,8 @@ def retype_val_denot
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
     rw [← retype_captureset_denot ρ cs]
+    -- TODO(ctx-lock): transport the modal assumption bridge through `Retype`.
+    sorry
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
