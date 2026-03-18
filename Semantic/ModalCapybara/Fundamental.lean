@@ -1356,7 +1356,8 @@ theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
   {e1 e2 : Exp s} {E : Ty .exi s}
   (ht1 : C1 # Γ ⊨ e1 : E)
-  (ht2 : C2 # Γ ⊨ e2 : E) :
+  (ht2 : C2 # Γ ⊨ e2 : E)
+  (hsep : SemSepCheck Γ C1 C2) :
   (C1 ∪ C2) # Γ ⊨ (.par e1 e2) : E := by
   intro env store hts
   simp [Exp.subst, Ty.exi_exp_denot]
@@ -1366,7 +1367,7 @@ theorem sem_typ_par
   simp [Ty.exi_exp_denot] at he1 he2
   have hni : CapabilitySet.Noninterference (CaptureSet.denot env C1 store)
                                            (CaptureSet.denot env C2 store) := by
-    sorry
+    exact hsep env store hts
   exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
 
 
@@ -3194,11 +3195,14 @@ theorem fundamental
       exact sem_typ_write
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
         (hy_ih (Exp.IsClosed.var Var.IsClosed.bound))
-  case par ht1_syn ht2_syn ht1_ih ht2_ih =>
+  case par ht1_syn ht2_syn hsep_syn ht1_ih ht2_ih =>
     -- Extract closedness of both branches
     cases hclosed_e with
     | par hclosed_e1 hclosed_e2 =>
-      exact sem_typ_par (ht1_ih hclosed_e1) (ht2_ih hclosed_e2)
+      exact sem_typ_par
+        (ht1_ih hclosed_e1)
+        (ht2_ih hclosed_e2)
+        (fundamental_sepcheck hsep_syn)
   case letin =>
     rename_i ht1_syn ht2_syn ht1_ih ht2_ih
     cases hclosed_e with
