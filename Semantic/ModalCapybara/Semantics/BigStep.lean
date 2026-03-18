@@ -30,6 +30,13 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
   Eval C m (e.subst (Subst.openCVar CS)) Q ->
   Eval C m (.capp (.free x) CS) Q
+| eval_wrap :
+  Q (.boxed cs Ψ e) m ->
+  Eval C m (.boxed cs Ψ e) Q
+| eval_unwrap {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
+  Eval C m e Q ->
+  Eval C m (.unwrap (.free x)) Q
 | eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   (hbool : Q1.is_bool_independent) ->
@@ -210,6 +217,21 @@ theorem eval_monotonic {m1 m2 : Memory}
           · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
             apply Subst.wf_openCVar
             exact hwf_cs)
+  case eval_wrap hQ =>
+    apply Eval.eval_wrap
+    exact hpred hwf hsub hQ
+  case eval_unwrap hx _ ih =>
+    cases hwf with
+    | wf_unwrap _ =>
+      obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
+      simp [Cell.subsumes] at hsub_v
+      subst hsub_v
+      apply Eval.eval_unwrap hx2
+      apply ih hpred hbool hsub
+      have hwf_boxed := Memory.wf_lookup hx
+      cases hwf_boxed with
+      | wf_boxed _ _ hwf_e =>
+        exact hwf_e
   case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
@@ -464,6 +486,13 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_capply hx _ ih =>
     apply Eval.eval_capply hx
     apply ih himp
+  case eval_wrap hQ =>
+    apply Eval.eval_wrap
+    apply himp _ _ _ hQ
+    apply Memory.subsumes_refl
+  case eval_unwrap hx _ ih =>
+    apply Eval.eval_unwrap hx
+    apply ih himp
   case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred hbool0 ih
@@ -553,6 +582,10 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     exact Eval.eval_tapply hlookup (ih hsub)
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
+  case eval_wrap hQ =>
+    exact Eval.eval_wrap hQ
+  case eval_unwrap hlookup _ ih =>
+    exact Eval.eval_unwrap hlookup (ih hsub)
   case eval_letin =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var
     apply Eval.eval_letin hpred_mono hbool_mono (ih_e1 hsub)
