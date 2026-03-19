@@ -109,6 +109,11 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subtyp (Γ,C<:cb2) T1 T2 ->
   ----------------------------------------
   Subtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
+| modal :
+  Subcapt Γ cs1 cs2 ->
+  Subtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ) ->
+  ----------------------------------------
+  Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
 | exi :
   Subtyp (Γ,C<:.unbound) T1 T2 ->
   --------------------------
