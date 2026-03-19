@@ -34,6 +34,8 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
     apply Step.step_tapply hlookup
   | step_capply hlookup =>
     apply Step.step_capply hlookup
+  | step_unwrap hlookup =>
+    apply Step.step_unwrap hlookup
   | step_cond_var_true hlookup =>
     apply Step.step_cond_var_true hlookup
   | step_cond_var_false hlookup =>
@@ -118,6 +120,7 @@ theorem step_memory_monotonic
   | step_invoke => exact Memory.subsumes_refl _
   | step_tapply => exact Memory.subsumes_refl _
   | step_capply => exact Memory.subsumes_refl _
+  | step_unwrap => exact Memory.subsumes_refl _
   | step_cond_var_true _ => exact Memory.subsumes_refl _
   | step_cond_var_false _ => exact Memory.subsumes_refl _
   | step_read _ _ _ => exact Memory.subsumes_refl _
@@ -301,6 +304,13 @@ theorem step_preserves_wf
       have hwf_subst := Subst.wf_openCVar hwf_CS
       -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
+  | step_unwrap hlookup =>
+    rename_i x cs Ψ R hv
+    have hwf_boxed : Exp.WfInHeap (.boxed cs Ψ e2) m1.heap := by
+      exact Memory.wf_lookup hlookup
+    cases hwf_boxed with
+    | wf_boxed _ _ hwf_body =>
+      exact hwf_body
   | step_cond_var_true hlookup =>
     have ⟨_, hwf_then, _⟩ := Exp.wf_inv_cond hwf
     exact hwf_then
@@ -465,6 +475,10 @@ theorem eval_ans_holds_post
   | eval_invoke => cases hans; rename_i hv; cases hv
   | eval_tapply => cases hans; rename_i hv; cases hv
   | eval_capply => cases hans; rename_i hv; cases hv
+  | eval_wrap hQ => exact hQ
+  | eval_unwrap =>
+    cases hans with
+    | is_val hv => cases hv
   | eval_letin => cases hans; rename_i hv; cases hv
   | eval_unpack => cases hans; rename_i hv; cases hv
   | eval_cond =>
@@ -508,6 +522,12 @@ theorem eval_implies_progressive
     -- e = .capp (.free x) CS, can step via step_capply
     apply IsProgressive.step
     apply Step.step_capply hlookup
+  | eval_wrap hQ =>
+    apply IsProgressive.done
+    exact Exp.IsAns.is_val Exp.IsVal.boxed
+  | eval_unwrap hlookup eval_body ih =>
+    apply IsProgressive.step
+    exact Step.step_unwrap hlookup
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 _ _ =>
     -- e = .letin e1 e2
     -- By IH, e1 is progressive
@@ -725,6 +745,14 @@ theorem step_preserves_eval
       -- Rewrite using the body equality
       rw [←heq_body]
       -- Now we have the same expression that was already evaluated
+      exact heval
+  | eval_wrap hQ =>
+    cases hstep
+  | eval_unwrap hlookup heval ih =>
+    cases hstep with
+    | step_unwrap hlookup' =>
+      have heq := Memory.lookup_deterministic hlookup hlookup'
+      cases heq
       exact heval
   | eval_letin hpred hbool heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
     -- e1 = .letin e1' e2'
@@ -1470,6 +1498,9 @@ theorem step_masked
   | step_capply hlookup =>
     apply Step.step_capply
     exact masked_lookup_val hlookup
+  | step_unwrap hlookup =>
+    apply Step.step_unwrap
+    exact masked_lookup_val hlookup
   | step_cond_var_true hlookup =>
     apply Step.step_cond_var_true
     exact masked_lookup_val hlookup
@@ -1552,6 +1583,10 @@ theorem eval_exists_answer
   | eval_tapply _ _ ih =>
     exact ih
   | eval_capply _ _ ih =>
+    exact ih
+  | eval_wrap hQ =>
+    exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.boxed, Memory.subsumes_refl _, hQ⟩
+  | eval_unwrap _ _ ih =>
     exact ih
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
     obtain ⟨m1', v1, hans1, hsub1, hQ1⟩ := ih_e1
@@ -1647,6 +1682,11 @@ theorem eval_reduce_exists_answer
   | eval_capply hlookup _ ih =>
     obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
     exact ⟨m2, e2, Reduce.step (Step.step_capply hlookup) hred, hans, hQ⟩
+  | eval_wrap hQ =>
+    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_val Exp.IsVal.boxed, hQ⟩
+  | eval_unwrap hlookup _ ih =>
+    obtain ⟨m2, e2, hred, hans, hQ⟩ := ih
+    exact ⟨m2, e2, Reduce.step (Step.step_unwrap hlookup) hred, hans, hQ⟩
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var =>
     rename_i C_case _ _ e2_cont _ _
     -- Get reduction of e1 to an answer, WITH postcondition
@@ -1838,6 +1878,7 @@ theorem step_immutable {C : CapabilitySet}
   | step_invoke _ _ _ => exact hinit
   | step_tapply _ => exact hinit
   | step_capply _ => exact hinit
+  | step_unwrap _ => exact hinit
   | step_cond_var_true _ => exact hinit
   | step_cond_var_false _ => exact hinit
   | step_read _ _ _ => exact hinit

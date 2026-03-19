@@ -22,6 +22,7 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
+-- Boxed terms are values, so wrap has no reduction rule; only unwrap steps.
 | step_unwrap :
   m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
   Step C m (.unwrap (.free x)) m e
