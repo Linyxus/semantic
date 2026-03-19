@@ -919,25 +919,19 @@ theorem sem_typ_wrap
               (cs.subst (Subst.from_TypeEnv env)).ground_denot store ⊆
                 (cs.subst (Subst.from_TypeEnv env)).ground_denot store)
         · intro m' hsub hkind hsep
-          have hwf_sepctx : SepCtx.WfInHeap (Ψ.subst (Subst.from_TypeEnv env)) m'.heap := by
-            apply SepCtx.wf_monotonic hsub
-            apply SepCtx.wf_subst
-            · exact SepCtx.wf_of_closed hclosed_Ψ
-            · exact from_TypeEnv_wf_in_heap hts
-          have hsat0 : TypeEnv.empty.Satisfy (Ψ.subst (Subst.from_TypeEnv env)) m' := by
+          have hsat_Ψ : env.Satisfy Ψ m' := by
             constructor
             · intro C mode hhas
-              simpa [CaptureSet.subst_id, Subst.from_TypeEnv_empty] using
-                (SepCtx.WfInHeap.of_has hwf_sepctx hhas)
+              apply CaptureSet.wf_subst
+              · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
+              · exact from_TypeEnv_wf_in_heap (env_typing_monotonic hts hsub)
             · intro C mode hhas
-              simpa [CaptureSet.denot, CaptureSet.subst_id, Subst.from_TypeEnv_empty] using
-                (hkind C mode hhas)
+              exact hkind C mode hhas
             · intro C1 m1 C2 m2 hdistinct
-              simpa [CaptureSet.denot, CaptureSet.subst_id, Subst.from_TypeEnv_empty] using
-                (hsep C1 m1 C2 m2 hdistinct)
+              exact hsep C1 m1 C2 m2 hdistinct
           have henv_lock : EnvTyping (Γ.push_lock Ψ) (env.extend_lock) m' := by
             constructor
-            · exact (TypeEnv.satisfy_subst_iff (env := env) (Ψ := Ψ) (m := m')).mpr hsat0
+            · exact hsat_Ψ
             · exact env_typing_monotonic hts hsub
           have htyped := ht (env.extend_lock) m' henv_lock
           have hsubst :
@@ -2546,6 +2540,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
 lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi s}
   (hcs : SemSubcapt Γ cs1 cs2)
   (hcs2_closed : CaptureSet.IsClosed cs2)
+  (hΨ_closed : SepCtx.IsClosed Ψ)
   (hT : SemSubtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ)) :
   SemSubtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2) := by
   simp [SemSubtyp]
@@ -2579,7 +2574,15 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
         have htyping_m'' : EnvTyping Γ env m'' := by
           exact env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
         have hsat_Ψ : env.Satisfy Ψ m'' := by
-          sorry
+          constructor
+          · intro C mode hhas
+            apply CaptureSet.wf_subst
+            · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ_closed) hhas
+            · exact from_TypeEnv_wf_in_heap htyping_m''
+          · intro C mode hhas
+            exact hkind C mode hhas
+          · intro C1 m1 C2 m2 hdistinct
+            exact hsep C1 m1 C2 m2 hdistinct
         have htyping_lock : EnvTyping (Γ.push_lock Ψ) (env.extend_lock) m'' := by
           constructor
           · exact hsat_Ψ
@@ -2668,12 +2671,13 @@ theorem fundamental_subtyp
     · exact ih_body hT1_body_closed hT2_body_closed
   case modal hsub_cs hsub_body ih_body =>
     cases hT1 with
-    | modal _ _ hE1_closed =>
+    | modal _ hΨ_closed hE1_closed =>
       cases hT2 with
       | modal hcs2_closed _ hE2_closed =>
         apply sem_subtyp_modal
         · exact fundamental_subcapt hsub_cs
         · exact hcs2_closed
+        · exact hΨ_closed
         · exact ih_body (Ty.rename_closed hE1_closed) (Ty.rename_closed hE2_closed)
   case exi hsub_body ih_body =>
     -- T1 = (.exi T1_body), T2 = (.exi T2_body)
@@ -3335,21 +3339,13 @@ theorem sem_typ_unwrap
       exact fundamental_haskind (hkind C mode hhas) env store hts
     · intro C1 m1 C2 m2 hdistinct
       exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) env store hts
-  have hsat0 : TypeEnv.empty.Satisfy sepctx0 store :=
-    hsat_impl store (Memory.subsumes_refl store) hsat_Ψ
   have hbody_eval :
       Eval (expand_captures store.heap cs0) store t0
         (Denot.as_mpost (Ty.exi_val_denot env E)) := by
     simpa [Ty.exi_exp_denot] using
       hbody store (Memory.subsumes_refl store)
-        (fun C mode hhas =>
-          by
-            simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-              hsat0.kind C mode hhas)
-        (fun C1 m1 C2 m2 hdistinct =>
-          by
-            simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-              hsat0.sep C1 m1 C2 m2 hdistinct)
+        (fun C mode hhas => hsat_Ψ.kind C mode hhas)
+        (fun C1 m1 C2 m2 hdistinct => hsat_Ψ.sep C1 m1 C2 m2 hdistinct)
   simp [Ty.exi_exp_denot, Exp.subst, Var.subst, Subst.from_TypeEnv]
   simp [resolve] at hres
   cases hcell : store.heap (env.lookup_var x).1 with
