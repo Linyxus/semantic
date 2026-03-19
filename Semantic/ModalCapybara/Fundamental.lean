@@ -2546,7 +2546,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
 lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi s}
   (hcs : SemSubcapt Γ cs1 cs2)
   (hcs2_closed : CaptureSet.IsClosed cs2)
-  (hT : SemSubtyp Γ E1 E2) :
+  (hT : SemSubtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ)) :
   SemSubtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2) := by
   simp [SemSubtyp]
   intro env H htyping
@@ -2572,12 +2572,36 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
           _ ⊆ cs2.denot env m' := hcs_sem
       · intro m'' hsubm'' hkind hsep
         have heval1 := hbody m'' hsubm'' hkind hsep
-        have hT_sem := hT env H htyping
+        have heval1_eval :
+            Eval (expand_captures m'.heap cs0) m'' t0
+              (Ty.exi_val_denot env E1).as_mpost := by
+          simpa [Ty.exi_exp_denot] using heval1
+        have htyping_m'' : EnvTyping Γ env m'' := by
+          exact env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
+        have hsat_Ψ : env.Satisfy Ψ m'' := by
+          sorry
+        have htyping_lock : EnvTyping (Γ.push_lock Ψ) (env.extend_lock) m'' := by
+          constructor
+          · exact hsat_Ψ
+          · exact htyping_m''
+        have hT_sem := hT (env.extend_lock) m'' htyping_lock
         have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
-        have hsub_H_m'' := Memory.subsumes_trans hsubm'' hsubsumes
-        unfold Ty.exi_exp_denot at heval1 ⊢
-        apply eval_post_monotonic_general _ heval1
-        exact Mpost.entails_after_subsumes himply_entails hsub_H_m''
+        have heval1' :
+            Eval (expand_captures m'.heap cs0) m'' t0
+              (Ty.exi_val_denot (env.extend_lock) (E1.rename Rename.succ)).as_mpost := by
+          apply eval_post_monotonic _ heval1_eval
+          apply Denot.imply_to_entails
+          exact (Denot.equiv_to_imply (lweaken_exi_val_denot (env := env) (T := E1))).1
+        have heval2' :
+            Eval (expand_captures m'.heap cs0) m'' t0
+              (Ty.exi_val_denot (env.extend_lock) (E2.rename Rename.succ)).as_mpost := by
+          apply eval_post_monotonic_general _ heval1'
+          exact himply_entails
+        simpa [Ty.exi_exp_denot] using
+          (eval_post_monotonic
+            ((Denot.imply_to_entails _ _
+              ((Denot.equiv_to_imply (lweaken_exi_val_denot (env := env) (T := E2))).2)))
+            heval2')
 
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
@@ -2650,7 +2674,7 @@ theorem fundamental_subtyp
         apply sem_subtyp_modal
         · exact fundamental_subcapt hsub_cs
         · exact hcs2_closed
-        · exact ih_body hE1_closed hE2_closed
+        · exact ih_body (Ty.rename_closed hE1_closed) (Ty.rename_closed hE2_closed)
   case exi hsub_body ih_body =>
     -- T1 = (.exi T1_body), T2 = (.exi T2_body)
     -- hsub_body : Subtyp (Γ,C<:.epsilon) T1_body T2_body
