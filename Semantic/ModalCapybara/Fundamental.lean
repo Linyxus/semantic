@@ -2543,6 +2543,42 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
             apply eval_post_monotonic_general _ heval1
             exact himply_entails
 
+lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi s}
+  (hcs : SemSubcapt Γ cs1 cs2)
+  (hcs2_closed : CaptureSet.IsClosed cs2)
+  (hT : SemSubtyp Γ E1 E2) :
+  SemSubtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2) := by
+  simp [SemSubtyp]
+  intro env H htyping
+  simp [Denot.ImplyAfter]
+  intro m' hsubsumes e h_modal
+  simp [Ty.val_denot] at h_modal ⊢
+  obtain ⟨hwf_e, hcs1_wf, cs0, sepctx0, t0, hresolve, hcs0_wf, hsepctx0_wf,
+    hsat_impl, hR0_sub, hbody⟩ := h_modal
+  constructor
+  · exact hwf_e
+  · constructor
+    · have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
+        apply CaptureSet.wf_subst
+        · exact CaptureSet.wf_of_closed hcs2_closed
+        · exact from_TypeEnv_wf_in_heap htyping
+      exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
+    · refine ⟨cs0, sepctx0, t0, hresolve, hcs0_wf, hsepctx0_wf, ?_, ?_, ?_⟩
+      · intro m'' hsubm'' hsat
+        exact hsat_impl m'' hsubm'' hsat
+      · have hcs_sem := hcs env m' (env_typing_monotonic htyping hsubsumes)
+        calc expand_captures m'.heap cs0
+          _ ⊆ cs1.denot env m' := hR0_sub
+          _ ⊆ cs2.denot env m' := hcs_sem
+      · intro m'' hsubm'' hkind hsep
+        have heval1 := hbody m'' hsubm'' hkind hsep
+        have hT_sem := hT env H htyping
+        have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+        have hsub_H_m'' := Memory.subsumes_trans hsubm'' hsubsumes
+        unfold Ty.exi_exp_denot at heval1 ⊢
+        apply eval_post_monotonic_general _ heval1
+        exact Mpost.entails_after_subsumes himply_entails hsub_H_m''
+
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
   (hsub : Subtyp Γ T1 T2) :
@@ -2606,6 +2642,15 @@ theorem fundamental_subtyp
     · exact fundamental_subcapt hsub_cs
     · exact hcs2_closed
     · exact ih_body hT1_body_closed hT2_body_closed
+  case modal hsub_cs hsub_body ih_body =>
+    cases hT1 with
+    | modal _ _ hE1_closed =>
+      cases hT2 with
+      | modal hcs2_closed _ hE2_closed =>
+        apply sem_subtyp_modal
+        · exact fundamental_subcapt hsub_cs
+        · exact hcs2_closed
+        · exact ih_body hE1_closed hE2_closed
   case exi hsub_body ih_body =>
     -- T1 = (.exi T1_body), T2 = (.exi T2_body)
     -- hsub_body : Subtyp (Γ,C<:.epsilon) T1_body T2_body
