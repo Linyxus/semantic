@@ -520,7 +520,21 @@ def retype_val_denot
       · intro m' hsub hkind hsep
         let R0 := expand_captures m.heap cs0
         have ih := retype_exi_exp_denot ρ T R0
-        exact (ih m' _).mp (hbody m' hsub hkind hsep)
+        have hkind' :
+            ∀ (C : CaptureSet s1) (mode : Mutability),
+              Ψ.Has C mode -> CapabilitySet.HasKind (C.denot env1 m') mode := by
+          intro C mode hhas
+          simpa only [retype_captureset_denot (ρ := ρ) (C := C)] using
+            hkind (C.subst σ) mode (hhas.subst_retype)
+        have hsep' :
+            ∀ (C1 : CaptureSet s1) (m1 : Mutability) (C2 : CaptureSet s1) (m2 : Mutability),
+              Ψ.HasTwoDistinct C1 m1 C2 m2 ->
+              CapabilitySet.Noninterference (C1.denot env1 m') (C2.denot env1 m') := by
+          intro C1 m1 C2 m2 hdistinct
+          simpa only [retype_captureset_denot (ρ := ρ) (C := C1),
+            retype_captureset_denot (ρ := ρ) (C := C2)] using
+              hsep (C1.subst σ) m1 (C2.subst σ) m2 (hdistinct.subst_retype)
+        exact (ih m' _).mp (hbody m' hsub hkind' hsep')
     · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
         hsat, hR0_sub, hbody⟩
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
@@ -529,7 +543,23 @@ def retype_val_denot
       · intro m' hsub hkind hsep
         let R0 := expand_captures m.heap cs0
         have ih := retype_exi_exp_denot ρ T R0
-        exact (ih m' _).mpr (hbody m' hsub hkind hsep)
+        have hkind' :
+            ∀ (C : CaptureSet s2) (mode : Mutability),
+              (Ψ.subst σ).Has C mode -> CapabilitySet.HasKind (C.denot env2 m') mode := by
+          intro C mode hhas
+          obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.subst_inv_retype hhas
+          simpa only [retype_captureset_denot (ρ := ρ) (C := C0)] using
+            hkind C0 mode hhas0
+        have hsep' :
+            ∀ (C1 : CaptureSet s2) (m1 : Mutability) (C2 : CaptureSet s2) (m2 : Mutability),
+              (Ψ.subst σ).HasTwoDistinct C1 m1 C2 m2 ->
+              CapabilitySet.Noninterference (C1.denot env2 m') (C2.denot env2 m') := by
+          intro C1 m1 C2 m2 hdistinct
+          obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.subst_inv_retype hdistinct
+          simpa only [retype_captureset_denot (ρ := ρ) (C := D1),
+            retype_captureset_denot (ρ := ρ) (C := D2)] using
+              hsep D1 m1 D2 m2 hdistinct0
+        exact (ih m' _).mpr (hbody m' hsub hkind' hsep')
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
