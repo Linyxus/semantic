@@ -498,11 +498,11 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (m' : Memory),
       m'.subsumes m ->
      (∀ C mode,
-        sepctx0.Has C mode ->
-        CapabilitySet.HasKind (C.ground_denot m') mode) ->
+        Ψ.Has C mode ->
+        CapabilitySet.HasKind (C.denot env m') mode) ->
      (∀ C1 m1 C2 m2,
-        sepctx0.HasTwoDistinct C1 m1 C2 m2 ->
-        CapabilitySet.Noninterference (C1.ground_denot m') (C2.ground_denot m')) ->
+        Ψ.HasTwoDistinct C1 m1 C2 m2 ->
+        CapabilitySet.Noninterference (C1.denot env m') (C2.denot env m')) ->
       Ty.exi_exp_denot env E R0 m' t0)
 
 /-- Value denotation for existential types. -/
