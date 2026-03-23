@@ -221,8 +221,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | capp {D : CaptureSet s} {I : CaptureSet s} :
   D.IsClosed ->
   HasType {} Γ (.var x) (.typ (.cpoly (.bound D) (.var .epsilon x) T)) ->
-  (Ty.cpoly (.bound D) (.var .epsilon x) T).interfere_set = some I ->
-  SepCheck Γ D I ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | unwrap :
