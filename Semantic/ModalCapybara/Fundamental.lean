@@ -3311,6 +3311,25 @@ theorem fundamental_sepcheck
     intro env H henv
     exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
 
+theorem sem_satisfy
+  (hclosed_Ψ : Ψ.IsClosed)
+  (hsatisfy : Satisfy Γ Ψ) :
+  ∀ env m,
+    EnvTyping Γ env m ->
+    env.Satisfy Ψ m := by
+  intro env m henv
+  cases hsatisfy with
+  | satisfy hkind hsep =>
+    constructor
+    · intro C mode hhas
+      apply CaptureSet.wf_subst
+      · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
+      · exact from_TypeEnv_wf_in_heap henv
+    · intro C mode hhas
+      exact fundamental_haskind (hkind C mode hhas) env m henv
+    · intro C1 m1 C2 m2 hdistinct
+      exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) env m henv
+
 theorem sem_typ_unwrap
   {x : BVar s .var} {Ψ : SepCtx s} {E : Ty .exi s}
   (hclosed_Ψ : Ψ.IsClosed)
@@ -3319,8 +3338,6 @@ theorem sem_typ_unwrap
   (hsatisfy : Satisfy Γ Ψ) :
   (CaptureSet.var .epsilon (.bound x)) # Γ ⊨ Exp.unwrap (.bound x) : E := by
   intro env store hts
-  cases hsatisfy with
-  | satisfy hkind hsep =>
   have hmodal_exp :
       Ty.exi_exp_denot env (.typ (.modal (.var .epsilon (.bound x)) Ψ E))
         (CaptureSet.denot env {} store) store
@@ -3330,16 +3347,7 @@ theorem sem_typ_unwrap
   simp [Ty.exi_val_denot, Ty.val_denot] at hmodal
   obtain ⟨_hwf_e, _hwf_cs, cs0, sepctx0, t0, hres, _hwf_cs0,
     _hwf_sepctx0, hsat_impl, hR0_sub, hbody⟩ := hmodal
-  have hsat_Ψ : env.Satisfy Ψ store := by
-    constructor
-    · intro C mode hhas
-      apply CaptureSet.wf_subst
-      · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
-      · exact from_TypeEnv_wf_in_heap hts
-    · intro C mode hhas
-      exact fundamental_haskind (hkind C mode hhas) env store hts
-    · intro C1 m1 C2 m2 hdistinct
-      exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) env store hts
+  have hsat_Ψ : env.Satisfy Ψ store := sem_satisfy hclosed_Ψ hsatisfy env store hts
   have hbody_eval :
       Eval (expand_captures store.heap cs0) store t0
         (Denot.as_mpost (Ty.exi_val_denot env E)) := by
