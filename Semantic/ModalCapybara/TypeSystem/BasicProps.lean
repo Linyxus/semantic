@@ -281,8 +281,7 @@ theorem HasType.use_set_is_closed
   case tapp =>
     rename_i _ ht_x _
     exact HasType.typed_var_capture_closed ht_x
-  case capp =>
-    rename_i _ _ ht_x _ _ _
+  case capp _ ht_x _ =>
     exact HasType.typed_var_capture_closed ht_x
   case unwrap ht_x _ _ =>
     exact HasType.typed_var_capture_closed ht_x
@@ -474,7 +473,7 @@ theorem HasType.type_is_closed
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openTVar S)).IsClosed
     exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
-  case capp hD_closed _ _ _ ih =>
+  case capp hD_closed _ ih =>
     rename_i x D T
     -- ih : (.typ (.cpoly m (.var .epsilon x) T)).IsClosed
     -- hD_closed : D.IsClosed

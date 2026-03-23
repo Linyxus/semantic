@@ -1181,12 +1181,9 @@ theorem sem_typ_capp
   {x : BVar s .var}
   {T : Ty .exi (s,C)}
   {D : CaptureSet s}
-  {I : CaptureSet s}
   (hD_closed : D.IsClosed)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cpoly (.bound D) (.var .epsilon (.bound x)) T))
-  (_hI : (Ty.cpoly (.bound D) (.var .epsilon (.bound x)) T).interfere_set = some I)
-  (_hsep : SemSepCheck Γ D I) :
+    .typ (.cpoly (.bound D) (.var .epsilon (.bound x)) T)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
   intro env store hts
 
@@ -3446,7 +3443,7 @@ theorem fundamental
       -- Apply sem_typ_tapp theorem
       exact sem_typ_tapp ih_x
   case capp =>
-    rename_i hD_closed hx hI hsep ih_x
+    rename_i hD_closed hx ih_x
     -- From closedness of (capp x D), extract that x and D are closed
     cases hclosed_e with
     | capp hx_closed hD_closed_exp =>
@@ -3455,7 +3452,7 @@ theorem fundamental
       -- Apply IH to get semantic typing for the variable
       have hx := ih_x (Exp.IsClosed.var Var.IsClosed.bound)
       -- Apply sem_typ_capp theorem
-      exact sem_typ_capp hD_closed_exp hx hI (fundamental_sepcheck hsep)
+      exact sem_typ_capp hD_closed_exp hx
   case unwrap =>
     rename_i x Ψ E hx hsatisfy ih_x
     have hx_closed := HasType.typed_var_closed hx
