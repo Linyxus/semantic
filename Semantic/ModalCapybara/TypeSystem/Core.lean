@@ -153,7 +153,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | modal_modal :
   Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
   ----------------------------------
-  Subtyp Γ (.modal cs Ψ1 E1) (.modal cs Ψ2 E2)
+  Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
 | exi :
   Subtyp (Γ,C<:.unbound) T1 T2 ->
   --------------------------
