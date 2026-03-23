@@ -880,6 +880,32 @@ theorem Subst.from_TypeEnv_lweaken {env : TypeEnv s} :
     simp [Subst.comp, Subst.from_TypeEnv, Rename.asSubst, CaptureSet.subst,
       TypeEnv.extend_lock, Rename.succ, TypeEnv.lookup_cvar]
 
+theorem TypeEnv.satisfy_lweaken_iff
+    {env : TypeEnv s} {Ψ : SepCtx s} {m : Memory} :
+    (env.extend_lock).Satisfy (Ψ.rename Rename.succ) m ↔ env.Satisfy Ψ m := by
+  have hsubst :
+      (Ψ.rename Rename.succ).subst (Subst.from_TypeEnv (env.extend_lock)) =
+        Ψ.subst (Subst.from_TypeEnv env) := by
+    calc
+      (Ψ.rename Rename.succ).subst (Subst.from_TypeEnv (env.extend_lock))
+        = (Ψ.subst Rename.succ.asSubst).subst (Subst.from_TypeEnv (env.extend_lock)) := by
+            rw [SepCtx.subst_asSubst]
+      _ = Ψ.subst (Rename.succ.asSubst.comp (Subst.from_TypeEnv (env.extend_lock))) := by
+            rw [SepCtx.subst_comp]
+      _ = Ψ.subst (Subst.from_TypeEnv env) := by
+            rw [Subst.from_TypeEnv_lweaken]
+  constructor
+  · intro h
+    have h' := (TypeEnv.satisfy_subst_iff
+      (env := env.extend_lock) (Ψ := Ψ.rename Rename.succ) (m := m)).mp h
+    rw [hsubst] at h'
+    exact (TypeEnv.satisfy_subst_iff (env := env) (Ψ := Ψ) (m := m)).mpr h'
+  · intro h
+    have h' := (TypeEnv.satisfy_subst_iff (env := env) (Ψ := Ψ) (m := m)).mp h
+    rw [← hsubst] at h'
+    exact (TypeEnv.satisfy_subst_iff
+      (env := env.extend_lock) (Ψ := Ψ.rename Rename.succ) (m := m)).mpr h'
+
 /-- Modal introduction as a semantic typing rule. -/
 theorem sem_typ_wrap
   {cs : CaptureSet s} {Ψ : SepCtx s} {e : Exp s} {E : Ty .exi s}
@@ -1918,6 +1944,104 @@ theorem fundamental_haskind
   | ro =>
     simpa [hmode] using fundamental_haskind_ro hkind hmode
 
+theorem sem_sepcheck_symm
+  (ih : SemSepCheck Γ C1 C2) :
+  SemSepCheck Γ C2 C1 := by
+  intro env H hts
+  exact CapabilitySet.Noninterference.ni_symm (ih env H hts)
+
+theorem sem_sepcheck_union
+  (ih1 : SemSepCheck Γ C1 C3)
+  (ih2 : SemSepCheck Γ C2 C3) :
+  SemSepCheck Γ (C1 ∪ C2) C3 := by
+  intro env H hts
+  have hni1 := ih1 env H hts
+  have hni2 := ih2 env H hts
+  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+  exact CapabilitySet.Noninterference.ni_union hni1 hni2
+
+theorem CapabilitySet.noninterference_of_ro_ro
+  (hk1 : CapabilitySet.HasKind C1 .ro)
+  (hk2 : CapabilitySet.HasKind C2 .ro) :
+  CapabilitySet.Noninterference C1 C2 := by
+  induction C1 with
+  | empty => exact .ni_empty
+  | cap m l =>
+    cases hk1 with
+    | ro_cap =>
+      induction C2 with
+      | empty => exact .ni_symm .ni_empty
+      | cap m' l' =>
+        cases hk2 with
+        | ro_cap => exact .ni_ro
+      | union C2a C2b ih2a ih2b =>
+        cases hk2 with
+        | ro_union hk2a hk2b =>
+          have hni2a := ih2a hk2a
+          have hni2b := ih2b hk2b
+          exact .ni_symm (.ni_union (.ni_symm hni2a) (.ni_symm hni2b))
+  | union C1a C1b ih1a ih1b =>
+    cases hk1 with
+    | ro_union hk1a hk1b =>
+      have hni1a := ih1a hk1a
+      have hni1b := ih1b hk1b
+      exact .ni_union hni1a hni1b
+
+theorem sem_sepcheck_empty :
+  SemSepCheck Γ {} C := by
+  intro env H hts
+  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
+  exact .ni_empty
+
+theorem sem_sepcheck_ro
+  (hk1 : HasKind Γ C1 .ro)
+  (hk2 : HasKind Γ C2 .ro) :
+  SemSepCheck Γ C1 C2 := by
+  intro env H hts
+  have hsem_k1 := fundamental_haskind hk1 env H hts
+  have hsem_k2 := fundamental_haskind hk2 env H hts
+  exact CapabilitySet.noninterference_of_ro_ro hsem_k1 hsem_k2
+
+theorem fundamental_sepcheck
+  (hsep : SepCheck Γ C1 C2) :
+  SemSepCheck Γ C1 C2 := by
+  induction hsep with
+  | sep_symm _ ih =>
+    exact sem_sepcheck_symm ih
+  | sep_union _ _ ih1 ih2 =>
+    exact sem_sepcheck_union ih1 ih2
+  | sep_empty =>
+    exact sem_sepcheck_empty
+  | sep_ro hk1 hk2 =>
+    exact sem_sepcheck_ro hk1 hk2
+  | sep_sc _ hsub ih =>
+    intro env H henv
+    exact CapabilitySet.Noninterference.subset_left
+      (ih env H henv)
+      (fundamental_subcapt hsub env H henv)
+  | sep_lock hlock hdistinct =>
+    intro env H henv
+    exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
+
+theorem sem_satisfy
+  (hclosed_Ψ : Ψ.IsClosed)
+  (hsatisfy : Satisfy Γ Ψ) :
+  ∀ env m,
+    EnvTyping Γ env m ->
+    env.Satisfy Ψ m := by
+  intro env m henv
+  cases hsatisfy with
+  | satisfy hkind hsep =>
+    constructor
+    · intro C mode hhas
+      apply CaptureSet.wf_subst
+      · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
+      · exact from_TypeEnv_wf_in_heap henv
+    · intro C mode hhas
+      exact fundamental_haskind (hkind C mode hhas) env m henv
+    · intro C1 m1 C2 m2 hdistinct
+      exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) env m henv
+
 
 lemma sem_subtyp_top {T : Ty .capt s}
   (hpure : T.IsPureType) :
@@ -2603,6 +2727,62 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
               ((Denot.equiv_to_imply (lweaken_exi_val_denot (env := env) (T := E2))).2)))
             heval2')
 
+lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .exi s}
+  (hΨ1_closed : SepCtx.IsClosed Ψ1)
+  (hΨ2_closed : SepCtx.IsClosed Ψ2)
+  (hsat : Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ)) :
+  SemSubtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E) := by
+  simp [SemSubtyp]
+  intro env H htyping
+  simp [Denot.ImplyAfter]
+  intro m' hsubsumes e h_modal
+  simp [Ty.val_denot] at h_modal ⊢
+  obtain ⟨hwf_e, hcs_wf, cs0, sepctx0, t0, hresolve, hcs0_wf, hsepctx0_wf,
+    hsat_impl, hR0_sub, hbody⟩ := h_modal
+  constructor
+  · exact hwf_e
+  · constructor
+    · exact hcs_wf
+    · refine ⟨cs0, sepctx0, t0, hresolve, hcs0_wf, hsepctx0_wf, ?_, hR0_sub, ?_⟩
+      · intro m'' hsubm'' hsat_Ψ2
+        have htyping_m'' : EnvTyping Γ env m'' := by
+          exact env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
+        have htyping_lock : EnvTyping (Γ.push_lock Ψ2) (env.extend_lock) m'' := by
+          constructor
+          · exact hsat_Ψ2
+          · exact htyping_m''
+        have hsat_ren : (env.extend_lock).Satisfy (Ψ1.rename Rename.succ) m'' := by
+          exact sem_satisfy (SepCtx.rename_closed hΨ1_closed) hsat
+            (env.extend_lock) m'' htyping_lock
+        have hsat_Ψ1 : env.Satisfy Ψ1 m'' := by
+          exact (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
+        exact hsat_impl m'' hsubm'' hsat_Ψ1
+      · intro m'' hsubm'' hkind hsep
+        have htyping_m'' : EnvTyping Γ env m'' := by
+          exact env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
+        have hsat_Ψ2 : env.Satisfy Ψ2 m'' := by
+          constructor
+          · intro C mode hhas
+            apply CaptureSet.wf_subst
+            · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ2_closed) hhas
+            · exact from_TypeEnv_wf_in_heap htyping_m''
+          · intro C mode hhas
+            exact hkind C mode hhas
+          · intro C1 m1 C2 m2 hdistinct
+            exact hsep C1 m1 C2 m2 hdistinct
+        have htyping_lock : EnvTyping (Γ.push_lock Ψ2) (env.extend_lock) m'' := by
+          constructor
+          · exact hsat_Ψ2
+          · exact htyping_m''
+        have hsat_ren : (env.extend_lock).Satisfy (Ψ1.rename Rename.succ) m'' := by
+          exact sem_satisfy (SepCtx.rename_closed hΨ1_closed) hsat
+            (env.extend_lock) m'' htyping_lock
+        have hsat_Ψ1 : env.Satisfy Ψ1 m'' := by
+          exact (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
+        exact hbody m'' hsubm''
+          (fun C mode hhas => hsat_Ψ1.kind C mode hhas)
+          (fun C1 m1 C2 m2 hdistinct => hsat_Ψ1.sep C1 m1 C2 m2 hdistinct)
+
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
   (hsub : Subtyp Γ T1 T2) :
@@ -2676,6 +2856,12 @@ theorem fundamental_subtyp
         · exact hcs2_closed
         · exact hΨ_closed
         · exact ih_body (Ty.rename_closed hE1_closed) (Ty.rename_closed hE2_closed)
+  case modal_modal hsat =>
+    cases hT1 with
+    | modal _ hΨ1_closed _ =>
+      cases hT2 with
+      | modal _ hΨ2_closed _ =>
+        exact sem_subtyp_modal_modal hΨ1_closed hΨ2_closed hsat
   case exi hsub_body ih_body =>
     -- T1 = (.exi T1_body), T2 = (.exi T2_body)
     -- hsub_body : Subtyp (Γ,C<:.epsilon) T1_body T2_body
@@ -3164,12 +3350,6 @@ theorem peaks_applyRO_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
   rw [<-CaptureSet.applyMut_ro, peaks_applyMut_comm]
   exact hcov.applyMut_mono
 
-theorem sem_sepcheck_symm
-  (ih : SemSepCheck Γ C1 C2) :
-  SemSepCheck Γ C2 C1 := by
-  intro env H hts
-  exact CapabilitySet.Noninterference.ni_symm (ih env H hts)
-
 theorem ground_denot_applyMut_comm {C : CaptureSet {}} {m : Memory} {mu : Mutability} :
   (C.applyMut mu).ground_denot m = (C.ground_denot m).applyMut mu := by
   cases mu with
@@ -3178,60 +3358,6 @@ theorem ground_denot_applyMut_comm {C : CaptureSet {}} {m : Memory} {mu : Mutabi
   | ro =>
     simp only [CaptureSet.applyMut, CapabilitySet.applyMut]
     exact ground_denot_applyRO_comm.symm
-
-theorem sem_sepcheck_union
-  (ih1 : SemSepCheck Γ C1 C3)
-  (ih2 : SemSepCheck Γ C2 C3) :
-  SemSepCheck Γ (C1 ∪ C2) C3 := by
-  intro env H hts
-  have hni1 := ih1 env H hts
-  have hni2 := ih2 env H hts
-  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
-  exact CapabilitySet.Noninterference.ni_union hni1 hni2
-
--- Helper: two capability sets with kind .ro are non-interfering
-theorem CapabilitySet.noninterference_of_ro_ro
-  (hk1 : CapabilitySet.HasKind C1 .ro)
-  (hk2 : CapabilitySet.HasKind C2 .ro) :
-  CapabilitySet.Noninterference C1 C2 := by
-  induction C1 with
-  | empty => exact .ni_empty
-  | cap m l =>
-    cases hk1 with
-    | ro_cap =>
-      -- C1 = .cap .ro l, need to show Noninterference (.cap .ro l) C2
-      induction C2 with
-      | empty => exact .ni_symm .ni_empty
-      | cap m' l' =>
-        cases hk2 with
-        | ro_cap => exact .ni_ro
-      | union C2a C2b ih2a ih2b =>
-        cases hk2 with
-        | ro_union hk2a hk2b =>
-          have hni2a := ih2a hk2a
-          have hni2b := ih2b hk2b
-          exact .ni_symm (.ni_union (.ni_symm hni2a) (.ni_symm hni2b))
-  | union C1a C1b ih1a ih1b =>
-    cases hk1 with
-    | ro_union hk1a hk1b =>
-      have hni1a := ih1a hk1a
-      have hni1b := ih1b hk1b
-      exact .ni_union hni1a hni1b
-
-theorem sem_sepcheck_empty :
-  SemSepCheck Γ {} C := by
-  intro env H hts
-  simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
-  exact .ni_empty
-
-theorem sem_sepcheck_ro
-  (hk1 : HasKind Γ C1 .ro)
-  (hk2 : HasKind Γ C2 .ro) :
-  SemSepCheck Γ C1 C2 := by
-  intro env H hts
-  have hsem_k1 := fundamental_haskind hk1 env H hts
-  have hsem_k2 := fundamental_haskind hk2 env H hts
-  exact CapabilitySet.noninterference_of_ro_ro hsem_k1 hsem_k2
 
 -- Helper: variable subcaptures its type's capture set with matching mutability
 theorem var_subcapt_captureSet_applyMut
@@ -3286,46 +3412,6 @@ theorem sem_sepcheck_var
                   ((T.captureSet.applyMut m).denot env H) (C.denot env H) :=
     ih env H henv
   exact CapabilitySet.Noninterference.subset_left hni_cs hsub
-
-theorem fundamental_sepcheck
-  (hsep : SepCheck Γ C1 C2) :
-  SemSepCheck Γ C1 C2 := by
-  induction hsep with
-  | sep_symm _ ih =>
-    exact sem_sepcheck_symm ih
-  | sep_union _ _ ih1 ih2 =>
-    exact sem_sepcheck_union ih1 ih2
-  | sep_empty =>
-    exact sem_sepcheck_empty
-  | sep_ro hk1 hk2 =>
-    exact sem_sepcheck_ro hk1 hk2
-  | sep_sc _ hsub ih =>
-    intro env H henv
-    exact CapabilitySet.Noninterference.subset_left
-      (ih env H henv)
-      (fundamental_subcapt hsub env H henv)
-  | sep_lock hlock hdistinct =>
-    intro env H henv
-    exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
-
-theorem sem_satisfy
-  (hclosed_Ψ : Ψ.IsClosed)
-  (hsatisfy : Satisfy Γ Ψ) :
-  ∀ env m,
-    EnvTyping Γ env m ->
-    env.Satisfy Ψ m := by
-  intro env m henv
-  cases hsatisfy with
-  | satisfy hkind hsep =>
-    constructor
-    · intro C mode hhas
-      apply CaptureSet.wf_subst
-      · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
-      · exact from_TypeEnv_wf_in_heap henv
-    · intro C mode hhas
-      exact fundamental_haskind (hkind C mode hhas) env m henv
-    · intro C1 m1 C2 m2 hdistinct
-      exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) env m henv
 
 theorem sem_typ_unwrap
   {x : BVar s .var} {Ψ : SepCtx s} {E : Ty .exi s}
