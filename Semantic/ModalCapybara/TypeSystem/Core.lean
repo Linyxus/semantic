@@ -73,6 +73,42 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
   -------------------
   Subbound Γ B .unbound
 
+inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| sep_symm :
+  SepCheck Γ C1 C2 ->
+  -------------------
+  SepCheck Γ C2 C1
+| sep_union :
+  SepCheck Γ C1 C3 ->
+  SepCheck Γ C2 C3 ->
+  -------------------
+  SepCheck Γ (C1 ∪ C2) C3
+| sep_empty {C : CaptureSet s} :
+  -------------------
+  SepCheck Γ {} C
+| sep_ro :
+  HasKind Γ C1 .ro ->
+  HasKind Γ C2 .ro ->
+  -------------------
+  SepCheck Γ C1 C2
+| sep_sc {C1 C2 C1' : CaptureSet s} :
+  SepCheck Γ C1 C2 ->
+  Subcapt Γ C1' C1 ->
+  --------------------
+  SepCheck Γ C1' C2
+| sep_lock {C1 C2 : CaptureSet s} :
+  Ctx.LookupLock Γ ℓ Ψ ->
+  SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
+  --------------------
+  SepCheck Γ C1 C2
+
+inductive Satisfy : Ctx s -> SepCtx s -> Prop where
+| satisfy {Ψ : SepCtx s} :
+  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
+  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
+  -------------------------------------------
+  Satisfy Γ Ψ
+
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | top {T : Ty .capt s} :
   T.IsPureType ->
@@ -114,6 +150,10 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ) ->
   ----------------------------------------
   Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
+-- | modal_modal :
+--   Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
+--   ----------------------------------
+--   Subtyp Γ (.modal cs Ψ1 E1) (.modal cs Ψ2 E2)
 | exi :
   Subtyp (Γ,C<:.unbound) T1 T2 ->
   --------------------------
@@ -122,35 +162,6 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subtyp Γ T1 T2 ->
   --------------------------
   Subtyp Γ (.typ T1) (.typ T2)
-
-inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
-| sep_symm :
-  SepCheck Γ C1 C2 ->
-  -------------------
-  SepCheck Γ C2 C1
-| sep_union :
-  SepCheck Γ C1 C3 ->
-  SepCheck Γ C2 C3 ->
-  -------------------
-  SepCheck Γ (C1 ∪ C2) C3
-| sep_empty {C : CaptureSet s} :
-  -------------------
-  SepCheck Γ {} C
-| sep_ro :
-  HasKind Γ C1 .ro ->
-  HasKind Γ C2 .ro ->
-  -------------------
-  SepCheck Γ C1 C2
-| sep_sc {C1 C2 C1' : CaptureSet s} :
-  SepCheck Γ C1 C2 ->
-  Subcapt Γ C1' C1 ->
-  --------------------
-  SepCheck Γ C1' C2
-| sep_lock {C1 C2 : CaptureSet s} :
-  Ctx.LookupLock Γ ℓ Ψ ->
-  SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
-  --------------------
-  SepCheck Γ C1 C2
 
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
@@ -216,8 +227,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | unwrap :
   HasType {} Γ (.var x) (.typ (.modal (.var .epsilon x) Ψ E)) ->
-  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
-  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
+  Satisfy Γ Ψ ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.unwrap x) E
 | letin :

@@ -3316,10 +3316,11 @@ theorem sem_typ_unwrap
   (hclosed_Ψ : Ψ.IsClosed)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (.modal (.var .epsilon (.bound x)) Ψ E))
-  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m)
-  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) :
+  (hsatisfy : Satisfy Γ Ψ) :
   (CaptureSet.var .epsilon (.bound x)) # Γ ⊨ Exp.unwrap (.bound x) : E := by
   intro env store hts
+  cases hsatisfy with
+  | satisfy hkind hsep =>
   have hmodal_exp :
       Ty.exi_exp_denot env (.typ (.modal (.var .epsilon (.bound x)) Ψ E))
         (CaptureSet.denot env {} store) store
@@ -3448,7 +3449,7 @@ theorem fundamental
       -- Apply sem_typ_capp theorem
       exact sem_typ_capp hD_closed_exp hx hI (fundamental_sepcheck hsep)
   case unwrap =>
-    rename_i x Ψ E hx hkind hsep ih_x
+    rename_i x Ψ E hx hsatisfy ih_x
     have hx_closed := HasType.typed_var_closed hx
     cases x with
     | free fx =>
@@ -3462,7 +3463,7 @@ theorem fundamental
             exact hclosed_Ψ
       exact sem_typ_unwrap (x := bx) hclosed_Ψ
         (ih_x (by constructor; constructor))
-        hkind hsep
+        hsatisfy
   case invoke =>
     rename_i ih_x ih_y
     -- From closedness of (app x y), extract that x and y are closed

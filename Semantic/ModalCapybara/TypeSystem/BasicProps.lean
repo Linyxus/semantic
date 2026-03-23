@@ -284,8 +284,7 @@ theorem HasType.use_set_is_closed
   case capp =>
     rename_i _ _ ht_x _ _ _
     exact HasType.typed_var_capture_closed ht_x
-  case unwrap =>
-    rename_i ht_x _ _ _
+  case unwrap ht_x _ _ =>
     exact HasType.typed_var_capture_closed ht_x
   case read =>
     rename_i ht_x _
@@ -391,8 +390,7 @@ theorem HasType.exp_is_closed
       cases ih_x; assumption
     · -- CaptureSet.IsClosed D✝
       assumption
-  case unwrap =>
-    rename_i _ _ _ ih_x
+  case unwrap _ _ ih_x =>
     cases ih_x with
     | var hx_closed =>
       exact Exp.IsClosed.unwrap hx_closed
@@ -495,7 +493,7 @@ theorem HasType.type_is_closed
     -- Need: U.IsClosed
     apply Ty.rename_closed_inv
     exact Ty.rename_closed_inv ih2
-  case unwrap ht_x hkind hsep ih =>
+  case unwrap ht_x _ ih =>
     cases ih with
     | typ hT =>
       cases hT with
