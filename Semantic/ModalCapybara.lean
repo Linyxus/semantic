@@ -39,4 +39,6 @@ establishes semantic type soundness of Capture Calculus.
 It proves the fundamental theorem: syntactic typing (which is defined in
 `Semantic.ModalCapybara.TypeSystem`) implies semantic typing.
 Then, it proves safety: well-typed programs are always progressive.
+
+This is considered an intermediate step towards the "actual" Capybara.
 -/
