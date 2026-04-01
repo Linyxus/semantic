@@ -127,55 +127,32 @@ def Denot.ImplyAfter (d1 : Denot) (m : Memory) (d2 : Denot) : Prop :=
   ∀ m', m'.subsumes m -> d1.ImplyAt m' d2
 
 theorem Denot.imply_implyat {d1 d2 : Denot}
-  (himp : d1.Imply d2) :
-  d1.ImplyAt m d2 := by
-  intro e h1
-  apply himp m e h1
+  (himp : d1.Imply d2) : d1.ImplyAt m d2 := fun e h => himp m e h
 
 theorem Denot.implyat_trans
   {d1 d2 : Denot}
   (himp1 : d1.ImplyAt m d2)
-  (himp2 : d2.ImplyAt m d3) :
-  d1.ImplyAt m d3 := by
-  intro e h1
-  apply himp2 e (himp1 e h1)
+  (himp2 : d2.ImplyAt m d3) : d1.ImplyAt m d3 :=
+  fun e h => himp2 e (himp1 e h)
 
-lemma Denot.imply_after_to_m_entails_after {d1 d2 : Denot}
-  {m : Memory}
-  (himp : d1.ImplyAfter m d2) :
-  d1.as_mpost.entails_after m d2.as_mpost := by
-  intro m' hsub
-  unfold Mpost.entails_at Denot.as_mpost
-  intro e h1
-  apply himp m' hsub e h1
+lemma Denot.imply_after_to_m_entails_after {d1 d2 : Denot} {m : Memory}
+  (himp : d1.ImplyAfter m d2) : d1.as_mpost.entails_after m d2.as_mpost :=
+  fun m' hsub e h1 => himp m' hsub e h1
 
 lemma Denot.imply_after_subsumes {d1 d2 : Denot}
-  (himp : d1.ImplyAfter m1 d2)
-  (hmem : m2.subsumes m1) :
-  d1.ImplyAfter m2 d2 := by
-  intro M hs
-  apply himp M
-  apply Memory.subsumes_trans hs hmem
+  (himp : d1.ImplyAfter m1 d2) (hmem : m2.subsumes m1) : d1.ImplyAfter m2 d2 :=
+  fun M hs => himp M (Memory.subsumes_trans hs hmem)
 
 lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
-  (himp : d1.ImplyAfter m d2) :
-  d1.ImplyAt m d2 := by
-  intro e h1
-  apply himp m (Memory.subsumes_refl m) e h1
+  (himp : d1.ImplyAfter m d2) : d1.ImplyAt m d2 :=
+  fun e h1 => himp m (Memory.subsumes_refl m) e h1
 
 lemma Denot.imply_after_trans {d1 d2 d3 : Denot}
-  (himp1 : d1.ImplyAfter m d2)
-  (himp2 : d2.ImplyAfter m d3) :
-  d1.ImplyAfter m d3 := by
-  intro m' hsub e h1
-  apply himp2 m' hsub
-  apply himp1 m' hsub e h1
+  (himp1 : d1.ImplyAfter m d2) (himp2 : d2.ImplyAfter m d3) : d1.ImplyAfter m d3 :=
+  fun m' hsub e h1 => himp2 m' hsub e (himp1 m' hsub e h1)
 
 lemma Denot.apply_imply_at {d1 d2 : Denot}
-  (ht : d1 m e)
-  (himp : d1.ImplyAt m d2) :
-  d2 m e := by
-  apply himp e ht
+  (ht : d1 m e) (himp : d1.ImplyAt m d2) : d2 m e := himp e ht
 
 /-- Type information for each kind of variable bindings in type context. -/
 inductive TypeInfo : Sig -> Kind -> Type where
@@ -1217,81 +1194,43 @@ def Denot.Equiv (d1 d2 : Denot) : Prop :=
 instance Denot.instHasEquiv : HasEquiv Denot where
   Equiv := Denot.Equiv
 
-def Denot.equiv_refl (d : Denot) : d ≈ d := by
-  intro m e
-  constructor
-  · intro h
-    exact h
-  · intro h
-    exact h
+def Denot.equiv_refl (d : Denot) : d ≈ d := fun _ _ => Iff.rfl
 
-def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 := by
-  intro h
-  intro m e
-  constructor
-  · intro h0
-    apply (h m e).mpr h0
-  · intro h0
-    apply (h m e).mp h0
+def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 :=
+  fun h m e => .symm (h m e)
 
-def Denot.equiv_trans (d1 d2 d3 : Denot) : d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 := by
-  intro h12
-  intro h23
-  intro m e
-  have h1 := h12 m e
-  have h2 := h23 m e
-  grind
+def Denot.equiv_trans (d1 d2 d3 : Denot) :
+    d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 :=
+  fun h12 h23 m e => .trans (h12 m e) (h23 m e)
 
 theorem Denot.eq_to_equiv (d1 d2 : Denot) : d1 = d2 -> d1 ≈ d2 := by
-  intro h
-  intro m e
-  grind
+  intro h m e; grind
 
 theorem Denot.equiv_ltr {d1 d2 : Denot}
-  (heqv : d1 ≈ d2)
-  (h1 : d1 m e) :
-  d2 m e := by
-  apply (heqv m e).mp h1
+  (heqv : d1 ≈ d2) (h1 : d1 m e) : d2 m e := (heqv m e).mp h1
 
 theorem Denot.equiv_rtl {d1 d2 : Denot}
-  (heqv : d1 ≈ d2)
-  (h2 : d2 m e) :
-  d1 m e := by
-  apply (heqv m e).mpr h2
+  (heqv : d1 ≈ d2) (h2 : d2 m e) : d1 m e := (heqv m e).mpr h2
 
 theorem Denot.equiv_to_imply {d1 d2 : Denot}
-  (heqv : d1 ≈ d2) :
-  (d1.Imply d2) ∧ (d2.Imply d1) := by
-  constructor
-  · intro m e h
-    apply (heqv m e).mp h
-  · intro m e h
-    apply (heqv m e).mpr h
+  (heqv : d1 ≈ d2) : (d1.Imply d2) ∧ (d2.Imply d1) :=
+  ⟨fun _ _ => (heqv _ _).mp, fun _ _ => (heqv _ _).mpr⟩
 
 theorem Denot.equiv_to_imply_l {d1 d2 : Denot}
-  (heqv : d1 ≈ d2) :
-  d1.Imply d2 := (Denot.equiv_to_imply heqv).1
+  (heqv : d1 ≈ d2) : d1.Imply d2 := (Denot.equiv_to_imply heqv).1
 
 theorem Denot.equiv_to_imply_r {d1 d2 : Denot}
-  (heqv : d1 ≈ d2) :
-  d2.Imply d1 := (Denot.equiv_to_imply heqv).2
+  (heqv : d1 ≈ d2) : d2.Imply d1 := (Denot.equiv_to_imply heqv).2
 
 theorem Denot.imply_to_entails (d1 d2 : Denot)
-  (himp : d1.Imply d2) :
-  d1.as_mpost.entails d2.as_mpost := by
-  intro m e h1
-  apply himp m e h1
+  (himp : d1.Imply d2) : d1.as_mpost.entails d2.as_mpost :=
+  fun _ _ => himp _ _
 
-theorem Denot.imply_refl (d : Denot) : d.Imply d := by
-  intro m e h
-  exact h
+theorem Denot.imply_refl (d : Denot) : d.Imply d := fun _ _ => id
 
 theorem Denot.imply_trans {d1 d2 d3 : Denot}
-  (h1 : d1.Imply d2)
-  (h2 : d2.Imply d3) :
-  d1.Imply d3 := by
-  intro m e h
-  aesop
+  (h1 : d1.Imply d2) (h2 : d2.Imply d3) : d1.Imply d3 :=
+  fun m e h => h2 m e (h1 m e h)
 
 theorem resolve_var_heap_some
   (hheap : heap x = some (.val v)) :
@@ -2007,45 +1946,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | unit =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    cases e with
-    | var x =>
-      cases x with
-      | free fx =>
-        simp [resolve] at ht ⊢
-        cases hres : m1.heap fx with
-        | none => simp [hres] at ht
-        | some v =>
-          simp [hres] at ht
-          have hsub : m2.heap.subsumes m1.heap := hmem
-          obtain ⟨v', hv', hsub_v⟩ := hsub fx v hres
-          -- For value cells, subsumption requires equality
-          cases v with
-          | val val_v =>
-            simp [Cell.subsumes] at hsub_v
-            subst hsub_v
-            simpa [hv'] using ht
-          | capability _ => cases ht
-          | masked => cases ht
-      | bound bx => cases bx
-    | unit => simp [resolve] at ht ⊢
-    | abs _ _ _ => simp [resolve] at ht
-    | tabs _ _ _ => simp [resolve] at ht
-    | cabs _ _ _ => simp [resolve] at ht
-    | boxed _ _ _ => simp [resolve] at ht
-    | pack _ _ => simp [resolve] at ht
-    | unpack _ _ => simp [resolve] at ht
-    | app _ _ => simp [resolve] at ht
-    | tapp _ _ => simp [resolve] at ht
-    | capp _ _ => simp [resolve] at ht
-    | letin _ _ => simp [resolve] at ht
-    | unwrap _ => simp [resolve] at ht
-    | btrue => simp [resolve] at ht
-    | bfalse => simp [resolve] at ht
-    | read _ => simp [resolve] at ht
-    | write _ _ => simp [resolve] at ht
-    | cond _ _ _ => simp [resolve] at ht
-    | par _ _ => simp [resolve] at ht
-    | reader _ => simp [resolve] at ht
+    exact resolve_monotonic hmem ht
   | cap cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -2146,44 +2047,11 @@ def val_denot_is_monotonic {env : TypeEnv s}
     · exact CaptureSet.wf_monotonic hmem hwf_cs
     · use cs', T0, t0
       constructor
-      · cases e with
-        | var x =>
-          cases x with
-          | free fx =>
-            simp [resolve] at hr ⊢
-            split at hr <;> try (cases hr)
-            rename_i v heq
-            have hsub : m2.heap.subsumes m1.heap := hmem
-            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
-            -- For value cells, subsumption requires equality
-            simp [Cell.subsumes] at hsub_v
-            subst hsub_v
-            simp [hv', hr]
-          | bound bx => cases bx
-        | abs _ _ _ => simp [resolve] at hr ⊢; exact hr
-        | tabs _ _ _ => cases hr
-        | cabs _ _ _ => cases hr
-        | pack _ _ => cases hr
-        | unit => cases hr
-        | unpack _ _ => cases hr
-        | app _ _ => cases hr
-        | tapp _ _ => cases hr
-        | capp _ _ => cases hr
-        | letin _ _ => cases hr
-        | boxed _ _ _ => cases hr
-        | unwrap _ => cases hr
-        | btrue => cases hr
-        | bfalse => cases hr
-        | read _ => cases hr
-        | write _ _ => cases hr
-        | cond _ _ _ => cases hr
-        | par _ _ => cases hr
-        | reader _ => cases hr
+      · exact resolve_monotonic hmem hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs'
         · constructor
-          · -- Prove: expand_captures m2.heap cs' ⊆ cs.denot env m2
-            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+          · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [← hcs_eq, hcs'_eq]
             exact hR0_sub
@@ -2197,50 +2065,16 @@ def val_denot_is_monotonic {env : TypeEnv s}
     unfold Ty.val_denot at ht ⊢
     have ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
     constructor
-    · -- Prove e.WfInHeap m2.heap
-      exact Exp.wf_monotonic hmem hwf_e
+    · exact Exp.wf_monotonic hmem hwf_e
     constructor
     · exact CaptureSet.wf_monotonic hmem hwf_cs
     · use cs', S0, t0
       constructor
-      · cases e with
-        | var x =>
-          cases x with
-          | free fx =>
-            simp [resolve] at hr ⊢
-            split at hr <;> try (cases hr)
-            rename_i v heq
-            have hsub : m2.heap.subsumes m1.heap := hmem
-            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
-            -- For value cells, subsumption requires equality
-            simp [Cell.subsumes] at hsub_v
-            subst hsub_v
-            simp [hv', hr]
-          | bound bx => cases bx
-        | tabs _ _ _ => simp [resolve] at hr ⊢; exact hr
-        | abs _ _ _ => cases hr
-        | cabs _ _ _ => cases hr
-        | pack _ _ => cases hr
-        | unit => cases hr
-        | unpack _ _ => cases hr
-        | app _ _ => cases hr
-        | tapp _ _ => cases hr
-        | capp _ _ => cases hr
-        | letin _ _ => cases hr
-        | boxed _ _ _ => cases hr
-        | unwrap _ => cases hr
-        | btrue => cases hr
-        | bfalse => cases hr
-        | read _ => cases hr
-        | write _ _ => cases hr
-        | cond _ _ _ => cases hr
-        | par _ _ => cases hr
-        | reader _ => cases hr
+      · exact resolve_monotonic hmem hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs'
         · constructor
-          · -- Prove: expand_captures m2.heap cs' ⊆ cs.denot env m2
-            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+          · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [← hcs_eq, hcs'_eq]
             exact hR0_sub
@@ -2254,50 +2088,16 @@ def val_denot_is_monotonic {env : TypeEnv s}
     unfold Ty.val_denot at ht ⊢
     have ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
     constructor
-    · -- Prove e.WfInHeap m2.heap
-      exact Exp.wf_monotonic hmem hwf_e
+    · exact Exp.wf_monotonic hmem hwf_e
     constructor
     · exact CaptureSet.wf_monotonic hmem hwf_cs
     · use cs', B0, t0
       constructor
-      · cases e with
-        | var x =>
-          cases x with
-          | free fx =>
-            simp [resolve] at hr ⊢
-            split at hr <;> try (cases hr)
-            rename_i v heq
-            have hsub : m2.heap.subsumes m1.heap := hmem
-            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
-            -- For value cells, subsumption requires equality
-            simp [Cell.subsumes] at hsub_v
-            subst hsub_v
-            simp [hv', hr]
-          | bound bx => cases bx
-        | cabs _ _ _ => simp [resolve] at hr ⊢; exact hr
-        | abs _ _ _ => cases hr
-        | tabs _ _ _ => cases hr
-        | pack _ _ => cases hr
-        | unit => cases hr
-        | unpack _ _ => cases hr
-        | app _ _ => cases hr
-        | tapp _ _ => cases hr
-        | capp _ _ => cases hr
-        | letin _ _ => cases hr
-        | boxed _ _ _ => cases hr
-        | unwrap _ => cases hr
-        | btrue => cases hr
-        | bfalse => cases hr
-        | read _ => cases hr
-        | write _ _ => cases hr
-        | cond _ _ _ => cases hr
-        | par _ _ => cases hr
-        | reader _ => cases hr
+      · exact resolve_monotonic hmem hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs'
         · constructor
-          · -- Prove: expand_captures m2.heap cs' ⊆ cs.denot env m2
-            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+          · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [← hcs_eq, hcs'_eq]
             exact hR0_sub
@@ -2316,38 +2116,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
     · exact CaptureSet.wf_monotonic hmem hwf_cs
     · use cs', sepctx0, t0
       constructor
-      · cases e with
-        | var x =>
-          cases x with
-          | free fx =>
-            simp [resolve] at hr ⊢
-            split at hr <;> try (cases hr)
-            rename_i v heq
-            have hsub : m2.heap.subsumes m1.heap := hmem
-            obtain ⟨v', hv', hsub_v⟩ := hsub fx (Cell.val v) heq
-            simp [Cell.subsumes] at hsub_v
-            subst hsub_v
-            simp [hv', hr]
-          | bound bx => cases bx
-        | boxed _ _ _ => simp [resolve] at hr ⊢; exact hr
-        | abs _ _ _ => cases hr
-        | tabs _ _ _ => cases hr
-        | cabs _ _ _ => cases hr
-        | pack _ _ => cases hr
-        | unit => cases hr
-        | unpack _ _ => cases hr
-        | app _ _ => cases hr
-        | tapp _ _ => cases hr
-        | capp _ _ => cases hr
-        | letin _ _ => cases hr
-        | unwrap _ => cases hr
-        | btrue => cases hr
-        | bfalse => cases hr
-        | read _ => cases hr
-        | write _ _ => cases hr
-        | cond _ _ _ => cases hr
-        | par _ _ => cases hr
-        | reader _ => cases hr
+      · exact resolve_monotonic hmem hr
       · constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs'
         · constructor
@@ -2610,59 +2379,16 @@ lemma simple_ans_from_resolve
   (hv : v.IsSimpleVal) :
   e.IsSimpleAns := by
   cases e with
-  | var x => exact Exp.IsSimpleAns.is_var
+  | var _ => exact Exp.IsSimpleAns.is_var
   | unit => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.unit
   | btrue => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.btrue
   | bfalse => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.bfalse
-  | abs cs T t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.abs
-  | tabs cs S t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.tabs
-  | cabs cs B t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.cabs
-  | boxed cs Ψ t => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.boxed
-  | reader x => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.reader
-  | pack cs x =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | app f x =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | tapp f T =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | capp f cs =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | letin e1 e2 =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | unpack e1 e2 =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | unwrap x =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | read x =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | write x y =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | cond x e1 e2 =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
-  | par e1 e2 =>
-    simp [resolve] at hresolve
-    rw [← hresolve] at hv
-    cases hv
+  | abs _ _ _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.abs
+  | tabs _ _ _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.tabs
+  | cabs _ _ _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.cabs
+  | boxed _ _ _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.boxed
+  | reader _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.reader
+  | _ => simp [resolve] at hresolve; rw [← hresolve] at hv; cases hv
 
 lemma wf_from_resolve_unit
   {m : Memory} {e : Exp {}}
@@ -3004,7 +2730,6 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
       | bound bx => cases bx
     | _ => simp [resolve] at hres
   | arrow T1 cs T2 =>
-    -- captureSet = cs, expand_captures cs' ⊆ cs.denot
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -3024,8 +2749,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3033,26 +2757,8 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
             exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
-    | tabs _ _ _ => simp [resolve] at hres
-    | cabs _ _ _ => simp [resolve] at hres
-    | boxed _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
   | poly T1 cs T2 =>
-    -- captureSet = cs, expand_captures cs' ⊆ cs.denot
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -3072,8 +2778,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3081,26 +2786,8 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
             exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
-    | abs _ _ _ => simp [resolve] at hres
-    | cabs _ _ _ => simp [resolve] at hres
-    | boxed _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
   | cpoly B cs T =>
-    -- captureSet = cs, expand_captures cs' ⊆ cs.denot
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -3120,8 +2807,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3129,24 +2815,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
             exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
-    | abs _ _ _ => simp [resolve] at hres
-    | tabs _ _ _ => simp [resolve] at hres
-    | boxed _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
   | modal cs Ψ T =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
@@ -3167,8 +2836,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3176,24 +2844,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
             exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
-    | abs _ _ _ => simp [resolve] at hres
-    | tabs _ _ _ => simp [resolve] at hres
-    | cabs _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
 
 theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env))))
@@ -3616,7 +3267,6 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     obtain ⟨_, _, label, _, _, _, hcov⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case arrow T1 cs T2 =>
-    -- If cs.IsEmpty, then R0 ⊆ cs.denot means R0 ⊆ .empty
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
@@ -3637,8 +3287,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3646,26 +3295,8 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
             exact hR0_empty
           | _ => simp at hres
       | bound bx => cases bx
-    | tabs _ _ _ => simp [resolve] at hres
-    | cabs _ _ _ => simp [resolve] at hres
-    | boxed _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
   case poly T1 cs T2 =>
-    -- Same pattern as arrow
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
@@ -3686,8 +3317,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3695,26 +3325,8 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
             exact hR0_empty
           | _ => simp at hres
       | bound bx => cases bx
-    | abs _ _ _ => simp [resolve] at hres
-    | cabs _ _ _ => simp [resolve] at hres
-    | boxed _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
   case cpoly B cs T =>
-    -- Same pattern as arrow/poly
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, hbody⟩ := hdenot
@@ -3736,8 +3348,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3745,24 +3356,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
             exact hR0_empty
           | _ => simp at hres
       | bound bx => cases bx
-    | abs _ _ _ => simp [resolve] at hres
-    | tabs _ _ _ => simp [resolve] at hres
-    | boxed _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
   case modal cs Ψ T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
@@ -3784,8 +3378,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
           simp [hcell] at hres
           cases cell with
           | val v =>
-            have hval := by
-              simpa [resolve, hcell] using hres
+            have hval := by simpa [resolve, hcell] using hres
             simp [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
@@ -3793,24 +3386,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
             exact hR0_empty
           | _ => simp at hres
       | bound bx => cases bx
-    | abs _ _ _ => simp [resolve] at hres
-    | tabs _ _ _ => simp [resolve] at hres
-    | cabs _ _ _ => simp [resolve] at hres
-    | reader _ => simp [resolve] at hres
-    | pack _ _ => simp [resolve] at hres
-    | app _ _ => simp [resolve] at hres
-    | tapp _ _ => simp [resolve] at hres
-    | capp _ _ => simp [resolve] at hres
-    | unwrap _ => simp [resolve] at hres
-    | letin _ _ => simp [resolve] at hres
-    | unpack _ _ => simp [resolve] at hres
-    | unit => simp [resolve] at hres
-    | btrue => simp [resolve] at hres
-    | bfalse => simp [resolve] at hres
-    | read _ => simp [resolve] at hres
-    | write _ _ => simp [resolve] at hres
-    | cond _ _ _ => simp [resolve] at hres
-    | par _ _ => simp [resolve] at hres
+    | _ => simp [resolve] at hres
 
 namespace TypeEnv.HasSepDom
 
