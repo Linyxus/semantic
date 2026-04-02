@@ -3184,84 +3184,82 @@ theorem CapabilitySet.not_covers_of_isEmpty
     | left hcov1 => exact ih1 hcov1
     | right hcov2 => exact ih2 hcov2
 
+private theorem resolve_reachability_subset_of_resolve
+    {m : Memory} {e v : Exp {}}
+    (hresolve : resolve m.heap e = some v) :
+    resolve_reachability m.heap e ⊆ resolve_reachability m.heap v := by
+  cases e <;> try (
+    simp [resolve] at hresolve
+    subst v
+    exact CapabilitySet.Subset.refl)
+  case var x =>
+    cases x with
+    | bound bx =>
+      cases bx
+    | free fx =>
+      simp [resolve] at hresolve
+      cases hcell : m.heap fx with
+      | none =>
+        simp [hcell] at hresolve
+      | some cell =>
+        cases cell with
+        | val hv =>
+          simp [hcell] at hresolve
+          subst v
+          simp [resolve_reachability]
+          rw [reachability_of_loc_eq_resolve_reachability m fx hv hcell]
+          exact CapabilitySet.Subset.refl
+        | capability cap =>
+          simp [hcell] at hresolve
+        | masked =>
+          simp [hcell] at hresolve
+
 theorem pure_ty_enforce_pure {T : Ty .capt s}
   (henv : env.is_enforcing_pure)
   (hpure : T.IsPureType) :
   (Ty.val_denot env T).enforce_pure := by
   intro m e hdenot
-  -- hpure means T.captureSet.IsEmpty
   unfold Ty.IsPureType at hpure
-  -- Proceed by cases on T
   cases T
   case top =>
-    -- Denotation directly gives resolve_reachability ⊆ .empty
     simp only [Ty.val_denot] at hdenot
     exact hdenot.2.2
   case tvar X =>
-    -- Type variable denotation enforces purity by hypothesis
     simp only [Ty.val_denot] at hdenot
     exact henv X m e hdenot
   case unit =>
-    -- Unit values have empty reachability
     simp only [Ty.val_denot] at hdenot
-    cases e with
-    | unit => simp [resolve_reachability]; exact CapabilitySet.Subset.refl
-    | var x =>
-      cases x with
-      | free fx =>
-        simp [resolve] at hdenot
-        cases hcell : m.heap fx with
-        | none => simp [hcell] at hdenot
-        | some cell =>
-          simp [hcell] at hdenot
-          cases cell with
-          | val v =>
-            simp at hdenot
-            simp [resolve_reachability]
-            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
-            all_goals exact CapabilitySet.Subset.refl
-          | _ => simp at hdenot
-      | bound bx => cases bx
-    | _ => simp [resolve] at hdenot
+    exact CapabilitySet.Subset.trans
+      (resolve_reachability_subset_of_resolve hdenot)
+      (by
+        simpa [resolve_reachability] using
+          (CapabilitySet.Subset.refl : ({} : CapabilitySet) ⊆ {}))
   case bool =>
-    -- Bool values have empty reachability
     simp only [Ty.val_denot] at hdenot
-    cases e with
-    | btrue => simp [resolve_reachability]; exact CapabilitySet.Subset.refl
-    | bfalse => simp [resolve_reachability]; exact CapabilitySet.Subset.refl
-    | var x =>
-      cases x with
-      | free fx =>
-        simp [resolve] at hdenot
-        cases hcell : m.heap fx with
-        | none => simp [hcell] at hdenot
-        | some cell =>
-          simp [hcell] at hdenot
-          cases cell with
-          | val v =>
-            simp at hdenot
-            simp [resolve_reachability]
-            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap <;> simp_all [resolve_reachability]
-            all_goals exact CapabilitySet.Subset.refl
-          | _ => simp at hdenot
-      | bound bx => cases bx
-    | _ => simp [resolve] at hdenot
+    cases hdenot with
+    | inl htrue =>
+      exact CapabilitySet.Subset.trans
+        (resolve_reachability_subset_of_resolve htrue)
+        (by
+          simpa [resolve_reachability] using
+            (CapabilitySet.Subset.refl : ({} : CapabilitySet) ⊆ {}))
+    | inr hfalse =>
+      exact CapabilitySet.Subset.trans
+        (resolve_reachability_subset_of_resolve hfalse)
+        (by
+          simpa [resolve_reachability] using
+            (CapabilitySet.Subset.refl : ({} : CapabilitySet) ⊆ {}))
   case cap cs =>
-    -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, hcov⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case cell cs =>
-    -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, label, _, _, _, hcov⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case reader cs =>
-    -- If cs.IsEmpty, then covers cannot hold on empty set
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, _, hcov⟩ := hdenot
@@ -3269,124 +3267,35 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
   case arrow T1 cs T2 =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
+    obtain ⟨_, _, cs', _, _, hres, _, hR0_sub, _⟩ := hdenot
     have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
-    cases e with
-    | abs cs0 _ _ =>
-      simp only [resolve, Option.some.injEq, Exp.abs.injEq] at hres
-      obtain ⟨rfl, _, _⟩ := hres
-      simp [resolve_reachability]
-      exact hR0_empty
-    | var x =>
-      cases x with
-      | free fx =>
-        simp [resolve] at hres
-        cases hcell : m.heap fx with
-        | none => simp [hcell] at hres
-        | some cell =>
-          simp [hcell] at hres
-          cases cell with
-          | val v =>
-            have hval := by simpa [resolve, hcell] using hres
-            simp [resolve_reachability]
-            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            rw [hval]
-            simp [resolve_reachability]
-            exact hR0_empty
-          | _ => simp at hres
-      | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    exact CapabilitySet.Subset.trans
+      (resolve_reachability_subset_of_resolve hres)
+      (by simpa [resolve_reachability] using hR0_empty)
   case poly T1 cs T2 =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := hdenot
+    obtain ⟨_, _, cs', _, _, hres, _, hR0_sub, _⟩ := hdenot
     have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
-    cases e with
-    | tabs cs0 _ _ =>
-      simp only [resolve, Option.some.injEq, Exp.tabs.injEq] at hres
-      obtain ⟨rfl, _, _⟩ := hres
-      simp [resolve_reachability]
-      exact hR0_empty
-    | var x =>
-      cases x with
-      | free fx =>
-        simp [resolve] at hres
-        cases hcell : m.heap fx with
-        | none => simp [hcell] at hres
-        | some cell =>
-          simp [hcell] at hres
-          cases cell with
-          | val v =>
-            have hval := by simpa [resolve, hcell] using hres
-            simp [resolve_reachability]
-            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            rw [hval]
-            simp [resolve_reachability]
-            exact hR0_empty
-          | _ => simp at hres
-      | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    exact CapabilitySet.Subset.trans
+      (resolve_reachability_subset_of_resolve hres)
+      (by simpa [resolve_reachability] using hR0_empty)
   case cpoly B cs T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, hbody⟩ := hdenot
-    clear hbody
+    obtain ⟨_, _, cs', _, _, hres, _, hR0_sub, _⟩ := hdenot
     have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
-    cases e with
-    | cabs cs0 _ _ =>
-      simp only [resolve, Option.some.injEq, Exp.cabs.injEq] at hres
-      obtain ⟨rfl, _, _⟩ := hres
-      simp [resolve_reachability]
-      exact hR0_empty
-    | var x =>
-      cases x with
-      | free fx =>
-        simp [resolve] at hres
-        cases hcell : m.heap fx with
-        | none => simp [hcell] at hres
-        | some cell =>
-          simp [hcell] at hres
-          cases cell with
-          | val v =>
-            have hval := by simpa [resolve, hcell] using hres
-            simp [resolve_reachability]
-            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            rw [hval]
-            simp [resolve_reachability]
-            exact hR0_empty
-          | _ => simp at hres
-      | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    exact CapabilitySet.Subset.trans
+      (resolve_reachability_subset_of_resolve hres)
+      (by simpa [resolve_reachability] using hR0_empty)
   case modal cs Ψ T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, cs', _, t0, hres, _, _, _, hR0_sub, _⟩ := hdenot
+    obtain ⟨_, _, cs', _, _, hres, _, _, _, hR0_sub, _⟩ := hdenot
     have hR0_empty := hpure.denot_empty.subset_of_subset hR0_sub
-    cases e with
-    | boxed cs0 _ _ =>
-      simp only [resolve, Option.some.injEq, Exp.boxed.injEq] at hres
-      obtain ⟨rfl, _, _⟩ := hres
-      simp [resolve_reachability]
-      exact hR0_empty
-    | var x =>
-      cases x with
-      | free fx =>
-        simp [resolve] at hres
-        cases hcell : m.heap fx with
-        | none => simp [hcell] at hres
-        | some cell =>
-          simp [hcell] at hres
-          cases cell with
-          | val v =>
-            have hval := by simpa [resolve, hcell] using hres
-            simp [resolve_reachability]
-            rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            rw [hval]
-            simp [resolve_reachability]
-            exact hR0_empty
-          | _ => simp at hres
-      | bound bx => cases bx
-    | _ => simp [resolve] at hres
+    exact CapabilitySet.Subset.trans
+      (resolve_reachability_subset_of_resolve hres)
+      (by simpa [resolve_reachability] using hR0_empty)
 
 namespace TypeEnv.HasSepDom
 

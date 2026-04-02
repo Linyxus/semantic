@@ -295,30 +295,14 @@ def rebind_val_denot
   (ρ : Rebind env1 f env2) (T : Ty .capt s1) :
   Ty.val_denot env1 T ≈ Ty.val_denot env2 (T.rename f) :=
   match T with
-  | .top => by
+  | .top | .unit | .bool => by
     intro m e
     simp [Ty.val_denot, Ty.rename]
   | .tvar X => by
     have h := ρ.tvar X
     intro m e
     simp [Ty.val_denot, Ty.rename, h]
-  | .unit => by
-    intro m e
-    simp [Ty.val_denot, Ty.rename]
-  | .bool => by
-    intro m e
-    simp [Ty.val_denot, Ty.rename]
-  | .cap cs => by
-    intro m e
-    simp only [Ty.val_denot, Ty.rename]
-    rw [← rebind_resolved_capture_set ρ]
-    rw [← rebind_captureset_denot ρ cs]
-  | .cell cs => by
-    intro m e
-    simp only [Ty.val_denot, Ty.rename]
-    rw [← rebind_resolved_capture_set ρ]
-    rw [← rebind_captureset_denot ρ cs]
-  | .reader cs => by
+  | .cap cs | .cell cs | .reader cs => by
     intro m e
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]
@@ -566,20 +550,7 @@ theorem typed_env_satisfy_rebind
   (ρ : Rebind env1 f env2)
   (hsat : TypeEnv.Satisfy env1 Ψ m) :
   TypeEnv.Satisfy env2 (Ψ.rename f) m := by
-  constructor
-  · intro C mode hhas
-    obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
-    simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C0)] using
-      hsat.wf C0 mode hhas0
-  · intro C mode hhas
-    obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
-    simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
-      hsat.kind C0 mode hhas0
-  · intro C1 m1 C2 m2 hdistinct
-    obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
-    simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
-      rebind_captureset_denot (ρ := ρ) (C := D2)] using
-      hsat.sep D1 m1 D2 m2 hdistinct0
+  exact (rebind_satisfy_iff ρ Ψ m).1 hsat
 
 theorem typed_env_lookup_lock_satisfy
   (hlookup : Ctx.LookupLock Γ ℓ Ψ)

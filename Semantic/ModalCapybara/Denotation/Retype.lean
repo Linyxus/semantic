@@ -268,10 +268,8 @@ def retype_capturebound_denot
   | unbound =>
     rfl
   | bound C =>
-    simp [CaptureBound.denot, CaptureBound.subst]
     funext m
-    congr 1
-    exact congrFun (retype_captureset_denot ρ C) m
+    simp [CaptureBound.denot, CaptureBound.subst, retype_captureset_denot ρ C]
 
 private theorem SepCtx.Has.subst_retype
     {K : SepCtx s1} {σ : Subst s1 s2}
@@ -393,7 +391,7 @@ def retype_val_denot
   (ρ : Retype env1 σ env2 D) (T : Ty .capt s1) :
   Ty.val_denot env1 T ≈ Ty.val_denot env2 (T.subst σ) :=
   match T with
-  | .top => by
+  | .top | .unit | .bool => by
     intro m e
     simp [Ty.val_denot, Ty.subst]
   | .tvar X => by
@@ -401,23 +399,7 @@ def retype_val_denot
     intro m e
     simp [Ty.val_denot, Ty.subst]
     exact h m e
-  | .unit => by
-    intro m e
-    simp [Ty.val_denot, Ty.subst]
-  | .bool => by
-    intro m e
-    simp [Ty.val_denot, Ty.subst]
-  | .cap cs => by
-    intro m e
-    simp only [Ty.val_denot, Ty.subst]
-    rw [← retype_resolved_capture_set ρ]
-    rw [← retype_captureset_denot ρ cs]
-  | .cell cs => by
-    intro m e
-    simp only [Ty.val_denot, Ty.subst]
-    rw [← retype_resolved_capture_set ρ]
-    rw [← retype_captureset_denot ρ cs]
-  | .reader cs => by
+  | .cap cs | .cell cs | .reader cs => by
     intro m e
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
