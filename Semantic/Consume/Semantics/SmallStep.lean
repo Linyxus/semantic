@@ -22,10 +22,6 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
--- Boxed terms are values, so wrap has no reduction rule; only unwrap steps.
-| step_unwrap :
-  m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
-  Step C m (.unwrap (.free x)) m e
 | step_cond_var_true :
   m.lookup x = some (.val ⟨.btrue, hv, R⟩) ->
   Step C m (.cond (.free x) e1 e2) m e1
@@ -53,11 +49,6 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
 | step_ctx_unpack :
   Step C m e1 m' e1' ->
   Step C m (.unpack e1 e2) m' (.unpack e1' e2)
--- For now, let `par` pick a random branch to step
-| step_par_left :
-  Step C m (.par e1 e2) m e1
-| step_par_right :
-  Step C m (.par e1 e2) m e2
 | step_rename :
   Step C m (.letin (.var (.free y)) e) m (e.subst (Subst.openVar (.free y)))
 | step_lift :
