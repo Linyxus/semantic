@@ -249,45 +249,8 @@ theorem Rebind.hassepdom
     have := h m1 (f.var c1) m2 (f.var c2) hsub1' hsub2' hne'
     rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
 
-theorem rebind_satisfy_iff
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (Ψ : SepCtx s1) (m : Memory) :
-  TypeEnv.Satisfy env1 Ψ m ↔ TypeEnv.Satisfy env2 (Ψ.rename f) m := by
-  constructor
-  · intro hsat
-    constructor
-    · intro C mode hhas
-      obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
-      simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C0)] using
-        hsat.wf C0 mode hhas0
-    · intro C mode hhas
-      obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
-      simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
-        hsat.kind C0 mode hhas0
-    · intro C1 m1 C2 m2 hdistinct
-      obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
-      simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
-        rebind_captureset_denot (ρ := ρ) (C := D2)] using
-        hsat.sep D1 m1 D2 m2 hdistinct0
-  · intro hsat
-    constructor
-    · intro C mode hhas
-      have hhas' := hhas.rename (f := f)
-      simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C)] using
-        hsat.wf (C.rename f) mode hhas'
-    · intro C mode hhas
-      have hhas' := hhas.rename (f := f)
-      simpa only [rebind_captureset_denot (ρ := ρ) (C := C)] using
-        hsat.kind (C.rename f) mode hhas'
-    · intro C1 m1 C2 m2 hdistinct
-      have hdistinct' := hdistinct.rename (f := f)
-      simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
-        rebind_captureset_denot (ρ := ρ) (C := C2)] using
-        hsat.sep (C1.rename f) m1 (C2.rename f) m2 hdistinct'
-
 set_option maxHeartbeats 1000000 in
--- The mutual rebind denotation definitions trigger heavy reducibility checks after the
--- modal branch started carrying higher-order assumption transport.
+-- The mutual rebind denotation definitions trigger heavy reducibility checks.
 mutual
 
 def rebind_val_denot
@@ -389,60 +352,6 @@ def rebind_val_denot
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
       exact (ih2 m' _).mpr hd
-  | .modal cs Ψ T => by
-    intro m e
-    simp only [Ty.val_denot, Ty.rename]
-    rw [← rebind_resolved_capture_set ρ]
-    rw [← rebind_captureset_denot ρ cs]
-    constructor
-    · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
-        hsat, hR0_sub, hbody⟩
-      refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
-      · intro m' hsub hsat'
-        exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mpr hsat')
-      · intro m' hsub hkind hsep
-        let R0 := expand_captures m.heap cs0
-        have ih := rebind_exi_exp_denot ρ T R0
-        have hkind' :
-            ∀ (C : CaptureSet s1) (mode : Mutability),
-              Ψ.Has C mode -> CapabilitySet.HasKind (C.denot env1 m') mode := by
-          intro C mode hhas
-          simpa only [rebind_captureset_denot (ρ := ρ) (C := C)] using
-            hkind (C.rename f) mode (hhas.rename)
-        have hsep' :
-            ∀ (C1 : CaptureSet s1) (m1 : Mutability) (C2 : CaptureSet s1) (m2 : Mutability),
-              Ψ.HasTwoDistinct C1 m1 C2 m2 ->
-              CapabilitySet.Noninterference (C1.denot env1 m') (C2.denot env1 m') := by
-          intro C1 m1 C2 m2 hdistinct
-          simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
-            rebind_captureset_denot (ρ := ρ) (C := C2)] using
-              hsep (C1.rename f) m1 (C2.rename f) m2 (hdistinct.rename)
-        exact (ih m' _).mp (hbody m' hsub hkind' hsep')
-    · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
-        hsat, hR0_sub, hbody⟩
-      refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
-      · intro m' hsub hsat'
-        exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mp hsat')
-      · intro m' hsub hkind hsep
-        let R0 := expand_captures m.heap cs0
-        have ih := rebind_exi_exp_denot ρ T R0
-        have hkind' :
-            ∀ (C : CaptureSet s2) (mode : Mutability),
-              (Ψ.rename f).Has C mode -> CapabilitySet.HasKind (C.denot env2 m') mode := by
-          intro C mode hhas
-          obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
-          simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
-            hkind C0 mode hhas0
-        have hsep' :
-            ∀ (C1 : CaptureSet s2) (m1 : Mutability) (C2 : CaptureSet s2) (m2 : Mutability),
-              (Ψ.rename f).HasTwoDistinct C1 m1 C2 m2 ->
-              CapabilitySet.Noninterference (C1.denot env2 m') (C2.denot env2 m') := by
-          intro C1 m1 C2 m2 hdistinct
-          obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
-          simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
-            rebind_captureset_denot (ρ := ρ) (C := D2)] using
-              hsep D1 m1 D2 m2 hdistinct0
-        exact (ih m' _).mpr (hbody m' hsub hkind' hsep')
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -536,74 +445,6 @@ def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet} 
   cvar := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
-def Rebind.lweaken {env : TypeEnv s} :
-  Rebind env Rename.succ (env.extend_lock) where
-  var := fun _ => rfl
-  var_peaks := fun _ => rfl
-  tvar := fun _ => rfl
-  cvar := fun _ => rfl
-  cvar_injective := fun _ _ h => BVar.there.inj h
-
-theorem typed_env_satisfy_rebind
-  {env1 : TypeEnv s1} {env2 : TypeEnv s2} {f : Rename s1 s2}
-  {Ψ : SepCtx s1} {m : Memory}
-  (ρ : Rebind env1 f env2)
-  (hsat : TypeEnv.Satisfy env1 Ψ m) :
-  TypeEnv.Satisfy env2 (Ψ.rename f) m := by
-  exact (rebind_satisfy_iff ρ Ψ m).1 hsat
-
-theorem typed_env_lookup_lock_satisfy
-  (hlookup : Ctx.LookupLock Γ ℓ Ψ)
-  (ht : EnvTyping Γ env m) :
-  env.Satisfy Ψ m := by
-  induction hlookup generalizing m with
-  | here =>
-    rename_i Γ0 Ψ0
-    cases env with
-    | extend env0 info =>
-      cases info with
-      | lock =>
-        simp [EnvTyping] at ht
-        exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0)) ht.1
-  | there hlookup ih =>
-    rename_i Ψ0 b
-    cases b with
-    | var T =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | var n ps =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind
-            (Rebind.weaken (env := env0) (x := n) (ps := ps))
-            (ih ht.2.2)
-    | tvar S =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | tvar d =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind
-            (Rebind.tweaken (env := env0) (d := d))
-            (ih ht.2.2.2.2.2)
-    | cvar B =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | cvar cs cap =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind
-            (Rebind.cweaken (env := env0) (cs := cs) (cap := cap))
-            (ih ht.2.2.2.2)
-    | lock Ψ1 =>
-      cases env with
-      | extend env0 info =>
-        cases info with
-        | lock =>
-          simp [EnvTyping] at ht
-          exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0))
-            (ih ht.2)
-
 lemma weaken_val_denot {env : TypeEnv s} {T : Ty .capt s} {x : Nat} {ps : PeakSet s} :
   Ty.val_denot env T ≈ Ty.val_denot (env.extend_var x ps) (T.rename Rename.succ) := by
   apply rebind_val_denot (ρ:=Rebind.weaken) (T:=T)
@@ -631,13 +472,5 @@ lemma cweaken_exi_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {cap : Capabi
   Ty.exi_val_denot env T ≈
     Ty.exi_val_denot (env.extend_cvar cs cap) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.cweaken) (T:=T)
-
-lemma lweaken_val_denot {env : TypeEnv s} {T : Ty .capt s} :
-  Ty.val_denot env T ≈ Ty.val_denot (env.extend_lock) (T.rename Rename.succ) := by
-  apply rebind_val_denot (ρ:=Rebind.lweaken) (T:=T)
-
-lemma lweaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
-  Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_lock) (T.rename Rename.succ) := by
-  apply rebind_exi_val_denot (ρ:=Rebind.lweaken) (T:=T)
 
 end Consume
