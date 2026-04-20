@@ -1,6 +1,5 @@
 import Semantic.Consume.Debruijn
 import Semantic.Consume.Syntax.CaptureSet
-import Semantic.Consume.Syntax.SepCtx
 
 /-!
 Type definitions and operations for CC.
@@ -8,7 +7,7 @@ Type definitions and operations for CC.
 
 namespace Consume
 
-/-- The sort of a type: capturing, shape, or existential. -/
+/-- The sort of a type: capturing or existential. -/
 inductive TySort : Type where
 /-- capturing types -/
 | capt : TySort
@@ -39,7 +38,7 @@ theorem CaptureBound.rename_comp
   | unbound => rfl
   | bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
 
-/-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
+/-- A type in CC, indexed by its sort (capturing or existential). -/
 inductive Ty : TySort -> Sig -> Type where
 -- capturing types
 | top : Ty .capt s
@@ -47,7 +46,6 @@ inductive Ty : TySort -> Sig -> Type where
 | arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
-| modal : CaptureSet s -> SepCtx s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
 | cell : CaptureSet s -> Ty .capt s
 | reader : CaptureSet s -> Ty .capt s
@@ -64,7 +62,6 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .arrow T1 cs T2, f => .arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
-| .modal cs Ψ T, f => .modal (cs.rename f) (Ψ.rename f) (T.rename f)
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
@@ -80,7 +77,7 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
     simp [Ty.rename, Rename.id]
   all_goals
     simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id,
-      CaptureBound.rename_id, SepCtx.rename_id, *]
+      CaptureBound.rename_id, *]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -90,7 +87,7 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simp [Ty.rename, Rename.comp]
   all_goals
     simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp,
-      CaptureBound.rename_comp, SepCtx.rename_comp, *]
+      CaptureBound.rename_comp, *]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
@@ -104,7 +101,6 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .arrow _ cs _ => cs
 | .poly _ cs _ => cs
 | .cpoly _ cs _ => cs
-| .modal cs _ _ => cs
 | .cap cs => cs
 | .cell cs => cs
 | .reader cs => cs
@@ -117,7 +113,6 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .arrow T1 _ T2, cs => .arrow T1 cs T2
 | .poly T1 _ T2, cs => .poly T1 cs T2
 | .cpoly cb _ T, cs => .cpoly cb cs T
-| .modal _ Ψ T, cs => .modal cs Ψ T
 | .cap _, cs => .cap cs
 | .cell _, cs => .cell cs
 | .reader _, cs => .reader cs
@@ -140,9 +135,6 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | cpoly :
     CaptureBound.IsClosed cb -> CaptureSet.IsClosed cs -> Ty.IsClosed T ->
     Ty.IsClosed (.cpoly cb cs T)
-| modal :
-    CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Ty.IsClosed T ->
-    Ty.IsClosed (.modal cs Ψ T)
 | unit : Ty.IsClosed .unit
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool
