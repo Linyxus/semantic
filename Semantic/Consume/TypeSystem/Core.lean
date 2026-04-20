@@ -55,11 +55,6 @@ inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
 | rw {C : CaptureSet s} :
   -------------------
   HasKind Γ C .epsilon
-| imm {C : CaptureSet s} :
-  Ctx.LookupLock Γ ℓ Ψ ->
-  SepCtx.Has Ψ C .ro ->
-  -------------------
-  HasKind Γ C .ro
 | ro {C : CaptureSet s} :
   -------------------
   HasKind Γ C.applyRO .ro
@@ -72,42 +67,6 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
 | top :
   -------------------
   Subbound Γ B .unbound
-
-inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
-| sep_symm :
-  SepCheck Γ C1 C2 ->
-  -------------------
-  SepCheck Γ C2 C1
-| sep_union :
-  SepCheck Γ C1 C3 ->
-  SepCheck Γ C2 C3 ->
-  -------------------
-  SepCheck Γ (C1 ∪ C2) C3
-| sep_empty {C : CaptureSet s} :
-  -------------------
-  SepCheck Γ {} C
-| sep_ro :
-  HasKind Γ C1 .ro ->
-  HasKind Γ C2 .ro ->
-  -------------------
-  SepCheck Γ C1 C2
-| sep_sc {C1 C2 C1' : CaptureSet s} :
-  SepCheck Γ C1 C2 ->
-  Subcapt Γ C1' C1 ->
-  --------------------
-  SepCheck Γ C1' C2
-| sep_lock {C1 C2 : CaptureSet s} :
-  Ctx.LookupLock Γ ℓ Ψ ->
-  SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
-  --------------------
-  SepCheck Γ C1 C2
-
-inductive Satisfy : Ctx s -> SepCtx s -> Prop where
-| satisfy {Ψ : SepCtx s} :
-  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
-  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
-  -------------------------------------------
-  Satisfy Γ Ψ
 
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | top {T : Ty .capt s} :
@@ -145,15 +104,6 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subtyp (Γ,C<:cb2) T1 T2 ->
   ----------------------------------------
   Subtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
-| modal :
-  Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ) ->
-  ----------------------------------------
-  Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
-| modal_modal :
-  Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
-  ----------------------------------
-  Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
 | exi :
   Subtyp (Γ,C<:.unbound) T1 T2 ->
   --------------------------
@@ -197,12 +147,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
-| wrap :
-  Ψ.IsClosed ->
-  HasType
-    (cs.rename Rename.succ) (Γ.push_lock Ψ)
-    (e.rename Rename.succ) (E.rename Rename.succ) ->
-  HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
@@ -223,11 +167,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.var x) (.typ (.cpoly (.bound D) (.var .epsilon x) T)) ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
-| unwrap :
-  HasType {} Γ (.var x) (.typ (.modal (.var .epsilon x) Ψ E)) ->
-  Satisfy Γ Ψ ->
-  ----------------------------
-  HasType (.var .epsilon x) Γ (.unwrap x) E
 | letin :
   HasType C Γ e1 (.typ T) ->
   HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
@@ -266,12 +205,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType C3 Γ e3 T ->
   ----------------------------
   HasType (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
-| par :
-  HasType C1 Γ e1 E ->
-  HasType C2 Γ e2 E ->
-  SepCheck Γ C1 C2 ->
-  ----------------------------
-  HasType (C1 ∪ C2) Γ (.par e1 e2) E
 | invoke :
   HasType {} Γ (.var x) (.typ (.cap (.var .epsilon x))) ->
   HasType {} Γ (.var y) (.typ .unit) ->

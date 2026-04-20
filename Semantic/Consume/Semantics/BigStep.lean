@@ -30,13 +30,6 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
   Eval C m (e.subst (Subst.openCVar CS)) Q ->
   Eval C m (.capp (.free x) CS) Q
-| eval_wrap :
-  Q (.boxed cs Ψ e) m ->
-  Eval C m (.boxed cs Ψ e) Q
-| eval_unwrap {m : Memory} {x : Nat} :
-  m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
-  Eval C m e Q ->
-  Eval C m (.unwrap (.free x)) Q
 | eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   (hbool : Q1.is_bool_independent) ->
@@ -112,12 +105,6 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     resolve m1.heap v = some .bfalse ->
     Eval C m1 e3 Q) ->
   Eval C m (.cond x e2 e3) Q
-| eval_par :
-  Eval C1 m e1 Q ->
-  Eval C2 m e2 Q ->
-  CapabilitySet.Noninterference C1 C2 ->
-  (C1 ∪ C2) ⊆ C' ->
-  Eval C' m (.par e1 e2) Q
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
@@ -217,21 +204,6 @@ theorem eval_monotonic {m1 m2 : Memory}
           · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
             apply Subst.wf_openCVar
             exact hwf_cs)
-  case eval_wrap hQ =>
-    apply Eval.eval_wrap
-    exact hpred hwf hsub hQ
-  case eval_unwrap hx _ ih =>
-    cases hwf with
-    | wf_unwrap _ =>
-      obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
-      simp [Cell.subsumes] at hsub_v
-      subst hsub_v
-      apply Eval.eval_unwrap hx2
-      apply ih hpred hbool hsub
-      have hwf_boxed := Memory.wf_lookup hx
-      cases hwf_boxed with
-      | wf_boxed _ _ hwf_e =>
-        exact hwf_e
   case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
     rename_i C_orig e1_orig Q_orig e2_orig m_orig
     -- Use inversion to extract well-formedness of subexpressions
@@ -423,16 +395,6 @@ theorem eval_monotonic {m1 m2 : Memory}
     · intro m_branch v hs hQ1 hres
       have hs_orig := Memory.subsumes_trans hs hsub
       exact h_false hs_orig hQ1 hres
-  case eval_par hni hsub_cap ih1 ih2 =>
-    -- Extract well-formedness of both branches
-    cases hwf with
-    | wf_par hwf1 hwf2 =>
-      apply Eval.eval_par
-      · exact ih1 hpred hbool hsub hwf1
-      · exact ih2 hpred hbool hsub hwf2
-      · exact hni
-      · exact hsub_cap
-
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
 
@@ -485,13 +447,6 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     apply ih himp
   case eval_capply hx _ ih =>
     apply Eval.eval_capply hx
-    apply ih himp
-  case eval_wrap hQ =>
-    apply Eval.eval_wrap
-    apply himp _ _ _ hQ
-    apply Memory.subsumes_refl
-  case eval_unwrap hx _ ih =>
-    apply Eval.eval_unwrap hx
     apply ih himp
   case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
@@ -551,13 +506,6 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_false hsub hq1 hres
       apply Mpost.entails_after_subsumes himp
       exact hsub
-  case eval_par hni hsub_cap ih1 ih2 =>
-    apply Eval.eval_par
-    · exact ih1 himp
-    · exact ih2 himp
-    · exact hni
-    · exact hsub_cap
-
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
   (heval : Eval C m e Q1) :
@@ -582,10 +530,6 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     exact Eval.eval_tapply hlookup (ih hsub)
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
-  case eval_wrap hQ =>
-    exact Eval.eval_wrap hQ
-  case eval_unwrap hlookup _ ih =>
-    exact Eval.eval_unwrap hlookup (ih hsub)
   case eval_letin =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var
     apply Eval.eval_letin hpred_mono hbool_mono (ih_e1 hsub)
@@ -620,15 +564,4 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_true hs1 hq1 hres hsub
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
-  case eval_par heval1 heval2 hni hsub_cap _ _ =>
-    -- hsub_cap : C1 ∪ C2 ⊆ C'  (where C' = A1)
-    -- hsub : C' ⊆ A2
-    -- Keep original sub-derivations to preserve Noninterference C1 C2
-    -- Just need to show C1 ∪ C2 ⊆ A2
-    apply Eval.eval_par
-    · exact heval1
-    · exact heval2
-    · exact hni
-    · exact CapabilitySet.Subset.trans hsub_cap hsub
-
 end Consume
