@@ -58,7 +58,7 @@ theorem Heap.extend_subsumes {H : Heap} {l : Nat}
   (hfresh : H l = none) :
   (H.extend l v).subsumes H := by
   intro l' v' hlookup
-  simp [Heap.extend]
+  simp only [Heap.extend]
   split
   · next heq =>
       -- l' = l case: contradiction since H l = none but H l' = some v'

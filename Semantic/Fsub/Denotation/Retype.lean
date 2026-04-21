@@ -25,7 +25,7 @@ theorem Retype.liftVar
   var := fun
     | .here => rfl
     | .there y => by
-      show env1.lookup_var y = interp_var (env2.extend_var x) ((σ.var y).rename Rename.succ)
+      change env1.lookup_var y = interp_var (env2.extend_var x) ((σ.var y).rename Rename.succ)
       conv =>
         rhs
         simp [<-weaken_interp_var]
@@ -46,7 +46,7 @@ theorem Retype.liftTVar
   Retype (env1.extend_tvar d) (σ.lift) (env2.extend_tvar d) where
   var := fun
     | .there x => by
-      show env1.lookup_var x = interp_var (env2.extend_tvar d) ((σ.var x).rename Rename.succ)
+      change env1.lookup_var x = interp_var (env2.extend_tvar d) ((σ.var x).rename Rename.succ)
       conv => rhs; simp [<-tweaken_interp_var]
       exact ρ.var x
   tvar := fun
@@ -76,12 +76,10 @@ theorem retype_val_denot
     apply Denot.eq_to_equiv
     simp [Ty.val_denot, Ty.subst]
   | .tvar X => by
-    simp [Ty.val_denot, Ty.subst]
-    exact ρ.tvar X
+    simpa only [Ty.val_denot, Ty.subst] using ρ.tvar X
   | .singleton x => by
-    simp [Ty.val_denot, Ty.subst]
     intro s e
-    simp
+    simp only [Ty.val_denot, Ty.subst]
     cases x with
     | bound x =>
       conv =>
@@ -94,8 +92,8 @@ theorem retype_val_denot
       simp [Var.subst, interp_var]
   | .arrow T1 T2 => by
     have ih1 := retype_val_denot ρ (T:=T1)
-    simp [Ty.val_denot, Ty.subst]
-    intro s0 e0; simp; constructor <;> {
+    simp only [Ty.val_denot, Ty.subst]
+    intro s0 e0; constructor <;> {
       intro h
       obtain ⟨T0, body, hr, hd⟩ := h
       use T0, body, hr
@@ -107,8 +105,8 @@ theorem retype_val_denot
     }
   | .poly T1 T2 => by
     have ih1 := retype_val_denot ρ (T:=T1)
-    simp [Ty.val_denot, Ty.subst]
-    intro s0 e0; simp; constructor <;> {
+    simp only [Ty.val_denot, Ty.subst]
+    intro s0 e0; constructor <;> {
       intro h
       obtain ⟨T0, e0, hr, hd⟩ := h
       use T0, e0, hr
@@ -127,7 +125,7 @@ theorem retype_exp_denot
   (ρ : Retype env1 σ env2) :
   Ty.exp_denot env1 T ≈ Ty.exp_denot env2 (T.subst σ) := by
   have ih := retype_val_denot ρ (T:=T)
-  intro s e; simp [Ty.exp_denot]; constructor <;> {
+  intro s e; simp only [Ty.exp_denot]; constructor <;> {
     intro h
     apply eval_post_monotonic _ h
     apply Denot.imply_to_entails
@@ -146,7 +144,7 @@ def Retype.open_arg {env : TypeEnv s} {y : Var s} :
   var := fun x => by cases x <;> rfl
   tvar := fun
     | .there X => by
-      show Denot.Equiv (env.lookup_tvar X) _
+      change Denot.Equiv (env.lookup_tvar X) _
       conv =>
         rhs
         simp [Subst.openVar]
@@ -170,7 +168,7 @@ def Retype.open_targ {env : TypeEnv s} {S : Ty s} :
       rfl
     | .there X => by
       apply Denot.eq_to_equiv
-      simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar]
       simp [Subst.openTVar, Ty.val_denot]
       rfl
 

@@ -81,14 +81,12 @@ def Hpost.entails_after (Q1 : Hpost) (h : Heap) (Q2 : Hpost) : Prop :=
 lemma Hpost.entails_to_entails_after {Q1 Q2 : Hpost}
   (himp : Q1.entails Q2) :
   Q1.entails_after h Q2 := by
-  intro h' hsub
-  intro e hQ
+  intro h' hsub e hQ
   apply himp h' e hQ
 
 theorem Hpost.entails_after_refl (Q : Hpost) (h : Heap) :
   Q.entails_after h Q := by
-  intro h' _
-  intro e hQ
+  intro h' _ e hQ
   exact hQ
 
 theorem Hpost.entails_after_subsumes

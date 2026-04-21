@@ -218,16 +218,10 @@ theorem Exp.rename_is_val {e : Exp n}
   (h : e.is_val) :
   (e.rename f).is_val := by
   induction e <;> try (solve | cases h | rfl)
-  simp [Exp.rename]
-  simp [Exp.is_val]
-  right
-  simp [Exp.is_num_val]
-  simp [Exp.is_val] at h
-  cases h
-  case inl h => cases h
-  case inr h =>
-    simp [Exp.is_num_val] at h
-    apply Exp.rename_is_numval h
+  simp only [Exp.rename]
+  simp only [Exp.is_val, Exp.is_bool_val, Exp.is_num_val, Bool.false_or]
+  simp only [Exp.is_val, Exp.is_bool_val, Exp.is_num_val, Bool.false_or] at h
+  apply Exp.rename_is_numval h
 
 /-!
 A store mapping variables to closed values.
@@ -252,7 +246,7 @@ theorem Store.lookup_is_val {s : Store n} :
   induction x
   case here => cases s; aesop
   case there ih =>
-    cases s; simp [Store.lookup]
+    cases s; simp only [Store.lookup]
     exact ih
 
 /-!

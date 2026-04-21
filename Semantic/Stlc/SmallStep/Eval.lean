@@ -24,12 +24,10 @@ inductive Step : Exp 0 -> Exp 0 -> Prop where
 | st_app_beta :
   v.IsVal ->
   Step (.app (.abs T body) v) (body.subst (Subst.openVar v))
-
 -- Successor rules
 | st_nsucc :
   Step e e' ->
   Step (.nsucc e) (.nsucc e')
-
 -- Predecessor rules
 | st_pred :
   Step e e' ->
@@ -39,7 +37,6 @@ inductive Step : Exp 0 -> Exp 0 -> Prop where
 | st_pred_nsucc :
   nv.IsNumVal ->
   Step (.pred (.nsucc nv)) nv
-
 -- IsZero rules
 | st_iszero :
   Step e e' ->
@@ -49,7 +46,6 @@ inductive Step : Exp 0 -> Exp 0 -> Prop where
 | st_iszero_nsucc :
   nv.IsNumVal ->
   Step (.iszero (.nsucc nv)) .bfalse
-
 -- Conditional rules
 | st_cond :
   Step e1 e1' ->

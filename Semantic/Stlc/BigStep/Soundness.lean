@@ -63,7 +63,7 @@ theorem typed_store_lookup
   Ty.val_denot T (s.lookup x) := by
   induction hb
   case here =>
-    cases s; simp [TypedStore] at hts; simp [Store.lookup]; aesop
+    cases s; simp only [TypedStore] at hts; simp only [Store.lookup]; aesop
   case there ih =>
     cases s; simp only [Store.lookup]; cases hts; grind
 
@@ -71,7 +71,7 @@ theorem sem_typ_var
   (hb : Ctx.Lookup Γ x T) :
   (Γ ⊨ (.var x) : T) := by
   intro s hts
-  simp [Ty.exp_denot]
+  simp only [Ty.exp_denot]
   use s.lookup x
   split_ands
   { apply eval_val
@@ -83,32 +83,32 @@ theorem sem_typ_nsucc
   (Γ ⊨ .nsucc e : Ty.nat) := by
   intro s hts
   specialize ht s hts
-  simp [Ty.exp_denot] at *
+  simp only [Ty.exp_denot] at *
   have ⟨v0, hev0, hv0⟩ := ht
-  simp [Ty.val_denot] at hv0
+  simp only [Ty.val_denot] at hv0
   use .nsucc v0
   split_ands
   { grind [Exp.subst, Eval] }
-  { simp [Ty.val_denot]
+  { simp only [Ty.val_denot]
     grind [Exp.IsNumVal] }
 
 theorem val_denot_is_val
   (hv : Ty.val_denot T v) :
   v.IsVal := by
   cases T
-  case bool => simp [Ty.val_denot] at hv; grind [Exp.IsVal]
-  case nat => simp [Ty.val_denot] at hv; grind [Exp.IsVal]
-  case arrow => simp [Ty.val_denot] at hv; apply abs_val_is_val hv.left
+  case bool => simp only [Ty.val_denot] at hv; grind [Exp.IsVal]
+  case nat => simp only [Ty.val_denot] at hv; grind [Exp.IsVal]
+  case arrow => simp only [Ty.val_denot] at hv; apply abs_val_is_val hv.left
 
 theorem sem_typ_abs
   (ht : (Γ,x:T) ⊨ e : U) :
   (Γ ⊨ .abs T e : Ty.arrow T U) := by
   intro s hts
-  simp [Ty.exp_denot]
-  simp [Exp.subst]
+  simp only [Ty.exp_denot]
+  simp only [Exp.subst]
   constructor; constructor
   { apply eval_val; grind [Exp.IsVal] }
-  { simp [Ty.val_denot]
+  { simp only [Ty.val_denot]
     constructor; try grind [Exp.IsAbsVal]
     intro arg harg
     unfold SemanticTyping at ht
@@ -116,17 +116,17 @@ theorem sem_typ_abs
     let s' := Store.cons arg hvarg s
     have hts' : TypedStore s' (Γ,x:T) := by
       unfold s'
-      simp [TypedStore]
+      simp only [TypedStore]
       aesop
     specialize ht s' hts'
-    simp [Ty.exp_denot] at ht ⊢
+    simp only [Ty.exp_denot] at ht ⊢
     have ⟨v0, hev0, hv0⟩ := ht
     use v0
     apply And.intro _ hv0
     { apply Eval.ev_app
       · apply eval_val; grind [Exp.IsVal]
       · apply eval_val hvarg
-      · simp [Exp.subst_comp]
+      · simp only [Exp.subst_comp]
         rw [Subst.fromStore_openVar_comp (hv := hvarg)]
         exact hev0
     }
@@ -142,10 +142,10 @@ theorem sem_typ_app
   simp only [Ty.exp_denot] at *
   have ⟨vf, hevf, hvf⟩ := ht1
   have ⟨va, heva, hva⟩ := ht2
-  simp [Ty.val_denot] at hvf
+  simp only [Ty.val_denot] at hvf
   cases hvf.left
   have := hvf.right va hva
-  simp [Ty.exp_denot] at this
+  simp only [Ty.exp_denot] at this
   have ⟨v, hev, vdenot⟩ := this
   use v
   apply And.intro _ vdenot
@@ -165,15 +165,15 @@ theorem sem_typ_pred
   specialize ht s hts
   simp only [Ty.exp_denot] at *
   have ⟨v0, hev0, v0denot⟩ := ht
-  simp [Ty.val_denot] at v0denot
+  simp only [Ty.val_denot] at v0denot
   cases v0denot
   case nzero =>
     use .nzero
-    apply And.intro _ (by simp [Ty.val_denot]; first | assumption | constructor)
+    apply And.intro _ (by simp only [Ty.val_denot]; first | assumption | constructor)
     exact Eval.ev_pred_nzero hev0
   case nsucc n0 hv =>
     use n0
-    apply And.intro _ (by simp [Ty.val_denot]; first | assumption | constructor)
+    apply And.intro _ (by simp only [Ty.val_denot]; assumption)
     exact Eval.ev_pred_nsucc hev0 hv
 
 theorem sem_typ_iszero
@@ -183,15 +183,15 @@ theorem sem_typ_iszero
   specialize ht s hts
   simp only [Ty.exp_denot] at *
   have ⟨v0, hev0, v0denot⟩ := ht
-  simp [Ty.val_denot] at v0denot
+  simp only [Ty.val_denot] at v0denot
   cases v0denot
   case nzero =>
     use .btrue
-    apply And.intro _ (by simp [Ty.val_denot]; constructor)
+    apply And.intro _ (by simp only [Ty.val_denot]; constructor)
     exact Eval.ev_iszero_nzero hev0
   case nsucc n0 hv =>
     use .bfalse
-    apply And.intro _ (by simp [Ty.val_denot]; constructor)
+    apply And.intro _ (by simp only [Ty.val_denot]; constructor)
     exact Eval.ev_iszero_nsucc hev0 hv
 
 theorem sem_typ_cond
@@ -207,7 +207,7 @@ theorem sem_typ_cond
   have ⟨v1, hev1, v1denot⟩ := ht1
   have ⟨v2, hev2, v2denot⟩ := ht2
   have ⟨v3, hev3, v3denot⟩ := ht3
-  simp [Ty.val_denot] at v1denot
+  simp only [Ty.val_denot] at v1denot
   cases v1denot
   case btrue =>
     use v2
@@ -230,25 +230,25 @@ theorem semantic_soundness
         sem_typ_pred, sem_typ_iszero, sem_typ_cond])
   case btrue =>
     intro s hts
-    simp [Ty.exp_denot]
+    simp only [Ty.exp_denot]
     use .btrue
     split_ands
     { grind [Exp.subst, Eval] }
-    { simp [Ty.val_denot]; grind [Exp.IsBoolVal] }
+    { simp only [Ty.val_denot]; grind [Exp.IsBoolVal] }
   case bfalse =>
     intro s hts
-    simp [Ty.exp_denot]
+    simp only [Ty.exp_denot]
     use .bfalse
     split_ands
     { grind [Exp.subst, Eval] }
-    { simp [Ty.val_denot]; grind [Exp.IsBoolVal] }
+    { simp only [Ty.val_denot]; grind [Exp.IsBoolVal] }
   case nzero =>
     intro s hts
-    simp [Ty.exp_denot]
+    simp only [Ty.exp_denot]
     use .nzero
     split_ands
     { grind [Exp.subst, Eval] }
-    { simp [Ty.val_denot]; grind [Exp.IsNumVal] }
+    { simp only [Ty.val_denot]; grind [Exp.IsNumVal] }
 
 end BigStep
 end Stlc

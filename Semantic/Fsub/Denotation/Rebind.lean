@@ -12,8 +12,7 @@ def Rebind.liftVar
   var := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup]
-      exact ρ.var y
+      simpa only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup] using ρ.var y
 
 def Rebind.liftTVar
   (ρ : Rebind env1 f env2) :
@@ -21,8 +20,7 @@ def Rebind.liftTVar
   var := fun
     | .here => rfl
     | .there y => by
-      simp [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup]
-      exact ρ.var y
+      simpa only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup] using ρ.var y
 
 theorem rebind_interp_var
   (ρ : Rebind env1 f env2) :
@@ -44,20 +42,23 @@ def rebind_val_denot
     apply Denot.eq_to_equiv
     simp [Ty.val_denot, Ty.rename]
   | .tvar X => by
-    simp [Ty.val_denot, Ty.rename]
     apply Denot.eq_to_equiv
-    have h := ρ.var X
-    simp [TypeEnv.lookup_tvar]
-    grind
+    simp only [Ty.val_denot, Ty.rename]
+    simpa only [TypeEnv.lookup_tvar] using
+      congrArg
+        (fun info : TypeInfo .tvar =>
+          match info with
+          | .tvar T => T)
+        (ρ.var X)
   | .singleton x => by
-    simp [Ty.val_denot, Ty.rename]
-    have := rebind_interp_var ρ (x:=x)
     apply Denot.eq_to_equiv
-    simp [this]
+    funext s e
+    simp only [Ty.val_denot, Ty.rename]
+    exact congrArg (fun n => e = .var (.free n)) (rebind_interp_var ρ (x:=x))
   | .arrow T1 T2 => by
     have ih1 := rebind_val_denot ρ (T:=T1)
-    simp [Ty.val_denot, Ty.rename]
-    intro s0 e0; simp; constructor <;> {
+    simp only [Ty.val_denot, Ty.rename]
+    intro s0 e0; constructor <;> {
       intro h
       obtain ⟨T0, body, hr, hd⟩ := h
       use T0, body, hr
@@ -69,8 +70,8 @@ def rebind_val_denot
     }
   | .poly T1 T2 => by
     have ih1 := rebind_val_denot ρ (T:=T1)
-    simp [Ty.val_denot, Ty.rename]
-    intro s0 e0; simp; constructor <;> {
+    simp only [Ty.val_denot, Ty.rename]
+    intro s0 e0; constructor <;> {
       intro h
       obtain ⟨T0, e0, hr, hd⟩ := h
       use T0, e0, hr
@@ -89,7 +90,7 @@ def rebind_exp_denot
   (ρ : Rebind env1 f env2) :
   Ty.exp_denot env1 T ≈ Ty.exp_denot env2 (T.rename f) := by
   have ih := rebind_val_denot ρ (T:=T)
-  intro s e; simp [Ty.exp_denot]; constructor <;> {
+  intro s e; simp only [Ty.exp_denot]; constructor <;> {
     intro h
     apply eval_post_monotonic _ h
     apply Denot.imply_to_entails

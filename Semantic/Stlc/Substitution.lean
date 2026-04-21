@@ -147,12 +147,12 @@ theorem Exp.var_weaken_subst_comm {x : Var (n1 + k)} {s : Subst n1 n2} :
     case here => rfl
     case there x =>
       have ih := ih (x:=x)
-      simp [Exp.subst, Exp.rename]
-      simp [Subst.lift, Rename.lift]
-      conv => lhs; simp [Subst.liftVar]
-      conv => rhs; simp [Rename.liftVar]
-      simp [Subst.liftVar_there_eq]
-      conv => lhs; simp [<-Exp.rename_succVar_comm]
+      simp only [Exp.subst, Exp.rename]
+      simp only [Subst.lift, Rename.lift]
+      conv => lhs; simp only [Subst.liftVar]
+      conv => rhs; simp only [Rename.liftVar]
+      simp only [Subst.liftVar_there_eq]
+      conv => lhs; simp only [<-Exp.rename_succVar_comm]
       congr
 
 /-!
@@ -165,8 +165,9 @@ theorem Exp.weaken_subst_comm {e : Exp (n1 + k)} {s : Subst n1 n2} :
   | .var x => simp [Exp.var_weaken_subst_comm (x:=x) (s:=s)]
   | .abs T e =>
     have ih := Exp.weaken_subst_comm (k:=k+1) (e:=e) (s:=s)
-    simp [Exp.subst, Exp.rename]
-    exact ih
+    simp only [Subst.lift, Rename.lift] at ih
+    simp only [Exp.subst, Exp.rename]
+    exact congrArg (Exp.abs T) ih
   | .app e1 e2 =>
     have ih1 := Exp.weaken_subst_comm (e:=e1) (s:=s)
     have ih2 := Exp.weaken_subst_comm (e:=e2) (s:=s)
@@ -228,9 +229,8 @@ theorem Exp.subst_comp {e : Exp n1} {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
   (e.subst s1).subst s2 = e.subst (s1.comp s2) := by
   induction e generalizing n2 n3 <;> try grind [Exp.subst, Subst.comp]
   case abs ih =>
-    simp [Exp.subst]
-    convert ih
-    simp [Subst.comp_liftVar]
+    simp only [Exp.subst]
+    rw [ih, Subst.comp_liftVar]
 
 /-!
 Lift a renaming to a substitution.

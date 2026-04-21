@@ -298,7 +298,7 @@ theorem typed_env_is_monotonic
   | empty =>
     cases env with
     | empty =>
-      simp [TypeEnv.is_monotonic]
+      simp only [TypeEnv.is_monotonic]
       intro x
       cases x
   | push Γ k ih =>
@@ -308,29 +308,29 @@ theorem typed_env_is_monotonic
       | var T =>
         cases info with
         | var n =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           have ⟨_, ht'⟩ := ht
           have ih_result := ih ht'
-          simp [TypeEnv.is_monotonic] at ih_result ⊢
+          simp only [TypeEnv.is_monotonic] at ih_result ⊢
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
       | tvar S =>
         cases info with
         | tvar d =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           have ⟨hmono, _, _, ht'⟩ := ht
           have ih_result := ih ht'
-          simp [TypeEnv.is_monotonic] at ih_result ⊢
+          simp only [TypeEnv.is_monotonic] at ih_result ⊢
           intro x
           cases x with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact hmono
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
 
 def Denot.as_post_is_monotonic {d : Denot}
@@ -345,7 +345,7 @@ theorem typed_env_is_transparent
   | empty =>
     cases env with
     | empty =>
-      simp [TypeEnv.is_transparent]
+      simp only [TypeEnv.is_transparent]
       intro x
       cases x
   | push Γ k ih =>
@@ -355,29 +355,29 @@ theorem typed_env_is_transparent
       | var T =>
         cases info with
         | var n =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           have ⟨_, ht'⟩ := ht
           have ih_result := ih ht'
-          simp [TypeEnv.is_transparent] at ih_result ⊢
+          simp only [TypeEnv.is_transparent] at ih_result ⊢
           intro x
           cases x with
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
       | tvar S =>
         cases info with
         | tvar d =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           have ⟨_, htrans, _, ht'⟩ := ht
           have ih_result := ih ht'
-          simp [TypeEnv.is_transparent] at ih_result ⊢
+          simp only [TypeEnv.is_transparent] at ih_result ⊢
           intro x
           cases x with
           | here =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact htrans
           | there x =>
-            simp [TypeEnv.lookup_tvar, TypeEnv.lookup]
+            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
             exact ih_result x
 
 theorem val_denot_is_transparent
@@ -388,18 +388,19 @@ theorem val_denot_is_transparent
     rename_i h x v; intro hlk hv
     simp [Ty.val_denot]
   | .tvar X => by
-    simp [Ty.val_denot]
+    simp only [Ty.val_denot]
     exact henv X
   | .singleton z => by
-    rename_i v
+    rename_i h x v
     intro hx hval
-    simp [Ty.val_denot] at hval
-    cases v; rename_i v hv
-    simp at hval; subst hval
-    cases hv
+    simp only [Ty.val_denot] at hval
+    cases v with
+    | mk v hv =>
+      cases hval
+      cases hv
   | .arrow T1 T2 | .poly T1 T2 => by
     intro hx ht
-    simp [Ty.val_denot] at ht ⊢
+    simp only [Ty.val_denot] at ht ⊢
     rw [resolve_var_heap_trans hx]
     exact ht
 
@@ -411,21 +412,21 @@ def val_denot_is_monotonic {T : Ty s}
   match T with
   | .top => by
     intro hheap ht
-    simp [Ty.val_denot] at ht ⊢
+    simp only [Ty.val_denot] at ht ⊢
   | .tvar X => by
     intro hheap ht
-    simp [Ty.val_denot] at ht ⊢
+    simp only [Ty.val_denot] at ht ⊢
     apply henv X hheap ht
   | .singleton x => by
     intro hheap ht
-    simp [Ty.val_denot] at ht ⊢
+    simp only [Ty.val_denot] at ht ⊢
     exact ht
   | .arrow T1 T2 => by
     have ih1 : (Ty.val_denot env T1).is_monotonic :=
       val_denot_is_monotonic (T:=T1) henv
     intro hheap ht
     rename_i h1 h2 e
-    simp [Ty.val_denot] at ht ⊢
+    simp only [Ty.val_denot] at ht ⊢
     have ⟨T0, e0, hr, hfun⟩ := ht
     use T0, e0
     constructor
@@ -433,7 +434,7 @@ def val_denot_is_monotonic {T : Ty s}
       | var x =>
         cases x with
         | free fx =>
-          simp [resolve] at hr ⊢
+          simp only [resolve] at hr ⊢
           cases hres : h1 fx with
           | none => simp [hres] at hr
           | some v =>
@@ -441,16 +442,16 @@ def val_denot_is_monotonic {T : Ty s}
             have := hheap fx v hres
             simp [this, hr]
         | bound bx => cases bx
-      | abs _ _ => simp [resolve] at hr ⊢; exact hr
-      | tabs _ _ => simp [resolve] at hr ⊢
-      | app _ _ | tapp _ _ | letin _ _ => simp [resolve] at hr
+      | abs _ _ => simp only [resolve] at hr ⊢; exact hr
+      | tabs _ _ => simp only [resolve] at hr ⊢; exact hr
+      | app _ _ | tapp _ _ | letin _ _ => simp only [resolve] at hr ⊢; exact hr
     · intro s' arg hs' harg
       have hs0 := Heap.subsumes_trans hs' hheap
       apply hfun s' arg hs0 harg
   | .poly T1 T2 => by
     intro hheap ht
     rename_i h1 h2 e
-    simp [Ty.val_denot] at ht ⊢
+    simp only [Ty.val_denot] at ht ⊢
     have ⟨T0, e0, hr, hfun⟩ := ht
     use T0, e0
     constructor
@@ -460,7 +461,7 @@ def val_denot_is_monotonic {T : Ty s}
       | var x =>
         cases x with
         | free fx =>
-          simp [resolve] at hr ⊢
+          simp only [resolve] at hr ⊢
           cases hres : h1 fx with
           | none => simp [hres] at hr
           | some v =>
@@ -468,9 +469,9 @@ def val_denot_is_monotonic {T : Ty s}
             have := hheap fx v hres
             simp [this, hr]
         | bound bx => cases bx
-      | abs _ _ => simp [resolve] at hr ⊢
-      | tabs _ _ => simp [resolve] at hr ⊢; exact hr
-      | app _ _ | tapp _ _ | letin _ _ => simp [resolve] at hr
+      | abs _ _ => simp only [resolve] at hr ⊢; exact hr
+      | tabs _ _ => simp only [resolve] at hr ⊢; exact hr
+      | app _ _ | tapp _ _ | letin _ _ => simp only [resolve] at hr ⊢; exact hr
     · -- Show: ∀ denot, monotonic -> transparent -> imply -> ...
       intro H denot Hsub hdenot_mono hdenot_trans himply
       -- Need to show: Ty.exp_denot (env.extend_tvar denot) T2 h2 (e0.subst ...)
@@ -495,7 +496,7 @@ def exp_denot_is_monotonic {T : Ty s}
   have ih : (Ty.val_denot env T).is_monotonic :=
     val_denot_is_monotonic henv (T:=T)
   intro h1 h2 e hheap ht
-  simp [Ty.exp_denot] at ht ⊢
+  simp only [Ty.exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_post_is_monotonic
     exact ih
@@ -519,7 +520,7 @@ theorem env_typing_monotonic
       | var T =>
         cases info with
         | var n =>
-          simp [EnvTyping] at ht ⊢
+          simp only [EnvTyping] at ht ⊢
           have ⟨hval, ht'⟩ := ht
           constructor
           · -- Show: Ty.val_denot env' T store2 (.var (.free n))
@@ -532,7 +533,7 @@ theorem env_typing_monotonic
       | tvar S =>
         cases info with
         | tvar d =>
-          simp [EnvTyping] at ht ⊢
+          simp only [EnvTyping] at ht ⊢
           have ⟨hmono, htrans, himply, ht'⟩ := ht
           constructor
           · exact hmono
@@ -552,7 +553,7 @@ theorem denot_implyat_lift
   (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
   (Ty.exp_denot env T1).ImplyAfter H (Ty.exp_denot env T2) := by
   intro H' hheap v h1
-  simp [Ty.exp_denot] at h1 ⊢
+  simp only [Ty.exp_denot] at h1 ⊢
   apply eval_post_monotonic_general _ h1
   apply Hpost.entails_after_subsumes <;> try exact hheap
   apply Denot.imply_after_to_entails_after himp
