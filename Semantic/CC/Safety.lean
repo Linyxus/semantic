@@ -99,7 +99,7 @@ theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   (Memory.platform_of M).subsumes (Memory.platform_of N) := by
   intro l v hlookup
   unfold Memory.platform_of Heap.platform_of at hlookup ⊢
-  simp at hlookup ⊢
+  simp only [Option.ite_none_right_eq_some, Option.some.injEq, ↓existsAndEq, and_true] at hlookup ⊢
   constructor
   · omega
   · exact hlookup.2
@@ -125,7 +125,7 @@ theorem env_typing_of_platform {N : Nat} :
     exact True.intro
   | succ N ih =>
     unfold Ctx.platform_of TypeEnv.platform_of EnvTyping
-    simp [TypeEnv.extend_cvar, TypeEnv.extend_var]
+    simp only [List.empty_eq]
     constructor
     · -- Term variable x : .capt (.cvar .here) .cap at location N
       rw [capt_val_denot_capt]
@@ -140,12 +140,12 @@ theorem env_typing_of_platform {N : Nat} :
         · constructor
           · show CaptureSet.WfInHeap _ _
             simp only [CaptureSet.subst, Subst.from_TypeEnv]
-            show CaptureSet.WfInHeap (CaptureSet.var (Var.free N)) _
+            change CaptureSet.WfInHeap (CaptureSet.var (Var.free N)) _
             apply CaptureSet.WfInHeap.wf_var_free
             show (Heap.platform_of (N + 1)) N = some (.capability .basic)
             unfold Heap.platform_of
             simp
-          · show Ty.shape_val_denot _ Ty.cap _ _ _
+          · change Ty.shape_val_denot _ Ty.cap _ _ _
             rw [Ty.shape_val_denot.eq_4]
             constructor
             · apply Exp.WfInHeap.wf_var
@@ -462,7 +462,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     | bound b =>
       -- Bound term variable
       unfold Subst.from_TypeEnv Var.subst
-      simp [CaptureSet.ground_denot]
+      simp only [CaptureSet.ground_denot]
       rw [TypeEnv.lookup_var_platform]
       have hlevel : b.level / 2 < N := BVar.level_var_bound
       unfold Memory.platform_of
@@ -474,7 +474,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
       cases hwf with
       | wf_var_free hlookup =>
         unfold Subst.from_TypeEnv Var.subst
-        simp [CaptureSet.ground_denot]
+        simp only [CaptureSet.ground_denot]
         unfold Memory.platform_of
         simp
         -- From hlookup: (Heap.platform_of N) n = some val
@@ -492,7 +492,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     simp only [Subst.from_TypeEnv]
     rw [TypeEnv.lookup_cvar_platform]
     unfold CaptureSet.ground_denot Memory.platform_of
-    simp
+    simp only [List.empty_eq]
     -- Goal: reachability_of_loc (Heap.platform_of N) (c.level / 2) = {c.level / 2}
     have hlevel : c.level / 2 < N := BVar.level_cvar_bound
     rw [reachability_of_loc_platform hlevel]

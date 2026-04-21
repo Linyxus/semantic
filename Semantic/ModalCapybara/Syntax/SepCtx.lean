@@ -61,7 +61,7 @@ theorem SepCtx.rename_id {K : SepCtx s} :
   induction K with
   | empty => rfl
   | cons K C m ih =>
-    simp [SepCtx.rename, ih, CaptureSet.rename_id]
+    simp only [SepCtx.rename, ih, CaptureSet.rename_id]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem SepCtx.rename_comp
@@ -70,15 +70,15 @@ theorem SepCtx.rename_comp
   induction K generalizing s2 s3 with
   | empty => rfl
   | cons K C m ih =>
-    simp [SepCtx.rename, ih, CaptureSet.rename_comp]
+    simp only [SepCtx.rename, ih, CaptureSet.rename_comp]
 
 theorem SepCtx.Has.rename
     {K : SepCtx s1} {f : Rename s1 s2}
     (h : SepCtx.Has K C m) :
     SepCtx.Has (K.rename f) (C.rename f) m := by
   induction h with
-  | here => simp [SepCtx.rename]; exact .here
-  | there h ih => simp [SepCtx.rename]; exact .there ih
+  | here => simp only [SepCtx.rename]; exact .here
+  | there h ih => simp only [SepCtx.rename]; exact .there ih
 
 theorem SepCtx.Has.rename_inv
     {K : SepCtx s1} {f : Rename s1 s2}
@@ -88,7 +88,7 @@ theorem SepCtx.Has.rename_inv
   | empty =>
     cases h
   | cons K C0 m0 ih =>
-    simp [SepCtx.rename] at h
+    simp only [SepCtx.rename] at h
     cases h with
     | here =>
       exact ⟨C0, rfl, .here⟩
@@ -102,10 +102,10 @@ theorem SepCtx.HasTwoDistinct.rename
     SepCtx.HasTwoDistinct (K.rename f) (C1.rename f) m1 (C2.rename f) m2 := by
   induction h with
   | here_there hhas =>
-    simp [SepCtx.rename]
+    simp only [SepCtx.rename]
     exact .here_there (hhas.rename)
   | there h ih =>
-    simp [SepCtx.rename]
+    simp only [SepCtx.rename]
     exact .there ih
   | symm h ih =>
     exact .symm ih
@@ -122,19 +122,24 @@ theorem SepCtx.HasTwoDistinct.rename_inv
     case here_there hhas =>
       cases K with
       | empty =>
-        simp [SepCtx.rename] at he0
+        simp only [SepCtx.rename] at he0
+        cases he0
       | cons K1 C0 m0 =>
-        simp [SepCtx.rename] at he0
-        rcases he0 with ⟨hK, hC, hm⟩
+        have heq := he0
+        simp only [SepCtx.rename] at heq
+        injection heq with hK hC hm
         subst hK hC hm
         obtain ⟨D2, hD2, hh⟩ := SepCtx.Has.rename_inv hhas
         exact ⟨C0, D2, rfl, hD2, .here_there hh⟩
     case there a ih =>
       cases K with
-      | empty => simp [SepCtx.rename] at he0
+      | empty =>
+        simp only [SepCtx.rename] at he0
+        cases he0
       | cons K1 C0 m0 =>
-        simp [SepCtx.rename] at he0
-        rcases he0 with ⟨hK, hC, hm⟩
+        have heq := he0
+        simp only [SepCtx.rename] at heq
+        injection heq with hK hC hm
         subst hC hm
         obtain ⟨D1, D2, hD1, hD2, hh⟩ := ih hK
         exact ⟨D1, D2, hD1, hD2, .there hh⟩

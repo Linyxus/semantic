@@ -127,7 +127,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       -- Destructure subsumption to get the value in m2
       obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
       -- For value cells, subsumption requires equality
-      simp [Cell.subsumes] at hsub_v
+      simp only [Cell.subsumes] at hsub_v
       subst hsub_v
       apply Eval.eval_apply
       · exact hx2
@@ -148,10 +148,10 @@ theorem eval_monotonic {m1 m2 : Memory}
     obtain ⟨v'x, hx2, hsub_vx⟩ := hsub _ _ hx
     obtain ⟨v'y, hy2, hsub_vy⟩ := hsub _ _ hy
     -- For basic capability cells, subsumption requires equality
-    simp [Cell.subsumes] at hsub_vx
+    simp only [Cell.subsumes] at hsub_vx
     subst hsub_vx
     -- For value cells, subsumption requires equality
-    simp [Cell.subsumes] at hsub_vy
+    simp only [Cell.subsumes] at hsub_vy
     subst hsub_vy
     apply Eval.eval_invoke
     · exact hmem
@@ -165,7 +165,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- Destructure subsumption to get the value in m2
     obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
     -- For value cells, subsumption requires equality
-    simp [Cell.subsumes] at hsub_v
+    simp only [Cell.subsumes] at hsub_v
     subst hsub_v
     apply Eval.eval_tapply
     · exact hx2
@@ -188,7 +188,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       -- Destructure subsumption to get the value in m2
       obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
       -- For value cells, subsumption requires equality
-      simp [Cell.subsumes] at hsub_v
+      simp only [Cell.subsumes] at hsub_v
       subst hsub_v
       apply Eval.eval_capply
       · exact hx2
@@ -267,7 +267,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- From subsumption, m2 must have the same reader val at x
     obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hmem
     -- For value cells, subsumption requires equality
-    simp [Cell.subsumes] at hsub_x
+    simp only [Cell.subsumes] at hsub_x
     subst hsub_x
     -- From subsumption, m2 must also have an mcell at y (possibly different boolean)
     obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hx
@@ -275,15 +275,15 @@ theorem eval_monotonic {m1 m2 : Memory}
     cases cy
     case val v =>
       -- Contradiction: val cannot subsume capability
-      simp [Cell.subsumes] at hsub_y
+      cases hsub_y
     case masked =>
       -- Contradiction: masked cannot subsume mcell
-      simp [Cell.subsumes] at hsub_y
+      cases hsub_y
     case capability info =>
       cases info
       case basic =>
         -- Contradiction: basic cannot subsume mcell
-        simp [Cell.subsumes] at hsub_y
+        cases hsub_y
       case mcell b' =>
         -- Good! m2 has an mcell at y with boolean b'
         -- Need to show: Q (if b' then .btrue else .bfalse) m2
@@ -294,35 +294,35 @@ theorem eval_monotonic {m1 m2 : Memory}
         by_cases hb : b
         · -- b = true, so we have Q .btrue m_orig
           subst hb
-          simp at hQ
+          have hQ_true := by
+            simpa using hQ
           by_cases hb' : b' = true
           · -- b' = true, need Q .btrue m2
-            subst hb'
-            simp
-            exact hpred (by constructor) hsub hQ
+            subst b'
+            simpa using hpred (by constructor) hsub hQ_true
           · -- b' = false, need Q .bfalse m2
             -- Convert ¬b' = true to b' = false
-            simp at hb'
-            subst hb'
-            simp
-            rw [←hbool]
-            exact hpred (by constructor) hsub hQ
+            have hb'_false : b' = false := by simpa using hb'
+            subst b'
+            have hQ_true_m2 := hpred (by constructor) hsub hQ_true
+            have hQ_false_m2 := hbool.mp hQ_true_m2
+            simpa using hQ_false_m2
         · -- b = false, so we have Q .bfalse m_orig
-          simp at hb
-          subst hb
-          simp at hQ
+          have hb_false : b = false := by simpa using hb
+          subst b
+          have hQ_false := by
+            simpa using hQ
           by_cases hb' : b' = true
           · -- b' = true, need Q .btrue m2
-            subst hb'
-            simp
-            rw [hbool]
-            exact hpred (by constructor) hsub hQ
+            subst b'
+            have hQ_false_m2 := hpred (by constructor) hsub hQ_false
+            have hQ_true_m2 := hbool.mpr hQ_false_m2
+            simpa using hQ_true_m2
           · -- b' = false, need Q .bfalse m2
             -- Convert ¬b' = true to b' = false
-            simp at hb'
-            subst hb'
-            simp
-            exact hpred (by constructor) hsub hQ
+            have hb'_false : b' = false := by simpa using hb'
+            subst b'
+            simpa using hpred (by constructor) hsub hQ_false
   case eval_write_true hmem hx hy hQ =>
     -- From subsumption, m2 must also have an mcell at x (possibly different value)
     -- and the same val at y
@@ -337,11 +337,11 @@ theorem eval_monotonic {m1 m2 : Memory}
       cases info
       case basic =>
         -- Contradiction: basic cannot subsume mcell
-        simp [Cell.subsumes] at hsub_x
+        cases hsub_x
       case mcell b' =>
         -- Good! m2 has an mcell at x
         -- cy must be the same val as in m1 (subsumption is equality for vals)
-        simp [Cell.subsumes] at hsub_y
+        simp only [Cell.subsumes] at hsub_y
         subst hsub_y
         -- Now we can apply eval_write_true with m2
         apply Eval.eval_write_true hmem (hx := hx2) hy2
@@ -356,20 +356,20 @@ theorem eval_monotonic {m1 m2 : Memory}
         · exact hQ
     case masked =>
       -- Contradiction: masked cannot subsume mcell
-      simp [Cell.subsumes] at hsub_x
+      cases hsub_x
   case eval_write_false hmem hx hy hQ =>
     -- Symmetric to eval_write_true
     obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
     obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
     cases cx
     case val v =>
-      simp [Cell.subsumes] at hsub_x
+      cases hsub_x
     case capability info =>
       cases info
       case basic =>
-        simp [Cell.subsumes] at hsub_x
+        cases hsub_x
       case mcell b' =>
-        simp [Cell.subsumes] at hsub_y
+        simp only [Cell.subsumes] at hsub_y
         subst hsub_y
         apply Eval.eval_write_false hmem (hx := hx2) hy2
         apply hpred
@@ -378,7 +378,7 @@ theorem eval_monotonic {m1 m2 : Memory}
               (Exists.intro _ hx) (Exists.intro _ hx2) hsub
         · exact hQ
     case masked =>
-      simp [Cell.subsumes] at hsub_x
+      cases hsub_x
   case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
       ih_guard ih_true ih_false =>
     -- Extract well-formedness of the guard and both branches
@@ -404,14 +404,12 @@ def Mpost.entails_after (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
 lemma Mpost.entails_to_entails_after {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2) :
   Q1.entails_after m Q2 := by
-  intro m' hsub
-  intro e hQ
+  intro m' hsub e hQ
   apply himp m' e hQ
 
 theorem Mpost.entails_after_refl (Q : Mpost) (m : Memory) :
   Q.entails_after m Q := by
-  intro m' _
-  intro e hQ
+  intro m' _ e hQ
   exact hQ
 
 theorem Mpost.entails_after_subsumes

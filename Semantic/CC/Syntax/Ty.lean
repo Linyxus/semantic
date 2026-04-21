@@ -78,16 +78,24 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   induction T
   case top => rfl
   case tvar => rfl
-  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2] <;> assumption
-  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_id, ih1, ih2] <;> assumption
-  case cpoly cb ih => simp [Ty.rename, Rename.lift_id, ih, CaptureBound.rename_id] <;> assumption
+  case arrow T1 T2 ih1 ih2 =>
+    simp only [Ty.rename, Rename.lift_id, ih1]
+    exact congrArg (Ty.arrow T1) ih2
+  case poly T1 T2 ih1 ih2 =>
+    simp only [Ty.rename, Rename.lift_id, ih1]
+    exact congrArg (Ty.poly T1) ih2
+  case cpoly cb T ih =>
+    simp only [Ty.rename, Rename.lift_id, CaptureBound.rename_id]
+    exact congrArg (Ty.cpoly cb) ih
   case unit => rfl
   case cap => rfl
   case bool => rfl
   case cell => rfl
   case capt ih2 =>
     simp [Ty.rename, ih2, CaptureSet.rename_id]
-  case exi ih => simp [Ty.rename, Rename.lift_id, ih] <;> assumption
+  case exi T ih =>
+    simp only [Ty.rename, Rename.lift_id]
+    exact congrArg Ty.exi ih
   case typ ih => simp [Ty.rename, ih]
 
 /-- Renaming distributes over composition of renamings. -/
@@ -96,15 +104,15 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   induction T generalizing s2 s3
   case top => rfl
   case tvar => rfl
-  case arrow ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2] <;> rfl
-  case poly ih1 ih2 => simp [Ty.rename, Rename.lift_comp, ih1, ih2] <;> rfl
-  case cpoly cb ih => simp [Ty.rename, Rename.lift_comp, ih, CaptureBound.rename_comp] <;> rfl
+  case arrow ih1 ih2 => (simp [Ty.rename, Rename.lift_comp, ih1, ih2]; rfl)
+  case poly ih1 ih2 => (simp [Ty.rename, Rename.lift_comp, ih1, ih2]; rfl)
+  case cpoly cb ih => (simp [Ty.rename, Rename.lift_comp, ih, CaptureBound.rename_comp]; rfl)
   case unit => rfl
   case cap => rfl
   case bool => rfl
   case cell => rfl
   case capt ih => simp [Ty.rename, CaptureSet.rename_comp, ih]
-  case exi ih => simp [Ty.rename, Rename.lift_comp, ih] <;> rfl
+  case exi ih => (simp [Ty.rename, Rename.lift_comp, ih]; rfl)
   case typ ih => simp [Ty.rename, ih]
 
 /-- Weakening commutes with renaming under a binder. -/

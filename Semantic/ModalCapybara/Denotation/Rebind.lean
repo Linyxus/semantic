@@ -30,7 +30,7 @@ def Rebind.liftVar
       exact ρ.var y
   var_peaks := fun
     | .here => by
-      show (ps1.rename Rename.succ).rename f.lift = (ps2.rename Rename.succ)
+      change (ps1.rename Rename.succ).rename f.lift = (ps2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
       rw [CaptureSet.rename_comp, Rename.succ_lift_comm,
@@ -38,7 +38,7 @@ def Rebind.liftVar
       exact congrArg (CaptureSet.rename · Rename.succ)
         (congrArg PeakSet.cs hps)
     | .there y => by
-      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
+      change ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
         = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
@@ -68,7 +68,7 @@ def Rebind.liftTVar
       exact ρ.var y
   var_peaks := fun
     | .there y => by
-      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
+      change ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
         = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
@@ -99,7 +99,7 @@ def Rebind.liftCVar
       exact ρ.var y
   var_peaks := fun
     | .there y => by
-      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
+      change ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
         = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
@@ -128,21 +128,21 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
     (C.rename f).subst (Subst.from_TypeEnv env2) := by
   induction C with
   | empty =>
-    simp [CaptureSet.subst, CaptureSet.rename]
+    simp only [CaptureSet.subst, CaptureSet.rename]
   | union C1 C2 ih1 ih2 =>
-    simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
+    simp only [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
   | var m x =>
     cases x with
     | free n =>
-      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
+      simp only [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
     | bound x =>
       have h := ρ.var x
-      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
-            Subst.from_TypeEnv]
+      simp only [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
+        Subst.from_TypeEnv, List.empty_eq]
       rw [<-h]
   | cvar m x =>
     have h := ρ.cvar x
-    simp [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv]
+    simp only [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv, List.empty_eq]
     rw [<-h]
 
 /- Rebinding for CaptureSet.denot -/
@@ -207,10 +207,10 @@ theorem CaptureSet.PeaksOnly.cvar_subset_rename_inv
   ∃ c', f.var c' = c ∧ (.cvar m c') ⊆ cs := by
   induction hpo with
   | empty =>
-    simp [CaptureSet.rename] at hsub
+    simp only [CaptureSet.rename] at hsub
     cases hsub
   | cvar =>
-    simp [CaptureSet.rename] at hsub
+    simp only [CaptureSet.rename] at hsub
     cases hsub
     exact ⟨_, rfl, .refl⟩
   | union _ _ ih1 ih2 =>
@@ -455,7 +455,7 @@ def rebind_exi_val_denot
   | .typ T => by
     have ih := rebind_val_denot ρ T
     intro m e
-    simp [Ty.exi_val_denot, Ty.rename]
+    simp only [Ty.exi_val_denot, Ty.rename]
     exact ih m e
   | .exi T => by
     intro m e
@@ -463,20 +463,20 @@ def rebind_exi_val_denot
     -- Both sides are match expressions on resolve m.heap e
     cases hresolve : resolve m.heap e
     · -- resolve = none
-      simp
+      simp only
     · -- resolve = some e'
       rename_i e'
       cases e'
       case pack =>
         rename_i CS y
-        simp
+        simp only [List.empty_eq, and_congr_right_iff]
         -- Goal: CS.WfInHeap m.heap → (... ↔ ...)
         intro _hwf
         have ih := rebind_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m)) T
         exact ih m (Exp.var y)
       all_goals {
         -- resolve returned non-pack
-        simp
+        simp only
       }
 
 def rebind_exp_denot
@@ -485,7 +485,7 @@ def rebind_exp_denot
   Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.rename f) R := by
   have ih := rebind_val_denot ρ T
   intro m e
-  simp [Ty.exp_denot]
+  simp only [Ty.exp_denot]
   constructor
   · intro h
     apply eval_post_monotonic _ h
@@ -502,7 +502,7 @@ def rebind_exi_exp_denot
   Ty.exi_exp_denot env1 T R ≈ Ty.exi_exp_denot env2 (T.rename f) R := by
   have ih := rebind_exi_val_denot ρ T
   intro m e
-  simp [Ty.exi_exp_denot]
+  simp only [Ty.exi_exp_denot]
   constructor
   · intro h
     apply eval_post_monotonic _ h
@@ -566,7 +566,7 @@ theorem typed_env_lookup_lock_satisfy
     | extend env0 info =>
       cases info with
       | lock =>
-        simp [EnvTyping] at ht
+        simp only [EnvTyping] at ht
         exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0)) ht.1
   | there hlookup ih =>
     rename_i Ψ0 b
@@ -576,7 +576,7 @@ theorem typed_env_lookup_lock_satisfy
       | extend env0 info =>
         cases info with
         | var n ps =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           exact typed_env_satisfy_rebind
             (Rebind.weaken (env := env0) (x := n) (ps := ps))
             (ih ht.2.2)
@@ -585,7 +585,7 @@ theorem typed_env_lookup_lock_satisfy
       | extend env0 info =>
         cases info with
         | tvar d =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           exact typed_env_satisfy_rebind
             (Rebind.tweaken (env := env0) (d := d))
             (ih ht.2.2.2.2.2)
@@ -594,7 +594,7 @@ theorem typed_env_lookup_lock_satisfy
       | extend env0 info =>
         cases info with
         | cvar cs cap =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           exact typed_env_satisfy_rebind
             (Rebind.cweaken (env := env0) (cs := cs) (cap := cap))
             (ih ht.2.2.2.2)
@@ -603,7 +603,7 @@ theorem typed_env_lookup_lock_satisfy
       | extend env0 info =>
         cases info with
         | lock =>
-          simp [EnvTyping] at ht
+          simp only [EnvTyping] at ht
           exact typed_env_satisfy_rebind (Rebind.lweaken (env := env0))
             (ih ht.2)
 
