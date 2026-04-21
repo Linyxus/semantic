@@ -244,17 +244,21 @@ theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : Capt
         | var T =>
           cases x with
           | here =>
-            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks, CaptureSet.peaksVarBound]
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
+              CaptureSet.peaksVarBound]
           | there x' =>
-            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks, CaptureSet.peaksVarBound]
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
+              CaptureSet.peaksVarBound]
         | tvar T =>
           cases x with
           | there x' =>
-            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks, CaptureSet.peaksVarBound]
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
+              CaptureSet.peaksVarBound]
         | cvar cm =>
           cases x with
           | there x' =>
-            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks, CaptureSet.peaksVarBound]
+            simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
+              CaptureSet.peaksVarBound]
 
 theorem CaptureSet.peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
   C.applyRO.peaks Γ = (C.peaks Γ).applyRO := by
@@ -274,7 +278,7 @@ theorem CaptureSet.peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
   | .push Γ' _, .var m (.bound (.there x')) =>
     simp only [CaptureSet.applyRO, CaptureSet.peaks, CaptureSet.peaksVarBound]
     have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
-    simp only [CaptureSet.applyRO, CaptureSet.peaks, CaptureSet.peaksVarBound] at ih
+    simp only [CaptureSet.applyRO, CaptureSet.peaks] at ih
     rw [ih, CaptureSet.applyRO_rename]
 termination_by (sizeOf Γ, sizeOf C)
 

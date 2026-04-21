@@ -76,7 +76,7 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
   induction cs
   case empty => exact IsClosed.empty
   case union cs1 cs2 ih1 ih2 =>
-    simp [CaptureSet.rename] at h
+    simp only [CaptureSet.rename] at h
     cases h
     rename_i h1 h2
     exact IsClosed.union (ih1 h1) (ih2 h2)
@@ -88,7 +88,7 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
       -- If cs = .var (.free h), then cs.rename f = .var (.free h)
       -- But h says (cs.rename f).IsClosed, which means no free heap variables
       -- This is a contradiction
-      simp [CaptureSet.rename, Var.rename] at h
+      simp only [CaptureSet.rename, Var.rename] at h
       cases h
 
 theorem CaptureBound.rename_closed {cb : CaptureBound s1} {f : Rename s1 s2} :
@@ -104,7 +104,7 @@ theorem CaptureBound.rename_closed_inv {cb : CaptureBound s1} {f : Rename s1 s2}
   cases cb with
   | unbound => exact CaptureBound.IsClosed.unbound
   | bound cs =>
-    simp [CaptureBound.rename] at h
+    simp only [CaptureBound.rename] at h
     cases h with
     | bound hcs =>
       exact CaptureBound.IsClosed.bound (CaptureSet.rename_closed_inv hcs)
@@ -125,7 +125,7 @@ theorem SepCtx.rename_closed_inv {Ψ : SepCtx s1} {f : Rename s1 s2} :
   induction Ψ with
   | empty => exact SepCtx.IsClosed.empty
   | cons Ψ C m ih =>
-    simp [SepCtx.rename] at h
+    simp only [SepCtx.rename] at h
     cases h with
     | cons hΨ hC =>
       exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_inv hC)
@@ -192,42 +192,42 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
   case top => exact IsClosed.top
   case tvar => exact IsClosed.tvar
   case arrow T1 cs T2 ih1 ih2 =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i h1 hcs h2
     exact IsClosed.arrow (ih1 h1) (CaptureSet.rename_closed_inv hcs) (ih2 h2)
   case poly S cs T ih1 ih2 =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i h1 hcs h2
     exact IsClosed.poly (ih1 h1) (CaptureSet.rename_closed_inv hcs) (ih2 h2)
   case cpoly cb cs T ihT =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i hcb hcs hT
     exact IsClosed.cpoly (CaptureBound.rename_closed_inv hcb)
       (CaptureSet.rename_closed_inv hcs) (ihT hT)
   case modal Ψ T ihT =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i hcs hΨ hT
     exact IsClosed.modal (CaptureSet.rename_closed_inv hcs) (SepCtx.rename_closed_inv hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i hcs
     exact IsClosed.cap (CaptureSet.rename_closed_inv hcs)
   case bool => exact IsClosed.bool
   case cell cs =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i hcs
     exact IsClosed.cell (CaptureSet.rename_closed_inv hcs)
   case reader cs =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i hcs
     exact IsClosed.reader (CaptureSet.rename_closed_inv hcs)
   case typ T ih =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i hT
     exact IsClosed.typ (ih hT)
   case exi T ih =>
-    simp [Ty.rename] at h
+    simp only [Ty.rename] at h
     cases h; rename_i hT
     exact IsClosed.exi (ih hT)
 
@@ -303,7 +303,12 @@ theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
   e.IsClosed := by
   induction ht <;>
-    try (solve | assumption | constructor | (constructor <;> assumption) | (constructor <;> (first | assumption | constructor)))
+    try
+      (solve
+        | assumption
+        | constructor
+        | (constructor <;> assumption)
+        | (constructor <;> (first | assumption | constructor)))
   case read ih_x =>
     -- ih_x : (.var x).IsClosed, need to extract x.IsClosed
     cases ih_x with

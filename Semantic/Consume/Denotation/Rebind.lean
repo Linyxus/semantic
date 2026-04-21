@@ -30,7 +30,7 @@ def Rebind.liftVar
       exact ρ.var y
   var_peaks := fun
     | .here => by
-      show (ps1.rename Rename.succ).rename f.lift = (ps2.rename Rename.succ)
+      change (ps1.rename Rename.succ).rename f.lift = ps2.rename Rename.succ
       unfold PeakSet.rename
       congr 1
       rw [CaptureSet.rename_comp, Rename.succ_lift_comm,
@@ -38,8 +38,8 @@ def Rebind.liftVar
       exact congrArg (CaptureSet.rename · Rename.succ)
         (congrArg PeakSet.cs hps)
     | .there y => by
-      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
-        = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
+      change ((env1.lookup_var y).2.rename Rename.succ).rename f.lift =
+        (env2.lookup_var (f.var y)).2.rename Rename.succ
       unfold PeakSet.rename
       congr 1
       have h := congrArg PeakSet.cs (ρ.var_peaks y)
@@ -68,8 +68,8 @@ def Rebind.liftTVar
       exact ρ.var y
   var_peaks := fun
     | .there y => by
-      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
-        = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
+      change ((env1.lookup_var y).2.rename Rename.succ).rename f.lift =
+        (env2.lookup_var (f.var y)).2.rename Rename.succ
       unfold PeakSet.rename
       congr 1
       have h := congrArg PeakSet.cs (ρ.var_peaks y)
@@ -99,8 +99,8 @@ def Rebind.liftCVar
       exact ρ.var y
   var_peaks := fun
     | .there y => by
-      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
-        = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
+      change ((env1.lookup_var y).2.rename Rename.succ).rename f.lift =
+        (env2.lookup_var (f.var y)).2.rename Rename.succ
       unfold PeakSet.rename
       congr 1
       have h := congrArg PeakSet.cs (ρ.var_peaks y)
@@ -137,13 +137,14 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
       simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
     | bound x =>
       have h := ρ.var x
-      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename,
-            Subst.from_TypeEnv]
-      rw [<-h]
+      change CaptureSet.var m (.free (env1.lookup_var x).1) =
+        CaptureSet.var m (.free (env2.lookup_var (f.var x)).1)
+      exact congrArg (fun y => CaptureSet.var m (.free y)) h
   | cvar m x =>
     have h := ρ.cvar x
-    simp [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv]
-    rw [<-h]
+    change (env1.lookup_cvar x).1.applyMut m =
+      (env2.lookup_cvar (f.var x)).1.applyMut m
+    exact congrArg (fun info : CaptureSet {} × CapabilitySet => info.1.applyMut m) h
 
 /- Rebinding for CaptureSet.denot -/
 theorem rebind_captureset_denot
@@ -207,10 +208,10 @@ theorem CaptureSet.PeaksOnly.cvar_subset_rename_inv
   ∃ c', f.var c' = c ∧ (.cvar m c') ⊆ cs := by
   induction hpo with
   | empty =>
-    simp [CaptureSet.rename] at hsub
+    simp only [CaptureSet.rename] at hsub
     cases hsub
   | cvar =>
-    simp [CaptureSet.rename] at hsub
+    simp only [CaptureSet.rename] at hsub
     cases hsub
     exact ⟨_, rfl, .refl⟩
   | union _ _ ih1 ih2 =>
@@ -364,8 +365,7 @@ def rebind_exi_val_denot
   | .typ T => by
     have ih := rebind_val_denot ρ T
     intro m e
-    simp [Ty.exi_val_denot, Ty.rename]
-    exact ih m e
+    simpa only [Ty.exi_val_denot, Ty.rename] using ih m e
   | .exi T => by
     intro m e
     simp only [Ty.exi_val_denot, Ty.rename]
@@ -378,7 +378,7 @@ def rebind_exi_val_denot
       cases e'
       case pack =>
         rename_i CS y
-        simp
+        simp only [List.empty_eq, and_congr_right_iff]
         -- Goal: CS.WfInHeap m.heap → (... ↔ ...)
         intro _hwf
         have ih := rebind_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m)) T
@@ -394,7 +394,7 @@ def rebind_exp_denot
   Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.rename f) R := by
   have ih := rebind_val_denot ρ T
   intro m e
-  simp [Ty.exp_denot]
+  simp only [Ty.exp_denot]
   constructor
   · intro h
     apply eval_post_monotonic _ h
@@ -411,7 +411,7 @@ def rebind_exi_exp_denot
   Ty.exi_exp_denot env1 T R ≈ Ty.exi_exp_denot env2 (T.rename f) R := by
   have ih := rebind_exi_val_denot ρ T
   intro m e
-  simp [Ty.exi_exp_denot]
+  simp only [Ty.exi_exp_denot]
   constructor
   · intro h
     apply eval_post_monotonic _ h

@@ -97,14 +97,52 @@ def Var.rename_id {x : Var k s} : x.rename (Rename.id) = x := by
 
 /-- Renaming by the identity renaming leaves an expression unchanged. -/
 def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
-  induction e
-  all_goals
-    first
-      | (simp [Exp.rename, Ty.rename_id, PureTy.rename_id, Var.rename_id,
-               CaptureSet.rename_id, CaptureBound.rename_id, SepCtx.rename_id, Rename.lift_id, *]
-         <;> assumption)
-      | simp [Exp.rename, Ty.rename_id, PureTy.rename_id, Var.rename_id,
-              CaptureSet.rename_id, CaptureBound.rename_id, SepCtx.rename_id, Rename.lift_id, *]
+  induction e with
+  | var x =>
+    simp only [Exp.rename, Var.rename_id]
+  | abs cs T e ih =>
+    simp only [Exp.rename, CaptureSet.rename_id, Ty.rename_id, Rename.lift_id]
+    exact congrArg (Exp.abs cs T) ih
+  | tabs cs T e ih =>
+    simp only [Exp.rename, CaptureSet.rename_id, PureTy.rename_id, Rename.lift_id]
+    exact congrArg (Exp.tabs cs T) ih
+  | cabs cs cb e ih =>
+    simp only [Exp.rename, CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
+    exact congrArg (Exp.cabs cs cb) ih
+  | boxed cs Ψ e ih =>
+    simp only [Exp.rename, CaptureSet.rename_id, SepCtx.rename_id]
+    exact congrArg (Exp.boxed cs Ψ) ih
+  | reader x =>
+    simp only [Exp.rename, Var.rename_id]
+  | pack cs x =>
+    simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
+  | app x y =>
+    simp only [Exp.rename, Var.rename_id]
+  | tapp x T =>
+    simp only [Exp.rename, Var.rename_id, PureTy.rename_id]
+  | capp x cs =>
+    simp only [Exp.rename, Var.rename_id, CaptureSet.rename_id]
+  | unwrap x =>
+    simp only [Exp.rename, Var.rename_id]
+  | letin e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, Rename.lift_id, ih1]
+    exact congrArg (Exp.letin e1) ih2
+  | unpack e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, Rename.lift_id, ih1]
+    exact congrArg (Exp.unpack e1) ih2
+  | unit => rfl
+  | btrue => rfl
+  | bfalse => rfl
+  | read x =>
+    simp only [Exp.rename, Var.rename_id]
+  | write x y =>
+    simp only [Exp.rename, Var.rename_id]
+  | cond x e2 e3 ih2 ih3 =>
+    simp only [Exp.rename, Var.rename_id, ih2]
+    exact congrArg (Exp.cond x e2) ih3
+  | par e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, ih1]
+    exact congrArg (Exp.par e1) ih2
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Var.rename_comp {x : Var k s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -114,14 +152,61 @@ theorem Var.rename_comp {x : Var k s1} {f : Rename s1 s2} {g : Rename s2 s3} :
 /-- Renaming distributes over composition of renamings. -/
 theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (e.rename f).rename g = e.rename (f.comp g) := by
-  induction e generalizing s2 s3
-  all_goals
-    first
-      | (simp [Exp.rename, Ty.rename_comp, PureTy.rename_comp, Var.rename_comp,
-               CaptureSet.rename_comp, CaptureBound.rename_comp, SepCtx.rename_comp, Rename.lift_comp, *]
-         <;> rfl)
-      | simp [Exp.rename, Ty.rename_comp, PureTy.rename_comp, Var.rename_comp,
-              CaptureSet.rename_comp, CaptureBound.rename_comp, SepCtx.rename_comp, Rename.lift_comp, *]
+  induction e generalizing s2 s3 with
+  | var x =>
+    simp only [Exp.rename, Var.rename_comp]
+  | abs cs T e ih =>
+    simpa only [Exp.rename, CaptureSet.rename_comp, Ty.rename_comp, Rename.lift_comp] using
+      congrArg (Exp.abs (cs.rename (f.comp g)) (T.rename (f.comp g)))
+        (ih (f := f.lift) (g := g.lift))
+  | tabs cs T e ih =>
+    simpa only [Exp.rename, CaptureSet.rename_comp, PureTy.rename_comp, Rename.lift_comp] using
+      congrArg (Exp.tabs (cs.rename (f.comp g)) (T.rename (f.comp g)))
+        (ih (f := f.lift) (g := g.lift))
+  | cabs cs cb e ih =>
+    simpa only [
+      Exp.rename,
+      CaptureSet.rename_comp,
+      CaptureBound.rename_comp,
+      Rename.lift_comp
+    ] using
+      congrArg (Exp.cabs (cs.rename (f.comp g)) (cb.rename (f.comp g)))
+        (ih (f := f.lift) (g := g.lift))
+  | boxed cs Ψ e ih =>
+    simpa only [Exp.rename, CaptureSet.rename_comp, SepCtx.rename_comp] using
+      congrArg (Exp.boxed (cs.rename (f.comp g)) (Ψ.rename (f.comp g))) (ih (f := f) (g := g))
+  | reader x =>
+    simp only [Exp.rename, Var.rename_comp]
+  | pack cs x =>
+    simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
+  | app x y =>
+    simp only [Exp.rename, Var.rename_comp]
+  | tapp x T =>
+    simp only [Exp.rename, Var.rename_comp, PureTy.rename_comp]
+  | capp x cs =>
+    simp only [Exp.rename, Var.rename_comp, CaptureSet.rename_comp]
+  | unwrap x =>
+    simp only [Exp.rename, Var.rename_comp]
+  | letin e1 e2 ih1 ih2 =>
+    simpa only [Exp.rename, Rename.lift_comp, ih1] using
+      congrArg (Exp.letin (e1.rename (f.comp g))) (ih2 (f := f.lift) (g := g.lift))
+  | unpack e1 e2 ih1 ih2 =>
+    simpa only [Exp.rename, Rename.lift_comp, ih1] using
+      congrArg (Exp.unpack (e1.rename (f.comp g)))
+        (ih2 (f := f.lift.lift) (g := g.lift.lift))
+  | unit => rfl
+  | btrue => rfl
+  | bfalse => rfl
+  | read x =>
+    simp only [Exp.rename, Var.rename_comp]
+  | write x y =>
+    simp only [Exp.rename, Var.rename_comp]
+  | cond x e2 e3 ih2 ih3 =>
+    simpa only [Exp.rename, Var.rename_comp, ih2] using
+      congrArg (Exp.cond (x.rename (f.comp g)) (e2.rename (f.comp g))) (ih3 (f := f) (g := g))
+  | par e1 e2 ih1 ih2 =>
+    simpa only [Exp.rename, ih1] using
+      congrArg (Exp.par (e1.rename (f.comp g))) (ih2 (f := f) (g := g))
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Var.weaken_rename_comm {x : Var k s1} {f : Rename s1 s2} :

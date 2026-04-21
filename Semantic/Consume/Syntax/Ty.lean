@@ -72,30 +72,63 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 
 /-- Renaming by the identity renaming leaves a type unchanged. -/
 def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
-  induction T
-  case tvar =>
-    simp [Ty.rename, Rename.id]
-  all_goals
-    first
-      | (simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id,
-               CaptureBound.rename_id, *]
-         <;> assumption)
-      | simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id,
-              CaptureBound.rename_id, *]
+  induction T with
+  | top => rfl
+  | tvar =>
+      simp only [Ty.rename, Rename.id]
+  | arrow T1 cs T2 ih1 ih2 =>
+      simp only [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1]
+      exact congrArg (fun U => Ty.arrow T1 cs U) ih2
+  | poly T1 cs T2 ih1 ih2 =>
+      simp only [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1]
+      exact congrArg (fun U => Ty.poly T1 cs U) ih2
+  | cpoly cb cs T ih =>
+      simp only [Ty.rename, Rename.lift_id, CaptureBound.rename_id, CaptureSet.rename_id]
+      exact congrArg (fun U => Ty.cpoly cb cs U) ih
+  | cap cs =>
+      simp only [Ty.rename, CaptureSet.rename_id]
+  | cell cs =>
+      simp only [Ty.rename, CaptureSet.rename_id]
+  | reader cs =>
+      simp only [Ty.rename, CaptureSet.rename_id]
+  | unit => rfl
+  | bool => rfl
+  | exi T ih =>
+      simp only [Ty.rename, Rename.lift_id]
+      exact congrArg Ty.exi ih
+  | typ T ih =>
+      simp only [Ty.rename, ih]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (T.rename f).rename g = T.rename (f.comp g) := by
-  induction T generalizing s2 s3
-  case tvar =>
-    simp [Ty.rename, Rename.comp]
-  all_goals
-    first
-      | (simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp,
-               CaptureBound.rename_comp, *]
-         <;> rfl)
-      | simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp,
-              CaptureBound.rename_comp, *]
+  induction T generalizing s2 s3 with
+  | top => rfl
+  | tvar =>
+      simp only [Ty.rename, Rename.comp]
+  | arrow T1 cs T2 ih1 ih2 =>
+      simp only [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih1, ih2]
+      rfl
+  | poly T1 cs T2 ih1 ih2 =>
+      simp only [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp, ih1, ih2]
+      rfl
+  | cpoly cb cs T ih =>
+      simp only [Ty.rename, Rename.lift_comp, CaptureBound.rename_comp, CaptureSet.rename_comp,
+        ih]
+      rfl
+  | cap cs =>
+      simp only [Ty.rename, CaptureSet.rename_comp]
+  | cell cs =>
+      simp only [Ty.rename, CaptureSet.rename_comp]
+  | reader cs =>
+      simp only [Ty.rename, CaptureSet.rename_comp]
+  | unit => rfl
+  | bool => rfl
+  | exi T ih =>
+      simp only [Ty.rename, Rename.lift_comp, ih]
+      rfl
+  | typ T ih =>
+      simp only [Ty.rename, ih]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :

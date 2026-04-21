@@ -14,7 +14,7 @@ theorem Memory.lookup_deterministic {m : Memory}
   (hlookup2 : m.lookup l = some v2) :
   v1 = v2 := by
   cases m
-  simp [Memory.lookup] at hlookup1 hlookup2
+  simp only [Memory.lookup] at hlookup1 hlookup2
   apply Heap.lookup_deterministic hlookup1 hlookup2
 
 /-- Extract the precise capability set used by a step. -/
@@ -307,8 +307,8 @@ theorem step_preserves_wf
     -- Boolean values are always well-formed
     rename_i b
     by_cases hb : b
-    · simp [hb]; exact Exp.WfInHeap.wf_btrue
-    · simp [hb]; exact Exp.WfInHeap.wf_bfalse
+    · simpa only [hb, List.empty_eq] using Exp.WfInHeap.wf_btrue
+    · simpa only [hb, List.empty_eq] using Exp.WfInHeap.wf_bfalse
   | step_write_true hx hy =>
     -- e1 = .write (.free x) (.free y), e2 = .unit
     -- Unit is always well-formed in any heap
@@ -357,10 +357,11 @@ theorem step_preserves_wf
     let m_ext := m1.extend l ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
     -- Show (.free l) is well-formed in the extended heap
     have hwf_l : Var.WfInHeap (.free l : Var .var ∅) m_ext.heap := by
-      apply Var.WfInHeap.wf_free
-      unfold m_ext
-      simp [Memory.extend]
-      exact Heap.extend_lookup_eq _ _ _
+      exact Var.WfInHeap.wf_free (by
+        change
+          (m1.heap.extend l ⟨v, hv, compute_reachability m1.heap v hv⟩) l =
+            some (.val ⟨v, hv, compute_reachability m1.heap v hv⟩)
+        exact Heap.extend_lookup_eq _ _ _)
     -- e_body is well-formed in the extended heap (by monotonicity)
     have hsub := Memory.extend_subsumes m1 l
       ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
@@ -1202,7 +1203,7 @@ theorem expand_captures_masked {H : Heap} (cs : CaptureSet {}) :
 
 theorem masked_compute_reachability {H : Heap} :
   compute_reachability H v hv = compute_reachability (H.mask_caps D) v hv := by
-  cases hv <;> simp [compute_reachability]
+  cases hv <;> simp only [compute_reachability]
   all_goals exact expand_captures_masked _
 
 def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
@@ -1214,8 +1215,7 @@ def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
       split at hlookup
       · split at hlookup <;> simp at hlookup
       · rename_i v _ heq
-        simp at hlookup
-        subst hlookup
+        cases hlookup
         have hwf_orig : Exp.WfInHeap hv.unwrap m.heap := by
           apply m.wf.wf_val
           exact heq
@@ -1227,8 +1227,7 @@ def Memory.masked_caps (m : Memory) (mask : Finset Nat) : Memory where
       split at hlookup
       · split at hlookup <;> simp at hlookup
       · rename_i cell _ heq
-        simp at hlookup
-        subst hlookup
+        cases hlookup
         have hr_orig : R = compute_reachability m.heap v hv := by
           apply m.wf.wf_reach
           exact heq
@@ -1246,9 +1245,8 @@ theorem masked_lookup_val {m : Memory} {M : Finset Nat} {l : Nat} {hv : HeapVal}
   m.lookup l = some (.val hv) →
   (m.masked_caps M).lookup l = some (.val hv) := by
   intro hlookup
-  unfold Memory.lookup at hlookup ⊢
-  unfold Memory.masked_caps
-  simp
+  change m.heap l = some (.val hv) at hlookup
+  change (m.heap.mask_caps M) l = some (.val hv)
   unfold Heap.mask_caps
   rw [hlookup]
 
@@ -1258,9 +1256,8 @@ theorem masked_lookup_cap {m : Memory} {M : Finset Nat} {l : Nat} {info : Capabi
   l ∈ M →
   (m.masked_caps M).lookup l = some (.capability info) := by
   intro hlookup hmem
-  unfold Memory.lookup at hlookup ⊢
-  unfold Memory.masked_caps
-  simp
+  change m.heap l = some (.capability info) at hlookup
+  change (m.heap.mask_caps M) l = some (.capability info)
   unfold Heap.mask_caps
   rw [hlookup]
   simp [hmem]
@@ -1273,13 +1270,11 @@ theorem mem_to_finset {x : Nat} {C : CapabilitySet} :
   | here =>
     simp [CapabilitySet.to_finset]
   | left h ih =>
-    simp [CapabilitySet.to_finset]
-    left
-    exact ih
+    simp only [CapabilitySet.to_finset]
+    exact Finset.mem_union.mpr (Or.inl ih)
   | right h ih =>
-    simp [CapabilitySet.to_finset]
-    right
-    exact ih
+    simp only [CapabilitySet.to_finset]
+    exact Finset.mem_union.mpr (Or.inr ih)
 
 -- Helper lemma: x is in the to_finset of .cap x
 theorem CapabilitySet.mem_cap_to_finset {x : Nat} : x ∈ (CapabilitySet.cap x).to_finset := by
@@ -1289,8 +1284,7 @@ theorem CapabilitySet.mem_cap_to_finset {x : Nat} : x ∈ (CapabilitySet.cap x).
 theorem masked_preserves_fresh {m : Memory} {M : Finset Nat} {l : Nat} :
   m.heap l = none → (m.masked_caps M).heap l = none := by
   intro hfresh
-  unfold Memory.masked_caps
-  simp
+  change (m.heap.mask_caps M) l = none
   unfold Heap.mask_caps
   rw [hfresh]
 
@@ -1317,16 +1311,9 @@ private theorem Memory.extend_heapval_reachability_irrel
   (hfresh : m.heap l = none) :
   m.extend l ⟨v, hv, R1⟩ hwf hreach1 hfresh =
   m.extend l ⟨v, hv, R2⟩ hwf hreach2 hfresh := by
-  -- Memories are equal because the HeapVals have equal fields
-  unfold Memory.extend
-  simp
-  -- Use funext on heaps
-  funext l'
-  simp [Heap.extend]
-  split
-  · -- At location l, HeapVals are equal
-    simp [hreach1, hreach2]
-  · rfl
+  subst hreach1
+  subst hreach2
+  rfl
 
 theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal}
   (hwf_v : Exp.WfInHeap v.unwrap m.heap)
@@ -1336,15 +1323,14 @@ theorem Memory.masked_extend_comm {m : Memory} {l : Nat} {v : HeapVal}
   (m.masked_caps D).extend l v
     (Exp.wf_masked hwf_v)
     (by
-      simp [Memory.masked_caps]
+      simp only [Memory.masked_caps]
       exact hreach.trans (masked_compute_reachability
         (H := m.heap) (D := D) (v := v.unwrap) (hv := v.isVal)))
     (masked_preserves_fresh hfresh) := by
   -- Prove equality of Memory structures by showing their heaps are equal
   -- The other fields (wf and findom) are Props, so proof irrelevance applies
   unfold Memory.extend Memory.masked_caps
-  simp
-  exact Heap.masked_extend_comm
+  simpa using Heap.masked_extend_comm (H := m.heap) (l := l) (v := v) (D := D)
 
 /-- Helper lemma: Heap masking and update_cell commute when the location is in the mask. -/
 theorem Heap.masked_update_mcell_comm {H : Heap} {l : Nat} {b : Bool} {M : Finset Nat}
@@ -1368,14 +1354,13 @@ theorem Memory.masked_update_mcell_comm {m : Memory} {l : Nat} {b : Bool} {M : F
   (m.masked_caps M).update_mcell l b (by
     obtain ⟨b0, hb0⟩ := hexists
     use b0
-    simp [Memory.masked_caps]
+    simp only [Memory.masked_caps]
     unfold Heap.mask_caps
     rw [hb0]
     simp [hmem]) := by
   -- Prove equality by showing heaps are equal
   unfold Memory.update_mcell Memory.masked_caps
-  simp
-  exact Heap.masked_update_mcell_comm hmem
+  simpa using Heap.masked_update_mcell_comm (H := m.heap) (l := l) (b := b) (M := M) hmem
 
 -- Helper lemma: x ∈ C1.to_finset implies x ∈ C1
 theorem finset_mem_imp_cap_mem {C1 : CapabilitySet} {x : Nat}
@@ -1383,12 +1368,15 @@ theorem finset_mem_imp_cap_mem {C1 : CapabilitySet} {x : Nat}
   induction C1 with
   | empty => simp [CapabilitySet.to_finset] at hx
   | cap y =>
-    simp [CapabilitySet.to_finset] at hx
-    rw [hx]
+    simp only [CapabilitySet.to_finset] at hx
+    have hxy : x = y := by
+      simpa using hx
+    rw [hxy]
     exact CapabilitySet.mem.here
   | union cs1 cs2 ih1 ih2 =>
-    simp [CapabilitySet.to_finset] at hx
-    cases hx with
+    simp only [CapabilitySet.to_finset] at hx
+    have hx' := Finset.mem_union.mp hx
+    cases hx' with
     | inl h1 =>
       apply CapabilitySet.mem.left
       exact ih1 h1
@@ -1440,7 +1428,7 @@ theorem step_masked
     rw [Memory.masked_extend_comm hwf rfl hfresh]
     -- Use helper lemma to show the two extend calls are equal
     rw [Memory.extend_heapval_reachability_irrel (Exp.wf_masked hwf)
-         (by simp [Memory.masked_caps];
+         (by simp only [Memory.masked_caps];
              exact rfl.trans masked_compute_reachability)
          rfl
          (masked_preserves_fresh hfresh)]
@@ -1509,7 +1497,7 @@ theorem step_masked_superset
   | step_lift hv hwf hfresh =>
     rw [Memory.masked_extend_comm hwf rfl hfresh]
     rw [Memory.extend_heapval_reachability_irrel (Exp.wf_masked hwf)
-         (by simp [Memory.masked_caps];
+         (by simp only [Memory.masked_caps];
              exact rfl.trans masked_compute_reachability)
          rfl
          (masked_preserves_fresh hfresh)]
@@ -1583,7 +1571,7 @@ theorem eval_exists_answer
     | is_simple_val hv =>
       obtain ⟨l', hfresh⟩ := Memory.exists_fresh m1'
       have hfresh' : m1'.heap l' = none := by
-        simp [Memory.lookup] at hfresh
+        simp only [Memory.lookup] at hfresh
         exact hfresh
       have ih_cont := ih_val hsub1 hv hwf1 hQ1 l' hfresh'
       obtain ⟨m2, e2, hans2, hsub2, hQ2⟩ := ih_cont
@@ -1693,7 +1681,7 @@ theorem eval_reduce_exists_answer
       -- e1 reduced to a simple value v1
       obtain ⟨l', hfresh⟩ := Memory.exists_fresh m1'
       have hfresh' : m1'.heap l' = none := by
-        simp [Memory.lookup] at hfresh
+        simp only [Memory.lookup] at hfresh
         exact hfresh
       -- Get continuation reduction from ih_val
       have ih_cont := ih_val hsub_mem hv hwf1 hQ1 l' hfresh'
@@ -1895,7 +1883,7 @@ theorem eval_bounds_step_capability
     | step_apply => exact CapabilitySet.empty_subset
     | step_invoke hlookup' _ =>
       -- Contradiction: hlookup says x maps to value, hlookup' says x maps to capability
-      simp [Memory.lookup] at hlookup hlookup'
+      simp only [Memory.lookup] at hlookup hlookup'
       rw [hlookup] at hlookup'
       cases hlookup'
   | eval_invoke hmem hlookup_x hlookup_y hQ =>
@@ -1905,7 +1893,7 @@ theorem eval_bounds_step_capability
     | step_invoke => exact CapabilitySet.mem_imp_singleton_subset hmem
     | step_apply hlookup' =>
       -- Contradiction: hlookup_x says x maps to capability, hlookup' says x maps to value
-      simp [Memory.lookup] at hlookup_x hlookup'
+      simp only [Memory.lookup] at hlookup_x hlookup'
       rw [hlookup_x] at hlookup'
       cases hlookup'
   | eval_tapply hlookup heval ih =>

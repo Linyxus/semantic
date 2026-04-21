@@ -105,10 +105,10 @@ theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   (Memory.platform_of M).subsumes (Memory.platform_of N) := by
   intro l v hlookup
   unfold Memory.platform_of Heap.platform_of at hlookup ⊢
-  simp at hlookup
+  simp only [Option.ite_none_right_eq_some, Option.some.injEq] at hlookup
   obtain ⟨hl, hv⟩ := hlookup
   exists .capability (.mcell false)
-  simp
+  simp only [ite_eq_left_iff, not_lt, reduceCtorEq, imp_false, not_le]
   constructor
   · omega
   · rw [← hv]; simp [Cell.subsumes]
@@ -136,14 +136,14 @@ theorem env_typing_of_platform {N : Nat} :
   | succ N ih =>
     -- Inductive case: add capture variable C and term variable x
     unfold Ctx.platform_of TypeEnv.platform_of EnvTyping
-    simp [TypeEnv.extend_cvar, TypeEnv.extend_var]
+    simp only [List.empty_eq]
     constructor
     · -- Term variable x : .cell (.cvar .epsilon .here) at location N
       change Ty.val_denot _ (.cell _) _ _
       unfold Ty.val_denot
       constructor
       · -- Capture set after substitution is well-formed
-        simp [CaptureSet.subst, Subst.from_TypeEnv, TypeEnv.lookup_cvar]
+        simp only [List.empty_eq]
         apply CaptureSet.WfInHeap.wf_var_free
         show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
         unfold Heap.platform_of
@@ -157,12 +157,16 @@ theorem env_typing_of_platform {N : Nat} :
             unfold Memory.lookup Memory.platform_of Heap.platform_of
             simp
           · -- N is in the authority set from capture set denot
-            show (CaptureSet.var Mutability.epsilon (Var.free N)).ground_denot (Memory.platform_of (N + 1))
-              |>.covers Mutability.epsilon N
-            simp [CaptureSet.ground_denot, reachability_of_loc, Memory.platform_of]
-            unfold Heap.platform_of
-            simp
-            apply CapabilitySet.covers.here Mutability.Le.refl
+            change
+              (reachability_of_loc (Heap.platform_of (N + 1)) N).covers
+                Mutability.epsilon N
+            unfold reachability_of_loc
+            have hlookupN :
+                Heap.platform_of (N + 1) N = some (.capability (.mcell false)) := by
+              unfold Heap.platform_of
+              simp
+            rw [hlookupN]
+            exact CapabilitySet.covers.here Mutability.Le.refl
     · -- Second conjunct: ps = T.captureSet.peakset Γ ∧ EnvTyping ...
       constructor
       · -- Peak set equality: ps = T.captureSet.peakset Γ
@@ -225,8 +229,8 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
   | succ N ih =>
     cases x with
     | here =>
-      show N = (BVar.here (s := (Sig.platform_of N),C)).level / 2
-      show N = (Sig.platform_of N,C).length / 2
+      change (N = (BVar.here (s := (Sig.platform_of N),C)).level / 2)
+      change (N = (Sig.platform_of N,C).length / 2)
       unfold Sig.extend_cvar
       simp only [List.length]
       rw [Sig.platform_of_length]
@@ -234,7 +238,7 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
     | there x' =>
       cases x' with
       | there x'' =>
-        show ((TypeEnv.platform_of N).lookup_var x'').1 = x''.level / 2
+        change (((TypeEnv.platform_of N).lookup_var x'').1 = x''.level / 2)
         exact ih
 
 /-- Lookup of capture variable in platform environment returns the ground capture set
@@ -249,17 +253,28 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
     | there c' =>
       cases c' with
       | here =>
-        show (CaptureSet.var Mutability.epsilon (Var.free N), CapabilitySet.singleton Mutability.epsilon N)
-          = (CaptureSet.var Mutability.epsilon (Var.free ((BVar.here (s := Sig.platform_of N)).level / 2)),
-              CapabilitySet.singleton Mutability.epsilon ((BVar.here (s := Sig.platform_of N)).level / 2))
-        show _ = (CaptureSet.var Mutability.epsilon (Var.free ((Sig.platform_of N).length / 2)),
-                  CapabilitySet.singleton Mutability.epsilon ((Sig.platform_of N).length / 2))
+        change
+          (CaptureSet.var Mutability.epsilon (Var.free N),
+            CapabilitySet.singleton Mutability.epsilon N) =
+            (CaptureSet.var Mutability.epsilon
+                (Var.free ((BVar.here (s := Sig.platform_of N)).level / 2)),
+              CapabilitySet.singleton Mutability.epsilon
+                ((BVar.here (s := Sig.platform_of N)).level / 2))
+        change
+          (CaptureSet.var Mutability.epsilon (Var.free N),
+            CapabilitySet.singleton Mutability.epsilon N) =
+            (CaptureSet.var Mutability.epsilon
+                (Var.free ((Sig.platform_of N).length / 2)),
+              CapabilitySet.singleton Mutability.epsilon
+                ((Sig.platform_of N).length / 2))
         rw [Sig.platform_of_length]
         have hN : N = 2 * N / 2 := by omega
         rw [← hN]
       | there c'' =>
-        show (TypeEnv.platform_of N).lookup_cvar c''
-          = (.var .epsilon (.free (c''.level / 2)), CapabilitySet.singleton .epsilon (c''.level / 2))
+        change
+          (TypeEnv.platform_of N).lookup_cvar c'' =
+            (.var .epsilon (.free (c''.level / 2)),
+              CapabilitySet.singleton .epsilon (c''.level / 2))
         exact ih
 
 /-- For any bound term variable in a platform signature, its level divided by 2 is less than N. -/
@@ -334,11 +349,12 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
     | bound b =>
       -- Bound term variable
       unfold Subst.from_TypeEnv Var.subst
-      simp [CaptureSet.ground_denot]
+      change
+        (reachability_of_loc (Heap.platform_of N) ((TypeEnv.platform_of N).lookup_var b).1).applyMut
+            m =
+          CapabilitySet.cap m (b.level / 2)
       rw [TypeEnv.lookup_var_platform]
       have hlevel : b.level / 2 < N := BVar.level_var_bound
-      unfold Memory.platform_of
-      simp
       rw [reachability_of_loc_platform hlevel]
       simp [CapabilitySet.singleton]
     | free n =>
@@ -346,9 +362,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
       cases hwf with
       | wf_var_free hlookup =>
         unfold Subst.from_TypeEnv Var.subst
-        simp [CaptureSet.ground_denot]
-        unfold Memory.platform_of
-        simp
+        change (reachability_of_loc (Heap.platform_of N) n).applyMut m = CapabilitySet.cap m n
         -- From hlookup: (Heap.platform_of N) n = some val
         -- This implies n < N
         have hn : n < N := by

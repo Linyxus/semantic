@@ -85,9 +85,9 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
   induction cs
   case empty => exact IsClosed.empty
   case union cs1 cs2 ih1 ih2 =>
-    simp [CaptureSet.rename] at h
-    cases h
-    rename_i h1 h2
+    change CaptureSet.IsClosed ((cs1.rename f).union (cs2.rename f)) at h
+    cases h with
+    | union h1 h2 =>
     exact IsClosed.union (ih1 h1) (ih2 h2)
   case cvar => exact IsClosed.cvar
   case var v =>
@@ -97,7 +97,8 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
       -- If cs = .var (.free h), then cs.rename f = .var (.free h)
       -- But h says (cs.rename f).IsClosed, which means no free heap variables
       -- This is a contradiction
-      simp [CaptureSet.rename, Var.rename] at h
+      rename_i n
+      change CaptureSet.IsClosed (.var (.free n)) at h
       cases h
 
 /-- Renaming preserves closedness of capture bounds. -/
@@ -115,9 +116,10 @@ theorem CaptureBound.rename_closed_inv {cb : CaptureBound s1} {f : Rename s1 s2}
   cases cb
   case unbound => exact IsClosed.unbound
   case bound cs =>
-    simp [CaptureBound.rename] at h
-    cases h
-    exact IsClosed.bound (CaptureSet.rename_closed_inv ‹_›)
+    change CaptureBound.IsClosed (.bound (cs.rename f)) at h
+    cases h with
+    | bound h_cs =>
+      exact IsClosed.bound (CaptureSet.rename_closed_inv h_cs)
 
 theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
     T.IsClosed -> (T.rename f).IsClosed := by
@@ -156,35 +158,39 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
   case top => exact IsClosed.top
   case tvar => exact IsClosed.tvar
   case arrow T1 T2 ih1 ih2 =>
-    simp [Ty.rename] at h
-    cases h; rename_i h1 h2
-    exact IsClosed.arrow (ih1 h1) (ih2 h2)
+    change Ty.IsClosed (.arrow (T1.rename f) (T2.rename (f.lift))) at h
+    cases h with
+    | arrow h1 h2 =>
+      exact IsClosed.arrow (ih1 h1) (ih2 h2)
   case poly S T ih1 ih2 =>
-    simp [Ty.rename] at h
-    cases h; rename_i h1 h2
-    exact IsClosed.poly (ih1 h1) (ih2 h2)
+    change Ty.IsClosed (.poly (S.rename f) (T.rename (f.lift))) at h
+    cases h with
+    | poly h1 h2 =>
+      exact IsClosed.poly (ih1 h1) (ih2 h2)
   case cpoly cb T ihcb ihT =>
-    simp [Ty.rename] at h
-    cases h; rename_i hcb hT
-    constructor
-    · exact CaptureBound.rename_closed_inv hcb
-    · exact ihT hT
+    change Ty.IsClosed (.cpoly _ _) at h
+    cases h with
+    | cpoly hcb hT =>
+      exact IsClosed.cpoly (CaptureBound.rename_closed_inv hcb) (ihT hT)
   case unit => exact IsClosed.unit
   case cap => exact IsClosed.cap
   case bool => exact IsClosed.bool
   case cell => exact IsClosed.cell
   case capt C S ihC ihS =>
-    simp [Ty.rename] at h
-    cases h; rename_i hC hS
-    exact IsClosed.capt (CaptureSet.rename_closed_inv hC) (ihS hS)
+    change Ty.IsClosed (.capt _ _) at h
+    cases h with
+    | capt hC hS =>
+      exact IsClosed.capt (CaptureSet.rename_closed_inv hC) (ihS hS)
   case typ T ih =>
-    simp [Ty.rename] at h
-    cases h; rename_i hT
-    exact IsClosed.typ (ih hT)
+    change Ty.IsClosed (.typ (T.rename f)) at h
+    cases h with
+    | typ hT =>
+      exact IsClosed.typ (ih hT)
   case exi T ih =>
-    simp [Ty.rename] at h
-    cases h; rename_i hT
-    exact IsClosed.exi (ih hT)
+    change Ty.IsClosed (.exi (T.rename (f.lift))) at h
+    cases h with
+    | exi hT =>
+      exact IsClosed.exi (ih hT)
 
 theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
   (hΓ : Γ.IsClosed) (hlookup : Γ.LookupVar x T) :
@@ -243,7 +249,15 @@ theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
   e.IsClosed := by
   induction ht <;>
-    try (solve | assumption | constructor | (constructor <;> assumption) | (constructor <;> (first | assumption | constructor)))
+    try
+      solve
+      | assumption
+      | constructor
+      | (constructor <;> assumption)
+      | (
+          constructor <;>
+            (first | assumption | constructor)
+        )
   case read ih_x =>
     -- ih_x : (.var x).IsClosed, need to extract x.IsClosed
     cases ih_x with
