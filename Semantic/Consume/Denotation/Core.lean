@@ -1644,19 +1644,15 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
         -- Need to show v.unwrap = pack CS' y'
         cases hunwrap : v.unwrap <;> rw [hunwrap] at hresolve
         case var =>
-          cases v
-          simp at hunwrap
-          subst hunwrap
-          rename_i h_isval
-          cases h_isval
+          cases v with
+          | mk unwrap isVal reachability =>
+            cases isVal <;> cases hunwrap
         case pack =>
           -- pack case
           rename_i CS'' y''
-          simp [resolve] at hresolve
-          -- hresolve now says: CS'' = CS' ∧ y'' = y'
-          obtain ⟨hCS, hy⟩ := hresolve
-          subst hCS hy
-          simp
+          simp only [List.empty_eq] at hresolve
+          injection hresolve with hy
+          cases hy
           exact ht
         all_goals {
           -- For other constructors (abs, tabs, etc.)
@@ -2296,7 +2292,9 @@ lemma simple_ans_from_resolve
   | tabs _ _ _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.tabs
   | cabs _ _ _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.cabs
   | reader _ => exact Exp.IsSimpleAns.is_simple_val Exp.IsSimpleVal.reader
-  | _ => simp [resolve] at hresolve; rw [← hresolve] at hv; cases hv
+  | _ =>
+    cases hresolve
+    cases hv
 
 lemma wf_from_resolve_unit
   {m : Memory} {e : Exp {}}
@@ -2306,11 +2304,11 @@ lemma wf_from_resolve_unit
   | var x =>
     cases x with
     | free fx =>
-      simp [resolve] at hresolve
+      simp only [resolve, List.empty_eq] at hresolve
       cases hfx : m.heap fx with
       | none => simp [hfx] at hresolve
       | some cell =>
-        simp [hfx] at hresolve
+        simp only [hfx] at hresolve
         cases cell with
         | capability => simp at hresolve
         | masked => simp at hresolve
@@ -2322,7 +2320,7 @@ lemma wf_from_resolve_unit
     | bound bx => cases bx
   | unit =>
     apply Exp.WfInHeap.wf_unit
-  | _ => simp [resolve] at hresolve
+  | _ => cases hresolve
 
 /-- Ported from old shape_val_denot_implies_wf.
     For Denot (not PreDenot), implies_wf says d m e → e.WfInHeap m.heap. -/
@@ -2333,13 +2331,13 @@ theorem val_denot_implies_wf {env : TypeEnv s}
   intro m e hdenot
   cases T with
   | top =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact hdenot.2.1
   | tvar X =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot] at hdenot
     exact hts X m e hdenot
   | bool =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     cases hdenot with
     | inl h =>
       cases e with
@@ -2348,7 +2346,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
         cases x with
         | bound bx => cases bx
         | free fx =>
-          simp [resolve] at h
+          simp only [resolve, List.empty_eq] at h
           cases hcell : m.heap fx with
           | none => simp [hcell] at h
           | some cell =>
@@ -2366,7 +2364,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
         cases x with
         | bound bx => cases bx
         | free fx =>
-          simp [resolve] at h
+          simp only [resolve, List.empty_eq] at h
           cases hcell : m.heap fx with
           | none => simp [hcell] at h
           | some cell =>
@@ -2378,7 +2376,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
             | _ => simp [hcell] at h
       | _ => simp [resolve] at h
   | unit =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact wf_from_resolve_unit hdenot
   | cell cs =>
     simp only [Ty.val_denot] at hdenot
@@ -2386,22 +2384,21 @@ theorem val_denot_implies_wf {env : TypeEnv s}
     rw [heq]
     apply Exp.WfInHeap.wf_var
     apply Var.WfInHeap.wf_free
-    · simp [Memory.lookup] at hlookup
-      exact hlookup
+    · simpa only [Memory.lookup] using hlookup
   | reader cs =>
     simp only [Ty.val_denot] at hdenot
     exact hdenot.1
   | cap cs =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact hdenot.1
   | arrow T1 cs T2 =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact hdenot.1
   | poly T1 cs T2 =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact hdenot.1
   | cpoly B cs T =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact hdenot.1
 
 /-- Value denotation implies simple answer for all types. -/
@@ -2412,18 +2409,18 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
   intro m e hdenot
   cases T with
   | top =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact hdenot.1
   | tvar X =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot] at hdenot
     exact hts X m e hdenot
   | bool =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     cases hdenot with
     | inl h => exact simple_ans_from_resolve h Exp.IsSimpleVal.btrue
     | inr h => exact simple_ans_from_resolve h Exp.IsSimpleVal.bfalse
   | unit =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     exact simple_ans_from_resolve hdenot Exp.IsSimpleVal.unit
   | cell cs =>
     simp only [Ty.val_denot] at hdenot
@@ -2435,20 +2432,20 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
     obtain ⟨_, _, _, _, hres, _, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.reader
   | cap cs =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     obtain ⟨_, _, _, heq, _, _⟩ := hdenot
     rw [heq]
     exact Exp.IsSimpleAns.is_var
   | arrow T1 cs T2 =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.abs
   | poly T1 cs T2 =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.tabs
   | cpoly B cs T =>
-    simp [Ty.val_denot] at hdenot
+    simp only [Ty.val_denot, List.empty_eq] at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.cabs
 
@@ -2483,7 +2480,7 @@ theorem val_denot_implyafter_lift {R : CapabilitySet}
   (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
   (Ty.exp_denot env T1 R).ImplyAfter H (Ty.exp_denot env T2 R) := by
   intro m' hsub e heval
-  simp [Ty.exp_denot] at heval ⊢
+  simp only [Ty.exp_denot] at heval ⊢
   apply eval_post_monotonic_general _ heval
   have himp' := Denot.imply_after_to_m_entails_after himp
   exact Mpost.entails_after_subsumes himp' hsub
@@ -2493,7 +2490,7 @@ theorem exi_denot_implyafter_lift {R : CapabilitySet}
   (himp : (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)) :
   (Ty.exi_exp_denot env T1 R).ImplyAfter H (Ty.exi_exp_denot env T2 R) := by
   intro m' hsub e heval
-  simp [Ty.exi_exp_denot] at heval ⊢
+  simp only [Ty.exi_exp_denot] at heval ⊢
   apply eval_post_monotonic_general _ heval
   have himp' := Denot.imply_after_to_m_entails_after himp
   exact Mpost.entails_after_subsumes himp' hsub
@@ -2526,25 +2523,86 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     -- resolve m.heap e = some .unit
     cases e with
     | unit =>
-      simp [resolve_reachability]
+      simp only [resolve_reachability]
       exact CapabilitySet.Subset.refl
     | var x =>
       cases x with
       | free fx =>
-        simp [resolve] at ht
+        simp only [resolve, List.empty_eq] at ht
         cases hcell : m.heap fx with
         | none => simp [hcell] at ht
         | some cell =>
-          simp [hcell] at ht
+          simp only [hcell] at ht
           cases cell with
           | val v =>
-            simp at ht
             -- v.unwrap = .unit
-            simp [resolve_reachability]
+            have hunit : v.unwrap = .unit := by
+              simpa using ht
+            have hsimple : v.unwrap.IsSimpleVal := v.isVal
+            simp only [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap
-            all_goals simp_all [resolve_reachability]
-            all_goals exact CapabilitySet.Subset.refl
+            cases hv : v.unwrap with
+            | var x =>
+              have hsimple' : (Exp.var x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | abs cs T t =>
+              have hunit' := hunit
+              simp [hv] at hunit'
+            | tabs cs S t =>
+              have hunit' := hunit
+              simp [hv] at hunit'
+            | cabs cs B t =>
+              have hunit' := hunit
+              simp [hv] at hunit'
+            | reader x =>
+              have hunit' := hunit
+              simp [hv] at hunit'
+            | pack cs x =>
+              have hsimple' : (Exp.pack cs x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | app x y =>
+              have hsimple' : (Exp.app x y).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | tapp x T =>
+              have hsimple' : (Exp.tapp x T).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | capp x cs =>
+              have hsimple' : (Exp.capp x cs).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | letin e1 e2 =>
+              have hsimple' : (Exp.letin e1 e2).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | unpack e1 e2 =>
+              have hsimple' : (Exp.unpack e1 e2).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | unit =>
+              simp only [resolve_reachability]
+              exact CapabilitySet.Subset.refl
+            | btrue =>
+              have hunit' := hunit
+              simp [hv] at hunit'
+            | bfalse =>
+              have hunit' := hunit
+              simp [hv] at hunit'
+            | read x =>
+              have hsimple' : (Exp.read x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | write x y =>
+              have hsimple' : (Exp.write x y).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | cond x e1 e2 =>
+              have hsimple' : (Exp.cond x e1 e2).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
           | _ => simp at ht
       | bound bx => cases bx
     | _ => simp [resolve] at ht
@@ -2554,27 +2612,88 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     simp only [Ty.val_denot] at ht
     cases e with
     | btrue =>
-      simp [resolve_reachability]
+      simp only [resolve_reachability]
       exact CapabilitySet.Subset.refl
     | bfalse =>
-      simp [resolve_reachability]
+      simp only [resolve_reachability]
       exact CapabilitySet.Subset.refl
     | var x =>
       cases x with
       | free fx =>
-        simp [resolve] at ht
+        simp only [resolve, List.empty_eq] at ht
         cases hcell : m.heap fx with
         | none => simp [hcell] at ht
         | some cell =>
-          simp [hcell] at ht
+          simp only [hcell] at ht
           cases cell with
           | val v =>
-            simp at ht
-            simp [resolve_reachability]
+            have hbool : v.unwrap = .btrue ∨ v.unwrap = .bfalse := by
+              simpa using ht
+            have hsimple : v.unwrap.IsSimpleVal := v.isVal
+            simp only [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap
-            all_goals simp_all [resolve_reachability]
-            all_goals exact CapabilitySet.Subset.refl
+            cases hv : v.unwrap with
+            | var x =>
+              have hsimple' : (Exp.var x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | abs cs T t =>
+              have hbool' := hbool
+              simp [hv] at hbool'
+            | tabs cs S t =>
+              have hbool' := hbool
+              simp [hv] at hbool'
+            | cabs cs B t =>
+              have hbool' := hbool
+              simp [hv] at hbool'
+            | reader x =>
+              have hbool' := hbool
+              simp [hv] at hbool'
+            | pack cs x =>
+              have hsimple' : (Exp.pack cs x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | app x y =>
+              have hsimple' : (Exp.app x y).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | tapp x T =>
+              have hsimple' : (Exp.tapp x T).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | capp x cs =>
+              have hsimple' : (Exp.capp x cs).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | letin e1 e2 =>
+              have hsimple' : (Exp.letin e1 e2).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | unpack e1 e2 =>
+              have hsimple' : (Exp.unpack e1 e2).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | unit =>
+              have hbool' := hbool
+              simp [hv] at hbool'
+            | btrue =>
+              simp only [resolve_reachability]
+              exact CapabilitySet.Subset.refl
+            | bfalse =>
+              simp only [resolve_reachability]
+              exact CapabilitySet.Subset.refl
+            | read x =>
+              have hsimple' : (Exp.read x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | write x y =>
+              have hsimple' : (Exp.write x y).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
+            | cond x e1 e2 =>
+              have hsimple' : (Exp.cond x e1 e2).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
           | _ => simp at ht
       | bound bx => cases bx
     | _ => simp [resolve] at ht
@@ -2585,7 +2704,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     obtain ⟨_, _, label, heq, hlookup, hcov⟩ := ht
     subst heq
     simp only [resolve_reachability, Memory.lookup] at hlookup ⊢
-    simp [reachability_of_loc, hlookup]
+    simp only [reachability_of_loc, hlookup]
     exact CapabilitySet.covers_eps_imp_singleton_eps_subset hcov
   | cell cs =>
     -- captureSet = cs, e = .var (.free l), covers .epsilon l
@@ -2594,7 +2713,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     obtain ⟨_, l, _, heq, hlookup, hcov⟩ := ht
     subst heq
     simp only [resolve_reachability, Memory.lookup] at hlookup ⊢
-    simp [reachability_of_loc, hlookup]
+    simp only [reachability_of_loc, hlookup]
     exact CapabilitySet.covers_eps_imp_singleton_eps_subset hcov
   | reader cs =>
     -- captureSet = cs, resolve e = .reader (.free label), covers .ro label
@@ -2606,26 +2725,27 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     | reader x =>
       cases x with
       | free fx =>
-        simp [resolve] at hres
+        change some (Exp.reader (.free fx)) = some (Exp.reader (.free label)) at hres
         cases hres
-        simp [resolve_reachability]
+        simp only [resolve_reachability]
         exact CapabilitySet.covers_imp_singleton_subset hcov
       | bound bx => cases bx
     | var x =>
       cases x with
       | free fx =>
-        simp [resolve] at hres
+        simp only [resolve, List.empty_eq] at hres
         cases hcell : m.heap fx with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
-            simp [resolve_reachability]
+            have hreader : v.unwrap = .reader (.free label) := by
+              simpa only [Option.some.injEq] using hres
+            simp only [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
-            cases hv : v.unwrap
-            all_goals simp_all [resolve_reachability]
+            rw [hreader]
+            simp only [resolve_reachability]
             exact CapabilitySet.covers_imp_singleton_subset hcov
           | _ => simp at hres
       | bound bx => cases bx
@@ -2638,23 +2758,23 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     | abs cs0 _ _ =>
       simp only [resolve, Option.some.injEq, Exp.abs.injEq] at hres
       obtain ⟨rfl, _, _⟩ := hres
-      simp [resolve_reachability]
+      simp only [resolve_reachability]
       exact hR0_sub
     | var x =>
       cases x with
       | free fx =>
-        simp [resolve] at hres
+        simp only [resolve, List.empty_eq] at hres
         cases hcell : m.heap fx with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
             have hval := by simpa [resolve, hcell] using hres
-            simp [resolve_reachability]
+            simp only [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
-            simp [resolve_reachability]
+            simp only [resolve_reachability]
             exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
@@ -2667,23 +2787,23 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     | tabs cs0 _ _ =>
       simp only [resolve, Option.some.injEq, Exp.tabs.injEq] at hres
       obtain ⟨rfl, _, _⟩ := hres
-      simp [resolve_reachability]
+      simp only [resolve_reachability]
       exact hR0_sub
     | var x =>
       cases x with
       | free fx =>
-        simp [resolve] at hres
+        simp only [resolve, List.empty_eq] at hres
         cases hcell : m.heap fx with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
             have hval := by simpa [resolve, hcell] using hres
-            simp [resolve_reachability]
+            simp only [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
-            simp [resolve_reachability]
+            simp only [resolve_reachability]
             exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
@@ -2696,23 +2816,23 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     | cabs cs0 _ _ =>
       simp only [resolve, Option.some.injEq, Exp.cabs.injEq] at hres
       obtain ⟨rfl, _, _⟩ := hres
-      simp [resolve_reachability]
+      simp only [resolve_reachability]
       exact hR0_sub
     | var x =>
       cases x with
       | free fx =>
-        simp [resolve] at hres
+        simp only [resolve, List.empty_eq] at hres
         cases hcell : m.heap fx with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
             have hval := by simpa [resolve, hcell] using hres
-            simp [resolve_reachability]
+            simp only [resolve_reachability]
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
-            simp [resolve_reachability]
+            simp only [resolve_reachability]
             exact hR0_sub
           | _ => simp at hres
       | bound bx => cases bx
@@ -2754,21 +2874,22 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         cases hcell : m.heap n with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hres' : v.unwrap = .abs cs' x0 t0 := by
+              simpa only [Option.some.injEq] using hres
             -- hres : v.unwrap = .abs cs' x0 t0
             -- By wf_reach: v.reachability = compute_reachability m.heap v.unwrap v.isVal
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
             -- Transport v.isVal along hres to get IsSimpleVal for the abs
-            have habs_isval : (Exp.abs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
+            have habs_isval : (Exp.abs cs' x0 t0).IsSimpleVal := hres' ▸ v.isVal
             -- compute_reachability for abs is expand_captures
             have hcomp :
                 compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
                   = compute_reachability m.heap (Exp.abs cs' x0 t0) habs_isval := by
-                      simp only [hres]
+                      simp only [hres']
                 _ = expand_captures m.heap cs' := rfl
             -- reachability_of_loc = v.reachability
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
@@ -2804,17 +2925,18 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         cases hcell : m.heap n with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hres' : v.unwrap = .tabs cs' x0 t0 := by
+              simpa only [Option.some.injEq] using hres
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
-            have htabs_isval : (Exp.tabs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
+            have htabs_isval : (Exp.tabs cs' x0 t0).IsSimpleVal := hres' ▸ v.isVal
             have hcomp :
                 compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
                   = compute_reachability m.heap (Exp.tabs cs' x0 t0) htabs_isval := by
-                      simp only [hres]
+                      simp only [hres']
                 _ = expand_captures m.heap cs' := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
@@ -2844,17 +2966,18 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         cases hcell : m.heap n with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hres' : v.unwrap = .cabs cs' x0 t0 := by
+              simpa only [Option.some.injEq] using hres
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
-            have hcabs_isval : (Exp.cabs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
+            have hcabs_isval : (Exp.cabs cs' x0 t0).IsSimpleVal := hres' ▸ v.isVal
             have hcomp :
                 compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
                   = compute_reachability m.heap (Exp.cabs cs' x0 t0) hcabs_isval := by
-                      simp only [hres]
+                      simp only [hres']
                 _ = expand_captures m.heap cs' := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
@@ -2888,16 +3011,17 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       simp only [CaptureSet.denot, CaptureSet.subst, heq,
                  CaptureSet.ground_denot, CapabilitySet.applyMut]
       -- reachability_of_loc for capability cell is singleton .epsilon label
-      simp [Memory.lookup] at hlookup
+      have hlookup' : m.heap label = some (.capability .basic) := by
+        simpa only [Memory.lookup] using hlookup
       cases hcell : m.heap label with
-      | none => simp [hcell] at hlookup
+      | none => simp [hcell] at hlookup'
       | some cell =>
-        simp [reachability_of_loc, hcell]
+        simp only [reachability_of_loc, hcell]
         cases cell with
-        | val v => simp [hcell] at hlookup
+        | val v => simp [hcell] at hlookup'
         | capability cap =>
           exact CapabilitySet.covers.here Mutability.Le.refl
-        | masked => simp [hcell] at hlookup
+        | masked => simp [hcell] at hlookup'
   | cell cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_cs, label, b0, heq, hlookup, hcov⟩ := hdenot
@@ -2908,22 +3032,23 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       simp only [CaptureSet.subst]
       -- x.subst gives us (.free label), which is well-formed
       rw [heq]
-      exact CaptureSet.WfInHeap.wf_var_free (by simp [Memory.lookup] at hlookup; exact hlookup)
+      exact CaptureSet.WfInHeap.wf_var_free (by simpa only [Memory.lookup] using hlookup)
     · -- e = .var (.free label)
       simp only [heq]
     · -- covers .epsilon label ((.var .epsilon x).denot env m)
       simp only [CaptureSet.denot, CaptureSet.subst, heq,
                  CaptureSet.ground_denot, CapabilitySet.applyMut]
-      simp [Memory.lookup] at hlookup
+      have hlookup' : m.heap label = some (.capability (.mcell b0)) := by
+        simpa only [Memory.lookup] using hlookup
       cases hcell : m.heap label with
-      | none => simp [hcell] at hlookup
+      | none => simp [hcell] at hlookup'
       | some cell =>
-        simp [reachability_of_loc, hcell]
+        simp only [reachability_of_loc, hcell]
         cases cell with
-        | val v => simp [hcell] at hlookup
+        | val v => simp [hcell] at hlookup'
         | capability cap =>
           exact CapabilitySet.covers.here Mutability.Le.refl
-        | masked => simp [hcell] at hlookup
+        | masked => simp [hcell] at hlookup'
   | reader cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, loc, label, hres, hlookup, hcov⟩ := hdenot
@@ -2944,19 +3069,20 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         cases hcell : m.heap n with
         | none => simp [hcell] at hres
         | some cell =>
-          simp [hcell] at hres
+          simp only [hcell] at hres
           cases cell with
           | val v =>
-            simp at hres
+            have hres' : v.unwrap = .reader (.free loc) := by
+              simpa only [Option.some.injEq] using hres
             -- v.unwrap = .reader (.free loc)
             -- By wf_reach: v.reachability = compute_reachability = .cap .ro loc
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
-            have hreader_isval : (Exp.reader (Var.free loc)).IsSimpleVal := hres ▸ v.isVal
+            have hreader_isval : (Exp.reader (Var.free loc)).IsSimpleVal := hres' ▸ v.isVal
             have hcomp :
                 compute_reachability m.heap v.unwrap v.isVal = .cap .ro loc := by
               calc compute_reachability m.heap v.unwrap v.isVal
                   = compute_reachability m.heap (Exp.reader (Var.free loc)) hreader_isval := by
-                      simp only [hres]
+                      simp only [hres']
                 _ = .cap .ro loc := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
@@ -3019,31 +3145,95 @@ private theorem resolve_reachability_subset_of_resolve
     {m : Memory} {e v : Exp {}}
     (hresolve : resolve m.heap e = some v) :
     resolve_reachability m.heap e ⊆ resolve_reachability m.heap v := by
-  cases e <;> try (
-    simp [resolve] at hresolve
-    subst v
-    exact CapabilitySet.Subset.refl)
-  case var x =>
+  cases e with
+  | var x =>
     cases x with
     | bound bx =>
       cases bx
     | free fx =>
-      simp [resolve] at hresolve
+      simp only [resolve] at hresolve
       cases hcell : m.heap fx with
       | none =>
-        simp [hcell] at hresolve
+        simp only [hcell] at hresolve
+        cases hresolve
       | some cell =>
         cases cell with
         | val hv =>
-          simp [hcell] at hresolve
-          subst v
-          simp [resolve_reachability]
+          simp only [hcell] at hresolve
+          cases hresolve
+          simp only [resolve_reachability]
           rw [reachability_of_loc_eq_resolve_reachability m fx hv hcell]
           exact CapabilitySet.Subset.refl
         | capability cap =>
-          simp [hcell] at hresolve
+          simp only [hcell] at hresolve
+          cases hresolve
         | masked =>
-          simp [hcell] at hresolve
+          simp only [hcell] at hresolve
+          cases hresolve
+  | abs _ _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | tabs _ _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | cabs _ _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | reader _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | pack _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | app _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | tapp _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | capp _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | letin _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | unpack _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | unit =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | btrue =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | bfalse =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | read _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | write _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | cond _ _ _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
 
 theorem pure_ty_enforce_pure {T : Ty .capt s}
   (henv : env.is_enforcing_pure)

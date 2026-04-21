@@ -76,20 +76,22 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
   induction cs
   case empty => exact IsClosed.empty
   case union cs1 cs2 ih1 ih2 =>
-    simp [CaptureSet.rename] at h
-    cases h
-    rename_i h1 h2
+    have h' : ((cs1.rename f).union (cs2.rename f)).IsClosed := by
+      simpa only [CaptureSet.rename] using h
+    cases h' with
+    | union h1 h2 =>
     exact IsClosed.union (ih1 h1) (ih2 h2)
   case cvar => exact IsClosed.cvar
-  case var v =>
+  case var m v =>
     cases v
     case bound => exact IsClosed.var_bound
-    case free =>
+    case free n =>
       -- If cs = .var (.free h), then cs.rename f = .var (.free h)
       -- But h says (cs.rename f).IsClosed, which means no free heap variables
       -- This is a contradiction
-      simp [CaptureSet.rename, Var.rename] at h
-      cases h
+      have h' : (.var m (.free n) : CaptureSet s2).IsClosed := by
+        simpa only [CaptureSet.rename, Var.rename] using h
+      cases h'
 
 theorem CaptureBound.rename_closed {cb : CaptureBound s1} {f : Rename s1 s2} :
     cb.IsClosed -> (cb.rename f).IsClosed := by
@@ -104,8 +106,9 @@ theorem CaptureBound.rename_closed_inv {cb : CaptureBound s1} {f : Rename s1 s2}
   cases cb with
   | unbound => exact CaptureBound.IsClosed.unbound
   | bound cs =>
-    simp [CaptureBound.rename] at h
-    cases h with
+    have h' : (.bound (cs.rename f) : CaptureBound s2).IsClosed := by
+      simpa only [CaptureBound.rename] using h
+    cases h' with
     | bound hcs =>
       exact CaptureBound.IsClosed.bound (CaptureSet.rename_closed_inv hcs)
 
@@ -167,39 +170,56 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
   case top => exact IsClosed.top
   case tvar => exact IsClosed.tvar
   case arrow T1 cs T2 ih1 ih2 =>
-    simp [Ty.rename] at h
-    cases h; rename_i h1 hcs h2
+    have h' : (.arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift)) : Ty .capt s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | arrow h1 hcs h2 =>
     exact IsClosed.arrow (ih1 h1) (CaptureSet.rename_closed_inv hcs) (ih2 h2)
   case poly S cs T ih1 ih2 =>
-    simp [Ty.rename] at h
-    cases h; rename_i h1 hcs h2
+    have h' : (.poly (S.rename f) (cs.rename f) (T.rename (f.lift)) : Ty .capt s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | poly h1 hcs h2 =>
     exact IsClosed.poly (ih1 h1) (CaptureSet.rename_closed_inv hcs) (ih2 h2)
   case cpoly cb cs T ihT =>
-    simp [Ty.rename] at h
-    cases h; rename_i hcb hcs hT
+    have h' :
+        (.cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift)) : Ty .capt s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | cpoly hcb hcs hT =>
     exact IsClosed.cpoly (CaptureBound.rename_closed_inv hcb)
       (CaptureSet.rename_closed_inv hcs) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
-    simp [Ty.rename] at h
-    cases h; rename_i hcs
+    have h' : (.cap (cs.rename f) : Ty .capt s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | cap hcs =>
     exact IsClosed.cap (CaptureSet.rename_closed_inv hcs)
   case bool => exact IsClosed.bool
   case cell cs =>
-    simp [Ty.rename] at h
-    cases h; rename_i hcs
+    have h' : (.cell (cs.rename f) : Ty .capt s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | cell hcs =>
     exact IsClosed.cell (CaptureSet.rename_closed_inv hcs)
   case reader cs =>
-    simp [Ty.rename] at h
-    cases h; rename_i hcs
+    have h' : (.reader (cs.rename f) : Ty .capt s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | reader hcs =>
     exact IsClosed.reader (CaptureSet.rename_closed_inv hcs)
   case typ T ih =>
-    simp [Ty.rename] at h
-    cases h; rename_i hT
+    have h' : (.typ (T.rename f) : Ty .exi s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | typ hT =>
     exact IsClosed.typ (ih hT)
   case exi T ih =>
-    simp [Ty.rename] at h
-    cases h; rename_i hT
+    have h' : (.exi (T.rename (f.lift)) : Ty .exi s2).IsClosed := by
+      simpa only [Ty.rename] using h
+    cases h' with
+    | exi hT =>
     exact IsClosed.exi (ih hT)
 
 theorem Exp.rename_closed_inv {e : Exp s1} {f : Rename s1 s2} :
@@ -270,7 +290,12 @@ theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
   e.IsClosed := by
   induction ht <;>
-    try (solve | assumption | constructor | (constructor <;> assumption) | (constructor <;> (first | assumption | constructor)))
+    try
+      (solve
+        | assumption
+        | constructor
+        | (constructor <;> assumption)
+        | (constructor <;> (first | assumption | constructor)))
   case read ih_x =>
     -- ih_x : (.var x).IsClosed, need to extract x.IsClosed
     cases ih_x with

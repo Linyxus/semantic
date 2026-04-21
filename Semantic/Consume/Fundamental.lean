@@ -1285,14 +1285,22 @@ theorem sem_typ_letin
   (ht2 : C.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
   C # Γ ⊨ (Exp.letin e1 e2) : U := by
   intro env store hts
-  simp [Exp.subst]
-  simp [Ty.exi_exp_denot]
+  suffices
+      Eval
+        (C.denot env store)
+        store
+        (Exp.letin
+          (e1.subst (Subst.from_TypeEnv env))
+          (e2.subst (Subst.from_TypeEnv env).lift))
+        (Ty.exi_val_denot env U).as_mpost by
+    simpa only [Ty.exi_exp_denot, Exp.subst, List.empty_eq] using this
   -- Use Eval.eval_letin with Q1 = (Ty.val_denot env T).as_mpost
   apply Eval.eval_letin (Q1 := (Ty.val_denot env T).as_mpost)
   case hpred =>
     -- Show (Ty.val_denot env T).as_mpost is monotonic
     intro m1 m2 e hwf hsub hQ
-    simp [Denot.as_mpost] at hQ ⊢
+    change Ty.val_denot env T m1 e at hQ
+    change Ty.val_denot env T m2 e
     have henv_mono := typed_env_is_monotonic hts
     exact val_denot_is_monotonic henv_mono T hsub hQ
   case hbool =>
@@ -1302,11 +1310,10 @@ theorem sem_typ_letin
   case a =>
     -- Show Eval ... store (e1.subst ...) (Ty.val_denot env T).as_mpost
     have h1 := ht1 env store hts
-    simp [Ty.exi_exp_denot, Ty.exi_val_denot] at h1
-    exact h1
+    simpa only [Ty.exi_exp_denot, Ty.exi_val_denot] using h1
   case h_nonstuck =>
     intro m1 v hQ1
-    simp [Denot.as_mpost] at hQ1
+    change Ty.val_denot env T m1 v at hQ1
     -- hQ1 : Ty.val_denot env T m1 v
     constructor
     · -- Prove v.IsSimpleAns
@@ -1317,17 +1324,26 @@ theorem sem_typ_letin
     -- Handle the value case: e1 evaluated to a simple value v
     intro m1 v hs1 hv hwf_v hQ1 l' hfresh
     -- m1.subsumes store, v is a simple value, Q1 v m1 holds
-    simp [Denot.as_mpost] at hQ1
+    change Ty.val_denot env T m1 v at hQ1
     -- Construct the HeapVal for v
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     -- Apply ht2 with extended environment and memory
     let ps := CaptureSet.peakset Γ T.captureSet
     have ht2' := ht2 (env.extend_var l' ps)
       (m1.extend_val l' heapval hwf_v rfl hfresh)
-    simp [Ty.exi_exp_denot] at ht2' ⊢
+    have ht2' :
+        EnvTyping (Γ,x:T) (env.extend_var l' ps)
+            (m1.extend_val l' heapval hwf_v rfl hfresh) →
+          Eval
+            ((C.rename Rename.succ).denot (env.extend_var l' ps)
+              (m1.extend_val l' heapval hwf_v rfl hfresh))
+            (m1.extend_val l' heapval hwf_v rfl hfresh)
+            (e2.subst (Subst.from_TypeEnv (env.extend_var l' ps)))
+            (Ty.exi_val_denot (env.extend_var l' ps) (U.rename Rename.succ)).as_mpost := by
+      simpa only [Ty.exi_exp_denot] using ht2'
     -- Rewrite to make expressions match
     have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
-    have ht2' := hkey ▸ ht2'
+    have ht2' := fun henv => hkey ▸ ht2' henv
     -- Show that capability sets match
     have hcap_rename :
       (C.rename Rename.succ).denot (env.extend_var l' ps)
@@ -1370,7 +1386,7 @@ theorem sem_typ_letin
         -- Step 4: Use the memory lookup fact
         have hlookup : (m1.extend_val l' heapval hwf_v rfl hfresh).lookup l' =
           some (Cell.val heapval) := by
-          simp [Memory.extend_val]
+          change (m1.heap.extend l' heapval) l' = some (.val heapval)
           exact Heap.extend_lookup_eq m1.heap l' heapval
         -- Step 5: Apply transparency
         apply htrans hlookup hQ1_lifted
@@ -1387,7 +1403,7 @@ theorem sem_typ_letin
   case h_var =>
     -- Handle the variable case: e1 evaluated to a variable x
     intro m1 x hs1 hwf_x hQ1
-    simp [Denot.as_mpost] at hQ1
+    change Ty.val_denot env T m1 (.var x) at hQ1
     -- Extract the free variable number from x
     cases x
     case bound bv =>
@@ -1397,10 +1413,17 @@ theorem sem_typ_letin
       -- Apply ht2 with extended environment (no memory extension needed)
       let ps := CaptureSet.peakset Γ T.captureSet
       have ht2' := ht2 (env.extend_var fx ps) m1
-      simp [Ty.exi_exp_denot] at ht2' ⊢
+      have ht2' :
+          EnvTyping (Γ,x:T) (env.extend_var fx ps) m1 →
+            Eval
+              ((C.rename Rename.succ).denot (env.extend_var fx ps) m1)
+              m1
+              (e2.subst (Subst.from_TypeEnv (env.extend_var fx ps)))
+              (Ty.exi_val_denot (env.extend_var fx ps) (U.rename Rename.succ)).as_mpost := by
+        simpa only [Ty.exi_exp_denot] using ht2'
       -- Rewrite to make expressions match
       have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
-      have ht2' := hkey ▸ ht2'
+      have ht2' := fun henv => hkey ▸ ht2' henv
       -- Show that capability sets match
       have hcap_rename :
         (C.rename Rename.succ).denot (env.extend_var fx ps)
@@ -1805,24 +1828,29 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                   cases x
                   case here => rfl
                   case there x =>
-                    show (env.lookup_var x).1 = interp_var (env.extend_var arg psT2)
-                      ((Subst.id.var x).rename Rename.succ)
+                    change
+                      (env.lookup_var x).1 =
+                        interp_var (env.extend_var arg psT2)
+                          ((Subst.id.var x).rename Rename.succ)
                     rw [← weaken_interp_var]
                     rfl
                 tvar := by
                   intro X
                   cases X with
                   | there X =>
-                    show env.lookup_tvar X
-                      ≈ Ty.val_denot (env.extend_var arg psT2) (Ty.tvar X.there)
+                    change
+                      env.lookup_tvar X
+                        ≈ Ty.val_denot (env.extend_var arg psT2) (Ty.tvar X.there)
                     rw [Ty.val_denot.eq_2]
                     exact Denot.equiv_refl _
                 cvar := by
                   intro C
                   cases C
                   case there C =>
-                    show (env.lookup_cvar C).1 = ((Subst.id.cvar C).rename Rename.succ).subst
-                      (Subst.from_TypeEnv (env.extend_var arg psT2))
+                    change
+                      (env.lookup_cvar C).1 =
+                        ((Subst.id.cvar C).rename Rename.succ).subst
+                          (Subst.from_TypeEnv (env.extend_var arg psT2))
                     rfl }
             have heq_val := retype_exi_val_denot (ρ := hretype) U1
             -- Lift the evaluation along the exi-val equivalence
@@ -2287,31 +2315,35 @@ theorem sem_typ_subtyp
   (_hclosed_C1 : C1.IsClosed) (hclosed_E1 : E1.IsClosed)
   (_hclosed_C2 : C2.IsClosed) (hclosed_E2 : E2.IsClosed) :
   C2 # Γ ⊨ e : E2 := by
-  -- Unfold semantic typing
   intro env m htyping
-  simp [Ty.exi_exp_denot]
-
+  suffices
+      Eval
+        (C2.denot env m)
+        m
+        (e.subst (Subst.from_TypeEnv env))
+        (Ty.exi_val_denot env E2).as_mpost by
+    simpa only [Ty.exi_exp_denot, List.empty_eq] using this
   -- Get the evaluation from ht at C1 and E1
-  have h_eval_E1 := ht env m htyping
-  simp [Ty.exi_exp_denot] at h_eval_E1
+  have h_eval_E1 :
+      Eval
+        (C1.denot env m)
+        m
+        (e.subst (Subst.from_TypeEnv env))
+        (Ty.exi_val_denot env E1).as_mpost := by
+    simpa only [Ty.exi_exp_denot] using ht env m htyping
   -- h_eval_E1 : Eval (C1.denot env m) m (e.subst ...) (exi_val_denot env E1).as_mpost
-
   -- Use fundamental_subcapt to get C1.denot ⊆ C2.denot
   have hsubcapt_sem := fundamental_subcapt hsubcapt env m htyping
   -- hsubcapt_sem : C1.denot env m ⊆ C2.denot env m
-
   -- Lift the evaluation from C1 to C2 using capability set monotonicity
   have h_eval_E1_at_C2 := eval_capability_set_monotonic h_eval_E1 hsubcapt_sem
   -- h_eval_E1_at_C2 : Eval (C2.denot env m) m (e.subst ...) (exi_val_denot env E1).as_mpost
-
   -- Use fundamental_subtyp to get E1 <: E2 semantically
   have hsubtyp_sem := fundamental_subtyp hclosed_E1 hclosed_E2 hsubtyp env m htyping
   -- hsubtyp_sem : (exi_val_denot env E1).ImplyAfter m (exi_val_denot env E2)
-
   -- Convert ImplyAfter to entailment
   have h_entails := Denot.imply_after_to_m_entails_after hsubtyp_sem
   -- h_entails : (exi_val_denot env E1).as_mpost.entails_after m (exi_val_denot env E2).as_mpost
-
   -- Lift the evaluation from E1 to E2 using postcondition monotonicity
   exact eval_post_monotonic_general h_entails h_eval_E1_at_C2
 
@@ -2329,46 +2361,39 @@ lemma resolve_pack_eq {e : Exp {}} {m : Memory} {CS : CaptureSet {}} {x : Var .v
   cases hpack
   -- e = .pack cs y for some cs, y
   rename_i cs y
-  simp [resolve] at hres
-  obtain ⟨h1, h2⟩ := hres
-  rw [h1, h2]
+  change some (Exp.pack cs y) = some (Exp.pack CS x) at hres
+  cases hres
+  rfl
 
 theorem resolve_is_pack {e : Exp {}} {m : Memory}
   (hres : resolve m.heap e = some v)
   (hv : v.IsPack) : e.IsPack := by
-  -- Case analyze on e
-  cases e <;> simp [resolve] at hres
-  case pack cs x =>
-    -- For packs, resolve returns the pack itself
-    -- After simp, hres : .pack cs x = v
-    rw [← hres] at hv
+  cases (resolve_var_or_val (store := m.heap) (e := e) (v := v) hres) with
+  | inr heq =>
+    rw [heq]
     exact hv
-  case var y =>
-    -- For variables, resolve looks up in the heap
-    cases y
-    case bound bv => cases bv
-    case free fy =>
-      -- resolve looks up m.heap fy
-      -- If it returns some v where v.IsPack, then the heap contains a pack
-      -- But packs are not simple values, so they shouldn't be in the heap
-      -- We need to derive a contradiction
-      cases hval : m.heap fy <;> simp [hval] at hres
-      rename_i cell
-      cases cell <;> simp at hres
-      rename_i val
-      -- After simp, hres : val.unwrap = v
-      rw [← hres] at hv
-      -- Now hv : val.unwrap.IsPack
-      -- But val.isVal : val.unwrap.IsSimpleVal
-      -- Use simple_val_not_pack to derive contradiction
-      exfalso
-      exact simple_val_not_pack val.isVal hv
-  -- For all other expressions, resolve returns them unchanged
-  all_goals {
-    -- After simp, hres : e = v
-    rw [← hres] at hv
-    exact hv
-  }
+  | inl hvar =>
+    obtain ⟨x, rfl⟩ := hvar
+    cases x with
+    | bound bv => cases bv
+    | free fy =>
+      cases hval : m.heap fy with
+      | none =>
+        simp only [resolve, hval] at hres
+        contradiction
+      | some cell =>
+        cases cell with
+        | val val =>
+          simp only [resolve, hval] at hres
+          cases hres
+          exfalso
+          exact simple_val_not_pack val.isVal hv
+        | capability info =>
+          simp only [resolve, hval] at hres
+          contradiction
+        | masked =>
+          simp only [resolve, hval] at hres
+          contradiction
 
 theorem sem_typ_unpack
   {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
@@ -2379,14 +2404,22 @@ theorem sem_typ_unpack
         (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts
-  simp [Exp.subst]
-  simp [Ty.exi_exp_denot]
+  suffices
+      Eval
+        (C.denot env store)
+        store
+        (Exp.unpack
+          (t.subst (Subst.from_TypeEnv env))
+          (u.subst (Subst.from_TypeEnv env).lift.lift))
+        (Ty.exi_val_denot env U).as_mpost by
+    simpa only [Ty.exi_exp_denot, Exp.subst, List.empty_eq] using this
   -- Use Eval.eval_unpack with Q1 = (Ty.exi_val_denot env (.exi T)).as_mpost
   apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot env (.exi T)).as_mpost)
   case hpred =>
     -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is monotonic
     intro m1 m2 e hwf hsub hQ
-    simp [Denot.as_mpost] at hQ ⊢
+    change Ty.exi_val_denot env (.exi T) m1 e at hQ
+    change Ty.exi_val_denot env (.exi T) m2 e
     have henv_mono := typed_env_is_monotonic hts
     exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ
   case hbool =>
@@ -2395,75 +2428,79 @@ theorem sem_typ_unpack
     exact exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T)
   case a =>
     -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env (.exi T)).as_mpost
-    have ht' := ht env store hts
-    simp [Ty.exi_exp_denot] at ht'
-    exact ht'
+    simpa only [Ty.exi_exp_denot] using ht env store hts
   case h_nonstuck =>
     -- Prove that values satisfying exi_val_denot are packs and well-formed
     intro m1 v hQ1
-    simp [Denot.as_mpost, Ty.exi_val_denot] at hQ1
+    change Ty.exi_val_denot env (.exi T) m1 v at hQ1
+    simp only [Ty.exi_val_denot] at hQ1
     -- hQ1 : match resolve m1.heap v with | some (.pack CS x) => ... | _ => False
     -- Case analyze on resolve result
-    cases hres : resolve m1.heap v <;> simp [hres] at hQ1
-    rename_i exp
-    cases exp <;> simp at hQ1
-    -- Only pack case is valid
-    rename_i CS x_pack
-    obtain ⟨hwf_CS, hQ1_body⟩ := hQ1
-    constructor
-    · -- Prove v.IsPack
-      -- Use resolve_is_pack: if resolve returns a pack, then v is a pack
-      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-      exact resolve_is_pack hres hpack
-    · -- Prove v.WfInHeap m1.heap
-      -- First show that v = .pack CS x_pack
-      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-      have hv_pack : v.IsPack := resolve_is_pack hres hpack
-      have heq : v = .pack CS x_pack := resolve_pack_eq hres hv_pack
-      -- Now prove well-formedness of the pack
-      rw [heq]
-      apply Exp.WfInHeap.wf_pack
-      · -- Prove CS.WfInHeap m1.heap
-        exact hwf_CS
-      · -- Prove x_pack.WfInHeap m1.heap
-        -- Extract from hQ1_body : Ty.val_denot (env.extend_cvar CS cap) T m1 (Exp.var x_pack)
-        -- Use val_denot_implies_wf to get (Exp.var x_pack).WfInHeap m1.heap
-        have hwf_env : (env.extend_cvar CS (cap := CS.ground_denot m1)).is_implying_wf := by
-          intro X
-          -- X : BVar (s,C) .tvar, must be .there X' for some X'
-          cases X with
-          | there X' =>
-            simp [TypeEnv.extend_cvar, TypeEnv.lookup_tvar]
-            exact typed_env_is_implying_wf hts X'
-        have hwf_exp := val_denot_implies_wf hwf_env T m1 (.var x_pack) hQ1_body
-        cases hwf_exp with
-        | wf_var hwf_v => exact hwf_v
+    cases hres : resolve m1.heap v with
+    | none =>
+      simp only [hres] at hQ1
+    | some exp =>
+      simp only [hres] at hQ1
+      cases exp <;> simp only [List.empty_eq] at hQ1
+      -- Only pack case is valid
+      rename_i CS x_pack
+      obtain ⟨hwf_CS, hQ1_body⟩ := hQ1
+      constructor
+      · -- Prove v.IsPack
+        -- Use resolve_is_pack: if resolve returns a pack, then v is a pack
+        have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
+        exact resolve_is_pack hres hpack
+      · -- Prove v.WfInHeap m1.heap
+        -- First show that v = .pack CS x_pack
+        have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
+        have hv_pack : v.IsPack := resolve_is_pack hres hpack
+        have heq : v = .pack CS x_pack := resolve_pack_eq hres hv_pack
+        -- Now prove well-formedness of the pack
+        rw [heq]
+        apply Exp.WfInHeap.wf_pack
+        · -- Prove CS.WfInHeap m1.heap
+          exact hwf_CS
+        · -- Prove x_pack.WfInHeap m1.heap
+          -- Extract from hQ1_body : Ty.val_denot (env.extend_cvar CS cap) T m1 (Exp.var x_pack)
+          -- Use val_denot_implies_wf to get (Exp.var x_pack).WfInHeap m1.heap
+          have hwf_env : (env.extend_cvar CS (cap := CS.ground_denot m1)).is_implying_wf := by
+            intro X
+            -- X : BVar (s,C) .tvar, must be .there X' for some X'
+            cases X with
+            | there X' =>
+              simpa only [TypeEnv.lookup_tvar] using typed_env_is_implying_wf hts X'
+          have hwf_exp := val_denot_implies_wf hwf_env T m1 (.var x_pack) hQ1_body
+          cases hwf_exp with
+          | wf_var hwf_v => exact hwf_v
   case h_val =>
     -- Handle the value case: t evaluated to a pack
     intro m1 x cs hs1 hwf_x hwf_cs hQ1
-    simp [Denot.as_mpost] at hQ1
+    change Ty.exi_val_denot env (.exi T) m1 (.pack cs x) at hQ1
     -- hQ1 : Ty.exi_val_denot env (.exi T) m1 (.pack cs x)
     -- This means: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var x)
-    simp [Ty.exi_val_denot] at hQ1
+    simp only [Ty.exi_val_denot, List.empty_eq] at hQ1
     -- Extract the variable from x
     cases x
     case bound bx => cases bx  -- No bound variables in empty signature
     case free fx =>
-      -- Now hQ1 : After resolving pack cs (free fx), we get the value denot
-      -- Simplify hQ1 by resolving the pack
-      simp [resolve] at hQ1
-      -- Now hQ1 : cs.WfInHeap m1.heap ∧ Ty.capt_val_denot ... m1 (.var (.free fx))
       obtain ⟨hwf_cs, hQ1_body⟩ := hQ1
-
       let ps := CaptureSet.peakset (Γ,C<:.unbound) T.captureSet
+      let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
       -- Apply hu with doubly extended environment
-      have hu' := hu ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps) m1
-      simp [Ty.exi_exp_denot] at hu' ⊢
-
+      have hu' := hu (env'.extend_var fx ps) m1
+      have hu' :
+          EnvTyping (Γ,C<:.unbound,x:T) (env'.extend_var fx ps) m1 →
+            Eval
+              (((C.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1)
+              m1
+              (u.subst (Subst.from_TypeEnv (env'.extend_var fx ps)))
+              (Ty.exi_val_denot (env'.extend_var fx ps)
+                ((U.rename Rename.succ).rename Rename.succ)).as_mpost := by
+        simpa only [Ty.exi_exp_denot] using hu'
       -- First, construct the typing context for hu'
       -- Need to show: EnvTyping (Γ,C<:unbound,x:T) (extended environment) m1
       have hts_extended : EnvTyping (Γ,C<:.unbound,x:T)
-          ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps) m1 := by
+          (env'.extend_var fx ps) m1 := by
         -- This unfolds to a conjunction by EnvTyping definition
         constructor
         · -- Show: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var (.free fx))
@@ -2476,31 +2513,24 @@ theorem sem_typ_unpack
             · -- Show: cs.WfInHeap m1.heap
               exact hwf_cs
             constructor
-            · simp [CaptureBound.subst]
-              exact CaptureBound.WfInHeap.wf_unbound
+            · simpa only [List.empty_eq] using CaptureBound.WfInHeap.wf_unbound
             constructor
-            · simp [CaptureBound.denot]
-              exact CapabilitySet.BoundedBy.top
+            · simpa only [List.empty_eq] using CapabilitySet.BoundedBy.top
             constructor
             · rfl
             · -- Show: EnvTyping Γ env m1
               exact env_typing_monotonic hts hs1
-
       -- Apply hu' with the typing context
       have hu'' := hu' hts_extended
-
       -- Expression substitution equality
       have hexp_eq :
           (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
-          u.subst (Subst.from_TypeEnv
-            ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps)) := by
+          u.subst (Subst.from_TypeEnv (env'.extend_var fx ps)) := by
         rw [Exp.subst_comp]
         have h1 := congrArg (u.subst) (@Subst.from_TypeEnv_weaken_unpack s env cs fx ps)
         exact h1.trans (congrArg (u.subst)
           Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant)
-
       -- Capture set equality via rebinding
-      let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
       have hcap_eq :
         ((C.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1 =
         C.denot env store := by
@@ -2519,7 +2549,6 @@ theorem sem_typ_unpack
               · apply CaptureSet.wf_of_closed hclosed_C
               · apply from_TypeEnv_wf_in_heap hts
             exact (capture_set_denot_is_monotonic hwf_C hs1).symm
-
       -- Type equivalence via double rebind
       have heqv_composed : Ty.exi_val_denot env U ≈
         Ty.exi_val_denot (env'.extend_var fx ps)
@@ -2530,7 +2559,6 @@ theorem sem_typ_unpack
           (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (U.rename Rename.succ)
         intro m e
         exact Iff.trans (heqv1 m e) (heqv2 m e)
-
       -- Apply hu'' with conversions
       change Eval (C.denot env store) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))

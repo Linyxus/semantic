@@ -1,8 +1,8 @@
-# Build Warnings Checklist
+# Build Warnings Checklist — ✅ COMPLETE
 
-Snapshot taken 2026-04-21 from `lake build`. Total: **6752 warnings**, zero errors.
+**Final state: 0 warnings, 0 errors.** Completed 2026-04-21.
 
-Tick a file off once `lake build` produces no warnings for it. Run `lean4check` during work; finish a module with a fresh `lake build` to confirm the count dropped.
+Original snapshot: 6752 warnings across 60 files. Every warning was fixed mechanically (no `set_option linter.*` shortcuts, per explicit user rejection). Proof semantics preserved; ~70 theorems restructured with explicit `congrArg`/`rw`/`cases`/`change`/`suffices` where `simp only` widening was insufficient.
 
 ## Category totals
 
@@ -34,14 +34,33 @@ The `flex_simp` warnings dominate. The cheapest win is to sweep one file at a ti
 - 2026-04-21: Pass 1b. Codex per-module (gpt-5.4 xhigh, write). Results: Fsub 253 → 0 ✅. CC 1774 → 699 (6/11 files clean). CCPrec 1765 → 1723 (2/11 — budget exhausted early). Consume 1338 → 1098 (5/13). ModalCapybara 1526 → 1156 (9/14).
 - 2026-04-21: Pass 2. Per-file Codex on 5 biggest files. Results: CCPrec/Fundamental 563 → 0 ✅. ModalCapybara/Fundamental 419 → 0 ✅. CCPrec/Denotation/Core 456 → 128. Consume/Fundamental 369 → 106. CC/Fundamental 488 → 192 (Codex dropped `intro m' hsubsumes` in `sem_subtyp_trans` capt/exi cases; manually restored). Total warnings 4676 → 2938.
 - 2026-04-21: Pass 3. Per-file Codex on 5 next biggest. Results: CCPrec/Semantics/Heap 231 → 0 ✅. Consume/Semantics/Heap 243 → 0 ✅. ModalCapybara/Semantics/Heap 280 → 0 ✅. Consume/Denotation/Core 294 → 0 ✅. ModalCapybara/Denotation/Core 349 → "31" but Codex introduced 103 errors and falsely reported `errors_introduced: 0` — fully reverted. Total warnings 2938 → 2009.
-- 2026-04-21: Pass 4 dispatched with strict error-check contract (5 parallel).
+- 2026-04-21: Pass 4 (5 parallel, strict error-check contract).
   - Consume/Fundamental: 106 → 82, 0 errors.
   - ModalCapybara/Denotation/Core: 349 → 149, 0 errors (strict prompt worked; no regression).
   - CCPrec/Substitution: 149 → 23, 0 errors.
   - CC/Fundamental: 192 → 120, 0 errors.
-  - CCPrec/Denotation/Core: in-flight (last report: 2 warnings left).
-  - Audit revealed pass 3's Consume/Denotation/Core "clean" claim was false — file actually has 119 warnings; status reverted to incomplete in checklist.
-  - Total warnings 2009 → 1330 (80% reduction from original 6752).
+  - CCPrec/Denotation/Core: still in-flight.
+  - Audit revealed pass 3's Consume/Denotation/Core "clean" claim was false — file actually has 119 warnings; status reverted to incomplete. Total 2009 → 1330.
+- 2026-04-21: Pass 5 (5 parallel).
+  - CCPrec/Denotation/Retype: 107 → 0 ✅ (3 restructures).
+  - CC/Denotation/Retype: 109 → 8, 0 errors (`retype_shape_val_denot`, `retype_capt_val_denot` via `suffices` + `simpa`).
+  - Consume/Denotation/Core (re-attempt): 119 → 23, 0 errors.
+  - ModalCapybara/Denotation/Core: 149 → 26, 0 errors (added helpers `wf_from_resolve_btrue`, `wf_from_resolve_bfalse`).
+  - CC/Fundamental: 120 → 107, but Codex deleted `simp [hresolve] at h_exi_T1 ⊢` breaking `obtain` 16×; manually restored.
+  - Total 1330 → 890 (87% reduction from 6752).
+- 2026-04-21: Pass 6 (5 parallel): CC/Fundamental 107 → 51 (manual 1-line restore needed). Consume/Fundamental 82 → 0 ✅. CC/Denotation/Rebind 80 → 0 ✅. CCPrec/Denotation/Rebind 80 → 0 ✅. ModalCapybara/Denotation/Retype 68 → 0 ✅. Total 890 → 580.
+- 2026-04-21: Pass 7 (5 parallel): Consume/Denotation/Retype 59 → 0 ✅. CCPrec/Semantics/BigStep 47 → 0 ✅. CCPrec/Safety 47 → 0 ✅. CCPrec/Semantics/Props 43 → 0 ✅. ModalCapybara/Safety 40 → 0 ✅. Total 580 → 288.
+- 2026-04-21: Pass 8 (5 parallel): CC/Fundamental 51 → 2 (then manual 1-line `simp`→`simp only [hresolve]`). Consume/Safety 40 → 21. Consume/Semantics/Props 35 → 0 ✅. Consume/TypeSystem/BasicProps 30 → 24. Consume/Denotation/Rebind 28 → 0 ✅. Total 288 → 151.
+- 2026-04-21: Pass 9 (5 parallel + 3 follow-up): ModalCapybara/Denotation/Core 26 → 0 ✅. Consume/TypeSystem/BasicProps 24 → 0 ✅. Consume/Denotation/Core 23 → 9. CCPrec/Substitution 23 → 0 ✅. Consume/Safety 21 → 0 ✅. CC/Denotation/Core 9 → 0 ✅. CC/Denotation/Retype 8 → 0 ✅. CC/Safety bailed (misread concurrent-task errors). CCPrec/Denotation/Core wave-4 task stuck; last 2 warnings fixed manually (single `simp`→`simp only [Memory.lookup]` swap). Total 151 → 22.
+- 2026-04-21: Pass 10 (2 parallel, final): CC/Safety 13 → 0 ✅ (redispatched with note to ignore cross-task noise). Consume/Denotation/Core 9 → 0 ✅. **Total 22 → 0.** Full project builds with 0 warnings and 0 errors.
+
+## Takeaways
+
+- Disabling linters at file scope (`set_option linter.flexible false`) was explicitly rejected; all ~6100 flex_simp warnings were converted to explicit `simp only [...]` sets or restructured proofs.
+- The "Fsub technique" — replacing a wildcard `simp` branch with explicit per-constructor proofs via `· exact congrArg …`, `· rw [ih1, ih2]`, `· cases …`, sometimes wrapping in `suffices` / `simpa only` — handled every case where `simp only` widening alone was insufficient.
+- Codex at `--effort xhigh` works reliably per-file. Per-module prompts exhaust budget on large modules (CCPrec, Consume). Scope each Codex run to one file (or a few small related files) for predictable completion.
+- Codex's `errors_introduced` field is unreliable when multiple Codex tasks edit in parallel — it picks up transient errors from other in-flight files. Always audit with a full `lake build` after each wave. Every "errors" alarm in passes 6–10 resolved to 0 once concurrent tasks finished.
+- The original 6752 breakdown (~6100 flex_simp, 302 empty_line, 129 show_tactic, 83 unused_simp, 43 line_too_long, 22 unreachable, 22 try_this, 16 no_op, ~8 chain_semicolon) converged to 0 after 10 Codex waves + ~3 single-line manual restores.
 
 ---
 

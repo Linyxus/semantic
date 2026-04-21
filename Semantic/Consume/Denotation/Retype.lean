@@ -41,18 +41,21 @@ theorem Retype.liftVar
   var := fun
     | .here => rfl
     | .there y => by
-      show (env1.lookup_var y).1
+      change (env1.lookup_var y).1
         = interp_var (env2.extend_var x ps2) ((σ.var y).rename Rename.succ)
       rw [← weaken_interp_var (ps:=ps2)]
       exact ρ.var y
   tvar := fun
     | .there X => by
-      show env1.lookup_tvar X ≈ Ty.val_denot (env2.extend_var x ps2) (((σ.tvar X).rename Rename.succ).core)
+      change env1.lookup_tvar X ≈
+        Ty.val_denot
+          (env2.extend_var x ps2)
+          (((σ.tvar X).rename Rename.succ).core)
       apply Denot.equiv_trans _ _ _ (ρ.tvar X)
       apply weaken_val_denot (ps:=ps2)
   cvar := fun
     | .there C => by
-      show (env1.lookup_cvar C).1
+      change (env1.lookup_cvar C).1
         = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_var x ps2))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set (Rebind.weaken (ps:=ps2))
@@ -105,7 +108,7 @@ private lemma drop_here_cvar_rename_succ_of_coveredby
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [compute_peaks] at hcov
-    show CaptureSet.rename (CaptureSet.union _ _) _ = _
+    change CaptureSet.rename (CaptureSet.union _ _) _ = _
     rw [show (CaptureSet.union cs1.drop_here_cvar cs2.drop_here_cvar).rename
            (Rename.succ (k := .cvar))
          = (cs1.drop_here_cvar.rename Rename.succ).union
@@ -133,7 +136,7 @@ private lemma drop_here_tvar_rename_succ (cs : CaptureSet (s,X)) :
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    show CaptureSet.rename (CaptureSet.union _ _) _ = _
+    change CaptureSet.rename (CaptureSet.union _ _) _ = _
     rw [show (CaptureSet.union cs1.drop_here_tvar cs2.drop_here_tvar).rename
            (Rename.succ (k := .tvar))
          = (cs1.drop_here_tvar.rename Rename.succ).union
@@ -157,7 +160,7 @@ private lemma subst_lift_eq_subst_rename
   induction cs0 with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    show CaptureSet.subst (CaptureSet.union _ _) _ = _
+    change CaptureSet.subst (CaptureSet.union _ _) _ = _
     rw [show (CaptureSet.union (cs1.rename Rename.succ) (cs2.rename Rename.succ)).subst
            (σ.lift (k := k))
          = ((cs1.rename Rename.succ).subst σ.lift).union
@@ -169,10 +172,10 @@ private lemma subst_lift_eq_subst_rename
     | free n => rfl
     | bound x => rfl
   | cvar m c =>
-    show ((CaptureSet.cvar m c).rename (Rename.succ (k := k))).subst σ.lift =
-         ((CaptureSet.cvar m c).subst σ).rename (Rename.succ (k := k))
-    show CaptureSet.applyMut m ((σ.cvar c).rename Rename.succ) =
-         ((σ.cvar c).applyMut m).rename Rename.succ
+    change ((CaptureSet.cvar m c).rename (Rename.succ (k := k))).subst σ.lift =
+      ((CaptureSet.cvar m c).subst σ).rename (Rename.succ (k := k))
+    change CaptureSet.applyMut m ((σ.cvar c).rename Rename.succ) =
+      ((σ.cvar c).applyMut m).rename Rename.succ
     exact CaptureSet.applyMut_rename.symm
 
 theorem Retype.liftTVar
@@ -182,23 +185,27 @@ theorem Retype.liftTVar
   Retype (env1.extend_tvar d) (σ.lift) (env2.extend_tvar d) (D.rename Rename.succ) where
   var := fun
     | .there x => by
-      show (env1.lookup_var x).1
+      change (env1.lookup_var x).1
         = interp_var (env2.extend_tvar d) ((σ.var x).rename Rename.succ)
       rw [← tweaken_interp_var]
       exact ρ.var x
   tvar := fun
     | .here => by
-      show d ≈ Ty.val_denot (env2.extend_tvar d) (PureTy.tvar (BVar.here (s := s2))).core
+      change d ≈
+        Ty.val_denot (env2.extend_tvar d) (PureTy.tvar (BVar.here (s := s2))).core
       apply Denot.eq_to_equiv
       unfold PureTy.tvar Ty.val_denot
       rfl
     | .there X => by
-      show env1.lookup_tvar X ≈ Ty.val_denot (env2.extend_tvar d) (((σ.tvar X).rename Rename.succ).core)
+      change env1.lookup_tvar X ≈
+        Ty.val_denot
+          (env2.extend_tvar d)
+          (((σ.tvar X).rename Rename.succ).core)
       apply Denot.equiv_trans _ _ _ (ρ.tvar X)
       apply tweaken_val_denot
   cvar := fun
     | .there C => by
-      show (env1.lookup_cvar C).1
+      change (env1.lookup_cvar C).1
         = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_tvar d))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.tweaken
@@ -209,22 +216,25 @@ theorem Retype.liftCVar
   Retype (env1.extend_cvar cs cap) (σ.lift) (env2.extend_cvar cs cap) (D.rename Rename.succ) where
   var := fun
     | .there x => by
-      show (env1.lookup_var x).1
+      change (env1.lookup_var x).1
         = interp_var (env2.extend_cvar cs cap) ((σ.var x).rename Rename.succ)
       rw [← cweaken_interp_var]
       exact ρ.var x
   tvar := fun
     | .there X => by
-      show env1.lookup_tvar X ≈ Ty.val_denot (env2.extend_cvar cs cap) (((σ.tvar X).rename Rename.succ).core)
+      change env1.lookup_tvar X ≈
+        Ty.val_denot
+          (env2.extend_cvar cs cap)
+          (((σ.tvar X).rename Rename.succ).core)
       apply Denot.equiv_trans _ _ _ (ρ.tvar X)
       apply cweaken_val_denot
   cvar := fun
     | .here => by
-      show cs = (CaptureSet.cvar Mutability.epsilon (BVar.here (s := s2))).subst
+      change cs = (CaptureSet.cvar Mutability.epsilon (BVar.here (s := s2))).subst
         (Subst.from_TypeEnv (env2.extend_cvar cs cap))
       rfl
     | .there C => by
-      show (env1.lookup_cvar C).1
+      change (env1.lookup_cvar C).1
         = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_cvar cs cap))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
@@ -240,29 +250,35 @@ def retype_resolved_capture_set
   case var x =>
     cases x
     case bound x =>
-      simp [CaptureSet.subst, Var.subst]
-      have := ρ.var x
+      change CaptureSet.var _ (.free (env1.lookup_var x).1) =
+        (CaptureSet.var _ (σ.var x)).subst (Subst.from_TypeEnv env2)
       cases hσ : σ.var x
       case bound y =>
-        simp [Subst.from_TypeEnv, interp_var] at this ⊢
-        rw [hσ] at this
-        simp at this
-        rw [this]
+        change CaptureSet.var _ (.free (env1.lookup_var x).1) =
+          CaptureSet.var _ (.free (env2.lookup_var y).1)
+        have hvar : (env1.lookup_var x).1 = (env2.lookup_var y).1 := by
+          have hvar := ρ.var x
+          rw [hσ] at hvar
+          simpa only [interp_var] using hvar
+        simp [hvar]
       case free n =>
-        simp [Subst.from_TypeEnv, interp_var] at this ⊢
-        rw [hσ] at this
-        simp at this
-        rw [this]
+        change CaptureSet.var _ (.free (env1.lookup_var x).1) = CaptureSet.var _ (.free n)
+        have hvar : (env1.lookup_var x).1 = n := by
+          have hvar := ρ.var x
+          rw [hσ] at hvar
+          simpa only [interp_var] using hvar
+        simp [hvar]
     case free n =>
-      simp [CaptureSet.subst, Var.subst]
+      simp only [CaptureSet.subst, Var.subst]
   case cvar m C =>
-    simp [CaptureSet.subst]
-    cases m
-    · -- epsilon case: applyMut .epsilon is identity
-      exact ρ.cvar C
-    · -- ro case: applyMut .ro applies applyRO
-      conv => lhs; simp only [Subst.from_TypeEnv]; rw [ρ.cvar C]
-      simp [CaptureSet.applyRO_subst]
+    cases m with
+    | epsilon =>
+      simpa only [CaptureSet.subst] using ρ.cvar C
+    | ro =>
+      change ((env1.lookup_cvar C).1).applyRO =
+        ((σ.cvar C).applyRO).subst (Subst.from_TypeEnv env2)
+      rw [CaptureSet.applyRO_subst]
+      rw [ρ.cvar C]
 
 def retype_captureset_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
@@ -298,8 +314,7 @@ def retype_val_denot
   | .tvar X => by
     have h := ρ.tvar X
     intro m e
-    simp [Ty.val_denot, Ty.subst]
-    exact h m e
+    simpa only [Ty.val_denot, Ty.subst] using h m e
   | .cap cs | .cell cs | .reader cs => by
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -398,8 +413,7 @@ def retype_exi_val_denot
   | .typ T => by
     have ih := retype_val_denot ρ T
     intro s e
-    simp [Ty.exi_val_denot, Ty.subst]
-    exact ih s e
+    simpa only [Ty.exi_val_denot, Ty.subst] using ih s e
   | .exi T => by
     intro s e
     simp only [Ty.exi_val_denot, Ty.subst]
@@ -412,7 +426,7 @@ def retype_exi_val_denot
       cases e'
       case pack =>
         rename_i CS y
-        simp
+        simp only [List.empty_eq, and_congr_right_iff]
         -- Goal: CS.WfInHeap s.heap → (... ↔ ...)
         intro _hwf
         have ih := retype_val_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot s)) T
@@ -428,7 +442,7 @@ def retype_exp_denot
   Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.subst σ) R := by
   have ih := retype_val_denot ρ T
   intro m e
-  simp [Ty.exp_denot]
+  simp only [Ty.exp_denot]
   constructor
   · intro h
     apply eval_post_monotonic _ h
@@ -445,7 +459,7 @@ def retype_exi_exp_denot
   Ty.exi_exp_denot env1 T R ≈ Ty.exi_exp_denot env2 (T.subst σ) R := by
   have ih := retype_exi_val_denot ρ T
   intro m e
-  simp [Ty.exi_exp_denot]
+  simp only [Ty.exi_exp_denot]
   constructor
   · intro h
     apply eval_post_monotonic _ h
@@ -467,13 +481,14 @@ def Retype.open_arg {s : Sig} {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s
   var := fun x => by cases x <;> rfl
   tvar := fun
     | .there X => by
-      show env.lookup_tvar X ≈ Ty.val_denot env (PureTy.tvar X).core
+      change env.lookup_tvar X ≈ Ty.val_denot env (PureTy.tvar X).core
       apply Denot.eq_to_equiv
       unfold PureTy.tvar Ty.val_denot
       rfl
   cvar := fun
     | .there C => by
-      show (env.lookup_cvar C).1 = (CaptureSet.cvar Mutability.epsilon C).subst (Subst.from_TypeEnv env)
+      change (env.lookup_cvar C).1 =
+        (CaptureSet.cvar Mutability.epsilon C).subst (Subst.from_TypeEnv env)
       rfl
 
 theorem open_arg_val_denot
@@ -504,17 +519,18 @@ def Retype.open_targ {env : TypeEnv s} {S : PureTy s} :
   var := fun x => by cases x; rfl
   tvar := fun
     | .here => by
-      show Ty.val_denot env S.core ≈ Ty.val_denot env S.core
+      change Ty.val_denot env S.core ≈ Ty.val_denot env S.core
       apply Denot.eq_to_equiv; rfl
     | .there X => by
-      show (env.extend_tvar (Ty.val_denot env S.core)).lookup_tvar X.there
+      change (env.extend_tvar (Ty.val_denot env S.core)).lookup_tvar X.there
         ≈ Ty.val_denot env (PureTy.tvar X).core
       apply Denot.eq_to_equiv
       unfold PureTy.tvar Ty.val_denot
       rfl
   cvar := fun
     | .there C => by
-      show (env.lookup_cvar C).1 = (CaptureSet.cvar Mutability.epsilon C).subst (Subst.from_TypeEnv env)
+      change (env.lookup_cvar C).1 =
+        (CaptureSet.cvar Mutability.epsilon C).subst (Subst.from_TypeEnv env)
       rfl
 
 theorem open_targ_val_denot {env : TypeEnv s} {S : PureTy s} {T : Ty .capt (s,X)} :
@@ -542,17 +558,18 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet :
   var := fun x => by cases x; rfl
   tvar := fun
     | .there X => by
-      show (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap).lookup_tvar X.there
+      change (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap).lookup_tvar X.there
         ≈ Ty.val_denot env (PureTy.tvar X).core
       apply Denot.eq_to_equiv
       unfold PureTy.tvar Ty.val_denot
       rfl
   cvar := fun
     | .here => by
-      show C.subst (Subst.from_TypeEnv env) = C.subst (Subst.from_TypeEnv env)
+      change C.subst (Subst.from_TypeEnv env) = C.subst (Subst.from_TypeEnv env)
       rfl
     | .there C0 => by
-      show (env.lookup_cvar C0).1 = (CaptureSet.cvar Mutability.epsilon C0).subst (Subst.from_TypeEnv env)
+      change (env.lookup_cvar C0).1 =
+        (CaptureSet.cvar Mutability.epsilon C0).subst (Subst.from_TypeEnv env)
       rfl
 
 theorem open_carg_val_denot

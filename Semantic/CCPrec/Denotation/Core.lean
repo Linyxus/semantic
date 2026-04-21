@@ -2729,7 +2729,7 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
     rw [heq]
     apply Exp.WfInHeap.wf_var
     apply Var.WfInHeap.wf_free
-    · simp [Memory.lookup] at hlookup
+    · simp only [Memory.lookup] at hlookup
       change m.heap l = some (Cell.capability (.mcell b0)) at hlookup
       exact hlookup
   | cap =>

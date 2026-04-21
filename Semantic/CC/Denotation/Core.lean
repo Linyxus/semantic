@@ -2221,38 +2221,58 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
     -- Goal: {l} ⊆ R, which follows from l ∈ R
     exact CapabilitySet.mem_imp_singleton_subset hmem
   | unit =>
-    -- For .unit, resolve_reachability returns empty set or reachability from heap
-    simp only [Ty.shape_val_denot] at hdenot
-    -- hdenot : resolve m.heap e = some .unit
-    -- Need: resolve_reachability m.heap e ⊆ R
+    have hdenot' : resolve m.heap e = some .unit := by
+      simpa only [Ty.shape_val_denot] using hdenot
     cases e with
     | unit =>
-      simp only [resolve_reachability]
+      change ({} : CapabilitySet) ⊆ R
       exact CapabilitySet.Subset.empty
     | var x =>
       cases x with
       | free fx =>
-        simp only [resolve_reachability]
-        -- reachability_of_loc for unit values is empty
-        simp only [resolve] at hdenot
-        cases hfx : m.heap fx <;> simp [hfx] at hdenot
-        case some cell =>
-          cases cell <;> simp at hdenot
-          case val v =>
-            cases hv : v.unwrap <;> simp [hv] at hdenot
-            case unit =>
-              -- For unit, reachability is v.reachability which should be empty
-              simp only [reachability_of_loc, hfx]
-              -- Use heap invariant to show v.reachability = compute_reachability = {}
-              have hinv := Memory.reachability_invariant m fx v (by simp [hfx])
-              simp only [hv] at hinv
-              -- compute_reachability for unit is {}
-              rw [hinv]
-              simp [compute_reachability]
-              exact CapabilitySet.Subset.empty
+        change reachability_of_loc m.heap fx ⊆ R
+        cases hfx : m.heap fx with
+        | none =>
+          have hbad : (none : Option (Exp {})) = some .unit := by
+            simpa only [resolve, hfx] using hdenot'
+          cases hbad
+        | some cell =>
+          cases cell with
+          | capability =>
+            have hbad : (none : Option (Exp {})) = some .unit := by
+              simpa only [resolve, hfx] using hdenot'
+            cases hbad
+          | masked =>
+            have hbad : (none : Option (Exp {})) = some .unit := by
+              simpa only [resolve, hfx] using hdenot'
+            cases hbad
+          | val v =>
+            cases v with
+            | mk vexp hv_simple hreach_val =>
+              have hresolve : some vexp = some .unit := by
+                simpa only [resolve, hfx] using hdenot'
+              have hreach :=
+                Memory.reachability_invariant m fx ⟨vexp, hv_simple, hreach_val⟩
+                  (by simp [hfx])
+              cases hv_simple with
+              | abs =>
+                cases hresolve
+              | tabs =>
+                cases hresolve
+              | cabs =>
+                cases hresolve
+              | unit =>
+                have hreach_empty : hreach_val = {} := by
+                  simpa [compute_reachability] using hreach
+                rw [reachability_of_loc, hfx, hreach_empty]
+                exact CapabilitySet.Subset.empty
+              | btrue =>
+                cases hresolve
+              | bfalse =>
+                cases hresolve
       | bound bx => cases bx
     | _ =>
-      simp [resolve] at hdenot
+      cases hdenot'
   | cap =>
     -- For .cap, e is a variable pointing to a capability
     simp only [Ty.shape_val_denot] at hdenot
@@ -2270,107 +2290,166 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
     -- Goal: {label} ⊆ R, which follows from label ∈ R
     exact CapabilitySet.mem_imp_singleton_subset hmem
   | arrow T1 T2 =>
-    -- For arrow types, e resolves to an abstraction with capture set cs
-    simp only [Ty.shape_val_denot] at hdenot
-    have ⟨hwf_e, cs, T0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
-    -- Need: resolve_reachability m.heap e ⊆ R
-    -- From hdenot: R0 = expand_captures m.heap cs and R0 ⊆ R
+    have hdenot' :
+        e.WfInHeap m.heap ∧
+          ∃ cs T0 t0,
+            resolve m.heap e = some (.abs cs T0 t0) ∧
+            cs.WfInHeap m.heap ∧
+            let R0 := expand_captures m.heap cs
+            R0 ⊆ R ∧
+              ∀ (arg : Nat) (m' : Memory),
+                m'.subsumes m ->
+                Ty.capt_val_denot env T1 m' (.var (.free arg)) ->
+                Ty.exi_exp_denot
+                  (env.extend_var arg)
+                  T2 (R0 ∪ reachability_of_loc m'.heap arg) m'
+                    (t0.subst (Subst.openVar (.free arg))) := by
+      simpa only [Ty.shape_val_denot] using hdenot
+    have ⟨hwf_e, cs, T0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot'
     cases e with
     | abs cs' T0' t0' =>
-      simp only [resolve, resolve_reachability] at hres ⊢
-      obtain ⟨rfl, rfl, rfl⟩ := hres
+      change expand_captures m.heap cs' ⊆ R
+      have hres' : some (Exp.abs cs' T0' t0') = some (Exp.abs cs T0 t0) := by
+        simpa only [resolve] using hres
+      cases hres'
       exact hR0_sub
     | var x =>
       cases x with
       | free fx =>
-        simp only [resolve] at hres
+        change reachability_of_loc m.heap fx ⊆ R
         cases hfx : m.heap fx with
         | none =>
-          rw [hfx] at hres
-          cases hres
+          have hbad : (none : Option (Exp {})) = some (Exp.abs cs T0 t0) := by
+            simpa only [resolve, hfx] using hres
+          cases hbad
         | some cell =>
-          rw [hfx] at hres
           cases cell with
-          | capability => simp at hres
-          | masked => simp at hres
+          | capability =>
+            have hbad : (none : Option (Exp {})) = some (Exp.abs cs T0 t0) := by
+              simpa only [resolve, hfx] using hres
+            cases hbad
+          | masked =>
+            have hbad : (none : Option (Exp {})) = some (Exp.abs cs T0 t0) := by
+              simpa only [resolve, hfx] using hres
+            cases hbad
           | val v =>
-            cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
-            case abs cs' T0' t0' =>
-              obtain ⟨rfl, rfl, rfl⟩ := hres
-              -- Need: reachability_of_loc m.heap fx ⊆ R
-              -- From heap invariant: reachability_of_loc m.heap fx = v.reachability
-              -- And v.reachability = expand_captures m.heap cs' (for abs values)
-              simp only [resolve_reachability]
-              have hv_heap : m.heap fx = some (Cell.val v) := hfx
-              rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
-              simp only [resolve_reachability, hunwrap]
-              exact hR0_sub
+            have hres' : some v.unwrap = some (Exp.abs cs T0 t0) := by
+              simpa only [resolve, hfx] using hres
+            have hv_heap : m.heap fx = some (Cell.val v) := hfx
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
+            injection hres' with hunwrap
+            rw [hunwrap]
+            change expand_captures m.heap cs ⊆ R
+            exact hR0_sub
       | bound bx => cases bx
     | _ => cases hres
   | poly T1 T2 =>
-    -- Similar to arrow case
-    simp only [Ty.shape_val_denot] at hdenot
-    have ⟨hwf_e, cs, S0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    have hdenot' :
+        e.WfInHeap m.heap ∧
+          ∃ cs S0 t0,
+            resolve m.heap e = some (.tabs cs S0 t0) ∧
+            cs.WfInHeap m.heap ∧
+            let R0 := expand_captures m.heap cs
+            R0 ⊆ R ∧
+              ∀ (m' : Memory) (denot : PreDenot),
+                m'.subsumes m ->
+                denot.is_proper ->
+                denot.ImplyAfter m' (Ty.shape_val_denot env T1) ->
+                Ty.exi_exp_denot
+                  (env.extend_tvar denot)
+                  T2 R0 m' (t0.subst (Subst.openTVar .top)) := by
+      simpa only [Ty.shape_val_denot] using hdenot
+    have ⟨hwf_e, cs, S0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot'
     cases e with
     | tabs cs' S0' t0' =>
-      simp only [resolve, resolve_reachability] at hres ⊢
-      obtain ⟨rfl, rfl, rfl⟩ := hres
+      change expand_captures m.heap cs' ⊆ R
+      have hres' : some (Exp.tabs cs' S0' t0') = some (Exp.tabs cs S0 t0) := by
+        simpa only [resolve] using hres
+      cases hres'
       exact hR0_sub
     | var x =>
       cases x with
       | free fx =>
-        simp only [resolve] at hres
+        change reachability_of_loc m.heap fx ⊆ R
         cases hfx : m.heap fx with
         | none =>
-          rw [hfx] at hres
-          cases hres
+          have hbad : (none : Option (Exp {})) = some (Exp.tabs cs S0 t0) := by
+            simpa only [resolve, hfx] using hres
+          cases hbad
         | some cell =>
-          rw [hfx] at hres
           cases cell with
-          | capability => simp at hres
-          | masked => simp at hres
+          | capability =>
+            have hbad : (none : Option (Exp {})) = some (Exp.tabs cs S0 t0) := by
+              simpa only [resolve, hfx] using hres
+            cases hbad
+          | masked =>
+            have hbad : (none : Option (Exp {})) = some (Exp.tabs cs S0 t0) := by
+              simpa only [resolve, hfx] using hres
+            cases hbad
           | val v =>
-            cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
-            case tabs cs' S0' t0' =>
-              obtain ⟨rfl, rfl, rfl⟩ := hres
-              simp only [resolve_reachability]
-              have hv_heap : m.heap fx = some (Cell.val v) := hfx
-              rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
-              simp only [resolve_reachability, hunwrap]
-              exact hR0_sub
+            have hres' : some v.unwrap = some (Exp.tabs cs S0 t0) := by
+              simpa only [resolve, hfx] using hres
+            have hv_heap : m.heap fx = some (Cell.val v) := hfx
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
+            injection hres' with hunwrap
+            rw [hunwrap]
+            change expand_captures m.heap cs ⊆ R
+            exact hR0_sub
       | bound bx => cases bx
     | _ => cases hres
   | cpoly B T =>
-    -- Similar to arrow case
-    simp only [Ty.shape_val_denot] at hdenot
-    have ⟨hwf_e, cs, B0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot
+    have hdenot' :
+        e.WfInHeap m.heap ∧
+          ∃ cs B0 t0,
+            resolve m.heap e = some (.cabs cs B0 t0) ∧
+            cs.WfInHeap m.heap ∧
+            let R0 := expand_captures m.heap cs
+            R0 ⊆ R ∧
+              ∀ (m' : Memory) (CS : CaptureSet {}),
+                CS.WfInHeap m'.heap ->
+                let A0 := CS.denot TypeEnv.empty
+                m'.subsumes m ->
+                (A0 m').BoundedBy (B.denot env m') ->
+                Ty.exi_exp_denot
+                  (env.extend_cvar CS)
+                  T R0 m' (t0.subst (Subst.openCVar CS)) := by
+      simpa only [Ty.shape_val_denot] using hdenot
+    have ⟨hwf_e, cs, B0, t0, hres, hwf_cs, hR0_sub, _⟩ := hdenot'
     cases e with
     | cabs cs' B0' t0' =>
-      simp only [resolve, resolve_reachability] at hres ⊢
-      obtain ⟨rfl, rfl, rfl⟩ := hres
+      change expand_captures m.heap cs' ⊆ R
+      have hres' : some (Exp.cabs cs' B0' t0') = some (Exp.cabs cs B0 t0) := by
+        simpa only [resolve] using hres
+      cases hres'
       exact hR0_sub
     | var x =>
       cases x with
       | free fx =>
-        simp only [resolve] at hres
+        change reachability_of_loc m.heap fx ⊆ R
         cases hfx : m.heap fx with
         | none =>
-          rw [hfx] at hres
-          cases hres
+          have hbad : (none : Option (Exp {})) = some (Exp.cabs cs B0 t0) := by
+            simpa only [resolve, hfx] using hres
+          cases hbad
         | some cell =>
-          rw [hfx] at hres
           cases cell with
-          | capability => simp at hres
-          | masked => simp at hres
+          | capability =>
+            have hbad : (none : Option (Exp {})) = some (Exp.cabs cs B0 t0) := by
+              simpa only [resolve, hfx] using hres
+            cases hbad
+          | masked =>
+            have hbad : (none : Option (Exp {})) = some (Exp.cabs cs B0 t0) := by
+              simpa only [resolve, hfx] using hres
+            cases hbad
           | val v =>
-            cases hunwrap : v.unwrap <;> simp [hunwrap] at hres
-            case cabs cs' B0' t0' =>
-              obtain ⟨rfl, rfl, rfl⟩ := hres
-              simp only [resolve_reachability]
-              have hv_heap : m.heap fx = some (Cell.val v) := hfx
-              rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
-              simp only [resolve_reachability, hunwrap]
-              exact hR0_sub
+            have hres' : some v.unwrap = some (Exp.cabs cs B0 t0) := by
+              simpa only [resolve, hfx] using hres
+            have hv_heap : m.heap fx = some (Cell.val v) := hfx
+            rw [reachability_of_loc_eq_resolve_reachability m fx v hv_heap]
+            injection hres' with hunwrap
+            rw [hunwrap]
+            change expand_captures m.heap cs ⊆ R
+            exact hR0_sub
       | bound bx => cases bx
     | _ => cases hres
 
@@ -2586,14 +2665,29 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
         · constructor
           · -- Need to show: expand_captures m.heap cs ⊆ reachability_of_loc m.heap fx
             -- Extract the heap value from resolve
-            have : ∃ v, m.heap fx = some (Cell.val v) ∧ v.unwrap = Exp.abs cs T0 t0 := by
-              unfold resolve at hresolve
-              cases heq : m.heap fx
-              · simp [heq] at hresolve
-              · next cell =>
-                cases cell <;> simp [heq] at hresolve
-                exact ⟨_, rfl, hresolve⟩
-            obtain ⟨v, hv, hunwrap⟩ := this
+            have hstored : ∃ v, m.heap fx = some (Cell.val v) ∧
+                v.unwrap = Exp.abs cs T0 t0 := by
+              cases heq : m.heap fx with
+              | none =>
+                have hbad : (none : Option (Exp {})) = some (Exp.abs cs T0 t0) := by
+                  simpa only [resolve, heq] using hresolve
+                cases hbad
+              | some cell =>
+                cases cell with
+                | capability =>
+                  have hbad : (none : Option (Exp {})) = some (Exp.abs cs T0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  cases hbad
+                | masked =>
+                  have hbad : (none : Option (Exp {})) = some (Exp.abs cs T0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  cases hbad
+                | val v =>
+                  have hunwrap : some v.unwrap = some (Exp.abs cs T0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  injection hunwrap with hunwrap'
+                  exact ⟨v, rfl, hunwrap'⟩
+            obtain ⟨v, hv, hunwrap⟩ := hstored
             -- Use the equality: reachability_of_loc = resolve_reachability of unwrapped value
             have heq := reachability_of_loc_eq_resolve_reachability m fx v hv
             rw [heq, hunwrap]
@@ -2613,14 +2707,29 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
         · constructor
           · -- Need to show: expand_captures m.heap cs ⊆ reachability_of_loc m.heap fx
             -- Extract the heap value from resolve
-            have : ∃ v, m.heap fx = some (Cell.val v) ∧ v.unwrap = Exp.tabs cs S0 t0 := by
-              unfold resolve at hresolve
-              cases heq : m.heap fx
-              · simp [heq] at hresolve
-              · next cell =>
-                cases cell <;> simp [heq] at hresolve
-                exact ⟨_, rfl, hresolve⟩
-            obtain ⟨v, hv, hunwrap⟩ := this
+            have hstored : ∃ v, m.heap fx = some (Cell.val v) ∧
+                v.unwrap = Exp.tabs cs S0 t0 := by
+              cases heq : m.heap fx with
+              | none =>
+                have hbad : (none : Option (Exp {})) = some (Exp.tabs cs S0 t0) := by
+                  simpa only [resolve, heq] using hresolve
+                cases hbad
+              | some cell =>
+                cases cell with
+                | capability =>
+                  have hbad : (none : Option (Exp {})) = some (Exp.tabs cs S0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  cases hbad
+                | masked =>
+                  have hbad : (none : Option (Exp {})) = some (Exp.tabs cs S0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  cases hbad
+                | val v =>
+                  have hunwrap : some v.unwrap = some (Exp.tabs cs S0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  injection hunwrap with hunwrap'
+                  exact ⟨v, rfl, hunwrap'⟩
+            obtain ⟨v, hv, hunwrap⟩ := hstored
             -- Use the equality: reachability_of_loc = resolve_reachability of unwrapped value
             have heq := reachability_of_loc_eq_resolve_reachability m fx v hv
             rw [heq, hunwrap]
@@ -2640,14 +2749,29 @@ theorem shape_val_denot_is_tight {env : TypeEnv s}
         · constructor
           · -- Need to show: expand_captures m.heap cs ⊆ reachability_of_loc m.heap fx
             -- Extract the heap value from resolve
-            have : ∃ v, m.heap fx = some (Cell.val v) ∧ v.unwrap = Exp.cabs cs B0 t0 := by
-              unfold resolve at hresolve
-              cases heq : m.heap fx
-              · simp [heq] at hresolve
-              · next cell =>
-                cases cell <;> simp [heq] at hresolve
-                exact ⟨_, rfl, hresolve⟩
-            obtain ⟨v, hv, hunwrap⟩ := this
+            have hstored : ∃ v, m.heap fx = some (Cell.val v) ∧
+                v.unwrap = Exp.cabs cs B0 t0 := by
+              cases heq : m.heap fx with
+              | none =>
+                have hbad : (none : Option (Exp {})) = some (Exp.cabs cs B0 t0) := by
+                  simpa only [resolve, heq] using hresolve
+                cases hbad
+              | some cell =>
+                cases cell with
+                | capability =>
+                  have hbad : (none : Option (Exp {})) = some (Exp.cabs cs B0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  cases hbad
+                | masked =>
+                  have hbad : (none : Option (Exp {})) = some (Exp.cabs cs B0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  cases hbad
+                | val v =>
+                  have hunwrap : some v.unwrap = some (Exp.cabs cs B0 t0) := by
+                    simpa only [resolve, heq] using hresolve
+                  injection hunwrap with hunwrap'
+                  exact ⟨v, rfl, hunwrap'⟩
+            obtain ⟨v, hv, hunwrap⟩ := hstored
             -- Use the equality: reachability_of_loc = resolve_reachability of unwrapped value
             have heq := reachability_of_loc_eq_resolve_reachability m fx v hv
             rw [heq, hunwrap]
