@@ -22,8 +22,10 @@ theorem sem_typ_abs
     constructor
     · rfl
     · intro store' arg hsubsume harg
-      simp [Exp.from_TypeEnv_weaken_open]
-      exact ht (env.extend_var arg) store' ⟨harg, env_typing_monotonic hts hsubsume⟩
+      have key : (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free arg))
+               = e.subst (Subst.from_TypeEnv (env.extend_var arg)) :=
+        Exp.from_TypeEnv_weaken_open
+      exact key ▸ ht (env.extend_var arg) store' ⟨harg, env_typing_monotonic hts hsubsume⟩
 
 theorem sem_typ_tabs
   (ht : (Γ,X<:S) ⊨ e : T) :
@@ -37,8 +39,10 @@ theorem sem_typ_tabs
     constructor
     · rfl
     · intro H denot Hs hdenot_mono hdenot_trans himply
-      simp [Exp.from_TypeEnv_weaken_open_tvar (d:=denot)]
-      exact ht _ _ ⟨hdenot_mono, hdenot_trans, himply, env_typing_monotonic hts Hs⟩
+      have key : (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top)
+               = e.subst (Subst.from_TypeEnv (env.extend_tvar denot)) :=
+        Exp.from_TypeEnv_weaken_open_tvar
+      exact key ▸ ht _ _ ⟨hdenot_mono, hdenot_trans, himply, env_typing_monotonic hts Hs⟩
 
 theorem abs_val_denot_inv
   (hv : Ty.val_denot env (.arrow T1 T2) store (.var x)) :

@@ -374,7 +374,7 @@ private theorem union_coveredby_left_aux {AB A B C : CaptureSet s}
       cases D with
       | empty =>
         simp only [CaptureSet.applyRO] at he
-        exact absurd he CaptureSet.noConfusion
+        contradiction
       | union D1 D2 =>
         simp only [CaptureSet.applyRO] at he
         injection he with hA hB
@@ -391,12 +391,12 @@ private theorem union_coveredby_left_aux {AB A B C : CaptureSet s}
           exact .union_right_left refl'
       | var m x =>
         simp only [CaptureSet.applyRO] at he
-        exact absurd he CaptureSet.noConfusion
+        contradiction
       | cvar m c =>
         simp only [CaptureSet.applyRO] at he
-        exact absurd he CaptureSet.noConfusion
+        contradiction
   | empty =>
-    exact absurd he CaptureSet.noConfusion
+    contradiction
   | union_left h1 _ _ _ =>
     injection he with hA _
     subst hA
@@ -431,7 +431,7 @@ private theorem union_coveredby_right_aux {AB A B C : CaptureSet s}
       cases D with
       | empty =>
         simp only [CaptureSet.applyRO] at he
-        exact absurd he CaptureSet.noConfusion
+        contradiction
       | union D1 D2 =>
         simp only [CaptureSet.applyRO] at he
         injection he with _ hB
@@ -446,12 +446,12 @@ private theorem union_coveredby_right_aux {AB A B C : CaptureSet s}
           exact .union_right_right refl'
       | var m x =>
         simp only [CaptureSet.applyRO] at he
-        exact absurd he CaptureSet.noConfusion
+        contradiction
       | cvar m c =>
         simp only [CaptureSet.applyRO] at he
-        exact absurd he CaptureSet.noConfusion
+        contradiction
   | empty =>
-    exact absurd he CaptureSet.noConfusion
+    contradiction
   | union_left _ h2 _ _ =>
     injection he with _ hB
     subst hB

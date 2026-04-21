@@ -216,19 +216,17 @@ theorem TVar.weaken_subst_comm_liftMany {X : BVar (s1 ++ K) .tvar} {σ : Subst s
   (σ.lift (k:=k0).liftMany K).tvar ((Rename.succ (k:=k0).liftMany K).var X) := by
   induction K with
   | nil =>
-    simp [Subst.liftMany, Rename.liftMany]
     cases X with
-    | here => simp [Subst.lift, Rename.succ]
+    | here => rfl
     | there X => rfl
   | cons k K ih =>
     simp [Subst.liftMany, Rename.liftMany]
     cases X with
     | here => rfl
     | there X =>
-      simp [Rename.lift_there_tvar_eq]
-      simp [Subst.lift_there_tvar_eq]
-      simp [PureTy.weaken_rename_comm]
-      grind
+      simp [Rename.lift_there_tvar_eq, Subst.lift_there_tvar_eq]
+      conv_rhs => rw [← ih]
+      exact PureTy.weaken_rename_comm
 
 theorem Var.weaken_subst_comm_liftMany {x : Var .var (s1 ++ K)} {σ : Subst s1 s2} :
   (x.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -247,9 +245,10 @@ theorem Var.weaken_subst_comm_liftMany {x : Var .var (s1 ++ K)} {σ : Subst s1 s
         conv => lhs; simp [Var.subst]
         conv => rhs; simp [Var.rename, Var.subst]
         have ih := ih (x:=.bound x)
+        simp [Var.subst, Var.rename] at ih
         simp [Subst.lift_there_var_eq, Rename.lift_there_var_eq]
-        simp [Var.weaken_rename_comm]
-        congr
+        conv_rhs => rw [← ih]
+        exact Var.weaken_rename_comm
     | free n => simp [Var.subst, Var.rename]
 
 theorem CVar.weaken_subst_comm_liftMany {C : BVar (s1 ++ K) .cvar} {σ : Subst s1 s2} :
@@ -257,19 +256,17 @@ theorem CVar.weaken_subst_comm_liftMany {C : BVar (s1 ++ K) .cvar} {σ : Subst s
   (σ.lift (k:=k0).liftMany K).cvar ((Rename.succ (k:=k0).liftMany K).var C) := by
   induction K with
   | nil =>
-    simp [Subst.liftMany, Rename.liftMany]
     cases C with
-    | here => simp [Subst.lift, Rename.succ]
+    | here => rfl
     | there C => rfl
   | cons k K ih =>
     simp [Subst.liftMany, Rename.liftMany]
     cases C with
-    | here => simp [Subst.lift, CaptureSet.rename, Rename.lift]
+    | here => rfl
     | there C =>
-      simp [Rename.lift_there_cvar_eq]
-      simp [Subst.lift_there_cvar_eq]
-      simp [CaptureSet.weaken_rename_comm]
-      grind
+      simp [Rename.lift_there_cvar_eq, Subst.lift_there_cvar_eq]
+      conv_rhs => rw [← ih]
+      exact CaptureSet.weaken_rename_comm
 
 theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : Subst s1 s2} :
   (cs.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -341,6 +338,13 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   | .typ T =>
     have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
     simp [Ty.subst, Ty.rename, ih]
+termination_by sizeOf T
+decreasing_by
+  all_goals first
+    | decreasing_tactic
+    | (simp_wf; refine Nat.lt_add_of_pos_left ?_; omega)
+    | (simp_wf; refine Nat.lt_add_left _ ?_; exact Nat.succ_pos _)
+    | (simp_wf; omega)
 
 theorem Ty.weaken_subst_comm_base {T : Ty sort s1} {σ : Subst s1 s2} :
   (T.subst σ).rename (Rename.succ (k:=k)) = (T.rename Rename.succ).subst (σ.lift (k:=k)) :=
@@ -421,7 +425,8 @@ theorem Subst.comp_liftMany {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {K : Sig} :
   | nil => rfl
   | cons k K ih =>
     simp [Subst.liftMany]
-    rw [Subst.comp_lift, ih]
+    conv_rhs => rw [← ih]
+    exact Subst.comp_lift
 
 /-- Substituting a composition of substitutions is the same as
   substituting one after the other. -/
@@ -471,18 +476,26 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | top => rfl
   | tvar x => rfl
   | arrow T1 cs T2 ih1 ih2 =>
-    simp [Ty.subst, ih1, ih2, CaptureSet.subst_comp, Subst.comp_lift]
+    simp [Ty.subst, ih1, ih2, CaptureSet.subst_comp]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | poly T1 cs T2 ih1 ih2 =>
-    simp [Ty.subst, ih1, ih2, CaptureSet.subst_comp, Subst.comp_lift]
+    simp [Ty.subst, ih1, ih2, CaptureSet.subst_comp]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | cpoly cb cs T ih =>
-    simp [Ty.subst, ih, CaptureBound.subst_comp, CaptureSet.subst_comp, Subst.comp_lift]
+    simp [Ty.subst, ih, CaptureBound.subst_comp, CaptureSet.subst_comp]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | unit => rfl
   | cap cs => simp [Ty.subst, CaptureSet.subst_comp]
   | bool => rfl
   | cell cs => simp [Ty.subst, CaptureSet.subst_comp]
   | reader cs => simp [Ty.subst, CaptureSet.subst_comp]
   | exi T ih =>
-    simp [Ty.subst, ih, Subst.comp_lift]
+    simp [Ty.subst, ih]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | typ T ih =>
     simp [Ty.subst, ih]
 
@@ -497,11 +510,17 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   induction e generalizing s2 s3 with
   | var x => simp [Exp.subst, Var.subst_comp]
   | abs cs T e ih_e =>
-    simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e, Subst.comp_lift]
+    simp [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | tabs cs T e ih_e =>
-    simp [Exp.subst, CaptureSet.subst_comp, PureTy.subst_comp, ih_e, Subst.comp_lift]
+    simp [Exp.subst, CaptureSet.subst_comp, PureTy.subst_comp, ih_e]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | cabs cs cb e ih_e =>
-    simp [Exp.subst, CaptureSet.subst_comp, CaptureBound.subst_comp, ih_e, Subst.comp_lift]
+    simp [Exp.subst, CaptureSet.subst_comp, CaptureBound.subst_comp, ih_e]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | reader x => simp [Exp.subst, Var.subst_comp]
   | pack cs x =>
     simp [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
@@ -510,9 +529,13 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | capp x cs =>
     simp [Exp.subst, Var.subst_comp, CaptureSet.subst_comp]
   | letin e1 e2 ih1 ih2 =>
-    simp [Exp.subst, ih1, ih2, Subst.comp_lift]
+    simp [Exp.subst, ih1, ih2]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | unpack e1 e2 ih1 ih2 =>
-    simp [Exp.subst, ih1, ih2, Subst.comp_lift]
+    simp [Exp.subst, ih1, ih2]
+    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
+    rfl
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -563,18 +586,26 @@ theorem Ty.subst_id {T : Ty sort s} :
   | top => simp [Ty.subst]
   | tvar x => simp [Ty.subst, Subst.id, PureTy.tvar]
   | arrow T1 cs T2 ih1 ih2 =>
-    simp [Ty.subst, ih1, ih2, CaptureSet.subst_id, Subst.lift_id]
+    simp [Ty.subst, ih1, ih2, CaptureSet.subst_id]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih2
   | poly T1 cs T2 ih1 ih2 =>
-    simp [Ty.subst, ih1, ih2, CaptureSet.subst_id, Subst.lift_id]
+    simp [Ty.subst, ih1, ih2, CaptureSet.subst_id]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih2
   | cpoly cb cs T ih =>
-    simp [Ty.subst, ih, CaptureBound.subst_id, CaptureSet.subst_id, Subst.lift_id]
+    simp [Ty.subst, ih, CaptureBound.subst_id, CaptureSet.subst_id]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih
   | unit => simp [Ty.subst]
   | cap cs => simp [Ty.subst, CaptureSet.subst_id]
   | bool => simp [Ty.subst]
   | cell cs => simp [Ty.subst, CaptureSet.subst_id]
   | reader cs => simp [Ty.subst, CaptureSet.subst_id]
   | exi T ih =>
-    simp [Ty.subst, ih, Subst.lift_id]
+    simp [Ty.subst, ih]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih
   | typ T ih =>
     simp [Ty.subst, ih]
 
@@ -590,11 +621,17 @@ theorem Exp.subst_id {e : Exp s} :
   | var x =>
     simp [Exp.subst, Var.subst_id]
   | abs cs T e ih =>
-    simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih, Subst.lift_id]
+    simp [Exp.subst, CaptureSet.subst_id, Ty.subst_id, ih]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih
   | tabs cs T e ih =>
-    simp [Exp.subst, CaptureSet.subst_id, PureTy.subst_id, ih, Subst.lift_id]
+    simp [Exp.subst, CaptureSet.subst_id, PureTy.subst_id, ih]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih
   | cabs cs cb e ih =>
-    simp [Exp.subst, CaptureSet.subst_id, CaptureBound.subst_id, ih, Subst.lift_id]
+    simp [Exp.subst, CaptureSet.subst_id, CaptureBound.subst_id, ih]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih
   | reader x =>
     simp [Exp.subst, Var.subst_id]
   | pack cs x =>
@@ -606,9 +643,13 @@ theorem Exp.subst_id {e : Exp s} :
   | capp x cs =>
     simp [Exp.subst, Var.subst_id, CaptureSet.subst_id]
   | letin e1 e2 ih1 ih2 =>
-    simp [Exp.subst, ih1, ih2, Subst.lift_id]
+    simp [Exp.subst, ih1, ih2]
+    conv_lhs => rw [Subst.lift_id]
+    exact ih2
   | unpack e1 e2 ih1 ih2 =>
-    simp [Exp.subst, ih1, ih2, Subst.lift_id]
+    simp [Exp.subst, ih1, ih2]
+    conv_lhs => rw [Subst.lift_id, Subst.lift_id]
+    exact ih2
   | unit =>
     rfl
   | btrue => rfl
@@ -676,13 +717,16 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | tvar x => simp [Ty.subst, Ty.rename, Rename.asSubst, PureTy.tvar]
   | arrow T1 cs T2 ih1 ih2 =>
     simp [Ty.subst, Ty.rename, ih1, CaptureSet.subst_asSubst]
-    rw [<-Rename.asSubst_lift, ih2]
+    rw [← Rename.asSubst_lift]
+    exact ih2
   | poly T1 cs T2 ih1 ih2 =>
     simp [Ty.subst, Ty.rename, ih1, CaptureSet.subst_asSubst]
-    rw [<-Rename.asSubst_lift, ih2]
+    rw [← Rename.asSubst_lift]
+    exact ih2
   | cpoly cb cs T ih =>
     simp [Ty.subst, Ty.rename, CaptureBound.subst_asSubst, CaptureSet.subst_asSubst]
-    rw [<-Rename.asSubst_lift, ih]
+    rw [← Rename.asSubst_lift]
+    exact ih
   | unit => simp [Ty.subst, Ty.rename]
   | cap cs => simp [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | bool => simp [Ty.subst, Ty.rename]
@@ -690,7 +734,8 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | reader cs => simp [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | exi T ih =>
     simp [Ty.subst, Ty.rename]
-    rw [<-Rename.asSubst_lift, ih]
+    rw [← Rename.asSubst_lift]
+    exact ih
   | typ T ih =>
     simp [Ty.subst, Ty.rename, ih]
 
@@ -707,13 +752,16 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | abs cs T e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
-    rw [<-Rename.asSubst_lift, ih]
+    rw [← Rename.asSubst_lift]
+    exact ih
   | tabs cs T e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, PureTy.subst_asSubst]
-    rw [<-Rename.asSubst_lift, ih]
+    rw [← Rename.asSubst_lift]
+    exact ih
   | cabs cs cb e ih =>
     simp [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, CaptureBound.subst_asSubst]
-    rw [<-Rename.asSubst_lift, ih]
+    rw [← Rename.asSubst_lift]
+    exact ih
   | reader x =>
     simp [Exp.subst, Exp.rename, Var.subst_asSubst]
   | pack cs x =>
@@ -726,10 +774,12 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp [Exp.subst, Exp.rename, Var.subst_asSubst, CaptureSet.subst_asSubst]
   | letin e1 e2 ih1 ih2 =>
     simp [Exp.subst, Exp.rename, ih1]
-    rw [<-Rename.asSubst_lift, ih2]
+    rw [← Rename.asSubst_lift]
+    exact ih2
   | unpack e1 e2 ih1 ih2 =>
     simp [Exp.subst, Exp.rename, ih1]
-    rw [<-Rename.asSubst_lift, <-Rename.asSubst_lift, ih2]
+    rw [← Rename.asSubst_lift, ← Rename.asSubst_lift]
+    exact ih2
   | unit =>
     rfl
   | btrue =>

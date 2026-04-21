@@ -180,8 +180,8 @@ theorem Subst.from_TypeEnv_weaken_open :
 theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
     e.subst (Subst.from_TypeEnv (env.extend_var x)) := by
-  simp [Exp.subst_comp]
-  simp [Subst.from_TypeEnv_weaken_open]
+  rw [Exp.subst_comp]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open
 
 theorem Subst.from_TypeEnv_weaken_open_tvar :
   (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =
@@ -197,8 +197,8 @@ theorem Subst.from_TypeEnv_weaken_open_tvar :
 theorem Exp.from_TypeEnv_weaken_open_tvar {e : Exp (s,X)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top) =
     e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
-  simp [Exp.subst_comp]
-  rw [Subst.from_TypeEnv_weaken_open_tvar]
+  rw [Exp.subst_comp]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open_tvar
 
 def Denot.Equiv (d1 d2 : Denot) : Prop :=
   ∀ s e,
@@ -270,7 +270,7 @@ theorem Denot.imply_trans {d1 d2 d3 : Denot}
 theorem resolve_var_heap_some
   (hheap : heap x = some v) :
   resolve heap (.var (.free x)) = some v.unwrap := by
-  grind [resolve]
+  simp [resolve, hheap]
 
 theorem resolve_val
   (hval : v.IsVal) :
@@ -480,10 +480,8 @@ def val_denot_is_monotonic {T : Ty s}
       -- Need to lift from h1 to h2 using exp_denot_is_monotonic
       have henv' : (env.extend_tvar denot).is_monotonic := by
         intro X
-        simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar]
         cases X with
         | here =>
-          simp [TypeEnv.lookup]
           -- denot is monotonic by assumption
           exact hdenot_mono
         | there X' => exact henv X'

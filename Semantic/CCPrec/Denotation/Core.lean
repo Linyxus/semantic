@@ -419,6 +419,28 @@ instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
 
+/-- Unfolding lemma for capturing-type denotation. -/
+theorem capt_val_denot_capt
+  (env : TypeEnv s) (C : CaptureSet s) (S : Ty .shape s) :
+    ⟦Ty.capt C S⟧_[env] = fun mem exp =>
+    exp.IsSimpleAns ∧
+    exp.WfInHeap mem.heap ∧
+    (C.subst (Subst.from_TypeEnv env)).WfInHeap mem.heap ∧
+    Ty.shape_val_denot env S (C.denot env mem) mem exp := by
+  show Ty.capt_val_denot env (Ty.capt C S) = _
+  exact Ty.capt_val_denot.eq_1 env C S
+
+/-- Unfolding lemma for shape-type denotation (cap case). -/
+theorem shape_val_denot_cap (env : TypeEnv s) :
+    ⟦(Ty.cap : Ty .shape s)⟧_[env] = fun A m e =>
+    e.WfInHeap m.heap ∧
+    ∃ label : Nat,
+      e = .var (.free label) ∧
+      m.lookup label = some (.capability .basic) ∧
+      label ∈ A := by
+  show Ty.shape_val_denot env Ty.cap = _
+  exact Ty.shape_val_denot.eq_4 env
+
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
 | .push Γ (.var T), .extend env (.var n), m =>
@@ -441,9 +463,9 @@ def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) :
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
-theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
-  (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free x)) =
-    Subst.from_TypeEnv (env.extend_var x) := by
+theorem Subst.from_TypeEnv_weaken_open {s : Sig} {env : TypeEnv s} {n : Nat} :
+  (Subst.from_TypeEnv env).lift.comp (Subst.openVar (.free n)) =
+    Subst.from_TypeEnv (env.extend_var n) := by
   apply Subst.funext
   · intro y
     cases y <;> rfl
@@ -457,11 +479,12 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} :
         TypeEnv.extend_var, TypeEnv.lookup_cvar, TypeEnv.lookup]
       exact CaptureSet.weaken_openVar
 
-theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} :
-  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
-    e.subst (Subst.from_TypeEnv (env.extend_var x)) := by
+theorem Exp.from_TypeEnv_weaken_open {s : Sig} {env : TypeEnv s} {n : Nat}
+    {e : Exp (Sig.extend_var s)} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free n)) =
+    e.subst (Subst.from_TypeEnv (env.extend_var n)) := by
   rw [Exp.subst_comp]
-  rw [Subst.from_TypeEnv_weaken_open]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open
 
 theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : PreDenot} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =
@@ -488,7 +511,7 @@ theorem Exp.from_TypeEnv_weaken_open_tvar
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top) =
     e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
   rw [Exp.subst_comp]
-  rw [Subst.from_TypeEnv_weaken_open_tvar]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open_tvar
 
 theorem Subst.from_TypeEnv_weaken_open_cvar
   {env : TypeEnv s} {cs : CaptureSet {}} :
@@ -514,7 +537,7 @@ theorem Exp.from_TypeEnv_weaken_open_cvar
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar cs) =
     e.subst (Subst.from_TypeEnv (env.extend_cvar cs)) := by
   rw [Exp.subst_comp]
-  rw [Subst.from_TypeEnv_weaken_open_cvar]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open_cvar
 
 theorem Subst.from_TypeEnv_weaken_unpack :
   (Subst.from_TypeEnv ρ).lift.lift.comp (Subst.unpack cs (.free x)) =
@@ -530,15 +553,11 @@ theorem Subst.from_TypeEnv_weaken_unpack :
     case there y' =>
       cases y'
       case there v =>
-        -- LHS: unpack maps .there (.there v) to .bound v,
-        --      subst applies lift.lift.var v
-        -- Need to show: lift.lift.var v = .free (ρ.lookup_var v)
         simp [Subst.comp, Subst.unpack, Var.subst]
-        -- Now show lift.lift.var (.there (.there v)) for from_TypeEnv evaluates correctly
         rw [Subst.lift_there_var_eq]
         rw [Subst.lift_there_var_eq]
         simp [Subst.from_TypeEnv, Var.rename, TypeEnv.lookup_var]
-        simp [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup]
+        rfl
   · -- tvar case
     intro X
     cases X
@@ -565,15 +584,31 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         -- Rename.succ.var .here = .here.there by definition
         rfl
       case there c0 =>
-        -- LHS: comp maps .there (.there c0) through unpack then lift.lift
+        have helper : ∀ (g : CaptureSet {}),
+            ((g.rename Rename.succ).rename Rename.succ).subst
+              (Subst.unpack cs (.free x)) = g := by
+          intro g
+          induction g with
+          | empty => rfl
+          | union g1 g2 ih1 ih2 =>
+            show CaptureSet.subst _ _ = _
+            simp only [CaptureSet.rename, CaptureSet.subst]
+            rw [ih1, ih2]
+          | var v =>
+            cases v with
+            | bound bv => cases bv
+            | free n => rfl
+          | cvar cv => cases cv
+        show CaptureSet.subst (CaptureSet.rename (CaptureSet.rename (ρ.lookup_cvar c0)
+          Rename.succ) Rename.succ) (Subst.unpack cs (.free x)) = _
+        rw [helper (ρ.lookup_cvar c0)]
+        rfl
+        /-
         simp [Subst.comp, Subst.unpack]
         rw [Subst.lift_there_cvar_eq]
         rw [Subst.lift_there_cvar_eq]
-        -- Generalize before simplifying
         simp only [Subst.from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar,
           TypeEnv.lookup_cvar, TypeEnv.lookup]
-        -- Now the goal has ρ.lookup_cvar c0 expanded to match expression
-        -- Let's generalize this ground capture set
         generalize (match ρ.lookup c0 with | TypeInfo.cvar cs => cs) = ground_cs
         -- Goal: double rename + subst on ground_cs equals ground_cs
         induction ground_cs with
@@ -588,6 +623,7 @@ theorem Subst.from_TypeEnv_weaken_unpack :
             -- .var (.free n).rename.rename.subst = .var (.free n)
             rfl
         | cvar cv => cases cv  -- Impossible: no capture vars in {}
+        -/
 
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
@@ -624,32 +660,22 @@ theorem from_TypeEnv_wf_in_heap
           -- htype : ⟦T⟧_[ρ'] m (.var (.free n))
           cases T with
           | capt C S =>
-            simp [instCaptHasDenotation, Ty.capt_val_denot] at htype
+            rw [capt_val_denot_capt] at htype
             have ⟨_, hwf, _, _⟩ := htype
-            -- hwf : (.var (.free n)).WfInHeap m.heap
             cases hwf with
             | wf_var hwf_var =>
-              -- hwf_var : Var.WfInHeap (.free n) m.heap
               have ih_wf := ih htyping'
               constructor
               · intro x
                 cases x with
-                | here =>
-                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
-                  exact hwf_var
-                | there x' =>
-                  simp [Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.lookup]
-                  exact ih_wf.wf_var x'
+                | here => exact hwf_var
+                | there x' => exact ih_wf.wf_var x'
               · intro X
                 cases X with
-                | there X' =>
-                  simp [Subst.from_TypeEnv]
-                  exact ih_wf.wf_tvar X'
+                | there X' => exact ih_wf.wf_tvar X'
               · intro C_var
                 cases C_var with
-                | there C' =>
-                  simp [Subst.from_TypeEnv]
-                  exact ih_wf.wf_cvar C'
+                | there C' => exact ih_wf.wf_cvar C'
       | tvar S =>
         -- Type variable binding: doesn't affect term variable substitution
         cases info with
@@ -1562,10 +1588,10 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
     simp [CaptureSet.subst, CaptureSet.ground_denot] at hwf ⊢
     cases hwf with
     | wf_union hwf1 hwf2 =>
-      -- Goal after simp is a conjunction
-      constructor
-      · exact ih1 hwf1
-      · exact ih2 hwf2
+      have e1 := ih1 hwf1
+      have e2 := ih2 hwf2
+      unfold CaptureSet.denot at e1 e2
+      rw [e1, e2]
   | var v =>
     cases v with
     | bound x =>
@@ -2097,8 +2123,10 @@ theorem env_typing_monotonic
                 have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
                   capture_bound_denot_is_monotonic hwf_bound hmem
                 -- Combine the equalities
-                rw [<-h_denot_eq, <-h_bound_eq]
-                exact hsub
+                have : (cs.ground_denot mem2).BoundedBy (⟦B⟧_[env'] mem2) := by
+                  rw [← h_denot_eq, show ⟦B⟧_[env'] mem2 = B.denot env' mem1 from h_bound_eq.symm]
+                  exact hsub
+                exact this
               · exact ih ht'
 
 /-- Semantic subcapturing. -/

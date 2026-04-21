@@ -95,19 +95,17 @@ theorem TVar.weaken_subst_comm_liftMany {X : BVar (s1 ++ K) .tvar} {σ : Subst s
   (σ.lift (k:=k0).liftMany K).tvar ((Rename.succ (k:=k0).liftMany K).var X) := by
   induction K with
   | nil =>
-    simp [Subst.liftMany, Rename.liftMany]
     cases X with
-    | here => simp [Subst.lift, Rename.succ]
+    | here => rfl
     | there X => rfl
   | cons k K ih =>
     simp [Subst.liftMany, Rename.liftMany]
     cases X with
     | here => rfl
     | there X =>
-      simp [Rename.lift_there_tvar_eq]
-      simp [Subst.lift_there_tvar_eq]
-      simp [Ty.weaken_rename_comm]
-      grind
+      simp [Rename.lift_there_tvar_eq, Subst.lift_there_tvar_eq]
+      conv_rhs => rw [← ih]
+      exact Ty.weaken_rename_comm
 
 theorem Var.weaken_subst_comm_liftMany {x : Var (s1 ++ K)} {σ : Subst s1 s2} :
   (x.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
@@ -126,9 +124,10 @@ theorem Var.weaken_subst_comm_liftMany {x : Var (s1 ++ K)} {σ : Subst s1 s2} :
         conv => lhs; simp [Var.subst]
         conv => rhs; simp [Var.rename, Var.subst]
         have ih := ih (x:=.bound x)
+        simp [Var.subst, Var.rename] at ih
         simp [Subst.lift_there_var_eq, Rename.lift_there_var_eq]
-        simp [Var.weaken_rename_comm]
-        congr
+        conv_rhs => rw [← ih]
+        exact Var.weaken_rename_comm
     | free n => simp [Var.subst, Var.rename]
 
 theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
@@ -148,6 +147,13 @@ theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X) (k0:=k0)
     simp [Ty.subst, Ty.rename, ih1]
     exact ih2
+termination_by sizeOf T
+decreasing_by
+  all_goals first
+    | decreasing_tactic
+    | (simp_wf; refine Nat.lt_add_of_pos_left ?_; omega)
+    | (simp_wf; refine Nat.lt_add_left _ ?_; exact Nat.succ_pos _)
+    | (simp_wf; omega)
 
 theorem Ty.weaken_subst_comm_base {T : Ty s1} {σ : Subst s1 s2} :
   (T.subst σ).rename (Rename.succ (k:=k)) = (T.rename Rename.succ).subst (σ.lift (k:=k)) :=
@@ -192,7 +198,8 @@ theorem Subst.comp_liftMany {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {K : Sig} :
   | nil => rfl
   | cons k K ih =>
     simp [Subst.liftMany]
-    rw [Subst.comp_lift, ih]
+    conv_rhs => rw [← ih]
+    exact Subst.comp_lift
 
 /-!
 Substituting a composition of substitutions is the same as
@@ -215,9 +222,13 @@ theorem Ty.subst_comp {T : Ty s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | tvar x => rfl
   | singleton x => simp [Ty.subst, Var.subst_comp]
   | arrow T1 T2 ih1 ih2 =>
-    simp [Ty.subst, ih1, ih2, Subst.comp_lift]
+    simp [Ty.subst, ih1, ih2]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | poly T1 T2 ih1 ih2 =>
-    simp [Ty.subst, ih1, ih2, Subst.comp_lift]
+    simp [Ty.subst, ih1, ih2]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
 
 /-!
 Substituting a composition of substitutions is the same as
@@ -228,12 +239,18 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   induction e generalizing s2 s3 with
   | var x => simp [Exp.subst, Var.subst_comp]
   | abs T e ih_e =>
-    simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
+    simp [Exp.subst, Ty.subst_comp, ih_e]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | tabs T e ih_e =>
-    simp [Exp.subst, Ty.subst_comp, ih_e, Subst.comp_lift]
+    simp [Exp.subst, Ty.subst_comp, ih_e]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
   | app x y => simp [Exp.subst, Var.subst_comp]
   | tapp x T => simp [Exp.subst, Var.subst_comp, Ty.subst_comp]
   | letin e1 e2 ih1 ih2 =>
-    simp [Exp.subst, ih1, ih2, Subst.comp_lift]
+    simp [Exp.subst, ih1, ih2]
+    conv_rhs => rw [← Subst.comp_lift]
+    rfl
 
 end Fsub

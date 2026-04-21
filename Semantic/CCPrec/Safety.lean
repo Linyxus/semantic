@@ -130,6 +130,7 @@ theorem env_typing_of_platform {N : Nat} :
     simp [TypeEnv.extend_cvar, TypeEnv.extend_var]
     constructor
     · -- Term variable x : .capt (.cvar .here) .cap at location N
+      change Ty.capt_val_denot _ (Ty.capt _ _) _ _
       unfold Ty.capt_val_denot
       constructor
       · -- Is simple answer
@@ -166,10 +167,8 @@ theorem env_typing_of_platform {N : Nat} :
                   unfold Memory.lookup Memory.platform_of Heap.platform_of
                   simp
                 · -- N is in the authority set from capture set denot
-                  simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
-                    TypeEnv.lookup_cvar, TypeEnv.lookup,
-                    CaptureSet.ground_denot, reachability_of_loc,
-                    Memory.platform_of]
+                  show N ∈ (CaptureSet.var (Var.free N)).ground_denot (Memory.platform_of (N + 1))
+                  simp [CaptureSet.ground_denot, reachability_of_loc, Memory.platform_of]
                   unfold Heap.platform_of
                   simp
                   apply CapabilitySet.mem.here
@@ -229,29 +228,18 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
     unfold TypeEnv.platform_of
     cases x with
     | here =>
-      -- This is the most recent term variable x_N
-      -- x.here : BVar (Sig.platform_of (N+1)) .var
-      -- where Sig.platform_of (N+1) = ((platform_of N),C),x
-      -- With new BVar.level definition: .here.level = ((platform_of N),C).length = 2*N + 1
-      unfold TypeEnv.platform_of TypeEnv.lookup_var TypeEnv.extend_var TypeEnv.extend_cvar
-      simp [TypeEnv.lookup, BVar.level, Sig.size]
-      -- Goal: N = List.length (Sig.platform_of N,C) / 2
-      -- (Sig.platform_of N,C).length = 1 + (Sig.platform_of N).length = 1 + 2*N = 2*N + 1
+      show N = (BVar.here (s := (Sig.platform_of N),C)).level / 2
+      show N = (Sig.platform_of N,C).length / 2
       unfold Sig.extend_cvar
       simp only [List.length]
       rw [Sig.platform_of_length]
-      -- Goal: N = (2 * N + 1) / 2
       omega
     | there x' =>
       cases x' with
       | there x'' =>
         -- x'' : BVar (Sig.platform_of N) .var (skipping over the C)
-        unfold TypeEnv.lookup_var TypeEnv.lookup TypeEnv.extend_var TypeEnv.extend_cvar
-        simp [TypeEnv.lookup]
-        have h := ih (x := x'')
-        unfold TypeEnv.lookup_var at h
-        rw [h]
-        simp only [BVar.level]
+        show (TypeEnv.platform_of N).lookup_var x'' = x''.level / 2
+        exact ih
 
 /-- Lookup of capture variable in platform environment. -/
 theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
@@ -272,31 +260,13 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
       -- Could be .here (the C) or .there c'' (from N)
       cases c' with
       | here =>
-        -- This is the most recent capture variable C_N
-        -- c = .there .here, where .here refers to C in (platform N, C)
-        unfold TypeEnv.lookup_cvar TypeEnv.extend_var TypeEnv.extend_cvar
-        simp [TypeEnv.lookup]
-        -- After simp, goal is: .var (.free N) = .var (.free (BVar.here.there.level / 2))
-        -- .there preserves level, so .here.there.level = .here.level
-        -- .here.level = length of (platform_of N) = 2*N
-        simp only [BVar.level, Sig.size]
-        -- Goal: N = List.length (Sig.platform_of N) / 2
+        show CaptureSet.var (Var.free N) = CaptureSet.var (Var.free ((Sig.platform_of N).length / 2))
         rw [Sig.platform_of_length]
-        -- Goal: N = (2 * N) / 2
+        congr 2
         omega
       | there c'' =>
-        -- c'' : BVar (Sig.platform_of N) .cvar
-        -- c = .there (.there c'')
-        -- By definition of BVar.level, .there preserves level
-        -- So c.level = c''.level
-        unfold TypeEnv.lookup_cvar TypeEnv.extend_var TypeEnv.extend_cvar
-        simp [TypeEnv.lookup]
-        -- Now the lookup simplifies to lookup in the base environment
-        have h := ih (c := c'')
-        unfold TypeEnv.lookup_cvar at h
-        -- The goal now mentions c''.there.there.level which equals c''.level
-        simp only [BVar.level] at h ⊢
-        exact h
+        show (TypeEnv.platform_of N).lookup_cvar c'' = CaptureSet.var (Var.free (c''.level / 2))
+        exact ih
 
 /-- For any bound term variable in a platform signature, its level divided by 2 is less than N. -/
 theorem BVar.level_var_bound {b : BVar (Sig.platform_of N) .var} : b.level / 2 < N := by
@@ -425,7 +395,9 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   -- Preservation: Eval is preserved under reduction
   have heval' : Eval C.to_platform_capability_set M1 e1
       (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
-    simp only [HasExpDenotation.interp] at hdenot
+    have hdenot : Ty.exi_exp_denot (TypeEnv.platform_of N) E
+      C.to_platform_capability_set (Memory.platform_of N)
+      (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) := hdenot
     unfold Ty.exi_exp_denot at hdenot
     apply reduce_preserves_eval hdenot hred CapabilitySet.subset_refl
   -- Progressive: Eval implies progressive

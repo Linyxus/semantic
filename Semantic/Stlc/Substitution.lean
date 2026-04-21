@@ -122,7 +122,6 @@ Substituting with the identity substitution is a no-op.
 theorem Exp.subst_id {e : Exp n} :
   e.subst Subst.id = e := by
   induction e <;> try grind [Exp.subst, Subst.id]
-  case var => rfl
   case abs ih => simpa [Exp.subst, Subst.id_liftVar]
 
 /-!
@@ -228,7 +227,6 @@ substituting one after the other for an expression.
 theorem Exp.subst_comp {e : Exp n1} {s1 : Subst n1 n2} {s2 : Subst n2 n3} :
   (e.subst s1).subst s2 = e.subst (s1.comp s2) := by
   induction e generalizing n2 n3 <;> try grind [Exp.subst, Subst.comp]
-  case var => rfl
   case abs ih =>
     simp [Exp.subst]
     convert ih

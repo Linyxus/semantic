@@ -225,14 +225,14 @@ theorem Subst.from_TypeEnv_extend_cvar_cap_irrelevant
   apply Subst.funext
   · intro x
     cases x with
-    | there x => simp [from_TypeEnv, TypeEnv.extend_cvar, TypeEnv.lookup_var]
+    | there x => rfl
   · intro X
     cases X with
-    | there X => simp [from_TypeEnv, TypeEnv.extend_cvar]
+    | there X => rfl
   · intro C
     cases C with
-    | here => simp [from_TypeEnv, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
-    | there C => simp [from_TypeEnv, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
+    | here => rfl
+    | there C => rfl
 
 /-- Cap-irrelevance extends to environments further extended with extend_var. -/
 theorem Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant
@@ -245,23 +245,19 @@ theorem Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant
     cases y with
     | here => rfl
     | there y =>
-      -- y : BVar (s,C) .var, and since (s,C) has cvar at the end, y must be .there y'
       cases y with
-      | there y' =>
-        simp [from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_var]
+      | there y' => rfl
   · intro X
     cases X with
     | there X =>
       cases X with
-      | there X' =>
-        simp [from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar]
+      | there X' => rfl
   · intro C
     cases C with
     | there C =>
       cases C with
       | here => rfl
-      | there C' =>
-        simp [from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
+      | there C' => rfl
 
 def compute_peaks (ρ : TypeEnv s) : CaptureSet s -> CaptureSet s
 | .empty => .empty
@@ -511,32 +507,32 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Mutability) :
-    CaptureSet.peaks Γ (.var m0 (.bound x)) = (ρ.lookup_var x).2.cs.applyMut m0 := by
+    CaptureSet.peaksVarBound Γ m0 x = (ρ.lookup_var x).2.cs.applyMut m0 := by
   match s, Γ, ρ, x with
   | _, .push Γ' (.var T), .extend ρ' (.var n ps), .here =>
     simp only [EnvTyping] at h
     obtain ⟨_, hps, _⟩ := h
-    -- hps : ps = CaptureSet.peakset Γ' T.captureSet
-    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
-    -- Goal: applyMut m0 ((peaks Γ' T.captureSet).rename ...) = applyMut m0 (ps.cs.rename ...)
+    rw [CaptureSet.peaksVarBound]
+    show CaptureSet.applyMut m0 ((CaptureSet.peaks Γ' T.captureSet).rename Rename.succ) = _
+    show _ = CaptureSet.applyMut m0 (ps.cs.rename Rename.succ)
     rw [hps]
-    simp only [CaptureSet.peakset]
+    rfl
   | _, .push Γ' (.var T), .extend ρ' (.var n ps), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, h'⟩ := h
-    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
   | _, .push Γ' (.tvar S), .extend ρ' (.tvar denot), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, _, _, _, h'⟩ := h
-    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
   | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, _, _, h'⟩ := h
-    simp only [CaptureSet.peaks, TypeEnv.lookup_var, PeakSet.rename]
+    rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
 termination_by sizeOf x
@@ -552,10 +548,13 @@ theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
   case cvar m c => simp [CaptureSet.peaks, compute_peaks]
   case var m c =>
     cases c with
-    | free n => simp [CaptureSet.peaks, compute_peaks]
+    | free n =>
+      simp only [CaptureSet.peaks, compute_peaks]
+      rfl
     | bound x =>
       -- Use the helper lemma
       simp only [compute_peaks]
+      rw [CaptureSet.peaks]
       exact peaks_var_bound_eq h x m
 
 theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
@@ -583,9 +582,7 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} {ps : PeakSet
   · intro y
     cases y with
     | here => rfl
-    | there y' =>
-      simp [Subst.from_TypeEnv, Subst.lift, Subst.comp, Subst.openVar,
-        TypeEnv.extend_var, TypeEnv.lookup_var, Var.rename, Var.subst]
+    | there y' => rfl
   · intro X
     cases X
     rfl
@@ -596,11 +593,12 @@ theorem Subst.from_TypeEnv_weaken_open {env : TypeEnv s} {x : Nat} {ps : PeakSet
         TypeEnv.extend_var, TypeEnv.lookup_cvar]
       exact CaptureSet.weaken_openVar
 
-theorem Exp.from_TypeEnv_weaken_open {e : Exp (s,x)} {ps : PeakSet s} :
-  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free x)) =
-    e.subst (Subst.from_TypeEnv (env.extend_var x ps)) := by
+theorem Exp.from_TypeEnv_weaken_open {s : Sig} {env : TypeEnv s} {n : Nat}
+    {e : Exp (Sig.extend_var s)} {ps : PeakSet s} :
+  (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free n)) =
+    e.subst (Subst.from_TypeEnv (env.extend_var n ps)) := by
   rw [Exp.subst_comp]
-  rw [Subst.from_TypeEnv_weaken_open]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open
 
 theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : Denot} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =
@@ -612,12 +610,7 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : Denot} :
   · intro X
     cases X
     case here => rfl
-    case there X' =>
-      simp only [Subst.comp, Subst.lift, Subst.from_TypeEnv, TypeEnv.extend_tvar]
-      -- Goal: (PureTy.top.rename Rename.succ).subst (Subst.openTVar PureTy.top) = PureTy.top
-      -- PureTy.top.rename Rename.succ = PureTy.top (since .top has no bound vars)
-      -- PureTy.top.subst _ = PureTy.top (since .top has no bound vars)
-      simp only [PureTy.rename, PureTy.subst, PureTy.top, Ty.rename, Ty.subst]
+    case there X' => rfl
   · intro C
     cases C with
     | there C' =>
@@ -626,11 +619,11 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : Denot} :
       exact CaptureSet.weaken_openTVar
 
 theorem Exp.from_TypeEnv_weaken_open_tvar
-  {env : TypeEnv s} {d : Denot} {e : Exp (s,X)} :
+  {s : Sig} {env : TypeEnv s} {d : Denot} {e : Exp (Sig.extend_tvar s)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top) =
     e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
   rw [Exp.subst_comp]
-  rw [Subst.from_TypeEnv_weaken_open_tvar]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open_tvar
 
 theorem Subst.from_TypeEnv_weaken_open_cvar
   {env : TypeEnv s} {cs : CaptureSet {}} :
@@ -655,11 +648,11 @@ theorem Subst.from_TypeEnv_weaken_open_cvar
       exact CaptureSet.weaken_openCVar
 
 theorem Exp.from_TypeEnv_weaken_open_cvar
-  {env : TypeEnv s} {cs : CaptureSet {}} {e : Exp (s,C)} :
+  {s : Sig} {env : TypeEnv s} {cs : CaptureSet {}} {e : Exp (Sig.extend_cvar s)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openCVar cs) =
     e.subst (Subst.from_TypeEnv (env.extend_cvar cs)) := by
   rw [Exp.subst_comp]
-  rw [Subst.from_TypeEnv_weaken_open_cvar]
+  exact congrArg _ Subst.from_TypeEnv_weaken_open_cvar
 
 theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
   (Subst.from_TypeEnv ρ).lift.lift.comp (Subst.unpack cs (.free x)) =
@@ -675,15 +668,10 @@ theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
     case there y' =>
       cases y'
       case there v =>
-        -- LHS: unpack maps .there (.there v) to .bound v,
-        --      subst applies lift.lift.var v
-        -- Need to show: lift.lift.var v = .free (ρ.lookup_var v)
         simp [Subst.comp, Subst.unpack, Var.subst]
-        -- Now show lift.lift.var (.there (.there v)) for from_TypeEnv evaluates correctly
         rw [Subst.lift_there_var_eq]
         rw [Subst.lift_there_var_eq]
-        simp [Subst.from_TypeEnv, Var.rename, TypeEnv.extend_var, TypeEnv.extend_cvar,
-          TypeEnv.lookup_var]
+        rfl
   · -- tvar case
     intro X
     cases X
@@ -708,29 +696,25 @@ theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
         simp [Subst.lift, CaptureSet.subst, CaptureSet.rename]
         rfl
       case there c0 =>
-        -- LHS: comp maps .there (.there c0) through unpack then lift.lift
-        simp [Subst.comp, Subst.unpack]
-        rw [Subst.lift_there_cvar_eq]
-        rw [Subst.lift_there_cvar_eq]
-        -- Generalize before simplifying
-        simp only [Subst.from_TypeEnv, TypeEnv.extend_var, TypeEnv.extend_cvar,
-          TypeEnv.lookup_cvar]
-        -- Now the goal has ρ.lookup_cvar c0 expanded to match expression
-        -- Let's generalize this ground capture set
-        generalize (ρ.lookup_cvar c0).1 = ground_cs
-        -- Goal: double rename + subst on ground_cs equals ground_cs
-        induction ground_cs with
-        | empty => rfl  -- .empty.rename.rename.subst = .empty
-        | union cs1 cs2 ih1 ih2 =>
-          -- .union case: distribute rename/subst over both sides
-          simp only [CaptureSet.rename, CaptureSet.subst, ih1, ih2]
-        | var m v =>
-          cases v with
-          | bound bv => cases bv  -- Impossible: no bound vars in {}
-          | free n =>
-            -- .var (.free n).rename.rename.subst = .var (.free n)
-            rfl
-        | cvar m cv => cases cv  -- Impossible: no capture vars in {}
+        have helper : ∀ (g : CaptureSet {}),
+            ((g.rename Rename.succ).rename Rename.succ).subst
+              (Subst.unpack cs (.free x)) = g := by
+          intro g
+          induction g with
+          | empty => rfl
+          | union g1 g2 ih1 ih2 =>
+            show CaptureSet.subst _ _ = _
+            simp only [CaptureSet.rename, CaptureSet.subst]
+            rw [ih1, ih2]
+          | var m v =>
+            cases v with
+            | bound bv => cases bv
+            | free n => rfl
+          | cvar m cv => cases cv
+        show CaptureSet.subst (CaptureSet.rename (CaptureSet.rename (ρ.lookup_cvar c0).1
+          Rename.succ) Rename.succ) (Subst.unpack cs (.free x)) = _
+        rw [helper (ρ.lookup_cvar c0).1]
+        rfl
 
 /-- All type variable denotations in the environment imply well-formedness. -/
 def TypeEnv.is_implying_wf (env : TypeEnv s) : Prop :=
@@ -948,7 +932,7 @@ theorem from_TypeEnv_wf_in_heap
           -- Extract well-formedness from the denotation
           -- For all type constructors, val_denot implies WfInHeap
           have hwf : Exp.WfInHeap (s := {}) (.var (.free n)) m.heap := by
-            simp only [instCaptHasDenotation] at htype
+            change Ty.val_denot _ _ _ _ at htype
             cases T with
             | top =>
               unfold Ty.val_denot at htype
@@ -1637,14 +1621,13 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
     simp [CaptureSet.subst, CaptureSet.ground_denot]
   | union C1 C2 ih1 ih2 =>
     -- Union: use IH on both components
-    unfold CaptureSet.denot
-    simp [CaptureSet.subst, CaptureSet.ground_denot] at hwf ⊢
+    simp [CaptureSet.subst, CaptureSet.ground_denot] at hwf
     cases hwf with
     | wf_union hwf1 hwf2 =>
-      -- Goal after simp is a conjunction
-      constructor
-      · exact ih1 hwf1
-      · exact ih2 hwf2
+      have e1 := ih1 hwf1
+      have e2 := ih2 hwf2
+      unfold CaptureSet.denot at e1 e2 ⊢
+      simp [CaptureSet.subst, CaptureSet.ground_denot, e1, e2]
   | var m v =>
     cases v with
     | bound x =>

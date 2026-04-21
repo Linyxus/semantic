@@ -215,8 +215,8 @@ theorem HasType.use_set_is_closed
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
   e.IsClosed := by
-  induction ht <;> try (solve | constructor | grind only [Exp.IsClosed])
-  case var => constructor; constructor
+  induction ht <;>
+    try (solve | assumption | constructor | (constructor <;> assumption) | (constructor <;> (first | assumption | constructor)))
   case read ih_x =>
     -- ih_x : (.var x).IsClosed, need to extract x.IsClosed
     cases ih_x with
@@ -300,8 +300,6 @@ theorem HasType.exp_is_closed
       cases ih_x; assumption
     · -- CaptureSet.IsClosed D✝
       assumption
-  case letin ih1 ih2 => constructor <;> assumption
-  case unpack ih1 ih2 => constructor <;> assumption
   case invoke =>
     rename_i ih_x ih_y
     constructor
@@ -359,12 +357,6 @@ theorem HasType.type_is_closed
     exact Ty.subst_closed_inv hT
   case read ih_x =>
     -- Goal: (Ty.capt ∅ Ty.bool).typ.IsClosed
-    constructor
-    constructor
-    · constructor
-    · constructor
-  case write ih_x ih_y =>
-    -- Goal: (Ty.capt ∅ Ty.unit).typ.IsClosed
     constructor
     constructor
     · constructor

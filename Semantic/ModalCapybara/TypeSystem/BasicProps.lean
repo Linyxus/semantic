@@ -302,9 +302,8 @@ theorem HasType.use_set_is_closed
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
   e.IsClosed := by
-  induction ht <;> try (solve | constructor | grind only [Exp.IsClosed])
-  case var => constructor; constructor
-  case reader => exact Exp.IsClosed.reader Var.IsClosed.bound
+  induction ht <;>
+    try (solve | assumption | constructor | (constructor <;> assumption) | (constructor <;> (first | assumption | constructor)))
   case read ih_x =>
     -- ih_x : (.var x).IsClosed, need to extract x.IsClosed
     cases ih_x with
@@ -393,8 +392,6 @@ theorem HasType.exp_is_closed
     cases ih_x with
     | var hx_closed =>
       exact Exp.IsClosed.unwrap hx_closed
-  case letin ih1 ih2 => constructor <;> assumption
-  case unpack ih1 ih2 => constructor <;> assumption
   case invoke =>
     rename_i ih_x ih_y
     constructor
@@ -492,13 +489,6 @@ theorem HasType.type_is_closed
     -- Need: U.IsClosed
     apply Ty.rename_closed_inv
     exact Ty.rename_closed_inv ih2
-  case unwrap ht_x _ ih =>
-    cases ih with
-    | typ hT =>
-      cases hT with
-      | modal _ _ hE =>
-        exact hE
-
 -- More context lookup properties
 
 theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :

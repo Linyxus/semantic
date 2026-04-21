@@ -292,7 +292,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                 apply CapabilitySet.Subset.refl
               · -- Show the function property
                 intro arg H' hsubsume harg
-                rw [Exp.from_TypeEnv_weaken_open]
+                have hkey := @Exp.from_TypeEnv_weaken_open s env arg e
+                refine hkey ▸ ?_
                 -- Apply the hypothesis
                 have henv :
                   EnvTyping (Γ,x:T1) (env.extend_var arg) H' := by
@@ -321,18 +322,17 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   exact capture_set_denot_is_monotonic hwf_Cf hsubsume
                 -- Show the authority from ht equals the required authority
                 have hauthority_eq :
-                  (Cf.rename Rename.succ).denot (env.extend_var arg) H' =
+                  CaptureSet.denot (env.extend_var arg) (Cf.rename Rename.succ) H' =
                   expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
-                  calc (Cf.rename Rename.succ).denot (env.extend_var arg) H'
-                    _ = Cf.denot env H' := by rw [congrFun hcap_rename H']
-                    _ = Cf.denot env store := by rw [← hCf_mono]
+                  calc CaptureSet.denot (env.extend_var arg) (Cf.rename Rename.succ) H'
+                    _ = Cf.denot env H' := by exact (congrFun hcap_rename H')
+                    _ = Cf.denot env store := hCf_mono.symm
                     _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store := by
                         simp [CaptureSet.denot]
-                    _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
-                        rw [← expand_captures_eq_ground_denot]
+                    _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) :=
+                        (expand_captures_eq_ground_denot _ _).symm
                 -- Rewrite the authority and apply
-                rw [hauthority_eq] at this
-                exact this
+                exact hauthority_eq ▸ this
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
   (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
@@ -390,7 +390,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
                 apply CapabilitySet.Subset.refl
               · -- Show the polymorphic function property
                 intro H' denot hsubsume hproper himply
-                rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
+                have hkey := @Exp.from_TypeEnv_weaken_open_tvar s env denot e
+                refine hkey ▸ ?_
                 -- Apply the hypothesis
                 have henv : EnvTyping (Γ,X<:S) (env.extend_tvar denot) H' := by
                   constructor
@@ -543,7 +544,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
                       simp [CaptureSet.denot]
                     _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
                       rw [← expand_captures_eq_ground_denot]
-                rw [Exp.from_TypeEnv_weaken_open_cvar (cs:=CS)]
+                have hkey := @Exp.from_TypeEnv_weaken_open_cvar s env CS e
+                refine hkey ▸ ?_
                 rw [← hauthority]
                 exact this
 
@@ -1405,7 +1407,8 @@ theorem sem_typ_letin
       (m1.extend_val l' heapval hwf_v rfl hfresh)
     simp [Ty.exi_exp_denot] at ht2' ⊢
     -- Rewrite to make expressions match
-    rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+    have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2
+    have ht2' := hkey ▸ ht2'
     -- Show that capability sets match
     have hcap_rename :
       (C.rename Rename.succ).denot (env.extend_var l')
@@ -1479,7 +1482,8 @@ theorem sem_typ_letin
       have ht2' := ht2 (env.extend_var fx) m1
       simp [Ty.exi_exp_denot] at ht2' ⊢
       -- Rewrite to make expressions match
-      rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+      have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2
+      have ht2' := hkey ▸ ht2'
       -- Show that capability sets match
       have hcap_rename :
         (C.rename Rename.succ).denot (env.extend_var fx)
@@ -2539,7 +2543,8 @@ theorem sem_typ_unpack
       have hexp_eq :
         (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
           u.subst (Subst.from_TypeEnv ((env.extend_cvar cs).extend_var fx)) := by
-        rw [Exp.subst_comp, Subst.from_TypeEnv_weaken_unpack]
+        rw [Exp.subst_comp]
+        exact congrArg _ Subst.from_TypeEnv_weaken_unpack
 
       -- Capture set equality via rebinding
       have hcap_eq :
@@ -2553,8 +2558,9 @@ theorem sem_typ_unpack
         calc
           ((C.rename Rename.succ).rename Rename.succ).denot
             ((env.extend_cvar cs).extend_var fx) m1
-          _ = (C.rename Rename.succ).denot (env.extend_cvar cs) m1 := by rw [<-h2]
-          _ = C.denot env m1 := by rw [<-h1]
+          _ = (C.rename Rename.succ).denot (env.extend_cvar cs) m1 := by
+                exact (congrFun h2.symm m1)
+          _ = C.denot env m1 := by exact (congrFun h1.symm m1)
           _ = C.denot env store := by
             have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
               apply CaptureSet.wf_subst
@@ -2570,7 +2576,7 @@ theorem sem_typ_unpack
         have heqv2 := rebind_exi_val_denot
           (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx)) (U.rename Rename.succ)
         intro m e
-        rw [heqv1, heqv2]
+        exact Iff.trans (heqv1 m e) (heqv2 m e)
 
       -- Apply hu'' with conversions
       change Eval (C.denot env store) m1

@@ -99,8 +99,12 @@ def Var.rename_id {x : Var k s} : x.rename (Rename.id) = x := by
 def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   induction e
   all_goals
-    simp [Exp.rename, Ty.rename_id, PureTy.rename_id, Var.rename_id,
-      CaptureSet.rename_id, CaptureBound.rename_id, SepCtx.rename_id, Rename.lift_id, *]
+    first
+      | (simp [Exp.rename, Ty.rename_id, PureTy.rename_id, Var.rename_id,
+               CaptureSet.rename_id, CaptureBound.rename_id, SepCtx.rename_id, Rename.lift_id, *]
+         <;> assumption)
+      | simp [Exp.rename, Ty.rename_id, PureTy.rename_id, Var.rename_id,
+              CaptureSet.rename_id, CaptureBound.rename_id, SepCtx.rename_id, Rename.lift_id, *]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Var.rename_comp {x : Var k s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -112,8 +116,12 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (e.rename f).rename g = e.rename (f.comp g) := by
   induction e generalizing s2 s3
   all_goals
-    simp [Exp.rename, Ty.rename_comp, PureTy.rename_comp, Var.rename_comp,
-      CaptureSet.rename_comp, CaptureBound.rename_comp, SepCtx.rename_comp, Rename.lift_comp, *]
+    first
+      | (simp [Exp.rename, Ty.rename_comp, PureTy.rename_comp, Var.rename_comp,
+               CaptureSet.rename_comp, CaptureBound.rename_comp, SepCtx.rename_comp, Rename.lift_comp, *]
+         <;> rfl)
+      | simp [Exp.rename, Ty.rename_comp, PureTy.rename_comp, Var.rename_comp,
+              CaptureSet.rename_comp, CaptureBound.rename_comp, SepCtx.rename_comp, Rename.lift_comp, *]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Var.weaken_rename_comm {x : Var k s1} {f : Rename s1 s2} :

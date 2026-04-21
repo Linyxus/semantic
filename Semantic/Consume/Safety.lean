@@ -139,9 +139,7 @@ theorem env_typing_of_platform {N : Nat} :
     simp [TypeEnv.extend_cvar, TypeEnv.extend_var]
     constructor
     · -- Term variable x : .cell (.cvar .epsilon .here) at location N
-      -- After type hierarchy collapse, Ty.val_denot for .cell cs is:
-      -- (cs.subst ...).WfInHeap m.heap ∧ ∃ l b0, e = .var (.free l) ∧
-      --   m.lookup l = some (.capability (.mcell b0)) ∧ (cs.denot env m).covers .epsilon l
+      change Ty.val_denot _ (.cell _) _ _
       unfold Ty.val_denot
       constructor
       · -- Capture set after substitution is well-formed
@@ -159,10 +157,9 @@ theorem env_typing_of_platform {N : Nat} :
             unfold Memory.lookup Memory.platform_of Heap.platform_of
             simp
           · -- N is in the authority set from capture set denot
-            simp [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
-              TypeEnv.lookup_cvar,
-              CaptureSet.ground_denot, reachability_of_loc,
-              Memory.platform_of]
+            show (CaptureSet.var Mutability.epsilon (Var.free N)).ground_denot (Memory.platform_of (N + 1))
+              |>.covers Mutability.epsilon N
+            simp [CaptureSet.ground_denot, reachability_of_loc, Memory.platform_of]
             unfold Heap.platform_of
             simp
             apply CapabilitySet.covers.here Mutability.Le.refl
@@ -224,36 +221,21 @@ theorem Sig.platform_of_length : (Sig.platform_of N).length = 2 * N := by
 theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
   ((TypeEnv.platform_of N).lookup_var x).1 = x.level / 2 := by
   induction N with
-  | zero =>
-    -- No variables in empty signature
-    cases x
+  | zero => cases x
   | succ N ih =>
-    -- Platform (N+1) extends with C then x
-    -- So x is either .here (x_N) or .there (.there x'') (from platform N)
-    unfold TypeEnv.platform_of
     cases x with
     | here =>
-      -- This is the most recent term variable x_N
-      -- x.here : BVar (Sig.platform_of (N+1)) .var
-      -- where Sig.platform_of (N+1) = ((platform_of N),C),x
-      -- With new BVar.level definition: .here.level = ((platform_of N),C).length = 2*N + 1
-      unfold TypeEnv.platform_of TypeEnv.lookup_var TypeEnv.extend_var TypeEnv.extend_cvar
-      simp [BVar.level, Sig.size]
-      -- Goal: N = List.length (Sig.platform_of N,C) / 2
-      -- (Sig.platform_of N,C).length = 1 + (Sig.platform_of N).length = 1 + 2*N = 2*N + 1
+      show N = (BVar.here (s := (Sig.platform_of N),C)).level / 2
+      show N = (Sig.platform_of N,C).length / 2
       unfold Sig.extend_cvar
       simp only [List.length]
       rw [Sig.platform_of_length]
-      -- Goal: N = (2 * N + 1) / 2
       omega
     | there x' =>
       cases x' with
       | there x'' =>
-        -- x'' : BVar (Sig.platform_of N) .var (skipping over the C)
-        simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_var]
-        have h := ih (x := x'')
-        simp only [BVar.level]
-        exact h
+        show ((TypeEnv.platform_of N).lookup_var x'').1 = x''.level / 2
+        exact ih
 
 /-- Lookup of capture variable in platform environment returns the ground capture set
     and the corresponding capability set. -/
@@ -261,37 +243,24 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
   (TypeEnv.platform_of N).lookup_cvar c =
     (.var .epsilon (.free (c.level / 2)), CapabilitySet.singleton .epsilon (c.level / 2)) := by
   induction N with
-  | zero =>
-    -- No capture variables in empty signature
-    cases c
+  | zero => cases c
   | succ N ih =>
-    -- Platform (N+1) extends with C then x
-    -- So signature is ((Sig.platform_of N),C),x
-    unfold TypeEnv.platform_of
-    -- c : BVar (((Sig.platform_of N),C),x) .cvar
-    -- Must be of form .there c' since outermost is x (a var)
     cases c with
     | there c' =>
-      -- c' : BVar ((Sig.platform_of N),C) ?
-      -- Could be .here (the C) or .there c'' (from N)
       cases c' with
       | here =>
-        -- This is the most recent capture variable C_N
-        -- c = .there .here, where .here refers to C in (platform N, C)
-        simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
-        -- Goal: (.var (.free N), singleton N) = (.var (.free (level / 2)), singleton (level / 2))
-        simp only [BVar.level, Sig.size]
+        show (CaptureSet.var Mutability.epsilon (Var.free N), CapabilitySet.singleton Mutability.epsilon N)
+          = (CaptureSet.var Mutability.epsilon (Var.free ((BVar.here (s := Sig.platform_of N)).level / 2)),
+              CapabilitySet.singleton Mutability.epsilon ((BVar.here (s := Sig.platform_of N)).level / 2))
+        show _ = (CaptureSet.var Mutability.epsilon (Var.free ((Sig.platform_of N).length / 2)),
+                  CapabilitySet.singleton Mutability.epsilon ((Sig.platform_of N).length / 2))
         rw [Sig.platform_of_length]
-        simp
+        have hN : N = 2 * N / 2 := by omega
+        rw [← hN]
       | there c'' =>
-        -- c'' : BVar (Sig.platform_of N) .cvar
-        -- c = .there (.there c'')
-        -- By definition of BVar.level, .there preserves level
-        -- So c.level = c''.level
-        simp only [TypeEnv.extend_var, TypeEnv.extend_cvar, TypeEnv.lookup_cvar]
-        have h := ih (c := c'')
-        simp only [BVar.level]
-        exact h
+        show (TypeEnv.platform_of N).lookup_cvar c''
+          = (.var .epsilon (.free (c''.level / 2)), CapabilitySet.singleton .epsilon (c''.level / 2))
+        exact ih
 
 /-- For any bound term variable in a platform signature, its level divided by 2 is less than N. -/
 theorem BVar.level_var_bound {b : BVar (Sig.platform_of N) .var} : b.level / 2 < N := by

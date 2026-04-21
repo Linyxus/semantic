@@ -57,9 +57,11 @@ def Var.rename_id {x : Var s} : x.rename (Rename.id) = x := by
 
 def Ty.rename_id {T : Ty s} : T.rename (Rename.id) = T := by
   induction T <;> (first | rfl | simp [Ty.rename, Var.rename_id, Rename.lift_id, *])
+    <;> first | rfl | assumption
 
 def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   induction e <;> (first | rfl | simp [Exp.rename, Ty.rename_id, Var.rename_id, Rename.lift_id, *])
+    <;> first | rfl | assumption
 
 theorem Var.rename_comp {x : Var s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (x.rename f).rename g = x.rename (f.comp g) := by
@@ -69,11 +71,13 @@ theorem Ty.rename_comp {T : Ty s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (T.rename f).rename g = T.rename (f.comp g) := by
   induction T generalizing s2 s3
     <;> (first | rfl | simp [Ty.rename, Var.rename_comp, Rename.lift_comp, *])
+    <;> first | rfl | assumption
 
 theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (e.rename f).rename g = e.rename (f.comp g) := by
   induction e generalizing s2 s3
     <;> (first | rfl | simp [Exp.rename, Ty.rename_comp, Var.rename_comp, Rename.lift_comp, *])
+    <;> first | rfl | assumption
 
 theorem Ty.weaken_rename_comm {T : Ty s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by

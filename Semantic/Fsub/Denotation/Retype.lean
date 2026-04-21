@@ -25,12 +25,9 @@ theorem Retype.liftVar
   var := fun
     | .here => rfl
     | .there y => by
-      conv =>
-        lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_var, TypeEnv.lookup]
+      show env1.lookup_var y = interp_var (env2.extend_var x) ((σ.var y).rename Rename.succ)
       conv =>
         rhs
-        simp [Subst.lift]
         simp [<-weaken_interp_var]
       exact ρ.var y
   tvar := fun
@@ -49,8 +46,8 @@ theorem Retype.liftTVar
   Retype (env1.extend_tvar d) (σ.lift) (env2.extend_tvar d) where
   var := fun
     | .there x => by
-      conv => lhs; simp [TypeEnv.extend_tvar, TypeEnv.lookup_var, TypeEnv.lookup]
-      conv => rhs; simp [Subst.lift, <-tweaken_interp_var]
+      show env1.lookup_var x = interp_var (env2.extend_tvar d) ((σ.var x).rename Rename.succ)
+      conv => rhs; simp [<-tweaken_interp_var]
       exact ρ.var x
   tvar := fun
     | .here => by
@@ -149,9 +146,7 @@ def Retype.open_arg {env : TypeEnv s} {y : Var s} :
   var := fun x => by cases x <;> rfl
   tvar := fun
     | .there X => by
-      conv =>
-        lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      show Denot.Equiv (env.lookup_tvar X) _
       conv =>
         rhs
         simp [Subst.openVar]

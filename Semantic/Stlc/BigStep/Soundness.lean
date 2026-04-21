@@ -169,11 +169,11 @@ theorem sem_typ_pred
   cases v0denot
   case nzero =>
     use .nzero
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsNumVal])
+    apply And.intro _ (by simp [Ty.val_denot]; first | assumption | constructor)
     exact Eval.ev_pred_nzero hev0
   case nsucc n0 hv =>
     use n0
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsNumVal])
+    apply And.intro _ (by simp [Ty.val_denot]; first | assumption | constructor)
     exact Eval.ev_pred_nsucc hev0 hv
 
 theorem sem_typ_iszero
@@ -187,11 +187,11 @@ theorem sem_typ_iszero
   cases v0denot
   case nzero =>
     use .btrue
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsBoolVal])
+    apply And.intro _ (by simp [Ty.val_denot]; constructor)
     exact Eval.ev_iszero_nzero hev0
   case nsucc n0 hv =>
     use .bfalse
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsBoolVal])
+    apply And.intro _ (by simp [Ty.val_denot]; constructor)
     exact Eval.ev_iszero_nsucc hev0 hv
 
 theorem sem_typ_cond

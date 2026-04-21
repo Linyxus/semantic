@@ -156,7 +156,6 @@ Renaming with the identity renaming is a no-op.
 theorem Exp.rename_id {e : Exp n} :
   e.rename Rename.id = e := by
   induction e <;> try grind [Exp.rename, Rename.id]
-  case var => rfl
   case abs =>
     simp [Exp.rename]
     simpa [Rename.id_liftVar]
@@ -176,7 +175,6 @@ Composition of renamings distributes over expression renaming.
 theorem Exp.rename_comp {e : Exp n} {f2 : Rename n2 n3} :
   (e.rename f1).rename f2 = e.rename (f1.comp f2) := by
   induction e generalizing n2 n3 <;> try grind [Exp.rename, Rename.comp]
-  case var => rfl
   case abs =>
     simp [Exp.rename]
     grind [Rename.comp_liftVar]

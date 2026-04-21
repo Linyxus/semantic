@@ -231,14 +231,14 @@ theorem sem_typ_pred
   cases v0denot
   case nzero =>
     use .nzero
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsNumVal])
+    apply And.intro _ (by simp [Ty.val_denot]; first | assumption | constructor)
     -- Show: Reduce (.pred (e.subst σ)) .nzero
     -- Strategy: e.subst σ → .nzero, then pred .nzero → .nzero
     have pred_step : Step (.pred .nzero) .nzero := Step.st_pred_nzero
     exact reduce_trans (reduce_pred hred0) (step_to_reduce pred_step)
   case nsucc n0 hv =>
     use n0
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsNumVal])
+    apply And.intro _ (by simp [Ty.val_denot]; first | assumption | constructor)
     -- Show: Reduce (.pred (e.subst σ)) n0
     -- Strategy: e.subst σ → .nsucc n0, then pred (.nsucc n0) → n0
     have pred_step : Step (.pred (.nsucc n0)) n0 := Step.st_pred_nsucc hv
@@ -264,14 +264,14 @@ theorem sem_typ_iszero
   cases v0denot
   case nzero =>
     use .btrue
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsBoolVal])
+    apply And.intro _ (by simp [Ty.val_denot]; constructor)
     -- Show: Reduce (.iszero (e.subst σ)) .btrue
     -- Strategy: e.subst σ → .nzero, then iszero .nzero → .btrue
     have iszero_step : Step (.iszero .nzero) .btrue := Step.st_iszero_nzero
     exact reduce_trans (reduce_iszero hred0) (step_to_reduce iszero_step)
   case nsucc n0 hv =>
     use .bfalse
-    apply And.intro _ (by grind [Ty.val_denot, Exp.IsBoolVal])
+    apply And.intro _ (by simp [Ty.val_denot]; constructor)
     -- Show: Reduce (.iszero (e.subst σ)) .bfalse
     -- Strategy: e.subst σ → .nsucc n0, then iszero (.nsucc n0) → .bfalse
     have iszero_step : Step (.iszero (.nsucc n0)) .bfalse := Step.st_iszero_nsucc hv

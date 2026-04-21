@@ -164,7 +164,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
               intro arg m' hsub harg
               -- Use compute_peakset which equals peakset by compute_peakset_correct
               let ps := compute_peakset env T1.captureSet
-              rw [Exp.from_TypeEnv_weaken_open (ps:=ps)]
+              have hkey := @Exp.from_TypeEnv_weaken_open s env arg e ps
+              refine hkey ▸ ?_
               -- Build EnvTyping using the computed peak set
               have henv :
                 EnvTyping (Γ,x:T1) (env.extend_var arg ps) m' := by
@@ -257,7 +258,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
               apply CapabilitySet.Subset.refl
             · -- Show the polymorphic function property
               intro m' denot hsub hproper himply_simple_ans himply hpure
-              rw [Exp.from_TypeEnv_weaken_open_tvar (d := denot)]
+              have hkey := @Exp.from_TypeEnv_weaken_open_tvar s env denot e
+              refine hkey ▸ ?_
               -- Build EnvTyping using the type denotation
               have henv : EnvTyping (Γ,X<:S) (env.extend_tvar denot) m' := by
                 constructor
@@ -352,7 +354,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               apply CapabilitySet.Subset.refl
             · -- Show the capture polymorphic function property
               intro m' CS hwf hsub hsub_bound
-              rw [Exp.from_TypeEnv_weaken_open_cvar (cs:=CS)]
+              have hkey := @Exp.from_TypeEnv_weaken_open_cvar s env CS e
+              refine hkey ▸ ?_
               -- Build EnvTyping
               have henv : EnvTyping (Γ,C<:cb)
                   (env.extend_cvar CS (cap := CS.ground_denot m')) m' := by
@@ -1665,7 +1668,8 @@ theorem sem_typ_letin
       (m1.extend_val l' heapval hwf_v rfl hfresh)
     simp [Ty.exi_exp_denot] at ht2' ⊢
     -- Rewrite to make expressions match
-    rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+    have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
+    have ht2' := hkey ▸ ht2'
     -- Show that capability sets match
     have hcap_rename :
       (C.rename Rename.succ).denot (env.extend_var l' ps)
@@ -1742,7 +1746,8 @@ theorem sem_typ_letin
       have ht2' := ht2 (env.extend_var fx ps) m1
       simp [Ty.exi_exp_denot] at ht2' ⊢
       -- Rewrite to make expressions match
-      rw [<-Exp.from_TypeEnv_weaken_open] at ht2'
+      have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
+      have ht2' := hkey ▸ ht2'
       -- Show that capability sets match
       have hcap_rename :
         (C.rename Rename.succ).denot (env.extend_var fx ps)
@@ -2269,18 +2274,27 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                   (env.extend_var arg psT2) (psT1.rename Rename.succ) :=
               { var := by
                   intro x
-                  cases x <;> simp [TypeEnv.extend_var, TypeEnv.lookup_var, Subst.id, interp_var]
+                  cases x
+                  case here => rfl
+                  case there x =>
+                    show (env.lookup_var x).1 = interp_var (env.extend_var arg psT2) ((Subst.id.var x).rename Rename.succ)
+                    rw [← weaken_interp_var]
+                    rfl
                 tvar := by
                   intro X
                   cases X with
                   | there X =>
-                    simpa [TypeEnv.extend_var, TypeEnv.lookup_tvar, Subst.id, PureTy.tvar,
-                      Ty.val_denot] using Denot.equiv_refl (env.lookup_tvar X)
+                    show env.lookup_tvar X
+                      ≈ Ty.val_denot (env.extend_var arg psT2) (Ty.tvar X.there)
+                    rw [Ty.val_denot.eq_2]
+                    exact Denot.equiv_refl _
                 cvar := by
                   intro C
                   cases C
-                  simp [TypeEnv.extend_var, TypeEnv.lookup_cvar, Subst.id, CaptureSet.subst,
-                    Subst.from_TypeEnv] }
+                  case there C =>
+                    show (env.lookup_cvar C).1 = ((Subst.id.cvar C).rename Rename.succ).subst
+                      (Subst.from_TypeEnv (env.extend_var arg psT2))
+                    rfl }
             have heq_val := retype_exi_val_denot (ρ := hretype) U1
             -- Lift the evaluation along the exi-val equivalence
             have h_entails_body :
@@ -3095,8 +3109,10 @@ theorem sem_typ_unpack
           (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
           u.subst (Subst.from_TypeEnv
             ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps)) := by
-        rw [Exp.subst_comp, Subst.from_TypeEnv_weaken_unpack (ps:=ps)]
-        rw [Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant]
+        rw [Exp.subst_comp]
+        have h1 := congrArg (u.subst) (@Subst.from_TypeEnv_weaken_unpack s env cs fx ps)
+        exact h1.trans (congrArg (u.subst)
+          Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant)
 
       -- Capture set equality via rebinding
       let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
@@ -3110,8 +3126,8 @@ theorem sem_typ_unpack
           (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (C.rename Rename.succ)
         calc
           ((C.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
-          _ = (C.rename Rename.succ).denot env' m1 := by rw [<-h2]
-          _ = C.denot env m1 := by rw [<-h1]
+          _ = (C.rename Rename.succ).denot env' m1 := by exact (congrFun h2.symm m1)
+          _ = C.denot env m1 := by exact (congrFun h1.symm m1)
           _ = C.denot env store := by
             have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
               apply CaptureSet.wf_subst
@@ -3128,7 +3144,7 @@ theorem sem_typ_unpack
         have heqv2 := rebind_exi_val_denot
           (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (U.rename Rename.succ)
         intro m e
-        rw [heqv1, heqv2]
+        exact Iff.trans (heqv1 m e) (heqv2 m e)
 
       -- Apply hu'' with conversions
       change Eval (C.denot env store) m1
@@ -3180,72 +3196,13 @@ theorem peaks_mono {Γ : Ctx s} {C1 C2 : CaptureSet s}
 -- renaming then computing peaks in extended context
 theorem peaks_rename_succ_sub {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.peaks Γ).rename Rename.succ ⊆ (C.rename Rename.succ).peaks (Γ.push b) := by
-  induction C generalizing k with
-  | empty =>
-    simp only [CaptureSet.peaks, CaptureSet.rename]
-    exact .refl
-  | union C1 C2 ih1 ih2 =>
-    simp only [CaptureSet.peaks, CaptureSet.rename]
-    exact .union_left (.union_right_left ih1) (.union_right_right ih2)
-  | cvar m c =>
-    simp only [CaptureSet.peaks, CaptureSet.rename]
-    exact .refl
-  | var m v =>
-    cases v with
-    | free _ =>
-      simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename]
-      exact .refl
-    | bound x =>
-      cases Γ with
-      | empty => cases x
-      | push Γ' bd =>
-        cases bd with
-        | var T =>
-          cases x with
-          | here =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl
-        | tvar T =>
-          cases x with
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl
-        | cvar cm =>
-          cases x with
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl
-        | lock Ψ =>
-          cases x with
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl
+  rw [CaptureSet.peaks_rename_succ_eq]
+  exact .refl
 
 -- Helper: peaks commutes with applyRO (using well-founded recursion like peaks)
 theorem peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
-  C.applyRO.peaks Γ = (C.peaks Γ).applyRO := by
-  match Γ, C with
-  | _, .empty => simp only [CaptureSet.applyRO, CaptureSet.peaks]
-  | Γ, .union C1 C2 =>
-    simp only [CaptureSet.applyRO, CaptureSet.peaks]
-    rw [peaks_applyRO_comm Γ C1, peaks_applyRO_comm Γ C2]
-    rfl
-  | _, .cvar _ _ => simp only [CaptureSet.applyRO, CaptureSet.peaks]
-  | _, .var _ (.free _) =>
-    simp only [CaptureSet.applyRO, CaptureSet.peaks]
-    rfl
-  | .push Γ' (.var T), .var m (.bound .here) =>
-    simp only [CaptureSet.applyRO, CaptureSet.peaks,
-      CaptureSet.applyMut_ro, CaptureSet.applyMut_applyRO]
-  | .push Γ' _, .var m (.bound (.there x')) =>
-    simp only [CaptureSet.applyRO, CaptureSet.peaks]
-    have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
-    simp only [CaptureSet.applyRO] at ih
-    rw [ih, CaptureSet.applyRO_rename]
-termination_by (sizeOf Γ, sizeOf C)
+  C.applyRO.peaks Γ = (C.peaks Γ).applyRO :=
+  CaptureSet.peaks_applyRO_comm Γ C
 
 -- Helper: peaks commutes with applyMut
 theorem peaks_applyMut_comm {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} :
@@ -3279,49 +3236,8 @@ theorem peaks_mono_coveredby {Γ : Ctx s} {C1 C2 : CaptureSet s}
 -- Helper: peaks commutes with rename and context extension (CoveredBy version)
 theorem peaks_rename_succ_coveredby {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.peaks Γ).rename Rename.succ |>.CoveredBy <| (C.rename Rename.succ).peaks (Γ.push b) := by
-  induction C generalizing k with
-  | empty =>
-    simp only [CaptureSet.peaks, CaptureSet.rename]
-    exact .empty
-  | union C1 C2 ih1 ih2 =>
-    simp only [CaptureSet.peaks, CaptureSet.rename]
-    exact .union_left (.union_right_left ih1) (.union_right_right ih2)
-  | cvar m c =>
-    simp only [CaptureSet.peaks, CaptureSet.rename]
-    exact .refl'
-  | var m v =>
-    cases v with
-    | free _ =>
-      simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename]
-      exact .empty
-    | bound x =>
-      cases Γ with
-      | empty => cases x
-      | push Γ' bd =>
-        cases bd with
-        | var T =>
-          cases x with
-          | here =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl'
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl'
-        | tvar T =>
-          cases x with
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl'
-        | cvar cm =>
-          cases x with
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl'
-        | lock Ψ =>
-          cases x with
-          | there x' =>
-            simp only [CaptureSet.peaks, CaptureSet.rename, Var.rename, Rename.succ]
-            exact .refl'
+  rw [CaptureSet.peaks_rename_succ_eq]
+  exact .refl'
 
 -- Helper: Subset implies CoveredBy (Subset is stricter)
 theorem CaptureSet.Subset.coveredby {C1 C2 : CaptureSet s}

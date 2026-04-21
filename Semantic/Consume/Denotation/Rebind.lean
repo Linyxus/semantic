@@ -30,7 +30,7 @@ def Rebind.liftVar
       exact ρ.var y
   var_peaks := fun
     | .here => by
-      simp only [TypeEnv.extend_var, TypeEnv.lookup_var]
+      show (ps1.rename Rename.succ).rename f.lift = (ps2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
       rw [CaptureSet.rename_comp, Rename.succ_lift_comm,
@@ -38,7 +38,8 @@ def Rebind.liftVar
       exact congrArg (CaptureSet.rename · Rename.succ)
         (congrArg PeakSet.cs hps)
     | .there y => by
-      simp only [TypeEnv.extend_var, TypeEnv.lookup_var]
+      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
+        = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
       have h := congrArg PeakSet.cs (ρ.var_peaks y)
@@ -67,7 +68,8 @@ def Rebind.liftTVar
       exact ρ.var y
   var_peaks := fun
     | .there y => by
-      simp only [TypeEnv.extend_tvar, TypeEnv.lookup_var]
+      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
+        = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
       have h := congrArg PeakSet.cs (ρ.var_peaks y)
@@ -97,7 +99,8 @@ def Rebind.liftCVar
       exact ρ.var y
   var_peaks := fun
     | .there y => by
-      simp only [TypeEnv.extend_cvar, TypeEnv.lookup_var]
+      show ((env1.lookup_var y).2.rename Rename.succ).rename f.lift
+        = ((env2.lookup_var (f.var y)).2.rename Rename.succ)
       unfold PeakSet.rename
       congr 1
       have h := congrArg PeakSet.cs (ρ.var_peaks y)

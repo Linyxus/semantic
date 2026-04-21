@@ -76,8 +76,12 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case tvar =>
     simp [Ty.rename, Rename.id]
   all_goals
-    simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id,
-      CaptureBound.rename_id, *]
+    first
+      | (simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id,
+               CaptureBound.rename_id, *]
+         <;> assumption)
+      | simp [Ty.rename, Rename.lift_id, CaptureSet.rename_id,
+              CaptureBound.rename_id, *]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -86,8 +90,12 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   case tvar =>
     simp [Ty.rename, Rename.comp]
   all_goals
-    simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp,
-      CaptureBound.rename_comp, *]
+    first
+      | (simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp,
+               CaptureBound.rename_comp, *]
+         <;> rfl)
+      | simp [Ty.rename, Rename.lift_comp, CaptureSet.rename_comp,
+              CaptureBound.rename_comp, *]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
