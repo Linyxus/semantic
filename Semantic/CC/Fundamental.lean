@@ -292,12 +292,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
           (from_TypeEnv_wf_in_heap hts))
     · -- Provide the arrow denotation structure
       constructor
-      · -- Prove WfInHeap for the capture set
-        apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed
-          cases hclosed_abs
-          assumption
-        · apply from_TypeEnv_wf_in_heap hts
+      · exact CaptureSet.wf_subst (CaptureSet.wf_of_closed (by cases hclosed_abs; assumption))
+                                   (from_TypeEnv_wf_in_heap hts)
       · -- Provide the shape_val_denot structure
         constructor
         · -- Prove e.WfInHeap m.heap
@@ -316,11 +312,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
             simp [resolve]
           · constructor
             · -- Prove cs.WfInHeap m.heap
-              apply CaptureSet.wf_subst
-              · apply CaptureSet.wf_of_closed
-                cases hclosed_abs
-                assumption
-              · apply from_TypeEnv_wf_in_heap hts
+              exact CaptureSet.wf_subst (CaptureSet.wf_of_closed (by cases hclosed_abs; assumption))
+                                        (from_TypeEnv_wf_in_heap hts)
             · constructor
               · -- Prove expand_captures ... ⊆ ...
                 -- By expand_captures_eq_ground_denot and denot definition
@@ -361,10 +354,9 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                     cases hclosed_abs
                     assumption
                   -- Closed capture sets are well-formed in any heap
-                  have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-                    apply CaptureSet.wf_subst
-                    · apply CaptureSet.wf_of_closed hCf_closed
-                    · apply from_TypeEnv_wf_in_heap hts
+                  have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+                    CaptureSet.wf_subst (CaptureSet.wf_of_closed hCf_closed)
+                      (from_TypeEnv_wf_in_heap hts)
                   exact capture_set_denot_is_monotonic hwf_Cf hsubsume
                 -- Show the authority matches by rewriting with equalities
                 have hauthority :
@@ -438,11 +430,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
     · -- Need to provide cs, S0 and t0 for the poly denotation
       constructor
       · -- Prove WfInHeap for the capture set
-        apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed
-          cases hclosed_tabs
-          assumption
-        · apply from_TypeEnv_wf_in_heap hts
+        exact CaptureSet.wf_subst (CaptureSet.wf_of_closed (by cases hclosed_tabs; assumption))
+                                  (from_TypeEnv_wf_in_heap hts)
       · -- Provide the shape_val_denot structure
         constructor
         · -- Prove e.WfInHeap m.heap
@@ -461,11 +450,9 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
             simp [resolve]
           · constructor
             · -- Prove cs.WfInHeap store.heap
-              apply CaptureSet.wf_subst
-              · apply CaptureSet.wf_of_closed
-                cases hclosed_tabs
-                assumption
-              · apply from_TypeEnv_wf_in_heap hts
+              exact CaptureSet.wf_subst
+                (CaptureSet.wf_of_closed (by cases hclosed_tabs; assumption))
+                (from_TypeEnv_wf_in_heap hts)
             · constructor
               · -- Prove expand_captures ... ⊆ ...
                 rw [expand_captures_eq_ground_denot]
@@ -498,10 +485,9 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s}
                     cases hclosed_tabs
                     assumption
                   -- Closed capture sets are well-formed in any heap
-                  have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-                    apply CaptureSet.wf_subst
-                    · apply CaptureSet.wf_of_closed hCf_closed
-                    · apply from_TypeEnv_wf_in_heap hts
+                  have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+                    CaptureSet.wf_subst (CaptureSet.wf_of_closed hCf_closed)
+                      (from_TypeEnv_wf_in_heap hts)
                   exact capture_set_denot_is_monotonic hwf_Cf hsubsume
                 -- Show the authority matches
                 have hauthority :
@@ -560,11 +546,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
     · -- Need to provide cs, B0 and t0 for the cpoly denotation
       constructor
       · -- Prove WfInHeap for the capture set
-        apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed
-          cases hclosed_cabs
-          assumption
-        · apply from_TypeEnv_wf_in_heap hts
+        exact CaptureSet.wf_subst (CaptureSet.wf_of_closed (by cases hclosed_cabs; assumption))
+                                  (from_TypeEnv_wf_in_heap hts)
       · -- Provide the shape_val_denot structure
         constructor
         · -- Prove e.WfInHeap m.heap
@@ -583,11 +566,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
             simp [resolve]
           · constructor
             · -- Prove cs.WfInHeap store.heap
-              apply CaptureSet.wf_subst
-              · apply CaptureSet.wf_of_closed
-                cases hclosed_cabs
-                assumption
-              · apply from_TypeEnv_wf_in_heap hts
+              exact CaptureSet.wf_subst
+                (CaptureSet.wf_of_closed (by cases hclosed_cabs; assumption))
+                (from_TypeEnv_wf_in_heap hts)
             · constructor
               · -- Prove expand_captures ... ⊆ ...
                 rw [expand_captures_eq_ground_denot]
@@ -637,10 +618,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s}
                   have hCf_closed : Cf.IsClosed := by
                     cases hclosed_cabs
                     assumption
-                  have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-                    apply CaptureSet.wf_subst
-                    · apply CaptureSet.wf_of_closed hCf_closed
-                    · apply from_TypeEnv_wf_in_heap hts
+                  have hwf_Cf : (Cf.subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+                    CaptureSet.wf_subst (CaptureSet.wf_of_closed hCf_closed)
+                      (from_TypeEnv_wf_in_heap hts)
                   exact capture_set_denot_is_monotonic hwf_Cf hsubsume
                 -- Show the authority matches
                 have hauthority :
@@ -694,9 +674,7 @@ theorem sem_typ_pack
       have hclosed_cs : cs.IsClosed := by
         cases hclosed_e with
         | pack hcs_closed _hx_closed => exact hcs_closed
-      apply CaptureSet.wf_subst
-      · exact CaptureSet.wf_of_closed hclosed_cs
-      · exact from_TypeEnv_wf_in_heap hts
+      exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_cs) (from_TypeEnv_wf_in_heap hts)
     · -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
       have hx := ht env store hts
       change
@@ -1032,8 +1010,8 @@ theorem sem_typ_capp
   -- After substitution, D becomes a closed capture set
   let D' := D.subst (Subst.from_TypeEnv env)
   -- For closed capture sets, the denotation is preserved under substitution
-  have hD'_denot : D'.denot TypeEnv.empty = D.denot env := by
-    exact closed_captureset_subst_denot hD_closed
+  have hD'_denot : D'.denot TypeEnv.empty = D.denot env :=
+    closed_captureset_subst_denot hD_closed
   -- D' is also closed
   have hD'_wf : D'.WfInHeap store.heap := by
     -- First show D is wf by closedness
@@ -1130,9 +1108,9 @@ theorem sem_typ_app
   have hunion_mono : expand_captures store.heap cs ∪ reachability_of_loc store.heap fy ⊆
                      CaptureSet.denot env (CaptureSet.var (Var.bound x)) store ∪
                      reachability_of_loc store.heap fy := by
-    apply CapabilitySet.Subset.union_left
-    · exact CapabilitySet.Subset.trans hR0_sub CapabilitySet.Subset.union_right_left
-    · exact CapabilitySet.Subset.union_right_right
+    exact CapabilitySet.Subset.union_left
+      (CapabilitySet.Subset.trans hR0_sub CapabilitySet.Subset.union_right_left)
+      CapabilitySet.Subset.union_right_right
   have happ'' := eval_capability_set_monotonic happ' hunion_mono
   apply Eval.eval_apply hlk happ''
 theorem sem_typ_invoke
@@ -1175,25 +1153,15 @@ theorem sem_typ_invoke
       (Ty.capt_val_denot env (.capt {} .unit)).as_mpost
   -- Show env.lookup_var x is in the union of capability sets
   have hmem :
-    env.lookup_var x ∈ CaptureSet.denot env (.var (.bound x) ∪ .var (.bound y)) store := by
-    apply CapabilitySet.mem.left
-    exact hmem_cap
+    env.lookup_var x ∈ CaptureSet.denot env (.var (.bound x) ∪ .var (.bound y)) store :=
+    .left hmem_cap
   -- Apply eval_invoke
   apply Eval.eval_invoke hmem hlk_cap hlk_unit
   -- Show the postcondition holds for unit
   change Ty.capt_val_denot env (.capt {} .unit) store Exp.unit
   unfold Ty.capt_val_denot Ty.shape_val_denot
-  constructor
-  · -- Prove IsSimpleAns for unit
-    apply Exp.IsSimpleAns.is_simple_val
-    apply Exp.IsSimpleVal.unit
-  constructor
-  · exact Exp.WfInHeap.wf_unit
-  constructor
-  · -- Empty capture set is always well-formed
-    simp only [CaptureSet.subst]
-    exact CaptureSet.WfInHeap.wf_empty
-  · simp [resolve]
+  exact ⟨.is_simple_val .unit, .wf_unit, by simp only [CaptureSet.subst]; exact .wf_empty,
+         by simp [resolve]⟩
 theorem sem_typ_unit :
   {} # Γ ⊨ Exp.unit : .typ (.capt {} .unit) := by
   intro env store hts
@@ -1213,17 +1181,10 @@ theorem sem_typ_unit :
   · exact Exp.IsVal.unit
   · change Ty.capt_val_denot env (.capt {} .unit) store Exp.unit
     unfold Ty.capt_val_denot Ty.shape_val_denot
-    constructor
-    · -- Prove IsSimpleAns: unit is a simple value
-      apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_TypeEnv_wf_in_heap hts
-      · simp [resolve]
+    exact ⟨.is_simple_val .unit, .wf_unit,
+           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty)
+                                (from_TypeEnv_wf_in_heap hts),
+           by simp [resolve]⟩
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
   {x : Var .var s} {e2 e3 : Exp s} {T : Ty .exi s} {Cb : CaptureSet s}
@@ -1279,6 +1240,8 @@ theorem sem_typ_cond
     have hAB : A ∪ B ⊆ (A ∪ B) ∪ C := CapabilitySet.Subset.union_right_left
     exact CapabilitySet.Subset.trans hA hAB
   have hguard := eval_capability_set_monotonic hguard_base hsubC1
+  have hclosed_union : (C1 ∪ C2 ∪ C3).IsClosed :=
+    CaptureSet.IsClosed.union (CaptureSet.IsClosed.union hclosed_C1 hclosed_C2) hclosed_C3
   -- Assemble eval_cond
   refine Eval.eval_cond (Q1 := Q1) hpred hbool hguard ?h_nonstuck ?h_true ?h_false
   · -- non-stuck: guard evaluates to a literal boolean
@@ -1311,12 +1274,8 @@ theorem sem_typ_cond
     -- widen authority, then lift over memory subsumption using post monotonicity
     have hthen' := eval_capability_set_monotonic hthen hsubC2
     -- Align capability sets computed at store versus m1 using monotonicity
-    have hwf_union :
-        ((C1 ∪ C2 ∪ C3).subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-      apply CaptureSet.wf_subst
-      · apply CaptureSet.wf_of_closed
-        exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union hclosed_C1 hclosed_C2) hclosed_C3
-      · exact from_TypeEnv_wf_in_heap hts
+    have hwf_union : ((C1 ∪ C2 ∪ C3).subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+      CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_union) (from_TypeEnv_wf_in_heap hts)
     have hcap_eq :
         CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 =
         CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
@@ -1345,12 +1304,8 @@ theorem sem_typ_cond
             CaptureSet.denot env C3 m1
       apply CapabilitySet.Subset.union_right_right
     have helse' := eval_capability_set_monotonic helse hsubC3
-    have hwf_union :
-        ((C1 ∪ C2 ∪ C3).subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-      apply CaptureSet.wf_subst
-      · apply CaptureSet.wf_of_closed
-        exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union hclosed_C1 hclosed_C2) hclosed_C3
-      · exact from_TypeEnv_wf_in_heap hts
+    have hwf_union : ((C1 ∪ C2 ∪ C3).subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+      CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_union) (from_TypeEnv_wf_in_heap hts)
     have hcap_eq :
         CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 =
         CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
@@ -1381,16 +1336,10 @@ theorem sem_typ_btrue :
   · exact Exp.IsVal.btrue
   · change Ty.capt_val_denot env (.capt {} .bool) store Exp.btrue
     unfold Ty.capt_val_denot Ty.shape_val_denot
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.btrue
-    constructor
-    · exact Exp.WfInHeap.wf_btrue
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_TypeEnv_wf_in_heap hts
-      · simp [resolve]
+    exact ⟨.is_simple_val .btrue, .wf_btrue,
+           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty)
+                                (from_TypeEnv_wf_in_heap hts),
+           by simp [resolve]⟩
 theorem sem_typ_bfalse :
   {} # Γ ⊨ Exp.bfalse : .typ (.capt {} .bool) := by
   intro env store hts
@@ -1410,16 +1359,10 @@ theorem sem_typ_bfalse :
   · exact Exp.IsVal.bfalse
   · change Ty.capt_val_denot env (.capt {} .bool) store Exp.bfalse
     unfold Ty.capt_val_denot Ty.shape_val_denot
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.bfalse
-    constructor
-    · exact Exp.WfInHeap.wf_bfalse
-    · constructor
-      · apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed CaptureSet.IsClosed.empty
-        · apply from_TypeEnv_wf_in_heap hts
-      · simp [resolve]
+    exact ⟨.is_simple_val .bfalse, .wf_bfalse,
+           CaptureSet.wf_subst (CaptureSet.wf_of_closed CaptureSet.IsClosed.empty)
+                                (from_TypeEnv_wf_in_heap hts),
+           by simp [resolve]⟩
 theorem sem_typ_read
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt C .cell)) :
@@ -1459,23 +1402,10 @@ theorem sem_typ_read
   -- Show the postcondition holds for the boolean result
   change Ty.capt_val_denot env (.capt {} .bool) store (if b0 then Exp.btrue else Exp.bfalse)
   unfold Ty.capt_val_denot Ty.shape_val_denot
-  constructor
-  · -- Prove IsSimpleAns for the boolean
-    apply Exp.IsSimpleAns.is_simple_val
-    cases b0
-    · exact Exp.IsSimpleVal.bfalse
-    · exact Exp.IsSimpleVal.btrue
-  constructor
-  · -- WfInHeap for the boolean
-    cases b0
-    · exact Exp.WfInHeap.wf_bfalse
-    · exact Exp.WfInHeap.wf_btrue
-  constructor
-  · -- Empty capture set is always well-formed
-    simp only [CaptureSet.subst]
-    exact CaptureSet.WfInHeap.wf_empty
-  · -- The result is btrue or bfalse
-    cases b0 <;> simp [resolve]
+  refine ⟨.is_simple_val (by cases b0 <;> first | exact .bfalse | exact .btrue),
+          by cases b0 <;> first | exact .wf_bfalse | exact .wf_btrue,
+          by simp only [CaptureSet.subst]; exact .wf_empty,
+          by cases b0 <;> simp [resolve]⟩
 theorem sem_typ_write
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : (.var (.bound x)) # Γ ⊨ .var (.bound x) : .typ (.capt Cx .cell))
@@ -1533,30 +1463,17 @@ theorem sem_typ_write
     change Ty.capt_val_denot env (.capt {} .unit)
       (store.update_mcell (env.lookup_var x) false ⟨b0, hlk_cell⟩) Exp.unit
     unfold Ty.capt_val_denot Ty.shape_val_denot
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    constructor
-    · simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
+    exact ⟨.is_simple_val .unit, .wf_unit,
+           by simp only [CaptureSet.subst]; exact .wf_empty,
+           by simp [resolve]⟩
   · -- b = true
     apply Eval.eval_write_true hmem (hx := hlk_cell) hlk_bool
-    -- Show the postcondition holds for unit
     change Ty.capt_val_denot env (.capt {} .unit)
       (store.update_mcell (env.lookup_var x) true ⟨b0, hlk_cell⟩) Exp.unit
     unfold Ty.capt_val_denot Ty.shape_val_denot
-    constructor
-    · apply Exp.IsSimpleAns.is_simple_val
-      apply Exp.IsSimpleVal.unit
-    constructor
-    · exact Exp.WfInHeap.wf_unit
-    constructor
-    · simp only [CaptureSet.subst]
-      exact CaptureSet.WfInHeap.wf_empty
-    · simp [resolve]
+    exact ⟨.is_simple_val .unit, .wf_unit,
+           by simp only [CaptureSet.subst]; exact .wf_empty,
+           by simp [resolve]⟩
 theorem sem_typ_letin
   {C : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -1585,8 +1502,8 @@ theorem sem_typ_letin
     exact capt_val_denot_is_monotonic henv_mono T hsub hQ
   case hbool =>
     -- Show (Ty.capt_val_denot env T).as_mpost is bool independent
-    apply Denot.as_mpost_is_bool_independent
-    exact capt_val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
+    exact Denot.as_mpost_is_bool_independent
+      (capt_val_denot_is_bool_independent (typed_env_is_bool_independent hts) T)
   case a =>
     -- Show Eval ... store (e1.subst ...) (Ty.capt_val_denot env T).as_mpost
     have h1 := ht1 env store hts
@@ -1635,10 +1552,8 @@ theorem sem_typ_letin
       have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l')) C
       exact this.symm
     have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v rfl hfresh) := by
-      have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-        apply CaptureSet.wf_subst
-        · apply CaptureSet.wf_of_closed hclosed_C
-        · apply from_TypeEnv_wf_in_heap hts
+      have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+        CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_C) (from_TypeEnv_wf_in_heap hts)
       have hext_subsumes_store : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes store :=
         Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh) hs1
       exact capture_set_denot_is_monotonic hwf_C hext_subsumes_store
@@ -1711,10 +1626,8 @@ theorem sem_typ_letin
         have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=fx)) C
         exact this.symm
       have hC_mono : C.denot env store = C.denot env m1 := by
-        have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-          apply CaptureSet.wf_subst
-          · apply CaptureSet.wf_of_closed hclosed_C
-          · apply from_TypeEnv_wf_in_heap hts
+        have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+          CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_C) (from_TypeEnv_wf_in_heap hts)
         exact capture_set_denot_is_monotonic hwf_C hs1
       -- Convert postcondition using weaken_exi_val_denot
       rw [hC_mono, ← hcap_rename]
@@ -2065,8 +1978,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {U1 U2 : Ty .exi (s,x)}
           -- Now use eval_post_monotonic_general to lift hbody from U1 to U2
           -- hbody : Ty.exi_exp_denot ... U1 R m'' (t0.subst...)
           unfold Ty.exi_exp_denot at hbody ⊢
-          apply eval_post_monotonic_general _ hbody
-          exact himply_entails
+          exact eval_post_monotonic_general himply_entails hbody
 lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   (h12 : SemSubtyp Γ T1 T2)
   (h23 : SemSubtyp Γ T2 T3) :
@@ -2183,13 +2095,9 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
               · -- Need: (cb1.subst (Subst.from_TypeEnv env)).WfInHeap m''.heap
                 -- From closedness of cb1, we get well-formedness at any heap
                 -- First show it's well-formed at H.heap
-                have hwf_cb1_at_H : (cb1.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
-                  -- Use wf_subst with closedness of cb1 and well-formedness of the substitution
-                  apply CaptureBound.wf_subst
-                  · -- cb1.WfInHeap H.heap follows from closedness
-                    apply CaptureBound.wf_of_closed hclosed_cb1
-                  · -- (Subst.from_TypeEnv env).WfInHeap H.heap follows from EnvTyping
-                    exact from_TypeEnv_wf_in_heap htyping
+                have hwf_cb1_at_H : (cb1.subst (Subst.from_TypeEnv env)).WfInHeap H.heap :=
+                  CaptureBound.wf_subst (CaptureBound.wf_of_closed hclosed_cb1)
+                    (from_TypeEnv_wf_in_heap htyping)
                 -- Then lift to m''.heap using monotonicity
                 have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
                 exact CaptureBound.wf_monotonic hB_trans hwf_cb1_at_H
@@ -2208,8 +2116,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {T1 T2 : Ty .exi (s,C)}
           have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
           -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
           unfold Ty.exi_exp_denot at heval1 ⊢
-          apply eval_post_monotonic_general _ heval1
-          exact himply_entails
+          exact eval_post_monotonic_general himply_entails heval1
 lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
   (hC : SemSubcapt Γ C1 C2) -- covariant in capture set
   (hS : SemSubtyp Γ S1 S2) -- covariant in shape
@@ -2234,13 +2141,9 @@ lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
     · -- Need: (C2.subst (Subst.from_TypeEnv env)).WfInHeap m.heap
       -- From closedness of C2, we get well-formedness at any heap
       -- First show it's well-formed at H.heap
-      have hwf_C2_at_H : (C2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
-        -- Use wf_subst with closedness of C2 and well-formedness of the substitution
-        apply CaptureSet.wf_subst
-        · -- C2.WfInHeap H.heap follows from closedness
-          apply CaptureSet.wf_of_closed hclosed_C2
-        · -- (Subst.from_TypeEnv env).WfInHeap H.heap follows from EnvTyping
-          exact from_TypeEnv_wf_in_heap htyping
+      have hwf_C2_at_H : (C2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap :=
+        CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_C2)
+          (from_TypeEnv_wf_in_heap htyping)
       -- Then lift to m.heap using monotonicity
       exact CaptureSet.wf_monotonic hsubsumes hwf_C2_at_H
     · -- Need: Ty.shape_val_denot env S2 (C2.denot env m) m e
@@ -2388,8 +2291,7 @@ lemma sem_subtyp_poly {S1 S2 : Ty .shape s} {T1 T2 : Ty .exi (s,X)}
           have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
           -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
           unfold Ty.exi_exp_denot at heval1 ⊢
-          apply eval_post_monotonic_general _ heval1
-          exact himply_entails
+          exact eval_post_monotonic_general himply_entails heval1
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
   (hsub : Subtyp Γ T1 T2) :
@@ -2562,8 +2464,8 @@ theorem sem_typ_unpack
     exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ
   case hbool =>
     -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is bool independent
-    apply Denot.as_mpost_is_bool_independent
-    exact exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T)
+    exact Denot.as_mpost_is_bool_independent
+      (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T))
   case a =>
     -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env (.exi T)).as_mpost
     simpa only [Ty.exi_exp_denot] using ht env store hts
@@ -2677,10 +2579,8 @@ theorem sem_typ_unpack
                 exact (congrFun h2.symm m1)
           _ = C.denot env m1 := by exact (congrFun h1.symm m1)
           _ = C.denot env store := by
-            have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-              apply CaptureSet.wf_subst
-              · apply CaptureSet.wf_of_closed hclosed_C
-              · apply from_TypeEnv_wf_in_heap hts
+            have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
+              CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_C) (from_TypeEnv_wf_in_heap hts)
             exact (capture_set_denot_is_monotonic hwf_C hs1).symm
       -- Type equivalence via double rebind
       have heqv_composed : Ty.exi_val_denot env U ≈

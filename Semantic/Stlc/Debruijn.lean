@@ -54,16 +54,13 @@ if they map each variable to the same target variable.
 -/
 theorem Rename.funext {f1 f2 : Rename n1 n2}
   (hvar : ∀ x, f1.var x = f2.var x) :
-  f1 = f2 := by
-  cases f1; cases f2
-  aesop
+  f1 = f2 := by cases f1; cases f2; aesop
 
 /-!
 Commutativity property for weakening renaming and lifting.
 -/
 theorem Rename.succVar_comm {f : Rename n1 n2} :
   f.comp Rename.succVar = Rename.succVar.comp (f.liftVar) := by
-  apply Rename.funext
-  intro x; rfl
+  apply Rename.funext; intro x; rfl
 
 end Stlc

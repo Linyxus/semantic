@@ -56,8 +56,7 @@ theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {cb1 cb2 : CaptureBo
 
 theorem Subcapt.refl {Γ : Ctx s} {C : CaptureSet s} :
     Subcapt Γ C C := by
-  apply Subcapt.sc_elem
-  apply CaptureSet.Subset.refl
+  exact Subcapt.sc_elem CaptureSet.Subset.refl
 
 /-- Renaming preserves closedness of capture sets. -/
 theorem CaptureSet.rename_closed {cs : CaptureSet s1} {f : Rename s1 s2} :
@@ -492,8 +491,7 @@ theorem HasType.type_is_closed
   case unpack ih1 ih2 =>
     -- ih2 : ((U.rename Rename.succ).rename Rename.succ).IsClosed
     -- Need: U.IsClosed
-    apply Ty.rename_closed_inv
-    exact Ty.rename_closed_inv ih2
+    exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
 -- More context lookup properties
 
 theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :

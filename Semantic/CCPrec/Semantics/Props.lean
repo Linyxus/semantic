@@ -679,9 +679,7 @@ theorem step_preserves_eval
     | step_invoke hlookup_x' hlookup_y' =>
       -- Stepped to .unit
       -- The postcondition holds by hQ
-      apply Eval.eval_val
-      · exact Exp.IsVal.unit
-      · exact hQ
+      exact Eval.eval_val Exp.IsVal.unit hQ
   | eval_tapply hlookup heval ih =>
     -- e1 = .tapp (.free x) S
     -- The only step is step_tapply
@@ -1086,9 +1084,7 @@ theorem Ty.wf_masked
   | wf_poly _ _ ih1 ih2 =>
     apply Ty.WfInHeap.wf_poly <;> assumption
   | wf_cpoly hwf_cb _ ih_T =>
-    apply Ty.WfInHeap.wf_cpoly
-    · exact CaptureBound.wf_masked hwf_cb
-    · exact ih_T
+    exact Ty.WfInHeap.wf_cpoly (CaptureBound.wf_masked hwf_cb) ih_T
   | wf_unit =>
     apply Ty.WfInHeap.wf_unit
   | wf_cap =>
@@ -1098,9 +1094,7 @@ theorem Ty.wf_masked
   | wf_cell =>
     apply Ty.WfInHeap.wf_cell
   | wf_capt hwf_cs _ ih_T =>
-    apply Ty.WfInHeap.wf_capt
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact ih_T
+    exact Ty.WfInHeap.wf_capt (CaptureSet.wf_masked hwf_cs) ih_T
   | wf_exi _ ih =>
     apply Ty.WfInHeap.wf_exi
     exact ih
@@ -1116,36 +1110,19 @@ theorem Exp.wf_masked
     apply Exp.WfInHeap.wf_var
     exact Var.wf_masked hwf_x
   | wf_abs hwf_cs hwf_T _ ih =>
-    apply Exp.WfInHeap.wf_abs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Ty.wf_masked hwf_T
-    · exact ih
+    exact Exp.WfInHeap.wf_abs (CaptureSet.wf_masked hwf_cs) (Ty.wf_masked hwf_T) ih
   | wf_tabs hwf_cs hwf_T _ ih =>
-    apply Exp.WfInHeap.wf_tabs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Ty.wf_masked hwf_T
-    · exact ih
+    exact Exp.WfInHeap.wf_tabs (CaptureSet.wf_masked hwf_cs) (Ty.wf_masked hwf_T) ih
   | wf_cabs hwf_cs hwf_cb _ ih =>
-    apply Exp.WfInHeap.wf_cabs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact CaptureBound.wf_masked hwf_cb
-    · exact ih
+    exact Exp.WfInHeap.wf_cabs (CaptureSet.wf_masked hwf_cs) (CaptureBound.wf_masked hwf_cb) ih
   | wf_pack hwf_cs hwf_x =>
-    apply Exp.WfInHeap.wf_pack
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Var.wf_masked hwf_x
+    exact Exp.WfInHeap.wf_pack (CaptureSet.wf_masked hwf_cs) (Var.wf_masked hwf_x)
   | wf_app hwf_x hwf_y =>
-    apply Exp.WfInHeap.wf_app
-    · exact Var.wf_masked hwf_x
-    · exact Var.wf_masked hwf_y
+    exact Exp.WfInHeap.wf_app (Var.wf_masked hwf_x) (Var.wf_masked hwf_y)
   | wf_tapp hwf_x hwf_T =>
-    apply Exp.WfInHeap.wf_tapp
-    · exact Var.wf_masked hwf_x
-    · exact Ty.wf_masked hwf_T
+    exact Exp.WfInHeap.wf_tapp (Var.wf_masked hwf_x) (Ty.wf_masked hwf_T)
   | wf_capp hwf_x hwf_cs =>
-    apply Exp.WfInHeap.wf_capp
-    · exact Var.wf_masked hwf_x
-    · exact CaptureSet.wf_masked hwf_cs
+    exact Exp.WfInHeap.wf_capp (Var.wf_masked hwf_x) (CaptureSet.wf_masked hwf_cs)
   | wf_letin _ _ ih1 ih2 =>
     apply Exp.WfInHeap.wf_letin <;> assumption
   | wf_unpack _ _ ih1 ih2 =>
@@ -1157,17 +1134,12 @@ theorem Exp.wf_masked
   | wf_bfalse =>
     apply Exp.WfInHeap.wf_bfalse
   | wf_cond hwf_x _ _ ih1 ih2 =>
-    apply Exp.WfInHeap.wf_cond
-    · exact Var.wf_masked hwf_x
-    · exact ih1
-    · exact ih2
+    exact Exp.WfInHeap.wf_cond (Var.wf_masked hwf_x) ih1 ih2
   | wf_read hwf_x =>
     apply Exp.WfInHeap.wf_read
     exact Var.wf_masked hwf_x
   | wf_write hwf_x hwf_y =>
-    apply Exp.WfInHeap.wf_write
-    · exact Var.wf_masked hwf_x
-    · exact Var.wf_masked hwf_y
+    exact Exp.WfInHeap.wf_write (Var.wf_masked hwf_x) (Var.wf_masked hwf_y)
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
@@ -1377,12 +1349,8 @@ theorem finset_mem_imp_cap_mem {C1 : CapabilitySet} {x : Nat}
     simp only [CapabilitySet.to_finset] at hx
     have hx' := Finset.mem_union.mp hx
     cases hx' with
-    | inl h1 =>
-      apply CapabilitySet.mem.left
-      exact ih1 h1
-    | inr h2 =>
-      apply CapabilitySet.mem.right
-      exact ih2 h2
+    | inl h1 => exact CapabilitySet.mem.left (ih1 h1)
+    | inr h2 => exact CapabilitySet.mem.right (ih2 h2)
 
 -- Helper lemma: subset of capability sets implies subset of to_finset
 theorem CapabilitySet.subset_to_finset {C1 C : CapabilitySet}
@@ -1400,9 +1368,8 @@ theorem step_masked
     apply Step.step_apply
     exact masked_lookup_val hlookup
   | step_invoke hlookup_x hlookup_y =>
-    apply Step.step_invoke
-    · exact masked_lookup_cap hlookup_x (CapabilitySet.mem_cap_to_finset)
-    · exact masked_lookup_val hlookup_y
+    exact Step.step_invoke (masked_lookup_cap hlookup_x (CapabilitySet.mem_cap_to_finset))
+                           (masked_lookup_val hlookup_y)
   | step_tapply hlookup =>
     apply Step.step_tapply
     exact masked_lookup_val hlookup
@@ -1444,17 +1411,14 @@ theorem step_masked
     -- With x ∈ C, masking preserves the mcell lookup and commutes with update_mcell
     rename_i x m y b0 hv R
     rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (CapabilitySet.mem_cap_to_finset)]
-    apply Step.step_write_true
-    · -- Need to show the masked memory still has the mcell at x
-      exact masked_lookup_cap hx (CapabilitySet.mem_cap_to_finset)
-    · exact masked_lookup_val hy
+    exact Step.step_write_true (masked_lookup_cap hx (CapabilitySet.mem_cap_to_finset))
+                                (masked_lookup_val hy)
   | step_write_false hx hy =>
     -- Symmetric to step_write_true
     rename_i x m y b0 hv R
     rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (CapabilitySet.mem_cap_to_finset)]
-    apply Step.step_write_false
-    · exact masked_lookup_cap hx (CapabilitySet.mem_cap_to_finset)
-    · exact masked_lookup_val hy
+    exact Step.step_write_false (masked_lookup_cap hx (CapabilitySet.mem_cap_to_finset))
+                                 (masked_lookup_val hy)
 
 -- Variant of step_masked that allows masking with a superset capability set
 theorem step_masked_superset
@@ -1471,9 +1435,7 @@ theorem step_masked_superset
     -- C1 = .cap x, so x ∈ C1 ⊆ C, so x ∈ C.to_finset
     have hmem : _ ∈ C.to_finset :=
       mem_to_finset (CapabilitySet.subset_preserves_mem hsub CapabilitySet.mem.here)
-    apply Step.step_invoke
-    · exact masked_lookup_cap hlookup_x hmem
-    · exact masked_lookup_val hlookup_y
+    exact Step.step_invoke (masked_lookup_cap hlookup_x hmem) (masked_lookup_val hlookup_y)
   | step_tapply hlookup =>
     apply Step.step_tapply
     exact masked_lookup_val hlookup
@@ -1514,17 +1476,13 @@ theorem step_masked_superset
     have hmem : x ∈ C.to_finset :=
       mem_to_finset (CapabilitySet.subset_preserves_mem hsub CapabilitySet.mem.here)
     rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) hmem]
-    apply Step.step_write_true
-    · exact masked_lookup_cap hx hmem
-    · exact masked_lookup_val hy
+    exact Step.step_write_true (masked_lookup_cap hx hmem) (masked_lookup_val hy)
   | step_write_false hx hy =>
     rename_i x m y b0 hv R
     have hmem : x ∈ C.to_finset :=
       mem_to_finset (CapabilitySet.subset_preserves_mem hsub CapabilitySet.mem.here)
     rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) hmem]
-    apply Step.step_write_false
-    · exact masked_lookup_cap hx hmem
-    · exact masked_lookup_val hy
+    exact Step.step_write_false (masked_lookup_cap hx hmem) (masked_lookup_val hy)
 
 -- Generalized version: reduce works with any superset mask
 theorem reduce_masked_superset

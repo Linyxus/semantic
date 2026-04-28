@@ -49,14 +49,14 @@ def CaptureBound.rename : CaptureBound s1 -> Rename s1 s2 -> CaptureBound s2
 def CaptureBound.rename_id {cb : CaptureBound s} : cb.rename (Rename.id) = cb := by
   cases cb
   case unbound => rfl
-  case bound cs => simp [CaptureBound.rename, CaptureSet.rename_id]
+  case bound cs => simp only [CaptureBound.rename, CaptureSet.rename_id]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem CaptureBound.rename_comp {cb : CaptureBound s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (cb.rename f).rename g = cb.rename (f.comp g) := by
   cases cb
   case unbound => rfl
-  case bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
+  case bound cs => simp only [CaptureBound.rename, CaptureSet.rename_comp]
 
 /-- Applies a renaming to all bound variables in a type. -/
 def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
@@ -95,12 +95,12 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   case bool => rfl
   case cell => rfl
   case capt ih2 =>
-    simp [Ty.rename, ih2, CaptureSet.rename_id]
+    simp only [Ty.rename, ih2, CaptureSet.rename_id]
   case exi ih =>
     rename_i T
     simp only [Ty.rename, Rename.lift_id]
     exact congrArg Ty.exi ih
-  case typ ih => simp [Ty.rename, ih]
+  case typ ih => simp only [Ty.rename, ih]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -108,21 +108,21 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   induction T generalizing s2 s3
   case top => rfl
   case tvar => rfl
-  case arrow ih1 ih2 => (simp [Ty.rename, Rename.lift_comp, ih1, ih2]; rfl)
-  case poly ih1 ih2 => (simp [Ty.rename, Rename.lift_comp, ih1, ih2]; rfl)
-  case cpoly cb ih => (simp [Ty.rename, Rename.lift_comp, ih, CaptureBound.rename_comp]; rfl)
+  case arrow ih1 ih2 => (simp only [Ty.rename, Rename.lift_comp, ih1, ih2]; rfl)
+  case poly ih1 ih2 => (simp only [Ty.rename, Rename.lift_comp, ih1, ih2]; rfl)
+  case cpoly cb ih => (simp only [Ty.rename, Rename.lift_comp, ih, CaptureBound.rename_comp]; rfl)
   case unit => rfl
   case cap => rfl
   case bool => rfl
   case cell => rfl
-  case capt ih => simp [Ty.rename, CaptureSet.rename_comp, ih]
-  case exi ih => (simp [Ty.rename, Rename.lift_comp, ih]; rfl)
-  case typ ih => simp [Ty.rename, ih]
+  case capt ih => simp only [Ty.rename, CaptureSet.rename_comp, ih]
+  case exi ih => (simp only [Ty.rename, Rename.lift_comp, ih]; rfl)
+  case typ ih => simp only [Ty.rename, ih]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
-  simp [Ty.rename_comp, Rename.succ_lift_comm]
+  simp only [Ty.rename_comp, Rename.succ_lift_comm]
 
 /-- Extracts the capture set from a capturing type. -/
 def Ty.captureSet : Ty .capt s -> CaptureSet s

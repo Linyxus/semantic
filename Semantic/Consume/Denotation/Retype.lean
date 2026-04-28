@@ -246,7 +246,7 @@ def retype_resolved_capture_set
   induction C
   case empty => rfl
   case union C1 C2 ih1 ih2 =>
-    simp [CaptureSet.subst, ih1, ih2]
+    simp only [CaptureSet.subst, ih1, ih2]
   case var x =>
     cases x
     case bound x =>
@@ -260,14 +260,14 @@ def retype_resolved_capture_set
           have hvar := ρ.var x
           rw [hσ] at hvar
           simpa only [interp_var] using hvar
-        simp [hvar]
+        simp only [hvar]
       case free n =>
         change CaptureSet.var _ (.free (env1.lookup_var x).1) = CaptureSet.var _ (.free n)
         have hvar : (env1.lookup_var x).1 = n := by
           have hvar := ρ.var x
           rw [hσ] at hvar
           simpa only [interp_var] using hvar
-        simp [hvar]
+        simp only [hvar]
     case free n =>
       simp only [CaptureSet.subst, Var.subst]
   case cvar m C =>
@@ -297,7 +297,7 @@ def retype_capturebound_denot
     rfl
   | bound C =>
     funext m
-    simp [CaptureBound.denot, CaptureBound.subst, retype_captureset_denot ρ C]
+    simp only [CaptureBound.denot, CaptureBound.subst, retype_captureset_denot ρ C]
 
 set_option maxHeartbeats 800000 in
 -- The cpoly case requires more heartbeats due to accumulated elaboration state in the mutual block.
@@ -310,7 +310,7 @@ def retype_val_denot
   match T with
   | .top | .unit | .bool => by
     intro m e
-    simp [Ty.val_denot, Ty.subst]
+    simp only [Ty.val_denot, Ty.subst]
   | .tvar X => by
     have h := ρ.tvar X
     intro m e

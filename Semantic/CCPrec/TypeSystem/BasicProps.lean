@@ -350,7 +350,9 @@ theorem HasType.exp_is_closed
 theorem HasType.type_is_closed
   (ht : C # Γ ⊢ e : E) :
   E.IsClosed := by
-  induction ht <;> try (solve | constructor | grind only [Ty.IsClosed])
+  induction ht <;> try (solve | constructor | assumption |
+    exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.unit) |
+    exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.bool))
   case var hΓ_closed hlookup =>
     constructor
     -- Need to prove: (.capt (.var (.bound x)) S).IsClosed
@@ -393,12 +395,6 @@ theorem HasType.type_is_closed
     -- hT : (T✝.subst (Subst.openCVar C✝)).IsClosed
     -- Apply Ty.subst_closed_inv to get T✝.IsClosed
     exact Ty.subst_closed_inv hT
-  case read ih_x =>
-    -- Goal: (Ty.capt ∅ Ty.bool).typ.IsClosed
-    constructor
-    constructor
-    · constructor
-    · constructor
   case app ht_x ht_y ih_x ih_y =>
     -- Goal: (T2✝.subst (Subst.openVar y✝)).IsClosed
     -- After rename_i, variables get renamed in order: s✝ x✝ Γ✝ T1✝ T2✝ y✝
@@ -445,20 +441,6 @@ theorem HasType.type_is_closed
     -- Need: U.IsClosed
     apply Ty.rename_closed_inv
     exact Ty.rename_closed_inv ih2
-  case unit =>
-    constructor
-    constructor
-    · constructor
-    · constructor
-  case invoke =>
-    constructor
-    constructor
-    · constructor
-    · constructor
-  case btrue =>
-    exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.bool)
-  case bfalse =>
-    exact Ty.IsClosed.typ (Ty.IsClosed.capt CaptureSet.IsClosed.empty Ty.IsClosed.bool)
 
 -- More context lookup properties
 

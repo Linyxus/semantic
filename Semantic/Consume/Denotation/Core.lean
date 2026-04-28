@@ -1776,9 +1776,9 @@ theorem ground_denot_applyRO_subset {C : CaptureSet {}} {m : Memory} :
     exact CapabilitySet.Subset.refl
   | union C1 C2 ih1 ih2 =>
     simp only [CaptureSet.applyRO, CaptureSet.ground_denot]
-    apply CapabilitySet.Subset.union_left
-    · exact CapabilitySet.Subset.trans ih1 CapabilitySet.Subset.union_right_left
-    · exact CapabilitySet.Subset.trans ih2 CapabilitySet.Subset.union_right_right
+    exact CapabilitySet.Subset.union_left
+      (CapabilitySet.Subset.trans ih1 CapabilitySet.Subset.union_right_left)
+      (CapabilitySet.Subset.trans ih2 CapabilitySet.Subset.union_right_right)
   | var m' v =>
     cases v with
     | bound x => cases x
@@ -1879,12 +1879,8 @@ def val_denot_is_monotonic {env : TypeEnv s}
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     cases ht with
-    | inl htrue =>
-      left
-      exact resolve_monotonic hmem htrue
-    | inr hfalse =>
-      right
-      exact resolve_monotonic hmem hfalse
+    | inl htrue => exact Or.inl (resolve_monotonic hmem htrue)
+    | inr hfalse => exact Or.inr (resolve_monotonic hmem hfalse)
   | cell cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢

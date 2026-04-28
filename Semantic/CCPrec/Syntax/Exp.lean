@@ -110,7 +110,7 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
 /-- Weakening commutes with renaming under a binder. -/
 theorem Var.weaken_rename_comm {x : Var k s1} {f : Rename s1 s2} :
     (x.rename Rename.succ).rename (f.lift (k:=k0)) = (x.rename f).rename (Rename.succ) := by
-  simp [Var.rename_comp, Rename.succ_lift_comm]
+  simp only [Var.rename_comp, Rename.succ_lift_comm]
 
 /-- An answer is a value or a free variable in the empty context. -/
 inductive Exp.IsAns : Exp {} -> Prop where

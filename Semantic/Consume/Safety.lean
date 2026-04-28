@@ -84,14 +84,14 @@ theorem Heap.platform_of_has_fin_dom (N : Nat) :
     intro h
     split at h
     case isTrue hlt =>
-      simp [Finset.mem_range, hlt]
+      simp only [Finset.mem_range, hlt]
     case isFalse =>
       contradiction
   · -- If l ∈ range N, then heap is not none
     intro h
-    simp [Finset.mem_range] at h
+    simp only [Finset.mem_range] at h
     split
-    case isTrue => simp
+    case isTrue => simp only [ne_eq, reduceCtorEq, not_false_eq_true]
     case isFalse hf => omega
 
 /-- Platform memory with `N` mutable boolean cells. -/
@@ -119,9 +119,7 @@ theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
   (ht : EnvTyping Γ env (Memory.platform_of N)) :
   EnvTyping Γ env (Memory.platform_of M) := by
   -- Use the existing monotonicity theorem for EnvTyping
-  apply env_typing_monotonic
-  · exact ht
-  · exact platform_memory_subsumes hNM
+  exact env_typing_monotonic ht (platform_memory_subsumes hNM)
 
 theorem env_typing_of_platform {N : Nat} :
   EnvTyping
@@ -147,7 +145,7 @@ theorem env_typing_of_platform {N : Nat} :
         apply CaptureSet.WfInHeap.wf_var_free
         show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
         unfold Heap.platform_of
-        simp
+        simp only [Nat.lt_succ_self, if_true]
       · -- ∃ l b0, e = .var (.free l) ∧ m.lookup l = some (.capability (.mcell b0)) ∧ ...
         use N, false
         constructor
@@ -155,7 +153,7 @@ theorem env_typing_of_platform {N : Nat} :
         · constructor
           · -- m.lookup N = some (.capability (.mcell false))
             unfold Memory.lookup Memory.platform_of Heap.platform_of
-            simp
+            simp only [Nat.lt_succ_self, if_true]
           · -- N is in the authority set from capture set denot
             change
               (CaptureSet.var Mutability.epsilon (Var.free N)).ground_denot
@@ -183,7 +181,7 @@ theorem env_typing_of_platform {N : Nat} :
           apply CaptureSet.WfInHeap.wf_var_free
           show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
           unfold Heap.platform_of
-          simp
+          simp only [Nat.lt_succ_self, if_true]
         · constructor
           · -- Capture bound is well-formed
             exact CaptureBound.WfInHeap.wf_unbound
@@ -212,7 +210,7 @@ def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
 theorem reachability_of_loc_platform {l : Nat} (hl : l < N) :
   reachability_of_loc (Heap.platform_of N) l = CapabilitySet.singleton .epsilon l := by
   unfold reachability_of_loc Heap.platform_of
-  simp [hl]
+  simp only [hl, if_true]
 
 /-- The length of a platform signature is 2*N. -/
 theorem Sig.platform_of_length : (Sig.platform_of N).length = 2 * N := by

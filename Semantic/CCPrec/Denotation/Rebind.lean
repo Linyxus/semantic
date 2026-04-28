@@ -36,13 +36,13 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
     (C.rename f).subst (Subst.from_TypeEnv env2) := by
   induction C with
   | empty =>
-    simp [CaptureSet.subst, CaptureSet.rename]
+    simp only [CaptureSet.subst, CaptureSet.rename]
   | union C1 C2 ih1 ih2 =>
-    simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
+    simp only [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
   | var x =>
     cases x with
     | free n =>
-      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
+      simp only [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
     | bound x =>
       have h := ρ.var x
       cases k : env1.lookup x with
@@ -65,7 +65,7 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
       | cvar cs2 =>
         rw [k2] at h
         cases h
-        simp [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv,
+        simp only [CaptureSet.subst, CaptureSet.rename, Subst.from_TypeEnv,
               TypeEnv.lookup_cvar, k1, k2]
 
 /- Rebinding for CaptureSet.denot -/
@@ -100,28 +100,28 @@ def rebind_shape_val_denot
   | .top => by
     apply PreDenot.eq_to_equiv
     funext A
-    simp [Ty.shape_val_denot, Ty.rename]
+    simp only [Ty.shape_val_denot, Ty.rename]
   | .tvar X => by
     apply PreDenot.eq_to_equiv
     have h := ρ.var X
     cases k : env1.lookup X
     case tvar d =>
-      simp [k] at h
-      simp [Ty.shape_val_denot, Ty.rename, TypeEnv.lookup_tvar, k, h]
+      simp only [k] at h
+      simp only [Ty.shape_val_denot, Ty.rename, TypeEnv.lookup_tvar, k, h]
   | .unit => by
     apply PreDenot.eq_to_equiv
     funext A
-    simp [Ty.shape_val_denot, Ty.rename]
+    simp only [Ty.shape_val_denot, Ty.rename]
   | .cap => by
     intro A s0 e0
-    simp [Ty.shape_val_denot, Ty.rename]
+    simp only [Ty.shape_val_denot, Ty.rename]
   | .bool => by
     apply PreDenot.eq_to_equiv
     funext A
-    simp [Ty.shape_val_denot, Ty.rename]
+    simp only [Ty.shape_val_denot, Ty.rename]
   | .cell => by
     intro A s0 e0
-    simp [Ty.shape_val_denot, Ty.rename]
+    simp only [Ty.shape_val_denot, Ty.rename]
   | .arrow T1 T2 => by
     have ih1 := rebind_capt_val_denot ρ T1
     intro A s0 e0
@@ -231,7 +231,7 @@ def rebind_exi_val_denot
     -- Both sides are match expressions on resolve s.heap e
     cases hresolve : resolve s.heap e
     · -- resolve = none
-      simp
+      exact Iff.rfl
     · -- resolve = some e'
       rename_i e'
       cases e'
@@ -244,7 +244,7 @@ def rebind_exi_val_denot
         exact ih s (Exp.var y)
       all_goals {
         -- resolve returned non-pack
-        simp
+        exact Iff.rfl
       }
 
 def rebind_capt_exp_denot

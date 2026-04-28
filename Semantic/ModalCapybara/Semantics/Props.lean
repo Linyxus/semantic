@@ -6,7 +6,7 @@ namespace ModalCapybara
 theorem Heap.lookup_deterministic {H : Heap}
   (hlookup1 : H l = some v1)
   (hlookup2 : H l = some v2) :
-  v1 = v2 := by grind
+  v1 = v2 := Option.some.inj (hlookup1.symm.trans hlookup2)
 
 /-- The result of looking up a variable in the memory is deterministic. -/
 theorem Memory.lookup_deterministic {m : Memory}
@@ -15,7 +15,7 @@ theorem Memory.lookup_deterministic {m : Memory}
   v1 = v2 := by
   cases m
   simp only [Memory.lookup] at hlookup1 hlookup2
-  apply Heap.lookup_deterministic hlookup1 hlookup2
+  exact Heap.lookup_deterministic hlookup1 hlookup2
 
 /-- Step is monotonic with respect to capability sets:
     if a step can happen under authority R1, it can happen under any larger authority R2. -/
@@ -23,46 +23,28 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
   (hstep : Step R1 m e m' e') (hsub : R1 ⊆ R2) :
   Step R2 m e m' e' := by
   induction hstep with
-  | step_apply hlookup =>
-    apply Step.step_apply hlookup
+  | step_apply hlookup => exact Step.step_apply hlookup
   | step_invoke hmem hlookup_x hlookup_y =>
-    apply Step.step_invoke
-    · exact CapabilitySet.subset_preserves_covers hsub hmem
-    · exact hlookup_x
-    · exact hlookup_y
-  | step_tapply hlookup =>
-    apply Step.step_tapply hlookup
-  | step_capply hlookup =>
-    apply Step.step_capply hlookup
-  | step_unwrap hlookup =>
-    apply Step.step_unwrap hlookup
-  | step_cond_var_true hlookup =>
-    apply Step.step_cond_var_true hlookup
-  | step_cond_var_false hlookup =>
-    apply Step.step_cond_var_false hlookup
+    exact Step.step_invoke (CapabilitySet.subset_preserves_covers hsub hmem) hlookup_x hlookup_y
+  | step_tapply hlookup => exact Step.step_tapply hlookup
+  | step_capply hlookup => exact Step.step_capply hlookup
+  | step_unwrap hlookup => exact Step.step_unwrap hlookup
+  | step_cond_var_true hlookup => exact Step.step_cond_var_true hlookup
+  | step_cond_var_false hlookup => exact Step.step_cond_var_false hlookup
   | step_read hmem hlookup_reader hlookup_cell =>
-    apply Step.step_read (CapabilitySet.subset_preserves_covers hsub hmem)
-      hlookup_reader hlookup_cell
+    exact Step.step_read
+      (CapabilitySet.subset_preserves_covers hsub hmem) hlookup_reader hlookup_cell
   | step_write_true hmem hx hy =>
-    apply Step.step_write_true (CapabilitySet.subset_preserves_covers hsub hmem) hx hy
+    exact Step.step_write_true (CapabilitySet.subset_preserves_covers hsub hmem) hx hy
   | step_write_false hmem hx hy =>
-    apply Step.step_write_false (CapabilitySet.subset_preserves_covers hsub hmem) hx hy
-  | step_ctx_letin _ ih =>
-    apply Step.step_ctx_letin
-    exact ih hsub
-  | step_ctx_unpack _ ih =>
-    apply Step.step_ctx_unpack
-    exact ih hsub
-  | step_rename =>
-    apply Step.step_rename
-  | step_lift hv hwf hfresh =>
-    apply Step.step_lift hv hwf hfresh
-  | step_unpack =>
-    apply Step.step_unpack
-  | step_par_left =>
-    apply Step.step_par_left
-  | step_par_right =>
-    apply Step.step_par_right
+    exact Step.step_write_false (CapabilitySet.subset_preserves_covers hsub hmem) hx hy
+  | step_ctx_letin _ ih => exact Step.step_ctx_letin (ih hsub)
+  | step_ctx_unpack _ ih => exact Step.step_ctx_unpack (ih hsub)
+  | step_rename => exact Step.step_rename
+  | step_lift hv hwf hfresh => exact Step.step_lift hv hwf hfresh
+  | step_unpack => exact Step.step_unpack
+  | step_par_left => exact Step.step_par_left
+  | step_par_right => exact Step.step_par_right
 
 /-- Reduce (multi-step reduction) is monotonic with respect to capability sets:
     if a reduction can happen under authority R1, it can happen under any larger authority R2. -/
@@ -70,34 +52,24 @@ theorem small_step_capability_set_monotonic {R1 R2 : CapabilitySet}
   (hred : Reduce R1 m e m' e') (hsub : R1 ⊆ R2) :
   Reduce R2 m e m' e' := by
   induction hred generalizing R2 with
-  | refl =>
-    apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · exact step_capability_set_monotonic h hsub
-    · exact ih hsub
+  | refl => exact Reduce.refl
+  | step h _ ih => exact Reduce.step (step_capability_set_monotonic h hsub) (ih hsub)
 
 /-- Helper: Congruence for Reduce in letin context. -/
 theorem reduce_ctx_letin
   (hred : Reduce C m e1 m' e1') :
   Reduce C m (.letin e1 e2) m' (.letin e1' e2) := by
   induction hred with
-  | refl => apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · apply Step.step_ctx_letin h
-    · exact ih
+  | refl => exact Reduce.refl
+  | step h _ ih => exact Reduce.step (Step.step_ctx_letin h) ih
 
 /-- Helper: Congruence for Reduce in unpack context. -/
 theorem reduce_ctx_unpack
   (hred : Reduce C m e1 m' e1') :
   Reduce C m (.unpack e1 e2) m' (.unpack e1' e2) := by
   induction hred with
-  | refl => apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · apply Step.step_ctx_unpack h
-    · exact ih
+  | refl => exact Reduce.refl
+  | step h _ ih => exact Reduce.step (Step.step_ctx_unpack h) ih
 
 /-- Helper: Variables cannot step, so reduction is reflexive. -/
 theorem reduce_var_inv
@@ -116,24 +88,14 @@ theorem step_memory_monotonic
   (hstep : Step C m1 e1 m2 e2) :
   m2.subsumes m1 := by
   induction hstep with
-  | step_apply => exact Memory.subsumes_refl _
-  | step_invoke => exact Memory.subsumes_refl _
-  | step_tapply => exact Memory.subsumes_refl _
-  | step_capply => exact Memory.subsumes_refl _
-  | step_unwrap => exact Memory.subsumes_refl _
-  | step_cond_var_true _ => exact Memory.subsumes_refl _
-  | step_cond_var_false _ => exact Memory.subsumes_refl _
-  | step_read _ _ _ => exact Memory.subsumes_refl _
-  | step_write_true _ hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
-  | step_write_false _ hx _ => exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
-  | step_ctx_letin _ ih => exact ih
-  | step_ctx_unpack _ ih => exact ih
-  | step_rename => exact Memory.subsumes_refl _
-  | step_lift hv hwf hfresh =>
-    exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
-  | step_unpack => exact Memory.subsumes_refl _
-  | step_par_left => exact Memory.subsumes_refl _
-  | step_par_right => exact Memory.subsumes_refl _
+  | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _ _
+  | step_rename | step_unpack | step_par_left | step_par_right =>
+    exact Memory.subsumes_refl _
+  | step_write_true _ hx _ | step_write_false _ hx _ =>
+    exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih
+  | step_lift hv hwf hfresh => exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
 
 /-- Helper: Reduction preserves memory subsumption. -/
 theorem reduce_memory_monotonic
@@ -215,7 +177,7 @@ theorem reduce_letin_inv
         · -- Need to show: Reduce C m_step e1 m0 (.var (.free y0))
           -- We have: hstep_e1 : Step C m_step e1 _ e1'
           -- and: hred_e1' : Reduce C _ e1' m0 (.var (.free y0))
-          apply Reduce.step hstep_e1 hred_e1'
+          exact Reduce.step hstep_e1 hred_e1'
         · exact hred_body
       | inr h_val =>
         -- Value case from IH
@@ -224,7 +186,7 @@ theorem reduce_letin_inv
         exists m0, v0, hv, hwf, l0, hfresh
         constructor
         · -- Reduction from e1 to v0
-          apply Reduce.step hstep_e1 hred_e1'
+          exact Reduce.step hstep_e1 hred_e1'
         · exact hred_body
     | step_rename =>
       -- e1 = .var (.free y), stepped to e2.subst (openVar (.free y))
@@ -234,7 +196,7 @@ theorem reduce_letin_inv
       apply Or.inl
       exists m_src, y
       constructor
-      · apply Reduce.refl
+      · exact Reduce.refl
       · exact rest
     | step_lift hv hwf hfresh =>
       -- e1 is a simple value v, allocated at l
@@ -245,7 +207,7 @@ theorem reduce_letin_inv
       exists mem_src, e1, hv, hwf, location, hfresh
       constructor
       · -- e1 is already the value, so reduction is reflexive
-        apply Reduce.refl
+        exact Reduce.refl
       · exact rest
 
 theorem step_preserves_wf
@@ -271,7 +233,7 @@ theorem step_preserves_wf
   | step_invoke hmem hlookup_x hlookup_y =>
     -- e1 = .app (.free x) (.free y), e2 = .unit
     -- Unit is always well-formed
-    apply Exp.WfInHeap.wf_unit
+    exact Exp.WfInHeap.wf_unit
   | step_tapply hlookup =>
     -- e1 = .tapp (.free x) S, e2 = body.subst (openTVar .top)
     -- Extract well-formedness of x and S from the type application
@@ -340,7 +302,7 @@ theorem step_preserves_wf
     -- Memory might have changed, need monotonicity
     have hsub := step_memory_monotonic hstep_e1
     have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
-    apply Exp.WfInHeap.wf_letin hwf_e1'' hwf_e2''
+    exact Exp.WfInHeap.wf_letin hwf_e1'' hwf_e2''
   | step_ctx_unpack hstep_e1 =>
     -- e1 = .unpack e1' e2', e2 = .unpack e1'' e2'
     -- Use IH recursively
@@ -349,7 +311,7 @@ theorem step_preserves_wf
     -- Memory might have changed, need monotonicity
     have hsub := step_memory_monotonic hstep_e1
     have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
-    apply Exp.WfInHeap.wf_unpack hwf_e1'' hwf_e2''
+    exact Exp.WfInHeap.wf_unpack hwf_e1'' hwf_e2''
   | step_rename =>
     -- e1 = .letin (.var (.free y)) e, e2 = e.subst (openVar y)
     rename_i y e_body
@@ -496,41 +458,22 @@ theorem eval_implies_progressive
   (heval : Eval C m e Q) :
   IsProgressive C m e := by
   induction heval with
-  | eval_val hv hQ =>
-    -- e is a value, so it's an answer
-    apply IsProgressive.done
-    exact Exp.IsAns.is_val hv
-  | eval_var hQ =>
-    -- e is a variable, so it's an answer
-    apply IsProgressive.done
-    exact Exp.IsAns.is_var
+  | eval_val hv hQ => exact IsProgressive.done (Exp.IsAns.is_val hv)
+  | eval_var hQ => exact IsProgressive.done Exp.IsAns.is_var
   | eval_apply hlookup eval_body ih =>
-    -- e = .app (.free x) y, can step via step_apply
-    -- y must be a free variable since we're in the empty context
     rename_i cs T e_abs hv R C' y Q' m' x
     match y with
     | .bound idx => cases idx
-    | .free y' =>
-      apply IsProgressive.step
-      exact @Step.step_apply C' m' x y' cs T e_abs hv R hlookup
+    | .free y' => exact IsProgressive.step (@Step.step_apply C' m' x y' cs T e_abs hv R hlookup)
   | eval_invoke hmem hlookup_x hlookup_y hQ =>
-    -- e = .app (.free x) (.free y), can step via step_invoke
-    apply IsProgressive.step
-    exact Step.step_invoke hmem hlookup_x hlookup_y
+    exact IsProgressive.step (Step.step_invoke hmem hlookup_x hlookup_y)
   | eval_tapply hlookup eval_body ih =>
-    -- e = .tapp (.free x) S, can step via step_tapply
-    apply IsProgressive.step
-    apply Step.step_tapply hlookup
+    exact IsProgressive.step (Step.step_tapply hlookup)
   | eval_capply hlookup eval_body ih =>
-    -- e = .capp (.free x) CS, can step via step_capply
-    apply IsProgressive.step
-    apply Step.step_capply hlookup
-  | eval_wrap hQ =>
-    apply IsProgressive.done
-    exact Exp.IsAns.is_val Exp.IsVal.boxed
+    exact IsProgressive.step (Step.step_capply hlookup)
+  | eval_wrap hQ => exact IsProgressive.done (Exp.IsAns.is_val Exp.IsVal.boxed)
   | eval_unwrap hlookup eval_body ih =>
-    apply IsProgressive.step
-    exact Step.step_unwrap hlookup
+    exact IsProgressive.step (Step.step_unwrap hlookup)
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var ih_e1 _ _ =>
     -- e = .letin e1 e2
     -- By IH, e1 is progressive
@@ -549,21 +492,17 @@ theorem eval_implies_progressive
         -- The heap is finite, so there are infinitely many fresh locations
         rename_i m0 _ _ _
         have ⟨l0, hfresh⟩ := Memory.exists_fresh m0
-        apply IsProgressive.step
-        apply Step.step_lift (l := l0) hv hwf
-        exact hfresh
+        exact IsProgressive.step (Step.step_lift (l := l0) hv hwf hfresh)
       | is_var =>
         -- e1 is a variable, we need to show it's a free variable
         rename_i x_var
         cases x_var with
         | bound idx => cases idx
         | free y =>
-          apply IsProgressive.step
-          apply Step.step_rename
+          exact IsProgressive.step Step.step_rename
     | step hstep =>
       -- e1 can step, so letin e1 e2 can step via step_ctx_letin
-      apply IsProgressive.step
-      exact Step.step_ctx_letin hstep
+      exact IsProgressive.step (Step.step_ctx_letin hstep)
   | eval_unpack hpred hbool eval_e1 h_nonstuck h_val ih_e1 _ =>
     -- e = .unpack e1 e2
     -- By IH, e1 is progressive
@@ -582,12 +521,10 @@ theorem eval_implies_progressive
         cases x_var with
         | bound idx => cases idx
         | free x =>
-          apply IsProgressive.step
-          apply Step.step_unpack
+          exact IsProgressive.step Step.step_unpack
     | step hstep =>
       -- e1 can step, so unpack e1 e2 can step via step_ctx_unpack
-      apply IsProgressive.step
-      exact Step.step_ctx_unpack hstep
+      exact IsProgressive.step (Step.step_ctx_unpack hstep)
   | @eval_cond _ x_guard _ _ _ m0 _ hpred hbool eval_e1 h_nonstuck h_true h_false ih_e1 _ _ =>
     -- e = .cond x e2 e3 where x : Var
     cases ih_e1 with
@@ -644,20 +581,16 @@ theorem eval_implies_progressive
       exact absurd hstep step_var_absurd
   | eval_read hcov hlookup_reader hlookup_cell hQ =>
     -- e = .read (.free x), can step via step_read
-    apply IsProgressive.step
-    exact Step.step_read hcov hlookup_reader hlookup_cell
+    exact IsProgressive.step (Step.step_read hcov hlookup_reader hlookup_cell)
   | eval_write_true hmem hx hy hQ =>
     -- e = .write (.free x) (.free y), can step via step_write_true
-    apply IsProgressive.step
-    exact Step.step_write_true hmem hx hy
+    exact IsProgressive.step (Step.step_write_true hmem hx hy)
   | eval_write_false hmem hx hy hQ =>
     -- e = .write (.free x) (.free y), can step via step_write_false
-    apply IsProgressive.step
-    exact Step.step_write_false hmem hx hy
+    exact IsProgressive.step (Step.step_write_false hmem hx hy)
   | eval_par _ _ _ _ =>
     -- e = .par e1 e2, can step via step_par_left
-    apply IsProgressive.step
-    exact Step.step_par_left
+    exact IsProgressive.step Step.step_par_left
 
 theorem step_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -710,9 +643,7 @@ theorem step_preserves_eval
     | step_invoke hmem' hlookup_x' hlookup_y' =>
       -- Stepped to .unit
       -- The postcondition holds by hQ
-      apply Eval.eval_val
-      · exact Exp.IsVal.unit
-      · exact hQ
+      exact Eval.eval_val Exp.IsVal.unit hQ
   | eval_tapply hlookup heval ih =>
     -- e1 = .tapp (.free x) S
     -- The only step is step_tapply
@@ -1061,32 +992,19 @@ theorem Var.wf_masked
   (hwf : Var.WfInHeap x H) :
   Var.WfInHeap x (H.mask_caps D) := by
   cases hwf with
-  | wf_bound =>
-    -- Bound variables are always well-formed
-    apply Var.WfInHeap.wf_bound
+  | wf_bound => exact Var.WfInHeap.wf_bound
   | wf_free hex =>
-    -- Free variable case: H n = some val
-    -- Need to show: (H.mask_caps D) n = some val' for some val'
-    -- mask_caps preserves "some-ness": if H n = some val, then masked heap also has some value at n
     rename_i val n
-    -- Construct a proof that (H.mask_caps D) n is non-none
     have h_masked : ∃ val', (H.mask_caps D) n = some val' := by
       unfold Heap.mask_caps
       rw [hex]
-      -- Now we have (match some val with ...) and need to show it's some _
-      cases val
-      · -- val = .val hv
-        rename_i hv
-        use Cell.val hv
-      · -- val = .capability info
-        rename_i info
+      cases val with
+      | val hv => exact ⟨Cell.val hv, rfl⟩
+      | capability info =>
         by_cases h : n ∈ D
-        · use Cell.capability info
-          simp [h]
-        · use Cell.masked
-          simp [h]
-      · -- val = .masked
-        use Cell.masked
+        · exact ⟨Cell.capability info, by simp [h]⟩
+        · exact ⟨Cell.masked, by simp [h]⟩
+      | masked => exact ⟨Cell.masked, rfl⟩
     obtain ⟨val', h_masked⟩ := h_masked
     exact Var.WfInHeap.wf_free h_masked
 
@@ -1094,164 +1012,88 @@ theorem CaptureSet.wf_masked
   (hwf : CaptureSet.WfInHeap cs H) :
   CaptureSet.WfInHeap cs (H.mask_caps D) := by
   induction hwf with
-  | wf_empty =>
-    apply CaptureSet.WfInHeap.wf_empty
-  | wf_union _ _ ih1 ih2 =>
-    apply CaptureSet.WfInHeap.wf_union <;> assumption
+  | wf_empty => exact CaptureSet.WfInHeap.wf_empty
+  | wf_var_bound => exact CaptureSet.WfInHeap.wf_var_bound
+  | wf_cvar => exact CaptureSet.WfInHeap.wf_cvar
+  | wf_union _ _ ih1 ih2 => exact CaptureSet.WfInHeap.wf_union ih1 ih2
   | @wf_var_free H0 _ m x hex =>
-    -- Same approach as Var.wf_masked: prove that a free var in masked heap maps to something
     have hwf_var : Var.WfInHeap (.free (k := .var) (s := {}) x) (H0.mask_caps D) :=
       Var.wf_masked (D := D) (Var.WfInHeap.wf_free (k := .var) (s := {}) hex)
     cases hwf_var with
-    | wf_free hex' =>
-      exact CaptureSet.WfInHeap.wf_var_free hex'
-  | wf_var_bound =>
-    apply CaptureSet.WfInHeap.wf_var_bound
-  | wf_cvar =>
-    apply CaptureSet.WfInHeap.wf_cvar
+    | wf_free hex' => exact CaptureSet.WfInHeap.wf_var_free hex'
 
 theorem SepCtx.wf_masked
   (hwf : SepCtx.WfInHeap Ψ H) :
   SepCtx.WfInHeap Ψ (H.mask_caps D) := by
   induction hwf with
-  | wf_empty =>
-    apply SepCtx.WfInHeap.wf_empty
+  | wf_empty => exact SepCtx.WfInHeap.wf_empty
   | wf_cons hwf_Ψ hwf_C ih =>
-    apply SepCtx.WfInHeap.wf_cons
-    · exact ih
-    · exact CaptureSet.wf_masked hwf_C
+    exact SepCtx.WfInHeap.wf_cons ih (CaptureSet.wf_masked hwf_C)
 
 theorem CaptureBound.wf_masked
   (hwf : CaptureBound.WfInHeap cb H) :
   CaptureBound.WfInHeap cb (H.mask_caps D) := by
   induction hwf with
-  | wf_unbound =>
-    apply CaptureBound.WfInHeap.wf_unbound
-  | wf_bound hwf_cs =>
-    apply CaptureBound.WfInHeap.wf_bound
-    exact CaptureSet.wf_masked hwf_cs
+  | wf_unbound => exact CaptureBound.WfInHeap.wf_unbound
+  | wf_bound hwf_cs => exact CaptureBound.WfInHeap.wf_bound (CaptureSet.wf_masked hwf_cs)
 
 theorem Ty.wf_masked
   (hwf : Ty.WfInHeap T H) :
   Ty.WfInHeap T (H.mask_caps D) := by
   induction hwf with
-  | wf_top =>
-    apply Ty.WfInHeap.wf_top
-  | wf_tvar =>
-    apply Ty.WfInHeap.wf_tvar
+  | wf_top => exact Ty.WfInHeap.wf_top
+  | wf_tvar => exact Ty.WfInHeap.wf_tvar
+  | wf_unit => exact Ty.WfInHeap.wf_unit
+  | wf_bool => exact Ty.WfInHeap.wf_bool
   | wf_arrow hwf_T1 hwf_cs _ ih1 ih2 =>
-    apply Ty.WfInHeap.wf_arrow
-    · exact ih1
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact ih2
+    exact Ty.WfInHeap.wf_arrow ih1 (CaptureSet.wf_masked hwf_cs) ih2
   | wf_poly hwf_T1 hwf_cs _ ih1 ih2 =>
-    apply Ty.WfInHeap.wf_poly
-    · exact ih1
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact ih2
+    exact Ty.WfInHeap.wf_poly ih1 (CaptureSet.wf_masked hwf_cs) ih2
   | wf_cpoly hwf_cb hwf_cs _ ih_T =>
-    apply Ty.WfInHeap.wf_cpoly
-    · exact CaptureBound.wf_masked hwf_cb
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact ih_T
+    exact Ty.WfInHeap.wf_cpoly (CaptureBound.wf_masked hwf_cb) (CaptureSet.wf_masked hwf_cs) ih_T
   | wf_modal hwf_cs hwf_Ψ _ ih_T =>
-    apply Ty.WfInHeap.wf_modal
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact SepCtx.wf_masked hwf_Ψ
-    · exact ih_T
-  | wf_unit =>
-    apply Ty.WfInHeap.wf_unit
-  | wf_cap hwf_cs =>
-    apply Ty.WfInHeap.wf_cap
-    exact CaptureSet.wf_masked hwf_cs
-  | wf_bool =>
-    apply Ty.WfInHeap.wf_bool
-  | wf_cell hwf_cs =>
-    apply Ty.WfInHeap.wf_cell
-    exact CaptureSet.wf_masked hwf_cs
-  | wf_reader hwf_cs =>
-    apply Ty.WfInHeap.wf_reader
-    exact CaptureSet.wf_masked hwf_cs
-  | wf_exi _ ih =>
-    apply Ty.WfInHeap.wf_exi
-    exact ih
-  | wf_typ _ ih =>
-    apply Ty.WfInHeap.wf_typ
-    exact ih
+    exact Ty.WfInHeap.wf_modal (CaptureSet.wf_masked hwf_cs) (SepCtx.wf_masked hwf_Ψ) ih_T
+  | wf_cap hwf_cs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_masked hwf_cs)
+  | wf_cell hwf_cs => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_masked hwf_cs)
+  | wf_reader hwf_cs => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_masked hwf_cs)
+  | wf_exi _ ih => exact Ty.WfInHeap.wf_exi ih
+  | wf_typ _ ih => exact Ty.WfInHeap.wf_typ ih
 
 theorem Exp.wf_masked
   (hwf : Exp.WfInHeap e H) :
   Exp.WfInHeap e (H.mask_caps D) := by
   induction hwf with
-  | wf_var hwf_x =>
-    apply Exp.WfInHeap.wf_var
-    exact Var.wf_masked hwf_x
+  | wf_unit => exact Exp.WfInHeap.wf_unit
+  | wf_btrue => exact Exp.WfInHeap.wf_btrue
+  | wf_bfalse => exact Exp.WfInHeap.wf_bfalse
+  | wf_var hwf_x => exact Exp.WfInHeap.wf_var (Var.wf_masked hwf_x)
+  | wf_reader hwf_x => exact Exp.WfInHeap.wf_reader (Var.wf_masked hwf_x)
+  | wf_unwrap hwf_x => exact Exp.WfInHeap.wf_unwrap (Var.wf_masked hwf_x)
+  | wf_read hwf_x => exact Exp.WfInHeap.wf_read (Var.wf_masked hwf_x)
   | wf_abs hwf_cs hwf_T _ ih =>
-    apply Exp.WfInHeap.wf_abs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Ty.wf_masked hwf_T
-    · exact ih
+    exact Exp.WfInHeap.wf_abs (CaptureSet.wf_masked hwf_cs) (Ty.wf_masked hwf_T) ih
   | wf_tabs hwf_cs hwf_T _ ih =>
-    apply Exp.WfInHeap.wf_tabs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Ty.wf_masked hwf_T
-    · exact ih
+    exact Exp.WfInHeap.wf_tabs (CaptureSet.wf_masked hwf_cs) (Ty.wf_masked hwf_T) ih
   | wf_cabs hwf_cs hwf_cb _ ih =>
-    apply Exp.WfInHeap.wf_cabs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact CaptureBound.wf_masked hwf_cb
-    · exact ih
+    exact Exp.WfInHeap.wf_cabs
+      (CaptureSet.wf_masked hwf_cs) (CaptureBound.wf_masked hwf_cb) ih
   | wf_boxed hwf_cs hwf_Ψ _ ih =>
-    apply Exp.WfInHeap.wf_boxed
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact SepCtx.wf_masked hwf_Ψ
-    · exact ih
-  | wf_reader hwf_x =>
-    apply Exp.WfInHeap.wf_reader
-    exact Var.wf_masked hwf_x
+    exact Exp.WfInHeap.wf_boxed (CaptureSet.wf_masked hwf_cs) (SepCtx.wf_masked hwf_Ψ) ih
   | wf_pack hwf_cs hwf_x =>
-    apply Exp.WfInHeap.wf_pack
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Var.wf_masked hwf_x
+    exact Exp.WfInHeap.wf_pack (CaptureSet.wf_masked hwf_cs) (Var.wf_masked hwf_x)
   | wf_app hwf_x hwf_y =>
-    apply Exp.WfInHeap.wf_app
-    · exact Var.wf_masked hwf_x
-    · exact Var.wf_masked hwf_y
+    exact Exp.WfInHeap.wf_app (Var.wf_masked hwf_x) (Var.wf_masked hwf_y)
   | wf_tapp hwf_x hwf_T =>
-    apply Exp.WfInHeap.wf_tapp
-    · exact Var.wf_masked hwf_x
-    · exact Ty.wf_masked hwf_T
+    exact Exp.WfInHeap.wf_tapp (Var.wf_masked hwf_x) (Ty.wf_masked hwf_T)
   | wf_capp hwf_x hwf_cs =>
-    apply Exp.WfInHeap.wf_capp
-    · exact Var.wf_masked hwf_x
-    · exact CaptureSet.wf_masked hwf_cs
-  | wf_unwrap hwf_x =>
-    apply Exp.WfInHeap.wf_unwrap
-    exact Var.wf_masked hwf_x
-  | wf_letin _ _ ih1 ih2 =>
-    apply Exp.WfInHeap.wf_letin <;> assumption
-  | wf_unpack _ _ ih1 ih2 =>
-    apply Exp.WfInHeap.wf_unpack <;> assumption
-  | wf_unit =>
-    apply Exp.WfInHeap.wf_unit
-  | wf_btrue =>
-    apply Exp.WfInHeap.wf_btrue
-  | wf_bfalse =>
-    apply Exp.WfInHeap.wf_bfalse
-  | wf_cond hwf_x _ _ ih1 ih2 =>
-    apply Exp.WfInHeap.wf_cond
-    · exact Var.wf_masked hwf_x
-    · exact ih1
-    · exact ih2
-  | wf_read hwf_x =>
-    apply Exp.WfInHeap.wf_read
-    exact Var.wf_masked hwf_x
+    exact Exp.WfInHeap.wf_capp (Var.wf_masked hwf_x) (CaptureSet.wf_masked hwf_cs)
   | wf_write hwf_x hwf_y =>
-    apply Exp.WfInHeap.wf_write
-    · exact Var.wf_masked hwf_x
-    · exact Var.wf_masked hwf_y
-  | wf_par _ _ ih1 ih2 =>
-    apply Exp.WfInHeap.wf_par <;> assumption
+    exact Exp.WfInHeap.wf_write (Var.wf_masked hwf_x) (Var.wf_masked hwf_y)
+  | wf_letin _ _ ih1 ih2 => exact Exp.WfInHeap.wf_letin ih1 ih2
+  | wf_unpack _ _ ih1 ih2 => exact Exp.WfInHeap.wf_unpack ih1 ih2
+  | wf_par _ _ ih1 ih2 => exact Exp.WfInHeap.wf_par ih1 ih2
+  | wf_cond hwf_x _ _ ih1 ih2 =>
+    exact Exp.WfInHeap.wf_cond (Var.wf_masked hwf_x) ih1 ih2
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
@@ -1468,77 +1310,46 @@ theorem step_masked
   Step C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by
   intro M
   induction hstep with
-  | step_apply hlookup =>
-    apply Step.step_apply
-    exact masked_lookup_val hlookup
+  | step_apply hlookup => exact Step.step_apply (masked_lookup_val hlookup)
   | step_invoke hx hlookup_x hlookup_y =>
-    apply Step.step_invoke hx
-    · exact masked_lookup_cap hlookup_x (covers_to_finset hx)
-    · exact masked_lookup_val hlookup_y
-  | step_tapply hlookup =>
-    apply Step.step_tapply
-    exact masked_lookup_val hlookup
-  | step_capply hlookup =>
-    apply Step.step_capply
-    exact masked_lookup_val hlookup
-  | step_unwrap hlookup =>
-    apply Step.step_unwrap
-    exact masked_lookup_val hlookup
-  | step_cond_var_true hlookup =>
-    apply Step.step_cond_var_true
-    exact masked_lookup_val hlookup
-  | step_cond_var_false hlookup =>
-    apply Step.step_cond_var_false
-    exact masked_lookup_val hlookup
-  | step_ctx_letin hstep' ih =>
-    apply Step.step_ctx_letin
-    exact ih
-  | step_ctx_unpack hstep' ih =>
-    apply Step.step_ctx_unpack
-    exact ih
-  | step_rename =>
-    apply Step.step_rename
+    exact Step.step_invoke hx
+      (masked_lookup_cap hlookup_x (covers_to_finset hx))
+      (masked_lookup_val hlookup_y)
+  | step_tapply hlookup => exact Step.step_tapply (masked_lookup_val hlookup)
+  | step_capply hlookup => exact Step.step_capply (masked_lookup_val hlookup)
+  | step_unwrap hlookup => exact Step.step_unwrap (masked_lookup_val hlookup)
+  | step_cond_var_true hlookup => exact Step.step_cond_var_true (masked_lookup_val hlookup)
+  | step_cond_var_false hlookup => exact Step.step_cond_var_false (masked_lookup_val hlookup)
+  | step_ctx_letin _ ih => exact Step.step_ctx_letin ih
+  | step_ctx_unpack _ ih => exact Step.step_ctx_unpack ih
+  | step_rename => exact Step.step_rename
+  | step_unpack => exact Step.step_unpack
+  | step_par_left => exact Step.step_par_left
+  | step_par_right => exact Step.step_par_right
+  | step_read hmem hlookup_reader hlookup_cell =>
+    exact Step.step_read hmem
+      (masked_lookup_val hlookup_reader)
+      (masked_lookup_cap hlookup_cell (covers_to_finset hmem))
+  | step_write_true hmem hx hy =>
+    rename_i x m y b0 hv R
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
+    exact Step.step_write_true hmem
+      (masked_lookup_cap hx (covers_to_finset hmem)) (masked_lookup_val hy)
+  | step_write_false hmem hx hy =>
+    rename_i x m y b0 hv R
+    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
+    exact Step.step_write_false hmem
+      (masked_lookup_cap hx (covers_to_finset hmem)) (masked_lookup_val hy)
   | step_lift hv hwf hfresh =>
     rename_i v C m _ l
-    -- Rewrite using masked_extend_comm
     rw [Memory.masked_extend_comm (m := m) (l := l) hwf rfl hfresh]
-    -- Use helper lemma to show the two extend calls are equal
     rw [Memory.extend_heapval_reachability_irrel
           (m := m.masked_caps M) (l := l) (v := v) (hv := hv)
           (Exp.wf_masked hwf)
-          (by
-            exact rfl.trans
-              (masked_compute_reachability (H := m.heap) (D := M) (v := v) (hv := hv)))
+          (rfl.trans (masked_compute_reachability (H := m.heap) (D := M) (v := v) (hv := hv)))
           rfl
           (masked_preserves_fresh hfresh)]
-    -- Now apply step_lift
-    apply Step.step_lift (l := l) hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
-  | step_unpack =>
-    apply Step.step_unpack
-  | step_read hmem hlookup_reader hlookup_cell =>
-    -- With y ∈ C, masking preserves the reader and mcell lookup
-    apply Step.step_read hmem
-    · exact masked_lookup_val hlookup_reader
-    · exact masked_lookup_cap hlookup_cell (covers_to_finset hmem)
-  | step_write_true hmem hx hy =>
-    -- With x ∈ C, masking preserves the mcell lookup and commutes with update_mcell
-    rename_i x m y b0 hv R
-    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
-    apply Step.step_write_true hmem
-    · -- Need to show the masked memory still has the mcell at x
-      exact masked_lookup_cap hx (covers_to_finset hmem)
-    · exact masked_lookup_val hy
-  | step_write_false hmem hx hy =>
-    -- Symmetric to step_write_true
-    rename_i x m y b0 hv R
-    rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
-    apply Step.step_write_false hmem
-    · exact masked_lookup_cap hx (covers_to_finset hmem)
-    · exact masked_lookup_val hy
-  | step_par_left =>
-    apply Step.step_par_left
-  | step_par_right =>
-    apply Step.step_par_right
+    exact Step.step_lift (l := l) hv (Exp.wf_masked hwf) (masked_preserves_fresh hfresh)
 
 theorem reduce_masked
   (hred : Reduce C m1 e1 m2 e2) :
@@ -1546,12 +1357,8 @@ theorem reduce_masked
   Reduce C (m1.masked_caps M) e1 (m2.masked_caps M) e2 := by
   intro M
   induction hred with
-  | refl =>
-    apply Reduce.refl
-  | step h rest ih =>
-    apply Reduce.step
-    · exact step_masked h
-    · exact ih
+  | refl => exact Reduce.refl
+  | step h _ ih => exact Reduce.step (step_masked h) ih
 
 /-- If Eval C m e Q holds, then there exist m' and e' such that e' is an answer,
     the memory m' subsumes m, and Q e' m' holds. -/
@@ -1861,45 +1668,23 @@ theorem step_immutable {C : CapabilitySet}
   m1.not_mutated m2 := by
   intro l b hinit
   induction hstep with
-  | step_apply _ => exact hinit
-  | step_invoke _ _ _ => exact hinit
-  | step_tapply _ => exact hinit
-  | step_capply _ => exact hinit
-  | step_unwrap _ => exact hinit
-  | step_cond_var_true _ => exact hinit
-  | step_cond_var_false _ => exact hinit
-  | step_read _ _ _ => exact hinit
-  | step_write_true hcov _ _ =>
-    -- hcov : C.covers .epsilon x, but C.HasKind .ro
+  | step_apply _ | step_invoke _ _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _ _
+  | step_rename | step_unpack | step_par_left | step_par_right => exact hinit
+  | step_write_true hcov _ _ | step_write_false hcov _ _ =>
     exact absurd hcov (hasKind_ro_not_covers_epsilon himm)
-  | step_write_false hcov _ _ =>
-    exact absurd hcov (hasKind_ro_not_covers_epsilon himm)
-  | step_ctx_letin _ ih => exact ih himm hinit
-  | step_ctx_unpack _ ih => exact ih himm hinit
-  | step_rename => exact hinit
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih himm hinit
   | step_lift hv hwf hfresh =>
-    -- Memory.extend preserves mcells
     rename_i l'
     simp [Memory.extend, Heap.extend]
-    -- l ≠ l' because l has an mcell but l' is fresh (none)
-    have hne : l ≠ l' := by
-      intro heq
-      rw [heq] at hinit
-      simp [hfresh] at hinit
+    have hne : l ≠ l' := by intro heq; rw [heq] at hinit; simp [hfresh] at hinit
     simp [hne, hinit]
-  | step_unpack => exact hinit
-  | step_par_left => exact hinit
-  | step_par_right => exact hinit
 
-theorem not_mutated_refl {m : Memory} : m.not_mutated m := by
-  intro l b hinit
-  exact hinit
+theorem not_mutated_refl {m : Memory} : m.not_mutated m := fun _ _ hinit => hinit
 
 theorem not_mutated_trans {m1 m2 m3 : Memory}
     (h12 : m1.not_mutated m2) (h23 : m2.not_mutated m3) :
-    m1.not_mutated m3 := by
-  intro l b hinit
-  exact h23 l b (h12 l b hinit)
+    m1.not_mutated m3 := fun l b hinit => h23 l b (h12 l b hinit)
 
 theorem reduce_immutable {C : CapabilitySet}
     (himm : C.HasKind .ro)

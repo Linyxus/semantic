@@ -907,18 +907,15 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   (T.subst σ).IsClosed := by
   induction T generalizing s2 with
   | top => exact IsClosed.top
-  | tvar X => simp only [Ty.subst]; exact hsubst.tvar_closed X
+  | tvar X => exact hsubst.tvar_closed X
   | arrow T1 T2 ih1 ih2 =>
     cases hc with | arrow h1 h2 =>
-    simp only [Ty.subst]
     exact IsClosed.arrow (ih1 h1 hsubst) (ih2 h2 (Subst.lift_closed hsubst))
   | poly S T ih1 ih2 =>
     cases hc with | poly h1 h2 =>
-    simp only [Ty.subst]
     exact IsClosed.poly (ih1 h1 hsubst) (ih2 h2 (Subst.lift_closed hsubst))
   | cpoly cb T ih =>
     cases hc with | cpoly hcb hT =>
-    simp only [Ty.subst]
     exact IsClosed.cpoly
       (CaptureBound.is_closed_subst hcb hsubst)
       (ih hT (Subst.lift_closed hsubst))
@@ -928,15 +925,12 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   | cell => exact IsClosed.cell
   | capt cs S ih =>
     cases hc with | capt h1 h2 =>
-    simp only [Ty.subst]
     exact IsClosed.capt (CaptureSet.is_closed_subst h1 hsubst) (ih h2 hsubst)
   | typ T ih =>
     cases hc with | typ hT =>
-    simp only [Ty.subst]
     exact IsClosed.typ (ih hT hsubst)
   | exi T ih =>
     cases hc with | exi hT =>
-    simp only [Ty.subst]
     exact IsClosed.exi (ih hT (Subst.lift_closed hsubst))
 
 /-- Substitution preserves closedness for expressions. -/
@@ -946,83 +940,48 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
   induction e generalizing s2 with
   | var x =>
     cases hc with | var hx =>
-    simp only [Exp.subst]
-    constructor
-    exact Var.is_closed_subst hx hsubst
+    exact IsClosed.var (Var.is_closed_subst hx hsubst)
   | abs cs T e ih =>
     cases hc with | abs hcs hT he =>
-    simp only [Exp.subst]
-    constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
-    · exact Ty.is_closed_subst hT hsubst
-    · exact ih he (Subst.lift_closed hsubst)
+    exact IsClosed.abs (CaptureSet.is_closed_subst hcs hsubst) (Ty.is_closed_subst hT hsubst)
+      (ih he (Subst.lift_closed hsubst))
   | tabs cs S e ih =>
     cases hc with | tabs hcs hS he =>
-    simp only [Exp.subst]
-    constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
-    · exact Ty.is_closed_subst hS hsubst
-    · exact ih he (Subst.lift_closed hsubst)
+    exact IsClosed.tabs (CaptureSet.is_closed_subst hcs hsubst) (Ty.is_closed_subst hS hsubst)
+      (ih he (Subst.lift_closed hsubst))
   | cabs cs cb e ih =>
     cases hc with | cabs hcs hcb he =>
-    simp only [Exp.subst]
-    constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
-    · exact CaptureBound.is_closed_subst hcb hsubst
-    · exact ih he (Subst.lift_closed hsubst)
+    exact IsClosed.cabs (CaptureSet.is_closed_subst hcs hsubst)
+      (CaptureBound.is_closed_subst hcb hsubst) (ih he (Subst.lift_closed hsubst))
   | pack cs x =>
     cases hc with | pack hcs hx =>
-    simp only [Exp.subst]
-    constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
-    · exact Var.is_closed_subst hx hsubst
+    exact IsClosed.pack (CaptureSet.is_closed_subst hcs hsubst) (Var.is_closed_subst hx hsubst)
   | app x y =>
     cases hc with | app hx hy =>
-    simp only [Exp.subst]
-    constructor
-    · exact Var.is_closed_subst hx hsubst
-    · exact Var.is_closed_subst hy hsubst
+    exact IsClosed.app (Var.is_closed_subst hx hsubst) (Var.is_closed_subst hy hsubst)
   | tapp x T =>
     cases hc with | tapp hx hT =>
-    simp only [Exp.subst]
-    constructor
-    · exact Var.is_closed_subst hx hsubst
-    · exact Ty.is_closed_subst hT hsubst
+    exact IsClosed.tapp (Var.is_closed_subst hx hsubst) (Ty.is_closed_subst hT hsubst)
   | capp x cs =>
     cases hc with | capp hx hcs =>
-    simp only [Exp.subst]
-    constructor
-    · exact Var.is_closed_subst hx hsubst
-    · exact CaptureSet.is_closed_subst hcs hsubst
+    exact IsClosed.capp (Var.is_closed_subst hx hsubst) (CaptureSet.is_closed_subst hcs hsubst)
   | letin e1 e2 ih1 ih2 =>
     cases hc with | letin he1 he2 =>
-    simp only [Exp.subst]
-    constructor
-    · exact ih1 he1 hsubst
-    · exact ih2 he2 (Subst.lift_closed hsubst)
+    exact IsClosed.letin (ih1 he1 hsubst) (ih2 he2 (Subst.lift_closed hsubst))
   | unpack e1 e2 ih1 ih2 =>
     cases hc with | unpack he1 he2 =>
-    simp only [Exp.subst]
-    constructor
-    · exact ih1 he1 hsubst
-    · exact ih2 he2 (Subst.lift_closed (Subst.lift_closed hsubst))
-  | unit =>
-    exact IsClosed.unit
-  | btrue =>
-    exact IsClosed.btrue
-  | bfalse =>
-    exact IsClosed.bfalse
+    exact IsClosed.unpack (ih1 he1 hsubst) (ih2 he2 (Subst.lift_closed (Subst.lift_closed hsubst)))
+  | unit => exact IsClosed.unit
+  | btrue => exact IsClosed.btrue
+  | bfalse => exact IsClosed.bfalse
   | read x =>
     cases hc with | read hx =>
-    simp only [Exp.subst]
     exact IsClosed.read (Var.is_closed_subst hx hsubst)
   | write x y =>
     cases hc with | write hx hy =>
-    simp only [Exp.subst]
     exact IsClosed.write (Var.is_closed_subst hx hsubst) (Var.is_closed_subst hy hsubst)
   | cond x e2 e3 ih2 ih3 =>
     cases hc with | cond hx h2 h3 =>
-    simp only [Exp.subst]
     exact IsClosed.cond (Var.is_closed_subst hx hsubst) (ih2 h2 hsubst) (ih3 h3 hsubst)
 
 /-- The openVar substitution is closed if the variable is closed. -/
@@ -1121,15 +1080,10 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   | top => exact IsClosed.top
   | tvar X => exact IsClosed.tvar
   | arrow T1 T2 ih1 ih2 =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | arrow h1 h2 =>
-    exact IsClosed.arrow (ih1 h1) (ih2 h2)
+    cases hclosed with | arrow h1 h2 => exact IsClosed.arrow (ih1 h1) (ih2 h2)
   | poly T1 T2 ih1 ih2 =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | poly h1 h2 =>
-    exact IsClosed.poly (ih1 h1) (ih2 h2)
+    cases hclosed with | poly h1 h2 => exact IsClosed.poly (ih1 h1) (ih2 h2)
   | cpoly cb T ih =>
-    simp only [Ty.subst] at hclosed
     cases hclosed with | cpoly hcb hT =>
     exact IsClosed.cpoly (CaptureBound.subst_closed_inv hcb) (ih hT)
   | unit => exact IsClosed.unit
@@ -1137,17 +1091,12 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   | bool => exact IsClosed.bool
   | cell => exact IsClosed.cell
   | capt cs T ih =>
-    simp only [Ty.subst] at hclosed
     cases hclosed with | capt h1 h2 =>
     exact IsClosed.capt (CaptureSet.subst_closed_inv h1) (ih h2)
   | exi T ih =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | exi hT =>
-    exact IsClosed.exi (ih hT)
+    cases hclosed with | exi hT => exact IsClosed.exi (ih hT)
   | typ T ih =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | typ hT =>
-    exact IsClosed.typ (ih hT)
+    cases hclosed with | typ hT => exact IsClosed.typ (ih hT)
 
 /-- If the result of substitution is closed, the original expression was closed. -/
 theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
@@ -1155,65 +1104,42 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
   e.IsClosed := by
   induction e generalizing s2 with
   | var x =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | var hx =>
-    exact IsClosed.var (Var.subst_closed_inv hx)
+    cases hclosed with | var hx => exact IsClosed.var (Var.subst_closed_inv hx)
   | abs cs T e ih =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | abs hcs hT he =>
     exact IsClosed.abs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
   | tabs cs T e ih =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | tabs hcs hT he =>
     exact IsClosed.tabs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
   | cabs cs cb e ih =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | cabs hcs hcb he =>
-    exact IsClosed.cabs
-      (CaptureSet.subst_closed_inv hcs)
-      (CaptureBound.subst_closed_inv hcb)
+    exact IsClosed.cabs (CaptureSet.subst_closed_inv hcs) (CaptureBound.subst_closed_inv hcb)
       (ih he)
   | pack cs x =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | pack hcs hx =>
     exact IsClosed.pack (CaptureSet.subst_closed_inv hcs) (Var.subst_closed_inv hx)
   | app x y =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | app hx hy =>
     exact IsClosed.app (Var.subst_closed_inv hx) (Var.subst_closed_inv hy)
   | tapp x T =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | tapp hx hT =>
     exact IsClosed.tapp (Var.subst_closed_inv hx) (Ty.subst_closed_inv hT)
   | capp x cs =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | capp hx hcs =>
     exact IsClosed.capp (Var.subst_closed_inv hx) (CaptureSet.subst_closed_inv hcs)
   | letin e1 e2 ih1 ih2 =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | letin he1 he2 =>
-    exact IsClosed.letin (ih1 he1) (ih2 he2)
+    cases hclosed with | letin he1 he2 => exact IsClosed.letin (ih1 he1) (ih2 he2)
   | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | unpack he1 he2 =>
-    exact IsClosed.unpack (ih1 he1) (ih2 he2)
+    cases hclosed with | unpack he1 he2 => exact IsClosed.unpack (ih1 he1) (ih2 he2)
   | unit => exact IsClosed.unit
-  | btrue =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | btrue => exact IsClosed.btrue
-  | bfalse =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | bfalse => exact IsClosed.bfalse
+  | btrue => exact IsClosed.btrue
+  | bfalse => exact IsClosed.bfalse
   | read x =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | read hx =>
-    exact IsClosed.read (Var.subst_closed_inv hx)
+    cases hclosed with | read hx => exact IsClosed.read (Var.subst_closed_inv hx)
   | write x y =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | write hx hy =>
     exact IsClosed.write (Var.subst_closed_inv hx) (Var.subst_closed_inv hy)
   | cond x e2 e3 ih2 ih3 =>
-    simp only [Exp.subst] at hclosed
     cases hclosed with | cond hx h2 h3 =>
     exact IsClosed.cond (Var.subst_closed_inv hx) (ih2 h2) (ih3 h3)
 

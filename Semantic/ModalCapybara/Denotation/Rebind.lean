@@ -389,9 +389,8 @@ def rebind_val_denot
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hsub_bound
       let R0 := expand_captures m.heap cs'
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
       specialize hd m' CS hwf_CS hsub hsub_bound
-      exact (ih2 m' _).mpr hd
+      exact (rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0 m' _).mpr hd
   | .modal cs Ψ T => by
     intro m e
     simp only [Ty.val_denot, Ty.rename]
@@ -472,29 +471,11 @@ def rebind_exi_val_denot
         simp only [List.empty_eq, and_congr_right_iff]
         -- Goal: CS.WfInHeap m.heap → (... ↔ ...)
         intro _hwf
-        have ih := rebind_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m)) T
-        exact ih m (Exp.var y)
+        exact rebind_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m)) T m (Exp.var y)
       all_goals {
         -- resolve returned non-pack
         simp only
       }
-
-def rebind_exp_denot
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (T : Ty .capt s1) (R : CapabilitySet) :
-  Ty.exp_denot env1 T R ≈ Ty.exp_denot env2 (T.rename f) R := by
-  have ih := rebind_val_denot ρ T
-  intro m e
-  simp only [Ty.exp_denot]
-  constructor
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).1
-  · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).2
 
 def rebind_exi_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -505,13 +486,9 @@ def rebind_exi_exp_denot
   simp only [Ty.exi_exp_denot]
   constructor
   · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).1
+    exact eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply ih).1) h
   · intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    exact (Denot.equiv_to_imply ih).2
+    exact eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply ih).2) h
 
 end
 

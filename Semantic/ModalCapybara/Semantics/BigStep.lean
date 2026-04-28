@@ -128,11 +128,9 @@ theorem eval_monotonic {m1 m2 : Memory}
   Eval C m2 e Q := by
   induction heval generalizing m2
   case eval_val hv hQ =>
-    apply Eval.eval_val hv
-    apply hpred hwf hsub hQ
+    exact Eval.eval_val hv (hpred hwf hsub hQ)
   case eval_var hQ =>
-    apply Eval.eval_var
-    apply hpred hwf hsub hQ
+    exact Eval.eval_var (hpred hwf hsub hQ)
   case eval_apply hx _ ih =>
     -- Extract well-formedness of the application
     cases hwf with
@@ -166,14 +164,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- For value cells, subsumption requires equality
     simp only [Cell.subsumes] at hsub_vy
     subst hsub_vy
-    apply Eval.eval_invoke
-    · exact hmem
-    · exact hx2
-    · exact hy2
-    · apply hpred
-      · apply Exp.WfInHeap.wf_unit
-      · exact hsub
-      · exact hQ
+    exact Eval.eval_invoke hmem hx2 hy2 (hpred Exp.WfInHeap.wf_unit hsub hQ)
   case eval_tapply hx _ ih =>
     -- Destructure subsumption to get the value in m2
     obtain ⟨v', hx2, hsub_v⟩ := hsub _ _ hx
@@ -218,8 +209,7 @@ theorem eval_monotonic {m1 m2 : Memory}
             apply Subst.wf_openCVar
             exact hwf_cs)
   case eval_wrap hQ =>
-    apply Eval.eval_wrap
-    exact hpred hwf hsub hQ
+    exact Eval.eval_wrap (hpred hwf hsub hQ)
   case eval_unwrap hx _ ih =>
     cases hwf with
     | wf_unwrap _ =>
@@ -432,11 +422,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     -- Extract well-formedness of both branches
     cases hwf with
     | wf_par hwf1 hwf2 =>
-      apply Eval.eval_par
-      · exact ih1 hpred hbool hsub hwf1
-      · exact ih2 hpred hbool hsub hwf2
-      · exact hni
-      · exact hsub_cap
+      exact Eval.eval_par (ih1 hpred hbool hsub hwf1) (ih2 hpred hbool hsub hwf2) hni hsub_cap
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -460,8 +446,7 @@ theorem Mpost.entails_after_subsumes
   (hsub : m'.subsumes m) :
   Q1.entails_after m' Q2 := by
   intro M mheap e
-  apply himp M _
-  apply Memory.subsumes_trans mheap hsub
+  exact himp M (Memory.subsumes_trans mheap hsub) e
 
 theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   (himp : Q1.entails_after m Q2)
@@ -469,33 +454,21 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   Eval C m e Q2 := by
   induction heval generalizing Q2
   case eval_val v Q M hv hQ =>
-    apply Eval.eval_val hv
-    apply himp M _ _ hQ
-    apply Memory.subsumes_refl
+    exact Eval.eval_val hv (himp M (Memory.subsumes_refl _) _ hQ)
   case eval_var Q1 M x hQ =>
-    apply Eval.eval_var
-    apply himp M _ _ hQ
-    apply Memory.subsumes_refl
+    exact Eval.eval_var (himp M (Memory.subsumes_refl _) _ hQ)
   case eval_apply hx _ ih =>
-    apply Eval.eval_apply hx
-    apply ih himp
+    exact Eval.eval_apply hx (ih himp)
   case eval_invoke hmem hx hy hQ =>
-    apply Eval.eval_invoke hmem hx hy
-    apply himp _ _ _ hQ
-    apply Memory.subsumes_refl
+    exact Eval.eval_invoke hmem hx hy (himp _ (Memory.subsumes_refl _) _ hQ)
   case eval_tapply hx _ ih =>
-    apply Eval.eval_tapply hx
-    apply ih himp
+    exact Eval.eval_tapply hx (ih himp)
   case eval_capply hx _ ih =>
-    apply Eval.eval_capply hx
-    apply ih himp
+    exact Eval.eval_capply hx (ih himp)
   case eval_wrap hQ =>
-    apply Eval.eval_wrap
-    apply himp _ _ _ hQ
-    apply Memory.subsumes_refl
+    exact Eval.eval_wrap (himp _ (Memory.subsumes_refl _) _ hQ)
   case eval_unwrap hx _ ih =>
-    apply Eval.eval_unwrap hx
-    apply ih himp
+    exact Eval.eval_unwrap hx (ih himp)
   case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred hbool0 ih
@@ -504,15 +477,12 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       exact h_nonstuck hQ0
     case h_val =>
       intro m1 v hs1 hv hwf_v hq1 l' hfresh
-      apply ih_val hs1 hv hwf_v hq1 l' hfresh
-      apply Mpost.entails_after_subsumes himp
-      apply Memory.subsumes_trans
-        (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh) hs1
+      exact ih_val hs1 hv hwf_v hq1 l' hfresh
+        (Mpost.entails_after_subsumes himp
+          (Memory.subsumes_trans (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh) hs1))
     case h_var =>
       intro m1 x hs1 hwf_x hq1
-      apply ih_var hs1 hwf_x hq1
-      apply Mpost.entails_after_subsumes himp
-      apply hs1
+      exact ih_var hs1 hwf_x hq1 (Mpost.entails_after_subsumes himp hs1)
   case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred hbool0 ih
@@ -521,13 +491,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       exact h_nonstuck hQ0
     case h_val =>
       intro m1 x cs hs1 hwf_x hwf_cs hq1
-      apply ih_val hs1 hwf_x hwf_cs hq1
-      apply Mpost.entails_after_subsumes himp
-      apply hs1
+      exact ih_val hs1 hwf_x hwf_cs hq1 (Mpost.entails_after_subsumes himp hs1)
   case eval_read hcov hmem hx hQ =>
-    apply Eval.eval_read hcov hmem hx
-    apply himp _ _ _ hQ
-    apply Memory.subsumes_refl
+    exact Eval.eval_read hcov hmem hx (himp _ (Memory.subsumes_refl _) _ hQ)
   case eval_write_true hmem hx hy hQ =>
     apply Eval.eval_write_true hmem hx hy
     apply himp _ _ _ hQ
@@ -546,27 +512,18 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       exact h_nonstuck hQ0
     case h_true =>
       intro m1 v hsub hq1 hres
-      apply ih_true hsub hq1 hres
-      apply Mpost.entails_after_subsumes himp
-      exact hsub
+      exact ih_true hsub hq1 hres (Mpost.entails_after_subsumes himp hsub)
     case h_false =>
       intro m1 v hsub hq1 hres
-      apply ih_false hsub hq1 hres
-      apply Mpost.entails_after_subsumes himp
-      exact hsub
+      exact ih_false hsub hq1 hres (Mpost.entails_after_subsumes himp hsub)
   case eval_par hni hsub_cap ih1 ih2 =>
-    apply Eval.eval_par
-    · exact ih1 himp
-    · exact ih2 himp
-    · exact hni
-    · exact hsub_cap
+    exact Eval.eval_par (ih1 himp) (ih2 himp) hni hsub_cap
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
   (heval : Eval C m e Q1) :
-  Eval C m e Q2 := by
-  apply eval_post_monotonic_general _ heval
-  apply Mpost.entails_to_entails_after himp
+  Eval C m e Q2 :=
+  eval_post_monotonic_general (Mpost.entails_to_entails_after himp) heval
 
 theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   (heval : Eval A1 m e Q)
@@ -624,14 +581,6 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
   case eval_par heval1 heval2 hni hsub_cap _ _ =>
-    -- hsub_cap : C1 ∪ C2 ⊆ C'  (where C' = A1)
-    -- hsub : C' ⊆ A2
-    -- Keep original sub-derivations to preserve Noninterference C1 C2
-    -- Just need to show C1 ∪ C2 ⊆ A2
-    apply Eval.eval_par
-    · exact heval1
-    · exact heval2
-    · exact hni
-    · exact CapabilitySet.Subset.trans hsub_cap hsub
+    exact Eval.eval_par heval1 heval2 hni (CapabilitySet.Subset.trans hsub_cap hsub)
 
 end ModalCapybara

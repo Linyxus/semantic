@@ -25,12 +25,9 @@ def Rebind.liftTVar
 theorem rebind_interp_var
   (ρ : Rebind env1 f env2) :
   interp_var env1 x = interp_var env2 (x.rename f) := by
-  cases x
-  case bound x =>
-    simp [interp_var, Var.rename]
-    have := ρ.var x
-    grind [TypeEnv.lookup_var]
-  case free n => rfl
+  cases x with
+  | bound x => simp only [interp_var, Var.rename, TypeEnv.lookup_var, ρ.var x]
+  | free n => rfl
 
 mutual
 
@@ -38,66 +35,49 @@ def rebind_val_denot
   (ρ : Rebind env1 f env2) :
   Ty.val_denot env1 T ≈ Ty.val_denot env2 (T.rename f) :=
   match T with
-  | .top => by
-    apply Denot.eq_to_equiv
-    simp [Ty.val_denot, Ty.rename]
+  | .top => by simp [Denot.Equiv, Ty.val_denot, Ty.rename]
   | .tvar X => by
     apply Denot.eq_to_equiv
-    simp only [Ty.val_denot, Ty.rename]
-    simpa only [TypeEnv.lookup_tvar] using
-      congrArg
-        (fun info : TypeInfo .tvar =>
-          match info with
-          | .tvar T => T)
-        (ρ.var X)
+    simp only [Ty.val_denot, Ty.rename, TypeEnv.lookup_tvar, ρ.var X]
   | .singleton x => by
     apply Denot.eq_to_equiv
-    funext s e
-    simp only [Ty.val_denot, Ty.rename]
-    exact congrArg (fun n => e = .var (.free n)) (rebind_interp_var ρ (x:=x))
+    simp only [Ty.val_denot, Ty.rename, rebind_interp_var ρ (x:=x)]
   | .arrow T1 T2 => by
     have ih1 := rebind_val_denot ρ (T:=T1)
     simp only [Ty.val_denot, Ty.rename]
-    intro s0 e0; constructor <;> {
-      intro h
+    intro s0 e0; constructor
+    · intro h
       obtain ⟨T0, body, hr, hd⟩ := h
-      use T0, body, hr
-      intro s' arg h_s harg
-      have ih2 := rebind_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
-      first
-      | exact (ih2 _ _).mp (hd s' arg h_s ((ih1 _ _).mpr harg))
-      | exact (ih2 _ _).mpr (hd s' arg h_s ((ih1 _ _).mp harg))
-    }
+      exact ⟨T0, body, hr, fun s' arg h_s harg =>
+        (rebind_exp_denot (ρ.liftVar (x:=arg)) (T:=T2) _ _).mp
+          (hd s' arg h_s ((ih1 _ _).mpr harg))⟩
+    · intro h
+      obtain ⟨T0, body, hr, hd⟩ := h
+      exact ⟨T0, body, hr, fun s' arg h_s harg =>
+        (rebind_exp_denot (ρ.liftVar (x:=arg)) (T:=T2) _ _).mpr
+          (hd s' arg h_s ((ih1 _ _).mp harg))⟩
   | .poly T1 T2 => by
     have ih1 := rebind_val_denot ρ (T:=T1)
     simp only [Ty.val_denot, Ty.rename]
-    intro s0 e0; constructor <;> {
-      intro h
+    intro s0 e0; constructor
+    · intro h
       obtain ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0, hr
-      intro H denot Hsub hdenot_mono hdenot_trans himply
-      have ih2 := rebind_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
-      first
-      | have himply' : denot.ImplyAfter H (Ty.val_denot env1 T1) := by
-          intro s hs e hdenot; exact (ih1 s e).mpr (himply s hs e hdenot)
-        exact (ih2 H _).mp (hd H denot Hsub hdenot_mono hdenot_trans himply')
-      | have himply' : denot.ImplyAfter H (Ty.val_denot env2 (T1.rename f)) := by
-          intro s Hs e hdenot; exact (ih1 s e).mp (himply s Hs e hdenot)
-        exact (ih2 H _).mpr (hd H denot Hsub hdenot_mono hdenot_trans himply')
-    }
+      refine ⟨T0, e0, hr, fun H denot Hsub hm ht himply => ?_⟩
+      exact (rebind_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2) H _).mp
+        (hd H denot Hsub hm ht (fun s hs e hd => (ih1 s e).mpr (himply s hs e hd)))
+    · intro h
+      obtain ⟨T0, e0, hr, hd⟩ := h
+      refine ⟨T0, e0, hr, fun H denot Hsub hm ht himply => ?_⟩
+      exact (rebind_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2) H _).mpr
+        (hd H denot Hsub hm ht (fun s hs e hd => (ih1 s e).mp (himply s hs e hd)))
 
 def rebind_exp_denot
   (ρ : Rebind env1 f env2) :
   Ty.exp_denot env1 T ≈ Ty.exp_denot env2 (T.rename f) := by
-  have ih := rebind_val_denot ρ (T:=T)
-  intro s e; simp only [Ty.exp_denot]; constructor <;> {
-    intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    first
-    | exact (Denot.equiv_to_imply ih).1
-    | exact (Denot.equiv_to_imply ih).2
-  }
+  have ⟨himp1, himp2⟩ := Denot.equiv_to_imply (rebind_val_denot ρ (T:=T))
+  intro s e; simp only [Ty.exp_denot]; constructor
+  · intro h; exact eval_post_monotonic (Denot.imply_to_entails _ _ himp1) h
+  · intro h; exact eval_post_monotonic (Denot.imply_to_entails _ _ himp2) h
 
 end
 

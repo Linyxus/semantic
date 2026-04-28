@@ -110,9 +110,7 @@ theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
   (ht : EnvTyping Γ env (Memory.platform_of N)) :
   EnvTyping Γ env (Memory.platform_of M) := by
   -- Use the existing monotonicity theorem for EnvTyping
-  apply env_typing_monotonic
-  · exact ht
-  · exact platform_memory_subsumes hNM
+  exact env_typing_monotonic ht (platform_memory_subsumes hNM)
 
 theorem env_typing_of_platform {N : Nat} :
   EnvTyping

@@ -55,18 +55,14 @@ theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {cb1 cb2 : CaptureBo
 -- Subsumption reflexivity
 
 theorem Subcapt.refl {Γ : Ctx s} {C : CaptureSet s} :
-    Subcapt Γ C C := by
-  apply Subcapt.sc_elem
-  apply CaptureSet.Subset.refl
+    Subcapt Γ C C :=
+  .sc_elem CaptureSet.Subset.refl
 
 theorem Subbound.refl {Γ : Ctx s} {cb : CaptureBound s} :
     Subbound Γ cb cb := by
   cases cb
-  case unbound =>
-    apply Subbound.top
-  case bound C =>
-    apply Subbound.capset
-    apply Subcapt.refl
+  · exact .top
+  · exact .capset Subcapt.refl
 
 /-- Renaming preserves closedness of capture sets. -/
 theorem CaptureSet.rename_closed {cs : CaptureSet s1} {f : Rename s1 s2} :
@@ -408,10 +404,7 @@ theorem HasType.type_is_closed
     -- Need: U.IsClosed
     exact Ty.rename_closed_inv ih2
   case unpack ih1 ih2 =>
-    -- ih2 : ((U.rename Rename.succ).rename Rename.succ).IsClosed
-    -- Need: U.IsClosed
-    apply Ty.rename_closed_inv
-    exact Ty.rename_closed_inv ih2
+    exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
   case unit =>
     constructor
     constructor
@@ -440,17 +433,11 @@ theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
       -- Since b : Binding s₀ .var, we have b = .var T₀
       cases b with
       | var T₀ =>
-        use T₀.rename Rename.succ
-        apply Ctx.LookupVar.here
+        exact ⟨_, .here⟩
   | there x' =>
-    -- x = there x', so s = s₀,,k for some s₀, k
-    -- Γ : Ctx (s₀,,k), so Γ = push Γ₀ b where b : Binding s₀ k
     cases Γ with
     | push Γ₀ b =>
-      -- Recursively apply the theorem to get T₀ such that Γ₀.LookupVar x' T₀
       obtain ⟨T₀, h⟩ := lookup_var_exists (Γ := Γ₀) (x := x')
-      use T₀.rename Rename.succ
-      apply Ctx.LookupVar.there
-      exact h
+      exact ⟨_, .there h⟩
 
 end CC

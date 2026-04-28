@@ -148,17 +148,15 @@ def PreDenot.ImplyAfter (pd1 : PreDenot) (m : Memory) (pd2 : PreDenot) : Prop :=
 
 theorem Denot.imply_implyat {d1 d2 : Denot}
   (himp : d1.Imply d2) :
-  d1.ImplyAt m d2 := by
-  intro e h1
-  apply himp m e h1
+  d1.ImplyAt m d2 :=
+  fun e h1 => himp m e h1
 
 theorem Denot.implyat_trans
   {d1 d2 : Denot}
   (himp1 : d1.ImplyAt m d2)
   (himp2 : d2.ImplyAt m d3) :
-  d1.ImplyAt m d3 := by
-  intro e h1
-  apply himp2 e (himp1 e h1)
+  d1.ImplyAt m d3 :=
+  fun e h1 => himp2 e (himp1 e h1)
 
 lemma Denot.imply_after_to_m_entails_after {d1 d2 : Denot}
   {m : Memory}
@@ -166,36 +164,30 @@ lemma Denot.imply_after_to_m_entails_after {d1 d2 : Denot}
   d1.as_mpost.entails_after m d2.as_mpost := by
   intro m' hsub
   unfold Mpost.entails_at Denot.as_mpost
-  intro e h1
-  apply himp m' hsub e h1
+  intro e h1; exact himp m' hsub e h1
 
 lemma Denot.imply_after_subsumes {d1 d2 : Denot}
   (himp : d1.ImplyAfter m1 d2)
   (hmem : m2.subsumes m1) :
-  d1.ImplyAfter m2 d2 := by
-  intro M hs
-  apply himp M
-  apply Memory.subsumes_trans hs hmem
+  d1.ImplyAfter m2 d2 :=
+  fun M hs => himp M (Memory.subsumes_trans hs hmem)
 
 lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
   (himp : d1.ImplyAfter m d2) :
-  d1.ImplyAt m d2 := by
-  intro e h1
-  apply himp m (Memory.subsumes_refl m) e h1
+  d1.ImplyAt m d2 :=
+  fun e h1 => himp m (Memory.subsumes_refl m) e h1
 
 lemma Denot.imply_after_trans {d1 d2 d3 : Denot}
   (himp1 : d1.ImplyAfter m d2)
   (himp2 : d2.ImplyAfter m d3) :
-  d1.ImplyAfter m d3 := by
-  intro m' hsub e h1
-  apply himp2 m' hsub
-  apply himp1 m' hsub e h1
+  d1.ImplyAfter m d3 :=
+  fun m' hsub e h1 => himp2 m' hsub e (himp1 m' hsub e h1)
 
 lemma Denot.apply_imply_at {d1 d2 : Denot}
   (ht : d1 m e)
   (himp : d1.ImplyAt m d2) :
-  d2 m e := by
-  apply himp e ht
+  d2 m e :=
+  himp e ht
 
 inductive TypeInfo : Kind -> Type where
 | var : Nat -> TypeInfo .var
@@ -696,8 +688,7 @@ theorem from_TypeEnv_wf_in_heap
           · intro X
             cases X with
             | here =>
-              simp only [Subst.from_TypeEnv]
-              apply Ty.WfInHeap.wf_top
+              simp only [Subst.from_TypeEnv]; exact .wf_top
             | there X' =>
               simp only [Subst.from_TypeEnv]
               exact ih_wf.wf_tvar X'
@@ -748,13 +739,8 @@ def Denot.equiv_refl (d : Denot) : d ≈ d := by
   · intro h
     exact h
 
-def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 := by
-  intro h m e
-  constructor
-  · intro h0
-    apply (h m e).mpr h0
-  · intro h0
-    apply (h m e).mp h0
+def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 :=
+  fun h m e => ⟨(h m e).mpr, (h m e).mp⟩
 
 def Denot.equiv_trans (d1 d2 d3 : Denot) : d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 := by
   intro h12 h23 m e
@@ -769,23 +755,19 @@ theorem Denot.eq_to_equiv (d1 d2 : Denot) : d1 = d2 -> d1 ≈ d2 := by
 theorem Denot.equiv_ltr {d1 d2 : Denot}
   (heqv : d1 ≈ d2)
   (h1 : d1 m e) :
-  d2 m e := by
-  apply (heqv m e).mp h1
+  d2 m e :=
+  (heqv m e).mp h1
 
 theorem Denot.equiv_rtl {d1 d2 : Denot}
   (heqv : d1 ≈ d2)
   (h2 : d2 m e) :
-  d1 m e := by
-  apply (heqv m e).mpr h2
+  d1 m e :=
+  (heqv m e).mpr h2
 
 theorem Denot.equiv_to_imply {d1 d2 : Denot}
   (heqv : d1 ≈ d2) :
-  (d1.Imply d2) ∧ (d2.Imply d1) := by
-  constructor
-  · intro m e h
-    apply (heqv m e).mp h
-  · intro m e h
-    apply (heqv m e).mpr h
+  (d1.Imply d2) ∧ (d2.Imply d1) :=
+  ⟨fun m e h => (heqv m e).mp h, fun m e h => (heqv m e).mpr h⟩
 
 theorem Denot.equiv_to_imply_l {d1 d2 : Denot}
   (heqv : d1 ≈ d2) :
@@ -797,9 +779,8 @@ theorem Denot.equiv_to_imply_r {d1 d2 : Denot}
 
 theorem Denot.imply_to_entails (d1 d2 : Denot)
   (himp : d1.Imply d2) :
-  d1.as_mpost.entails d2.as_mpost := by
-  intro m e h1
-  apply himp m e h1
+  d1.as_mpost.entails d2.as_mpost :=
+  fun m e h1 => himp m e h1
 
 /- Equivalence for PreDenot -/
 def PreDenot.Equiv (pd1 pd2 : PreDenot) : Prop :=
@@ -809,31 +790,21 @@ instance PreDenot.instHasEquiv : HasEquiv PreDenot where
   Equiv := PreDenot.Equiv
 
 theorem PreDenot.equiv_def {pd1 pd2 : PreDenot} :
-  pd1 ≈ pd2 ↔ ∀ A m e, (pd1 A m e) ↔ (pd2 A m e) := by
-  constructor
-  · intro h A m e
-    exact (h A) m e
-  · intro h A m e
-    exact h A m e
+  pd1 ≈ pd2 ↔ ∀ A m e, (pd1 A m e) ↔ (pd2 A m e) :=
+  ⟨fun h A m e => (h A) m e, fun h A m e => h A m e⟩
 
 theorem PreDenot.eq_to_equiv {pd1 pd2 : PreDenot} (h : pd1 = pd2) : pd1 ≈ pd2 := by
   intro A m e
   rw [h]
 
-theorem PreDenot.equiv_refl (pd : PreDenot) : pd ≈ pd := by
-  intro A
-  apply Denot.equiv_refl
+theorem PreDenot.equiv_refl (pd : PreDenot) : pd ≈ pd :=
+  fun A => Denot.equiv_refl (pd A)
 
 theorem PreDenot.equiv_symm (pd1 pd2 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd1 := by
-  intro h A
-  apply Denot.equiv_symm
-  exact h A
+  intro h A; exact Denot.equiv_symm _ _ (h A)
 
-theorem PreDenot.equiv_trans (pd1 pd2 pd3 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd3 -> pd1 ≈ pd3 := by
-  intro h12 h23 A
-  apply Denot.equiv_trans _ (pd2 A) _
-  · exact h12 A
-  · exact h23 A
+theorem PreDenot.equiv_trans (pd1 pd2 pd3 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd3 -> pd1 ≈ pd3 :=
+  fun h12 h23 A => Denot.equiv_trans _ (pd2 A) _ (h12 A) (h23 A)
 
 theorem Denot.imply_refl (d : Denot) : d.Imply d := by
   intro m e h
@@ -875,8 +846,7 @@ theorem resolve_ans_to_val
   cases (resolve_var_or_val hv)
   case inl h =>
     have ⟨x, h⟩ := h
-    rw [h]
-    apply Exp.IsAns.is_var
+    rw [h]; exact .is_var
   case inr h => aesop
 
 def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
@@ -916,15 +886,13 @@ def TypeEnv.is_tight (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_tight
 
-theorem typed_env_is_monotonic
+private theorem typed_env_tvar_is_proper
   (ht : EnvTyping Γ env mem) :
-  env.IsMonotonic := by
+  ∀ X, (env.lookup_tvar X).is_proper := by
   induction Γ with
   | empty =>
     cases env with
-    | empty =>
-      constructor
-      · intro x; cases x
+    | empty => intro X; cases X
   | push Γ k ih =>
     cases env with
     | extend env' info =>
@@ -935,376 +903,75 @@ theorem typed_env_is_monotonic
           simp only [EnvTyping] at ht
           have ⟨_, ht'⟩ := ht
           have ih_result := ih ht'
-          constructor
-          · intro x
-            cases x with
-            | there x =>
-              simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-              exact ih_result.tvar x
+          intro X; cases X with
+          | there X => simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]; exact ih_result X
       | tvar S =>
         cases info with
         | tvar d =>
           simp only [EnvTyping] at ht
           have ⟨hproper, _, ht'⟩ := ht
           have ih_result := ih ht'
-          constructor
-          · intro x
-            cases x with
-            | here =>
-              simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-              -- hproper says d.is_proper
-              -- We need d.is_monotonic
-              intro C
-              exact (hproper.2.2.2.2 C).1
-            | there x =>
-              simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-              exact ih_result.tvar x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp only [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          constructor
-          · intro x
-            cases x with
-            | there x =>
-              simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-              exact ih_result.tvar x
-
-theorem typed_env_is_transparent
-  (ht : EnvTyping Γ env mem) :
-  env.is_transparent := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp only [TypeEnv.is_transparent]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n =>
-          simp only [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_transparent] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp only [EnvTyping] at ht
-          have ⟨hproper, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_transparent] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper
-            -- We need d.is_transparent
-            intro C
-            exact (hproper.2.2.2.2 C).2.1
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp only [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_transparent] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-
-theorem typed_env_is_bool_independent
-  (ht : EnvTyping Γ env mem) :
-  env.is_bool_independent := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp only [TypeEnv.is_bool_independent]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n =>
-          simp only [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_bool_independent] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp only [EnvTyping] at ht
-          have ⟨hproper, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_bool_independent] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper
-            -- We need d.is_bool_independent
-            intro C
-            exact (hproper.2.2.2.2 C).2.2
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp only [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_bool_independent] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-
-theorem typed_env_is_reachability_safe
-  (ht : EnvTyping Γ env mem) :
-  env.is_reachability_safe := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp only [TypeEnv.is_reachability_safe]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n =>
-          simp only [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_reachability_safe] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp only [EnvTyping] at ht
-          have ⟨hproper, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_reachability_safe] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper, which is d.is_reachability_safe ∧ ∀ C, (d C).is_proper
-            -- We need d.is_reachability_safe
-            exact hproper.1
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp only [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_reachability_safe] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-
-theorem typed_env_is_reachability_monotonic
-  (ht : EnvTyping Γ env mem) :
-  env.is_reachability_monotonic := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp only [TypeEnv.is_reachability_monotonic]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n =>
-          simp only [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_reachability_monotonic] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp only [EnvTyping] at ht
-          have ⟨hproper, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_reachability_monotonic] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper
-            -- We need d.is_reachability_monotonic, which is hproper.2.1
-            exact hproper.2.1
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp only [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_reachability_monotonic] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-
-theorem typed_env_is_implying_wf
-  (ht : EnvTyping Γ env mem) :
-  env.is_implying_wf := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      simp only [TypeEnv.is_implying_wf]
-      intro x
-      cases x
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n =>
-          simp only [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_implying_wf] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp only [EnvTyping] at ht
-          have ⟨hproper, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_implying_wf] at ih_result ⊢
-          intro x
-          cases x with
-          | here =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper
-            -- We need d.implies_wf
-            exact hproper.2.2.1
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-      | cvar B =>
-        cases info with
-        | cvar cs =>
-          simp only [EnvTyping] at ht
-          have ⟨hwf, hwf_bound, hsub, ht'⟩ := ht
-          have ih_result := ih ht'
-          simp only [TypeEnv.is_implying_wf] at ih_result ⊢
-          intro x
-          cases x with
-          | there x =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result x
-
-theorem typed_env_is_tight
-  (ht : EnvTyping Γ env mem) :
-  env.is_tight := by
-  induction Γ with
-  | empty =>
-    cases env with
-    | empty =>
-      intro X
-      cases X
-  | push Γ k ih =>
-    cases env with
-    | extend env' info =>
-      cases k with
-      | var T =>
-        cases info with
-        | var n =>
-          simp only [EnvTyping] at ht
-          have ⟨_, ht'⟩ := ht
-          have ih_result := ih ht'
-          intro X
-          cases X with
-          | there X' =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result X'
-      | tvar S =>
-        cases info with
-        | tvar d =>
-          simp only [EnvTyping] at ht
-          have ⟨hproper, _, ht'⟩ := ht
-          have ih_result := ih ht'
-          intro X
-          cases X with
-          | here =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            -- hproper says d.is_proper
-            -- We need d.is_tight
-            exact hproper.2.2.2.1
-          | there X' =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result X'
+          intro X; cases X with
+          | here => simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]; exact hproper
+          | there X => simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]; exact ih_result X
       | cvar B =>
         cases info with
         | cvar cs =>
           simp only [EnvTyping] at ht
           have ⟨_, _, _, ht'⟩ := ht
           have ih_result := ih ht'
-          intro X
-          cases X with
-          | there X' =>
-            simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]
-            exact ih_result X'
+          intro X; cases X with
+          | there X => simp only [TypeEnv.lookup_tvar, TypeEnv.lookup]; exact ih_result X
+
+theorem typed_env_is_monotonic
+  (ht : EnvTyping Γ env mem) :
+  env.IsMonotonic := by
+  have hprop := typed_env_tvar_is_proper ht
+  constructor
+  intro X C
+  exact (hprop X).2.2.2.2 C |>.1
+
+theorem typed_env_is_transparent
+  (ht : EnvTyping Γ env mem) :
+  env.is_transparent := by
+  have hprop := typed_env_tvar_is_proper ht
+  intro X C
+  exact (hprop X).2.2.2.2 C |>.2.1
+
+theorem typed_env_is_bool_independent
+  (ht : EnvTyping Γ env mem) :
+  env.is_bool_independent := by
+  have hprop := typed_env_tvar_is_proper ht
+  intro X C
+  exact (hprop X).2.2.2.2 C |>.2.2
+
+theorem typed_env_is_reachability_safe
+  (ht : EnvTyping Γ env mem) :
+  env.is_reachability_safe := by
+  have hprop := typed_env_tvar_is_proper ht
+  intro X
+  exact (hprop X).1
+
+theorem typed_env_is_reachability_monotonic
+  (ht : EnvTyping Γ env mem) :
+  env.is_reachability_monotonic := by
+  have hprop := typed_env_tvar_is_proper ht
+  intro X
+  exact (hprop X).2.1
+
+theorem typed_env_is_implying_wf
+  (ht : EnvTyping Γ env mem) :
+  env.is_implying_wf := by
+  have hprop := typed_env_tvar_is_proper ht
+  intro X
+  exact (hprop X).2.2.1
+
+theorem typed_env_is_tight
+  (ht : EnvTyping Γ env mem) :
+  env.is_tight := by
+  have hprop := typed_env_tvar_is_proper ht
+  intro X
+  exact (hprop X).2.2.2.1
 
 theorem shape_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1317,10 +984,7 @@ theorem shape_val_denot_is_transparent {env : TypeEnv s}
     -- ht : v.unwrap.WfInHeap m.heap ∧ resolve_reachability m.heap v.unwrap ⊆ C
     -- Goal: (.var (.free x)).WfInHeap m.heap ∧ resolve_reachability m.heap (.var (.free x)) ⊆ C
     constructor
-    · -- Prove: (.var (.free x)).WfInHeap m.heap
-      apply Exp.WfInHeap.wf_var
-      apply Var.WfInHeap.wf_free
-      exact hx
+    · exact .wf_var (.wf_free hx)
     · -- Prove: resolve_reachability m.heap (.var (.free x)) ⊆ C
       simp only [resolve_reachability]
       -- Goal: reachability_of_loc m.heap x ⊆ C
@@ -1472,16 +1136,10 @@ theorem capt_val_denot_is_transparent {env : TypeEnv s}
     simp only [Ty.capt_val_denot] at ht ⊢
     have ⟨hsv, hwf, hwf_C, hshape⟩ := ht
     split_ands
-    · apply Exp.IsSimpleAns.is_var
-    · -- Prove: (.var (.free x)).WfInHeap m.heap
-      -- A variable is well-formed if it points to something in the heap
-      apply Exp.WfInHeap.wf_var
-      apply Var.WfInHeap.wf_free
-      exact hx
-    · -- Prove: C.WfInHeap m.heap
-      exact hwf_C
-    · -- Prove: shape_val_denot env S (C.denot env m) m (.var (.free x))
-      exact shape_val_denot_is_transparent henv S (C.denot env m) hx hshape
+    · exact .is_var
+    · exact .wf_var (.wf_free hx)
+    · exact hwf_C
+    · exact shape_val_denot_is_transparent henv S (C.denot env m) hx hshape
 
 theorem exi_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
@@ -1722,12 +1380,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     intro m1 m2 e hmem ht
     simp only [Ty.shape_val_denot] at ht ⊢
     cases ht with
-    | inl htrue =>
-      left
-      exact resolve_monotonic hmem htrue
-    | inr hfalse =>
-      right
-      exact resolve_monotonic hmem hfalse
+    | inl htrue => exact Or.inl (resolve_monotonic hmem htrue)
+    | inr hfalse => exact Or.inr (resolve_monotonic hmem hfalse)
   | cell =>
     intro m1 m2 e hmem ht
     simp only [Ty.shape_val_denot] at ht ⊢
@@ -1987,23 +1641,11 @@ def capt_val_denot_is_bool_independent {env : TypeEnv s}
     simp only [Ty.capt_val_denot]
     constructor
     · intro ⟨hsimple, hwf, hwf_C, hshape⟩
-      constructor
-      · apply Exp.IsSimpleAns.is_simple_val
-        apply Exp.IsSimpleVal.bfalse
-      · constructor
-        · apply Exp.WfInHeap.wf_bfalse
-        · constructor
-          · exact hwf_C
-          · exact (shape_val_denot_is_bool_independent henv S (C.denot env m)).mp hshape
+      exact ⟨.is_simple_val .bfalse, .wf_bfalse, hwf_C,
+             (shape_val_denot_is_bool_independent henv S (C.denot env m)).mp hshape⟩
     · intro ⟨hsimple, hwf, hwf_C, hshape⟩
-      constructor
-      · apply Exp.IsSimpleAns.is_simple_val
-        apply Exp.IsSimpleVal.btrue
-      · constructor
-        · apply Exp.WfInHeap.wf_btrue
-        · constructor
-          · exact hwf_C
-          · exact (shape_val_denot_is_bool_independent henv S (C.denot env m)).mpr hshape
+      exact ⟨.is_simple_val .btrue, .wf_btrue, hwf_C,
+             (shape_val_denot_is_bool_independent henv S (C.denot env m)).mpr hshape⟩
 
 def exi_val_denot_is_bool_independent {env : TypeEnv s}
   (henv : TypeEnv.is_bool_independent env)
@@ -2532,12 +2174,9 @@ lemma wf_from_resolve_unit
         rw [hfx] at hresolve
         cases hresolve
       | some cell =>
-        apply Exp.WfInHeap.wf_var
-        apply Var.WfInHeap.wf_free
-        exact hfx
+        exact .wf_var (.wf_free hfx)
     | bound bx => cases bx
-  | unit =>
-    apply Exp.WfInHeap.wf_unit
+  | unit => exact .wf_unit
   | _ => simp [resolve] at hresolve
 
 theorem shape_val_denot_implies_wf {env : TypeEnv s}
@@ -2567,9 +2206,7 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
         | some cell =>
           cases cell with
           | val hv =>
-            apply Exp.WfInHeap.wf_var
-            apply Var.WfInHeap.wf_free
-            simpa [Memory.lookup] using hcell
+            exact .wf_var (.wf_free (by simpa [Memory.lookup] using hcell))
           | capability =>
             simp [resolve, hcell] at hdenot
           | masked =>
@@ -2582,12 +2219,8 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
   | cell =>
     simp only [Ty.shape_val_denot] at hdenot
     obtain ⟨l, b0, heq, hlookup, _⟩ := hdenot
-    -- e is a variable, so it's well-formed if it's in the heap
     rw [heq]
-    apply Exp.WfInHeap.wf_var
-    apply Var.WfInHeap.wf_free
-    · simp only [Memory.lookup] at hlookup
-      exact hlookup
+    exact .wf_var (.wf_free (by simp only [Memory.lookup] at hlookup; exact hlookup))
   | cap =>
     simp only [Ty.shape_val_denot] at hdenot
     have ⟨hwf_e, label, heq, hlookup, _⟩ := hdenot

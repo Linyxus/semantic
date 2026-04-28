@@ -15,10 +15,8 @@ theorem typed_env_lookup_var
       cases info with
       | var n ps =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
-        -- Apply weaken_val_denot equivalence
-        have heqv := weaken_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0)
-        apply (Denot.equiv_to_imply heqv).1
-        exact hts.1
+        exact (Denot.equiv_to_imply (weaken_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0))).1
+          _ _ hts.1
   case there b =>
     -- Need to handle three cases based on the binding kind
     rename_i k Γ0 x0 T0 binding hlk
@@ -32,12 +30,8 @@ theorem typed_env_lookup_var
         | var n ps =>
           simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
           obtain ⟨_, _, henv0⟩ := hts
-          -- Apply IH to get the result for env0
-          have hih := b henv0
-          -- Apply weakening
-          have heqv := weaken_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0)
-          apply (Denot.equiv_to_imply heqv).1
-          exact hih
+          exact (Denot.equiv_to_imply (weaken_val_denot (env:=env0) (x:=n) (ps:=ps) (T:=T0))).1
+            _ _ (b henv0)
     case tvar =>
       -- binding is .tvar Sb
       rename_i Sb
@@ -45,10 +39,8 @@ theorem typed_env_lookup_var
       | .extend env0 (.tvar d) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
         obtain ⟨_, _, _, _, _, henv0⟩ := hts
-        have hih := b henv0
-        have heqv := tweaken_val_denot (env:=env0) (d:=d) (T:=T0)
-        apply (Denot.equiv_to_imply heqv).1
-        exact hih
+        exact (Denot.equiv_to_imply (tweaken_val_denot (env:=env0) (d:=d) (T:=T0))).1
+          _ _ (b henv0)
     case cvar =>
       -- binding is .cvar Bb
       rename_i Bb
@@ -56,20 +48,16 @@ theorem typed_env_lookup_var
       | .extend env0 (.cvar cs cap) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
         obtain ⟨_, _, _, _, henv0⟩ := hts
-        have hih := b henv0
-        have heqv := cweaken_val_denot (env:=env0) (cs:=cs) (cap:=cap) (T:=T0)
-        apply (Denot.equiv_to_imply heqv).1
-        exact hih
+        exact (Denot.equiv_to_imply (cweaken_val_denot (env:=env0) (cs:=cs) (cap:=cap) (T:=T0))).1
+          _ _ (b henv0)
     case lock =>
       rename_i Ψ
       match env with
       | .extend env0 (.lock) =>
         simp only [EnvTyping, TypeEnv.lookup_var] at hts ⊢
         obtain ⟨_, henv0⟩ := hts
-        have hih := b henv0
-        have heqv := lweaken_val_denot (env:=env0) (T:=T0)
-        apply (Denot.equiv_to_imply heqv).1
-        exact hih
+        exact (Denot.equiv_to_imply (lweaken_val_denot (env:=env0) (T:=T0))).1
+          _ _ (b henv0)
 
 
 theorem typed_env_lookup_var_reachability
@@ -284,8 +272,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
               -- Show capability sets match
               have hcap_rename :
                 (Cf.rename Rename.succ).denot (env.extend_tvar denot) = Cf.denot env := by
-                have := rebind_captureset_denot (Rebind.tweaken (env:=env) (d:=denot)) Cf
-                exact this.symm
+                exact (rebind_captureset_denot (Rebind.tweaken (env:=env) (d:=denot)) Cf).symm
               -- Use monotonicity to relate capture set denotations at different memories
               have hCf_mono : Cf.denot env store = Cf.denot env m' := by
                 -- Extract closedness of Cf from hclosed_tabs
@@ -373,9 +360,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                     assumption
                   have hwf_cb_at_store :
                       (cb.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-                    apply CaptureBound.wf_subst
-                    · exact CaptureBound.wf_of_closed hclosed_cb
-                    · exact from_TypeEnv_wf_in_heap hts
+                    exact CaptureBound.wf_subst (CaptureBound.wf_of_closed hclosed_cb)
+                                                  (from_TypeEnv_wf_in_heap hts)
                   exact CaptureBound.wf_monotonic hsub hwf_cb_at_store
                 constructor
                 · -- Need to show: (CS.ground_denot m').BoundedBy (cb.denot m')
@@ -450,9 +436,7 @@ theorem sem_typ_pack
       have hclosed_cs : cs.IsClosed := by
         cases hclosed_e with
         | pack hcs_closed _hx_closed => exact hcs_closed
-      apply CaptureSet.wf_subst
-      · exact CaptureSet.wf_of_closed hclosed_cs
-      · exact from_TypeEnv_wf_in_heap hts
+      exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_cs) (from_TypeEnv_wf_in_heap hts)
     · -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
       have hx := ht env store hts
       simp only [Ty.exi_exp_denot, Ty.exi_val_denot, List.empty_eq] at hx
@@ -971,9 +955,9 @@ theorem sem_typ_wrap
           have hsat_Ψ : env.Satisfy Ψ m' := by
             constructor
             · intro C mode hhas
-              apply CaptureSet.wf_subst
-              · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
-              · exact from_TypeEnv_wf_in_heap (env_typing_monotonic hts hsub)
+              exact CaptureSet.wf_subst
+                (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas)
+                (from_TypeEnv_wf_in_heap (env_typing_monotonic hts hsub))
             · intro C mode hhas
               exact hkind C mode hhas
             · intro C1 m1 C2 m2 hdistinct
@@ -1000,9 +984,8 @@ theorem sem_typ_wrap
             exact (rebind_captureset_denot (Rebind.lweaken (env := env)) cs).symm
           have hcs_mono : cs.denot env m' = cs.denot env store := by
             have hwf_cs : (cs.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
-              apply CaptureSet.wf_subst
-              · exact CaptureSet.wf_of_closed hclosed_cs
-              · exact from_TypeEnv_wf_in_heap hts
+              exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_cs)
+                                        (from_TypeEnv_wf_in_heap hts)
             exact (capture_set_denot_is_monotonic (ρ := env) (C := cs) hwf_cs hsub).symm
           have hauthority :
               (cs.rename Rename.succ).denot (env.extend_lock) m' =
@@ -1017,8 +1000,8 @@ theorem sem_typ_wrap
           rw [hauthority] at htyped
           simp only [Ty.exi_exp_denot, List.empty_eq] at htyped ⊢
           apply eval_post_monotonic _ htyped
-          apply Denot.imply_to_entails
-          exact (Denot.equiv_to_imply (lweaken_exi_val_denot (env := env) (T := E))).2
+          exact Denot.imply_to_entails _ _
+            (Denot.equiv_to_imply (lweaken_exi_val_denot (env := env) (T := E))).2
 
 theorem sem_typ_app
   {T1 : Ty .capt s} {T2 : Ty .exi (s,x)}
@@ -1126,8 +1109,8 @@ theorem typed_env_lookup_cvar_aux
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
         obtain ⟨_, _, henv'⟩ := hts
         have hih := ih henv'
-        have hcb := rebind_capturebound_denot (Rebind.weaken (env := env') (x := x) (ps := ps)) cb'
-        rw [congrFun hcb m] at hih
+        rw [congrFun (rebind_capturebound_denot
+            (Rebind.weaken (env := env') (x := x) (ps := ps)) cb') m] at hih
         simpa [TypeEnv.extend_var] using hih
     case tvar =>
       rename_i Γ' c' cb' Sb
@@ -1136,8 +1119,8 @@ theorem typed_env_lookup_cvar_aux
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
         obtain ⟨_, _, _, _, _, henv'⟩ := hts
         have hih := ih henv'
-        have hcb := rebind_capturebound_denot (Rebind.tweaken (env := env') (d := d)) cb'
-        rw [congrFun hcb m] at hih
+        rw [congrFun (rebind_capturebound_denot
+            (Rebind.tweaken (env := env') (d := d)) cb') m] at hih
         simpa [TypeEnv.extend_tvar] using hih
     case cvar =>
       rename_i Γ' c' cb' Bb
@@ -1146,10 +1129,8 @@ theorem typed_env_lookup_cvar_aux
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
         obtain ⟨_, _, _, _, henv'⟩ := hts
         have hih := ih henv'
-        have hcb :=
-          rebind_capturebound_denot
-            (Rebind.cweaken (env := env') (cs := cs) (cap := cap)) cb'
-        rw [congrFun hcb m] at hih
+        rw [congrFun (rebind_capturebound_denot
+            (Rebind.cweaken (env := env') (cs := cs) (cap := cap)) cb') m] at hih
         simpa [TypeEnv.extend_cvar] using hih
     case lock =>
       rename_i Γ' c' cb' Ψ
@@ -1158,8 +1139,7 @@ theorem typed_env_lookup_cvar_aux
         simp only [EnvTyping, TypeEnv.lookup_cvar] at hts ⊢
         obtain ⟨_, henv'⟩ := hts
         have hih := ih henv'
-        have hcb := rebind_capturebound_denot (Rebind.lweaken (env := env')) cb'
-        rw [congrFun hcb m] at hih
+        rw [congrFun (rebind_capturebound_denot (Rebind.lweaken (env := env')) cb') m] at hih
         simpa [TypeEnv.extend_lock] using hih
 
 theorem typed_env_cvar_cap_eq
@@ -1228,13 +1208,7 @@ theorem sem_typ_capp
     exact closed_captureset_subst_denot hD_closed
   -- D' is also closed
   have hD'_wf : D'.WfInHeap store.heap := by
-    -- First show D is wf by closedness
-    have hD_wf : D.WfInHeap store.heap := CaptureSet.wf_of_closed hD_closed
-    -- Then show the substitution is wf
-    have hσ_wf : (Subst.from_TypeEnv env).WfInHeap store.heap :=
-      from_TypeEnv_wf_in_heap hts
-    -- Apply wf_subst
-    exact CaptureSet.wf_subst hD_wf hσ_wf
+    exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hD_closed) (from_TypeEnv_wf_in_heap hts)
   -- Apply the polymorphic function to the capture argument D'
   have happ := hfun store D'
     hD'_wf              -- Closed capture sets are well-formed
@@ -1252,9 +1226,8 @@ theorem sem_typ_capp
     (heqv store (e0.subst (Subst.openCVar D'))).1 happ
   simp only [Ty.exi_exp_denot, List.empty_eq] at happ2
   -- Widen the authority using monotonicity
-  have happ3 := eval_capability_set_monotonic happ2 hR0_sub
   simpa [Exp.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.subst, Ty.exi_exp_denot] using
-    (Eval.eval_capply hlk happ3)
+    Eval.eval_capply hlk (eval_capability_set_monotonic happ2 hR0_sub)
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
@@ -1353,9 +1326,8 @@ theorem sem_typ_cond
     set A := CaptureSet.denot env C1 store
     set B := CaptureSet.denot env C2 store
     set C := CaptureSet.denot env C3 store
-    have hA : A ⊆ A ∪ B := CapabilitySet.Subset.union_right_left
-    have hAB : A ∪ B ⊆ (A ∪ B) ∪ C := CapabilitySet.Subset.union_right_left
-    exact CapabilitySet.Subset.trans hA hAB
+    exact CapabilitySet.Subset.trans
+      CapabilitySet.Subset.union_right_left CapabilitySet.Subset.union_right_left
   have hguard := eval_capability_set_monotonic hguard_base hsubC1
   -- Assemble eval_cond
   suffices hcond :
@@ -1381,9 +1353,8 @@ theorem sem_typ_cond
       set A := CaptureSet.denot env C1 m1
       set B := CaptureSet.denot env C2 m1
       set C := CaptureSet.denot env C3 m1
-      have hB : B ⊆ A ∪ B := CapabilitySet.Subset.union_right_right
-      have hAB : A ∪ B ⊆ (A ∪ B) ∪ C := CapabilitySet.Subset.union_right_left
-      exact CapabilitySet.Subset.trans hB hAB
+      exact CapabilitySet.Subset.trans
+        CapabilitySet.Subset.union_right_right CapabilitySet.Subset.union_right_left
     -- widen authority, then lift over memory subsumption using post monotonicity
     have hthen' := eval_capability_set_monotonic hthen hsubC2
     -- Align capability sets computed at store versus m1 using monotonicity
@@ -1628,12 +1599,11 @@ theorem sem_typ_letin
     intro m1 m2 e hwf hsub hQ
     change Ty.val_denot env T m1 e at hQ
     change Ty.val_denot env T m2 e
-    have henv_mono := typed_env_is_monotonic hts
-    exact val_denot_is_monotonic henv_mono T hsub hQ
+    exact val_denot_is_monotonic (typed_env_is_monotonic hts) T hsub hQ
   case hbool =>
     -- Show (Ty.val_denot env T).as_mpost is bool independent
-    apply Denot.as_mpost_is_bool_independent
-    exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
+    exact Denot.as_mpost_is_bool_independent
+      (val_denot_is_bool_independent (typed_env_is_bool_independent hts) T)
   case a =>
     -- Show Eval ... store (e1.subst ...) (Ty.val_denot env T).as_mpost
     have h1 := ht1 env store hts
@@ -1675,8 +1645,7 @@ theorem sem_typ_letin
     have hcap_rename :
       (C.rename Rename.succ).denot (env.extend_var l' ps)
       = C.denot env := by
-      have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l') (ps:=ps)) C
-      exact this.symm
+      exact (rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l') (ps:=ps)) C).symm
     have hC_mono : C.denot env store = C.denot env (m1.extend_val l' heapval hwf_v rfl hfresh) := by
       have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
         apply CaptureSet.wf_subst
@@ -1689,9 +1658,8 @@ theorem sem_typ_letin
     rw [hC_mono, ← hcap_rename]
     apply eval_post_monotonic _ (ht2' _)
     · -- Show postcondition entailment
-      apply Denot.imply_to_entails
-      have heqv := weaken_exi_val_denot (env:=env) (x:=l') (ps:=ps) (T:=U)
-      apply (Denot.equiv_to_imply heqv).2
+      exact Denot.imply_to_entails _ _
+        (Denot.equiv_to_imply (weaken_exi_val_denot (env:=env) (x:=l') (ps:=ps) (T:=U))).2
     · -- Show: EnvTyping (Γ,x:T) (env.extend_var l')
       --       (m1.extend_val l' heapval hwf_v hfresh)
       constructor
@@ -1702,14 +1670,12 @@ theorem sem_typ_letin
         have hext : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes m1 :=
           Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
         -- Step 2: Lift hQ1 to extended memory using monotonicity
-        have henv_mono := typed_env_is_monotonic hts
         have hQ1_lifted : Ty.val_denot env T
           (m1.extend_val l' heapval hwf_v rfl hfresh) v :=
-          val_denot_is_monotonic henv_mono T hext hQ1
+          val_denot_is_monotonic (typed_env_is_monotonic hts) T hext hQ1
         -- Step 3: Apply transparency
-        have henv_trans := typed_env_is_transparent hts
         have htrans : (Ty.val_denot env T).is_transparent :=
-          val_denot_is_transparent henv_trans T
+          val_denot_is_transparent (typed_env_is_transparent hts) T
         -- Step 4: Use the memory lookup fact
         have hlookup : (m1.extend_val l' heapval hwf_v rfl hfresh).lookup l' =
           some (Cell.val heapval) := by
@@ -1754,8 +1720,7 @@ theorem sem_typ_letin
       have hcap_rename :
         (C.rename Rename.succ).denot (env.extend_var fx ps)
         = C.denot env := by
-        have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=fx) (ps:=ps)) C
-        exact this.symm
+        exact (rebind_captureset_denot (Rebind.weaken (env:=env) (x:=fx) (ps:=ps)) C).symm
       have hC_mono : C.denot env store = C.denot env m1 := by
         have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap := by
           apply CaptureSet.wf_subst
@@ -1766,9 +1731,8 @@ theorem sem_typ_letin
       rw [hC_mono, ← hcap_rename]
       apply eval_post_monotonic _ (ht2' _)
       · -- Show postcondition entailment
-        apply Denot.imply_to_entails
-        have heqv := weaken_exi_val_denot (env:=env) (x:=fx) (ps:=ps) (T:=U)
-        apply (Denot.equiv_to_imply heqv).2
+        exact Denot.imply_to_entails _ _
+          (Denot.equiv_to_imply (weaken_exi_val_denot (env:=env) (x:=fx) (ps:=ps) (T:=U))).2
       · -- Show: EnvTyping (Γ,x:T) (env.extend_var fx) m1
         constructor
         · -- Show: Ty.capt_val_denot env T m1 (Exp.var (Var.free fx))
@@ -1807,9 +1771,7 @@ theorem sem_sc_elem {C1 C2 : CaptureSet s}
     -- ((C1.subst σ) ∪ (C2.subst σ)).ground_denot
     --   = (C1.subst σ).ground_denot ∪ (C2.subst σ).ground_denot
     simp only [CaptureSet.ground_denot]
-    apply CapabilitySet.Subset.union_left
-    · exact ih1
-    · exact ih2
+    exact CapabilitySet.Subset.union_left ih1 ih2
   case union_right_left ih =>
     simpa only [CaptureSet.subst, CaptureSet.ground_denot] using
       CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_left
@@ -1898,7 +1860,7 @@ theorem fundamental_subcapt
   (hsub : Subcapt Γ C1 C2) :
   SemSubcapt Γ C1 C2 := by
   induction hsub
-  case sc_trans => grind [sem_sc_trans]
+  case sc_trans ih1 ih2 => exact sem_sc_trans ih1 ih2
   case sc_elem hsub => exact sem_sc_elem hsub
   case sc_mode hm => exact sem_sc_mode hm
   case sc_union ih1 ih2 => exact sem_sc_union ih1 ih2
@@ -1963,10 +1925,8 @@ theorem sem_sepcheck_union
   (ih2 : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ (C1 ∪ C2) C3 := by
   intro env H hts
-  have hni1 := ih1 env H hts
-  have hni2 := ih2 env H hts
   simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
-  exact CapabilitySet.Noninterference.ni_union hni1 hni2
+  exact CapabilitySet.Noninterference.ni_union (ih1 env H hts) (ih2 env H hts)
 
 theorem CapabilitySet.noninterference_of_ro_ro
   (hk1 : CapabilitySet.HasKind C1 .ro)
@@ -1985,15 +1945,11 @@ theorem CapabilitySet.noninterference_of_ro_ro
       | union C2a C2b ih2a ih2b =>
         cases hk2 with
         | ro_union hk2a hk2b =>
-          have hni2a := ih2a hk2a
-          have hni2b := ih2b hk2b
-          exact .ni_symm (.ni_union (.ni_symm hni2a) (.ni_symm hni2b))
+          exact .ni_symm (.ni_union (.ni_symm (ih2a hk2a)) (.ni_symm (ih2b hk2b)))
   | union C1a C1b ih1a ih1b =>
     cases hk1 with
     | ro_union hk1a hk1b =>
-      have hni1a := ih1a hk1a
-      have hni1b := ih1b hk1b
-      exact .ni_union hni1a hni1b
+      exact .ni_union (ih1a hk1a) (ih1b hk1b)
 
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
@@ -2006,9 +1962,8 @@ theorem sem_sepcheck_ro
   (hk2 : HasKind Γ C2 .ro) :
   SemSepCheck Γ C1 C2 := by
   intro env H hts
-  have hsem_k1 := fundamental_haskind hk1 env H hts
-  have hsem_k2 := fundamental_haskind hk2 env H hts
-  exact CapabilitySet.noninterference_of_ro_ro hsem_k1 hsem_k2
+  exact CapabilitySet.noninterference_of_ro_ro
+    (fundamental_haskind hk1 env H hts) (fundamental_haskind hk2 env H hts)
 
 theorem fundamental_sepcheck
   (hsep : SepCheck Γ C1 C2) :
@@ -2042,9 +1997,8 @@ theorem sem_satisfy
   | satisfy hkind hsep =>
     constructor
     · intro C mode hhas
-      apply CaptureSet.wf_subst
-      · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas
-      · exact from_TypeEnv_wf_in_heap henv
+      exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas)
+                                (from_TypeEnv_wf_in_heap henv)
     · intro C mode hhas
       exact fundamental_haskind (hkind C mode hhas) env m henv
     · intro C1 m1 C2 m2 hdistinct
@@ -2069,13 +2023,10 @@ lemma sem_subtyp_top {T : Ty .capt s}
   unfold Ty.val_denot
   constructor
   · -- Prove IsSimpleAns
-    have himply_simple := val_denot_implies_simple_ans (typed_env_is_implying_simple_ans htyping) T
-    exact himply_simple m' e hdenot_T
+    exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans htyping) T m' e hdenot_T
   constructor
   · -- Prove well-formedness: e.WfInHeap m'.heap
-    have hwf_env := typed_env_is_implying_wf htyping
-    have hwf_denot := val_denot_implies_wf hwf_env T
-    exact hwf_denot m' e hdenot_T
+    exact val_denot_implies_wf (typed_env_is_implying_wf htyping) T m' e hdenot_T
   · -- Prove reachability bound: resolve_reachability m'.heap e ⊆ .empty
     -- First get the typing for m' (need monotonicity)
     have htyping' := env_typing_monotonic htyping hsubsumes
@@ -2083,8 +2034,7 @@ lemma sem_subtyp_top {T : Ty .capt s}
     have hbound := val_denot_enforces_captures htyping' e hdenot_T
     -- Since T is pure, T.captureSet is empty, so its denotation is empty
     unfold Ty.IsPureType at hpure
-    have hempty := hpure.denot_empty (env := env) (m := m')
-    exact hempty.subset_of_subset hbound
+    exact (hpure.denot_empty (env := env) (m := m')).subset_of_subset hbound
 
 
 -- Helper lemma for extracting type variable bounds from EnvTyping
@@ -2109,11 +2059,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
       -- hw gives val_denot env0 S.core ≈ val_denot (env0.extend_tvar d) (S.core.rename Rename.succ)
       -- Compose ImplyAfter with equivalence
       unfold Denot.ImplyAfter at himply ⊢
-      intro m' hsub
-      unfold Denot.ImplyAt
-      intro e hd
-      have himply_spec := himply m' hsub e hd
-      exact (Denot.equiv_to_imply hw).1 m' e himply_spec
+      intro m' hsub e hd
+      exact (Denot.equiv_to_imply hw).1 m' e (himply m' hsub e hd)
   case there Γ X S b a a_ih =>
     -- Need to case split on what kind of binding b is
     cases b with
@@ -2131,11 +2078,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
           simpa only [TypeEnv.extend_var] using weaken_val_denot (x := v) (ps := ps0)
         -- Compose IH with weakening
         unfold Denot.ImplyAfter at ih_result ⊢
-        intro m' hsub
-        unfold Denot.ImplyAt
-        intro e hd
-        have himply_spec := ih_result m' hsub e hd
-        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
+        intro m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e (ih_result m' hsub e hd)
     | tvar T =>
       -- Context extended with a type variable
       match env with
@@ -2150,11 +2094,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
           simpa only [TypeEnv.extend_tvar] using tweaken_val_denot (d := d)
         -- Compose IH with weakening
         unfold Denot.ImplyAfter at ih_result ⊢
-        intro m' hsub
-        unfold Denot.ImplyAt
-        intro e hd
-        have himply_spec := ih_result m' hsub e hd
-        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
+        intro m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e (ih_result m' hsub e hd)
     | cvar cb =>
       -- Context extended with a capture variable
       match env with
@@ -2169,11 +2110,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
           simpa only [TypeEnv.extend_cvar] using cweaken_val_denot (cs := cs) (cap := cap)
         -- Compose IH with weakening
         unfold Denot.ImplyAfter at ih_result ⊢
-        intro m' hsub
-        unfold Denot.ImplyAt
-        intro e hd
-        have himply_spec := ih_result m' hsub e hd
-        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
+        intro m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e (ih_result m' hsub e hd)
     | lock Ψ =>
       -- Context extended with a lock binding
       match env with
@@ -2186,11 +2124,8 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
           simpa only [TypeEnv.extend_lock] using (lweaken_val_denot : Ty.val_denot env0 S.core ≈
             Ty.val_denot (env0.extend_lock) (S.core.rename Rename.succ))
         unfold Denot.ImplyAfter at ih_result ⊢
-        intro m' hsub
-        unfold Denot.ImplyAt
-        intro e hd
-        have himply_spec := ih_result m' hsub e hd
-        exact (Denot.equiv_to_imply hw).1 m' e himply_spec
+        intro m' hsub e hd
+        exact (Denot.equiv_to_imply hw).1 m' e (ih_result m' hsub e hd)
 
 lemma sem_subtyp_tvar {X : BVar s .tvar} {S : PureTy s}
   (hlookup : Ctx.LookupTVar Γ X S) :
@@ -2254,9 +2189,8 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             let psT2 := compute_peakset env T2.captureSet
             -- Apply contravariance: if arg satisfies T2, it also satisfies T1
             have harg_T1 : Ty.val_denot env T1 m'' (.var (.free arg)) := by
-              have harg_sem := harg env H htyping
-              have hsub_H_m'' := Memory.subsumes_trans hsub hsubsumes
-              exact harg_sem m'' hsub_H_m'' (.var (.free arg)) harg_T2
+              exact harg env H htyping m'' (Memory.subsumes_trans hsub hsubsumes)
+                (.var (.free arg)) harg_T2
             -- Define the authority sets
             let R0 := expand_captures m'.heap cs'
             let R := R0
@@ -2300,9 +2234,8 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                   (Ty.exi_val_denot (env.extend_var arg psT1) U1).as_mpost m''
                   (Ty.exi_val_denot (env.extend_var arg psT2) U1).as_mpost := by
               apply Mpost.entails_to_entails_after
-              apply Denot.imply_to_entails _ _
-              have heqv := Denot.equiv_to_imply (by simpa [Ty.subst_id] using heq_val)
-              exact heqv.1
+              exact Denot.imply_to_entails _ _
+                (Denot.equiv_to_imply (by simpa [Ty.subst_id] using heq_val)).1
             have hbody_psT2 :
                 Eval R m'' (t0.subst (Subst.openVar (.free arg)))
                   (Ty.exi_val_denot (env.extend_var arg psT2) U1).as_mpost :=
@@ -2319,8 +2252,8 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                     exact env_typing_monotonic htyping hsub_H_m''
               simpa only [TypeEnv.extend_var] using htyping_ext_base
             -- Apply semantic subtyping for the result
-            have hres_sem := hres (env.extend_var arg psT2) m'' htyping_ext
-            have himply_entails := Denot.imply_after_to_m_entails_after hres_sem
+            have himply_entails :=
+              Denot.imply_after_to_m_entails_after (hres (env.extend_var arg psT2) m'' htyping_ext)
             -- Apply monotonicity - goal is already at psT2, no back-rebind needed
             unfold Ty.exi_exp_denot at hbody_psT2 ⊢
             exact eval_post_monotonic_general himply_entails hbody_psT2
@@ -2375,9 +2308,8 @@ lemma fundamental_subbound
   induction hsub with
   | capset hsubcapt =>
     intro env m htyping
-    have hsem := fundamental_subcapt hsubcapt
     simpa only [CaptureBound.denot] using
-      CapabilityBound.SubsetEq.set (hsem env m htyping)
+      CapabilityBound.SubsetEq.set (fundamental_subcapt hsubcapt env m htyping)
   | top =>
     intro env m htyping
     simpa only [CaptureBound.denot] using
@@ -2441,9 +2373,8 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
                 · exact hCS_wf
                 constructor
                 · have hwf_cb2_at_H : (cb2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
-                    apply CaptureBound.wf_subst
-                    · exact CaptureBound.wf_of_closed hclosed_cb2
-                    · exact from_TypeEnv_wf_in_heap htyping
+                    exact CaptureBound.wf_subst (CaptureBound.wf_of_closed hclosed_cb2)
+                                                  (from_TypeEnv_wf_in_heap htyping)
                   have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
                   exact CaptureBound.wf_monotonic hB_trans hwf_cb2_at_H
                 constructor
@@ -2457,13 +2388,12 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
                 · have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
                   exact env_typing_monotonic htyping hB_trans
               simpa only [TypeEnv.extend_cvar] using henv'_base
-            have hT_sem := hT (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' henv'
-            -- Convert to postcondition entailment
-            have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+            have himply_entails :=
+              Denot.imply_after_to_m_entails_after
+                (hT (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' henv')
             -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
             unfold Ty.exi_exp_denot at heval1 ⊢
-            apply eval_post_monotonic_general _ heval1
-            exact himply_entails
+            exact eval_post_monotonic_general himply_entails heval1
 
 -- lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
 --   (hC : SemSubcapt Γ C1 C2) -- covariant in capture set
@@ -2667,8 +2597,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
             have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
             -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
             unfold Ty.exi_exp_denot at heval1 ⊢
-            apply eval_post_monotonic_general _ heval1
-            exact himply_entails
+            exact eval_post_monotonic_general himply_entails heval1
 
 lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi s}
   (hcs : SemSubcapt Γ cs1 cs2)
@@ -2687,9 +2616,8 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
   · exact hwf_e
   · constructor
     · have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap := by
-        apply CaptureSet.wf_subst
-        · exact CaptureSet.wf_of_closed hcs2_closed
-        · exact from_TypeEnv_wf_in_heap htyping
+        exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed)
+                                  (from_TypeEnv_wf_in_heap htyping)
       exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
     · refine ⟨cs0, sepctx0, t0, hresolve, hcs0_wf, hsepctx0_wf, ?_, ?_, ?_⟩
       · intro m'' hsubm'' hsat
@@ -2704,14 +2632,12 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
             Eval (expand_captures m'.heap cs0) m'' t0
               (Ty.exi_val_denot env E1).as_mpost := by
           simpa [Ty.exi_exp_denot] using heval1
-        have htyping_m'' : EnvTyping Γ env m'' := by
-          exact env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
+        have htyping_m'' := env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
         have hsat_Ψ : env.Satisfy Ψ m'' := by
           constructor
           · intro C mode hhas
-            apply CaptureSet.wf_subst
-            · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ_closed) hhas
-            · exact from_TypeEnv_wf_in_heap htyping_m''
+            exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ_closed) hhas)
+                                      (from_TypeEnv_wf_in_heap htyping_m'')
           · intro C mode hhas
             exact hkind C mode hhas
           · intro C1 m1 C2 m2 hdistinct
@@ -2720,19 +2646,18 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
           constructor
           · exact hsat_Ψ
           · exact htyping_m''
-        have hT_sem := hT (env.extend_lock) m'' htyping_lock
-        have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
+        have himply_entails :=
+          Denot.imply_after_to_m_entails_after (hT (env.extend_lock) m'' htyping_lock)
         have heval1' :
             Eval (expand_captures m'.heap cs0) m'' t0
               (Ty.exi_val_denot (env.extend_lock) (E1.rename Rename.succ)).as_mpost := by
           apply eval_post_monotonic _ heval1_eval
-          apply Denot.imply_to_entails
-          exact (Denot.equiv_to_imply (lweaken_exi_val_denot (env := env) (T := E1))).1
+          exact Denot.imply_to_entails _ _
+            (Denot.equiv_to_imply (lweaken_exi_val_denot (env := env) (T := E1))).1
         have heval2' :
             Eval (expand_captures m'.heap cs0) m'' t0
               (Ty.exi_val_denot (env.extend_lock) (E2.rename Rename.succ)).as_mpost := by
-          apply eval_post_monotonic_general _ heval1'
-          exact himply_entails
+          exact eval_post_monotonic_general himply_entails heval1'
         simpa [Ty.exi_exp_denot] using
           (eval_post_monotonic
             ((Denot.imply_to_entails _ _
@@ -2757,27 +2682,22 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
     · exact hcs_wf
     · refine ⟨cs0, sepctx0, t0, hresolve, hcs0_wf, hsepctx0_wf, ?_, hR0_sub, ?_⟩
       · intro m'' hsubm'' hsat_Ψ2
-        have htyping_m'' : EnvTyping Γ env m'' := by
-          exact env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
+        have htyping_m'' := env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
         have htyping_lock : EnvTyping (Γ.push_lock Ψ2) (env.extend_lock) m'' := by
           constructor
           · exact hsat_Ψ2
           · exact htyping_m''
-        have hsat_ren : (env.extend_lock).Satisfy (Ψ1.rename Rename.succ) m'' := by
-          exact sem_satisfy (SepCtx.rename_closed hΨ1_closed) hsat
-            (env.extend_lock) m'' htyping_lock
-        have hsat_Ψ1 : env.Satisfy Ψ1 m'' := by
-          exact (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
+        have hsat_ren := sem_satisfy (SepCtx.rename_closed hΨ1_closed) hsat
+          (env.extend_lock) m'' htyping_lock
+        have hsat_Ψ1 := (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
         exact hsat_impl m'' hsubm'' hsat_Ψ1
       · intro m'' hsubm'' hkind hsep
-        have htyping_m'' : EnvTyping Γ env m'' := by
-          exact env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
+        have htyping_m'' := env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
         have hsat_Ψ2 : env.Satisfy Ψ2 m'' := by
           constructor
           · intro C mode hhas
-            apply CaptureSet.wf_subst
-            · exact SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ2_closed) hhas
-            · exact from_TypeEnv_wf_in_heap htyping_m''
+            exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ2_closed) hhas)
+                                      (from_TypeEnv_wf_in_heap htyping_m'')
           · intro C mode hhas
             exact hkind C mode hhas
           · intro C1 m1 C2 m2 hdistinct
@@ -2786,11 +2706,9 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
           constructor
           · exact hsat_Ψ2
           · exact htyping_m''
-        have hsat_ren : (env.extend_lock).Satisfy (Ψ1.rename Rename.succ) m'' := by
-          exact sem_satisfy (SepCtx.rename_closed hΨ1_closed) hsat
-            (env.extend_lock) m'' htyping_lock
-        have hsat_Ψ1 : env.Satisfy Ψ1 m'' := by
-          exact (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
+        have hsat_ren := sem_satisfy (SepCtx.rename_closed hΨ1_closed) hsat
+          (env.extend_lock) m'' htyping_lock
+        have hsat_Ψ1 := (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
         exact hbody m'' hsubm''
           (fun C mode hhas => hsat_Ψ1.kind C mode hhas)
           (fun C1 m1 C2 m2 hdistinct => hsat_Ψ1.sep C1 m1 C2 m2 hdistinct)
@@ -2998,12 +2916,11 @@ theorem sem_typ_unpack
     -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is monotonic
     intro m1 m2 e hwf hsub hQ
     simp only [Denot.as_mpost] at hQ ⊢
-    have henv_mono := typed_env_is_monotonic hts
-    exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ
+    exact exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T) hsub hQ
   case hbool =>
     -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is bool independent
-    apply Denot.as_mpost_is_bool_independent
-    exact exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T)
+    exact Denot.as_mpost_is_bool_independent
+      (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T))
   case a =>
     -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env (.exi T)).as_mpost
     have ht' := ht env store hts
@@ -3024,13 +2941,11 @@ theorem sem_typ_unpack
     constructor
     · -- Prove v.IsPack
       -- Use resolve_is_pack: if resolve returns a pack, then v is a pack
-      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-      exact resolve_is_pack hres hpack
+      exact resolve_is_pack hres Exp.IsPack.pack
     · -- Prove v.WfInHeap m1.heap
       -- First show that v = .pack CS x_pack
-      have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-      have hv_pack : v.IsPack := resolve_is_pack hres hpack
-      have heq : v = .pack CS x_pack := resolve_pack_eq hres hv_pack
+      have heq : v = .pack CS x_pack :=
+        resolve_pack_eq hres (resolve_is_pack hres Exp.IsPack.pack)
       -- Now prove well-formedness of the pack
       rw [heq]
       apply Exp.WfInHeap.wf_pack
@@ -3101,9 +3016,8 @@ theorem sem_typ_unpack
           u.subst (Subst.from_TypeEnv
             ((env.extend_cvar cs (cap := cs.ground_denot m1)).extend_var fx ps)) := by
         rw [Exp.subst_comp]
-        have h1 := congrArg (u.subst) (@Subst.from_TypeEnv_weaken_unpack s env cs fx ps)
-        exact h1.trans (congrArg (u.subst)
-          Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant)
+        exact (congrArg (u.subst) (@Subst.from_TypeEnv_weaken_unpack s env cs fx ps)).trans
+          (congrArg (u.subst) Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant)
       -- Capture set equality via rebinding
       let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
       have hcap_eq :
@@ -3128,20 +3042,19 @@ theorem sem_typ_unpack
       have heqv_composed : Ty.exi_val_denot env U ≈
         Ty.exi_val_denot (env'.extend_var fx ps)
           ((U.rename Rename.succ).rename Rename.succ) := by
-        have heqv1 := rebind_exi_val_denot
-          (Rebind.cweaken (env:=env) (cs:=cs) (cap:=cs.ground_denot m1)) U
-        have heqv2 := rebind_exi_val_denot
-          (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (U.rename Rename.succ)
         intro m e
-        exact Iff.trans (heqv1 m e) (heqv2 m e)
+        exact Iff.trans
+          (rebind_exi_val_denot
+            (Rebind.cweaken (env:=env) (cs:=cs) (cap:=cs.ground_denot m1)) U m e)
+          (rebind_exi_val_denot
+            (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (U.rename Rename.succ) m e)
       -- Apply hu'' with conversions
       change Eval (C.denot env store) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
         (Ty.exi_val_denot env U).as_mpost
       rw [hexp_eq, <-hcap_eq]
       apply eval_post_monotonic _ hu''
-      apply Denot.imply_to_entails
-      apply (Denot.equiv_to_imply heqv_composed).2
+      exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv_composed).2
 
 -- Helper: rename preserves subset
 theorem CaptureSet.Subset.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
@@ -3418,9 +3331,7 @@ theorem fundamental
       -- The types should match definitionally when refineCaptureSet is applied
       -- (Ty.arrow T1 cs T2).refineCaptureSet cs = Ty.arrow T1 cs T2
       -- sem_typ_app needs cs parameter - but it should unify from the hypotheses
-      apply sem_typ_app
-      · exact ih_x
-      · exact ih_y
+      exact sem_typ_app ih_x ih_y
   case tapp =>
     rename_i hS_closed hx
     -- From closedness of (tapp x S), extract that x and S are closed
@@ -3468,10 +3379,9 @@ theorem fundamental
       cases hx_closed
       cases hy_closed
       -- Apply IHs to get semantic typing for the variables
-      have hx := ih_x (Exp.IsClosed.var Var.IsClosed.bound)
-      have hy := ih_y (Exp.IsClosed.var Var.IsClosed.bound)
-      -- Apply sem_typ_invoke theorem
-      exact sem_typ_invoke hx hy
+      exact sem_typ_invoke
+        (ih_x (Exp.IsClosed.var Var.IsClosed.bound))
+        (ih_y (Exp.IsClosed.var Var.IsClosed.bound))
   case unit => exact sem_typ_unit
   case btrue => exact sem_typ_btrue
   case bfalse => exact sem_typ_bfalse
@@ -3479,10 +3389,9 @@ theorem fundamental
     -- hclosed_e gives closedness of cond e1 e2 e3
     cases hclosed_e with
     | cond hclosed_guard hclosed_then hclosed_else =>
-      have hclosedC1 := HasType.use_set_is_closed ht1
-      have hclosedC2 := HasType.use_set_is_closed ht2
-      have hclosedC3 := HasType.use_set_is_closed ht3
-      exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
+      exact sem_typ_cond
+        (HasType.use_set_is_closed ht1) (HasType.use_set_is_closed ht2)
+        (HasType.use_set_is_closed ht3) hclosed_guard hclosed_then hclosed_else
         (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
   case reader hΓ_closed hx =>
     exact sem_typ_reader hΓ_closed hx

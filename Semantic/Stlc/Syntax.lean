@@ -85,20 +85,14 @@ Renaming preserves the numeric value predicate.
 -/
 theorem Exp.rename_IsNumVal {e : Exp s}
   (hv : e.IsNumVal) :
-  (e.rename f).IsNumVal := by
-  induction hv with
-  | nzero => exact IsNumVal.nzero
-  | nsucc _ ih => exact IsNumVal.nsucc ih
+  (e.rename f).IsNumVal := by induction hv <;> [exact IsNumVal.nzero; exact IsNumVal.nsucc ‹_›]
 
 /-!
 Renaming preserves the boolean value predicate.
 -/
 theorem Exp.rename_IsBoolVal {e : Exp s}
   (hv : e.IsBoolVal) :
-  (e.rename f).IsBoolVal := by
-  cases hv with
-  | btrue => exact IsBoolVal.btrue
-  | bfalse => exact IsBoolVal.bfalse
+  (e.rename f).IsBoolVal := by cases hv <;> constructor
 
 /-!
 Renaming preserves the value predicate.
@@ -108,8 +102,8 @@ theorem Exp.rename_IsVal {e : Exp s}
   (e.rename f).IsVal := by
   cases hv with
   | abs => exact IsVal.abs
-  | bool hb => exact IsVal.bool (rename_IsBoolVal hb)
-  | num hn => exact IsVal.num (rename_IsNumVal hn)
+  | bool hb => exact .bool (rename_IsBoolVal hb)
+  | num hn => exact .num (rename_IsNumVal hn)
 
 /-!
 Apply a variable renaming to a value.
@@ -146,9 +140,7 @@ Lifting the identity renaming yields the identity renaming.
 -/
 theorem Rename.id_liftVar {n : Nat} :
   (Rename.id (n:=n)).liftVar = Rename.id := by
-  apply Rename.funext
-  intro x
-  cases x <;> rfl
+  apply Rename.funext; intro x; cases x <;> rfl
 
 /-!
 Renaming with the identity renaming is a no-op.
@@ -156,18 +148,14 @@ Renaming with the identity renaming is a no-op.
 theorem Exp.rename_id {e : Exp n} :
   e.rename Rename.id = e := by
   induction e <;> try grind [Exp.rename, Rename.id]
-  case abs =>
-    simp [Exp.rename]
-    simpa [Rename.id_liftVar]
+  case abs ih => simp [Exp.rename, Rename.id_liftVar, ih]
 
 /-!
 Lifting commutes with renaming composition.
 -/
 theorem Rename.comp_liftVar {f1 : Rename n1 n2} {f2 : Rename n2 n3} :
   (f1.comp f2).liftVar = f1.liftVar.comp f2.liftVar := by
-  apply Rename.funext
-  intro x
-  cases x <;> rfl
+  apply Rename.funext; intro x; cases x <;> rfl
 
 /-!
 Composition of renamings distributes over expression renaming.
@@ -175,9 +163,7 @@ Composition of renamings distributes over expression renaming.
 theorem Exp.rename_comp {e : Exp n} {f2 : Rename n2 n3} :
   (e.rename f1).rename f2 = e.rename (f1.comp f2) := by
   induction e generalizing n2 n3 <;> try grind [Exp.rename, Rename.comp]
-  case abs =>
-    simp [Exp.rename]
-    grind [Rename.comp_liftVar]
+  case abs ih => simp [Exp.rename, Rename.comp_liftVar, ih]
 
 /-!
 Lift a renaming under `k` binders.
@@ -218,10 +204,8 @@ theorem Exp.rename_is_val {e : Exp n}
   (h : e.is_val) :
   (e.rename f).is_val := by
   induction e <;> try (solve | cases h | rfl)
-  simp only [Exp.rename]
-  simp only [Exp.is_val, Exp.is_bool_val, Exp.is_num_val, Bool.false_or]
-  simp only [Exp.is_val, Exp.is_bool_val, Exp.is_num_val, Bool.false_or] at h
-  apply Exp.rename_is_numval h
+  simp only [Exp.rename, Exp.is_val, Exp.is_bool_val, Exp.is_num_val, Bool.false_or] at *
+  exact Exp.rename_is_numval h
 
 /-!
 A store mapping variables to closed values.
@@ -245,9 +229,7 @@ theorem Store.lookup_is_val {s : Store n} :
   (s.lookup x).IsVal := by
   induction x
   case here => cases s; aesop
-  case there ih =>
-    cases s; simp only [Store.lookup]
-    exact ih
+  case there ih => cases s; simp only [Store.lookup]; exact ih
 
 /-!
 Predicate indicating that an expression is a lambda abstraction.
@@ -260,8 +242,6 @@ Every lambda abstraction is a value.
 -/
 theorem abs_val_is_val
   (hv : Exp.IsAbsVal v) :
-  v.IsVal := by
-  cases hv
-  grind [Exp.IsVal]
+  v.IsVal := by cases hv; grind [Exp.IsVal]
 
 end Stlc

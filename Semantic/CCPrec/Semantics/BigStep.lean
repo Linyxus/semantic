@@ -452,14 +452,10 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       exact h_nonstuck hQ0
     case h_true =>
       intro m1 v hsub hq1 hres
-      apply ih_true hsub hq1 hres
-      apply Mpost.entails_after_subsumes himp
-      exact hsub
+      exact ih_true hsub hq1 hres (Mpost.entails_after_subsumes himp hsub)
     case h_false =>
       intro m1 v hsub hq1 hres
-      apply ih_false hsub hq1 hres
-      apply Mpost.entails_after_subsumes himp
-      exact hsub
+      exact ih_false hsub hq1 hres (Mpost.entails_after_subsumes himp hsub)
 
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)

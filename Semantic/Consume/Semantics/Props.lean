@@ -26,10 +26,7 @@ theorem step_capability_set_monotonic {R1 R2 : CapabilitySet}
   | step_apply hlookup =>
     apply Step.step_apply hlookup
   | step_invoke hmem hlookup_x hlookup_y =>
-    apply Step.step_invoke
-    · exact CapabilitySet.subset_preserves_covers hsub hmem
-    · exact hlookup_x
-    · exact hlookup_y
+    exact Step.step_invoke (CapabilitySet.subset_preserves_covers hsub hmem) hlookup_x hlookup_y
   | step_tapply hlookup =>
     apply Step.step_tapply hlookup
   | step_capply hlookup =>
@@ -67,9 +64,7 @@ theorem small_step_capability_set_monotonic {R1 R2 : CapabilitySet}
   | refl =>
     apply Reduce.refl
   | step h rest ih =>
-    apply Reduce.step
-    · exact step_capability_set_monotonic h hsub
-    · exact ih hsub
+    exact Reduce.step (step_capability_set_monotonic h hsub) (ih hsub)
 
 /-- Helper: Congruence for Reduce in letin context. -/
 theorem reduce_ctx_letin
@@ -578,7 +573,7 @@ theorem eval_implies_progressive
                 cases hunwrap
                 apply IsProgressive.step
                 refine Step.step_cond_var_true (hv := hsimple) (R := reach) (by
-                  simp [Memory.lookup, hcell])
+                  simp only [Memory.lookup, hcell])
             | capability =>
               simp [resolve, hcell] at hbtrue
             | masked =>
@@ -597,7 +592,7 @@ theorem eval_implies_progressive
                 cases hunwrap
                 apply IsProgressive.step
                 refine Step.step_cond_var_false (hv := hsimple) (R := reach) (by
-                  simp [Memory.lookup, hcell])
+                  simp only [Memory.lookup, hcell])
             | capability =>
               simp [resolve, hcell] at hbfalse
             | masked =>
@@ -669,9 +664,7 @@ theorem step_preserves_eval
     | step_invoke hmem' hlookup_x' hlookup_y' =>
       -- Stepped to .unit
       -- The postcondition holds by hQ
-      apply Eval.eval_val
-      · exact Exp.IsVal.unit
-      · exact hQ
+      exact Eval.eval_val Exp.IsVal.unit hQ
   | eval_tapply hlookup heval ih =>
     -- e1 = .tapp (.free x) S
     -- The only step is step_tapply
@@ -800,7 +793,7 @@ theorem step_preserves_eval
           some (Cell.val { unwrap := .btrue, isVal := hv, reachability := R }) := by
         simpa [Memory.lookup] using hlookup
       have hres : resolve m_guard.heap (.var (.free fx)) = some .btrue := by
-        simp [resolve, hheap]
+        simp only [resolve, hheap]
       exact h_true (Memory.subsumes_refl m_guard) hQ1 hres
     | step_cond_var_false hlookup =>
       -- The guard variable points to false
@@ -810,7 +803,7 @@ theorem step_preserves_eval
           some (Cell.val { unwrap := .bfalse, isVal := hv, reachability := R }) := by
         simpa [Memory.lookup] using hlookup
       have hres : resolve m_guard.heap (.var (.free fx)) = some .bfalse := by
-        simp [resolve, hheap]
+        simp only [resolve, hheap]
       exact h_false (Memory.subsumes_refl m_guard) hQ1 hres
   | eval_read hcov hlookup_reader hlookup_cell hQ =>
     -- e = .read (.free x), can only step via step_read
@@ -1019,9 +1012,9 @@ theorem Var.wf_masked
         rename_i info
         by_cases h : n ∈ D
         · use Cell.capability info
-          simp [h]
+          simp only [h, if_true]
         · use Cell.masked
-          simp [h]
+          simp only [h, if_false]
       · -- val = .masked
         use Cell.masked
     obtain ⟨val', h_masked⟩ := h_masked
@@ -1066,20 +1059,11 @@ theorem Ty.wf_masked
   | wf_tvar =>
     apply Ty.WfInHeap.wf_tvar
   | wf_arrow hwf_T1 hwf_cs _ ih1 ih2 =>
-    apply Ty.WfInHeap.wf_arrow
-    · exact ih1
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact ih2
+    exact Ty.WfInHeap.wf_arrow ih1 (CaptureSet.wf_masked hwf_cs) ih2
   | wf_poly hwf_T1 hwf_cs _ ih1 ih2 =>
-    apply Ty.WfInHeap.wf_poly
-    · exact ih1
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact ih2
+    exact Ty.WfInHeap.wf_poly ih1 (CaptureSet.wf_masked hwf_cs) ih2
   | wf_cpoly hwf_cb hwf_cs _ ih_T =>
-    apply Ty.WfInHeap.wf_cpoly
-    · exact CaptureBound.wf_masked hwf_cb
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact ih_T
+    exact Ty.WfInHeap.wf_cpoly (CaptureBound.wf_masked hwf_cb) (CaptureSet.wf_masked hwf_cs) ih_T
   | wf_unit =>
     apply Ty.WfInHeap.wf_unit
   | wf_cap hwf_cs =>
@@ -1108,39 +1092,22 @@ theorem Exp.wf_masked
     apply Exp.WfInHeap.wf_var
     exact Var.wf_masked hwf_x
   | wf_abs hwf_cs hwf_T _ ih =>
-    apply Exp.WfInHeap.wf_abs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Ty.wf_masked hwf_T
-    · exact ih
+    exact Exp.WfInHeap.wf_abs (CaptureSet.wf_masked hwf_cs) (Ty.wf_masked hwf_T) ih
   | wf_tabs hwf_cs hwf_T _ ih =>
-    apply Exp.WfInHeap.wf_tabs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Ty.wf_masked hwf_T
-    · exact ih
+    exact Exp.WfInHeap.wf_tabs (CaptureSet.wf_masked hwf_cs) (Ty.wf_masked hwf_T) ih
   | wf_cabs hwf_cs hwf_cb _ ih =>
-    apply Exp.WfInHeap.wf_cabs
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact CaptureBound.wf_masked hwf_cb
-    · exact ih
+    exact Exp.WfInHeap.wf_cabs (CaptureSet.wf_masked hwf_cs) (CaptureBound.wf_masked hwf_cb) ih
   | wf_reader hwf_x =>
     apply Exp.WfInHeap.wf_reader
     exact Var.wf_masked hwf_x
   | wf_pack hwf_cs hwf_x =>
-    apply Exp.WfInHeap.wf_pack
-    · exact CaptureSet.wf_masked hwf_cs
-    · exact Var.wf_masked hwf_x
+    exact Exp.WfInHeap.wf_pack (CaptureSet.wf_masked hwf_cs) (Var.wf_masked hwf_x)
   | wf_app hwf_x hwf_y =>
-    apply Exp.WfInHeap.wf_app
-    · exact Var.wf_masked hwf_x
-    · exact Var.wf_masked hwf_y
+    exact Exp.WfInHeap.wf_app (Var.wf_masked hwf_x) (Var.wf_masked hwf_y)
   | wf_tapp hwf_x hwf_T =>
-    apply Exp.WfInHeap.wf_tapp
-    · exact Var.wf_masked hwf_x
-    · exact Ty.wf_masked hwf_T
+    exact Exp.WfInHeap.wf_tapp (Var.wf_masked hwf_x) (Ty.wf_masked hwf_T)
   | wf_capp hwf_x hwf_cs =>
-    apply Exp.WfInHeap.wf_capp
-    · exact Var.wf_masked hwf_x
-    · exact CaptureSet.wf_masked hwf_cs
+    exact Exp.WfInHeap.wf_capp (Var.wf_masked hwf_x) (CaptureSet.wf_masked hwf_cs)
   | wf_letin _ _ ih1 ih2 =>
     apply Exp.WfInHeap.wf_letin <;> assumption
   | wf_unpack _ _ ih1 ih2 =>
@@ -1152,17 +1119,12 @@ theorem Exp.wf_masked
   | wf_bfalse =>
     apply Exp.WfInHeap.wf_bfalse
   | wf_cond hwf_x _ _ ih1 ih2 =>
-    apply Exp.WfInHeap.wf_cond
-    · exact Var.wf_masked hwf_x
-    · exact ih1
-    · exact ih2
+    exact Exp.WfInHeap.wf_cond (Var.wf_masked hwf_x) ih1 ih2
   | wf_read hwf_x =>
     apply Exp.WfInHeap.wf_read
     exact Var.wf_masked hwf_x
   | wf_write hwf_x hwf_y =>
-    apply Exp.WfInHeap.wf_write
-    · exact Var.wf_masked hwf_x
-    · exact Var.wf_masked hwf_y
+    exact Exp.WfInHeap.wf_write (Var.wf_masked hwf_x) (Var.wf_masked hwf_y)
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
@@ -1215,7 +1177,7 @@ theorem masked_compute_reachability {H : Heap} :
     rename_i x
     cases x with
     | free _ =>
-      simp [compute_reachability]
+      simp only [compute_reachability]
     | bound idx => cases idx
   | unit => rfl
   | btrue => rfl
@@ -1269,7 +1231,7 @@ theorem masked_lookup_cap {m : Memory} {M : Finset Nat} {l : Nat} {info : Capabi
   change (m.heap.mask_caps M) l = some (.capability info)
   unfold Heap.mask_caps
   rw [hlookup]
-  simp [hmem]
+  simp only [hmem, if_true]
 
 -- Helper lemma: covers in CapabilitySet implies membership in to_finset
 theorem covers_to_finset {x : Nat} {C : CapabilitySet} {m : Mutability} :
@@ -1302,9 +1264,9 @@ theorem Heap.masked_extend_comm {H : Heap} {l : Nat} {v : HeapVal} :
   by_cases h_eq : l' = l
   · -- Case: l' = l
     rw [h_eq]
-    simp
+    simp only [if_true]
   · -- Case: l' ≠ l
-    simp [h_eq]
+    simp only [h_eq, if_false]
 
 -- Helper lemma: Memory.extend with HeapVals differing only in reachability are equal
 private theorem Memory.extend_heapval_reachability_irrel
@@ -1348,9 +1310,9 @@ theorem Heap.masked_update_mcell_comm {H : Heap} {l : Nat} {b : Bool} {M : Finse
   by_cases heq : l' = l
   · -- Case: l' = l
     subst heq
-    simp [hmem]
+    simp only [hmem, if_true]
   · -- Case: l' ≠ l
-    simp [heq]
+    simp only [heq, if_false]
 
 /-- Helper lemma: Memory masking and update_mcell commute when the location is in the mask. -/
 theorem Memory.masked_update_mcell_comm {m : Memory} {l : Nat} {b : Bool} {M : Finset Nat}
@@ -1379,9 +1341,8 @@ theorem step_masked
     apply Step.step_apply
     exact masked_lookup_val hlookup
   | step_invoke hx hlookup_x hlookup_y =>
-    apply Step.step_invoke hx
-    · exact masked_lookup_cap hlookup_x (covers_to_finset hx)
-    · exact masked_lookup_val hlookup_y
+    exact Step.step_invoke hx (masked_lookup_cap hlookup_x (covers_to_finset hx))
+                               (masked_lookup_val hlookup_y)
   | step_tapply hlookup =>
     apply Step.step_tapply
     exact masked_lookup_val hlookup
@@ -1417,24 +1378,20 @@ theorem step_masked
     apply Step.step_unpack
   | step_read hmem hlookup_reader hlookup_cell =>
     -- With y ∈ C, masking preserves the reader and mcell lookup
-    apply Step.step_read hmem
-    · exact masked_lookup_val hlookup_reader
-    · exact masked_lookup_cap hlookup_cell (covers_to_finset hmem)
+    exact Step.step_read hmem (masked_lookup_val hlookup_reader)
+                               (masked_lookup_cap hlookup_cell (covers_to_finset hmem))
   | step_write_true hmem hx hy =>
     -- With x ∈ C, masking preserves the mcell lookup and commutes with update_mcell
     rename_i x m y b0 hv R
     rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
-    apply Step.step_write_true hmem
-    · -- Need to show the masked memory still has the mcell at x
-      exact masked_lookup_cap hx (covers_to_finset hmem)
-    · exact masked_lookup_val hy
+    exact Step.step_write_true hmem (masked_lookup_cap hx (covers_to_finset hmem))
+                                     (masked_lookup_val hy)
   | step_write_false hmem hx hy =>
     -- Symmetric to step_write_true
     rename_i x m y b0 hv R
     rw [Memory.masked_update_mcell_comm (Exists.intro b0 hx) (covers_to_finset hmem)]
-    apply Step.step_write_false hmem
-    · exact masked_lookup_cap hx (covers_to_finset hmem)
-    · exact masked_lookup_val hy
+    exact Step.step_write_false hmem (masked_lookup_cap hx (covers_to_finset hmem))
+                                      (masked_lookup_val hy)
 
 theorem reduce_masked
   (hred : Reduce C m1 e1 m2 e2) :
@@ -1445,9 +1402,7 @@ theorem reduce_masked
   | refl =>
     apply Reduce.refl
   | step h rest ih =>
-    apply Reduce.step
-    · exact step_masked h
-    · exact ih
+    exact Reduce.step (step_masked h) ih
 
 /-- If Eval C m e Q holds, then there exist m' and e' such that e' is an answer,
     the memory m' subsumes m, and Q e' m' holds. -/
@@ -1755,13 +1710,13 @@ theorem step_immutable {C : CapabilitySet}
   | step_lift hv hwf hfresh =>
     -- Memory.extend preserves mcells
     rename_i l'
-    simp [Memory.extend, Heap.extend]
+    simp only [Memory.extend, Heap.extend]
     -- l ≠ l' because l has an mcell but l' is fresh (none)
     have hne : l ≠ l' := by
       intro heq
-      rw [heq] at hinit
-      simp [hfresh] at hinit
-    simp [hne, hinit]
+      rw [heq, hfresh] at hinit
+      contradiction
+    simp only [hne, if_false, hinit]
   | step_unpack => exact hinit
 
 theorem not_mutated_refl {m : Memory} : m.not_mutated m := by

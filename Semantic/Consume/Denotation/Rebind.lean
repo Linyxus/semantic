@@ -128,13 +128,13 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
     (C.rename f).subst (Subst.from_TypeEnv env2) := by
   induction C with
   | empty =>
-    simp [CaptureSet.subst, CaptureSet.rename]
+    simp only [CaptureSet.subst, CaptureSet.rename]
   | union C1 C2 ih1 ih2 =>
-    simp [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
+    simp only [CaptureSet.subst, CaptureSet.rename, ih1, ih2]
   | var m x =>
     cases x with
     | free n =>
-      simp [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
+      simp only [CaptureSet.subst, CaptureSet.rename, Var.subst, Var.rename]
     | bound x =>
       have h := ρ.var x
       change CaptureSet.var m (.free (env1.lookup_var x).1) =
@@ -162,9 +162,9 @@ theorem rebind_capturebound_denot
   CaptureBound.denot env1 B = CaptureBound.denot env2 (B.rename f) := by
   cases B with
   | unbound =>
-    simp [CaptureBound.denot, CaptureBound.rename]
+    simp only [CaptureBound.denot, CaptureBound.rename]
   | bound C =>
-    simp [CaptureBound.denot, CaptureBound.rename, rebind_captureset_denot ρ C]
+    simp only [CaptureBound.denot, CaptureBound.rename, rebind_captureset_denot ρ C]
 
 theorem rebind_compute_peaks
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -176,10 +176,10 @@ theorem rebind_compute_peaks
     simp only [compute_peaks, CaptureSet.rename]
     rw [← ih1, ← ih2]
   | cvar m c =>
-    simp [compute_peaks, CaptureSet.rename]
+    simp only [compute_peaks, CaptureSet.rename]
   | var m x =>
     cases x with
-    | free n => simp [compute_peaks, CaptureSet.rename, Var.rename]
+    | free n => simp only [compute_peaks, CaptureSet.rename, Var.rename]
     | bound x =>
       simp only [compute_peaks, CaptureSet.rename, Var.rename]
       have h := congrArg PeakSet.cs (ρ.var_peaks x)
@@ -264,11 +264,11 @@ def rebind_val_denot
   match T with
   | .top | .unit | .bool => by
     intro m e
-    simp [Ty.val_denot, Ty.rename]
+    simp only [Ty.val_denot, Ty.rename]
   | .tvar X => by
     have h := ρ.tvar X
     intro m e
-    simp [Ty.val_denot, Ty.rename, h]
+    simp only [Ty.val_denot, Ty.rename, h]
   | .cap cs | .cell cs | .reader cs => by
     intro m e
     simp only [Ty.val_denot, Ty.rename]

@@ -119,9 +119,7 @@ theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
   (ht : EnvTyping Γ env (Memory.platform_of N)) :
   EnvTyping Γ env (Memory.platform_of M) := by
   -- Use the existing monotonicity theorem for EnvTyping
-  apply env_typing_monotonic
-  · exact ht
-  · exact platform_memory_subsumes hNM
+  exact env_typing_monotonic ht (platform_memory_subsumes hNM)
 
 theorem env_typing_of_platform {N : Nat} :
   EnvTyping
@@ -192,9 +190,7 @@ theorem env_typing_of_platform {N : Nat} :
                 simp [CaptureSet.ground_denot, reachability_of_loc,
                   Memory.platform_of, Heap.platform_of, CapabilitySet.singleton]
               · -- Recursive: platform N types in platform (N+1) memory
-                apply env_typing_platform_monotonic (N := N) (M := N + 1)
-                · omega
-                · exact ih
+                exact env_typing_platform_monotonic (N := N) (M := N + 1) (by omega) ih
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
     under permission `P` iff for any possible reduction state starting from `e`
@@ -401,7 +397,7 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   have heval' : Eval C.to_platform_capability_set M1 e1
       (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
     unfold Ty.exi_exp_denot at hdenot
-    apply reduce_preserves_eval hdenot hred
+    exact reduce_preserves_eval hdenot hred
   -- Progressive: Eval implies progressive
   exact eval_implies_progressive heval'
 
@@ -416,10 +412,9 @@ theorem immutability_adequacy_platform {e : Exp (Sig.platform_of N)}
       (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
     (Memory.platform_of N).not_mutated M1 := by
   intro M1 e1 hred
-  have hwf : C.WfInHeap (Heap.platform_of N) := CaptureSet.wf_of_closed hclosed
   have hsem := fundamental_haskind hkind (TypeEnv.platform_of N) (Memory.platform_of N)
     env_typing_of_platform
-  rw [capture_set_denot_eq_platform hwf] at hsem
+  rw [capture_set_denot_eq_platform (CaptureSet.wf_of_closed hclosed)] at hsem
   exact reduce_immutable hsem hred
 
 end ModalCapybara

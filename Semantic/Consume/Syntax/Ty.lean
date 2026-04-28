@@ -28,7 +28,7 @@ def CaptureBound.rename : CaptureBound s1 -> Rename s1 s2 -> CaptureBound s2
 def CaptureBound.rename_id {cb : CaptureBound s} : cb.rename (Rename.id) = cb := by
   cases cb with
   | unbound => rfl
-  | bound cs => simp [CaptureBound.rename, CaptureSet.rename_id]
+  | bound cs => simp only [CaptureBound.rename, CaptureSet.rename_id]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem CaptureBound.rename_comp
@@ -36,7 +36,7 @@ theorem CaptureBound.rename_comp
     (cb.rename f).rename g = cb.rename (f.comp g) := by
   cases cb with
   | unbound => rfl
-  | bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
+  | bound cs => simp only [CaptureBound.rename, CaptureSet.rename_comp]
 
 /-- A type in CC, indexed by its sort (capturing or existential). -/
 inductive Ty : TySort -> Sig -> Type where
@@ -133,7 +133,7 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
 /-- Weakening commutes with renaming under a binder. -/
 theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
-  simp [Ty.rename_comp, Rename.succ_lift_comm]
+  simp only [Ty.rename_comp, Rename.succ_lift_comm]
 
 /-- Extracts the capture set from a capturing type. -/
 def Ty.captureSet : Ty .capt s -> CaptureSet s

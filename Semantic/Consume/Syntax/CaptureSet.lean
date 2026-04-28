@@ -75,21 +75,21 @@ theorem CaptureSet.rename_id {cs : CaptureSet s} :
     cs.rename (Rename.id) = cs := by
   induction cs
   case empty => rfl
-  case union ih1 ih2 => simp [CaptureSet.rename, ih1, ih2]
+  case union ih1 ih2 => simp only [CaptureSet.rename, ih1, ih2]
   case var m x => cases x <;> rfl
-  case cvar m x => simp [CaptureSet.rename, Rename.id]
+  case cvar m x => simp only [CaptureSet.rename, Rename.id]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (cs.rename f).rename g = cs.rename (f.comp g) := by
   induction cs generalizing s2 s3
   case empty => rfl
-  case union ih1 ih2 => simp [CaptureSet.rename, ih1, ih2]
+  case union ih1 ih2 => simp only [CaptureSet.rename, ih1, ih2]
   case var m x =>
     cases x
-    · simp [CaptureSet.rename, Var.rename]; rfl
-    · simp [CaptureSet.rename, Var.rename]
-  case cvar m x => simp [CaptureSet.rename, Rename.comp]
+    · simp only [CaptureSet.rename, Var.rename, Rename.comp]
+    · simp only [CaptureSet.rename, Var.rename]
+  case cvar m x => simp only [CaptureSet.rename, Rename.comp]
 
 /-- Applies read-only mutability to all elements in a capture set. -/
 def CaptureSet.applyRO : CaptureSet s -> CaptureSet s
@@ -126,7 +126,7 @@ theorem CaptureSet.applyRO_applyRO {cs : CaptureSet s} :
     cs.applyRO.applyRO = cs.applyRO := by
   induction cs with
   | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp [ih1, ih2]
+  | union cs1 cs2 ih1 ih2 => simp only [ih1, ih2, CaptureSet.applyRO_union]
   | var _ x => rfl
   | cvar _ x => rfl
 
@@ -134,27 +134,28 @@ theorem CaptureSet.applyRO_applyRO {cs : CaptureSet s} :
 @[simp]
 theorem CaptureSet.applyRO_applyMut {cs : CaptureSet s} {m : Mutability} :
     cs.applyRO.applyMut m = cs.applyRO := by
-  cases m <;> simp [applyRO_applyRO]
+  cases m <;> simp only [CaptureSet.applyMut_epsilon, CaptureSet.applyMut_ro, applyRO_applyRO]
 
 /-- Applying applyRO after applyMut gives applyRO. -/
 @[simp]
 theorem CaptureSet.applyMut_applyRO {cs : CaptureSet s} {m : Mutability} :
     (cs.applyMut m).applyRO = cs.applyRO := by
-  cases m <;> simp [applyRO_applyRO]
+  cases m <;> simp only [CaptureSet.applyMut_epsilon, CaptureSet.applyMut_ro, applyRO_applyRO]
 
 /-- applyRO distributes over rename. -/
 theorem CaptureSet.applyRO_rename {cs : CaptureSet s1} {f : Rename s1 s2} :
     cs.applyRO.rename f = (cs.rename f).applyRO := by
   induction cs with
   | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp [rename, ih1, ih2]
-  | var _ x => simp [rename]
-  | cvar _ x => simp [rename]
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [CaptureSet.applyRO_union, CaptureSet.rename, ih1, ih2]
+  | var _ x => simp only [CaptureSet.rename, CaptureSet.applyRO_var]
+  | cvar _ x => simp only [CaptureSet.rename, CaptureSet.applyRO_cvar]
 
 /-- applyMut distributes over rename. -/
 theorem CaptureSet.applyMut_rename {cs : CaptureSet s1} {f : Rename s1 s2} {m : Mutability} :
     (cs.applyMut m).rename f = (cs.rename f).applyMut m := by
-  cases m <;> simp [applyRO_rename]
+  cases m <;> simp only [CaptureSet.applyMut_epsilon, CaptureSet.applyMut_ro, applyRO_rename]
 
 /-- The subset relation on capture sets. -/
 inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
@@ -211,7 +212,9 @@ theorem CaptureSet.applyRO_isClosed {cs : CaptureSet s}
 /-- applyMut preserves closedness. -/
 theorem CaptureSet.applyMut_isClosed {cs : CaptureSet s} {m : Mutability}
     (hc : cs.IsClosed) : (cs.applyMut m).IsClosed := by
-  cases m <;> simp [applyRO_isClosed hc, hc]
+  cases m
+  · exact hc
+  · exact applyRO_isClosed hc
 
 /-- Drops the outermost bound variable from a capture set. -/
 def CaptureSet.drop_here_var : CaptureSet (s,x) -> CaptureSet s

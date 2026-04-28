@@ -305,7 +305,7 @@ def retype_resolved_capture_set
   induction C
   case empty => rfl
   case union C1 C2 ih1 ih2 =>
-    simp [CaptureSet.subst, ih1, ih2]
+    simp only [CaptureSet.subst, ih1, ih2]
   case var x =>
     cases x
     case bound x =>
@@ -320,16 +320,16 @@ def retype_resolved_capture_set
           have hvar := ρ.var x
           rw [hσ] at hvar
           simpa [interp_var] using hvar
-        simp [hvar]
+        exact congrArg (CaptureSet.var ∘ Var.free) hvar
       case free n =>
         change CaptureSet.var (.free (env1.lookup_var x)) = CaptureSet.var (.free n)
         have hvar : env1.lookup_var x = n := by
           have hvar := ρ.var x
           rw [hσ] at hvar
           simpa [interp_var] using hvar
-        simp [hvar]
+        exact congrArg (CaptureSet.var ∘ Var.free) hvar
     case free n =>
-      simp [CaptureSet.subst, Var.subst]
+      simp only [CaptureSet.subst, Var.subst]
   case cvar C =>
     simpa only [CaptureSet.subst] using ρ.cvar C
 
@@ -389,7 +389,7 @@ def retype_exi_val_denot
     -- Both sides are match expressions on resolve s.heap e
     cases hresolve : resolve s.heap e
     · -- resolve = none
-      simp
+      exact Iff.rfl
     · -- resolve = some e'
       rename_i e'
       cases e'
@@ -402,7 +402,7 @@ def retype_exi_val_denot
         exact ih s (Exp.var y)
       all_goals {
         -- resolve returned non-pack
-        simp
+        exact Iff.rfl
       }
 
 def retype_capt_exp_denot

@@ -131,23 +131,12 @@ def retype_shape_val_denot
   (ρ : Retype env1 σ env2) (T : Ty .shape s1) :
   Ty.shape_val_denot env1 T ≈ Ty.shape_val_denot env2 (T.subst σ) :=
   match T with
-  | .top => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
-  | .tvar X => by
-    simpa only [Ty.shape_val_denot, Ty.subst] using ρ.tvar X
-  | .unit => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
-  | .cap => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
-  | .bool => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
-  | .cell => by
-    apply PreDenot.eq_to_equiv
-    simp [Ty.shape_val_denot, Ty.subst]
+  | .top => PreDenot.eq_to_equiv (by simp [Ty.shape_val_denot, Ty.subst])
+  | .tvar X => by simpa only [Ty.shape_val_denot, Ty.subst] using ρ.tvar X
+  | .unit => PreDenot.eq_to_equiv (by simp [Ty.shape_val_denot, Ty.subst])
+  | .cap => PreDenot.eq_to_equiv (by simp [Ty.shape_val_denot, Ty.subst])
+  | .bool => PreDenot.eq_to_equiv (by simp [Ty.shape_val_denot, Ty.subst])
+  | .cell => PreDenot.eq_to_equiv (by simp [Ty.shape_val_denot, Ty.subst])
   | .arrow T1 T2 => by
     have ih1 := retype_capt_val_denot ρ T1
     intro A s0 e0

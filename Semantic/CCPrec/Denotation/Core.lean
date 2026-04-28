@@ -495,8 +495,9 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : PreDenot} :
     cases X
     case here => rfl
     case there X' =>
-      simp [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openTVar,
-        TypeEnv.extend_tvar, Ty.subst, Ty.rename]
+      simp only [Subst.comp, Subst.lift, Subst.from_TypeEnv, Subst.openTVar,
+        TypeEnv.extend_tvar, Ty.rename]
+      rfl
   · intro C
     cases C with
     | there C' =>
@@ -552,7 +553,7 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         simp only [Subst.comp, Subst.unpack, Var.subst]
         rw [Subst.lift_there_var_eq]
         rw [Subst.lift_there_var_eq]
-        simp [Subst.from_TypeEnv, Var.rename, TypeEnv.lookup_var]
+        simp only [Subst.from_TypeEnv, Var.rename, TypeEnv.lookup_var, TypeEnv.extend_var]
         rfl
   · -- tvar case
     intro X
@@ -575,7 +576,7 @@ theorem Subst.from_TypeEnv_weaken_unpack :
         -- Need to show: (lift.lift.cvar (.there .here)).subst unpack = cs
         -- This is unpack.cvar (.there .here) = cs by definition
         rw [Subst.lift_there_cvar_eq]
-        simp [Subst.lift, CaptureSet.subst, CaptureSet.rename]
+        simp only [Subst.lift, Rename.succ]
         -- Goal: match Rename.succ.var .here with | .here.there => cs | ... = cs
         -- Rename.succ.var .here = .here.there by definition
         rfl
@@ -748,13 +749,12 @@ def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 := by
 
 def Denot.equiv_trans (d1 d2 d3 : Denot) : d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 := by
   intro h12 h23 m e
-  have h1 := h12 m e
-  have h2 := h23 m e
-  grind
+  exact Iff.trans (h12 m e) (h23 m e)
 
 theorem Denot.eq_to_equiv (d1 d2 : Denot) : d1 = d2 -> d1 ≈ d2 := by
   intro h m e
-  grind
+  subst h
+  exact Iff.rfl
 
 theorem Denot.equiv_ltr {d1 d2 : Denot}
   (heqv : d1 ≈ d2)
@@ -821,10 +821,7 @@ theorem PreDenot.equiv_symm (pd1 pd2 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd1 :=
 
 theorem PreDenot.equiv_trans (pd1 pd2 pd3 : PreDenot) : pd1 ≈ pd2 -> pd2 ≈ pd3 -> pd1 ≈ pd3 := by
   intro h12 h23 A
-  apply Denot.equiv_trans _ (pd2 A) _
-  · exact h12 A
-  · exact h23 A
-
+  exact Denot.equiv_trans _ (pd2 A) _ (h12 A) (h23 A)
 theorem Denot.imply_refl (d : Denot) : d.Imply d := by
   intro m e h
   exact h
@@ -834,12 +831,12 @@ theorem Denot.imply_trans {d1 d2 d3 : Denot}
   (h2 : d2.Imply d3) :
   d1.Imply d3 := by
   intro m e h
-  aesop
+  exact h2 m e (h1 m e h)
 
 theorem resolve_var_heap_some
   (hheap : heap x = some (.val v)) :
   resolve heap (.var (.free x)) = some v.unwrap := by
-  simp [resolve, hheap]
+  simp only [resolve, hheap]
 
 theorem resolve_val
   (hval : v.IsVal) :
@@ -855,8 +852,38 @@ theorem resolve_var_heap_trans
 theorem resolve_var_or_val
   (hv : resolve store e = some v) :
   (∃ x, e = .var x) ∨ e = v := by
-  cases e
-  all_goals try (solve | aesop | simp [resolve] at hv; aesop)
+  cases e with
+  | var x => exact Or.inl ⟨x, rfl⟩
+  | abs cs T e =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | tabs cs T e =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | cabs cs cb e =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | pack cs x =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | app x y =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | tapp x T =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | capp x cs =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | letin e1 e2 =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | unpack e1 e2 =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | unit =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | btrue =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | bfalse =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | read x =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | write x y =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
+  | cond x e2 e3 =>
+    simp only [resolve] at hv; exact Or.inr (Option.some.inj hv)
 
 theorem resolve_ans_to_val
   (hv : resolve store e = some v)
@@ -867,7 +894,9 @@ theorem resolve_ans_to_val
     have ⟨x, h⟩ := h
     rw [h]
     apply Exp.IsAns.is_var
-  case inr h => aesop
+  case inr h =>
+    rw [h]
+    exact hans
 
 def PreDenot.is_monotonic (pd : PreDenot) : Prop :=
   ∀ C, (pd C).is_monotonic
@@ -1667,12 +1696,8 @@ def shape_val_denot_is_monotonic {env : TypeEnv s}
     intro m1 m2 e hmem ht
     simp only [Ty.shape_val_denot] at ht ⊢
     cases ht with
-    | inl htrue =>
-      left
-      exact resolve_monotonic hmem htrue
-    | inr hfalse =>
-      right
-      exact resolve_monotonic hmem hfalse
+    | inl htrue => exact Or.inl (resolve_monotonic hmem htrue)
+    | inr hfalse => exact Or.inr (resolve_monotonic hmem hfalse)
   | cell =>
     intro m1 m2 e hmem ht
     simp only [Ty.shape_val_denot] at ht ⊢
@@ -1896,7 +1921,7 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
     -- Goal: match (resolve m2.heap e) with some (pack CS x) => ... | _ => False
     cases hresolve1 : resolve m1.heap e
     · -- resolve m1.heap e = none, so ht is False
-      simp [hresolve1] at ht
+      simp only [hresolve1] at ht
     · -- resolve m1.heap e = some e'
       rename_i e'
       cases e'
@@ -1970,7 +1995,7 @@ def exi_val_denot_is_bool_independent {env : TypeEnv s}
     simp only [Ty.exi_val_denot]
     -- For btrue and bfalse, resolve returns some btrue/bfalse, which are not pack
     -- So both sides evaluate to False
-    simp [resolve]
+    simp only [resolve]
 
 def capt_exp_denot_is_monotonic {env : TypeEnv s}
   (henv_mono : env.IsMonotonic)
@@ -2177,7 +2202,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
             | mk vexp hv_simple hreach_val =>
               have hreach :=
                 Memory.reachability_invariant m fx ⟨vexp, hv_simple, hreach_val⟩
-                  (by simp [hcell])
+                  (by simp only [hcell])
               have hresolve :
                   some vexp = some Exp.btrue ∨ some vexp = some Exp.bfalse := by
                 cases hdenot' with
@@ -2213,7 +2238,8 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
                 rw [reachability_of_loc, hcell, hreach_empty]
                 exact CapabilitySet.Subset.empty
     | _ =>
-      simp [Ty.shape_val_denot, resolve] at hdenot
+      simp only [resolve] at hdenot'
+      rcases hdenot' with hbad | hbad <;> exact absurd (Option.some.inj hbad) (by simp)
   | cell =>
     simp only [Ty.shape_val_denot] at hdenot
     obtain ⟨l, b0, heq, hlookup, hmem⟩ := hdenot
@@ -2260,7 +2286,7 @@ theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
                 simpa only [resolve, hfx] using hdenot'
               have hreach :=
                 Memory.reachability_invariant m fx ⟨vexp, hv_simple, hreach_val⟩
-                  (by simp [hfx])
+                  (by simp only [hfx])
               cases hv_simple with
               | abs =>
                 cases hresolve
@@ -2717,7 +2743,8 @@ theorem shape_val_denot_implies_wf {env : TypeEnv s}
                 simpa only [resolve, hcell] using hb
               cases hbad
     | _ =>
-      simp [Ty.shape_val_denot, resolve] at hdenot
+      simp only [resolve] at hdenot'
+      rcases hdenot' with hbad | hbad <;> exact absurd (Option.some.inj hbad) (by simp)
   | unit =>
     have hdenot' : resolve m.heap e = some .unit := by
       simpa only [Ty.shape_val_denot] using hdenot

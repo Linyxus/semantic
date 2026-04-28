@@ -683,8 +683,7 @@ theorem Var.wf_monotonic
   | wf_bound => apply Var.WfInHeap.wf_bound
   | wf_free hex =>
     obtain ⟨v', hv', _⟩ := hsub _ _ hex
-    apply Var.WfInHeap.wf_free
-    exact hv'
+    exact Var.WfInHeap.wf_free hv'
 
 theorem CaptureSet.wf_monotonic
   {h1 h2 : Heap}
@@ -694,13 +693,10 @@ theorem CaptureSet.wf_monotonic
   induction hwf with
   | wf_empty => apply CaptureSet.WfInHeap.wf_empty
   | wf_union _ _ ih1 ih2 =>
-    apply CaptureSet.WfInHeap.wf_union
-    · exact ih1 hsub
-    · exact ih2 hsub
+    exact CaptureSet.WfInHeap.wf_union (ih1 hsub) (ih2 hsub)
   | wf_var_free hex =>
     obtain ⟨v', hv', _⟩ := hsub _ _ hex
-    apply CaptureSet.WfInHeap.wf_var_free
-    exact hv'
+    exact CaptureSet.WfInHeap.wf_var_free hv'
   | wf_var_bound => apply CaptureSet.WfInHeap.wf_var_bound
   | wf_cvar => apply CaptureSet.WfInHeap.wf_cvar
 
@@ -1263,8 +1259,7 @@ theorem Var.wf_rename
     apply Var.WfInHeap.wf_bound
   | wf_free hex =>
     simp only [Var.rename]
-    apply Var.WfInHeap.wf_free
-    exact hex
+    exact Var.WfInHeap.wf_free hex
 
 /-- Renaming preserves well-formedness of capture sets. -/
 theorem CaptureSet.wf_rename
@@ -1279,13 +1274,10 @@ theorem CaptureSet.wf_rename
     apply CaptureSet.WfInHeap.wf_empty
   | wf_union _ _ ih1 ih2 =>
     simp only [CaptureSet.rename]
-    apply CaptureSet.WfInHeap.wf_union
-    · exact ih1
-    · exact ih2
+    exact CaptureSet.WfInHeap.wf_union ih1 ih2
   | wf_var_free hex =>
     simp only [CaptureSet.rename]
-    apply CaptureSet.WfInHeap.wf_var_free
-    exact hex
+    exact CaptureSet.WfInHeap.wf_var_free hex
   | wf_var_bound =>
     simp only [CaptureSet.rename]
     apply CaptureSet.WfInHeap.wf_var_bound
@@ -1306,8 +1298,7 @@ theorem CaptureBound.wf_rename
     apply CaptureBound.WfInHeap.wf_unbound
   | wf_bound hwf_cs =>
     simp only [CaptureBound.rename]
-    apply CaptureBound.WfInHeap.wf_bound
-    exact CaptureSet.wf_rename hwf_cs
+    exact CaptureBound.WfInHeap.wf_bound (CaptureSet.wf_rename hwf_cs)
 
 /-- Renaming preserves well-formedness of types. -/
 theorem Ty.wf_rename
@@ -1325,19 +1316,13 @@ theorem Ty.wf_rename
     apply Ty.WfInHeap.wf_tvar
   | wf_arrow _ _ ih1 ih2 =>
     simp only [Ty.rename]
-    apply Ty.WfInHeap.wf_arrow
-    · exact ih1
-    · exact ih2
+    exact Ty.WfInHeap.wf_arrow ih1 ih2
   | wf_poly _ _ ih1 ih2 =>
     simp only [Ty.rename]
-    apply Ty.WfInHeap.wf_poly
-    · exact ih1
-    · exact ih2
+    exact Ty.WfInHeap.wf_poly ih1 ih2
   | wf_cpoly hwf_cb _ ih_T =>
     simp only [Ty.rename]
-    apply Ty.WfInHeap.wf_cpoly
-    · exact CaptureBound.wf_rename hwf_cb
-    · exact ih_T
+    exact Ty.WfInHeap.wf_cpoly (CaptureBound.wf_rename hwf_cb) ih_T
   | wf_unit =>
     simp only [Ty.rename]
     apply Ty.WfInHeap.wf_unit
@@ -1352,17 +1337,13 @@ theorem Ty.wf_rename
     apply Ty.WfInHeap.wf_cell
   | wf_capt hwf_cs _ ih_T =>
     simp only [Ty.rename]
-    apply Ty.WfInHeap.wf_capt
-    · exact CaptureSet.wf_rename hwf_cs
-    · exact ih_T
+    exact Ty.WfInHeap.wf_capt (CaptureSet.wf_rename hwf_cs) ih_T
   | wf_exi _ ih =>
     simp only [Ty.rename]
-    apply Ty.WfInHeap.wf_exi
-    exact ih
+    exact Ty.WfInHeap.wf_exi ih
   | wf_typ _ ih =>
     simp only [Ty.rename]
-    apply Ty.WfInHeap.wf_typ
-    exact ih
+    exact Ty.WfInHeap.wf_typ ih
 
 /-- Renaming preserves well-formedness of expressions. -/
 theorem Exp.wf_rename
@@ -1374,56 +1355,34 @@ theorem Exp.wf_rename
   induction hwf generalizing s2 with
   | wf_var hwf_x =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_var
-    exact Var.wf_rename hwf_x
+    exact Exp.WfInHeap.wf_var (Var.wf_rename hwf_x)
   | wf_abs hwf_cs hwf_T _ ih_e =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_abs
-    · exact CaptureSet.wf_rename hwf_cs
-    · exact Ty.wf_rename hwf_T
-    · exact ih_e
+    exact Exp.WfInHeap.wf_abs (CaptureSet.wf_rename hwf_cs) (Ty.wf_rename hwf_T) ih_e
   | wf_tabs hwf_cs hwf_T _ ih_e =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_tabs
-    · exact CaptureSet.wf_rename hwf_cs
-    · exact Ty.wf_rename hwf_T
-    · exact ih_e
+    exact Exp.WfInHeap.wf_tabs (CaptureSet.wf_rename hwf_cs) (Ty.wf_rename hwf_T) ih_e
   | wf_cabs hwf_cs hwf_cb _ ih_e =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_cabs
-    · exact CaptureSet.wf_rename hwf_cs
-    · exact CaptureBound.wf_rename hwf_cb
-    · exact ih_e
+    exact Exp.WfInHeap.wf_cabs (CaptureSet.wf_rename hwf_cs) (CaptureBound.wf_rename hwf_cb) ih_e
   | wf_pack hwf_cs hwf_x =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_pack
-    · exact CaptureSet.wf_rename hwf_cs
-    · exact Var.wf_rename hwf_x
+    exact Exp.WfInHeap.wf_pack (CaptureSet.wf_rename hwf_cs) (Var.wf_rename hwf_x)
   | wf_app hwf_x hwf_y =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_app
-    · exact Var.wf_rename hwf_x
-    · exact Var.wf_rename hwf_y
+    exact Exp.WfInHeap.wf_app (Var.wf_rename hwf_x) (Var.wf_rename hwf_y)
   | wf_tapp hwf_x hwf_T =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_tapp
-    · exact Var.wf_rename hwf_x
-    · exact Ty.wf_rename hwf_T
+    exact Exp.WfInHeap.wf_tapp (Var.wf_rename hwf_x) (Ty.wf_rename hwf_T)
   | wf_capp hwf_x hwf_cs =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_capp
-    · exact Var.wf_rename hwf_x
-    · exact CaptureSet.wf_rename hwf_cs
+    exact Exp.WfInHeap.wf_capp (Var.wf_rename hwf_x) (CaptureSet.wf_rename hwf_cs)
   | wf_letin _ _ ih1 ih2 =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_letin
-    · exact ih1
-    · exact ih2
+    exact Exp.WfInHeap.wf_letin ih1 ih2
   | wf_unpack _ _ ih1 ih2 =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_unpack
-    · exact ih1
-    · exact ih2
+    exact Exp.WfInHeap.wf_unpack ih1 ih2
   | wf_unit =>
     simp only [Exp.rename]
     apply Exp.WfInHeap.wf_unit
@@ -1435,19 +1394,13 @@ theorem Exp.wf_rename
     apply Exp.WfInHeap.wf_bfalse
   | wf_read hwf_x =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_read
-    exact Var.wf_rename hwf_x
+    exact Exp.WfInHeap.wf_read (Var.wf_rename hwf_x)
   | wf_write hwf_x hwf_y =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_write
-    · exact Var.wf_rename hwf_x
-    · exact Var.wf_rename hwf_y
+    exact Exp.WfInHeap.wf_write (Var.wf_rename hwf_x) (Var.wf_rename hwf_y)
   | wf_cond hwf_x _ _ ih2 ih3 =>
     simp only [Exp.rename]
-    apply Exp.WfInHeap.wf_cond
-    · exact Var.wf_rename hwf_x
-    · exact ih2
-    · exact ih3
+    exact Exp.WfInHeap.wf_cond (Var.wf_rename hwf_x) ih2 ih3
 
 -- Substitution well-formedness preservation
 
@@ -1532,13 +1485,10 @@ theorem CaptureSet.wf_subst
     apply CaptureSet.WfInHeap.wf_empty
   | wf_union _ _ ih1 ih2 =>
     simp only [CaptureSet.subst]
-    apply CaptureSet.WfInHeap.wf_union
-    · exact ih1 hwf_σ
-    · exact ih2 hwf_σ
+    exact CaptureSet.WfInHeap.wf_union (ih1 hwf_σ) (ih2 hwf_σ)
   | wf_var_free hex =>
     simp only [CaptureSet.subst]
-    apply CaptureSet.WfInHeap.wf_var_free
-    exact hex
+    exact CaptureSet.WfInHeap.wf_var_free hex
   | wf_var_bound =>
     rename_i x H_wf
     simp only [CaptureSet.subst]
@@ -1564,8 +1514,7 @@ theorem CaptureBound.wf_subst
     apply CaptureBound.WfInHeap.wf_unbound
   | wf_bound hwf_cs =>
     simp only [CaptureBound.subst]
-    apply CaptureBound.WfInHeap.wf_bound
-    exact CaptureSet.wf_subst hwf_cs hwf_σ
+    exact CaptureBound.WfInHeap.wf_bound (CaptureSet.wf_subst hwf_cs hwf_σ)
 
 /-- Well-formed substitutions preserve well-formedness of types. -/
 theorem Ty.wf_subst
@@ -1584,19 +1533,13 @@ theorem Ty.wf_subst
     exact hwf_σ.wf_tvar _
   | wf_arrow _ _ ih1 ih2 =>
     simp only [Ty.subst]
-    apply Ty.WfInHeap.wf_arrow
-    · exact ih1 hwf_σ
-    · exact ih2 (Subst.wf_lift hwf_σ)
+    exact Ty.WfInHeap.wf_arrow (ih1 hwf_σ) (ih2 (Subst.wf_lift hwf_σ))
   | wf_poly _ _ ih1 ih2 =>
     simp only [Ty.subst]
-    apply Ty.WfInHeap.wf_poly
-    · exact ih1 hwf_σ
-    · exact ih2 (Subst.wf_lift hwf_σ)
+    exact Ty.WfInHeap.wf_poly (ih1 hwf_σ) (ih2 (Subst.wf_lift hwf_σ))
   | wf_cpoly hwf_cb _ ih_T =>
     simp only [Ty.subst]
-    apply Ty.WfInHeap.wf_cpoly
-    · exact CaptureBound.wf_subst hwf_cb hwf_σ
-    · exact ih_T (Subst.wf_lift hwf_σ)
+    exact Ty.WfInHeap.wf_cpoly (CaptureBound.wf_subst hwf_cb hwf_σ) (ih_T (Subst.wf_lift hwf_σ))
   | wf_unit =>
     simp only [Ty.subst]
     apply Ty.WfInHeap.wf_unit
@@ -1611,17 +1554,13 @@ theorem Ty.wf_subst
     apply Ty.WfInHeap.wf_cell
   | wf_capt hwf_cs _ ih_T =>
     simp only [Ty.subst]
-    apply Ty.WfInHeap.wf_capt
-    · exact CaptureSet.wf_subst hwf_cs hwf_σ
-    · exact ih_T hwf_σ
+    exact Ty.WfInHeap.wf_capt (CaptureSet.wf_subst hwf_cs hwf_σ) (ih_T hwf_σ)
   | wf_exi _ ih =>
     simp only [Ty.subst]
-    apply Ty.WfInHeap.wf_exi
-    exact ih (Subst.wf_lift hwf_σ)
+    exact Ty.WfInHeap.wf_exi (ih (Subst.wf_lift hwf_σ))
   | wf_typ _ ih =>
     simp only [Ty.subst]
-    apply Ty.WfInHeap.wf_typ
-    exact ih hwf_σ
+    exact Ty.WfInHeap.wf_typ (ih hwf_σ)
 
 /-- Well-formed substitutions preserve well-formedness of expressions. -/
 theorem Exp.wf_subst
@@ -1634,56 +1573,37 @@ theorem Exp.wf_subst
   induction hwf_e generalizing s2 with
   | wf_var hwf_x =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_var
-    exact Var.wf_subst hwf_x hwf_σ
+    exact Exp.WfInHeap.wf_var (Var.wf_subst hwf_x hwf_σ)
   | wf_abs hwf_cs hwf_T _ ih_e =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_abs
-    · exact CaptureSet.wf_subst hwf_cs hwf_σ
-    · exact Ty.wf_subst hwf_T hwf_σ
-    · exact ih_e (Subst.wf_lift hwf_σ)
+    exact Exp.WfInHeap.wf_abs (CaptureSet.wf_subst hwf_cs hwf_σ) (Ty.wf_subst hwf_T hwf_σ)
+                               (ih_e (Subst.wf_lift hwf_σ))
   | wf_tabs hwf_cs hwf_T _ ih_e =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_tabs
-    · exact CaptureSet.wf_subst hwf_cs hwf_σ
-    · exact Ty.wf_subst hwf_T hwf_σ
-    · exact ih_e (Subst.wf_lift hwf_σ)
+    exact Exp.WfInHeap.wf_tabs (CaptureSet.wf_subst hwf_cs hwf_σ) (Ty.wf_subst hwf_T hwf_σ)
+                                (ih_e (Subst.wf_lift hwf_σ))
   | wf_cabs hwf_cs hwf_cb _ ih_e =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_cabs
-    · exact CaptureSet.wf_subst hwf_cs hwf_σ
-    · exact CaptureBound.wf_subst hwf_cb hwf_σ
-    · exact ih_e (Subst.wf_lift hwf_σ)
+    exact Exp.WfInHeap.wf_cabs (CaptureSet.wf_subst hwf_cs hwf_σ)
+                                (CaptureBound.wf_subst hwf_cb hwf_σ) (ih_e (Subst.wf_lift hwf_σ))
   | wf_pack hwf_cs hwf_x =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_pack
-    · exact CaptureSet.wf_subst hwf_cs hwf_σ
-    · exact Var.wf_subst hwf_x hwf_σ
+    exact Exp.WfInHeap.wf_pack (CaptureSet.wf_subst hwf_cs hwf_σ) (Var.wf_subst hwf_x hwf_σ)
   | wf_app hwf_x hwf_y =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_app
-    · exact Var.wf_subst hwf_x hwf_σ
-    · exact Var.wf_subst hwf_y hwf_σ
+    exact Exp.WfInHeap.wf_app (Var.wf_subst hwf_x hwf_σ) (Var.wf_subst hwf_y hwf_σ)
   | wf_tapp hwf_x hwf_T =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_tapp
-    · exact Var.wf_subst hwf_x hwf_σ
-    · exact Ty.wf_subst hwf_T hwf_σ
+    exact Exp.WfInHeap.wf_tapp (Var.wf_subst hwf_x hwf_σ) (Ty.wf_subst hwf_T hwf_σ)
   | wf_capp hwf_x hwf_cs =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_capp
-    · exact Var.wf_subst hwf_x hwf_σ
-    · exact CaptureSet.wf_subst hwf_cs hwf_σ
+    exact Exp.WfInHeap.wf_capp (Var.wf_subst hwf_x hwf_σ) (CaptureSet.wf_subst hwf_cs hwf_σ)
   | wf_letin _ _ ih1 ih2 =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_letin
-    · exact ih1 hwf_σ
-    · exact ih2 (Subst.wf_lift hwf_σ)
+    exact Exp.WfInHeap.wf_letin (ih1 hwf_σ) (ih2 (Subst.wf_lift hwf_σ))
   | wf_unpack _ _ ih1 ih2 =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_unpack
-    · exact ih1 hwf_σ
-    · exact ih2 (Subst.wf_lift (Subst.wf_lift hwf_σ))
+    exact Exp.WfInHeap.wf_unpack (ih1 hwf_σ) (ih2 (Subst.wf_lift (Subst.wf_lift hwf_σ)))
   | wf_unit =>
     simp only [Exp.subst]
     apply Exp.WfInHeap.wf_unit
@@ -1695,19 +1615,13 @@ theorem Exp.wf_subst
     apply Exp.WfInHeap.wf_bfalse
   | wf_read hwf_x =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_read
-    exact Var.wf_subst hwf_x hwf_σ
+    exact Exp.WfInHeap.wf_read (Var.wf_subst hwf_x hwf_σ)
   | wf_write hwf_x hwf_y =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_write
-    · exact Var.wf_subst hwf_x hwf_σ
-    · exact Var.wf_subst hwf_y hwf_σ
+    exact Exp.WfInHeap.wf_write (Var.wf_subst hwf_x hwf_σ) (Var.wf_subst hwf_y hwf_σ)
   | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
     simp only [Exp.subst]
-    apply Exp.WfInHeap.wf_cond
-    · exact Var.wf_subst hwf_x hwf_σ
-    · exact ih2 hwf_σ
-    · exact ih3 hwf_σ
+    exact Exp.WfInHeap.wf_cond (Var.wf_subst hwf_x hwf_σ) (ih2 hwf_σ) (ih3 hwf_σ)
 
 -- Well-formedness of opening substitutions
 

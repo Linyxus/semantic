@@ -61,26 +61,18 @@ def Rename.succ : Rename s (s,,k) where
 
 theorem Rename.funext {f1 f2 : Rename s1 s2}
   (hvar : ∀ {k} (x : BVar s1 k), f1.var x = f2.var x) :
-  f1 = f2 := by
-  cases f1; cases f2
-  aesop
+  f1 = f2 := by cases f1; cases f2; aesop
 
 theorem Rename.succ_lift_comm {f : Rename s1 s2} :
   (Rename.succ (k:=k0)).comp f.lift = f.comp (Rename.succ (k:=k0)) := by
-  apply Rename.funext
-  intro k x
-  cases x <;> rfl
+  apply Rename.funext; intro _ x; cases x <;> rfl
 
 theorem Rename.lift_id :
   (Rename.id (s:=s)).lift (k:=k0) = Rename.id := by
-  apply Rename.funext
-  intro k x
-  cases x <;> rfl
+  apply Rename.funext; intro _ x; cases x <;> rfl
 
 theorem Rename.lift_comp {f1 : Rename s1 s2} {f2 : Rename s2 s3} :
   (f1.comp f2).lift (k:=k0) = f1.lift.comp f2.lift := by
-  apply Rename.funext
-  intro k x
-  cases x <;> rfl
+  apply Rename.funext; intro _ x; cases x <;> rfl
 
 end Fsub

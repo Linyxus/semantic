@@ -46,21 +46,21 @@ theorem CaptureSet.rename_id {cs : CaptureSet s} :
     cs.rename (Rename.id) = cs := by
   induction cs
   case empty => rfl
-  case union ih1 ih2 => simp [CaptureSet.rename, ih1, ih2]
+  case union ih1 ih2 => simp only [CaptureSet.rename, ih1, ih2]
   case var x => cases x <;> rfl
-  case cvar x => simp [CaptureSet.rename, Rename.id]
+  case cvar x => simp only [CaptureSet.rename, Rename.id]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (cs.rename f).rename g = cs.rename (f.comp g) := by
   induction cs generalizing s2 s3
   case empty => rfl
-  case union ih1 ih2 => simp [CaptureSet.rename, ih1, ih2]
+  case union ih1 ih2 => simp only [CaptureSet.rename, ih1, ih2]
   case var x =>
     cases x
-    · simp [CaptureSet.rename, Var.rename]; rfl
-    · simp [CaptureSet.rename, Var.rename]
-  case cvar x => simp [CaptureSet.rename, Rename.comp]
+    · simp only [CaptureSet.rename, Var.rename, Rename.comp]
+    · simp only [CaptureSet.rename, Var.rename]
+  case cvar x => simp only [CaptureSet.rename, Rename.comp]
 
 /-- The subset relation on capture sets. -/
 inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where

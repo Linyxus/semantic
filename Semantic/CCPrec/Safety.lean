@@ -78,14 +78,14 @@ theorem Heap.platform_of_has_fin_dom (N : Nat) :
     intro h
     split at h
     case isTrue hlt =>
-      simp [Finset.mem_range, hlt]
+      exact Finset.mem_range.mpr hlt
     case isFalse =>
       contradiction
   · -- If l ∈ range N, then heap is not none
     intro h
-    simp [Finset.mem_range] at h
+    simp only [Finset.mem_range] at h
     split
-    case isTrue => simp
+    case isTrue => exact Option.some_ne_none _
     case isFalse hf => omega
 
 /-- Platform memory with `N` ground capabilities. -/
@@ -111,9 +111,7 @@ theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
   (ht : EnvTyping Γ env (Memory.platform_of N)) :
   EnvTyping Γ env (Memory.platform_of M) := by
   -- Use the existing monotonicity theorem for EnvTyping
-  apply env_typing_monotonic
-  · exact ht
-  · exact platform_memory_subsumes hNM
+  exact env_typing_monotonic ht (platform_memory_subsumes hNM)
 
 theorem env_typing_of_platform {N : Nat} :
   EnvTyping
@@ -215,7 +213,7 @@ def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
 theorem reachability_of_loc_platform {l : Nat} (hl : l < N) :
   reachability_of_loc (Heap.platform_of N) l = {l} := by
   unfold reachability_of_loc Heap.platform_of
-  simp [hl]
+  simp only [hl, ↓reduceIte]
 
 /-- The length of a platform signature is 2*N. -/
 theorem Sig.platform_of_length : (Sig.platform_of N).length = 2 * N := by

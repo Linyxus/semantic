@@ -15,8 +15,8 @@ def Heap.extend (h : Heap) (l : Nat) (v : Val {}) : Heap :=
 def Heap.subsumes (big small : Heap) : Prop :=
   ∀ l v, small l = some v -> big l = some v
 
-theorem Heap.subsumes_refl (h : Heap) : h.subsumes h := by
-  intros l v hlookup; exact hlookup
+theorem Heap.subsumes_refl (h : Heap) : h.subsumes h :=
+  fun _ _ => id
 
 /-- Heap predicate. -/
 def Hprop := Heap -> Prop
@@ -36,18 +36,14 @@ def Hpost.entails (Q1 Q2 : Hpost) : Prop :=
     Q1 e h ->
     Q2 e h
 
-def Hpost.entails_refl (Q : Hpost) : Q.entails Q := by
-  intros h e hQ
-  exact hQ
+def Hpost.entails_refl (Q : Hpost) : Q.entails Q :=
+  fun _ _ => id
 
 def Heap.subsumes_trans {h1 h2 h3 : Heap}
   (h12 : h1.subsumes h2)
   (h23 : h2.subsumes h3) :
-  h1.subsumes h3 := by
-  intros l v hlookup
-  apply h12 l v
-  apply h23 l v
-  exact hlookup
+  h1.subsumes h3 :=
+  fun l v hlookup => h12 l v (h23 l v hlookup)
 
 theorem Heap.extend_lookup_eq
   (h : Heap) (l : Nat) (v : Val {}) :
@@ -60,12 +56,7 @@ theorem Heap.extend_subsumes {H : Heap} {l : Nat}
   intro l' v' hlookup
   simp only [Heap.extend]
   split
-  · next heq =>
-      -- l' = l case: contradiction since H l = none but H l' = some v'
-      rw [heq] at hlookup
-      rw [hfresh] at hlookup
-      contradiction
-  · -- l' ≠ l case: extended heap agrees with original
-    exact hlookup
+  · next heq => rw [heq, hfresh] at hlookup; contradiction
+  · exact hlookup
 
 end Fsub

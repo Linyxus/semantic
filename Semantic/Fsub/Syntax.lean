@@ -52,8 +52,7 @@ structure Val (s : Sig) where
   unwrap : Exp s
   isVal : unwrap.IsVal
 
-def Var.rename_id {x : Var s} : x.rename (Rename.id) = x := by
-  cases x <;> rfl
+def Var.rename_id {x : Var s} : x.rename (Rename.id) = x := by cases x <;> rfl
 
 def Ty.rename_id {T : Ty s} : T.rename (Rename.id) = T := by
   induction T with
@@ -74,18 +73,13 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
       simpa only [Exp.rename, Ty.rename_id, Rename.lift_id] using congrArg (Exp.abs T) ih
   | tabs T e ih =>
       simpa only [Exp.rename, Ty.rename_id, Rename.lift_id] using congrArg (Exp.tabs T) ih
-  | app x y =>
-      rw [Exp.rename, Var.rename_id]
-      exact congrArg (Exp.app x) (Var.rename_id (x:=y))
-  | tapp x T =>
-      rw [Exp.rename, Var.rename_id]
-      exact congrArg (Exp.tapp x) (Ty.rename_id (T:=T))
+  | app x y => simp only [Exp.rename, Var.rename_id]
+  | tapp x T => simp only [Exp.rename, Var.rename_id, Ty.rename_id]
   | letin e1 e2 ih1 ih2 =>
       simpa only [Exp.rename, Rename.lift_id, ih1] using congrArg (Exp.letin e1) ih2
 
 theorem Var.rename_comp {x : Var s1} {f : Rename s1 s2} {g : Rename s2 s3} :
-    (x.rename f).rename g = x.rename (f.comp g) := by
-  cases x <;> rfl
+    (x.rename f).rename g = x.rename (f.comp g) := by cases x <;> rfl
 
 theorem Ty.rename_comp {T : Ty s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (T.rename f).rename g = T.rename (f.comp g) := by
@@ -112,16 +106,8 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | tabs T e ih =>
       simpa only [Exp.rename, Ty.rename_comp, Rename.lift_comp] using
         congrArg (Exp.tabs (T.rename (f.comp g))) (ih (f:=f.lift) (g:=g.lift))
-  | app x y =>
-      change
-        Exp.app ((x.rename f).rename g) ((y.rename f).rename g) =
-          Exp.app (x.rename (f.comp g)) (y.rename (f.comp g))
-      rw [Var.rename_comp, Var.rename_comp]
-  | tapp x T =>
-      change
-        Exp.tapp ((x.rename f).rename g) ((T.rename f).rename g) =
-          Exp.tapp (x.rename (f.comp g)) (T.rename (f.comp g))
-      rw [Var.rename_comp, Ty.rename_comp]
+  | app x y => simp only [Exp.rename, Var.rename_comp]
+  | tapp x T => simp only [Exp.rename, Var.rename_comp, Ty.rename_comp]
   | letin e1 e2 ih1 ih2 =>
       simpa only [Exp.rename, Rename.lift_comp, ih1] using
         congrArg (Exp.letin (e1.rename (f.comp g))) (ih2 (f:=f.lift) (g:=g.lift))

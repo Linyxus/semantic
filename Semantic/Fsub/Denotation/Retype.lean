@@ -26,20 +26,13 @@ theorem Retype.liftVar
     | .here => rfl
     | .there y => by
       change env1.lookup_var y = interp_var (env2.extend_var x) ((σ.var y).rename Rename.succ)
-      conv =>
-        rhs
-        simp [<-weaken_interp_var]
+      conv => rhs; simp [<-weaken_interp_var]
       exact ρ.var y
   tvar := fun
     | .there X => by
-      conv =>
-        lhs
-        simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
-      conv =>
-        rhs
-        simp [Subst.lift]
-      apply Denot.equiv_trans _ _ _ (ρ.tvar X)
-      apply weaken_val_denot
+      conv => lhs; simp [TypeEnv.extend_var, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      conv => rhs; simp [Subst.lift]
+      exact Denot.equiv_trans _ _ _ (ρ.tvar X) weaken_val_denot
 
 theorem Retype.liftTVar
   (ρ : Retype env1 σ env2) :
@@ -52,19 +45,13 @@ theorem Retype.liftTVar
   tvar := fun
     | .here => by
       conv => lhs; simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-      conv =>
-        rhs
-        simp [Subst.lift, Ty.val_denot, TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      conv => rhs; simp [Subst.lift, Ty.val_denot, TypeEnv.extend_tvar, TypeEnv.lookup_tvar,
+                         TypeEnv.lookup]
       apply Denot.equiv_refl
     | .there X => by
-      conv =>
-        lhs
-        simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
-      conv =>
-        rhs
-        simp [Subst.lift]
-      apply Denot.equiv_trans _ _ _ (ρ.tvar X)
-      apply tweaken_val_denot
+      conv => lhs; simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar, TypeEnv.lookup]
+      conv => rhs; simp [Subst.lift]
+      exact Denot.equiv_trans _ _ _ (ρ.tvar X) tweaken_val_denot
 
 mutual
 
@@ -72,67 +59,53 @@ theorem retype_val_denot
   (ρ : Retype env1 σ env2) :
   Ty.val_denot env1 T ≈ Ty.val_denot env2 (T.subst σ) :=
   match T with
-  | .top => by
-    apply Denot.eq_to_equiv
-    simp [Ty.val_denot, Ty.subst]
+  | .top => by simp [Denot.Equiv, Ty.val_denot, Ty.subst]
   | .tvar X => by
     simpa only [Ty.val_denot, Ty.subst] using ρ.tvar X
   | .singleton x => by
-    intro s e
+    apply Denot.eq_to_equiv; funext s e
     simp only [Ty.val_denot, Ty.subst]
     cases x with
     | bound x =>
-      conv =>
-        arg 1
-        simp [Var.subst, interp_var]
-      have := ρ.var x
-      simp [this]
-      aesop
-    | free n =>
-      simp [Var.subst, interp_var]
+      simp only [Var.subst, interp_var]
+      exact congrArg (fun n => e = .var (.free n)) (ρ.var x)
+    | free n => simp [Var.subst, interp_var]
   | .arrow T1 T2 => by
     have ih1 := retype_val_denot ρ (T:=T1)
     simp only [Ty.val_denot, Ty.subst]
-    intro s0 e0; constructor <;> {
-      intro h
+    intro s0 e0; constructor
+    · intro h
       obtain ⟨T0, body, hr, hd⟩ := h
-      use T0, body, hr
-      intro s' arg h_s harg
-      have ih2 := retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2)
-      first
-      | exact (ih2 _ _).mp (hd s' arg h_s ((ih1 _ _).mpr harg))
-      | exact (ih2 _ _).mpr (hd s' arg h_s ((ih1 _ _).mp harg))
-    }
+      exact ⟨T0, body, hr, fun s' arg h_s harg =>
+        (retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2) _ _).mp
+          (hd s' arg h_s ((ih1 _ _).mpr harg))⟩
+    · intro h
+      obtain ⟨T0, body, hr, hd⟩ := h
+      exact ⟨T0, body, hr, fun s' arg h_s harg =>
+        (retype_exp_denot (ρ.liftVar (x:=arg)) (T:=T2) _ _).mpr
+          (hd s' arg h_s ((ih1 _ _).mp harg))⟩
   | .poly T1 T2 => by
     have ih1 := retype_val_denot ρ (T:=T1)
     simp only [Ty.val_denot, Ty.subst]
-    intro s0 e0; constructor <;> {
-      intro h
+    intro s0 e0; constructor
+    · intro h
       obtain ⟨T0, e0, hr, hd⟩ := h
-      use T0, e0, hr
-      intro H denot Hs hdenot_mono hdenot_trans himply
-      have ih2 := retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2)
-      first
-      | have himply' : denot.ImplyAfter H (Ty.val_denot env1 T1) := by
-          intro s hs e hdenot; exact (ih1 s e).mpr (himply s hs e hdenot)
-        exact (ih2 H _).mp (hd H denot Hs hdenot_mono hdenot_trans himply')
-      | have himply' : denot.ImplyAfter H (Ty.val_denot env2 (T1.subst σ)) := by
-          intro s hs e hdenot; exact (ih1 s e).mp (himply s hs e hdenot)
-        exact (ih2 H _).mpr (hd H denot Hs hdenot_mono hdenot_trans himply')
-    }
+      refine ⟨T0, e0, hr, fun H denot Hs hm ht himply => ?_⟩
+      exact (retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2) H _).mp
+        (hd H denot Hs hm ht (fun s hs e hd => (ih1 s e).mpr (himply s hs e hd)))
+    · intro h
+      obtain ⟨T0, e0, hr, hd⟩ := h
+      refine ⟨T0, e0, hr, fun H denot Hs hm ht himply => ?_⟩
+      exact (retype_exp_denot (ρ.liftTVar (d:=denot)) (T:=T2) H _).mpr
+        (hd H denot Hs hm ht (fun s hs e hd => (ih1 s e).mp (himply s hs e hd)))
 
 theorem retype_exp_denot
   (ρ : Retype env1 σ env2) :
   Ty.exp_denot env1 T ≈ Ty.exp_denot env2 (T.subst σ) := by
-  have ih := retype_val_denot ρ (T:=T)
-  intro s e; simp only [Ty.exp_denot]; constructor <;> {
-    intro h
-    apply eval_post_monotonic _ h
-    apply Denot.imply_to_entails
-    first
-    | exact (Denot.equiv_to_imply ih).1
-    | exact (Denot.equiv_to_imply ih).2
-  }
+  have ⟨himp1, himp2⟩ := Denot.equiv_to_imply (retype_val_denot ρ (T:=T))
+  intro s e; simp only [Ty.exp_denot]; constructor
+  · intro h; exact eval_post_monotonic (Denot.imply_to_entails _ _ himp1) h
+  · intro h; exact eval_post_monotonic (Denot.imply_to_entails _ _ himp2) h
 
 end
 
@@ -144,12 +117,8 @@ def Retype.open_arg {env : TypeEnv s} {y : Var s} :
   var := fun x => by cases x <;> rfl
   tvar := fun
     | .there X => by
-      change Denot.Equiv (env.lookup_tvar X) _
-      conv =>
-        rhs
-        simp [Subst.openVar]
-      apply Denot.eq_to_equiv
-      simp [Ty.val_denot, TypeEnv.lookup_tvar]
+      simp only [TypeEnv.extend_var, TypeEnv.lookup_tvar, Subst.openVar, Ty.val_denot]
+      exact Denot.equiv_refl _
 
 theorem open_arg_val_denot {env : TypeEnv s} {y : Var s} {T : Ty (s,x)} :
   Ty.val_denot (env.extend_var (interp_var env y)) T ≈
@@ -163,9 +132,7 @@ def Retype.open_targ {env : TypeEnv s} {S : Ty s} :
     env where
   var := fun x => by cases x; rfl
   tvar := fun
-    | .here => by
-      apply Denot.eq_to_equiv
-      rfl
+    | .here => by apply Denot.eq_to_equiv; rfl
     | .there X => by
       apply Denot.eq_to_equiv
       simp [TypeEnv.extend_tvar, TypeEnv.lookup_tvar]
