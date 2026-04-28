@@ -2435,12 +2435,114 @@ theorem resolve_is_pack {e : Exp {}} {m : Memory}
         | masked =>
           simp only [resolve, hval] at hres
           contradiction
+
+/-- Conjoin a "pack-witness-bound" invariant onto an arbitrary postcondition:
+    any pack reaching the postcondition has its witness's reachability contained
+    in the use set's denotation. For non-pack values the conjunct is vacuous. -/
+def Mpost.with_pack_bound {s : Sig} (Q : Mpost) (C0 : CaptureSet s)
+    (env : TypeEnv s) (store : Memory) : Mpost :=
+  fun e m =>
+    Q e m ∧
+    ∀ cs fx, e = .pack cs (Var.free fx) →
+      reachability_of_loc m.heap fx ⊆ C0.denot env store
+
+/-- The strengthened existential val denotation for use in `sem_typ_unpack`. -/
+def Ty.exi_val_denot_with_witness_bound
+  {s : Sig} (env : TypeEnv s) (T : Ty .capt (s,C))
+  (C0 : CaptureSet s) (store : Memory) : Mpost :=
+  Mpost.with_pack_bound ((Ty.exi_val_denot env (.exi T)).as_mpost) C0 env store
+
+/-- For any syntactic typing `C; Γ ⊢ t : E`, the evaluation of `t` produces
+    values whose pack witnesses' reachabilities are bounded by `C.denot env store`.
+
+    This is the missing structural invariant underlying the `unpack` rule's
+    permission for the body to use the unpacked variable as a capability.
+
+    The bound is derived by induction on the syntactic typing — it's not a
+    consequence of semantic typing alone (which is too weak: `Eval.eval_val`
+    would let any pack flow through). The pack rule's use set `(.var x)`
+    literally contains the witness's variable, and the structural rules (letin,
+    unpack, app, ...) propagate this invariant via their use-set composition. -/
+theorem eval_with_pack_witness_bound
+  {s : Sig} {C0 : CaptureSet s} {Γ : Ctx s} {t : Exp s}
+  {E : Ty .exi s}
+  (ht_syn : HasType C0 Γ t E) :
+  ∀ {env : TypeEnv s} {store : Memory},
+    EnvTyping Γ env store →
+    Eval (C0.denot env store) store (t.subst (Subst.from_TypeEnv env))
+         (Mpost.with_pack_bound ((Ty.exi_val_denot env E).as_mpost) C0 env store) := by
+  induction ht_syn with
+  | var _ _ => sorry
+  | abs _ _ _ => sorry
+  | tabs _ _ _ => sorry
+  | cabs _ _ _ => sorry
+  | pack hC_closed ht_inner_syn ih_x =>
+    rename_i s_inner x_var Γ_inner T_pack C_pack
+    intro env store hts
+    -- Build the standard semantic typing of var x_var by projecting IH.
+    have ht_var_sem :
+        CaptureSet.var x_var # Γ_inner ⊨ Exp.var x_var :
+          (T_pack.subst (Subst.openCVar C_pack)).typ := by
+      intro env' store' hts'
+      have heval := ih_x hts'
+      have hweak : Eval ((CaptureSet.var x_var).denot env' store') store'
+          ((Exp.var x_var).subst (Subst.from_TypeEnv env'))
+          (Ty.exi_val_denot env'
+            (T_pack.subst (Subst.openCVar C_pack)).typ).as_mpost := by
+        apply eval_post_monotonic _ heval
+        intro m e hQ
+        exact hQ.1
+      simpa only [Ty.exi_exp_denot] using hweak
+    -- Closedness of the pack expression.
+    have hclosed_pack : (Exp.pack C_pack x_var).IsClosed :=
+      HasType.exp_is_closed (HasType.pack hC_closed ht_inner_syn)
+    -- Use sem_typ_pack to get the standard val_denot Eval.
+    have ht_pack_sem' := sem_typ_pack hclosed_pack ht_var_sem env store hts
+    have ht_pack_sem :
+        Eval ((CaptureSet.var x_var).denot env store) store
+          ((Exp.pack C_pack x_var).subst (Subst.from_TypeEnv env))
+          (Ty.exi_val_denot env (.exi T_pack)).as_mpost := by
+      simpa only [Ty.exi_exp_denot] using ht_pack_sem'
+    -- Pack is a value: Eval at val_denot inverts to give val_denot at store.
+    have hval_post : (Ty.exi_val_denot env (.exi T_pack)).as_mpost
+        ((Exp.pack C_pack x_var).subst (Subst.from_TypeEnv env)) store := by
+      cases ht_pack_sem with
+      | eval_val _ hQ => exact hQ
+    -- Build the strengthened Eval via eval_val.
+    apply Eval.eval_val
+    · simp only [Exp.subst]; exact Exp.IsVal.pack
+    · refine ⟨hval_post, ?_⟩
+      -- Bound: any pack equal to (pack C x).subst σ has its witness in (var x).denot.
+      intro cs fy heq
+      change Exp.pack (C_pack.subst (Subst.from_TypeEnv env))
+        (x_var.subst (Subst.from_TypeEnv env)) = Exp.pack cs (Var.free fy) at heq
+      injection heq with _ _ hx_eq
+      -- (var x_var).denot env store unfolds via subst then ground_denot.
+      change reachability_of_loc store.heap fy ⊆
+        (CaptureSet.var (x_var.subst (Subst.from_TypeEnv env))).ground_denot store
+      rw [hx_eq]
+      exact CapabilitySet.subset_refl
+  | app _ _ _ _ => sorry
+  | tapp _ _ _ => sorry
+  | capp _ _ _ => sorry
+  | letin _ _ _ _ => sorry
+  | unpack _ _ _ _ => sorry
+  | unit => sorry
+  | btrue => sorry
+  | bfalse => sorry
+  | read _ _ => sorry
+  | write _ _ _ _ => sorry
+  | cond _ _ _ _ _ _ => sorry
+  | invoke _ _ _ _ => sorry
+  | subtyp _ _ _ _ _ _ => sorry
+
 theorem sem_typ_unpack
   {C : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
   (hclosed_C : C.IsClosed)
-  (ht : C # Γ ⊨ t : .exi T)
-  (hu : (C.rename Rename.succ).rename Rename.succ #
+  (ht_syn : HasType C Γ t (.exi T))
+  (_ht : C # Γ ⊨ t : .exi T)
+  (hu : ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here))) #
         (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts
@@ -2453,25 +2555,44 @@ theorem sem_typ_unpack
           (u.subst (Subst.from_TypeEnv env).lift.lift))
         (Ty.exi_val_denot env U).as_mpost by
     simpa only [Ty.exi_exp_denot, Exp.subst, List.empty_eq] using this
-  -- Use Eval.eval_unpack with Q1 = (Ty.exi_val_denot env (.exi T)).as_mpost
-  apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot env (.exi T)).as_mpost)
+  -- Use Eval.eval_unpack with the strengthened Q1 carrying the witness bound.
+  apply Eval.eval_unpack (Q1 := Ty.exi_val_denot_with_witness_bound env T C store)
   case hpred =>
-    -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is monotonic
+    -- Show the strengthened Q1 is monotonic.
     intro m1 m2 e hwf hsub hQ
-    change Ty.exi_val_denot env (.exi T) m1 e at hQ
-    change Ty.exi_val_denot env (.exi T) m2 e
-    have henv_mono := typed_env_is_monotonic hts
-    exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ
+    obtain ⟨hval, hbound⟩ := hQ
+    refine ⟨?_, ?_⟩
+    · have henv_mono := typed_env_is_monotonic hts
+      exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hval
+    · intro cs fx heq
+      -- e = pack cs (.var (.free fx)); use heap-monotonicity of reachability_of_loc.
+      rw [heq] at hwf
+      have hwf_var : (Var.free fx : Var .var {}).WfInHeap m1.heap := by
+        cases hwf with | wf_pack _ hwf_var => exact hwf_var
+      have hex : ∃ v, m1.heap fx = some v := by
+        cases hwf_var with | wf_free hex => exact ⟨_, hex⟩
+      obtain ⟨v, hex⟩ := hex
+      have hreach_eq : reachability_of_loc m2.heap fx = reachability_of_loc m1.heap fx :=
+        reachability_of_loc_monotonic hsub fx hex
+      rw [hreach_eq]
+      exact hbound cs fx heq
   case hbool =>
-    -- Show (Ty.exi_val_denot env (.exi T)).as_mpost is bool independent
-    exact Denot.as_mpost_is_bool_independent
-      (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T))
+    -- Show the strengthened Q1 is bool-independent.
+    intro m
+    have hbi := @exi_val_denot_is_bool_independent _ env
+                  (typed_env_is_bool_independent hts) (.exi T) m
+    constructor
+    · rintro ⟨hval, _⟩
+      exact ⟨hbi.mp hval, fun cs fx heq => by cases heq⟩
+    · rintro ⟨hval, _⟩
+      exact ⟨hbi.mpr hval, fun cs fx heq => by cases heq⟩
   case a =>
-    -- Show Eval ... store (t.subst ...) (Ty.exi_val_denot env (.exi T)).as_mpost
-    simpa only [Ty.exi_exp_denot] using ht env store hts
+    -- Use the strengthened semantic typing for `t`.
+    exact eval_with_pack_witness_bound ht_syn (env := env) (store := store) hts
   case h_nonstuck =>
-    -- Prove that values satisfying exi_val_denot are packs and well-formed
+    -- Prove that values satisfying the strengthened Q1 are packs and well-formed.
     intro m1 v hQ1
+    obtain ⟨hQ1, _⟩ := hQ1
     change Ty.exi_val_denot env (.exi T) m1 v at hQ1
     simp only [Ty.exi_val_denot] at hQ1
     -- hQ1 : match resolve m1.heap v with | some (.pack CS x) => ... | _ => False
@@ -2512,6 +2633,7 @@ theorem sem_typ_unpack
   case h_val =>
     -- Handle the value case: t evaluated to a pack
     intro m1 x cs hs1 hwf_x hwf_cs hQ1
+    obtain ⟨hQ1, hbound⟩ := hQ1
     change Ty.exi_val_denot env (.exi T) m1 (.pack cs x) at hQ1
     -- hQ1 : Ty.exi_val_denot env (.exi T) m1 (.pack cs x)
     -- This means: Ty.capt_val_denot (env.extend_cvar cs) T m1 (.var x)
@@ -2521,12 +2643,16 @@ theorem sem_typ_unpack
     case bound bx => cases bx  -- No bound variables in empty signature
     case free fx =>
       obtain ⟨hwf_cs, hQ1_body⟩ := hQ1
+      -- The witness bound is given by the strengthened postcondition.
+      have hfx_in_C : reachability_of_loc m1.heap fx ⊆ C.denot env store :=
+        hbound cs fx rfl
       -- Apply hu with doubly extended environment
       have hu' := hu ((env.extend_cvar cs).extend_var fx) m1
       have hu' :
           EnvTyping (Γ,C<:.unbound,x:T) ((env.extend_cvar cs).extend_var fx) m1 →
             Eval
-              (((C.rename Rename.succ).rename Rename.succ).denot
+              (((C.rename Rename.succ).rename Rename.succ
+                  ∪ (.var (.bound .here))).denot
                 ((env.extend_cvar cs).extend_var fx) m1)
               m1
               (u.subst (Subst.from_TypeEnv ((env.extend_cvar cs).extend_var fx)))
@@ -2563,8 +2689,8 @@ theorem sem_typ_unpack
           u.subst (Subst.from_TypeEnv ((env.extend_cvar cs).extend_var fx)) := by
         rw [Exp.subst_comp]
         exact congrArg _ Subst.from_TypeEnv_weaken_unpack
-      -- Capture set equality via rebinding
-      have hcap_eq :
+      -- Capture set equality via rebinding (for the C.rename² part).
+      have hcap_C_eq :
         ((C.rename Rename.succ).rename Rename.succ).denot
           ((env.extend_cvar cs).extend_var fx) m1 =
         C.denot env store := by
@@ -2582,6 +2708,28 @@ theorem sem_typ_unpack
             have hwf_C : (C.subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
               CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_C) (from_TypeEnv_wf_in_heap hts)
             exact (capture_set_denot_is_monotonic hwf_C hs1).symm
+      -- The fresh-bound variable (.bound .here) denotes to fx's reachability in m1.
+      have hcap_var_eq :
+        (CaptureSet.var (.bound .here : Var .var (s,C,x))).denot
+          ((env.extend_cvar cs).extend_var fx) m1 =
+        reachability_of_loc m1.heap fx := by
+        simp [CaptureSet.denot, CaptureSet.ground_denot, CaptureSet.subst,
+              Var.subst, Subst.from_TypeEnv, TypeEnv.lookup_var, TypeEnv.extend_var]
+        rfl
+      -- (hfx_in_C derived above directly from the strengthened postcondition.)
+      -- The augmented capture set's denotation in env' is contained in the outer C's denotation.
+      have hcap_sub :
+        ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here))).denot
+          ((env.extend_cvar cs).extend_var fx) m1 ⊆
+        C.denot env store := by
+        change ((C.rename Rename.succ).rename Rename.succ).denot
+            ((env.extend_cvar cs).extend_var fx) m1
+          ∪ (CaptureSet.var (.bound .here : Var .var (s,C,x))).denot
+            ((env.extend_cvar cs).extend_var fx) m1
+          ⊆ C.denot env store
+        rw [hcap_C_eq, hcap_var_eq]
+        exact CapabilitySet.union_subset_of_subset_of_subset
+          CapabilitySet.subset_refl hfx_in_C
       -- Type equivalence via double rebind
       have heqv_composed : Ty.exi_val_denot env U ≈
         Ty.exi_val_denot ((env.extend_cvar cs).extend_var fx)
@@ -2591,12 +2739,14 @@ theorem sem_typ_unpack
           (Rebind.weaken (env:=env.extend_cvar cs) (x:=fx)) (U.rename Rename.succ)
         intro m e
         exact Iff.trans (heqv1 m e) (heqv2 m e)
-      -- Apply hu'' with conversions
+      -- Widen hu''s capability set from the augmented one to C.denot env store.
+      have hu''' := eval_capability_set_monotonic hu'' hcap_sub
+      -- Apply hu''' with conversions
       change Eval (C.denot env store) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
         (Ty.exi_val_denot env U).as_mpost
-      rw [hexp_eq, <-hcap_eq]
-      apply eval_post_monotonic _ hu''
+      rw [hexp_eq]
+      apply eval_post_monotonic _ hu'''
       apply Denot.imply_to_entails
       apply (Denot.equiv_to_imply heqv_composed).2
 /-- The fundamental theorem of semantic type soundness. -/
@@ -2692,11 +2842,12 @@ theorem fundamental
         (ht1_ih he1_closed)
         (ht2_ih he2_closed)
   case unpack =>
-    rename_i ht_syn hu_syn ht_ih hu_ih
+    rename_i ht_syn _hu_syn ht_ih hu_ih
     cases hclosed_e with
     | unpack ht_closed hu_closed =>
       exact sem_typ_unpack
         (HasType.use_set_is_closed ht_syn)
+        ht_syn
         (ht_ih ht_closed)
         (hu_ih hu_closed)
   case read =>
