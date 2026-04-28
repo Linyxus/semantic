@@ -5,8 +5,12 @@ import Semantic.CC.Semantics.Heap
 namespace CC
 
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
+| eval_pack :
+  reachability_of_loc m.heap loc ⊆ C ->
+  (hQ : Q (.pack cs (.free loc)) m) ->
+  Eval C m (.pack cs (.free loc)) Q
 | eval_val :
-  (hv : Exp.IsVal v) ->
+  (hv : Exp.IsSimpleVal v) ->
   (hQ : Q v m) ->
   Eval C m v Q
 | eval_var :
