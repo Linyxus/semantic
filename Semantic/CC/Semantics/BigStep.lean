@@ -120,6 +120,18 @@ theorem eval_monotonic {m1 m2 : Memory}
   case eval_val hv hQ =>
     apply Eval.eval_val hv
     apply hpred hwf hsub hQ
+  case eval_pack hreach hQ =>
+    rename_i loc _ _ m_eval _
+    have hex : ∃ v, m_eval.heap loc = some v := by
+      cases hwf with
+      | wf_pack _ hwf_loc =>
+        cases hwf_loc with | wf_free hex => exact ⟨_, hex⟩
+    obtain ⟨v, hex⟩ := hex
+    have hreach_eq : reachability_of_loc m2.heap loc = reachability_of_loc m_eval.heap loc :=
+      reachability_of_loc_monotonic hsub loc hex
+    apply Eval.eval_pack
+    · rw [hreach_eq]; exact hreach
+    · apply hpred hwf hsub hQ
   case eval_var hQ =>
     apply Eval.eval_var
     apply hpred hwf hsub hQ
@@ -423,6 +435,11 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     apply Eval.eval_val hv
     apply himp M _ _ hQ
     apply Memory.subsumes_refl
+  case eval_pack hreach hQ =>
+    rename_i _ _ _ M _
+    apply Eval.eval_pack hreach
+    apply himp M _ _ hQ
+    apply Memory.subsumes_refl
   case eval_var Q1 M x hQ =>
     apply Eval.eval_var
     apply himp M _ _ hQ
@@ -509,6 +526,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   induction heval
   case eval_val hv hQ =>
     exact Eval.eval_val hv hQ
+  case eval_pack hreach hQ =>
+    exact Eval.eval_pack (CapabilitySet.Subset.trans hreach hsub) hQ
   case eval_var hQ =>
     exact Eval.eval_var hQ
   case eval_apply hlookup _ ih =>

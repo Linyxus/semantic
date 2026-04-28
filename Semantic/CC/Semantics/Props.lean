@@ -456,6 +456,7 @@ theorem eval_ans_holds_post
   Q e m := by
   cases heval with
   | eval_val hv hQ => exact hQ
+  | eval_pack hreach hQ => exact hQ
   | eval_var hQ => exact hQ
   | eval_apply => cases hans; rename_i hv; cases hv
   | eval_invoke => cases hans; rename_i hv; cases hv
@@ -475,7 +476,9 @@ theorem eval_implies_progressive
   IsProgressive C m e := by
   induction heval with
   | eval_val hv hQ =>
-    exact .done (.is_val hv)
+    exact .done (.is_val (Exp.IsVal.of_simple hv))
+  | eval_pack hreach hQ =>
+    exact .done (.is_val Exp.IsVal.pack)
   | eval_var hQ =>
     exact .done .is_var
   | eval_apply hlookup eval_body ih =>
@@ -610,7 +613,12 @@ theorem step_preserves_eval
   induction he generalizing m2 e2 with
   | eval_val hv hQ =>
     -- e1 is a value, which is an answer, but answers cannot step - contradiction
-    have hans : Exp.IsAns _ := Exp.IsAns.is_val hv
+    have hans : Exp.IsAns _ := Exp.IsAns.is_val (Exp.IsVal.of_simple hv)
+    exact absurd hstep (step_ans_absurd hans)
+  | eval_pack hreach hQ =>
+    -- e1 is a pack, which is a value, hence an answer; answers cannot step - contradiction
+    rename_i loc _ _ _ cs
+    have hans : Exp.IsAns (.pack cs (.free loc)) := Exp.IsAns.is_val Exp.IsVal.pack
     exact absurd hstep (step_ans_absurd hans)
   | eval_var hQ =>
     -- e1 is a variable, which is an answer, but answers cannot step - contradiction
@@ -652,7 +660,7 @@ theorem step_preserves_eval
       have heq := Memory.lookup_deterministic hlookup_x hlookup'
       cases heq
     | step_invoke hlookup_x' hlookup_y' =>
-      exact .eval_val Exp.IsVal.unit hQ
+      exact .eval_val Exp.IsSimpleVal.unit hQ
   | eval_tapply hlookup heval ih =>
     -- e1 = .tapp (.free x) S
     -- The only step is step_tapply
@@ -796,16 +804,16 @@ theorem step_preserves_eval
       rename_i b _
       by_cases hb : b
       · simp only [hb, ↓reduceIte] at hQ ⊢
-        exact Eval.eval_val Exp.IsVal.btrue hQ
+        exact Eval.eval_val Exp.IsSimpleVal.btrue hQ
       · simp only [hb, Bool.false_eq_true, ↓reduceIte] at hQ ⊢
-        exact Eval.eval_val Exp.IsVal.bfalse hQ
+        exact Eval.eval_val Exp.IsSimpleVal.bfalse hQ
   | eval_write_true _ hx hy hQ =>
     -- e = .write (.free x) (.free y), can only step via step_write_true or step_write_false
     cases hstep with
     | step_write_true hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
-      exact Eval.eval_val Exp.IsVal.unit hQ
+      exact Eval.eval_val Exp.IsSimpleVal.unit hQ
     | step_write_false hx' hy' =>
       -- y is looked up as btrue in eval, but bfalse in step - contradiction
       have heq_y := Memory.lookup_deterministic hy hy'
@@ -828,7 +836,7 @@ theorem step_preserves_eval
     | step_write_false hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
-      exact Eval.eval_val Exp.IsVal.unit hQ
+      exact Eval.eval_val Exp.IsSimpleVal.unit hQ
 
 /-- Reduction preserves evaluation when the reduction uses a subset of available capabilities. -/
 theorem reduce_preserves_eval
@@ -1401,7 +1409,9 @@ theorem eval_exists_answer
   ∃ m' e', e'.IsAns ∧ m'.subsumes m ∧ Q e' m' := by
   induction heval with
   | eval_val hv hQ =>
-    exact ⟨_, _, Exp.IsAns.is_val hv, Memory.subsumes_refl _, hQ⟩
+    exact ⟨_, _, Exp.IsAns.is_val (Exp.IsVal.of_simple hv), Memory.subsumes_refl _, hQ⟩
+  | eval_pack hreach hQ =>
+    exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.pack, Memory.subsumes_refl _, hQ⟩
   | eval_var hQ =>
     exact ⟨_, _, Exp.IsAns.is_var, Memory.subsumes_refl _, hQ⟩
   | eval_apply _ _ ih =>
@@ -1484,7 +1494,11 @@ theorem eval_reduce_exists_answer
   ∃ C' m2 e2, C' ⊆ C ∧ Reduce C' m1 e1 m2 e2 ∧ e2.IsAns ∧ Q e2 m2 := by
   induction heval with
   | eval_val hv hQ =>
-    exact ⟨{}, _, _, CapabilitySet.empty_subset, Reduce.refl, Exp.IsAns.is_val hv, hQ⟩
+    exact ⟨{}, _, _, CapabilitySet.empty_subset, Reduce.refl,
+           Exp.IsAns.is_val (Exp.IsVal.of_simple hv), hQ⟩
+  | eval_pack hreach hQ =>
+    exact ⟨{}, _, _, CapabilitySet.empty_subset, Reduce.refl,
+           Exp.IsAns.is_val Exp.IsVal.pack, hQ⟩
   | eval_var hQ =>
     exact ⟨{}, _, _, CapabilitySet.empty_subset, Reduce.refl, Exp.IsAns.is_var, hQ⟩
   | eval_apply hlookup _ ih =>
@@ -1718,7 +1732,12 @@ theorem eval_bounds_step_capability
   induction heval generalizing C' m' e' with
   | eval_val hv hQ =>
     -- Values don't step - contradiction
-    have hans : Exp.IsAns _ := Exp.IsAns.is_val hv
+    have hans : Exp.IsAns _ := Exp.IsAns.is_val (Exp.IsVal.of_simple hv)
+    exact absurd hred (step_ans_absurd hans)
+  | eval_pack hreach hQ =>
+    -- Packs don't step - contradiction
+    rename_i loc _ _ _ cs
+    have hans : Exp.IsAns (.pack cs (.free loc)) := Exp.IsAns.is_val Exp.IsVal.pack
     exact absurd hred (step_ans_absurd hans)
   | eval_var hQ =>
     -- Variables don't step - contradiction

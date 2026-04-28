@@ -74,6 +74,10 @@ inductive Exp.IsSimpleAns : Exp s -> Prop where
 inductive Exp.IsPack : Exp s -> Prop where
 | pack : Exp.IsPack (.pack cs x)
 
+/-- Every simple value is a value. -/
+theorem Exp.IsVal.of_simple {v : Exp s} (h : v.IsSimpleVal) : v.IsVal := by
+  cases h <;> constructor
+
 /-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
   unwrap : Exp s
