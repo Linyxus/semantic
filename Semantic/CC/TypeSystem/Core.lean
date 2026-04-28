@@ -193,7 +193,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | unpack :
   HasType C Γ t (.exi T) ->
   HasType
-    ((C.rename Rename.succ).rename Rename.succ)
+    ((C.rename Rename.succ).rename Rename.succ ∪ (.var (.bound .here)))
     (Γ,C<:.unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
