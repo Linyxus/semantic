@@ -13,6 +13,7 @@ inductive Exp : Sig -> Type where
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | reader : Var .var s -> Exp s
+| alloc : Var .var s -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
@@ -33,6 +34,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
 | .reader x, f => .reader (x.rename f)
+| .alloc x, f => .alloc (x.rename f)
 | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
@@ -103,6 +105,8 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
       exact congrArg (fun U => Exp.cabs cs cb U) ih
   | reader x =>
       simp only [Exp.rename, Var.rename_id]
+  | alloc x =>
+      simp only [Exp.rename, Var.rename_id]
   | pack cs x =>
       simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
   | app x y =>
@@ -149,6 +153,8 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
         Rename.lift_comp, ih]
       rfl
   | reader x =>
+      simp only [Exp.rename, Var.rename_comp]
+  | alloc x =>
       simp only [Exp.rename, Var.rename_comp]
   | pack cs x =>
       simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
