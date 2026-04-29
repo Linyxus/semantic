@@ -190,6 +190,10 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | bfalse :
   ----------------------------
   HasType {} Γ (.bfalse) (.typ .bool)
+| alloc :
+  HasType {} Γ (.var x) (.typ .bool) ->
+  ----------------------------
+  HasType {} Γ (.alloc x) (.exi (.cell (.cvar .epsilon .here)))
 | read :
   HasType {} Γ (.var x) (.typ (.reader C)) ->
   ----------------------------
