@@ -661,6 +661,9 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
 | wf_var :
   Var.WfInHeap x H ->
   Exp.WfInHeap (.var x) H
+| wf_alloc :
+  Var.WfInHeap x H ->
+  Exp.WfInHeap (.alloc x) H
 | wf_abs :
   CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T H ->
@@ -783,6 +786,7 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
   | cabs hcs hcb _ ih =>
     exact Exp.WfInHeap.wf_cabs (CaptureSet.wf_of_closed hcs) (CaptureBound.wf_of_closed hcb) ih
   | reader hx => exact Exp.WfInHeap.wf_reader (Var.wf_of_closed hx)
+  | alloc hx => exact Exp.WfInHeap.wf_alloc (Var.wf_of_closed hx)
   | pack hcs hx =>
     exact Exp.WfInHeap.wf_pack (CaptureSet.wf_of_closed hcs) (Var.wf_of_closed hx)
   | app hx hy => exact Exp.WfInHeap.wf_app (Var.wf_of_closed hx) (Var.wf_of_closed hy)
@@ -874,6 +878,7 @@ theorem Exp.wf_monotonic
     exact Exp.WfInHeap.wf_cabs (CaptureSet.wf_monotonic hsub hwf_cs)
                                 (CaptureBound.wf_monotonic hsub hwf_cb) (ih_e hsub)
   | wf_reader hwf_x => exact Exp.WfInHeap.wf_reader (Var.wf_monotonic hsub hwf_x)
+  | wf_alloc hwf_x => exact Exp.WfInHeap.wf_alloc (Var.wf_monotonic hsub hwf_x)
   | wf_pack hwf_cs hwf_x =>
     exact Exp.WfInHeap.wf_pack (CaptureSet.wf_monotonic hsub hwf_cs)
                                 (Var.wf_monotonic hsub hwf_x)
@@ -1168,6 +1173,10 @@ theorem resolve_reachability_monotonic
     cases hwf_x with
     | wf_bound => rename_i x; cases x
     | wf_free => simp only [resolve_reachability]
+  | wf_alloc hwf_x =>
+    cases hwf_x with
+    | wf_bound => rename_i x; cases x
+    | wf_free => simp only [resolve_reachability]
   | wf_pack _ _ | wf_app _ _ | wf_tapp _ _ | wf_capp _ _
   | wf_letin _ _ | wf_unpack _ _ | wf_unit | wf_btrue | wf_bfalse
   | wf_read _ | wf_write _ _ | wf_cond _ _ _ => simp only [resolve_reachability]
@@ -1414,6 +1423,8 @@ theorem Exp.wf_rename
     exact Exp.WfInHeap.wf_cabs (CaptureSet.wf_rename hwf_cs) (CaptureBound.wf_rename hwf_cb) ih_e
   | wf_reader hwf_x =>
     simp only [Exp.rename]; exact Exp.WfInHeap.wf_reader (Var.wf_rename hwf_x)
+  | wf_alloc hwf_x =>
+    simp only [Exp.rename]; exact Exp.WfInHeap.wf_alloc (Var.wf_rename hwf_x)
   | wf_pack hwf_cs hwf_x =>
     simp only [Exp.rename]
     exact Exp.WfInHeap.wf_pack (CaptureSet.wf_rename hwf_cs) (Var.wf_rename hwf_x)
@@ -1620,6 +1631,8 @@ theorem Exp.wf_subst
                                 (ih_e (Subst.wf_lift hwf_σ))
   | wf_reader hwf_x =>
     simp only [Exp.subst]; exact Exp.WfInHeap.wf_reader (Var.wf_subst hwf_x hwf_σ)
+  | wf_alloc hwf_x =>
+    simp only [Exp.subst]; exact Exp.WfInHeap.wf_alloc (Var.wf_subst hwf_x hwf_σ)
   | wf_pack hwf_cs hwf_x =>
     simp only [Exp.subst]
     exact Exp.WfInHeap.wf_pack (CaptureSet.wf_subst hwf_cs hwf_σ) (Var.wf_subst hwf_x hwf_σ)

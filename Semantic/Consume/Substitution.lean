@@ -1106,7 +1106,9 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst]
     exact IsClosed.reader (Var.is_closed_subst hx hsubst)
   | alloc x =>
-    cases hc
+    cases hc with | alloc hx =>
+    simp only [Exp.subst]
+    exact IsClosed.alloc (Var.is_closed_subst hx hsubst)
   | pack cs x =>
     cases hc with | pack hcs hx =>
     simp only [Exp.subst]
@@ -1321,7 +1323,8 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     exact IsClosed.reader (Var.subst_closed_inv hx)
   | alloc x =>
     simp only [Exp.subst] at hclosed
-    cases hclosed
+    cases hclosed with | alloc hx =>
+    exact IsClosed.alloc (Var.subst_closed_inv hx)
   | pack cs x =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | pack hcs hx =>

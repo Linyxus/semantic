@@ -2554,6 +2554,10 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
             | reader x =>
               have hunit' := hunit
               simp [hv] at hunit'
+            | alloc x =>
+              have hsimple' : (Exp.alloc x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
             | pack cs x =>
               have hsimple' : (Exp.pack cs x).IsSimpleVal := by
                 simpa [hv] using hsimple
@@ -2645,6 +2649,10 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
             | reader x =>
               have hbool' := hbool
               simp [hv] at hbool'
+            | alloc x =>
+              have hsimple' : (Exp.alloc x).IsSimpleVal := by
+                simpa [hv] using hsimple
+              cases hsimple'
             | pack cs x =>
               have hsimple' : (Exp.pack cs x).IsSimpleVal := by
                 simpa [hv] using hsimple
@@ -3179,6 +3187,10 @@ private theorem resolve_reachability_subset_of_resolve
     cases hresolve
     exact CapabilitySet.Subset.refl
   | reader _ =>
+    simp only [resolve] at hresolve
+    cases hresolve
+    exact CapabilitySet.Subset.refl
+  | alloc _ =>
     simp only [resolve] at hresolve
     cases hresolve
     exact CapabilitySet.Subset.refl

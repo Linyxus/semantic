@@ -203,6 +203,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
     Exp.IsClosed (.cabs cs cb e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
+| alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
 | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)

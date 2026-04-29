@@ -302,6 +302,10 @@ theorem HasType.exp_is_closed
     | var hx_closed =>
       constructor
       exact hx_closed
+  case alloc ih_x =>
+    cases ih_x with
+    | var hx_closed =>
+      exact Exp.IsClosed.alloc hx_closed
   case write ih_x ih_y =>
     -- Need to extract variable closedness from both IHs
     cases ih_x with
@@ -395,6 +399,9 @@ theorem HasType.type_is_closed
     -- Goal: (.typ (.reader (.var .ro (.bound x)))).IsClosed
     constructor
     exact Ty.IsClosed.reader CaptureSet.IsClosed.var_bound
+  case alloc =>
+    -- Goal: (.exi (.cell (.cvar .epsilon .here))).IsClosed
+    exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar)
   case abs T1_closed ht_body ih =>
     -- Goal: (.typ (.arrow T1 cs T2)).IsClosed
     constructor
