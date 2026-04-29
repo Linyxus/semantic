@@ -1117,6 +1117,12 @@ theorem sem_typ_reader
         CapabilitySet.covers.here (l:=(env.lookup_var x).1) Mutability.Le.refl
       simpa [hden] using hcov_singleton
 
+theorem sem_typ_alloc
+  {x : BVar s .var}
+  (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ .bool) :
+  {} # Γ ⊨ Exp.alloc (.bound x) : .exi (.cell (.cvar .epsilon .here)) := by
+  sorry
+
 theorem sem_typ_read
   {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.reader C)) :
@@ -2734,6 +2740,13 @@ theorem fundamental
         (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
   case reader hΓ_closed hx =>
     exact sem_typ_reader hΓ_closed hx
+  case alloc =>
+    rename_i hx_syn hx_ih
+    cases hclosed_e with
+    | alloc hx_closed =>
+      cases hx_closed
+      exact sem_typ_alloc
+        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
   case read =>
     rename_i hx_syn hx_ih
     cases hclosed_e with
