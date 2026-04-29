@@ -14,7 +14,8 @@ inductive Exp : Sig -> Type where
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
-| pack : CaptureSet s -> Var .var s -> Exp s
+-- Disable pack for now
+-- | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
@@ -35,7 +36,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
 | .reader x, f => .reader (x.rename f)
 | .alloc x, f => .alloc (x.rename f)
-| .pack cs x, f => .pack (cs.rename f) (x.rename f)
+-- | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
 | .capp x cs, f => .capp (x.rename f) (cs.rename f)
@@ -53,7 +54,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
-| pack : Exp.IsVal (.pack cs x)
+-- | pack : Exp.IsVal (.pack cs x)
 | reader : Exp.IsVal (.reader x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
@@ -77,8 +78,8 @@ inductive Exp.IsSimpleAns : Exp s -> Prop where
 | is_var :
   Exp.IsSimpleAns (.var x)
 
-inductive Exp.IsPack : Exp s -> Prop where
-| pack : Exp.IsPack (.pack cs x)
+-- inductive Exp.IsPack : Exp s -> Prop where
+-- | pack : Exp.IsPack (.pack cs x)
 
 /-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
@@ -107,8 +108,8 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
       simp only [Exp.rename, Var.rename_id]
   | alloc x =>
       simp only [Exp.rename, Var.rename_id]
-  | pack cs x =>
-      simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
+--   | pack cs x =>
+--       simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
   | app x y =>
       simp only [Exp.rename, Var.rename_id]
   | tapp x T =>
@@ -156,8 +157,8 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
       simp only [Exp.rename, Var.rename_comp]
   | alloc x =>
       simp only [Exp.rename, Var.rename_comp]
-  | pack cs x =>
-      simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
+--   | pack cs x =>
+--       simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
   | app x y =>
       simp only [Exp.rename, Var.rename_comp]
   | tapp x T =>
@@ -204,7 +205,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.cabs cs cb e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
-| pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
+-- | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
