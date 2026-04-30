@@ -134,17 +134,17 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (.typ (.reader (.var .ro (.bound x))))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
+  HasType (cs.rename Rename.succ) (Γ.lock,x:T1) e T2 ->
   ----------------------------
   HasType {} Γ (.abs cs T1 e) (.typ (.arrow T1 cs T2))
 | tabs {S : PureTy s} :
   S.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
+  HasType (cs.rename Rename.succ) (Γ.lock,X<:S) e T ->
   ----------------------------
   HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
+  HasType (cs.rename Rename.succ) (Γ.lock,C<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
 | pack {C : CaptureSet s} :

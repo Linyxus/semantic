@@ -320,6 +320,13 @@ theorem CaptureSet.peaks_lock {Γ : Ctx s} {C : CaptureSet s} :
     | free _ => simp only [CaptureSet.peaks]
     | bound x => simp only [CaptureSet.peaks, CaptureSet.peaksVarBound]
 
+/-- Peakset is unaffected by locks at the top of the context. -/
+theorem CaptureSet.peakset_lock {Γ : Ctx s} {C : CaptureSet s} :
+    C.peakset (Ctx.lock Γ) = C.peakset Γ := by
+  unfold CaptureSet.peakset
+  congr 1
+  exact peaks_lock
+
 theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.rename Rename.succ).peaks (Γ.push b) = (C.peaks Γ).rename Rename.succ := by
   induction C generalizing k with

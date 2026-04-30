@@ -25,6 +25,10 @@ theorem Ctx.lookup_var_det {Γ : Ctx s} {x : BVar s .var} {T1 T2 : Ty .capt s} :
     case there h2' =>
       have eq := ih h2'
       rw [eq]
+  case lock ih =>
+    cases h2
+    case lock h2' =>
+      exact ih h2'
 
 theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
     Γ.LookupTVar X T1 -> Γ.LookupTVar X T2 -> T1 = T2 := by
@@ -38,6 +42,10 @@ theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
     case there h2' =>
       have eq := ih h2'
       rw [eq]
+  case lock ih =>
+    cases h2
+    case lock h2' =>
+      exact ih h2'
 
 theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {cb1 cb2 : CaptureBound s} :
     Γ.LookupCVar c cb1 -> Γ.LookupCVar c cb2 -> cb1 = cb2 := by
@@ -51,6 +59,10 @@ theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {cb1 cb2 : CaptureBo
     case there h2' =>
       have eq := ih h2'
       rw [eq]
+  case lock ih =>
+    cases h2
+    case lock h2' =>
+      exact ih h2'
 
 -- Subsumption reflexivity
 
@@ -240,6 +252,9 @@ theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt
     cases hΓ with | push hΓ_prev _ =>
     have hT := ih hΓ_prev
     exact Ty.rename_closed hT
+  | lock _ ih =>
+    cases hΓ with | lock hΓ_prev =>
+    exact ih hΓ_prev
 
 /-- A typed variable expression has a closed variable. -/
 theorem HasType.typed_var_closed
@@ -476,26 +491,19 @@ theorem HasType.type_is_closed
 
 theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
   ∃ T, Γ.LookupVar x T := by
-  cases x with
-  | here =>
-    -- x = here, so s = s₀,,var for some s₀
-    -- Γ : Ctx (s₀,,var), so Γ = push Γ₀ b where b : Binding s₀ .var
-    cases Γ with
-    | push Γ₀ b =>
-      -- Since b : Binding s₀ .var, we have b = .var T₀
+  induction Γ with
+  | empty => cases x
+  | push Γ₀ b ih =>
+    cases x with
+    | here =>
       cases b with
       | var T₀ =>
-        use T₀.rename Rename.succ
-        apply Ctx.LookupVar.here
-  | there x' =>
-    -- x = there x', so s = s₀,,k for some s₀, k
-    -- Γ : Ctx (s₀,,k), so Γ = push Γ₀ b where b : Binding s₀ k
-    cases Γ with
-    | push Γ₀ b =>
-      -- Recursively apply the theorem to get T₀ such that Γ₀.LookupVar x' T₀
-      obtain ⟨T₀, h⟩ := lookup_var_exists (Γ := Γ₀) (x := x')
-      use T₀.rename Rename.succ
-      apply Ctx.LookupVar.there
-      exact h
+        exact ⟨T₀.rename Rename.succ, Ctx.LookupVar.here⟩
+    | there x' =>
+      obtain ⟨T₀, h⟩ := ih (x := x')
+      exact ⟨T₀.rename Rename.succ, Ctx.LookupVar.there h⟩
+  | lock Γ₀ ih =>
+    obtain ⟨T₀, h⟩ := ih (x := x)
+    exact ⟨T₀, Ctx.LookupVar.lock h⟩
 
 end Consume

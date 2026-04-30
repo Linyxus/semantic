@@ -493,12 +493,13 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar cs cap), m =>
+| .push Γ (.cvar _ B), .extend env (.cvar cs cap), m =>
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
   (cap.BoundedBy (B.denot env m)) ∧
   cap = cs.ground_denot m ∧
   EnvTyping Γ env m
+| .lock Γ, env, m => EnvTyping Γ env m
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
@@ -525,13 +526,17 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
-  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs _), .there x' =>
+  | _, .push Γ' (.cvar _ B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, _, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyMut_rename
-termination_by sizeOf x
+  | _, .lock Γ', ρ, x =>
+    simp only [EnvTyping] at h
+    rw [CaptureSet.peaksVarBound]
+    exact peaks_var_bound_eq h x m0
+termination_by sizeOf Γ
 
 theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
   ∀ C, CaptureSet.peaks Γ C = compute_peaks ρ C := by
@@ -769,7 +774,7 @@ theorem typed_env_is_implying_simple_ans
             exact himplies
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar useM B =>
         cases info with
         | cvar cs cap =>
           change
@@ -785,6 +790,9 @@ theorem typed_env_is_implying_simple_ans
           cases x with
           | there x =>
             exact ih_result x
+  | lock Γ' ih =>
+    change EnvTyping Γ' env mem at ht
+    exact ih ht
 
 /-- An environment typing implies that all type variable denotations imply well-formedness. -/
 theorem typed_env_is_implying_wf
@@ -834,7 +842,7 @@ theorem typed_env_is_implying_wf
             exact himplies
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar useM B =>
         cases info with
         | cvar cs cap =>
           change
@@ -850,6 +858,9 @@ theorem typed_env_is_implying_wf
           cases x with
           | there x =>
             exact ih_result x
+  | lock Γ' ih =>
+    change EnvTyping Γ' env mem at ht
+    exact ih ht
 
 /-- All type variable denotations in the environment enforce purity. -/
 def TypeEnv.is_enforcing_pure (env : TypeEnv s) : Prop :=
@@ -904,7 +915,7 @@ theorem typed_env_enforces_pure
             exact hpure
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar useM B =>
         cases info with
         | cvar cs cap =>
           change
@@ -920,6 +931,9 @@ theorem typed_env_enforces_pure
           cases x with
           | there x =>
             exact ih_result x
+  | lock Γ' ih =>
+    change EnvTyping Γ' env mem at ht
+    exact ih ht
 
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
@@ -1058,7 +1072,7 @@ theorem from_TypeEnv_wf_in_heap
             | there C' =>
               change CaptureSet.WfInHeap (ρ'.lookup_cvar C').1 m.heap
               exact ih_wf.wf_cvar C'
-      | cvar B =>
+      | cvar useM B =>
         -- Capture variable binding: doesn't affect term variable substitution
         cases info with
         | cvar cs cap =>
@@ -1084,6 +1098,9 @@ theorem from_TypeEnv_wf_in_heap
             | there C' =>
               change CaptureSet.WfInHeap (ρ'.lookup_cvar C').1 m.heap
               exact ih_wf.wf_cvar C'
+  | lock Γ' ih =>
+    change EnvTyping Γ' ρ m at htyping
+    exact ih htyping
 
 def Denot.Equiv (d1 d2 : Denot) : Prop :=
   ∀ m e,
@@ -1224,7 +1241,7 @@ theorem typed_env_is_monotonic
               exact hproper.1
             | there x =>
               exact ih_result.tvar x
-      | cvar B =>
+      | cvar useM B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1240,6 +1257,9 @@ theorem typed_env_is_monotonic
             cases x with
             | there x =>
               exact ih_result.tvar x
+  | lock Γ' ih =>
+    change EnvTyping Γ' env mem at ht
+    exact ih ht
 
 theorem typed_env_is_transparent
   (ht : EnvTyping Γ env mem) :
@@ -1291,7 +1311,7 @@ theorem typed_env_is_transparent
             exact hproper.2.1
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar useM B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1307,6 +1327,9 @@ theorem typed_env_is_transparent
           cases x with
           | there x =>
             exact ih_result x
+  | lock Γ' ih =>
+    change EnvTyping Γ' env mem at ht
+    exact ih ht
 
 theorem typed_env_is_bool_independent
   (ht : EnvTyping Γ env mem) :
@@ -1358,7 +1381,7 @@ theorem typed_env_is_bool_independent
             exact hproper.2.2.1
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar useM B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1374,6 +1397,9 @@ theorem typed_env_is_bool_independent
           cases x with
           | there x =>
             exact ih_result x
+  | lock Γ' ih =>
+    change EnvTyping Γ' env mem at ht
+    exact ih ht
 
 -- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
 -- They relied on TypeEnv.is_reachability_safe, TypeEnv.is_reachability_monotonic,
@@ -2187,7 +2213,7 @@ theorem env_typing_monotonic
                 · constructor
                   · exact hpure
                   · exact ih ht'
-      | cvar B =>
+      | cvar useM B =>
         cases info with
         | cvar cs cap =>
           change
@@ -2218,6 +2244,10 @@ theorem env_typing_monotonic
           constructor
           · rw [hcap, ground_denot_is_monotonic hwf hmem]
           · exact ih ht'
+  | lock Γ' ih =>
+    change EnvTyping Γ' env mem1 at ht
+    change EnvTyping Γ' env mem2
+    exact ih ht
 
 /-- Semantic subcapturing. -/
 def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
