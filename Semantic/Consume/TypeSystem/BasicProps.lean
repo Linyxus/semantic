@@ -47,18 +47,19 @@ theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
     case lock h2' =>
       exact ih h2'
 
-theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {cb1 cb2 : CaptureBound s} :
-    Γ.LookupCVar c cb1 -> Γ.LookupCVar c cb2 -> cb1 = cb2 := by
+theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {m1 m2 : UseMode}
+    {cb1 cb2 : CaptureBound s} :
+    Γ.LookupCVar c m1 cb1 -> Γ.LookupCVar c m2 cb2 -> m1 = m2 ∧ cb1 = cb2 := by
   intro h1 h2
   induction h1
   case here =>
     cases h2
-    case here => rfl
+    case here => exact ⟨rfl, rfl⟩
   case there ih =>
     cases h2
     case there h2' =>
-      have eq := ih h2'
-      rw [eq]
+      obtain ⟨hm, hcb⟩ := ih h2'
+      exact ⟨hm, by rw [hcb]⟩
   case lock ih =>
     cases h2
     case lock h2' =>

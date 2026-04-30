@@ -67,15 +67,15 @@ inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
   Ctx.LookupVar Γ x T ->
   Ctx.LookupVar (.lock Γ) x T
 
-inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> CaptureBound s -> Prop
+inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> UseMode -> CaptureBound s -> Prop
 | here :
-  Ctx.LookupCVar (.push Γ (.cvar m cb)) .here (cb.rename Rename.succ)
+  Ctx.LookupCVar (.push Γ (.cvar m cb)) .here m (cb.rename Rename.succ)
 | there {b : Binding s k} :
-  Ctx.LookupCVar Γ c cb ->
-  Ctx.LookupCVar (.push Γ b) (.there c) (cb.rename Rename.succ)
+  Ctx.LookupCVar Γ c m cb ->
+  Ctx.LookupCVar (.push Γ b) (.there c) m (cb.rename Rename.succ)
 | lock {cb : CaptureBound s} :
-  Ctx.LookupCVar Γ c cb ->
-  Ctx.LookupCVar (.lock Γ) c cb
+  Ctx.LookupCVar Γ c m cb ->
+  Ctx.LookupCVar (.lock Γ) c m cb
 
 def Ctx.depth : Ctx s -> Nat
 | .empty => 0
@@ -95,9 +95,11 @@ def Ctx.lookup_var : Ctx s -> BVar s .var -> Ty .capt s
 | .push Γ _, .there x => (Γ.lookup_var x).rename Rename.succ
 | .lock Γ, x => Γ.lookup_var x
 
-def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> CaptureBound s
-| .push _ (.cvar _ cb), .here => cb.rename Rename.succ
-| .push Γ _, .there c => (Γ.lookup_cvar c).rename Rename.succ
+def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> UseMode × CaptureBound s
+| .push _ (.cvar m cb), .here => (m, cb.rename Rename.succ)
+| .push Γ _, .there c =>
+    let p := Γ.lookup_cvar c
+    (p.1, p.2.rename Rename.succ)
 | .lock Γ, c => Γ.lookup_cvar c
 
 /-- Helper for `lookup_tvar'`: structurally recursive on `Ctx s`.
@@ -126,12 +128,12 @@ def Ctx.lookup_var' (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) : Ty .capt s :=
 /-- Helper for `lookup_cvar'`: structurally recursive on `Ctx s`. -/
 def Ctx.lookup_cvar'_aux :
     {s_full : Sig} → (Γ : Ctx s_full) → BVar s_full .cvar → {s' : Sig} → {k_top : Kind} →
-    s_full = s' ,, k_top → CaptureBound s'
-| _, .push _ (.cvar _ cb), .here, _, _, rfl => cb
+    s_full = s' ,, k_top → UseMode × CaptureBound s'
+| _, .push _ (.cvar m cb), .here, _, _, rfl => (m, cb)
 | _, .push Γ _, .there c, _, _, rfl => Γ.lookup_cvar c
 | _, .lock Γ, c, _, _, h => Γ.lookup_cvar'_aux c h
 
-def Ctx.lookup_cvar' (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) : CaptureBound s :=
+def Ctx.lookup_cvar' (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) : UseMode × CaptureBound s :=
   Ctx.lookup_cvar'_aux Γ c rfl
 
 /-- The functional lookup satisfies the inductive predicate. -/
@@ -176,7 +178,7 @@ theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
 
 /-- The functional lookup satisfies the inductive predicate. -/
 theorem Ctx.lookup_cvar_spec (Γ : Ctx s) (c : BVar s .cvar) :
-    Ctx.LookupCVar Γ c (Γ.lookup_cvar c) := by
+    Ctx.LookupCVar Γ c (Γ.lookup_cvar c).1 (Γ.lookup_cvar c).2 := by
   match Γ, c with
   | .push _ (.cvar _ _), .here => exact LookupCVar.here
   | .push Γ' b, .there c' =>
@@ -186,12 +188,13 @@ theorem Ctx.lookup_cvar_spec (Γ : Ctx s) (c : BVar s .cvar) :
     simp only [lookup_cvar]
     exact LookupCVar.lock (lookup_cvar_spec Γ' c')
 
-/-- If the inductive predicate holds, the bound equals the functional lookup. -/
-theorem Ctx.LookupCVar.eq_lookup {Γ : Ctx s} {c : BVar s .cvar} {cb : CaptureBound s}
-    (h : Ctx.LookupCVar Γ c cb) : cb = Γ.lookup_cvar c := by
+/-- If the inductive predicate holds, the use mode and bound equal the functional lookup. -/
+theorem Ctx.LookupCVar.eq_lookup {Γ : Ctx s} {c : BVar s .cvar} {m : UseMode}
+    {cb : CaptureBound s}
+    (h : Ctx.LookupCVar Γ c m cb) : (m, cb) = Γ.lookup_cvar c := by
   induction h with
   | here => rfl
-  | there _ ih => simp only [Ctx.lookup_cvar, ih]
+  | there _ ih => simp only [Ctx.lookup_cvar, ← ih]
   | lock _ ih => simp only [Ctx.lookup_cvar, ih]
 
 /-- The lookup equals the primed lookup renamed by succ. -/
@@ -228,9 +231,11 @@ theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
     simp only [lookup_var, lookup_var', lookup_var'_aux]
     exact lookup_var_eq_rename Γ' x
 
-/-- The lookup equals the primed lookup renamed by succ. -/
+/-- The lookup equals the primed lookup; the use mode is preserved and the
+bound is renamed by succ. -/
 theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
-    Γ.lookup_cvar c = (Γ.lookup_cvar' c).rename Rename.succ := by
+    Γ.lookup_cvar c =
+      ((Γ.lookup_cvar' c).1, (Γ.lookup_cvar' c).2.rename Rename.succ) := by
   cases Γ with
   | push Γ' b =>
     cases b with

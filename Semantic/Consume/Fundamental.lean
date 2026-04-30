@@ -811,7 +811,7 @@ theorem sem_typ_tapp
 
 theorem typed_env_lookup_cvar_aux
   (hts : EnvTyping Γ env m)
-  (hc : Ctx.LookupCVar Γ c cb) :
+  (hc : Ctx.LookupCVar Γ c useM cb) :
   ((env.lookup_cvar c).1.ground_denot m).BoundedBy (cb.denot env m) := by
   induction hc generalizing m
   case here =>
@@ -1453,8 +1453,8 @@ theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
           (C := CaptureSet.var .epsilon (Var.free (env.lookup_var x).1)) (m := m'))
     exact CapabilitySet.Subset.trans hro h
 
-theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
-  (hlookup : Γ.LookupCVar c (.bound C)) :
+theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s} {useM : UseMode}
+  (hlookup : Γ.LookupCVar c useM (.bound C)) :
   SemSubcapt Γ (.cvar .epsilon c) C := by
   intro env m hts
   unfold CaptureSet.denot
