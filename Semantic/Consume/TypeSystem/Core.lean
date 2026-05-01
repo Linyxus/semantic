@@ -26,8 +26,8 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x T ->
   ----------------------------------
   Subcapt Γ (.var m (.bound x)) T.captureSet
-| sc_cvar {m : UseMode} :
-  Ctx.LookupCVar Γ c m (.bound C) ->
+| sc_cvar {m : UseMode} {locked : Bool} :
+  Ctx.LookupCVar Γ c m (.bound C) locked ->
   ----------------------------------
   Subcapt Γ (.cvar .epsilon c) C
 | sc_ro :
