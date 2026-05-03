@@ -31,6 +31,10 @@ def Ctx.push_tvar : Ctx s -> PureTy s -> Ctx (s,X)
 def Ctx.push_cvar : Ctx s -> CaptureBound s -> Ctx (s,C)
 | Γ, cb => Γ.push (.cvar .access cb)
 
+/-- Push a capture-variable binding at `.consume` use mode (linear capability). -/
+def Ctx.push_cvar_consume : Ctx s -> CaptureBound s -> Ctx (s,C)
+| Γ, cb => Γ.push (.cvar .consume cb)
+
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
 infixl:65 ",C<:" => Ctx.push_cvar
@@ -438,5 +442,27 @@ theorem CaptureSet.var_peaks {Γ : Ctx s}
   | lock _ ih =>
     rw [peaks_lock, peaks_lock]
     exact ih
+
+/-- A peak is accessible if it is bound at `.access` mode (regardless of locks). -/
+inductive AccessiblePeak : Ctx s -> BVar s .cvar -> Prop where
+| lookup {Γ : Ctx s} :
+  Γ.LookupCVar c UseMode.access B locked ->
+  -------------------
+  AccessiblePeak Γ c
+
+/-- A peak is consumable if it is bound at `.consume` mode and not locked. -/
+inductive ConsumablePeak : Ctx s -> BVar s .cvar -> Prop where
+| lookup {Γ : Ctx s} :
+  Γ.LookupCVar c UseMode.consume B false ->
+  -------------------
+  ConsumablePeak Γ c
+
+/-- A capture set is accessible if all its peaks are accessible. -/
+def CaptureSet.accessible (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  ∀ m c, (CaptureSet.cvar m c) ⊆ C.peaks Γ -> AccessiblePeak Γ c
+
+/-- A capture set is consumable if all its peaks are consumable. -/
+def CaptureSet.consumable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  ∀ m c, (CaptureSet.cvar m c) ⊆ C.peaks Γ -> ConsumablePeak Γ c
 
 end Consume

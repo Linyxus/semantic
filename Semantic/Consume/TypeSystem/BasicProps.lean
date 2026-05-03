@@ -408,7 +408,7 @@ theorem HasType.type_is_closed
   (ht : C # Γ ⊢ e : E) :
   E.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [Ty.IsClosed])
-  case var hΓ_closed hlookup =>
+  case var hΓ_closed hlookup _ =>
     constructor
     -- Need to prove: (T.refineCaptureSet (.var .epsilon (.bound x))).IsClosed
     have hT_closed := Ctx.lookup_var_gives_closed hΓ_closed hlookup

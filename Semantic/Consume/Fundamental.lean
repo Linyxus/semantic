@@ -2338,7 +2338,7 @@ theorem sem_typ_unpack
   (hclosed_C : C.IsClosed)
   (ht : C # Γ ⊨ t : .exi T)
   (hu : (C.rename Rename.succ).rename Rename.succ #
-        (Γ,C<:.unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
+        (Γ.push_cvar_consume .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts
   suffices
@@ -2421,12 +2421,12 @@ theorem sem_typ_unpack
     case bound bx => cases bx  -- No bound variables in empty signature
     case free fx =>
       obtain ⟨hwf_cs, hQ1_body⟩ := hQ1
-      let ps := CaptureSet.peakset (Γ,C<:.unbound) T.captureSet
+      let ps := CaptureSet.peakset (Γ.push_cvar_consume .unbound) T.captureSet
       let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
       -- Apply hu with doubly extended environment
       have hu' := hu (env'.extend_var fx ps) m1
       have hu' :
-          EnvTyping (Γ,C<:.unbound,x:T) (env'.extend_var fx ps) m1 →
+          EnvTyping (Γ.push_cvar_consume .unbound,x:T) (env'.extend_var fx ps) m1 →
             Eval
               (((C.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1)
               m1
@@ -2435,8 +2435,8 @@ theorem sem_typ_unpack
                 ((U.rename Rename.succ).rename Rename.succ)).as_mpost := by
         simpa only [Ty.exi_exp_denot] using hu'
       -- First, construct the typing context for hu'
-      -- Need to show: EnvTyping (Γ,C<:unbound,x:T) (extended environment) m1
-      have hts_extended : EnvTyping (Γ,C<:.unbound,x:T)
+      -- Need to show: EnvTyping (Γ.push_cvar_consume .unbound,x:T) (extended environment) m1
+      have hts_extended : EnvTyping (Γ.push_cvar_consume .unbound,x:T)
           (env'.extend_var fx ps) m1 := by
         -- This unfolds to a conjunction by EnvTyping definition
         constructor
@@ -2667,7 +2667,7 @@ theorem fundamental
   C # Γ ⊨ e : T := by
   have hclosed_e := HasType.exp_is_closed ht
   induction ht
-  case var hx =>
+  case var _ hx _ =>
     exact sem_typ_var hx
   case abs ih =>
     apply sem_typ_abs

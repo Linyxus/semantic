@@ -4,17 +4,6 @@ import Semantic.Consume.TypeSystem.BasicProps
 
 namespace Consume
 
-/-- A peak is consumable if it is accessed at `consume` mode, and it is not locked. -/
-inductive ConsumablePeak : Ctx s -> BVar s .cvar -> Prop where
-| lookup {Γ : Ctx s} :
-  Γ.LookupCVar c UseMode.consume B false ->
-  -------------------
-  ConsumablePeak Γ c
-
-/-- A capture set is consumable if all its peaks are consumable. -/
-def CaptureSet.consumable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
-  ∀ m c, (CaptureSet.cvar m c) ⊆ C.peaks Γ -> ConsumablePeak Γ c
-
 inductive UseMode.SeqComp : UseMode -> UseMode -> UseMode -> Prop where
 | l_empty :
   -------------------
