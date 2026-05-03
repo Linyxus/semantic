@@ -168,20 +168,22 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.var x) (.typ (.cpoly (.bound D) (.var .epsilon x) T)) ->
   ----------------------------
   HasType (.var .epsilon x) Γ (.capp x D) (T.subst (Subst.openCVar D))
-| letin :
-  HasType C Γ e1 (.typ T) ->
-  HasType (C.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
+| letin {Γ Γ1 Γ2 : Ctx s} :
+  Ctx.SeqComp Γ1 Γ2 Γ ->
+  HasType C1 Γ1 e1 (.typ T) ->
+  HasType (C2.rename Rename.succ) (Γ2,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
-  HasType C Γ (.letin e1 e2) U
-| unpack :
-  HasType C Γ t (.exi T) ->
+  HasType (C1 ∪ C2) Γ (.letin e1 e2) U
+| unpack {Γ Γ1 Γ2 : Ctx s} :
+  Ctx.SeqComp Γ1 Γ2 Γ ->
+  HasType C1 Γ1 t (.exi T) ->
   HasType
-    ((C.rename Rename.succ).rename Rename.succ)
-    (Γ.push_cvar_consume .unbound,x:T)
+    ((C2.rename Rename.succ).rename Rename.succ)
+    (Γ2.push_cvar_consume .unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
-  HasType C Γ (.unpack t u) U
+  HasType (C1 ∪ C2) Γ (.unpack t u) U
 | unit :
   ----------------------------
   HasType {} Γ (.unit) (.typ .unit)

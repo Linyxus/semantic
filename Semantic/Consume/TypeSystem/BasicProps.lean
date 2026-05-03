@@ -284,6 +284,11 @@ theorem HasType.use_set_is_closed
   (ht : C # Γ ⊢ e : T) :
   C.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [CaptureSet.IsClosed])
+  case letin _ _ _ ih1 ih2 =>
+    exact CaptureSet.IsClosed.union ih1 (CaptureSet.rename_closed_inv ih2)
+  case unpack _ _ _ ih1 ih2 =>
+    exact CaptureSet.IsClosed.union ih1
+      (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv ih2))
   case app =>
     rename_i ht_x _ _ _
     exact HasType.typed_var_capture_closed ht_x
