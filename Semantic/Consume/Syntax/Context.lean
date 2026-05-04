@@ -500,4 +500,33 @@ inductive Ctx.SeqComp : Ctx s -> Ctx s -> Ctx s -> Prop where
   -------------------
   SeqComp Γ1.lock Γ2.lock Γ3.lock
 
+/-- `peaks` only consults var bindings, which `Ctx.SeqComp` preserves exactly,
+so `peaks` is invariant under sequential composition (left). -/
+theorem CaptureSet.peaks_seqcomp_eq
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (cs : CaptureSet s) :
+    cs.peaks Γ = cs.peaks Γ1 := by
+  sorry
+
+/-- `peakset` is invariant under sequential composition (left). -/
+theorem CaptureSet.peakset_seqcomp_eq
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (cs : CaptureSet s) :
+    cs.peakset Γ = cs.peakset Γ1 := by
+  unfold CaptureSet.peakset
+  congr 1
+  exact CaptureSet.peaks_seqcomp_eq h cs
+
+/-- `peaks` is invariant under sequential composition (right). -/
+theorem CaptureSet.peaks_seqcomp_eq_right
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (cs : CaptureSet s) :
+    cs.peaks Γ = cs.peaks Γ2 := by
+  sorry
+
+/-- `peakset` is invariant under sequential composition (right). -/
+theorem CaptureSet.peakset_seqcomp_eq_right
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (cs : CaptureSet s) :
+    cs.peakset Γ = cs.peakset Γ2 := by
+  unfold CaptureSet.peakset
+  congr 1
+  exact CaptureSet.peaks_seqcomp_eq_right h cs
+
 end Consume
