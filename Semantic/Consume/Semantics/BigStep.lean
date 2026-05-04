@@ -5,8 +5,11 @@ import Semantic.Consume.Semantics.Heap
 namespace Consume
 
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
+| eval_pack :
+  (cs.reachability m) ⊆ C ->  -- Consumed capabilities are counted as used
+  Eval C m (.pack cs x) Q
 | eval_val :
-  (hv : Exp.IsVal v) ->
+  (hv : Exp.IsSimpleVal v) ->
   (hQ : Q v m) ->
   Eval C m v Q
 | eval_var :

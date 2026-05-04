@@ -2287,4 +2287,12 @@ theorem subset_right
 
 end CapabilitySet.Noninterference
 
+/-- Compute the reachability of a capture set in a given memory. -/
+def CaptureSet.reachability : CaptureSet {} -> Memory -> CapabilitySet
+| .empty => fun _ => {}
+| .union cs1 cs2 => fun m =>
+  (cs1.reachability m) ∪ (cs2.reachability m)
+| .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyMut m'
+
+
 end Consume
