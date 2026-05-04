@@ -28,12 +28,8 @@ def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 def Ctx.push_tvar : Ctx s -> PureTy s -> Ctx (s,X)
 | Γ, T => Γ.push (.tvar T)
 
-def Ctx.push_cvar : Ctx s -> CaptureBound s -> Ctx (s,C)
-| Γ, cb => Γ.push (.cvar .access cb)
-
-/-- Push a capture-variable binding at `.consume` use mode (linear capability). -/
-def Ctx.push_cvar_consume : Ctx s -> CaptureBound s -> Ctx (s,C)
-| Γ, cb => Γ.push (.cvar .consume cb)
+def Ctx.push_cvar : Ctx s -> UseMode -> CaptureBound s -> Ctx (s,C)
+| Γ, m, cb => Γ.push (.cvar m cb)
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
