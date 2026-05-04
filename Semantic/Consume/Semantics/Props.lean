@@ -1125,6 +1125,9 @@ theorem Exp.wf_masked
     exact Var.wf_masked hwf_x
   | wf_write hwf_x hwf_y =>
     exact Exp.WfInHeap.wf_write (Var.wf_masked hwf_x) (Var.wf_masked hwf_y)
+  | wf_alloc hwf_x =>
+    apply Exp.WfInHeap.wf_alloc
+    exact Var.wf_masked hwf_x
 
 theorem reachability_of_loc_masked {H : Heap} (l : Nat) :
   reachability_of_loc H l = reachability_of_loc (H.mask_caps D) l := by
