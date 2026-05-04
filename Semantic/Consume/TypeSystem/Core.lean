@@ -150,6 +150,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
+  C.consumable Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
   HasType {} Γ (.pack C x) (.exi T)
@@ -178,8 +179,8 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   Ctx.SeqComp Γ1 Γ2 Γ ->
   HasType C1 Γ1 t (.exi T) ->
   HasType
-    ((C2.rename Rename.succ).rename Rename.succ)
-    (Γ2.push_cvar_consume .unbound,x:T)
+    ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar .epsilon (.there .here)))
+    (Γ2.push_cvar .consume .unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------

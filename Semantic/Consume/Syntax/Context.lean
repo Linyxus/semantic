@@ -33,7 +33,7 @@ def Ctx.push_cvar : Ctx s -> UseMode -> CaptureBound s -> Ctx (s,C)
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
-infixl:65 ",C<:" => Ctx.push_cvar
+notation:65 Γ:65 ",C<:" cb:66 => Ctx.push_cvar Γ UseMode.access cb
 
 /-- A binding is closed if the type it contains is closed. -/
 inductive Binding.IsClosed : Binding s k -> Prop where
