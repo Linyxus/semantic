@@ -153,7 +153,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   C.consumable Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
-  HasType {} Γ (.pack C x) (.exi T)
+  HasType C Γ (.pack C x) (.exi T)
 | app :
   HasType {} Γ (.var x) (.typ (.arrow T1 (.var .epsilon x) T2)) ->
   HasType {} Γ (.var y) (.typ T1) ->

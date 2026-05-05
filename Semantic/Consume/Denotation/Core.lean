@@ -298,6 +298,22 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
 
+/-- The denotational `ground_denot` and operational `reachability` are pointwise equal:
+    they share identical recursive definitions. -/
+theorem CaptureSet.ground_denot_eq_reachability (cs : CaptureSet {}) (m : Memory) :
+    cs.ground_denot m = cs.reachability m := by
+  induction cs with
+  | empty => rfl
+  | var m0 x =>
+    cases x with
+    | bound bx => cases bx
+    | free _ => rfl
+  | cvar _ C => cases C
+  | union cs1 cs2 ih1 ih2 =>
+    change cs1.ground_denot m ∪ cs2.ground_denot m = _
+    rw [ih1, ih2]
+    rfl
+
 def CaptureBound.denot : TypeEnv s -> CaptureBound s -> CapBoundDenot
 | _, .unbound => fun _ => .top
 | env, .bound cs => fun m => .set (cs.denot env m)

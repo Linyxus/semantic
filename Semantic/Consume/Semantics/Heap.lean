@@ -2294,5 +2294,29 @@ def CaptureSet.reachability : CaptureSet {} -> Memory -> CapabilitySet
   (cs1.reachability m) ∪ (cs2.reachability m)
 | .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyMut m'
 
+/-- Reachability is preserved under memory subsumption when cs is well-formed. -/
+theorem CaptureSet.reachability_monotonic
+  {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
+  (cs : CaptureSet {})
+  (hwf : CaptureSet.WfInHeap cs m1.heap) :
+  cs.reachability m2 = cs.reachability m1 := by
+  induction cs with
+  | empty => rfl
+  | var m x =>
+    cases x with
+    | bound x => cases x
+    | free loc =>
+      cases hwf with
+      | wf_var_free hex =>
+        simpa only [CaptureSet.reachability] using
+          congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub loc hex)
+  | cvar m C =>
+    cases C
+  | union cs1 cs2 ih1 ih2 =>
+    cases hwf with
+    | wf_union hwf1 hwf2 =>
+      simp only [CaptureSet.reachability, ih1 hwf1, ih2 hwf2]
+
 
 end Consume

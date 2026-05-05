@@ -7,6 +7,7 @@ namespace Consume
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_pack :
   (cs.reachability m) ⊆ C ->  -- Consumed capabilities are counted as used
+  (hQ : Q (.pack cs x) m) ->
   Eval C m (.pack cs x) Q
 | eval_val :
   (hv : Exp.IsSimpleVal v) ->
@@ -117,6 +118,13 @@ theorem eval_monotonic {m1 m2 : Memory}
   (heval : Eval C m1 e Q) :
   Eval C m2 e Q := by
   induction heval generalizing m2
+  case eval_pack hsub_cs hQ =>
+    cases hwf with
+    | wf_pack hwf_cs hwf_x =>
+      apply Eval.eval_pack
+      · rw [CaptureSet.reachability_monotonic hsub _ hwf_cs]
+        exact hsub_cs
+      · apply hpred (Exp.WfInHeap.wf_pack hwf_cs hwf_x) hsub hQ
   case eval_val hv hQ =>
     apply Eval.eval_val hv
     apply hpred hwf hsub hQ
@@ -428,6 +436,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   (heval : Eval C m e Q1) :
   Eval C m e Q2 := by
   induction heval generalizing Q2
+  case eval_pack hsub_cs hQ =>
+    apply Eval.eval_pack hsub_cs
+    apply himp _ (Memory.subsumes_refl _) _ hQ
   case eval_val v Q M hv hQ =>
     apply Eval.eval_val hv
     apply himp M _ _ hQ
@@ -515,6 +526,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   (hsub : A1 ⊆ A2) :
   Eval A2 m e Q := by
   induction heval
+  case eval_pack hsub_cs hQ =>
+    exact Eval.eval_pack (CapabilitySet.Subset.trans hsub_cs hsub) hQ
   case eval_val hv hQ =>
     exact Eval.eval_val hv hQ
   case eval_var hQ =>
@@ -561,4 +574,77 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_true hs1 hq1 hres hsub
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
+
+/-- An `Eval` derivation always carries a witness reachability bound: any pack value
+    appearing in the postcondition has its capture set bounded by the budget. This
+    is a structural invariant established by the `eval_pack` rule. -/
+theorem Eval.strengthen_reach_bound
+  {C : CapabilitySet} {m : Memory} {e : Exp {}} {Q : Mpost}
+  (heval : Eval C m e Q) :
+  Eval C m e (fun v m' => Q v m' ∧ ∀ cs x, v = Exp.pack cs x → cs.reachability m' ⊆ C) := by
+  induction heval with
+  | eval_pack hreach hQ =>
+    apply Eval.eval_pack hreach
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    injection heq with _ hcs _
+    subst hcs
+    exact hreach
+  | eval_val hv hQ =>
+    apply Eval.eval_val hv
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    subst heq
+    cases hv
+  | eval_var hQ =>
+    apply Eval.eval_var
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    cases heq
+  | eval_apply hlookup _ ih =>
+    -- ih is the strengthened version of the body's Eval; use it directly since
+    -- the post Q is shared between the application and the body
+    exact Eval.eval_apply hlookup ih
+  | eval_invoke hcov hlookup_x hlookup_y hQ =>
+    apply Eval.eval_invoke hcov hlookup_x hlookup_y
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    cases heq
+  | eval_tapply hlookup _ ih =>
+    exact Eval.eval_tapply hlookup ih
+  | eval_capply hlookup _ ih =>
+    exact Eval.eval_capply hlookup ih
+  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var _ ih_val ih_var =>
+    apply Eval.eval_letin hpred hbool eval_e1 h_nonstuck
+    · intro m1 v hsub hv hwf_v hq1 l' hfresh
+      exact ih_val hsub hv hwf_v hq1 l' hfresh
+    · intro m1 x hsub hwf_x hq1
+      exact ih_var hsub hwf_x hq1
+  | eval_unpack hpred hbool eval_e1 h_nonstuck _ _ ih_val =>
+    apply Eval.eval_unpack hpred hbool eval_e1 h_nonstuck
+    intro m1 x cs hsub hwf_x hwf_cs hq1
+    exact ih_val hsub hwf_x hwf_cs hq1
+  | eval_read hcov hlookup_reader hlookup_cell hQ =>
+    apply Eval.eval_read hcov hlookup_reader hlookup_cell
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    -- result is `if b then .btrue else .bfalse`, never pack
+    split at heq <;> cases heq
+  | eval_write_true hcov hlookup_x hlookup_y hQ =>
+    apply Eval.eval_write_true hcov hlookup_x hlookup_y
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    cases heq
+  | eval_write_false hcov hlookup_x hlookup_y hQ =>
+    apply Eval.eval_write_false hcov hlookup_x hlookup_y
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    cases heq
+  | eval_cond hpred hbool eval_guard h_nonstuck _ _ _ ih_true ih_false =>
+    apply Eval.eval_cond hpred hbool eval_guard h_nonstuck
+    · intro m1 v hsub hq1 hres
+      exact ih_true hsub hq1 hres
+    · intro m1 v hsub hq1 hres
+      exact ih_false hsub hq1 hres
+
 end Consume

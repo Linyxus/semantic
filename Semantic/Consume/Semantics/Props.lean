@@ -441,6 +441,7 @@ theorem eval_ans_holds_post
   (hans : e.IsAns) :
   Q e m := by
   cases heval with
+  | eval_pack _ hQ => exact hQ
   | eval_val hv hQ => exact hQ
   | eval_var hQ => exact hQ
   | eval_apply => cases hans; rename_i hv; cases hv
@@ -460,10 +461,14 @@ theorem eval_implies_progressive
   (heval : Eval C m e Q) :
   IsProgressive C m e := by
   induction heval with
+  | eval_pack _ _ =>
+    -- pack is a value, so it's an answer
+    apply IsProgressive.done
+    exact Exp.IsAns.is_val Exp.IsVal.pack
   | eval_val hv hQ =>
     -- e is a value, so it's an answer
     apply IsProgressive.done
-    exact Exp.IsAns.is_val hv
+    exact Exp.IsAns.is_val hv.to_IsVal
   | eval_var hQ =>
     -- e is a variable, so it's an answer
     apply IsProgressive.done
@@ -618,9 +623,14 @@ theorem step_preserves_eval
   (hstep : Step C m1 e1 m2 e2) :
   Eval C m2 e2 Q := by
   induction he generalizing m2 e2 with
+  | eval_pack _ _ =>
+    -- pack is a value, which is an answer, but answers cannot step - contradiction
+    rename_i cs x _ _
+    have hans : Exp.IsAns (.pack cs x) := Exp.IsAns.is_val Exp.IsVal.pack
+    exact absurd hstep (step_ans_absurd hans)
   | eval_val hv hQ =>
     -- e1 is a value, which is an answer, but answers cannot step - contradiction
-    have hans : Exp.IsAns _ := Exp.IsAns.is_val hv
+    have hans : Exp.IsAns _ := Exp.IsAns.is_val hv.to_IsVal
     exact absurd hstep (step_ans_absurd hans)
   | eval_var hQ =>
     -- e1 is a variable, which is an answer, but answers cannot step - contradiction
@@ -664,7 +674,7 @@ theorem step_preserves_eval
     | step_invoke hmem' hlookup_x' hlookup_y' =>
       -- Stepped to .unit
       -- The postcondition holds by hQ
-      exact Eval.eval_val Exp.IsVal.unit hQ
+      exact Eval.eval_val Exp.IsSimpleVal.unit hQ
   | eval_tapply hlookup heval ih =>
     -- e1 = .tapp (.free x) S
     -- The only step is step_tapply
@@ -818,16 +828,16 @@ theorem step_preserves_eval
       rename_i b hv R
       cases b with
       | true =>
-        exact Eval.eval_val Exp.IsVal.btrue hQ
+        exact Eval.eval_val Exp.IsSimpleVal.btrue hQ
       | false =>
-        exact Eval.eval_val Exp.IsVal.bfalse hQ
+        exact Eval.eval_val Exp.IsSimpleVal.bfalse hQ
   | eval_write_true _ hx hy hQ =>
     -- e = .write (.free x) (.free y), can only step via step_write_true or step_write_false
     cases hstep with
     | step_write_true _ hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
-      exact Eval.eval_val Exp.IsVal.unit hQ
+      exact Eval.eval_val Exp.IsSimpleVal.unit hQ
     | step_write_false _ hx' hy' =>
       -- y is looked up as btrue in eval, but bfalse in step - contradiction
       have heq_y := Memory.lookup_deterministic hy hy'
@@ -850,7 +860,7 @@ theorem step_preserves_eval
     | step_write_false _ hx' hy' =>
       -- Both lookups agree, so the memories are definitionally equal
       -- The result is unit, which is a value
-      exact Eval.eval_val Exp.IsVal.unit hQ
+      exact Eval.eval_val Exp.IsSimpleVal.unit hQ
 
 theorem reduce_preserves_eval
   (he : Eval C m1 e1 Q)
@@ -1413,8 +1423,10 @@ theorem eval_exists_answer
   (heval : Eval C m e Q) :
   ∃ m' e', e'.IsAns ∧ m'.subsumes m ∧ Q e' m' := by
   induction heval with
+  | eval_pack _ hQ =>
+    exact ⟨_, _, Exp.IsAns.is_val Exp.IsVal.pack, Memory.subsumes_refl _, hQ⟩
   | eval_val hv hQ =>
-    exact ⟨_, _, Exp.IsAns.is_val hv, Memory.subsumes_refl _, hQ⟩
+    exact ⟨_, _, Exp.IsAns.is_val hv.to_IsVal, Memory.subsumes_refl _, hQ⟩
   | eval_var hQ =>
     exact ⟨_, _, Exp.IsAns.is_var, Memory.subsumes_refl _, hQ⟩
   | eval_apply _ _ ih =>
@@ -1496,8 +1508,10 @@ theorem eval_reduce_exists_answer
   (heval : Eval C m1 e1 Q) :
   ∃ m2 e2, Reduce C m1 e1 m2 e2 ∧ e2.IsAns ∧ Q e2 m2 := by
   induction heval with
+  | eval_pack _ hQ =>
+    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_val Exp.IsVal.pack, hQ⟩
   | eval_val hv hQ =>
-    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_val hv, hQ⟩
+    exact ⟨_, _, Reduce.refl, Exp.IsAns.is_val hv.to_IsVal, hQ⟩
   | eval_var hQ =>
     exact ⟨_, _, Reduce.refl, Exp.IsAns.is_var, hQ⟩
   | eval_apply hlookup _ ih =>
