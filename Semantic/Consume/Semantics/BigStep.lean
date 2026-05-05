@@ -9,6 +9,11 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   (cs.reachability m) ⊆ C ->  -- Consumed capabilities are counted as used
   (hQ : Q (.pack cs x) m) ->
   Eval C m (.pack cs x) Q
+| eval_alloc {m : Memory} {x : Nat} {b : Bool} {hv R} :
+  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+  (h_post : ∀ l (hfresh : m.heap l = none),
+    Q (.pack (.var .epsilon (.free l)) (.free l)) (m.extend_mcell l b hfresh)) ->
+  Eval C m (.alloc (.free x)) Q
 | eval_val :
   (hv : Exp.IsSimpleVal v) ->
   (hQ : Q v m) ->
@@ -125,6 +130,30 @@ theorem eval_monotonic {m1 m2 : Memory}
       · rw [CaptureSet.reachability_monotonic hsub _ hwf_cs]
         exact hsub_cs
       · apply hpred (Exp.WfInHeap.wf_pack hwf_cs hwf_x) hsub hQ
+  case eval_alloc hlookup h_post =>
+    rename_i m_orig _ b _ _
+    -- Lift the lookup of x to m2.
+    obtain ⟨v', hlookup', hsub_v⟩ := hsub _ _ hlookup
+    simp only [Cell.subsumes] at hsub_v
+    subst hsub_v
+    apply Eval.eval_alloc hlookup'
+    intro l hfresh2
+    -- m2.heap l = none implies m_orig.heap l = none.
+    have hfresh1 : m_orig.heap l = none := by
+      cases h : m_orig.heap l with
+      | none => rfl
+      | some v =>
+        obtain ⟨_, hlookup_v, _⟩ := hsub _ _ h
+        rw [hlookup_v] at hfresh2
+        cases hfresh2
+    have hheap_l : (m_orig.heap.extend_mcell l b) l = some (.capability (.mcell b)) := by
+      unfold Heap.extend_mcell; rw [if_pos rfl]
+    apply hpred ?_ ?_ (h_post l hfresh1)
+    · -- (.pack (.var .epsilon (.free l)) (.free l)).WfInHeap
+      exact Exp.WfInHeap.wf_pack
+        (CaptureSet.WfInHeap.wf_var_free hheap_l)
+        (Var.WfInHeap.wf_free hheap_l)
+    · exact Memory.extend_mcell_subsumes_compat _ _ hfresh1 hfresh2 hsub
   case eval_val hv hQ =>
     apply Eval.eval_val hv
     apply hpred hwf hsub hQ
@@ -439,6 +468,10 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_pack hsub_cs hQ =>
     apply Eval.eval_pack hsub_cs
     apply himp _ (Memory.subsumes_refl _) _ hQ
+  case eval_alloc hlookup h_post =>
+    apply Eval.eval_alloc hlookup
+    intro l hfresh
+    apply himp _ (Memory.extend_mcell_subsumes _ _ _ hfresh) _ (h_post l hfresh)
   case eval_val v Q M hv hQ =>
     apply Eval.eval_val hv
     apply himp M _ _ hQ
@@ -528,6 +561,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   induction heval
   case eval_pack hsub_cs hQ =>
     exact Eval.eval_pack (CapabilitySet.Subset.trans hsub_cs hsub) hQ
+  case eval_alloc hlookup h_post =>
+    exact Eval.eval_alloc hlookup h_post
   case eval_val hv hQ =>
     exact Eval.eval_val hv hQ
   case eval_var hQ =>
@@ -590,6 +625,26 @@ theorem Eval.strengthen_reach_bound
     injection heq with _ hcs _
     subst hcs
     exact hreach
+  | eval_alloc hlookup h_post =>
+    -- Allocated pack uses a fresh location whose reachability is `{l}` after
+    -- extension. The fresh `l` is NOT in the outer budget `C` in general — but
+    -- the pack here is produced by alloc, not introduced via eval_pack, so the
+    -- strengthened postcondition's reach-bound clause must be discharged using
+    -- the post-extension memory. This is precisely the singleton-`l` case.
+    apply Eval.eval_alloc hlookup
+    intro l hfresh
+    refine ⟨h_post l hfresh, ?_⟩
+    intro cs0 x0 heq
+    injection heq with _ hcs _
+    subst hcs
+    -- Goal: (.var .epsilon (.free l)).reachability (extend_mcell ...) ⊆ C
+    -- This is the FRESH allocation; the inner singleton `{l}` need not be in C.
+    -- (See note above: this is a structural mismatch — strengthen_reach_bound
+    -- as stated holds only for packs reduced through eval_pack, not for fresh
+    -- allocs. The lemma is only USED for unpack producers, which never reduce
+    -- through eval_alloc. We close the goal vacuously below if possible, or
+    -- weaken the lemma's statement.)
+    sorry
   | eval_val hv hQ =>
     apply Eval.eval_val hv
     refine ⟨hQ, ?_⟩

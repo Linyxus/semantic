@@ -428,6 +428,144 @@ theorem covers_eps_imp_singleton_eps_subset {C : CapabilitySet} {x : Nat}
       apply Subset.trans (ih2 h)
       apply Subset.union_right_right
 
+/-- Inversion: a covered location must come from some explicit member with a
+    weaker-or-equal mutability. -/
+theorem covers_imp_exists_hasmem
+    {C : CapabilitySet} {m : Mutability} {l : Nat}
+    (hcov : covers m l C) :
+    ∃ m', hasmem m' l C ∧ m ≤ m' := by
+  induction hcov with
+  | here hle => exact ⟨_, hasmem.here, hle⟩
+  | left _ ih =>
+    obtain ⟨m', hm, hle⟩ := ih
+    exact ⟨m', hasmem.left hm, hle⟩
+  | right _ ih =>
+    obtain ⟨m', hm, hle⟩ := ih
+    exact ⟨m', hasmem.right hm, hle⟩
+
+/-! ## Subset modulo a domain predicate
+
+`SubsetMod P C1 C2` says: every element of `C1` whose location satisfies `P` is
+covered by `C2`. Elements failing `P` are unconstrained.
+
+Intended use: `P l := h l ≠ none` for a heap `h` — i.e., "C1 ⊆ C2 modulo what
+is already allocated in h". This relaxation excuses freshly-allocated witnesses
+that would otherwise break a strict reachability bound.
+-/
+
+/-- "C1 is a subset of C2 modulo predicate P". -/
+def SubsetMod (P : Nat -> Prop) (C1 C2 : CapabilitySet) : Prop :=
+  ∀ mu l, hasmem mu l C1 → P l → covers mu l C2
+
+namespace SubsetMod
+
+/-- Reflexivity. -/
+theorem refl {P : Nat -> Prop} {C : CapabilitySet} : SubsetMod P C C := by
+  intros mu l hm _
+  exact hasmem_implies_covers hm
+
+/-- Transitivity. -/
+theorem trans {P : Nat -> Prop} {C1 C2 C3 : CapabilitySet}
+    (h12 : SubsetMod P C1 C2) (h23 : SubsetMod P C2 C3) :
+    SubsetMod P C1 C3 := by
+  intros mu l hm hP
+  obtain ⟨mu', hm', hle⟩ := covers_imp_exists_hasmem (h12 mu l hm hP)
+  exact covers_weaken (h23 mu' l hm' hP) hle
+
+/-- Strict subset implies subset modulo any predicate. -/
+theorem of_subset {P : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (hsub : C1 ⊆ C2) : SubsetMod P C1 C2 := by
+  intros mu l hm _
+  exact subset_preserves_covers hsub (hasmem_implies_covers hm)
+
+/-- Empty is below anything. -/
+theorem empty {P : Nat -> Prop} {C : CapabilitySet} :
+    SubsetMod P .empty C := by
+  intros _ _ hm _
+  cases hm
+
+/-- Anti-monotonicity in the predicate: a stronger premise predicate makes the
+    relation easier to satisfy. -/
+theorem weaken_pred
+    {P P' : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (himp : ∀ l, P l → P' l)
+    (h : SubsetMod P' C1 C2) :
+    SubsetMod P C1 C2 := by
+  intros mu l hm hP
+  exact h mu l hm (himp l hP)
+
+/-- Right-side monotonicity via strict subset. -/
+theorem mono_right {P : Nat -> Prop} {C1 C2 C2' : CapabilitySet}
+    (h : SubsetMod P C1 C2) (hsub : C2 ⊆ C2') :
+    SubsetMod P C1 C2' := by
+  intros mu l hm hP
+  exact subset_preserves_covers hsub (h mu l hm hP)
+
+/-- Left-side anti-monotonicity via strict subset. -/
+theorem mono_left {P : Nat -> Prop} {C1 C1' C2 : CapabilitySet}
+    (hsub : C1' ⊆ C1) (h : SubsetMod P C1 C2) :
+    SubsetMod P C1' C2 :=
+  trans (of_subset hsub) h
+
+/-- Union elimination on the left. -/
+theorem union_elim_left {P : Nat -> Prop} {C1 C2 C : CapabilitySet}
+    (h : SubsetMod P (C1 ∪ C2) C) : SubsetMod P C1 C := by
+  intros mu l hm hP
+  exact h mu l (hasmem_union_left hm) hP
+
+/-- Union elimination on the right. -/
+theorem union_elim_right {P : Nat -> Prop} {C1 C2 C : CapabilitySet}
+    (h : SubsetMod P (C1 ∪ C2) C) : SubsetMod P C2 C := by
+  intros mu l hm hP
+  exact h mu l (hasmem_union_right hm) hP
+
+/-- Union introduction. -/
+theorem union_intro {P : Nat -> Prop} {C1 C2 C : CapabilitySet}
+    (h1 : SubsetMod P C1 C) (h2 : SubsetMod P C2 C) :
+    SubsetMod P (C1 ∪ C2) C := by
+  intros mu l hm hP
+  cases hasmem_union_iff.mp hm with
+  | inl hm1 => exact h1 mu l hm1 hP
+  | inr hm2 => exact h2 mu l hm2 hP
+
+/-- Iff-style union split. -/
+theorem union_iff {P : Nat -> Prop} {C1 C2 C : CapabilitySet} :
+    SubsetMod P (C1 ∪ C2) C ↔ SubsetMod P C1 C ∧ SubsetMod P C2 C :=
+  ⟨fun h => ⟨union_elim_left h, union_elim_right h⟩,
+   fun ⟨h1, h2⟩ => union_intro h1 h2⟩
+
+/-- Right-side injection into a union. -/
+theorem union_right_left {P : Nat -> Prop} {C1 C2 : CapabilitySet} :
+    SubsetMod P C1 (C1 ∪ C2) :=
+  of_subset Subset.union_right_left
+
+/-- Right-side injection into a union (other side). -/
+theorem union_right_right {P : Nat -> Prop} {C1 C2 : CapabilitySet} :
+    SubsetMod P C1 (C2 ∪ C1) :=
+  of_subset Subset.union_right_right
+
+/-- Vacuity: if every member of `C1` fails `P`, then `C1 ⊆ C2 mod P` for any
+    `C2`. This is the load-bearing lemma — it's how a freshly-allocated witness
+    (where `P l = h l ≠ none` and `l` is fresh) trivially fits inside any budget. -/
+theorem vacuous {P : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (hfresh : ∀ mu l, hasmem mu l C1 → ¬ P l) :
+    SubsetMod P C1 C2 := by
+  intros mu l hm hP
+  exact (hfresh mu l hm hP).elim
+
+/-- Compatibility with `applyRO` on both sides. -/
+theorem applyRO {P : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (h : SubsetMod P C1 C2) :
+    SubsetMod P C1.applyRO C2.applyRO := by
+  intros mu l hm hP
+  rw [hasmem_applyRO_iff] at hm
+  obtain ⟨hmu, mu', hm'⟩ := hm
+  subst hmu
+  have hcov : covers mu' l C2 := h mu' l hm' hP
+  exact covers_applyRO_of_covers_ro (covers_weaken hcov Mutability.Le.ro_le)
+
+end SubsetMod
+
 end CapabilitySet
 
 /-- A heap value.
@@ -471,6 +609,10 @@ def Heap.extend (h : Heap) (l : Nat) (v : HeapVal) : Heap :=
 
 def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
   fun l' => if l' = l then some (.capability .basic) else h l'
+
+/-- Heap extension with a fresh mutable cell capability. -/
+def Heap.extend_mcell (h : Heap) (l : Nat) (b : Bool) : Heap :=
+  fun l' => if l' = l then some (.capability (.mcell b)) else h l'
 
 /-- Update a cell in the heap with a new cell value. -/
 def Heap.update_cell (h : Heap) (l : Nat) (c : Cell) : Heap :=
@@ -1912,6 +2054,71 @@ def extend_cap (m : Memory) (l : Nat)
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_cap_has_fin_dom hdom hfresh⟩
 
+/-- Heap extension with mcell subsumes original heap. -/
+theorem Heap.extend_mcell_subsumes {H : Heap} {l : Nat} {b : Bool}
+  (hfresh : H l = none) :
+  (H.extend_mcell l b).subsumes H := by
+  intro l' v' hlookup
+  unfold Heap.extend_mcell
+  split
+  case isTrue heq =>
+    subst heq
+    rw [hfresh] at hlookup
+    contradiction
+  case isFalse =>
+    exists v'
+    exact ⟨hlookup, Cell.subsumes_refl v'⟩
+
+theorem Heap.extend_mcell_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat} {b : Bool}
+  (hdom : H.HasFinDom dom) (hfresh : H l = none) :
+  (H.extend_mcell l b).HasFinDom (dom ∪ {l}) := by
+  intro l'
+  unfold Heap.extend_mcell
+  split
+  case isTrue heq =>
+    subst heq
+    constructor
+    · intro _; simp
+    · intro _; simp
+  case isFalse hneq =>
+    constructor
+    · intro h
+      have : l' ∈ dom := (hdom l').mp h
+      simp only [Finset.mem_union, Finset.mem_singleton, this, true_or]
+    · intro h
+      rw [Finset.mem_union, Finset.mem_singleton] at h
+      rcases h with h | h
+      · exact (hdom l').mpr h
+      · contradiction
+
+/-- Extend memory with a fresh mutable cell capability. -/
+def extend_mcell (m : Memory) (l : Nat) (b : Bool)
+  (hfresh : m.heap l = none) : Memory where
+  heap := m.heap.extend_mcell l b
+  wf := by
+    constructor
+    · intro l' hv' hlookup
+      unfold Heap.extend_mcell at hlookup
+      split at hlookup
+      case isTrue _ =>
+        cases hlookup
+      case isFalse _ =>
+        exact Exp.wf_monotonic (Heap.extend_mcell_subsumes hfresh)
+          (m.wf.wf_val l' hv' hlookup)
+    · intro l' v' hv' R' hlookup
+      unfold Heap.extend_mcell at hlookup
+      split at hlookup
+      case isTrue _ =>
+        cases hlookup
+      case isFalse _ =>
+        have heq := m.wf.wf_reach l' v' hv' R' hlookup
+        rw [heq]
+        exact (compute_reachability_monotonic (Heap.extend_mcell_subsumes hfresh) v' hv'
+          (m.wf.wf_val l' _ hlookup)).symm
+  findom :=
+    let ⟨dom, hdom⟩ := m.findom
+    ⟨dom ∪ {l}, Heap.extend_mcell_has_fin_dom hdom hfresh⟩
+
 /-- Extend memory with a value that's well-formed in the current heap.
     This is often more convenient than `extend` in practice. -/
 def extend_val (m : Memory) (l : Nat) (v : HeapVal)
@@ -2014,6 +2221,24 @@ theorem update_mcell_subsumes (m : Memory) (l : Nat) (b : Bool)
   change (m.heap.update_cell l (.capability (.mcell b))).subsumes m.heap
   exact Heap.update_mcell_subsumes m.heap l hexists b
 
+/-- Extending two subsuming memories with the same mcell at the same location
+preserves subsumption. -/
+theorem extend_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
+  (hfresh1 : m1.heap l = none) (hfresh2 : m2.heap l = none)
+  (hsub : m2.subsumes m1) :
+  (m2.extend_mcell l b hfresh2).subsumes (m1.extend_mcell l b hfresh1) := by
+  change (m2.heap.extend_mcell l b).subsumes (m1.heap.extend_mcell l b)
+  intro l' v hlookup
+  unfold Heap.extend_mcell at hlookup ⊢
+  by_cases hneq : l' = l
+  · subst hneq
+    rw [if_pos rfl] at hlookup
+    cases hlookup
+    exact ⟨_, by rw [if_pos rfl], Cell.subsumes_refl _⟩
+  · rw [if_neg hneq] at hlookup
+    obtain ⟨v', hlookup', hsub_v⟩ := hsub l' v hlookup
+    exact ⟨v', by rw [if_neg hneq]; exact hlookup', hsub_v⟩
+
 /-- Updating mcells in subsuming memories preserves subsumption. -/
 theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
   (hexists1 : ∃ b0, m1.heap l = some (.capability (.mcell b0)))
@@ -2068,6 +2293,18 @@ theorem extend_cap_subsumes (m : Memory) (l : Nat)
   (m.extend_cap l hfresh).subsumes m := by
   change (m.heap.extend_cap l).subsumes m.heap
   exact Heap.extend_cap_subsumes hfresh
+
+/-- Mutable cell extension subsumes the original memory. -/
+theorem extend_mcell_subsumes (m : Memory) (l : Nat) (b : Bool)
+  (hfresh : m.heap l = none) :
+  (m.extend_mcell l b hfresh).subsumes m := by
+  change (m.heap.extend_mcell l b).subsumes m.heap
+  exact Heap.extend_mcell_subsumes hfresh
+
+theorem extend_mcell_lookup {m : Memory} {l : Nat} {b : Bool}
+  (hfresh : m.heap l = none) :
+  (m.extend_mcell l b hfresh).lookup l = some (.capability (.mcell b)) := by
+  simp only [lookup, extend_mcell, Heap.extend_mcell, if_true]
 
 /-- Well-formedness is preserved under memory subsumption. -/
 theorem wf_monotonic {e : Exp {}} {m1 m2 : Memory}
