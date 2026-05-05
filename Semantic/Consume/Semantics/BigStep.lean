@@ -610,96 +610,135 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     · intro m1 v hs1 hq1 hres
       exact ih_false hs1 hq1 hres hsub
 
-/-- An `Eval` derivation always carries a witness reachability bound: any pack value
-    appearing in the postcondition has its capture set bounded by the budget. This
-    is a structural invariant established by the `eval_pack` rule. -/
+/-- An `Eval` derivation always carries a witness reachability bound: any pack
+    value appearing in the postcondition has its capture set bounded by the
+    budget — *modulo* a domain predicate `D`. Concretely: any reachable element
+    of the witness whose location satisfies `D` is covered by `C`. The vacuity
+    of `SubsetMod` for fresh locations is what makes this hold at `eval_alloc`,
+    where the witness reaches a freshly allocated location not in `D`.
+
+    `D` is supplied externally and only required to be contained in the local
+    heap's domain. At top level a caller picks `D := fun l => m.heap l ≠ none`
+    (the entire current domain), which is the strongest useful choice. -/
 theorem Eval.strengthen_reach_bound
   {C : CapabilitySet} {m : Memory} {e : Exp {}} {Q : Mpost}
   (heval : Eval C m e Q) :
-  Eval C m e (fun v m' => Q v m' ∧ ∀ cs x, v = Exp.pack cs x → cs.reachability m' ⊆ C) := by
+  ∀ (D : Nat → Prop), (∀ l, D l → m.heap l ≠ none) →
+    Eval C m e (fun v m' => Q v m' ∧ ∀ cs x, v = Exp.pack cs x →
+      CapabilitySet.SubsetMod D (cs.reachability m') C) := by
   induction heval with
   | eval_pack hreach hQ =>
+    intro D _
     apply Eval.eval_pack hreach
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     injection heq with _ hcs _
     subst hcs
-    exact hreach
+    exact CapabilitySet.SubsetMod.of_subset hreach
   | eval_alloc hlookup h_post =>
-    -- Allocated pack uses a fresh location whose reachability is `{l}` after
-    -- extension. The fresh `l` is NOT in the outer budget `C` in general — but
-    -- the pack here is produced by alloc, not introduced via eval_pack, so the
-    -- strengthened postcondition's reach-bound clause must be discharged using
-    -- the post-extension memory. This is precisely the singleton-`l` case.
+    intro D hD
+    rename_i m_orig _ b _ _
     apply Eval.eval_alloc hlookup
     intro l hfresh
     refine ⟨h_post l hfresh, ?_⟩
     intro cs0 x0 heq
     injection heq with _ hcs _
     subst hcs
-    -- Goal: (.var .epsilon (.free l)).reachability (extend_mcell ...) ⊆ C
-    -- This is the FRESH allocation; the inner singleton `{l}` need not be in C.
-    -- (See note above: this is a structural mismatch — strengthen_reach_bound
-    -- as stated holds only for packs reduced through eval_pack, not for fresh
-    -- allocs. The lemma is only USED for unpack producers, which never reduce
-    -- through eval_alloc. We close the goal vacuously below if possible, or
-    -- weaken the lemma's statement.)
-    sorry
+    -- Goal: SubsetMod D ((.var .epsilon (.free l)).reachability (extend_mcell ...)) C
+    -- Reachability is `.cap .epsilon l` (singleton at the freshly allocated loc).
+    -- l is fresh in m_orig, so by hD it fails D — vacuity closes.
+    have hheap_l : (m_orig.extend_mcell l b hfresh).heap l =
+        some (.capability (.mcell b)) :=
+      Memory.extend_mcell_lookup hfresh
+    have hreach_eq :
+        (CaptureSet.var Mutability.epsilon (Var.free l)).reachability
+          (m_orig.extend_mcell l b hfresh) =
+        CapabilitySet.singleton .epsilon l := by
+      simp only [CaptureSet.reachability, reachability_of_loc, hheap_l,
+        CapabilitySet.applyMut]
+    rw [hreach_eq]
+    apply CapabilitySet.SubsetMod.vacuous
+    intros mu l' hm hDl'
+    have ⟨_, hleq⟩ := CapabilitySet.hasmem_cap_iff.mp hm
+    subst hleq
+    exact hD l' hDl' hfresh
   | eval_val hv hQ =>
+    intro D _
     apply Eval.eval_val hv
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     subst heq
     cases hv
   | eval_var hQ =>
+    intro D _
     apply Eval.eval_var
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     cases heq
   | eval_apply hlookup _ ih =>
-    -- ih is the strengthened version of the body's Eval; use it directly since
-    -- the post Q is shared between the application and the body
-    exact Eval.eval_apply hlookup ih
+    intro D hD
+    exact Eval.eval_apply hlookup (ih D hD)
   | eval_invoke hcov hlookup_x hlookup_y hQ =>
+    intro D _
     apply Eval.eval_invoke hcov hlookup_x hlookup_y
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     cases heq
   | eval_tapply hlookup _ ih =>
-    exact Eval.eval_tapply hlookup ih
+    intro D hD
+    exact Eval.eval_tapply hlookup (ih D hD)
   | eval_capply hlookup _ ih =>
-    exact Eval.eval_capply hlookup ih
+    intro D hD
+    exact Eval.eval_capply hlookup (ih D hD)
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var _ ih_val ih_var =>
+    intro D hD
     apply Eval.eval_letin hpred hbool eval_e1 h_nonstuck
     · intro m1 v hsub hv hwf_v hq1 l' hfresh
-      exact ih_val hsub hv hwf_v hq1 l' hfresh
+      apply ih_val hsub hv hwf_v hq1 l' hfresh D
+      intro l hDl hheap
+      have hsub_full := Memory.subsumes_trans
+        (Memory.extend_val_subsumes m1 l'
+          ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) hsub
+      exact hD l hDl (Heap.none_of_subsumes_none hsub_full hheap)
     · intro m1 x hsub hwf_x hq1
-      exact ih_var hsub hwf_x hq1
+      apply ih_var hsub hwf_x hq1 D
+      intro l hDl hheap
+      exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
   | eval_unpack hpred hbool eval_e1 h_nonstuck _ _ ih_val =>
+    intro D hD
     apply Eval.eval_unpack hpred hbool eval_e1 h_nonstuck
     intro m1 x cs hsub hwf_x hwf_cs hq1
-    exact ih_val hsub hwf_x hwf_cs hq1
+    apply ih_val hsub hwf_x hwf_cs hq1 D
+    intro l hDl hheap
+    exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
   | eval_read hcov hlookup_reader hlookup_cell hQ =>
+    intro D _
     apply Eval.eval_read hcov hlookup_reader hlookup_cell
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
-    -- result is `if b then .btrue else .bfalse`, never pack
     split at heq <;> cases heq
   | eval_write_true hcov hlookup_x hlookup_y hQ =>
+    intro D _
     apply Eval.eval_write_true hcov hlookup_x hlookup_y
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     cases heq
   | eval_write_false hcov hlookup_x hlookup_y hQ =>
+    intro D _
     apply Eval.eval_write_false hcov hlookup_x hlookup_y
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     cases heq
   | eval_cond hpred hbool eval_guard h_nonstuck _ _ _ ih_true ih_false =>
+    intro D hD
     apply Eval.eval_cond hpred hbool eval_guard h_nonstuck
     · intro m1 v hsub hq1 hres
-      exact ih_true hsub hq1 hres
+      apply ih_true hsub hq1 hres D
+      intro l hDl hheap
+      exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
     · intro m1 v hsub hq1 hres
-      exact ih_false hsub hq1 hres
+      apply ih_false hsub hq1 hres D
+      intro l hDl hheap
+      exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
 
 end Consume

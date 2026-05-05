@@ -657,6 +657,17 @@ theorem Heap.subsumes_refl (h : Heap) : h.subsumes h := by
   · exact hlookup
   · exact Cell.subsumes_refl v
 
+/-- Subsumption preserves "is fresh" backwards: if a location is unallocated
+    in the larger heap, it is unallocated in the smaller heap as well. -/
+theorem Heap.none_of_subsumes_none {big small : Heap} {l : Nat}
+    (hsub : big.subsumes small) (hnone : big l = none) : small l = none := by
+  match hopt : small l with
+  | none => rfl
+  | some v =>
+    obtain ⟨_, hv', _⟩ := hsub l v hopt
+    rw [hnone] at hv'
+    cases hv'
+
 /-- Heap predicate. -/
 def Hprop := Heap -> Prop
 
