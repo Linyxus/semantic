@@ -500,12 +500,47 @@ inductive Ctx.SeqComp : Ctx s -> Ctx s -> Ctx s -> Prop where
   -------------------
   SeqComp Γ1.lock Γ2.lock Γ3.lock
 
+mutual
 /-- `peaks` only consults var bindings, which `Ctx.SeqComp` preserves exactly,
 so `peaks` is invariant under sequential composition (left). -/
 theorem CaptureSet.peaks_seqcomp_eq
     {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (cs : CaptureSet s) :
     cs.peaks Γ = cs.peaks Γ1 := by
-  sorry
+  match cs with
+  | .empty => rw [CaptureSet.peaks, CaptureSet.peaks]
+  | .union cs1 cs2 =>
+    rw [CaptureSet.peaks, CaptureSet.peaks,
+        CaptureSet.peaks_seqcomp_eq h cs1,
+        CaptureSet.peaks_seqcomp_eq h cs2]
+  | .cvar _ _ => rw [CaptureSet.peaks, CaptureSet.peaks]
+  | .var _ (.free _) => rw [CaptureSet.peaks, CaptureSet.peaks]
+  | .var m (.bound x) =>
+    rw [CaptureSet.peaks, CaptureSet.peaks]
+    exact CaptureSet.peaksVarBound_seqcomp_eq h m x
+termination_by (sizeOf Γ, sizeOf cs)
+
+/-- `peaksVarBound` is invariant under sequential composition (left). -/
+theorem CaptureSet.peaksVarBound_seqcomp_eq
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (m : Mutability) (x : BVar s .var) :
+    peaksVarBound Γ m x = peaksVarBound Γ1 m x := by
+  match h, x with
+  | Ctx.SeqComp.push_var hsub, .here =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaks_seqcomp_eq hsub]
+  | Ctx.SeqComp.push_var hsub, .there x' =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq hsub m x']
+  | Ctx.SeqComp.push_tvar hsub, .there x' =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq hsub m x']
+  | Ctx.SeqComp.push_cvar hsub _, .there x' =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq hsub m x']
+  | Ctx.SeqComp.lock hsub, x =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq hsub m x]
+termination_by (sizeOf Γ, sizeOf x + 1)
+end
 
 /-- `peakset` is invariant under sequential composition (left). -/
 theorem CaptureSet.peakset_seqcomp_eq
@@ -515,11 +550,46 @@ theorem CaptureSet.peakset_seqcomp_eq
   congr 1
   exact CaptureSet.peaks_seqcomp_eq h cs
 
+mutual
 /-- `peaks` is invariant under sequential composition (right). -/
 theorem CaptureSet.peaks_seqcomp_eq_right
     {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (cs : CaptureSet s) :
     cs.peaks Γ = cs.peaks Γ2 := by
-  sorry
+  match cs with
+  | .empty => rw [CaptureSet.peaks, CaptureSet.peaks]
+  | .union cs1 cs2 =>
+    rw [CaptureSet.peaks, CaptureSet.peaks,
+        CaptureSet.peaks_seqcomp_eq_right h cs1,
+        CaptureSet.peaks_seqcomp_eq_right h cs2]
+  | .cvar _ _ => rw [CaptureSet.peaks, CaptureSet.peaks]
+  | .var _ (.free _) => rw [CaptureSet.peaks, CaptureSet.peaks]
+  | .var m (.bound x) =>
+    rw [CaptureSet.peaks, CaptureSet.peaks]
+    exact CaptureSet.peaksVarBound_seqcomp_eq_right h m x
+termination_by (sizeOf Γ, sizeOf cs)
+
+/-- `peaksVarBound` is invariant under sequential composition (right). -/
+theorem CaptureSet.peaksVarBound_seqcomp_eq_right
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (m : Mutability) (x : BVar s .var) :
+    peaksVarBound Γ m x = peaksVarBound Γ2 m x := by
+  match h, x with
+  | Ctx.SeqComp.push_var hsub, .here =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaks_seqcomp_eq_right hsub]
+  | Ctx.SeqComp.push_var hsub, .there x' =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq_right hsub m x']
+  | Ctx.SeqComp.push_tvar hsub, .there x' =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq_right hsub m x']
+  | Ctx.SeqComp.push_cvar hsub _, .there x' =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq_right hsub m x']
+  | Ctx.SeqComp.lock hsub, x =>
+    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
+        CaptureSet.peaksVarBound_seqcomp_eq_right hsub m x]
+termination_by (sizeOf Γ, sizeOf x + 1)
+end
 
 /-- `peakset` is invariant under sequential composition (right). -/
 theorem CaptureSet.peakset_seqcomp_eq_right
