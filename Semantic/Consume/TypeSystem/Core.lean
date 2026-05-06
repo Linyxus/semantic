@@ -198,6 +198,11 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.var x) (.typ .bool) ->
   ----------------------------
   HasType {} Γ (.alloc x) (.exi (.cell (.cvar .epsilon .here)))
+| drop :
+  HasType {} Γ (.var x) (.typ (.cell Cx)) ->
+  Cx.consumable Γ ->
+  ----------------------------
+  HasType {} Γ (.drop x) (.typ .unit)
 | read :
   HasType {} Γ (.var x) (.typ (.reader C)) ->
   ----------------------------
