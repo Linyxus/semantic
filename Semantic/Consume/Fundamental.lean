@@ -1127,7 +1127,78 @@ theorem sem_typ_alloc
   {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ .bool) :
   {} # Γ ⊨ Exp.alloc (.bound x) : .exi (.cell (.cvar .epsilon .here)) := by
-  sorry
+  intro env store hts
+  simp only [Ty.exi_exp_denot, Exp.subst, Var.subst, Subst.from_TypeEnv,
+    List.empty_eq]
+  set fx := (env.lookup_var x).1
+  -- From hx, the variable resolves to a bool in `store`.
+  have hx_eval := hx env store hts
+  simp only [Ty.exi_exp_denot, Ty.exi_val_denot,
+    Exp.subst, Var.subst, Subst.from_TypeEnv, List.empty_eq] at hx_eval
+  have hbool : Ty.val_denot env .bool store (.var (.free fx)) := by
+    cases hx_eval with
+    | eval_val hv _ => cases hv
+    | eval_var hQ => exact hQ
+  simp only [Ty.val_denot, resolve] at hbool
+  -- Destruct the heap entry at `fx` to extract the underlying boolean value.
+  cases hres : store.heap fx with
+  | none =>
+    rcases hbool with h | h <;> rw [hres] at h <;> cases h
+  | some cell =>
+    cases cell with
+    | capability =>
+      rcases hbool with h | h <;> rw [hres] at h <;> cases h
+    | masked =>
+      rcases hbool with h | h <;> rw [hres] at h <;> cases h
+    | val v =>
+      rw [hres] at hbool
+      simp only at hbool
+      obtain ⟨unwrap, isVal, R⟩ := v
+      simp only at hbool
+      -- `hbool : unwrap = .btrue ∨ unwrap = .bfalse`.  Case on which boolean.
+      have hclose : ∀ (b : Bool),
+          (b = true → some unwrap = some Exp.btrue) →
+          (b = false → some unwrap = some Exp.bfalse) →
+          Eval (CaptureSet.denot env ∅ store) store (Exp.alloc (Var.free fx))
+            (Ty.exi_val_denot env
+              (Ty.exi (Ty.cell (CaptureSet.cvar Mutability.epsilon BVar.here)))).as_mpost := by
+        intro b hbt hbf
+        have hunwrap : unwrap = (if b then Exp.btrue else Exp.bfalse) := by
+          cases b
+          · exact Option.some.inj (hbf rfl)
+          · exact Option.some.inj (hbt rfl)
+        subst hunwrap
+        apply Eval.eval_alloc (b := b) (hv := isVal) (R := R)
+        · -- store.lookup fx = some (.val ⟨...⟩)
+          change store.heap fx = _
+          exact hres
+        · intro l hfresh
+          -- Goal: post for the freshly allocated cell.
+          let m' := store.extend_mcell l b hfresh
+          -- The freshly-allocated cell looks up to `(.capability (.mcell b))`.
+          have hlookup_l : m'.heap l = some (.capability (.mcell b)) :=
+            Memory.extend_mcell_lookup hfresh
+          -- The post denotation for the existential cell type at `m'`.
+          change (Ty.exi_val_denot env
+                  (Ty.exi (Ty.cell (CaptureSet.cvar Mutability.epsilon BVar.here)))).as_mpost
+                 (Exp.pack (CaptureSet.var Mutability.epsilon (Var.free l)) (Var.free l))
+                 m'
+          simp only [Denot.as_mpost, Ty.exi_val_denot]
+          -- `resolve` of a pack falls through to `some (...)`.
+          change _ ∧ Ty.val_denot _ _ _ _
+          refine ⟨CaptureSet.WfInHeap.wf_var_free hlookup_l, ?_⟩
+          simp only [Ty.val_denot]
+          refine ⟨CaptureSet.WfInHeap.wf_var_free hlookup_l, l, b, rfl, hlookup_l, ?_⟩
+          -- The cvar's denotation under the unpacked env is the witness's
+          -- ground denotation, which expands to `.cap .epsilon l`.
+          change ((CaptureSet.var Mutability.epsilon (Var.free l)).ground_denot m').covers
+            Mutability.epsilon l
+          simp only [CaptureSet.ground_denot, reachability_of_loc, hlookup_l,
+            CapabilitySet.applyMut]
+          exact CapabilitySet.covers.here Mutability.Le.refl
+      rcases hbool with hb | hb
+      · exact hclose true (fun _ => hb) (by intro h; cases h)
+      · exact hclose false (by intro h; cases h) (fun _ => hb)
 
 theorem sem_typ_read
   {x : BVar s .var}
