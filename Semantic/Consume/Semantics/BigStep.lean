@@ -124,6 +124,7 @@ theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
   (hbool : Q.is_bool_independent)
   (hsub : m2.subsumes m1)
+  (hcompat : m2.is_compatible C)
   (hwf : Exp.WfInHeap e m1.heap)
   (heval : Eval C m1 e Q) :
   Eval C m2 e Q := by
@@ -176,17 +177,12 @@ theorem eval_monotonic {m1 m2 : Memory}
       subst hsub_v
       apply Eval.eval_apply
       · exact hx2
-      · apply ih hpred hbool hsub (by
-          -- Need: Exp.WfInHeap (e.subst (Subst.openVar y)) m1.heap
-          -- Use Exp.wf_subst with Subst.wf_openVar
+      · apply ih hpred hbool hsub hcompat (by
           apply Exp.wf_subst
-          · -- Need: Exp.WfInHeap e m1.heap
-            -- Get it from Memory.wf_lookup and inversion
-            have hwf_abs := Memory.wf_lookup hx
+          · have hwf_abs := Memory.wf_lookup hx
             have ⟨_, _, hwf_e⟩ := Exp.wf_inv_abs hwf_abs
             exact hwf_e
-          · -- Show: (Subst.openVar y).WfInHeap m1.heap
-            apply Subst.wf_openVar
+          · apply Subst.wf_openVar
             exact hwf_y)
   case eval_invoke hmem hx hy hQ =>
     -- Destructure subsumptions
@@ -214,17 +210,12 @@ theorem eval_monotonic {m1 m2 : Memory}
     subst hsub_v
     apply Eval.eval_tapply
     · exact hx2
-    · apply ih hpred hbool hsub (by
-        -- Need: Exp.WfInHeap (e.subst (Subst.openTVar .top)) m1.heap
-        -- Use Exp.wf_subst with Subst.wf_openTVar
+    · apply ih hpred hbool hsub hcompat (by
         apply Exp.wf_subst
-        · -- Need: Exp.WfInHeap e m1.heap
-          -- Get it from Memory.wf_lookup and inversion
-          have hwf_tabs := Memory.wf_lookup hx
+        · have hwf_tabs := Memory.wf_lookup hx
           have ⟨_, _, hwf_e⟩ := Exp.wf_inv_tabs hwf_tabs
           exact hwf_e
-        · -- Show: (Subst.openTVar .top).WfInHeap m1.heap
-          apply Subst.wf_openTVar
+        · apply Subst.wf_openTVar
           apply Ty.WfInHeap.wf_top)
   case eval_capply hx _ ih =>
     -- Extract well-formedness of the capability application
@@ -237,143 +228,160 @@ theorem eval_monotonic {m1 m2 : Memory}
       subst hsub_v
       apply Eval.eval_capply
       · exact hx2
-      · apply ih hpred hbool hsub (by
-          -- Need: Exp.WfInHeap (e.subst (Subst.openCVar CS)) m1.heap
-          -- Use Exp.wf_subst with Subst.wf_openCVar
+      · apply ih hpred hbool hsub hcompat (by
           apply Exp.wf_subst
-          · -- Need: Exp.WfInHeap e m1.heap
-            -- Get it from Memory.wf_lookup and inversion
-            have hwf_cabs := Memory.wf_lookup hx
+          · have hwf_cabs := Memory.wf_lookup hx
             have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
             exact hwf_e
-          · -- Show: (Subst.openCVar CS).WfInHeap m1.heap
-            apply Subst.wf_openCVar
+          · apply Subst.wf_openCVar
             exact hwf_cs)
-  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih ih_val ih_var =>
-    rename_i C_orig e1_orig Q_orig e2_orig m_orig
-    -- Use inversion to extract well-formedness of subexpressions
-    have ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
-    -- Apply IH for e1 with well-formedness
-    have eval_e1' := ih hpred0 hbool0 hsub hwf1
+  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih _ _ =>
+    rename_i _ _ _ e2_orig m_orig
+    have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_letin hwf
+    have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 hbool0 eval_e1'
-    -- Provide the h_nonstuck condition
     case h_nonstuck =>
       intro m1 v hQ_orig
       exact h_nonstuck_orig hQ_orig
     case h_val =>
+      -- Body cases use the original `h_*_orig` directly: they produce the
+      -- sub-Eval at `m_ext'`, which might have liveness changes that the
+      -- outer `hcompat` doesn't track at intermediate sub-memories.
       intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
-      -- We have: m_ext'.subsumes m2 and m2.subsumes m_orig (the original memory)
-      -- Therefore: m_ext'.subsumes m_orig
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      -- Now we can directly apply h_val_orig with all required arguments
-      -- The key is that eval_letin now provides hwf_v: Exp.WfInHeap v m_ext'.heap
       exact h_val_orig hs_orig hv hwf_v hq1 l' hfresh
     case h_var =>
       intro m_ext' x hs_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      apply ih_var hs_orig hwf_x hq1 hpred hbool
-      · exact Memory.subsumes_refl _
-      · -- Need: (e2_orig.subst (Subst.openVar x)).WfInHeap m_ext'.heap
-        -- First, lift hwf2 to m_ext'.heap using monotonicity
-        have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
-        -- Then apply substitution preservation
-        apply Exp.wf_subst hwf2_ext
-        apply Subst.wf_openVar hwf_x
-  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih ih_val =>
-    rename_i C_orig e1_orig Q_orig e2_orig m_orig
-    -- Use inversion to extract well-formedness of subexpressions
-    have ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
-    -- Apply IH for e1 with well-formedness
-    have eval_e1' := ih hpred0 hbool0 hsub hwf1
+      exact h_var_orig hs_orig hwf_x hq1
+  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
+    have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
+    have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 hbool0 eval_e1'
-    -- Provide the h_nonstuck condition
     case h_nonstuck =>
       intro m1 v hQ_orig
       exact h_nonstuck_orig hQ_orig
     case h_val =>
       intro m_ext' x cs hs_ext' hwf_x hwf_cs hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      apply ih_val hs_orig hwf_x hwf_cs hq1 hpred hbool
-      · exact Memory.subsumes_refl _
-      · -- Need: (e2.subst (Subst.unpack cs x)).WfInHeap m_ext'.heap
-        -- Lift hwf2 to m_ext'.heap using monotonicity
-        have hwf2_ext : Exp.WfInHeap e2_orig m_ext'.heap := Exp.wf_monotonic hs_orig hwf2
-        -- Apply substitution preservation
-        apply Exp.wf_subst hwf2_ext
-        -- Need: (Subst.unpack cs x).WfInHeap m_ext'.heap
-        apply Subst.wf_unpack hwf_cs hwf_x
+      exact h_val_orig hs_orig hwf_x hwf_cs hq1
   case eval_read hcov hmem hx hQ =>
-    -- New rule: first lookup reader at x, then lookup mcell at y (where reader points)
     -- hcov : C.covers .ro y
-    -- hmem : m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩)
-    -- hx : m.lookup y = some (.capability (.mcell b))
-    -- hQ : Q (if b then .btrue else .bfalse) m
-    rename_i y hv R m_orig b
-    -- From subsumption, m2 must have the same reader val at x
+    -- hmem : m_orig.lookup x = some (.val ⟨.reader (.free y), hv, R⟩)
+    -- hx : m_orig.lookup y = some (.capability (.mcell b .live))
+    -- hQ : Q (if b then .btrue else .bfalse) m_orig
+    rename_i y _hv _R _m_orig b
     obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hmem
-    -- For value cells, subsumption requires equality
     simp only [Cell.subsumes] at hsub_x
     subst hsub_x
-    -- From subsumption, m2 must also have an mcell at y (possibly different boolean)
     obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hx
-    -- cy must be an mcell (possibly with different boolean)
     cases cy
-    case val v =>
-      -- Contradiction: val cannot subsume capability
-      cases hsub_y
-    case masked =>
-      -- Contradiction: masked cannot subsume mcell
-      cases hsub_y
+    case val v => cases hsub_y
+    case masked => cases hsub_y
     case capability info =>
       cases info
-      case basic =>
-        -- Contradiction: basic cannot subsume mcell
-        cases hsub_y
+      case basic => cases hsub_y
       case mcell b' ℓ' =>
-        -- m2 has an mcell at y; subsumption only gives `.live ≤ ℓ'`, so ℓ'
-        -- can be `.live` or `.dead`.  If `.dead`, the cell was dropped between
-        -- m1 and m2, and `eval_read` cannot fire at m2 (it requires `.live`).
-        -- Under the relaxed subsumes, `eval_monotonic` is not unconditional
-        -- for live-cell operations; restoring it requires either restricting
-        -- to a "growth-only" sub-relation or weakening the conclusion.
-        sorry
+        -- `hcompat` + `hcov` force ℓ' = .live: y is in C (via covers), and
+        -- the m2-cell at y is an mcell, so it must be live.
+        obtain ⟨mu', hmem_y, _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
+        have hℓ' : ℓ' = .live := hcompat mu' _ b' ℓ' hmem_y hy2
+        subst hℓ'
+        apply Eval.eval_read hcov hx2 hy2
+        -- Bool reasoning (unchanged): transfer Q across m_orig → m2 and b → b'
+        by_cases hb : b
+        · subst hb
+          have hQ_true := by simpa using hQ
+          by_cases hb' : b' = true
+          · subst b'
+            simpa using hpred (by constructor) hsub hQ_true
+          · have hb'_false : b' = false := by simpa using hb'
+            subst b'
+            have hQ_true_m2 := hpred (by constructor) hsub hQ_true
+            have hQ_false_m2 := hbool.mp hQ_true_m2
+            simpa using hQ_false_m2
+        · have hb_false : b = false := by simpa using hb
+          subst b
+          have hQ_false := by simpa using hQ
+          by_cases hb' : b' = true
+          · subst b'
+            have hQ_false_m2 := hpred (by constructor) hsub hQ_false
+            have hQ_true_m2 := hbool.mpr hQ_false_m2
+            simpa using hQ_true_m2
+          · have hb'_false : b' = false := by simpa using hb'
+            subst b'
+            simpa using hpred (by constructor) hsub hQ_false
   case eval_write_true hmem hx hy hQ =>
-    -- From subsumption, m2 must also have an mcell at x (possibly different value)
-    -- and the same val at y
+    -- hmem : C.covers .epsilon x
     obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
     obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
-    -- cx must be an mcell (possibly with different boolean)
     cases cx
-    case val v =>
-      -- Contradiction: val cannot subsume capability
-      simp [Cell.subsumes] at hsub_x
+    case val v => simp [Cell.subsumes] at hsub_x
     case capability info =>
       cases info
-      case basic =>
-        -- Contradiction: basic cannot subsume mcell
-        cases hsub_x
+      case basic => cases hsub_x
       case mcell b' ℓ' =>
-        -- Same gap as `eval_read`: subsumption gives `.live ≤ ℓ'`, but ℓ' may
-        -- be `.dead`, in which case the write cannot fire at m2.
-        sorry
-    case masked =>
-      -- Contradiction: masked cannot subsume mcell
-      cases hsub_x
+        -- `hcompat` + `hmem` force ℓ' = .live.
+        obtain ⟨mu', hmem_x, _⟩ := CapabilitySet.covers_imp_exists_hasmem hmem
+        have hℓ' : ℓ' = .live := hcompat mu' _ b' ℓ' hmem_x hx2
+        subst hℓ'
+        simp only [Cell.subsumes] at hsub_y
+        subst hsub_y
+        apply Eval.eval_write_true hmem (hx := hx2) hy2
+        apply hpred
+        · constructor
+        · apply Memory.update_mcell_subsumes_compat _ _ _
+              (Exists.intro _ hx) (Exists.intro _ hx2) hsub
+        · exact hQ
+    case masked => cases hsub_x
   case eval_write_false hmem hx hy hQ =>
-    -- Same gap as `eval_write_true`.
-    sorry
+    -- Symmetric to eval_write_true.
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
+    obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
+    cases cx
+    case val v => simp [Cell.subsumes] at hsub_x
+    case capability info =>
+      cases info
+      case basic => cases hsub_x
+      case mcell b' ℓ' =>
+        obtain ⟨mu', hmem_x, _⟩ := CapabilitySet.covers_imp_exists_hasmem hmem
+        have hℓ' : ℓ' = .live := hcompat mu' _ b' ℓ' hmem_x hx2
+        subst hℓ'
+        simp only [Cell.subsumes] at hsub_y
+        subst hsub_y
+        apply Eval.eval_write_false hmem (hx := hx2) hy2
+        apply hpred
+        · constructor
+        · apply Memory.update_mcell_subsumes_compat _ _ _
+              (Exists.intro _ hx) (Exists.intro _ hx2) hsub
+        · exact hQ
+    case masked => cases hsub_x
   case eval_drop hx hQ hcov =>
-    -- Same gap as `eval_read` / `eval_write_*`.  `eval_drop` requires the
-    -- cell at x to be `.live` in m2; the relaxed subsumes does not guarantee
-    -- this — m2 may already have dropped the cell.
-    sorry
-  case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
-      ih_guard ih_true ih_false =>
-    -- Extract well-formedness of the guard and both branches
-    have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
-    -- Build well-formedness of (.var x) in original heap
+    -- hx : m_orig.lookup x = some (.capability (.mcell b .live))
+    -- hQ : Q .unit (m_orig.drop_mcell x ⟨b, hx⟩)
+    -- hcov : C.covers .epsilon x
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
+    cases cx
+    case val v => cases hsub_x
+    case capability info =>
+      cases info
+      case basic => cases hsub_x
+      case mcell b' ℓ' =>
+        -- `hcompat` + `hcov` force ℓ' = .live.
+        obtain ⟨mu', hmem_x, _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
+        have hℓ' : ℓ' = .live := hcompat mu' _ b' ℓ' hmem_x hx2
+        subst hℓ'
+        apply Eval.eval_drop hx2 ?_ hcov
+        apply hpred
+        · constructor
+        · exact Memory.drop_mcell_subsumes_compat _ ⟨_, hx⟩ ⟨_, hx2⟩ hsub
+        · exact hQ
+    case masked => cases hsub_x
+  case eval_cond Q1 hpred_guard hbool_guard _eval_e1 h_nonstuck h_true h_false
+      ih_guard _ _ =>
+    have ⟨hwf_x, _hwf2, _hwf3⟩ := Exp.wf_inv_cond hwf
     have hwf_var : Exp.WfInHeap (.var _) _ := Exp.WfInHeap.wf_var hwf_x
-    have eval_e1' := ih_guard hpred_guard hbool_guard hsub hwf_var
+    have eval_e1' := ih_guard hpred_guard hbool_guard hsub hcompat hwf_var
     apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard eval_e1'
     · intro m_guard v hQ1
       exact h_nonstuck hQ1
