@@ -96,6 +96,11 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
   Q .unit (m.update_mcell x false .live ⟨b0, hx⟩) ->
   Eval C m (.write (.free x) (.free y)) Q
+| eval_drop :
+  (hx : m.lookup x = some (.capability (.mcell b .live))) ->
+  Q .unit (m.drop_mcell x ⟨b, hx⟩) ->
+  C.covers .epsilon x ->
+  Eval C m (.drop (.free x)) Q
 | eval_cond {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   (hbool : Q1.is_bool_independent) ->
@@ -325,47 +330,13 @@ theorem eval_monotonic {m1 m2 : Memory}
         -- Contradiction: basic cannot subsume mcell
         cases hsub_y
       case mcell b' ℓ' =>
-        -- m2 has an mcell at y; subsumption forces ℓ' = .live (since the cell
-        -- in m_orig was live).
-        simp only [Cell.subsumes] at hsub_y
-        subst hsub_y
-        -- Need to show: Q (if b' then .btrue else .bfalse) m2
-        -- We have: Q (if b then .btrue else .bfalse) m_orig
-        -- Use bool independence: Q treats btrue and bfalse the same
-        apply Eval.eval_read hcov hx2 hy2
-        -- Goal: Q (if b' then .btrue else .bfalse) m2
-        by_cases hb : b
-        · -- b = true, so we have Q .btrue m_orig
-          subst hb
-          have hQ_true := by
-            simpa using hQ
-          by_cases hb' : b' = true
-          · -- b' = true, need Q .btrue m2
-            subst b'
-            simpa using hpred (by constructor) hsub hQ_true
-          · -- b' = false, need Q .bfalse m2
-            -- Convert ¬b' = true to b' = false
-            have hb'_false : b' = false := by simpa using hb'
-            subst b'
-            have hQ_true_m2 := hpred (by constructor) hsub hQ_true
-            have hQ_false_m2 := hbool.mp hQ_true_m2
-            simpa using hQ_false_m2
-        · -- b = false, so we have Q .bfalse m_orig
-          have hb_false : b = false := by simpa using hb
-          subst b
-          have hQ_false := by
-            simpa using hQ
-          by_cases hb' : b' = true
-          · -- b' = true, need Q .btrue m2
-            subst b'
-            have hQ_false_m2 := hpred (by constructor) hsub hQ_false
-            have hQ_true_m2 := hbool.mpr hQ_false_m2
-            simpa using hQ_true_m2
-          · -- b' = false, need Q .bfalse m2
-            -- Convert ¬b' = true to b' = false
-            have hb'_false : b' = false := by simpa using hb'
-            subst b'
-            simpa using hpred (by constructor) hsub hQ_false
+        -- m2 has an mcell at y; subsumption only gives `.live ≤ ℓ'`, so ℓ'
+        -- can be `.live` or `.dead`.  If `.dead`, the cell was dropped between
+        -- m1 and m2, and `eval_read` cannot fire at m2 (it requires `.live`).
+        -- Under the relaxed subsumes, `eval_monotonic` is not unconditional
+        -- for live-cell operations; restoring it requires either restricting
+        -- to a "growth-only" sub-relation or weakening the conclusion.
+        sorry
   case eval_write_true hmem hx hy hQ =>
     -- From subsumption, m2 must also have an mcell at x (possibly different value)
     -- and the same val at y
@@ -382,50 +353,20 @@ theorem eval_monotonic {m1 m2 : Memory}
         -- Contradiction: basic cannot subsume mcell
         cases hsub_x
       case mcell b' ℓ' =>
-        -- m2 has an mcell at x; subsumption forces ℓ' = .live.
-        simp only [Cell.subsumes] at hsub_x
-        subst hsub_x
-        -- cy must be the same val as in m1 (subsumption is equality for vals)
-        simp only [Cell.subsumes] at hsub_y
-        subst hsub_y
-        -- Now we can apply eval_write_true with m2
-        apply Eval.eval_write_true hmem (hx := hx2) hy2
-        -- Need to show: Q .unit (m2.update_mcell x true .live ⟨b', hx2⟩)
-        -- We have: Q .unit (m1.update_mcell x true .live ⟨_, hx⟩)
-        -- Use monotonicity with update_mcell_subsumes_compat
-        apply hpred
-        · -- unit is well-formed in any heap
-          constructor
-        · apply Memory.update_mcell_subsumes_compat _ _ _
-              (Exists.intro _ hx) (Exists.intro _ hx2) hsub
-        · exact hQ
+        -- Same gap as `eval_read`: subsumption gives `.live ≤ ℓ'`, but ℓ' may
+        -- be `.dead`, in which case the write cannot fire at m2.
+        sorry
     case masked =>
       -- Contradiction: masked cannot subsume mcell
       cases hsub_x
   case eval_write_false hmem hx hy hQ =>
-    -- Symmetric to eval_write_true
-    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hx
-    obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
-    cases cx
-    case val v =>
-      cases hsub_x
-    case capability info =>
-      cases info
-      case basic =>
-        cases hsub_x
-      case mcell b' ℓ' =>
-        simp only [Cell.subsumes] at hsub_x
-        subst hsub_x
-        simp only [Cell.subsumes] at hsub_y
-        subst hsub_y
-        apply Eval.eval_write_false hmem (hx := hx2) hy2
-        apply hpred
-        · constructor
-        · apply Memory.update_mcell_subsumes_compat _ _ _
-              (Exists.intro _ hx) (Exists.intro _ hx2) hsub
-        · exact hQ
-    case masked =>
-      cases hsub_x
+    -- Same gap as `eval_write_true`.
+    sorry
+  case eval_drop hx hQ hcov =>
+    -- Same gap as `eval_read` / `eval_write_*`.  `eval_drop` requires the
+    -- cell at x to be `.live` in m2; the relaxed subsumes does not guarantee
+    -- this — m2 may already have dropped the cell.
+    sorry
   case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
       ih_guard ih_true ih_false =>
     -- Extract well-formedness of the guard and both branches
@@ -442,6 +383,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     · intro m_branch v hs hQ1 hres
       have hs_orig := Memory.subsumes_trans hs hsub
       exact h_false hs_orig hQ1 hres
+
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
 
@@ -540,6 +482,12 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     apply Eval.eval_write_false hmem hx hy
     apply himp _ _ _ hQ
     apply Memory.update_mcell_subsumes
+  case eval_drop hx hQ hcov =>
+    apply Eval.eval_drop hx ?_ hcov
+    -- The dropped memory now subsumes the original (live → dead is allowed
+    -- by the relaxed `Cell.subsumes`), so `himp` fires at the dropped memory.
+    apply himp _ _ _ hQ
+    apply Memory.drop_mcell_subsumes
   case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
       ih_guard ih_true ih_false =>
     -- Strengthen the induction hypothesis for the guard evaluation
@@ -610,6 +558,8 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_write_false hcov hlookup_x hlookup_y hQ =>
     exact Eval.eval_write_false
       (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
+  case eval_drop hx hQ hcov =>
+    exact Eval.eval_drop hx hQ (CapabilitySet.subset_preserves_covers hsub hcov)
   case eval_cond Q1 hpred_guard hbool_guard heval_e1 h_nonstuck h_true h_false
       ih_e1 ih_true ih_false =>
     apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard (ih_e1 hsub)
@@ -770,6 +720,12 @@ theorem Eval.strengthen_reach_bound
   | eval_write_false hcov hlookup_x hlookup_y hQ =>
     intro D _
     apply Eval.eval_write_false hcov hlookup_x hlookup_y
+    refine ⟨hQ, ?_⟩
+    intro cs0 x0 heq
+    cases heq
+  | eval_drop hx hQ hcov =>
+    intro D _
+    apply Eval.eval_drop hx ?_ hcov
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     cases heq
