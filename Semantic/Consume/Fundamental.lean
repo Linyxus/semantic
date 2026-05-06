@@ -2407,55 +2407,27 @@ theorem sem_typ_unpack
   have hunion_denot :
       (C1 ∪ C2).denot env store
         = C1.denot env store ∪ C2.denot env store := rfl
-  -- Strengthened Q1: pack values reaching the postcondition have their capture
-  -- set bounded by the producer's effect (the new `eval_pack` invariant).
-  let Q1 : Mpost := fun v m1 =>
-    Ty.exi_val_denot env (.exi T) m1 v ∧
-      ∀ cs x, v = .pack cs x → cs.reachability m1 ⊆ C1.denot env store
-  apply Eval.eval_unpack (Q1 := Q1)
+  -- Use the standard pack-value postcondition for `t`.  With the new
+  -- `eval_unpack` rule, the body's budget is enlarged with `cs.reachability m1`,
+  -- so no extra SubsetMod bound needs to be threaded through `Q1`.
+  apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot env (.exi T)).as_mpost)
   case hpred =>
-    intro m1 m2 e hwf hsub hQ
-    obtain ⟨hQ_orig, hQ_pack⟩ := hQ
-    refine ⟨?_, ?_⟩
-    · have henv_mono := typed_env_is_monotonic hts
-      exact exi_val_denot_is_monotonic henv_mono (.exi T) hsub hQ_orig
-    · intro cs0 x0 heq
-      subst heq
-      cases hwf with
-      | wf_pack hwf_cs _ =>
-        rw [CaptureSet.reachability_monotonic hsub _ hwf_cs]
-        exact hQ_pack cs0 x0 rfl
+    exact Denot.as_mpost_is_monotonic
+      (exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T))
   case hbool =>
-    intro m1
-    have hbool_orig :
-        (Ty.exi_val_denot env (.exi T)).as_mpost (.btrue) m1 ↔
-        (Ty.exi_val_denot env (.exi T)).as_mpost (.bfalse) m1 :=
-      Denot.as_mpost_is_bool_independent
-        (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T))
-    constructor
-    · intro h
-      obtain ⟨h_orig, _⟩ := h
-      refine ⟨hbool_orig.mp h_orig, ?_⟩
-      intro cs x heq; cases heq
-    · intro h
-      obtain ⟨h_orig, _⟩ := h
-      refine ⟨hbool_orig.mpr h_orig, ?_⟩
-      intro cs x heq; cases heq
+    exact Denot.as_mpost_is_bool_independent
+      (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T))
   case a =>
-    -- ht gives Eval at the smaller budget C1; strengthen with reachability bound,
-    -- then weaken budget to C1 ∪ C2.
+    -- ht gives Eval at the smaller budget C1; weaken to C1 ∪ C2.
     have hsub1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
       rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
     have hQ_orig : Eval (C1.denot env store) store
         (t.subst (Subst.from_TypeEnv env))
         (Ty.exi_val_denot env (.exi T)).as_mpost := by
       simpa only [Ty.exi_exp_denot] using ht env store hts1
-    have hQ_str := Eval.strengthen_reach_bound hQ_orig
-    apply eval_capability_set_monotonic _ hsub1
-    exact hQ_str
+    exact eval_capability_set_monotonic hQ_orig hsub1
   case h_nonstuck =>
-    intro m1 v hQ1
-    obtain ⟨hQ1_orig, _⟩ := hQ1
+    intro m1 v hQ1_orig
     change Ty.exi_val_denot env (.exi T) m1 v at hQ1_orig
     simp only [Ty.exi_val_denot] at hQ1_orig
     cases hres : resolve m1.heap v with
@@ -2484,14 +2456,9 @@ theorem sem_typ_unpack
           cases hwf_exp with
           | wf_var hwf_v => exact hwf_v
   case h_val =>
-    intro m1 x cs hs1 hwf_x hwf_cs hQ1
-    -- hQ1 carries both the existential value denotation AND the reachability bound.
-    obtain ⟨hQ1_orig, hQ1_pack_bound⟩ := hQ1
+    intro m1 x cs hs1 hwf_x hwf_cs hQ1_orig
     change Ty.exi_val_denot env (.exi T) m1 (.pack cs x) at hQ1_orig
     simp only [Ty.exi_val_denot, List.empty_eq] at hQ1_orig
-    -- The reachability bound for this specific pack value.
-    have hcs_reach_bound : cs.reachability m1 ⊆ C1.denot env store :=
-      hQ1_pack_bound cs x rfl
     cases x
     case bound bx => cases bx
     case free fx =>
@@ -2577,27 +2544,26 @@ theorem sem_typ_unpack
         exact Iff.trans (heqv1 m e) (heqv2 m e)
       -- Final budget conversion. The body evaluates with budget
       --   `C2.denot env m1 ∪ cs.ground_denot m1`,
-      -- but we need the outer budget `(C1 ∪ C2).denot env store`.
+      -- but the new `eval_unpack` rule asks for budget
+      --   `(C1 ∪ C2).denot env store ∪ cs.reachability m1`.
       -- The C2 part: closed-monotonicity moves it to `store`.
-      -- The cs part: the strengthened Q1 carries the bound
-      --   `cs.reachability m1 ⊆ C1.denot env store` (from `eval_pack`'s premise),
-      -- and `cs.reachability m1` is definitionally equal to `cs.ground_denot m1`.
+      -- The cs part: `cs.ground_denot m1 = cs.reachability m1`, which sits
+      -- directly in the body's enlarged budget.
       have hsub_body :
           (C2.denot env m1 ∪ cs.ground_denot m1)
-            ⊆ (C1 ∪ C2).denot env store := by
-        rw [hunion_denot]
+            ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1 := by
         apply CapabilitySet.Subset.union_left
-        · -- C2.denot env m1 ⊆ C1.denot env store ∪ C2.denot env store
-          have : C2.denot env m1 = C2.denot env store :=
+        · -- C2.denot env m1 ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1
+          have hC2_eq : C2.denot env m1 = C2.denot env store :=
             (closed_capture_denot_monotonic hclosed_C2 hts hs1).symm
-          rw [this]
-          exact CapabilitySet.Subset.union_right_right
-        · -- cs.ground_denot m1 ⊆ C1.denot env store ∪ C2.denot env store
-          -- Use the reachability bound carried by the strengthened Q1.
-          rw [CaptureSet.ground_denot_eq_reachability]
-          exact CapabilitySet.Subset.trans hcs_reach_bound
+          rw [hC2_eq, hunion_denot]
+          exact CapabilitySet.Subset.trans
+            CapabilitySet.Subset.union_right_right
             CapabilitySet.Subset.union_right_left
-      change Eval ((C1 ∪ C2).denot env store) m1
+        · -- cs.ground_denot m1 = cs.reachability m1 ⊆ ...
+          rw [CaptureSet.ground_denot_eq_reachability]
+          exact CapabilitySet.Subset.union_right_right
+      change Eval ((C1 ∪ C2).denot env store ∪ cs.reachability m1) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
         (Ty.exi_val_denot env U).as_mpost
       rw [hexp_eq]

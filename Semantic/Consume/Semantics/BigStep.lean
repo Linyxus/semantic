@@ -558,7 +558,7 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   (heval : Eval A1 m e Q)
   (hsub : A1 ⊆ A2) :
   Eval A2 m e Q := by
-  induction heval
+  induction heval generalizing A2
   case eval_pack hsub_cs hQ =>
     exact Eval.eval_pack (CapabilitySet.Subset.trans hsub_cs hsub) hQ
   case eval_alloc hlookup h_post =>
@@ -590,7 +590,10 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     · intro m1 v hQ
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
-      exact ih_val hs1 hwf_x hwf_cs hq1 hsub
+      apply ih_val hs1 hwf_x hwf_cs hq1
+      exact CapabilitySet.Subset.union_left
+        (CapabilitySet.Subset.trans hsub CapabilitySet.Subset.union_right_left)
+        CapabilitySet.Subset.union_right_right
   case eval_read hcov hlookup_reader hlookup_mcell hQ =>
     exact Eval.eval_read
       (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_reader hlookup_mcell hQ
@@ -704,13 +707,47 @@ theorem Eval.strengthen_reach_bound
       apply ih_var hsub hwf_x hq1 D
       intro l hDl hheap
       exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
-  | eval_unpack hpred hbool eval_e1 h_nonstuck _ _ ih_val =>
+  | eval_unpack hpred hbool eval_e1 h_nonstuck _ ih_e1 ih_val =>
     intro D hD
-    apply Eval.eval_unpack hpred hbool eval_e1 h_nonstuck
-    intro m1 x cs hsub hwf_x hwf_cs hq1
-    apply ih_val hsub hwf_x hwf_cs hq1 D
-    intro l hDl hheap
-    exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
+    -- Strengthen `e1`: the witness reachability of the resulting pack value
+    -- is bounded by `C` modulo `D`.
+    have eval_e1_str := ih_e1 D hD
+    -- Apply `eval_unpack` using the strengthened Q1 (inferred from `eval_e1_str`).
+    apply Eval.eval_unpack ?_ ?_ eval_e1_str ?_ ?_
+    · -- is_monotonic for the strengthened Q1
+      intro m1 m2 v hwf_v hsubm hQ
+      refine ⟨hpred hwf_v hsubm hQ.1, ?_⟩
+      intros cs0 x0 hpk
+      subst hpk
+      cases hwf_v with
+      | wf_pack hwf_cs _ =>
+        rw [CaptureSet.reachability_monotonic hsubm _ hwf_cs]
+        exact hQ.2 cs0 x0 rfl
+    · -- is_bool_independent for the strengthened Q1
+      intro m'
+      constructor
+      · intro ⟨hQ, _⟩
+        refine ⟨hbool.mp hQ, ?_⟩
+        intros _ _ hpk; cases hpk
+      · intro ⟨hQ, _⟩
+        refine ⟨hbool.mpr hQ, ?_⟩
+        intros _ _ hpk; cases hpk
+    · intro m1 v hQ
+      exact h_nonstuck hQ.1
+    · intro m1 x cs0 hsub hwf_x hwf_cs hQ
+      have hq1 := hQ.1
+      have hsub_mod := hQ.2 cs0 x rfl
+      have hD' : ∀ l, D l → m1.heap l ≠ none := by
+        intro l hDl hheap
+        exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
+      have eval_body := ih_val hsub hwf_x hwf_cs hq1 D hD'
+      apply eval_post_monotonic _ eval_body
+      intro m2 v ⟨hQv, hbody_bound⟩
+      refine ⟨hQv, ?_⟩
+      intros cs1 x1 hpk
+      apply CapabilitySet.SubsetMod.trans (hbody_bound cs1 x1 hpk)
+      exact CapabilitySet.SubsetMod.union_intro
+        CapabilitySet.SubsetMod.refl hsub_mod
   | eval_read hcov hlookup_reader hlookup_cell hQ =>
     intro D _
     apply Eval.eval_read hcov hlookup_reader hlookup_cell
