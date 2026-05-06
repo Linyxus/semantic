@@ -387,15 +387,15 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
 | env, .reader cs => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ (label : Nat) (b0 : Bool),
+  ∃ (label : Nat) (b0 : Bool) (ℓ0 : Liveness),
     resolve m.heap e = some (.reader (.free label)) ∧
-    m.lookup label = some (.capability (.mcell b0)) ∧
+    m.lookup label = some (.capability (.mcell b0 ℓ0)) ∧
     (cs.denot env m).covers .ro label
 | env, .cell cs => fun m e =>
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ l b0,
+  ∃ l b0 ℓ0,
     e = .var (.free l) ∧
-    m.lookup l = some (.capability (.mcell b0)) ∧
+    m.lookup l = some (.capability (.mcell b0 ℓ0)) ∧
     (cs.denot env m).covers .epsilon l
 | env, .arrow T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
@@ -1026,9 +1026,9 @@ theorem from_TypeEnv_wf_in_heap
               exact htype.1
             | cell cs =>
               unfold Ty.val_denot at htype
-              obtain ⟨_, l, _, hl, hlookup, _⟩ := htype
+              obtain ⟨_, l, _, _, hl, hlookup, _⟩ := htype
               cases hl
-              change m.heap n = some (.capability (.mcell _)) at hlookup
+              change m.heap n = some (.capability (.mcell _ _)) at hlookup
               exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hlookup)
             | arrow T1 cs T2 =>
               unfold Ty.val_denot at htype
@@ -1512,7 +1512,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | cell cs =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨_, l, b0, heq, hlookup_and_mem⟩ := ht
+    obtain ⟨_, l, b0, ℓ0, heq, hlookup_and_mem⟩ := ht
     -- v.unwrap = .var (.free l), but v.isVal says it's a simple value
     -- Variables are not simple values, so this is a contradiction
     have hval := v.isVal
@@ -1521,13 +1521,13 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | reader cs =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf, hwf_cs, label, b0, hres, hlookup, hcov⟩ := ht
+    obtain ⟨hwf, hwf_cs, label, b0, ℓ0, hres, hlookup, hcov⟩ := ht
     have hx' : m.heap x = some (.val v) := by
       change m.heap x = some (.val v) at hx
       exact hx
     have heq := resolve_var_heap_trans hx'
     rw [heq]
-    refine ⟨?_, hwf_cs, label, b0, hres, hlookup, hcov⟩
+    refine ⟨?_, hwf_cs, label, b0, ℓ0, hres, hlookup, hcov⟩
     -- Prove (Exp.var (Var.free x)).WfInHeap m.heap
     constructor
     constructor
@@ -1611,17 +1611,17 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
   | cell cs =>
     unfold Ty.val_denot
     constructor <;> intro h
-    · rcases h with ⟨_, l, b0, heq, _, _⟩
+    · rcases h with ⟨_, l, b0, ℓ0, heq, _, _⟩
       cases heq
-    · rcases h with ⟨_, l, b0, heq, _, _⟩
+    · rcases h with ⟨_, l, b0, ℓ0, heq, _, _⟩
       cases heq
   | reader cs =>
     -- btrue and bfalse cannot resolve to a reader, so both sides are False
     unfold Ty.val_denot
     constructor <;> intro h
-    · rcases h with ⟨_, _, _, _, hres, _, _⟩
+    · rcases h with ⟨_, _, _, _, _, hres, _, _⟩
       cases hres
-    · rcases h with ⟨_, _, _, _, hres, _, _⟩
+    · rcases h with ⟨_, _, _, _, _, hres, _, _⟩
       cases hres
   | arrow T1 cs T2 =>
     unfold Ty.val_denot
@@ -1926,67 +1926,62 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | cell cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf_cs, l, b0, heq, hlookup, hcov⟩ := ht
-    -- m2.lookup l = some (.capability (.mcell ...))
+    obtain ⟨hwf_cs, l, b0, ℓ0, heq, hlookup, hcov⟩ := ht
     have hsub : m2.heap.subsumes m1.heap := hmem
-    change m1.heap l = some (Cell.capability (.mcell b0)) at hlookup
-    obtain ⟨c', hc', hsub_c⟩ := hsub l (Cell.capability (.mcell b0)) hlookup
-    -- For mcell capability cells, subsumption is always True (mcell subsumes mcell)
+    change m1.heap l = some (Cell.capability (.mcell b0 ℓ0)) at hlookup
+    obtain ⟨c', hc', hsub_c⟩ := hsub l (Cell.capability (.mcell b0 ℓ0)) hlookup
     cases c' with
     | val v =>
-      change Cell.val v = Cell.capability (.mcell b0) at hsub_c
+      change Cell.val v = Cell.capability (.mcell b0 ℓ0) at hsub_c
       cases hsub_c
     | masked =>
-      change Cell.masked = Cell.capability (.mcell b0) at hsub_c
+      change Cell.masked = Cell.capability (.mcell b0 ℓ0) at hsub_c
       cases hsub_c
     | capability info =>
       cases info with
       | basic =>
-        change Cell.capability .basic = Cell.capability (.mcell b0) at hsub_c
+        change Cell.capability .basic = Cell.capability (.mcell b0 ℓ0) at hsub_c
         cases hsub_c
-      | mcell b' =>
-        -- Cell.subsumes says mcell-to-mcell is True
-        -- The boolean value b' might differ from b0, which is fine
+      | mcell b' ℓ' =>
+        -- Subsumption may bump the liveness forward (live → dead); both bool
+        -- and liveness slots are existentially bound in the denotation.
         constructor
         · exact CaptureSet.wf_monotonic hmem hwf_cs
-        refine ⟨l, b', heq, ?_, ?_⟩
-        · change m2.heap l = some (Cell.capability (.mcell b'))
+        refine ⟨l, b', ℓ', heq, ?_, ?_⟩
+        · change m2.heap l = some (Cell.capability (.mcell b' ℓ'))
           exact hc'
-        · -- Use capture_set_denot_is_monotonic for equality
-          have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+        · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
           rw [← hcs_eq]
           exact hcov
   | reader cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf_e, hwf_cs, label, b0, hres, hlookup, hcov⟩ := ht
+    obtain ⟨hwf_e, hwf_cs, label, b0, ℓ0, hres, hlookup, hcov⟩ := ht
     constructor
     · exact Exp.wf_monotonic hmem hwf_e
     constructor
     · exact CaptureSet.wf_monotonic hmem hwf_cs
-    · -- The mcell at label may have a different boolean in m2
-      have hsub : m2.heap.subsumes m1.heap := hmem
-      change m1.heap label = some (Cell.capability (.mcell b0)) at hlookup
-      obtain ⟨c', hc', hsub_c⟩ := hsub label (Cell.capability (.mcell b0)) hlookup
+    · have hsub : m2.heap.subsumes m1.heap := hmem
+      change m1.heap label = some (Cell.capability (.mcell b0 ℓ0)) at hlookup
+      obtain ⟨c', hc', hsub_c⟩ := hsub label (Cell.capability (.mcell b0 ℓ0)) hlookup
       cases c' with
       | val v =>
-        change Cell.val v = Cell.capability (.mcell b0) at hsub_c
+        change Cell.val v = Cell.capability (.mcell b0 ℓ0) at hsub_c
         cases hsub_c
       | masked =>
-        change Cell.masked = Cell.capability (.mcell b0) at hsub_c
+        change Cell.masked = Cell.capability (.mcell b0 ℓ0) at hsub_c
         cases hsub_c
       | capability info =>
         cases info with
         | basic =>
-          change Cell.capability .basic = Cell.capability (.mcell b0) at hsub_c
+          change Cell.capability .basic = Cell.capability (.mcell b0 ℓ0) at hsub_c
           cases hsub_c
-        | mcell b' =>
-          refine ⟨label, b', ?_, ?_, ?_⟩
+        | mcell b' ℓ' =>
+          refine ⟨label, b', ℓ', ?_, ?_, ?_⟩
           · exact resolve_monotonic hmem hres
-          · change m2.heap label = some (Cell.capability (.mcell b'))
+          · change m2.heap label = some (Cell.capability (.mcell b' ℓ'))
             exact hc'
-          · -- Use capture_set_denot_is_monotonic for equality
-            have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
+          · have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
             rw [← hcs_eq]
             exact hcov
   | arrow T1 cs T2 =>
@@ -2129,7 +2124,9 @@ def exi_val_denot_is_bool_independent {env : TypeEnv s}
     constructor <;> intro h <;> cases h
 
 /-- Expression denotation is monotonic with respect to memory subsumption.
-    Since exp_denot now takes CapabilitySet directly, the proof is simpler. -/
+    The new `is_compatible` premise is the budget-side liveness invariant
+    that `eval_monotonic` now requires: capabilities in `R` whose realisations
+    are mcells must be `.live` in `m2`. -/
 def exp_denot_is_monotonic {env : TypeEnv s}
   (henv_mono : env.IsMonotonic)
   (henv_bool : env.is_bool_independent)
@@ -2137,9 +2134,10 @@ def exp_denot_is_monotonic {env : TypeEnv s}
   ∀ {R : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
     m2.subsumes m1 ->
+    m2.is_compatible R ->
     (Ty.exp_denot env T R) m1 e ->
     (Ty.exp_denot env T R) m2 e := by
-  intro R m1 m2 e hwf hmem ht
+  intro R m1 m2 e hwf hmem hcompat ht
   simp only [Ty.exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
@@ -2147,11 +2145,11 @@ def exp_denot_is_monotonic {env : TypeEnv s}
   · apply Denot.as_mpost_is_bool_independent
     exact val_denot_is_bool_independent henv_bool T
   · exact hmem
+  · exact hcompat
   · exact hwf
   · exact ht
 
-/-- Existential expression denotation is monotonic with respect to memory subsumption.
-    Since exi_exp_denot now takes CapabilitySet directly, the proof is simpler. -/
+/-- Existential expression denotation is monotonic with respect to memory subsumption. -/
 def exi_exp_denot_is_monotonic {env : TypeEnv s}
   (henv_mono : env.IsMonotonic)
   (henv_bool : env.is_bool_independent)
@@ -2159,9 +2157,10 @@ def exi_exp_denot_is_monotonic {env : TypeEnv s}
   ∀ {R : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
     Exp.WfInHeap e m1.heap ->
     m2.subsumes m1 ->
+    m2.is_compatible R ->
     (Ty.exi_exp_denot env T R) m1 e ->
     (Ty.exi_exp_denot env T R) m2 e := by
-  intro R m1 m2 e hwf hmem ht
+  intro R m1 m2 e hwf hmem hcompat ht
   simp only [Ty.exi_exp_denot] at ht ⊢
   apply eval_monotonic
   · apply Denot.as_mpost_is_monotonic
@@ -2169,6 +2168,7 @@ def exi_exp_denot_is_monotonic {env : TypeEnv s}
   · apply Denot.as_mpost_is_bool_independent
     exact exi_val_denot_is_bool_independent henv_bool T
   · exact hmem
+  · exact hcompat
   · exact hwf
   · exact ht
 
@@ -2422,7 +2422,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
     exact wf_from_resolve_unit hdenot
   | cell cs =>
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, l, b0, heq, hlookup, _⟩ := hdenot
+    obtain ⟨_, l, b0, ℓ0, heq, hlookup, _⟩ := hdenot
     rw [heq]
     apply Exp.WfInHeap.wf_var
     apply Var.WfInHeap.wf_free
@@ -2466,12 +2466,12 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
     exact simple_ans_from_resolve hdenot Exp.IsSimpleVal.unit
   | cell cs =>
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, l, _, heq, _, _⟩ := hdenot
+    obtain ⟨_, l, _, _, heq, _, _⟩ := hdenot
     rw [heq]
     exact Exp.IsSimpleAns.is_var
   | reader cs =>
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, _, _, hres, _, _⟩ := hdenot
+    obtain ⟨_, _, _, _, _, hres, _, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.reader
   | cap cs =>
     simp only [Ty.val_denot, List.empty_eq] at hdenot
@@ -2768,7 +2768,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     -- captureSet = cs, e = .var (.free l), covers .epsilon l
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
-    obtain ⟨_, l, _, heq, hlookup, hcov⟩ := ht
+    obtain ⟨_, l, _, _, heq, hlookup, hcov⟩ := ht
     subst heq
     simp only [resolve_reachability, Memory.lookup] at hlookup ⊢
     simp only [reachability_of_loc, hlookup]
@@ -2777,7 +2777,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     -- captureSet = cs, resolve e = .reader (.free label), covers .ro label
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
-    obtain ⟨_, _, label, _, hres, hlookup, hcov⟩ := ht
+    obtain ⟨_, _, label, _, _, hres, hlookup, hcov⟩ := ht
     -- resolve_reachability for expression that resolves to .reader
     cases e with
     | reader x =>
@@ -3082,10 +3082,10 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         | masked => simp [hcell] at hlookup'
   | cell cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
-    obtain ⟨hwf_cs, label, b0, heq, hlookup, hcov⟩ := hdenot
+    obtain ⟨hwf_cs, label, b0, ℓ0, heq, hlookup, hcov⟩ := hdenot
     -- heq : Exp.var (x.subst ...) = Exp.var (Var.free label)
     simp only [Exp.var.injEq] at heq
-    refine ⟨?_, label, b0, ?_, hlookup, ?_⟩
+    refine ⟨?_, label, b0, ℓ0, ?_, hlookup, ?_⟩
     · -- WfInHeap for (.var .epsilon x).subst
       simp only [CaptureSet.subst]
       -- x.subst gives us (.free label), which is well-formed
@@ -3096,7 +3096,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
     · -- covers .epsilon label ((.var .epsilon x).denot env m)
       simp only [CaptureSet.denot, CaptureSet.subst, heq,
                  CaptureSet.ground_denot, CapabilitySet.applyMut]
-      have hlookup' : m.heap label = some (.capability (.mcell b0)) := by
+      have hlookup' : m.heap label = some (.capability (.mcell b0 ℓ0)) := by
         simpa only [Memory.lookup] using hlookup
       cases hcell : m.heap label with
       | none => simp [hcell] at hlookup'
@@ -3109,8 +3109,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         | masked => simp [hcell] at hlookup'
   | reader cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
-    obtain ⟨hwf_e, hwf_cs, loc, label, hres, hlookup, hcov⟩ := hdenot
-    refine ⟨hwf_e, ?_, loc, label, hres, hlookup, ?_⟩
+    obtain ⟨hwf_e, hwf_cs, loc, label, ℓ0, hres, hlookup, hcov⟩ := hdenot
+    refine ⟨hwf_e, ?_, loc, label, ℓ0, hres, hlookup, ?_⟩
     · -- WfInHeap for (.var .epsilon x).subst
       simp only [CaptureSet.subst]
       cases hwf_e with
@@ -3344,12 +3344,12 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
   case cell cs =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, label, _, _, _, hcov⟩ := hdenot
+    obtain ⟨_, label, _, _, _, _, hcov⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case reader cs =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, label, _, _, _, hcov⟩ := hdenot
+    obtain ⟨_, _, label, _, _, _, _, hcov⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case arrow T1 cs T2 =>
     simp only [Ty.captureSet] at hpure
