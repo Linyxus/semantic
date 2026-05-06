@@ -199,10 +199,10 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.alloc x) (.exi (.cell (.cvar .epsilon .here)))
 | drop :
-  HasType {} Γ (.var x) (.typ (.cell Cx)) ->
-  Cx.consumable Γ ->
+  HasType {} Γ (.var x) (.typ (.cell (.var .epsilon x))) ->
+  CaptureSet.consumable Γ (.var .epsilon x) ->
   ----------------------------
-  HasType {} Γ (.drop x) (.typ .unit)
+  HasType (.var .epsilon x) Γ (.drop x) (.typ .unit)
 | read :
   HasType {} Γ (.var x) (.typ (.reader C)) ->
   ----------------------------
