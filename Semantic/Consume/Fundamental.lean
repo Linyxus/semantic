@@ -1200,6 +1200,13 @@ theorem sem_typ_alloc
       · exact hclose true (fun _ => hb) (by intro h; cases h)
       · exact hclose false (by intro h; cases h) (fun _ => hb)
 
+theorem sem_typ_drop
+  {x : BVar s .var}
+  (hx : {} # Γ ⊨ Exp.var (.bound x) :
+    .typ (.cell (.var .epsilon (.bound x)))) :
+  (.var .epsilon (.bound x)) # Γ ⊨ Exp.drop (.bound x) : .typ .unit := by
+  sorry
+
 theorem sem_typ_read
   {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.reader C)) :
@@ -2905,6 +2912,13 @@ theorem fundamental
     | alloc hx_closed =>
       cases hx_closed
       exact sem_typ_alloc
+        (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+  case drop =>
+    rename_i hx_syn _hcons hx_ih
+    cases hclosed_e with
+    | drop hx_closed =>
+      cases hx_closed
+      exact sem_typ_drop
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
   case read =>
     rename_i hx_syn hx_ih

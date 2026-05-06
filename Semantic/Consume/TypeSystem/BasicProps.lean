@@ -305,6 +305,9 @@ theorem HasType.use_set_is_closed
   case write =>
     rename_i ht_x _ _ _
     exact HasType.typed_var_capture_closed ht_x
+  case drop =>
+    rename_i ht_x _ _
+    exact HasType.typed_var_capture_closed ht_x
   case invoke =>
     rename_i ht_x _ _ _
     exact HasType.typed_var_capture_closed ht_x
@@ -331,6 +334,10 @@ theorem HasType.exp_is_closed
     cases ih_x with
     | var hx_closed =>
       exact Exp.IsClosed.alloc hx_closed
+  case drop ih_x =>
+    cases ih_x with
+    | var hx_closed =>
+      exact Exp.IsClosed.drop hx_closed
   case write ih_x ih_y =>
     -- Need to extract variable closedness from both IHs
     cases ih_x with
