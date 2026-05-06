@@ -586,10 +586,14 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
   | .btrue, .btrue => .btrue
   | .bfalse, .bfalse => .bfalse
 
+inductive Liveness : Type where
+| live : Liveness
+| dead : Liveness
+
 /-- Underlying info of a capability. -/
 inductive CapabilityInfo : Type where
 | basic : CapabilityInfo
-| mcell : Bool -> CapabilityInfo
+| mcell : Bool -> Liveness -> CapabilityInfo
 
 /-- A heap cell. -/
 inductive Cell : Type where
