@@ -81,20 +81,20 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
   C.covers .ro y ->
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
-  m.lookup y = some (.capability (.mcell b)) ->
+  m.lookup y = some (.capability (.mcell b .live)) ->
   Q (if b then .btrue else .bfalse) m ->
   Eval C m (.read (.free x)) Q
 | eval_write_true {m : Memory} {x y : Nat} :
   C.covers .epsilon x ->
-  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
-  Q .unit (m.update_mcell x true ⟨b0, hx⟩) ->
+  Q .unit (m.update_mcell x true .live ⟨b0, hx⟩) ->
   Eval C m (.write (.free x) (.free y)) Q
 | eval_write_false {m : Memory} {x y : Nat} :
   C.covers .epsilon x ->
-  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
-  Q .unit (m.update_mcell x false ⟨b0, hx⟩) ->
+  Q .unit (m.update_mcell x false .live ⟨b0, hx⟩) ->
   Eval C m (.write (.free x) (.free y)) Q
 | eval_cond {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
@@ -146,7 +146,7 @@ theorem eval_monotonic {m1 m2 : Memory}
         obtain ⟨_, hlookup_v, _⟩ := hsub _ _ h
         rw [hlookup_v] at hfresh2
         cases hfresh2
-    have hheap_l : (m_orig.heap.extend_mcell l b) l = some (.capability (.mcell b)) := by
+    have hheap_l : (m_orig.heap.extend_mcell l b) l = some (.capability (.mcell b .live)) := by
       unfold Heap.extend_mcell; rw [if_pos rfl]
     apply hpred ?_ ?_ (h_post l hfresh1)
     · -- (.pack (.var .epsilon (.free l)) (.free l)).WfInHeap
@@ -324,8 +324,11 @@ theorem eval_monotonic {m1 m2 : Memory}
       case basic =>
         -- Contradiction: basic cannot subsume mcell
         cases hsub_y
-      case mcell b' =>
-        -- Good! m2 has an mcell at y with boolean b'
+      case mcell b' ℓ' =>
+        -- m2 has an mcell at y; subsumption forces ℓ' = .live (since the cell
+        -- in m_orig was live).
+        simp only [Cell.subsumes] at hsub_y
+        subst hsub_y
         -- Need to show: Q (if b' then .btrue else .bfalse) m2
         -- We have: Q (if b then .btrue else .bfalse) m_orig
         -- Use bool independence: Q treats btrue and bfalse the same
@@ -378,20 +381,22 @@ theorem eval_monotonic {m1 m2 : Memory}
       case basic =>
         -- Contradiction: basic cannot subsume mcell
         cases hsub_x
-      case mcell b' =>
-        -- Good! m2 has an mcell at x
+      case mcell b' ℓ' =>
+        -- m2 has an mcell at x; subsumption forces ℓ' = .live.
+        simp only [Cell.subsumes] at hsub_x
+        subst hsub_x
         -- cy must be the same val as in m1 (subsumption is equality for vals)
         simp only [Cell.subsumes] at hsub_y
         subst hsub_y
         -- Now we can apply eval_write_true with m2
         apply Eval.eval_write_true hmem (hx := hx2) hy2
-        -- Need to show: Q .unit (m2.update_mcell x true ⟨b', hx2⟩)
-        -- We have: Q .unit (m1.update_mcell x true ⟨_, hx⟩)
+        -- Need to show: Q .unit (m2.update_mcell x true .live ⟨b', hx2⟩)
+        -- We have: Q .unit (m1.update_mcell x true .live ⟨_, hx⟩)
         -- Use monotonicity with update_mcell_subsumes_compat
         apply hpred
         · -- unit is well-formed in any heap
           constructor
-        · apply Memory.update_mcell_subsumes_compat _ _
+        · apply Memory.update_mcell_subsumes_compat _ _ _
               (Exists.intro _ hx) (Exists.intro _ hx2) hsub
         · exact hQ
     case masked =>
@@ -408,13 +413,15 @@ theorem eval_monotonic {m1 m2 : Memory}
       cases info
       case basic =>
         cases hsub_x
-      case mcell b' =>
+      case mcell b' ℓ' =>
+        simp only [Cell.subsumes] at hsub_x
+        subst hsub_x
         simp only [Cell.subsumes] at hsub_y
         subst hsub_y
         apply Eval.eval_write_false hmem (hx := hx2) hy2
         apply hpred
         · constructor
-        · apply Memory.update_mcell_subsumes_compat _ _
+        · apply Memory.update_mcell_subsumes_compat _ _ _
               (Exists.intro _ hx) (Exists.intro _ hx2) hsub
         · exact hQ
     case masked =>
@@ -651,7 +658,7 @@ theorem Eval.strengthen_reach_bound
     -- Reachability is `.cap .epsilon l` (singleton at the freshly allocated loc).
     -- l is fresh in m_orig, so by hD it fails D — vacuity closes.
     have hheap_l : (m_orig.extend_mcell l b hfresh).heap l =
-        some (.capability (.mcell b)) :=
+        some (.capability (.mcell b .live)) :=
       Memory.extend_mcell_lookup hfresh
     have hreach_eq :
         (CaptureSet.var Mutability.epsilon (Var.free l)).reachability
