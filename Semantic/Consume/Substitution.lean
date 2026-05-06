@@ -105,6 +105,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
 | .reader x, s => .reader (x.subst s)
 | .alloc x, s => .alloc (x.subst s)
+| .drop x, s => .drop (x.subst s)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
@@ -546,6 +547,7 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     rfl
   | reader x => simp only [Exp.subst, Var.subst_comp]
   | alloc x => simp only [Exp.subst, Var.subst_comp]
+  | drop x => simp only [Exp.subst, Var.subst_comp]
   | pack cs x =>
     simp only [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp only [Exp.subst, Var.subst_comp]
@@ -661,6 +663,8 @@ theorem Exp.subst_id {e : Exp s} :
   | reader x =>
     simp only [Exp.subst, Var.subst_id]
   | alloc x =>
+    simp only [Exp.subst, Var.subst_id]
+  | drop x =>
     simp only [Exp.subst, Var.subst_id]
   | pack cs x =>
     simp only [Exp.subst, CaptureSet.subst_id, Var.subst_id]
@@ -795,6 +799,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   | reader x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | alloc x =>
+    simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | drop x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | pack cs x =>
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
@@ -1109,6 +1115,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     cases hc with | alloc hx =>
     simp only [Exp.subst]
     exact IsClosed.alloc (Var.is_closed_subst hx hsubst)
+  | drop x =>
+    cases hc with | drop hx =>
+    simp only [Exp.subst]
+    exact IsClosed.drop (Var.is_closed_subst hx hsubst)
   | pack cs x =>
     cases hc with | pack hcs hx =>
     simp only [Exp.subst]
@@ -1325,6 +1335,10 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | alloc hx =>
     exact IsClosed.alloc (Var.subst_closed_inv hx)
+  | drop x =>
+    simp only [Exp.subst] at hclosed
+    cases hclosed with | drop hx =>
+    exact IsClosed.drop (Var.subst_closed_inv hx)
   | pack cs x =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | pack hcs hx =>
