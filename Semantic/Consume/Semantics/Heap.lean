@@ -2632,6 +2632,20 @@ def is_compatible (m : Memory) (C : CapabilitySet) : Prop :=
     m.heap l = some (.capability (.mcell b ℓ)) →
     ℓ = .live
 
+theorem is_compatible_empty (m : Memory) : m.is_compatible .empty := by
+  intro mu l b ℓ hmem _
+  exact (CapabilitySet.not_hasmem_empty hmem).elim
+
+theorem is_compatible_union_left {m : Memory} {C1 C2 : CapabilitySet}
+  (hcompat : m.is_compatible (C1 ∪ C2)) : m.is_compatible C1 := by
+  intro mu l b ℓ hmem hheap
+  exact hcompat mu l b ℓ (CapabilitySet.hasmem.left hmem) hheap
+
+theorem is_compatible_union_right {m : Memory} {C1 C2 : CapabilitySet}
+  (hcompat : m.is_compatible (C1 ∪ C2)) : m.is_compatible C2 := by
+  intro mu l b ℓ hmem hheap
+  exact hcompat mu l b ℓ (CapabilitySet.hasmem.right hmem) hheap
+
 end Memory
 
 /-- Memory predicate. -/

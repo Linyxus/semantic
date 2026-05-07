@@ -31,18 +31,18 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
 | step_read :
   C.covers .ro y ->
   m.lookup x = some (.val ⟨.reader (.free y), hv_reader, R_reader⟩) ->
-  m.lookup y = some (.capability (.mcell b)) ->
+  m.lookup y = some (.capability (.mcell b .live)) ->
   Step C m (.read (.free x)) m (if b then .btrue else .bfalse)
 | step_write_true :
   C.covers .epsilon x ->
-  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
-  Step C m (.write (.free x) (.free y)) (m.update_mcell x true ⟨b0, hx⟩) .unit
+  Step C m (.write (.free x) (.free y)) (m.update_mcell x true .live ⟨b0, hx⟩) .unit
 | step_write_false :
   C.covers .epsilon x ->
-  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
-  Step C m (.write (.free x) (.free y)) (m.update_mcell x false ⟨b0, hx⟩) .unit
+  Step C m (.write (.free x) (.free y)) (m.update_mcell x false .live ⟨b0, hx⟩) .unit
 | step_ctx_letin :
   Step C m e1 m' e1' ->
   Step C m (.letin e1 e2) m' (.letin e1' e2)
