@@ -578,11 +578,76 @@ theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
   congr 1
   exact compute_peaks_correct h C
 
+/-- `m.is_access_compat Γ ρ C` says that every `.access`-mode peak of `C`
+    (under `Γ`) has its denoted capability set live in `m`. Operationally:
+    cells reachable through `C`'s access bindings are not dropped. This is
+    the post-condition that flows from a `SemanticTyping`: `.access`-marked
+    capabilities remain live in the result memory (because evaluation under
+    `C`'s budget can only drop `.consume`-marked cells). -/
+def Memory.is_access_compat
+    {s : Sig} (m : Memory) (Γ : Ctx s) (ρ : TypeEnv s) (C : CaptureSet s) : Prop :=
+  ∀ mu c,
+    (CaptureSet.cvar mu c) ⊆ C.peaks Γ →
+    AccessiblePeak Γ c →
+    m.is_compatible (((ρ.lookup_cvar c).2).applyMut mu)
+
+/-- `m.preserves_empty_mcells m' Γ ρ` says that for every `.empty`-mode cvar
+    binding in `Γ`, the mcells in its denoted capability set keep their exact
+    state (boolean and liveness) from `m` to `m'`. This captures the frame
+    intuition for cells that the current expression cannot see at all
+    (`.empty` mode), so it must not modify them. -/
+def Memory.preserves_empty_mcells
+    {s : Sig} (m m' : Memory) (Γ : Ctx s) (ρ : TypeEnv s) : Prop :=
+  ∀ c B locked,
+    Γ.LookupCVar c UseMode.empty B locked →
+    ∀ mu l b ℓ,
+      CapabilitySet.hasmem mu l ((ρ.lookup_cvar c).2) →
+      m.heap l = some (.capability (.mcell b ℓ)) →
+      m'.heap l = some (.capability (.mcell b ℓ))
+
+/-- `is_access_compat` is vacuous when `C = ∅`, since `(∅ : CaptureSet s).peaks Γ`
+    has no cvar elements. -/
+theorem Memory.is_access_compat_empty
+    {s : Sig} (m : Memory) (Γ : Ctx s) (ρ : TypeEnv s) :
+    m.is_access_compat Γ ρ (∅ : CaptureSet s) := by
+  intro mu c hsub _
+  -- (∅ : CaptureSet s).peaks Γ reduces to .empty.
+  rw [show (∅ : CaptureSet s) = CaptureSet.empty from rfl, CaptureSet.peaks.eq_1] at hsub
+  cases hsub
+
+/-- Reflexivity: a memory trivially preserves its own `.empty`-mode mcells. -/
+theorem Memory.preserves_empty_mcells_refl
+    {s : Sig} (m : Memory) (Γ : Ctx s) (ρ : TypeEnv s) :
+    m.preserves_empty_mcells m Γ ρ := by
+  intro _ _ _ _ _ _ _ _ _ hheap
+  exact hheap
+
+/-- Transitivity: preservation composes through an intermediate memory. -/
+theorem Memory.preserves_empty_mcells_trans
+    {s : Sig} {m1 m2 m3 : Memory} {Γ : Ctx s} {ρ : TypeEnv s}
+    (h12 : m1.preserves_empty_mcells m2 Γ ρ)
+    (h23 : m2.preserves_empty_mcells m3 Γ ρ) :
+    m1.preserves_empty_mcells m3 Γ ρ := by
+  intro c B locked hlookup mu l b ℓ hmem hheap
+  exact h23 c B locked hlookup mu l b ℓ hmem (h12 c B locked hlookup mu l b ℓ hmem hheap)
+
+/-- Semantic typing.
+    *Pre*: every cell reached via `C` (whether `.access` or `.consume`) must be
+    live at the start (`m.is_compatible (C.denot ρ m)`).
+    *Post*: in any reachable result memory `m'`,
+      (1) every `.access`-mode peak of `C` is still live (`is_access_compat`),
+      (2) every `.empty`-mode cvar binding in `Γ` has its mcells unchanged
+          from `m` to `m'` (`preserves_empty_mcells`).
+    The `.consume`-mode peaks of `C` may have been dropped during evaluation,
+    so we make no liveness claim about them in the result. -/
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
-    EnvTyping Γ ρ m ->
-    m.is_compatible (C.denot ρ m) ->
-    Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
+    EnvTyping Γ ρ m →
+    m.is_compatible (C.denot ρ m) →
+    Eval (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
+      (fun v m' => Ty.exi_val_denot ρ E m' v
+                 ∧ m'.is_access_compat Γ ρ C
+                 ∧ Memory.preserves_empty_mcells m m' Γ ρ)
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
