@@ -261,23 +261,25 @@ def rebind_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub hcompat harg
-      let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
-      have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2 R0
+      have heqv := rebind_exi_val_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
       specialize hd arg m' hsub hcompat harg'
-      exact (ih2 m' _).mp hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mp hval, hliv⟩
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub hcompat harg
-      let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
-      have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2 R0
+      have heqv := rebind_exi_val_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub hcompat harg'
-      exact (ih2 m' _).mpr hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mpr hval, hliv⟩
   | .poly T1 cs T2 => by
     have ih1 := rebind_val_denot ρ T1
     intro m e
@@ -288,23 +290,25 @@ def rebind_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
-      let R0 := expand_captures m.heap cs'
-      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
+      have heqv := rebind_exi_val_denot (ρ.liftTVar (d:=denot)) T2
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
-      exact (ih2 m' _).mp hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mp hval, hliv⟩
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
-      let R0 := expand_captures m.heap cs'
-      have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
+      have heqv := rebind_exi_val_denot (ρ.liftTVar (d:=denot)) T2
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.rename f)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
-      exact (ih2 m' _).mpr hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mpr hval, hliv⟩
   | .cpoly B cs T => by
     have hB := rebind_capturebound_denot ρ B
     intro m e
@@ -316,17 +320,19 @@ def rebind_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hcompat hsub_bound
-      let R0 := expand_captures m.heap cs'
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
+      have heqv := rebind_exi_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T
       specialize hd m' CS hwf_CS hsub hcompat hsub_bound
-      exact (ih2 m' _).mp hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mp hval, hliv⟩
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hcompat hsub_bound
-      let R0 := expand_captures m.heap cs'
-      have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
+      have heqv := rebind_exi_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T
       specialize hd m' CS hwf_CS hsub hcompat hsub_bound
-      exact (ih2 m' _).mpr hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mpr hval, hliv⟩
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

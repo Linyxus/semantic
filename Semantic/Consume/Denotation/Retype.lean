@@ -330,23 +330,25 @@ def retype_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub hcompat harg
-      let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
-      have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
+      have heqv := retype_exi_val_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
       specialize hd arg m' hsub hcompat harg'
-      exact (ih2 m' _).mp hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mp hval, hliv⟩
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub hcompat harg
-      let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
-      have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
+      have heqv := retype_exi_val_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub hcompat harg'
-      exact (ih2 m' _).mpr hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mpr hval, hliv⟩
   | .poly T1 cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
@@ -357,23 +359,25 @@ def retype_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
-      let R0 := expand_captures m.heap cs'
-      have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
+      have heqv := retype_exi_val_denot (ρ.liftTVar (d:=denot)) T2
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
-      exact (ih2 m' _).mp hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mp hval, hliv⟩
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
-      let R0 := expand_captures m.heap cs'
-      have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
+      have heqv := retype_exi_val_denot (ρ.liftTVar (d:=denot)) T2
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.subst σ)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
-      exact (ih2 m' _).mpr hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mpr hval, hliv⟩
   | .cpoly B cs T => by
     have hB := retype_capturebound_denot ρ B
     intro m e
@@ -385,25 +389,27 @@ def retype_val_denot
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hcompat hsub_bound
-      let R0 := expand_captures m.heap cs'
       let cap1 : CapabilitySet := CS.ground_denot m'
       let ρ1 : Retype (env1.extend_cvar CS cap1) σ.lift
                       (env2.extend_cvar CS cap1) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap1)
-      have ih2 := retype_exi_exp_denot ρ1 T R0
+      have heqv := retype_exi_val_denot ρ1 T
       specialize hd m' CS hwf_CS hsub hcompat hsub_bound
-      exact (ih2 m' _).mp hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mp hval, hliv⟩
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hcompat hsub_bound
-      let R0 := expand_captures m.heap cs'
       let cap2 : CapabilitySet := CS.ground_denot m'
       let ρ2 : Retype (env1.extend_cvar CS cap2) σ.lift
                       (env2.extend_cvar CS cap2) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap2)
-      have ih2 := retype_exi_exp_denot ρ2 T R0
+      have heqv := retype_exi_val_denot ρ2 T
       specialize hd m' CS hwf_CS hsub hcompat hsub_bound
-      exact (ih2 m' _).mpr hd
+      apply eval_post_monotonic_general _ hd
+      intro m'' _hsub' v ⟨hval, hliv⟩
+      exact ⟨(heqv m'' v).mpr hval, hliv⟩
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
