@@ -458,6 +458,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
   (hclosed_e : (Exp.pack cs x).IsClosed)
+  (hcons : cs.consumable Γ)
   (ht : {} # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
   cs # Γ ⊨ Exp.pack cs x : T.exi := by
   intro env store hts _
@@ -474,15 +475,21 @@ theorem sem_typ_pack
     exact CapabilitySet.Subset.refl
   · refine ⟨?val_denot, ?access, ?empty⟩
     case access =>
-      -- Need: store.is_access_compat Γ env cs
-      -- For pack, since this is a value step (no memory change), the post-condition
-      -- can be discharged using the input compat property of cs.
-      intro mu c hsub _
-      -- We need is_compatible: but we have hcompat (initial) which gives is_compatible
-      -- on cs.denot env store. Since the cvar c is in cs.peaks Γ, we need to relate
-      -- (lookup_cvar c).2.applyMut mu to cs.denot env store.
-      -- TODO: This requires the access_compat invariant for pack.
-      sorry
+      -- Since `cs.consumable Γ`, every peak of cs is consume-mode, so it cannot
+      -- also be accessible (a single cvar has a unique mode). Contradiction.
+      intro mu c hsub haccess
+      have hcons_c : ConsumablePeak Γ c := hcons mu c hsub
+      exfalso
+      cases hcons_c with
+      | lookup hc_lk =>
+        cases haccess with
+        | lookup ha_lk =>
+          have h1 := Ctx.LookupCVar.eq_lookup hc_lk
+          have h2 := Ctx.LookupCVar.eq_lookup ha_lk
+          rw [← h1] at h2
+          -- h2 : (UseMode.access, _, _) = (UseMode.consume, _, _)
+          injection h2 with hmode _
+          cases hmode
     case empty => exact Memory.preserves_empty_mcells_refl store Γ env
     case val_denot =>
     simp only [Ty.exi_val_denot]
@@ -3123,8 +3130,10 @@ theorem fundamental
       rename_i hclosed_cs hclosed_cb hclosed_e0
       exact ih hclosed_e0
   case pack ih =>
+    rename_i hC_closed hcons _
     apply sem_typ_pack
     · exact hclosed_e
+    · exact hcons
     · cases hclosed_e with | pack _ hx_closed =>
       exact ih (Exp.IsClosed.var hx_closed)
   case app =>
