@@ -101,24 +101,20 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   Q .unit (m.drop_mcell x ⟨b, hx⟩) ->
   C.covers .epsilon x ->
   Eval C m (.drop (.free x)) Q
-| eval_cond {m : Memory} {Q1 : Mpost} :
-  (hpred : Q1.is_monotonic) ->
-  (hbool : Q1.is_bool_independent) ->
-  Eval C m (.var x) Q1 ->
-  (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
-    Q1 v m1 ->
-    resolve m1.heap v = some .btrue ∨ resolve m1.heap v = some .bfalse) ->
-  (h_true : ∀ {m1 : Memory} {v : Exp {}},
-    (m1.subsumes m) ->
-    Q1 v m1 ->
-    resolve m1.heap v = some .btrue ->
-    Eval C m1 e2 Q) ->
-  (h_false : ∀ {m1 : Memory} {v : Exp {}},
-    (m1.subsumes m) ->
-    Q1 v m1 ->
-    resolve m1.heap v = some .bfalse ->
-    Eval C m1 e3 Q) ->
+| eval_cond {m : Memory} {x : Var .var {}} :
+  (hres : resolve m.heap (.var x) = some .btrue ∨ resolve m.heap (.var x) = some .bfalse) ->
+  (h_true : resolve m.heap (.var x) = some .btrue → Eval C m e2 Q) ->
+  (h_false : resolve m.heap (.var x) = some .bfalse → Eval C m e3 Q) ->
   Eval C m (.cond x e2 e3) Q
+
+/-- `Eval` on a variable does not change memory: the only rule that produces
+    `Eval C m (.var x) Q` is `eval_var`, which preserves `m`. So `Q` must hold at
+    `(.var x)` and the original `m` — no cells were dropped along the way. -/
+theorem Eval.var_inv {C : CapabilitySet} {m : Memory} {x : Var .var {}} {Q : Mpost}
+    (heval : Eval C m (.var x) Q) : Q (.var x) m := by
+  cases heval with
+  | eval_val hv _ => cases hv
+  | eval_var hQ => exact hQ
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
@@ -377,20 +373,34 @@ theorem eval_monotonic {m1 m2 : Memory}
         · exact Memory.drop_mcell_subsumes_compat _ ⟨_, hx⟩ ⟨_, hx2⟩ hsub
         · exact hQ
     case masked => cases hsub_x
-  case eval_cond Q1 hpred_guard hbool_guard _eval_e1 h_nonstuck h_true h_false
-      ih_guard _ _ =>
-    have ⟨hwf_x, _hwf2, _hwf3⟩ := Exp.wf_inv_cond hwf
-    have hwf_var : Exp.WfInHeap (.var _) _ := Exp.WfInHeap.wf_var hwf_x
-    have eval_e1' := ih_guard hpred_guard hbool_guard hsub hcompat hwf_var
-    apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard eval_e1'
-    · intro m_guard v hQ1
-      exact h_nonstuck hQ1
-    · intro m_branch v hs hQ1 hres
-      have hs_orig := Memory.subsumes_trans hs hsub
-      exact h_true hs_orig hQ1 hres
-    · intro m_branch v hs hQ1 hres
-      have hs_orig := Memory.subsumes_trans hs hsub
-      exact h_false hs_orig hQ1 hres
+  case eval_cond x hres h_true h_false ih_true ih_false =>
+    rename_i _ _ _ m_orig
+    have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
+    -- Lift `hres` from m_orig to m2 via resolve monotonicity (val cells preserved).
+    have hres' :
+        resolve m2.heap (.var x) = some .btrue ∨ resolve m2.heap (.var x) = some .bfalse := by
+      cases hres with
+      | inl h => exact .inl (resolve_monotonic hsub h)
+      | inr h => exact .inr (resolve_monotonic hsub h)
+    apply Eval.eval_cond hres'
+    · -- true branch
+      intro hres_m2_true
+      have hres_orig : resolve m_orig.heap (.var x) = some .btrue := by
+        cases hres with
+        | inl h => exact h
+        | inr h =>
+          have := resolve_monotonic hsub h
+          rw [this] at hres_m2_true; cases hres_m2_true
+      exact ih_true hres_orig hpred hbool hsub hcompat hwf2
+    · -- false branch
+      intro hres_m2_false
+      have hres_orig : resolve m_orig.heap (.var x) = some .bfalse := by
+        cases hres with
+        | inl h =>
+          have := resolve_monotonic hsub h
+          rw [this] at hres_m2_false; cases hres_m2_false
+        | inr h => exact h
+      exact ih_false hres_orig hpred hbool hsub hcompat hwf3
 
 def Mpost.entails_at (Q1 : Mpost) (m : Memory) (Q2 : Mpost) : Prop :=
   ∀ e, Q1 e m -> Q2 e m
@@ -496,20 +506,12 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
     -- by the relaxed `Cell.subsumes`), so `himp` fires at the dropped memory.
     apply himp _ _ _ hQ
     apply Memory.drop_mcell_subsumes
-  case eval_cond Q1 hpred_guard hbool_guard eval_e1 h_nonstuck h_true h_false
-      ih_guard ih_true ih_false =>
-    -- Strengthen the induction hypothesis for the guard evaluation
-    have eval_e1' := ih_guard (Q2:=Q1) (by intro _ _ _ h; exact h)
-    apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard eval_e1'
-    case h_nonstuck =>
-      intro m1 v hQ0
-      exact h_nonstuck hQ0
-    case h_true =>
-      intro m1 v hsub hq1 hres
-      exact ih_true hsub hq1 hres (Mpost.entails_after_subsumes himp hsub)
-    case h_false =>
-      intro m1 v hsub hq1 hres
-      exact ih_false hsub hq1 hres (Mpost.entails_after_subsumes himp hsub)
+  case eval_cond hres h_true h_false ih_true ih_false =>
+    apply Eval.eval_cond hres
+    · intro hres_true
+      exact ih_true hres_true himp
+    · intro hres_false
+      exact ih_false hres_false himp
 theorem eval_post_monotonic {Q1 Q2 : Mpost}
   (himp : Q1.entails Q2)
   (heval : Eval C m e Q1) :
@@ -568,15 +570,12 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_x hlookup_y hQ
   case eval_drop hx hQ hcov =>
     exact Eval.eval_drop hx hQ (CapabilitySet.subset_preserves_covers hsub hcov)
-  case eval_cond Q1 hpred_guard hbool_guard heval_e1 h_nonstuck h_true h_false
-      ih_e1 ih_true ih_false =>
-    apply Eval.eval_cond (Q1:=Q1) hpred_guard hbool_guard (ih_e1 hsub)
-    · intro m1 v hQ
-      exact h_nonstuck hQ
-    · intro m1 v hs1 hq1 hres
-      exact ih_true hs1 hq1 hres hsub
-    · intro m1 v hs1 hq1 hres
-      exact ih_false hs1 hq1 hres hsub
+  case eval_cond hres h_true h_false ih_true ih_false =>
+    apply Eval.eval_cond hres
+    · intro hres_true
+      exact ih_true hres_true hsub
+    · intro hres_false
+      exact ih_false hres_false hsub
 
 /-- An `Eval` derivation always carries a witness reachability bound: any pack
     value appearing in the postcondition has its capture set bounded by the
@@ -737,16 +736,12 @@ theorem Eval.strengthen_reach_bound
     refine ⟨hQ, ?_⟩
     intro cs0 x0 heq
     cases heq
-  | eval_cond hpred hbool eval_guard h_nonstuck _ _ _ ih_true ih_false =>
+  | eval_cond hres _h_true _h_false ih_true ih_false =>
     intro D hD
-    apply Eval.eval_cond hpred hbool eval_guard h_nonstuck
-    · intro m1 v hsub hq1 hres
-      apply ih_true hsub hq1 hres D
-      intro l hDl hheap
-      exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
-    · intro m1 v hsub hq1 hres
-      apply ih_false hsub hq1 hres D
-      intro l hDl hheap
-      exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
+    apply Eval.eval_cond hres
+    · intro hres_true
+      exact ih_true hres_true D hD
+    · intro hres_false
+      exact ih_false hres_false D hD
 
 end Consume

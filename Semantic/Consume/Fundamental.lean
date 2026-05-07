@@ -1046,83 +1046,51 @@ theorem sem_typ_bfalse :
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
   {x : Var .var s} {e2 e3 : Exp s} {T : Ty .exi s}
-  (hclosed_C1 : C1.IsClosed)
-  (hclosed_C2 : C2.IsClosed)
-  (hclosed_C3 : C3.IsClosed)
-  (_hclosed_guard : x.IsClosed)
-  (_hclosed_then : e2.IsClosed)
-  (_hclosed_else : e3.IsClosed)
   (ht1 : C1 # Γ ⊨ (.var x) : .typ .bool)
   (ht2 : C2 # Γ ⊨ e2 : T)
   (ht3 : C3 # Γ ⊨ e3 : T) :
   (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond x e2 e3) : T := by
   intro env store hts hcompat
   simp only [Exp.subst, Ty.exi_exp_denot, List.empty_eq]
-  -- Let Q1 be the guard postcondition
-  set Q1 := (Ty.exi_val_denot env (.typ .bool)).as_mpost
-  -- Monotonicity of Q1
-  have hpred : Q1.is_monotonic := Denot.as_mpost_is_monotonic
-    (exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.typ .bool))
-  -- Bool independence of Q1
-  have hbool : Q1.is_bool_independent := Denot.as_mpost_is_bool_independent
-    (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.typ .bool))
-  -- Evaluate the guard under base authority
+  -- Get the guard's evaluation, then use Eval.var_inv to extract Q1 at store.
   have hcompat_C1 : store.is_compatible (C1.denot env store) :=
     Memory.is_compatible_union_left (Memory.is_compatible_union_left hcompat)
   have hguard_base := ht1 env store hts hcompat_C1
   simp only [Ty.exi_exp_denot] at hguard_base
-  -- Widen authority to C1 ∪ C2 ∪ C3
-  have hsubC1 : CaptureSet.denot env C1 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store := by
-    -- Goal: C1 ⊆ (C1 ∪ C2) ∪ C3
-    set A := CaptureSet.denot env C1 store
-    set B := CaptureSet.denot env C2 store
-    set C := CaptureSet.denot env C3 store
-    have hA : A ⊆ A ∪ B := CapabilitySet.Subset.union_right_left
-    have hAB : A ∪ B ⊆ (A ∪ B) ∪ C := CapabilitySet.Subset.union_right_left
-    exact CapabilitySet.Subset.trans hA hAB
-  have hguard := eval_capability_set_monotonic hguard_base hsubC1
-  -- Pre-compute: union capture set well-formedness (shared by both branches)
-  have hwf_union :
-      ((C1 ∪ C2 ∪ C3).subst (Subst.from_TypeEnv env)).WfInHeap store.heap :=
-    CaptureSet.wf_subst
-      (CaptureSet.wf_of_closed
-        (CaptureSet.IsClosed.union (CaptureSet.IsClosed.union hclosed_C1 hclosed_C2) hclosed_C3))
-      (from_TypeEnv_wf_in_heap hts)
-  -- Assemble eval_cond
-  refine Eval.eval_cond (Q1 := Q1) hpred hbool hguard ?h_nonstuck ?h_true ?h_false
-  · -- non-stuck: guard evaluates to a literal boolean
-    intro m1 v hQ1
-    simp only [Q1, Denot.as_mpost, Ty.exi_val_denot, Ty.val_denot] at hQ1
-    exact hQ1
+  -- The guard is a `.var`, so by `Eval.var_inv` the bool postcondition holds at `store`.
+  have hQ1_at_store : Ty.val_denot env .bool store (.var (x.subst (Subst.from_TypeEnv env))) := by
+    have h := Eval.var_inv hguard_base
+    simpa [Denot.as_mpost, Ty.exi_val_denot] using h
+  simp only [Ty.val_denot] at hQ1_at_store
+  -- Resolve the var to a bool at store.
+  have hres :
+      resolve store.heap (.var (x.subst (Subst.from_TypeEnv env))) = some .btrue ∨
+      resolve store.heap (.var (x.subst (Subst.from_TypeEnv env))) = some .bfalse :=
+    hQ1_at_store
+  -- Compat for C2 and C3 (subsets of C1 ∪ C2 ∪ C3).
+  have hcompat_C2 : store.is_compatible (C2.denot env store) :=
+    Memory.is_compatible_union_right (Memory.is_compatible_union_left hcompat)
+  have hcompat_C3 : store.is_compatible (C3.denot env store) :=
+    Memory.is_compatible_union_right hcompat
+  -- Widening lemmas.
+  have hsubC2 : CaptureSet.denot env C2 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
+    CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
+      CapabilitySet.Subset.union_right_left
+  have hsubC3 : CaptureSet.denot env C3 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store := by
+    simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot, List.empty_eq]
+    apply CapabilitySet.Subset.union_right_right
+  -- Construct eval_cond. Branches evaluate at `store` (no m1 quantification).
+  apply Eval.eval_cond hres
   · -- true branch
-    intro m1 v hsub hQtrue hres
-    -- REAL GAP: need to know the C2 budget remains compatible after the guard reduction.
-    -- The guard `(.var x)` operationally cannot drop cells, but the abstract
-    -- `eval_cond` rule allows arbitrary `m1.subsumes store`, so this isn't directly
-    -- derivable here. Discharging would require a meta-property about var-Eval.
-    have hcompat_C2 : m1.is_compatible (C2.denot env m1) := by sorry
-    have hthen := ht2 env m1 (env_typing_monotonic hts hsub) hcompat_C2
+    intro _hres_true
+    have hthen := ht2 env store hts hcompat_C2
     simp only [Ty.exi_exp_denot] at hthen
-    have hsubC2 : CaptureSet.denot env C2 m1 ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 :=
-      CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
-        CapabilitySet.Subset.union_right_left
-    have hcap_eq : CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 =
-        CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
-      (capture_set_denot_is_monotonic hwf_union hsub).symm
-    exact hcap_eq ▸ eval_capability_set_monotonic hthen hsubC2
+    exact eval_capability_set_monotonic hthen hsubC2
   · -- false branch
-    intro m1 v hsub hQfalse hres
-    -- REAL GAP: same as true branch — needs a var-Eval no-mutation meta-property.
-    have hcompat_C3 : m1.is_compatible (C3.denot env m1) := by sorry
-    have helse := ht3 env m1 (env_typing_monotonic hts hsub) hcompat_C3
+    intro _hres_false
+    have helse := ht3 env store hts hcompat_C3
     simp only [Ty.exi_exp_denot] at helse
-    have hsubC3 : CaptureSet.denot env C3 m1 ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 := by
-      simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot, List.empty_eq]
-      apply CapabilitySet.Subset.union_right_right
-    have hcap_eq : CaptureSet.denot env (C1 ∪ C2 ∪ C3) m1 =
-        CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
-      (capture_set_denot_is_monotonic hwf_union hsub).symm
-    exact hcap_eq ▸ eval_capability_set_monotonic helse hsubC3
+    exact eval_capability_set_monotonic helse hsubC3
 
 theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
@@ -3027,13 +2995,9 @@ theorem fundamental
   case btrue => exact sem_typ_btrue
   case bfalse => exact sem_typ_bfalse
   case cond ht1 ht2 ht3 ih1 ih2 ih3 =>
-    -- hclosed_e gives closedness of cond e1 e2 e3
     cases hclosed_e with
     | cond hclosed_guard hclosed_then hclosed_else =>
-      have hclosedC1 := HasType.use_set_is_closed ht1
-      have hclosedC2 := HasType.use_set_is_closed ht2
-      have hclosedC3 := HasType.use_set_is_closed ht3
-      exact sem_typ_cond hclosedC1 hclosedC2 hclosedC3 hclosed_guard hclosed_then hclosed_else
+      exact sem_typ_cond
         (ih1 (Exp.IsClosed.var hclosed_guard)) (ih2 hclosed_then) (ih3 hclosed_else)
   case reader hΓ_closed hx =>
     exact sem_typ_reader hΓ_closed hx
