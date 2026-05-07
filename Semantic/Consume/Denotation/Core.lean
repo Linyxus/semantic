@@ -397,6 +397,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     R0 ⊆ (cs.denot env m) ∧
     (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
+      m'.is_compatible R0 ->
       Ty.val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
@@ -413,6 +414,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     R0 ⊆ (cs.denot env m) ∧
     (∀ (m' : Memory) (denot : Denot),
       m'.subsumes m ->
+      m'.is_compatible R0 ->
       denot.is_proper ->
       denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
@@ -434,6 +436,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       CS.WfInHeap m'.heap ->
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
+      m'.is_compatible R0 ->
       ((A0 m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS (cap := CS.ground_denot m'))
