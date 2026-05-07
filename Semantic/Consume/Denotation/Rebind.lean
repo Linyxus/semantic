@@ -224,35 +224,6 @@ theorem CaptureSet.PeaksOnly.cvar_subset_rename_inv
       obtain ⟨c', hfc, hsub'⟩ := ih2 hsub2
       exact ⟨c', hfc, .union_right_right hsub'⟩
 
-theorem Rebind.hassepdom
-  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (cs : CaptureSet s1) :
-  env1.HasSepDom cs ↔ env2.HasSepDom (cs.rename f) := by
-  unfold TypeEnv.HasSepDom
-  have hpeaks := rebind_compute_peaks ρ cs
-  have hpo := compute_peaks_is_peak env1 cs
-  constructor
-  · intro h m1 c1 m2 c2 hsub1 hsub2 hne
-    rw [← hpeaks] at hsub1 hsub2
-    obtain ⟨c1', hc1, hsub1'⟩ := hpo.cvar_subset_rename_inv hsub1
-    obtain ⟨c2', hc2, hsub2'⟩ := hpo.cvar_subset_rename_inv hsub2
-    subst hc1; subst hc2
-    have hne' : c1' ≠ c2' := by
-      intro heq; subst heq; exact hne rfl
-    have := h m1 c1' m2 c2' hsub1' hsub2' hne'
-    rwa [ρ.cvar c1', ρ.cvar c2'] at this
-  · intro h m1 c1 m2 c2 hsub1 hsub2 hne
-    have hsub1' : (.cvar m1 (f.var c1)) ⊆ compute_peaks env2 (cs.rename f) := by
-      rw [← hpeaks]
-      exact hsub1.rename'
-    have hsub2' : (.cvar m2 (f.var c2)) ⊆ compute_peaks env2 (cs.rename f) := by
-      rw [← hpeaks]
-      exact hsub2.rename'
-    have hne' : f.var c1 ≠ f.var c2 := by
-      intro heq; exact hne (ρ.cvar_injective c1 c2 heq)
-    have := h m1 (f.var c1) m2 (f.var c2) hsub1' hsub2' hne'
-    rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
-
 set_option maxHeartbeats 1000000 in
 -- The mutual rebind denotation definitions trigger heavy reducibility checks.
 mutual

@@ -350,16 +350,6 @@ theorem CapabilitySet.BoundedBy.trans
       exact CapabilitySet.BoundedBy.set (CapabilitySet.Subset.trans hbound_set hsub_set)
   | top => exact CapabilitySet.BoundedBy.top
 
-/-- The `HasSepDom` property for a type environment. -/
-def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
-  ∀ m1 c1 m2 c2,
-    (.cvar m1 c1) ⊆ (compute_peaks env dom) ->
-    (.cvar m2 c2) ⊆ (compute_peaks env dom) ->
-    (c1 ≠ c2) ->
-    CapabilitySet.Noninterference
-      ((env.lookup_cvar c1).2.applyMut m1)
-      ((env.lookup_cvar c2).2.applyMut m2)
-
 /-- Whether this denotation enforces purity of the value. -/
 def Denot.enforce_pure (d : Denot) : Prop :=
   ∀ m e,
@@ -3376,91 +3366,5 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     exact CapabilitySet.Subset.trans
       (resolve_reachability_subset_of_resolve hres)
       (by simpa [resolve_reachability] using hR0_empty)
-
-namespace TypeEnv.HasSepDom
-
-theorem union_inv_left {env : TypeEnv s} {C1 C2 : CaptureSet s}
-  (h : env.HasSepDom (C1 ∪ C2)) :
-  env.HasSepDom C1 := by
-  intro m1 c1 m2 c2 hsub1 hsub2 hne
-  apply h
-  · exact CaptureSet.Subset.union_right_left hsub1
-  · exact CaptureSet.Subset.union_right_left hsub2
-  · exact hne
-
-theorem union_inv_right {env : TypeEnv s} {C1 C2 : CaptureSet s}
-  (h : env.HasSepDom (C1 ∪ C2)) :
-  env.HasSepDom C2 := by
-  intro m1 c1 m2 c2 hsub1 hsub2 hne
-  apply h
-  · exact CaptureSet.Subset.union_right_right hsub1
-  · exact CaptureSet.Subset.union_right_right hsub2
-  · exact hne
-
-theorem union_intro {env : TypeEnv s} {C1 C2 : CaptureSet s}
-  (h1 : env.HasSepDom C1) (h2 : env.HasSepDom C2)
-  (hcross : ∀ m1 c1 m2 c2,
-    (.cvar m1 c1) ⊆ compute_peaks env C1 → (.cvar m2 c2) ⊆ compute_peaks env C2 → c1 ≠ c2 →
-    CapabilitySet.Noninterference
-      ((env.lookup_cvar c1).2.applyMut m1)
-      ((env.lookup_cvar c2).2.applyMut m2)) :
-  env.HasSepDom (C1 ∪ C2) := by
-  intro m1 c1 m2 c2 hsub1 hsub2 hne
-  -- Case analysis on where each cvar comes from
-  cases hsub1 with
-  | union_right_left hsub1' =>
-    cases hsub2 with
-    | union_right_left hsub2' =>
-      -- Both in C1: use h1
-      exact h1 m1 c1 m2 c2 hsub1' hsub2' hne
-    | union_right_right hsub2' =>
-      -- c1 in C1, c2 in C2: use hcross
-      exact hcross m1 c1 m2 c2 hsub1' hsub2' hne
-  | union_right_right hsub1' =>
-    cases hsub2 with
-    | union_right_left hsub2' =>
-      -- c1 in C2, c2 in C1: use hcross with symmetry
-      apply CapabilitySet.Noninterference.ni_symm
-      exact hcross m2 c2 m1 c1 hsub2' hsub1' (Ne.symm hne)
-    | union_right_right hsub2' =>
-      -- Both in C2: use h2
-      exact h2 m1 c1 m2 c2 hsub1' hsub2' hne
-
-theorem union_comm {env : TypeEnv s} {C1 C2 : CaptureSet s}
-  (h : env.HasSepDom (C2 ∪ C1)) :
-  env.HasSepDom (C1 ∪ C2) := by
-  intro m1 c1 m2 c2 hsub1 hsub2 hne
-  apply h _ _ _ _ _ _ hne
-  · cases hsub1 with
-    | union_right_left h1 => exact CaptureSet.Subset.union_right_right h1
-    | union_right_right h1 => exact CaptureSet.Subset.union_right_left h1
-  · cases hsub2 with
-    | union_right_left h2 => exact CaptureSet.Subset.union_right_right h2
-    | union_right_right h2 => exact CaptureSet.Subset.union_right_left h2
-
-theorem coveredby_mono {env : TypeEnv s} {C1 C2 : CaptureSet s}
-  (h : env.HasSepDom C2)
-  (hs : (compute_peaks env C1).CoveredBy (compute_peaks env C2)) :
-  env.HasSepDom C1 := by
-  intro m1 c1 m2 c2 hsub1 hsub2 hne
-  obtain ⟨m1', hle1, hsub1'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby hsub1 hs
-  obtain ⟨m2', hle2, hsub2'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby hsub2 hs
-  have hni := h m1' c1 m2' c2 hsub1' hsub2' hne
-  have hsub_cap1 : (env.lookup_cvar c1).2.applyMut m1 ⊆ (env.lookup_cvar c1).2.applyMut m1' := by
-    cases hle1 with
-    | refl => exact CapabilitySet.Subset.refl
-    | ro_eps =>
-      simp only [CapabilitySet.applyMut]
-      exact @CapabilitySet.applyRO_subset_applyMut _ .epsilon
-  have hsub_cap2 : (env.lookup_cvar c2).2.applyMut m2 ⊆ (env.lookup_cvar c2).2.applyMut m2' := by
-    cases hle2 with
-    | refl => exact CapabilitySet.Subset.refl
-    | ro_eps =>
-      simp only [CapabilitySet.applyMut]
-      exact @CapabilitySet.applyRO_subset_applyMut _ .epsilon
-  exact CapabilitySet.Noninterference.subset_right
-    (CapabilitySet.Noninterference.subset_left hni hsub_cap1) hsub_cap2
-
-end TypeEnv.HasSepDom
 
 end Consume
