@@ -240,7 +240,9 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                     (e.subst (Subst.from_TypeEnv (env.extend_var arg ps)))
                     (fun v m'' =>
                       Ty.exi_val_denot (env.extend_var arg ps) T2 m'' v
-                      ∧ m''.preserves_liveness m') := by
+                      ∧ m''.preserves_liveness m'
+                          ((Cf.rename Rename.succ).denot
+                            (env.extend_var arg ps) m')) := by
                 apply eval_post_monotonic _ htyped
                 intro m'' v ⟨hval, _, _⟩
                 refine ⟨hval, ?_⟩
@@ -336,7 +338,9 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                     (e.subst (Subst.from_TypeEnv (env.extend_tvar denot)))
                     (fun v m'' =>
                       Ty.exi_val_denot (env.extend_tvar denot) T m'' v
-                      ∧ m''.preserves_liveness m') := by
+                      ∧ m''.preserves_liveness m'
+                          ((Cf.rename Rename.succ).denot
+                            (env.extend_tvar denot) m')) := by
                 apply eval_post_monotonic _ htyped
                 intro m'' v ⟨hval, _, _⟩
                 refine ⟨hval, ?_⟩
@@ -450,7 +454,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                     (fun v m'' =>
                       Ty.exi_val_denot
                         (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-                      ∧ m''.preserves_liveness m') := by
+                      ∧ m''.preserves_liveness m'
+                          ((Cf.rename Rename.succ).denot
+                            (env.extend_cvar CS (cap := CS.ground_denot m')) m')) := by
                 apply eval_post_monotonic _ htyped
                 intro m'' v ⟨hval, _, _⟩
                 refine ⟨hval, ?_⟩
@@ -550,7 +556,7 @@ theorem abs_val_denot_inv
         (fun v m'' =>
           Ty.exi_val_denot
             (env.extend_var arg (compute_peakset env T1.captureSet)) T2 m'' v
-          ∧ m''.preserves_liveness m')) := by
+          ∧ m''.preserves_liveness m' (expand_captures store.heap cs'))) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -593,7 +599,7 @@ theorem tabs_val_denot_inv
         (e0.subst (Subst.openTVar .top))
         (fun v m'' =>
           Ty.exi_val_denot (env.extend_tvar denot) T2 m'' v
-          ∧ m''.preserves_liveness m')) := by
+          ∧ m''.preserves_liveness m' (expand_captures store.heap cs'))) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -634,7 +640,7 @@ theorem cabs_val_denot_inv
         (fun v m'' =>
           Ty.exi_val_denot
             (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-          ∧ m''.preserves_liveness m')) := by
+          ∧ m''.preserves_liveness m' (expand_captures store.heap cs'))) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -2205,7 +2211,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                 Eval R m'' (t0.subst (Subst.openVar (.free arg)))
                   (fun v m''' =>
                     Ty.exi_val_denot (env.extend_var arg psT2) U1 m''' v
-                    ∧ m'''.preserves_liveness m'') := by
+                    ∧ m'''.preserves_liveness m'' R) := by
               apply eval_post_monotonic _ hbody_spec
               intro m''' v ⟨hval, hliv⟩
               refine ⟨?_, hliv⟩
