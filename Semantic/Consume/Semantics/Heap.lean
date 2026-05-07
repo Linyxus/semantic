@@ -2646,6 +2646,39 @@ theorem is_compatible_union_right {m : Memory} {C1 C2 : CapabilitySet}
   intro mu l b ℓ hmem hheap
   exact hcompat mu l b ℓ (CapabilitySet.hasmem.right hmem) hheap
 
+/-- `Subset` preserves location membership (modulo mutability). -/
+private theorem hasmem_of_subset {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2) :
+    ∀ mu l, CapabilitySet.hasmem mu l C1 → ∃ mu', CapabilitySet.hasmem mu' l C2 := by
+  induction hsub with
+  | refl => intro mu l hmem; exact ⟨mu, hmem⟩
+  | empty => intro _ _ hmem; exact (CapabilitySet.not_hasmem_empty hmem).elim
+  | trans _ _ ih1 ih2 =>
+    intro mu l hmem
+    obtain ⟨mu', hmem'⟩ := ih1 mu l hmem
+    exact ih2 mu' l hmem'
+  | union_left _ _ ih1 ih2 =>
+    intro mu l hmem
+    cases hmem with
+    | left hmem' => exact ih1 mu l hmem'
+    | right hmem' => exact ih2 mu l hmem'
+  | union_right_left =>
+    intro mu l hmem; exact ⟨mu, CapabilitySet.hasmem.left hmem⟩
+  | union_right_right =>
+    intro mu l hmem; exact ⟨mu, CapabilitySet.hasmem.right hmem⟩
+  | cap_ro =>
+    intro mu l hmem; cases hmem
+    exact ⟨.epsilon, CapabilitySet.hasmem.here⟩
+
+/-- `is_compatible` is anti-monotonic in the capability set: if `C1 ⊆ C2` and `m`
+    is compatible with `C2`, then it is compatible with `C1`. The mutability shift
+    in `Subset.cap_ro` is harmless because compatibility only checks the
+    underlying location, not the mutability. -/
+theorem is_compatible_subset {m : Memory} {C1 C2 : CapabilitySet}
+    (hsub : C1 ⊆ C2) (hcompat : m.is_compatible C2) : m.is_compatible C1 := by
+  intro mu l b ℓ hmem hheap
+  obtain ⟨mu', hmem'⟩ := hasmem_of_subset hsub mu l hmem
+  exact hcompat mu' l b ℓ hmem' hheap
+
 end Memory
 
 /-- Memory predicate. -/

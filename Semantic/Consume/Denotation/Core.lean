@@ -1997,11 +1997,12 @@ def val_denot_is_monotonic {env : TypeEnv s}
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [← hcs_eq, hcs'_eq]
             exact hR0_sub
-          · intro arg m' hs' harg
+          · intro arg m' hs' hcompat harg
             have hs0 := Memory.subsumes_trans hs' hmem
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [hcs'_eq]
-            exact hfun arg m' hs0 harg
+            rw [hcs'_eq] at hcompat
+            exact hfun arg m' hs0 hcompat harg
   | poly T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -2020,11 +2021,12 @@ def val_denot_is_monotonic {env : TypeEnv s}
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [← hcs_eq, hcs'_eq]
             exact hR0_sub
-          · intro m' denot msub hdenot_proper himply
+          · intro m' denot msub hcompat hdenot_proper himply
             have hs0 := Memory.subsumes_trans msub hmem
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [hcs'_eq]
-            exact hfun m' denot hs0 hdenot_proper himply
+            rw [hcs'_eq] at hcompat
+            exact hfun m' denot hs0 hcompat hdenot_proper himply
   | cpoly B cs T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -2043,11 +2045,12 @@ def val_denot_is_monotonic {env : TypeEnv s}
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [← hcs_eq, hcs'_eq]
             exact hR0_sub
-          · intro m' CS hwf _ msub hbounded
+          · intro m' CS hwf _ msub hcompat hbounded
             have hs0 := Memory.subsumes_trans msub hmem
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [hcs'_eq]
-            exact hfun m' CS hwf hs0 hbounded
+            rw [hcs'_eq] at hcompat
+            exact hfun m' CS hwf hs0 hcompat hbounded
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)

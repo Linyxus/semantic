@@ -181,7 +181,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
               simp only [List.empty_eq]
               apply CapabilitySet.Subset.refl
             · -- Show the function property
-              intro arg m' hsub harg
+              intro arg m' hsub hcompat harg
               -- Use compute_peakset which equals peakset by compute_peakset_correct
               let ps := compute_peakset env T1.captureSet
               have hkey := @Exp.from_TypeEnv_weaken_open s env arg e ps
@@ -196,22 +196,25 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                     exact (compute_peakset_correct hts T1.captureSet).symm
                   · change EnvTyping Γ env m'
                     apply env_typing_monotonic hts hsub
-              -- Apply the hypothesis directly (no Rebind needed)
-              -- REAL GAP: ht now requires `m'.is_compatible (Cf.rename Rename.succ).denot ...`,
-              -- which would naturally come from the function-call site. The val_denot for
-              -- arrow types should expose a compat premise on the function body, but currently
-              -- doesn't. Updating val_denot is a deep change deferred for now.
-              have htyped := ht (env.extend_var arg ps) m' henv (by sorry)
-              simp only [Ty.exi_exp_denot] at htyped ⊢
-              -- Show capability sets match
               have hcap_rename :
                 (Cf.rename Rename.succ).denot (env.extend_var arg ps)
                 = Cf.denot env := by
                 have := rebind_captureset_denot
                   (Rebind.weaken (env:=env) (x:=arg) (ps:=ps)) Cf
                 exact this.symm
-              -- Show the body's authority equals the closure's authority
               have hCf_closed : Cf.IsClosed := by cases hclosed_abs; assumption
+              -- Convert hcompat (in `expand_captures store.heap ...` form) to compat for
+              -- `(Cf.rename Rename.succ).denot (env.extend_var arg ps) m'`.
+              have hauth :=
+                authority_eq_expand_captures hcap_rename
+                  (closed_capture_denot_monotonic hCf_closed hts hsub)
+              have hcompat' :
+                  m'.is_compatible ((Cf.rename Rename.succ).denot (env.extend_var arg ps) m') :=
+                hauth ▸ hcompat
+              -- Apply the hypothesis directly (no Rebind needed)
+              have htyped := ht (env.extend_var arg ps) m' henv hcompat'
+              simp only [Ty.exi_exp_denot] at htyped ⊢
+              -- Show the body's authority equals the closure's authority
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
               exact htyped
@@ -261,7 +264,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
               simp only [List.empty_eq]
               apply CapabilitySet.Subset.refl
             · -- Show the polymorphic function property
-              intro m' denot hsub hproper himply_simple_ans himply hpure
+              intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
               have hkey := @Exp.from_TypeEnv_weaken_open_tvar s env denot e
               refine hkey ▸ ?_
               -- Build EnvTyping using the type denotation
@@ -279,18 +282,21 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                         · exact hpure
                         · change EnvTyping Γ env m'
                           apply env_typing_monotonic hts hsub
-              -- Apply the hypothesis
-              -- REAL GAP: same as sem_typ_abs - val_denot for poly types should expose
-              -- a compat premise on the function body. Deferred.
-              have htyped := ht (env.extend_tvar denot) m' henv (by sorry)
-              simp only [Ty.exi_exp_denot] at htyped ⊢
-              -- Show capability sets match
               have hcap_rename :
                 (Cf.rename Rename.succ).denot (env.extend_tvar denot) = Cf.denot env := by
                 have := rebind_captureset_denot (Rebind.tweaken (env:=env) (d:=denot)) Cf
                 exact this.symm
-              -- Show the authority matches
               have hCf_closed : Cf.IsClosed := by cases hclosed_tabs; assumption
+              have hauth :=
+                authority_eq_expand_captures hcap_rename
+                  (closed_capture_denot_monotonic hCf_closed hts hsub)
+              have hcompat' :
+                  m'.is_compatible ((Cf.rename Rename.succ).denot (env.extend_tvar denot) m') :=
+                hauth ▸ hcompat
+              -- Apply the hypothesis
+              have htyped := ht (env.extend_tvar denot) m' henv hcompat'
+              simp only [Ty.exi_exp_denot] at htyped ⊢
+              -- Show the authority matches
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
               exact htyped
@@ -340,7 +346,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               simp only [List.empty_eq]
               apply CapabilitySet.Subset.refl
             · -- Show the capture polymorphic function property
-              intro m' CS hwf hsub hsub_bound
+              intro m' CS hwf hsub hcompat hsub_bound
               have hkey := @Exp.from_TypeEnv_weaken_open_cvar s env CS e
               refine hkey ▸ ?_
               -- Build EnvTyping
@@ -368,12 +374,6 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                 · rfl
                 · change EnvTyping Γ env m'
                   apply env_typing_monotonic hts hsub
-              -- Apply the hypothesis
-              -- REAL GAP: same as sem_typ_abs - val_denot for cpoly types should expose
-              -- a compat premise on the function body. Deferred.
-              have htyped := ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv (by sorry)
-              simp only [Ty.exi_exp_denot] at htyped ⊢
-              -- Show capability sets match
               have hcap_rename :
                   (Cf.rename Rename.succ).denot
                     (env.extend_cvar CS (cap := CS.ground_denot m')) = Cf.denot env := by
@@ -381,8 +381,20 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                   rebind_captureset_denot
                     (Rebind.cweaken (env:=env) (cs:=CS) (cap:=CS.ground_denot m')) Cf
                 exact this.symm
-              -- Show the authority matches
               have hCf_closed : Cf.IsClosed := by cases hclosed_cabs; assumption
+              have hauth :=
+                authority_eq_expand_captures hcap_rename
+                  (closed_capture_denot_monotonic hCf_closed hts hsub)
+              have hcompat' :
+                  m'.is_compatible
+                    ((Cf.rename Rename.succ).denot
+                      (env.extend_cvar CS (cap := CS.ground_denot m')) m') :=
+                hauth ▸ hcompat
+              -- Apply the hypothesis
+              have htyped :=
+                ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv hcompat'
+              simp only [Ty.exi_exp_denot] at htyped ⊢
+              -- Show capability sets match (using hcap_rename and hCf_closed above)
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
               rw [Subst.from_TypeEnv_extend_cvar_cap_irrelevant
@@ -447,6 +459,7 @@ theorem abs_val_denot_inv
     ∧ expand_captures store.heap cs' ⊆ cs.denot env store
     ∧ (∀ (arg : Nat) (m' : Memory),
       m'.subsumes store ->
+      m'.is_compatible (expand_captures store.heap cs') ->
       Ty.val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
@@ -485,6 +498,7 @@ theorem tabs_val_denot_inv
     ∧ expand_captures store.heap cs' ⊆ cs.denot env store
     ∧ (∀ (m' : Memory) (denot : Denot),
       m'.subsumes store ->
+      m'.is_compatible (expand_captures store.heap cs') ->
       denot.is_proper ->
       denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
@@ -526,6 +540,7 @@ theorem cabs_val_denot_inv
     ∧ (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
       m'.subsumes store ->
+      m'.is_compatible (expand_captures store.heap cs') ->
       ((CS.denot TypeEnv.empty m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS (cap := CS.ground_denot m'))
@@ -728,7 +743,7 @@ theorem sem_typ_app
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ T1) :
   (.var .epsilon (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
-  intro env store hts _
+  intro env store hts hcompat
   -- Extract function denotation
   have h1 := hx env store hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -751,8 +766,11 @@ theorem sem_typ_app
   -- Simplify goal
   simp only [Ty.exi_exp_denot, Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot,
     List.empty_eq]
+  -- Derive compat for the closure's authority from the budget compat.
+  have hcompat_closure : store.is_compatible (expand_captures store.heap cs') :=
+    Memory.is_compatible_subset hR0_sub hcompat
   -- Apply function to argument
-  have happ := hfun fy store (Memory.subsumes_refl store) h2'
+  have happ := hfun fy store (Memory.subsumes_refl store) hcompat_closure h2'
   -- The opening lemma relates extended environment to substituted type
   let ps := compute_peakset env T1.captureSet
   let R := expand_captures store.heap cs'
@@ -774,7 +792,7 @@ theorem sem_typ_tapp
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (Ty.poly S.core (.var .epsilon (.bound x)) T)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
-  intro env store hts _
+  intro env store hts hcompat
   -- Extract function denotation
   have h1 := hx env store hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -788,10 +806,14 @@ theorem sem_typ_tapp
   -- Simplify goal
   simp only [Ty.exi_exp_denot, Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot,
     List.empty_eq]
+  -- Derive compat for the closure's authority from the budget compat.
+  have hcompat_closure : store.is_compatible (expand_captures store.heap cs) :=
+    Memory.is_compatible_subset hR0_sub hcompat
   -- Apply the polymorphic function to the type argument S.core
   -- We need to provide: is_proper, implies_simple_ans, ImplyAfter, enforce_pure
   have himply_simple := val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) S.core
   have happ := hfun store (Ty.val_denot env S.core) (Memory.subsumes_refl store)
+    hcompat_closure
     (val_denot_is_proper hts)  -- Type denotations are proper
     himply_simple  -- implies_simple_ans
     (by intro m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))  -- ImplyAfter
@@ -903,7 +925,7 @@ theorem sem_typ_capp
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (.cpoly (.bound D) (.var .epsilon (.bound x)) T)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
-  intro env store hts _
+  intro env store hts hcompat
   -- Extract function denotation
   have h1 := hx env store hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -930,10 +952,14 @@ theorem sem_typ_capp
       from_TypeEnv_wf_in_heap hts
     -- Apply wf_subst
     exact CaptureSet.wf_subst hD_wf hσ_wf
+  -- Derive compat for the closure's authority from the budget compat.
+  have hcompat_closure : store.is_compatible (expand_captures store.heap cs) :=
+    Memory.is_compatible_subset hR0_sub hcompat
   -- Apply the polymorphic function to the capture argument D'
   have happ := hfun store D'
     hD'_wf              -- Closed capture sets are well-formed
     (Memory.subsumes_refl store)          -- Memory subsumes itself
+    hcompat_closure
     (by
       rw [hD'_denot]
       simpa only [CaptureBound.denot, List.empty_eq] using
@@ -1071,8 +1097,9 @@ theorem sem_typ_cond
   · -- true branch
     intro m1 v hsub hQtrue hres
     -- REAL GAP: need to know the C2 budget remains compatible after the guard reduction.
-    -- The guard uses budget C1, and evaluation may drop C1-cells, but should preserve
-    -- C2/C3 cells. This invariant is not currently captured by Eval/Q1.
+    -- The guard `(.var x)` operationally cannot drop cells, but the abstract
+    -- `eval_cond` rule allows arbitrary `m1.subsumes store`, so this isn't directly
+    -- derivable here. Discharging would require a meta-property about var-Eval.
     have hcompat_C2 : m1.is_compatible (C2.denot env m1) := by sorry
     have hthen := ht2 env m1 (env_typing_monotonic hts hsub) hcompat_C2
     simp only [Ty.exi_exp_denot] at hthen
@@ -1085,7 +1112,7 @@ theorem sem_typ_cond
     exact hcap_eq ▸ eval_capability_set_monotonic hthen hsubC2
   · -- false branch
     intro m1 v hsub hQfalse hres
-    -- REAL GAP: same as true branch for C3.
+    -- REAL GAP: same as true branch — needs a var-Eval no-mutation meta-property.
     have hcompat_C3 : m1.is_compatible (C3.denot env m1) := by sorry
     have helse := ht3 env m1 (env_typing_monotonic hts hsub) hcompat_C3
     simp only [Ty.exi_exp_denot] at helse
@@ -1498,10 +1525,13 @@ theorem sem_typ_letin
     let ps := CaptureSet.peakset Γ2 T.captureSet
     have ht2' := ht2 (env.extend_var l' ps)
       (m1.extend_val l' heapval hwf_v rfl hfresh)
-    -- REAL GAP: C2-compatibility on the extended memory needs to be derived from
-    -- the original `hcompat` for (C1 ∪ C2). e1 may have dropped C1-cells but should
-    -- have left C2 untouched; we don't currently have a meta-property of Eval to
-    -- assert this.
+    -- REAL GAP: We need `m1_ext.is_compatible (C2.denot env m1_ext)`, but `m1` is
+    -- the result of evaluating `e1` under budget `C1`, and `m1` is only known via
+    -- `m1.subsumes store`. Subsumption admits live → dead transitions, so without
+    -- an additional meta-property of `Eval` saying "evaluation under C1 does not
+    -- drop cells outside C1", C2 cells in m1 may be dead. Discharging this needs
+    -- a preservation lemma about the budget-residual: if `Eval C m e Q`, then any
+    -- m' satisfying Q v m' has its non-C cells unchanged.
     have hcompat2 :
         (m1.extend_val l' heapval hwf_v rfl hfresh).is_compatible
           ((C2.rename Rename.succ).denot (env.extend_var l' ps)
@@ -1569,7 +1599,7 @@ theorem sem_typ_letin
     case free fx =>
       let ps := CaptureSet.peakset Γ2 T.captureSet
       have ht2' := ht2 (env.extend_var fx ps) m1
-      -- REAL GAP: same as h_val case.
+      -- REAL GAP: same as h_val case — needs an `Eval` preservation lemma.
       have hcompat2 :
           m1.is_compatible
             ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1) := by sorry
@@ -1956,7 +1986,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
               _ ⊆ cs1.denot env m' := hR0_subset_cs1
               _ ⊆ cs2.denot env m' := hcs_sem
           · -- Need to prove the body property with contravariant arg and covariant result
-            intro arg m'' hsub harg_T2
+            intro arg m'' hsub hcompat harg_T2
             -- Use the computed peak sets
             let psT1 := compute_peakset env T1.captureSet
             let psT2 := compute_peakset env T2.captureSet
@@ -1969,7 +1999,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             let R0 := expand_captures m'.heap cs'
             let R := R0
             -- Apply hbody at the T1 peak set
-            have hbody_spec := hbody arg m'' hsub harg_T1
+            have hbody_spec := hbody arg m'' hsub hcompat harg_T1
             simp only [Ty.exi_exp_denot] at hbody_spec
             -- Transport from psT1 to psT2 using Retype with the identity substitution.
             have hretype :
@@ -2135,7 +2165,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
               _ ⊆ cs1.denot env m' := hR0_subset_cs1
               _ ⊆ cs2.denot env m' := hcs_sem
           · -- Need to prove the body property with contravariant bound and covariant body
-            intro m'' CS hCS_wf hsub_m'' hCS_satisfies_cb2
+            intro m'' CS hCS_wf hsub_m'' hcompat hCS_satisfies_cb2
             let A0 := CS.denot TypeEnv.empty
             have hCS_satisfies_cb1 : (A0 m'').BoundedBy (cb1.denot env m'') := by
               have hB_trans := Memory.subsumes_trans hsub_m'' hsubsumes
@@ -2143,7 +2173,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
               have hB_at_m'' := hB env m'' htyping_m''
               exact CapabilitySet.BoundedBy.trans hCS_satisfies_cb2 hB_at_m''
             -- Apply the original function body with this CS
-            have heval1 := hbody m'' CS hCS_wf hsub_m'' hCS_satisfies_cb1
+            have heval1 := hbody m'' CS hCS_wf hsub_m'' hcompat hCS_satisfies_cb1
             -- Now use covariance hT
             have henv' : EnvTyping (Γ,C<:cb2)
                 (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' := by
@@ -2336,7 +2366,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
               _ ⊆ cs1.denot env m' := hR0_subset_cs1
               _ ⊆ cs2.denot env m' := hcs_sem
           · -- Need to prove the body property with contravariant bound and covariant body
-            intro m'' denot hsub_m'' hdenot_proper hdenot_simple himply_S2 hdenot_pure
+            intro m'' denot hsub_m'' hcompat hdenot_proper hdenot_simple himply_S2 hdenot_pure
             -- hbody expects denot.ImplyAfter m'' (Ty.val_denot env S1.core)
             -- We have himply_S2 : denot.ImplyAfter m'' (Ty.val_denot env S2.core)
             -- And hS : SemSubtyp Γ S2.core S1.core, i.e., S2.core <: S1.core
@@ -2353,7 +2383,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
               exact hS_sem m''' hS_trans e' hS2
             -- Apply the original function body with this denot
             have heval1 :=
-              hbody m'' denot hsub_m'' hdenot_proper hdenot_simple himply_S1 hdenot_pure
+              hbody m'' denot hsub_m'' hcompat hdenot_proper hdenot_simple himply_S1 hdenot_pure
             -- Now use covariance hT
             have henv' : EnvTyping (Γ,X<:S2) (env.extend_tvar denot) m'' := by
               constructor
@@ -2475,12 +2505,11 @@ theorem sem_typ_subtyp
         (Ty.exi_val_denot env E2).as_mpost by
     simpa only [Ty.exi_exp_denot, List.empty_eq] using this
   -- Get the evaluation from ht at C1 and E1
-  -- REAL GAP: ht needs `m.is_compatible (C1.denot env m)`. We have compat for C2,
-  -- and C1 ⊆ C2 (semantically) via hsubcapt, but is_compatible is anti-monotonic
-  -- in the set, so a subset of C2 may have FEWER live cells, not the same ones.
-  -- Wait - that direction is the right one: C1 ⊆ C2 means C1 has fewer locations,
-  -- so compatibility should still hold. But in our `Subset` it's not preserved.
-  have hcompat_C1 : m.is_compatible (C1.denot env m) := by sorry
+  -- Use fundamental_subcapt to get C1.denot ⊆ C2.denot (semantic subcapt)
+  have hsubcapt_sem := fundamental_subcapt hsubcapt env m htyping
+  -- Derive compat for C1 from compat for C2 using anti-monotonicity of is_compatible.
+  have hcompat_C1 : m.is_compatible (C1.denot env m) :=
+    Memory.is_compatible_subset hsubcapt_sem hcompat
   have h_eval_E1 :
       Eval
         (C1.denot env m)
@@ -2489,8 +2518,6 @@ theorem sem_typ_subtyp
         (Ty.exi_val_denot env E1).as_mpost := by
     simpa only [Ty.exi_exp_denot] using ht env m htyping hcompat_C1
   -- h_eval_E1 : Eval (C1.denot env m) m (e.subst ...) (exi_val_denot env E1).as_mpost
-  -- Use fundamental_subcapt to get C1.denot ⊆ C2.denot
-  have hsubcapt_sem := fundamental_subcapt hsubcapt env m htyping
   -- hsubcapt_sem : C1.denot env m ⊆ C2.denot env m
   -- Lift the evaluation from C1 to C2 using capability set monotonicity
   have h_eval_E1_at_C2 := eval_capability_set_monotonic h_eval_E1 hsubcapt_sem
@@ -2639,7 +2666,8 @@ theorem sem_typ_unpack
       let ps := CaptureSet.peakset (Γ2.push_cvar .consume .unbound) T.captureSet
       let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
       have hu' := hu (env'.extend_var fx ps) m1
-      -- REAL GAP: same as letin's body case.
+      -- REAL GAP: same as letin's body case — needs an `Eval` preservation lemma
+      -- to assert that t's evaluation under C1 didn't drop C2/cs cells in m1.
       have hcompat_body :
           m1.is_compatible
             (((C2.rename Rename.succ).rename Rename.succ

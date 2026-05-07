@@ -329,23 +329,23 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro arg m' hsub harg
+      intro arg m' hsub hcompat harg
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
-      specialize hd arg m' hsub harg'
+      specialize hd arg m' hsub hcompat harg'
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro arg m' hsub harg
+      intro arg m' hsub hcompat harg
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mp harg
-      specialize hd arg m' hsub harg'
+      specialize hd arg m' hsub hcompat harg'
       exact (ih2 m' _).mpr hd
   | .poly T1 cs T2 => by
     have ih1 := retype_val_denot ρ T1
@@ -356,23 +356,23 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hproper himply_simple_ans himply hpure
+      intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
       let R0 := expand_captures m.heap cs'
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hproper himply_simple_ans himply' hpure
+      specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hproper himply_simple_ans himply hpure
+      intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
       let R0 := expand_captures m.heap cs'
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.subst σ)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hproper himply_simple_ans himply' hpure
+      specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
   | .cpoly B cs T => by
     have hB := retype_capturebound_denot ρ B
@@ -384,25 +384,25 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hsub hsub_bound
+      intro m' CS hwf_CS hsub hcompat hsub_bound
       let R0 := expand_captures m.heap cs'
       let cap1 : CapabilitySet := CS.ground_denot m'
       let ρ1 : Retype (env1.extend_cvar CS cap1) σ.lift
                       (env2.extend_cvar CS cap1) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap1)
       have ih2 := retype_exi_exp_denot ρ1 T R0
-      specialize hd m' CS hwf_CS hsub hsub_bound
+      specialize hd m' CS hwf_CS hsub hcompat hsub_bound
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hsub hsub_bound
+      intro m' CS hwf_CS hsub hcompat hsub_bound
       let R0 := expand_captures m.heap cs'
       let cap2 : CapabilitySet := CS.ground_denot m'
       let ρ2 : Retype (env1.extend_cvar CS cap2) σ.lift
                       (env2.extend_cvar CS cap2) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap2)
       have ih2 := retype_exi_exp_denot ρ2 T R0
-      specialize hd m' CS hwf_CS hsub hsub_bound
+      specialize hd m' CS hwf_CS hsub hcompat hsub_bound
       exact (ih2 m' _).mpr hd
 
 def retype_exi_val_denot
