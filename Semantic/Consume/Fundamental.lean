@@ -232,7 +232,10 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                 hauth ▸ hcompat
               -- Apply the hypothesis (gives strong Eval).
               have htyped := ht (env.extend_var arg ps) m' henv hcompat'
-              -- Convert post: drop preserves_liveness_consume_only conjunct.
+              -- The body's typing context is `Γ.lock,x:T1`: every cvar is
+              -- locked, so the `preserves_liveness_consume_only` post-condition
+              -- collapses to "ℓ unchanged" on every cell — which (restricted to
+              -- R0) is exactly `preserves_liveness m'' m' R0`.
               have htyped_new :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_var arg ps) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_var arg ps)))
@@ -242,10 +245,20 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                           ((Cf.rename Rename.succ).denot
                             (env.extend_var arg ps) m')) := by
                 apply eval_post_monotonic _ htyped
-                intro m'' v ⟨hval, _⟩
+                intro m'' v ⟨hval, hliv⟩
                 refine ⟨hval, ?_⟩
-                -- preserves_liveness gap: needs lock-context lemma.
-                sorry
+                intro l b _mu _hcov hheap
+                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b .live hheap
+                rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
+                · -- ℓ' = .live: liveness preserved, b' is the new boolean.
+                  subst hℓeq
+                  exact ⟨b', hheap'⟩
+                · -- The lookup must traverse `lock` since the topmost binding
+                  -- is `.var T1` (not a cvar), forcing `locked = true` —
+                  -- contradicting `locked = false`.
+                  exfalso
+                  cases hlk with
+                  | there hlk' => cases hlk'
               -- Show the body's authority equals the closure's authority
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
@@ -329,7 +342,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                 hauth ▸ hcompat
               -- Apply the hypothesis (gives strong Eval).
               have htyped := ht (env.extend_tvar denot) m' henv hcompat'
-              -- Convert post: drop access/empty, ADD preserves_liveness (sorry'd).
+              -- Body's typing context is `Γ.lock,X<:S`: every cvar is locked,
+              -- so `preserves_liveness_consume_only` collapses to ℓ-preservation.
               have htyped_new :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_tvar denot) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_tvar denot)))
@@ -339,9 +353,16 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                           ((Cf.rename Rename.succ).denot
                             (env.extend_tvar denot) m')) := by
                 apply eval_post_monotonic _ htyped
-                intro m'' v ⟨hval, _⟩
+                intro m'' v ⟨hval, hliv⟩
                 refine ⟨hval, ?_⟩
-                sorry
+                intro l b _mu _hcov hheap
+                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b .live hheap
+                rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
+                · subst hℓeq
+                  exact ⟨b', hheap'⟩
+                · exfalso
+                  cases hlk with
+                  | there hlk' => cases hlk'
               -- Show the authority matches
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
@@ -441,7 +462,10 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               -- Apply the hypothesis
               have htyped :=
                 ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv hcompat'
-              -- Convert post: drop access/empty, ADD preserves_liveness (sorry'd).
+              -- Body's typing context is `Γ.lock,C<:cb`: the topmost cvar is
+              -- `.access`-mode, deeper cvars are all behind a lock — so no cvar
+              -- can be `.consume`-unlocked, and `preserves_liveness_consume_only`
+              -- collapses to ℓ-preservation.
               have htyped_new :
                   Eval ((Cf.rename Rename.succ).denot
                           (env.extend_cvar CS (cap := CS.ground_denot m')) m') m'
@@ -454,9 +478,16 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                           ((Cf.rename Rename.succ).denot
                             (env.extend_cvar CS (cap := CS.ground_denot m')) m')) := by
                 apply eval_post_monotonic _ htyped
-                intro m'' v ⟨hval, _⟩
+                intro m'' v ⟨hval, hliv⟩
                 refine ⟨hval, ?_⟩
-                sorry
+                intro l b _mu _hcov hheap
+                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b .live hheap
+                rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
+                · subst hℓeq
+                  exact ⟨b', hheap'⟩
+                · exfalso
+                  cases hlk with
+                  | there hlk' => cases hlk'
               -- Show capability sets match (using hcap_rename and hCf_closed above)
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]

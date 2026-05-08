@@ -358,24 +358,24 @@ def Denot.enforce_pure (d : Denot) : Prop :=
 
 /-- `m'.preserves_liveness m R` says that every live mcell in `m` whose
     location is covered by capability set `R` (at any mutability) is still
-    a live mcell in `m'` (with the same boolean value). It rules out
-    `live → dead` transitions during evaluation on locations within `R` but
-    allows new allocations and writes (boolean changes). This is the key
-    invariant satisfied by function bodies: the `lock` in their typing
-    context disables every consume peak of the body's budget `R0`, so no
-    mcell reachable from `R0` can be dropped. Locations outside `R` carry
-    no obligation, since the body cannot touch them anyway. -/
+    a live mcell in `m'` (with possibly a different boolean value, since
+    writes are allowed). It rules out `live → dead` transitions during
+    evaluation on locations within `R`. This is the key invariant satisfied
+    by function bodies: the `lock` in their typing context disables every
+    consume peak of the body's budget `R0`, so no mcell reachable from
+    `R0` can be dropped. Locations outside `R` carry no obligation, since
+    the body cannot touch them anyway. -/
 def Memory.preserves_liveness (m' m : Memory) (R : CapabilitySet) : Prop :=
   ∀ l b mu,
     R.covers mu l →
     m.heap l = some (.capability (.mcell b .live)) →
-    m'.heap l = some (.capability (.mcell b .live))
+    ∃ b', m'.heap l = some (.capability (.mcell b' .live))
 
 /-- Reflexivity: a memory trivially preserves its own liveness. -/
 theorem Memory.preserves_liveness_refl (m : Memory) (R : CapabilitySet) :
     m.preserves_liveness m R := by
-  intro _ _ _ _ h
-  exact h
+  intro l b _ _ h
+  exact ⟨b, h⟩
 
 /-- Transitivity (with the same reachability set). -/
 theorem Memory.preserves_liveness_trans
@@ -384,7 +384,8 @@ theorem Memory.preserves_liveness_trans
     (h23 : m3.preserves_liveness m2 R) :
     m3.preserves_liveness m1 R := by
   intro l b mu hmu h
-  exact h23 l b mu hmu (h12 l b mu hmu h)
+  obtain ⟨b1, h1⟩ := h12 l b mu hmu h
+  exact h23 l b1 mu hmu h1
 
 mutual
 
