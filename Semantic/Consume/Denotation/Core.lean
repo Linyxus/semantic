@@ -660,23 +660,77 @@ theorem Memory.preserves_empty_mcells_trans
   intro c B locked hlookup mu l b ℓ hmem hheap
   exact h23 c B locked hlookup mu l b ℓ hmem (h12 c B locked hlookup mu l b ℓ hmem hheap)
 
+/-- `m.preserves_liveness_consume_only m' Γ ρ` says: for every cell that
+    exists as an mcell in source memory `m`, the cell is still an mcell in
+    `m'`, and its *liveness* component is either unchanged or has
+    transitioned `live → dead` at a location lying in the denotation of
+    some `.consume`-mode, *unlocked* cvar binding in `Γ`. The boolean
+    component `b` is unconstrained (writes may have changed it). This is
+    the fine-grained drop-frame condition: only `.consume`-unlocked cvars
+    can drop their mcells; everything else keeps its liveness. -/
+def Memory.preserves_liveness_consume_only
+    {s : Sig} (m m' : Memory) (Γ : Ctx s) (ρ : TypeEnv s) : Prop :=
+  ∀ l b ℓ,
+    m.heap l = some (.capability (.mcell b ℓ)) →
+    ∃ b' ℓ',
+      m'.heap l = some (.capability (.mcell b' ℓ')) ∧
+      (ℓ' = ℓ ∨
+       (ℓ = .live ∧ ℓ' = .dead ∧
+        ∃ c B mu,
+          Γ.LookupCVar c UseMode.consume B false ∧
+          CapabilitySet.hasmem mu l ((ρ.lookup_cvar c).2)))
+
+/-- Reflexivity: a memory trivially preserves its own liveness. -/
+theorem Memory.preserves_liveness_consume_only_refl
+    {s : Sig} (m : Memory) (Γ : Ctx s) (ρ : TypeEnv s) :
+    m.preserves_liveness_consume_only m Γ ρ := by
+  intro l b ℓ hheap
+  exact ⟨b, ℓ, hheap, Or.inl rfl⟩
+
+/-- Transitivity: drop-only liveness changes compose. -/
+theorem Memory.preserves_liveness_consume_only_trans
+    {s : Sig} {m1 m2 m3 : Memory} {Γ : Ctx s} {ρ : TypeEnv s}
+    (h12 : m1.preserves_liveness_consume_only m2 Γ ρ)
+    (h23 : m2.preserves_liveness_consume_only m3 Γ ρ) :
+    m1.preserves_liveness_consume_only m3 Γ ρ := by
+  intro l b ℓ hheap
+  obtain ⟨b1, ℓ1, hheap1, hc12⟩ := h12 l b ℓ hheap
+  obtain ⟨b2, ℓ2, hheap2, hc23⟩ := h23 l b1 ℓ1 hheap1
+  refine ⟨b2, ℓ2, hheap2, ?_⟩
+  rcases hc12 with hpre1 | ⟨hl1, hd1, hcons1⟩
+  · -- m1→m2 preserved: ℓ1 = ℓ
+    subst hpre1
+    rcases hc23 with hpre2 | ⟨hl2, hd2, hcons2⟩
+    · left; exact hpre2
+    · right; exact ⟨hl2, hd2, hcons2⟩
+  · -- m1→m2 dropped: ℓ = live, ℓ1 = dead, l consumable
+    rcases hc23 with hpre2 | ⟨hl2, hd2, hcons2⟩
+    · right
+      subst hpre2
+      exact ⟨hl1, hd1, hcons1⟩
+    · -- ℓ1 = .dead from hd1 conflicts with hl2 : ℓ1 = .live
+      exfalso
+      rw [hd1] at hl2
+      cases hl2
+
 /-- Semantic typing.
-    *Pre*: every cell reached via `C` (whether `.access` or `.consume`) must be
-    live at the start (`m.is_compatible (C.denot ρ m)`).
-    *Post*: in any reachable result memory `m'`,
-      (1) every `.access`-mode peak of `C` is still live (`is_access_compat`),
-      (2) every `.empty`-mode cvar binding in `Γ` has its mcells unchanged
-          from `m` to `m'` (`preserves_empty_mcells`).
-    The `.consume`-mode peaks of `C` may have been dropped during evaluation,
-    so we make no liveness claim about them in the result. -/
+    *Pre*: every cell reached via `C` (whether `.access` or `.consume`) must
+    be live at the start (`m.is_compatible (C.denot ρ m)`).
+    *Post*: in any reachable result memory `m'`, the result satisfies
+    `E` and the only liveness changes from `m` to `m'` are `live → dead`
+    transitions at locations covered by `.consume`-mode, unlocked cvar
+    bindings in `Γ` (`preserves_liveness_consume_only`). This single
+    invariant subsumes the old `is_access_compat` and the liveness part of
+    `preserves_empty_mcells`: access-mode peaks of `C` are not consumable,
+    so they remain live; empty-mode cvar locations are not consumable
+    either, so their liveness is preserved. -/
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m →
     m.is_compatible (C.denot ρ m) →
     Eval (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
       (fun v m' => Ty.exi_val_denot ρ E m' v
-                 ∧ m'.is_access_compat Γ ρ C
-                 ∧ Memory.preserves_empty_mcells m m' Γ ρ)
+                 ∧ m.preserves_liveness_consume_only m' Γ ρ)
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
