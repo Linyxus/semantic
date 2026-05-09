@@ -356,36 +356,32 @@ def Denot.enforce_pure (d : Denot) : Prop :=
     d m e ->
     resolve_reachability m.heap e ⊆ .empty
 
-/-- `m'.preserves_liveness m R` says that every live mcell in `m` whose
-    location is covered by capability set `R` (at any mutability) is still
-    a live mcell in `m'` (with possibly a different boolean value, since
-    writes are allowed). It rules out `live → dead` transitions during
-    evaluation on locations within `R`. This is the key invariant satisfied
-    by function bodies: the `lock` in their typing context disables every
-    consume peak of the body's budget `R0`, so no mcell reachable from
-    `R0` can be dropped. Locations outside `R` carry no obligation, since
-    the body cannot touch them anyway. -/
-def Memory.preserves_liveness (m' m : Memory) (R : CapabilitySet) : Prop :=
-  ∀ l b mu,
-    R.covers mu l →
-    m.heap l = some (.capability (.mcell b .live)) →
-    ∃ b', m'.heap l = some (.capability (.mcell b' .live))
+/-- `m'.preserves_liveness_full m` says: every mcell in `m` is still an
+    mcell in `m'` with the same liveness component. The boolean component
+    is unconstrained (writes are allowed). This is the drop-frame condition
+    without exceptions — exactly what a function body delivers, since the
+    `lock` in the body's typing context disables every consume peak of the
+    body's typing context, so no cell can be dropped. -/
+def Memory.preserves_liveness_full (m' m : Memory) : Prop :=
+  ∀ l b ℓ,
+    m.heap l = some (.capability (.mcell b ℓ)) →
+    ∃ b', m'.heap l = some (.capability (.mcell b' ℓ))
 
 /-- Reflexivity: a memory trivially preserves its own liveness. -/
-theorem Memory.preserves_liveness_refl (m : Memory) (R : CapabilitySet) :
-    m.preserves_liveness m R := by
-  intro l b _ _ h
+theorem Memory.preserves_liveness_full_refl (m : Memory) :
+    m.preserves_liveness_full m := by
+  intro l b _ h
   exact ⟨b, h⟩
 
-/-- Transitivity (with the same reachability set). -/
-theorem Memory.preserves_liveness_trans
-    {m1 m2 m3 : Memory} {R : CapabilitySet}
-    (h12 : m2.preserves_liveness m1 R)
-    (h23 : m3.preserves_liveness m2 R) :
-    m3.preserves_liveness m1 R := by
-  intro l b mu hmu h
-  obtain ⟨b1, h1⟩ := h12 l b mu hmu h
-  exact h23 l b1 mu hmu h1
+/-- Transitivity. -/
+theorem Memory.preserves_liveness_full_trans
+    {m1 m2 m3 : Memory}
+    (h12 : m2.preserves_liveness_full m1)
+    (h23 : m3.preserves_liveness_full m2) :
+    m3.preserves_liveness_full m1 := by
+  intro l b ℓ h
+  obtain ⟨b1, h1⟩ := h12 l b ℓ h
+  exact h23 l b1 ℓ h1
 
 mutual
 
@@ -434,7 +430,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         (fun v m'' =>
           Ty.exi_val_denot
             (env.extend_var arg (compute_peakset env T1.captureSet)) T2 m'' v
-          ∧ m''.preserves_liveness m' R0))
+          ∧ m''.preserves_liveness_full m'))
 | env, .poly T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -453,7 +449,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       Eval R0 m' (t0.subst (Subst.openTVar .top))
         (fun v m'' =>
           Ty.exi_val_denot (env.extend_tvar denot) T2 m'' v
-          ∧ m''.preserves_liveness m' R0))
+          ∧ m''.preserves_liveness_full m'))
   | env, .cpoly B cs T => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -472,7 +468,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         (fun v m'' =>
           Ty.exi_val_denot
             (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-          ∧ m''.preserves_liveness m' R0))
+          ∧ m''.preserves_liveness_full m'))
 
 /-- Value denotation for existential types. -/
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot

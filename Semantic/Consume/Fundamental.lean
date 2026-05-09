@@ -234,24 +234,21 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
               have htyped := ht (env.extend_var arg ps) m' henv hcompat'
               -- The body's typing context is `Γ.lock,x:T1`: every cvar is
               -- locked, so the `preserves_liveness_consume_only` post-condition
-              -- collapses to "ℓ unchanged" on every cell — which (restricted to
-              -- R0) is exactly `preserves_liveness m'' m' R0`.
+              -- collapses to "ℓ unchanged on every cell" — exactly
+              -- `preserves_liveness_full`.
               have htyped_new :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_var arg ps) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_var arg ps)))
                     (fun v m'' =>
                       Ty.exi_val_denot (env.extend_var arg ps) T2 m'' v
-                      ∧ m''.preserves_liveness m'
-                          ((Cf.rename Rename.succ).denot
-                            (env.extend_var arg ps) m')) := by
+                      ∧ m''.preserves_liveness_full m') := by
                 apply eval_post_monotonic _ htyped
                 intro m'' v ⟨hval, hliv⟩
                 refine ⟨hval, ?_⟩
-                intro l b _mu _hcov hheap
-                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b .live hheap
+                intro l b ℓ hheap
+                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b ℓ hheap
                 rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
-                · -- ℓ' = .live: liveness preserved, b' is the new boolean.
-                  subst hℓeq
+                · subst hℓeq
                   exact ⟨b', hheap'⟩
                 · -- The lookup must traverse `lock` since the topmost binding
                   -- is `.var T1` (not a cvar), forcing `locked = true` —
@@ -343,20 +340,19 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
               -- Apply the hypothesis (gives strong Eval).
               have htyped := ht (env.extend_tvar denot) m' henv hcompat'
               -- Body's typing context is `Γ.lock,X<:S`: every cvar is locked,
-              -- so `preserves_liveness_consume_only` collapses to ℓ-preservation.
+              -- so `preserves_liveness_consume_only` collapses to
+              -- `preserves_liveness_full`.
               have htyped_new :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_tvar denot) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_tvar denot)))
                     (fun v m'' =>
                       Ty.exi_val_denot (env.extend_tvar denot) T m'' v
-                      ∧ m''.preserves_liveness m'
-                          ((Cf.rename Rename.succ).denot
-                            (env.extend_tvar denot) m')) := by
+                      ∧ m''.preserves_liveness_full m') := by
                 apply eval_post_monotonic _ htyped
                 intro m'' v ⟨hval, hliv⟩
                 refine ⟨hval, ?_⟩
-                intro l b _mu _hcov hheap
-                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b .live hheap
+                intro l b ℓ hheap
+                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b ℓ hheap
                 rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
                 · subst hℓeq
                   exact ⟨b', hheap'⟩
@@ -465,7 +461,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               -- Body's typing context is `Γ.lock,C<:cb`: the topmost cvar is
               -- `.access`-mode, deeper cvars are all behind a lock — so no cvar
               -- can be `.consume`-unlocked, and `preserves_liveness_consume_only`
-              -- collapses to ℓ-preservation.
+              -- collapses to `preserves_liveness_full`.
               have htyped_new :
                   Eval ((Cf.rename Rename.succ).denot
                           (env.extend_cvar CS (cap := CS.ground_denot m')) m') m'
@@ -474,14 +470,12 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                     (fun v m'' =>
                       Ty.exi_val_denot
                         (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-                      ∧ m''.preserves_liveness m'
-                          ((Cf.rename Rename.succ).denot
-                            (env.extend_cvar CS (cap := CS.ground_denot m')) m')) := by
+                      ∧ m''.preserves_liveness_full m') := by
                 apply eval_post_monotonic _ htyped
                 intro m'' v ⟨hval, hliv⟩
                 refine ⟨hval, ?_⟩
-                intro l b _mu _hcov hheap
-                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b .live hheap
+                intro l b ℓ hheap
+                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b ℓ hheap
                 rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
                 · subst hℓeq
                   exact ⟨b', hheap'⟩
@@ -566,7 +560,7 @@ theorem abs_val_denot_inv
         (fun v m'' =>
           Ty.exi_val_denot
             (env.extend_var arg (compute_peakset env T1.captureSet)) T2 m'' v
-          ∧ m''.preserves_liveness m' (expand_captures store.heap cs'))) := by
+          ∧ m''.preserves_liveness_full m')) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -609,7 +603,7 @@ theorem tabs_val_denot_inv
         (e0.subst (Subst.openTVar .top))
         (fun v m'' =>
           Ty.exi_val_denot (env.extend_tvar denot) T2 m'' v
-          ∧ m''.preserves_liveness m' (expand_captures store.heap cs'))) := by
+          ∧ m''.preserves_liveness_full m')) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -650,7 +644,7 @@ theorem cabs_val_denot_inv
         (fun v m'' =>
           Ty.exi_val_denot
             (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-          ∧ m''.preserves_liveness m' (expand_captures store.heap cs'))) := by
+          ∧ m''.preserves_liveness_full m')) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -2204,7 +2198,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                 Eval R m'' (t0.subst (Subst.openVar (.free arg)))
                   (fun v m''' =>
                     Ty.exi_val_denot (env.extend_var arg psT2) U1 m''' v
-                    ∧ m'''.preserves_liveness m'' R) := by
+                    ∧ m'''.preserves_liveness_full m'') := by
               apply eval_post_monotonic _ hbody_spec
               intro m''' v ⟨hval, hliv⟩
               refine ⟨?_, hliv⟩
