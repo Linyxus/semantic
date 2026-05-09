@@ -383,6 +383,40 @@ theorem Memory.preserves_liveness_full_trans
   obtain ⟨b1, h1⟩ := h12 l b ℓ h
   exact h23 l b1 ℓ h1
 
+/-- Extending memory with a fresh mcell preserves the liveness of every old
+    mcell: the freshness assumption guarantees `l` is not in the old heap, so
+    only the new cell is added; old cells are unchanged. -/
+theorem Memory.preserves_liveness_full_extend_mcell
+    (m : Memory) (l : Nat) (b : Bool) (hfresh : m.heap l = none) :
+    (m.extend_mcell l b hfresh).preserves_liveness_full m := by
+  intro l' b' ℓ' h
+  refine ⟨b', ?_⟩
+  change (m.heap.extend_mcell l b) l' = some (.capability (.mcell b' ℓ'))
+  unfold Heap.extend_mcell
+  by_cases hl : l' = l
+  · subst hl; rw [hfresh] at h; cases h
+  · rw [if_neg hl]; exact h
+
+/-- Updating an existing mcell with a new boolean (at the same liveness) does
+    not change any cell's liveness: the updated cell keeps `ℓ`, all others are
+    unchanged. -/
+theorem Memory.preserves_liveness_full_update_mcell
+    (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ))) :
+    (m.update_mcell l b ℓ hexists).preserves_liveness_full m := by
+  intro l' b' ℓ' h
+  by_cases hl : l' = l
+  · subst hl
+    obtain ⟨b0, hb0⟩ := hexists
+    rw [hb0] at h
+    cases h
+    refine ⟨b, ?_⟩
+    change (m.heap.update_cell l' _) l' = _
+    unfold Heap.update_cell; rw [if_pos rfl]
+  · refine ⟨b', ?_⟩
+    change (m.heap.update_cell l _) l' = _
+    unfold Heap.update_cell; rw [if_neg hl]; exact h
+
 mutual
 
 /-- Value denotation for capturing types. -/
@@ -709,6 +743,19 @@ theorem Memory.preserves_liveness_consume_only_trans
       exfalso
       rw [hd1] at hl2
       cases hl2
+
+/-- A memory that preserves liveness *fully* (the body-promise condition)
+    trivially satisfies the weaker `preserves_liveness_consume_only` for any
+    context. The disjunct `ℓ' = ℓ` always holds, so no consume-cvar
+    witness is ever needed. -/
+theorem Memory.preserves_liveness_full_to_consume_only
+    {s : Sig} {m m' : Memory}
+    (h : m'.preserves_liveness_full m)
+    (Γ : Ctx s) (ρ : TypeEnv s) :
+    m.preserves_liveness_consume_only m' Γ ρ := by
+  intro l b ℓ hheap
+  obtain ⟨b', hheap'⟩ := h l b ℓ hheap
+  exact ⟨b', ℓ, hheap', Or.inl rfl⟩
 
 /-- Semantic typing.
     *Pre*: every cell reached via `C` (whether `.access` or `.consume`) must
