@@ -8,6 +8,44 @@ inductive CapMode : Type where
 | access : Mutability -> CapMode
 | drop : CapMode
 
+namespace CapMode
+
+/-- Partial order on capability modes: access modes are ordered by their
+    underlying mutability; `.drop` is comparable only to itself. -/
+inductive Le : CapMode -> CapMode -> Prop where
+| access {m1 m2 : Mutability} : m1 ≤ m2 -> Le (.access m1) (.access m2)
+| drop : Le .drop .drop
+
+instance instLE : LE CapMode := ⟨CapMode.Le⟩
+
+theorem Le.refl {m : CapMode} : m ≤ m := by
+  cases m with
+  | access _ => exact .access Mutability.Le.refl
+  | drop => exact .drop
+
+theorem Le.trans {m1 m2 m3 : CapMode} (h1 : m1 ≤ m2) (h2 : m2 ≤ m3) : m1 ≤ m3 := by
+  cases h1 with
+  | access h1' =>
+    cases h2 with
+    | access h2' => exact .access (Mutability.Le.trans h1' h2')
+  | drop => cases h2; exact .drop
+
+/-- Read-only image of a mode: access modes become `.access .ro`, drop is fixed. -/
+def applyRO : CapMode -> CapMode
+| .access _ => .access .ro
+| .drop => .drop
+
+@[simp]
+theorem applyRO_idempotent {m : CapMode} : m.applyRO.applyRO = m.applyRO := by
+  cases m <;> rfl
+
+theorem applyRO_le {m : CapMode} : m.applyRO ≤ m := by
+  cases m with
+  | access m' => exact .access Mutability.Le.ro_le
+  | drop => exact .drop
+
+end CapMode
+
 /-- A set of capability labels, representing an "authority":
   they are the set of capabilities a program at most uses. -/
 inductive CapabilitySet : Type where
@@ -17,9 +55,10 @@ inductive CapabilitySet : Type where
 
 namespace CapabilitySet
 
-/-- `covers m l C` means capability set `C` covers location `l` with at least mutability `m`.
-    If `m = .ro`, any capability at `l` suffices. If `m = .epsilon`, we need read-write access. -/
-inductive covers : Mutability -> Nat -> CapabilitySet -> Prop where
+/-- `covers m l C` means capability set `C` covers location `l` with at least
+    cap mode `m`.  Access modes follow the underlying mutability ordering;
+    `.drop` is only covered by `.drop`. -/
+inductive covers : CapMode -> Nat -> CapabilitySet -> Prop where
 | here : m1 ≤ m2 -> CapabilitySet.covers m1 l (CapabilitySet.cap m2 l)
 | left {m l C1 C2} :
   CapabilitySet.covers m l C1 ->
@@ -29,7 +68,7 @@ inductive covers : Mutability -> Nat -> CapabilitySet -> Prop where
   CapabilitySet.covers m l (CapabilitySet.union C1 C2)
 
 /-- `hasmem m l C` means capability set `C` contains capability `(m, l)` exactly. -/
-inductive hasmem : Mutability -> Nat -> CapabilitySet -> Prop where
+inductive hasmem : CapMode -> Nat -> CapabilitySet -> Prop where
 | here : CapabilitySet.hasmem m l (CapabilitySet.cap m l)
 | left {m l C1 C2} :
   CapabilitySet.hasmem m l C1 ->
@@ -48,18 +87,18 @@ theorem not_covers_empty : ¬ covers m l .empty := by
   intro h
   cases h
 
-/-- Exact membership implies coverage with the same mutability. -/
+/-- Exact membership implies coverage with the same mode. -/
 theorem hasmem_implies_covers : hasmem m l C -> covers m l C := by
   intro h
   induction h with
-  | here => exact .here Mutability.Le.refl
+  | here => exact .here CapMode.Le.refl
   | left _ ih => exact .left ih
   | right _ ih => exact .right ih
 
-/-- Coverage can be weakened to a smaller mutability. -/
+/-- Coverage can be weakened to a smaller mode. -/
 theorem covers_weaken (h : covers m1 l C) (hle : m2 ≤ m1) : covers m2 l C := by
   induction h with
-  | here hle' => exact .here (Mutability.Le.trans hle hle')
+  | here hle' => exact .here (CapMode.Le.trans hle hle')
   | left _ ih => exact .left ih
   | right _ ih => exact .right ih
 
@@ -68,7 +107,8 @@ theorem covers_of_hasmem_le (h : hasmem m2 l C) (hle : m1 ≤ m2) : covers m1 l 
   exact covers_weaken (hasmem_implies_covers h) hle
 
 /-- Characterization of membership in a singleton. -/
-theorem hasmem_cap_iff : hasmem m l (.cap m' l') ↔ m = m' ∧ l = l' := by
+theorem hasmem_cap_iff {m m' : CapMode} :
+    hasmem m l (.cap m' l') ↔ m = m' ∧ l = l' := by
   constructor
   · intro h
     cases h
@@ -78,7 +118,8 @@ theorem hasmem_cap_iff : hasmem m l (.cap m' l') ↔ m = m' ∧ l = l' := by
     exact .here
 
 /-- Characterization of coverage in a singleton. -/
-theorem covers_cap_iff : covers m l (.cap m' l') ↔ m ≤ m' ∧ l = l' := by
+theorem covers_cap_iff {m m' : CapMode} :
+    covers m l (.cap m' l') ↔ m ≤ m' ∧ l = l' := by
   constructor
   · intro h
     cases h
@@ -136,16 +177,18 @@ theorem covers_union_left (h : covers m l C1) : covers m l (C1 ∪ C2) :=
 theorem covers_union_right (h : covers m l C2) : covers m l (C1 ∪ C2) :=
   .right h
 
+/-- A singleton capability at mutability `m` (always in access mode). -/
 def singleton (m : Mutability) (l : Nat) : CapabilitySet :=
-  .cap m l
+  .cap (.access m) l
 
 instance instSingleton : Singleton Nat CapabilitySet :=
   ⟨CapabilitySet.singleton .ro⟩
 
-/-- Apply read-only mutability to all elements in a capability set. -/
+/-- Apply read-only mutability to all elements in a capability set.
+    Access caps are demoted to `.access .ro`; drop caps are preserved. -/
 def applyRO : CapabilitySet -> CapabilitySet
 | .empty => .empty
-| .cap _ l => .cap .ro l
+| .cap m l => .cap m.applyRO l
 | .union C1 C2 => .union C1.applyRO C2.applyRO
 
 /-- Apply a mutability to all elements in a capability set.
@@ -160,7 +203,7 @@ def applyMut (m : Mutability) (C : CapabilitySet) : CapabilitySet :=
 theorem applyRO_applyRO {C : CapabilitySet} : C.applyRO.applyRO = C.applyRO := by
   induction C with
   | empty => rfl
-  | cap _ l => rfl
+  | cap m l => simp only [applyRO, CapMode.applyRO_idempotent]
   | union C1 C2 ih1 ih2 => simp only [applyRO, ih1, ih2]
 
 /-- Applying mutability m to an epsilon singleton gives an m singleton. -/
@@ -169,68 +212,93 @@ theorem applyMut_singleton_epsilon {m : Mutability} {l : Nat} :
     (singleton .epsilon l).applyMut m = singleton m l := by
   cases m <;> rfl
 
-/-- Applying mutability m to an epsilon cap gives an m cap. -/
+/-- Applying mutability m to an epsilon access cap gives an m access cap. -/
 @[simp]
 theorem applyMut_cap_epsilon {m : Mutability} {l : Nat} :
-    (cap .epsilon l).applyMut m = cap m l := by
+    (cap (.access .epsilon) l).applyMut m = cap (.access m) l := by
   cases m <;> rfl
 
-/-- Membership at location l in C implies ro-membership at l in C.applyRO. -/
-theorem hasmem_applyRO_of_hasmem {C : CapabilitySet} : hasmem m l C -> hasmem .ro l C.applyRO := by
+/-- Membership at location `l` in `C` lifts to membership at `m.applyRO` in `C.applyRO`. -/
+theorem hasmem_applyRO_of_hasmem {C : CapabilitySet} :
+    hasmem m l C -> hasmem m.applyRO l C.applyRO := by
   intro h
   induction h with
   | here => exact .here
   | left _ ih => exact .left ih
   | right _ ih => exact .right ih
 
-/-- Membership in C.applyRO is always at ro mutability. -/
-theorem hasmem_applyRO_ro {C : CapabilitySet} : hasmem m l C.applyRO -> m = .ro := by
+/-- Membership in `C.applyRO` is always at a mode fixed by `applyRO` (i.e.,
+    `.access .ro` or `.drop`). -/
+theorem hasmem_applyRO_fixed {C : CapabilitySet} :
+    hasmem m l C.applyRO -> m = m.applyRO := by
   intro h
   induction C with
   | empty => cases h
   | cap m' l' =>
     simp only [applyRO] at h
     cases h
-    rfl
+    cases m' <;> rfl
   | union C1 C2 ih1 ih2 =>
     simp only [applyRO] at h
     cases h with
     | left h => exact ih1 h
     | right h => exact ih2 h
 
-/-- Characterization of membership in C.applyRO. -/
+/-- Characterization of membership in `C.applyRO`. -/
 theorem hasmem_applyRO_iff {C : CapabilitySet} :
-    hasmem m l C.applyRO ↔ m = .ro ∧ ∃ m', hasmem m' l C := by
+    hasmem m l C.applyRO ↔ ∃ m', m = m'.applyRO ∧ hasmem m' l C := by
   constructor
   · intro h
-    constructor
-    · exact hasmem_applyRO_ro h
-    · induction C with
-      | empty => cases h
-      | cap m' l' =>
-        simp only [applyRO] at h
-        cases h
-        exact ⟨m', .here⟩
-      | union C1 C2 ih1 ih2 =>
-        simp only [applyRO] at h
-        cases h with
-        | left h =>
-          obtain ⟨m', hm'⟩ := ih1 h
-          exact ⟨m', .left hm'⟩
-        | right h =>
-          obtain ⟨m', hm'⟩ := ih2 h
-          exact ⟨m', .right hm'⟩
-  · intro ⟨hm, m', hm'⟩
-    subst hm
+    induction C with
+    | empty => cases h
+    | cap m' l' =>
+      simp only [applyRO] at h
+      cases h
+      exact ⟨m', rfl, .here⟩
+    | union C1 C2 ih1 ih2 =>
+      simp only [applyRO] at h
+      cases h with
+      | left h =>
+        obtain ⟨m', heq, hm'⟩ := ih1 h
+        exact ⟨m', heq, .left hm'⟩
+      | right h =>
+        obtain ⟨m', heq, hm'⟩ := ih2 h
+        exact ⟨m', heq, .right hm'⟩
+  · intro ⟨m', heq, hm'⟩
+    subst heq
     exact hasmem_applyRO_of_hasmem hm'
 
-/-- Coverage in C implies coverage in C.applyRO (ro covers everything ro covers). -/
+/-- Coverage in C is preserved by applyRO when the mode is RO-stable (i.e.,
+    `.access .ro` or `.drop`). -/
+theorem covers_applyRO_of_covers {C : CapabilitySet} {m : CapMode}
+    (h : covers m l C) (hfix : m = m.applyRO) : covers m l C.applyRO := by
+  induction C generalizing m with
+  | empty => cases h
+  | cap m' l' =>
+    cases h
+    rename_i hle
+    -- Goal: covers m l (cap m'.applyRO l')
+    simp only [applyRO]
+    apply covers.here
+    cases hle with
+    | access hmu =>
+      rename_i mu1 mu2
+      -- hfix : .access mu1 = (.access mu1).applyRO = .access .ro, so mu1 = .ro
+      have : mu1 = .ro := by cases hfix; rfl
+      subst this
+      cases mu2 with
+      | epsilon => exact .access Mutability.Le.refl
+      | ro => exact .access Mutability.Le.refl
+    | drop => exact .drop
+  | union C1 C2 ih1 ih2 =>
+    cases h with
+    | left h' => exact .left (ih1 h' hfix)
+    | right h' => exact .right (ih2 h' hfix)
+
+/-- Specialization: coverage in C at `.access .ro` passes through to `C.applyRO`. -/
 theorem covers_applyRO_of_covers_ro {C : CapabilitySet}
-    (h : covers .ro l C) : covers .ro l C.applyRO := by
-  induction h with
-  | here _ => exact .here Mutability.Le.refl
-  | left _ ih => exact .left ih
-  | right _ ih => exact .right ih
+    (h : covers (.access .ro) l C) : covers (.access .ro) l C.applyRO :=
+  covers_applyRO_of_covers h rfl
 
 /-- Coverage in C.applyRO implies coverage in C (since applyRO only weakens). -/
 theorem covers_of_covers_applyRO {C : CapabilitySet}
@@ -241,7 +309,7 @@ theorem covers_of_covers_applyRO {C : CapabilitySet}
     simp only [applyRO] at h
     cases h
     rename_i hle
-    exact .here (Mutability.Le.trans hle Mutability.Le.ro_le)
+    exact .here (CapMode.Le.trans hle CapMode.applyRO_le)
   | union C1 C2 ih1 ih2 =>
     simp only [applyRO] at h
     cases h with
@@ -266,7 +334,7 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | union_right_right :
   Subset C1 (C2 ∪ C1)
 | cap_ro :
-  Subset (.cap .ro l) (.cap .epsilon l)
+  Subset (.cap (.access .ro) l) (.cap (.access .epsilon) l)
 
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
@@ -275,15 +343,18 @@ instance instTransSubset : Trans (α := CapabilitySet) (· ⊆ ·) (· ⊆ ·) (
   trans := CapabilitySet.Subset.trans
 
 /-- A capability set has a certain mutability kind.
-    HasKind C .ro means all capabilities in C have mutability .ro.
-    HasKind C .epsilon is always true. -/
+    `HasKind C .ro` means every cap in C is either `.access .ro` (immutable
+    access) or `.drop` (exclusive — does not grant any read/write authority).
+    `HasKind C .epsilon` is always true. -/
 inductive HasKind : CapabilitySet -> Mutability -> Prop where
 | eps :
   HasKind C .epsilon
 | ro_empty :
   HasKind .empty .ro
 | ro_cap :
-  HasKind (.cap .ro l) .ro
+  HasKind (.cap (.access .ro) l) .ro
+| ro_drop :
+  HasKind (.cap .drop l) .ro
 | ro_union :
   HasKind C1 .ro ->
   HasKind C2 .ro ->
@@ -293,7 +364,10 @@ inductive HasKind : CapabilitySet -> Mutability -> Prop where
 theorem HasKind.applyRO {C : CapabilitySet} : C.applyRO.HasKind .ro := by
   induction C with
   | empty => exact HasKind.ro_empty
-  | cap _ _ => exact HasKind.ro_cap
+  | cap m _ =>
+    cases m with
+    | access _ => exact HasKind.ro_cap
+    | drop => exact HasKind.ro_drop
   | union _ _ ih1 ih2 => exact HasKind.ro_union ih1 ih2
 
 /-- Weakening: if C has kind m1 and m1 ≤ m2, then C has kind m2. -/
@@ -329,10 +403,13 @@ theorem applyRO_subset_applyMut {C : CapabilitySet} {m : Mutability} :
     induction C with
     | empty => exact Subset.refl
     | cap m' l =>
-      -- .cap .ro l ⊆ .cap m' l
-      cases m'
-      · exact Subset.cap_ro
-      · exact Subset.refl
+      -- Need: .cap m'.applyRO l ⊆ .cap m' l
+      cases m' with
+      | access mu =>
+        cases mu with
+        | epsilon => exact Subset.cap_ro
+        | ro => exact Subset.refl
+      | drop => exact Subset.refl
     | union C1 C2 ih1 ih2 =>
       simp only [applyRO]
       exact Subset.union_left (Subset.trans ih1 Subset.union_right_left)
@@ -361,7 +438,7 @@ theorem applyRO_mono {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2) :
     simp only [applyRO]
     exact Subset.refl
 
-theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : Mutability} {x : Nat}
+theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : CapMode} {x : Nat}
   (hsub : C1 ⊆ C2)
   (hcov : covers m x C1) :
   covers m x C2 := by
@@ -378,27 +455,35 @@ theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : Mutability} {x : Na
   case cap_ro =>
     cases hcov
     case here hle =>
-      -- hle : m ≤ .ro, need to show covers m x (cap .epsilon x)
-      -- By cases on hle, m must be .ro (since only .ro ≤ .ro by refl)
-      cases hle
-      -- Now m = .ro, goal is covers .ro x (cap .epsilon x)
-      exact covers.here Mutability.Le.ro_eps
+      -- hle : m ≤ .access .ro, so m = .access .ro.
+      cases hle with
+      | access hmu =>
+        cases hmu
+        -- Goal: covers (.access .ro) x (cap (.access .epsilon) x)
+        exact covers.here (.access Mutability.Le.ro_eps)
 
-/-- If a capability set covers a location, then the singleton is a subset of the set. -/
+/-- If a capability set covers a location via an access cap, then the
+    RO singleton is a subset of the set. -/
 theorem covers_imp_singleton_subset {C : CapabilitySet} {m : Mutability} {x : Nat}
-  (hcov : covers m x C) :
+  (hcov : covers (.access m) x C) :
   {x} ⊆ C := by
-  -- {x} = cap .ro x, so we need cap .ro x ⊆ C
+  -- {x} = cap (.access .ro) x, so we need cap (.access .ro) x ⊆ C
   induction C with
   | empty => cases hcov
   | cap m' y =>
     cases hcov
     case here hle =>
-      -- covers m x (cap m' x) with m ≤ m'
-      -- Need: cap .ro x ⊆ cap m' x
-      cases m'
-      · exact Subset.cap_ro  -- .epsilon case
-      · exact Subset.refl    -- .ro case
+      -- covers (.access m) x (cap m' x) with .access m ≤ m'
+      cases hle with
+      | access hmu =>
+        -- m' = .access mu' with m ≤ mu'
+        rename_i mu'
+        cases mu' with
+        | epsilon => exact Subset.cap_ro
+        | ro =>
+          -- m ≤ .ro means m = .ro
+          cases hmu
+          exact Subset.refl
   | union C1 C2 ih1 ih2 =>
     cases hcov with
     | left h =>
@@ -408,21 +493,21 @@ theorem covers_imp_singleton_subset {C : CapabilitySet} {m : Mutability} {x : Na
       apply Subset.trans (ih2 h)
       apply Subset.union_right_right
 
-/-- If a capability set covers a location with .epsilon mutability,
+/-- If a capability set covers a location with .epsilon access,
     then the epsilon singleton is a subset of the set. -/
 theorem covers_eps_imp_singleton_eps_subset {C : CapabilitySet} {x : Nat}
-  (hcov : covers .epsilon x C) :
+  (hcov : covers (.access .epsilon) x C) :
   singleton .epsilon x ⊆ C := by
-  -- singleton .epsilon x = cap .epsilon x
+  -- singleton .epsilon x = cap (.access .epsilon) x
   induction C with
   | empty => cases hcov
   | cap m' y =>
     cases hcov
     case here hle =>
-      -- covers .epsilon x (cap m' x) with .epsilon ≤ m'
-      -- This means m' = .epsilon (since .epsilon is maximal)
-      cases hle
-      exact Subset.refl
+      -- covers (.access .epsilon) x (cap m' x) with .access .epsilon ≤ m'
+      -- This means m' = .access .epsilon.
+      cases hle with
+      | access hmu => cases hmu; exact Subset.refl
   | union C1 C2 ih1 ih2 =>
     cases hcov with
     | left h =>
@@ -433,9 +518,9 @@ theorem covers_eps_imp_singleton_eps_subset {C : CapabilitySet} {x : Nat}
       apply Subset.union_right_right
 
 /-- Inversion: a covered location must come from some explicit member with a
-    weaker-or-equal mutability. -/
+    weaker-or-equal mode. -/
 theorem covers_imp_exists_hasmem
-    {C : CapabilitySet} {m : Mutability} {l : Nat}
+    {C : CapabilitySet} {m : CapMode} {l : Nat}
     (hcov : covers m l C) :
     ∃ m', hasmem m' l C ∧ m ≤ m' := by
   induction hcov with
@@ -563,10 +648,14 @@ theorem applyRO {P : Nat -> Prop} {C1 C2 : CapabilitySet}
     SubsetMod P C1.applyRO C2.applyRO := by
   intros mu l hm hP
   rw [hasmem_applyRO_iff] at hm
-  obtain ⟨hmu, mu', hm'⟩ := hm
+  obtain ⟨mu', hmu, hm'⟩ := hm
   subst hmu
   have hcov : covers mu' l C2 := h mu' l hm' hP
-  exact covers_applyRO_of_covers_ro (covers_weaken hcov Mutability.Le.ro_le)
+  -- Coverage at mu' passes through to applyRO at mu'.applyRO via
+  -- `covers_applyRO_of_covers` after weakening to the RO image.
+  have hcov_ro : covers mu'.applyRO l C2 :=
+    covers_weaken hcov CapMode.applyRO_le
+  exact covers_applyRO_of_covers hcov_ro CapMode.applyRO_idempotent.symm
 
 end SubsetMod
 
@@ -1278,7 +1367,7 @@ def compute_reachability
   | .abs cs _ _ => expand_captures h cs
   | .tabs cs _ _ => expand_captures h cs
   | .cabs cs _ _ => expand_captures h cs
-  | .reader (.free loc) => .cap .ro loc
+  | .reader (.free loc) => .cap (.access .ro) loc
   | .unit => {}
   | .btrue => {}
   | .bfalse => {}
@@ -2671,7 +2760,7 @@ private theorem hasmem_of_subset {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2) :
     intro mu l hmem; exact ⟨mu, CapabilitySet.hasmem.right hmem⟩
   | cap_ro =>
     intro mu l hmem; cases hmem
-    exact ⟨.epsilon, CapabilitySet.hasmem.here⟩
+    exact ⟨.access .epsilon, CapabilitySet.hasmem.here⟩
 
 /-- `is_compatible` is anti-monotonic in the capability set: if `C1 ⊆ C2` and `m`
     is compatible with `C2`, then it is compatible with `C1`. The mutability shift
@@ -2771,8 +2860,8 @@ inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
   Noninterference cs2 C ->
   Noninterference (cs1 ∪ cs2) C
 | ni_ro :
-  Noninterference (.cap .ro l1) (.cap .ro l2)
-| ni_disj :
+  Noninterference (.cap (.access .ro) l1) (.cap (.access .ro) l2)
+| ni_disj {m1 m2 : CapMode} :
   (l1 ≠ l2) ->
   Noninterference (.cap m1 l1) (.cap m2 l2)
 
@@ -2851,8 +2940,8 @@ theorem subset_left
 where
   weaken_epsilon_ro_aux {l : Nat} {cs1 cs2 : CapabilitySet}
     (hni : Noninterference cs1 cs2) :
-    (cs1 = .cap .epsilon l → Noninterference (.cap .ro l) cs2) ∧
-    (cs2 = .cap .epsilon l → Noninterference cs1 (.cap .ro l)) := by
+    (cs1 = .cap (.access .epsilon) l → Noninterference (.cap (.access .ro) l) cs2) ∧
+    (cs2 = .cap (.access .epsilon) l → Noninterference cs1 (.cap (.access .ro) l)) := by
     induction hni with
     | ni_symm _ ih =>
       exact ⟨fun h => ni_symm (ih.2 h), fun h => ni_symm (ih.1 h)⟩
@@ -2876,8 +2965,8 @@ where
         cases h
         exact ni_disj hne
   weaken_epsilon_ro {l : Nat} {cs : CapabilitySet}
-    (hni : Noninterference (.cap .epsilon l) cs) :
-    Noninterference (.cap .ro l) cs :=
+    (hni : Noninterference (.cap (.access .epsilon) l) cs) :
+    Noninterference (.cap (.access .ro) l) cs :=
     (weaken_epsilon_ro_aux hni).1 rfl
 
 theorem subset_right
