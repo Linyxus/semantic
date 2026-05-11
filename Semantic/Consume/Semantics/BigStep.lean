@@ -76,7 +76,8 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     (hwf_x : x.WfInHeap m1.heap) ->
     (hwf_cs : cs.WfInHeap m1.heap) ->
     Q1 (.pack cs x) m1 ->
-    Eval (C ∪ (cs.reachability m1)) m1 (e2.subst (Subst.unpack cs x)) Q) ->
+    let R := cs.reachability m1
+    Eval (C ∪ R ∪ R.to_drop) m1 (e2.subst (Subst.unpack cs x)) Q) ->
   Eval C m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
   C.covers (.access .ro) y ->

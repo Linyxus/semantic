@@ -198,6 +198,12 @@ def applyMut (m : Mutability) (C : CapabilitySet) : CapabilitySet :=
   | .epsilon => C
   | .ro => C.applyRO
 
+/-- Replace every cap mode in `C` with `.drop`. -/
+def to_drop : CapabilitySet -> CapabilitySet
+| .empty => .empty
+| .cap _ l => .cap .drop l
+| .union C1 C2 => .union C1.to_drop C2.to_drop
+
 /-- applyRO is idempotent. -/
 @[simp]
 theorem applyRO_applyRO {C : CapabilitySet} : C.applyRO.applyRO = C.applyRO := by
