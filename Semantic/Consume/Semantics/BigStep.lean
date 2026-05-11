@@ -557,9 +557,14 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact h_nonstuck hQ
     · intro m1 x cs hs1 hwf_x hwf_cs hq1
       apply ih_val hs1 hwf_x hwf_cs hq1
-      exact CapabilitySet.Subset.union_left
-        (CapabilitySet.Subset.trans hsub CapabilitySet.Subset.union_right_left)
-        CapabilitySet.Subset.union_right_right
+      -- Subset:  A1 ∪ R ∪ R.to_drop ⊆ A2 ∪ R ∪ R.to_drop  (R := cs.reachability m1)
+      apply CapabilitySet.Subset.union_left
+      · -- (A1 ∪ R) ⊆ (A2 ∪ R) ∪ R.to_drop
+        apply CapabilitySet.Subset.trans _ CapabilitySet.Subset.union_right_left
+        apply CapabilitySet.Subset.union_left
+        · exact CapabilitySet.Subset.trans hsub CapabilitySet.Subset.union_right_left
+        · exact CapabilitySet.Subset.union_right_right
+      · exact CapabilitySet.Subset.union_right_right
   case eval_read hcov hlookup_reader hlookup_mcell hQ =>
     exact Eval.eval_read
       (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_reader hlookup_mcell hQ
@@ -577,6 +582,52 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
       exact ih_true hres_true hsub
     · intro hres_false
       exact ih_false hres_false hsub
+
+/-- Coverage in `C.to_drop` forces the mode to be `.drop`: `to_drop` rewrites
+    every cap mode to `.drop`, and `.access _` is incomparable with `.drop`
+    under `CapMode.Le`. -/
+theorem CapabilitySet.covers_to_drop_imp_drop {C : CapabilitySet} {mu : CapMode} {l : Nat}
+    (h : CapabilitySet.covers mu l C.to_drop) : mu = .drop := by
+  induction C with
+  | empty =>
+    simp only [CapabilitySet.to_drop] at h
+    cases h
+  | cap m' l' =>
+    simp only [CapabilitySet.to_drop] at h
+    cases h with
+    | here hle => cases hle; rfl
+  | union C1 C2 ih1 ih2 =>
+    simp only [CapabilitySet.to_drop] at h
+    cases h with
+    | left h' => exact ih1 h'
+    | right h' => exact ih2 h'
+
+/-- The reachability of a (closed) capture set carries only `.access`-mode
+    capabilities — never `.drop`. Source-level capture sets are built from
+    `.var m x` / `.cvar m c` with `m : Mutability`, and the heap-side
+    expansion (`reachability_of_loc` / `expand_captures` / `compute_reachability`)
+    only ever produces access-mode caps. -/
+theorem CaptureSet.reachability_no_drop
+    {cs : CaptureSet {}} {m : Memory} {l : Nat} :
+    ¬ CapabilitySet.hasmem .drop l (cs.reachability m) := by
+  induction cs with
+  | empty =>
+    intro hmem
+    simp only [CaptureSet.reachability] at hmem
+    cases hmem
+  | union cs1 cs2 ih1 ih2 =>
+    intro hmem
+    simp only [CaptureSet.reachability] at hmem
+    cases hmem with
+    | left h' => exact ih1 h'
+    | right h' => exact ih2 h'
+  | var m' x =>
+    cases x with
+    | bound bx => cases bx
+    | free loc =>
+      simp only [CaptureSet.reachability]
+      exact CapabilitySet.applyMut_no_drop (reachability_of_loc_no_drop m.wf)
+  | cvar m' c => cases c
 
 /-- An `Eval` derivation always carries a witness reachability bound: any pack
     value appearing in the postcondition has its capture set bounded by the
@@ -710,9 +761,24 @@ theorem Eval.strengthen_reach_bound
       intro m2 v ⟨hQv, hbody_bound⟩
       refine ⟨hQv, ?_⟩
       intros cs1 x1 hpk
-      apply CapabilitySet.SubsetMod.trans (hbody_bound cs1 x1 hpk)
-      exact CapabilitySet.SubsetMod.union_intro
-        CapabilitySet.SubsetMod.refl hsub_mod
+      -- Goal: SubsetMod D (cs1.reachability m2) C.
+      -- hbody_bound cs1 x1 hpk : SubsetMod D (cs1.reachability m2)
+      --                            (C ∪ cs0.reachability m1 ∪ (cs0.reachability m1).to_drop).
+      intro mu l hmem hP
+      have hcov := hbody_bound cs1 x1 hpk mu l hmem hP
+      rw [CapabilitySet.covers_union_iff] at hcov
+      rcases hcov with hcov_left | hcov_drop
+      · rw [CapabilitySet.covers_union_iff] at hcov_left
+        rcases hcov_left with hcov_C | hcov_R
+        · exact hcov_C
+        · obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem hcov_R
+          exact CapabilitySet.covers_weaken (hsub_mod mu' l hmem' hP) hle
+      · -- covers mu l (cs0.reachability m1).to_drop ⟹ mu = .drop.
+        -- But pack reachability `cs1.reachability m2` is access-only, so
+        -- `hmem : hasmem .drop l ...` is impossible.
+        have hmu_drop := CapabilitySet.covers_to_drop_imp_drop hcov_drop
+        subst hmu_drop
+        exact (CaptureSet.reachability_no_drop hmem).elim
   | eval_read hcov hlookup_reader hlookup_cell hQ =>
     intro D _
     apply Eval.eval_read hcov hlookup_reader hlookup_cell
