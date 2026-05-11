@@ -434,20 +434,20 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
   ∃ label : Nat,
     e = .var (.free label) ∧
     m.lookup label = some (.capability .basic) ∧
-    (cs.denot env m).covers .epsilon label
+    (cs.denot env m).covers (.access .epsilon) label
 | env, .reader cs => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ (label : Nat) (b0 : Bool) (ℓ0 : Liveness),
     resolve m.heap e = some (.reader (.free label)) ∧
     m.lookup label = some (.capability (.mcell b0 ℓ0)) ∧
-    (cs.denot env m).covers .ro label
+    (cs.denot env m).covers (.access .ro) label
 | env, .cell cs => fun m e =>
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ l b0 ℓ0,
     e = .var (.free l) ∧
     m.lookup l = some (.capability (.mcell b0 ℓ0)) ∧
-    (cs.denot env m).covers .epsilon l
+    (cs.denot env m).covers (.access .epsilon) l
 | env, .arrow T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -3267,7 +3267,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         cases cell with
         | val v => simp [hcell] at hlookup'
         | capability cap =>
-          exact CapabilitySet.covers.here Mutability.Le.refl
+          exact CapabilitySet.covers.here CapMode.Le.refl
         | masked => simp [hcell] at hlookup'
   | cell cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
@@ -3294,7 +3294,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         cases cell with
         | val v => simp [hcell] at hlookup'
         | capability cap =>
-          exact CapabilitySet.covers.here Mutability.Le.refl
+          exact CapabilitySet.covers.here CapMode.Le.refl
         | masked => simp [hcell] at hlookup'
   | reader cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
@@ -3322,23 +3322,23 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             have hres' : v.unwrap = .reader (.free loc) := by
               simpa only [Option.some.injEq] using hres
             -- v.unwrap = .reader (.free loc)
-            -- By wf_reach: v.reachability = compute_reachability = .cap .ro loc
+            -- By wf_reach: v.reachability = compute_reachability = .cap (.access .ro) loc
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
             have hreader_isval : (Exp.reader (Var.free loc)).IsSimpleVal := hres' ▸ v.isVal
             have hcomp :
-                compute_reachability m.heap v.unwrap v.isVal = .cap .ro loc := by
+                compute_reachability m.heap v.unwrap v.isVal = .cap (.access .ro) loc := by
               calc compute_reachability m.heap v.unwrap v.isVal
                   = compute_reachability m.heap (Exp.reader (Var.free loc)) hreader_isval := by
                       simp only [hres']
-                _ = .cap .ro loc := rfl
+                _ = .cap (.access .ro) loc := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
-            have heq : reachability_of_loc m.heap n = .cap .ro loc := by
+            have heq : reachability_of_loc m.heap n = .cap (.access .ro) loc := by
               rw [hreach_loc, hwf_reach, hcomp]
             -- ground_denot for (.var .epsilon (Var.free n)) = reachability_of_loc m.heap n
             simp only [CaptureSet.ground_denot, CapabilitySet.applyMut]
             rw [heq]
-            exact CapabilitySet.covers.here Mutability.Le.refl
+            exact CapabilitySet.covers.here CapMode.Le.refl
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx

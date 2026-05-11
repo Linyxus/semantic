@@ -673,7 +673,7 @@ theorem cabs_val_denot_inv
 theorem cap_val_denot_inv
   (hv : Ty.val_denot env (.cap cs) store (.var x)) :
   ∃ fx, x = .free fx ∧ store.heap fx = some (.capability .basic) ∧
-    (cs.denot env store).covers .epsilon fx := by
+    (cs.denot env store).covers (.access .epsilon) fx := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -714,7 +714,7 @@ theorem unit_val_denot_inv
 theorem cell_val_denot_inv
   (hv : Ty.val_denot env (.cell cs) store (.var x)) :
   ∃ fx b0 ℓ0, x = .free fx ∧ store.heap fx = some (.capability (.mcell b0 ℓ0)) ∧
-    (cs.denot env store).covers .epsilon fx := by
+    (cs.denot env store).covers (.access .epsilon) fx := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -729,7 +729,7 @@ theorem reader_val_denot_inv
     x = .free fx ∧
     store.heap fx = some (Cell.val ⟨Exp.reader (.free y), hval, R⟩) ∧
     store.heap y = some (.capability (.mcell b0 ℓ0)) ∧
-    (cs.denot env store).covers .ro y := by
+    (cs.denot env store).covers (.access .ro) y := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -1126,7 +1126,7 @@ theorem sem_typ_invoke
   -- Show env.lookup_var x is covered in the capability set
   have hcov :
     (CaptureSet.denot env (.var .epsilon (.bound x)) store).covers
-      .epsilon (env.lookup_var x).1 := hmem_cap
+      (.access .epsilon) (env.lookup_var x).1 := hmem_cap
   -- Apply eval_invoke; the post fires at the unchanged store, so use refl.
   apply Eval.eval_invoke hcov hlk_cap hlk_unit
   refine ⟨?_, Memory.preserves_liveness_consume_only_refl store Γ env⟩
@@ -1244,17 +1244,18 @@ theorem sem_typ_reader
       rfl
     · -- lookup = .capability (.mcell b0)
       simpa [Memory.lookup] using hlookup_cell
-    · -- covers .ro label
+    · -- covers (.access .ro) label
       have hden :
         CaptureSet.denot env (CaptureSet.var .ro (Var.bound x)) store
           = CapabilitySet.singleton .ro (env.lookup_var x).1 := by
         simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv, Var.subst,
               CaptureSet.ground_denot, CapabilitySet.applyMut, CapabilitySet.applyRO,
-              CapabilitySet.singleton, reachability_of_loc, hlookup_cell]
+              CapabilitySet.singleton, reachability_of_loc, hlookup_cell,
+              CapMode.applyRO]
       have hcov_singleton :
-          CapabilitySet.covers .ro (env.lookup_var x).1
+          CapabilitySet.covers (.access .ro) (env.lookup_var x).1
             (CapabilitySet.singleton .ro (env.lookup_var x).1) :=
-        CapabilitySet.covers.here (l:=(env.lookup_var x).1) Mutability.Le.refl
+        CapabilitySet.covers.here (l:=(env.lookup_var x).1) CapMode.Le.refl
       simpa [hden] using hcov_singleton
 
 theorem sem_typ_alloc
@@ -1320,10 +1321,10 @@ theorem sem_typ_alloc
           simp only [Ty.val_denot]
           refine ⟨CaptureSet.WfInHeap.wf_var_free hlookup_l, l, b, .live, rfl, hlookup_l, ?_⟩
           change ((CaptureSet.var Mutability.epsilon (Var.free l)).ground_denot m').covers
-            Mutability.epsilon l
+            (.access Mutability.epsilon) l
           simp only [CaptureSet.ground_denot, reachability_of_loc, hlookup_l,
             CapabilitySet.applyMut]
-          exact CapabilitySet.covers.here Mutability.Le.refl
+          exact CapabilitySet.covers.here CapMode.Le.refl
       rcases hbool with hb | hb
       · exact hclose true (fun _ => hb) (by intro h; cases h)
       · exact hclose false (by intro h; cases h) (fun _ => hb)
@@ -1382,29 +1383,30 @@ private theorem peaks_of_peaksOnly {s : Sig} {Γ : Ctx s}
   | cvar => simp only [CaptureSet.peaks]
 
 /-- From `hasmem mu l (C.applyMut m)`, extract a witness for `l` in `C`. -/
-private theorem hasmem_of_applyMut {C : CapabilitySet} {m : Mutability} {mu : Mutability}
+private theorem hasmem_of_applyMut {C : CapabilitySet} {m : Mutability} {mu : CapMode}
     {l : Nat} (h : (C.applyMut m).hasmem mu l) :
     ∃ mu', C.hasmem mu' l := by
   cases m with
   | epsilon => exact ⟨mu, h⟩
   | ro =>
     simp only [CapabilitySet.applyMut] at h
-    exact (CapabilitySet.hasmem_applyRO_iff.mp h).2
+    obtain ⟨mu', _, hm⟩ := CapabilitySet.hasmem_applyRO_iff.mp h
+    exact ⟨mu', hm⟩
 
 /-- Lift `hasmem` through `applyMut`: given `hasmem mu l C`, produce a witness
-    for `l` in `C.applyMut m` (with possibly different mutability). -/
-private theorem hasmem_applyMut_lift {C : CapabilitySet} {mu : Mutability}
+    for `l` in `C.applyMut m` (with possibly different mode). -/
+private theorem hasmem_applyMut_lift {C : CapabilitySet} {mu : CapMode}
     {l : Nat} (h : C.hasmem mu l) (m : Mutability) :
     ∃ mu', (C.applyMut m).hasmem mu' l := by
   cases m with
   | epsilon => exact ⟨mu, h⟩
   | ro =>
     simp only [CapabilitySet.applyMut]
-    exact ⟨.ro, CapabilitySet.hasmem_applyRO_of_hasmem h⟩
+    exact ⟨mu.applyRO, CapabilitySet.hasmem_applyRO_of_hasmem h⟩
 
-/-- Subset on `CapabilitySet` preserves location membership (modulo mutability). -/
+/-- Subset on `CapabilitySet` preserves location membership (modulo mode). -/
 private theorem hasmem_of_capabilitySet_subset {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2)
-    {mu : Mutability} {l : Nat} (h : C1.hasmem mu l) :
+    {mu : CapMode} {l : Nat} (h : C1.hasmem mu l) :
     ∃ mu', C2.hasmem mu' l := by
   induction hsub generalizing mu with
   | refl => exact ⟨mu, h⟩
@@ -1422,7 +1424,7 @@ private theorem hasmem_of_capabilitySet_subset {C1 C2 : CapabilitySet} (hsub : C
     exact ⟨mu, CapabilitySet.hasmem.right h⟩
   | cap_ro =>
     cases h
-    exact ⟨.epsilon, CapabilitySet.hasmem.here⟩
+    exact ⟨.access .epsilon, CapabilitySet.hasmem.here⟩
 
 /-- Helper: from `consumable` on a peaks-only capture set, extract a
     `.consume`-unlocked cvar witness for any element of its denotation. The
@@ -1430,7 +1432,7 @@ private theorem hasmem_of_capabilitySet_subset {C1 C2 : CapabilitySet} (hsub : C
     cases — no `var .bound x` recursion is needed. -/
 private theorem consumable_to_consume_witness_peaks
     {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
-    {P : CaptureSet s} (hP : P.PeaksOnly) {l : Nat} {mu : Mutability}
+    {P : CaptureSet s} (hP : P.PeaksOnly) {l : Nat} {mu : CapMode}
     (hts : EnvTyping Γ env store)
     (hcons : P.consumable Γ)
     (hmem : (P.denot env store).hasmem mu l) :
@@ -1486,7 +1488,7 @@ mutual
 private theorem hasmem_compute_peaks_denot
     {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
-    (C : CaptureSet s) (hC : C.IsClosed) {l : Nat} {mu : Mutability}
+    (C : CaptureSet s) (hC : C.IsClosed) {l : Nat} {mu : CapMode}
     (hmem : (C.denot env store).hasmem mu l) :
     ∃ mu', ((compute_peaks env C).denot env store).hasmem mu' l := by
   match C, hC, hmem with
@@ -1541,7 +1543,7 @@ termination_by 2 * (sizeOf Γ + sizeOf C) + 1
 private theorem hasmem_compute_peaks_denot_var_bound
     {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
-    {x : BVar s .var} {m : Mutability} {l : Nat} {mu : Mutability}
+    {x : BVar s .var} {m : Mutability} {l : Nat} {mu : CapMode}
     (hmem : ((CaptureSet.var m (.bound x)).denot env store).hasmem mu l) :
     ∃ mu', ((compute_peaks env (CaptureSet.var m (.bound x))).denot env store).hasmem mu' l := by
   match s, Γ, env, hts, hΓ, x, hmem with
@@ -1699,7 +1701,7 @@ end
     `consumable_to_consume_witness_peaks` applies structurally. -/
 theorem consumable_to_consume_witness
     {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
-    {C : CaptureSet s} {l : Nat} {mu : Mutability}
+    {C : CaptureSet s} {l : Nat} {mu : CapMode}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
     (hC : C.IsClosed)
     (hcons : C.consumable Γ)
@@ -1744,10 +1746,11 @@ theorem sem_typ_drop
   -- Prove covers: env.lookup_var x is covered by the budget capture set
   have hcov :
     (((CaptureSet.var .epsilon (Var.bound x)).subst
-      (Subst.from_TypeEnv env)).ground_denot store).covers .epsilon (env.lookup_var x).1 := by
+      (Subst.from_TypeEnv env)).ground_denot store).covers (.access .epsilon)
+        (env.lookup_var x).1 := by
     simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
           CapabilitySet.applyMut, reachability_of_loc, hlk_cell, CapabilitySet.singleton]
-    exact CapabilitySet.covers.here Mutability.Le.refl
+    exact CapabilitySet.covers.here CapMode.Le.refl
   -- Use hcompat to derive that the cell is live
   have hlive : ℓ0 = .live := by
     have hbudget_denot :
@@ -1757,7 +1760,8 @@ theorem sem_typ_drop
         CaptureSet.ground_denot, CapabilitySet.applyMut, reachability_of_loc, hlk_cell]
     have hcompat' : store.is_compatible (CapabilitySet.singleton .epsilon (env.lookup_var x).1) :=
       hbudget_denot ▸ hcompat
-    exact hcompat' .epsilon (env.lookup_var x).1 b0 ℓ0 CapabilitySet.hasmem.here hlk_cell
+    exact hcompat' (.access .epsilon) (env.lookup_var x).1 b0 ℓ0
+      CapabilitySet.hasmem.here hlk_cell
   subst hlive
   have hlk_cell' :
     store.lookup (env.lookup_var x).1 = some (.capability (.mcell b0 .live)) := by
@@ -1765,7 +1769,7 @@ theorem sem_typ_drop
   -- Extract a `.consume`-unlocked cvar witness for the drop location.
   have hbudget_hasmem :
       ((CaptureSet.var .epsilon (.bound x)).denot env store).hasmem
-        .epsilon (env.lookup_var x).1 := by
+        (.access .epsilon) (env.lookup_var x).1 := by
     simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
       CaptureSet.ground_denot, CapabilitySet.applyMut, reachability_of_loc, hlk_cell,
       CapabilitySet.singleton]
@@ -1789,7 +1793,13 @@ theorem sem_typ_drop
       · refine ⟨b, ℓ, ?_, Or.inl rfl⟩
         change (store.heap.update_cell (env.lookup_var x).1 _) l = _
         unfold Heap.update_cell; rw [if_neg hl]; exact hheap
-  · exact hcov
+  · -- The new `eval_drop` premise asks `C.covers .drop x_loc`, but the source
+    -- budget `(.var .epsilon x)` denotes to `.access .epsilon`-mode caps only.
+    -- The drop authority lives in a `.consume`-unlocked cvar of Γ (witnessed by
+    -- `consumable_to_consume_witness` above); wiring it into the operational
+    -- budget requires widening either the drop typing rule or the `.var`/`.cvar`
+    -- denotation. Deferred — architectural call.
+    sorry
 
 theorem sem_typ_read
   {x : BVar s .var}
@@ -1816,7 +1826,7 @@ theorem sem_typ_read
       ⟨Exp.reader (.free y), hval_reader, R⟩ hlookup_reader
     simpa [resolve_reachability] using heq
   have hcov :
-      CapabilitySet.covers .ro y
+      CapabilitySet.covers (.access .ro) y
         (((CaptureSet.var .epsilon (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot
           store) := by
     have hden :
@@ -1824,7 +1834,7 @@ theorem sem_typ_read
           store) = CapabilitySet.singleton .ro y := by
       simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
             CapabilitySet.applyMut, hreach]
-    simpa [hden] using (CapabilitySet.covers.here (l:=y) Mutability.Le.refl)
+    simpa [hden] using (CapabilitySet.covers.here (l:=y) CapMode.Le.refl)
   -- Use hcompat to derive that the cell at y is live.
   have hlive : ℓ0 = .live := by
     have hbudget_denot :
@@ -1834,7 +1844,7 @@ theorem sem_typ_read
         CaptureSet.ground_denot, CapabilitySet.applyMut, hreach]
     have hcompat' : store.is_compatible (CapabilitySet.singleton .ro y) :=
       hbudget_denot ▸ hcompat
-    exact hcompat' .ro y b0 ℓ0 CapabilitySet.hasmem.here hlookup_cell
+    exact hcompat' (.access .ro) y b0 ℓ0 CapabilitySet.hasmem.here hlookup_cell
   subst hlive
   have hlookup_reader' :
       store.lookup (env.lookup_var x).1 =
@@ -1879,10 +1889,11 @@ theorem sem_typ_write
   -- Prove covers: env.lookup_var x is covered by the denotation of the write's capture set
   have hcov :
     (((CaptureSet.var .epsilon (Var.bound x)).subst
-      (Subst.from_TypeEnv env)).ground_denot store).covers .epsilon (env.lookup_var x).1 := by
+      (Subst.from_TypeEnv env)).ground_denot store).covers (.access .epsilon)
+        (env.lookup_var x).1 := by
     simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
           CapabilitySet.applyMut, reachability_of_loc, hlk_cell, CapabilitySet.singleton]
-    exact CapabilitySet.covers.here Mutability.Le.refl
+    exact CapabilitySet.covers.here CapMode.Le.refl
   -- Use hcompat to derive that the cell at env.lookup_var x is live.
   have hlive : ℓ0 = .live := by
     have hbudget_denot :
@@ -1892,7 +1903,8 @@ theorem sem_typ_write
         CaptureSet.ground_denot, CapabilitySet.applyMut, reachability_of_loc, hlk_cell]
     have hcompat' : store.is_compatible (CapabilitySet.singleton .epsilon (env.lookup_var x).1) :=
       hbudget_denot ▸ hcompat
-    exact hcompat' .epsilon (env.lookup_var x).1 b0 ℓ0 CapabilitySet.hasmem.here hlk_cell
+    exact hcompat' (.access .epsilon) (env.lookup_var x).1 b0 ℓ0
+      CapabilitySet.hasmem.here hlk_cell
   subst hlive
   -- The post fires at `store.update_mcell ...`, which preserves liveness fully.
   have hliv_full :
@@ -3286,21 +3298,30 @@ theorem sem_typ_unpack
       -- The C2 part: closed-monotonicity moves it to `store`.
       -- The cs part: `cs.ground_denot m1 = cs.reachability m1`, which sits
       -- directly in the body's enlarged budget.
+      -- The new `eval_unpack` rule supplies the body with budget
+      --   `C ∪ R ∪ R.to_drop`,
+      -- adding `R.to_drop` for the consume-mode cvar's drop authority.
+      -- The body's source-denoted budget only covers the `C ∪ R` part; we
+      -- widen via `Subset.union_right_left`.
       have hsub_body :
           (C2.denot env m1 ∪ cs.ground_denot m1)
-            ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1 := by
-        apply CapabilitySet.Subset.union_left
-        · -- C2.denot env m1 ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1
-          have hC2_eq : C2.denot env m1 = C2.denot env store :=
-            (closed_capture_denot_monotonic hclosed_C2 hts hs1).symm
-          rw [hC2_eq, hunion_denot]
-          exact CapabilitySet.Subset.trans
-            CapabilitySet.Subset.union_right_right
-            CapabilitySet.Subset.union_right_left
-        · -- cs.ground_denot m1 = cs.reachability m1 ⊆ ...
-          rw [CaptureSet.ground_denot_eq_reachability]
-          exact CapabilitySet.Subset.union_right_right
-      change Eval ((C1 ∪ C2).denot env store ∪ cs.reachability m1) m1
+            ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1
+                ∪ (cs.reachability m1).to_drop := by
+        have h0 :
+            (C2.denot env m1 ∪ cs.ground_denot m1)
+              ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1 := by
+          apply CapabilitySet.Subset.union_left
+          · have hC2_eq : C2.denot env m1 = C2.denot env store :=
+              (closed_capture_denot_monotonic hclosed_C2 hts hs1).symm
+            rw [hC2_eq, hunion_denot]
+            exact CapabilitySet.Subset.trans
+              CapabilitySet.Subset.union_right_right
+              CapabilitySet.Subset.union_right_left
+          · rw [CaptureSet.ground_denot_eq_reachability]
+            exact CapabilitySet.Subset.union_right_right
+        exact CapabilitySet.Subset.trans h0 CapabilitySet.Subset.union_right_left
+      change Eval ((C1 ∪ C2).denot env store ∪ cs.reachability m1
+                    ∪ (cs.reachability m1).to_drop) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
         (Ty.exi_val_denot env U).as_mpost
       rw [hexp_eq]
