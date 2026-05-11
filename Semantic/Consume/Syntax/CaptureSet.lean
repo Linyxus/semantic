@@ -216,6 +216,23 @@ theorem CaptureSet.applyMut_isClosed {cs : CaptureSet s} {m : Mutability}
   · exact hc
   · exact applyRO_isClosed hc
 
+/-- Renaming preserves closedness of a capture set. -/
+theorem CaptureSet.rename_isClosed {cs : CaptureSet s1} {f : Rename s1 s2}
+    (hc : cs.IsClosed) : (cs.rename f).IsClosed := by
+  induction cs with
+  | empty => exact IsClosed.empty
+  | union cs1 cs2 ih1 ih2 =>
+    cases hc with | union h1 h2 =>
+    simp only [CaptureSet.rename]
+    exact IsClosed.union (ih1 h1) (ih2 h2)
+  | var m' x =>
+    cases hc with | var_bound =>
+    simp only [CaptureSet.rename, Var.rename]
+    exact IsClosed.var_bound
+  | cvar m' c =>
+    simp only [CaptureSet.rename]
+    exact IsClosed.cvar
+
 /-- Drops the outermost bound variable from a capture set. -/
 def CaptureSet.drop_here_var : CaptureSet (s,x) -> CaptureSet s
 | .empty => .empty

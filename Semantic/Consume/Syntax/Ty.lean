@@ -184,6 +184,21 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
 | typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
 
+/-- The capture set of a closed capturing type is closed. -/
+theorem Ty.captureSet_isClosed {T : Ty .capt s}
+    (h : T.IsClosed) : T.captureSet.IsClosed := by
+  cases T <;> simp only [Ty.captureSet]
+  · exact CaptureSet.IsClosed.empty
+  · exact CaptureSet.IsClosed.empty
+  · cases h with | arrow _ hcs _ => exact hcs
+  · cases h with | poly _ hcs _ => exact hcs
+  · cases h with | cpoly _ hcs _ => exact hcs
+  · cases h with | cap hcs => exact hcs
+  · cases h with | cell hcs => exact hcs
+  · cases h with | reader hcs => exact hcs
+  · exact CaptureSet.IsClosed.empty
+  · exact CaptureSet.IsClosed.empty
+
 /-- The capture set of a renamed type equals the renamed capture set. -/
 theorem Ty.captureSet_rename {T : Ty .capt s1} {f : Rename s1 s2} :
     (T.rename f).captureSet = T.captureSet.rename f := by

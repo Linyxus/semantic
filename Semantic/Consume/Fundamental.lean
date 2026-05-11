@@ -1328,10 +1328,408 @@ theorem sem_typ_alloc
       · exact hclose true (fun _ => hb) (by intro h; cases h)
       · exact hclose false (by intro h; cases h) (fun _ => hb)
 
+/-- `applyMut` on a `CaptureSet {}` commutes with `ground_denot`. -/
+private theorem captureSet_ground_denot_applyMut_comm
+    {C : CaptureSet {}} {m : Memory} {mty : Mutability} :
+    (C.applyMut mty).ground_denot m = (C.ground_denot m).applyMut mty := by
+  cases mty with
+  | epsilon => rfl
+  | ro =>
+    simp only [CaptureSet.applyMut_ro, CapabilitySet.applyMut]
+    exact ground_denot_applyRO_comm.symm
+
+/-- `applyMut` commutes with `subst`. -/
+private theorem captureSet_subst_applyMut_comm
+    {s1 s2 : Sig} (C : CaptureSet s1) (σ : Subst s1 s2) (mty : Mutability) :
+    (C.applyMut mty).subst σ = (C.subst σ).applyMut mty := by
+  cases mty with
+  | epsilon => rfl
+  | ro =>
+    simp only [CaptureSet.applyMut_ro]
+    induction C with
+    | empty => rfl
+    | union C1 C2 ih1 ih2 =>
+      simp only [CaptureSet.applyRO, CaptureSet.subst, ih1, ih2]
+    | var m' v => cases v <;> rfl
+    | cvar m' c =>
+      simp only [CaptureSet.applyRO, CaptureSet.subst]
+      cases m' with
+      | epsilon => rfl
+      | ro => simp [CaptureSet.applyMut, CaptureSet.applyRO_applyRO]
+
+/-- `applyMut` on a general `CaptureSet s` commutes with `denot`. -/
+private theorem captureSet_denot_applyMut_comm
+    {s : Sig} {env : TypeEnv s} {C : CaptureSet s} {store : Memory} {mty : Mutability} :
+    (C.applyMut mty).denot env store = (C.denot env store).applyMut mty := by
+  unfold CaptureSet.denot
+  rw [captureSet_subst_applyMut_comm, captureSet_ground_denot_applyMut_comm]
+
+/-- `Ty.captureSet T` has size at most `sizeOf T`. -/
+private theorem sizeOf_captureSet_le {s : Sig} (T : Ty .capt s) :
+    sizeOf T.captureSet ≤ sizeOf T := by
+  cases T <;> simp [Ty.captureSet] <;> omega
+
+/-- For a peaks-only capture set, `peaks` is the identity. -/
+private theorem peaks_of_peaksOnly {s : Sig} {Γ : Ctx s}
+    {P : CaptureSet s} (hP : P.PeaksOnly) :
+    P.peaks Γ = P := by
+  induction hP with
+  | empty => simp only [CaptureSet.peaks]
+  | union _ _ ih1 ih2 =>
+    simp only [CaptureSet.peaks]
+    rw [ih1, ih2]
+    rfl
+  | cvar => simp only [CaptureSet.peaks]
+
+/-- From `hasmem mu l (C.applyMut m)`, extract a witness for `l` in `C`. -/
+private theorem hasmem_of_applyMut {C : CapabilitySet} {m : Mutability} {mu : Mutability}
+    {l : Nat} (h : (C.applyMut m).hasmem mu l) :
+    ∃ mu', C.hasmem mu' l := by
+  cases m with
+  | epsilon => exact ⟨mu, h⟩
+  | ro =>
+    simp only [CapabilitySet.applyMut] at h
+    exact (CapabilitySet.hasmem_applyRO_iff.mp h).2
+
+/-- Lift `hasmem` through `applyMut`: given `hasmem mu l C`, produce a witness
+    for `l` in `C.applyMut m` (with possibly different mutability). -/
+private theorem hasmem_applyMut_lift {C : CapabilitySet} {mu : Mutability}
+    {l : Nat} (h : C.hasmem mu l) (m : Mutability) :
+    ∃ mu', (C.applyMut m).hasmem mu' l := by
+  cases m with
+  | epsilon => exact ⟨mu, h⟩
+  | ro =>
+    simp only [CapabilitySet.applyMut]
+    exact ⟨.ro, CapabilitySet.hasmem_applyRO_of_hasmem h⟩
+
+/-- Subset on `CapabilitySet` preserves location membership (modulo mutability). -/
+private theorem hasmem_of_capabilitySet_subset {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2)
+    {mu : Mutability} {l : Nat} (h : C1.hasmem mu l) :
+    ∃ mu', C2.hasmem mu' l := by
+  induction hsub generalizing mu with
+  | refl => exact ⟨mu, h⟩
+  | empty => exact (CapabilitySet.not_hasmem_empty h).elim
+  | trans _ _ ih1 ih2 =>
+    obtain ⟨mu', h'⟩ := ih1 h
+    exact ih2 h'
+  | union_left _ _ ih1 ih2 =>
+    cases h with
+    | left h' => exact ih1 h'
+    | right h' => exact ih2 h'
+  | union_right_left =>
+    exact ⟨mu, CapabilitySet.hasmem.left h⟩
+  | union_right_right =>
+    exact ⟨mu, CapabilitySet.hasmem.right h⟩
+  | cap_ro =>
+    cases h
+    exact ⟨.epsilon, CapabilitySet.hasmem.here⟩
+
+/-- Helper: from `consumable` on a peaks-only capture set, extract a
+    `.consume`-unlocked cvar witness for any element of its denotation. The
+    proof is by induction on `PeaksOnly`, which only has `empty | union | cvar`
+    cases — no `var .bound x` recursion is needed. -/
+private theorem consumable_to_consume_witness_peaks
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    {P : CaptureSet s} (hP : P.PeaksOnly) {l : Nat} {mu : Mutability}
+    (hts : EnvTyping Γ env store)
+    (hcons : P.consumable Γ)
+    (hmem : (P.denot env store).hasmem mu l) :
+    ∃ c B mu', Γ.LookupCVar c .consume B false ∧
+      ((env.lookup_cvar c).2).hasmem mu' l := by
+  induction hP generalizing mu with
+  | empty =>
+    simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot] at hmem
+    exact (CapabilitySet.not_hasmem_empty hmem).elim
+  | union hP1 hP2 ih1 ih2 =>
+    rename_i C1 C2
+    have hcons1 : C1.consumable Γ := by
+      intro m' c' hsub
+      apply hcons m' c'
+      rw [CaptureSet.peaks]
+      exact hsub.union_right_left
+    have hcons2 : C2.consumable Γ := by
+      intro m' c' hsub
+      apply hcons m' c'
+      rw [CaptureSet.peaks]
+      exact hsub.union_right_right
+    have hunion : (C1.union C2).denot env store
+        = C1.denot env store ∪ C2.denot env store := rfl
+    rw [hunion] at hmem
+    cases hmem with
+    | left hm => exact ih1 hcons1 hm
+    | right hm => exact ih2 hcons2 hm
+  | cvar =>
+    rename_i m c
+    have hpeak : ConsumablePeak Γ c := by
+      apply hcons m c
+      rw [CaptureSet.peaks]
+      exact CaptureSet.Subset.refl
+    cases hpeak with
+    | lookup hLookup =>
+      rename_i B
+      have hdenot :
+          (CaptureSet.cvar m c).denot env store
+            = ((env.lookup_cvar c).2).applyMut m := by
+        change ((env.lookup_cvar c).1.applyMut m).ground_denot store = _
+        rw [captureSet_ground_denot_applyMut_comm, ← typed_env_cvar_cap_eq hts c]
+      rw [hdenot] at hmem
+      obtain ⟨mu', hmem'⟩ := hasmem_of_applyMut hmem
+      exact ⟨c, B, mu', hLookup, hmem'⟩
+
+mutual
+
+/-- Membership in `C.denot env store` is preserved when projecting to
+    `(compute_peaks env C).denot`. Empty/union/cvar cases hold by direct
+    computation. The `.var .bound x` case delegates to
+    `hasmem_compute_peaks_denot_var_bound`, which in turn recursively calls
+    this lemma on `T_x.captureSet` at the smaller context `Γ_rest`. -/
+private theorem hasmem_compute_peaks_denot
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
+    (C : CaptureSet s) (hC : C.IsClosed) {l : Nat} {mu : Mutability}
+    (hmem : (C.denot env store).hasmem mu l) :
+    ∃ mu', ((compute_peaks env C).denot env store).hasmem mu' l := by
+  match C, hC, hmem with
+  | .empty, _, hmem =>
+    simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot] at hmem
+    exact (CapabilitySet.not_hasmem_empty hmem).elim
+  | .union C1 C2, hC, hmem =>
+    cases hC with | union hC1 hC2 =>
+    have hunion : (C1.union C2).denot env store
+        = C1.denot env store ∪ C2.denot env store := rfl
+    rw [hunion] at hmem
+    match hmem with
+    | .left hm =>
+      obtain ⟨mu', hm'⟩ := hasmem_compute_peaks_denot hts hΓ C1 hC1 hm
+      refine ⟨mu', ?_⟩
+      change ((compute_peaks env C1).denot env store
+              ∪ (compute_peaks env C2).denot env store).hasmem mu' l
+      exact .left hm'
+    | .right hm =>
+      obtain ⟨mu', hm'⟩ := hasmem_compute_peaks_denot hts hΓ C2 hC2 hm
+      refine ⟨mu', ?_⟩
+      change ((compute_peaks env C1).denot env store
+              ∪ (compute_peaks env C2).denot env store).hasmem mu' l
+      exact .right hm'
+  | .cvar m c, _, hmem =>
+    refine ⟨mu, ?_⟩
+    change (CaptureSet.cvar m c).denot env store |>.hasmem mu l
+    exact hmem
+  | .var m (.bound x), _, hmem =>
+    exact hasmem_compute_peaks_denot_var_bound hts hΓ hmem
+  | .var m (.free n), hC, _ =>
+    -- `.var m (.free n)` cannot be closed: `CaptureSet.IsClosed` has no
+    -- constructor for `.var .free`, so `hC` is vacuous.
+    cases hC
+termination_by 2 * (sizeOf Γ + sizeOf C) + 1
+
+/-- The `.var .bound x` arm of `hasmem_compute_peaks_denot`.
+
+    Proof outline (mutually recursive with `hasmem_compute_peaks_denot` via
+    `termination_by sizeOf Γ`):
+    - `.here` case under `.var T` push: by `val_denot_enforces_captures` on
+      x's stored value, lift `reachability_of_loc store.heap fx` into
+      `T.captureSet.denot env_rest store`, recurse on `T.captureSet` at
+      `Γ_rest`, then rebind via `Rename.succ` and commute applyMut.
+    - `.there` cases (var/tvar/cvar push): recurse on the smaller `Γ_rest`.
+    - `.lock` case: forward (env unchanged across lock).
+
+    Each non-base step is mechanical bookkeeping with
+    `rebind_captureset_denot`, `rebind_compute_peaks`,
+    `captureSet_ground_denot_applyMut_comm`, and `hasmem_of_subset` /
+    `hasmem_of_applyMut`. -/
+private theorem hasmem_compute_peaks_denot_var_bound
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
+    {x : BVar s .var} {m : Mutability} {l : Nat} {mu : Mutability}
+    (hmem : ((CaptureSet.var m (.bound x)).denot env store).hasmem mu l) :
+    ∃ mu', ((compute_peaks env (CaptureSet.var m (.bound x))).denot env store).hasmem mu' l := by
+  match s, Γ, env, hts, hΓ, x, hmem with
+  | _, .empty, .empty, _, _, x, _ => cases x
+  | _, .push Γ_rest (.var T), .extend env_rest (.var n ps), hts, hΓ, .here, hmem =>
+    obtain ⟨hval_T, hps_eq, hts_rest⟩ := hts
+    cases hΓ with | push hΓ_rest hb =>
+    cases hb with | var hT =>
+    have hT_cs : T.captureSet.IsClosed := Ty.captureSet_isClosed hT
+    -- (.var m (.bound .here)).denot env store = (reachability_of_loc store.heap n).applyMut m.
+    change CapabilitySet.hasmem mu l
+      ((reachability_of_loc store.heap n).applyMut m) at hmem
+    obtain ⟨mu0, hmem0⟩ := hasmem_of_applyMut hmem
+    -- Bridge: fx's heap reachability ⊆ T.captureSet.denot env_rest store.
+    have hreach_sub : reachability_of_loc store.heap n ⊆ T.captureSet.denot env_rest store := by
+      have h := val_denot_enforces_captures hts_rest (.var (.free n)) hval_T
+      simp only [resolve_reachability] at h
+      exact h
+    -- Promote hasmem through subset.
+    obtain ⟨mu1, hmem_T⟩ := hasmem_of_capabilitySet_subset hreach_sub hmem0
+    -- Recurse on T.captureSet at Γ_rest (sizeOf Γ_rest < sizeOf Γ).
+    obtain ⟨mu2, hmem_cp⟩ :=
+      hasmem_compute_peaks_denot hts_rest hΓ_rest T.captureSet hT_cs hmem_T
+    -- Lift back to env via rebind: denot env_rest = denot env_extended after rename.
+    have hcp_denot := rebind_captureset_denot
+      (ρ := @Rebind.weaken _ env_rest n ps)
+      (compute_peaks env_rest T.captureSet)
+    rw [hcp_denot] at hmem_cp
+    -- Translate the renamed compute_peaks to compute_peaks env (T.captureSet.rename Rename.succ).
+    have hcp_rename := rebind_compute_peaks
+      (ρ := @Rebind.weaken _ env_rest n ps) T.captureSet
+    rw [hcp_rename] at hmem_cp
+    -- hmem_cp now lives at `compute_peaks env (T.captureSet.rename Rename.succ)`.
+    -- Apply applyMut m: get a witness for the m-mutated version.
+    obtain ⟨mu_final, h_final⟩ :=
+      hasmem_applyMut_lift hmem_cp m
+    -- ps.cs = compute_peaks env_rest T.captureSet via hps_eq + compute_peaks_correct.
+    have hps_cs : ps.cs = compute_peaks env_rest T.captureSet := by
+      rw [hps_eq]
+      change T.captureSet.peaks Γ_rest = _
+      exact compute_peaks_correct hts_rest T.captureSet
+    -- Build the equality lifting the renamed compute_peaks back through applyMut m.
+    have hcp_eq : compute_peaks (env_rest.extend_var n ps) (CaptureSet.var m (.bound BVar.here))
+                = (compute_peaks (env_rest.extend_var n ps)
+                    (T.captureSet.rename Rename.succ)).applyMut m := by
+      change ((ps.rename Rename.succ).cs.applyMut m) = _
+      change (ps.cs.rename Rename.succ).applyMut m = _
+      rw [hps_cs, hcp_rename]
+      rfl
+    refine ⟨mu_final, ?_⟩
+    -- Convert env's `extend (.var n ps)` form to `extend_var n ps` (definitionally equal).
+    change CapabilitySet.hasmem mu_final l
+      ((compute_peaks (env_rest.extend_var n ps) (CaptureSet.var m (.bound BVar.here))).denot
+        (env_rest.extend_var n ps) store)
+    rw [hcp_eq, captureSet_denot_applyMut_comm]
+    exact h_final
+
+  | _, .push Γ_rest (.var T), .extend env_rest (.var n ps), hts, hΓ, .there x', hmem =>
+    obtain ⟨_, _, hts_rest⟩ := hts
+    cases hΓ with | push hΓ_rest _ =>
+    -- The captureSet `.var m (.bound (.there x'))` equals
+    -- `(.var m (.bound x')).rename Rename.succ` definitionally.
+    change CapabilitySet.hasmem mu l
+      (((CaptureSet.var m (.bound x')).rename Rename.succ).denot
+        (env_rest.extend_var n ps) store) at hmem
+    have hC := rebind_captureset_denot
+      (ρ := @Rebind.weaken _ env_rest n ps)
+      (CaptureSet.var m (.bound x'))
+    have hmem_rest : ((CaptureSet.var m (.bound x')).denot env_rest store).hasmem mu l := by
+      rw [hC]; exact hmem
+    obtain ⟨mu', hmem'⟩ := hasmem_compute_peaks_denot_var_bound hts_rest hΓ_rest hmem_rest
+    refine ⟨mu', ?_⟩
+    change CapabilitySet.hasmem mu' l
+      ((compute_peaks (env_rest.extend_var n ps)
+         ((CaptureSet.var m (.bound x')).rename Rename.succ)).denot
+        (env_rest.extend_var n ps) store)
+    have hcp_rename := rebind_compute_peaks
+      (ρ := @Rebind.weaken _ env_rest n ps)
+      (CaptureSet.var m (.bound x'))
+    have hcp_denot := rebind_captureset_denot
+      (ρ := @Rebind.weaken _ env_rest n ps)
+      (compute_peaks env_rest (CaptureSet.var m (.bound x')))
+    rw [hcp_denot, hcp_rename] at hmem'
+    exact hmem'
+  | _, .push Γ_rest (.tvar S), .extend env_rest (.tvar d), hts, hΓ, .there x', hmem =>
+    obtain ⟨_, _, _, _, _, hts_rest⟩ := hts
+    cases hΓ with | push hΓ_rest _ =>
+    change CapabilitySet.hasmem mu l
+      (((CaptureSet.var m (.bound x')).rename Rename.succ).denot
+        (env_rest.extend_tvar d) store) at hmem
+    have hC := rebind_captureset_denot
+      (ρ := @Rebind.tweaken _ env_rest d)
+      (CaptureSet.var m (.bound x'))
+    have hmem_rest : ((CaptureSet.var m (.bound x')).denot env_rest store).hasmem mu l := by
+      rw [hC]; exact hmem
+    obtain ⟨mu', hmem'⟩ := hasmem_compute_peaks_denot_var_bound hts_rest hΓ_rest hmem_rest
+    refine ⟨mu', ?_⟩
+    change CapabilitySet.hasmem mu' l
+      ((compute_peaks (env_rest.extend_tvar d)
+         ((CaptureSet.var m (.bound x')).rename Rename.succ)).denot
+        (env_rest.extend_tvar d) store)
+    have hcp_rename := rebind_compute_peaks
+      (ρ := @Rebind.tweaken _ env_rest d)
+      (CaptureSet.var m (.bound x'))
+    have hcp_denot := rebind_captureset_denot
+      (ρ := @Rebind.tweaken _ env_rest d)
+      (compute_peaks env_rest (CaptureSet.var m (.bound x')))
+    rw [hcp_denot, hcp_rename] at hmem'
+    exact hmem'
+  | _, .push Γ_rest (.cvar md B), .extend env_rest (.cvar cs cap), hts, hΓ, .there x', hmem =>
+    obtain ⟨_, _, _, _, hts_rest⟩ := hts
+    cases hΓ with | push hΓ_rest _ =>
+    change CapabilitySet.hasmem mu l
+      (((CaptureSet.var m (.bound x')).rename Rename.succ).denot
+        (env_rest.extend_cvar cs cap) store) at hmem
+    have hC := rebind_captureset_denot
+      (ρ := @Rebind.cweaken _ env_rest cs cap)
+      (CaptureSet.var m (.bound x'))
+    have hmem_rest : ((CaptureSet.var m (.bound x')).denot env_rest store).hasmem mu l := by
+      rw [hC]; exact hmem
+    obtain ⟨mu', hmem'⟩ := hasmem_compute_peaks_denot_var_bound hts_rest hΓ_rest hmem_rest
+    refine ⟨mu', ?_⟩
+    change CapabilitySet.hasmem mu' l
+      ((compute_peaks (env_rest.extend_cvar cs cap)
+         ((CaptureSet.var m (.bound x')).rename Rename.succ)).denot
+        (env_rest.extend_cvar cs cap) store)
+    have hcp_rename := rebind_compute_peaks
+      (ρ := @Rebind.cweaken _ env_rest cs cap)
+      (CaptureSet.var m (.bound x'))
+    have hcp_denot := rebind_captureset_denot
+      (ρ := @Rebind.cweaken _ env_rest cs cap)
+      (compute_peaks env_rest (CaptureSet.var m (.bound x')))
+    rw [hcp_denot, hcp_rename] at hmem'
+    exact hmem'
+  | _, .lock Γ_rest, env, hts, hΓ, x, hmem =>
+    -- Lock does not change env. EnvTyping forwards; recurse on Γ_rest.
+    have hts_rest : EnvTyping Γ_rest env store := hts
+    cases hΓ with | lock hΓ_rest =>
+    exact hasmem_compute_peaks_denot_var_bound hts_rest hΓ_rest hmem
+termination_by 2 * (sizeOf Γ + sizeOf (CaptureSet.var m (.bound x)))
+decreasing_by
+  all_goals simp_wf
+  all_goals try omega
+  all_goals (have := sizeOf_captureSet_le T; omega)
+
+end
+
+/-- Bridge theorem: from a syntactic `consumable Γ C` premise and a semantic
+    membership of location `l` in `C`'s denotation, extract a `.consume`-unlocked
+    cvar witness `c` whose runtime cap contains `l`.
+
+    The proof reduces to the peaks-only case by showing that any element of
+    `C.denot` is also in `(compute_peaks env C).denot` — the syntactic
+    `compute_peaks` produces a `PeaksOnly` capture set, on which the helper
+    `consumable_to_consume_witness_peaks` applies structurally. -/
+theorem consumable_to_consume_witness
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    {C : CaptureSet s} {l : Nat} {mu : Mutability}
+    (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
+    (hC : C.IsClosed)
+    (hcons : C.consumable Γ)
+    (hmem : (C.denot env store).hasmem mu l) :
+    ∃ c B mu', Γ.LookupCVar c .consume B false ∧
+      ((env.lookup_cvar c).2).hasmem mu' l := by
+  -- Reduce to the peaks-only helper.
+  let P := compute_peaks env C
+  have hP : P.PeaksOnly := compute_peaks_is_peak env C
+  -- `C.peaks Γ = compute_peaks env C` under EnvTyping.
+  have hpeaks_eq : C.peaks Γ = P := compute_peaks_correct hts C
+  -- For a PeaksOnly capture set, taking peaks again is idempotent.
+  have hPP : P.peaks Γ = P := peaks_of_peaksOnly hP
+  -- Consumability transfers to `P`.
+  have hcons' : P.consumable Γ := by
+    intro m' c' hsub
+    apply hcons m' c'
+    rw [hpeaks_eq]
+    rw [hPP] at hsub
+    exact hsub
+  -- Membership: `l` is in `P`'s denotation, via the bridge lemma.
+  obtain ⟨mu', hmem'⟩ := hasmem_compute_peaks_denot hts hΓ C hC hmem
+  exact consumable_to_consume_witness_peaks hP hts hcons' hmem'
+
 theorem sem_typ_drop
   {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cell (.var .epsilon (.bound x)))) :
+    .typ (.cell (.var .epsilon (.bound x))))
+  (hΓ : Γ.IsClosed)
+  (hcons : (CaptureSet.var .epsilon (.bound x) : CaptureSet s).consumable Γ) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.drop (.bound x) : .typ .unit := by
   intro env store hts hcompat
   -- Extract cell denotation from hx
@@ -1342,7 +1740,6 @@ theorem sem_typ_drop
   have ⟨fx, b0, ℓ0, hfx, hlk_cell, hmem_cell⟩ := cell_val_denot_inv h1'
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
   subst this
-  -- Simplify the goal
   simp only [Exp.subst, Subst.from_TypeEnv, Var.subst, List.empty_eq]
   -- Prove covers: env.lookup_var x is covered by the budget capture set
   have hcov :
@@ -1365,27 +1762,33 @@ theorem sem_typ_drop
   have hlk_cell' :
     store.lookup (env.lookup_var x).1 = some (.capability (.mcell b0 .live)) := by
     simpa [Memory.lookup] using hlk_cell
-  -- REAL GAP: this rule's post requires a `.consume`-unlocked cvar covering
-  -- `(env.lookup_var x).1`, but `sem_typ_drop`'s current signature does not
-  -- carry the syntactic `consumable Γ (.var .epsilon (.bound x))` premise that
-  -- `HasType.drop` provides. Closing this needs (a) threading the premise into
-  -- this lemma's signature and the call site at `case drop` of the fundamental
-  -- theorem, and (b) a semantic bridge: from `consumable Γ (.var .epsilon x)`
-  -- and `EnvTyping Γ env store`, derive a witness `(c, B)` with
-  -- `Γ.LookupCVar c .consume B false` and `hasmem mu (env.lookup_var x).1
-  -- ((env.lookup_cvar c).2)`. The witness flows through the syntactic
-  -- `peaksVarBound`/`ConsumablePeak` machinery which has no semantic
-  -- counterpart yet.
-  suffices h_old : Eval ((CaptureSet.var .epsilon (Var.bound x)).denot env store) store
-      (Exp.drop (Var.free (env.lookup_var x).1))
-      (Ty.exi_val_denot env (.typ .unit)).as_mpost by
-    apply eval_post_monotonic_general _ h_old
-    intro m' hsub e hold
-    refine ⟨hold, ?_⟩
-    sorry  -- preserves_liveness_consume_only — needs consumable-cvar bridge (see comment)
+  -- Extract a `.consume`-unlocked cvar witness for the drop location.
+  have hbudget_hasmem :
+      ((CaptureSet.var .epsilon (.bound x)).denot env store).hasmem
+        .epsilon (env.lookup_var x).1 := by
+    simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
+      CaptureSet.ground_denot, CapabilitySet.applyMut, reachability_of_loc, hlk_cell,
+      CapabilitySet.singleton]
+    exact CapabilitySet.hasmem.here
+  obtain ⟨c, B, mu', hlookup_cvar, hcvar_mem⟩ :=
+    consumable_to_consume_witness hts hΓ CaptureSet.IsClosed.var_bound hcons hbudget_hasmem
+  -- Apply Eval.eval_drop and discharge the post directly with the witness.
   apply Eval.eval_drop (hx := hlk_cell')
-  · -- Show the postcondition holds for unit
-    simp only [Denot.as_mpost, Ty.exi_val_denot, Ty.val_denot, resolve]
+  · refine ⟨?val_denot, ?liveness⟩
+    case val_denot => simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
+    case liveness =>
+      intro l b ℓ hheap
+      by_cases hl : l = (env.lookup_var x).1
+      · subst hl
+        rw [hlk_cell] at hheap
+        cases hheap
+        refine ⟨false, .dead, ?_, Or.inr ⟨rfl, rfl, c, B, mu',
+          hlookup_cvar, hcvar_mem⟩⟩
+        change (store.heap.update_cell _ _) _ = _
+        unfold Heap.update_cell; rw [if_pos rfl]
+      · refine ⟨b, ℓ, ?_, Or.inl rfl⟩
+        change (store.heap.update_cell (env.lookup_var x).1 _) l = _
+        unfold Heap.update_cell; rw [if_neg hl]; exact hheap
   · exact hcov
 
 theorem sem_typ_read
@@ -3168,12 +3571,14 @@ theorem fundamental
       exact sem_typ_alloc
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
   case drop =>
-    rename_i hx_syn _hcons hx_ih
+    rename_i hΓ_closed hx_syn hcons hx_ih
     cases hclosed_e with
     | drop hx_closed =>
       cases hx_closed
       exact sem_typ_drop
         (hx_ih (Exp.IsClosed.var Var.IsClosed.bound))
+        hΓ_closed
+        hcons
   case read =>
     rename_i hx_syn hx_ih
     cases hclosed_e with

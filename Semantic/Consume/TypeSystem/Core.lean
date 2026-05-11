@@ -199,6 +199,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.alloc x) (.exi (.cell (.cvar .epsilon .here)))
 | drop :
+  Γ.IsClosed ->
   HasType {} Γ (.var x) (.typ (.cell (.var .epsilon x))) ->
   CaptureSet.consumable Γ (.var .epsilon x) ->
   ----------------------------

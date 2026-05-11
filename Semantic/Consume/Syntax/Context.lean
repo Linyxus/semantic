@@ -263,6 +263,7 @@ theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
     rfl
 
 mutual
+
 /-- Helper: peak up a bound var in context. -/
 def CaptureSet.peaksVarBound : (Γ : Ctx s) → (m : Mutability) → BVar s .var → CaptureSet s
 | .push Γ (.var T), m, .here =>
