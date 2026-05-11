@@ -4,11 +4,15 @@ import Mathlib.Data.Finset.Basic
 
 namespace Consume
 
+inductive CapMode : Type where
+| access : Mutability -> CapMode
+| drop : CapMode
+
 /-- A set of capability labels, representing an "authority":
   they are the set of capabilities a program at most uses. -/
 inductive CapabilitySet : Type where
 | empty : CapabilitySet
-| cap : Mutability -> Nat -> CapabilitySet
+| cap : CapMode -> Nat -> CapabilitySet
 | union : CapabilitySet -> CapabilitySet -> CapabilitySet
 
 namespace CapabilitySet
