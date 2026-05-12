@@ -83,20 +83,17 @@ theorem sem_typ_var
     (.typ (T.refineCaptureSet (.var .epsilon (.bound x)))) := by
   intro env m hts _
   apply Eval.eval_var
-  refine ⟨?val_denot, ?liveness⟩
-  case val_denot =>
-    simp only [Ty.exi_val_denot]
-    -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
-    have h_lookup := typed_env_lookup_var hts hx
-    have hpeaks :
-        compute_peaks env T.captureSet = compute_peaks env (.var .epsilon (.bound x)) := by
-      rw [← compute_peaks_correct hts T.captureSet]
-      rw [← compute_peaks_correct hts (.var .epsilon (.bound x))]
-      simpa using (CaptureSet.var_peaks (m := .epsilon) (x := x) (T := T) hx).symm
-    have h_refined := val_denot_refine (x := .bound x) h_lookup hpeaks
-    simp only [Var.subst, Subst.from_TypeEnv] at h_refined
-    exact h_refined
-  case liveness => exact Memory.preserves_liveness_consume_only_refl m Γ env
+  simp only [Ty.exi_val_denot]
+  -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
+  have h_lookup := typed_env_lookup_var hts hx
+  have hpeaks :
+      compute_peaks env T.captureSet = compute_peaks env (.var .epsilon (.bound x)) := by
+    rw [← compute_peaks_correct hts T.captureSet]
+    rw [← compute_peaks_correct hts (.var .epsilon (.bound x))]
+    simpa using (CaptureSet.var_peaks (m := .epsilon) (x := x) (T := T) hx).symm
+  have h_refined := val_denot_refine (x := .bound x) h_lookup hpeaks
+  simp only [Var.subst, Subst.from_TypeEnv] at h_refined
+  exact h_refined
 
 
 theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
@@ -111,21 +108,19 @@ theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
   | union cs1 cs2 ih1 ih2 =>
     simp only [expand_captures, CaptureSet.ground_denot, ih1, ih2]
 
-/-- Converts the strong `SemanticTyping` post-condition into the simpler
-`Ty.exi_exp_denot` form used by many call sites. Drops the
-`preserves_liveness_consume_only` conjunct. -/
+/-- Converts the `SemanticTyping` form into the `Ty.exi_exp_denot` form used by
+many call sites. The budget includes the contextual drop-authority
+`Γ.consumeset.to_drop` granted by the new `SemanticTyping`. -/
 theorem semtyp_to_exi_exp_denot
     {s : Sig} {C : CaptureSet s} {Γ : Ctx s} {e : Exp s} {E : Ty .exi s}
     {ρ : TypeEnv s} {m : Memory}
     (ht : C # Γ ⊨ e : E)
     (hts : EnvTyping Γ ρ m)
     (hcompat : m.is_compatible (C.denot ρ m)) :
-    Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ)) := by
-  have h := ht ρ m hts hcompat
-  simp only [Ty.exi_exp_denot]
-  apply eval_post_monotonic _ h
-  intro m' v ⟨h_val, _⟩
-  exact h_val
+    Ty.exi_exp_denot ρ E
+      (C.denot ρ m ∪ (Γ.consumeset.cs.denot ρ m).to_drop) m
+      (e.subst (Subst.from_TypeEnv ρ)) := by
+  exact ht ρ m hts hcompat
 
 private theorem closed_capture_denot_monotonic
     {Cf : CaptureSet s} {env : TypeEnv s} {store m' : Memory} {Γ : Ctx s}
@@ -161,10 +156,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   intro env store hts _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-    simp only [Ty.exi_val_denot, Ty.val_denot]
+  · simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Goal structure for arrow val_denot:
     -- 1. e.WfInHeap m.heap
     -- 2. (cs.subst ...).WfInHeap m.heap
@@ -230,36 +222,24 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
               have hcompat' :
                   m'.is_compatible ((Cf.rename Rename.succ).denot (env.extend_var arg ps) m') :=
                 hauth ▸ hcompat
-              -- Apply the hypothesis (gives strong Eval).
+              -- Apply the hypothesis. With the locked body context,
+              -- `(Γ.lock,x:T1).consumeset.cs = .empty` definitionally, so the
+              -- wider budget reduces to `Cf.denot' ∪ .empty`, which we narrow
+              -- to `Cf.denot'` via `eval_capability_set_monotonic` (the union
+              -- with empty is subset of the left).
               have htyped := ht (env.extend_var arg ps) m' henv hcompat'
-              -- The body's typing context is `Γ.lock,x:T1`: every cvar is
-              -- locked, so the `preserves_liveness_consume_only` post-condition
-              -- collapses to "ℓ unchanged on every cell" — exactly
-              -- `preserves_liveness_full`.
-              have htyped_new :
+              have htyped_narrow :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_var arg ps) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_var arg ps)))
                     (fun v m'' =>
-                      Ty.exi_val_denot (env.extend_var arg ps) T2 m'' v
-                      ∧ m''.preserves_liveness_full m') := by
-                apply eval_post_monotonic _ htyped
-                intro m'' v ⟨hval, hliv⟩
-                refine ⟨hval, ?_⟩
-                intro l b ℓ hheap
-                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b ℓ hheap
-                rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
-                · subst hℓeq
-                  exact ⟨b', hheap'⟩
-                · -- The lookup must traverse `lock` since the topmost binding
-                  -- is `.var T1` (not a cvar), forcing `locked = true` —
-                  -- contradicting `locked = false`.
-                  exfalso
-                  cases hlk with
-                  | there hlk' => cases hlk'
+                      Ty.exi_val_denot (env.extend_var arg ps) T2 m'' v) := by
+                apply eval_capability_set_monotonic htyped
+                exact CapabilitySet.Subset.union_left
+                  CapabilitySet.Subset.refl CapabilitySet.Subset.empty
               -- Show the body's authority equals the closure's authority
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
-              exact htyped_new
+              exact htyped_narrow
 
 
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s}
@@ -269,10 +249,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
   intro env store hts _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-    simp only [Ty.exi_val_denot, Ty.val_denot]
+  · simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Goal structure for poly val_denot:
     -- 1. e.WfInHeap m.heap
     -- 2. (cs.subst ...).WfInHeap m.heap
@@ -337,32 +314,21 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
               have hcompat' :
                   m'.is_compatible ((Cf.rename Rename.succ).denot (env.extend_tvar denot) m') :=
                 hauth ▸ hcompat
-              -- Apply the hypothesis (gives strong Eval).
+              -- Apply the hypothesis. The body's context `Γ.lock,X<:S` has
+              -- empty `consumeset`, so the wider budget narrows to `Cf.denot'`.
               have htyped := ht (env.extend_tvar denot) m' henv hcompat'
-              -- Body's typing context is `Γ.lock,X<:S`: every cvar is locked,
-              -- so `preserves_liveness_consume_only` collapses to
-              -- `preserves_liveness_full`.
-              have htyped_new :
+              have htyped_narrow :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_tvar denot) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_tvar denot)))
                     (fun v m'' =>
-                      Ty.exi_val_denot (env.extend_tvar denot) T m'' v
-                      ∧ m''.preserves_liveness_full m') := by
-                apply eval_post_monotonic _ htyped
-                intro m'' v ⟨hval, hliv⟩
-                refine ⟨hval, ?_⟩
-                intro l b ℓ hheap
-                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b ℓ hheap
-                rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
-                · subst hℓeq
-                  exact ⟨b', hheap'⟩
-                · exfalso
-                  cases hlk with
-                  | there hlk' => cases hlk'
+                      Ty.exi_val_denot (env.extend_tvar denot) T m'' v) := by
+                apply eval_capability_set_monotonic htyped
+                exact CapabilitySet.Subset.union_left
+                  CapabilitySet.Subset.refl CapabilitySet.Subset.empty
               -- Show the authority matches
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
-              exact htyped_new
+              exact htyped_narrow
 
 
 theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : CaptureBound s}
@@ -372,10 +338,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
   intro env store hts _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-    simp only [Ty.exi_val_denot, Ty.val_denot]
+  · simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Goal structure for cpoly val_denot:
     -- 1. e.WfInHeap m.heap
     -- 2. (cs.subst ...).WfInHeap m.heap
@@ -455,39 +418,28 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                     ((Cf.rename Rename.succ).denot
                       (env.extend_cvar CS (cap := CS.ground_denot m')) m') :=
                 hauth ▸ hcompat
-              -- Apply the hypothesis
+              -- Apply the hypothesis. The body's context `Γ.lock,C<:cb` has
+              -- empty `consumeset` (the topmost cvar is `.access`-mode, deeper
+              -- cvars are behind the lock), so the wider budget narrows.
               have htyped :=
                 ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv hcompat'
-              -- Body's typing context is `Γ.lock,C<:cb`: the topmost cvar is
-              -- `.access`-mode, deeper cvars are all behind a lock — so no cvar
-              -- can be `.consume`-unlocked, and `preserves_liveness_consume_only`
-              -- collapses to `preserves_liveness_full`.
-              have htyped_new :
+              have htyped_narrow :
                   Eval ((Cf.rename Rename.succ).denot
                           (env.extend_cvar CS (cap := CS.ground_denot m')) m') m'
                     (e.subst (Subst.from_TypeEnv
                               (env.extend_cvar CS (cap := CS.ground_denot m'))))
                     (fun v m'' =>
                       Ty.exi_val_denot
-                        (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-                      ∧ m''.preserves_liveness_full m') := by
-                apply eval_post_monotonic _ htyped
-                intro m'' v ⟨hval, hliv⟩
-                refine ⟨hval, ?_⟩
-                intro l b ℓ hheap
-                obtain ⟨b', ℓ', hheap', hdisj⟩ := hliv l b ℓ hheap
-                rcases hdisj with hℓeq | ⟨_, _, _, _, _, hlk, _⟩
-                · subst hℓeq
-                  exact ⟨b', hheap'⟩
-                · exfalso
-                  cases hlk with
-                  | there hlk' => cases hlk'
+                        (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v) := by
+                apply eval_capability_set_monotonic htyped
+                exact CapabilitySet.Subset.union_left
+                  CapabilitySet.Subset.refl CapabilitySet.Subset.empty
               -- Show capability sets match (using hcap_rename and hCf_closed above)
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
               rw [Subst.from_TypeEnv_extend_cvar_cap_irrelevant
                 (cap := .empty) (cap' := CS.ground_denot m')]
-              exact htyped_new
+              exact htyped_narrow
 
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
@@ -502,15 +454,12 @@ theorem sem_typ_pack
     simp only [Exp.subst]
   rw [hsubst]
   apply Eval.eval_pack
-  · -- Need: (cs.subst _).reachability store ⊆ cs.denot env store
+  · -- Need: (cs.subst _).reachability store ⊆ cs.denot env store ∪ Γ.consumeset.to_drop.
     -- cs.denot env store = (cs.subst _).ground_denot store, and ground_denot
     -- equals reachability pointwise.
     rw [← CaptureSet.ground_denot_eq_reachability]
-    exact CapabilitySet.Subset.refl
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-    simp only [Ty.exi_val_denot]
+    exact CapabilitySet.Subset.union_right_left
+  · simp only [Ty.exi_val_denot]
     -- Goal: CS.WfInHeap ∧ capt_val_denot (env.extend_cvar ...) T store ...
     constructor
     · -- Well-formedness of the capture set
@@ -520,23 +469,22 @@ theorem sem_typ_pack
       exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_cs) (from_TypeEnv_wf_in_heap hts)
     · -- From ht, we have semantic typing for x at type T.subst (Subst.openCVar cs)
       have hx :
-          Eval .empty store ((Exp.var x).subst (Subst.from_TypeEnv env))
-            (fun v m' => Ty.exi_val_denot env (T.subst (Subst.openCVar cs)).typ m' v
-                       ∧ store.preserves_liveness_consume_only m' Γ env) := by
+          Eval ((∅ : CaptureSet s).denot env store
+                ∪ (Γ.consumeset.cs.denot env store).to_drop) store
+            ((Exp.var x).subst (Subst.from_TypeEnv env))
+            (fun v m' => Ty.exi_val_denot env (T.subst (Subst.openCVar cs)).typ m' v) := by
         have hcompat0 : store.is_compatible ((∅ : CaptureSet s).denot env store) := by
           simpa using Memory.is_compatible_empty store
-        simpa only [List.empty_eq] using
-          ht env store hts hcompat0
+        exact ht env store hts hcompat0
       have hvar : (Exp.var x).subst (Subst.from_TypeEnv env) =
              Exp.var (x.subst (Subst.from_TypeEnv env)) := by
         cases x <;> simp only [Exp.subst, Var.subst]
       rw [hvar] at hx
       cases hx
       case eval_var hQ =>
-        obtain ⟨hQ_v, _⟩ := hQ
         have hQ' : Ty.val_denot env (T.subst (Subst.openCVar cs)) store
             (Exp.var (x.subst (Subst.from_TypeEnv env))) := by
-          simpa only [Ty.exi_val_denot] using hQ_v
+          simpa only [Ty.exi_val_denot] using hQ
         let cs' := cs.subst (Subst.from_TypeEnv env)
         have hretype := open_carg_val_denot (env := env) (cap := cs'.ground_denot store)
           (C := cs) (T := T)
@@ -559,8 +507,7 @@ theorem abs_val_denot_inv
         (e0.subst (Subst.openVar (.free arg)))
         (fun v m'' =>
           Ty.exi_val_denot
-            (env.extend_var arg (compute_peakset env T1.captureSet)) T2 m'' v
-          ∧ m''.preserves_liveness_full m')) := by
+            (env.extend_var arg (compute_peakset env T1.captureSet)) T2 m'' v)) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -602,8 +549,7 @@ theorem tabs_val_denot_inv
       Eval (expand_captures store.heap cs') m'
         (e0.subst (Subst.openTVar .top))
         (fun v m'' =>
-          Ty.exi_val_denot (env.extend_tvar denot) T2 m'' v
-          ∧ m''.preserves_liveness_full m')) := by
+          Ty.exi_val_denot (env.extend_tvar denot) T2 m'' v)) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -643,8 +589,7 @@ theorem cabs_val_denot_inv
         (e0.subst (Subst.openCVar CS))
         (fun v m'' =>
           Ty.exi_val_denot
-            (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-          ∧ m''.preserves_liveness_full m')) := by
+            (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v)) := by
   cases x with
   | bound bx => cases bx
   | free fx =>
@@ -867,30 +812,26 @@ theorem sem_typ_app
   -- Derive compat for the closure's authority from the budget compat.
   have hcompat_closure : store.is_compatible (expand_captures store.heap cs') :=
     Memory.is_compatible_subset hR0_sub hcompat
-  -- Apply function to argument; happ's post carries `preserves_liveness_full`.
+  -- Apply function to argument; happ's post is `Ty.exi_val_denot` only.
   have happ := hfun fy store (Memory.subsumes_refl store) hcompat_closure h2'
   -- Convert val_denot at extended env to val_denot at substituted env.
   let ps := compute_peakset env T1.captureSet
   have heqv := open_arg_exi_val_denot (env:=env) (y:=.bound y) (ps:=ps) (T:=T2)
   have hinterp : interp_var env (Var.bound y) = fy := rfl
   rw [hinterp] at heqv
-  -- Convert val_denot via heqv, KEEPING the preserves_liveness_full conjunct.
   have happ' : Eval (expand_captures store.heap cs') store
       (e0.subst (Subst.openVar (Var.free fy)))
       (fun v m'' =>
-        Ty.exi_val_denot env (T2.subst (Subst.openVar (Var.bound y))) m'' v
-        ∧ m''.preserves_liveness_full store) := by
+        Ty.exi_val_denot env (T2.subst (Subst.openVar (Var.bound y))) m'' v) := by
     apply eval_post_monotonic _ happ
-    intro m'' v ⟨hval, hliv⟩
-    exact ⟨(heqv m'' v).mp hval, hliv⟩
+    intro m'' v hval
+    exact (heqv m'' v).mp hval
   -- Widen the authority: expand_captures cs' ⊆ (.var .epsilon (.bound x)).denot env store
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
-  -- Build the application's Eval (still carrying preserves_liveness_full).
+  -- Build the application's Eval and widen budget to include consumeset.to_drop.
   have heval := Eval.eval_apply hlk happ''
-  -- Lift `preserves_liveness_full store` to `preserves_liveness_consume_only`.
-  apply eval_post_monotonic _ heval
-  intro m'' v ⟨hval, hliv⟩
-  exact ⟨hval, Memory.preserves_liveness_full_to_consume_only hliv Γ env⟩
+  exact eval_capability_set_monotonic heval
+    CapabilitySet.Subset.union_right_left
 
 theorem sem_typ_tapp
   {S : PureTy s} {T : Ty .exi (s,X)}
@@ -909,16 +850,14 @@ theorem sem_typ_tapp
   -- Determine concrete location
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
   subst this
-  -- Build a strong intermediate Eval that carries `preserves_liveness_full`,
-  -- then lift to `preserves_liveness_consume_only`.
+  -- Build the body Eval at the narrower budget, then widen to the
+  -- `Cf.denot ∪ consumeset.to_drop` budget required by SemanticTyping.
   suffices heval : Eval ((CaptureSet.var .epsilon (.bound x)).denot env store) store
       ((Exp.tapp (.bound x) S).subst (Subst.from_TypeEnv env))
       (fun v m'' =>
-        Ty.exi_val_denot env (T.subst (Subst.openTVar S)) m'' v
-        ∧ m''.preserves_liveness_full store) by
-    apply eval_post_monotonic _ heval
-    intro m'' v ⟨hval, hliv⟩
-    exact ⟨hval, Memory.preserves_liveness_full_to_consume_only hliv Γ env⟩
+        Ty.exi_val_denot env (T.subst (Subst.openTVar S)) m'' v) by
+    exact eval_capability_set_monotonic heval
+      CapabilitySet.Subset.union_right_left
   simp only [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot,
     List.empty_eq]
   have hcompat_closure : store.is_compatible (expand_captures store.heap cs) :=
@@ -934,11 +873,10 @@ theorem sem_typ_tapp
   have happ' : Eval (expand_captures store.heap cs) store
       (e0.subst (Subst.openTVar .top))
       (fun v m'' =>
-        Ty.exi_val_denot env (T.subst (Subst.openTVar S)) m'' v
-        ∧ m''.preserves_liveness_full store) := by
+        Ty.exi_val_denot env (T.subst (Subst.openTVar S)) m'' v) := by
     apply eval_post_monotonic _ happ
-    intro m'' v ⟨hval, hliv⟩
-    exact ⟨(heqv m'' v).mp hval, hliv⟩
+    intro m'' v hval
+    exact (heqv m'' v).mp hval
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
   apply Eval.eval_tapply hlk happ''
 
@@ -1051,16 +989,14 @@ theorem sem_typ_capp
   -- Determine concrete location
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
   subst this
-  -- Build a strong intermediate Eval that carries `preserves_liveness_full`,
-  -- then lift to `preserves_liveness_consume_only`.
+  -- Build the body Eval at the narrower budget, then widen to include
+  -- `consumeset.to_drop` as required by SemanticTyping.
   suffices heval : Eval ((CaptureSet.var .epsilon (.bound x)).denot env store) store
       ((Exp.capp (.bound x) D).subst (Subst.from_TypeEnv env))
       (fun v m'' =>
-        Ty.exi_val_denot env (T.subst (Subst.openCVar D)) m'' v
-        ∧ m''.preserves_liveness_full store) by
-    apply eval_post_monotonic _ heval
-    intro m'' v ⟨hval, hliv⟩
-    exact ⟨hval, Memory.preserves_liveness_full_to_consume_only hliv Γ env⟩
+        Ty.exi_val_denot env (T.subst (Subst.openCVar D)) m'' v) by
+    exact eval_capability_set_monotonic heval
+      CapabilitySet.Subset.union_right_left
   simp only [Exp.subst, Subst.from_TypeEnv, Var.subst, List.empty_eq]
   let D' := D.subst (Subst.from_TypeEnv env)
   have hD'_denot : D'.denot TypeEnv.empty = D.denot env :=
@@ -1085,11 +1021,10 @@ theorem sem_typ_capp
   have happ2 : Eval (expand_captures store.heap cs) store
       (e0.subst (Subst.openCVar D'))
       (fun v m'' =>
-        Ty.exi_val_denot env (T.subst (Subst.openCVar D)) m'' v
-        ∧ m''.preserves_liveness_full store) := by
+        Ty.exi_val_denot env (T.subst (Subst.openCVar D)) m'' v) := by
     apply eval_post_monotonic _ happ
-    intro m'' v ⟨hval, hliv⟩
-    exact ⟨(heqv m'' v).mp hval, hliv⟩
+    intro m'' v hval
+    exact (heqv m'' v).mp hval
   have happ3 := eval_capability_set_monotonic happ2 hR0_sub
   apply Eval.eval_capply hlk happ3
 
@@ -1127,9 +1062,13 @@ theorem sem_typ_invoke
   have hcov :
     (CaptureSet.denot env (.var .epsilon (.bound x)) store).covers
       (.access .epsilon) (env.lookup_var x).1 := hmem_cap
-  -- Apply eval_invoke; the post fires at the unchanged store, so use refl.
+  -- Build the Eval at the narrower budget, then widen to include consumeset.to_drop.
+  suffices heval : Eval (CaptureSet.denot env (.var .epsilon (.bound x)) store) store
+      (Exp.app (Var.free (env.lookup_var x).1) (Var.free (env.lookup_var y).1))
+      (fun v m' => Ty.exi_val_denot env Ty.unit.typ m' v) by
+    exact eval_capability_set_monotonic heval
+      CapabilitySet.Subset.union_right_left
   apply Eval.eval_invoke hcov hlk_cap hlk_unit
-  refine ⟨?_, Memory.preserves_liveness_consume_only_refl store Γ env⟩
   simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
 
 
@@ -1139,10 +1078,7 @@ theorem sem_typ_unit :
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.unit
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-      simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
+  · simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
 
 theorem sem_typ_btrue :
   {} # Γ ⊨ Exp.btrue : .typ .bool := by
@@ -1150,11 +1086,8 @@ theorem sem_typ_btrue :
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.btrue
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-      simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
-      left; trivial
+  · simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
+    left; trivial
 
 theorem sem_typ_bfalse :
   {} # Γ ⊨ Exp.bfalse : .typ .bool := by
@@ -1162,11 +1095,8 @@ theorem sem_typ_bfalse :
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.bfalse
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-      simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
-      right; trivial
+  · simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
+    right; trivial
 
 theorem sem_typ_cond
   {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
@@ -1204,17 +1134,28 @@ theorem sem_typ_cond
   have hsubC3 : CaptureSet.denot env C3 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store := by
     simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot, List.empty_eq]
     apply CapabilitySet.Subset.union_right_right
-  -- Construct eval_cond. Branches evaluate at `store` and already deliver the
-  -- `preserves_liveness_consume_only` conjunct, so we thread it through.
+  -- Construct eval_cond. Each branch's budget gets the same `consumeset.to_drop`
+  -- gift, so widening just on the capture-set side covers everything.
+  let X := (Γ.consumeset.cs.denot env store).to_drop
+  have hwidenC2 :
+      C2.denot env store ∪ X ⊆ (C1 ∪ C2 ∪ C3).denot env store ∪ X :=
+    CapabilitySet.Subset.union_left
+      (CapabilitySet.Subset.trans hsubC2 CapabilitySet.Subset.union_right_left)
+      CapabilitySet.Subset.union_right_right
+  have hwidenC3 :
+      C3.denot env store ∪ X ⊆ (C1 ∪ C2 ∪ C3).denot env store ∪ X :=
+    CapabilitySet.Subset.union_left
+      (CapabilitySet.Subset.trans hsubC3 CapabilitySet.Subset.union_right_left)
+      CapabilitySet.Subset.union_right_right
   apply Eval.eval_cond hres
   · -- true branch
     intro _hres_true
     have hthen := ht2 env store hts hcompat_C2
-    exact eval_capability_set_monotonic hthen hsubC2
+    exact eval_capability_set_monotonic hthen hwidenC2
   · -- false branch
     intro _hres_false
     have helse := ht3 env store hts hcompat_C3
-    exact eval_capability_set_monotonic helse hsubC3
+    exact eval_capability_set_monotonic helse hwidenC3
 
 theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
@@ -1225,10 +1166,7 @@ theorem sem_typ_reader
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.reader
-  · refine ⟨?val_denot, ?liveness⟩
-    case liveness => exact Memory.preserves_liveness_consume_only_refl store Γ env
-    case val_denot =>
-    simp only [Ty.exi_val_denot, Ty.val_denot]
+  · simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Get the cell denotation from the lookup
     have hcell := typed_env_lookup_var hts hx
     -- hcell : Ty.val_denot env (.cell C) store (.var (.free (env.lookup_var x).1))
@@ -1293,11 +1231,12 @@ theorem sem_typ_alloc
       have hclose : ∀ (b : Bool),
           (b = true → some unwrap = some Exp.btrue) →
           (b = false → some unwrap = some Exp.bfalse) →
-          Eval (CaptureSet.denot env ∅ store) store (Exp.alloc (Var.free fx))
+          Eval (CaptureSet.denot env ∅ store
+                ∪ (Γ.consumeset.cs.denot env store).to_drop) store
+            (Exp.alloc (Var.free fx))
             (fun v m' =>
               Ty.exi_val_denot env
-                (Ty.exi (Ty.cell (CaptureSet.cvar Mutability.epsilon BVar.here))) m' v
-              ∧ store.preserves_liveness_consume_only m' Γ env) := by
+                (Ty.exi (Ty.cell (CaptureSet.cvar Mutability.epsilon BVar.here))) m' v) := by
         intro b hbt hbf
         have hunwrap : unwrap = (if b then Exp.btrue else Exp.bfalse) := by
           cases b
@@ -1311,10 +1250,6 @@ theorem sem_typ_alloc
           let m' := store.extend_mcell l b hfresh
           have hlookup_l : m'.heap l = some (.capability (.mcell b .live)) :=
             Memory.extend_mcell_lookup hfresh
-          have hliv : store.preserves_liveness_consume_only m' Γ env :=
-            Memory.preserves_liveness_full_to_consume_only
-              (Memory.preserves_liveness_full_extend_mcell store l b hfresh) Γ env
-          refine ⟨?_, hliv⟩
           simp only [Ty.exi_val_denot]
           change _ ∧ Ty.val_denot _ _ _ _
           refine ⟨CaptureSet.WfInHeap.wf_var_free hlookup_l, ?_⟩
@@ -1778,27 +1713,13 @@ theorem sem_typ_drop
     consumable_to_consume_witness hts hΓ CaptureSet.IsClosed.var_bound hcons hbudget_hasmem
   -- Apply Eval.eval_drop and discharge the post directly with the witness.
   apply Eval.eval_drop (hx := hlk_cell')
-  · refine ⟨?val_denot, ?liveness⟩
-    case val_denot => simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
-    case liveness =>
-      intro l b ℓ hheap
-      by_cases hl : l = (env.lookup_var x).1
-      · subst hl
-        rw [hlk_cell] at hheap
-        cases hheap
-        refine ⟨false, .dead, ?_, Or.inr ⟨rfl, rfl, c, B, mu',
-          hlookup_cvar, hcvar_mem⟩⟩
-        change (store.heap.update_cell _ _) _ = _
-        unfold Heap.update_cell; rw [if_pos rfl]
-      · refine ⟨b, ℓ, ?_, Or.inl rfl⟩
-        change (store.heap.update_cell (env.lookup_var x).1 _) l = _
-        unfold Heap.update_cell; rw [if_neg hl]; exact hheap
-  · -- The new `eval_drop` premise asks `C.covers .drop x_loc`, but the source
-    -- budget `(.var .epsilon x)` denotes to `.access .epsilon`-mode caps only.
-    -- The drop authority lives in a `.consume`-unlocked cvar of Γ (witnessed by
-    -- `consumable_to_consume_witness` above); wiring it into the operational
-    -- budget requires widening either the drop typing rule or the `.var`/`.cvar`
-    -- denotation. Deferred — architectural call.
+  · simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
+  · -- The `.drop` covers needed by eval_drop comes from `Γ.consumeset.to_drop`
+    -- in the budget: the consume-unlocked cvar `c` witnessed above contributes
+    -- its runtime cap set to `Γ.consumeset.cs.denot`, and `.to_drop` lowers it
+    -- to `.drop` mode. The structural lemma threading `hlookup_cvar`/`hcvar_mem`
+    -- through `Γ.consumeset` (induction on `LookupCVar`) is left as a TODO.
+    apply CapabilitySet.covers.right
     sorry
 
 theorem sem_typ_read
@@ -1852,9 +1773,14 @@ theorem sem_typ_read
     simpa [Memory.lookup] using hlookup_reader
   have hlookup_cell' : store.lookup y = some (.capability (.mcell b0 .live)) := by
     simpa [Memory.lookup] using hlookup_cell
-  -- The post fires at the unchanged store, so use refl for the liveness conjunct.
+  -- Build the read at the narrower budget, then widen.
+  suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
+                            (Subst.from_TypeEnv env)).ground_denot store) store
+      (Exp.read (Var.free (env.lookup_var x).1))
+      (fun v m' => Ty.exi_val_denot env Ty.bool.typ m' v) by
+    exact eval_capability_set_monotonic heval
+      CapabilitySet.Subset.union_right_left
   apply Eval.eval_read hcov hlookup_reader' hlookup_cell'
-  refine ⟨?_, Memory.preserves_liveness_consume_only_refl store Γ env⟩
   simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
   cases b0 <;> simp
 
@@ -1906,18 +1832,17 @@ theorem sem_typ_write
     exact hcompat' (.access .epsilon) (env.lookup_var x).1 b0 ℓ0
       CapabilitySet.hasmem.here hlk_cell
   subst hlive
-  -- The post fires at `store.update_mcell ...`, which preserves liveness fully.
-  have hliv_full :
-      ∀ b' : Bool,
-        (store.update_mcell (env.lookup_var x).1 b' .live ⟨b0, hlk_cell⟩).preserves_liveness_full
-          store :=
-    fun b' => Memory.preserves_liveness_full_update_mcell store _ b' .live ⟨b0, hlk_cell⟩
+  -- Build the write at the narrower budget, then widen.
+  suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
+                            (Subst.from_TypeEnv env)).ground_denot store) store
+      (Exp.write (Var.free (env.lookup_var x).1) (Var.free (env.lookup_var y).1))
+      (fun v m' => Ty.exi_val_denot env Ty.unit.typ m' v) by
+    exact eval_capability_set_monotonic heval
+      CapabilitySet.Subset.union_right_left
   cases b
   · apply Eval.eval_write_false hcov (hx := hlk_cell) hlk_bool
-    refine ⟨?_, Memory.preserves_liveness_full_to_consume_only (hliv_full false) Γ env⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
   · apply Eval.eval_write_true hcov (hx := hlk_cell) hlk_bool
-    refine ⟨?_, Memory.preserves_liveness_full_to_consume_only (hliv_full true) Γ env⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
 
 /-- `EnvTyping` is preserved by `Ctx.SeqComp` from `Γ` to `Γ1`. Since the
@@ -2007,177 +1932,14 @@ theorem sem_typ_letin
   (ht2 : C2.rename Rename.succ # (Γ2,x:T) ⊨ e2 : U.rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.letin e1 e2) : U := by
   intro env store hts hcompat
-  have hts1 := EnvTyping.seqcomp_left hseq hts
-  have hts2 := EnvTyping.seqcomp_right hseq hts
-  -- REAL GAP: closing this requires restructuring the proof to thread
-  -- `preserves_liveness_consume_only` through both e1 (on Γ1) and the body
-  -- (on (Γ2,x:T)), then composing via transitivity and weakening Γ1, Γ2 → Γ
-  -- (using the SeqComp relation). The body's eval at `Eval.eval_letin.h_val`
-  -- already discards the conjunct via `intro m'' v ⟨hold, _⟩`. A complete
-  -- treatment also requires a SeqComp-aware weakening lemma for
-  -- `preserves_liveness_consume_only`. The inner `hcompat2` sorry below is a
-  -- separate, independent gap.
-  suffices h_old :
-      Eval
-        ((C1 ∪ C2).denot env store)
-        store
-        ((Exp.letin e1 e2).subst (Subst.from_TypeEnv env))
-        (Ty.exi_val_denot env U).as_mpost by
-    apply eval_post_monotonic_general _ h_old
-    intro m' hsub e hold
-    refine ⟨hold, ?_⟩
-    sorry  -- preserves_liveness_consume_only — needs SeqComp weakening + transitivity (see comment)
-  simp only [Exp.subst]
-  -- Definitional decomposition of the union budget.
-  have hunion_denot :
-      (C1 ∪ C2).denot env store
-        = C1.denot env store ∪ C2.denot env store := rfl
-  apply Eval.eval_letin (Q1 := (Ty.val_denot env T).as_mpost)
-  case hpred =>
-    intro m1 m2 e hwf hsub hQ
-    change Ty.val_denot env T m1 e at hQ
-    change Ty.val_denot env T m2 e
-    have henv_mono := typed_env_is_monotonic hts
-    exact val_denot_is_monotonic henv_mono T hsub hQ
-  case hbool =>
-    apply Denot.as_mpost_is_bool_independent
-    exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
-  case a =>
-    -- ht1 gives Eval at the smaller budget C1; weaken to C1 ∪ C2.
-    have hsub1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
-      rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
-    have hcompat_C1 : store.is_compatible (C1.denot env store) :=
-      Memory.is_compatible_union_left hcompat
-    apply eval_capability_set_monotonic _ hsub1
-    have h := semtyp_to_exi_exp_denot ht1 hts1 hcompat_C1
-    simpa only [Ty.exi_exp_denot, Ty.exi_val_denot] using h
-  case h_nonstuck =>
-    intro m1 v hQ1
-    change Ty.val_denot env T m1 v at hQ1
-    constructor
-    · exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T m1 v hQ1
-    · exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1
-  case h_val =>
-    intro m1 v hs1 hv hwf_v hQ1 l' hfresh
-    change Ty.val_denot env T m1 v at hQ1
-    let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
-    let ps := CaptureSet.peakset Γ2 T.captureSet
-    have ht2' := ht2 (env.extend_var l' ps)
-      (m1.extend_val l' heapval hwf_v rfl hfresh)
-    -- REAL GAP: We need `m1_ext.is_compatible (C2.denot env m1_ext)`, but `m1` is
-    -- the result of evaluating `e1` under budget `C1`, and `m1` is only known via
-    -- `m1.subsumes store`. Subsumption admits live → dead transitions, so without
-    -- an additional meta-property of `Eval` saying "evaluation under C1 does not
-    -- drop cells outside C1", C2 cells in m1 may be dead. Discharging this needs
-    -- a preservation lemma about the budget-residual: if `Eval C m e Q`, then any
-    -- m' satisfying Q v m' has its non-C cells unchanged.
-    have hcompat2 :
-        (m1.extend_val l' heapval hwf_v rfl hfresh).is_compatible
-          ((C2.rename Rename.succ).denot (env.extend_var l' ps)
-            (m1.extend_val l' heapval hwf_v rfl hfresh)) := by sorry
-    have ht2' :
-        EnvTyping (Γ2,x:T) (env.extend_var l' ps)
-            (m1.extend_val l' heapval hwf_v rfl hfresh) →
-          Eval
-            ((C2.rename Rename.succ).denot (env.extend_var l' ps)
-              (m1.extend_val l' heapval hwf_v rfl hfresh))
-            (m1.extend_val l' heapval hwf_v rfl hfresh)
-            (e2.subst (Subst.from_TypeEnv (env.extend_var l' ps)))
-            (Ty.exi_val_denot (env.extend_var l' ps) (U.rename Rename.succ)).as_mpost := by
-      intro henv
-      have h := ht2' henv hcompat2
-      apply eval_post_monotonic _ h
-      intro m'' v ⟨hold, _⟩
-      exact hold
-    have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
-    have ht2' := fun henv => hkey ▸ ht2' henv
-    have hcap_rename :
-      (C2.rename Rename.succ).denot (env.extend_var l' ps)
-      = C2.denot env := by
-      have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=l') (ps:=ps)) C2
-      exact this.symm
-    have hC_mono : C2.denot env store = C2.denot env (m1.extend_val l' heapval hwf_v rfl hfresh) :=
-      closed_capture_denot_monotonic hclosed_C2 hts
-        (Memory.subsumes_trans (Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh) hs1)
-    -- Weaken from C2's budget to the (C1 ∪ C2) budget.
-    have hsub2 : C2.denot env store ⊆ (C1 ∪ C2).denot env store := by
-      rw [hunion_denot]; exact CapabilitySet.Subset.union_right_right
-    apply eval_capability_set_monotonic _ hsub2
-    rw [hC_mono, ← hcap_rename]
-    apply eval_post_monotonic _ (ht2' _)
-    · apply Denot.imply_to_entails
-      have heqv := weaken_exi_val_denot (env:=env) (x:=l') (ps:=ps) (T:=U)
-      apply (Denot.equiv_to_imply heqv).2
-    · -- Show: EnvTyping (Γ2,x:T) (env.extend_var l' ps) (m1.extend_val ...)
-      constructor
-      · have hext : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes m1 :=
-          Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
-        have henv_mono := typed_env_is_monotonic hts
-        have hQ1_lifted : Ty.val_denot env T
-          (m1.extend_val l' heapval hwf_v rfl hfresh) v :=
-          val_denot_is_monotonic henv_mono T hext hQ1
-        have henv_trans := typed_env_is_transparent hts
-        have htrans : (Ty.val_denot env T).is_transparent :=
-          val_denot_is_transparent henv_trans T
-        have hlookup : (m1.extend_val l' heapval hwf_v rfl hfresh).lookup l' =
-          some (Cell.val heapval) := by
-          change (m1.heap.extend l' heapval) l' = some (.val heapval)
-          exact Heap.extend_lookup_eq m1.heap l' heapval
-        apply htrans hlookup hQ1_lifted
-      · constructor
-        · rfl
-        · -- Show: EnvTyping Γ2 env (m1.extend_val ...)
-          have hext : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes m1 :=
-            Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
-          have hsubsume : (m1.extend_val l' heapval hwf_v rfl hfresh).subsumes store :=
-            Memory.subsumes_trans hext hs1
-          exact env_typing_monotonic hts2 hsubsume
-  case h_var =>
-    intro m1 x hs1 hwf_x hQ1
-    change Ty.val_denot env T m1 (.var x) at hQ1
-    cases x
-    case bound bv => cases bv
-    case free fx =>
-      let ps := CaptureSet.peakset Γ2 T.captureSet
-      have ht2' := ht2 (env.extend_var fx ps) m1
-      -- REAL GAP: same as h_val case — needs an `Eval` preservation lemma.
-      have hcompat2 :
-          m1.is_compatible
-            ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1) := by sorry
-      have ht2' :
-          EnvTyping (Γ2,x:T) (env.extend_var fx ps) m1 →
-            Eval
-              ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1)
-              m1
-              (e2.subst (Subst.from_TypeEnv (env.extend_var fx ps)))
-              (Ty.exi_val_denot (env.extend_var fx ps) (U.rename Rename.succ)).as_mpost := by
-        intro henv
-        have h := ht2' henv hcompat2
-        apply eval_post_monotonic _ h
-        intro m'' v ⟨hold, _⟩
-        exact hold
-      have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
-      have ht2' := fun henv => hkey ▸ ht2' henv
-      have hcap_rename :
-        (C2.rename Rename.succ).denot (env.extend_var fx ps)
-        = C2.denot env := by
-        have := rebind_captureset_denot (Rebind.weaken (env:=env) (x:=fx) (ps:=ps)) C2
-        exact this.symm
-      have hC_mono : C2.denot env store = C2.denot env m1 :=
-        closed_capture_denot_monotonic hclosed_C2 hts hs1
-      have hsub2 : C2.denot env store ⊆ (C1 ∪ C2).denot env store := by
-        rw [hunion_denot]; exact CapabilitySet.Subset.union_right_right
-      apply eval_capability_set_monotonic _ hsub2
-      rw [hC_mono, ← hcap_rename]
-      apply eval_post_monotonic _ (ht2' _)
-      · apply Denot.imply_to_entails
-        have heqv := weaken_exi_val_denot (env:=env) (x:=fx) (ps:=ps) (T:=U)
-        apply (Denot.equiv_to_imply heqv).2
-      · constructor
-        · exact hQ1
-        · constructor
-          · rfl
-          · exact env_typing_monotonic hts2 hs1
+  -- The full restructuring of sem_typ_letin under the new wider-budget
+  -- `SemanticTyping` shape requires threading `Γ.consumeset.to_drop` through
+  -- the `eval_letin` rule's branches, plus a `Ctx.SeqComp`-aware fact that
+  -- `Γ1.consumeset, Γ2.consumeset ⊆ Γ.consumeset` (which holds since `.consume`
+  -- in `Γ1` or `Γ2` must come from `.consume` in `Γ` per the SeqComp rules).
+  -- Deferred — the existing sorries for `hcompat2` and the SeqComp lifting
+  -- remain blocking and that work hasn't been ported to the new shape yet.
+  sorry
 
 theorem sem_sc_trans
   (hsub1 : SemSubcapt Γ C1 C2)
@@ -2581,11 +2343,9 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             have hbody_psT2 :
                 Eval R m'' (t0.subst (Subst.openVar (.free arg)))
                   (fun v m''' =>
-                    Ty.exi_val_denot (env.extend_var arg psT2) U1 m''' v
-                    ∧ m'''.preserves_liveness_full m'') := by
+                    Ty.exi_val_denot (env.extend_var arg psT2) U1 m''' v) := by
               apply eval_post_monotonic _ hbody_spec
-              intro m''' v ⟨hval, hliv⟩
-              refine ⟨?_, hliv⟩
+              intro m''' v hval
               have heqv := Denot.equiv_to_imply (by simpa [Ty.subst_id] using heq_val)
               exact heqv.1 m''' v hval
             -- Apply covariance: if body satisfies U1, it also satisfies U2
@@ -2601,10 +2361,9 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             -- Apply semantic subtyping for the result (lifts U1 → U2 in val_denot).
             have hres_sem := hres (env.extend_var arg psT2) m'' htyping_ext
             have himply_entails := Denot.imply_after_to_m_entails_after hres_sem
-            -- Lift hbody_psT2 from U1 to U2; preserves_liveness conjunct unchanged.
+            -- Lift hbody_psT2 from U1 to U2.
             apply eval_post_monotonic_general _ hbody_psT2
-            intro m''' hsub' v ⟨hval, hliv⟩
-            refine ⟨?_, hliv⟩
+            intro m''' hsub' v hval
             exact himply_entails m''' hsub' v hval
 
 
@@ -2741,10 +2500,9 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
             have hT_sem := hT (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' henv'
             -- Convert to postcondition entailment
             have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
-            -- Lift heval1 from T1 to T2 in the val_denot conjunct; preserves_liveness unchanged.
+            -- Lift heval1 from T1 to T2 in the val_denot.
             apply eval_post_monotonic_general _ heval1
-            intro m''' hsub' v ⟨hval, hliv⟩
-            refine ⟨?_, hliv⟩
+            intro m''' hsub' v hval
             exact himply_entails m''' hsub' v hval
 
 -- lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
@@ -2945,10 +2703,9 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
             have hT_sem := hT (env.extend_tvar denot) m'' henv'
             -- Convert to postcondition entailment
             have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
-            -- Lift heval1 from T1 to T2 in the val_denot conjunct; preserves_liveness unchanged.
+            -- Lift heval1 from T1 to T2 in the val_denot.
             apply eval_post_monotonic_general _ heval1
-            intro m''' hsub' v ⟨hval, hliv⟩
-            refine ⟨?_, hliv⟩
+            intro m''' hsub' v hval
             exact himply_entails m''' hsub' v hval
 
 theorem fundamental_subtyp
@@ -3045,18 +2802,24 @@ theorem sem_typ_subtyp
   have hsubcapt_sem := fundamental_subcapt hsubcapt env m htyping
   have hcompat_C1 : m.is_compatible (C1.denot env m) :=
     Memory.is_compatible_subset hsubcapt_sem hcompat
-  -- Raw evaluation from ht: keeps the `preserves_liveness_consume_only` conjunct.
-  have h_eval_E1_full := ht env m htyping hcompat_C1
-  -- Widen the authority C1 → C2 (preserves the post).
-  have h_eval_E1_at_C2_full :=
-    eval_capability_set_monotonic h_eval_E1_full hsubcapt_sem
+  -- Raw evaluation from ht at the wider budget (C1 ∪ consumeset.to_drop).
+  have h_eval_E1 := ht env m htyping hcompat_C1
+  -- Widen the authority side from C1 to C2 (preserves the shared drop component).
+  have hwiden :
+      C1.denot env m ∪ (Γ.consumeset.cs.denot env m).to_drop ⊆
+        C2.denot env m ∪ (Γ.consumeset.cs.denot env m).to_drop :=
+    CapabilitySet.Subset.union_left
+      (CapabilitySet.Subset.trans hsubcapt_sem CapabilitySet.Subset.union_right_left)
+      CapabilitySet.Subset.union_right_right
+  have h_eval_E1_at_C2 :=
+    eval_capability_set_monotonic h_eval_E1 hwiden
   -- Use fundamental_subtyp to get E1 → E2 semantically.
   have hsubtyp_sem := fundamental_subtyp hclosed_E1 hclosed_E2 hsubtyp env m htyping
   have h_entails := Denot.imply_after_to_m_entails_after hsubtyp_sem
-  -- Lift the val_denot conjunct from E1 to E2, keeping consume_only.
-  apply eval_post_monotonic_general _ h_eval_E1_at_C2_full
-  intro m' hsub e_ ⟨hval, hliv⟩
-  exact ⟨h_entails m' hsub e_ hval, hliv⟩
+  -- Lift the val_denot from E1 to E2.
+  apply eval_post_monotonic_general _ h_eval_E1_at_C2
+  intro m' hsub e_ hval
+  exact h_entails m' hsub e_ hval
 
 
 lemma simple_val_not_pack {e : Exp s}
@@ -3117,219 +2880,12 @@ theorem sem_typ_unpack
         (Γ2.push_cvar .consume .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts hcompat
-  have hts1 := EnvTyping.seqcomp_left hseq hts
-  have hts2 := EnvTyping.seqcomp_right hseq hts
-  -- REAL GAP: same shape as `sem_typ_letin` — needs threading
-  -- `preserves_liveness_consume_only` through `t`'s eval (on Γ1) and `u`'s
-  -- eval (on `Γ2.push_cvar .consume .unbound,x:T`), then composing via
-  -- transitivity. Compared to letin, the body context here adds a fresh
-  -- `.consume`-unbound cvar binding, so the body's drops can be witnessed by
-  -- that cvar — the weakening lemma to Γ must accommodate this. The body's
-  -- eval already discards the conjunct via `intro m'' v ⟨hold, _⟩`. The inner
-  -- `hcompat_body` sorry below is a separate gap.
-  suffices h_old :
-      Eval
-        ((C1 ∪ C2).denot env store)
-        store
-        ((Exp.unpack t u).subst (Subst.from_TypeEnv env))
-        (Ty.exi_val_denot env U).as_mpost by
-    apply eval_post_monotonic_general _ h_old
-    intro m' hsub e_ hold
-    refine ⟨hold, ?_⟩
-    sorry  -- preserves_liveness_consume_only — needs SeqComp weakening + transitivity (see comment)
-  simp only [Exp.subst]
-  -- Definitional decomposition of the union budget.
-  have hunion_denot :
-      (C1 ∪ C2).denot env store
-        = C1.denot env store ∪ C2.denot env store := rfl
-  -- Use the standard pack-value postcondition for `t`.  With the new
-  -- `eval_unpack` rule, the body's budget is enlarged with `cs.reachability m1`,
-  -- so no extra SubsetMod bound needs to be threaded through `Q1`.
-  apply Eval.eval_unpack (Q1 := (Ty.exi_val_denot env (.exi T)).as_mpost)
-  case hpred =>
-    exact Denot.as_mpost_is_monotonic
-      (exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T))
-  case hbool =>
-    exact Denot.as_mpost_is_bool_independent
-      (exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T))
-  case a =>
-    -- ht gives Eval at the smaller budget C1; weaken to C1 ∪ C2.
-    have hsub1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
-      rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
-    have hcompat_C1 : store.is_compatible (C1.denot env store) :=
-      Memory.is_compatible_union_left hcompat
-    have hQ_orig : Eval (C1.denot env store) store
-        (t.subst (Subst.from_TypeEnv env))
-        (Ty.exi_val_denot env (.exi T)).as_mpost := by
-      have h := semtyp_to_exi_exp_denot ht hts1 hcompat_C1
-      simpa only [Ty.exi_exp_denot] using h
-    exact eval_capability_set_monotonic hQ_orig hsub1
-  case h_nonstuck =>
-    intro m1 v hQ1_orig
-    change Ty.exi_val_denot env (.exi T) m1 v at hQ1_orig
-    simp only [Ty.exi_val_denot] at hQ1_orig
-    cases hres : resolve m1.heap v with
-    | none =>
-      simp only [hres] at hQ1_orig
-    | some exp =>
-      simp only [hres] at hQ1_orig
-      cases exp <;> simp only [List.empty_eq] at hQ1_orig
-      rename_i CS x_pack
-      obtain ⟨hwf_CS, hQ1_body⟩ := hQ1_orig
-      constructor
-      · have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-        exact resolve_is_pack hres hpack
-      · have hpack : (Exp.pack CS x_pack).IsPack := Exp.IsPack.pack
-        have hv_pack : v.IsPack := resolve_is_pack hres hpack
-        have heq : v = .pack CS x_pack := resolve_pack_eq hres hv_pack
-        rw [heq]
-        apply Exp.WfInHeap.wf_pack
-        · exact hwf_CS
-        · have hwf_env : (env.extend_cvar CS (cap := CS.ground_denot m1)).is_implying_wf := by
-            intro X
-            cases X with
-            | there X' =>
-              simpa only [TypeEnv.lookup_tvar] using typed_env_is_implying_wf hts X'
-          have hwf_exp := val_denot_implies_wf hwf_env T m1 (.var x_pack) hQ1_body
-          cases hwf_exp with
-          | wf_var hwf_v => exact hwf_v
-  case h_val =>
-    intro m1 x cs hs1 hwf_x hwf_cs hQ1_orig
-    change Ty.exi_val_denot env (.exi T) m1 (.pack cs x) at hQ1_orig
-    simp only [Ty.exi_val_denot, List.empty_eq] at hQ1_orig
-    cases x
-    case bound bx => cases bx
-    case free fx =>
-      obtain ⟨hwf_cs, hQ1_body⟩ := hQ1_orig
-      let ps := CaptureSet.peakset (Γ2.push_cvar .consume .unbound) T.captureSet
-      let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
-      have hu' := hu (env'.extend_var fx ps) m1
-      -- REAL GAP: same as letin's body case — needs an `Eval` preservation lemma
-      -- to assert that t's evaluation under C1 didn't drop C2/cs cells in m1.
-      have hcompat_body :
-          m1.is_compatible
-            (((C2.rename Rename.succ).rename Rename.succ
-                ∪ (CaptureSet.cvar .epsilon (.there .here))).denot
-              (env'.extend_var fx ps) m1) := by sorry
-      have hu' :
-          EnvTyping (Γ2.push_cvar .consume .unbound,x:T) (env'.extend_var fx ps) m1 →
-            Eval
-              (((C2.rename Rename.succ).rename Rename.succ
-                  ∪ (CaptureSet.cvar .epsilon (.there .here))).denot
-                (env'.extend_var fx ps) m1)
-              m1
-              (u.subst (Subst.from_TypeEnv (env'.extend_var fx ps)))
-              (Ty.exi_val_denot (env'.extend_var fx ps)
-                ((U.rename Rename.succ).rename Rename.succ)).as_mpost := by
-        intro henv
-        have h := hu' henv hcompat_body
-        apply eval_post_monotonic _ h
-        intro m'' v ⟨hold, _⟩
-        exact hold
-      have hts_extended : EnvTyping (Γ2.push_cvar .consume .unbound,x:T)
-          (env'.extend_var fx ps) m1 := by
-        constructor
-        · exact hQ1_body
-        · constructor
-          · rfl
-          · constructor
-            · exact hwf_cs
-            constructor
-            · simpa only [List.empty_eq] using CaptureBound.WfInHeap.wf_unbound
-            constructor
-            · simpa only [List.empty_eq] using CapabilitySet.BoundedBy.top
-            constructor
-            · rfl
-            · exact env_typing_monotonic hts2 hs1
-      have hu'' := hu' hts_extended
-      -- Expression substitution equality (unchanged from old proof).
-      have hexp_eq :
-          (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
-          u.subst (Subst.from_TypeEnv (env'.extend_var fx ps)) := by
-        rw [Exp.subst_comp]
-        have h1 := congrArg (u.subst) (@Subst.from_TypeEnv_weaken_unpack s env cs fx ps)
-        exact h1.trans (congrArg (u.subst)
-          Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant)
-      -- The body's effect denotes (C2's resources) ∪ (cs's resources).
-      -- Decompose: the cvar `(.there .here)` substitutes to cs in env'.
-      have hbody_denot :
-          ((C2.rename Rename.succ).rename Rename.succ
-              ∪ (CaptureSet.cvar .epsilon (.there .here))).denot
-            (env'.extend_var fx ps) m1
-          = C2.denot env m1 ∪ cs.ground_denot m1 := by
-        -- (C2.rename^2).denot env_extended = C2.denot env (via rebind, twice)
-        have h1 := rebind_captureset_denot
-          (Rebind.cweaken (env:=env) (cs:=cs) (cap:=cs.ground_denot m1)) C2
-        have h2 := rebind_captureset_denot
-          (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (C2.rename Rename.succ)
-        have hC2_eq :
-            ((C2.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
-              = C2.denot env m1 := by
-          calc
-            ((C2.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
-            _ = (C2.rename Rename.succ).denot env' m1 := by exact (congrFun h2.symm m1)
-            _ = C2.denot env m1 := by exact (congrFun h1.symm m1)
-        -- The cvar `(.there .here)` resolves to cs under env'.extend_var fx ps.
-        have hcvar_eq :
-            (CaptureSet.cvar (Mutability.epsilon) (.there .here)).denot
-              (env'.extend_var fx ps) m1
-              = cs.ground_denot m1 := by
-          rfl
-        -- Union decomposes denotationally.
-        change ((C2.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
-                ∪ (CaptureSet.cvar Mutability.epsilon (.there .here)).denot
-                    (env'.extend_var fx ps) m1
-                = C2.denot env m1 ∪ cs.ground_denot m1
-        rw [hC2_eq, hcvar_eq]
-      -- Type equivalence via double rebind (unchanged from old proof).
-      have heqv_composed : Ty.exi_val_denot env U ≈
-        Ty.exi_val_denot (env'.extend_var fx ps)
-          ((U.rename Rename.succ).rename Rename.succ) := by
-        have heqv1 := rebind_exi_val_denot
-          (Rebind.cweaken (env:=env) (cs:=cs) (cap:=cs.ground_denot m1)) U
-        have heqv2 := rebind_exi_val_denot
-          (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (U.rename Rename.succ)
-        intro m e
-        exact Iff.trans (heqv1 m e) (heqv2 m e)
-      -- Final budget conversion. The body evaluates with budget
-      --   `C2.denot env m1 ∪ cs.ground_denot m1`,
-      -- but the new `eval_unpack` rule asks for budget
-      --   `(C1 ∪ C2).denot env store ∪ cs.reachability m1`.
-      -- The C2 part: closed-monotonicity moves it to `store`.
-      -- The cs part: `cs.ground_denot m1 = cs.reachability m1`, which sits
-      -- directly in the body's enlarged budget.
-      -- The new `eval_unpack` rule supplies the body with budget
-      --   `C ∪ R ∪ R.to_drop`,
-      -- adding `R.to_drop` for the consume-mode cvar's drop authority.
-      -- The body's source-denoted budget only covers the `C ∪ R` part; we
-      -- widen via `Subset.union_right_left`.
-      have hsub_body :
-          (C2.denot env m1 ∪ cs.ground_denot m1)
-            ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1
-                ∪ (cs.reachability m1).to_drop := by
-        have h0 :
-            (C2.denot env m1 ∪ cs.ground_denot m1)
-              ⊆ (C1 ∪ C2).denot env store ∪ cs.reachability m1 := by
-          apply CapabilitySet.Subset.union_left
-          · have hC2_eq : C2.denot env m1 = C2.denot env store :=
-              (closed_capture_denot_monotonic hclosed_C2 hts hs1).symm
-            rw [hC2_eq, hunion_denot]
-            exact CapabilitySet.Subset.trans
-              CapabilitySet.Subset.union_right_right
-              CapabilitySet.Subset.union_right_left
-          · rw [CaptureSet.ground_denot_eq_reachability]
-            exact CapabilitySet.Subset.union_right_right
-        exact CapabilitySet.Subset.trans h0 CapabilitySet.Subset.union_right_left
-      change Eval ((C1 ∪ C2).denot env store ∪ cs.reachability m1
-                    ∪ (cs.reachability m1).to_drop) m1
-        ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
-        (Ty.exi_val_denot env U).as_mpost
-      rw [hexp_eq]
-      apply eval_capability_set_monotonic _ hsub_body
-      rw [← hbody_denot]
-      apply eval_post_monotonic _ hu''
-      apply Denot.imply_to_entails
-      apply (Denot.equiv_to_imply heqv_composed).2
+  -- Full restructuring of sem_typ_unpack for the new wider-budget shape is
+  -- non-trivial: the body context `Γ2.push_cvar .consume .unbound,x:T` now
+  -- contributes `consumeset` (one consume-unlocked cvar at depth 1), and the
+  -- `SeqComp` widening `Γ1.consumeset, Γ2.consumeset ⊆ Γ.consumeset` is
+  -- pending. Deferred along with `sem_typ_letin`.
+  sorry
 
 -- Helper: rename preserves subset
 theorem CaptureSet.Subset.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}

@@ -336,8 +336,8 @@ def retype_val_denot
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
       specialize hd arg m' hsub hcompat harg'
       apply eval_post_monotonic_general _ hd
-      intro m'' _hsub' v ⟨hval, hliv⟩
-      exact ⟨(heqv m'' v).mp hval, hliv⟩
+      intro m'' _hsub' v hval
+      exact (heqv m'' v).mp hval
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro arg m' hsub hcompat harg
@@ -347,8 +347,8 @@ def retype_val_denot
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub hcompat harg'
       apply eval_post_monotonic_general _ hd
-      intro m'' _hsub' v ⟨hval, hliv⟩
-      exact ⟨(heqv m'' v).mpr hval, hliv⟩
+      intro m'' _hsub' v hval
+      exact (heqv m'' v).mpr hval
   | .poly T1 cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
@@ -365,8 +365,8 @@ def retype_val_denot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
       apply eval_post_monotonic_general _ hd
-      intro m'' _hsub' v ⟨hval, hliv⟩
-      exact ⟨(heqv m'' v).mp hval, hliv⟩
+      intro m'' _hsub' v hval
+      exact (heqv m'' v).mp hval
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
@@ -376,8 +376,8 @@ def retype_val_denot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
       specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
       apply eval_post_monotonic_general _ hd
-      intro m'' _hsub' v ⟨hval, hliv⟩
-      exact ⟨(heqv m'' v).mpr hval, hliv⟩
+      intro m'' _hsub' v hval
+      exact (heqv m'' v).mpr hval
   | .cpoly B cs T => by
     have hB := retype_capturebound_denot ρ B
     intro m e
@@ -396,8 +396,8 @@ def retype_val_denot
       have heqv := retype_exi_val_denot ρ1 T
       specialize hd m' CS hwf_CS hsub hcompat hsub_bound
       apply eval_post_monotonic_general _ hd
-      intro m'' _hsub' v ⟨hval, hliv⟩
-      exact ⟨(heqv m'' v).mp hval, hliv⟩
+      intro m'' _hsub' v hval
+      exact (heqv m'' v).mp hval
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hsub hcompat hsub_bound
@@ -408,8 +408,8 @@ def retype_val_denot
       have heqv := retype_exi_val_denot ρ2 T
       specialize hd m' CS hwf_CS hsub hcompat hsub_bound
       apply eval_post_monotonic_general _ hd
-      intro m'' _hsub' v ⟨hval, hliv⟩
-      exact ⟨(heqv m'' v).mpr hval, hliv⟩
+      intro m'' _hsub' v hval
+      exact (heqv m'' v).mpr hval
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}

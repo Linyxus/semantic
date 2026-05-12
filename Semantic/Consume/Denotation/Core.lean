@@ -463,8 +463,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       Eval R0 m' (t0.subst (Subst.openVar (.free arg)))
         (fun v m'' =>
           Ty.exi_val_denot
-            (env.extend_var arg (compute_peakset env T1.captureSet)) T2 m'' v
-          ∧ m''.preserves_liveness_full m'))
+            (env.extend_var arg (compute_peakset env T1.captureSet)) T2 m'' v))
 | env, .poly T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -482,8 +481,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       denot.enforce_pure ->
       Eval R0 m' (t0.subst (Subst.openTVar .top))
         (fun v m'' =>
-          Ty.exi_val_denot (env.extend_tvar denot) T2 m'' v
-          ∧ m''.preserves_liveness_full m'))
+          Ty.exi_val_denot (env.extend_tvar denot) T2 m'' v))
   | env, .cpoly B cs T => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -501,8 +499,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       Eval R0 m' (t0.subst (Subst.openCVar CS))
         (fun v m'' =>
           Ty.exi_val_denot
-            (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v
-          ∧ m''.preserves_liveness_full m'))
+            (env.extend_cvar CS (cap := CS.ground_denot m')) T m'' v))
 
 /-- Value denotation for existential types. -/
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
