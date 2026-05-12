@@ -462,6 +462,18 @@ def CaptureSet.accessible (Γ : Ctx s) (C : CaptureSet s) : Prop :=
 def CaptureSet.consumable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   ∀ m c, (CaptureSet.cvar m c) ⊆ C.peaks Γ -> ConsumablePeak Γ c
 
+/-- The set of all peaks in the context that are at `.consume` mode and not locked. -/
+def Ctx.consumeset : Ctx s -> PeakSet s
+| .empty => ⟨.empty, .empty⟩
+| .push Γ (.var _) => Γ.consumeset.rename Rename.succ
+| .push Γ (.tvar _) => Γ.consumeset.rename Rename.succ
+| .push Γ (.cvar .access _) => Γ.consumeset.rename Rename.succ
+| .push Γ (.cvar .empty _) => Γ.consumeset.rename Rename.succ
+| .push Γ (.cvar .consume _) =>
+    let ps := Γ.consumeset.rename Rename.succ
+    ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
+| .lock _ => ⟨.empty, .empty⟩
+
 /-- Sequential composition of use modes: `SeqComp m1 m2 m3` means using `m1`
 first then `m2` yields `m3`. -/
 inductive UseMode.SeqComp : UseMode -> UseMode -> UseMode -> Prop where

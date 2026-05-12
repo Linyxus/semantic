@@ -772,9 +772,8 @@ def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) :
   ∀ ρ m,
     EnvTyping Γ ρ m →
     m.is_compatible (C.denot ρ m) →
-    Eval (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
-      (fun v m' => Ty.exi_val_denot ρ E m' v
-                 ∧ m.preserves_liveness_consume_only m' Γ ρ)
+    Eval (C.denot ρ m ∪ (Γ.consumeset.cs.denot ρ m).to_drop) m (e.subst (Subst.from_TypeEnv ρ))
+      (fun v m' => Ty.exi_val_denot ρ E m' v)
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
 
