@@ -2025,6 +2025,161 @@ theorem EnvTyping.seqcomp_right
     simp only [EnvTyping] at he ⊢
     exact ih he
 
+/-- `CaptureSet.Subset` lifts to a `CapabilitySet.Subset` on denotations,
+independently of any context (the env merely determines what each cvar
+denotes pointwise). -/
+private theorem captureset_denot_subset_of_subset
+    {s : Sig} {C1 C2 : CaptureSet s} (hsub : C1 ⊆ C2)
+    (env : TypeEnv s) (m : Memory) :
+    C1.denot env m ⊆ C2.denot env m := by
+  unfold CaptureSet.denot
+  induction hsub with
+  | empty => exact CapabilitySet.Subset.empty
+  | refl => exact CapabilitySet.Subset.refl
+  | union_left _ _ ih1 ih2 => exact CapabilitySet.Subset.union_left ih1 ih2
+  | union_right_left _ ih =>
+    exact CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_left
+  | union_right_right _ ih =>
+    exact CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_right
+
+/-- `to_drop` is monotone in `Subset`: it rewrites every cap mode to `.drop`
+without touching locations or the structure of unions/caps. -/
+private theorem CapabilitySet.Subset.to_drop_mono {A B : CapabilitySet}
+    (h : A ⊆ B) : A.to_drop ⊆ B.to_drop := by
+  induction h with
+  | refl => exact CapabilitySet.Subset.refl
+  | empty => exact CapabilitySet.Subset.empty
+  | trans _ _ ih12 ih23 => exact CapabilitySet.Subset.trans ih12 ih23
+  | union_left _ _ ih1 ih2 => exact CapabilitySet.Subset.union_left ih1 ih2
+  | union_right_left => exact CapabilitySet.Subset.union_right_left
+  | union_right_right => exact CapabilitySet.Subset.union_right_right
+  | cap_ro =>
+    -- `(cap (.access .ro) l).to_drop = cap .drop l = (cap (.access .epsilon) l).to_drop`.
+    exact CapabilitySet.Subset.refl
+
+/-- The consumeset of `Γ1` is a syntactic sub–capture-set of the composed
+context `Γ`'s consumeset: `Ctx.SeqComp` rules force every `.consume`-unlocked
+cvar in `Γ1` to also be `.consume`-unlocked in `Γ`. -/
+private theorem consumeset_subset_seqcomp_left
+    {s : Sig} {Γ1 Γ2 Γ : Ctx s}
+    (h : Ctx.SeqComp Γ1 Γ2 Γ) :
+    Γ1.consumeset.cs ⊆ Γ.consumeset.cs := by
+  induction Γ with
+  | empty =>
+    cases h
+    exact CaptureSet.Subset.refl
+  | push Γ_inner b ih =>
+    cases b with
+    | var _ =>
+      cases h with
+      | push_var h' => exact CaptureSet.Subset.rename' (ih h')
+    | tvar _ =>
+      cases h with
+      | push_tvar h' => exact CaptureSet.Subset.rename' (ih h')
+    | cvar m _ =>
+      cases h with
+      | push_cvar h' mode_comp =>
+        cases m with
+        | empty =>
+          -- m3 = .empty: only `l_empty (R := .empty)` or `r_empty (R := .empty)` fire,
+          -- both forcing m1 = .empty. LHS and RHS are both `.rename succ`.
+          cases mode_comp <;>
+            exact CaptureSet.Subset.rename' (ih h')
+        | access =>
+          -- m3 = .access: l_empty/r_empty give m1 ∈ {.empty/.access}; access_access gives .access.
+          -- All three: LHS and RHS are both `.rename succ`.
+          cases mode_comp <;>
+            exact CaptureSet.Subset.rename' (ih h')
+        | consume =>
+          -- m3 = .consume: l_empty gives m1 = .empty; r_empty gives m1 = .consume;
+          -- access_consume gives m1 = .access.
+          cases mode_comp with
+          | l_empty =>
+            exact CaptureSet.Subset.union_right_left
+              (CaptureSet.Subset.rename' (ih h'))
+          | r_empty =>
+            -- Both sides have `union (...rename) (.cvar .epsilon .here)`.
+            exact CaptureSet.Subset.union_left
+              (CaptureSet.Subset.union_right_left
+                (CaptureSet.Subset.rename' (ih h')))
+              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
+          | access_consume =>
+            exact CaptureSet.Subset.union_right_left
+              (CaptureSet.Subset.rename' (ih h'))
+  | lock Γ_inner _ =>
+    cases h with
+    | lock _ =>
+      -- Both `(Γ_inner.lock).consumeset.cs` reduce to `.empty`.
+      exact CaptureSet.Subset.refl
+
+/-- Symmetric to `consumeset_subset_seqcomp_left`: `Γ2.consumeset.cs ⊆ Γ.consumeset.cs`. -/
+private theorem consumeset_subset_seqcomp_right
+    {s : Sig} {Γ1 Γ2 Γ : Ctx s}
+    (h : Ctx.SeqComp Γ1 Γ2 Γ) :
+    Γ2.consumeset.cs ⊆ Γ.consumeset.cs := by
+  induction Γ with
+  | empty =>
+    cases h
+    exact CaptureSet.Subset.refl
+  | push Γ_inner b ih =>
+    cases b with
+    | var _ =>
+      cases h with
+      | push_var h' => exact CaptureSet.Subset.rename' (ih h')
+    | tvar _ =>
+      cases h with
+      | push_tvar h' => exact CaptureSet.Subset.rename' (ih h')
+    | cvar m _ =>
+      cases h with
+      | push_cvar h' mode_comp =>
+        cases m with
+        | empty =>
+          cases mode_comp <;>
+            exact CaptureSet.Subset.rename' (ih h')
+        | access =>
+          cases mode_comp <;>
+            exact CaptureSet.Subset.rename' (ih h')
+        | consume =>
+          cases mode_comp with
+          | l_empty =>
+            -- m2 = .consume, both sides have union.
+            exact CaptureSet.Subset.union_left
+              (CaptureSet.Subset.union_right_left
+                (CaptureSet.Subset.rename' (ih h')))
+              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
+          | r_empty =>
+            -- m2 = .empty
+            exact CaptureSet.Subset.union_right_left
+              (CaptureSet.Subset.rename' (ih h'))
+          | access_consume =>
+            -- m2 = .consume
+            exact CaptureSet.Subset.union_left
+              (CaptureSet.Subset.union_right_left
+                (CaptureSet.Subset.rename' (ih h')))
+              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
+  | lock Γ_inner _ =>
+    cases h with
+    | lock _ => exact CaptureSet.Subset.refl
+
+/-- The consumeset is built from `.empty`, `.union`, and `.cvar`/rename — never
+free variables — so it is always `IsClosed`. -/
+private theorem consumeset_isClosed {s : Sig} (Γ : Ctx s) :
+    Γ.consumeset.cs.IsClosed := by
+  induction Γ with
+  | empty => exact CaptureSet.IsClosed.empty
+  | push Γ' b ih =>
+    cases b with
+    | var _ => exact CaptureSet.rename_isClosed ih
+    | tvar _ => exact CaptureSet.rename_isClosed ih
+    | cvar useM _ =>
+      cases useM with
+      | access => exact CaptureSet.rename_isClosed ih
+      | empty => exact CaptureSet.rename_isClosed ih
+      | consume =>
+        exact CaptureSet.IsClosed.union (CaptureSet.rename_isClosed ih)
+          CaptureSet.IsClosed.cvar
+  | lock _ _ => exact CaptureSet.IsClosed.empty
+
 theorem sem_typ_letin
   {C1 C2 : CaptureSet s} {Γ Γ1 Γ2 : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
@@ -2036,14 +2191,182 @@ theorem sem_typ_letin
   (ht2 : C2.rename Rename.succ # (Γ2,x:T) ⊨ e2 : U.rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.letin e1 e2) : U := by
   intro env store hts hcompat
-  -- The full restructuring of sem_typ_letin under the new wider-budget
-  -- `SemanticTyping` shape requires threading `Γ.consumeset.to_drop` through
-  -- the `eval_letin` rule's branches, plus a `Ctx.SeqComp`-aware fact that
-  -- `Γ1.consumeset, Γ2.consumeset ⊆ Γ.consumeset` (which holds since `.consume`
-  -- in `Γ1` or `Γ2` must come from `.consume` in `Γ` per the SeqComp rules).
-  -- Deferred — the existing sorries for `hcompat2` and the SeqComp lifting
-  -- remain blocking and that work hasn't been ported to the new shape yet.
-  sorry
+  have hts1 := EnvTyping.seqcomp_left hseq hts
+  have hts2 := EnvTyping.seqcomp_right hseq hts
+  simp only [Exp.subst]
+  -- Definitional decomposition of the union budget.
+  have hunion_denot :
+      (C1 ∪ C2).denot env store
+        = C1.denot env store ∪ C2.denot env store := rfl
+  -- Drop-authority piece of the outer budget.
+  let D : CapabilitySet := (Γ.consumeset.cs.denot env store).to_drop
+  -- SeqComp lifts: `Γi.consumeset.cs ⊆ Γ.consumeset.cs`, hence `to_drop ⊆ D`.
+  have hsub1_drop :
+      (Γ1.consumeset.cs.denot env store).to_drop ⊆ D :=
+    CapabilitySet.Subset.to_drop_mono
+      (captureset_denot_subset_of_subset
+        (consumeset_subset_seqcomp_left hseq) env store)
+  have hsub2_drop :
+      (Γ2.consumeset.cs.denot env store).to_drop ⊆ D :=
+    CapabilitySet.Subset.to_drop_mono
+      (captureset_denot_subset_of_subset
+        (consumeset_subset_seqcomp_right hseq) env store)
+  have hΓ2_closed : Γ2.consumeset.cs.IsClosed := consumeset_isClosed Γ2
+  apply Eval.eval_letin (Q1 := fun v m' => Ty.val_denot env T m' v)
+  case hpred =>
+    intro m1 m2 e hwf hsub hQ
+    exact val_denot_is_monotonic (typed_env_is_monotonic hts) T hsub hQ
+  case hbool =>
+    intro m'
+    exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
+  case a =>
+    -- ht1 gives `Eval (C1.denot ∪ Γ1.consumeset.to_drop) store e1 (Ty.exi_val_denot env T.typ)`.
+    -- `Ty.exi_val_denot env T.typ = Ty.val_denot env T` by pattern matching.
+    have hcompat_C1 : store.is_compatible (C1.denot env store) :=
+      Memory.is_compatible_union_left hcompat
+    have h1 := ht1 env store hts1 hcompat_C1
+    simp only [Ty.exi_val_denot] at h1
+    apply eval_capability_set_monotonic h1
+    -- Widen `C1.denot ∪ Γ1.consumeset.to_drop ⊆ (C1∪C2).denot ∪ D`.
+    apply CapabilitySet.Subset.union_left
+    · -- C1.denot ⊆ (C1∪C2).denot ⊆ (C1∪C2).denot ∪ D
+      rw [hunion_denot]
+      exact CapabilitySet.Subset.trans
+        CapabilitySet.Subset.union_right_left
+        CapabilitySet.Subset.union_right_left
+    · -- Γ1.consumeset.to_drop ⊆ D ⊆ ... ∪ D
+      exact CapabilitySet.Subset.trans hsub1_drop CapabilitySet.Subset.union_right_right
+  case h_nonstuck =>
+    intro m1 v hQ1
+    constructor
+    · exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T m1 v hQ1
+    · exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1
+  case h_val =>
+    intro m1 v hs1 hv hwf_v hQ1 l' hfresh
+    let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
+    let ps := CaptureSet.peakset Γ2 T.captureSet
+    set m_ext := m1.extend_val l' heapval hwf_v rfl hfresh with hm_ext_def
+    have hext_subsumes : m_ext.subsumes m1 :=
+      Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
+    have hsub_full : m_ext.subsumes store := Memory.subsumes_trans hext_subsumes hs1
+    -- Body EnvTyping for `(Γ2, x:T)` at the extended env / extended memory.
+    have henv_body : EnvTyping (Γ2,x:T) (env.extend_var l' ps) m_ext := by
+      constructor
+      · have htrans : (Ty.val_denot env T).is_transparent :=
+          val_denot_is_transparent (typed_env_is_transparent hts) T
+        have hQ1_lifted : Ty.val_denot env T m_ext v :=
+          val_denot_is_monotonic (typed_env_is_monotonic hts) T hext_subsumes hQ1
+        have hlookup : m_ext.lookup l' = some (Cell.val heapval) := by
+          change (m1.heap.extend l' heapval) l' = some (.val heapval)
+          exact Heap.extend_lookup_eq m1.heap l' heapval
+        exact htrans hlookup hQ1_lifted
+      · constructor
+        · rfl
+        · exact env_typing_monotonic hts2 hsub_full
+    -- Rebind C2 and Γ2.consumeset.cs into the extended env.
+    have hcap_rename_C2 :
+        (C2.rename Rename.succ).denot (env.extend_var l' ps) = C2.denot env := by
+      have := rebind_captureset_denot
+        (Rebind.weaken (env := env) (x := l') (ps := ps)) C2
+      exact this.symm
+    have hcap_rename_consumeset :
+        (Γ2,x:T).consumeset.cs.denot (env.extend_var l' ps) = Γ2.consumeset.cs.denot env := by
+      have := rebind_captureset_denot
+        (Rebind.weaken (env := env) (x := l') (ps := ps)) Γ2.consumeset.cs
+      exact this.symm
+    -- Memory-monotonicity on closed capture sets.
+    have hC2_mono : C2.denot env store = C2.denot env m_ext :=
+      closed_capture_denot_monotonic hclosed_C2 hts hsub_full
+    have hconsumeset_mono :
+        Γ2.consumeset.cs.denot env store = Γ2.consumeset.cs.denot env m_ext :=
+      closed_capture_denot_monotonic hΓ2_closed hts hsub_full
+    -- Body budget ⊆ outer budget.
+    have hsub_body :
+        (C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext
+          ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var l' ps) m_ext).to_drop
+            ⊆ (C1 ∪ C2).denot env store ∪ D := by
+      rw [congrFun hcap_rename_C2 m_ext, congrFun hcap_rename_consumeset m_ext,
+          ← hC2_mono, ← hconsumeset_mono]
+      apply CapabilitySet.Subset.union_left
+      · rw [hunion_denot]
+        exact CapabilitySet.Subset.trans
+          CapabilitySet.Subset.union_right_right
+          CapabilitySet.Subset.union_right_left
+      · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
+    -- Compatibility for the body's source-side budget `(C2.rename).denot`.
+    -- GAP: This requires a frame property of `Eval` — that C2-cells in `store`
+    -- (which were live by `hcompat`) remain live in m_ext. Without such a
+    -- preservation lemma, the chain `store-compat → m_ext-compat` cannot be
+    -- closed. This was a sorry in the pre-refactor version as well.
+    have hcompat_body :
+        m_ext.is_compatible
+          ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext) := by
+      sorry
+    have h2 := ht2 (env.extend_var l' ps) m_ext henv_body hcompat_body
+    -- Bridge the substitution shape: `e2.subst ... .lift then openVar l'`
+    -- equals `e2.subst (from_TypeEnv (env.extend_var l' ps))`.
+    have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
+    have h2' : Eval _ m_ext
+        ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free l')))
+        _ := hkey ▸ h2
+    have hcompose := eval_capability_set_monotonic h2' hsub_body
+    -- Lift post: `Ty.exi_val_denot env_ext (U.rename succ) ≈ Ty.exi_val_denot env U`.
+    have heqv := weaken_exi_val_denot (env := env) (x := l') (ps := ps) (T := U)
+    apply eval_post_monotonic _ hcompose
+    exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
+  case h_var =>
+    intro m1 x hs1 hwf_x hQ1
+    cases x
+    case bound bv => cases bv
+    case free fx =>
+      let ps := CaptureSet.peakset Γ2 T.captureSet
+      have henv_body : EnvTyping (Γ2,x:T) (env.extend_var fx ps) m1 := by
+        constructor
+        · exact hQ1
+        · constructor
+          · rfl
+          · exact env_typing_monotonic hts2 hs1
+      have hcap_rename_C2 :
+          (C2.rename Rename.succ).denot (env.extend_var fx ps) = C2.denot env := by
+        have := rebind_captureset_denot
+          (Rebind.weaken (env := env) (x := fx) (ps := ps)) C2
+        exact this.symm
+      have hcap_rename_consumeset :
+          (Γ2,x:T).consumeset.cs.denot (env.extend_var fx ps) = Γ2.consumeset.cs.denot env := by
+        have := rebind_captureset_denot
+          (Rebind.weaken (env := env) (x := fx) (ps := ps)) Γ2.consumeset.cs
+        exact this.symm
+      have hC2_mono : C2.denot env store = C2.denot env m1 :=
+        closed_capture_denot_monotonic hclosed_C2 hts hs1
+      have hconsumeset_mono :
+          Γ2.consumeset.cs.denot env store = Γ2.consumeset.cs.denot env m1 :=
+        closed_capture_denot_monotonic hΓ2_closed hts hs1
+      have hsub_body :
+          (C2.rename Rename.succ).denot (env.extend_var fx ps) m1
+            ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var fx ps) m1).to_drop
+              ⊆ (C1 ∪ C2).denot env store ∪ D := by
+        rw [congrFun hcap_rename_C2 m1, congrFun hcap_rename_consumeset m1,
+            ← hC2_mono, ← hconsumeset_mono]
+        apply CapabilitySet.Subset.union_left
+        · rw [hunion_denot]
+          exact CapabilitySet.Subset.trans
+            CapabilitySet.Subset.union_right_right
+            CapabilitySet.Subset.union_right_left
+        · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
+      -- Same frame-property gap as `h_val`.
+      have hcompat_body :
+          m1.is_compatible
+            ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1) := by
+        sorry
+      have h2 := ht2 (env.extend_var fx ps) m1 henv_body hcompat_body
+      have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
+      have h2' : Eval _ m1
+          ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free fx)))
+          _ := hkey ▸ h2
+      have hcompose := eval_capability_set_monotonic h2' hsub_body
+      have heqv := weaken_exi_val_denot (env := env) (x := fx) (ps := ps) (T := U)
+      apply eval_post_monotonic _ hcompose
+      exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
 
 theorem sem_sc_trans
   (hsub1 : SemSubcapt Γ C1 C2)
