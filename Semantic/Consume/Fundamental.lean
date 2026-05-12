@@ -1661,8 +1661,105 @@ theorem consumable_to_consume_witness
   obtain ⟨mu', hmem'⟩ := hasmem_compute_peaks_denot hts hΓ C hC hmem
   exact consumable_to_consume_witness_peaks hP hts hcons' hmem'
 
-theorem sem_typ_drop
-  {x : BVar s .var}
+/-- `to_drop` rewrites every cap mode to `.drop`, so existing membership at any
+mode transfers to `.drop`-membership in the rewritten capability set. -/
+private theorem CapabilitySet.hasmem_to_drop_drop
+    {C : CapabilitySet} {mu : CapMode} {l : Nat}
+    (h : C.hasmem mu l) : C.to_drop.hasmem .drop l := by
+  induction h with
+  | here =>
+    -- C = .cap mu l, to_drop = .cap .drop l
+    exact CapabilitySet.hasmem.here
+  | left _ ih => exact CapabilitySet.hasmem.left ih
+  | right _ ih => exact CapabilitySet.hasmem.right ih
+
+/-- A consume-unlocked cvar's runtime denotation is contained in the
+context's `consumeset.cs` denotation. Structural recursion on `Γ` walks
+through the bindings; the `.lock` case is ruled out because crossing a lock
+forces `locked = true`. -/
+private theorem consumeset_hasmem_via_cs
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    {c : BVar s .cvar} {B : CaptureBound s} {l : Nat} {mu : CapMode}
+    (hlk : Γ.LookupCVar c .consume B false)
+    (hmem : ((env.lookup_cvar c).1.ground_denot store).hasmem mu l) :
+    (Γ.consumeset.cs.denot env store).hasmem mu l := by
+  induction Γ with
+  | empty => cases hlk
+  | push Γ' b ih =>
+    cases b with
+    | var T =>
+      cases env with | extend env' info =>
+      cases info with | var n ps =>
+      cases hlk with
+      | there hlk' =>
+        -- hmem definitionally equals `((env'.lookup_cvar _).1.ground_denot store).hasmem mu l`
+        have ihres := ih hlk' hmem
+        change ((Γ'.consumeset.rename Rename.succ).cs.denot
+                  (env'.extend_var n ps) store).hasmem mu l
+        have hrebind := rebind_captureset_denot
+          (Rebind.weaken (env := env') (x := n) (ps := ps)) Γ'.consumeset.cs
+        have heq := congrFun hrebind store
+        change ((Γ'.consumeset.cs.rename Rename.succ).denot
+                  (env'.extend_var n ps) store).hasmem mu l
+        exact heq ▸ ihres
+    | tvar S =>
+      cases env with | extend env' info =>
+      cases info with | tvar d =>
+      cases hlk with
+      | there hlk' =>
+        have ihres := ih hlk' hmem
+        change ((Γ'.consumeset.rename Rename.succ).cs.denot
+                  (env'.extend_tvar d) store).hasmem mu l
+        have hrebind := rebind_captureset_denot
+          (Rebind.tweaken (env := env') (d := d)) Γ'.consumeset.cs
+        have heq := congrFun hrebind store
+        change ((Γ'.consumeset.cs.rename Rename.succ).denot
+                  (env'.extend_tvar d) store).hasmem mu l
+        exact heq ▸ ihres
+    | cvar useM B' =>
+      cases env with | extend env' info =>
+      cases info with | cvar cs0 cap0 =>
+      cases hlk with
+      | here =>
+        -- c = .here, useM = .consume. env.lookup_cvar .here = (cs0, cap0).
+        change (cs0.ground_denot store).hasmem mu l at hmem
+        change ((Γ'.consumeset.rename Rename.succ).cs.denot
+                  (env'.extend_cvar cs0 cap0) store
+                 ∪ (CaptureSet.cvar Mutability.epsilon BVar.here).denot
+                     (env'.extend_cvar cs0 cap0) store).hasmem mu l
+        exact CapabilitySet.hasmem.right hmem
+      | there hlk' =>
+        have ihres := ih hlk' hmem
+        have hrebind := rebind_captureset_denot
+          (Rebind.cweaken (env := env') (cs := cs0) (cap := cap0)) Γ'.consumeset.cs
+        have heq := congrFun hrebind store
+        cases useM with
+        | access =>
+          change ((Γ'.consumeset.rename Rename.succ).cs.denot
+                    (env'.extend_cvar cs0 cap0) store).hasmem mu l
+          change ((Γ'.consumeset.cs.rename Rename.succ).denot
+                    (env'.extend_cvar cs0 cap0) store).hasmem mu l
+          exact heq ▸ ihres
+        | empty =>
+          change ((Γ'.consumeset.rename Rename.succ).cs.denot
+                    (env'.extend_cvar cs0 cap0) store).hasmem mu l
+          change ((Γ'.consumeset.cs.rename Rename.succ).denot
+                    (env'.extend_cvar cs0 cap0) store).hasmem mu l
+          exact heq ▸ ihres
+        | consume =>
+          change ((Γ'.consumeset.rename Rename.succ).cs.denot
+                    (env'.extend_cvar cs0 cap0) store
+                   ∪ (CaptureSet.cvar Mutability.epsilon BVar.here).denot
+                       (env'.extend_cvar cs0 cap0) store).hasmem mu l
+          apply CapabilitySet.hasmem.left
+          change ((Γ'.consumeset.cs.rename Rename.succ).denot
+                    (env'.extend_cvar cs0 cap0) store).hasmem mu l
+          exact heq ▸ ihres
+  | lock Γ' _ =>
+    -- `LookupCVar.lock` produces `locked = true`, contradicting `locked = false`.
+    cases hlk
+
+theorem sem_typ_drop {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (.cell (.var .epsilon (.bound x))))
   (hΓ : Γ.IsClosed)
@@ -1717,10 +1814,17 @@ theorem sem_typ_drop
   · -- The `.drop` covers needed by eval_drop comes from `Γ.consumeset.to_drop`
     -- in the budget: the consume-unlocked cvar `c` witnessed above contributes
     -- its runtime cap set to `Γ.consumeset.cs.denot`, and `.to_drop` lowers it
-    -- to `.drop` mode. The structural lemma threading `hlookup_cvar`/`hcvar_mem`
-    -- through `Γ.consumeset` (induction on `LookupCVar`) is left as a TODO.
+    -- to `.drop` mode.
     apply CapabilitySet.covers.right
-    sorry
+    -- Switch from `(env.lookup_cvar c).2` form to the `.1.ground_denot` form
+    -- (equal under EnvTyping by `typed_env_cvar_cap_eq`).
+    have hcvar_mem_cs :
+        ((env.lookup_cvar c).1.ground_denot store).hasmem mu' (env.lookup_var x).1 := by
+      rw [← typed_env_cvar_cap_eq hts c]
+      exact hcvar_mem
+    have hcs_mem : (Γ.consumeset.cs.denot env store).hasmem mu' (env.lookup_var x).1 :=
+      consumeset_hasmem_via_cs hlookup_cvar hcvar_mem_cs
+    exact CapabilitySet.hasmem_implies_covers (CapabilitySet.hasmem_to_drop_drop hcs_mem)
 
 theorem sem_typ_read
   {x : BVar s .var}
