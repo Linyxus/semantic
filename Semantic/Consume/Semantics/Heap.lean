@@ -44,6 +44,58 @@ theorem applyRO_le {m : CapMode} : m.applyRO ≤ m := by
   | access m' => exact .access Mutability.Le.ro_le
   | drop => exact .drop
 
+/-- Boolean equality on capability modes. -/
+def beq : CapMode → CapMode → Bool
+| .access .epsilon, .access .epsilon => true
+| .access .ro, .access .ro => true
+| .drop, .drop => true
+| _, _ => false
+
+theorem beq_iff_eq : ∀ {m1 m2 : CapMode}, m1.beq m2 = true ↔ m1 = m2
+  | .access .epsilon, .access .epsilon => by simp only [beq]
+  | .access .epsilon, .access .ro      => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .access .epsilon => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .access .ro      => by simp only [beq]
+  | .access .epsilon, .drop            => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .drop            => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .epsilon => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .ro      => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .drop,            .drop            => by simp only [beq]
+
+/-- Boolean check for `m1 ≤ m2`. Reflects `CapMode.Le`. -/
+def leBool : CapMode → CapMode → Bool
+| .access .epsilon, .access .epsilon => true
+| .access .ro,      .access .epsilon => true
+| .access .ro,      .access .ro      => true
+| .drop,            .drop            => true
+| _, _ => false
+
+theorem leBool_iff_le : ∀ {m1 m2 : CapMode}, m1.leBool m2 = true ↔ m1 ≤ m2
+  | .access .epsilon, .access .epsilon => by
+      simp only [leBool]
+      exact ⟨fun _ => .access .refl, fun _ => trivial⟩
+  | .access .epsilon, .access .ro      => by
+      simp only [leBool]
+      refine ⟨nofun, fun h => ?_⟩
+      cases h; rename_i h; cases h
+  | .access .ro,      .access .epsilon => by
+      simp only [leBool]
+      exact ⟨fun _ => .access .ro_eps, fun _ => trivial⟩
+  | .access .ro,      .access .ro      => by
+      simp only [leBool]
+      exact ⟨fun _ => .access .refl, fun _ => trivial⟩
+  | .access .epsilon, .drop            => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .drop            => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .epsilon => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .ro      => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .drop,            .drop            => by
+      simp only [leBool]
+      exact ⟨fun _ => .drop, fun _ => trivial⟩
+
 end CapMode
 
 /-- A set of capability labels, representing an "authority":
@@ -203,6 +255,40 @@ def to_drop : CapabilitySet -> CapabilitySet
 | .empty => .empty
 | .cap _ l => .cap .drop l
 | .union C1 C2 => .union C1.to_drop C2.to_drop
+
+/-- Decidable check that `(mu, l)` is exactly contained in `C`. -/
+def containsCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
+| .empty => false
+| .cap mu' l' => mu.beq mu' && decide (l = l')
+| .union C1 C2 => containsCap mu l C1 || containsCap mu l C2
+
+/-- Intersection of capability sets: the result contains exactly those `(mu, l)`
+    pairs that are present in both `C1` and `C2`. -/
+def intersect : CapabilitySet → CapabilitySet → CapabilitySet
+| .empty, _ => .empty
+| .cap mu l, C2 => if C2.containsCap mu l then .cap mu l else .empty
+| .union C1a C1b, C2 => .union (intersect C1a C2) (intersect C1b C2)
+
+instance : Inter CapabilitySet := ⟨intersect⟩
+
+/-- Decidable check that `(mu, l)` is covered by `C` (i.e. there is some
+    `(mu', l)` in `C` with `mu ≤ mu'`). -/
+def coversCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
+| .empty => false
+| .cap mu' l' => mu.leBool mu' && decide (l = l')
+| .union C1 C2 => coversCap mu l C1 || coversCap mu l C2
+
+/-- Covers-based intersection: keep caps from `C1` whose mode is covered by
+    some cap at the same location in `C2`. Modes are taken from `C1`.
+
+    Useful for "filtering" a budget by a context's authority — e.g. for a cap
+    `(.access .ro, l)` in `C1` to survive, `C2` need only contain
+    `(.access .epsilon, l)` (since `.access .ro ≤ .access .epsilon`). In
+    contrast, exact `intersect` would erase such caps when modes differ. -/
+def intersectCovers : CapabilitySet → CapabilitySet → CapabilitySet
+| .empty, _ => .empty
+| .cap mu l, C2 => if C2.coversCap mu l then .cap mu l else .empty
+| .union C1a C1b, C2 => .union (intersectCovers C1a C2) (intersectCovers C1b C2)
 
 /-- applyRO is idempotent. -/
 @[simp]

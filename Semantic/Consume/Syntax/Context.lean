@@ -474,6 +474,18 @@ def Ctx.consumeset : Ctx s -> PeakSet s
     ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
 | .lock _ => ⟨.empty, .empty⟩
 
+/-- The set of all peaks in the context that are at `.access` mode and not locked. -/
+def Ctx.accessset : Ctx s -> PeakSet s
+| .empty => ⟨.empty, .empty⟩
+| .push Γ (.var _) => Γ.accessset.rename Rename.succ
+| .push Γ (.tvar _) => Γ.accessset.rename Rename.succ
+| .push Γ (.cvar .consume _) => Γ.accessset.rename Rename.succ
+| .push Γ (.cvar .empty _) => Γ.accessset.rename Rename.succ
+| .push Γ (.cvar .access _) =>
+    let ps := Γ.accessset.rename Rename.succ
+    ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
+| .lock _ => ⟨.empty, .empty⟩
+
 /-- Sequential composition of use modes: `SeqComp m1 m2 m3` means using `m1`
 first then `m2` yields `m3`. -/
 inductive UseMode.SeqComp : UseMode -> UseMode -> UseMode -> Prop where
