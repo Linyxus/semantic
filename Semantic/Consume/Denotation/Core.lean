@@ -755,21 +755,30 @@ theorem Memory.preserves_liveness_full_to_consume_only
   exact ⟨b', ℓ, hheap', Or.inl rfl⟩
 
 /-- Semantic typing.
-    *Pre*: every cell reached via `C` (whether `.access` or `.consume`) must
-    be live at the start (`m.is_compatible (C.denot ρ m)`).
-    *Post*: in any reachable result memory `m'`, the result satisfies
-    `E` and the only liveness changes from `m` to `m'` are `live → dead`
-    transitions at locations covered by `.consume`-mode, unlocked cvar
-    bindings in `Γ` (`preserves_liveness_consume_only`). This single
-    invariant subsumes the old `is_access_compat` and the liveness part of
-    `preserves_empty_mcells`: access-mode peaks of `C` are not consumable,
-    so they remain live; empty-mode cvar locations are not consumable
-    either, so their liveness is preserved. -/
+
+    The Eval budget is split into two parts:
+    * **Use-set** — `C.denot ρ m` filtered (`intersect`) to locations
+      that correspond to `.access`-mode unlocked cvars in `Γ`. This captures
+      "what the program may read or write": only `.access`-mode peaks can be
+      used during evaluation. Caps in `C` pointing at `.consume`-mode cvars
+      (or at `.empty`-mode ones) are NOT in the use-set — they cannot be
+      accessed.
+    * **Drop-set** — `(Γ.consumeset.cs.denot ρ m).to_drop`, the drop-mode
+      capabilities for every `.consume`-unlocked cvar in `Γ`. These cells
+      may transition from `live` to `dead` during evaluation.
+
+    *Pre*: every cell in `C.denot ρ m` must be live at the start. The
+    use-set is a subset of `C.denot`, so this is sufficient.
+    *Post*: in any reachable result memory `m'`, the result satisfies `E`. -/
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m →
+    let useSet : CapabilitySet :=
+      (C.denot ρ m).intersect (Γ.accessset.cs.denot ρ m)
+    let dropSet : CapabilitySet :=
+      (Γ.consumeset.cs.denot ρ m).to_drop
     m.is_compatible (C.denot ρ m) →
-    Eval (C.denot ρ m ∪ (Γ.consumeset.cs.denot ρ m).to_drop) m (e.subst (Subst.from_TypeEnv ρ))
+    Eval (useSet ∪ dropSet) m (e.subst (Subst.from_TypeEnv ρ))
       (fun v m' => Ty.exi_val_denot ρ E m' v)
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T

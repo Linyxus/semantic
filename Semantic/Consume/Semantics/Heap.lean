@@ -256,21 +256,6 @@ def to_drop : CapabilitySet -> CapabilitySet
 | .cap _ l => .cap .drop l
 | .union C1 C2 => .union C1.to_drop C2.to_drop
 
-/-- Decidable check that `(mu, l)` is exactly contained in `C`. -/
-def containsCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
-| .empty => false
-| .cap mu' l' => mu.beq mu' && decide (l = l')
-| .union C1 C2 => containsCap mu l C1 || containsCap mu l C2
-
-/-- Intersection of capability sets: the result contains exactly those `(mu, l)`
-    pairs that are present in both `C1` and `C2`. -/
-def intersect : CapabilitySet → CapabilitySet → CapabilitySet
-| .empty, _ => .empty
-| .cap mu l, C2 => if C2.containsCap mu l then .cap mu l else .empty
-| .union C1a C1b, C2 => .union (intersect C1a C2) (intersect C1b C2)
-
-instance : Inter CapabilitySet := ⟨intersect⟩
-
 /-- Decidable check that `(mu, l)` is covered by `C` (i.e. there is some
     `(mu', l)` in `C` with `mu ≤ mu'`). -/
 def coversCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
@@ -281,14 +266,14 @@ def coversCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
 /-- Covers-based intersection: keep caps from `C1` whose mode is covered by
     some cap at the same location in `C2`. Modes are taken from `C1`.
 
-    Useful for "filtering" a budget by a context's authority — e.g. for a cap
-    `(.access .ro, l)` in `C1` to survive, `C2` need only contain
-    `(.access .epsilon, l)` (since `.access .ro ≤ .access .epsilon`). In
-    contrast, exact `intersect` would erase such caps when modes differ. -/
-def intersectCovers : CapabilitySet → CapabilitySet → CapabilitySet
+    For a cap `(.access .ro, l)` in `C1` to survive, `C2` need only contain
+    `(.access .epsilon, l)` (since `.access .ro ≤ .access .epsilon`). -/
+def intersect : CapabilitySet → CapabilitySet → CapabilitySet
 | .empty, _ => .empty
 | .cap mu l, C2 => if C2.coversCap mu l then .cap mu l else .empty
-| .union C1a C1b, C2 => .union (intersectCovers C1a C2) (intersectCovers C1b C2)
+| .union C1a C1b, C2 => .union (intersect C1a C2) (intersect C1b C2)
+
+instance : Inter CapabilitySet := ⟨intersect⟩
 
 /-- applyRO is idempotent. -/
 @[simp]
