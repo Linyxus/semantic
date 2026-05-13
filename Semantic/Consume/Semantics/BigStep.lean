@@ -48,6 +48,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
+    (Memory.drops_authorized m m1 C) ->
     (hv : Exp.IsSimpleVal v) ->
     (hwf_v : Exp.WfInHeap v m1.heap) ->
     Q1 v m1 ->
@@ -60,6 +61,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
     (m1.subsumes m) ->
+    (Memory.drops_authorized m m1 C) ->
     (hwf_x : x.WfInHeap m1.heap) ->
     Q1 (.var x) m1 ->
     Eval C m1 (e2.subst (Subst.openVar x)) Q) ->
@@ -116,6 +118,17 @@ theorem Eval.var_inv {C : CapabilitySet} {m : Memory} {x : Var .var {}} {Q : Mpo
   cases heval with
   | eval_val hv _ => cases hv
   | eval_var hQ => exact hQ
+
+/-- Frame property of `Eval`: every memory `m1` that satisfies `Q` along an
+    `Eval C m e Q` derivation is reached from `m` via transitions whose
+    live-to-dead drops are all covered by `C`. This is left as `sorry` for now;
+    it is the meta-property that justifies the `Memory.drops_authorized`
+    hypothesis on `eval_letin`'s `h_val`/`h_var`. -/
+theorem Eval.drops_authorized_post
+    {C : CapabilitySet} {m m' : Memory} {e : Exp {}} {Q : Mpost} {v : Exp {}}
+    (heval : Eval C m e Q) (hQ : Q v m') :
+    m.drops_authorized m' C := by
+  sorry
 
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
@@ -244,13 +257,18 @@ theorem eval_monotonic {m1 m2 : Memory}
       -- Body cases use the original `h_*_orig` directly: they produce the
       -- sub-Eval at `m_ext'`, which might have liveness changes that the
       -- outer `hcompat` doesn't track at intermediate sub-memories.
-      intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
+      intro m_ext' v hs_ext' _hda_new hv hwf_v hq1 l' hfresh
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      exact h_val_orig hs_orig hv hwf_v hq1 l' hfresh
+      -- Drop-authority from the original memory: `eval_e1` over the original
+      -- memory guarantees that any `m_ext'` satisfying `Q1` is reached with
+      -- drops covered by `C` (frame property).
+      have hda_orig := Eval.drops_authorized_post eval_e1 hq1
+      exact h_val_orig hs_orig hda_orig hv hwf_v hq1 l' hfresh
     case h_var =>
-      intro m_ext' x hs_ext' hwf_x hq1
+      intro m_ext' x hs_ext' _hda_new hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      exact h_var_orig hs_orig hwf_x hq1
+      have hda_orig := Eval.drops_authorized_post eval_e1 hq1
+      exact h_var_orig hs_orig hda_orig hwf_x hq1
   case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
     have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
@@ -468,14 +486,14 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       intro m1 v hQ0
       exact h_nonstuck hQ0
     case h_val =>
-      intro m1 v hs1 hv hwf_v hq1 l' hfresh
-      apply ih_val hs1 hv hwf_v hq1 l' hfresh
+      intro m1 v hs1 hda hv hwf_v hq1 l' hfresh
+      apply ih_val hs1 hda hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
       apply Memory.subsumes_trans
         (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh) hs1
     case h_var =>
-      intro m1 x hs1 hwf_x hq1
-      apply ih_var hs1 hwf_x hq1
+      intro m1 x hs1 hda hwf_x hq1
+      apply ih_var hs1 hda hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
   case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
@@ -542,14 +560,19 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
   case eval_letin =>
-    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var ih_e1 ih_val ih_var
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var
+      ih_e1 ih_val ih_var
     apply Eval.eval_letin hpred_mono hbool_mono (ih_e1 hsub)
     · intro m1 v hQ
       exact h_nonstuck hQ
-    · intro m1 v hs1 hv hwf_v hq1 l' hfresh
-      exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
-    · intro m1 x hs1 hwf_x hq1
-      exact ih_var hs1 hwf_x hq1 hsub
+    · intro m1 v hs1 _hda_new hv hwf_v hq1 l' hfresh
+      -- The new framework gives drops_authorized at A2; ih_val needs it at A1.
+      -- Use frame property on the original Eval at A1.
+      have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
+      exact ih_val hs1 hda_A1 hv hwf_v hq1 l' hfresh hsub
+    · intro m1 x hs1 _hda_new hwf_x hq1
+      have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
+      exact ih_var hs1 hda_A1 hwf_x hq1 hsub
   case eval_unpack =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
     apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
@@ -712,15 +735,15 @@ theorem Eval.strengthen_reach_bound
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var _ ih_val ih_var =>
     intro D hD
     apply Eval.eval_letin hpred hbool eval_e1 h_nonstuck
-    · intro m1 v hsub hv hwf_v hq1 l' hfresh
-      apply ih_val hsub hv hwf_v hq1 l' hfresh D
+    · intro m1 v hsub hda hv hwf_v hq1 l' hfresh
+      apply ih_val hsub hda hv hwf_v hq1 l' hfresh D
       intro l hDl hheap
       have hsub_full := Memory.subsumes_trans
         (Memory.extend_val_subsumes m1 l'
           ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) hsub
       exact hD l hDl (Heap.none_of_subsumes_none hsub_full hheap)
-    · intro m1 x hsub hwf_x hq1
-      apply ih_var hsub hwf_x hq1 D
+    · intro m1 x hsub hda hwf_x hq1
+      apply ih_var hsub hda hwf_x hq1 D
       intro l hDl hheap
       exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
   | eval_unpack hpred hbool eval_e1 h_nonstuck _ ih_e1 ih_val =>

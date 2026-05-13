@@ -2242,7 +2242,7 @@ theorem sem_typ_letin
     · exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T m1 v hQ1
     · exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1
   case h_val =>
-    intro m1 v hs1 hv hwf_v hQ1 l' hfresh
+    intro m1 v hs1 hda hv hwf_v hQ1 l' hfresh
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     let ps := CaptureSet.peakset Γ2 T.captureSet
     set m_ext := m1.extend_val l' heapval hwf_v rfl hfresh with hm_ext_def
@@ -2294,10 +2294,23 @@ theorem sem_typ_letin
           CapabilitySet.Subset.union_right_left
       · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
     -- Compatibility for the body's source-side budget `(C2.rename).denot`.
-    -- GAP: This requires a frame property of `Eval` — that C2-cells in `store`
-    -- (which were live by `hcompat`) remain live in m_ext. Without such a
-    -- preservation lemma, the chain `store-compat → m_ext-compat` cannot be
-    -- closed. This was a sorry in the pre-refactor version as well.
+    -- AVAILABLE (post-refactor): `hda : store.drops_authorized m1 (outer
+    --   budget)`, where outer budget = `(C1 ∪ C2).denot env store ∪ D`.
+    --   This lets us argue: if a cell `l ∈ C2.denot env store` transitions
+    --   from `.live` (in `store`, by `hcompat`) to `.dead` (in `m_ext`),
+    --   then `l ∈ outer-budget.drop`. Since `(C1 ∪ C2).denot` carries only
+    --   `.access` modes, the drop must come from `D`, i.e., `l ∈
+    --   Γ.consumeset.cs.denot env store`.
+    -- RESIDUAL GAP: closing the proof needs disjointness of `C2.denot env
+    --   store` and `Γ.consumeset.cs.denot env store`. This is NOT a semantic
+    --   consequence of `EnvTyping` (which treats `.access`/`.consume`/
+    --   `.empty` cvar bindings uniformly). The user's typing rule for
+    --   `letin` (in `TypeSystem/Core.lean`) has no noninterference premise,
+    --   so this disjointness cannot currently be derived. Two fixes are
+    --   possible: (1) strengthen the source typing rule with a `SemSepCheck
+    --   Γ2 Γ1.consumeset.cs C2`-style premise; (2) refine `EnvTyping` so
+    --   `.empty` cvars have empty ground denot. Either path closes this
+    --   sorry; until then, the refactor only partially unblocks it.
     have hcompat_body :
         m_ext.is_compatible
           ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext) := by
@@ -2315,7 +2328,7 @@ theorem sem_typ_letin
     apply eval_post_monotonic _ hcompose
     exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
   case h_var =>
-    intro m1 x hs1 hwf_x hQ1
+    intro m1 x hs1 hda hwf_x hQ1
     cases x
     case bound bv => cases bv
     case free fx =>
@@ -2353,7 +2366,10 @@ theorem sem_typ_letin
             CapabilitySet.Subset.union_right_right
             CapabilitySet.Subset.union_right_left
         · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
-      -- Same frame-property gap as `h_val`.
+      -- Same gap as `h_val`: `hda : store.drops_authorized m1 (outer budget)`
+      -- is now available, but closing requires disjointness of `C2.denot`
+      -- and `Γ.consumeset.cs.denot`, which the typing rule does not
+      -- currently enforce. See the comment in the `h_val` case above.
       have hcompat_body :
           m1.is_compatible
             ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1) := by
