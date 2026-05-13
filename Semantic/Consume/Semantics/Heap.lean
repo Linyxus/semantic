@@ -3011,6 +3011,206 @@ def Heap.not_mutated (init after : Heap) : Prop :=
 def Memory.not_mutated (init after : Memory) : Prop :=
   init.heap.not_mutated after.heap
 
+/-- `drops_authorized m1 m2 C` says that every memory cell which slips from
+    `.live` in `m1` to `.dead` in `m2` is accounted for by `C` at `.drop`
+    mode.  In other words, `C` authorizes every live-to-dead transition
+    between `m1` and `m2`. -/
+def Memory.drops_authorized (m1 m2 : Memory) (C : CapabilitySet) : Prop :=
+  ∀ l b1 b2,
+    m1.heap l = some (.capability (.mcell b1 .live)) →
+    m2.heap l = some (.capability (.mcell b2 .dead)) →
+    C.hasmem .drop l
+
+/-- A memory is always `drops_authorized` with respect to itself, since no
+    live-to-dead transitions can occur in a comparison of `m` against itself. -/
+theorem Memory.drops_authorized_refl (m : Memory) (C : CapabilitySet) :
+    m.drops_authorized m C := by
+  intro l b1 b2 hlive hdead
+  rw [hlive] at hdead
+  cases hdead
+
+/-- If the underlying heaps are equal, no live cell can have slipped to dead. -/
+theorem Memory.drops_authorized_of_heap_eq
+    {m1 m2 : Memory} {C : CapabilitySet} (h : m1.heap = m2.heap) :
+    m1.drops_authorized m2 C := by
+  intro l b1 b2 hlive hdead
+  rw [h] at hlive
+  rw [hlive] at hdead
+  cases hdead
+
+/-- If `m2` is not mutated with respect to `m1`, all `live` mcells stay
+    `live`, so any `C` (including `∅`) authorizes the transition. -/
+theorem Memory.drops_authorized_of_not_mutated
+    {m1 m2 : Memory} {C : CapabilitySet} (h : m1.not_mutated m2) :
+    m1.drops_authorized m2 C := by
+  intro l b1 b2 hlive hdead
+  have hpres := h l b1 .live hlive
+  rw [hpres] at hdead
+  cases hdead
+
+/-- `.drop`-membership is preserved under `Subset`: the only `Subset` rule
+    that changes mutability is `cap_ro`, which only affects `.access` modes,
+    not `.drop`. -/
+private theorem CapabilitySet.hasmem_drop_of_subset
+    {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2)
+    {l : Nat} (h : C1.hasmem .drop l) : C2.hasmem .drop l := by
+  induction hsub with
+  | refl => exact h
+  | empty => exact (not_hasmem_empty h).elim
+  | trans _ _ ih1 ih2 => exact ih2 (ih1 h)
+  | union_left _ _ ih1 ih2 =>
+    cases h with
+    | left h' => exact ih1 h'
+    | right h' => exact ih2 h'
+  | union_right_left => exact hasmem.left h
+  | union_right_right => exact hasmem.right h
+  | cap_ro => cases h
+
+/-- `drops_authorized` is monotonic in the capability set: enlarging `C`
+    only weakens the obligation. -/
+theorem Memory.drops_authorized_subset
+    {m1 m2 : Memory} {C1 C2 : CapabilitySet}
+    (h : m1.drops_authorized m2 C1) (hsub : C1 ⊆ C2) :
+    m1.drops_authorized m2 C2 := by
+  intro l b1 b2 hlive hdead
+  exact CapabilitySet.hasmem_drop_of_subset hsub (h l b1 b2 hlive hdead)
+
+/-- Drop authority can be widened to a union on the left. -/
+theorem Memory.drops_authorized_union_left
+    {m1 m2 : Memory} {C1 C2 : CapabilitySet}
+    (h : m1.drops_authorized m2 C1) :
+    m1.drops_authorized m2 (C1 ∪ C2) :=
+  drops_authorized_subset h CapabilitySet.Subset.union_right_left
+
+/-- Drop authority can be widened to a union on the right. -/
+theorem Memory.drops_authorized_union_right
+    {m1 m2 : Memory} {C1 C2 : CapabilitySet}
+    (h : m1.drops_authorized m2 C2) :
+    m1.drops_authorized m2 (C1 ∪ C2) :=
+  drops_authorized_subset h CapabilitySet.Subset.union_right_right
+
+/-- Composition: if `m2.subsumes m1`, the `C1`-authorized `m1 → m2` and the
+    `C2`-authorized `m2 → m3` compose to a `(C1 ∪ C2)`-authorized `m1 → m3`.
+    Every live cell in `m1` that ends up dead in `m3` either dropped during
+    the first step (covered by `C1`) or during the second step (covered by
+    `C2`). -/
+theorem Memory.drops_authorized_trans
+    {m1 m2 m3 : Memory} {C1 C2 : CapabilitySet}
+    (hsub : m2.subsumes m1)
+    (h12 : m1.drops_authorized m2 C1)
+    (h23 : m2.drops_authorized m3 C2) :
+    m1.drops_authorized m3 (C1 ∪ C2) := by
+  intro l b1 b3 hlive hdead
+  obtain ⟨c2, hm2_l, hsub_c⟩ := hsub l (.capability (.mcell b1 .live)) hlive
+  cases c2 with
+  | val _ =>
+    simp only [Cell.subsumes] at hsub_c
+    cases hsub_c
+  | capability info =>
+    cases info with
+    | basic =>
+      simp only [Cell.subsumes] at hsub_c
+      cases hsub_c
+    | mcell b2 ℓ2 =>
+      simp only [Cell.subsumes] at hsub_c
+      cases hsub_c with
+      | refl =>
+        exact CapabilitySet.hasmem.right (h23 l b2 b3 hm2_l hdead)
+      | live_dead =>
+        exact CapabilitySet.hasmem.left (h12 l b1 b2 hlive hm2_l)
+  | masked =>
+    simp only [Cell.subsumes] at hsub_c
+    cases hsub_c
+
+/-- Extending memory with a fresh value cell introduces no live-to-dead
+    transitions, so any `C` authorizes it. -/
+theorem Memory.extend_drops_authorized
+    (m : Memory) (l : Nat) (v : HeapVal)
+    (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+    (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+    (hfresh : m.heap l = none) (C : CapabilitySet) :
+    m.drops_authorized (m.extend l v hwf_v hreach hfresh) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.extend Heap.extend at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [hfresh] at hlive
+    cases hlive
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Extending memory with a fresh mutable cell (starting `.live`) introduces
+    no live-to-dead transitions, so any `C` authorizes it. -/
+theorem Memory.extend_mcell_drops_authorized
+    (m : Memory) (l : Nat) (b : Bool) (hfresh : m.heap l = none)
+    (C : CapabilitySet) :
+    m.drops_authorized (m.extend_mcell l b hfresh) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.extend_mcell Heap.extend_mcell at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [if_pos rfl] at hdead
+    cases hdead
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Extending memory with a fresh basic capability introduces no live-to-dead
+    transitions, so any `C` authorizes it. -/
+theorem Memory.extend_cap_drops_authorized
+    (m : Memory) (l : Nat) (hfresh : m.heap l = none) (C : CapabilitySet) :
+    m.drops_authorized (m.extend_cap l hfresh) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.extend_cap Heap.extend_cap at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [if_pos rfl] at hdead
+    cases hdead
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Updating a mutable cell preserves its liveness, so any `C` authorizes
+    the resulting transition. -/
+theorem Memory.update_mcell_drops_authorized
+    (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ)))
+    (C : CapabilitySet) :
+    m.drops_authorized (m.update_mcell l b ℓ hexists) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.update_mcell Heap.update_cell at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [if_pos rfl] at hdead
+    cases hdead
+    obtain ⟨b0, hb0⟩ := hexists
+    rw [hb0] at hlive
+    cases hlive
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Dropping a live mutable cell requires the corresponding `.drop`
+    capability in `C`. -/
+theorem Memory.drop_mcell_drops_authorized
+    (m : Memory) (l : Nat)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live)))
+    {C : CapabilitySet} (hmem : C.hasmem .drop l) :
+    m.drops_authorized (m.drop_mcell l hexists) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.drop_mcell Heap.update_cell at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl; exact hmem
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
 /-- Non-interference checking for capability sets. -/
 inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
 | ni_symm :
