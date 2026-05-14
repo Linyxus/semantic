@@ -48,7 +48,6 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
-    (Memory.drops_authorized m m1 C) ->
     (hv : Exp.IsSimpleVal v) ->
     (hwf_v : Exp.WfInHeap v m1.heap) ->
     Q1 v m1 ->
@@ -61,7 +60,6 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
     (m1.subsumes m) ->
-    (Memory.drops_authorized m m1 C) ->
     (hwf_x : x.WfInHeap m1.heap) ->
     Q1 (.var x) m1 ->
     Eval C m1 (e2.subst (Subst.openVar x)) Q) ->
