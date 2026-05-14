@@ -241,23 +241,13 @@ theorem eval_monotonic {m1 m2 : Memory}
       intro m1 v hQ_orig
       exact h_nonstuck_orig hQ_orig
     case h_val =>
-      -- Body cases use the original `h_*_orig` directly: they produce the
-      -- sub-Eval at `m_ext'`, which might have liveness changes that the
-      -- outer `hcompat` doesn't track at intermediate sub-memories.
-      intro m_ext' v hs_ext' _hda_new hv hwf_v hq1 l' hfresh
+      intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      -- Drop-authority from the original memory: `eval_e1` over the original
-      -- memory guarantees that any `m_ext'` satisfying `Q1` is reached with
-      -- drops covered by `C` (frame property).
-      -- have hda_orig := Eval.drops_authorized_post eval_e1 hq1
-      -- exact h_val_orig hs_orig hda_orig hv hwf_v hq1 l' hfresh
-      sorry
+      exact h_val_orig hs_orig hv hwf_v hq1 l' hfresh
     case h_var =>
-      intro m_ext' x hs_ext' _hda_new hwf_x hq1
+      intro m_ext' x hs_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      -- have hda_orig := Eval.drops_authorized_post eval_e1 hq1
-      -- exact h_var_orig hs_orig hda_orig hwf_x hq1
-      sorry
+      exact h_var_orig hs_orig hwf_x hq1
   case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
     have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
@@ -475,14 +465,14 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       intro m1 v hQ0
       exact h_nonstuck hQ0
     case h_val =>
-      intro m1 v hs1 hda hv hwf_v hq1 l' hfresh
-      apply ih_val hs1 hda hv hwf_v hq1 l' hfresh
+      intro m1 v hs1 hv hwf_v hq1 l' hfresh
+      apply ih_val hs1 hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
       apply Memory.subsumes_trans
         (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh) hs1
     case h_var =>
-      intro m1 x hs1 hda hwf_x hq1
-      apply ih_var hs1 hda hwf_x hq1
+      intro m1 x hs1 hwf_x hq1
+      apply ih_var hs1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
   case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
@@ -554,16 +544,10 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     apply Eval.eval_letin hpred_mono hbool_mono (ih_e1 hsub)
     · intro m1 v hQ
       exact h_nonstuck hQ
-    · intro m1 v hs1 _hda_new hv hwf_v hq1 l' hfresh
-      -- The new framework gives drops_authorized at A2; ih_val needs it at A1.
-      -- Use frame property on the original Eval at A1.
-      -- have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
-      -- exact ih_val hs1 hda_A1 hv hwf_v hq1 l' hfresh hsub
-      sorry
-    · intro m1 x hs1 _hda_new hwf_x hq1
-      -- have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
-      -- exact ih_var hs1 hda_A1 hwf_x hq1 hsub
-      sorry
+    · intro m1 v hs1 hv hwf_v hq1 l' hfresh
+      exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
+    · intro m1 x hs1 hwf_x hq1
+      exact ih_var hs1 hwf_x hq1 hsub
   case eval_unpack =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
     apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
@@ -726,15 +710,15 @@ theorem Eval.strengthen_reach_bound
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var _ ih_val ih_var =>
     intro D hD
     apply Eval.eval_letin hpred hbool eval_e1 h_nonstuck
-    · intro m1 v hsub hda hv hwf_v hq1 l' hfresh
-      apply ih_val hsub hda hv hwf_v hq1 l' hfresh D
+    · intro m1 v hsub hv hwf_v hq1 l' hfresh
+      apply ih_val hsub hv hwf_v hq1 l' hfresh D
       intro l hDl hheap
       have hsub_full := Memory.subsumes_trans
         (Memory.extend_val_subsumes m1 l'
           ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) hsub
       exact hD l hDl (Heap.none_of_subsumes_none hsub_full hheap)
-    · intro m1 x hsub hda hwf_x hq1
-      apply ih_var hsub hda hwf_x hq1 D
+    · intro m1 x hsub hwf_x hq1
+      apply ih_var hsub hwf_x hq1 D
       intro l hDl hheap
       exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
   | eval_unpack hpred hbool eval_e1 h_nonstuck _ ih_e1 ih_val =>
