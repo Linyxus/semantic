@@ -447,6 +447,144 @@ instance instHasSubset : HasSubset CapabilitySet :=
 instance instTransSubset : Trans (α := CapabilitySet) (· ⊆ ·) (· ⊆ ·) (· ⊆ ·) where
   trans := CapabilitySet.Subset.trans
 
+/-- The covers-based intersection is a subset of its first argument. -/
+theorem intersect_subset_left :
+    ∀ {C1 C2 : CapabilitySet}, C1.intersect C2 ⊆ C1
+| .empty, _ => Subset.empty
+| .cap mu l, C2 => by
+    unfold intersect
+    split
+    · exact Subset.refl
+    · exact Subset.empty
+| .union C1a C1b, C2 => by
+    unfold intersect
+    exact Subset.union_left
+      (Subset.trans (intersect_subset_left (C1 := C1a) (C2 := C2))
+        Subset.union_right_left)
+      (Subset.trans (intersect_subset_left (C1 := C1b) (C2 := C2))
+        Subset.union_right_right)
+
+/-- Bool-Prop bridge: `coversCap` reflects `covers`. -/
+theorem coversCap_iff_covers :
+    ∀ {C : CapabilitySet} {mu : CapMode} {l : Nat},
+      C.coversCap mu l = true ↔ C.covers mu l
+| .empty, _, _ => by
+    constructor
+    · intro h; unfold coversCap at h; cases h
+    · intro h; cases h
+| .cap mu' l', mu, l => by
+    unfold coversCap
+    constructor
+    · intro h
+      have hand : mu.leBool mu' = true ∧ decide (l = l') = true := by
+        rw [← Bool.and_eq_true]; exact h
+      obtain ⟨hmu, hl⟩ := hand
+      have hl_eq : l = l' := of_decide_eq_true hl
+      subst hl_eq
+      exact .here (CapMode.leBool_iff_le.mp hmu)
+    · intro h
+      cases h with
+      | here hle =>
+        rw [Bool.and_eq_true]
+        exact ⟨CapMode.leBool_iff_le.mpr hle, decide_eq_true rfl⟩
+| .union C1 C2, mu, l => by
+    unfold coversCap
+    constructor
+    · intro h
+      rw [Bool.or_eq_true] at h
+      cases h with
+      | inl h1 =>
+        exact .left ((@coversCap_iff_covers C1 mu l).mp h1)
+      | inr h2 =>
+        exact .right ((@coversCap_iff_covers C2 mu l).mp h2)
+    · intro h
+      rw [Bool.or_eq_true]
+      cases h with
+      | left h1 =>
+        exact Or.inl ((@coversCap_iff_covers C1 mu l).mpr h1)
+      | right h2 =>
+        exact Or.inr ((@coversCap_iff_covers C2 mu l).mpr h2)
+
+/-- If every cap in `C1` is covered by `C2`, the intersection equals `C1`. -/
+theorem intersect_eq_self_when_covered :
+    ∀ {C1 C2 : CapabilitySet},
+      (∀ mu l, C1.hasmem mu l → C2.covers mu l) →
+      C1.intersect C2 = C1
+| .empty, _, _ => rfl
+| .cap mu l, C2, h => by
+    unfold intersect
+    have hcov : C2.covers mu l := h mu l hasmem.here
+    rw [coversCap_iff_covers.mpr hcov]
+    rfl
+| .union C1a C1b, C2, h => by
+    unfold intersect
+    have h_a : ∀ mu l, C1a.hasmem mu l → C2.covers mu l := fun mu l hm =>
+      h mu l (hasmem.left hm)
+    have h_b : ∀ mu l, C1b.hasmem mu l → C2.covers mu l := fun mu l hm =>
+      h mu l (hasmem.right hm)
+    rw [intersect_eq_self_when_covered h_a, intersect_eq_self_when_covered h_b]
+
+/-- Distributivity of `intersect` over `union` on the left (definitional). -/
+@[simp]
+theorem intersect_union_left {C1 C2 C3 : CapabilitySet} :
+    (C1 ∪ C2).intersect C3 = C1.intersect C3 ∪ C2.intersect C3 := rfl
+
+/-- `intersect` is monotone in its first argument under `Subset`.
+
+    NOTE: `Subset` includes `cap_ro` which lets `.access .ro ⊆ .access .ε`.
+    Under `intersect`, a cap `.access .ro` at peak `l` survives intersection
+    with `C` iff `C` covers it (i.e. `C` has some `(mu', l)` with `mu' ≥ .ro`),
+    while `.access .ε` survives iff `C` has `(.ε, l)`. So the monotonicity is
+    not universal under arbitrary Subset proofs. Leaving as `sorry`. -/
+theorem intersect_mono_left :
+    ∀ {C1 C1' C2 : CapabilitySet}, C1 ⊆ C1' → C1.intersect C2 ⊆ C1'.intersect C2 := by
+  sorry
+
+/-- `Subset` preserves `covers`: a larger capability set covers everything
+    the smaller one does (at the same or stronger modes). -/
+theorem covers_mono :
+    ∀ {C C' : CapabilitySet}, C ⊆ C' → ∀ {mu l}, C.covers mu l → C'.covers mu l := by
+  intro C C' hsub mu l hcov
+  induction hsub with
+  | refl => exact hcov
+  | empty => cases hcov
+  | trans _ _ ih1 ih2 => exact ih2 (ih1 hcov)
+  | union_left _ _ ih1 ih2 =>
+    cases hcov with
+    | left h => exact ih1 h
+    | right h => exact ih2 h
+  | union_right_left => exact covers_union_left hcov
+  | union_right_right => exact covers_union_right hcov
+  | cap_ro =>
+    cases hcov
+    rename_i hle
+    -- hle : mu ≤ .access .ro; goal: covers mu l (.cap (.access .ε) l)
+    apply covers.here
+    cases hle with
+    | access hmu =>
+      exact CapMode.Le.access (Mutability.Le.trans hmu Mutability.Le.ro_le)
+
+/-- `intersect` is monotone in its second argument under `Subset`. Since
+    `Subset` preserves `covers` (see `covers_mono`), widening the right side
+    of intersection can only retain more caps from the left side. -/
+theorem intersect_mono_right :
+    ∀ {C D D' : CapabilitySet}, D ⊆ D' → C.intersect D ⊆ C.intersect D'
+| .empty, _, _, _ => Subset.empty
+| .cap mu l, D, D', hsub => by
+    unfold intersect
+    split
+    · rename_i hcov
+      have hcov_prop : D.covers mu l := coversCap_iff_covers.mp hcov
+      have hcov_prop' : D'.covers mu l := covers_mono hsub hcov_prop
+      rw [coversCap_iff_covers.mpr hcov_prop']
+      exact Subset.refl
+    · exact Subset.empty
+| .union Ca Cb, D, D', hsub => by
+    unfold intersect
+    exact Subset.union_left
+      (Subset.trans (intersect_mono_right (C := Ca) hsub) Subset.union_right_left)
+      (Subset.trans (intersect_mono_right (C := Cb) hsub) Subset.union_right_right)
+
 /-- A capability set has a certain mutability kind.
     `HasKind C .ro` means every cap in C is either `.access .ro` (immutable
     access) or `.drop` (exclusive — does not grant any read/write authority).

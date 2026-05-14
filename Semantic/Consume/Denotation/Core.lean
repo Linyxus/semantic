@@ -754,6 +754,43 @@ theorem Memory.preserves_liveness_full_to_consume_only
   obtain ⟨b', hheap'⟩ := h l b ℓ hheap
   exact ⟨b', ℓ, hheap', Or.inl rfl⟩
 
+/-- Structural lemma: for an accessible capture set `C` in `Γ`, every cap in
+    `C.denot env m` is `covers`-bound by `Γ.accessset.cs.denot env m`.
+
+    This is the bridge between the source-level `HasType.var` accessibility
+    constraint and the semantic-level use-set tightening: it justifies that
+    `(C.denot env m).intersect (Γ.accessset.cs.denot env m) = C.denot env m`
+    for `accessible` `C`, so the new SemanticTyping budget is no smaller than
+    the old `C.denot ∪ to_drop` for source-typed programs.
+
+    Proof requires structural induction on `C` with mode-tracking through
+    `applyMut` and recursion on the var-bound case via
+    `typed_env_lookup_var_reachability` at a smaller `Γ`. Left as `sorry`
+    until the supporting mode-tracking machinery is in place. -/
+theorem CaptureSet.accessible_denot_covers
+    {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
+    {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
+    (hC : C.IsClosed) (haccess : C.accessible Γ)
+    {mu : CapMode} {l : Nat}
+    (hmem : (C.denot env store).hasmem mu l) :
+    (Γ.accessset.cs.denot env store).covers mu l := by
+  sorry
+
+/-- Companion to `accessible_denot_covers`: every cap in a `consumable`
+    capture set is covered by `Γ.accessset.cs.denot` (which, after the
+    refactor, includes `.consume` peaks too). Same structural complexity as
+    `accessible_denot_covers`; left as `sorry`. -/
+theorem CaptureSet.consumable_denot_covers
+    {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
+    {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
+    (hC : C.IsClosed) (hcons : C.consumable Γ)
+    {mu : CapMode} {l : Nat}
+    (hmem : (C.denot env store).hasmem mu l) :
+    (Γ.accessset.cs.denot env store).covers mu l := by
+  sorry
+
 /-- Semantic typing.
 
     The Eval budget is split into two parts:
@@ -773,11 +810,11 @@ theorem Memory.preserves_liveness_full_to_consume_only
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m →
+    m.is_compatible (C.denot ρ m) →
     let useSet : CapabilitySet :=
       (C.denot ρ m).intersect (Γ.accessset.cs.denot ρ m)
     let dropSet : CapabilitySet :=
       (Γ.consumeset.cs.denot ρ m).to_drop
-    m.is_compatible (C.denot ρ m) →
     Eval (useSet ∪ dropSet) m (e.subst (Subst.from_TypeEnv ρ))
       (fun v m' => Ty.exi_val_denot ρ E m' v)
 

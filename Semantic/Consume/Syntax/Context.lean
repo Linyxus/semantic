@@ -474,14 +474,19 @@ def Ctx.consumeset : Ctx s -> PeakSet s
     ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
 | .lock _ => ⟨.empty, .empty⟩
 
-/-- The set of all peaks in the context that are at `.access` mode and not locked. -/
+/-- The set of all peaks in the context that grant access — i.e., are at
+    `.access` or `.consume` mode — and not locked. A `.consume` cvar grants
+    access (consuming subsumes accessing), so it contributes to the access-set
+    as well as the consume-set. -/
 def Ctx.accessset : Ctx s -> PeakSet s
 | .empty => ⟨.empty, .empty⟩
 | .push Γ (.var _) => Γ.accessset.rename Rename.succ
 | .push Γ (.tvar _) => Γ.accessset.rename Rename.succ
-| .push Γ (.cvar .consume _) => Γ.accessset.rename Rename.succ
 | .push Γ (.cvar .empty _) => Γ.accessset.rename Rename.succ
 | .push Γ (.cvar .access _) =>
+    let ps := Γ.accessset.rename Rename.succ
+    ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
+| .push Γ (.cvar .consume _) =>
     let ps := Γ.accessset.rename Rename.succ
     ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
 | .lock _ => ⟨.empty, .empty⟩
