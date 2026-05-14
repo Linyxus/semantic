@@ -263,14 +263,21 @@ def coversCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
 | .cap mu' l' => mu.leBool mu' && decide (l = l')
 | .union C1 C2 => coversCap mu l C1 || coversCap mu l C2
 
-/-- Covers-based intersection: keep caps from `C1` whose mode is covered by
-    some cap at the same location in `C2`. Modes are taken from `C1`.
+/-- Covers-based intersection with mode-meet semantics: keep caps from `C1`
+    at locations also represented in `C2`, weakening the mode if `C2` doesn't
+    cover the requested mode but does cover its read-only image.
 
-    For a cap `(.access .ro, l)` in `C1` to survive, `C2` need only contain
-    `(.access .epsilon, l)` (since `.access .ro ≤ .access .epsilon`). -/
+    For `(.access .ε, l)` in `C1` and only `(.access .ro, l)` in `C2`, the
+    survivor is `(.access .ro, l)` — meaning "you asked for `.ε` but only
+    `.ro` was available, so you got `.ro`." This is what restores
+    monotonicity of `intersect` in its left argument under `Subset` (which
+    includes `cap_ro : .ro ⊆ .ε`). -/
 def intersect : CapabilitySet → CapabilitySet → CapabilitySet
 | .empty, _ => .empty
-| .cap mu l, C2 => if C2.coversCap mu l then .cap mu l else .empty
+| .cap mu l, C2 =>
+    if C2.coversCap mu l then .cap mu l
+    else if C2.coversCap mu.applyRO l then .cap mu.applyRO l
+    else .empty
 | .union C1a C1b, C2 => .union (intersect C1a C2) (intersect C1b C2)
 
 instance : Inter CapabilitySet := ⟨intersect⟩
@@ -447,6 +454,17 @@ instance instHasSubset : HasSubset CapabilitySet :=
 instance instTransSubset : Trans (α := CapabilitySet) (· ⊆ ·) (· ⊆ ·) (· ⊆ ·) where
   trans := CapabilitySet.Subset.trans
 
+/-- `cap mu.applyRO l ⊆ cap mu l`: the read-only image is a subset (the only
+    nontrivial case is `mu = .access .ε`, where `cap_ro` applies). -/
+private theorem cap_applyRO_subset_cap {mu : CapMode} {l : Nat} :
+    (CapabilitySet.cap mu.applyRO l) ⊆ (CapabilitySet.cap mu l) := by
+  cases mu with
+  | access mu' =>
+    cases mu' with
+    | epsilon => exact Subset.cap_ro
+    | ro => exact Subset.refl
+  | drop => exact Subset.refl
+
 /-- The covers-based intersection is a subset of its first argument. -/
 theorem intersect_subset_left :
     ∀ {C1 C2 : CapabilitySet}, C1.intersect C2 ⊆ C1
@@ -455,7 +473,9 @@ theorem intersect_subset_left :
     unfold intersect
     split
     · exact Subset.refl
-    · exact Subset.empty
+    · split
+      · exact cap_applyRO_subset_cap
+      · exact Subset.empty
 | .union C1a C1b, C2 => by
     unfold intersect
     exact Subset.union_left
@@ -529,16 +549,57 @@ theorem intersect_eq_self_when_covered :
 theorem intersect_union_left {C1 C2 C3 : CapabilitySet} :
     (C1 ∪ C2).intersect C3 = C1.intersect C3 ∪ C2.intersect C3 := rfl
 
-/-- `intersect` is monotone in its first argument under `Subset`.
+/-- `covers` is anti-monotonic in the mode: stronger mode implies weaker. -/
+private theorem covers_anti_mu :
+    ∀ {C : CapabilitySet} {mu1 mu2 : CapMode} {l : Nat},
+      mu1 ≤ mu2 → C.covers mu2 l → C.covers mu1 l := by
+  intro C mu1 mu2 l hle hcov
+  induction hcov with
+  | here hle2 => exact covers.here (CapMode.Le.trans hle hle2)
+  | left _ ih => exact covers.left ih
+  | right _ ih => exact covers.right ih
 
-    NOTE: `Subset` includes `cap_ro` which lets `.access .ro ⊆ .access .ε`.
-    Under `intersect`, a cap `.access .ro` at peak `l` survives intersection
-    with `C` iff `C` covers it (i.e. `C` has some `(mu', l)` with `mu' ≥ .ro`),
-    while `.access .ε` survives iff `C` has `(.ε, l)`. So the monotonicity is
-    not universal under arbitrary Subset proofs. Leaving as `sorry`. -/
+/-- `intersect` is monotone in its first argument under `Subset`. With the
+    mode-meet semantics of `intersect`, weakening `C1` via `cap_ro` (`.ro → .ε`)
+    only weakens the surviving mode, which is still a subset of the larger
+    side's surviving cap. -/
 theorem intersect_mono_left :
     ∀ {C1 C1' C2 : CapabilitySet}, C1 ⊆ C1' → C1.intersect C2 ⊆ C1'.intersect C2 := by
-  sorry
+  intro C1 C1' C2 hsub
+  induction hsub with
+  | refl => exact Subset.refl
+  | empty => exact Subset.empty
+  | trans _ _ ih1 ih2 => exact Subset.trans ih1 ih2
+  | union_left _ _ ih1 ih2 => exact Subset.union_left ih1 ih2
+  | union_right_left => exact Subset.union_right_left
+  | union_right_right => exact Subset.union_right_right
+  | cap_ro =>
+    rename_i l
+    -- LHS = intersect (cap (access ro) l) C2.
+    -- Since (access ro).applyRO = (access ro), LHS reduces to:
+    --   if C2.coversCap (access ro) l then cap (access ro) l else empty.
+    -- RHS = intersect (cap (access ε) l) C2 with two-branch fallback.
+    -- Case-split on whether C2 covers (access ro) l.
+    unfold intersect
+    by_cases hro : C2.coversCap (.access .ro) l = true
+    · -- LHS = cap (access ro) l. Need RHS contains it.
+      rw [if_pos hro]
+      -- For RHS: case-split on whether C2 covers (access ε) l.
+      by_cases heps : C2.coversCap (.access .epsilon) l = true
+      · -- RHS = cap (access ε) l. cap (access ro) l ⊆ cap (access ε) l via cap_ro.
+        rw [if_pos heps]
+        exact Subset.cap_ro
+      · -- RHS fallback fires with (access ε).applyRO = (access ro), and hro covers it.
+        rw [if_neg heps]
+        have h_ro_eq : ((CapMode.access Mutability.epsilon).applyRO) = CapMode.access .ro := rfl
+        rw [h_ro_eq, if_pos hro]
+        exact Subset.refl
+    · -- LHS first branch fails. Since (access ro).applyRO = (access ro), fallback
+      -- has the same test, also fails. LHS = empty.
+      rw [if_neg hro]
+      have h_ro_eq : ((CapMode.access Mutability.ro).applyRO) = CapMode.access .ro := rfl
+      rw [h_ro_eq, if_neg hro]
+      exact Subset.empty
 
 /-- `Subset` preserves `covers`: a larger capability set covers everything
     the smaller one does (at the same or stronger modes). -/
@@ -573,12 +634,24 @@ theorem intersect_mono_right :
 | .cap mu l, D, D', hsub => by
     unfold intersect
     split
-    · rename_i hcov
+    · -- D covers mu l: LHS = cap mu l; D' also covers, so RHS = cap mu l.
+      rename_i hcov
       have hcov_prop : D.covers mu l := coversCap_iff_covers.mp hcov
       have hcov_prop' : D'.covers mu l := covers_mono hsub hcov_prop
-      rw [coversCap_iff_covers.mpr hcov_prop']
+      rw [if_pos (coversCap_iff_covers.mpr hcov_prop')]
       exact Subset.refl
-    · exact Subset.empty
+    · split
+      · -- D covers mu.applyRO l (but not mu l): LHS = cap mu.applyRO l.
+        -- D' covers mu.applyRO l too; if D' also covers mu l, RHS = cap mu l
+        -- (and cap_applyRO_subset_cap closes); else RHS = cap mu.applyRO l.
+        rename_i hcov_low
+        have hcov_low_prop : D.covers mu.applyRO l := coversCap_iff_covers.mp hcov_low
+        have hcov_low_prop' : D'.covers mu.applyRO l := covers_mono hsub hcov_low_prop
+        split
+        · exact cap_applyRO_subset_cap
+        · rw [if_pos (coversCap_iff_covers.mpr hcov_low_prop')]
+          exact Subset.refl
+      · exact Subset.empty
 | .union Ca Cb, D, D', hsub => by
     unfold intersect
     exact Subset.union_left
