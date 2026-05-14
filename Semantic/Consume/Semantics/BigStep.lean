@@ -119,17 +119,6 @@ theorem Eval.var_inv {C : CapabilitySet} {m : Memory} {x : Var .var {}} {Q : Mpo
   | eval_val hv _ => cases hv
   | eval_var hQ => exact hQ
 
-/-- Frame property of `Eval`: every memory `m1` that satisfies `Q` along an
-    `Eval C m e Q` derivation is reached from `m` via transitions whose
-    live-to-dead drops are all covered by `C`. This is left as `sorry` for now;
-    it is the meta-property that justifies the `Memory.drops_authorized`
-    hypothesis on `eval_letin`'s `h_val`/`h_var`. -/
-theorem Eval.drops_authorized_post
-    {C : CapabilitySet} {m m' : Memory} {e : Exp {}} {Q : Mpost} {v : Exp {}}
-    (heval : Eval C m e Q) (hQ : Q v m') :
-    m.drops_authorized m' C := by
-  sorry
-
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
   (hbool : Q.is_bool_independent)
@@ -262,13 +251,15 @@ theorem eval_monotonic {m1 m2 : Memory}
       -- Drop-authority from the original memory: `eval_e1` over the original
       -- memory guarantees that any `m_ext'` satisfying `Q1` is reached with
       -- drops covered by `C` (frame property).
-      have hda_orig := Eval.drops_authorized_post eval_e1 hq1
-      exact h_val_orig hs_orig hda_orig hv hwf_v hq1 l' hfresh
+      -- have hda_orig := Eval.drops_authorized_post eval_e1 hq1
+      -- exact h_val_orig hs_orig hda_orig hv hwf_v hq1 l' hfresh
+      sorry
     case h_var =>
       intro m_ext' x hs_ext' _hda_new hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      have hda_orig := Eval.drops_authorized_post eval_e1 hq1
-      exact h_var_orig hs_orig hda_orig hwf_x hq1
+      -- have hda_orig := Eval.drops_authorized_post eval_e1 hq1
+      -- exact h_var_orig hs_orig hda_orig hwf_x hq1
+      sorry
   case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
     have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
@@ -568,11 +559,13 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     · intro m1 v hs1 _hda_new hv hwf_v hq1 l' hfresh
       -- The new framework gives drops_authorized at A2; ih_val needs it at A1.
       -- Use frame property on the original Eval at A1.
-      have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
-      exact ih_val hs1 hda_A1 hv hwf_v hq1 l' hfresh hsub
+      -- have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
+      -- exact ih_val hs1 hda_A1 hv hwf_v hq1 l' hfresh hsub
+      sorry
     · intro m1 x hs1 _hda_new hwf_x hq1
-      have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
-      exact ih_var hs1 hda_A1 hwf_x hq1 hsub
+      -- have hda_A1 := Eval.drops_authorized_post heval_e1 hq1
+      -- exact ih_var hs1 hda_A1 hwf_x hq1 hsub
+      sorry
   case eval_unpack =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
     apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
