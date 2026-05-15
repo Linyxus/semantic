@@ -2301,129 +2301,101 @@ private theorem consumeset_subset_seqcomp_right
     cases h with
     | lock _ => exact CaptureSet.Subset.refl
 
-/-- After the refactor (`accessset` includes both `.access` and `.consume`
-    peaks), `Γ1.accessset.cs ⊆ Γ.accessset.cs` under `SeqComp Γ1 Γ2 Γ`. -/
+/-- `Γ1.accessset.cs ⊆ Γ.accessset.cs` under `SeqComp Γ1 Γ2 Γ`.
+
+    Holds for all sub-cases *except* `access_consume`: when `m1 = .access` and
+    `m3 = .consume`, the LHS contributes a `cvar` but the RHS does not (after
+    the consume-doesn't-count refactor). That case is left as `sorry`. -/
 private theorem accessset_subset_seqcomp_left
     {s : Sig} {Γ1 Γ2 Γ : Ctx s}
     (h : Ctx.SeqComp Γ1 Γ2 Γ) :
     Γ1.accessset.cs ⊆ Γ.accessset.cs := by
-  induction Γ with
-  | empty =>
-    cases h
-    exact CaptureSet.Subset.refl
-  | push Γ_inner b ih =>
-    cases b with
-    | var _ =>
-      cases h with
-      | push_var h' => exact CaptureSet.Subset.rename' (ih h')
-    | tvar _ =>
-      cases h with
-      | push_tvar h' => exact CaptureSet.Subset.rename' (ih h')
-    | cvar m _ =>
-      cases h with
-      | push_cvar h' mode_comp =>
-        cases m with
-        | empty =>
-          -- m3 = .empty: only .empty cvars on m1, so plain rename on both sides.
-          cases mode_comp <;>
-            exact CaptureSet.Subset.rename' (ih h')
-        | access =>
-          -- m3 = .access: comes from l_empty (m1=.empty), r_empty (m1=.access),
-          -- or access_access (m1=.access). Γ.access has cvar; Γ1.access has cvar
-          -- iff m1 ∈ {.access}.
-          cases mode_comp with
-          | l_empty =>
-            exact CaptureSet.Subset.union_right_left
-              (CaptureSet.Subset.rename' (ih h'))
-          | r_empty =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-          | access_access =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-        | consume =>
-          -- m3 = .consume: comes from l_empty (m1=.empty), r_empty (m1=.consume),
-          -- or access_consume (m1=.access). Γ.access has cvar; Γ1.access has
-          -- cvar iff m1 ∈ {.access, .consume}.
-          cases mode_comp with
-          | l_empty =>
-            exact CaptureSet.Subset.union_right_left
-              (CaptureSet.Subset.rename' (ih h'))
-          | r_empty =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-          | access_consume =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-  | lock Γ_inner _ =>
-    cases h with
-    | lock _ => exact CaptureSet.Subset.refl
+  match h with
+  | Ctx.SeqComp.empty => exact CaptureSet.Subset.refl
+  | Ctx.SeqComp.push_var h' =>
+    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
+  | Ctx.SeqComp.push_tvar h' =>
+    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
+  | Ctx.SeqComp.push_cvar h' mode_comp =>
+    cases mode_comp with
+    | l_empty =>
+      -- m1=.empty, m3=R; case on R to determine RHS shape.
+      rename_i R _
+      cases R with
+      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
+      | access =>
+        exact CaptureSet.Subset.union_right_left
+          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h'))
+      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
+    | r_empty =>
+      rename_i R _
+      cases R with
+      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
+      | access =>
+        exact CaptureSet.Subset.union_left
+          (CaptureSet.Subset.union_right_left
+            (CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')))
+          (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
+      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
+    | access_access =>
+      exact CaptureSet.Subset.union_left
+        (CaptureSet.Subset.union_right_left
+          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')))
+        (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
+    | access_consume =>
+      -- Counterexample case (false after refactor): Γ1 has .access
+      -- (contributes cvar to accessset) but Γ has .consume (does not).
+      sorry
+  | @Ctx.SeqComp.lock _ Γ1' Γ2' Γ3' h' =>
+    exact accessset_subset_seqcomp_left (Γ1 := Γ1') (Γ2 := Γ2') (Γ := Γ3') h'
+termination_by sizeOf Γ
 
-/-- Symmetric to `accessset_subset_seqcomp_left`. -/
+/-- Symmetric to `accessset_subset_seqcomp_left`. After the refactor, this
+    side stays fully true: `Γ2`'s contributions to accessset (from `.access`
+    peaks) all remain in `Γ`'s accessset under all `mode_comp` constructors. -/
 private theorem accessset_subset_seqcomp_right
     {s : Sig} {Γ1 Γ2 Γ : Ctx s}
     (h : Ctx.SeqComp Γ1 Γ2 Γ) :
     Γ2.accessset.cs ⊆ Γ.accessset.cs := by
-  induction Γ with
-  | empty =>
-    cases h
-    exact CaptureSet.Subset.refl
-  | push Γ_inner b ih =>
-    cases b with
-    | var _ =>
-      cases h with
-      | push_var h' => exact CaptureSet.Subset.rename' (ih h')
-    | tvar _ =>
-      cases h with
-      | push_tvar h' => exact CaptureSet.Subset.rename' (ih h')
-    | cvar m _ =>
-      cases h with
-      | push_cvar h' mode_comp =>
-        cases m with
-        | empty =>
-          cases mode_comp <;>
-            exact CaptureSet.Subset.rename' (ih h')
-        | access =>
-          cases mode_comp with
-          | l_empty =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-          | r_empty =>
-            exact CaptureSet.Subset.union_right_left
-              (CaptureSet.Subset.rename' (ih h'))
-          | access_access =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-        | consume =>
-          cases mode_comp with
-          | l_empty =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-          | r_empty =>
-            exact CaptureSet.Subset.union_right_left
-              (CaptureSet.Subset.rename' (ih h'))
-          | access_consume =>
-            exact CaptureSet.Subset.union_left
-              (CaptureSet.Subset.union_right_left
-                (CaptureSet.Subset.rename' (ih h')))
-              (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-  | lock Γ_inner _ =>
-    cases h with
-    | lock _ => exact CaptureSet.Subset.refl
+  match h with
+  | Ctx.SeqComp.empty => exact CaptureSet.Subset.refl
+  | Ctx.SeqComp.push_var h' =>
+    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
+  | Ctx.SeqComp.push_tvar h' =>
+    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
+  | Ctx.SeqComp.push_cvar h' mode_comp =>
+    cases mode_comp with
+    | l_empty =>
+      -- m2=R, m3=R; case on R.
+      rename_i R _
+      cases R with
+      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
+      | access =>
+        exact CaptureSet.Subset.union_left
+          (CaptureSet.Subset.union_right_left
+            (CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')))
+          (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
+      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
+    | r_empty =>
+      -- m2=.empty, m3=R; LHS no cvar; RHS depends on R.
+      rename_i R _
+      cases R with
+      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
+      | access =>
+        exact CaptureSet.Subset.union_right_left
+          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h'))
+      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
+    | access_access =>
+      exact CaptureSet.Subset.union_left
+        (CaptureSet.Subset.union_right_left
+          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')))
+        (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
+    | access_consume =>
+      -- m2=.consume, m3=.consume. Neither contributes cvar (after refactor).
+      exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
+  | @Ctx.SeqComp.lock _ Γ1' Γ2' Γ3' h' =>
+    exact accessset_subset_seqcomp_right (Γ1 := Γ1') (Γ2 := Γ2') (Γ := Γ3') h'
+termination_by sizeOf Γ
 
 /-- The consumeset is built from `.empty`, `.union`, and `.cvar`/rename — never
 free variables — so it is always `IsClosed`. -/
@@ -2444,8 +2416,8 @@ private theorem consumeset_isClosed {s : Sig} (Γ : Ctx s) :
           CaptureSet.IsClosed.cvar
   | lock _ _ => exact CaptureSet.IsClosed.empty
 
-/-- The accessset (after refactor: includes both `.access` and `.consume`
-    peaks) is also `IsClosed` for the same structural reason. -/
+/-- The accessset includes only `.access` peaks (locks transparent). It is
+    `IsClosed` for the same structural reason as consumeset. -/
 private theorem accessset_isClosed {s : Sig} (Γ : Ctx s) :
     Γ.accessset.cs.IsClosed := by
   induction Γ with
@@ -2460,10 +2432,8 @@ private theorem accessset_isClosed {s : Sig} (Γ : Ctx s) :
       | access =>
         exact CaptureSet.IsClosed.union (CaptureSet.rename_isClosed ih)
           CaptureSet.IsClosed.cvar
-      | consume =>
-        exact CaptureSet.IsClosed.union (CaptureSet.rename_isClosed ih)
-          CaptureSet.IsClosed.cvar
-  | lock _ _ => exact CaptureSet.IsClosed.empty
+      | consume => exact CaptureSet.rename_isClosed ih
+  | lock _ ih => exact ih
 
 theorem sem_typ_letin
   {C1 C2 : CaptureSet s} {Γ Γ1 Γ2 : Ctx s} {e1 : Exp s} {T : Ty .capt s}
@@ -2542,7 +2512,7 @@ theorem sem_typ_letin
     · exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T m1 v hQ1
     · exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1
   case h_val =>
-    intro m1 v hs1 hda hv hwf_v hQ1 l' hfresh
+    intro m1 v hs1 hv hwf_v hQ1 l' hfresh
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     let ps := CaptureSet.peakset Γ2 T.captureSet
     set m_ext := m1.extend_val l' heapval hwf_v rfl hfresh with hm_ext_def
@@ -2649,7 +2619,7 @@ theorem sem_typ_letin
     apply eval_post_monotonic _ hcompose
     exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
   case h_var =>
-    intro m1 x hs1 hda hwf_x hQ1
+    intro m1 x hs1 hwf_x hQ1
     cases x
     case bound bv => cases bv
     case free fx =>

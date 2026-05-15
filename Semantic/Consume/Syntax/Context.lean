@@ -475,9 +475,9 @@ def Ctx.consumeset : Ctx s -> PeakSet s
 | .lock _ => ⟨.empty, .empty⟩
 
 /-- The set of all peaks in the context that grant access — i.e., are at
-    `.access` or `.consume` mode — and not locked. A `.consume` cvar grants
-    access (consuming subsumes accessing), so it contributes to the access-set
-    as well as the consume-set. -/
+    `.access` mode. Locks are transparent for accessibility (they only seal
+    consume-mode peaks). A `.consume` cvar does *not* contribute here; its
+    drop-authority is tracked separately in `consumeset`. -/
 def Ctx.accessset : Ctx s -> PeakSet s
 | .empty => ⟨.empty, .empty⟩
 | .push Γ (.var _) => Γ.accessset.rename Rename.succ
@@ -486,10 +486,8 @@ def Ctx.accessset : Ctx s -> PeakSet s
 | .push Γ (.cvar .access _) =>
     let ps := Γ.accessset.rename Rename.succ
     ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
-| .push Γ (.cvar .consume _) =>
-    let ps := Γ.accessset.rename Rename.succ
-    ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
-| .lock _ => ⟨.empty, .empty⟩
+| .push Γ (.cvar .consume _) => Γ.accessset.rename Rename.succ
+| .lock Γ => Γ.accessset
 
 /-- Sequential composition of use modes: `SeqComp m1 m2 m3` means using `m1`
 first then `m2` yields `m3`. -/

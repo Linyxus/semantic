@@ -380,6 +380,20 @@ theorem applyMut_no_drop {C : CapabilitySet} {m : Mutability} {l : Nat}
   | epsilon => exact h
   | ro => exact applyRO_no_drop h
 
+/-- Membership in `C.applyMut mu_op` implies coverage in `C` at the same mode:
+    `applyMut` can only weaken modes (or be identity), so a member of the
+    weakened set is covered by some original mode ≥ it. -/
+theorem hasmem_applyMut_implies_covers {C : CapabilitySet} {mu_op : Mutability}
+    {mu : CapMode} {l : Nat} (h : (C.applyMut mu_op).hasmem mu l) :
+    C.covers mu l := by
+  cases mu_op with
+  | epsilon => exact hasmem_implies_covers h
+  | ro =>
+    simp only [applyMut] at h
+    obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
+    subst heq
+    exact covers_of_hasmem_le hm' CapMode.applyRO_le
+
 /-- Coverage in C is preserved by applyRO when the mode is RO-stable (i.e.,
     `.access .ro` or `.drop`). -/
 theorem covers_applyRO_of_covers {C : CapabilitySet} {m : CapMode}
