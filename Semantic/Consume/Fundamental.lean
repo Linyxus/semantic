@@ -2640,9 +2640,7 @@ theorem EnvTyping.seqcomp_left
         simp only [EnvTyping] at he ⊢
         obtain ⟨h1, h2, h3, h4, h5⟩ := he
         exact ⟨h1, h2, h3, h4, ih h5⟩
-  | lock _ ih =>
-    simp only [EnvTyping] at he ⊢
-    exact ih he
+  | lock => exact he
 
 /-- Symmetric version: `EnvTyping` is preserved by `Ctx.SeqComp` from `Γ` to `Γ2`. -/
 theorem EnvTyping.seqcomp_right
@@ -2677,9 +2675,7 @@ theorem EnvTyping.seqcomp_right
         simp only [EnvTyping] at he ⊢
         obtain ⟨h1, h2, h3, h4, h5⟩ := he
         exact ⟨h1, h2, h3, h4, ih h5⟩
-  | lock _ ih =>
-    simp only [EnvTyping] at he ⊢
-    exact ih he
+  | lock => exact he
 
 /-- `CaptureSet.Subset` lifts to a `CapabilitySet.Subset` on denotations,
 independently of any context (the env merely determines what each cvar
@@ -2764,7 +2760,7 @@ private theorem consumeset_subset_seqcomp_left
               (CaptureSet.Subset.rename' (ih h'))
   | lock Γ_inner _ =>
     cases h with
-    | lock _ =>
+    | lock =>
       -- Both `(Γ_inner.lock).consumeset.cs` reduce to `.empty`.
       exact CaptureSet.Subset.refl
 
@@ -2815,7 +2811,7 @@ private theorem consumeset_subset_seqcomp_right
               (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
   | lock Γ_inner _ =>
     cases h with
-    | lock _ => exact CaptureSet.Subset.refl
+    | lock => exact CaptureSet.Subset.refl
 
 /-- The consumeset is built from `.empty`, `.union`, and `.cvar`/rename — never
 free variables — so it is always `IsClosed`. -/
@@ -2861,23 +2857,224 @@ private theorem useset_isClosed {s : Sig} (Γ : Ctx s) :
     Γ.useset.cs.IsClosed :=
   CaptureSet.IsClosed.union (accessset_isClosed Γ) (consumeset_isClosed Γ)
 
+/-- Pushing a cvar onto `Γ_inner` only adds to its `useset.cs` (the renamed
+inner useset always embeds into the pushed useset). -/
+private theorem useset_push_cvar_widen
+    {s : Sig} (Γ_inner : Ctx s) (m : UseMode) (B : CaptureBound s) :
+    (Γ_inner.useset.cs).rename (Rename.succ (k := .cvar)) ⊆
+      (Γ_inner.push (.cvar m B)).useset.cs := by
+  cases m with
+  | empty => exact CaptureSet.Subset.refl
+  | access =>
+    apply CaptureSet.Subset.union_left
+    · exact .union_right_left (.union_right_left .refl)
+    · exact .union_right_right .refl
+  | consume =>
+    apply CaptureSet.Subset.union_left
+    · exact .union_right_left .refl
+    · exact .union_right_right (.union_right_left .refl)
+
+/-- A `Subset` on a union decomposes into subsets on each side. -/
+private theorem CaptureSet.Subset.union_split
+    {s : Sig} {C1 C2 C : CaptureSet s}
+    (h : C1.union C2 ⊆ C) : C1 ⊆ C ∧ C2 ⊆ C := by
+  generalize hCU : C1.union C2 = CU at h
+  induction h generalizing C1 C2 with
+  | refl =>
+    subst hCU
+    exact ⟨.union_right_left .refl, .union_right_right .refl⟩
+  | empty => cases hCU
+  | union_left h1 h2 _ _ =>
+    cases hCU
+    exact ⟨h1, h2⟩
+  | union_right_left _ ih =>
+    obtain ⟨hC1, hC2⟩ := ih hCU
+    exact ⟨.union_right_left hC1, .union_right_left hC2⟩
+  | union_right_right _ ih =>
+    obtain ⟨hC1, hC2⟩ := ih hCU
+    exact ⟨.union_right_right hC1, .union_right_right hC2⟩
+
+/-- Transitivity for `CaptureSet.Subset`, derived from `union_split`. -/
+private theorem CaptureSet.Subset.trans
+    {s : Sig} {C1 C2 C3 : CaptureSet s}
+    (h12 : C1 ⊆ C2) (h23 : C2 ⊆ C3) : C1 ⊆ C3 := by
+  induction h12 generalizing C3 with
+  | refl => exact h23
+  | empty => exact .empty
+  | union_left _ _ ih1 ih2 => exact .union_left (ih1 h23) (ih2 h23)
+  | union_right_left _ ih =>
+    obtain ⟨hLeft, _⟩ := CaptureSet.Subset.union_split h23
+    exact ih hLeft
+  | union_right_right _ ih =>
+    obtain ⟨_, hRight⟩ := CaptureSet.Subset.union_split h23
+    exact ih hRight
+
 /-- `Γ1.useset.cs ⊆ Γ.useset.cs` under `SeqComp Γ1 Γ2 Γ`. Holds for all
-    cases because useset includes both `.access` and `.consume` peaks:
-    even the `access_consume` SeqComp case (where Γ1 has `.access` and Γ has
-    `.consume`) is fine — both contribute `cvar .here` to their respective
-    useset (Γ1 via accessset, Γ via consumeset). Lock case is also fine. -/
+    cases: var/tvar pushes propagate the inner subset through `rename succ`;
+    cvar pushes are handled per use-mode (with `access_consume` working because
+    the cvar contributes to `Γ1.accessset` and `Γ.consumeset`, both feeding
+    `useset`); the restricted `SeqComp.lock` rule forces `Γ1 = Γ` so the lock
+    case is reflexive. -/
 private theorem useset_subset_seqcomp_left
     {s : Sig} {Γ1 Γ2 Γ : Ctx s}
     (h : Ctx.SeqComp Γ1 Γ2 Γ) :
     Γ1.useset.cs ⊆ Γ.useset.cs := by
-  sorry
+  induction Γ with
+  | empty =>
+    cases h
+    exact CaptureSet.Subset.refl
+  | push Γ_inner b ih =>
+    cases b with
+    | var _ =>
+      cases h with
+      | push_var h' =>
+        exact CaptureSet.Subset.rename' (ih h')
+    | tvar _ =>
+      cases h with
+      | push_tvar h' =>
+        exact CaptureSet.Subset.rename' (ih h')
+    | cvar m B =>
+      cases h with
+      | push_cvar h' mode_comp =>
+        have hih := ih h'
+        obtain ⟨hA1, hC1⟩ := CaptureSet.Subset.union_split hih
+        have hA1_r := CaptureSet.Subset.rename' (f := Rename.succ (k := .cvar)) hA1
+        have hC1_r := CaptureSet.Subset.rename' (f := Rename.succ (k := .cvar)) hC1
+        -- hA1_r : (Γ1_inner.accessset.cs).rename succ ⊆ (Γ_inner.useset.cs).rename succ
+        -- hC1_r : (Γ1_inner.consumeset.cs).rename succ ⊆ (Γ_inner.useset.cs).rename succ
+        -- (Γ_inner.useset.cs).rename succ = Γ_inner.accessset.cs.rename succ ∪
+        --                                   Γ_inner.consumeset.cs.rename succ (def. eq.)
+        -- Build the further embedding to (push m3 B).useset.cs via union_left on
+        -- the renamed useset, then mode-specific union_right_*.
+        -- Bridge G via the helper: useset_inner.rename succ ⊆ (push m B).useset.cs.
+        have G := useset_push_cvar_widen Γ_inner m B
+        cases m with
+        | empty =>
+          cases mode_comp with
+          | l_empty => exact CaptureSet.Subset.rename' hih
+          | r_empty => exact CaptureSet.Subset.rename' hih
+        | access =>
+          cases mode_comp with
+          | l_empty =>
+            -- m1 = .empty. LHS = acc1.r ∪ cons1.r (= useset_inner1.rename).
+            apply CaptureSet.Subset.union_left
+            · exact CaptureSet.Subset.trans hA1_r G
+            · exact CaptureSet.Subset.trans hC1_r G
+          | r_empty =>
+            -- m1 = .access. LHS = (acc1.r ∪ cvar.here) ∪ cons1.r.
+            apply CaptureSet.Subset.union_left
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hA1_r G
+              · exact .union_right_left (.union_right_right .refl)
+            · exact CaptureSet.Subset.trans hC1_r G
+          | access_access =>
+            apply CaptureSet.Subset.union_left
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hA1_r G
+              · exact .union_right_left (.union_right_right .refl)
+            · exact CaptureSet.Subset.trans hC1_r G
+        | consume =>
+          cases mode_comp with
+          | l_empty =>
+            apply CaptureSet.Subset.union_left
+            · exact CaptureSet.Subset.trans hA1_r G
+            · exact CaptureSet.Subset.trans hC1_r G
+          | r_empty =>
+            -- m1 = .consume. LHS = acc1.r ∪ (cons1.r ∪ cvar.here).
+            apply CaptureSet.Subset.union_left
+            · exact CaptureSet.Subset.trans hA1_r G
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hC1_r G
+              · exact .union_right_right (.union_right_right .refl)
+          | access_consume =>
+            -- m1 = .access, m3 = .consume.
+            apply CaptureSet.Subset.union_left
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hA1_r G
+              · exact .union_right_right (.union_right_right .refl)
+            · exact CaptureSet.Subset.trans hC1_r G
+  | lock Γ_inner _ =>
+    cases h with
+    | lock => exact CaptureSet.Subset.refl
 
 /-- Symmetric: `Γ2.useset.cs ⊆ Γ.useset.cs`. -/
 private theorem useset_subset_seqcomp_right
     {s : Sig} {Γ1 Γ2 Γ : Ctx s}
     (h : Ctx.SeqComp Γ1 Γ2 Γ) :
     Γ2.useset.cs ⊆ Γ.useset.cs := by
-  sorry
+  induction Γ with
+  | empty =>
+    cases h
+    exact CaptureSet.Subset.refl
+  | push Γ_inner b ih =>
+    cases b with
+    | var _ =>
+      cases h with
+      | push_var h' =>
+        exact CaptureSet.Subset.rename' (ih h')
+    | tvar _ =>
+      cases h with
+      | push_tvar h' =>
+        exact CaptureSet.Subset.rename' (ih h')
+    | cvar m B =>
+      cases h with
+      | push_cvar h' mode_comp =>
+        have hih := ih h'
+        obtain ⟨hA2, hC2⟩ := CaptureSet.Subset.union_split hih
+        have hA2_r := CaptureSet.Subset.rename' (f := Rename.succ (k := .cvar)) hA2
+        have hC2_r := CaptureSet.Subset.rename' (f := Rename.succ (k := .cvar)) hC2
+        have G := useset_push_cvar_widen Γ_inner m B
+        cases m with
+        | empty =>
+          -- m3 = .empty. Then m2 = .empty (from l_empty/r_empty).
+          cases mode_comp with
+          | l_empty => exact CaptureSet.Subset.rename' hih
+          | r_empty => exact CaptureSet.Subset.rename' hih
+        | access =>
+          cases mode_comp with
+          | l_empty =>
+            -- m2 = .access. LHS = (acc2.r ∪ cvar.here) ∪ cons2.r.
+            apply CaptureSet.Subset.union_left
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hA2_r G
+              · exact .union_right_left (.union_right_right .refl)
+            · exact CaptureSet.Subset.trans hC2_r G
+          | r_empty =>
+            -- m2 = .empty. LHS = acc2.r ∪ cons2.r.
+            apply CaptureSet.Subset.union_left
+            · exact CaptureSet.Subset.trans hA2_r G
+            · exact CaptureSet.Subset.trans hC2_r G
+          | access_access =>
+            -- m2 = .access.
+            apply CaptureSet.Subset.union_left
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hA2_r G
+              · exact .union_right_left (.union_right_right .refl)
+            · exact CaptureSet.Subset.trans hC2_r G
+        | consume =>
+          cases mode_comp with
+          | l_empty =>
+            -- m2 = .consume. LHS = acc2.r ∪ (cons2.r ∪ cvar.here).
+            apply CaptureSet.Subset.union_left
+            · exact CaptureSet.Subset.trans hA2_r G
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hC2_r G
+              · exact .union_right_right (.union_right_right .refl)
+          | r_empty =>
+            -- m2 = .empty.
+            apply CaptureSet.Subset.union_left
+            · exact CaptureSet.Subset.trans hA2_r G
+            · exact CaptureSet.Subset.trans hC2_r G
+          | access_consume =>
+            -- m2 = .consume.
+            apply CaptureSet.Subset.union_left
+            · exact CaptureSet.Subset.trans hA2_r G
+            · apply CaptureSet.Subset.union_left
+              · exact CaptureSet.Subset.trans hC2_r G
+              · exact .union_right_right (.union_right_right .refl)
+  | lock Γ_inner _ =>
+    cases h with
+    | lock => exact CaptureSet.Subset.refl
 
 theorem sem_typ_letin
   {C1 C2 : CaptureSet s} {Γ Γ1 Γ2 : Ctx s} {e1 : Exp s} {T : Ty .capt s}

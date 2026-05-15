@@ -36,9 +36,9 @@ theorem Ctx.SeqComp.det
     cases h2 with
     | push_cvar h2' hm' =>
       rw [ih h2', UseMode.SeqComp.det hm hm']
-  | lock _ ih =>
+  | lock =>
     cases h2 with
-    | lock h2' => rw [ih h2']
+    | lock => rfl
 
 /-- `LookupVar` is preserved by `Ctx.SeqComp` from `Γ1` to `Γ3`. Term variable
 bindings are identical across all three contexts, so the lookup is unaffected. -/
@@ -57,9 +57,7 @@ theorem Ctx.SeqComp.lookup_var_left
   | push_cvar _ _ ih =>
     cases hx with
     | there hx' => exact .there (ih hx')
-  | lock _ ih =>
-    cases hx with
-    | lock hx' => exact .lock (ih hx')
+  | lock => exact hx
 
 /-- `LookupVar` is preserved by `Ctx.SeqComp` from `Γ3` to `Γ1`. -/
 theorem Ctx.SeqComp.lookup_var_right
@@ -77,9 +75,7 @@ theorem Ctx.SeqComp.lookup_var_right
   | push_cvar _ _ ih =>
     cases hx with
     | there hx' => exact .there (ih hx')
-  | lock _ ih =>
-    cases hx with
-    | lock hx' => exact .lock (ih hx')
+  | lock => exact hx
 
 /-- `LookupTVar` is preserved by `Ctx.SeqComp` from `Γ1` to `Γ3`. -/
 theorem Ctx.SeqComp.lookup_tvar_left
@@ -97,9 +93,7 @@ theorem Ctx.SeqComp.lookup_tvar_left
   | push_cvar _ _ ih =>
     cases hx with
     | there hx' => exact .there (ih hx')
-  | lock _ ih =>
-    cases hx with
-    | lock hx' => exact .lock (ih hx')
+  | lock => exact hx
 
 /-- `LookupTVar` is preserved by `Ctx.SeqComp` from `Γ3` to `Γ1`. -/
 theorem Ctx.SeqComp.lookup_tvar_right
@@ -117,96 +111,6 @@ theorem Ctx.SeqComp.lookup_tvar_right
   | push_cvar _ _ ih =>
     cases hx with
     | there hx' => exact .there (ih hx')
-  | lock _ ih =>
-    cases hx with
-    | lock hx' => exact .lock (ih hx')
-
-/-- A cvar lookup in the composed context `Γ3` decomposes into corresponding
-lookups in `Γ1` and `Γ2`, with use modes related by `UseMode.SeqComp`. The
-capture bound and lock-flag are shared (since both contexts have the same
-shape). -/
-theorem Ctx.SeqComp.lookup_cvar_split
-  {Γ1 Γ2 Γ3 : Ctx s} {c : BVar s .cvar} {m3 : UseMode}
-  {cb : CaptureBound s} {locked : Bool}
-  (h : Ctx.SeqComp Γ1 Γ2 Γ3)
-  (hc : Γ3.LookupCVar c m3 cb locked) :
-  ∃ m1 m2,
-    Γ1.LookupCVar c m1 cb locked ∧
-    Γ2.LookupCVar c m2 cb locked ∧
-    UseMode.SeqComp m1 m2 m3 := by
-  induction h generalizing m3 locked with
-  | empty => cases hc
-  | push_var _ ih =>
-    cases hc with
-    | there hc' =>
-      obtain ⟨m1, m2, h1, h2, hm⟩ := ih hc'
-      exact ⟨m1, m2, .there h1, .there h2, hm⟩
-  | push_tvar _ ih =>
-    cases hc with
-    | there hc' =>
-      obtain ⟨m1, m2, h1, h2, hm⟩ := ih hc'
-      exact ⟨m1, m2, .there h1, .there h2, hm⟩
-  | push_cvar _ hm ih =>
-    cases hc with
-    | here => exact ⟨_, _, .here, .here, hm⟩
-    | there hc' =>
-      obtain ⟨m1, m2, h1, h2, hm'⟩ := ih hc'
-      exact ⟨m1, m2, .there h1, .there h2, hm'⟩
-  | lock _ ih =>
-    cases hc with
-    | lock hc' =>
-      obtain ⟨m1, m2, h1, h2, hm⟩ := ih hc'
-      exact ⟨m1, m2, .lock h1, .lock h2, hm⟩
-
-/-- A cvar lookup in `Γ1` lifts to corresponding lookups in `Γ2` and the composed
-context `Γ3`, with use modes related by `UseMode.SeqComp`. -/
-theorem Ctx.SeqComp.lookup_cvar_left
-  {Γ1 Γ2 Γ3 : Ctx s} {c : BVar s .cvar} {m1 : UseMode}
-  {cb : CaptureBound s} {locked : Bool}
-  (h : Ctx.SeqComp Γ1 Γ2 Γ3)
-  (hc1 : Γ1.LookupCVar c m1 cb locked) :
-  ∃ m2 m3,
-    Γ2.LookupCVar c m2 cb locked ∧
-    Γ3.LookupCVar c m3 cb locked ∧
-    UseMode.SeqComp m1 m2 m3 := by
-  induction h generalizing m1 locked with
-  | empty => cases hc1
-  | push_var _ ih =>
-    cases hc1 with
-    | there hc1' =>
-      obtain ⟨m2, m3, h2, h3, hm⟩ := ih hc1'
-      exact ⟨m2, m3, .there h2, .there h3, hm⟩
-  | push_tvar _ ih =>
-    cases hc1 with
-    | there hc1' =>
-      obtain ⟨m2, m3, h2, h3, hm⟩ := ih hc1'
-      exact ⟨m2, m3, .there h2, .there h3, hm⟩
-  | push_cvar _ hm0 ih =>
-    cases hc1 with
-    | here => exact ⟨_, _, .here, .here, hm0⟩
-    | there hc1' =>
-      obtain ⟨m2, m3, h2, h3, hm⟩ := ih hc1'
-      exact ⟨m2, m3, .there h2, .there h3, hm⟩
-  | lock _ ih =>
-    cases hc1 with
-    | lock hc1' =>
-      obtain ⟨m2, m3, h2, h3, hm⟩ := ih hc1'
-      exact ⟨m2, m3, .lock h2, .lock h3, hm⟩
-
-/-- Conversely, lookups in `Γ1` and `Γ2` (with composing use modes) lift to a
-lookup in the composed context `Γ3`. -/
-theorem Ctx.SeqComp.lookup_cvar_compose
-  {Γ1 Γ2 Γ3 : Ctx s} {c : BVar s .cvar} {m1 m2 m3 : UseMode}
-  {cb : CaptureBound s} {locked : Bool}
-  (h : Ctx.SeqComp Γ1 Γ2 Γ3)
-  (hc1 : Γ1.LookupCVar c m1 cb locked)
-  (hc2 : Γ2.LookupCVar c m2 cb locked)
-  (hm : UseMode.SeqComp m1 m2 m3) :
-  Γ3.LookupCVar c m3 cb locked := by
-  obtain ⟨m2', m3', hc2', hc3', hm'⟩ := h.lookup_cvar_left hc1
-  obtain ⟨hm2, _, _⟩ := Ctx.lookup_cvar_det hc2 hc2'
-  subst hm2
-  rw [UseMode.SeqComp.det hm hm']
-  exact hc3'
+  | lock => exact hx
 
 end Consume

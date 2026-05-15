@@ -530,10 +530,9 @@ inductive Ctx.SeqComp : Ctx s -> Ctx s -> Ctx s -> Prop where
   UseMode.SeqComp m1 m2 m3 ->
   -------------------
   SeqComp (Γ1.push (.cvar m1 B)) (Γ2.push (.cvar m2 B)) (Γ3.push (.cvar m3 B))
-| lock {Γ1 Γ2 Γ3 : Ctx s} :
-  SeqComp Γ1 Γ2 Γ3 ->
+| lock {Γ : Ctx s} :
   -------------------
-  SeqComp Γ1.lock Γ2.lock Γ3.lock
+  SeqComp Γ.lock Γ.lock Γ.lock
 
 mutual
 /-- `peaks` only consults var bindings, which `Ctx.SeqComp` preserves exactly,
@@ -571,9 +570,7 @@ theorem CaptureSet.peaksVarBound_seqcomp_eq
   | Ctx.SeqComp.push_cvar hsub _, .there x' =>
     rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
         CaptureSet.peaksVarBound_seqcomp_eq hsub m x']
-  | Ctx.SeqComp.lock hsub, x =>
-    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
-        CaptureSet.peaksVarBound_seqcomp_eq hsub m x]
+  | Ctx.SeqComp.lock, x => rfl
 termination_by (sizeOf Γ, sizeOf x + 1)
 end
 
@@ -620,9 +617,7 @@ theorem CaptureSet.peaksVarBound_seqcomp_eq_right
   | Ctx.SeqComp.push_cvar hsub _, .there x' =>
     rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
         CaptureSet.peaksVarBound_seqcomp_eq_right hsub m x']
-  | Ctx.SeqComp.lock hsub, x =>
-    rw [CaptureSet.peaksVarBound, CaptureSet.peaksVarBound,
-        CaptureSet.peaksVarBound_seqcomp_eq_right hsub m x]
+  | Ctx.SeqComp.lock, x => rfl
 termination_by (sizeOf Γ, sizeOf x + 1)
 end
 
