@@ -4471,12 +4471,23 @@ theorem var_denot_subset_captureSet_denot
 
     The proof inducts through `HasType.var` (which directly carries these
     facts) and `HasType.subtyp` (where the underlying typing still carries
-    them). Left as `sorry` pending a careful inversion lemma. -/
+    them). -/
 theorem var_typing_extract_closed_accessible
     {Γ : Ctx s} {x : BVar s .var} {E : Ty .exi s}
     (ht : C # Γ ⊢ Exp.var (.bound x) : E) :
     Γ.IsClosed ∧ (CaptureSet.var .epsilon (.bound x)).accessible Γ := by
-  sorry
+  generalize hexpr : Exp.var (Var.bound x) = e at ht
+  induction ht
+  case var hclosed hlk hacc =>
+    cases hexpr
+    refine ⟨hclosed, ?_⟩
+    intro m c hsub
+    have hpeaks_eq := CaptureSet.var_peaks (m := .epsilon) hlk
+    simp only [CaptureSet.applyMut_epsilon] at hpeaks_eq
+    rw [hpeaks_eq] at hsub
+    exact hacc m c hsub
+  case subtyp _ _ _ _ _ ih => exact ih hexpr
+  all_goals (cases hexpr)
 
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
