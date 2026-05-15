@@ -489,6 +489,13 @@ def Ctx.accessset : Ctx s -> PeakSet s
 | .push Γ (.cvar .consume _) => Γ.accessset.rename Rename.succ
 | .lock Γ => Γ.accessset
 
+/-- The set of all peaks in the context that are *used* — i.e., either at
+    `.access` mode (accessible reads/writes) or at `.consume` mode (drops).
+    Defined as the union of `accessset` and `consumeset`. -/
+def Ctx.useset (Γ : Ctx s) : PeakSet s :=
+  ⟨.union Γ.accessset.cs Γ.consumeset.cs,
+   .union Γ.accessset.h Γ.consumeset.h⟩
+
 /-- Sequential composition of use modes: `SeqComp m1 m2 m3` means using `m1`
 first then `m2` yields `m3`. -/
 inductive UseMode.SeqComp : UseMode -> UseMode -> UseMode -> Prop where

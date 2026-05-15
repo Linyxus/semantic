@@ -812,7 +812,7 @@ def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) :
     EnvTyping Γ ρ m →
     m.is_compatible (C.denot ρ m) →
     let useSet : CapabilitySet :=
-      (C.denot ρ m).intersect (Γ.accessset.cs.denot ρ m)
+      (C.denot ρ m).intersect (Γ.useset.cs.denot ρ m)
     let dropSet : CapabilitySet :=
       (Γ.consumeset.cs.denot ρ m).to_drop
     Eval (useSet ∪ dropSet) m (e.subst (Subst.from_TypeEnv ρ))
