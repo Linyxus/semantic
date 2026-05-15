@@ -108,35 +108,35 @@ theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
   | union cs1 cs2 ih1 ih2 =>
     simp only [expand_captures, CaptureSet.ground_denot, ih1, ih2]
 
-/-- When `C` is accessible in `Γ`, the use-set after the new
-    SemanticTyping's `intersect`-tightening is *equal* to `C.denot env m`.
-    This bridges the syntactic accessibility constraint of `HasType.var` with
-    the semantic tightening: source-typed programs lose nothing under the
-    tightening. -/
-theorem intersect_accessset_eq_self_of_accessible
+/-- When `C` is accessible in `Γ`, the use-set after SemanticTyping's
+    `intersect`-tightening is *equal* to `C.denot env m`. Accessible peaks
+    live in `Γ.accessset ⊆ Γ.useset`, so coverage transfers via
+    `covers.left`. -/
+theorem intersect_useset_eq_self_of_accessible
     {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
     {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
     (hC : C.IsClosed) (haccess : C.accessible Γ) :
-    (C.denot env store).intersect (Γ.accessset.cs.denot env store)
+    (C.denot env store).intersect (Γ.useset.cs.denot env store)
       = C.denot env store := by
   apply CapabilitySet.intersect_eq_self_when_covered
   intro mu l hmem
-  exact CaptureSet.accessible_denot_covers hts hΓ hC haccess hmem
+  -- Γ.useset.cs.denot = (Γ.accessset.cs ∪ Γ.consumeset.cs).denot
+  --                  = Γ.accessset.cs.denot ∪ Γ.consumeset.cs.denot  (by ground_denot on union)
+  exact .left (CaptureSet.accessible_denot_covers hts hΓ hC haccess hmem)
 
-/-- Same shape as `intersect_accessset_eq_self_of_accessible`, but for
-    `consumable` capture sets. Built on the refactored `accessset` that
-    includes `.consume` peaks. -/
-theorem intersect_accessset_eq_self_of_consumable
+/-- Same shape but for `consumable` capture sets. Consumable peaks live in
+    `Γ.consumeset ⊆ Γ.useset`, so coverage transfers via `covers.right`. -/
+theorem intersect_useset_eq_self_of_consumable
     {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
     {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
     (hC : C.IsClosed) (hcons : C.consumable Γ) :
-    (C.denot env store).intersect (Γ.accessset.cs.denot env store)
+    (C.denot env store).intersect (Γ.useset.cs.denot env store)
       = C.denot env store := by
   apply CapabilitySet.intersect_eq_self_when_covered
   intro mu l hmem
-  exact CaptureSet.consumable_denot_covers hts hΓ hC hcons hmem
+  exact .right (CaptureSet.consumable_denot_covers hts hΓ hC hcons hmem)
 
 /-- Converts the `SemanticTyping` form into the `Ty.exi_exp_denot` form used by
 many call sites. The budget includes the contextual drop-authority
@@ -500,9 +500,9 @@ theorem sem_typ_pack
     -- (since `cs.consumable Γ` and accessset includes `.consume` peaks).
     rw [← CaptureSet.ground_denot_eq_reachability]
     change cs.denot env store ⊆
-      (cs.denot env store).intersect (Γ.accessset.cs.denot env store)
+      (cs.denot env store).intersect (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
-    rw [intersect_accessset_eq_self_of_consumable hts hΓ hclosed_cs hcons]
+    rw [intersect_useset_eq_self_of_consumable hts hΓ hclosed_cs hcons]
     exact CapabilitySet.Subset.union_right_left
   · simp only [Ty.exi_val_denot]
     -- Goal: CS.WfInHeap ∧ capt_val_denot (env.extend_cvar ...) T store ...
@@ -879,14 +879,14 @@ theorem sem_typ_app
   have heval := Eval.eval_apply hlk happ''
   have huse_eq :
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_accessset_eq_self_of_accessible hts hΓ
+    intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   apply eval_capability_set_monotonic heval
   change CaptureSet.denot env (.var .epsilon (.bound x)) store ⊆
     ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-        (Γ.accessset.cs.denot env store)
+        (Γ.useset.cs.denot env store)
       ∪ (Γ.consumeset.cs.denot env store).to_drop
   rw [huse_eq]
   exact CapabilitySet.Subset.union_right_left
@@ -912,9 +912,9 @@ theorem sem_typ_tapp
   subst this
   have huse_eq :
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_accessset_eq_self_of_accessible hts hΓ
+    intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- Build the body Eval at the narrower budget, then widen to the
   -- `Cf.denot ∪ consumeset.to_drop` budget required by SemanticTyping.
@@ -925,7 +925,7 @@ theorem sem_typ_tapp
     apply eval_capability_set_monotonic heval
     show (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
     exact CapabilitySet.Subset.union_right_left
@@ -1064,9 +1064,9 @@ theorem sem_typ_capp
   subst this
   have huse_eq :
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_accessset_eq_self_of_accessible hts hΓ
+    intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- Build the body Eval at the narrower budget, then widen to include
   -- `consumeset.to_drop` as required by SemanticTyping.
@@ -1077,7 +1077,7 @@ theorem sem_typ_capp
     apply eval_capability_set_monotonic heval
     show (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
     exact CapabilitySet.Subset.union_right_left
@@ -1151,9 +1151,9 @@ theorem sem_typ_invoke
   -- The use-set after tightening equals var.denot via accessibility.
   have huse_eq :
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_accessset_eq_self_of_accessible hts hΓ
+    intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- Build the Eval at the narrower budget, then widen to include consumeset.to_drop.
   suffices heval : Eval (CaptureSet.denot env (.var .epsilon (.bound x)) store) store
@@ -1162,7 +1162,7 @@ theorem sem_typ_invoke
     apply eval_capability_set_monotonic heval
     change CaptureSet.denot env (.var .epsilon (.bound x)) store ⊆
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
     exact CapabilitySet.Subset.union_right_left
@@ -1237,7 +1237,7 @@ theorem sem_typ_cond
   -- new tightening, `intersect` distributes over `∪` by structural definition,
   -- so `intersect (C1 ∪ C2 ∪ C3) D` decomposes structurally.
   let X := (Γ.consumeset.cs.denot env store).to_drop
-  let D := Γ.accessset.cs.denot env store
+  let D := Γ.useset.cs.denot env store
   -- `intersect` distributes over `∪` structurally:
   -- `(A ∪ B ∪ C).intersect D = A.intersect D ∪ B.intersect D ∪ C.intersect D`
   -- (by `rfl`, since `intersect` matches structurally on its first arg).
@@ -1995,9 +1995,9 @@ theorem sem_typ_read
     simpa [Memory.lookup] using hlookup_cell
   have huse_eq :
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_accessset_eq_self_of_accessible hts hΓ
+    intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- Build the read at the narrower budget, then widen.
   suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
@@ -2007,7 +2007,7 @@ theorem sem_typ_read
     apply eval_capability_set_monotonic heval
     change (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
     exact CapabilitySet.Subset.union_right_left
@@ -2067,9 +2067,9 @@ theorem sem_typ_write
   subst hlive
   have huse_eq :
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_accessset_eq_self_of_accessible hts hΓ
+    intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- Build the write at the narrower budget, then widen.
   suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
@@ -2079,7 +2079,7 @@ theorem sem_typ_write
     apply eval_capability_set_monotonic heval
     change (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
       ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.accessset.cs.denot env store)
+          (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
     exact CapabilitySet.Subset.union_right_left
@@ -2301,102 +2301,6 @@ private theorem consumeset_subset_seqcomp_right
     cases h with
     | lock _ => exact CaptureSet.Subset.refl
 
-/-- `Γ1.accessset.cs ⊆ Γ.accessset.cs` under `SeqComp Γ1 Γ2 Γ`.
-
-    Holds for all sub-cases *except* `access_consume`: when `m1 = .access` and
-    `m3 = .consume`, the LHS contributes a `cvar` but the RHS does not (after
-    the consume-doesn't-count refactor). That case is left as `sorry`. -/
-private theorem accessset_subset_seqcomp_left
-    {s : Sig} {Γ1 Γ2 Γ : Ctx s}
-    (h : Ctx.SeqComp Γ1 Γ2 Γ) :
-    Γ1.accessset.cs ⊆ Γ.accessset.cs := by
-  match h with
-  | Ctx.SeqComp.empty => exact CaptureSet.Subset.refl
-  | Ctx.SeqComp.push_var h' =>
-    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
-  | Ctx.SeqComp.push_tvar h' =>
-    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
-  | Ctx.SeqComp.push_cvar h' mode_comp =>
-    cases mode_comp with
-    | l_empty =>
-      -- m1=.empty, m3=R; case on R to determine RHS shape.
-      rename_i R _
-      cases R with
-      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
-      | access =>
-        exact CaptureSet.Subset.union_right_left
-          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h'))
-      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
-    | r_empty =>
-      rename_i R _
-      cases R with
-      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
-      | access =>
-        exact CaptureSet.Subset.union_left
-          (CaptureSet.Subset.union_right_left
-            (CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')))
-          (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')
-    | access_access =>
-      exact CaptureSet.Subset.union_left
-        (CaptureSet.Subset.union_right_left
-          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_left h')))
-        (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-    | access_consume =>
-      -- Counterexample case (false after refactor): Γ1 has .access
-      -- (contributes cvar to accessset) but Γ has .consume (does not).
-      sorry
-  | @Ctx.SeqComp.lock _ Γ1' Γ2' Γ3' h' =>
-    exact accessset_subset_seqcomp_left (Γ1 := Γ1') (Γ2 := Γ2') (Γ := Γ3') h'
-termination_by sizeOf Γ
-
-/-- Symmetric to `accessset_subset_seqcomp_left`. After the refactor, this
-    side stays fully true: `Γ2`'s contributions to accessset (from `.access`
-    peaks) all remain in `Γ`'s accessset under all `mode_comp` constructors. -/
-private theorem accessset_subset_seqcomp_right
-    {s : Sig} {Γ1 Γ2 Γ : Ctx s}
-    (h : Ctx.SeqComp Γ1 Γ2 Γ) :
-    Γ2.accessset.cs ⊆ Γ.accessset.cs := by
-  match h with
-  | Ctx.SeqComp.empty => exact CaptureSet.Subset.refl
-  | Ctx.SeqComp.push_var h' =>
-    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
-  | Ctx.SeqComp.push_tvar h' =>
-    exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
-  | Ctx.SeqComp.push_cvar h' mode_comp =>
-    cases mode_comp with
-    | l_empty =>
-      -- m2=R, m3=R; case on R.
-      rename_i R _
-      cases R with
-      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
-      | access =>
-        exact CaptureSet.Subset.union_left
-          (CaptureSet.Subset.union_right_left
-            (CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')))
-          (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
-    | r_empty =>
-      -- m2=.empty, m3=R; LHS no cvar; RHS depends on R.
-      rename_i R _
-      cases R with
-      | empty => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
-      | access =>
-        exact CaptureSet.Subset.union_right_left
-          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h'))
-      | consume => exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
-    | access_access =>
-      exact CaptureSet.Subset.union_left
-        (CaptureSet.Subset.union_right_left
-          (CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')))
-        (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-    | access_consume =>
-      -- m2=.consume, m3=.consume. Neither contributes cvar (after refactor).
-      exact CaptureSet.Subset.rename' (accessset_subset_seqcomp_right h')
-  | @Ctx.SeqComp.lock _ Γ1' Γ2' Γ3' h' =>
-    exact accessset_subset_seqcomp_right (Γ1 := Γ1') (Γ2 := Γ2') (Γ := Γ3') h'
-termination_by sizeOf Γ
-
 /-- The consumeset is built from `.empty`, `.union`, and `.cvar`/rename — never
 free variables — so it is always `IsClosed`. -/
 private theorem consumeset_isClosed {s : Sig} (Γ : Ctx s) :
@@ -2434,6 +2338,30 @@ private theorem accessset_isClosed {s : Sig} (Γ : Ctx s) :
           CaptureSet.IsClosed.cvar
       | consume => exact CaptureSet.rename_isClosed ih
   | lock _ ih => exact ih
+
+/-- `useset.cs.IsClosed` follows from `accessset.cs.IsClosed` and
+    `consumeset.cs.IsClosed`, since `useset.cs` is their union. -/
+private theorem useset_isClosed {s : Sig} (Γ : Ctx s) :
+    Γ.useset.cs.IsClosed :=
+  CaptureSet.IsClosed.union (accessset_isClosed Γ) (consumeset_isClosed Γ)
+
+/-- `Γ1.useset.cs ⊆ Γ.useset.cs` under `SeqComp Γ1 Γ2 Γ`. Holds for all
+    cases because useset includes both `.access` and `.consume` peaks:
+    even the `access_consume` SeqComp case (where Γ1 has `.access` and Γ has
+    `.consume`) is fine — both contribute `cvar .here` to their respective
+    useset (Γ1 via accessset, Γ via consumeset). Lock case is also fine. -/
+private theorem useset_subset_seqcomp_left
+    {s : Sig} {Γ1 Γ2 Γ : Ctx s}
+    (h : Ctx.SeqComp Γ1 Γ2 Γ) :
+    Γ1.useset.cs ⊆ Γ.useset.cs := by
+  sorry
+
+/-- Symmetric: `Γ2.useset.cs ⊆ Γ.useset.cs`. -/
+private theorem useset_subset_seqcomp_right
+    {s : Sig} {Γ1 Γ2 Γ : Ctx s}
+    (h : Ctx.SeqComp Γ1 Γ2 Γ) :
+    Γ2.useset.cs ⊆ Γ.useset.cs := by
+  sorry
 
 theorem sem_typ_letin
   {C1 C2 : CaptureSet s} {Γ Γ1 Γ2 : Ctx s} {e1 : Exp s} {T : Ty .capt s}
@@ -2487,19 +2415,19 @@ theorem sem_typ_letin
     -- `intersect_mono_right` to widen the inner use-set into the outer one.
     apply CapabilitySet.Subset.union_left
     · -- intersect C1.denot Γ1.access ⊆ intersect (C1∪C2).denot Γ.access
-      have hacc_sub : Γ1.accessset.cs.denot env store ⊆ Γ.accessset.cs.denot env store :=
-        captureset_denot_subset_of_subset (accessset_subset_seqcomp_left hseq) env store
+      have hacc_sub : Γ1.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
+        captureset_denot_subset_of_subset (useset_subset_seqcomp_left hseq) env store
       have h_right :
-          (C1.denot env store).intersect (Γ1.accessset.cs.denot env store)
-            ⊆ (C1.denot env store).intersect (Γ.accessset.cs.denot env store) :=
+          (C1.denot env store).intersect (Γ1.useset.cs.denot env store)
+            ⊆ (C1.denot env store).intersect (Γ.useset.cs.denot env store) :=
         CapabilitySet.intersect_mono_right hacc_sub
       have h_left :
-          (C1.denot env store).intersect (Γ.accessset.cs.denot env store)
-            ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.accessset.cs.denot env store) := by
+          (C1.denot env store).intersect (Γ.useset.cs.denot env store)
+            ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) := by
         rw [hunion_denot]
-        change (C1.denot env store).intersect (Γ.accessset.cs.denot env store) ⊆
-          (C1.denot env store).intersect (Γ.accessset.cs.denot env store) ∪
-            (C2.denot env store).intersect (Γ.accessset.cs.denot env store)
+        change (C1.denot env store).intersect (Γ.useset.cs.denot env store) ⊆
+          (C1.denot env store).intersect (Γ.useset.cs.denot env store) ∪
+            (C2.denot env store).intersect (Γ.useset.cs.denot env store)
         exact CapabilitySet.Subset.union_right_left
       exact CapabilitySet.Subset.trans
         (CapabilitySet.Subset.trans h_right h_left)
@@ -2575,39 +2503,39 @@ theorem sem_typ_letin
         ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free l')))
         _ := hkey ▸ h2
     -- With the refactored `accessset`, the body's inner use-set widens into
-    -- the outer one via `accessset_subset_seqcomp_right`.
+    -- the outer one via `useset_subset_seqcomp_right`.
     have hcap_rename_accessset :
-        (Γ2,x:T).accessset.cs.denot (env.extend_var l' ps) = Γ2.accessset.cs.denot env := by
+        (Γ2,x:T).useset.cs.denot (env.extend_var l' ps) = Γ2.useset.cs.denot env := by
       have := rebind_captureset_denot
-        (Rebind.weaken (env := env) (x := l') (ps := ps)) Γ2.accessset.cs
+        (Rebind.weaken (env := env) (x := l') (ps := ps)) Γ2.useset.cs
       exact this.symm
-    have hΓ2_acc_closed : Γ2.accessset.cs.IsClosed := accessset_isClosed Γ2
+    have hΓ2_use_closed : Γ2.useset.cs.IsClosed := useset_isClosed Γ2
     have haccessset_mono :
-        Γ2.accessset.cs.denot env store = Γ2.accessset.cs.denot env m_ext :=
-      closed_capture_denot_monotonic hΓ2_acc_closed hts hsub_full
+        Γ2.useset.cs.denot env store = Γ2.useset.cs.denot env m_ext :=
+      closed_capture_denot_monotonic hΓ2_use_closed hts hsub_full
     have hsub_body_tight :
         ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext).intersect
-            ((Γ2,x:T).accessset.cs.denot (env.extend_var l' ps) m_ext)
+            ((Γ2,x:T).useset.cs.denot (env.extend_var l' ps) m_ext)
           ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var l' ps) m_ext).to_drop ⊆
-        ((C1 ∪ C2).denot env store).intersect (Γ.accessset.cs.denot env store) ∪ D := by
+        ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D := by
       rw [congrFun hcap_rename_C2 m_ext, congrFun hcap_rename_accessset m_ext,
           congrFun hcap_rename_consumeset m_ext,
           ← hC2_mono, ← haccessset_mono, ← hconsumeset_mono]
       apply CapabilitySet.Subset.union_left
-      · -- intersect C2.denot Γ2.access ⊆ intersect (C1∪C2).denot Γ.access
-        have hacc_sub : Γ2.accessset.cs.denot env store ⊆ Γ.accessset.cs.denot env store :=
-          captureset_denot_subset_of_subset (accessset_subset_seqcomp_right hseq) env store
+      · -- intersect C2.denot Γ2.useset ⊆ intersect (C1∪C2).denot Γ.useset
+        have hacc_sub : Γ2.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
+          captureset_denot_subset_of_subset (useset_subset_seqcomp_right hseq) env store
         have h_right :
-            (C2.denot env store).intersect (Γ2.accessset.cs.denot env store)
-              ⊆ (C2.denot env store).intersect (Γ.accessset.cs.denot env store) :=
+            (C2.denot env store).intersect (Γ2.useset.cs.denot env store)
+              ⊆ (C2.denot env store).intersect (Γ.useset.cs.denot env store) :=
           CapabilitySet.intersect_mono_right hacc_sub
         have h_left :
-            (C2.denot env store).intersect (Γ.accessset.cs.denot env store)
-              ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.accessset.cs.denot env store) := by
+            (C2.denot env store).intersect (Γ.useset.cs.denot env store)
+              ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) := by
           rw [hunion_denot]
-          change (C2.denot env store).intersect (Γ.accessset.cs.denot env store) ⊆
-            (C1.denot env store).intersect (Γ.accessset.cs.denot env store) ∪
-              (C2.denot env store).intersect (Γ.accessset.cs.denot env store)
+          change (C2.denot env store).intersect (Γ.useset.cs.denot env store) ⊆
+            (C1.denot env store).intersect (Γ.useset.cs.denot env store) ∪
+              (C2.denot env store).intersect (Γ.useset.cs.denot env store)
           exact CapabilitySet.Subset.union_right_right
         exact CapabilitySet.Subset.trans
           (CapabilitySet.Subset.trans h_right h_left)
@@ -2671,38 +2599,38 @@ theorem sem_typ_letin
           ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free fx)))
           _ := hkey ▸ h2
       -- With the refactored `accessset`, the body's inner use-set widens into
-      -- the outer one via `accessset_subset_seqcomp_right`.
+      -- the outer one via `useset_subset_seqcomp_right`.
       have hcap_rename_accessset :
-          (Γ2,x:T).accessset.cs.denot (env.extend_var fx ps) = Γ2.accessset.cs.denot env := by
+          (Γ2,x:T).useset.cs.denot (env.extend_var fx ps) = Γ2.useset.cs.denot env := by
         have := rebind_captureset_denot
-          (Rebind.weaken (env := env) (x := fx) (ps := ps)) Γ2.accessset.cs
+          (Rebind.weaken (env := env) (x := fx) (ps := ps)) Γ2.useset.cs
         exact this.symm
-      have hΓ2_acc_closed : Γ2.accessset.cs.IsClosed := accessset_isClosed Γ2
+      have hΓ2_use_closed : Γ2.useset.cs.IsClosed := useset_isClosed Γ2
       have haccessset_mono :
-          Γ2.accessset.cs.denot env store = Γ2.accessset.cs.denot env m1 :=
-        closed_capture_denot_monotonic hΓ2_acc_closed hts hs1
+          Γ2.useset.cs.denot env store = Γ2.useset.cs.denot env m1 :=
+        closed_capture_denot_monotonic hΓ2_use_closed hts hs1
       have hsub_body_tight :
           ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1).intersect
-              ((Γ2,x:T).accessset.cs.denot (env.extend_var fx ps) m1)
+              ((Γ2,x:T).useset.cs.denot (env.extend_var fx ps) m1)
             ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var fx ps) m1).to_drop ⊆
-          ((C1 ∪ C2).denot env store).intersect (Γ.accessset.cs.denot env store) ∪ D := by
+          ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D := by
         rw [congrFun hcap_rename_C2 m1, congrFun hcap_rename_accessset m1,
             congrFun hcap_rename_consumeset m1,
             ← hC2_mono, ← haccessset_mono, ← hconsumeset_mono]
         apply CapabilitySet.Subset.union_left
-        · have hacc_sub : Γ2.accessset.cs.denot env store ⊆ Γ.accessset.cs.denot env store :=
-            captureset_denot_subset_of_subset (accessset_subset_seqcomp_right hseq) env store
+        · have hacc_sub : Γ2.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
+            captureset_denot_subset_of_subset (useset_subset_seqcomp_right hseq) env store
           have h_right :
-              (C2.denot env store).intersect (Γ2.accessset.cs.denot env store)
-                ⊆ (C2.denot env store).intersect (Γ.accessset.cs.denot env store) :=
+              (C2.denot env store).intersect (Γ2.useset.cs.denot env store)
+                ⊆ (C2.denot env store).intersect (Γ.useset.cs.denot env store) :=
             CapabilitySet.intersect_mono_right hacc_sub
           have h_left :
-              (C2.denot env store).intersect (Γ.accessset.cs.denot env store)
-                ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.accessset.cs.denot env store) := by
+              (C2.denot env store).intersect (Γ.useset.cs.denot env store)
+                ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) := by
             rw [hunion_denot]
-            change (C2.denot env store).intersect (Γ.accessset.cs.denot env store) ⊆
-              (C1.denot env store).intersect (Γ.accessset.cs.denot env store) ∪
-                (C2.denot env store).intersect (Γ.accessset.cs.denot env store)
+            change (C2.denot env store).intersect (Γ.useset.cs.denot env store) ⊆
+              (C1.denot env store).intersect (Γ.useset.cs.denot env store) ∪
+                (C2.denot env store).intersect (Γ.useset.cs.denot env store)
             exact CapabilitySet.Subset.union_right_right
           exact CapabilitySet.Subset.trans
             (CapabilitySet.Subset.trans h_right h_left)
@@ -3580,9 +3508,9 @@ theorem sem_typ_subtyp
   -- The use-set is now tightened via intersect with Γ.accessset, so we use
   -- intersect_mono_left to lift the subcapt subset.
   have hwiden :
-      (C1.denot env m).intersect (Γ.accessset.cs.denot env m)
+      (C1.denot env m).intersect (Γ.useset.cs.denot env m)
           ∪ (Γ.consumeset.cs.denot env m).to_drop ⊆
-        (C2.denot env m).intersect (Γ.accessset.cs.denot env m)
+        (C2.denot env m).intersect (Γ.useset.cs.denot env m)
           ∪ (Γ.consumeset.cs.denot env m).to_drop :=
     CapabilitySet.Subset.union_left
       (CapabilitySet.Subset.trans

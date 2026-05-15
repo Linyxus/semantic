@@ -778,9 +778,8 @@ theorem CaptureSet.accessible_denot_covers
   sorry
 
 /-- Companion to `accessible_denot_covers`: every cap in a `consumable`
-    capture set is covered by `Γ.accessset.cs.denot` (which, after the
-    refactor, includes `.consume` peaks too). Same structural complexity as
-    `accessible_denot_covers`; left as `sorry`. -/
+    capture set is covered by `Γ.consumeset.cs.denot` (its natural home —
+    consume peaks live in `consumeset`, not `accessset`, after the refactor). -/
 theorem CaptureSet.consumable_denot_covers
     {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
     {env : TypeEnv s} {store : Memory}
@@ -788,7 +787,7 @@ theorem CaptureSet.consumable_denot_covers
     (hC : C.IsClosed) (hcons : C.consumable Γ)
     {mu : CapMode} {l : Nat}
     (hmem : (C.denot env store).hasmem mu l) :
-    (Γ.accessset.cs.denot env store).covers mu l := by
+    (Γ.consumeset.cs.denot env store).covers mu l := by
   sorry
 
 /-- Semantic typing.
