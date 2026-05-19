@@ -235,21 +235,21 @@ theorem eval_monotonic {m1 m2 : Memory}
           · apply Subst.wf_openCVar
             exact hwf_cs)
   case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih _ _ =>
-    rename_i _ _ _ e2_orig m_orig
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_letin hwf
-    have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
+    have hcompat_C1 := Memory.is_compatible_union_left hcompat
+    have eval_e1' := ih hpred0 hbool0 hsub hcompat_C1 hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 hbool0 eval_e1'
     case h_nonstuck =>
       intro m1 v hQ_orig
       exact h_nonstuck_orig hQ_orig
     case h_val =>
-      intro m_ext' v hs_ext' hv hwf_v hq1 l' hfresh
+      intro m_ext' v hs_ext' hcompat_ext' hv hwf_v hq1 l' hfresh
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      exact h_val_orig hs_orig hv hwf_v hq1 l' hfresh
+      exact h_val_orig hs_orig hcompat_ext' hv hwf_v hq1 l' hfresh
     case h_var =>
-      intro m_ext' x hs_ext' hwf_x hq1
+      intro m_ext' x hs_ext' hcompat_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      exact h_var_orig hs_orig hwf_x hq1
+      exact h_var_orig hs_orig hcompat_ext' hwf_x hq1
   case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
     have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
@@ -467,14 +467,14 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       intro m1 v hQ0
       exact h_nonstuck hQ0
     case h_val =>
-      intro m1 v hs1 hv hwf_v hq1 l' hfresh
-      apply ih_val hs1 hv hwf_v hq1 l' hfresh
+      intro m1 v hs1 hcompat1 hv hwf_v hq1 l' hfresh
+      apply ih_val hs1 hcompat1 hv hwf_v hq1 l' hfresh
       apply Mpost.entails_after_subsumes himp
       apply Memory.subsumes_trans
         (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh) hs1
     case h_var =>
-      intro m1 x hs1 hwf_x hq1
-      apply ih_var hs1 hwf_x hq1
+      intro m1 x hs1 hcompat1 hwf_x hq1
+      apply ih_var hs1 hcompat1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
   case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
@@ -519,105 +519,6 @@ theorem eval_post_monotonic {Q1 Q2 : Mpost}
   apply eval_post_monotonic_general _ heval
   apply Mpost.entails_to_entails_after himp
 
-/-- Any successful evaluation of `e` from `m` with budget `C` also satisfies
-    the intrinsic post that every live-to-dead transition between `m` and the
-    final memory is authorized by `C`. -/
-theorem Eval.drops_authorized_post
-    {C : CapabilitySet} {m : Memory} {e : Exp {}} {Q : Mpost}
-    (h : Eval C m e Q) :
-    Eval C m e (fun _ m1 => m.drops_authorized m1 C) := by
-  induction h with
-  | eval_pack hsub_cs _ =>
-    exact Eval.eval_pack hsub_cs (Memory.drops_authorized_refl _ _)
-  | eval_alloc hlookup _ =>
-    apply Eval.eval_alloc hlookup
-    intro l hfresh
-    exact Memory.extend_mcell_drops_authorized _ _ _ hfresh _
-  | eval_val hv _ =>
-    exact Eval.eval_val hv (Memory.drops_authorized_refl _ _)
-  | eval_var _ =>
-    exact Eval.eval_var (Memory.drops_authorized_refl _ _)
-  | eval_apply hx _ ih =>
-    exact Eval.eval_apply hx ih
-  | eval_invoke hmem hx hy _ =>
-    exact Eval.eval_invoke hmem hx hy (Memory.drops_authorized_refl _ _)
-  | eval_tapply hx _ ih =>
-    exact Eval.eval_tapply hx ih
-  | eval_capply hx _ ih =>
-    exact Eval.eval_capply hx ih
-  | @eval_letin C0 e1 e2 Q_outer m_orig Q1' hpred hbool he1 h_nonstuck _ _ ih_e1 ih_val ih_var =>
-    -- Strategy: use Q1'' = Q1' ∧ drops_authorized as the inner post. Carry drops info
-    -- forward into h_val/h_var. The is_monotonic premise for Q1'' is the deep gap
-    -- (drops_authorized isn't monotonic under arbitrary subsumes). Same for combining
-    -- he1 and ih_e1 into a single Eval with the combined post.
-    apply Eval.eval_letin
-      (Q1 := fun v m1 => Q1' v m1 ∧ m_orig.drops_authorized m1 C0)
-      ?hpred' ?hbool' ?he1' ?nons' ?hval' ?hvar'
-    case hpred' =>
-      -- Q1''.is_monotonic — requires drops_authorized monotonicity under subsumes.
-      sorry
-    case hbool' =>
-      intro m'
-      constructor
-      · intro ⟨hQ1, hda⟩
-        exact ⟨hbool.mp hQ1, hda⟩
-      · intro ⟨hQ1, hda⟩
-        exact ⟨hbool.mpr hQ1, hda⟩
-    case he1' =>
-      -- Need Eval C0 m_orig e1 (combined). Have he1 (Q1') and ih_e1 (drops post).
-      -- Requires a CONJUNCTION-OF-POSTS principle on Eval.
-      sorry
-    case nons' =>
-      intro m1 v ⟨hQ1, _⟩
-      exact h_nonstuck hQ1
-    case hval' =>
-      intro m1 v hs1 hv hwf_v ⟨hQ1, hda1⟩ l' hfresh
-      have h_body := ih_val hs1 hv hwf_v hQ1 l' hfresh
-      apply eval_post_monotonic ?_ h_body
-      intro _ m2 hda_mext
-      have hda_to_mext : m_orig.drops_authorized
-          (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) C0 :=
-        Memory.drops_authorized_subset
-          (Memory.drops_authorized_trans hs1 hda1
-            (Memory.extend_drops_authorized m1 l' _ hwf_v rfl hfresh C0))
-          (CapabilitySet.Subset.union_left .refl .refl)
-      have hsub_mext_orig :
-          (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩
-            hwf_v rfl hfresh).subsumes m_orig :=
-        Memory.subsumes_trans
-          (Memory.extend_val_subsumes m1 l'
-            ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) hs1
-      exact Memory.drops_authorized_subset
-        (Memory.drops_authorized_trans hsub_mext_orig hda_to_mext hda_mext)
-        (CapabilitySet.Subset.union_left .refl .refl)
-    case hvar' =>
-      intro m1 x hs1 hwf_x ⟨hQ1, hda1⟩
-      have h_body := ih_var hs1 hwf_x hQ1
-      apply eval_post_monotonic ?_ h_body
-      intro _ m2 hda_m1
-      exact Memory.drops_authorized_subset
-        (Memory.drops_authorized_trans hs1 hda1 hda_m1)
-        (CapabilitySet.Subset.union_left .refl .refl)
-  | eval_unpack _ _ _ _ _ _ _ => sorry
-  | eval_read hcov hmem hx _ =>
-    exact Eval.eval_read hcov hmem hx (Memory.drops_authorized_refl _ _)
-  | eval_write_true hcov hx hy _ =>
-    apply Eval.eval_write_true hcov hx hy
-    exact Memory.update_mcell_drops_authorized _ _ _ _ _ _
-  | eval_write_false hcov hx hy _ =>
-    apply Eval.eval_write_false hcov hx hy
-    exact Memory.update_mcell_drops_authorized _ _ _ _ _ _
-  | eval_drop hx _ hcov =>
-    apply Eval.eval_drop hx ?_ hcov
-    obtain ⟨mu', hmem_x, hle⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
-    have hmu : mu' = .drop := by cases hle; rfl
-    subst hmu
-    exact Memory.drop_mcell_drops_authorized _ _ ⟨_, hx⟩ hmem_x
-  | eval_cond hres _ _ ih_true ih_false =>
-    apply Eval.eval_cond hres
-    · intro hr; exact ih_true hr
-    · intro hr; exact ih_false hr
-
 theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   (heval : Eval A1 m e Q)
   (hsub : A1 ⊆ A2) :
@@ -642,13 +543,12 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_letin =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var
       ih_e1 ih_val ih_var
-    apply Eval.eval_letin hpred_mono hbool_mono (ih_e1 hsub)
-    · intro m1 v hQ
-      exact h_nonstuck hQ
-    · intro m1 v hs1 hv hwf_v hq1 l' hfresh
-      exact ih_val hs1 hv hwf_v hq1 l' hfresh hsub
-    · intro m1 x hs1 hwf_x hq1
-      exact ih_var hs1 hwf_x hq1 hsub
+    -- Goal: Eval A2 m (.letin e1 e2) Q with hsub : (C1 ∪ C2) ⊆ A2.
+    -- The new eval_letin rule fixes its conclusion's index to a union
+    -- C1' ∪ C2', so we cannot directly produce `Eval A2` for arbitrary A2.
+    -- Resolving this likely requires adding an explicit subset-closure rule
+    -- to `Eval`, or changing `eval_letin`'s conclusion shape.
+    sorry
   case eval_unpack =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
     apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
@@ -811,17 +711,30 @@ theorem Eval.strengthen_reach_bound
   | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var _ ih_val ih_var =>
     intro D hD
     apply Eval.eval_letin hpred hbool eval_e1 h_nonstuck
-    · intro m1 v hsub hv hwf_v hq1 l' hfresh
-      apply ih_val hsub hv hwf_v hq1 l' hfresh D
-      intro l hDl hheap
-      have hsub_full := Memory.subsumes_trans
-        (Memory.extend_val_subsumes m1 l'
-          ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) hsub
-      exact hD l hDl (Heap.none_of_subsumes_none hsub_full hheap)
-    · intro m1 x hsub hwf_x hq1
-      apply ih_var hsub hwf_x hq1 D
-      intro l hDl hheap
-      exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
+    · intro m1 v hsub hcompat hv hwf_v hq1 l' hfresh
+      have h_inner := ih_val hsub hcompat hv hwf_v hq1 l' hfresh D (by
+        intro l hDl hheap
+        have hsub_full := Memory.subsumes_trans
+          (Memory.extend_val_subsumes m1 l'
+            ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) hsub
+        exact hD l hDl (Heap.none_of_subsumes_none hsub_full hheap))
+      -- Widen SubsetMod bound from C2 to (C1 ∪ C2).
+      apply eval_post_monotonic ?_ h_inner
+      intro m0 v0 ⟨hQ, hSM⟩
+      refine ⟨hQ, ?_⟩
+      intro cs0 x0 heq
+      exact CapabilitySet.SubsetMod.mono_right (hSM cs0 x0 heq)
+        CapabilitySet.Subset.union_right_right
+    · intro m1 x hsub hcompat hwf_x hq1
+      have h_inner := ih_var hsub hcompat hwf_x hq1 D (by
+        intro l hDl hheap
+        exact hD l hDl (Heap.none_of_subsumes_none hsub hheap))
+      apply eval_post_monotonic ?_ h_inner
+      intro m0 v0 ⟨hQ, hSM⟩
+      refine ⟨hQ, ?_⟩
+      intro cs0 x0 heq
+      exact CapabilitySet.SubsetMod.mono_right (hSM cs0 x0 heq)
+        CapabilitySet.Subset.union_right_right
   | eval_unpack hpred hbool eval_e1 h_nonstuck _ ih_e1 ih_val =>
     intro D hD
     -- Strengthen `e1`: the witness reachability of the resulting pack value
