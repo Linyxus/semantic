@@ -42,28 +42,30 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_letin {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   (hbool : Q1.is_bool_independent) ->
-  Eval C m e1 Q1 ->
+  Eval C1 m e1 Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
     v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
+    (m1.is_compatible C2) ->
     (hv : Exp.IsSimpleVal v) ->
     (hwf_v : Exp.WfInHeap v m1.heap) ->
     Q1 v m1 ->
     ∀ l'
       (hfresh : m1.lookup l' = none),
-      Eval C
+      Eval C2
         (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩
           hwf_v rfl hfresh)
         (e2.subst (Subst.openVar (.free l')))
         Q) ->
   (h_var : ∀ {m1} {x : Var .var {}},
     (m1.subsumes m) ->
+    (m1.is_compatible C2) ->
     (hwf_x : x.WfInHeap m1.heap) ->
     Q1 (.var x) m1 ->
-    Eval C m1 (e2.subst (Subst.openVar x)) Q) ->
-  Eval C m (.letin e1 e2) Q
+    Eval C2 m1 (e2.subst (Subst.openVar x)) Q) ->
+  Eval (C1 ∪ C2) m (.letin e1 e2) Q
 | eval_unpack {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   (hbool : Q1.is_bool_independent) ->
