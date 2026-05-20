@@ -6,7 +6,9 @@ namespace Consume
 
 /-- Small-step evaluation relation indexed by a capability set upper bound.
   Step C m e m' e' means that expression e in memory m steps to e' in memory m'
-  using at most capabilities from C. -/
+  using at most capabilities from C. TODO: the small step semantics is just a
+  placeholder for now and it does not work properly. To be revisited when the
+  system has one more round of iteration. -/
 inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_alloc :
   m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
