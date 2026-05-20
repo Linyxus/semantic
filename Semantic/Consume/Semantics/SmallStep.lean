@@ -8,11 +8,17 @@ namespace Consume
   Step C m e m' e' means that expression e in memory m steps to e' in memory m'
   using at most capabilities from C. -/
 inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
+| step_alloc :
+  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+  (hfresh : m.heap l = none) ->
+  Step C m (.alloc (.free x))
+    (m.extend_mcell l b hfresh)
+    (.pack (.var .epsilon (.free l)) (.free l))
 | step_apply :
   m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
-  Step C m (.app (.free x) (.free y)) m (e.subst (Subst.openVar (.free y)))
+  Step C m (.app (.free x) y) m (e.subst (Subst.openVar y))
 | step_invoke :
-  C.covers .epsilon x ->
+  C.covers (.access .epsilon) x ->
   m.lookup x = some (.capability .basic) ->
   m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
   Step C m (.app (.free x) (.free y)) m .unit
@@ -22,27 +28,25 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step C m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
-| step_cond_var_true :
-  m.lookup x = some (.val ⟨.btrue, hv, R⟩) ->
-  Step C m (.cond (.free x) e1 e2) m e1
-| step_cond_var_false :
-  m.lookup x = some (.val ⟨.bfalse, hv, R⟩) ->
-  Step C m (.cond (.free x) e1 e2) m e2
 | step_read :
-  C.covers .ro y ->
+  C.covers (.access .ro) y ->
   m.lookup x = some (.val ⟨.reader (.free y), hv_reader, R_reader⟩) ->
   m.lookup y = some (.capability (.mcell b .live)) ->
   Step C m (.read (.free x)) m (if b then .btrue else .bfalse)
 | step_write_true :
-  C.covers .epsilon x ->
+  C.covers (.access .epsilon) x ->
   (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
   Step C m (.write (.free x) (.free y)) (m.update_mcell x true .live ⟨b0, hx⟩) .unit
 | step_write_false :
-  C.covers .epsilon x ->
+  C.covers (.access .epsilon) x ->
   (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.write (.free x) (.free y)) (m.update_mcell x false .live ⟨b0, hx⟩) .unit
+| step_drop :
+  C.covers .drop x ->
+  (hx : m.lookup x = some (.capability (.mcell b .live))) ->
+  Step C m (.drop (.free x)) (m.drop_mcell x ⟨b, hx⟩) .unit
 | step_ctx_letin :
   Step C m e1 m' e1' ->
   Step C m (.letin e1 e2) m' (.letin e1' e2)
@@ -62,6 +66,12 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
     (e.subst (Subst.openVar (.free l)))
 | step_unpack :
   Step C m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
+| step_cond_true :
+  resolve m.heap (.var x) = some .btrue ->
+  Step C m (.cond x e1 e2) m e1
+| step_cond_false :
+  resolve m.heap (.var x) = some .bfalse ->
+  Step C m (.cond x e1 e2) m e2
 
 /-- Multi-step reduction relation: reflexive-transitive closure of Step.
   Reduce C m e m' e' means that e in memory m takes multiple steps to e' in memory m'
