@@ -235,9 +235,10 @@ theorem eval_monotonic {m1 m2 : Memory}
             exact hwf_e
           · apply Subst.wf_openCVar
             exact hwf_cs)
-  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih _ _ =>
+  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig hagg0 ih _ _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_letin hwf
-    have hcompat_C1 := Memory.is_compatible_union_left hcompat
+    have hcompat_union := Memory.is_compatible_subset hagg0 hcompat
+    have hcompat_C1 := Memory.is_compatible_union_left hcompat_union
     have eval_e1' := ih hpred0 hbool0 hsub hcompat_C1 hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 hbool0 eval_e1'
     case h_nonstuck =>
@@ -251,6 +252,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       intro m_ext' x hs_ext' hcompat_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       exact h_var_orig hs_orig hcompat_ext' hwf_x hq1
+    case hagg => exact hagg0
   case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
     have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
@@ -461,7 +463,7 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_capply hx _ ih =>
     apply Eval.eval_capply hx
     apply ih himp
-  case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var ih ih_val ih_var =>
+  case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var hagg ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
@@ -478,6 +480,7 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_var hs1 hcompat1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
+    case hagg => exact hagg
   case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred hbool0 ih
@@ -542,14 +545,13 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
   case eval_letin =>
-    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var hagg
       ih_e1 ih_val ih_var
-    -- Goal: Eval A2 m (.letin e1 e2) Q with hsub : (C1 ∪ C2) ⊆ A2.
-    -- The new eval_letin rule fixes its conclusion's index to a union
-    -- C1' ∪ C2', so we cannot directly produce `Eval A2` for arbitrary A2.
-    -- Resolving this likely requires adding an explicit subset-closure rule
-    -- to `Eval`, or changing `eval_letin`'s conclusion shape.
-    sorry
+    -- The new `eval_letin` carries an explicit aggregation `hagg : C1 ∪ C2 ⊆ Cagg`.
+    -- Since the original index `Cagg` satisfies `Cagg ⊆ A2`, we simply re-aggregate
+    -- to `A2` via `C1 ∪ C2 ⊆ Cagg ⊆ A2`, keeping all sub-derivations unchanged.
+    exact Eval.eval_letin hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var
+      (CapabilitySet.Subset.trans hagg hsub)
   case eval_unpack =>
     rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
     apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
@@ -709,7 +711,7 @@ theorem Eval.strengthen_reach_bound
   | eval_capply hlookup _ ih =>
     intro D hD
     exact Eval.eval_capply hlookup (ih D hD)
-  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var _ ih_val ih_var =>
+  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var hagg _ ih_val ih_var =>
     intro D hD
     apply Eval.eval_letin hpred hbool eval_e1 h_nonstuck
     · intro m1 v hsub hcompat hv hwf_v hq1 l' hfresh
@@ -719,13 +721,13 @@ theorem Eval.strengthen_reach_bound
           (Memory.extend_val_subsumes m1 l'
             ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh) hsub
         exact hD l hDl (Heap.none_of_subsumes_none hsub_full hheap))
-      -- Widen SubsetMod bound from C2 to (C1 ∪ C2).
+      -- Widen SubsetMod bound from C2 to Cagg via C2 ⊆ C1 ∪ C2 ⊆ Cagg.
       apply eval_post_monotonic ?_ h_inner
       intro m0 v0 ⟨hQ, hSM⟩
       refine ⟨hQ, ?_⟩
       intro cs0 x0 heq
       exact CapabilitySet.SubsetMod.mono_right (hSM cs0 x0 heq)
-        CapabilitySet.Subset.union_right_right
+        (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hagg)
     · intro m1 x hsub hcompat hwf_x hq1
       have h_inner := ih_var hsub hcompat hwf_x hq1 D (by
         intro l hDl hheap
@@ -735,7 +737,8 @@ theorem Eval.strengthen_reach_bound
       refine ⟨hQ, ?_⟩
       intro cs0 x0 heq
       exact CapabilitySet.SubsetMod.mono_right (hSM cs0 x0 heq)
-        CapabilitySet.Subset.union_right_right
+        (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hagg)
+    · exact hagg
   | eval_unpack hpred hbool eval_e1 h_nonstuck _ ih_e1 ih_val =>
     intro D hD
     -- Strengthen `e1`: the witness reachability of the resulting pack value
