@@ -65,7 +65,8 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     (hwf_x : x.WfInHeap m1.heap) ->
     Q1 (.var x) m1 ->
     Eval C2 m1 (e2.subst (Subst.openVar x)) Q) ->
-  Eval (C1 ∪ C2) m (.letin e1 e2) Q
+  (hagg : C1 ∪ C2 ⊆ Cagg) ->
+  Eval Cagg m (.letin e1 e2) Q
 | eval_unpack {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   (hbool : Q1.is_bool_independent) ->
