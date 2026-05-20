@@ -563,6 +563,87 @@ theorem intersect_eq_self_when_covered :
 theorem intersect_union_left {C1 C2 C3 : CapabilitySet} :
     (C1 ∪ C2).intersect C3 = C1.intersect C3 ∪ C2.intersect C3 := rfl
 
+/-- Sub-distributivity of `intersect` over `union` on the right: a cap surviving
+    the intersection with `B ∪ C` is covered by `B` or by `C`, hence survives one
+    of the two pointwise intersections. -/
+theorem intersect_union_right_subset :
+    ∀ {A B C : CapabilitySet}, A.intersect (B ∪ C) ⊆ A.intersect B ∪ A.intersect C
+| .empty, _, _ => Subset.empty
+| .cap mu l, B, C => by
+    simp only [intersect]
+    by_cases hB1 : B.coversCap mu l = true
+    · rw [if_pos (show (B ∪ C).coversCap mu l = true by
+        simp only [coversCap, hB1, Bool.true_or]), if_pos hB1]
+      exact Subset.union_right_left
+    · by_cases hC1 : C.coversCap mu l = true
+      · rw [if_pos (show (B ∪ C).coversCap mu l = true by
+          simp only [coversCap, hC1, Bool.or_true]), if_neg hB1, if_pos hC1]
+        exact Subset.union_right_right
+      · rw [if_neg (show ¬ (B ∪ C).coversCap mu l = true by
+          simp only [coversCap, Bool.or_eq_true, not_or]; exact ⟨hB1, hC1⟩),
+          if_neg hB1, if_neg hC1]
+        by_cases hB2 : B.coversCap mu.applyRO l = true
+        · rw [if_pos (show (B ∪ C).coversCap mu.applyRO l = true by
+            simp only [coversCap, hB2, Bool.true_or]), if_pos hB2]
+          exact Subset.union_right_left
+        · by_cases hC2 : C.coversCap mu.applyRO l = true
+          · rw [if_pos (show (B ∪ C).coversCap mu.applyRO l = true by
+              simp only [coversCap, hC2, Bool.or_true]), if_neg hB2, if_pos hC2]
+            exact Subset.union_right_right
+          · rw [if_neg (show ¬ (B ∪ C).coversCap mu.applyRO l = true by
+              simp only [coversCap, Bool.or_eq_true, not_or]; exact ⟨hB2, hC2⟩),
+              if_neg hB2, if_neg hC2]
+            exact Subset.empty
+| .union A1 A2, B, C => by
+    simp only [intersect]
+    apply Subset.union_left
+    · exact Subset.trans (intersect_union_right_subset (A := A1) (B := B) (C := C))
+        (Subset.union_left
+          (Subset.trans Subset.union_right_left Subset.union_right_left)
+          (Subset.trans Subset.union_right_left Subset.union_right_right))
+    · exact Subset.trans (intersect_union_right_subset (A := A2) (B := B) (C := C))
+        (Subset.union_left
+          (Subset.trans Subset.union_right_right Subset.union_right_left)
+          (Subset.trans Subset.union_right_right Subset.union_right_right))
+
+/-- A weaker mode gives a smaller singleton cap. -/
+theorem mode_le_cap_subset {mu mu' : CapMode} {l : Nat} (h : mu ≤ mu') :
+    (CapabilitySet.cap mu l) ⊆ (CapabilitySet.cap mu' l) := by
+  cases h with
+  | drop => exact Subset.refl
+  | access hm =>
+    cases hm with
+    | refl => exact Subset.refl
+    | ro_eps => exact Subset.cap_ro
+
+/-- If `C` covers `(mu, l)`, then the singleton `cap mu l` is a subset of `C`. -/
+theorem covers_imp_cap_subset {C : CapabilitySet} {mu : CapMode} {l : Nat}
+    (h : C.covers mu l) : (CapabilitySet.cap mu l) ⊆ C := by
+  induction h with
+  | here hle => exact mode_le_cap_subset hle
+  | left _ ih => exact Subset.trans ih Subset.union_right_left
+  | right _ ih => exact Subset.trans ih Subset.union_right_right
+
+/-- The covers-based intersection is a subset of its second argument: every
+    surviving cap is covered by `B`, hence already present (up to mode) in `B`. -/
+theorem intersect_subset_right :
+    ∀ {A B : CapabilitySet}, A.intersect B ⊆ B
+| .empty, _ => Subset.empty
+| .cap mu l, B => by
+    simp only [intersect]
+    by_cases h1 : B.coversCap mu l = true
+    · rw [if_pos h1]
+      exact covers_imp_cap_subset (coversCap_iff_covers.mp h1)
+    · rw [if_neg h1]
+      by_cases h2 : B.coversCap mu.applyRO l = true
+      · rw [if_pos h2]
+        exact covers_imp_cap_subset (coversCap_iff_covers.mp h2)
+      · rw [if_neg h2]
+        exact Subset.empty
+| .union A1 A2, B => by
+    simp only [intersect]
+    exact Subset.union_left intersect_subset_right intersect_subset_right
+
 /-- `covers` is anti-monotonic in the mode: stronger mode implies weaker. -/
 private theorem covers_anti_mu :
     ∀ {C : CapabilitySet} {mu1 mu2 : CapMode} {l : Nat},

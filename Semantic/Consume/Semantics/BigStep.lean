@@ -70,18 +70,21 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_unpack {m : Memory} {Q1 : Mpost} :
   (hpred : Q1.is_monotonic) ->
   (hbool : Q1.is_bool_independent) ->
-  Eval C m e1 Q1 ->
+  Eval C1 m e1 Q1 ->
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
     v.IsPack ∧ Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {x : Var .var {}} {cs : CaptureSet {}},
     (m1.subsumes m) ->
+    (m1.is_compatible
+      (C2 ∪ (cs.reachability m1) ∪ (cs.reachability m1).to_drop)) ->
     (hwf_x : x.WfInHeap m1.heap) ->
     (hwf_cs : cs.WfInHeap m1.heap) ->
     Q1 (.pack cs x) m1 ->
     let R := cs.reachability m1
-    Eval (C ∪ R ∪ R.to_drop) m1 (e2.subst (Subst.unpack cs x)) Q) ->
-  Eval C m (.unpack e1 e2) Q
+    Eval (C2 ∪ R ∪ R.to_drop) m1 (e2.subst (Subst.unpack cs x)) Q) ->
+  (hagg : C1 ∪ C2 ⊆ Cagg) ->
+  Eval Cagg m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
   C.covers (.access .ro) y ->
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
@@ -253,17 +256,20 @@ theorem eval_monotonic {m1 m2 : Memory}
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       exact h_var_orig hs_orig hcompat_ext' hwf_x hq1
     case hagg => exact hagg0
-  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
+  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig hagg0 ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
-    have eval_e1' := ih hpred0 hbool0 hsub hcompat hwf1
+    have hcompat_union := Memory.is_compatible_subset hagg0 hcompat
+    have hcompat_C1 := Memory.is_compatible_union_left hcompat_union
+    have eval_e1' := ih hpred0 hbool0 hsub hcompat_C1 hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 hbool0 eval_e1'
     case h_nonstuck =>
       intro m1 v hQ_orig
       exact h_nonstuck_orig hQ_orig
     case h_val =>
-      intro m_ext' x cs hs_ext' hwf_x hwf_cs hq1
+      intro m_ext' x cs hs_ext' hcompat_ext' hwf_x hwf_cs hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
-      exact h_val_orig hs_orig hwf_x hwf_cs hq1
+      exact h_val_orig hs_orig hcompat_ext' hwf_x hwf_cs hq1
+    case hagg => exact hagg0
   case eval_read hcov hmem hx hQ =>
     -- hcov : C.covers .ro y
     -- hmem : m_orig.lookup x = some (.val ⟨.reader (.free y), hv, R⟩)
@@ -481,17 +487,18 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply Mpost.entails_after_subsumes himp
       apply hs1
     case hagg => exact hagg
-  case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ ih ih_val =>
+  case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ hagg ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
       intro m1 v hQ0
       exact h_nonstuck hQ0
     case h_val =>
-      intro m1 x cs hs1 hwf_x hwf_cs hq1
-      apply ih_val hs1 hwf_x hwf_cs hq1
+      intro m1 x cs hs1 hcompat1 hwf_x hwf_cs hq1
+      apply ih_val hs1 hcompat1 hwf_x hwf_cs hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
+    case hagg => exact hagg
   case eval_read hcov hmem hx hQ =>
     apply Eval.eval_read hcov hmem hx
     apply himp _ _ _ hQ
@@ -553,20 +560,11 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
     exact Eval.eval_letin hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var
       (CapabilitySet.Subset.trans hagg hsub)
   case eval_unpack =>
-    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val ih_e1 ih_val
-    apply Eval.eval_unpack hpred_mono hbool_mono (ih_e1 hsub)
-    · intro m1 v hQ
-      exact h_nonstuck hQ
-    · intro m1 x cs hs1 hwf_x hwf_cs hq1
-      apply ih_val hs1 hwf_x hwf_cs hq1
-      -- Subset:  A1 ∪ R ∪ R.to_drop ⊆ A2 ∪ R ∪ R.to_drop  (R := cs.reachability m1)
-      apply CapabilitySet.Subset.union_left
-      · -- (A1 ∪ R) ⊆ (A2 ∪ R) ∪ R.to_drop
-        apply CapabilitySet.Subset.trans _ CapabilitySet.Subset.union_right_left
-        apply CapabilitySet.Subset.union_left
-        · exact CapabilitySet.Subset.trans hsub CapabilitySet.Subset.union_right_left
-        · exact CapabilitySet.Subset.union_right_right
-      · exact CapabilitySet.Subset.union_right_right
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val hagg ih_e1 ih_val
+    -- As with `eval_letin`: the explicit aggregation `hagg : C1 ∪ C2 ⊆ Cagg`
+    -- re-aggregates to `A2` via `C1 ∪ C2 ⊆ Cagg ⊆ A2`; sub-derivations unchanged.
+    exact Eval.eval_unpack hpred_mono hbool_mono heval_e1 h_nonstuck h_val
+      (CapabilitySet.Subset.trans hagg hsub)
   case eval_read hcov hlookup_reader hlookup_mcell hQ =>
     exact Eval.eval_read
       (CapabilitySet.subset_preserves_covers hsub hcov) hlookup_reader hlookup_mcell hQ
@@ -739,13 +737,15 @@ theorem Eval.strengthen_reach_bound
       exact CapabilitySet.SubsetMod.mono_right (hSM cs0 x0 heq)
         (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hagg)
     · exact hagg
-  | eval_unpack hpred hbool eval_e1 h_nonstuck _ ih_e1 ih_val =>
+  | eval_unpack hpred hbool eval_e1 h_nonstuck _ hagg ih_e1 ih_val =>
     intro D hD
     -- Strengthen `e1`: the witness reachability of the resulting pack value
-    -- is bounded by `C` modulo `D`.
+    -- is bounded by `C1` modulo `D`.
     have eval_e1_str := ih_e1 D hD
     -- Apply `eval_unpack` using the strengthened Q1 (inferred from `eval_e1_str`).
-    apply Eval.eval_unpack ?_ ?_ eval_e1_str ?_ ?_
+    -- Supplying the original `hagg` last pins `C2`/`Cagg` (avoiding a stray
+    -- metavariable goal).
+    apply Eval.eval_unpack ?_ ?_ eval_e1_str ?_ ?_ hagg
     · -- is_monotonic for the strengthened Q1
       intro m1 m2 v hwf_v hsubm hQ
       refine ⟨hpred hwf_v hsubm hQ.1, ?_⟩
@@ -766,29 +766,35 @@ theorem Eval.strengthen_reach_bound
         intros _ _ hpk; cases hpk
     · intro m1 v hQ
       exact h_nonstuck hQ.1
-    · intro m1 x cs0 hsub hwf_x hwf_cs hQ
+    · intro m1 x cs0 hsub hcompat hwf_x hwf_cs hQ
       have hq1 := hQ.1
       have hsub_mod := hQ.2 cs0 x rfl
       have hD' : ∀ l, D l → m1.heap l ≠ none := by
         intro l hDl hheap
         exact hD l hDl (Heap.none_of_subsumes_none hsub hheap)
-      have eval_body := ih_val hsub hwf_x hwf_cs hq1 D hD'
+      have eval_body := ih_val hsub hcompat hwf_x hwf_cs hq1 D hD'
       apply eval_post_monotonic _ eval_body
       intro m2 v ⟨hQv, hbody_bound⟩
       refine ⟨hQv, ?_⟩
       intros cs1 x1 hpk
-      -- Goal: SubsetMod D (cs1.reachability m2) C.
+      -- Goal: SubsetMod D (cs1.reachability m2) Cagg.
       -- hbody_bound cs1 x1 hpk : SubsetMod D (cs1.reachability m2)
-      --                            (C ∪ cs0.reachability m1 ∪ (cs0.reachability m1).to_drop).
+      --                            (C2 ∪ cs0.reachability m1 ∪ (cs0.reachability m1).to_drop).
+      -- Re-aggregate `C2`/`C1` into `Cagg` via `hagg : C1 ∪ C2 ⊆ Cagg`.
       intro mu l hmem hP
       have hcov := hbody_bound cs1 x1 hpk mu l hmem hP
       rw [CapabilitySet.covers_union_iff] at hcov
       rcases hcov with hcov_left | hcov_drop
       · rw [CapabilitySet.covers_union_iff] at hcov_left
         rcases hcov_left with hcov_C | hcov_R
-        · exact hcov_C
-        · obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem hcov_R
-          exact CapabilitySet.covers_weaken (hsub_mod mu' l hmem' hP) hle
+        · -- covers in `C2 ⊆ Cagg`
+          exact CapabilitySet.subset_preserves_covers
+            (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hagg) hcov_C
+        · -- covers in the unpacked reachability: bounded by `C1 ⊆ Cagg` via `hsub_mod`
+          obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem hcov_R
+          exact CapabilitySet.subset_preserves_covers
+            (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hagg)
+            (CapabilitySet.covers_weaken (hsub_mod mu' l hmem' hP) hle)
       · -- covers mu l (cs0.reachability m1).to_drop ⟹ mu = .drop.
         -- But pack reachability `cs1.reachability m2` is access-only, so
         -- `hmem : hasmem .drop l ...` is impossible.
