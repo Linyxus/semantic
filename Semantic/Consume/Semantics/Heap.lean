@@ -3231,6 +3231,22 @@ theorem is_compatible_subset {m : Memory} {C1 C2 : CapabilitySet}
   obtain ⟨mu', hmem'⟩ := hasmem_of_subset hsub mu l hmem
   exact hcompat mu' l b ℓ hmem' hheap
 
+/-- `is_compatible` is preserved by extending memory with a fresh value cell:
+    the new cell holds a value, not a mutable cell, so it cannot break the
+    liveness condition that `is_compatible` checks. -/
+theorem is_compatible_extend_val (m : Memory) (l : Nat) (v : HeapVal)
+    (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+    (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+    (hfresh : m.heap l = none) {C : CapabilitySet}
+    (hcompat : m.is_compatible C) :
+    (m.extend_val l v hwf_v hreach hfresh).is_compatible C := by
+  intro mu l' b ℓ hmem hheap
+  change (m.heap.extend l v) l' = some (.capability (.mcell b ℓ)) at hheap
+  unfold Heap.extend at hheap
+  split at hheap
+  · cases hheap
+  · exact hcompat mu l' b ℓ hmem hheap
+
 end Memory
 
 /-- Memory predicate. -/

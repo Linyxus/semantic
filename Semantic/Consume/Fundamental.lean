@@ -81,7 +81,9 @@ theorem sem_typ_var
   (hx : Γ.LookupVar x T) :
   {} # Γ ⊨ (Exp.var (.bound x)) :
     (.typ (T.refineCaptureSet (.var .epsilon (.bound x)))) := by
-  intro env m hts _
+  intro env m hts
+  simp only []
+  intro _
   apply Eval.eval_var
   simp only [Ty.exi_val_denot]
   -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
@@ -1238,16 +1240,16 @@ theorem intersect_useset_eq_self_of_consumable
   exact .right (CaptureSet.consumable_denot_covers hts hΓ hC hcons hmem)
 
 /-- Converts the `SemanticTyping` form into the `Ty.exi_exp_denot` form used by
-many call sites. The budget includes the contextual drop-authority
-`Γ.consumeset.to_drop` granted by the new `SemanticTyping`. The use-set in
-the source is widened from the tightened `intersect C.denot accessset.cs.denot`
-to the full `C.denot` via `intersect_subset_left`. -/
+many call sites. The budget in the conclusion is widened from the tightened
+use-set `(C.denot).intersect (Γ.useset.cs.denot)` to the full `C.denot` via
+`intersect_subset_left`. The compatibility precondition is the use-set one
+required by the updated `SemanticTyping`. -/
 theorem semtyp_to_exi_exp_denot
     {s : Sig} {C : CaptureSet s} {Γ : Ctx s} {e : Exp s} {E : Ty .exi s}
     {ρ : TypeEnv s} {m : Memory}
     (ht : C # Γ ⊨ e : E)
     (hts : EnvTyping Γ ρ m)
-    (hcompat : m.is_compatible (C.denot ρ m)) :
+    (hcompat : m.is_compatible ((C.denot ρ m).intersect (Γ.useset.cs.denot ρ m))) :
     Ty.exi_exp_denot ρ E
       (C.denot ρ m ∪ (Γ.consumeset.cs.denot ρ m).to_drop) m
       (e.subst (Subst.from_TypeEnv ρ)) := by
@@ -1288,7 +1290,9 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
   (ht : Cf.rename Rename.succ # Γ.lock,x:T1 ⊨ e : T2) :
   ∅ # Γ ⊨ Exp.abs Cf T1 e : (T1.arrow Cf T2).typ := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
   · simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1362,7 +1366,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
               -- wider budget reduces to `Cf.denot' ∪ .empty`, which we narrow
               -- to `Cf.denot'` via `eval_capability_set_monotonic` (the union
               -- with empty is subset of the left).
-              have htyped := ht (env.extend_var arg ps) m' henv hcompat'
+              have htyped := ht (env.extend_var arg ps) m' henv
+                (Memory.is_compatible_subset CapabilitySet.intersect_subset_left hcompat')
               have htyped_narrow :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_var arg ps) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_var arg ps)))
@@ -1381,7 +1386,9 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
   (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
   (ht : Cf.rename Rename.succ # (Γ.lock,X<:S) ⊨ e : T) :
   ∅ # Γ ⊨ Exp.tabs Cf S e : (S.core.poly Cf T).typ := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
   · simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1451,7 +1458,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                 hauth ▸ hcompat
               -- Apply the hypothesis. The body's context `Γ.lock,X<:S` has
               -- empty `consumeset`, so the wider budget narrows to `Cf.denot'`.
-              have htyped := ht (env.extend_tvar denot) m' henv hcompat'
+              have htyped := ht (env.extend_tvar denot) m' henv
+                (Memory.is_compatible_subset CapabilitySet.intersect_subset_left hcompat')
               have htyped_narrow :
                   Eval ((Cf.rename Rename.succ).denot (env.extend_tvar denot) m') m'
                     (e.subst (Subst.from_TypeEnv (env.extend_tvar denot)))
@@ -1470,7 +1478,9 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
   (hclosed_cabs : (Exp.cabs Cf cb e).IsClosed)
   (ht : Cf.rename Rename.succ # Γ.lock,C<:cb ⊨ e : T) :
   ∅ # Γ ⊨ Exp.cabs Cf cb e : (Ty.cpoly cb Cf T).typ := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
   · simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1557,7 +1567,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               -- empty `consumeset` (the topmost cvar is `.access`-mode, deeper
               -- cvars are behind the lock), so the wider budget narrows.
               have htyped :=
-                ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv hcompat'
+                ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv
+                  (Memory.is_compatible_subset CapabilitySet.intersect_subset_left hcompat')
               have htyped_narrow :
                   Eval ((Cf.rename Rename.succ).denot
                           (env.extend_cvar CS (cap := CS.ground_denot m')) m') m'
@@ -1583,7 +1594,9 @@ theorem sem_typ_pack
   (hcons : cs.consumable Γ)
   (ht : {} # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
   cs # Γ ⊨ Exp.pack cs x : T.exi := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   -- pack is no longer a simple value; use eval_pack instead
   have hsubst : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
          Exp.pack (cs.subst (Subst.from_TypeEnv env)) (x.subst (Subst.from_TypeEnv env)) := by
@@ -1933,7 +1946,16 @@ theorem sem_typ_app
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ T1) :
   (.var .epsilon (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
+  have huse_eq :
+      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+          (Γ.useset.cs.denot env store)
+        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+    intersect_useset_eq_self_of_accessible hts hΓ
+      CaptureSet.IsClosed.var_bound haccess
+  rw [huse_eq] at hcompat
   -- Extract function denotation (via the val_denot conjunct only)
   have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -1976,12 +1998,6 @@ theorem sem_typ_app
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
   -- Build the application's Eval and widen budget to include consumeset.to_drop.
   have heval := Eval.eval_apply hlk happ''
-  have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_useset_eq_self_of_accessible hts hΓ
-      CaptureSet.IsClosed.var_bound haccess
   apply eval_capability_set_monotonic heval
   change CaptureSet.denot env (.var .epsilon (.bound x)) store ⊆
     ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
@@ -1998,7 +2014,9 @@ theorem sem_typ_tapp
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (Ty.poly S.core (.var .epsilon (.bound x)) T)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
   -- Extract function denotation
   have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -2015,6 +2033,9 @@ theorem sem_typ_tapp
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
+  -- The compat hypothesis is now stated for the use-set; for an accessible
+  -- function variable the use-set equals the full denotation, so recover it.
+  rw [huse_eq] at hcompat
   -- Build the body Eval at the narrower budget, then widen to the
   -- `Cf.denot ∪ consumeset.to_drop` budget required by SemanticTyping.
   suffices heval : Eval ((CaptureSet.var .epsilon (.bound x)).denot env store) store
@@ -2061,7 +2082,9 @@ theorem sem_typ_capp
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (.cpoly (.bound D) (.var .epsilon (.bound x)) T)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
   -- Extract function denotation
   have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -2078,6 +2101,8 @@ theorem sem_typ_capp
         = (CaptureSet.var .epsilon (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
+  -- Recover full-denotation compat from the use-set compat (x is accessible).
+  rw [huse_eq] at hcompat
   -- Build the body Eval at the narrower budget, then widen to include
   -- `consumeset.to_drop` as required by SemanticTyping.
   suffices heval : Eval ((CaptureSet.var .epsilon (.bound x)).denot env store) store
@@ -2133,7 +2158,9 @@ theorem sem_typ_invoke
     .typ .unit) :
   (.var .epsilon (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : .typ .unit := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   -- Extract capability denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -2182,7 +2209,9 @@ theorem sem_typ_invoke
 
 theorem sem_typ_unit :
   {} # Γ ⊨ Exp.unit : .typ .unit := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.unit
@@ -2190,7 +2219,9 @@ theorem sem_typ_unit :
 
 theorem sem_typ_btrue :
   {} # Γ ⊨ Exp.btrue : .typ .bool := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.btrue
@@ -2199,7 +2230,9 @@ theorem sem_typ_btrue :
 
 theorem sem_typ_bfalse :
   {} # Γ ⊨ Exp.bfalse : .typ .bool := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.bfalse
@@ -2213,11 +2246,21 @@ theorem sem_typ_cond
   (ht2 : C2 # Γ ⊨ e2 : T)
   (ht3 : C3 # Γ ⊨ e3 : T) :
   (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond x e2 e3) : T := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
   simp only [Exp.subst, List.empty_eq]
-  -- Get the guard's evaluation, then use Eval.var_inv to extract Q1 at store.
-  have hcompat_C1 : store.is_compatible (C1.denot env store) :=
-    Memory.is_compatible_union_left (Memory.is_compatible_union_left hcompat)
+  -- `hcompat` is now stated for the outer use-set
+  -- `((C1 ∪ C2 ∪ C3).denot).intersect (Γ.useset.cs.denot)`. Each sub-budget's
+  -- use-set is contained in it (by `intersect_mono_left`), so we can hand each
+  -- recursive call exactly the use-set compat the new `SemanticTyping` needs.
+  have hsubC1_denot :
+      CaptureSet.denot env C1 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
+    CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
+      CapabilitySet.Subset.union_right_left
+  have hcompat_C1 :
+      store.is_compatible ((C1.denot env store).intersect (Γ.useset.cs.denot env store)) :=
+    Memory.is_compatible_subset (CapabilitySet.intersect_mono_left hsubC1_denot) hcompat
   have hguard_base := semtyp_to_exi_exp_denot ht1 hts hcompat_C1
   simp only [Ty.exi_exp_denot] at hguard_base
   -- The guard is a `.var`, so by `Eval.var_inv` the bool postcondition holds at `store`.
@@ -2230,11 +2273,6 @@ theorem sem_typ_cond
       resolve store.heap (.var (x.subst (Subst.from_TypeEnv env))) = some .btrue ∨
       resolve store.heap (.var (x.subst (Subst.from_TypeEnv env))) = some .bfalse :=
     hQ1_at_store
-  -- Compat for C2 and C3 (subsets of C1 ∪ C2 ∪ C3).
-  have hcompat_C2 : store.is_compatible (C2.denot env store) :=
-    Memory.is_compatible_union_right (Memory.is_compatible_union_left hcompat)
-  have hcompat_C3 : store.is_compatible (C3.denot env store) :=
-    Memory.is_compatible_union_right hcompat
   -- Widening lemmas.
   have hsubC2 : CaptureSet.denot env C2 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store :=
     CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
@@ -2242,6 +2280,13 @@ theorem sem_typ_cond
   have hsubC3 : CaptureSet.denot env C3 store ⊆ CaptureSet.denot env (C1 ∪ C2 ∪ C3) store := by
     simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot, List.empty_eq]
     apply CapabilitySet.Subset.union_right_right
+  -- Use-set compat for C2 and C3 (use-sets are subsets of the outer use-set).
+  have hcompat_C2 :
+      store.is_compatible ((C2.denot env store).intersect (Γ.useset.cs.denot env store)) :=
+    Memory.is_compatible_subset (CapabilitySet.intersect_mono_left hsubC2) hcompat
+  have hcompat_C3 :
+      store.is_compatible ((C3.denot env store).intersect (Γ.useset.cs.denot env store)) :=
+    Memory.is_compatible_subset (CapabilitySet.intersect_mono_left hsubC3) hcompat
   -- Construct eval_cond. Each branch's budget gets the same `consumeset.to_drop`
   -- gift, so widening just on the capture-set side covers everything. Under the
   -- new tightening, `intersect` distributes over `∪` by structural definition,
@@ -2286,7 +2331,9 @@ theorem sem_typ_reader
   (hx : Γ.LookupVar x (.cell C)) :
   {} # Γ ⊨ Exp.reader (.bound x) :
     (.typ (.reader (.var .ro (.bound x)))) := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.reader
@@ -2324,7 +2371,9 @@ theorem sem_typ_alloc
   {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ .bool) :
   {} # Γ ⊨ Exp.alloc (.bound x) : .exi (.cell (.cvar .epsilon .here)) := by
-  intro env store hts _
+  intro env store hts
+  simp only []
+  intro _
   simp only [Exp.subst, Var.subst, Subst.from_TypeEnv, List.empty_eq]
   set fx := (env.lookup_var x).1
   -- From hx, the variable resolves to a bool in `store`.
@@ -2395,7 +2444,13 @@ theorem sem_typ_drop {x : BVar s .var}
   (hΓ : Γ.IsClosed)
   (hcons : (CaptureSet.var .epsilon (.bound x) : CaptureSet s).consumable Γ) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.drop (.bound x) : .typ .unit := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
+  -- `x` is consumable, so it lives in the use-set; recover the full-denotation
+  -- compat from the use-set compat.
+  rw [intersect_useset_eq_self_of_consumable hts hΓ
+    CaptureSet.IsClosed.var_bound hcons] at hcompat
   -- Extract cell denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -2462,7 +2517,17 @@ theorem sem_typ_read
   (haccess : (CaptureSet.var .epsilon (.bound x)).accessible Γ)
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.reader C)) :
   (.var .epsilon (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ .bool := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
+  -- `x` is accessible; recover the full-denotation compat from the use-set compat.
+  have huse_eq :
+      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+          (Γ.useset.cs.denot env store)
+        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+    intersect_useset_eq_self_of_accessible hts hΓ
+      CaptureSet.IsClosed.var_bound haccess
+  rw [huse_eq] at hcompat
   -- Extract reader denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -2509,12 +2574,6 @@ theorem sem_typ_read
     simpa [Memory.lookup] using hlookup_reader
   have hlookup_cell' : store.lookup y = some (.capability (.mcell b0 .live)) := by
     simpa [Memory.lookup] using hlookup_cell
-  have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_useset_eq_self_of_accessible hts hΓ
-      CaptureSet.IsClosed.var_bound haccess
   -- Build the read at the narrower budget, then widen.
   suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
                             (Subst.from_TypeEnv env)).ground_denot store) store
@@ -2539,7 +2598,17 @@ theorem sem_typ_write
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ .bool) :
   (.var .epsilon (.bound x)) # Γ ⊨
     Exp.write (.bound x) (.bound y) : .typ .unit := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
+  -- `x` is accessible; recover the full-denotation compat from the use-set compat.
+  have huse_eq :
+      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+          (Γ.useset.cs.denot env store)
+        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+    intersect_useset_eq_self_of_accessible hts hΓ
+      CaptureSet.IsClosed.var_bound haccess
+  rw [huse_eq] at hcompat
   -- Extract cell denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
@@ -2581,12 +2650,6 @@ theorem sem_typ_write
     exact hcompat' (.access .epsilon) (env.lookup_var x).1 b0 ℓ0
       CapabilitySet.hasmem.here hlk_cell
   subst hlive
-  have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
-          (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
-    intersect_useset_eq_self_of_accessible hts hΓ
-      CaptureSet.IsClosed.var_bound haccess
   -- Build the write at the narrower budget, then widen.
   suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
                             (Subst.from_TypeEnv env)).ground_denot store) store
@@ -3086,7 +3149,9 @@ theorem sem_typ_letin
   (ht1 : C1 # Γ1 ⊨ e1 : .typ T)
   (ht2 : C2.rename Rename.succ # (Γ2,x:T) ⊨ e2 : U.rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.letin e1 e2) : U := by
-  intro env store hts hcompat
+  intro env store hts
+  simp only []
+  intro hcompat
   have hts1 := EnvTyping.seqcomp_left hseq hts
   have hts2 := EnvTyping.seqcomp_right hseq hts
   simp only [Exp.subst]
@@ -3125,8 +3190,19 @@ theorem sem_typ_letin
   case a =>
     -- ht1 gives `Eval (intersect C1.denot Γ1.accessset ∪ Γ1.consumeset.to_drop) store e1 _`.
     -- `Ty.exi_val_denot env T.typ = Ty.val_denot env T` by pattern matching.
-    have hcompat_C1 : store.is_compatible (C1.denot env store) :=
-      Memory.is_compatible_union_left hcompat
+    -- The new `ht1` wants use-set compat for `C1`; `C1`'s use-set is contained
+    -- in the outer use-set (`C1.denot ⊆ (C1∪C2).denot` and `Γ1.useset ⊆ Γ.useset`).
+    have hsub_use1 : Γ1.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
+      captureset_denot_subset_of_subset (useset_subset_seqcomp_left hseq) env store
+    have hsubC1_denot : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
+      rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
+    have hcompat_C1 :
+        store.is_compatible ((C1.denot env store).intersect (Γ1.useset.cs.denot env store)) :=
+      Memory.is_compatible_subset
+        (CapabilitySet.Subset.trans
+          (CapabilitySet.intersect_mono_right hsub_use1)
+          (CapabilitySet.intersect_mono_left hsubC1_denot))
+        hcompat
     have h1 := ht1 env store hts1 hcompat_C1
     simp only [Ty.exi_val_denot] at h1
     apply eval_capability_set_monotonic h1
@@ -3198,32 +3274,8 @@ theorem sem_typ_letin
     have hconsumeset_mono :
         Γ2.consumeset.cs.denot env store = Γ2.consumeset.cs.denot env m_ext :=
       closed_capture_denot_monotonic hΓ2_closed hts hsub_full
-    -- Body budget ⊆ outer budget.
-    have hsub_body :
-        (C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext
-          ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var l' ps) m_ext).to_drop
-            ⊆ (C1 ∪ C2).denot env store ∪ D := by
-      rw [congrFun hcap_rename_C2 m_ext, congrFun hcap_rename_consumeset m_ext,
-          ← hC2_mono, ← hconsumeset_mono]
-      apply CapabilitySet.Subset.union_left
-      · rw [hunion_denot]
-        exact CapabilitySet.Subset.trans
-          CapabilitySet.Subset.union_right_right
-          CapabilitySet.Subset.union_right_left
-      · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
-    have hcompat_body :
-        m_ext.is_compatible
-          ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext) := by
-      sorry
-    have h2 := ht2 (env.extend_var l' ps) m_ext henv_body hcompat_body
-    -- Bridge the substitution shape: `e2.subst ... .lift then openVar l'`
-    -- equals `e2.subst (from_TypeEnv (env.extend_var l' ps))`.
-    have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
-    have h2' : Eval _ m_ext
-        ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free l')))
-        _ := hkey ▸ h2
-    -- With the refactored `accessset`, the body's inner use-set widens into
-    -- the outer one via `useset_subset_seqcomp_right`.
+    -- Use-set rebind / monotonicity for the body context, needed both for the
+    -- compat precondition below and the final budget widening.
     have hcap_rename_accessset :
         (Γ2,x:T).useset.cs.denot (env.extend_var l' ps) = Γ2.useset.cs.denot env := by
       have := rebind_captureset_denot
@@ -3261,6 +3313,28 @@ theorem sem_typ_letin
           (CapabilitySet.Subset.trans h_right h_left)
           CapabilitySet.Subset.union_right_left
       · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
+    -- The body's use-set compat now follows from the use-set compat at `m1`
+    -- handed to us by `eval_letin` (the body use-set is contained in `Cagg` by
+    -- `hsub_body_tight`), transported to the extended memory `m_ext` (which only
+    -- adds a fresh value cell, preserving liveness).
+    have hcompat_body :
+        m_ext.is_compatible
+          (((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext).intersect
+            ((Γ2,x:T).useset.cs.denot (env.extend_var l' ps) m_ext)) := by
+      have hsub_use :
+          ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext).intersect
+              ((Γ2,x:T).useset.cs.denot (env.extend_var l' ps) m_ext)
+            ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D :=
+        CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_body_tight
+      exact Memory.is_compatible_extend_val m1 l' heapval hwf_v rfl hfresh
+        (Memory.is_compatible_subset hsub_use hcompat_m1)
+    have h2 := ht2 (env.extend_var l' ps) m_ext henv_body hcompat_body
+    -- Bridge the substitution shape: `e2.subst ... .lift then openVar l'`
+    -- equals `e2.subst (from_TypeEnv (env.extend_var l' ps))`.
+    have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
+    have h2' : Eval _ m_ext
+        ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free l')))
+        _ := hkey ▸ h2
     have hcompose := eval_capability_set_monotonic h2' hsub_body_tight
     -- Lift post: `Ty.exi_val_denot env_ext (U.rename succ) ≈ Ty.exi_val_denot env U`.
     have heqv := weaken_exi_val_denot (env := env) (x := l') (ps := ps) (T := U)
@@ -3293,33 +3367,7 @@ theorem sem_typ_letin
       have hconsumeset_mono :
           Γ2.consumeset.cs.denot env store = Γ2.consumeset.cs.denot env m1 :=
         closed_capture_denot_monotonic hΓ2_closed hts hs1
-      have hsub_body :
-          (C2.rename Rename.succ).denot (env.extend_var fx ps) m1
-            ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var fx ps) m1).to_drop
-              ⊆ (C1 ∪ C2).denot env store ∪ D := by
-        rw [congrFun hcap_rename_C2 m1, congrFun hcap_rename_consumeset m1,
-            ← hC2_mono, ← hconsumeset_mono]
-        apply CapabilitySet.Subset.union_left
-        · rw [hunion_denot]
-          exact CapabilitySet.Subset.trans
-            CapabilitySet.Subset.union_right_right
-            CapabilitySet.Subset.union_right_left
-        · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
-      -- Same gap as `h_val`: `hda : store.drops_authorized m1 (outer budget)`
-      -- is now available, but closing requires disjointness of `C2.denot`
-      -- and `Γ.consumeset.cs.denot`, which the typing rule does not
-      -- currently enforce. See the comment in the `h_val` case above.
-      have hcompat_body :
-          m1.is_compatible
-            ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1) := by
-        sorry
-      have h2 := ht2 (env.extend_var fx ps) m1 henv_body hcompat_body
-      have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
-      have h2' : Eval _ m1
-          ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free fx)))
-          _ := hkey ▸ h2
-      -- With the refactored `accessset`, the body's inner use-set widens into
-      -- the outer one via `useset_subset_seqcomp_right`.
+      -- Use-set rebind / monotonicity for the body context.
       have hcap_rename_accessset :
           (Γ2,x:T).useset.cs.denot (env.extend_var fx ps) = Γ2.useset.cs.denot env := by
         have := rebind_captureset_denot
@@ -3356,6 +3404,20 @@ theorem sem_typ_letin
             (CapabilitySet.Subset.trans h_right h_left)
             CapabilitySet.Subset.union_right_left
         · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
+      -- Body use-set compat from the use-set compat at `m1` (no memory extension
+      -- in the variable case), using `hsub_body_tight`.
+      have hcompat_body :
+          m1.is_compatible
+            (((C2.rename Rename.succ).denot (env.extend_var fx ps) m1).intersect
+              ((Γ2,x:T).useset.cs.denot (env.extend_var fx ps) m1)) :=
+        Memory.is_compatible_subset
+          (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_body_tight)
+          hcompat_m1
+      have h2 := ht2 (env.extend_var fx ps) m1 henv_body hcompat_body
+      have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
+      have h2' : Eval _ m1
+          ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free fx)))
+          _ := hkey ▸ h2
       have hcompose := eval_capability_set_monotonic h2' hsub_body_tight
       have heqv := weaken_exi_val_denot (env := env) (x := fx) (ps := ps) (T := U)
       apply eval_post_monotonic _ hcompose
@@ -4222,11 +4284,16 @@ theorem sem_typ_subtyp
   (_hclosed_C1 : C1.IsClosed) (hclosed_E1 : E1.IsClosed)
   (_hclosed_C2 : C2.IsClosed) (hclosed_E2 : E2.IsClosed) :
   C2 # Γ ⊨ e : E2 := by
-  intro env m htyping hcompat
+  intro env m htyping
+  simp only []
+  intro hcompat
   -- Use fundamental_subcapt to get C1.denot ⊆ C2.denot (semantic subcapt)
   have hsubcapt_sem := fundamental_subcapt hsubcapt env m htyping
-  have hcompat_C1 : m.is_compatible (C1.denot env m) :=
-    Memory.is_compatible_subset hsubcapt_sem hcompat
+  -- `hcompat` is the use-set compat for `C2`; the use-set of `C1` is contained
+  -- in it (use-sets are monotone in the capture set), giving `ht`'s precondition.
+  have hcompat_C1 :
+      m.is_compatible ((C1.denot env m).intersect (Γ.useset.cs.denot env m)) :=
+    Memory.is_compatible_subset (CapabilitySet.intersect_mono_left hsubcapt_sem) hcompat
   -- Raw evaluation from ht at the wider budget (C1 ∪ consumeset.to_drop).
   have h_eval_E1 := ht env m htyping hcompat_C1
   -- Widen the authority side from C1 to C2 (preserves the shared drop component).
