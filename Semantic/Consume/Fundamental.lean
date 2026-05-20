@@ -3096,6 +3096,12 @@ theorem sem_typ_letin
         = C1.denot env store ∪ C2.denot env store := rfl
   -- Drop-authority piece of the outer budget.
   let D : CapabilitySet := (Γ.consumeset.cs.denot env store).to_drop
+  -- The full outer budget. The new `eval_letin` no longer pins the `e1`/`e2`
+  -- budgets by unifying `C1 ∪ C2` with the conclusion's index; instead it
+  -- carries `hagg : C1 ∪ C2 ⊆ Cagg`. We therefore set both sub-budgets to the
+  -- whole outer budget `Cagg` so the sub-derivations have concrete targets.
+  let Cagg : CapabilitySet :=
+    ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D
   -- SeqComp lifts: `Γi.consumeset.cs ⊆ Γ.consumeset.cs`, hence `to_drop ⊆ D`.
   have hsub1_drop :
       (Γ1.consumeset.cs.denot env store).to_drop ⊆ D :=
@@ -3109,6 +3115,7 @@ theorem sem_typ_letin
         (consumeset_subset_seqcomp_right hseq) env store)
   have hΓ2_closed : Γ2.consumeset.cs.IsClosed := consumeset_isClosed Γ2
   apply Eval.eval_letin (Q1 := fun v m' => Ty.val_denot env T m' v)
+    (C1 := Cagg) (C2 := Cagg)
   case hpred =>
     intro m1 m2 e hwf hsub hQ
     exact val_denot_is_monotonic (typed_env_is_monotonic hts) T hsub hQ
@@ -3153,7 +3160,7 @@ theorem sem_typ_letin
     · exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T m1 v hQ1
     · exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1
   case h_val =>
-    intro m1 v hs1 hv hwf_v hQ1 l' hfresh
+    intro m1 v hs1 hcompat_m1 hv hwf_v hQ1 l' hfresh
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     let ps := CaptureSet.peakset Γ2 T.captureSet
     set m_ext := m1.extend_val l' heapval hwf_v rfl hfresh with hm_ext_def
@@ -3260,7 +3267,7 @@ theorem sem_typ_letin
     apply eval_post_monotonic _ hcompose
     exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
   case h_var =>
-    intro m1 x hs1 hwf_x hQ1
+    intro m1 x hs1 hcompat_m1 hwf_x hQ1
     cases x
     case bound bv => cases bv
     case free fx =>
@@ -3353,6 +3360,11 @@ theorem sem_typ_letin
       have heqv := weaken_exi_val_denot (env := env) (x := fx) (ps := ps) (T := U)
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
+  case hagg =>
+    -- Both the `e1` and `e2` sub-derivations were widened to the full outer
+    -- budget `Cagg`, so the aggregation is `Cagg ∪ Cagg ⊆ Cagg`.
+    exact CapabilitySet.Subset.union_left CapabilitySet.Subset.refl
+      CapabilitySet.Subset.refl
 
 theorem sem_sc_trans
   (hsub1 : SemSubcapt Γ C1 C2)
