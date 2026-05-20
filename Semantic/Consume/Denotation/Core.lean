@@ -773,11 +773,11 @@ theorem Memory.preserves_liveness_full_to_consume_only
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m →
-    m.is_compatible (C.denot ρ m) →
     let useSet : CapabilitySet :=
       (C.denot ρ m).intersect (Γ.useset.cs.denot ρ m)
     let dropSet : CapabilitySet :=
       (Γ.consumeset.cs.denot ρ m).to_drop
+    m.is_compatible useSet →
     Eval (useSet ∪ dropSet) m (e.subst (Subst.from_TypeEnv ρ))
       (fun v m' => Ty.exi_val_denot ρ E m' v)
 
