@@ -14,8 +14,6 @@ inductive Kind : Type where
 | tvar : Kind
 /-- Capture variable -/
 | cvar : Kind
-/-- Lock variable -/
-| lock : Kind
 deriving DecidableEq, Repr
 
 /-- A `Sig` describes the shape of a context, which is a list of variable kinds. -/
