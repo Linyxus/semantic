@@ -11,10 +11,6 @@ inductive Mutability : Type where
 | epsilon : Mutability  -- default mode, read-write
 | ro : Mutability       -- read-only
 
-inductive Access : Type where
-| M : Mutability -> Access
-| drop : Access
-
 namespace Mutability
 
 inductive Le : Mutability -> Mutability -> Prop where
@@ -48,8 +44,8 @@ inductive Var : Kind -> Sig -> Type where
 inductive CaptureSet : Sig -> Type where
 | empty : CaptureSet s
 | union : CaptureSet s -> CaptureSet s -> CaptureSet s
-| var : Access -> Var .var s -> CaptureSet s
-| cvar : Access -> BVar s .cvar -> CaptureSet s
+| var : Mutability -> Var .var s -> CaptureSet s
+| cvar : Mutability -> BVar s .cvar -> CaptureSet s
 
 /-- Provides `{}` notation for the empty capture set. -/
 @[simp]
