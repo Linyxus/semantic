@@ -39,6 +39,44 @@ theorem Le.ro_le {m : Mutability} : .ro ≤ m := by
 
 end Mutability
 
+namespace Access
+
+/-- Read-only image of an access mode: access modes become read-only; `drop` is
+    a different class of use mode than mutability, so it is left untouched. -/
+def applyRO : Access -> Access
+| .M _ => .M .ro
+| .drop => .drop
+
+@[simp]
+theorem applyRO_idempotent {a : Access} : a.applyRO.applyRO = a.applyRO := by
+  cases a <;> rfl
+
+/-- Ordering on access modes: access modes follow the mutability ordering;
+    `drop` is comparable only to itself. -/
+inductive Le : Access -> Access -> Prop where
+| M {m1 m2 : Mutability} : m1 ≤ m2 -> Le (.M m1) (.M m2)
+| drop : Le .drop .drop
+
+instance instLE : LE Access := ⟨Access.Le⟩
+
+theorem Le.refl {a : Access} : a ≤ a := by
+  cases a with
+  | M _ => exact .M Mutability.Le.refl
+  | drop => exact .drop
+
+theorem Le.trans {a1 a2 a3 : Access} (h1 : a1 ≤ a2) (h2 : a2 ≤ a3) : a1 ≤ a3 := by
+  cases h1 with
+  | M h1' => cases h2 with | M h2' => exact .M (Mutability.Le.trans h1' h2')
+  | drop => cases h2; exact .drop
+
+/-- The read-only image is below the original mode. -/
+theorem applyRO_le {a : Access} : a.applyRO ≤ a := by
+  cases a with
+  | M _ => exact .M Mutability.Le.ro_le
+  | drop => exact .drop
+
+end Access
+
 /-- A variable, either bound (de Bruijn indexed) or free (heap pointer). -/
 inductive Var : Kind -> Sig -> Type where
 | bound : BVar s k -> Var k s
@@ -99,8 +137,8 @@ theorem CaptureSet.rename_comp {cs : CaptureSet s1} {f : Rename s1 s2} {g : Rena
 def CaptureSet.applyRO : CaptureSet s -> CaptureSet s
 | .empty => .empty
 | .union cs1 cs2 => .union (cs1.applyRO) (cs2.applyRO)
-| .var _ x => .var .ro x
-| .cvar _ x => .cvar .ro x
+| .var a x => .var a.applyRO x
+| .cvar a x => .cvar a.applyRO x
 
 /-- Applies a mutability to all elements in a capture set.
   This is used to preserve mutability during substitution. -/
@@ -113,10 +151,10 @@ def CaptureSet.applyMut (m : Mutability) (cs : CaptureSet s) : CaptureSet s :=
 @[simp] theorem CaptureSet.applyRO_empty : (CaptureSet.empty (s:=s)).applyRO = .empty := rfl
 @[simp] theorem CaptureSet.applyRO_union {cs1 cs2 : CaptureSet s} :
     (cs1.union cs2).applyRO = cs1.applyRO.union cs2.applyRO := rfl
-@[simp] theorem CaptureSet.applyRO_var {m : Mutability} {x : Var .var s} :
-    (CaptureSet.var m x).applyRO = .var .ro x := rfl
-@[simp] theorem CaptureSet.applyRO_cvar {m : Mutability} {x : BVar s .cvar} :
-    (CaptureSet.cvar m x).applyRO = .cvar .ro x := rfl
+@[simp] theorem CaptureSet.applyRO_var {a : Access} {x : Var .var s} :
+    (CaptureSet.var a x).applyRO = .var a.applyRO x := rfl
+@[simp] theorem CaptureSet.applyRO_cvar {a : Access} {x : BVar s .cvar} :
+    (CaptureSet.cvar a x).applyRO = .cvar a.applyRO x := rfl
 
 -- applyMut simp lemmas
 @[simp] theorem CaptureSet.applyMut_epsilon {cs : CaptureSet s} :
@@ -131,8 +169,8 @@ theorem CaptureSet.applyRO_applyRO {cs : CaptureSet s} :
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 => simp only [ih1, ih2, CaptureSet.applyRO_union]
-  | var _ x => rfl
-  | cvar _ x => rfl
+  | var a x => simp only [CaptureSet.applyRO, Access.applyRO_idempotent]
+  | cvar a x => simp only [CaptureSet.applyRO, Access.applyRO_idempotent]
 
 /-- Applying applyMut after applyRO simplifies. -/
 @[simp]
@@ -153,8 +191,8 @@ theorem CaptureSet.applyRO_rename {cs : CaptureSet s1} {f : Rename s1 s2} :
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [CaptureSet.applyRO_union, CaptureSet.rename, ih1, ih2]
-  | var _ x => simp only [CaptureSet.rename, CaptureSet.applyRO_var]
-  | cvar _ x => simp only [CaptureSet.rename, CaptureSet.applyRO_cvar]
+  | var a x => simp only [CaptureSet.rename, CaptureSet.applyRO]
+  | cvar a x => simp only [CaptureSet.rename, CaptureSet.applyRO]
 
 /-- applyMut distributes over rename. -/
 theorem CaptureSet.applyMut_rename {cs : CaptureSet s1} {f : Rename s1 s2} {m : Mutability} :
@@ -263,7 +301,7 @@ inductive CaptureSet.PeaksOnly : CaptureSet s -> Prop where
   PeaksOnly C2 ->
   ---------------------
   PeaksOnly (C1.union C2)
-| cvar {m : Mutability} {c : BVar s .cvar} :
+| cvar {m : Access} {c : BVar s .cvar} :
   ---------------------
   PeaksOnly (.cvar m c)
 
@@ -561,9 +599,9 @@ theorem applyMut_mono {C1 C2 : CaptureSet s} {m : Mutability}
   | epsilon => simp only [CaptureSet.applyMut_epsilon]; exact hcov
   | ro => simp only [CaptureSet.applyMut_ro]; exact hcov.applyRO_mono
 
-/-- Helper: if (.cvar m c) ⊆ D, then (.cvar .ro c) ⊆ D.applyRO -/
-private theorem cvar_subset_applyRO {m : Mutability} {c : BVar s .cvar} {D : CaptureSet s}
-  (hsub : (.cvar m c) ⊆ D) : (.cvar .ro c) ⊆ D.applyRO := by
+/-- Helper: if (.cvar a c) ⊆ D, then (.cvar a.applyRO c) ⊆ D.applyRO -/
+private theorem cvar_subset_applyRO {a : Access} {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar a c) ⊆ D) : (.cvar a.applyRO c) ⊆ D.applyRO := by
   induction D with
   | empty => cases hsub
   | union D1 D2 ih1 ih2 =>
@@ -577,9 +615,10 @@ private theorem cvar_subset_applyRO {m : Mutability} {c : BVar s .cvar} {D : Cap
     simp only [CaptureSet.applyRO]
     exact .refl
 
-/-- Helper: extract original mutability from (.cvar .ro c) ⊆ D.applyRO -/
-private theorem cvar_subset_of_applyRO {c : BVar s .cvar} {D : CaptureSet s}
-  (hsub : (.cvar .ro c) ⊆ D.applyRO) : ∃ m, (.cvar m c) ⊆ D := by
+/-- Helper: a cvar inside `D.applyRO` comes from an original cvar in `D`, and its
+    mode is the read-only image of that original mode. -/
+private theorem cvar_subset_of_applyRO {a : Access} {c : BVar s .cvar} {D : CaptureSet s}
+  (hsub : (.cvar a c) ⊆ D.applyRO) : ∃ a0, (.cvar a0 c) ⊆ D ∧ a = a0.applyRO := by
   induction D with
   | empty =>
     simp only [CaptureSet.applyRO] at hsub
@@ -588,46 +627,26 @@ private theorem cvar_subset_of_applyRO {c : BVar s .cvar} {D : CaptureSet s}
     simp only [CaptureSet.applyRO] at hsub
     cases hsub with
     | union_right_left h =>
-      obtain ⟨m, hm⟩ := ih1 h
-      exact ⟨m, .union_right_left hm⟩
+      obtain ⟨a0, hm, he⟩ := ih1 h
+      exact ⟨a0, .union_right_left hm, he⟩
     | union_right_right h =>
-      obtain ⟨m, hm⟩ := ih2 h
-      exact ⟨m, .union_right_right hm⟩
+      obtain ⟨a0, hm, he⟩ := ih2 h
+      exact ⟨a0, .union_right_right hm, he⟩
   | var m' x =>
     simp only [CaptureSet.applyRO] at hsub
     cases hsub
   | cvar m' c' =>
     simp only [CaptureSet.applyRO] at hsub
     cases hsub
-    exact ⟨m', .refl⟩
-
-/-- Helper: if (.cvar m c) ⊆ D.applyRO, then m = .ro -/
-private theorem cvar_mut_of_applyRO_subset {m : Mutability} {c : BVar s .cvar} {D : CaptureSet s}
-  (hsub : (.cvar m c) ⊆ D.applyRO) : m = .ro := by
-  induction D with
-  | empty =>
-    simp only [CaptureSet.applyRO] at hsub
-    cases hsub
-  | union D1 D2 ih1 ih2 =>
-    simp only [CaptureSet.applyRO] at hsub
-    cases hsub with
-    | union_right_left h => exact ih1 h
-    | union_right_right h => exact ih2 h
-  | var m' x =>
-    simp only [CaptureSet.applyRO] at hsub
-    cases hsub
-  | cvar m' c' =>
-    simp only [CaptureSet.applyRO] at hsub
-    cases hsub
-    rfl
+    exact ⟨m', .refl, rfl⟩
 
 /-- If a cvar is a subset of C1 and C1 is covered by C2, then the cvar (possibly with
-    a weaker mutability) is a subset of C2. -/
-theorem cvar_subset_coveredby {m : Mutability} {c : BVar s .cvar} {C1 C2 : CaptureSet s}
-  (hsub : (.cvar m c) ⊆ C1)
+    a weaker access mode) is a subset of C2. -/
+theorem cvar_subset_coveredby {a : Access} {c : BVar s .cvar} {C1 C2 : CaptureSet s}
+  (hsub : (.cvar a c) ⊆ C1)
   (hcov : C1.CoveredBy C2) :
-  ∃ m', m ≤ m' ∧ (.cvar m' c) ⊆ C2 := by
-  induction hcov generalizing m with
+  ∃ a', a ≤ a' ∧ (.cvar a' c) ⊆ C2 := by
+  induction hcov generalizing a with
   | refl hm =>
     rename_i D m1 m2
     cases m1 with
@@ -636,22 +655,21 @@ theorem cvar_subset_coveredby {m : Mutability} {c : BVar s .cvar} {C1 C2 : Captu
       cases m2 with
       | epsilon =>
         simp only [CaptureSet.applyMut_epsilon]
-        exact ⟨m, Mutability.Le.refl, hsub⟩
+        exact ⟨a, Access.Le.refl, hsub⟩
       | ro =>
         -- hm : .epsilon ≤ .ro is false, this case is impossible
         cases hm
     | ro =>
       simp only [CaptureSet.applyMut_ro] at hsub
-      have hm_eq : m = .ro := cvar_mut_of_applyRO_subset hsub
-      subst hm_eq
       cases m2 with
       | epsilon =>
         simp only [CaptureSet.applyMut_epsilon]
-        obtain ⟨m_orig, h⟩ := cvar_subset_of_applyRO hsub
-        exact ⟨m_orig, Mutability.Le.ro_le, h⟩
+        obtain ⟨a0, h, he⟩ := cvar_subset_of_applyRO hsub
+        subst he
+        exact ⟨a0, Access.applyRO_le, h⟩
       | ro =>
         simp only [CaptureSet.applyMut_ro]
-        exact ⟨.ro, Mutability.Le.refl, hsub⟩
+        exact ⟨a, Access.Le.refl, hsub⟩
   | empty =>
     cases hsub
   | union_left _ _ ih1 ih2 =>
@@ -659,11 +677,11 @@ theorem cvar_subset_coveredby {m : Mutability} {c : BVar s .cvar} {C1 C2 : Captu
     | union_right_left hsub' => exact ih1 hsub'
     | union_right_right hsub' => exact ih2 hsub'
   | union_right_left _ ih =>
-    obtain ⟨m', hle, hsub'⟩ := ih hsub
-    exact ⟨m', hle, .union_right_left hsub'⟩
+    obtain ⟨a', hle, hsub'⟩ := ih hsub
+    exact ⟨a', hle, .union_right_left hsub'⟩
   | union_right_right _ ih =>
-    obtain ⟨m', hle, hsub'⟩ := ih hsub
-    exact ⟨m', hle, .union_right_right hsub'⟩
+    obtain ⟨a', hle, hsub'⟩ := ih hsub
+    exact ⟨a', hle, .union_right_right hsub'⟩
 
 end CaptureSet.CoveredBy
 
