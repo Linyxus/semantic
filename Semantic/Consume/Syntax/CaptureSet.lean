@@ -199,6 +199,90 @@ theorem CaptureSet.applyMut_rename {cs : CaptureSet s1} {f : Rename s1 s2} {m : 
     (cs.applyMut m).rename f = (cs.rename f).applyMut m := by
   cases m <;> simp only [CaptureSet.applyMut_epsilon, CaptureSet.applyMut_ro, applyRO_rename]
 
+/-- Sets every element of a capture set to `drop` mode. -/
+def CaptureSet.applyDrop : CaptureSet s -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => .union (cs1.applyDrop) (cs2.applyDrop)
+| .var _ x => .var .drop x
+| .cvar _ x => .cvar .drop x
+
+/-- Applies an access mode to all elements: a mutability acts via `applyMut`,
+    while `drop` sets every element to `drop` mode via `applyDrop`. -/
+def CaptureSet.applyAccess (a : Access) (cs : CaptureSet s) : CaptureSet s :=
+  match a with
+  | .M m => cs.applyMut m
+  | .drop => cs.applyDrop
+
+@[simp] theorem CaptureSet.applyAccess_M {m : Mutability} {cs : CaptureSet s} :
+    cs.applyAccess (.M m) = cs.applyMut m := rfl
+@[simp] theorem CaptureSet.applyAccess_drop {cs : CaptureSet s} :
+    cs.applyAccess .drop = cs.applyDrop := rfl
+
+/-- applyDrop distributes over rename. -/
+theorem CaptureSet.applyDrop_rename {cs : CaptureSet s1} {f : Rename s1 s2} :
+    cs.applyDrop.rename f = (cs.rename f).applyDrop := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.applyDrop, CaptureSet.rename, ih1, ih2]
+  | var _ x => simp only [CaptureSet.applyDrop, CaptureSet.rename]
+  | cvar _ x => simp only [CaptureSet.applyDrop, CaptureSet.rename]
+
+/-- applyAccess distributes over rename. -/
+theorem CaptureSet.applyAccess_rename {cs : CaptureSet s1} {f : Rename s1 s2} {a : Access} :
+    (cs.applyAccess a).rename f = (cs.rename f).applyAccess a := by
+  cases a with
+  | M m => simp only [CaptureSet.applyAccess_M, applyMut_rename]
+  | drop => simp only [CaptureSet.applyAccess_drop, applyDrop_rename]
+
+/-- applyRO leaves a dropped capture set unchanged (`drop` is fixed under applyRO). -/
+@[simp] theorem CaptureSet.applyDrop_applyRO {cs : CaptureSet s} :
+    cs.applyDrop.applyRO = cs.applyDrop := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.applyDrop, CaptureSet.applyRO, ih1, ih2]
+  | var _ x => rfl
+  | cvar _ x => rfl
+
+/-- applyRO commutes with applyAccess by reading off the read-only image of the mode. -/
+theorem CaptureSet.applyAccess_applyRO {cs : CaptureSet s} {a : Access} :
+    (cs.applyAccess a).applyRO = cs.applyAccess a.applyRO := by
+  cases a with
+  | M m =>
+    cases m with
+    | epsilon =>
+      simp only [CaptureSet.applyAccess_M, Access.applyRO, applyMut_epsilon, applyMut_ro]
+    | ro =>
+      simp only [CaptureSet.applyAccess_M, Access.applyRO, applyMut_ro, applyRO_applyRO]
+  | drop => simp only [CaptureSet.applyAccess_drop, Access.applyRO, applyDrop_applyRO]
+
+/-- applyDrop overwrites every mode, so it absorbs a preceding applyRO. -/
+@[simp] theorem CaptureSet.applyRO_applyDrop {cs : CaptureSet s} :
+    cs.applyRO.applyDrop = cs.applyDrop := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.applyRO, CaptureSet.applyDrop, ih1, ih2]
+  | var _ x => rfl
+  | cvar _ x => rfl
+
+/-- applyDrop is idempotent. -/
+@[simp] theorem CaptureSet.applyDrop_applyDrop {cs : CaptureSet s} :
+    cs.applyDrop.applyDrop = cs.applyDrop := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.applyDrop, ih1, ih2]
+  | var _ x => rfl
+  | cvar _ x => rfl
+
+/-- applyDrop absorbs a preceding applyAccess (it overwrites every mode). -/
+@[simp] theorem CaptureSet.applyAccess_applyDrop {cs : CaptureSet s} {a : Access} :
+    (cs.applyAccess a).applyDrop = cs.applyDrop := by
+  cases a with
+  | M m =>
+    cases m with
+    | epsilon => simp only [CaptureSet.applyAccess_M, applyMut_epsilon]
+    | ro => simp only [CaptureSet.applyAccess_M, applyMut_ro, applyRO_applyDrop]
+  | drop => simp only [CaptureSet.applyAccess_drop, applyDrop_applyDrop]
+
 /-- The subset relation on capture sets. -/
 inductive CaptureSet.Subset : CaptureSet s -> CaptureSet s -> Prop where
 | refl :
@@ -331,6 +415,21 @@ theorem CaptureSet.PeaksOnly.applyMut {cs : CaptureSet s} (h : cs.PeaksOnly) (m 
   cases m with
   | epsilon => exact h
   | ro => exact h.applyRO
+
+/-- PeaksOnly is preserved under applyDrop. -/
+theorem CaptureSet.PeaksOnly.applyDrop {cs : CaptureSet s} (h : cs.PeaksOnly) :
+    cs.applyDrop.PeaksOnly := by
+  induction h with
+  | empty => exact PeaksOnly.empty
+  | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
+  | cvar => exact PeaksOnly.cvar
+
+/-- PeaksOnly is preserved under applyAccess. -/
+theorem CaptureSet.PeaksOnly.applyAccess {cs : CaptureSet s} (h : cs.PeaksOnly) (a : Access) :
+    (cs.applyAccess a).PeaksOnly := by
+  cases a with
+  | M m => exact h.applyMut m
+  | drop => exact h.applyDrop
 
 def PeakSet.rename {s1 s2 : Sig} (ps : PeakSet s1) (ρ : Rename s1 s2) : PeakSet s2 :=
   ⟨ps.cs.rename ρ, ps.h.rename ρ⟩

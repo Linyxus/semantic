@@ -265,9 +265,9 @@ theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
 mutual
 
 /-- Helper: peak up a bound var in context. -/
-def CaptureSet.peaksVarBound : (Γ : Ctx s) → (m : Mutability) → BVar s .var → CaptureSet s
+def CaptureSet.peaksVarBound : (Γ : Ctx s) → (m : Access) → BVar s .var → CaptureSet s
 | .push Γ (.var T), m, .here =>
-    (CaptureSet.peaks Γ T.captureSet).rename Rename.succ |> .applyMut m
+    (CaptureSet.peaks Γ T.captureSet).rename Rename.succ |> .applyAccess m
 | .push Γ _, m, .there x =>
     (peaksVarBound Γ m x).rename Rename.succ
 | .lock Γ, m, x => peaksVarBound Γ m x
@@ -291,12 +291,12 @@ theorem CaptureSet.peaks_union (Γ : Ctx s) (cs1 cs2 : CaptureSet s) :
 
 mutual
 /-- peaksVarBound always returns a PeaksOnly capture set. -/
-theorem CaptureSet.peaksVarBound_peaksOnly (Γ : Ctx s) (m : Mutability) (x : BVar s .var) :
+theorem CaptureSet.peaksVarBound_peaksOnly (Γ : Ctx s) (m : Access) (x : BVar s .var) :
     (peaksVarBound Γ m x).PeaksOnly := by
   match Γ, x with
   | .push Γ (.var T), .here =>
     rw [CaptureSet.peaksVarBound]
-    exact (CaptureSet.peaks_peaksOnly Γ T.captureSet).rename Rename.succ |>.applyMut m
+    exact (CaptureSet.peaks_peaksOnly Γ T.captureSet).rename Rename.succ |>.applyAccess m
   | .push Γ _, .there x =>
     rw [CaptureSet.peaksVarBound]
     exact (CaptureSet.peaksVarBound_peaksOnly Γ m x).rename Rename.succ
@@ -402,7 +402,7 @@ theorem CaptureSet.peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
     rfl
   | .push Γ' (.var T), .var m (.bound .here) =>
     simp only [CaptureSet.applyRO, CaptureSet.peaks, CaptureSet.peaksVarBound,
-      CaptureSet.applyMut_ro, CaptureSet.applyMut_applyRO]
+      CaptureSet.applyAccess_applyRO]
   | .push Γ' _, .var m (.bound (.there x')) =>
     simp only [CaptureSet.applyRO, CaptureSet.peaks, CaptureSet.peaksVarBound]
     have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
@@ -423,19 +423,52 @@ theorem CaptureSet.peaks_applyMut_comm {Γ : Ctx s} {C : CaptureSet s} {m : Muta
     simp only [CaptureSet.applyMut_ro]
     exact peaks_applyRO_comm Γ C
 
+theorem CaptureSet.peaks_applyDrop_comm (Γ : Ctx s) (C : CaptureSet s) :
+  C.applyDrop.peaks Γ = (C.peaks Γ).applyDrop := by
+  match Γ, C with
+  | _, .empty => simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+  | Γ, .union C1 C2 =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+    rw [peaks_applyDrop_comm Γ C1, peaks_applyDrop_comm Γ C2]
+    rfl
+  | _, .cvar _ _ => simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+  | _, .var _ (.free _) =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+    rfl
+  | .push Γ' (.var T), .var m (.bound .here) =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks, CaptureSet.peaksVarBound,
+      CaptureSet.applyAccess_drop, CaptureSet.applyAccess_applyDrop]
+  | .push Γ' _, .var m (.bound (.there x')) =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks, CaptureSet.peaksVarBound]
+    have ih := peaks_applyDrop_comm Γ' (.var m (.bound x'))
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks] at ih
+    rw [ih, CaptureSet.applyDrop_rename]
+  | .lock Γ', .var m (.bound x) =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks, CaptureSet.peaksVarBound]
+    have ih := peaks_applyDrop_comm Γ' (.var m (.bound x))
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks] at ih
+    exact ih
+termination_by (sizeOf Γ, sizeOf C)
+
+theorem CaptureSet.peaks_applyAccess_comm {Γ : Ctx s} {C : CaptureSet s} {a : Access} :
+  (C.applyAccess a).peaks Γ = (C.peaks Γ).applyAccess a := by
+  cases a with
+  | M m => simp only [CaptureSet.applyAccess_M]; exact peaks_applyMut_comm
+  | drop => simp only [CaptureSet.applyAccess_drop]; exact peaks_applyDrop_comm Γ C
+
 theorem CaptureSet.var_peaks {Γ : Ctx s}
   (hb : Γ.LookupVar x T) :
-  (CaptureSet.peaks Γ (CaptureSet.var m (.bound x))) = (T.captureSet.applyMut m).peaks Γ := by
+  (CaptureSet.peaks Γ (CaptureSet.var m (.bound x))) = (T.captureSet.applyAccess m).peaks Γ := by
   induction hb with
   | here =>
     simp only [CaptureSet.peaks, CaptureSet.peaksVarBound, Ty.captureSet_rename,
-               peaks_rename_succ_eq, peaks_applyMut_comm]
+               peaks_rename_succ_eq, peaks_applyAccess_comm]
   | there hb' ih =>
     conv_lhs => unfold peaks peaksVarBound
     simp only [Ty.captureSet_rename]
     rw [show peaks _ (CaptureSet.var m (.bound _)) = peaksVarBound _ m _ from by
           unfold peaks; rfl] at ih
-    rw [ih, ← CaptureSet.applyMut_rename, ← peaks_rename_succ_eq]
+    rw [ih, ← CaptureSet.applyAccess_rename, ← peaks_rename_succ_eq]
   | lock _ ih =>
     rw [peaks_lock, peaks_lock]
     exact ih
@@ -471,7 +504,7 @@ def Ctx.consumeset : Ctx s -> PeakSet s
 | .push Γ (.cvar .empty _) => Γ.consumeset.rename Rename.succ
 | .push Γ (.cvar .consume _) =>
     let ps := Γ.consumeset.rename Rename.succ
-    ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
+    ⟨.union ps.cs (.cvar (.M .epsilon) .here), .union ps.h .cvar⟩
 | .lock _ => ⟨.empty, .empty⟩
 
 /-- The set of all peaks in the context that grant access — i.e., are at
@@ -485,7 +518,7 @@ def Ctx.accessset : Ctx s -> PeakSet s
 | .push Γ (.cvar .empty _) => Γ.accessset.rename Rename.succ
 | .push Γ (.cvar .access _) =>
     let ps := Γ.accessset.rename Rename.succ
-    ⟨.union ps.cs (.cvar .epsilon .here), .union ps.h .cvar⟩
+    ⟨.union ps.cs (.cvar (.M .epsilon) .here), .union ps.h .cvar⟩
 | .push Γ (.cvar .consume _) => Γ.accessset.rename Rename.succ
 | .lock Γ => Γ.accessset
 
@@ -555,7 +588,7 @@ termination_by (sizeOf Γ, sizeOf cs)
 
 /-- `peaksVarBound` is invariant under sequential composition (left). -/
 theorem CaptureSet.peaksVarBound_seqcomp_eq
-    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (m : Mutability) (x : BVar s .var) :
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (m : Access) (x : BVar s .var) :
     peaksVarBound Γ m x = peaksVarBound Γ1 m x := by
   match h, x with
   | Ctx.SeqComp.push_var hsub, .here =>
@@ -602,7 +635,7 @@ termination_by (sizeOf Γ, sizeOf cs)
 
 /-- `peaksVarBound` is invariant under sequential composition (right). -/
 theorem CaptureSet.peaksVarBound_seqcomp_eq_right
-    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (m : Mutability) (x : BVar s .var) :
+    {Γ1 Γ2 Γ : Ctx s} (h : Ctx.SeqComp Γ1 Γ2 Γ) (m : Access) (x : BVar s .var) :
     peaksVarBound Γ m x = peaksVarBound Γ2 m x := by
   match h, x with
   | Ctx.SeqComp.push_var hsub, .here =>
