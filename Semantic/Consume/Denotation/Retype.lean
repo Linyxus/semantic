@@ -83,8 +83,11 @@ private lemma coveredby_rename_cancel {A B : CaptureSet s} {k : Kind}
     cases BVar.there.inj hfc
     have hcov'' : (CaptureSet.cvar m' c).CoveredBy B := subset_to_coveredby hsub''
     cases hle with
-    | refl => exact hcov''
-    | ro_eps => exact CaptureSet.CoveredBy.mut_mono_left Mutability.Le.ro_eps hcov''
+    | M hmu =>
+      cases hmu with
+      | refl => exact hcov''
+      | ro_eps => exact CaptureSet.CoveredBy.mut_mono_left Mutability.Le.ro_eps hcov''
+    | drop => exact hcov''
   | union _ _ ih1 ih2 =>
     simp only [CaptureSet.rename] at h
     exact .union_left (ih1 h.union_coveredby_left) (ih2 h.union_coveredby_right)
@@ -174,9 +177,9 @@ private lemma subst_lift_eq_subst_rename
   | cvar m c =>
     change ((CaptureSet.cvar m c).rename (Rename.succ (k := k))).subst σ.lift =
       ((CaptureSet.cvar m c).subst σ).rename (Rename.succ (k := k))
-    change CaptureSet.applyMut m ((σ.cvar c).rename Rename.succ) =
-      ((σ.cvar c).applyMut m).rename Rename.succ
-    exact CaptureSet.applyMut_rename.symm
+    change CaptureSet.applyAccess m ((σ.cvar c).rename Rename.succ) =
+      ((σ.cvar c).applyAccess m).rename Rename.succ
+    exact CaptureSet.applyAccess_rename.symm
 
 theorem Retype.liftTVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
@@ -230,7 +233,7 @@ theorem Retype.liftCVar
       apply cweaken_val_denot
   cvar := fun
     | .here => by
-      change cs = (CaptureSet.cvar Mutability.epsilon (BVar.here (s := s2))).subst
+      change cs = (CaptureSet.cvar (.M Mutability.epsilon) (BVar.here (s := s2))).subst
         (Subst.from_TypeEnv (env2.extend_cvar cs cap))
       rfl
     | .there C => by
@@ -272,12 +275,20 @@ def retype_resolved_capture_set
       simp only [CaptureSet.subst, Var.subst]
   case cvar m C =>
     cases m with
-    | epsilon =>
-      simpa only [CaptureSet.subst] using ρ.cvar C
-    | ro =>
-      change ((env1.lookup_cvar C).1).applyRO =
-        ((σ.cvar C).applyRO).subst (Subst.from_TypeEnv env2)
-      rw [CaptureSet.applyRO_subst]
+    | M mu =>
+      cases mu with
+      | epsilon =>
+        simpa only [CaptureSet.subst, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+          using ρ.cvar C
+      | ro =>
+        change ((env1.lookup_cvar C).1).applyRO =
+          ((σ.cvar C).applyRO).subst (Subst.from_TypeEnv env2)
+        rw [CaptureSet.applyRO_subst]
+        rw [ρ.cvar C]
+    | drop =>
+      change ((env1.lookup_cvar C).1).applyDrop =
+        ((σ.cvar C).applyDrop).subst (Subst.from_TypeEnv env2)
+      rw [CaptureSet.applyDrop_subst]
       rw [ρ.cvar C]
 
 def retype_captureset_denot
@@ -494,7 +505,7 @@ def Retype.open_arg {s : Sig} {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s
   cvar := fun
     | .there C => by
       change (env.lookup_cvar C).1 =
-        (CaptureSet.cvar Mutability.epsilon C).subst (Subst.from_TypeEnv env)
+        (CaptureSet.cvar (.M Mutability.epsilon) C).subst (Subst.from_TypeEnv env)
       rfl
 
 theorem open_arg_val_denot
@@ -536,7 +547,7 @@ def Retype.open_targ {env : TypeEnv s} {S : PureTy s} :
   cvar := fun
     | .there C => by
       change (env.lookup_cvar C).1 =
-        (CaptureSet.cvar Mutability.epsilon C).subst (Subst.from_TypeEnv env)
+        (CaptureSet.cvar (.M Mutability.epsilon) C).subst (Subst.from_TypeEnv env)
       rfl
 
 theorem open_targ_val_denot {env : TypeEnv s} {S : PureTy s} {T : Ty .capt (s,X)} :
@@ -575,7 +586,7 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet :
       rfl
     | .there C0 => by
       change (env.lookup_cvar C0).1 =
-        (CaptureSet.cvar Mutability.epsilon C0).subst (Subst.from_TypeEnv env)
+        (CaptureSet.cvar (.M Mutability.epsilon) C0).subst (Subst.from_TypeEnv env)
       rfl
 
 theorem open_carg_val_denot

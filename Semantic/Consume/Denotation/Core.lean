@@ -264,7 +264,7 @@ def compute_peaks (ρ : TypeEnv s) : CaptureSet s -> CaptureSet s
 | .empty => .empty
 | .union cs1 cs2 => (compute_peaks ρ cs1).union (compute_peaks ρ cs2)
 | .cvar m c => .cvar m c
-| .var m (.bound x) => (ρ.lookup_var x).2.cs.applyMut m
+| .var m (.bound x) => (ρ.lookup_var x).2.cs.applyAccess m
 | .var _ (.free _) => .empty
 
 theorem compute_peaks_is_peak (ρ : TypeEnv s) (cs : CaptureSet s)
@@ -279,7 +279,7 @@ theorem compute_peaks_is_peak (ρ : TypeEnv s) (cs : CaptureSet s)
   | var m x =>
     cases x
     case bound b =>
-      exact (ρ.lookup_var b).2.h.applyMut m
+      exact (ρ.lookup_var b).2.h.applyAccess m
     case free f =>
       exact .empty
 
@@ -293,7 +293,7 @@ def CaptureSet.ground_denot : CaptureSet {} -> CapDenot
 | .empty => fun _ => {}
 | .union cs1 cs2 => fun m =>
   (cs1.ground_denot m) ∪ (cs2.ground_denot m)
-| .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyMut m'
+| .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyAccess m'
 
 def CaptureSet.denot (ρ : TypeEnv s) (cs : CaptureSet s) : CapDenot :=
   (cs.subst (Subst.from_TypeEnv ρ)).ground_denot
@@ -569,15 +569,15 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
-    (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Mutability) :
-    CaptureSet.peaksVarBound Γ m0 x = (ρ.lookup_var x).2.cs.applyMut m0 := by
+    (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Access) :
+    CaptureSet.peaksVarBound Γ m0 x = (ρ.lookup_var x).2.cs.applyAccess m0 := by
   match s, Γ, ρ, x with
   | _, .push Γ' (.var T), .extend ρ' (.var n ps), .here =>
     simp only [EnvTyping] at h
     obtain ⟨_, hps, _⟩ := h
     rw [CaptureSet.peaksVarBound]
-    change CaptureSet.applyMut m0 ((CaptureSet.peaks Γ' T.captureSet).rename Rename.succ) =
-      CaptureSet.applyMut m0 (ps.cs.rename Rename.succ)
+    change CaptureSet.applyAccess m0 ((CaptureSet.peaks Γ' T.captureSet).rename Rename.succ) =
+      CaptureSet.applyAccess m0 (ps.cs.rename Rename.succ)
     rw [hps]
     rfl
   | _, .push Γ' (.var T), .extend ρ' (.var n ps), .there x' =>
@@ -585,19 +585,19 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     obtain ⟨_, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
-    exact CaptureSet.applyMut_rename
+    exact CaptureSet.applyAccess_rename
   | _, .push Γ' (.tvar S), .extend ρ' (.tvar denot), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, _, _, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
-    exact CaptureSet.applyMut_rename
+    exact CaptureSet.applyAccess_rename
   | _, .push Γ' (.cvar _ B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, _, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
-    exact CaptureSet.applyMut_rename
+    exact CaptureSet.applyAccess_rename
   | _, .lock Γ', ρ, x =>
     simp only [EnvTyping] at h
     rw [CaptureSet.peaksVarBound]
@@ -646,7 +646,7 @@ def Memory.is_access_compat
   ∀ mu c,
     (CaptureSet.cvar mu c) ⊆ C.peaks Γ →
     AccessiblePeak Γ c →
-    m.is_compatible (((ρ.lookup_cvar c).2).applyMut mu)
+    m.is_compatible (((ρ.lookup_cvar c).2).applyAccess mu)
 
 /-- `m.preserves_empty_mcells m' Γ ρ` says that for every `.empty`-mode cvar
     binding in `Γ`, the mcells in its denoted capability set keep their exact
@@ -1921,7 +1921,7 @@ theorem ground_denot_is_monotonic {C : CaptureSet {}} :
       unfold CaptureSet.ground_denot
       cases hwf with
       | wf_var_free hex =>
-        exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub x hex).symm
+        exact congrArg (CapabilitySet.applyAccess m) (reachability_of_loc_monotonic hsub x hex).symm
   | cvar m c => cases c  -- No capture variables in empty signature
 
 theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
@@ -1963,7 +1963,7 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
         -- hex : m1.heap (ρ.lookup_var x).1 = some _
         -- Memory.lookup is definitionally equal to heap access
         have h := reachability_of_loc_monotonic hsub (ρ.lookup_var x).1 hex
-        exact congrArg (CapabilitySet.applyMut m) h.symm
+        exact congrArg (CapabilitySet.applyAccess m) h.symm
     | free x =>
       -- Free variable: stays as free variable
       unfold CaptureSet.denot
@@ -1975,12 +1975,12 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
       | wf_var_free hex =>
         -- hex : m1.heap x = some _
         -- Memory.lookup is definitionally equal to heap access
-        exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub x hex).symm
+        exact congrArg (CapabilitySet.applyAccess m) (reachability_of_loc_monotonic hsub x hex).symm
   | cvar m c =>
     -- Capture variable: after substitution becomes ground capture set
     unfold CaptureSet.denot
-    change CaptureSet.ground_denot (((ρ.lookup_cvar c).1).applyMut m) m1 =
-      CaptureSet.ground_denot (((ρ.lookup_cvar c).1).applyMut m) m2
+    change CaptureSet.ground_denot (((ρ.lookup_cvar c).1).applyAccess m) m1 =
+      CaptureSet.ground_denot (((ρ.lookup_cvar c).1).applyAccess m) m2
     -- Need: (ρ.lookup_cvar c).ground_denot m1 = (ρ.lookup_cvar c).ground_denot m2
     -- This follows from ground_denot_is_monotonic
     exact ground_denot_is_monotonic hwf hsub
@@ -2017,7 +2017,9 @@ theorem ground_denot_applyRO_subset {C : CaptureSet {}} {m : Memory} :
     | bound x => cases x
     | free x =>
       simp only [CaptureSet.applyRO, CaptureSet.ground_denot]
-      exact CapabilitySet.applyRO_subset_applyMut
+      cases m' with
+      | M mu => exact CapabilitySet.applyRO_subset_applyMut
+      | drop => exact CapabilitySet.Subset.refl
   | cvar m' c => cases c
 
 /-- Key lemma: (C.ground_denot m).applyRO = C.applyRO.ground_denot m -/
@@ -2033,13 +2035,7 @@ theorem ground_denot_applyRO_comm {C : CaptureSet {}} {m : Memory} :
     | bound x => cases x
     | free x =>
       simp only [CaptureSet.applyRO, CaptureSet.ground_denot]
-      -- LHS: ((reachability_of_loc m.heap x).applyMut m').applyRO
-      -- RHS: (reachability_of_loc m.heap x).applyMut .ro = (reachability_of_loc m.heap x).applyRO
-      cases m' with
-      | epsilon => rfl
-      | ro =>
-        unfold CapabilitySet.applyMut
-        rw [CapabilitySet.applyRO_applyRO]
+      exact CapabilitySet.applyAccess_applyRO
   | cvar m' c => cases c
 
 /-- ground_denot of applyRO is monotonic: if C1 ⊆ C2 then C1.applyRO ⊆ C2.applyRO -/
@@ -3091,8 +3087,8 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     | _ => simp [resolve] at hres
 theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env))))
-  (hpeaks : compute_peaks env T.captureSet = compute_peaks env (.var .epsilon x)) :
-  (Ty.val_denot env (T.refineCaptureSet (.var .epsilon x)))
+  (hpeaks : compute_peaks env T.captureSet = compute_peaks env (.var (.M .epsilon) x)) :
+  (Ty.val_denot env (T.refineCaptureSet (.var (.M .epsilon) x)))
     m
     (.var (x.subst (Subst.from_TypeEnv env))) := by
   cases T with
@@ -3151,7 +3147,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
               rw [hreach_loc, hwf_reach, hcomp]
             -- (.var .epsilon x).denot env m = reachability_of_loc m.heap n
             simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
-                       CapabilitySet.applyMut]
+                       CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
             rw [heq]
             exact CapabilitySet.Subset.refl
           | capability _ => simp at hres
@@ -3195,7 +3191,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             have heq : expand_captures m.heap cs' = reachability_of_loc m.heap n := by
               rw [hreach_loc, hwf_reach, hcomp]
             simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
-                       CapabilitySet.applyMut]
+                       CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
             rw [heq]; exact CapabilitySet.Subset.refl
           | capability _ => simp at hres
           | masked => simp at hres
@@ -3236,7 +3232,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             have heq : expand_captures m.heap cs' = reachability_of_loc m.heap n := by
               rw [hreach_loc, hwf_reach, hcomp]
             simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
-                       CapabilitySet.applyMut]
+                       CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
             rw [heq]; exact CapabilitySet.Subset.refl
           | capability _ => simp at hres
           | masked => simp at hres
@@ -3261,7 +3257,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       simp only [heq]
     · -- covers .epsilon label ((.var .epsilon x).denot env m)
       simp only [CaptureSet.denot, CaptureSet.subst, heq,
-                 CaptureSet.ground_denot, CapabilitySet.applyMut]
+                 CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
       -- reachability_of_loc for capability cell is singleton .epsilon label
       have hlookup' : m.heap label = some (.capability .basic) := by
         simpa only [Memory.lookup] using hlookup
@@ -3289,7 +3285,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       simp only [heq]
     · -- covers .epsilon label ((.var .epsilon x).denot env m)
       simp only [CaptureSet.denot, CaptureSet.subst, heq,
-                 CaptureSet.ground_denot, CapabilitySet.applyMut]
+                 CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
       have hlookup' : m.heap label = some (.capability (.mcell b0 ℓ0)) := by
         simpa only [Memory.lookup] using hlookup
       cases hcell : m.heap label with
@@ -3341,7 +3337,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
             have heq : reachability_of_loc m.heap n = .cap (.access .ro) loc := by
               rw [hreach_loc, hwf_reach, hcomp]
             -- ground_denot for (.var .epsilon (Var.free n)) = reachability_of_loc m.heap n
-            simp only [CaptureSet.ground_denot, CapabilitySet.applyMut]
+            simp only [CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
             rw [heq]
             exact CapabilitySet.covers.here CapMode.Le.refl
           | capability _ => simp at hres

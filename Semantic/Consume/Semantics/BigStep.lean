@@ -12,7 +12,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_alloc {m : Memory} {x : Nat} {b : Bool} {hv R} :
   m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
   (h_post : ∀ l (hfresh : m.heap l = none),
-    Q (.pack (.var .epsilon (.free l)) (.free l)) (m.extend_mcell l b hfresh)) ->
+    Q (.pack (.var (.M .epsilon) (.free l)) (.free l)) (m.extend_mcell l b hfresh)) ->
   Eval C m (.alloc (.free x)) Q
 | eval_val :
   (hv : Exp.IsSimpleVal v) ->
@@ -626,7 +626,7 @@ theorem CaptureSet.reachability_no_drop
     | bound bx => cases bx
     | free loc =>
       simp only [CaptureSet.reachability]
-      exact CapabilitySet.applyMut_no_drop (reachability_of_loc_no_drop m.wf)
+      exact CapabilitySet.applyAccess_no_drop (reachability_of_loc_no_drop m.wf)
   | cvar m' c => cases c
 
 /-- An `Eval` derivation always carries a witness reachability bound: any pack
@@ -670,11 +670,11 @@ theorem Eval.strengthen_reach_bound
         some (.capability (.mcell b .live)) :=
       Memory.extend_mcell_lookup hfresh
     have hreach_eq :
-        (CaptureSet.var Mutability.epsilon (Var.free l)).reachability
+        (CaptureSet.var (.M Mutability.epsilon) (Var.free l)).reachability
           (m_orig.extend_mcell l b hfresh) =
         CapabilitySet.singleton .epsilon l := by
       simp only [CaptureSet.reachability, reachability_of_loc, hheap_l,
-        CapabilitySet.applyMut]
+        CapabilitySet.applyAccess, CapabilitySet.applyMut]
     rw [hreach_eq]
     apply CapabilitySet.SubsetMod.vacuous
     intros mu l' hm hDl'

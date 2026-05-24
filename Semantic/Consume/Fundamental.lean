@@ -80,7 +80,7 @@ theorem typed_env_lookup_var_reachability
 theorem sem_typ_var
   (hx : Γ.LookupVar x T) :
   {} # Γ ⊨ (Exp.var (.bound x)) :
-    (.typ (T.refineCaptureSet (.var .epsilon (.bound x)))) := by
+    (.typ (T.refineCaptureSet (.var (.M .epsilon) (.bound x)))) := by
   intro env m hts
   simp only []
   intro _
@@ -89,10 +89,10 @@ theorem sem_typ_var
   -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
   have h_lookup := typed_env_lookup_var hts hx
   have hpeaks :
-      compute_peaks env T.captureSet = compute_peaks env (.var .epsilon (.bound x)) := by
+      compute_peaks env T.captureSet = compute_peaks env (.var (.M .epsilon) (.bound x)) := by
     rw [← compute_peaks_correct hts T.captureSet]
-    rw [← compute_peaks_correct hts (.var .epsilon (.bound x))]
-    simpa using (CaptureSet.var_peaks (m := .epsilon) (x := x) (T := T) hx).symm
+    rw [← compute_peaks_correct hts (.var (.M .epsilon) (.bound x))]
+    simpa using (CaptureSet.var_peaks (m := .M .epsilon) (x := x) (T := T) hx).symm
   have h_refined := val_denot_refine (x := .bound x) h_lookup hpeaks
   simp only [Var.subst, Subst.from_TypeEnv] at h_refined
   exact h_refined
@@ -217,16 +217,7 @@ private theorem captureSet_subst_applyMut_comm
   | epsilon => rfl
   | ro =>
     simp only [CaptureSet.applyMut_ro]
-    induction C with
-    | empty => rfl
-    | union C1 C2 ih1 ih2 =>
-      simp only [CaptureSet.applyRO, CaptureSet.subst, ih1, ih2]
-    | var m' v => cases v <;> rfl
-    | cvar m' c =>
-      simp only [CaptureSet.applyRO, CaptureSet.subst]
-      cases m' with
-      | epsilon => rfl
-      | ro => simp [CaptureSet.applyMut, CaptureSet.applyRO_applyRO]
+    exact CaptureSet.applyRO_subst
 
 /-- `applyMut` on a general `CaptureSet s` commutes with `denot`. -/
 private theorem captureSet_denot_applyMut_comm
@@ -273,6 +264,91 @@ private theorem hasmem_applyMut_lift {C : CapabilitySet} {mu : CapMode}
   | ro =>
     simp only [CapabilitySet.applyMut]
     exact ⟨mu.applyRO, CapabilitySet.hasmem_applyRO_of_hasmem h⟩
+
+/-- Applying the read-only image of any access mode to a capability set equals
+    `applyRO` (both `.M .ro` and `.drop` collapse to read-only here). -/
+private theorem capSet_applyAccess_applyRO_mode {C : CapabilitySet} {a : Access} :
+    C.applyAccess a.applyRO = C.applyRO := by
+  cases a with
+  | M m => simp only [Access.applyRO, CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
+  | drop => simp only [Access.applyRO, CapabilitySet.applyAccess_drop]
+
+/-- `applyDrop` and `applyRO` on a ground capture set have the same `ground_denot`
+    (the mode difference collapses at the capability level). -/
+private theorem ground_denot_applyDrop_eq_applyRO {C : CaptureSet {}} {store : Memory} :
+    (C.applyDrop).ground_denot store = (C.applyRO).ground_denot store := by
+  induction C with
+  | empty => rfl
+  | union C1 C2 ih1 ih2 =>
+    simp only [CaptureSet.applyDrop, CaptureSet.applyRO, CaptureSet.ground_denot, ih1, ih2]
+  | var m' v =>
+    cases v with
+    | bound x => cases x
+    | free x =>
+      simp only [CaptureSet.applyDrop, CaptureSet.applyRO, CaptureSet.ground_denot,
+        CapabilitySet.applyAccess_drop]
+      exact capSet_applyAccess_applyRO_mode.symm
+  | cvar _ c => cases c
+
+/-- `applyAccess` on a `CaptureSet {}` commutes with `ground_denot`. -/
+private theorem captureSet_ground_denot_applyAccess_comm
+    {C : CaptureSet {}} {store : Memory} {a : Access} :
+    (C.applyAccess a).ground_denot store = (C.ground_denot store).applyAccess a := by
+  cases a with
+  | M mty =>
+    simp only [CaptureSet.applyAccess_M, CapabilitySet.applyAccess_M]
+    exact captureSet_ground_denot_applyMut_comm
+  | drop =>
+    simp only [CaptureSet.applyAccess_drop, CapabilitySet.applyAccess_drop]
+    rw [ground_denot_applyDrop_eq_applyRO]
+    exact ground_denot_applyRO_comm.symm
+
+/-- From `hasmem mu l (C.applyAccess a)`, extract a witness for `l` in `C`. -/
+private theorem hasmem_of_applyAccess {C : CapabilitySet} {a : Access} {mu : CapMode}
+    {l : Nat} (h : (C.applyAccess a).hasmem mu l) :
+    ∃ mu', C.hasmem mu' l := by
+  cases a with
+  | M m =>
+    simp only [CapabilitySet.applyAccess_M] at h
+    exact hasmem_of_applyMut h
+  | drop =>
+    simp only [CapabilitySet.applyAccess_drop] at h
+    obtain ⟨mu', _, hm⟩ := CapabilitySet.hasmem_applyRO_iff.mp h
+    exact ⟨mu', hm⟩
+
+/-- Lift `hasmem` through `applyAccess`. -/
+private theorem hasmem_applyAccess_lift {C : CapabilitySet} {mu : CapMode}
+    {l : Nat} (h : C.hasmem mu l) (a : Access) :
+    ∃ mu', (C.applyAccess a).hasmem mu' l := by
+  cases a with
+  | M m => simpa only [CapabilitySet.applyAccess_M] using hasmem_applyMut_lift h m
+  | drop =>
+    simp only [CapabilitySet.applyAccess_drop]
+    exact ⟨mu.applyRO, CapabilitySet.hasmem_applyRO_of_hasmem h⟩
+
+/-- `applyAccess` on a general `CaptureSet s` commutes with `denot`. -/
+private theorem captureSet_denot_applyAccess_comm
+    {s : Sig} {env : TypeEnv s} {C : CaptureSet s} {store : Memory} {a : Access} :
+    (C.applyAccess a).denot env store = (C.denot env store).applyAccess a := by
+  unfold CaptureSet.denot
+  rw [CaptureSet.applyAccess_subst, captureSet_ground_denot_applyAccess_comm]
+
+/-- If `Y` covers `mu` at `l`, and a `hasmem` witness in `reach.applyAccess a`
+    forces the stability of `mu`, then `Y.applyAccess a` covers `mu` at `l`. -/
+private theorem covers_applyAccess_of_covers_of_hasmem
+    {Y reach : CapabilitySet} {a : Access} {mu : CapMode} {l l' : Nat}
+    (hcov : Y.covers mu l) (hmem : (reach.applyAccess a).hasmem mu l') :
+    (Y.applyAccess a).covers mu l := by
+  cases a with
+  | M mu0 =>
+    cases mu0 with
+    | epsilon => simpa only [CapabilitySet.applyAccess_M, CapabilitySet.applyMut] using hcov
+    | ro =>
+      simp only [CapabilitySet.applyAccess_M, CapabilitySet.applyMut] at hmem ⊢
+      exact CapabilitySet.covers_applyRO_of_covers hcov (CapabilitySet.hasmem_applyRO_fixed hmem)
+  | drop =>
+    simp only [CapabilitySet.applyAccess_drop] at hmem ⊢
+    exact CapabilitySet.covers_applyRO_of_covers hcov (CapabilitySet.hasmem_applyRO_fixed hmem)
 
 /-- Subset on `CapabilitySet` preserves location membership (modulo mode). -/
 private theorem hasmem_of_capabilitySet_subset {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2)
@@ -341,11 +417,11 @@ private theorem consumable_to_consume_witness_peaks
       rename_i B
       have hdenot :
           (CaptureSet.cvar m c).denot env store
-            = ((env.lookup_cvar c).2).applyMut m := by
-        change ((env.lookup_cvar c).1.applyMut m).ground_denot store = _
-        rw [captureSet_ground_denot_applyMut_comm, ← typed_env_cvar_cap_eq hts c]
+            = ((env.lookup_cvar c).2).applyAccess m := by
+        change ((env.lookup_cvar c).1.applyAccess m).ground_denot store = _
+        rw [captureSet_ground_denot_applyAccess_comm, ← typed_env_cvar_cap_eq hts c]
       rw [hdenot] at hmem
-      obtain ⟨mu', hmem'⟩ := hasmem_of_applyMut hmem
+      obtain ⟨mu', hmem'⟩ := hasmem_of_applyAccess hmem
       exact ⟨c, B, mu', hLookup, hmem'⟩
 
 mutual
@@ -413,7 +489,7 @@ termination_by 2 * (sizeOf Γ + sizeOf C) + 1
 private theorem hasmem_compute_peaks_denot_var_bound
     {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
-    {x : BVar s .var} {m : Mutability} {l : Nat} {mu : CapMode}
+    {x : BVar s .var} {m : Access} {l : Nat} {mu : CapMode}
     (hmem : ((CaptureSet.var m (.bound x)).denot env store).hasmem mu l) :
     ∃ mu', ((compute_peaks env (CaptureSet.var m (.bound x))).denot env store).hasmem mu' l := by
   match s, Γ, env, hts, hΓ, x, hmem with
@@ -425,8 +501,8 @@ private theorem hasmem_compute_peaks_denot_var_bound
     have hT_cs : T.captureSet.IsClosed := Ty.captureSet_isClosed hT
     -- (.var m (.bound .here)).denot env store = (reachability_of_loc store.heap n).applyMut m.
     change CapabilitySet.hasmem mu l
-      ((reachability_of_loc store.heap n).applyMut m) at hmem
-    obtain ⟨mu0, hmem0⟩ := hasmem_of_applyMut hmem
+      ((reachability_of_loc store.heap n).applyAccess m) at hmem
+    obtain ⟨mu0, hmem0⟩ := hasmem_of_applyAccess hmem
     -- Bridge: fx's heap reachability ⊆ T.captureSet.denot env_rest store.
     have hreach_sub : reachability_of_loc store.heap n ⊆ T.captureSet.denot env_rest store := by
       have h := val_denot_enforces_captures hts_rest (.var (.free n)) hval_T
@@ -449,7 +525,7 @@ private theorem hasmem_compute_peaks_denot_var_bound
     -- hmem_cp now lives at `compute_peaks env (T.captureSet.rename Rename.succ)`.
     -- Apply applyMut m: get a witness for the m-mutated version.
     obtain ⟨mu_final, h_final⟩ :=
-      hasmem_applyMut_lift hmem_cp m
+      hasmem_applyAccess_lift hmem_cp m
     -- ps.cs = compute_peaks env_rest T.captureSet via hps_eq + compute_peaks_correct.
     have hps_cs : ps.cs = compute_peaks env_rest T.captureSet := by
       rw [hps_eq]
@@ -458,9 +534,9 @@ private theorem hasmem_compute_peaks_denot_var_bound
     -- Build the equality lifting the renamed compute_peaks back through applyMut m.
     have hcp_eq : compute_peaks (env_rest.extend_var n ps) (CaptureSet.var m (.bound BVar.here))
                 = (compute_peaks (env_rest.extend_var n ps)
-                    (T.captureSet.rename Rename.succ)).applyMut m := by
-      change ((ps.rename Rename.succ).cs.applyMut m) = _
-      change (ps.cs.rename Rename.succ).applyMut m = _
+                    (T.captureSet.rename Rename.succ)).applyAccess m := by
+      change ((ps.rename Rename.succ).cs.applyAccess m) = _
+      change (ps.cs.rename Rename.succ).applyAccess m = _
       rw [hps_cs, hcp_rename]
       rfl
     refine ⟨mu_final, ?_⟩
@@ -468,7 +544,7 @@ private theorem hasmem_compute_peaks_denot_var_bound
     change CapabilitySet.hasmem mu_final l
       ((compute_peaks (env_rest.extend_var n ps) (CaptureSet.var m (.bound BVar.here))).denot
         (env_rest.extend_var n ps) store)
-    rw [hcp_eq, captureSet_denot_applyMut_comm]
+    rw [hcp_eq, captureSet_denot_applyAccess_comm]
     exact h_final
 
   | _, .push Γ_rest (.var T), .extend env_rest (.var n ps), hts, hΓ, .there x', hmem =>
@@ -660,7 +736,7 @@ private theorem consumeset_hasmem_via_cs
         change (cs0.ground_denot store).hasmem mu l at hmem
         change ((Γ'.consumeset.rename Rename.succ).cs.denot
                   (env'.extend_cvar cs0 cap0) store
-                 ∪ (CaptureSet.cvar Mutability.epsilon BVar.here).denot
+                 ∪ (CaptureSet.cvar (.M Mutability.epsilon) BVar.here).denot
                      (env'.extend_cvar cs0 cap0) store).hasmem mu l
         exact CapabilitySet.hasmem.right hmem
       | there hlk' =>
@@ -684,7 +760,7 @@ private theorem consumeset_hasmem_via_cs
         | consume =>
           change ((Γ'.consumeset.rename Rename.succ).cs.denot
                     (env'.extend_cvar cs0 cap0) store
-                   ∪ (CaptureSet.cvar Mutability.epsilon BVar.here).denot
+                   ∪ (CaptureSet.cvar (.M Mutability.epsilon) BVar.here).denot
                        (env'.extend_cvar cs0 cap0) store).hasmem mu l
           apply CapabilitySet.hasmem.left
           change ((Γ'.consumeset.cs.rename Rename.succ).denot
@@ -755,7 +831,7 @@ private theorem accessset_hasmem_via_cs
         change (cs0.ground_denot store).hasmem mu l at hmem
         change ((Γ'.accessset.cs.rename Rename.succ).denot
                   (env'.extend_cvar cs0 cap0) store
-                 ∪ (CaptureSet.cvar Mutability.epsilon BVar.here).denot
+                 ∪ (CaptureSet.cvar (.M Mutability.epsilon) BVar.here).denot
                      (env'.extend_cvar cs0 cap0) store).hasmem mu l
         exact CapabilitySet.hasmem.right hmem
       | there hlk' =>
@@ -775,7 +851,7 @@ private theorem accessset_hasmem_via_cs
         | access =>
           change ((Γ'.accessset.cs.rename Rename.succ).denot
                     (env'.extend_cvar cs0 cap0) store
-                   ∪ (CaptureSet.cvar Mutability.epsilon BVar.here).denot
+                   ∪ (CaptureSet.cvar (.M Mutability.epsilon) BVar.here).denot
                        (env'.extend_cvar cs0 cap0) store).hasmem mu l
           apply CapabilitySet.hasmem.left
           exact heq ▸ ihres
@@ -888,11 +964,11 @@ private theorem consumable_to_consume_covers_witness_peaks
       rename_i B
       have hdenot :
           (CaptureSet.cvar m c).denot env store
-            = ((env.lookup_cvar c).2).applyMut m := by
-        change ((env.lookup_cvar c).1.applyMut m).ground_denot store = _
-        rw [captureSet_ground_denot_applyMut_comm, ← typed_env_cvar_cap_eq hts c]
+            = ((env.lookup_cvar c).2).applyAccess m := by
+        change ((env.lookup_cvar c).1.applyAccess m).ground_denot store = _
+        rw [captureSet_ground_denot_applyAccess_comm, ← typed_env_cvar_cap_eq hts c]
       rw [hdenot] at hmem
-      exact ⟨c, B, hLookup, CapabilitySet.hasmem_applyMut_implies_covers hmem⟩
+      exact ⟨c, B, hLookup, CapabilitySet.hasmem_applyAccess_implies_covers hmem⟩
 
 /-- Parallel of `consumable_to_consume_covers_witness_peaks` for `accessible`. -/
 private theorem accessible_to_access_covers_witness_peaks
@@ -936,11 +1012,11 @@ private theorem accessible_to_access_covers_witness_peaks
       rename_i B locked
       have hdenot :
           (CaptureSet.cvar m c).denot env store
-            = ((env.lookup_cvar c).2).applyMut m := by
-        change ((env.lookup_cvar c).1.applyMut m).ground_denot store = _
-        rw [captureSet_ground_denot_applyMut_comm, ← typed_env_cvar_cap_eq hts c]
+            = ((env.lookup_cvar c).2).applyAccess m := by
+        change ((env.lookup_cvar c).1.applyAccess m).ground_denot store = _
+        rw [captureSet_ground_denot_applyAccess_comm, ← typed_env_cvar_cap_eq hts c]
       rw [hdenot] at hmem
-      exact ⟨c, B, locked, hLookup, CapabilitySet.hasmem_applyMut_implies_covers hmem⟩
+      exact ⟨c, B, locked, hLookup, CapabilitySet.hasmem_applyAccess_implies_covers hmem⟩
 
 mutual
 
@@ -985,7 +1061,7 @@ termination_by 2 * (sizeOf Γ + sizeOf C) + 1
 private theorem covers_compute_peaks_denot_var_bound
     {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
-    {x : BVar s .var} {m : Mutability} {l : Nat} {mu : CapMode}
+    {x : BVar s .var} {m : Access} {l : Nat} {mu : CapMode}
     (hmem : ((CaptureSet.var m (.bound x)).denot env store).hasmem mu l) :
     ((compute_peaks env (CaptureSet.var m (.bound x))).denot env store).covers mu l := by
   match s, Γ, env, hts, hΓ, x, hmem with
@@ -997,10 +1073,10 @@ private theorem covers_compute_peaks_denot_var_bound
     have hT_cs : T.captureSet.IsClosed := Ty.captureSet_isClosed hT
     -- hmem : hasmem mu l ((reachability_of_loc store.heap n).applyMut m)
     change CapabilitySet.hasmem mu l
-      ((reachability_of_loc store.heap n).applyMut m) at hmem
+      ((reachability_of_loc store.heap n).applyAccess m) at hmem
     -- Pull off applyMut on the hasmem side: covers mu l (reachability).
     have hcov_reach : (reachability_of_loc store.heap n).covers mu l :=
-      CapabilitySet.hasmem_applyMut_implies_covers hmem
+      CapabilitySet.hasmem_applyAccess_implies_covers hmem
     -- Bridge through reachability ⊆ T.captureSet.denot env_rest store.
     have hreach_sub : reachability_of_loc store.heap n ⊆ T.captureSet.denot env_rest store := by
       have h := val_denot_enforces_captures hts_rest (.var (.free n)) hval_T
@@ -1036,37 +1112,20 @@ private theorem covers_compute_peaks_denot_var_bound
         ((compute_peaks (env_rest.extend_var n ps)
             (T.captureSet.rename Rename.succ)).denot
               (env_rest.extend_var n ps) store).covers mu l := hcov_renamed
-    -- The mode `mu` is `m`-stable (forced by the original hmem's applyMut shape).
-    have hmu_stable : m = .epsilon ∨ (m = .ro ∧ mu = mu.applyRO) := by
-      cases m with
-      | epsilon => exact .inl rfl
-      | ro =>
-        right
-        refine ⟨rfl, ?_⟩
-        simp only [CapabilitySet.applyMut] at hmem
-        exact CapabilitySet.hasmem_applyRO_fixed hmem
-    -- Final equality: compute_peaks of (.var m .bound .here) = (compute_peaks rename).applyMut m.
+    -- compute_peaks (.var m here) = (compute_peaks rename).applyAccess m.
     have hcp_eq : compute_peaks (env_rest.extend_var n ps) (CaptureSet.var m (.bound BVar.here))
                 = (compute_peaks (env_rest.extend_var n ps)
-                    (T.captureSet.rename Rename.succ)).applyMut m := by
-      change ((ps.rename Rename.succ).cs.applyMut m) = _
-      change (ps.cs.rename Rename.succ).applyMut m = _
+                    (T.captureSet.rename Rename.succ)).applyAccess m := by
+      change ((ps.rename Rename.succ).cs.applyAccess m) = _
+      change (ps.cs.rename Rename.succ).applyAccess m = _
       rw [hps_cs, hcp_rename]
       rfl
     change CapabilitySet.covers mu l
       ((compute_peaks (env_rest.extend_var n ps) (CaptureSet.var m (.bound BVar.here))).denot
         (env_rest.extend_var n ps) store)
-    rw [hcp_eq, captureSet_denot_applyMut_comm]
-    -- Goal: covers mu l (Y.applyMut m). Push applyMut over covers using mu's m-stability.
-    cases hmu_stable with
-    | inl heq =>
-      subst heq
-      simpa [CapabilitySet.applyMut] using hcov_cp_ext
-    | inr h =>
-      obtain ⟨heq, hmu_eq⟩ := h
-      subst heq
-      simp only [CapabilitySet.applyMut]
-      exact CapabilitySet.covers_applyRO_of_covers hcov_cp_ext hmu_eq
+    rw [hcp_eq, captureSet_denot_applyAccess_comm]
+    -- Goal: covers mu l (Y.applyAccess m); the original hmem forces mu's stability.
+    exact covers_applyAccess_of_covers_of_hasmem hcov_cp_ext hmem
   | _, .push Γ_rest (.var T), .extend env_rest (.var n ps), hts, hΓ, .there x', hmem =>
     obtain ⟨_, _, hts_rest⟩ := hts
     cases hΓ with | push hΓ_rest _ =>
@@ -1940,19 +1999,19 @@ theorem sem_typ_app
   {T1 : Ty .capt s} {T2 : Ty .exi (s,x)}
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hΓ : Γ.IsClosed)
-  (haccess : (CaptureSet.var .epsilon (.bound x)).accessible Γ)
+  (haccess : (CaptureSet.var (.M .epsilon) (.bound x)).accessible Γ)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ ((Ty.arrow T1 (.var .epsilon (.bound x)) T2)))
+    .typ ((Ty.arrow T1 (.var (.M .epsilon) (.bound x)) T2)))
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ T1) :
-  (.var .epsilon (.bound x)) # Γ ⊨
+  (.var (.M .epsilon) (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
   intro env store hts
   simp only []
   intro hcompat
   have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+        = (CaptureSet.var (.M .epsilon) (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   rw [huse_eq] at hcompat
@@ -1962,7 +2021,7 @@ theorem sem_typ_app
   have h1' := var_exp_denot_inv h1
   -- refineCaptureSet for arrow replaces the capture set:
   --   (Ty.arrow T1 cs T2).refineCaptureSet cs' = Ty.arrow T1 cs' T2
-  -- So h1' : Ty.val_denot env (Ty.arrow T1 (.var .epsilon (.bound x)) T2) ...
+  -- So h1' : Ty.val_denot env (Ty.arrow T1 (.var (.M .epsilon) (.bound x)) T2) ...
   simp only [Ty.exi_val_denot] at h1'
   -- Extract the arrow structure
   have ⟨fx, hfx, cs', T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'
@@ -1994,13 +2053,13 @@ theorem sem_typ_app
     apply eval_post_monotonic _ happ
     intro m'' v hval
     exact (heqv m'' v).mp hval
-  -- Widen the authority: expand_captures cs' ⊆ (.var .epsilon (.bound x)).denot env store
+  -- Widen the authority: expand_captures cs' ⊆ (.var (.M .epsilon) (.bound x)).denot env store
   have happ'' := eval_capability_set_monotonic happ' hR0_sub
   -- Build the application's Eval and widen budget to include consumeset.to_drop.
   have heval := Eval.eval_apply hlk happ''
   apply eval_capability_set_monotonic heval
-  change CaptureSet.denot env (.var .epsilon (.bound x)) store ⊆
-    ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+  change CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store ⊆
+    ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
         (Γ.useset.cs.denot env store)
       ∪ (Γ.consumeset.cs.denot env store).to_drop
   rw [huse_eq]
@@ -2010,10 +2069,10 @@ theorem sem_typ_tapp
   {S : PureTy s} {T : Ty .exi (s,X)}
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   (hΓ : Γ.IsClosed)
-  (haccess : (CaptureSet.var .epsilon (.bound x)).accessible Γ)
+  (haccess : (CaptureSet.var (.M .epsilon) (.bound x)).accessible Γ)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (Ty.poly S.core (.var .epsilon (.bound x)) T)) :
-  (.var .epsilon (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
+    .typ (Ty.poly S.core (.var (.M .epsilon) (.bound x)) T)) :
+  (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
   intro env store hts
   simp only []
   intro hcompat
@@ -2028,9 +2087,9 @@ theorem sem_typ_tapp
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
   subst this
   have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+        = (CaptureSet.var (.M .epsilon) (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- The compat hypothesis is now stated for the use-set; for an accessible
@@ -2038,13 +2097,13 @@ theorem sem_typ_tapp
   rw [huse_eq] at hcompat
   -- Build the body Eval at the narrower budget, then widen to the
   -- `Cf.denot ∪ consumeset.to_drop` budget required by SemanticTyping.
-  suffices heval : Eval ((CaptureSet.var .epsilon (.bound x)).denot env store) store
+  suffices heval : Eval ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store) store
       ((Exp.tapp (.bound x) S).subst (Subst.from_TypeEnv env))
       (fun v m'' =>
         Ty.exi_val_denot env (T.subst (Subst.openTVar S)) m'' v) by
     apply eval_capability_set_monotonic heval
-    show (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+    show (CaptureSet.var (.M .epsilon) (.bound x)).denot env store ⊆
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
@@ -2077,11 +2136,11 @@ theorem sem_typ_capp
   {T : Ty .exi (s,C)}
   {D : CaptureSet s}
   (hΓ : Γ.IsClosed)
-  (haccess : (CaptureSet.var .epsilon (.bound x)).accessible Γ)
+  (haccess : (CaptureSet.var (.M .epsilon) (.bound x)).accessible Γ)
   (hD_closed : D.IsClosed)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cpoly (.bound D) (.var .epsilon (.bound x)) T)) :
-  (.var .epsilon (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
+    .typ (.cpoly (.bound D) (.var (.M .epsilon) (.bound x)) T)) :
+  (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
   intro env store hts
   simp only []
   intro hcompat
@@ -2096,22 +2155,22 @@ theorem sem_typ_capp
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
   subst this
   have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+        = (CaptureSet.var (.M .epsilon) (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- Recover full-denotation compat from the use-set compat (x is accessible).
   rw [huse_eq] at hcompat
   -- Build the body Eval at the narrower budget, then widen to include
   -- `consumeset.to_drop` as required by SemanticTyping.
-  suffices heval : Eval ((CaptureSet.var .epsilon (.bound x)).denot env store) store
+  suffices heval : Eval ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store) store
       ((Exp.capp (.bound x) D).subst (Subst.from_TypeEnv env))
       (fun v m'' =>
         Ty.exi_val_denot env (T.subst (Subst.openCVar D)) m'' v) by
     apply eval_capability_set_monotonic heval
-    show (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+    show (CaptureSet.var (.M .epsilon) (.bound x)).denot env store ⊆
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
@@ -2151,12 +2210,12 @@ theorem sem_typ_capp
 theorem sem_typ_invoke
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hΓ : Γ.IsClosed)
-  (haccess : (CaptureSet.var .epsilon (.bound x)).accessible Γ)
+  (haccess : (CaptureSet.var (.M .epsilon) (.bound x)).accessible Γ)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cap (.var .epsilon (.bound x))))
+    .typ (.cap (.var (.M .epsilon) (.bound x))))
   (hy : {} # Γ ⊨ Exp.var (.bound y) :
     .typ .unit) :
-  (.var .epsilon (.bound x)) # Γ ⊨
+  (.var (.M .epsilon) (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : .typ .unit := by
   intro env store hts
   simp only []
@@ -2183,22 +2242,22 @@ theorem sem_typ_invoke
   simp only [Exp.subst, Subst.from_TypeEnv, Var.subst, CaptureSet.denot, List.empty_eq]
   -- Show env.lookup_var x is covered in the capability set
   have hcov :
-    (CaptureSet.denot env (.var .epsilon (.bound x)) store).covers
+    (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store).covers
       (.access .epsilon) (env.lookup_var x).1 := hmem_cap
   -- The use-set after tightening equals var.denot via accessibility.
   have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+        = (CaptureSet.var (.M .epsilon) (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   -- Build the Eval at the narrower budget, then widen to include consumeset.to_drop.
-  suffices heval : Eval (CaptureSet.denot env (.var .epsilon (.bound x)) store) store
+  suffices heval : Eval (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) store
       (Exp.app (Var.free (env.lookup_var x).1) (Var.free (env.lookup_var y).1))
       (fun v m' => Ty.exi_val_denot env Ty.unit.typ m' v) by
     apply eval_capability_set_monotonic heval
-    change CaptureSet.denot env (.var .epsilon (.bound x)) store ⊆
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+    change CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store ⊆
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
@@ -2330,7 +2389,7 @@ theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
   (hx : Γ.LookupVar x (.cell C)) :
   {} # Γ ⊨ Exp.reader (.bound x) :
-    (.typ (.reader (.var .ro (.bound x)))) := by
+    (.typ (.reader (.var (.M .ro) (.bound x)))) := by
   intro env store hts
   simp only []
   intro _
@@ -2355,11 +2414,11 @@ theorem sem_typ_reader
       simpa [Memory.lookup] using hlookup_cell
     · -- covers (.access .ro) label
       have hden :
-        CaptureSet.denot env (CaptureSet.var .ro (Var.bound x)) store
+        CaptureSet.denot env (CaptureSet.var (.M .ro) (Var.bound x)) store
           = CapabilitySet.singleton .ro (env.lookup_var x).1 := by
         simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv, Var.subst,
-              CaptureSet.ground_denot, CapabilitySet.applyMut, CapabilitySet.applyRO,
-              CapabilitySet.singleton, reachability_of_loc, hlookup_cell,
+              CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut,
+              CapabilitySet.applyRO, CapabilitySet.singleton, reachability_of_loc, hlookup_cell,
               CapMode.applyRO]
       have hcov_singleton :
           CapabilitySet.covers (.access .ro) (env.lookup_var x).1
@@ -2370,7 +2429,7 @@ theorem sem_typ_reader
 theorem sem_typ_alloc
   {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ .bool) :
-  {} # Γ ⊨ Exp.alloc (.bound x) : .exi (.cell (.cvar .epsilon .here)) := by
+  {} # Γ ⊨ Exp.alloc (.bound x) : .exi (.cell (.cvar (.M .epsilon) .here)) := by
   intro env store hts
   simp only []
   intro _
@@ -2409,7 +2468,7 @@ theorem sem_typ_alloc
             (Exp.alloc (Var.free fx))
             (fun v m' =>
               Ty.exi_val_denot env
-                (Ty.exi (Ty.cell (CaptureSet.cvar Mutability.epsilon BVar.here))) m' v) := by
+                (Ty.exi (Ty.cell (CaptureSet.cvar (.M Mutability.epsilon) BVar.here))) m' v) := by
         intro b hbt hbf
         have hunwrap : unwrap = (if b then Exp.btrue else Exp.bfalse) := by
           cases b
@@ -2428,10 +2487,9 @@ theorem sem_typ_alloc
           refine ⟨CaptureSet.WfInHeap.wf_var_free hlookup_l, ?_⟩
           simp only [Ty.val_denot]
           refine ⟨CaptureSet.WfInHeap.wf_var_free hlookup_l, l, b, .live, rfl, hlookup_l, ?_⟩
-          change ((CaptureSet.var Mutability.epsilon (Var.free l)).ground_denot m').covers
+          change ((CaptureSet.var (.M Mutability.epsilon) (Var.free l)).ground_denot m').covers
             (.access Mutability.epsilon) l
-          simp only [CaptureSet.ground_denot, reachability_of_loc, hlookup_l,
-            CapabilitySet.applyMut]
+          simp only [CaptureSet.ground_denot, reachability_of_loc, hlookup_l]
           exact CapabilitySet.covers.here CapMode.Le.refl
       rcases hbool with hb | hb
       · exact hclose true (fun _ => hb) (by intro h; cases h)
@@ -2440,10 +2498,10 @@ theorem sem_typ_alloc
 
 theorem sem_typ_drop {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cell (.var .epsilon (.bound x))))
+    .typ (.cell (.var (.M .epsilon) (.bound x))))
   (hΓ : Γ.IsClosed)
-  (hcons : (CaptureSet.var .epsilon (.bound x) : CaptureSet s).consumable Γ) :
-  (.var .epsilon (.bound x)) # Γ ⊨ Exp.drop (.bound x) : .typ .unit := by
+  (hcons : (CaptureSet.var (.M .epsilon) (.bound x) : CaptureSet s).consumable Γ) :
+  (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.drop (.bound x) : .typ .unit := by
   intro env store hts
   simp only []
   intro hcompat
@@ -2462,19 +2520,20 @@ theorem sem_typ_drop {x : BVar s .var}
   simp only [Exp.subst, Subst.from_TypeEnv, Var.subst, List.empty_eq]
   -- Prove covers: env.lookup_var x is covered by the budget capture set
   have hcov :
-    (((CaptureSet.var .epsilon (Var.bound x)).subst
+    (((CaptureSet.var (.M .epsilon) (Var.bound x)).subst
       (Subst.from_TypeEnv env)).ground_denot store).covers (.access .epsilon)
         (env.lookup_var x).1 := by
     simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
-          CapabilitySet.applyMut, reachability_of_loc, hlk_cell, CapabilitySet.singleton]
+          reachability_of_loc, hlk_cell, CapabilitySet.singleton]
     exact CapabilitySet.covers.here CapMode.Le.refl
   -- Use hcompat to derive that the cell is live
   have hlive : ℓ0 = .live := by
     have hbudget_denot :
-      ((CaptureSet.var .epsilon (Var.bound x)).denot env store) =
+      ((CaptureSet.var (.M .epsilon) (Var.bound x)).denot env store) =
         CapabilitySet.singleton .epsilon (env.lookup_var x).1 := by
       simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
-        CaptureSet.ground_denot, CapabilitySet.applyMut, reachability_of_loc, hlk_cell]
+        CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut,
+        reachability_of_loc, hlk_cell]
     have hcompat' : store.is_compatible (CapabilitySet.singleton .epsilon (env.lookup_var x).1) :=
       hbudget_denot ▸ hcompat
     exact hcompat' (.access .epsilon) (env.lookup_var x).1 b0 ℓ0
@@ -2485,11 +2544,11 @@ theorem sem_typ_drop {x : BVar s .var}
     simpa [Memory.lookup] using hlk_cell
   -- Extract a `.consume`-unlocked cvar witness for the drop location.
   have hbudget_hasmem :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).hasmem
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).hasmem
         (.access .epsilon) (env.lookup_var x).1 := by
     simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
-      CaptureSet.ground_denot, CapabilitySet.applyMut, reachability_of_loc, hlk_cell,
-      CapabilitySet.singleton]
+      CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut,
+      reachability_of_loc, hlk_cell, CapabilitySet.singleton]
     exact CapabilitySet.hasmem.here
   obtain ⟨c, B, mu', hlookup_cvar, hcvar_mem⟩ :=
     consumable_to_consume_witness hts hΓ CaptureSet.IsClosed.var_bound hcons hbudget_hasmem
@@ -2514,17 +2573,17 @@ theorem sem_typ_drop {x : BVar s .var}
 theorem sem_typ_read
   {x : BVar s .var}
   (hΓ : Γ.IsClosed)
-  (haccess : (CaptureSet.var .epsilon (.bound x)).accessible Γ)
+  (haccess : (CaptureSet.var (.M .epsilon) (.bound x)).accessible Γ)
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.reader C)) :
-  (.var .epsilon (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ .bool := by
+  (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ .bool := by
   intro env store hts
   simp only []
   intro hcompat
   -- `x` is accessible; recover the full-denotation compat from the use-set compat.
   have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+        = (CaptureSet.var (.M .epsilon) (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   rw [huse_eq] at hcompat
@@ -2549,21 +2608,21 @@ theorem sem_typ_read
     simpa [resolve_reachability] using heq
   have hcov :
       CapabilitySet.covers (.access .ro) y
-        (((CaptureSet.var .epsilon (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot
+        (((CaptureSet.var (.M .epsilon) (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot
           store) := by
     have hden :
-        (((CaptureSet.var .epsilon (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot
+        (((CaptureSet.var (.M .epsilon) (Var.bound x)).subst (Subst.from_TypeEnv env)).ground_denot
           store) = CapabilitySet.singleton .ro y := by
       simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
-            CapabilitySet.applyMut, hreach]
+            CapabilitySet.applyAccess_M, CapabilitySet.applyMut, hreach]
     simpa [hden] using (CapabilitySet.covers.here (l:=y) CapMode.Le.refl)
   -- Use hcompat to derive that the cell at y is live.
   have hlive : ℓ0 = .live := by
     have hbudget_denot :
-        ((CaptureSet.var .epsilon (Var.bound x)).denot env store) =
+        ((CaptureSet.var (.M .epsilon) (Var.bound x)).denot env store) =
           CapabilitySet.singleton .ro y := by
       simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
-        CaptureSet.ground_denot, CapabilitySet.applyMut, hreach]
+        CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut, hreach]
     have hcompat' : store.is_compatible (CapabilitySet.singleton .ro y) :=
       hbudget_denot ▸ hcompat
     exact hcompat' (.access .ro) y b0 ℓ0 CapabilitySet.hasmem.here hlookup_cell
@@ -2575,13 +2634,13 @@ theorem sem_typ_read
   have hlookup_cell' : store.lookup y = some (.capability (.mcell b0 .live)) := by
     simpa [Memory.lookup] using hlookup_cell
   -- Build the read at the narrower budget, then widen.
-  suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
+  suffices heval : Eval (((CaptureSet.var (.M .epsilon) (Var.bound x)).subst
                             (Subst.from_TypeEnv env)).ground_denot store) store
       (Exp.read (Var.free (env.lookup_var x).1))
       (fun v m' => Ty.exi_val_denot env Ty.bool.typ m' v) by
     apply eval_capability_set_monotonic heval
-    change (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+    change (CaptureSet.var (.M .epsilon) (.bound x)).denot env store ⊆
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
@@ -2593,19 +2652,19 @@ theorem sem_typ_read
 theorem sem_typ_write
   {x y : BVar s .var}
   (hΓ : Γ.IsClosed)
-  (haccess : (CaptureSet.var .epsilon (.bound x)).accessible Γ)
+  (haccess : (CaptureSet.var (.M .epsilon) (.bound x)).accessible Γ)
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.cell Cx))
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ .bool) :
-  (.var .epsilon (.bound x)) # Γ ⊨
+  (.var (.M .epsilon) (.bound x)) # Γ ⊨
     Exp.write (.bound x) (.bound y) : .typ .unit := by
   intro env store hts
   simp only []
   intro hcompat
   -- `x` is accessible; recover the full-denotation compat from the use-set compat.
   have huse_eq :
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
-        = (CaptureSet.var .epsilon (.bound x)).denot env store :=
+        = (CaptureSet.var (.M .epsilon) (.bound x)).denot env store :=
     intersect_useset_eq_self_of_accessible hts hΓ
       CaptureSet.IsClosed.var_bound haccess
   rw [huse_eq] at hcompat
@@ -2632,32 +2691,33 @@ theorem sem_typ_write
   simp only [Exp.subst, Subst.from_TypeEnv, Var.subst, List.empty_eq]
   -- Prove covers: env.lookup_var x is covered by the denotation of the write's capture set
   have hcov :
-    (((CaptureSet.var .epsilon (Var.bound x)).subst
+    (((CaptureSet.var (.M .epsilon) (Var.bound x)).subst
       (Subst.from_TypeEnv env)).ground_denot store).covers (.access .epsilon)
         (env.lookup_var x).1 := by
     simp only [CaptureSet.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.ground_denot,
-          CapabilitySet.applyMut, reachability_of_loc, hlk_cell, CapabilitySet.singleton]
+          reachability_of_loc, hlk_cell, CapabilitySet.singleton]
     exact CapabilitySet.covers.here CapMode.Le.refl
   -- Use hcompat to derive that the cell at env.lookup_var x is live.
   have hlive : ℓ0 = .live := by
     have hbudget_denot :
-      ((CaptureSet.var .epsilon (Var.bound x)).denot env store) =
+      ((CaptureSet.var (.M .epsilon) (Var.bound x)).denot env store) =
         CapabilitySet.singleton .epsilon (env.lookup_var x).1 := by
       simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
-        CaptureSet.ground_denot, CapabilitySet.applyMut, reachability_of_loc, hlk_cell]
+        CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut,
+        reachability_of_loc, hlk_cell]
     have hcompat' : store.is_compatible (CapabilitySet.singleton .epsilon (env.lookup_var x).1) :=
       hbudget_denot ▸ hcompat
     exact hcompat' (.access .epsilon) (env.lookup_var x).1 b0 ℓ0
       CapabilitySet.hasmem.here hlk_cell
   subst hlive
   -- Build the write at the narrower budget, then widen.
-  suffices heval : Eval (((CaptureSet.var .epsilon (Var.bound x)).subst
+  suffices heval : Eval (((CaptureSet.var (.M .epsilon) (Var.bound x)).subst
                             (Subst.from_TypeEnv env)).ground_denot store) store
       (Exp.write (Var.free (env.lookup_var x).1) (Var.free (env.lookup_var y).1))
       (fun v m' => Ty.exi_val_denot env Ty.unit.typ m' v) by
     apply eval_capability_set_monotonic heval
-    change (CaptureSet.var .epsilon (.bound x)).denot env store ⊆
-      ((CaptureSet.var .epsilon (.bound x)).denot env store).intersect
+    change (CaptureSet.var (.M .epsilon) (.bound x)).denot env store ⊆
+      ((CaptureSet.var (.M .epsilon) (.bound x)).denot env store).intersect
           (Γ.useset.cs.denot env store)
         ∪ (Γ.consumeset.cs.denot env store).to_drop
     rw [huse_eq]
@@ -2813,7 +2873,7 @@ private theorem consumeset_subset_seqcomp_left
             exact CaptureSet.Subset.union_right_left
               (CaptureSet.Subset.rename' (ih h'))
           | r_empty =>
-            -- Both sides have `union (...rename) (.cvar .epsilon .here)`.
+            -- Both sides have `union (...rename) (.cvar (.M .epsilon) .here)`.
             exact CaptureSet.Subset.union_left
               (CaptureSet.Subset.union_right_left
                 (CaptureSet.Subset.rename' (ih h')))
@@ -3477,21 +3537,31 @@ theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
   have h : reachability_of_loc m'.heap (env.lookup_var x).1 ⊆ T.captureSet.denot env m' := by
     simpa only [Ty.captureSet] using typed_env_lookup_var_reachability hts hlookup
   cases m with
-  | epsilon =>
-    simpa [CaptureSet.ground_denot]
-      using h
-  | ro =>
+  | M mu0 =>
+    cases mu0 with
+    | epsilon =>
+      simpa [CaptureSet.ground_denot]
+        using h
+    | ro =>
+      have hro :
+          (CaptureSet.var (.M .ro) (Var.free (env.lookup_var x).1)).ground_denot m' ⊆
+          reachability_of_loc m'.heap (env.lookup_var x).1 := by
+        simpa [CaptureSet.applyRO, CaptureSet.ground_denot]
+          using (ground_denot_applyRO_subset
+            (C := CaptureSet.var (.M .epsilon) (Var.free (env.lookup_var x).1)) (m := m'))
+      exact CapabilitySet.Subset.trans hro h
+  | drop =>
     have hro :
-        (CaptureSet.var .ro (Var.free (env.lookup_var x).1)).ground_denot m' ⊆
+        (CaptureSet.var .drop (Var.free (env.lookup_var x).1)).ground_denot m' ⊆
         reachability_of_loc m'.heap (env.lookup_var x).1 := by
-      simpa [CaptureSet.applyRO, CaptureSet.ground_denot]
+      simpa [CapabilitySet.applyAccess_drop, CaptureSet.ground_denot]
         using (ground_denot_applyRO_subset
-          (C := CaptureSet.var .epsilon (Var.free (env.lookup_var x).1)) (m := m'))
+          (C := CaptureSet.var (.M .epsilon) (Var.free (env.lookup_var x).1)) (m := m'))
     exact CapabilitySet.Subset.trans hro h
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s} {useM : UseMode} {locked : Bool}
   (hlookup : Γ.LookupCVar c useM (.bound C) locked) :
-  SemSubcapt Γ (.cvar .epsilon c) C := by
+  SemSubcapt Γ (.cvar (.M .epsilon) c) C := by
   intro env m hts
   unfold CaptureSet.denot
   simp only [CaptureSet.subst, Subst.from_TypeEnv, List.empty_eq]
@@ -4374,7 +4444,7 @@ theorem sem_typ_unpack
   (_hclosed_C1 : C1.IsClosed)
   (hclosed_C2 : C2.IsClosed)
   (ht : C1 # Γ1 ⊨ t : .exi T)
-  (hu : ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar .epsilon (.there .here))) #
+  (hu : ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar (.M .epsilon) (.there .here))) #
         (Γ2.push_cvar .consume .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts
@@ -4492,12 +4562,12 @@ theorem sem_typ_unpack
         CaptureSet.ground_denot_eq_reachability cs m1
       -- The cvar `(.there .here)` resolves to `cs.ground_denot m1` under `env'`.
       have hcvar_denot :
-          (CaptureSet.cvar .epsilon (.there .here)).denot (env'.extend_var fx ps) m1
+          (CaptureSet.cvar (.M .epsilon) (.there .here)).denot (env'.extend_var fx ps) m1
             = cs.ground_denot m1 := by
-        have hc : (CaptureSet.cvar .epsilon (.there .here)).denot (env'.extend_var fx ps) m1
-            = (CaptureSet.cvar .epsilon .here).denot env' m1 :=
+        have hc : (CaptureSet.cvar (.M .epsilon) (.there .here)).denot (env'.extend_var fx ps) m1
+            = (CaptureSet.cvar (.M .epsilon) .here).denot env' m1 :=
           (congrFun (rebind_captureset_denot (Rebind.weaken (env:=env') (x:=fx) (ps:=ps))
-            (CaptureSet.cvar .epsilon .here)) m1).symm
+            (CaptureSet.cvar (.M .epsilon) .here)) m1).symm
         rw [hc]
         rfl
       -- Helper: a doubly-renamed closed-from-`s` set rebinds to its `env` denotation.
@@ -4513,11 +4583,11 @@ theorem sem_typ_unpack
       -- Body budget denotation: `C2.denot env m1 ∪ R`.
       have hbudget_denot :
           ((C2.rename Rename.succ).rename Rename.succ
-              ∪ (CaptureSet.cvar .epsilon (.there .here))).denot
+              ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))).denot
             (env'.extend_var fx ps) m1
           = C2.denot env m1 ∪ cs.ground_denot m1 := by
         change ((C2.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
-            ∪ (CaptureSet.cvar .epsilon (.there .here)).denot (env'.extend_var fx ps) m1
+            ∪ (CaptureSet.cvar (.M .epsilon) (.there .here)).denot (env'.extend_var fx ps) m1
           = C2.denot env m1 ∪ cs.ground_denot m1
         rw [hrebind2 C2, hcvar_denot]
       -- Body consume-set denotation: `Γ2.consumeset.cs.denot env m1 ∪ R`
@@ -4527,7 +4597,7 @@ theorem sem_typ_unpack
             = Γ2.consumeset.cs.denot env m1 ∪ cs.ground_denot m1 := by
         change ((Γ2.consumeset.cs.rename Rename.succ).rename Rename.succ).denot
               (env'.extend_var fx ps) m1
-            ∪ (CaptureSet.cvar .epsilon (.there .here)).denot (env'.extend_var fx ps) m1
+            ∪ (CaptureSet.cvar (.M .epsilon) (.there .here)).denot (env'.extend_var fx ps) m1
           = Γ2.consumeset.cs.denot env m1 ∪ cs.ground_denot m1
         rw [hrebind2 Γ2.consumeset.cs, hcvar_denot]
       have hexp_eq :
@@ -4564,7 +4634,8 @@ theorem sem_typ_unpack
               (env'.extend_var fx ps) m1
             ∪ (((Γ2.consumeset.cs.rename Rename.succ).rename Rename.succ).denot
                   (env'.extend_var fx ps) m1
-                ∪ (CaptureSet.cvar .epsilon (.there .here)).denot (env'.extend_var fx ps) m1) ⊆ _
+                ∪ (CaptureSet.cvar (.M .epsilon) (.there .here)).denot
+                    (env'.extend_var fx ps) m1) ⊆ _
         rw [hrebind2 Γ2.accessset.cs, hrebind2 Γ2.consumeset.cs, hcvar_denot]
         have hacc_mono : Γ2.accessset.cs.denot env m1 = Γ2.accessset.cs.denot env store :=
           (closed_capture_denot_monotonic (accessset_isClosed Γ2) hts hs1).symm
@@ -4630,7 +4701,7 @@ theorem sem_typ_unpack
           m1.is_compatible
             (CapabilitySet.intersect
               (((C2.rename Rename.succ).rename Rename.succ
-                ∪ (CaptureSet.cvar .epsilon (.there .here))).denot (env'.extend_var fx ps) m1)
+                ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))).denot (env'.extend_var fx ps) m1)
               ((Γ2.push_cvar .consume .unbound,x:T).useset.cs.denot
                 (env'.extend_var fx ps) m1)) := by
         rw [hbudget_denot]
@@ -4643,7 +4714,7 @@ theorem sem_typ_unpack
       -- Widen the body budget to the continuation budget `Cagg ∪ R ∪ R.to_drop`.
       have hsub_budget :
           (((C2.rename Rename.succ).rename Rename.succ
-                ∪ (CaptureSet.cvar .epsilon (.there .here))).denot
+                ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))).denot
               (env'.extend_var fx ps) m1).intersect
               ((Γ2.push_cvar .consume .unbound,x:T).useset.cs.denot (env'.extend_var fx ps) m1)
             ∪ ((Γ2.push_cvar .consume .unbound,x:T).consumeset.cs.denot
@@ -4779,13 +4850,13 @@ theorem ground_denot_applyMut_comm {C : CaptureSet {}} {m : Memory} {mu : Mutabi
 -- Helper: variable subcaptures its type's capture set with matching mutability
 theorem var_subcapt_captureSet_applyMut
   (hlk : Γ.LookupVar x T) :
-  Subcapt Γ (.var m (.bound x)) (T.captureSet.applyMut m) := by
+  Subcapt Γ (.var (.M m) (.bound x)) (T.captureSet.applyMut m) := by
   cases m with
   | epsilon =>
-    simpa [CaptureSet.applyMut] using (Subcapt.sc_var (m := .epsilon) hlk)
+    simpa [CaptureSet.applyMut] using (Subcapt.sc_var (m := .M .epsilon) hlk)
   | ro =>
     simpa [CaptureSet.applyMut]
-      using (Subcapt.sc_ro_mono (Subcapt.sc_var (m := .epsilon) hlk))
+      using (Subcapt.sc_ro_mono (Subcapt.sc_var (m := .M .epsilon) hlk))
 
 -- Helper: applyMut is monotonic for CapabilitySet.Subset
 theorem CapabilitySet.applyMut_mono {C1 C2 : CapabilitySet} {m : Mutability}
@@ -4798,7 +4869,7 @@ theorem CapabilitySet.applyMut_mono {C1 C2 : CapabilitySet} {m : Mutability}
 theorem var_denot_subset_captureSet_denot
   (hlk : Γ.LookupVar x T)
   (henv : EnvTyping Γ env H) :
-  (CaptureSet.var m (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H := by
+  (CaptureSet.var (.M m) (.bound x)).denot env H ⊆ (T.captureSet.applyMut m).denot env H := by
   -- From typed_env_lookup_var_reachability:
   -- reachability_of_loc H.heap (env.lookup_var x).1 ⊆ T.captureSet.denot env H
   have hreach := typed_env_lookup_var_reachability henv hlk
@@ -4809,7 +4880,7 @@ theorem var_denot_subset_captureSet_denot
   -- LHS: (CaptureSet.var m (.bound x)).denot env H
   --    = (reachability_of_loc H.heap (env.lookup_var x).1).applyMut m
   simp only [CaptureSet.denot, CaptureSet.subst, Var.subst, Subst.from_TypeEnv,
-             CaptureSet.ground_denot]
+             CaptureSet.ground_denot, CapabilitySet.applyAccess_M]
   -- RHS: (T.captureSet.applyMut m).denot env H
   --    = (T.captureSet.subst ...).applyMut m).ground_denot H   (by applyMut_subst)
   --    = (T.captureSet.subst ...).ground_denot H).applyMut m   (by ground_denot_applyMut_comm.symm)
@@ -4827,15 +4898,15 @@ theorem var_denot_subset_captureSet_denot
 theorem var_typing_extract_closed_accessible
     {Γ : Ctx s} {x : BVar s .var} {E : Ty .exi s}
     (ht : C # Γ ⊢ Exp.var (.bound x) : E) :
-    Γ.IsClosed ∧ (CaptureSet.var .epsilon (.bound x)).accessible Γ := by
+    Γ.IsClosed ∧ (CaptureSet.var (.M .epsilon) (.bound x)).accessible Γ := by
   generalize hexpr : Exp.var (Var.bound x) = e at ht
   induction ht
   case var hclosed hlk hacc =>
     cases hexpr
     refine ⟨hclosed, ?_⟩
     intro m c hsub
-    have hpeaks_eq := CaptureSet.var_peaks (m := .epsilon) hlk
-    simp only [CaptureSet.applyMut_epsilon] at hpeaks_eq
+    have hpeaks_eq := CaptureSet.var_peaks (m := .M .epsilon) hlk
+    simp only [CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon] at hpeaks_eq
     rw [hpeaks_eq] at hsub
     exact hacc m c hsub
   case subtyp _ _ _ _ _ ih => exact ih hexpr

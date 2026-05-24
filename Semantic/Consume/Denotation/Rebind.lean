@@ -142,9 +142,9 @@ theorem rebind_resolved_capture_set {C : CaptureSet s1}
       exact congrArg (fun y => CaptureSet.var m (.free y)) h
   | cvar m x =>
     have h := ρ.cvar x
-    change (env1.lookup_cvar x).1.applyMut m =
-      (env2.lookup_cvar (f.var x)).1.applyMut m
-    exact congrArg (fun info : CaptureSet {} × CapabilitySet => info.1.applyMut m) h
+    change (env1.lookup_cvar x).1.applyAccess m =
+      (env2.lookup_cvar (f.var x)).1.applyAccess m
+    exact congrArg (fun info : CaptureSet {} × CapabilitySet => info.1.applyAccess m) h
 
 /- Rebinding for CaptureSet.denot -/
 theorem rebind_captureset_denot
@@ -184,7 +184,7 @@ theorem rebind_compute_peaks
       simp only [compute_peaks, CaptureSet.rename, Var.rename]
       have h := congrArg PeakSet.cs (ρ.var_peaks x)
       simp only [PeakSet.rename] at h
-      rw [CaptureSet.applyMut_rename, h]
+      rw [CaptureSet.applyAccess_rename, h]
 
 theorem CaptureSet.Subset.rename' {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
   (hsub : C1 ⊆ C2) : C1.rename f ⊆ C2.rename f := by
@@ -203,7 +203,7 @@ theorem CaptureSet.Subset.rename' {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
 
 theorem CaptureSet.PeaksOnly.cvar_subset_rename_inv
   {cs : CaptureSet s1} (hpo : cs.PeaksOnly) {f : Rename s1 s2}
-  {m : Mutability} {c : BVar s2 .cvar}
+  {m : Access} {c : BVar s2 .cvar}
   (hsub : (.cvar m c) ⊆ cs.rename f) :
   ∃ c', f.var c' = c ∧ (.cvar m c') ⊆ cs := by
   induction hpo with

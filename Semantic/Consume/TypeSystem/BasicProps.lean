@@ -272,7 +272,7 @@ theorem HasType.typed_var_closed
 
 /-- The capture set `{m x}` is closed when `x` is a typed variable. -/
 theorem HasType.typed_var_capture_closed
-  {x : Var Kind.var s} {m : Mutability}
+  {x : Var Kind.var s} {m : Access}
   (ht : C # Γ ⊢ Exp.var x : T) :
   (CaptureSet.var m x).IsClosed := by
   have hx := typed_var_closed ht

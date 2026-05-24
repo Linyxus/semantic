@@ -256,6 +256,20 @@ def to_drop : CapabilitySet -> CapabilitySet
 | .cap _ l => .cap .drop l
 | .union C1 C2 => .union C1.to_drop C2.to_drop
 
+/-- Apply an access mode to all elements: a mutability acts via `applyMut`.
+    The `drop` case is a drop-free placeholder for now (read-only image, which
+    keeps both drop-freeness and applyRO-stability); the real drop authority
+    semantics (via `to_drop`) is wired in the next round. -/
+def applyAccess (a : Access) (C : CapabilitySet) : CapabilitySet :=
+  match a with
+  | .M m => C.applyMut m
+  | .drop => C.applyRO
+
+@[simp] theorem applyAccess_M {m : Mutability} {C : CapabilitySet} :
+    C.applyAccess (.M m) = C.applyMut m := rfl
+@[simp] theorem applyAccess_drop {C : CapabilitySet} :
+    C.applyAccess .drop = C.applyRO := rfl
+
 /-- Decidable check that `(mu, l)` is covered by `C` (i.e. there is some
     `(mu', l)` in `C` with `mu ≤ mu'`). -/
 def coversCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
@@ -380,6 +394,24 @@ theorem applyMut_no_drop {C : CapabilitySet} {m : Mutability} {l : Nat}
   | epsilon => exact h
   | ro => exact applyRO_no_drop h
 
+/-- `applyAccess` preserves drop-freeness (the `drop` case is a placeholder
+    identity for now). -/
+theorem applyAccess_no_drop {C : CapabilitySet} {a : Access} {l : Nat}
+    (h : ¬ hasmem .drop l C) : ¬ hasmem .drop l (C.applyAccess a) := by
+  cases a with
+  | M m => exact applyMut_no_drop h
+  | drop => exact applyRO_no_drop h
+
+/-- applyRO commutes with applyAccess (reading off the read-only image of the mode). -/
+theorem applyAccess_applyRO {C : CapabilitySet} {a : Access} :
+    (C.applyAccess a).applyRO = C.applyAccess a.applyRO := by
+  cases a with
+  | M m =>
+    cases m with
+    | epsilon => simp only [applyAccess_M, applyMut, Access.applyRO]
+    | ro => simp only [applyAccess_M, applyMut, Access.applyRO, applyRO_applyRO]
+  | drop => simp only [applyAccess_drop, Access.applyRO, applyRO_applyRO]
+
 /-- Membership in `C.applyMut mu_op` implies coverage in `C` at the same mode:
     `applyMut` can only weaken modes (or be identity), so a member of the
     weakened set is covered by some original mode ≥ it. -/
@@ -390,6 +422,20 @@ theorem hasmem_applyMut_implies_covers {C : CapabilitySet} {mu_op : Mutability}
   | epsilon => exact hasmem_implies_covers h
   | ro =>
     simp only [applyMut] at h
+    obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
+    subst heq
+    exact covers_of_hasmem_le hm' CapMode.applyRO_le
+
+/-- Membership in `C.applyAccess a` implies coverage in `C` at the same mode. -/
+theorem hasmem_applyAccess_implies_covers {C : CapabilitySet} {a : Access}
+    {mu : CapMode} {l : Nat} (h : (C.applyAccess a).hasmem mu l) :
+    C.covers mu l := by
+  cases a with
+  | M m =>
+    simp only [applyAccess_M] at h
+    exact hasmem_applyMut_implies_covers h
+  | drop =>
+    simp only [applyAccess_drop] at h
     obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
     subst heq
     exact covers_of_hasmem_le hm' CapMode.applyRO_le
@@ -1766,7 +1812,7 @@ def expand_captures
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var m (.free loc) => (reachability_of_loc h loc).applyMut m
+  | .var m (.free loc) => (reachability_of_loc h loc).applyAccess m
   | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
 
 /-- Compute reachability for a heap value. -/
@@ -1919,7 +1965,7 @@ theorem expand_captures_monotonic
       | wf_var_free hex =>
         -- We have hex : h1 loc = some cell_val
         simpa only [expand_captures] using
-          congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub loc hex)
+          congrArg (CapabilitySet.applyAccess m) (reachability_of_loc_monotonic hsub loc hex)
   | cvar m C =>
     -- Impossible: no capability variables in empty signature
     cases C
@@ -2023,7 +2069,7 @@ theorem expand_captures_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
     | bound bv => cases bv
     | free loc =>
       simpa only [expand_captures] using
-        congrArg (CapabilitySet.applyMut m)
+        congrArg (CapabilitySet.applyAccess m)
           (reachability_of_loc_update_mcell h l ℓ hexists b loc)
   | union cs1 cs2 ih1 ih2 =>
     simp only [expand_captures, ih1, ih2]
@@ -2075,7 +2121,7 @@ theorem expand_captures_drop_mcell (h : Heap) (l : Nat)
     | bound bv => cases bv
     | free loc =>
       simpa only [expand_captures] using
-        congrArg (CapabilitySet.applyMut m)
+        congrArg (CapabilitySet.applyAccess m)
           (reachability_of_loc_drop_mcell h l hexists loc)
   | union cs1 cs2 ih1 ih2 =>
     simp only [expand_captures, ih1, ih2]
@@ -2172,7 +2218,7 @@ theorem expand_captures_no_drop {H : Heap} {cs : CaptureSet {}} {l : Nat}
     | bound bx => cases bx
     | free loc =>
       simp only [expand_captures]
-      exact CapabilitySet.applyMut_no_drop (reachability_of_loc_no_drop hwf_H)
+      exact CapabilitySet.applyAccess_no_drop (reachability_of_loc_no_drop hwf_H)
   | cvar m c => cases c
 
 /-- `compute_reachability` is drop-free: each value form expands either to
@@ -2393,7 +2439,7 @@ theorem Exp.wf_rename
 
 /-- A well-formed variable yields a well-formed capture set. -/
 theorem CaptureSet.wf_of_var
-  {m : Mutability}
+  {m : Access}
   {x : Var .var s}
   {H : Heap}
   (hwf : Var.WfInHeap x H) :
@@ -2470,6 +2516,30 @@ theorem CaptureSet.wf_applyMut
   · exact hwf
   · exact wf_applyRO hwf
 
+/-- applyDrop preserves well-formedness of capture sets. -/
+theorem CaptureSet.wf_applyDrop
+  {cs : CaptureSet s}
+  {H : Heap}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap cs.applyDrop H := by
+  induction hwf with
+  | wf_empty => exact WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 => exact WfInHeap.wf_union ih1 ih2
+  | wf_var_free hex => exact WfInHeap.wf_var_free hex
+  | wf_var_bound => exact WfInHeap.wf_var_bound
+  | wf_cvar => exact WfInHeap.wf_cvar
+
+/-- applyAccess preserves well-formedness of capture sets. -/
+theorem CaptureSet.wf_applyAccess
+  {cs : CaptureSet s}
+  {H : Heap}
+  {a : Access}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap (cs.applyAccess a) H := by
+  cases a with
+  | M m => exact wf_applyMut hwf
+  | drop => exact wf_applyDrop hwf
+
 /-- Well-formed substitutions preserve well-formedness of capture sets. -/
 theorem CaptureSet.wf_subst
   {cs : CaptureSet s1}
@@ -2490,7 +2560,7 @@ theorem CaptureSet.wf_subst
     simp only [CaptureSet.subst]
     exact CaptureSet.wf_of_var (Var.wf_subst Var.WfInHeap.wf_bound hwf_σ)
   | wf_cvar =>
-    simp only [CaptureSet.subst]; exact CaptureSet.wf_applyMut (hwf_σ.wf_cvar _)
+    simp only [CaptureSet.subst]; exact CaptureSet.wf_applyAccess (hwf_σ.wf_cvar _)
 
 theorem CaptureBound.wf_subst
   {cb : CaptureBound s1}
@@ -3738,7 +3808,7 @@ def CaptureSet.reachability : CaptureSet {} -> Memory -> CapabilitySet
 | .empty => fun _ => {}
 | .union cs1 cs2 => fun m =>
   (cs1.reachability m) ∪ (cs2.reachability m)
-| .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyMut m'
+| .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyAccess m'
 
 /-- Reachability is preserved under memory subsumption when cs is well-formed. -/
 theorem CaptureSet.reachability_monotonic
@@ -3756,7 +3826,7 @@ theorem CaptureSet.reachability_monotonic
       cases hwf with
       | wf_var_free hex =>
         simpa only [CaptureSet.reachability] using
-          congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub loc hex)
+          congrArg (CapabilitySet.applyAccess m) (reachability_of_loc_monotonic hsub loc hex)
   | cvar m C =>
     cases C
   | union cs1 cs2 ih1 ih2 =>
