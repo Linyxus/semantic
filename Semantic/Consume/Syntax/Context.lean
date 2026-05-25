@@ -10,7 +10,7 @@ inductive Binding : Sig -> Kind -> Type where
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
 | .tvar T, f => .tvar (T.rename f)
-| .cvar m cb, f => .cvar m (cb.rename f)
+| .cvar cb, f => .cvar (cb.rename f)
 
 inductive Ctx : Sig -> Type where
 | empty : Ctx {}
@@ -22,24 +22,23 @@ def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 def Ctx.push_tvar : Ctx s -> PureTy s -> Ctx (s,X)
 | Γ, T => Γ.push (.tvar T)
 
-def Ctx.push_cvar : Ctx s -> UseMode -> CaptureBound s -> Ctx (s,C)
-| Γ, m, cb => Γ.push (.cvar m cb)
+def Ctx.push_cvar : Ctx s -> CaptureBound s -> Ctx (s,C)
+| Γ, cb => Γ.push (.cvar cb)
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
-notation:65 Γ:65 ",C<:" cb:66 => Ctx.push_cvar Γ UseMode.access cb
+notation:65 Γ:65 ",C<:" cb:66 => Ctx.push_cvar Γ cb
 
 /-- A binding is closed if the type it contains is closed. -/
 inductive Binding.IsClosed : Binding s k -> Prop where
 | var : T.IsClosed -> Binding.IsClosed (.var T)
 | tvar : T.IsClosed -> Binding.IsClosed (.tvar T)
-| cvar : cb.IsClosed -> Binding.IsClosed (.cvar m cb)
+| cvar : cb.IsClosed -> Binding.IsClosed (.cvar cb)
 
 /-- A context is closed if all bindings in it are closed. -/
 inductive Ctx.IsClosed : Ctx s -> Prop where
 | empty : Ctx.IsClosed .empty
 | push : Ctx.IsClosed Γ -> b.IsClosed -> Ctx.IsClosed (.push Γ b)
-| lock : Ctx.IsClosed Γ -> Ctx.IsClosed (.lock Γ)
 
 inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> PureTy s -> Prop
 | here :
@@ -47,9 +46,6 @@ inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> PureTy s -> Prop
 | there {S : PureTy s} {b : Binding s k} :
   Ctx.LookupTVar Γ X S ->
   Ctx.LookupTVar (.push Γ b) (.there X) (S.rename Rename.succ)
-| lock {S : PureTy s} :
-  Ctx.LookupTVar Γ X S ->
-  Ctx.LookupTVar (.lock Γ) X S
 
 inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
 | here :
@@ -57,50 +53,35 @@ inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
 | there {T : Ty .capt s} {b : Binding s k} :
   Ctx.LookupVar Γ x T ->
   Ctx.LookupVar (.push Γ b) (.there x) (T.rename Rename.succ)
-| lock {T : Ty .capt s} :
-  Ctx.LookupVar Γ x T ->
-  Ctx.LookupVar (.lock Γ) x T
 
-/-- Lookup a capture variable in the context. The boolean argument is `true`
-iff a lock was encountered on the path to the binding. -/
-inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> UseMode -> CaptureBound s -> Bool -> Prop
+/-- Lookup a capture variable in the context. -/
+inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> CaptureBound s -> Prop
 | here :
-  Ctx.LookupCVar (.push Γ (.cvar m cb)) .here m (cb.rename Rename.succ) false
+  Ctx.LookupCVar (.push Γ (.cvar cb)) .here (cb.rename Rename.succ)
 | there {b : Binding s k} :
-  Ctx.LookupCVar Γ c m cb locked ->
-  Ctx.LookupCVar (.push Γ b) (.there c) m (cb.rename Rename.succ) locked
-| lock {cb : CaptureBound s} :
-  Ctx.LookupCVar Γ c m cb locked ->
-  Ctx.LookupCVar (.lock Γ) c m cb true
+  Ctx.LookupCVar Γ c cb ->
+  Ctx.LookupCVar (.push Γ b) (.there c) (cb.rename Rename.succ)
 
 def Ctx.depth : Ctx s -> Nat
 | .empty => 0
 | .push Γ _ => Γ.depth + 1
-| .lock Γ => Γ.depth + 1
 
-@[simp]
-theorem Ctx.depth_lock {Γ : Ctx s} : (Ctx.lock Γ).depth = Γ.depth + 1 := rfl
+-- RETIRED (2026-05-25): `lock` removed from `Ctx`.
+-- @[simp]
+-- theorem Ctx.depth_lock {Γ : Ctx s} : (Ctx.lock Γ).depth = Γ.depth + 1 := rfl
 
 def Ctx.lookup_tvar : Ctx s -> BVar s .tvar -> PureTy s
 | .push _ (.tvar S), .here => S.rename Rename.succ
 | .push Γ _, .there x => (Γ.lookup_tvar x).rename Rename.succ
-| .lock Γ, x => Γ.lookup_tvar x
 
 def Ctx.lookup_var : Ctx s -> BVar s .var -> Ty .capt s
 | .push _ (.var T), .here => T.rename Rename.succ
 | .push Γ _, .there x => (Γ.lookup_var x).rename Rename.succ
-| .lock Γ, x => Γ.lookup_var x
 
-/-- Functional lookup for capture variables. The Bool component of the result
-is `true` iff a lock was crossed on the way to the binding. -/
-def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> UseMode × CaptureBound s × Bool
-| .push _ (.cvar m cb), .here => (m, cb.rename Rename.succ, false)
-| .push Γ _, .there c =>
-    let p := Γ.lookup_cvar c
-    (p.1, p.2.1.rename Rename.succ, p.2.2)
-| .lock Γ, c =>
-    let p := Γ.lookup_cvar c
-    (p.1, p.2.1, true)
+/-- Functional lookup for capture variables. -/
+def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> CaptureBound s
+| .push _ (.cvar cb), .here => cb.rename Rename.succ
+| .push Γ _, .there c => (Γ.lookup_cvar c).rename Rename.succ
 
 /-- Helper for `lookup_tvar'`: structurally recursive on `Ctx s`.
 The `rfl` pattern in `.push` cases lets Lean unify the signature equation. -/
@@ -109,7 +90,6 @@ def Ctx.lookup_tvar'_aux :
     s_full = s' ,, k_top → PureTy s'
 | _, .push _ (.tvar S), .here, _, _, rfl => S
 | _, .push Γ _, .there x, _, _, rfl => Γ.lookup_tvar x
-| _, .lock Γ, x, _, _, h => Γ.lookup_tvar'_aux x h
 
 def Ctx.lookup_tvar' (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) : PureTy s :=
   Ctx.lookup_tvar'_aux Γ x rfl
@@ -120,7 +100,6 @@ def Ctx.lookup_var'_aux :
     s_full = s' ,, k_top → Ty .capt s'
 | _, .push _ (.var T), .here, _, _, rfl => T
 | _, .push Γ _, .there x, _, _, rfl => Γ.lookup_var x
-| _, .lock Γ, x, _, _, h => Γ.lookup_var'_aux x h
 
 def Ctx.lookup_var' (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) : Ty .capt s :=
   Ctx.lookup_var'_aux Γ x rfl
@@ -128,14 +107,11 @@ def Ctx.lookup_var' (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) : Ty .capt s :=
 /-- Helper for `lookup_cvar'`: structurally recursive on `Ctx s`. -/
 def Ctx.lookup_cvar'_aux :
     {s_full : Sig} → (Γ : Ctx s_full) → BVar s_full .cvar → {s' : Sig} → {k_top : Kind} →
-    s_full = s' ,, k_top → UseMode × CaptureBound s' × Bool
-| _, .push _ (.cvar m cb), .here, _, _, rfl => (m, cb, false)
+    s_full = s' ,, k_top → CaptureBound s'
+| _, .push _ (.cvar cb), .here, _, _, rfl => cb
 | _, .push Γ _, .there c, _, _, rfl => Γ.lookup_cvar c
-| _, .lock Γ, c, _, _, h =>
-    let p := Γ.lookup_cvar'_aux c h
-    (p.1, p.2.1, true)
 
-def Ctx.lookup_cvar' (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) : UseMode × CaptureBound s × Bool :=
+def Ctx.lookup_cvar' (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) : CaptureBound s :=
   Ctx.lookup_cvar'_aux Γ c rfl
 
 /-- The functional lookup satisfies the inductive predicate. -/
@@ -146,9 +122,6 @@ theorem Ctx.lookup_tvar_spec (Γ : Ctx s) (x : BVar s .tvar) :
   | .push Γ' _, .there x' =>
     simp only [lookup_tvar]
     exact LookupTVar.there (lookup_tvar_spec Γ' x')
-  | .lock Γ', x' =>
-    simp only [lookup_tvar]
-    exact LookupTVar.lock (lookup_tvar_spec Γ' x')
 
 /-- If the inductive predicate holds, the type equals the functional lookup. -/
 theorem Ctx.LookupTVar.eq_lookup {Γ : Ctx s} {x : BVar s .tvar} {T : PureTy s}
@@ -156,7 +129,6 @@ theorem Ctx.LookupTVar.eq_lookup {Γ : Ctx s} {x : BVar s .tvar} {T : PureTy s}
   induction h with
   | here => rfl
   | there _ ih => simp only [Ctx.lookup_tvar, ih]
-  | lock _ ih => simp only [Ctx.lookup_tvar, ih]
 
 /-- The functional lookup satisfies the inductive predicate. -/
 theorem Ctx.lookup_var_spec (Γ : Ctx s) (x : BVar s .var) :
@@ -166,9 +138,6 @@ theorem Ctx.lookup_var_spec (Γ : Ctx s) (x : BVar s .var) :
   | .push Γ' _, .there x' =>
     simp only [lookup_var]
     exact LookupVar.there (lookup_var_spec Γ' x')
-  | .lock Γ', x' =>
-    simp only [lookup_var]
-    exact LookupVar.lock (lookup_var_spec Γ' x')
 
 /-- If the inductive predicate holds, the type equals the functional lookup. -/
 theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
@@ -176,29 +145,23 @@ theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
   induction h with
   | here => rfl
   | there _ ih => simp only [Ctx.lookup_var, ih]
-  | lock _ ih => simp only [Ctx.lookup_var, ih]
 
 /-- The functional lookup satisfies the inductive predicate. -/
 theorem Ctx.lookup_cvar_spec (Γ : Ctx s) (c : BVar s .cvar) :
-    Ctx.LookupCVar Γ c (Γ.lookup_cvar c).1 (Γ.lookup_cvar c).2.1 (Γ.lookup_cvar c).2.2 := by
+    Ctx.LookupCVar Γ c (Γ.lookup_cvar c) := by
   match Γ, c with
-  | .push _ (.cvar _ _), .here => exact LookupCVar.here
+  | .push _ (.cvar _), .here => exact LookupCVar.here
   | .push Γ' b, .there c' =>
     simp only [lookup_cvar]
     exact LookupCVar.there (b := b) (lookup_cvar_spec Γ' c')
-  | .lock Γ', c' =>
-    simp only [lookup_cvar]
-    exact LookupCVar.lock (lookup_cvar_spec Γ' c')
 
-/-- If the inductive predicate holds, the use mode, bound, and lock-flag equal
-the functional lookup. -/
-theorem Ctx.LookupCVar.eq_lookup {Γ : Ctx s} {c : BVar s .cvar} {m : UseMode}
-    {cb : CaptureBound s} {locked : Bool}
-    (h : Ctx.LookupCVar Γ c m cb locked) : (m, cb, locked) = Γ.lookup_cvar c := by
+/-- If the inductive predicate holds, the bound equals the functional lookup. -/
+theorem Ctx.LookupCVar.eq_lookup {Γ : Ctx s} {c : BVar s .cvar}
+    {cb : CaptureBound s}
+    (h : Ctx.LookupCVar Γ c cb) : cb = Γ.lookup_cvar c := by
   induction h with
   | here => rfl
   | there _ ih => simp only [Ctx.lookup_cvar, ← ih]
-  | lock _ ih => simp only [Ctx.lookup_cvar, ← ih]
 
 /-- The lookup equals the primed lookup renamed by succ. -/
 theorem Ctx.lookup_tvar_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) :
@@ -211,11 +174,8 @@ theorem Ctx.lookup_tvar_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) :
       | there x' => simp only [lookup_tvar, lookup_tvar', lookup_tvar'_aux]
     | var T => cases x with
       | there x' => simp only [lookup_tvar, lookup_tvar', lookup_tvar'_aux]
-    | cvar m cb => cases x with
+    | cvar cb => cases x with
       | there x' => simp only [lookup_tvar, lookup_tvar', lookup_tvar'_aux]
-  | lock Γ' =>
-    simp only [lookup_tvar, lookup_tvar', lookup_tvar'_aux]
-    exact lookup_tvar_eq_rename Γ' x
 
 /-- The lookup equals the primed lookup renamed by succ. -/
 theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
@@ -228,19 +188,12 @@ theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
     | var T => cases x with
       | here => simp only [lookup_var, lookup_var', lookup_var'_aux]
       | there x' => simp only [lookup_var, lookup_var', lookup_var'_aux]
-    | cvar m cb => cases x with
+    | cvar cb => cases x with
       | there x' => simp only [lookup_var, lookup_var', lookup_var'_aux]
-  | lock Γ' =>
-    simp only [lookup_var, lookup_var', lookup_var'_aux]
-    exact lookup_var_eq_rename Γ' x
 
-/-- The lookup equals the primed lookup; the use mode and lock-flag are
-preserved and the bound is renamed by succ. -/
+/-- The lookup equals the primed lookup renamed by succ. -/
 theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
-    Γ.lookup_cvar c =
-      ((Γ.lookup_cvar' c).1,
-        (Γ.lookup_cvar' c).2.1.rename Rename.succ,
-        (Γ.lookup_cvar' c).2.2) := by
+    Γ.lookup_cvar c = (Γ.lookup_cvar' c).rename Rename.succ := by
   cases Γ with
   | push Γ' b =>
     cases b with
@@ -248,13 +201,9 @@ theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
       | there c' => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
     | var T => cases c with
       | there c' => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
-    | cvar m cb => cases c with
+    | cvar cb => cases c with
       | here => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
       | there c' => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
-  | lock Γ' =>
-    simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
-    rw [lookup_cvar_eq Γ' c]
-    rfl
 
 mutual
 
@@ -264,7 +213,6 @@ def CaptureSet.peaksVarBound : (Γ : Ctx s) → (m : Access) → BVar s .var →
     (CaptureSet.peaks Γ T.captureSet).rename Rename.succ |> .applyAccess m
 | .push Γ _, m, .there x =>
     (peaksVarBound Γ m x).rename Rename.succ
-| .lock Γ, m, x => peaksVarBound Γ m x
 termination_by Γ _ x => (sizeOf Γ, sizeOf x + 1)
 
 /-- Recursively expand variable references until reaching capture variables (peaks). -/
@@ -294,9 +242,6 @@ theorem CaptureSet.peaksVarBound_peaksOnly (Γ : Ctx s) (m : Access) (x : BVar s
   | .push Γ _, .there x =>
     rw [CaptureSet.peaksVarBound]
     exact (CaptureSet.peaksVarBound_peaksOnly Γ m x).rename Rename.succ
-  | .lock Γ, x =>
-    rw [CaptureSet.peaksVarBound]
-    exact CaptureSet.peaksVarBound_peaksOnly Γ m x
 termination_by (sizeOf Γ, sizeOf x + 1)
 
 /-- The peaks function always returns a PeaksOnly capture set. -/
@@ -318,6 +263,10 @@ end
 def CaptureSet.peakset (Γ : Ctx s) (cs : CaptureSet s) : PeakSet s :=
   ⟨peaks Γ cs, CaptureSet.peaks_peaksOnly Γ cs⟩
 
+/-
+RETIRED (2026-05-25): `lock` removed from `Ctx`. These lock-transparency
+lemmas are kept here, commented out, for reference.
+
 /-- Peaks is unaffected by locks at the top of the context. -/
 theorem CaptureSet.peaks_lock {Γ : Ctx s} {C : CaptureSet s} :
     CaptureSet.peaks (.lock Γ) C = CaptureSet.peaks Γ C := by
@@ -338,6 +287,7 @@ theorem CaptureSet.peakset_lock {Γ : Ctx s} {C : CaptureSet s} :
   unfold CaptureSet.peakset
   congr 1
   exact peaks_lock
+-/
 
 theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.rename Rename.succ).peaks (Γ.push b) = (C.peaks Γ).rename Rename.succ := by
@@ -373,14 +323,11 @@ theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : Capt
           | there x' =>
             simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
               CaptureSet.peaksVarBound]
-        | cvar cm cb =>
+        | cvar cb =>
           cases x with
           | there x' =>
             simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
               CaptureSet.peaksVarBound]
-      | lock Γ' =>
-        simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
-          CaptureSet.peaksVarBound]
 
 theorem CaptureSet.peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
   C.applyRO.peaks Γ = (C.peaks Γ).applyRO := by
@@ -402,11 +349,6 @@ theorem CaptureSet.peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
     have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
     simp only [CaptureSet.applyRO, CaptureSet.peaks] at ih
     rw [ih, CaptureSet.applyRO_rename]
-  | .lock Γ', .var m (.bound x) =>
-    simp only [CaptureSet.applyRO, CaptureSet.peaks, CaptureSet.peaksVarBound]
-    have ih := peaks_applyRO_comm Γ' (.var m (.bound x))
-    simp only [CaptureSet.applyRO, CaptureSet.peaks] at ih
-    exact ih
 termination_by (sizeOf Γ, sizeOf C)
 
 theorem CaptureSet.peaks_applyMut_comm {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} :
@@ -437,11 +379,6 @@ theorem CaptureSet.peaks_applyDrop_comm (Γ : Ctx s) (C : CaptureSet s) :
     have ih := peaks_applyDrop_comm Γ' (.var m (.bound x'))
     simp only [CaptureSet.applyDrop, CaptureSet.peaks] at ih
     rw [ih, CaptureSet.applyDrop_rename]
-  | .lock Γ', .var m (.bound x) =>
-    simp only [CaptureSet.applyDrop, CaptureSet.peaks, CaptureSet.peaksVarBound]
-    have ih := peaks_applyDrop_comm Γ' (.var m (.bound x))
-    simp only [CaptureSet.applyDrop, CaptureSet.peaks] at ih
-    exact ih
 termination_by (sizeOf Γ, sizeOf C)
 
 theorem CaptureSet.peaks_applyAccess_comm {Γ : Ctx s} {C : CaptureSet s} {a : Access} :
@@ -463,9 +400,12 @@ theorem CaptureSet.var_peaks {Γ : Ctx s}
     rw [show peaks _ (CaptureSet.var m (.bound _)) = peaksVarBound _ m _ from by
           unfold peaks; rfl] at ih
     rw [ih, ← CaptureSet.applyAccess_rename, ← peaks_rename_succ_eq]
-  | lock _ ih =>
-    rw [peaks_lock, peaks_lock]
-    exact ih
+
+/-
+RETIRED (2026-05-25): the access/consume machinery below was keyed on the
+per-binding `UseMode` and on context `lock`s, both now removed. It is kept
+here, commented out, for reference — access/consume is to be re-expressed via
+the `Access` qualifier on capture references.
 
 /-- A peak is accessible if it is bound at `.access` mode (regardless of locks). -/
 inductive AccessiblePeak : Ctx s -> BVar s .cvar -> Prop where
@@ -655,5 +595,6 @@ theorem CaptureSet.peakset_seqcomp_eq_right
   unfold CaptureSet.peakset
   congr 1
   exact CaptureSet.peaks_seqcomp_eq_right h cs
+-/
 
 end Consume
