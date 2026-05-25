@@ -167,24 +167,24 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.var x) (.typ (.cpoly (.bound D) (.var (.M .epsilon) x) T)) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))
-| letin {Γ Γ1 Γ2 : Ctx s} :
-  -- Ctx.SeqComp Γ1 Γ2 Γ ->  -- TODO: define SeqComp for C1 and C2
-  HasType C1 Γ1 e1 (.typ T) ->
-  HasType (C2.rename Rename.succ) (Γ2,x:T) e2 (U.rename Rename.succ) ->
+| letin {Γ : Ctx s} :
+  CaptureSet.SeqComp Γ C1 C2 C3 ->
+  HasType C1 Γ e1 (.typ T) ->
+  HasType (C2.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
-  HasType (C1 ∪ C2) Γ (.letin e1 e2) U
-| unpack {Γ Γ1 Γ2 : Ctx s} :
-  -- Ctx.SeqComp Γ1 Γ2 Γ ->  -- TODO: ditto
-  HasType C1 Γ1 t (.exi T) ->
+  HasType C3 Γ (.letin e1 e2) U
+| unpack {Γ : Ctx s} :
+  CaptureSet.SeqComp Γ C1 C2 C3 ->
+  HasType C1 Γ t (.exi T) ->
   HasType
     ((C2.rename Rename.succ).rename Rename.succ ∪
      (.cvar (.M .epsilon) (.there .here)) ∪
      (.cvar .drop (.there .here)))
-    (Γ2.push_cvar .unbound,x:T)
+    (Γ.push_cvar .unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
-  HasType (C1 ∪ C2) Γ (.unpack t u) U
+  HasType C3 Γ (.unpack t u) U
 | unit :
   ----------------------------
   HasType {} Γ (.unit) (.typ .unit)
