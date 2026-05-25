@@ -26,8 +26,8 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x T ->
   ----------------------------------
   Subcapt Γ (.var m (.bound x)) T.captureSet
-| sc_cvar {m : UseMode} {locked : Bool} :
-  Ctx.LookupCVar Γ c m (.bound C) locked ->
+| sc_cvar :
+  Ctx.LookupCVar Γ c (.bound C) ->
   ----------------------------------
   Subcapt Γ (.cvar (.M .epsilon) c) C
 | sc_ro :
@@ -117,7 +117,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
   Γ.IsClosed ->
   Γ.LookupVar x T ->
-  T.captureSet.accessible Γ ->
   ----------------------------
   HasType
     {}
@@ -135,25 +134,24 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (.typ (.reader (.var (.M .ro) (.bound x))))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ.lock,x:T1) e T2 ->
+  HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
   ----------------------------
   HasType {} Γ (.abs cs T1 e) (.typ (.arrow T1 cs T2))
 | tabs {S : PureTy s} :
   S.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ.lock,X<:S) e T ->
+  HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
   HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ.lock,C<:cb) e T ->
+  HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
-  C.consumable Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
-  HasType C Γ (.pack C x) (.exi T)
+  HasType (C.applyAccess .drop) Γ (.pack C x) (.exi T)
 | app :
   HasType {} Γ (.var x) (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
   HasType {} Γ (.var y) (.typ T1) ->
@@ -170,17 +168,19 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin {Γ Γ1 Γ2 : Ctx s} :
-  Ctx.SeqComp Γ1 Γ2 Γ ->
+  -- Ctx.SeqComp Γ1 Γ2 Γ ->  -- TODO: define SeqComp for C1 and C2
   HasType C1 Γ1 e1 (.typ T) ->
   HasType (C2.rename Rename.succ) (Γ2,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
   HasType (C1 ∪ C2) Γ (.letin e1 e2) U
 | unpack {Γ Γ1 Γ2 : Ctx s} :
-  Ctx.SeqComp Γ1 Γ2 Γ ->
+  -- Ctx.SeqComp Γ1 Γ2 Γ ->  -- TODO: ditto
   HasType C1 Γ1 t (.exi T) ->
   HasType
-    ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar (.M .epsilon) (.there .here)))
-    (Γ2.push_cvar .consume .unbound,x:T)
+    ((C2.rename Rename.succ).rename Rename.succ ∪
+     (.cvar (.M .epsilon) (.there .here)) ∪
+     (.cvar .drop (.there .here)))
+    (Γ2.push_cvar .unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
@@ -201,9 +201,8 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | drop :
   Γ.IsClosed ->
   HasType {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x))) ->
-  CaptureSet.consumable Γ (.var (.M .epsilon) x) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.drop x) (.typ .unit)
+  HasType (.var .drop x) Γ (.drop x) (.typ .unit)
 | read :
   HasType {} Γ (.var x) (.typ (.reader C)) ->
   ----------------------------
