@@ -263,7 +263,7 @@ def to_drop : CapabilitySet -> CapabilitySet
 def applyAccess (a : Access) (C : CapabilitySet) : CapabilitySet :=
   match a with
   | .M m => C.applyMut m
-  | .drop => C.applyRO
+  | .drop => C.applyRO -- TODO: use proper semantics
 
 @[simp] theorem applyAccess_M {m : Mutability} {C : CapabilitySet} :
     C.applyAccess (.M m) = C.applyMut m := rfl
