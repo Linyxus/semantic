@@ -401,6 +401,20 @@ theorem CaptureSet.var_peaks {Γ : Ctx s}
           unfold peaks; rfl] at ih
     rw [ih, ← CaptureSet.applyAccess_rename, ← peaks_rename_succ_eq]
 
+/-- Sequential composition of peak sets: `SeqComp P1 P2 P3` holds when `P3`
+covers both `P1` and `P2` (the combined authority of using `P1` then `P2`), and
+no peak consumed (`.drop`) in `P1` is used again in `P2` (no use-after-consume). -/
+structure PeakSet.SeqComp (P1 P2 P3 : PeakSet s) : Prop where
+  left : P1.cs ⊆ P3.cs
+  right : P2.cs ⊆ P3.cs
+  linear : ∀ (a : Access) (c : BVar s .cvar),
+    (CaptureSet.cvar .drop c) ⊆ P1.cs → (CaptureSet.cvar a c) ⊆ P2.cs → False
+
+/-- Sequential composition of capture sets in a context: expand to peaks, then
+sequentially compose the resulting peak sets. -/
+def CaptureSet.SeqComp (Γ : Ctx s) (C1 C2 C3 : CaptureSet s) : Prop :=
+  PeakSet.SeqComp (C1.peakset Γ) (C2.peakset Γ) (C3.peakset Γ)
+
 /-
 RETIRED (2026-05-25): the access/consume machinery below was keyed on the
 per-binding `UseMode` and on context `lock`s, both now removed. It is kept
