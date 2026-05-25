@@ -2,15 +2,10 @@ import Semantic.Consume.Syntax.Ty
 
 namespace Consume
 
-inductive UseMode : Type where
-| access : UseMode
-| consume : UseMode
-| empty : UseMode
-
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : PureTy s -> Binding s .tvar
-| cvar : UseMode -> CaptureBound s -> Binding s .cvar
+| cvar : CaptureBound s -> Binding s .cvar
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
@@ -20,7 +15,6 @@ def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 inductive Ctx : Sig -> Type where
 | empty : Ctx {}
 | push : Ctx s -> Binding s k -> Ctx (s,,k)
-| lock : Ctx s -> Ctx s
 
 def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 | Γ, T => Γ.push (.var T)
