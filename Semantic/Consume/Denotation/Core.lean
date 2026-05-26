@@ -559,13 +559,12 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
-| .push Γ (.cvar _ B), .extend env (.cvar cs cap), m =>
+| .push Γ (.cvar B), .extend env (.cvar cs cap), m =>
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
   (cap.BoundedBy (B.denot env m)) ∧
   cap = cs.ground_denot m ∧
   EnvTyping Γ env m
-| .lock Γ, env, m => EnvTyping Γ env m
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
@@ -592,16 +591,12 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyAccess_rename
-  | _, .push Γ' (.cvar _ B), .extend ρ' (.cvar cs _), .there x' =>
+  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, _, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyAccess_rename
-  | _, .lock Γ', ρ, x =>
-    simp only [EnvTyping] at h
-    rw [CaptureSet.peaksVarBound]
-    exact peaks_var_bound_eq h x m0
 termination_by sizeOf Γ
 
 theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
@@ -634,6 +629,13 @@ theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
   -- Two PeakSet values with equal cs fields are equal (proof irrelevance)
   congr 1
   exact compute_peaks_correct h C
+
+/- RETIRED (2026-05-26): context-use-mode frame predicates.
+
+   These encoded the old model where use/drop modes lived on context
+   bindings (`AccessiblePeak` / `UseMode.empty`/`.consume` / `lock`). The
+   refactor moves use/drop information onto `C`'s `Access` qualifiers, so the
+   context-side frame machinery below is superseded. Kept for future reference.
 
 /-- `m.is_access_compat Γ ρ C` says that every `.access`-mode peak of `C`
     (under `Γ`) has its denoted capability set live in `m`. Operationally:
@@ -754,31 +756,23 @@ theorem Memory.preserves_liveness_full_to_consume_only
   obtain ⟨b', hheap'⟩ := h l b ℓ hheap
   exact ⟨b', ℓ, hheap', Or.inl rfl⟩
 
+-/
+
 /-- Semantic typing.
 
-    The Eval budget is split into two parts:
-    * **Use-set** — `C.denot ρ m` filtered (`intersect`) to locations
-      that correspond to `.access`-mode unlocked cvars in `Γ`. This captures
-      "what the program may read or write": only `.access`-mode peaks can be
-      used during evaluation. Caps in `C` pointing at `.consume`-mode cvars
-      (or at `.empty`-mode ones) are NOT in the use-set — they cannot be
-      accessed.
-    * **Drop-set** — `(Γ.consumeset.cs.denot ρ m).to_drop`, the drop-mode
-      capabilities for every `.consume`-unlocked cvar in `Γ`. These cells
-      may transition from `live` to `dead` during evaluation.
+    The Eval budget is `C.denot ρ m`. In the post-refactor model, use/drop
+    information lives on `C`'s `Access` qualifiers, and `ground_denot` already
+    applies them per peak (`.M m ↦ applyMut m` for the access budget,
+    `.drop ↦ to_drop` for the drop budget). So `C` self-describes the entire
+    budget — no context-side use-set/drop-set split is needed.
 
-    *Pre*: every cell in `C.denot ρ m` must be live at the start. The
-    use-set is a subset of `C.denot`, so this is sufficient.
+    *Pre*: every cell in `C.denot ρ m` must be live at the start.
     *Post*: in any reachable result memory `m'`, the result satisfies `E`. -/
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m →
-    let useSet : CapabilitySet :=
-      (C.denot ρ m).intersect (Γ.useset.cs.denot ρ m)
-    let dropSet : CapabilitySet :=
-      (Γ.consumeset.cs.denot ρ m).to_drop
-    m.is_compatible useSet →
-    Eval (useSet ∪ dropSet) m (e.subst (Subst.from_TypeEnv ρ))
+    m.is_compatible (C.denot ρ m) →
+    Eval (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
       (fun v m' => Ty.exi_val_denot ρ E m' v)
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping C Γ e T
@@ -981,7 +975,7 @@ theorem typed_env_is_implying_simple_ans
             exact himplies
           | there x =>
             exact ih_result x
-      | cvar useM B =>
+      | cvar B =>
         cases info with
         | cvar cs cap =>
           change
@@ -997,10 +991,6 @@ theorem typed_env_is_implying_simple_ans
           cases x with
           | there x =>
             exact ih_result x
-  | lock Γ' ih =>
-    change EnvTyping Γ' env mem at ht
-    exact ih ht
-
 /-- An environment typing implies that all type variable denotations imply well-formedness. -/
 theorem typed_env_is_implying_wf
   (ht : EnvTyping Γ env mem) :
@@ -1049,7 +1039,7 @@ theorem typed_env_is_implying_wf
             exact himplies
           | there x =>
             exact ih_result x
-      | cvar useM B =>
+      | cvar B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1065,10 +1055,6 @@ theorem typed_env_is_implying_wf
           cases x with
           | there x =>
             exact ih_result x
-  | lock Γ' ih =>
-    change EnvTyping Γ' env mem at ht
-    exact ih ht
-
 /-- All type variable denotations in the environment enforce purity. -/
 def TypeEnv.is_enforcing_pure (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
@@ -1122,7 +1108,7 @@ theorem typed_env_enforces_pure
             exact hpure
           | there x =>
             exact ih_result x
-      | cvar useM B =>
+      | cvar B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1138,10 +1124,6 @@ theorem typed_env_enforces_pure
           cases x with
           | there x =>
             exact ih_result x
-  | lock Γ' ih =>
-    change EnvTyping Γ' env mem at ht
-    exact ih ht
-
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
 via `Subst.from_TypeEnv` is well-formed in the heap.
@@ -1279,7 +1261,7 @@ theorem from_TypeEnv_wf_in_heap
             | there C' =>
               change CaptureSet.WfInHeap (ρ'.lookup_cvar C').1 m.heap
               exact ih_wf.wf_cvar C'
-      | cvar useM B =>
+      | cvar B =>
         -- Capture variable binding: doesn't affect term variable substitution
         cases info with
         | cvar cs cap =>
@@ -1305,10 +1287,6 @@ theorem from_TypeEnv_wf_in_heap
             | there C' =>
               change CaptureSet.WfInHeap (ρ'.lookup_cvar C').1 m.heap
               exact ih_wf.wf_cvar C'
-  | lock Γ' ih =>
-    change EnvTyping Γ' ρ m at htyping
-    exact ih htyping
-
 def Denot.Equiv (d1 d2 : Denot) : Prop :=
   ∀ m e,
     (d1 m e) ↔ (d2 m e)
@@ -1448,7 +1426,7 @@ theorem typed_env_is_monotonic
               exact hproper.1
             | there x =>
               exact ih_result.tvar x
-      | cvar useM B =>
+      | cvar B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1464,10 +1442,6 @@ theorem typed_env_is_monotonic
             cases x with
             | there x =>
               exact ih_result.tvar x
-  | lock Γ' ih =>
-    change EnvTyping Γ' env mem at ht
-    exact ih ht
-
 theorem typed_env_is_transparent
   (ht : EnvTyping Γ env mem) :
   env.is_transparent := by
@@ -1518,7 +1492,7 @@ theorem typed_env_is_transparent
             exact hproper.2.1
           | there x =>
             exact ih_result x
-      | cvar useM B =>
+      | cvar B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1534,10 +1508,6 @@ theorem typed_env_is_transparent
           cases x with
           | there x =>
             exact ih_result x
-  | lock Γ' ih =>
-    change EnvTyping Γ' env mem at ht
-    exact ih ht
-
 theorem typed_env_is_bool_independent
   (ht : EnvTyping Γ env mem) :
   env.is_bool_independent := by
@@ -1588,7 +1558,7 @@ theorem typed_env_is_bool_independent
             exact hproper.2.2.1
           | there x =>
             exact ih_result x
-      | cvar useM B =>
+      | cvar B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1604,10 +1574,6 @@ theorem typed_env_is_bool_independent
           cases x with
           | there x =>
             exact ih_result x
-  | lock Γ' ih =>
-    change EnvTyping Γ' env mem at ht
-    exact ih ht
-
 -- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
 -- They relied on TypeEnv.is_reachability_safe, TypeEnv.is_reachability_monotonic,
 -- and TypeEnv.is_tight which are now trivially provable.
@@ -2419,7 +2385,7 @@ theorem env_typing_monotonic
                 · constructor
                   · exact hpure
                   · exact ih ht'
-      | cvar useM B =>
+      | cvar B =>
         cases info with
         | cvar cs cap =>
           change
@@ -2450,11 +2416,6 @@ theorem env_typing_monotonic
           constructor
           · rw [hcap, ground_denot_is_monotonic hwf hmem]
           · exact ih ht'
-  | lock Γ' ih =>
-    change EnvTyping Γ' env mem1 at ht
-    change EnvTyping Γ' env mem2
-    exact ih ht
-
 /-- Semantic subcapturing. -/
 def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   ∀ env m,
