@@ -25,10 +25,6 @@ theorem Ctx.lookup_var_det {Γ : Ctx s} {x : BVar s .var} {T1 T2 : Ty .capt s} :
     case there h2' =>
       have eq := ih h2'
       rw [eq]
-  case lock ih =>
-    cases h2
-    case lock h2' =>
-      exact ih h2'
 
 theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
     Γ.LookupTVar X T1 -> Γ.LookupTVar X T2 -> T1 = T2 := by
@@ -42,30 +38,20 @@ theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
     case there h2' =>
       have eq := ih h2'
       rw [eq]
-  case lock ih =>
-    cases h2
-    case lock h2' =>
-      exact ih h2'
 
-theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {m1 m2 : UseMode}
-    {cb1 cb2 : CaptureBound s} {locked1 locked2 : Bool} :
-    Γ.LookupCVar c m1 cb1 locked1 -> Γ.LookupCVar c m2 cb2 locked2 ->
-    m1 = m2 ∧ cb1 = cb2 ∧ locked1 = locked2 := by
+theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar}
+    {cb1 cb2 : CaptureBound s} :
+    Γ.LookupCVar c cb1 -> Γ.LookupCVar c cb2 -> cb1 = cb2 := by
   intro h1 h2
-  induction h1 generalizing m2 locked2
+  induction h1
   case here =>
     cases h2
-    case here => exact ⟨rfl, rfl, rfl⟩
+    case here => rfl
   case there ih =>
     cases h2
     case there h2' =>
-      obtain ⟨hm, hcb, hlk⟩ := ih h2'
-      exact ⟨hm, by rw [hcb], hlk⟩
-  case lock ih =>
-    cases h2
-    case lock h2' =>
-      obtain ⟨hm, hcb, _⟩ := ih h2'
-      exact ⟨hm, hcb, rfl⟩
+      have eq := ih h2'
+      rw [eq]
 
 -- Subsumption reflexivity
 
@@ -255,9 +241,6 @@ theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt
     cases hΓ with | push hΓ_prev _ =>
     have hT := ih hΓ_prev
     exact Ty.rename_closed hT
-  | lock _ ih =>
-    cases hΓ with | lock hΓ_prev =>
-    exact ih hΓ_prev
 
 /-- A typed variable expression has a closed variable. -/
 theorem HasType.typed_var_closed
@@ -289,8 +272,12 @@ theorem HasType.use_set_is_closed
   case unpack _ _ _ ih1 ih2 =>
     cases ih2 with
     | union h _ =>
-      exact CaptureSet.IsClosed.union ih1
-        (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv h))
+      cases h with
+      | union h' _ =>
+        exact CaptureSet.IsClosed.union ih1
+          (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv h'))
+  case pack hC _ _ =>
+    exact CaptureSet.applyAccess_isClosed hC
   case app =>
     rename_i ht_x _ _ _
     exact HasType.typed_var_capture_closed ht_x
@@ -306,7 +293,7 @@ theorem HasType.use_set_is_closed
     rename_i ht_x _ _ _
     exact HasType.typed_var_capture_closed ht_x
   case drop =>
-    rename_i ht_x _ _
+    rename_i ht_x _
     exact HasType.typed_var_capture_closed ht_x
   case invoke =>
     rename_i ht_x _ _ _
@@ -422,7 +409,7 @@ theorem HasType.type_is_closed
   (ht : C # Γ ⊢ e : E) :
   E.IsClosed := by
   induction ht <;> try (solve | constructor | grind only [Ty.IsClosed])
-  case var hΓ_closed hlookup _ =>
+  case var hΓ_closed hlookup =>
     constructor
     -- Need to prove: (T.refineCaptureSet (.var .epsilon (.bound x))).IsClosed
     have hT_closed := Ctx.lookup_var_gives_closed hΓ_closed hlookup
@@ -519,8 +506,5 @@ theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
     | there x' =>
       obtain ⟨T₀, h⟩ := ih (x := x')
       exact ⟨T₀.rename Rename.succ, Ctx.LookupVar.there h⟩
-  | lock Γ₀ ih =>
-    obtain ⟨T₀, h⟩ := ih (x := x)
-    exact ⟨T₀, Ctx.LookupVar.lock h⟩
 
 end Consume

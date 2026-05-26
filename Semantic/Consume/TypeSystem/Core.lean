@@ -168,13 +168,13 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | letin {Γ : Ctx s} :
-  CaptureSet.SeqComp Γ C1 C2 C3 ->
+  CaptureSet.SeqComp Γ C1 C2 ->
   HasType C1 Γ e1 (.typ T) ->
   HasType (C2.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
-  HasType C3 Γ (.letin e1 e2) U
+  HasType (C1 ∪ C2) Γ (.letin e1 e2) U
 | unpack {Γ : Ctx s} :
-  CaptureSet.SeqComp Γ C1 C2 C3 ->
+  CaptureSet.SeqComp Γ C1 C2 ->
   HasType C1 Γ t (.exi T) ->
   HasType
     ((C2.rename Rename.succ).rename Rename.succ ∪
@@ -184,7 +184,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
-  HasType C3 Γ (.unpack t u) U
+  HasType (C1 ∪ C2) Γ (.unpack t u) U
 | unit :
   ----------------------------
   HasType {} Γ (.unit) (.typ .unit)
