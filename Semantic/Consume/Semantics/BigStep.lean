@@ -6,7 +6,7 @@ namespace Consume
 
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_pack :
-  (cs.reachability m) ⊆ C ->  -- Consumed capabilities are counted as used
+  (cs.reachability m).to_drop ⊆ C ->  -- Consumed capabilities are counted as used
   (hQ : Q (.pack cs x) m) ->
   Eval C m (.pack cs x) Q
 | eval_alloc {m : Memory} {x : Nat} {b : Bool} {hv R} :
