@@ -3985,45 +3985,30 @@ theorem resolve_is_pack {e : Exp {}} {m : Memory}
           simp only [resolve, hval] at hres
           contradiction
 
+/-- Semantic typing for `unpack`. As with `letin`, the `SeqComp` linearity
+    premise (`_hseq`) is unused: `eval_unpack`'s `h_val` premise *assumes*
+    `m1.is_compatible (C2 ∪ R ∪ R.to_drop)` (R = the unpacked capability's
+    reachability), so we never derive it from `e1`. The body use-set's
+    `.drop`-qualified cvar `(.cvar .drop (.there .here))` denotes exactly to
+    `R.to_drop`, matching `eval_unpack`'s budget; the `.M .epsilon` cvar denotes
+    to `R`; and the doubly-renamed `C2` (closed) is memory-stable. -/
 theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
-  (hseq : CaptureSet.SeqComp Γ C1 C2)
+  (_hseq : CaptureSet.SeqComp Γ C1 C2)
   (_hclosed_C1 : C1.IsClosed)
-  (_hclosed_C2 : C2.IsClosed)
+  (hclosed_C2 : C2.IsClosed)
   (ht : C1 # Γ ⊨ t : .exi T)
   (hu : ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar (.M .epsilon) (.there .here))
           ∪ (.cvar .drop (.there .here))) #
         (Γ.push_cvar .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.unpack t u) : U := by
-  -- SEQUENCING / DROP-BUDGET GAP (open design item): like `sem_typ_letin`, the
-  -- old proof rested on the retired context SeqComp budget machinery. The new
-  -- body use-set carries a `.drop`-qualified reference to the unpacked cvar
-  -- (`.cvar .drop (.there .here)`); reconciling that with the drop-aware budget
-  -- and the new `CaptureSet.SeqComp Γ C1 C2` linearity is the open design item.
-  sorry
-
-/- RETIRED (2026-05-27): old `sem_typ_unpack` proof, built on the retired context
-   SeqComp budget machinery. Kept for reference while the new proof is developed.
   intro env store hts hcompat
-  have hts1 := EnvTyping.seqcomp_left hseq hts
-  have hts2 := EnvTyping.seqcomp_right hseq hts
   simp only [Exp.subst]
   have hunion_denot :
       (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
-  let D : CapabilitySet := (Γ.consumeset.cs.denot env store).to_drop
-  let Cagg : CapabilitySet :=
-    ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D
-  have hsub1_drop : (Γ1.consumeset.cs.denot env store).to_drop ⊆ D :=
-    CapabilitySet.Subset.to_drop_mono
-      (captureset_denot_subset_of_subset (consumeset_subset_seqcomp_left hseq) env store)
-  have hsub2_drop : (Γ2.consumeset.cs.denot env store).to_drop ⊆ D :=
-    CapabilitySet.Subset.to_drop_mono
-      (captureset_denot_subset_of_subset (consumeset_subset_seqcomp_right hseq) env store)
-  have hΓ2_closed : Γ2.consumeset.cs.IsClosed := consumeset_isClosed Γ2
-  have hΓ2_use_closed : Γ2.useset.cs.IsClosed := useset_isClosed Γ2
   apply Eval.eval_unpack (Q1 := fun v m' => Ty.exi_val_denot env (.exi T) m' v)
-    (C1 := Cagg) (C2 := Cagg)
+    (C1 := C1.denot env store) (C2 := C2.denot env store)
   case hpred =>
     intro m1 m2 e hwf hsub hQ
     exact exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T) hsub hQ
@@ -4031,37 +4016,9 @@ theorem sem_typ_unpack
     intro m'
     exact exi_val_denot_is_bool_independent (typed_env_is_bool_independent hts) (.exi T)
   case a =>
-    -- `t` (budget C1) widened to the full outer budget `Cagg`.
-    have hsub_use1 : Γ1.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-      captureset_denot_subset_of_subset (useset_subset_seqcomp_left hseq) env store
-    have hsubC1_denot : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
+    have hsubC1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
       rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
-    have hcompat_C1 :
-        store.is_compatible ((C1.denot env store).intersect (Γ1.useset.cs.denot env store)) :=
-      Memory.is_compatible_subset
-        (CapabilitySet.Subset.trans (CapabilitySet.intersect_mono_right hsub_use1)
-          (CapabilitySet.intersect_mono_left hsubC1_denot)) hcompat
-    have h1 := ht env store hts1 hcompat_C1
-    apply eval_capability_set_monotonic h1
-    apply CapabilitySet.Subset.union_left
-    · have hsub_use1 : Γ1.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-        captureset_denot_subset_of_subset (useset_subset_seqcomp_left hseq) env store
-      have h_right :
-          (C1.denot env store).intersect (Γ1.useset.cs.denot env store)
-            ⊆ (C1.denot env store).intersect (Γ.useset.cs.denot env store) :=
-        CapabilitySet.intersect_mono_right hsub_use1
-      have h_left :
-          (C1.denot env store).intersect (Γ.useset.cs.denot env store)
-            ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) := by
-        rw [hunion_denot]
-        change (C1.denot env store).intersect (Γ.useset.cs.denot env store) ⊆
-          (C1.denot env store).intersect (Γ.useset.cs.denot env store) ∪
-            (C2.denot env store).intersect (Γ.useset.cs.denot env store)
-        exact CapabilitySet.Subset.union_right_left
-      exact CapabilitySet.Subset.trans
-        (CapabilitySet.Subset.trans h_right h_left)
-        CapabilitySet.Subset.union_right_left
-    · exact CapabilitySet.Subset.trans hsub1_drop CapabilitySet.Subset.union_right_right
+    exact ht env store hts (Memory.is_compatible_subset hsubC1 hcompat)
   case h_nonstuck =>
     intro m1 v hQ1
     change Ty.exi_val_denot env (.exi T) m1 v at hQ1
@@ -4096,10 +4053,9 @@ theorem sem_typ_unpack
     case bound bx => cases bx
     case free fx =>
       obtain ⟨hwf_cs2, hQ1_body⟩ := hQ1
-      let ps := CaptureSet.peakset (Γ2.push_cvar .consume .unbound) T.captureSet
+      let ps := CaptureSet.peakset (Γ.push_cvar .unbound) T.captureSet
       let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
-      have hts_extended : EnvTyping (Γ2.push_cvar .consume .unbound,x:T)
-          (env'.extend_var fx ps) m1 := by
+      have hts_extended : EnvTyping (Γ.push_cvar .unbound,x:T) (env'.extend_var fx ps) m1 := by
         constructor
         · exact hQ1_body
         · constructor
@@ -4112,11 +4068,9 @@ theorem sem_typ_unpack
             · simpa only [List.empty_eq] using CapabilitySet.BoundedBy.top
             constructor
             · rfl
-            · exact env_typing_monotonic hts2 hs1
-      -- `cs.ground_denot m1 = cs.reachability m1 = R`.
+            · exact env_typing_monotonic hts hs1
       have hReq : cs.ground_denot m1 = cs.reachability m1 :=
         CaptureSet.ground_denot_eq_reachability cs m1
-      -- The cvar `(.there .here)` resolves to `cs.ground_denot m1` under `env'`.
       have hcvar_denot :
           (CaptureSet.cvar (.M .epsilon) (.there .here)).denot (env'.extend_var fx ps) m1
             = cs.ground_denot m1 := by
@@ -4126,7 +4080,16 @@ theorem sem_typ_unpack
             (CaptureSet.cvar (.M .epsilon) .here)) m1).symm
         rw [hc]
         rfl
-      -- Helper: a doubly-renamed closed-from-`s` set rebinds to its `env` denotation.
+      have hcvar_drop_denot :
+          (CaptureSet.cvar .drop (.there .here)).denot (env'.extend_var fx ps) m1
+            = (cs.ground_denot m1).to_drop := by
+        have hc : (CaptureSet.cvar .drop (.there .here)).denot (env'.extend_var fx ps) m1
+            = (CaptureSet.cvar .drop .here).denot env' m1 :=
+          (congrFun (rebind_captureset_denot (Rebind.weaken (env:=env') (x:=fx) (ps:=ps))
+            (CaptureSet.cvar .drop .here)) m1).symm
+        rw [hc]
+        change (cs.applyAccess .drop).ground_denot m1 = (cs.ground_denot m1).to_drop
+        rw [captureSet_ground_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
       have hrebind2 : ∀ (Cx : CaptureSet s),
           ((Cx.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
             = Cx.denot env m1 := by
@@ -4136,26 +4099,16 @@ theorem sem_typ_unpack
         have h2 := rebind_captureset_denot
           (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (Cx.rename Rename.succ)
         exact (congrFun h2.symm m1).trans (congrFun h1.symm m1)
-      -- Body budget denotation: `C2.denot env m1 ∪ R`.
       have hbudget_denot :
           ((C2.rename Rename.succ).rename Rename.succ
-              ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))).denot
-            (env'.extend_var fx ps) m1
-          = C2.denot env m1 ∪ cs.ground_denot m1 := by
+              ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))
+              ∪ (CaptureSet.cvar .drop (.there .here))).denot (env'.extend_var fx ps) m1
+          = C2.denot env m1 ∪ cs.ground_denot m1 ∪ (cs.ground_denot m1).to_drop := by
         change ((C2.rename Rename.succ).rename Rename.succ).denot (env'.extend_var fx ps) m1
             ∪ (CaptureSet.cvar (.M .epsilon) (.there .here)).denot (env'.extend_var fx ps) m1
-          = C2.denot env m1 ∪ cs.ground_denot m1
-        rw [hrebind2 C2, hcvar_denot]
-      -- Body consume-set denotation: `Γ2.consumeset.cs.denot env m1 ∪ R`
-      -- (a clean two-way union: doubly-renamed `Γ2.consumeset` plus the cvar).
-      have hconsumeset_denot :
-          (Γ2.push_cvar .consume .unbound,x:T).consumeset.cs.denot (env'.extend_var fx ps) m1
-            = Γ2.consumeset.cs.denot env m1 ∪ cs.ground_denot m1 := by
-        change ((Γ2.consumeset.cs.rename Rename.succ).rename Rename.succ).denot
-              (env'.extend_var fx ps) m1
-            ∪ (CaptureSet.cvar (.M .epsilon) (.there .here)).denot (env'.extend_var fx ps) m1
-          = Γ2.consumeset.cs.denot env m1 ∪ cs.ground_denot m1
-        rw [hrebind2 Γ2.consumeset.cs, hcvar_denot]
+            ∪ (CaptureSet.cvar .drop (.there .here)).denot (env'.extend_var fx ps) m1
+          = C2.denot env m1 ∪ cs.ground_denot m1 ∪ (cs.ground_denot m1).to_drop
+        rw [hrebind2 C2, hcvar_denot, hcvar_drop_denot]
       have hexp_eq :
           (u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)) =
           u.subst (Subst.from_TypeEnv (env'.extend_var fx ps)) := by
@@ -4172,119 +4125,33 @@ theorem sem_typ_unpack
           (Rebind.weaken (env:=env') (x:=fx) (ps:=ps)) (U.rename Rename.succ)
         intro m e
         exact Iff.trans (heqv1 m e) (heqv2 m e)
-      -- Convert the compat hypothesis to the `ground_denot` form of `R`.
-      rw [← hReq] at hcompat_m1
-      -- Closed-set memory monotonicity (`m1` subsumes `store`).
       have hC2_mono : C2.denot env m1 = C2.denot env store :=
         (closed_capture_denot_monotonic hclosed_C2 hts hs1).symm
-      have hΓ2use_mono : Γ2.useset.cs.denot env m1 = Γ2.useset.cs.denot env store :=
-        (closed_capture_denot_monotonic hΓ2_use_closed hts hs1).symm
-      have hΓ2cons_mono : Γ2.consumeset.cs.denot env m1 = Γ2.consumeset.cs.denot env store :=
-        (closed_capture_denot_monotonic hΓ2_closed hts hs1).symm
-      -- The body use-set denotation embeds into the outer use-set plus `R`.
-      -- (Avoids a brittle equality: union reassociation is handled by `Subset`.)
-      have hbody_use_sub :
-          (Γ2.push_cvar .consume .unbound,x:T).useset.cs.denot (env'.extend_var fx ps) m1
-            ⊆ Γ.useset.cs.denot env store ∪ cs.ground_denot m1 := by
-        change ((Γ2.accessset.cs.rename Rename.succ).rename Rename.succ).denot
-              (env'.extend_var fx ps) m1
-            ∪ (((Γ2.consumeset.cs.rename Rename.succ).rename Rename.succ).denot
-                  (env'.extend_var fx ps) m1
-                ∪ (CaptureSet.cvar (.M .epsilon) (.there .here)).denot
-                    (env'.extend_var fx ps) m1) ⊆ _
-        rw [hrebind2 Γ2.accessset.cs, hrebind2 Γ2.consumeset.cs, hcvar_denot]
-        have hacc_mono : Γ2.accessset.cs.denot env m1 = Γ2.accessset.cs.denot env store :=
-          (closed_capture_denot_monotonic (accessset_isClosed Γ2) hts hs1).symm
-        have hacc_sub : Γ2.accessset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-          captureset_denot_subset_of_subset
-            (CaptureSet.Subset.trans (CaptureSet.Subset.union_right_left CaptureSet.Subset.refl)
-              (useset_subset_seqcomp_right hseq)) env store
-        have hcons_sub : Γ2.consumeset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-          captureset_denot_subset_of_subset
-            (CaptureSet.Subset.trans (CaptureSet.Subset.union_right_right CaptureSet.Subset.refl)
-              (useset_subset_seqcomp_right hseq)) env store
-        apply CapabilitySet.Subset.union_left
-        · rw [hacc_mono]
-          exact CapabilitySet.Subset.trans hacc_sub CapabilitySet.Subset.union_right_left
-        · apply CapabilitySet.Subset.union_left
-          · rw [hΓ2cons_mono]
-            exact CapabilitySet.Subset.trans hcons_sub CapabilitySet.Subset.union_right_left
-          · exact CapabilitySet.Subset.union_right_right
-      -- The body budget's static side embeds into the outer budget plus `R`.
-      have hC2R_sub :
-          C2.denot env m1 ∪ cs.ground_denot m1
-            ⊆ (C1 ∪ C2).denot env store ∪ cs.ground_denot m1 := by
-        apply CapabilitySet.Subset.union_left
-        · rw [hC2_mono, hunion_denot]
-          exact CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
-            CapabilitySet.Subset.union_right_left
-        · exact CapabilitySet.Subset.union_right_right
-      -- The body use-set (intersected budget) is contained in `Cagg ∪ R ∪ R.to_drop`.
-      have hintersect_subset :
-          (C2.denot env m1 ∪ cs.ground_denot m1).intersect
-              ((Γ2.push_cvar .consume .unbound,x:T).useset.cs.denot (env'.extend_var fx ps) m1)
-            ⊆ Cagg ∪ cs.ground_denot m1 ∪ (cs.ground_denot m1).to_drop := by
-        apply CapabilitySet.Subset.trans (CapabilitySet.intersect_mono_left hC2R_sub)
-        apply CapabilitySet.Subset.trans (CapabilitySet.intersect_mono_right hbody_use_sub)
-        rw [CapabilitySet.intersect_union_left]
-        apply CapabilitySet.Subset.union_left
-        · apply CapabilitySet.Subset.trans CapabilitySet.intersect_union_right_subset
-          apply CapabilitySet.Subset.union_left
-          · exact CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
-              (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
-                CapabilitySet.Subset.union_right_left)
-          · exact CapabilitySet.Subset.trans CapabilitySet.intersect_subset_right
-              (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
-                CapabilitySet.Subset.union_right_left)
-        · exact CapabilitySet.Subset.trans CapabilitySet.intersect_subset_left
-            (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
-              CapabilitySet.Subset.union_right_left)
-      -- The body consume-set drops are contained likewise.
-      have hdrop_subset :
-          (Γ2.consumeset.cs.denot env m1 ∪ cs.ground_denot m1).to_drop
-            ⊆ Cagg ∪ cs.ground_denot m1 ∪ (cs.ground_denot m1).to_drop := by
-        change (Γ2.consumeset.cs.denot env m1).to_drop ∪ (cs.ground_denot m1).to_drop ⊆ _
-        apply CapabilitySet.Subset.union_left
-        · have hcons_drop : (Γ2.consumeset.cs.denot env m1).to_drop ⊆ D := by
-            rw [hΓ2cons_mono]; exact hsub2_drop
-          exact CapabilitySet.Subset.trans hcons_drop
-            (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
-              (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
-                CapabilitySet.Subset.union_right_left))
-        · exact CapabilitySet.Subset.union_right_right
-      -- Use-set compat for the body, derived from `hcompat_m1`.
-      have hcompat_u :
+      have hcompat_body :
           m1.is_compatible
-            (CapabilitySet.intersect
-              (((C2.rename Rename.succ).rename Rename.succ
-                ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))).denot (env'.extend_var fx ps) m1)
-              ((Γ2.push_cvar .consume .unbound,x:T).useset.cs.denot
-                (env'.extend_var fx ps) m1)) := by
-        rw [hbudget_denot]
-        exact Memory.is_compatible_subset hintersect_subset hcompat_m1
-      have hu'' := hu (env'.extend_var fx ps) m1 hts_extended hcompat_u
-      change Eval (Cagg ∪ cs.reachability m1 ∪ (cs.reachability m1).to_drop) m1
+            (((C2.rename Rename.succ).rename Rename.succ
+                ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))
+                ∪ (CaptureSet.cvar .drop (.there .here))).denot (env'.extend_var fx ps) m1) := by
+        rw [hbudget_denot, hC2_mono, hReq]
+        exact hcompat_m1
+      have hu'' := hu (env'.extend_var fx ps) m1 hts_extended hcompat_body
+      change Eval (C2.denot env store ∪ cs.reachability m1 ∪ (cs.reachability m1).to_drop) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
         (fun v m' => Ty.exi_val_denot env U m' v)
       rw [hexp_eq]
-      -- Widen the body budget to the continuation budget `Cagg ∪ R ∪ R.to_drop`.
       have hsub_budget :
-          (((C2.rename Rename.succ).rename Rename.succ
-                ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))).denot
-              (env'.extend_var fx ps) m1).intersect
-              ((Γ2.push_cvar .consume .unbound,x:T).useset.cs.denot (env'.extend_var fx ps) m1)
-            ∪ ((Γ2.push_cvar .consume .unbound,x:T).consumeset.cs.denot
-                (env'.extend_var fx ps) m1).to_drop ⊆
-          Cagg ∪ cs.reachability m1 ∪ (cs.reachability m1).to_drop := by
-        rw [hbudget_denot, hconsumeset_denot, ← hReq]
-        exact CapabilitySet.Subset.union_left hintersect_subset hdrop_subset
+          ((C2.rename Rename.succ).rename Rename.succ
+              ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))
+              ∪ (CaptureSet.cvar .drop (.there .here))).denot (env'.extend_var fx ps) m1
+            ⊆ C2.denot env store ∪ cs.reachability m1 ∪ (cs.reachability m1).to_drop := by
+        rw [hbudget_denot, hC2_mono, hReq]
+        exact CapabilitySet.Subset.refl
       have hcompose := eval_capability_set_monotonic hu'' hsub_budget
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv_composed).2
   case hagg =>
-    change Cagg ∪ Cagg ⊆ Cagg
-    exact CapabilitySet.Subset.union_left CapabilitySet.Subset.refl CapabilitySet.Subset.refl
--/
+    rw [hunion_denot]
+    exact CapabilitySet.Subset.refl
 
 -- Helper: rename preserves subset
 theorem CaptureSet.Subset.rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}

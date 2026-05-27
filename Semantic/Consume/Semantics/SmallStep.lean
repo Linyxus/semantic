@@ -15,7 +15,7 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   (hfresh : m.heap l = none) ->
   Step C m (.alloc (.free x))
     (m.extend_mcell l b hfresh)
-    (.pack (.var .epsilon (.free l)) (.free l))
+    (.pack (.var (.M .epsilon) (.free l)) (.free l))
 | step_apply :
   m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
   Step C m (.app (.free x) y) m (e.subst (Subst.openVar y))
