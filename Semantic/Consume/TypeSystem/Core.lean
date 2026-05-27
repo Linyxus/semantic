@@ -25,7 +25,7 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_var :
   Ctx.LookupVar Γ x T ->
   ----------------------------------
-  Subcapt Γ (.var m (.bound x)) T.captureSet
+  Subcapt Γ (.var (.M .epsilon) (.bound x)) T.captureSet
 | sc_cvar :
   Ctx.LookupCVar Γ c (.bound C) ->
   ----------------------------------
@@ -37,6 +37,10 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Subcapt Γ C1 C2 ->
   ----------------------------------
   Subcapt Γ C1.applyRO C2.applyRO
+| sc_drop_mono :
+  Subcapt Γ C1 C2 ->
+  ----------------------------------
+  Subcapt Γ (C1.applyAccess .drop) (C2.applyAccess .drop)
 
 inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
 | empty {m : Mutability} :
