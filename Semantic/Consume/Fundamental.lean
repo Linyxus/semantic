@@ -3270,33 +3270,15 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
 
 theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
   (hlookup : Γ.LookupVar x T) :
-  SemSubcapt Γ (.var m (.bound x)) T.captureSet := by
+  SemSubcapt Γ (.var (.M .epsilon) (.bound x)) T.captureSet := by
   intro env m' hts
   unfold CaptureSet.denot
   simp only [List.empty_eq]
   have h : reachability_of_loc m'.heap (env.lookup_var x).1 ⊆ T.captureSet.denot env m' := by
     simpa only [Ty.captureSet] using typed_env_lookup_var_reachability hts hlookup
-  cases m with
-  | M mu0 =>
-    cases mu0 with
-    | epsilon =>
-      simpa [CaptureSet.ground_denot]
-        using h
-    | ro =>
-      have hro :
-          (CaptureSet.var (.M .ro) (Var.free (env.lookup_var x).1)).ground_denot m' ⊆
-          reachability_of_loc m'.heap (env.lookup_var x).1 := by
-        simpa [CaptureSet.applyRO, CaptureSet.ground_denot]
-          using (ground_denot_applyRO_subset
-            (C := CaptureSet.var (.M .epsilon) (Var.free (env.lookup_var x).1)) (m := m'))
-      exact CapabilitySet.Subset.trans hro h
-  | drop =>
-    -- DROP-BUDGET GAP (open design item): `(.var .drop x).denot =
-    -- (reachability x).to_drop`, but `T.captureSet.denot` is access-mode
-    -- reachability and `.drop` is incomparable to access under the (exact)
-    -- `CapabilitySet.Subset`. Reconciling `.drop`-qualified subcapturing with
-    -- the drop-aware denotation is the open drop-budget design item.
-    sorry
+  -- The new `sc_var` fixes the qualifier to `.M .epsilon`, which `ground_denot`
+  -- treats as the identity, so the budget is exactly `x`'s reachability.
+  simpa [CaptureSet.ground_denot] using h
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
   (hlookup : Γ.LookupCVar c (.bound C)) :
@@ -3329,6 +3311,16 @@ theorem sem_sc_ro_mono {C1 C2 : CaptureSet s}
   -- Need: (C1.subst σ).applyRO.ground_denot m ⊆ (C2.subst σ).applyRO.ground_denot m
   exact ground_denot_applyRO_mono (hsub env m hts)
 
+/-- `applyAccess .drop` is monotonic for subcapturing: the semantic image of the
+    new `sc_drop_mono` rule. At the capability level `applyAccess .drop` is
+    `to_drop`, which is monotone under `CapabilitySet.Subset`. -/
+theorem sem_sc_drop_mono {C1 C2 : CaptureSet s}
+  (hsub : SemSubcapt Γ C1 C2) :
+  SemSubcapt Γ (C1.applyAccess .drop) (C2.applyAccess .drop) := by
+  intro env m hts
+  simp only [captureSet_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
+  exact CapabilitySet.Subset.to_drop_mono (hsub env m hts)
+
 theorem sem_sc_mode {C : CaptureSet s}
   (hm : m1 ≤ m2) :
   SemSubcapt Γ (C.applyMut m1) (C.applyMut m2) := by
@@ -3355,6 +3347,7 @@ theorem fundamental_subcapt
   case sc_cvar hlookup => exact sem_sc_cvar hlookup
   case sc_ro => exact sem_sc_ro
   case sc_ro_mono _ ih => exact sem_sc_ro_mono ih
+  case sc_drop_mono _ ih => exact sem_sc_drop_mono ih
 
 private theorem fundamental_haskind_ro
   (hkind : HasKind Γ C mode)
@@ -4581,10 +4574,10 @@ theorem var_subcapt_captureSet_applyMut
   Subcapt Γ (.var (.M m) (.bound x)) (T.captureSet.applyMut m) := by
   cases m with
   | epsilon =>
-    simpa [CaptureSet.applyMut] using (Subcapt.sc_var (m := .M .epsilon) hlk)
+    simpa [CaptureSet.applyMut] using (Subcapt.sc_var hlk)
   | ro =>
     simpa [CaptureSet.applyMut]
-      using (Subcapt.sc_ro_mono (Subcapt.sc_var (m := .M .epsilon) hlk))
+      using (Subcapt.sc_ro_mono (Subcapt.sc_var hlk))
 
 -- Helper: applyMut is monotonic for CapabilitySet.Subset
 theorem CapabilitySet.applyMut_mono {C1 C2 : CapabilitySet} {m : Mutability}
