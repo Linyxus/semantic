@@ -1599,12 +1599,13 @@ theorem sem_typ_pack
     | pack hcs_closed _hx_closed => exact hcs_closed
   rw [hsubst]
   apply Eval.eval_pack
-  · -- DROP-BUDGET GAP (open design item): the pack value reaches `cs` at access
-    -- modes, but the use-set budget is `cs.applyAccess .drop = (cs.denot).to_drop`
-    -- (drop authority). Under `CapMode.Le`, `.drop` is incomparable to access, so
-    -- the access reachability is NOT ⊆ the drop budget. Discharging this needs the
-    -- budget to also carry the access authority for the packed capability.
-    sorry
+  · -- `eval_pack` now needs `(cs'.reachability store).to_drop ⊆ budget`, and the
+    -- budget is `cs.applyAccess .drop`. Both sides reduce to `(cs.denot env store).to_drop`:
+    -- the reachability of the (substituted) `cs` is `cs.denot env store`, and
+    -- `(cs.applyAccess .drop).denot = (cs.denot env store).to_drop`.
+    rw [← CaptureSet.ground_denot_eq_reachability,
+      captureSet_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
+    exact CapabilitySet.Subset.refl
   · simp only [Ty.exi_val_denot]
     -- Goal: CS.WfInHeap ∧ capt_val_denot (env.extend_cvar ...) T store ...
     constructor
@@ -3266,6 +3267,7 @@ theorem sem_sc_union {C1 C2 C3 : CaptureSet s}
   unfold CaptureSet.denot
   simp only [List.empty_eq]
   exact CapabilitySet.Subset.union_left (hsub1 env m hts) (hsub2 env m hts)
+
 theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
   (hlookup : Γ.LookupVar x T) :
   SemSubcapt Γ (.var m (.bound x)) T.captureSet := by
