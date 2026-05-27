@@ -2929,56 +2929,29 @@ private theorem useset_subset_seqcomp_right
     | lock => exact CaptureSet.Subset.refl
 -/
 
+/-- Semantic typing for `letin`. Notably the `SeqComp Γ C1 C2` linearity premise
+    (`_hseq`) is NOT needed to construct the `Eval`: `eval_letin`'s `h_val`/`h_var`
+    premises *assume* `m1.is_compatible C2` (so we never have to derive it from
+    `e1`'s behaviour), and `C2` is closed so its denotation is memory-stable. The
+    linearity condition is an *adequacy* property (it guarantees the program never
+    actually reaches an `m1` that drops a `C2` cell), proven downstream — not part
+    of building the logical-relation witness here. -/
 theorem sem_typ_letin
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
-  (hseq : CaptureSet.SeqComp Γ C1 C2)
+  (_hseq : CaptureSet.SeqComp Γ C1 C2)
   (_hclosed_C1 : C1.IsClosed)
   (_hclosed_C2 : C2.IsClosed)
   (_hclosed_e : (Exp.letin e1 e2).IsClosed)
   (ht1 : C1 # Γ ⊨ e1 : .typ T)
   (ht2 : C2.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.letin e1 e2) : U := by
-  -- SEQUENCING / DROP-BUDGET GAP (open design item): under the new budget the
-  -- conclusion is `(C1 ∪ C2).denot`, with `e1` at `C1.denot` and `e2` at
-  -- `C2.denot`. Re-establishing sequencing soundness — a cell consumed in `e1`
-  -- must not be used in `e2`, enforced by `CaptureSet.SeqComp Γ C1 C2` — against
-  -- the drop-aware budget needs the old context SeqComp machinery replaced.
-  sorry
-
-/- RETIRED (2026-05-27): old `sem_typ_letin` proof, built on the retired context
-   SeqComp budget machinery (Γ1/Γ2 split, useset/accessset/consumeset). Kept for
-   reference while the new proof is developed.
   intro env store hts hcompat
-  have hts1 := EnvTyping.seqcomp_left hseq hts
-  have hts2 := EnvTyping.seqcomp_right hseq hts
   simp only [Exp.subst]
-  -- Definitional decomposition of the union budget.
   have hunion_denot :
-      (C1 ∪ C2).denot env store
-        = C1.denot env store ∪ C2.denot env store := rfl
-  -- Drop-authority piece of the outer budget.
-  let D : CapabilitySet := (Γ.consumeset.cs.denot env store).to_drop
-  -- The full outer budget. The new `eval_letin` no longer pins the `e1`/`e2`
-  -- budgets by unifying `C1 ∪ C2` with the conclusion's index; instead it
-  -- carries `hagg : C1 ∪ C2 ⊆ Cagg`. We therefore set both sub-budgets to the
-  -- whole outer budget `Cagg` so the sub-derivations have concrete targets.
-  let Cagg : CapabilitySet :=
-    ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D
-  -- SeqComp lifts: `Γi.consumeset.cs ⊆ Γ.consumeset.cs`, hence `to_drop ⊆ D`.
-  have hsub1_drop :
-      (Γ1.consumeset.cs.denot env store).to_drop ⊆ D :=
-    CapabilitySet.Subset.to_drop_mono
-      (captureset_denot_subset_of_subset
-        (consumeset_subset_seqcomp_left hseq) env store)
-  have hsub2_drop :
-      (Γ2.consumeset.cs.denot env store).to_drop ⊆ D :=
-    CapabilitySet.Subset.to_drop_mono
-      (captureset_denot_subset_of_subset
-        (consumeset_subset_seqcomp_right hseq) env store)
-  have hΓ2_closed : Γ2.consumeset.cs.IsClosed := consumeset_isClosed Γ2
+      (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
   apply Eval.eval_letin (Q1 := fun v m' => Ty.val_denot env T m' v)
-    (C1 := Cagg) (C2 := Cagg)
+    (C1 := C1.denot env store) (C2 := C2.denot env store)
   case hpred =>
     intro m1 m2 e hwf hsub hQ
     exact val_denot_is_monotonic (typed_env_is_monotonic hts) T hsub hQ
@@ -2986,48 +2959,13 @@ theorem sem_typ_letin
     intro m'
     exact val_denot_is_bool_independent (typed_env_is_bool_independent hts) T
   case a =>
-    -- ht1 gives `Eval (intersect C1.denot Γ1.accessset ∪ Γ1.consumeset.to_drop) store e1 _`.
-    -- `Ty.exi_val_denot env T.typ = Ty.val_denot env T` by pattern matching.
-    -- The new `ht1` wants use-set compat for `C1`; `C1`'s use-set is contained
-    -- in the outer use-set (`C1.denot ⊆ (C1∪C2).denot` and `Γ1.useset ⊆ Γ.useset`).
-    have hsub_use1 : Γ1.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-      captureset_denot_subset_of_subset (useset_subset_seqcomp_left hseq) env store
-    have hsubC1_denot : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
+    -- `e1` runs at exactly its own budget `C1.denot`, a subset of the union.
+    have hsubC1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
       rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
-    have hcompat_C1 :
-        store.is_compatible ((C1.denot env store).intersect (Γ1.useset.cs.denot env store)) :=
-      Memory.is_compatible_subset
-        (CapabilitySet.Subset.trans
-          (CapabilitySet.intersect_mono_right hsub_use1)
-          (CapabilitySet.intersect_mono_left hsubC1_denot))
-        hcompat
-    have h1 := ht1 env store hts1 hcompat_C1
-    simp only [Ty.exi_val_denot] at h1
-    apply eval_capability_set_monotonic h1
-    -- With the refactored `accessset` (now including `.consume` peaks),
-    -- `Γ1.accessset.cs ⊆ Γ.accessset.cs` under `SeqComp`. Use this with
-    -- `intersect_mono_right` to widen the inner use-set into the outer one.
-    apply CapabilitySet.Subset.union_left
-    · -- intersect C1.denot Γ1.access ⊆ intersect (C1∪C2).denot Γ.access
-      have hacc_sub : Γ1.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-        captureset_denot_subset_of_subset (useset_subset_seqcomp_left hseq) env store
-      have h_right :
-          (C1.denot env store).intersect (Γ1.useset.cs.denot env store)
-            ⊆ (C1.denot env store).intersect (Γ.useset.cs.denot env store) :=
-        CapabilitySet.intersect_mono_right hacc_sub
-      have h_left :
-          (C1.denot env store).intersect (Γ.useset.cs.denot env store)
-            ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) := by
-        rw [hunion_denot]
-        change (C1.denot env store).intersect (Γ.useset.cs.denot env store) ⊆
-          (C1.denot env store).intersect (Γ.useset.cs.denot env store) ∪
-            (C2.denot env store).intersect (Γ.useset.cs.denot env store)
-        exact CapabilitySet.Subset.union_right_left
-      exact CapabilitySet.Subset.trans
-        (CapabilitySet.Subset.trans h_right h_left)
-        CapabilitySet.Subset.union_right_left
-    · -- Γ1.consumeset.to_drop ⊆ D ⊆ ... ∪ D
-      exact CapabilitySet.Subset.trans hsub1_drop CapabilitySet.Subset.union_right_right
+    have hcompat_C1 : store.is_compatible (C1.denot env store) :=
+      Memory.is_compatible_subset hsubC1 hcompat
+    have h1 := ht1 env store hts hcompat_C1
+    simpa only [Ty.exi_val_denot] using h1
   case h_nonstuck =>
     intro m1 v hQ1
     constructor
@@ -3036,13 +2974,13 @@ theorem sem_typ_letin
   case h_val =>
     intro m1 v hs1 hcompat_m1 hv hwf_v hQ1 l' hfresh
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
-    let ps := CaptureSet.peakset Γ2 T.captureSet
+    let ps := CaptureSet.peakset Γ T.captureSet
     set m_ext := m1.extend_val l' heapval hwf_v rfl hfresh with hm_ext_def
     have hext_subsumes : m_ext.subsumes m1 :=
       Memory.extend_val_subsumes m1 l' heapval hwf_v rfl hfresh
     have hsub_full : m_ext.subsumes store := Memory.subsumes_trans hext_subsumes hs1
-    -- Body EnvTyping for `(Γ2, x:T)` at the extended env / extended memory.
-    have henv_body : EnvTyping (Γ2,x:T) (env.extend_var l' ps) m_ext := by
+    -- Body EnvTyping for `(Γ,x:T)` at the extended env / extended memory.
+    have henv_body : EnvTyping (Γ,x:T) (env.extend_var l' ps) m_ext := by
       constructor
       · have htrans : (Ty.val_denot env T).is_transparent :=
           val_denot_is_transparent (typed_env_is_transparent hts) T
@@ -3054,87 +2992,34 @@ theorem sem_typ_letin
         exact htrans hlookup hQ1_lifted
       · constructor
         · rfl
-        · exact env_typing_monotonic hts2 hsub_full
-    -- Rebind C2 and Γ2.consumeset.cs into the extended env.
+        · exact env_typing_monotonic hts hsub_full
+    -- Rebind `C2` into the extended env; closedness makes its denotation stable.
     have hcap_rename_C2 :
         (C2.rename Rename.succ).denot (env.extend_var l' ps) = C2.denot env := by
       have := rebind_captureset_denot
         (Rebind.weaken (env := env) (x := l') (ps := ps)) C2
       exact this.symm
-    have hcap_rename_consumeset :
-        (Γ2,x:T).consumeset.cs.denot (env.extend_var l' ps) = Γ2.consumeset.cs.denot env := by
-      have := rebind_captureset_denot
-        (Rebind.weaken (env := env) (x := l') (ps := ps)) Γ2.consumeset.cs
-      exact this.symm
-    -- Memory-monotonicity on closed capture sets.
     have hC2_mono : C2.denot env store = C2.denot env m_ext :=
-      closed_capture_denot_monotonic hclosed_C2 hts hsub_full
-    have hconsumeset_mono :
-        Γ2.consumeset.cs.denot env store = Γ2.consumeset.cs.denot env m_ext :=
-      closed_capture_denot_monotonic hΓ2_closed hts hsub_full
-    -- Use-set rebind / monotonicity for the body context, needed both for the
-    -- compat precondition below and the final budget widening.
-    have hcap_rename_accessset :
-        (Γ2,x:T).useset.cs.denot (env.extend_var l' ps) = Γ2.useset.cs.denot env := by
-      have := rebind_captureset_denot
-        (Rebind.weaken (env := env) (x := l') (ps := ps)) Γ2.useset.cs
-      exact this.symm
-    have hΓ2_use_closed : Γ2.useset.cs.IsClosed := useset_isClosed Γ2
-    have haccessset_mono :
-        Γ2.useset.cs.denot env store = Γ2.useset.cs.denot env m_ext :=
-      closed_capture_denot_monotonic hΓ2_use_closed hts hsub_full
-    have hsub_body_tight :
-        ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext).intersect
-            ((Γ2,x:T).useset.cs.denot (env.extend_var l' ps) m_ext)
-          ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var l' ps) m_ext).to_drop ⊆
-        ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D := by
-      rw [congrFun hcap_rename_C2 m_ext, congrFun hcap_rename_accessset m_ext,
-          congrFun hcap_rename_consumeset m_ext,
-          ← hC2_mono, ← haccessset_mono, ← hconsumeset_mono]
-      apply CapabilitySet.Subset.union_left
-      · -- intersect C2.denot Γ2.useset ⊆ intersect (C1∪C2).denot Γ.useset
-        have hacc_sub : Γ2.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-          captureset_denot_subset_of_subset (useset_subset_seqcomp_right hseq) env store
-        have h_right :
-            (C2.denot env store).intersect (Γ2.useset.cs.denot env store)
-              ⊆ (C2.denot env store).intersect (Γ.useset.cs.denot env store) :=
-          CapabilitySet.intersect_mono_right hacc_sub
-        have h_left :
-            (C2.denot env store).intersect (Γ.useset.cs.denot env store)
-              ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) := by
-          rw [hunion_denot]
-          change (C2.denot env store).intersect (Γ.useset.cs.denot env store) ⊆
-            (C1.denot env store).intersect (Γ.useset.cs.denot env store) ∪
-              (C2.denot env store).intersect (Γ.useset.cs.denot env store)
-          exact CapabilitySet.Subset.union_right_right
-        exact CapabilitySet.Subset.trans
-          (CapabilitySet.Subset.trans h_right h_left)
-          CapabilitySet.Subset.union_right_left
-      · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
-    -- The body's use-set compat now follows from the use-set compat at `m1`
-    -- handed to us by `eval_letin` (the body use-set is contained in `Cagg` by
-    -- `hsub_body_tight`), transported to the extended memory `m_ext` (which only
-    -- adds a fresh value cell, preserving liveness).
+      closed_capture_denot_monotonic _hclosed_C2 hts hsub_full
+    -- The body's compat: `eval_letin` hands us `m1.is_compatible (C2.denot env store)`,
+    -- which transports to `m_ext` (a fresh value cell preserves liveness) and equals
+    -- the body budget `(C2.rename succ).denot (extended) m_ext`.
     have hcompat_body :
-        m_ext.is_compatible
-          (((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext).intersect
-            ((Γ2,x:T).useset.cs.denot (env.extend_var l' ps) m_ext)) := by
-      have hsub_use :
-          ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext).intersect
-              ((Γ2,x:T).useset.cs.denot (env.extend_var l' ps) m_ext)
-            ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D :=
-        CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_body_tight
-      exact Memory.is_compatible_extend_val m1 l' heapval hwf_v rfl hfresh
-        (Memory.is_compatible_subset hsub_use hcompat_m1)
+        m_ext.is_compatible ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext) := by
+      rw [congrFun hcap_rename_C2 m_ext, ← hC2_mono]
+      exact Memory.is_compatible_extend_val m1 l' heapval hwf_v rfl hfresh hcompat_m1
     have h2 := ht2 (env.extend_var l' ps) m_ext henv_body hcompat_body
-    -- Bridge the substitution shape: `e2.subst ... .lift then openVar l'`
-    -- equals `e2.subst (from_TypeEnv (env.extend_var l' ps))`.
     have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
     have h2' : Eval _ m_ext
         ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free l')))
         _ := hkey ▸ h2
-    have hcompose := eval_capability_set_monotonic h2' hsub_body_tight
-    -- Lift post: `Ty.exi_val_denot env_ext (U.rename succ) ≈ Ty.exi_val_denot env U`.
+    -- The body budget equals `C2.denot env store` (the chosen `eval_letin` C2).
+    have hsub_body :
+        (C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext ⊆ C2.denot env store := by
+      rw [congrFun hcap_rename_C2 m_ext, ← hC2_mono]
+      exact CapabilitySet.Subset.refl
+    have hcompose := eval_capability_set_monotonic h2' hsub_body
+    -- Lift the post from `(U.rename succ)` at the extended env back to `U`.
     have heqv := weaken_exi_val_denot (env := env) (x := l') (ps := ps) (T := U)
     apply eval_post_monotonic _ hcompose
     exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
@@ -3143,89 +3028,40 @@ theorem sem_typ_letin
     cases x
     case bound bv => cases bv
     case free fx =>
-      let ps := CaptureSet.peakset Γ2 T.captureSet
-      have henv_body : EnvTyping (Γ2,x:T) (env.extend_var fx ps) m1 := by
+      let ps := CaptureSet.peakset Γ T.captureSet
+      have henv_body : EnvTyping (Γ,x:T) (env.extend_var fx ps) m1 := by
         constructor
         · exact hQ1
         · constructor
           · rfl
-          · exact env_typing_monotonic hts2 hs1
+          · exact env_typing_monotonic hts hs1
       have hcap_rename_C2 :
           (C2.rename Rename.succ).denot (env.extend_var fx ps) = C2.denot env := by
         have := rebind_captureset_denot
           (Rebind.weaken (env := env) (x := fx) (ps := ps)) C2
         exact this.symm
-      have hcap_rename_consumeset :
-          (Γ2,x:T).consumeset.cs.denot (env.extend_var fx ps) = Γ2.consumeset.cs.denot env := by
-        have := rebind_captureset_denot
-          (Rebind.weaken (env := env) (x := fx) (ps := ps)) Γ2.consumeset.cs
-        exact this.symm
       have hC2_mono : C2.denot env store = C2.denot env m1 :=
-        closed_capture_denot_monotonic hclosed_C2 hts hs1
-      have hconsumeset_mono :
-          Γ2.consumeset.cs.denot env store = Γ2.consumeset.cs.denot env m1 :=
-        closed_capture_denot_monotonic hΓ2_closed hts hs1
-      -- Use-set rebind / monotonicity for the body context.
-      have hcap_rename_accessset :
-          (Γ2,x:T).useset.cs.denot (env.extend_var fx ps) = Γ2.useset.cs.denot env := by
-        have := rebind_captureset_denot
-          (Rebind.weaken (env := env) (x := fx) (ps := ps)) Γ2.useset.cs
-        exact this.symm
-      have hΓ2_use_closed : Γ2.useset.cs.IsClosed := useset_isClosed Γ2
-      have haccessset_mono :
-          Γ2.useset.cs.denot env store = Γ2.useset.cs.denot env m1 :=
-        closed_capture_denot_monotonic hΓ2_use_closed hts hs1
-      have hsub_body_tight :
-          ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1).intersect
-              ((Γ2,x:T).useset.cs.denot (env.extend_var fx ps) m1)
-            ∪ ((Γ2,x:T).consumeset.cs.denot (env.extend_var fx ps) m1).to_drop ⊆
-          ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) ∪ D := by
-        rw [congrFun hcap_rename_C2 m1, congrFun hcap_rename_accessset m1,
-            congrFun hcap_rename_consumeset m1,
-            ← hC2_mono, ← haccessset_mono, ← hconsumeset_mono]
-        apply CapabilitySet.Subset.union_left
-        · have hacc_sub : Γ2.useset.cs.denot env store ⊆ Γ.useset.cs.denot env store :=
-            captureset_denot_subset_of_subset (useset_subset_seqcomp_right hseq) env store
-          have h_right :
-              (C2.denot env store).intersect (Γ2.useset.cs.denot env store)
-                ⊆ (C2.denot env store).intersect (Γ.useset.cs.denot env store) :=
-            CapabilitySet.intersect_mono_right hacc_sub
-          have h_left :
-              (C2.denot env store).intersect (Γ.useset.cs.denot env store)
-                ⊆ ((C1 ∪ C2).denot env store).intersect (Γ.useset.cs.denot env store) := by
-            rw [hunion_denot]
-            change (C2.denot env store).intersect (Γ.useset.cs.denot env store) ⊆
-              (C1.denot env store).intersect (Γ.useset.cs.denot env store) ∪
-                (C2.denot env store).intersect (Γ.useset.cs.denot env store)
-            exact CapabilitySet.Subset.union_right_right
-          exact CapabilitySet.Subset.trans
-            (CapabilitySet.Subset.trans h_right h_left)
-            CapabilitySet.Subset.union_right_left
-        · exact CapabilitySet.Subset.trans hsub2_drop CapabilitySet.Subset.union_right_right
-      -- Body use-set compat from the use-set compat at `m1` (no memory extension
-      -- in the variable case), using `hsub_body_tight`.
+        closed_capture_denot_monotonic _hclosed_C2 hts hs1
       have hcompat_body :
-          m1.is_compatible
-            (((C2.rename Rename.succ).denot (env.extend_var fx ps) m1).intersect
-              ((Γ2,x:T).useset.cs.denot (env.extend_var fx ps) m1)) :=
-        Memory.is_compatible_subset
-          (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hsub_body_tight)
-          hcompat_m1
+          m1.is_compatible ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1) := by
+        rw [congrFun hcap_rename_C2 m1, ← hC2_mono]
+        exact hcompat_m1
       have h2 := ht2 (env.extend_var fx ps) m1 henv_body hcompat_body
       have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
       have h2' : Eval _ m1
           ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free fx)))
           _ := hkey ▸ h2
-      have hcompose := eval_capability_set_monotonic h2' hsub_body_tight
+      have hsub_body :
+          (C2.rename Rename.succ).denot (env.extend_var fx ps) m1 ⊆ C2.denot env store := by
+        rw [congrFun hcap_rename_C2 m1, ← hC2_mono]
+        exact CapabilitySet.Subset.refl
+      have hcompose := eval_capability_set_monotonic h2' hsub_body
       have heqv := weaken_exi_val_denot (env := env) (x := fx) (ps := ps) (T := U)
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
   case hagg =>
-    -- Both the `e1` and `e2` sub-derivations were widened to the full outer
-    -- budget `Cagg`, so the aggregation is `Cagg ∪ Cagg ⊆ Cagg`.
-    exact CapabilitySet.Subset.union_left CapabilitySet.Subset.refl
-      CapabilitySet.Subset.refl
--/
+    rw [hunion_denot]
+    exact CapabilitySet.Subset.refl
 
 theorem sem_sc_trans
   (hsub1 : SemSubcapt Γ C1 C2)
