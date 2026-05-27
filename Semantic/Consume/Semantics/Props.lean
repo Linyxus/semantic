@@ -1720,4 +1720,39 @@ theorem reduce_immutable {C : CapabilitySet}
     exact not_mutated_trans (step_immutable himm hstep) ih
 -/
 
+/-- Auxiliary for `EvalTrace.conforms_to`, threading the set `alloced` of
+    locations allocated by *earlier* items in the trace. An allocation records
+    its location and always conforms; an access/drop conforms when its location
+    was already allocated within the trace, or is accounted for by `C` at the
+    matching mode. -/
+def EvalTrace.conforms_aux (C : CapabilitySet) : EvalTrace -> Finset Nat -> Prop
+  | [], _ => True
+  | (.alloc l) :: rest, alloced =>
+      EvalTrace.conforms_aux C rest (insert l alloced)
+  | (.access mu l) :: rest, alloced =>
+      (l ∈ alloced ∨ C.covers (.access mu) l) ∧ EvalTrace.conforms_aux C rest alloced
+  | (.drop l) :: rest, alloced =>
+      (l ∈ alloced ∨ C.covers .drop l) ∧ EvalTrace.conforms_aux C rest alloced
+
+/-- `tr.conforms_to C`: every access/drop in the trace is justified: each one
+    either targets an address freshly allocated earlier in the trace, or is
+    accounted for by the capability set `C` at the matching mode. -/
+def EvalTrace.conforms_to (tr : EvalTrace) (C : CapabilitySet) : Prop :=
+  EvalTrace.conforms_aux C tr ∅
+
+/-- **Adequacy.** A successful `Eval` derivation is realized by an actual
+    reduction to an answer satisfying the postcondition, provided the starting
+    memory honors the budget. Moreover the reduction's trace conforms to the
+    budget: every access/drop is either to a freshly-allocated address or is
+    accounted for by `C`. -/
+theorem eval_adequacy
+    (heval : Eval C m e Q)
+    (hcompat : m.is_compatible C) :
+    ∃ (tr : EvalTrace) (m' : Memory) (a : Exp {}),
+      Reduce m e tr m' a ∧
+      a.IsAns ∧
+      Q a m' ∧
+      tr.conforms_to C := by
+  sorry
+
 end Consume
