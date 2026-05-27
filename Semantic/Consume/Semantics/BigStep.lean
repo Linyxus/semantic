@@ -602,6 +602,20 @@ theorem CapabilitySet.covers_to_drop_imp_drop {C : CapabilitySet} {mu : CapMode}
     | left h' => exact ih1 h'
     | right h' => exact ih2 h'
 
+/- RETIRED (2026-05-27): the drop-free value-reachability theorems.
+
+   `reachability_no_drop` is now FALSE: with real `.drop ↦ to_drop`, a capture
+   set with a `.drop` reference has reachability carrying drop caps.
+
+   `strengthen_reach_bound` relied on it and is now UNPROVABLE as stated: at
+   `eval_unpack` the body's budget is `C2 ∪ R ∪ R.to_drop` (R = the unpacked
+   capability's reachability), so the body can return a pack witness that
+   reaches *drop* authority over a pre-existing cell (one satisfying `D`). The
+   outer budget `Cagg ⊇ C1 ∪ C2` only covers that cell at an *access* mode, and
+   `.drop` is incomparable to access modes under `CapMode.Le` — so the witness
+   bound `C` no longer bounds witness reachability. Reviving this needs the
+   budget to track drop authority. It currently has no callers.
+
 /-- The reachability of a (closed) capture set carries only `.access`-mode
     capabilities — never `.drop`. Source-level capture sets are built from
     `.var m x` / `.cvar m c` with `m : Mutability`, and the heap-side
@@ -832,5 +846,6 @@ theorem Eval.strengthen_reach_bound
       exact ih_true hres_true D hD
     · intro hres_false
       exact ih_false hres_false D hD
+-/
 
 end Consume

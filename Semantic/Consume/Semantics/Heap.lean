@@ -256,19 +256,18 @@ def to_drop : CapabilitySet -> CapabilitySet
 | .cap _ l => .cap .drop l
 | .union C1 C2 => .union C1.to_drop C2.to_drop
 
-/-- Apply an access mode to all elements: a mutability acts via `applyMut`.
-    The `drop` case is a drop-free placeholder for now (read-only image, which
-    keeps both drop-freeness and applyRO-stability); the real drop authority
-    semantics (via `to_drop`) is wired in the next round. -/
+/-- Apply an access mode to all elements: a mutability acts via `applyMut`,
+    and `.drop` retags every cap with `.drop` (real consume authority) via
+    `to_drop`. -/
 def applyAccess (a : Access) (C : CapabilitySet) : CapabilitySet :=
   match a with
   | .M m => C.applyMut m
-  | .drop => C.applyRO -- TODO: use proper semantics
+  | .drop => C.to_drop
 
 @[simp] theorem applyAccess_M {m : Mutability} {C : CapabilitySet} :
     C.applyAccess (.M m) = C.applyMut m := rfl
 @[simp] theorem applyAccess_drop {C : CapabilitySet} :
-    C.applyAccess .drop = C.applyRO := rfl
+    C.applyAccess .drop = C.to_drop := rfl
 
 /-- Decidable check that `(mu, l)` is covered by `C` (i.e. there is some
     `(mu', l)` in `C` with `mu ≤ mu'`). -/
@@ -303,6 +302,15 @@ theorem applyRO_applyRO {C : CapabilitySet} : C.applyRO.applyRO = C.applyRO := b
   | empty => rfl
   | cap m l => simp only [applyRO, CapMode.applyRO_idempotent]
   | union C1 C2 ih1 ih2 => simp only [applyRO, ih1, ih2]
+
+/-- `applyRO` fixes `to_drop`: every cap is already `.drop`, and `applyRO`
+    preserves `.drop`. -/
+@[simp]
+theorem to_drop_applyRO {C : CapabilitySet} : C.to_drop.applyRO = C.to_drop := by
+  induction C with
+  | empty => rfl
+  | cap m l => rfl
+  | union C1 C2 ih1 ih2 => simp only [to_drop, applyRO, ih1, ih2]
 
 /-- Applying mutability m to an epsilon singleton gives an m singleton. -/
 @[simp]
@@ -394,6 +402,10 @@ theorem applyMut_no_drop {C : CapabilitySet} {m : Mutability} {l : Nat}
   | epsilon => exact h
   | ro => exact applyRO_no_drop h
 
+/- RETIRED (2026-05-27): `applyAccess` no longer preserves drop-freeness now
+   that `.drop ↦ to_drop` is real consume authority — the `.drop` case
+   genuinely introduces `.drop` caps. The `wf_reach_no_drop` invariant this
+   supported has been removed.
 /-- `applyAccess` preserves drop-freeness (the `drop` case is a placeholder
     identity for now). -/
 theorem applyAccess_no_drop {C : CapabilitySet} {a : Access} {l : Nat}
@@ -401,6 +413,7 @@ theorem applyAccess_no_drop {C : CapabilitySet} {a : Access} {l : Nat}
   cases a with
   | M m => exact applyMut_no_drop h
   | drop => exact applyRO_no_drop h
+-/
 
 /-- applyRO commutes with applyAccess (reading off the read-only image of the mode). -/
 theorem applyAccess_applyRO {C : CapabilitySet} {a : Access} :
@@ -410,7 +423,7 @@ theorem applyAccess_applyRO {C : CapabilitySet} {a : Access} :
     cases m with
     | epsilon => simp only [applyAccess_M, applyMut, Access.applyRO]
     | ro => simp only [applyAccess_M, applyMut, Access.applyRO, applyRO_applyRO]
-  | drop => simp only [applyAccess_drop, Access.applyRO, applyRO_applyRO]
+  | drop => simp only [applyAccess_drop, Access.applyRO, to_drop_applyRO]
 
 /-- Membership in `C.applyMut mu_op` implies coverage in `C` at the same mode:
     `applyMut` can only weaken modes (or be identity), so a member of the
@@ -426,6 +439,10 @@ theorem hasmem_applyMut_implies_covers {C : CapabilitySet} {mu_op : Mutability}
     subst heq
     exact covers_of_hasmem_le hm' CapMode.applyRO_le
 
+/- RETIRED (2026-05-27): false under real `.drop ↦ to_drop`. Membership at
+   `.drop` in `C.to_drop` only witnesses *some* cap at `l` in `C` (any mode),
+   which does NOT give `C.covers .drop l` (`.drop` is covered only by `.drop`).
+   Only ever used by the now-retired context-frame proofs in `Fundamental`.
 /-- Membership in `C.applyAccess a` implies coverage in `C` at the same mode. -/
 theorem hasmem_applyAccess_implies_covers {C : CapabilitySet} {a : Access}
     {mu : CapMode} {l : Nat} (h : (C.applyAccess a).hasmem mu l) :
@@ -439,6 +456,7 @@ theorem hasmem_applyAccess_implies_covers {C : CapabilitySet} {a : Access}
     obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
     subst heq
     exact covers_of_hasmem_le hm' CapMode.applyRO_le
+-/
 
 /-- Coverage in C is preserved by applyRO when the mode is RO-stable (i.e.,
     `.access .ro` or `.drop`). -/
@@ -2155,17 +2173,18 @@ structure Heap.WfHeap (H : Heap) : Prop where
     ∀ l v hv R,
       H l = some (.val ⟨v, hv, R⟩) ->
         R = compute_reachability H v hv
-  wf_reach_no_drop :
-    ∀ l v hv R l',
-      H l = some (.val ⟨v, hv, R⟩) ->
-        ¬ CapabilitySet.hasmem .drop l' R
 
 /-- The empty heap is well-formed. -/
 theorem Heap.wf_empty : Heap.WfHeap ∅ := by
   constructor
   · intro l hv hlookup; cases hlookup
   · intros _ _ _ _ hlookup; cases hlookup
-  · intros _ _ _ _ _ hlookup; cases hlookup
+
+/- RETIRED (2026-05-27): the value-reachability drop-free chain. With real
+   `.drop ↦ to_drop`, a closure whose body drops a captured cell carries a
+   `.drop` reference in its capture annotation, so its reachability genuinely
+   contains a drop cap. The `wf_reach_no_drop` heap invariant these supported
+   has been removed.
 
 /-- `reachability_of_loc` is drop-free under any well-formed heap: capability,
     masked, and absent lookups produce singletons / empty, and stored
@@ -2250,6 +2269,7 @@ theorem compute_reachability_no_drop {H : Heap} {v : Exp {}} {hv : v.IsSimpleVal
     intro hmem; simp only [compute_reachability] at hmem; cases hmem
   | bfalse =>
     intro hmem; simp only [compute_reachability] at hmem; cases hmem
+-/
 
 /-- Extending a well-formed heap with a well-formed value preserves well-formedness. -/
 theorem Heap.wf_extend
@@ -2284,18 +2304,6 @@ theorem Heap.wf_extend
       rw [heq]
       exact (compute_reachability_monotonic (Heap.extend_subsumes hfresh) v' hv'
         (hwf_H.wf_val l' _ hlookup)).symm
-  · -- wf_reach_no_drop case
-    intro l' v' hv' R' l_loc hlookup
-    unfold Heap.extend at hlookup
-    split at hlookup
-    case isTrue heq =>
-      cases hlookup
-      -- New val cell: R' = v.reachability = compute_reachability H v.unwrap v.isVal.
-      have heq_R : R' = compute_reachability H v' hv' := hreach
-      rw [heq_R]
-      exact compute_reachability_no_drop hwf_H
-    case isFalse hneq =>
-      exact hwf_H.wf_reach_no_drop l' v' hv' R' l_loc hlookup
 
 /-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
 theorem Heap.wf_lookup
@@ -2919,13 +2927,6 @@ def extend_cap (m : Memory) (l : Nat)
         rw [heq]
         exact (compute_reachability_monotonic (Heap.extend_cap_subsumes hfresh) v' hv'
           (m.wf.wf_val l' _ hlookup)).symm
-    · -- wf_reach_no_drop case
-      intro l' v' hv' R' l_loc hlookup
-      unfold Heap.extend_cap at hlookup
-      split at hlookup
-      case isTrue _ => cases hlookup
-      case isFalse _ =>
-        exact m.wf.wf_reach_no_drop l' v' hv' R' l_loc hlookup
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_cap_has_fin_dom hdom hfresh⟩
@@ -2991,13 +2992,6 @@ def extend_mcell (m : Memory) (l : Nat) (b : Bool)
         rw [heq]
         exact (compute_reachability_monotonic (Heap.extend_mcell_subsumes hfresh) v' hv'
           (m.wf.wf_val l' _ hlookup)).symm
-    · -- wf_reach_no_drop case
-      intro l' v' hv' R' l_loc hlookup
-      unfold Heap.extend_mcell at hlookup
-      split at hlookup
-      case isTrue _ => cases hlookup
-      case isFalse _ =>
-        exact m.wf.wf_reach_no_drop l' v' hv' R' l_loc hlookup
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_mcell_has_fin_dom hdom hfresh⟩
@@ -3055,13 +3049,6 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
         -- Show that compute_reachability is preserved
         rw [hreach_orig]
         exact (compute_reachability_update_mcell m.heap l ℓ hexists b v' hv').symm
-    · -- wf_reach_no_drop case
-      intro l' v' hv' R' l_loc hlookup
-      unfold Heap.update_cell at hlookup
-      split at hlookup
-      case isTrue _ => cases hlookup
-      case isFalse _ =>
-        exact m.wf.wf_reach_no_drop l' v' hv' R' l_loc hlookup
   findom := by
     -- Domain remains unchanged when updating an existing cell
     obtain ⟨dom, hdom⟩ := m.findom
@@ -3126,13 +3113,6 @@ def drop_mcell (m : Memory) (l : Nat)
         have heq := m.wf.wf_reach l' v' hv' R' hlookup
         rw [heq]
         exact (compute_reachability_drop_mcell m.heap l hexists v' hv').symm
-    · -- wf_reach_no_drop case
-      intro l' v' hv' R' l_loc hlookup
-      unfold Heap.update_cell at hlookup
-      split at hlookup
-      case isTrue _ => cases hlookup
-      case isFalse _ =>
-        exact m.wf.wf_reach_no_drop l' v' hv' R' l_loc hlookup
   findom := by
     -- Domain unchanged: dropping replaces a `some` cell with another `some` cell.
     obtain ⟨dom, hdom⟩ := m.findom
