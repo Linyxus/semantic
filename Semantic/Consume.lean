@@ -12,7 +12,8 @@ import Semantic.Consume.Denotation
 
 import Semantic.Consume.Fundamental
 
-import Semantic.Consume.Safety
+-- Still WIP
+-- import Semantic.Consume.Safety
 
 /-!
 # Semantic Type Soundness for Consume
