@@ -312,6 +312,69 @@ theorem to_drop_applyRO {C : CapabilitySet} : C.to_drop.applyRO = C.to_drop := b
   | cap m l => rfl
   | union C1 C2 ih1 ih2 => simp only [to_drop, applyRO, ih1, ih2]
 
+/-- `to_drop` is idempotent. -/
+@[simp]
+theorem to_drop_to_drop {C : CapabilitySet} : C.to_drop.to_drop = C.to_drop := by
+  induction C with
+  | empty => rfl
+  | cap m l => rfl
+  | union C1 C2 ih1 ih2 => simp only [to_drop, ih1, ih2]
+
+/-- `applyMut` is absorbed by `to_drop` (every mode is overwritten with `.drop`). -/
+@[simp]
+theorem to_drop_applyMut {C : CapabilitySet} {m : Mutability} :
+    (C.applyMut m).to_drop = C.to_drop := by
+  cases m with
+  | epsilon => rfl
+  | ro =>
+    simp only [applyMut]
+    induction C with
+    | empty => rfl
+    | cap m' l => rfl
+    | union C1 C2 ih1 ih2 => simp only [applyRO, to_drop, ih1, ih2]
+
+/-- `applyAccess` is absorbed by `to_drop`. -/
+@[simp]
+theorem to_drop_applyAccess {C : CapabilitySet} {a : Access} :
+    (C.applyAccess a).to_drop = C.to_drop := by
+  cases a with
+  | M m => simp only [applyAccess_M, to_drop_applyMut]
+  | drop => simp only [applyAccess_drop, to_drop_to_drop]
+
+/-- Membership lifts through `to_drop` at mode `.drop` (locations preserved,
+    every mode becomes `.drop`). -/
+theorem hasmem_to_drop_of_hasmem {C : CapabilitySet} :
+    hasmem m l C -> hasmem .drop l C.to_drop := by
+  intro h
+  induction h with
+  | here => exact .here
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
+/-- Membership in `C.to_drop` is always at mode `.drop`, and witnesses some
+    member of `C` at the same location. -/
+theorem hasmem_to_drop_imp {C : CapabilitySet} {mu : CapMode} {l : Nat} :
+    hasmem mu l C.to_drop -> mu = .drop ∧ ∃ m', hasmem m' l C := by
+  intro h
+  induction C with
+  | empty => simp only [to_drop] at h; cases h
+  | cap m' l' => simp only [to_drop] at h; cases h; exact ⟨rfl, m', .here⟩
+  | union C1 C2 ih1 ih2 =>
+    simp only [to_drop] at h
+    cases h with
+    | left h => obtain ⟨he, m', hm'⟩ := ih1 h; exact ⟨he, m', .left hm'⟩
+    | right h => obtain ⟨he, m', hm'⟩ := ih2 h; exact ⟨he, m', .right hm'⟩
+
+/-- Coverage lifts through `to_drop`: any cover of `l` in `Y` gives a `.drop`
+    cover of `l` in `Y.to_drop`. -/
+theorem covers_to_drop_of_covers {Y : CapabilitySet} {mu : CapMode} {l : Nat} :
+    covers mu l Y -> covers .drop l Y.to_drop := by
+  intro h
+  induction h with
+  | here _ => exact .here CapMode.Le.drop
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
 /-- Applying mutability m to an epsilon singleton gives an m singleton. -/
 @[simp]
 theorem applyMut_singleton_epsilon {m : Mutability} {l : Nat} :
