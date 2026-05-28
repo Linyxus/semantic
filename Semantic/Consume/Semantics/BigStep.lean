@@ -66,6 +66,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     (hwf_x : x.WfInHeap m1.heap) ->
     Q1 (.var x) m1 ->
     Eval C2 m1 (e2.subst (Subst.openVar x)) Q) ->
+  (hseq : CapabilitySet.SeqComp C1 C2) ->
   (hagg : C1 ∪ C2 ⊆ Cagg) ->
   Eval Cagg m (.letin e1 e2) Q
 | eval_unpack {m : Memory} {Q1 : Mpost} :
@@ -84,6 +85,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
     Q1 (.pack cs x) m1 ->
     let R := cs.reachability m1
     Eval (C2 ∪ R ∪ R.to_drop) m1 (e2.subst (Subst.unpack cs x)) Q) ->
+  (hseq : CapabilitySet.SeqComp C1 C2) ->
   (hagg : C1 ∪ C2 ⊆ Cagg) ->
   Eval Cagg m (.unpack e1 e2) Q
 | eval_read {m : Memory} {x : Nat} {b : Bool} :
@@ -239,7 +241,8 @@ theorem eval_monotonic {m1 m2 : Memory}
             exact hwf_e
           · apply Subst.wf_openCVar
             exact hwf_cs)
-  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig hagg0 ih _ _ =>
+  case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig
+      h_var_orig hseq0 hagg0 ih _ _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_letin hwf
     have hcompat_union := Memory.is_compatible_subset hagg0 hcompat
     have hcompat_C1 := Memory.is_compatible_union_left hcompat_union
@@ -256,8 +259,9 @@ theorem eval_monotonic {m1 m2 : Memory}
       intro m_ext' x hs_ext' hcompat_ext' hwf_x hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       exact h_var_orig hs_orig hcompat_ext' hwf_x hq1
+    case hseq => exact hseq0
     case hagg => exact hagg0
-  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig hagg0 ih _ =>
+  case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig hseq0 hagg0 ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
     have hcompat_union := Memory.is_compatible_subset hagg0 hcompat
     have hcompat_C1 := Memory.is_compatible_union_left hcompat_union
@@ -270,6 +274,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       intro m_ext' x cs hs_ext' hcompat_ext' hwf_x hwf_cs hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       exact h_val_orig hs_orig hcompat_ext' hwf_x hwf_cs hq1
+    case hseq => exact hseq0
     case hagg => exact hagg0
   case eval_read hcov hmem hx hQ =>
     -- hcov : C.covers .ro y
@@ -470,7 +475,7 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
   case eval_capply hx _ ih =>
     apply Eval.eval_capply hx
     apply ih himp
-  case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var hagg ih ih_val ih_var =>
+  case eval_letin _ Q0 hpred hbool0 he1 h_nonstuck h_val h_var hseq hagg ih ih_val ih_var =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_letin (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
@@ -487,8 +492,9 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_var hs1 hcompat1 hwf_x hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
+    case hseq => exact hseq
     case hagg => exact hagg
-  case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ hagg ih ih_val =>
+  case eval_unpack _ Q0 hpred hbool0 he1 h_nonstuck _ hseq hagg ih ih_val =>
     specialize ih (by apply Mpost.entails_after_refl)
     apply Eval.eval_unpack (Q1:=Q0) hpred hbool0 ih
     case h_nonstuck =>
@@ -499,6 +505,7 @@ theorem eval_post_monotonic_general {Q1 Q2 : Mpost}
       apply ih_val hs1 hcompat1 hwf_x hwf_cs hq1
       apply Mpost.entails_after_subsumes himp
       apply hs1
+    case hseq => exact hseq
     case hagg => exact hagg
   case eval_read hcov hmem hx hQ =>
     apply Eval.eval_read hcov hmem hx
@@ -553,18 +560,19 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_capply hlookup _ ih =>
     exact Eval.eval_capply hlookup (ih hsub)
   case eval_letin =>
-    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var hagg
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var hseq hagg
       ih_e1 ih_val ih_var
     -- The new `eval_letin` carries an explicit aggregation `hagg : C1 ∪ C2 ⊆ Cagg`.
     -- Since the original index `Cagg` satisfies `Cagg ⊆ A2`, we simply re-aggregate
     -- to `A2` via `C1 ∪ C2 ⊆ Cagg ⊆ A2`, keeping all sub-derivations unchanged.
-    exact Eval.eval_letin hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var
+    -- `hseq : SeqComp C1 C2` is preserved verbatim (C1, C2 unchanged).
+    exact Eval.eval_letin hpred_mono hbool_mono heval_e1 h_nonstuck h_val h_var hseq
       (CapabilitySet.Subset.trans hagg hsub)
   case eval_unpack =>
-    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val hagg ih_e1 ih_val
+    rename_i hpred_mono hbool_mono heval_e1 h_nonstuck h_val hseq hagg ih_e1 ih_val
     -- As with `eval_letin`: the explicit aggregation `hagg : C1 ∪ C2 ⊆ Cagg`
     -- re-aggregates to `A2` via `C1 ∪ C2 ⊆ Cagg ⊆ A2`; sub-derivations unchanged.
-    exact Eval.eval_unpack hpred_mono hbool_mono heval_e1 h_nonstuck h_val
+    exact Eval.eval_unpack hpred_mono hbool_mono heval_e1 h_nonstuck h_val hseq
       (CapabilitySet.Subset.trans hagg hsub)
   case eval_read hcov hlookup_reader hlookup_mcell hQ =>
     exact Eval.eval_read
@@ -724,7 +732,7 @@ theorem Eval.strengthen_reach_bound
   | eval_capply hlookup _ ih =>
     intro D hD
     exact Eval.eval_capply hlookup (ih D hD)
-  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var hagg _ ih_val ih_var =>
+  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var hseq hagg _ ih_val ih_var =>
     intro D hD
     apply Eval.eval_letin hpred hbool eval_e1 h_nonstuck
     · intro m1 v hsub hcompat hv hwf_v hq1 l' hfresh
@@ -751,8 +759,9 @@ theorem Eval.strengthen_reach_bound
       intro cs0 x0 heq
       exact CapabilitySet.SubsetMod.mono_right (hSM cs0 x0 heq)
         (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hagg)
+    · exact hseq
     · exact hagg
-  | eval_unpack hpred hbool eval_e1 h_nonstuck _ hagg ih_e1 ih_val =>
+  | eval_unpack hpred hbool eval_e1 h_nonstuck _ hseq hagg ih_e1 ih_val =>
     intro D hD
     -- Strengthen `e1`: the witness reachability of the resulting pack value
     -- is bounded by `C1` modulo `D`.
@@ -760,7 +769,7 @@ theorem Eval.strengthen_reach_bound
     -- Apply `eval_unpack` using the strengthened Q1 (inferred from `eval_e1_str`).
     -- Supplying the original `hagg` last pins `C2`/`Cagg` (avoiding a stray
     -- metavariable goal).
-    apply Eval.eval_unpack ?_ ?_ eval_e1_str ?_ ?_ hagg
+    apply Eval.eval_unpack ?_ ?_ eval_e1_str ?_ ?_ hseq hagg
     · -- is_monotonic for the strengthened Q1
       intro m1 m2 v hwf_v hsubm hQ
       refine ⟨hpred hwf_v hsubm hQ.1, ?_⟩

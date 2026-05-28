@@ -569,6 +569,16 @@ theorem covers_of_covers_applyRO {C : CapabilitySet}
     | left h => exact .left (ih1 h)
     | right h => exact .right (ih2 h)
 
+/-- Sequential composition check on capability sets: running a computation
+authorized by `C1` and then one authorized by `C2` is valid when no location
+consumed (`.drop`) in `C1` is used again — at any mode — in `C2` (no
+use-after-consume). The runtime mirror of `PeakSet.SeqComp`: membership is
+exact (`hasmem`, not `covers`), and the check is ∀-quantified over the second
+use's mode `mu`. -/
+def SeqComp (C1 C2 : CapabilitySet) : Prop :=
+  ∀ (mu : CapMode) (l : Nat),
+    hasmem .drop l C1 → hasmem mu l C2 → False
+
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C
@@ -3919,6 +3929,5 @@ theorem CaptureSet.reachability_monotonic
     cases hwf with
     | wf_union hwf1 hwf2 =>
       simp only [CaptureSet.reachability, ih1 hwf1, ih2 hwf2]
-
 
 end Consume
