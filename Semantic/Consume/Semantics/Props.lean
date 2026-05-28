@@ -1740,6 +1740,54 @@ def EvalTrace.conforms_aux (C : CapabilitySet) : EvalTrace -> Finset Nat -> Prop
 def EvalTrace.conforms_to (tr : EvalTrace) (C : CapabilitySet) : Prop :=
   EvalTrace.conforms_aux C tr ∅
 
+/-- Conformance is monotone in the allocated set: more prior allocations only
+    justify more accesses. -/
+theorem EvalTrace.conforms_aux_alloced_mono {C : CapabilitySet} {tr : EvalTrace} :
+    ∀ {A B : Finset Nat}, A ⊆ B →
+      EvalTrace.conforms_aux C tr A → EvalTrace.conforms_aux C tr B := by
+  induction tr with
+  | nil => intro _ _ _ _; trivial
+  | cons item rest ih =>
+    intro A B hsub h
+    cases item with
+    | alloc l => exact ih (Finset.insert_subset_insert l hsub) h
+    | access mu l => exact ⟨h.1.imp (fun hl => hsub hl) id, ih hsub h.2⟩
+    | drop l => exact ⟨h.1.imp (fun hl => hsub hl) id, ih hsub h.2⟩
+
+/-- Conformance is monotone in the budget: a larger budget accounts for at least
+    as much. -/
+theorem EvalTrace.conforms_aux_mono_C {C D : CapabilitySet} (hCD : C ⊆ D)
+    {tr : EvalTrace} :
+    ∀ {A : Finset Nat},
+      EvalTrace.conforms_aux C tr A → EvalTrace.conforms_aux D tr A := by
+  induction tr with
+  | nil => intro _ _; trivial
+  | cons item rest ih =>
+    intro A h
+    cases item with
+    | alloc l => exact ih h
+    | access mu l =>
+      exact ⟨h.1.imp_right (CapabilitySet.subset_preserves_covers hCD), ih h.2⟩
+    | drop l =>
+      exact ⟨h.1.imp_right (CapabilitySet.subset_preserves_covers hCD), ih h.2⟩
+
+/-- Conformance composes over concatenation: if both halves conform with the same
+    starting allocation set, so does their concatenation (the first half only
+    grows the allocation set available to the second). -/
+theorem EvalTrace.conforms_aux_append {C : CapabilitySet} {tr1 tr2 : EvalTrace} :
+    ∀ {A : Finset Nat},
+      EvalTrace.conforms_aux C tr1 A → EvalTrace.conforms_aux C tr2 A →
+        EvalTrace.conforms_aux C (tr1 ++ tr2) A := by
+  induction tr1 with
+  | nil => intro _ _ h2; exact h2
+  | cons item rest ih =>
+    intro A h1 h2
+    cases item with
+    | alloc l =>
+      exact ih h1 (EvalTrace.conforms_aux_alloced_mono (Finset.subset_insert l A) h2)
+    | access mu l => exact ⟨h1.1, ih h1.2 h2⟩
+    | drop l => exact ⟨h1.1, ih h1.2 h2⟩
+
 /-- **Adequacy.** A successful `Eval` derivation is realized by an actual
     reduction to an answer satisfying the postcondition, provided the starting
     memory honors the budget. Moreover the reduction's trace conforms to the
@@ -1753,6 +1801,132 @@ theorem eval_adequacy
       a.IsAns ∧
       Q a m' ∧
       tr.conforms_to C := by
-  sorry
+  induction heval with
+  | eval_pack hsub hQ =>
+    exact ⟨[], _, _, Reduce.refl, Exp.IsAns.is_val Exp.IsVal.pack, hQ, trivial⟩
+  | eval_alloc hlookup h_post =>
+    obtain ⟨l, hfresh⟩ := Memory.exists_fresh _
+    exact ⟨_, _, _, Reduce.step (Step.step_alloc hlookup hfresh) Reduce.refl,
+      Exp.IsAns.is_val Exp.IsVal.pack, h_post l hfresh, trivial⟩
+  | eval_val hv hQ =>
+    exact ⟨[], _, _, Reduce.refl, Exp.IsAns.is_val hv.to_IsVal, hQ, trivial⟩
+  | eval_var hQ =>
+    exact ⟨[], _, _, Reduce.refl, Exp.IsAns.is_var, hQ, trivial⟩
+  | eval_apply hlookup _ ih =>
+    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih hcompat
+    exact ⟨_, _, _, Reduce.step (Step.step_apply hlookup) hred, hans, hQ, hconf⟩
+  | eval_invoke hcov hlookup_x hlookup_y hQ =>
+    exact ⟨_, _, _, Reduce.step (Step.step_invoke hlookup_x hlookup_y) Reduce.refl,
+      Exp.IsAns.is_val Exp.IsVal.unit, hQ, ⟨Or.inr hcov, trivial⟩⟩
+  | eval_tapply hlookup _ ih =>
+    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih hcompat
+    exact ⟨_, _, _, Reduce.step (Step.step_tapply hlookup) hred, hans, hQ, hconf⟩
+  | eval_capply hlookup _ ih =>
+    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih hcompat
+    exact ⟨_, _, _, Reduce.step (Step.step_capply hlookup) hred, hans, hQ, hconf⟩
+  | eval_read hcov hreader hcell hQ =>
+    refine ⟨_, _, _, Reduce.step (Step.step_read hreader hcell) Reduce.refl,
+      ?_, hQ, ⟨Or.inr hcov, trivial⟩⟩
+    split <;> exact Exp.IsAns.is_val (by constructor)
+  | eval_write_true hcov hx hy hQ =>
+    exact ⟨_, _, _, Reduce.step (Step.step_write_true hx hy) Reduce.refl,
+      Exp.IsAns.is_val Exp.IsVal.unit, hQ, ⟨Or.inr hcov, trivial⟩⟩
+  | eval_write_false hcov hx hy hQ =>
+    exact ⟨_, _, _, Reduce.step (Step.step_write_false hx hy) Reduce.refl,
+      Exp.IsAns.is_val Exp.IsVal.unit, hQ, ⟨Or.inr hcov, trivial⟩⟩
+  | eval_drop hx hQ hcov =>
+    exact ⟨_, _, _, Reduce.step (Step.step_drop hx) Reduce.refl,
+      Exp.IsAns.is_val Exp.IsVal.unit, hQ, ⟨Or.inr hcov, trivial⟩⟩
+  | eval_cond hres _ _ ih_true ih_false =>
+    cases hres with
+    | inl htrue =>
+      obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih_true htrue hcompat
+      exact ⟨_, _, _, Reduce.step (Step.step_cond_true htrue) hred, hans, hQ, hconf⟩
+    | inr hfalse =>
+      obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih_false hfalse hcompat
+      exact ⟨_, _, _, Reduce.step (Step.step_cond_false hfalse) hred, hans, hQ, hconf⟩
+  | eval_letin hpred hbool heval_e1 h_nonstuck h_val h_var hagg ih_e1 ih_val ih_var =>
+    rename_i C1 _ C2 _ Cagg _ _ _
+    have hC1 : C1 ⊆ Cagg := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hagg
+    have hC2 : C2 ⊆ Cagg := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hagg
+    -- Reduce `e1` to an answer under its sub-budget `C1`.
+    obtain ⟨tr1, m1, a1, hred1, hans1, hQ1, hconf1⟩ :=
+      ih_e1 (Memory.is_compatible_subset hC1 hcompat)
+    have hsub1 := reduce_memory_monotonic hred1
+    obtain ⟨hsimple, hwf1⟩ := h_nonstuck hQ1
+    -- GAP (separation/linearity): evaluating `e1` under `C1` should not break
+    -- compatibility of the disjoint continuation budget `C2`. `Step` does not
+    -- carry this; it is the linearity property `Eval` discarded. NEEDS DISCUSSION.
+    have hcompatC2 : m1.is_compatible C2 := sorry
+    cases hsimple with
+    | is_simple_val hv =>
+      -- `a1` is a simple value: lift it into a fresh cell and run the continuation.
+      obtain ⟨l0, hfresh0⟩ := Memory.exists_fresh m1
+      have hext :
+          (m1.extend_val l0 ⟨a1, hv, compute_reachability m1.heap a1 hv⟩ hwf1 rfl
+            hfresh0).is_compatible C2 :=
+        Memory.is_compatible_extend_val m1 l0 ⟨a1, hv, compute_reachability m1.heap a1 hv⟩
+          hwf1 rfl hfresh0 hcompatC2
+      obtain ⟨tr2, m2, a2, hred2, hans2, hQ2, hconf2⟩ :=
+        ih_val hsub1 hcompatC2 hv hwf1 hQ1 l0 hfresh0 hext
+      refine ⟨_, _, _,
+        reduce_trans (reduce_ctx_letin hred1)
+          (Reduce.step (Step.step_lift hv hwf1 hfresh0) hred2),
+        hans2, hQ2, ?_⟩
+      exact EvalTrace.conforms_aux_append
+        (EvalTrace.conforms_aux_mono_C hC1 hconf1)
+        (EvalTrace.conforms_aux_mono_C hC2 hconf2)
+    | is_var =>
+      -- `a1` is a variable; it is free (empty signature). Rename and continue.
+      rename_i x_var
+      cases x_var with
+      | bound idx => cases idx
+      | free fy =>
+        cases hwf1 with
+        | wf_var hwf_x' =>
+          obtain ⟨tr2, m2, a2, hred2, hans2, hQ2, hconf2⟩ :=
+            ih_var hsub1 hcompatC2 hwf_x' hQ1 hcompatC2
+          refine ⟨_, _, _,
+            reduce_trans (reduce_ctx_letin hred1)
+              (Reduce.step Step.step_rename hred2),
+            hans2, hQ2, ?_⟩
+          exact EvalTrace.conforms_aux_append
+            (EvalTrace.conforms_aux_mono_C hC1 hconf1)
+            (EvalTrace.conforms_aux_mono_C hC2 hconf2)
+  | eval_unpack hpred hbool heval_e1 h_nonstuck h_val hagg ih_e1 ih_val =>
+    rename_i C1 _ C2 _ Cagg _ _ _
+    have hC1 : C1 ⊆ Cagg := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hagg
+    -- Reduce `e1` to a pack under its sub-budget `C1`.
+    obtain ⟨tr1, m1, a1, hred1, hans1, hQ1, hconf1⟩ :=
+      ih_e1 (Memory.is_compatible_subset hC1 hcompat)
+    have hsub1 := reduce_memory_monotonic hred1
+    obtain ⟨hpack, hwf1⟩ := h_nonstuck hQ1
+    cases hpack with
+    | pack =>
+      rename_i cs x_var
+      cases x_var with
+      | bound idx => cases idx
+      | free fx =>
+        cases hwf1 with
+        | wf_pack hwf_cs hwf_x =>
+          -- GAP 1 (separation/linearity, same as `letin`): the continuation budget
+          -- `C2 ∪ R ∪ R.to_drop` must be compatible at `m1`. `Step` does not carry
+          -- this. NEEDS DISCUSSION.
+          have hcompatU :
+              m1.is_compatible
+                (C2 ∪ cs.reachability m1 ∪ (cs.reachability m1).to_drop) := sorry
+          obtain ⟨tr2, m2, a2, hred2, hans2, hQ2, hconf2⟩ :=
+            ih_val hsub1 hcompatU hwf_x hwf_cs hQ1 hcompatU
+          refine ⟨_, _, _,
+            reduce_trans (reduce_ctx_unpack hred1)
+              (Reduce.step Step.step_unpack hred2),
+            hans2, hQ2, ?_⟩
+          -- GAP 2 (trace/reachability): `tr2` conforms to `C2 ∪ R ∪ R.to_drop`, where
+          -- `R = cs.reachability m1` is the unpacked capability. Its locations are
+          -- either freshly allocated during `e1` (hence in `tr1`'s allocation set) or
+          -- pre-existing in `C1 ⊆ Cagg` — so the concatenation conforms to `Cagg`.
+          -- Closing this needs the accumulator-precise append lemma plus an invariant
+          -- relating `cs.reachability` to the earlier trace. NEEDS DISCUSSION.
+          sorry
 
 end Consume
