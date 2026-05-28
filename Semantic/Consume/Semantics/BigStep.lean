@@ -46,8 +46,7 @@ inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
   (h_nonstuck : ∀ {m1 : Memory} {v : Exp {}},
     Q1 v m1 ->
     v.IsSimpleAns ∧
-    Exp.WfInHeap v m1.heap ∧
-    m1.is_compatible C2) ->
+    Exp.WfInHeap v m1.heap) ->
   (h_val : ∀ {m1} {v : Exp {}},
     (m1.subsumes m) ->
     (m1.is_compatible C2) ->

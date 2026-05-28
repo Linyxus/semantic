@@ -3441,6 +3441,49 @@ theorem is_compatible_extend_val (m : Memory) (l : Nat) (v : HeapVal)
   · cases hheap
   · exact hcompat mu l' b ℓ hmem hheap
 
+/-- `is_compatible` is preserved by extending memory with a fresh *live* mutable
+    cell: the new cell is live, so it cannot violate the liveness condition. -/
+theorem is_compatible_extend_mcell (m : Memory) (l : Nat) (b : Bool)
+    (hfresh : m.heap l = none) {C : CapabilitySet}
+    (hcompat : m.is_compatible C) :
+    (m.extend_mcell l b hfresh).is_compatible C := by
+  intro mu l' b' ℓ hmem hheap
+  change (m.heap.extend_mcell l b) l' = some (.capability (.mcell b' ℓ)) at hheap
+  unfold Heap.extend_mcell at hheap
+  split at hheap
+  · injection hheap with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
+  · exact hcompat mu l' b' ℓ hmem hheap
+
+/-- `is_compatible` is preserved by updating a mutable cell to a *live* value:
+    the cell stays live, so the liveness condition is maintained. -/
+theorem is_compatible_update_mcell (m : Memory) (l : Nat) (b : Bool)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) {C : CapabilitySet}
+    (hcompat : m.is_compatible C) :
+    (m.update_mcell l b .live hexists).is_compatible C := by
+  intro mu l' b' ℓ hmem hheap
+  change (m.heap.update_cell l (.capability (.mcell b .live))) l' = some (.capability (.mcell b' ℓ))
+    at hheap
+  unfold Heap.update_cell at hheap
+  split at hheap
+  · injection hheap with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
+  · exact hcompat mu l' b' ℓ hmem hheap
+
+/-- `is_compatible` is preserved by `drop_mcell` *provided the dropped location is
+    not a member of the capability set*. Dropping marks the cell `.dead`, which
+    would break liveness for that location — so we require it absent from `C`. -/
+theorem is_compatible_drop_mcell (m : Memory) (l : Nat)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) {C : CapabilitySet}
+    (hnotin : ∀ mu, ¬ CapabilitySet.hasmem mu l C)
+    (hcompat : m.is_compatible C) :
+    (m.drop_mcell l hexists).is_compatible C := by
+  intro mu l' b' ℓ hmem hheap
+  change (m.heap.update_cell l (.capability (.mcell false .dead))) l'
+    = some (.capability (.mcell b' ℓ)) at hheap
+  unfold Heap.update_cell at hheap
+  split at hheap
+  · rename_i hl'eq; subst hl'eq; exact absurd hmem (hnotin mu)
+  · exact hcompat mu l' b' ℓ hmem hheap
+
 end Memory
 
 /-- Memory predicate. -/
