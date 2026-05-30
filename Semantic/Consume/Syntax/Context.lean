@@ -17,7 +17,7 @@ inductive Binding : Sig -> Kind -> Type where
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
 | .tvar T, f => .tvar (T.rename f)
-| .cvar cb, f => .cvar (cb.rename f)
+| .cvar a cb, f => .cvar a (cb.rename f)
 
 inductive Ctx : Sig -> Type where
 | empty : Ctx {}
@@ -29,18 +29,18 @@ def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 def Ctx.push_tvar : Ctx s -> PureTy s -> Ctx (s,X)
 | Γ, T => Γ.push (.tvar T)
 
-def Ctx.push_cvar : Ctx s -> CaptureBound s -> Ctx (s,C)
-| Γ, cb => Γ.push (.cvar cb)
+def Ctx.push_cvar : Ctx s -> Authority -> CaptureBound s -> Ctx (s,C)
+| Γ, a, cb => Γ.push (.cvar a cb)
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
-notation:65 Γ:65 ",C<:" cb:66 => Ctx.push_cvar Γ cb
+notation:65 Γ:65 ",C[" a:66 "]<:" cb:66 => Ctx.push_cvar Γ a cb
 
 /-- A binding is closed if the type it contains is closed. -/
 inductive Binding.IsClosed : Binding s k -> Prop where
 | var : T.IsClosed -> Binding.IsClosed (.var T)
 | tvar : T.IsClosed -> Binding.IsClosed (.tvar T)
-| cvar : cb.IsClosed -> Binding.IsClosed (.cvar cb)
+| cvar : cb.IsClosed -> Binding.IsClosed (.cvar a cb)
 
 /-- A context is closed if all bindings in it are closed. -/
 inductive Ctx.IsClosed : Ctx s -> Prop where
@@ -64,7 +64,7 @@ inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
 /-- Lookup a capture variable in the context. -/
 inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> CaptureBound s -> Prop
 | here :
-  Ctx.LookupCVar (.push Γ (.cvar cb)) .here (cb.rename Rename.succ)
+  Ctx.LookupCVar (.push Γ (.cvar a cb)) .here (cb.rename Rename.succ)
 | there {b : Binding s k} :
   Ctx.LookupCVar Γ c cb ->
   Ctx.LookupCVar (.push Γ b) (.there c) (cb.rename Rename.succ)
@@ -87,7 +87,7 @@ def Ctx.lookup_var : Ctx s -> BVar s .var -> Ty .capt s
 
 /-- Functional lookup for capture variables. -/
 def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> CaptureBound s
-| .push _ (.cvar cb), .here => cb.rename Rename.succ
+| .push _ (.cvar _ cb), .here => cb.rename Rename.succ
 | .push Γ _, .there c => (Γ.lookup_cvar c).rename Rename.succ
 
 /-- Helper for `lookup_tvar'`: structurally recursive on `Ctx s`.
@@ -115,7 +115,7 @@ def Ctx.lookup_var' (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) : Ty .capt s :=
 def Ctx.lookup_cvar'_aux :
     {s_full : Sig} → (Γ : Ctx s_full) → BVar s_full .cvar → {s' : Sig} → {k_top : Kind} →
     s_full = s' ,, k_top → CaptureBound s'
-| _, .push _ (.cvar cb), .here, _, _, rfl => cb
+| _, .push _ (.cvar _ cb), .here, _, _, rfl => cb
 | _, .push Γ _, .there c, _, _, rfl => Γ.lookup_cvar c
 
 def Ctx.lookup_cvar' (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) : CaptureBound s :=
@@ -157,7 +157,7 @@ theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
 theorem Ctx.lookup_cvar_spec (Γ : Ctx s) (c : BVar s .cvar) :
     Ctx.LookupCVar Γ c (Γ.lookup_cvar c) := by
   match Γ, c with
-  | .push _ (.cvar _), .here => exact LookupCVar.here
+  | .push _ (.cvar _ _), .here => exact LookupCVar.here
   | .push Γ' b, .there c' =>
     simp only [lookup_cvar]
     exact LookupCVar.there (b := b) (lookup_cvar_spec Γ' c')
@@ -181,7 +181,7 @@ theorem Ctx.lookup_tvar_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) :
       | there x' => simp only [lookup_tvar, lookup_tvar', lookup_tvar'_aux]
     | var T => cases x with
       | there x' => simp only [lookup_tvar, lookup_tvar', lookup_tvar'_aux]
-    | cvar cb => cases x with
+    | cvar _ cb => cases x with
       | there x' => simp only [lookup_tvar, lookup_tvar', lookup_tvar'_aux]
 
 /-- The lookup equals the primed lookup renamed by succ. -/
@@ -195,7 +195,7 @@ theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
     | var T => cases x with
       | here => simp only [lookup_var, lookup_var', lookup_var'_aux]
       | there x' => simp only [lookup_var, lookup_var', lookup_var'_aux]
-    | cvar cb => cases x with
+    | cvar _ cb => cases x with
       | there x' => simp only [lookup_var, lookup_var', lookup_var'_aux]
 
 /-- The lookup equals the primed lookup renamed by succ. -/
@@ -208,7 +208,7 @@ theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
       | there c' => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
     | var T => cases c with
       | there c' => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
-    | cvar cb => cases c with
+    | cvar _ cb => cases c with
       | here => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
       | there c' => simp only [lookup_cvar, lookup_cvar', lookup_cvar'_aux]
 
@@ -330,7 +330,7 @@ theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : Capt
           | there x' =>
             simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
               CaptureSet.peaksVarBound]
-        | cvar cb =>
+        | cvar _ cb =>
           cases x with
           | there x' =>
             simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.peaks,
