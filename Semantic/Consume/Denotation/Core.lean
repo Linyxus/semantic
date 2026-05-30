@@ -559,7 +559,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
-| .push Γ (.cvar B), .extend env (.cvar cs cap), m =>
+| .push Γ (.cvar _ B), .extend env (.cvar cs cap), m =>
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
   (cap.BoundedBy (B.denot env m)) ∧
@@ -591,7 +591,7 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyAccess_rename
-  | _, .push Γ' (.cvar B), .extend ρ' (.cvar cs _), .there x' =>
+  | _, .push Γ' (.cvar _ B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
     obtain ⟨_, _, _, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
@@ -975,7 +975,7 @@ theorem typed_env_is_implying_simple_ans
             exact himplies
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar _ B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1039,7 +1039,7 @@ theorem typed_env_is_implying_wf
             exact himplies
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar _ B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1108,7 +1108,7 @@ theorem typed_env_enforces_pure
             exact hpure
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar _ B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1426,7 +1426,7 @@ theorem typed_env_is_monotonic
               exact hproper.1
             | there x =>
               exact ih_result.tvar x
-      | cvar B =>
+      | cvar _ B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1492,7 +1492,7 @@ theorem typed_env_is_transparent
             exact hproper.2.1
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar _ B =>
         cases info with
         | cvar cs cap =>
           change
@@ -1558,7 +1558,7 @@ theorem typed_env_is_bool_independent
             exact hproper.2.2.1
           | there x =>
             exact ih_result x
-      | cvar B =>
+      | cvar _ B =>
         cases info with
         | cvar cs cap =>
           change
@@ -2385,7 +2385,7 @@ theorem env_typing_monotonic
                 · constructor
                   · exact hpure
                   · exact ih ht'
-      | cvar B =>
+      | cvar _ B =>
         cases info with
         | cvar cs cap =>
           change

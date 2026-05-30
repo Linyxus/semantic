@@ -40,8 +40,8 @@ theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
       rw [eq]
 
 theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar}
-    {cb1 cb2 : CaptureBound s} :
-    Γ.LookupCVar c cb1 -> Γ.LookupCVar c cb2 -> cb1 = cb2 := by
+    {a1 a2 : Authority} {cb1 cb2 : CaptureBound s} :
+    Γ.LookupCVar c a1 cb1 -> Γ.LookupCVar c a2 cb2 -> cb1 = cb2 := by
   intro h1 h2
   induction h1
   case here =>
@@ -276,7 +276,7 @@ theorem HasType.use_set_is_closed
       | union h' _ =>
         exact CaptureSet.IsClosed.union ih1
           (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv h'))
-  case pack hC _ _ =>
+  case pack hC _ _ _ =>
     exact CaptureSet.applyAccess_isClosed hC
   case app =>
     rename_i ht_x _ _ _
@@ -369,7 +369,7 @@ theorem HasType.exp_is_closed
     · assumption
     · -- e✝.IsClosed
       exact ih
-  case pack C x T =>
+  case pack C _ _ T =>
     constructor
     · -- C✝.IsClosed
       assumption
