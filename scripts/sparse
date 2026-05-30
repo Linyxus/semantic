@@ -17,7 +17,7 @@
 set -euo pipefail
 
 # Module-independent paths that are always present while in sparse mode:
-# build infrastructure plus the shared Prelude.
+# build infrastructure, the shared Prelude, plus the scripts and notes trees.
 BASE_PATTERNS=(
   /.gitignore
   /.github/
@@ -28,6 +28,8 @@ BASE_PATTERNS=(
   /AGENTS.md
   /GEMINI.md
   /README.md
+  /scripts/
+  /notes/
   /Semantic/Prelude.lean
 )
 
