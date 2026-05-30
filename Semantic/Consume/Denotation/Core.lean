@@ -565,6 +565,18 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   cap = cs.ground_denot m ∧
   EnvTyping Γ env m
 
+/-- Separation of droppable capture variables: any two *distinct* capture
+variables in `Γ` that both carry `.can_drop` authority denote disjoint
+capability sets under `env`. This rules out two owned (droppable) cvars
+aliasing the same location — the environment-separation invariant needed to
+bridge syntactic `SeqComp` to its runtime counterpart. -/
+def DroppableSep (Γ : Ctx s) (env : TypeEnv s) : Prop :=
+  ∀ (c1 c2 : BVar s .cvar),
+    c1 ≠ c2 →
+    Γ.lookup_authority c1 = .can_drop →
+    Γ.lookup_authority c2 = .can_drop →
+    CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
+
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Access) :
@@ -770,6 +782,7 @@ theorem Memory.preserves_liveness_full_to_consume_only
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m →
+    DroppableSep Γ ρ →
     m.is_compatible (C.denot ρ m) →
     Eval (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
       (fun v m' => Ty.exi_val_denot ρ E m' v)

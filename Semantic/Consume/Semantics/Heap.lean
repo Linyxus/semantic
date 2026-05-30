@@ -579,6 +579,14 @@ def SeqComp (C1 C2 : CapabilitySet) : Prop :=
   ∀ (mu : CapMode) (l : Nat),
     hasmem .drop l C1 → hasmem mu l C2 → False
 
+/-- Two capability sets are disjoint when they share no capability: no location
+is a member of both `C1` and `C2`, at any cap modes. Like `SeqComp`, membership
+is exact (`hasmem`); unlike `SeqComp`, the first use's mode is also universally
+quantified, so the check is symmetric and location-level. -/
+def disjoint (C1 C2 : CapabilitySet) : Prop :=
+  ∀ (mu1 mu2 : CapMode) (l : Nat),
+    hasmem mu1 l C1 → hasmem mu2 l C2 → False
+
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C
