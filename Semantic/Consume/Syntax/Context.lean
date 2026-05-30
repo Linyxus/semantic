@@ -61,13 +61,15 @@ inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
   Ctx.LookupVar Γ x T ->
   Ctx.LookupVar (.push Γ b) (.there x) (T.rename Rename.succ)
 
-/-- Lookup a capture variable in the context. -/
-inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> CaptureBound s -> Prop
+/-- Lookup a capture variable in the context, returning both its `Authority`
+and its capture bound. The authority carries no signature dependence, so it is
+unaffected by the `succ`-renaming applied to the bound. -/
+inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> Authority -> CaptureBound s -> Prop
 | here :
-  Ctx.LookupCVar (.push Γ (.cvar a cb)) .here (cb.rename Rename.succ)
+  Ctx.LookupCVar (.push Γ (.cvar a cb)) .here a (cb.rename Rename.succ)
 | there {b : Binding s k} :
-  Ctx.LookupCVar Γ c cb ->
-  Ctx.LookupCVar (.push Γ b) (.there c) (cb.rename Rename.succ)
+  Ctx.LookupCVar Γ c a cb ->
+  Ctx.LookupCVar (.push Γ b) (.there c) a (cb.rename Rename.succ)
 
 def Ctx.depth : Ctx s -> Nat
 | .empty => 0
@@ -89,6 +91,12 @@ def Ctx.lookup_var : Ctx s -> BVar s .var -> Ty .capt s
 def Ctx.lookup_cvar : Ctx s -> BVar s .cvar -> CaptureBound s
 | .push _ (.cvar _ cb), .here => cb.rename Rename.succ
 | .push Γ _, .there c => (Γ.lookup_cvar c).rename Rename.succ
+
+/-- Functional lookup for the authority of a capture variable. The authority is
+a plain tag with no signature dependence, so no renaming is needed. -/
+def Ctx.lookup_authority : Ctx s -> BVar s .cvar -> Authority
+| .push _ (.cvar a _), .here => a
+| .push Γ _, .there c => Γ.lookup_authority c
 
 /-- Helper for `lookup_tvar'`: structurally recursive on `Ctx s`.
 The `rfl` pattern in `.push` cases lets Lean unify the signature equation. -/
@@ -153,22 +161,32 @@ theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
   | here => rfl
   | there _ ih => simp only [Ctx.lookup_var, ih]
 
-/-- The functional lookup satisfies the inductive predicate. -/
+/-- The functional lookups (authority and bound) jointly satisfy the inductive
+predicate. -/
 theorem Ctx.lookup_cvar_spec (Γ : Ctx s) (c : BVar s .cvar) :
-    Ctx.LookupCVar Γ c (Γ.lookup_cvar c) := by
+    Ctx.LookupCVar Γ c (Γ.lookup_authority c) (Γ.lookup_cvar c) := by
   match Γ, c with
   | .push _ (.cvar _ _), .here => exact LookupCVar.here
   | .push Γ' b, .there c' =>
-    simp only [lookup_cvar]
+    simp only [lookup_cvar, lookup_authority]
     exact LookupCVar.there (b := b) (lookup_cvar_spec Γ' c')
 
 /-- If the inductive predicate holds, the bound equals the functional lookup. -/
 theorem Ctx.LookupCVar.eq_lookup {Γ : Ctx s} {c : BVar s .cvar}
-    {cb : CaptureBound s}
-    (h : Ctx.LookupCVar Γ c cb) : cb = Γ.lookup_cvar c := by
+    {a : Authority} {cb : CaptureBound s}
+    (h : Ctx.LookupCVar Γ c a cb) : cb = Γ.lookup_cvar c := by
   induction h with
   | here => rfl
   | there _ ih => simp only [Ctx.lookup_cvar, ← ih]
+
+/-- If the inductive predicate holds, the authority equals the functional
+lookup. -/
+theorem Ctx.LookupCVar.eq_authority {Γ : Ctx s} {c : BVar s .cvar}
+    {a : Authority} {cb : CaptureBound s}
+    (h : Ctx.LookupCVar Γ c a cb) : a = Γ.lookup_authority c := by
+  induction h with
+  | here => rfl
+  | there _ ih => simp only [Ctx.lookup_authority, ih]
 
 /-- The lookup equals the primed lookup renamed by succ. -/
 theorem Ctx.lookup_tvar_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) :
@@ -419,6 +437,19 @@ def PeakSet.SeqComp (P1 P2 : PeakSet s) : Prop :=
 check the resulting peak sets compose. -/
 def CaptureSet.SeqComp (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   PeakSet.SeqComp (C1.peakset Γ) (C2.peakset Γ)
+
+/-- A peak set is *droppable* in `Γ` when every capture variable occurring in it
+(at any access `a`) is bound with `can_drop` authority — i.e. each of its peaks
+may legitimately be consumed. -/
+def PeakSet.droppable (Γ : Ctx s) (P : PeakSet s) : Prop :=
+  ∀ (a : Access) (c : BVar s .cvar),
+    (CaptureSet.cvar a c) ⊆ P.cs → Γ.lookup_authority c = .can_drop
+
+/-- A capture set is *droppable* in `Γ` when its peak set is droppable — i.e.
+expand it to peaks, then check every capture variable peak is bound with
+`can_drop` authority. -/
+def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  PeakSet.droppable Γ (C.peakset Γ)
 
 /-
 RETIRED (2026-05-25): the access/consume machinery below was keyed on the
