@@ -26,8 +26,8 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x T ->
   ----------------------------------
   Subcapt Γ (.var (.M .epsilon) (.bound x)) T.captureSet
-| sc_cvar :
-  Ctx.LookupCVar Γ c (.bound C) ->
+| sc_cvar {a : Authority} :
+  Ctx.LookupCVar Γ c a (.bound C) ->
   ----------------------------------
   Subcapt Γ (.cvar (.M .epsilon) c) C
 | sc_ro :
@@ -105,11 +105,11 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | cpoly :
   Subbound Γ cb2 cb1 ->
   Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ,C<:cb2) T1 T2 ->
+  Subtyp (Γ,C[.access_only]<:cb2) T1 T2 ->
   ----------------------------------------
   Subtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
 | exi :
-  Subtyp (Γ,C<:.unbound) T1 T2 ->
+  Subtyp (Γ,C[.can_drop]<:.unbound) T1 T2 ->
   --------------------------
   Subtyp Γ (.exi T1) (.exi T2)
 | typ :
@@ -148,11 +148,12 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
+  HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
+  C.droppable Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
   HasType (C.applyAccess .drop) Γ (.pack C x) (.exi T)
@@ -184,7 +185,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     ((C2.rename Rename.succ).rename Rename.succ ∪
      (.cvar (.M .epsilon) (.there .here)) ∪
      (.cvar .drop (.there .here)))
-    (Γ.push_cvar .unbound,x:T)
+    (Γ.push_cvar .can_drop .unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
