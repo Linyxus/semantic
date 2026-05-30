@@ -545,7 +545,6 @@ instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
 
-
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
 | .push Γ (.var T), .extend env (.var n ps), m =>
