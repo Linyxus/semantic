@@ -470,7 +470,7 @@ theorem eval_implies_progressive
   | eval_capply hlookup _ _ =>
     -- e = .capp (.free x) CS, can step via step_capply
     exact IsProgressive.step (Step.step_capply hlookup)
-  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var hagg ih_e1 _ _ =>
+  | eval_letin hpred hbool eval_e1 h_nonstuck h_val h_var hseq hagg ih_e1 _ _ =>
     -- e = .letin e1 e2
     -- By IH, e1 is progressive
     cases ih_e1 with
@@ -493,7 +493,7 @@ theorem eval_implies_progressive
     | step hstep =>
       -- e1 can step, so letin e1 e2 can step via step_ctx_letin
       exact IsProgressive.step (Step.step_ctx_letin hstep)
-  | eval_unpack hpred hbool eval_e1 h_nonstuck h_val hagg ih_e1 _ =>
+  | eval_unpack hpred hbool eval_e1 h_nonstuck h_val hseq hagg ih_e1 _ =>
     -- e = .unpack e1 e2
     cases ih_e1 with
     | done hans =>
@@ -1788,14 +1788,8 @@ theorem EvalTrace.conforms_aux_append {C : CapabilitySet} {tr1 tr2 : EvalTrace} 
     | access mu l => exact ⟨h1.1, ih h1.2 h2⟩
     | drop l => exact ⟨h1.1, ih h1.2 h2⟩
 
-/-- **Adequacy.** A successful `Eval` derivation is realized by an actual
-    reduction to an answer satisfying the postcondition, provided the starting
-    memory honors the budget. Moreover the reduction's trace conforms to the
-    budget: every access/drop is either to a freshly-allocated address or is
-    accounted for by `C`. -/
 theorem eval_adequacy
-    (heval : Eval C m e Q)
-    (hcompat : m.is_compatible C) :
+    (heval : Eval C m e Q) :
     ∃ (tr : EvalTrace) (m' : Memory) (a : Exp {}),
       Reduce m e tr m' a ∧
       a.IsAns ∧
@@ -1813,16 +1807,16 @@ theorem eval_adequacy
   | eval_var hQ =>
     exact ⟨[], _, _, Reduce.refl, Exp.IsAns.is_var, hQ, trivial⟩
   | eval_apply hlookup _ ih =>
-    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih hcompat
+    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih
     exact ⟨_, _, _, Reduce.step (Step.step_apply hlookup) hred, hans, hQ, hconf⟩
   | eval_invoke hcov hlookup_x hlookup_y hQ =>
     exact ⟨_, _, _, Reduce.step (Step.step_invoke hlookup_x hlookup_y) Reduce.refl,
       Exp.IsAns.is_val Exp.IsVal.unit, hQ, ⟨Or.inr hcov, trivial⟩⟩
   | eval_tapply hlookup _ ih =>
-    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih hcompat
+    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih
     exact ⟨_, _, _, Reduce.step (Step.step_tapply hlookup) hred, hans, hQ, hconf⟩
   | eval_capply hlookup _ ih =>
-    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih hcompat
+    obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih
     exact ⟨_, _, _, Reduce.step (Step.step_capply hlookup) hred, hans, hQ, hconf⟩
   | eval_read hcov hreader hcell hQ =>
     refine ⟨_, _, _, Reduce.step (Step.step_read hreader hcell) Reduce.refl,
@@ -1840,35 +1834,30 @@ theorem eval_adequacy
   | eval_cond hres _ _ ih_true ih_false =>
     cases hres with
     | inl htrue =>
-      obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih_true htrue hcompat
+      obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih_true htrue
       exact ⟨_, _, _, Reduce.step (Step.step_cond_true htrue) hred, hans, hQ, hconf⟩
     | inr hfalse =>
-      obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih_false hfalse hcompat
+      obtain ⟨tr, m', a, hred, hans, hQ, hconf⟩ := ih_false hfalse
       exact ⟨_, _, _, Reduce.step (Step.step_cond_false hfalse) hred, hans, hQ, hconf⟩
-  | eval_letin hpred hbool heval_e1 h_nonstuck h_val h_var hagg ih_e1 ih_val ih_var =>
+  | eval_letin hpred hbool heval_e1 h_nonstuck h_val h_var hseq hagg ih_e1 ih_val ih_var =>
     rename_i C1 _ C2 _ Cagg _ _ _
     have hC1 : C1 ⊆ Cagg := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hagg
     have hC2 : C2 ⊆ Cagg := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right hagg
     -- Reduce `e1` to an answer under its sub-budget `C1`.
-    obtain ⟨tr1, m1, a1, hred1, hans1, hQ1, hconf1⟩ :=
-      ih_e1 (Memory.is_compatible_subset hC1 hcompat)
+    obtain ⟨tr1, m1, a1, hred1, hans1, hQ1, hconf1⟩ := ih_e1
     have hsub1 := reduce_memory_monotonic hred1
     obtain ⟨hsimple, hwf1⟩ := h_nonstuck hQ1
     -- GAP (separation/linearity): evaluating `e1` under `C1` should not break
-    -- compatibility of the disjoint continuation budget `C2`. `Step` does not
-    -- carry this; it is the linearity property `Eval` discarded. NEEDS DISCUSSION.
+    -- compatibility of the disjoint continuation budget `C2`. The newly-threaded
+    -- `hseq : SeqComp C1 C2` (drops in `C1` never touch `C2`) is the hypothesis
+    -- this needs, via a frame lemma over `Reduce`. NEEDS DISCUSSION.
     have hcompatC2 : m1.is_compatible C2 := sorry
     cases hsimple with
     | is_simple_val hv =>
       -- `a1` is a simple value: lift it into a fresh cell and run the continuation.
       obtain ⟨l0, hfresh0⟩ := Memory.exists_fresh m1
-      have hext :
-          (m1.extend_val l0 ⟨a1, hv, compute_reachability m1.heap a1 hv⟩ hwf1 rfl
-            hfresh0).is_compatible C2 :=
-        Memory.is_compatible_extend_val m1 l0 ⟨a1, hv, compute_reachability m1.heap a1 hv⟩
-          hwf1 rfl hfresh0 hcompatC2
       obtain ⟨tr2, m2, a2, hred2, hans2, hQ2, hconf2⟩ :=
-        ih_val hsub1 hcompatC2 hv hwf1 hQ1 l0 hfresh0 hext
+        ih_val hsub1 hcompatC2 hv hwf1 hQ1 l0 hfresh0
       refine ⟨_, _, _,
         reduce_trans (reduce_ctx_letin hred1)
           (Reduce.step (Step.step_lift hv hwf1 hfresh0) hred2),
@@ -1885,7 +1874,7 @@ theorem eval_adequacy
         cases hwf1 with
         | wf_var hwf_x' =>
           obtain ⟨tr2, m2, a2, hred2, hans2, hQ2, hconf2⟩ :=
-            ih_var hsub1 hcompatC2 hwf_x' hQ1 hcompatC2
+            ih_var hsub1 hcompatC2 hwf_x' hQ1
           refine ⟨_, _, _,
             reduce_trans (reduce_ctx_letin hred1)
               (Reduce.step Step.step_rename hred2),
@@ -1893,12 +1882,11 @@ theorem eval_adequacy
           exact EvalTrace.conforms_aux_append
             (EvalTrace.conforms_aux_mono_C hC1 hconf1)
             (EvalTrace.conforms_aux_mono_C hC2 hconf2)
-  | eval_unpack hpred hbool heval_e1 h_nonstuck h_val hagg ih_e1 ih_val =>
+  | eval_unpack hpred hbool heval_e1 h_nonstuck h_val hseq hagg ih_e1 ih_val =>
     rename_i C1 _ C2 _ Cagg _ _ _
     have hC1 : C1 ⊆ Cagg := CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left hagg
     -- Reduce `e1` to a pack under its sub-budget `C1`.
-    obtain ⟨tr1, m1, a1, hred1, hans1, hQ1, hconf1⟩ :=
-      ih_e1 (Memory.is_compatible_subset hC1 hcompat)
+    obtain ⟨tr1, m1, a1, hred1, hans1, hQ1, hconf1⟩ := ih_e1
     have hsub1 := reduce_memory_monotonic hred1
     obtain ⟨hpack, hwf1⟩ := h_nonstuck hQ1
     cases hpack with
@@ -1916,7 +1904,7 @@ theorem eval_adequacy
               m1.is_compatible
                 (C2 ∪ cs.reachability m1 ∪ (cs.reachability m1).to_drop) := sorry
           obtain ⟨tr2, m2, a2, hred2, hans2, hQ2, hconf2⟩ :=
-            ih_val hsub1 hcompatU hwf_x hwf_cs hQ1 hcompatU
+            ih_val hsub1 hcompatU hwf_x hwf_cs hQ1
           refine ⟨_, _, _,
             reduce_trans (reduce_ctx_unpack hred1)
               (Reduce.step Step.step_unpack hred2),

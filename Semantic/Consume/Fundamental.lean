@@ -2929,17 +2929,36 @@ private theorem useset_subset_seqcomp_right
     | lock => exact CaptureSet.Subset.refl
 -/
 
-/-- Semantic typing for `letin`. Notably the `SeqComp Γ C1 C2` linearity premise
-    (`_hseq`) is NOT needed to construct the `Eval`: `eval_letin`'s `h_val`/`h_var`
-    premises *assume* `m1.is_compatible C2` (so we never have to derive it from
-    `e1`'s behaviour), and `C2` is closed so its denotation is memory-stable. The
-    linearity condition is an *adequacy* property (it guarantees the program never
-    actually reaches an `m1` that drops a `C2` cell), proven downstream — not part
-    of building the logical-relation witness here. -/
+/-- Bridge: the syntactic, peak-level sequential-composition check
+    `SeqComp Γ C1 C2` (no capture variable consumed by `C1` is used at any mode
+    by `C2`) transfers, under a well-typed environment, to the runtime
+    capability level: no *location* consumed (`.drop`) by `C1`'s denotation is
+    touched at any mode by `C2`'s denotation.
+
+    This is the separation/linearity content that the logical-relation
+    construction itself does not need — it re-enters only to discharge the
+    `hseq` premise newly threaded onto `Eval.eval_letin`/`eval_unpack`. The
+    proof must connect peak cvars to the free locations they ground to via
+    `Subst.from_TypeEnv`; its crux is that distinct capture variables denote
+    *separated* capability sets (otherwise two different cvars could alias the
+    same location and break the transfer), which is an environment-separation
+    invariant of `EnvTyping`. Stated here, proof deferred to the next task. -/
+theorem captureSet_seqcomp_denot
+    {C1 C2 : CaptureSet s} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store)
+    (hseq : CaptureSet.SeqComp Γ C1 C2) :
+    (C1.denot env store).SeqComp (C2.denot env store) := sorry
+
+/-- Semantic typing for `letin`. The `SeqComp Γ C1 C2` linearity premise
+    (`hseq`) is now threaded through to `eval_letin`'s `hseq` premise via the
+    `captureSet_seqcomp_denot` bridge. The rest of the construction does not
+    rely on it: `eval_letin`'s `h_val`/`h_var` premises *assume*
+    `m1.is_compatible C2` (so we never derive it from `e1`'s behaviour), and
+    `C2` is closed so its denotation is memory-stable. -/
 theorem sem_typ_letin
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
-  (_hseq : CaptureSet.SeqComp Γ C1 C2)
+  (hseq : CaptureSet.SeqComp Γ C1 C2)
   (_hclosed_C1 : C1.IsClosed)
   (_hclosed_C2 : C2.IsClosed)
   (_hclosed_e : (Exp.letin e1 e2).IsClosed)
@@ -3059,6 +3078,8 @@ theorem sem_typ_letin
       have heqv := weaken_exi_val_denot (env := env) (x := fx) (ps := ps) (T := U)
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
+  case hseq =>
+    exact captureSet_seqcomp_denot hts hseq
   case hagg =>
     rw [hunion_denot]
     exact CapabilitySet.Subset.refl
@@ -3985,8 +4006,10 @@ theorem resolve_is_pack {e : Exp {}} {m : Memory}
           simp only [resolve, hval] at hres
           contradiction
 
-/-- Semantic typing for `unpack`. As with `letin`, the `SeqComp` linearity
-    premise (`_hseq`) is unused: `eval_unpack`'s `h_val` premise *assumes*
+/-- Semantic typing for `unpack`. As with `letin`, the `SeqComp Γ C1 C2`
+    linearity premise (`hseq`) is now threaded to `eval_unpack`'s `hseq`
+    premise via the `captureSet_seqcomp_denot` bridge. The rest of the
+    construction does not rely on it: `eval_unpack`'s `h_val` premise *assumes*
     `m1.is_compatible (C2 ∪ R ∪ R.to_drop)` (R = the unpacked capability's
     reachability), so we never derive it from `e1`. The body use-set's
     `.drop`-qualified cvar `(.cvar .drop (.there .here))` denotes exactly to
@@ -3995,7 +4018,7 @@ theorem resolve_is_pack {e : Exp {}} {m : Memory}
 theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
-  (_hseq : CaptureSet.SeqComp Γ C1 C2)
+  (hseq : CaptureSet.SeqComp Γ C1 C2)
   (_hclosed_C1 : C1.IsClosed)
   (hclosed_C2 : C2.IsClosed)
   (ht : C1 # Γ ⊨ t : .exi T)
@@ -4149,6 +4172,8 @@ theorem sem_typ_unpack
       have hcompose := eval_capability_set_monotonic hu'' hsub_budget
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv_composed).2
+  case hseq =>
+    exact captureSet_seqcomp_denot hts hseq
   case hagg =>
     rw [hunion_denot]
     exact CapabilitySet.Subset.refl
