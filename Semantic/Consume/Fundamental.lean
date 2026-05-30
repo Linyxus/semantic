@@ -107,7 +107,7 @@ theorem expand_captures_eq_ground_denot (cs : CaptureSet {}) (m : Memory) :
 
 theorem typed_env_lookup_cvar_aux
   (hts : EnvTyping Γ env m)
-  (hc : Ctx.LookupCVar Γ c cb) :
+  (hc : Ctx.LookupCVar Γ c a cb) :
   ((env.lookup_cvar c).1.ground_denot m).BoundedBy (cb.denot env m) := by
   induction hc generalizing m
   case here =>
@@ -585,7 +585,7 @@ private theorem hasmem_compute_peaks_denot_var_bound
       (compute_peaks env_rest (CaptureSet.var m (.bound x')))
     rw [hcp_denot, hcp_rename] at hmem'
     exact hmem'
-  | _, .push Γ_rest (.cvar B), .extend env_rest (.cvar cs cap), hts, hΓ, .there x', hmem =>
+  | _, .push Γ_rest (.cvar _ B), .extend env_rest (.cvar cs cap), hts, hΓ, .there x', hmem =>
     obtain ⟨_, _, _, _, hts_rest⟩ := hts
     cases hΓ with | push hΓ_rest _ =>
     change CapabilitySet.hasmem mu l
@@ -1164,7 +1164,7 @@ private theorem covers_compute_peaks_denot_var_bound
       (compute_peaks env_rest (CaptureSet.var m (.bound x')))
     rw [congrFun hcp_denot store, hcp_rename] at hcov_rest
     exact hcov_rest
-  | _, .push Γ_rest (.cvar B), .extend env_rest (.cvar cs cap), hts, hΓ, .there x', hmem =>
+  | _, .push Γ_rest (.cvar _ B), .extend env_rest (.cvar cs cap), hts, hΓ, .there x', hmem =>
     obtain ⟨_, _, _, _, hts_rest⟩ := hts
     cases hΓ with | push hΓ_rest _ =>
     change CapabilitySet.hasmem mu l
@@ -1490,7 +1490,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
 
 theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : CaptureBound s}
   (hclosed_cabs : (Exp.cabs Cf cb e).IsClosed)
-  (ht : Cf.rename Rename.succ # Γ,C<:cb ⊨ e : T) :
+  (ht : Cf.rename Rename.succ # Γ,C[.access_only]<:cb ⊨ e : T) :
   ∅ # Γ ⊨ Exp.cabs Cf cb e : (Ty.cpoly cb Cf T).typ := by
   intro env store hts _
   apply Eval.eval_val
@@ -1535,7 +1535,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               have hkey := @Exp.from_TypeEnv_weaken_open_cvar s env CS e
               refine hkey ▸ ?_
               -- Build EnvTyping
-              have henv : EnvTyping (Γ,C<:cb)
+              have henv : EnvTyping (Γ,C[.access_only]<:cb)
                   (env.extend_cvar CS (cap := CS.ground_denot m')) m' := by
                 constructor
                 · exact hwf  -- CS.WfInHeap m'.heap
@@ -3138,7 +3138,7 @@ theorem sem_sc_var {x : BVar s .var} {T : Ty .capt s}
   simpa [CaptureSet.ground_denot] using h
 
 theorem sem_sc_cvar {c : BVar s .cvar} {C : CaptureSet s}
-  (hlookup : Γ.LookupCVar c (.bound C)) :
+  (hlookup : Γ.LookupCVar c a (.bound C)) :
   SemSubcapt Γ (.cvar (.M .epsilon) c) C := by
   intro env m hts
   unfold CaptureSet.denot
@@ -3355,7 +3355,7 @@ lemma env_typing_lookup_tvar {X : BVar s .tvar} {S : PureTy s} {env : TypeEnv s}
         intro e hd
         have himply_spec := ih_result m' hsub e hd
         exact (Denot.equiv_to_imply hw).1 m' e himply_spec
-    | cvar cb =>
+    | cvar _ cb =>
       -- Context extended with a capture variable
       match env with
       | .extend env0 (.cvar cs cap) =>
@@ -3574,7 +3574,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
   (hB : SemSubbound Γ cb2 cb1) -- contravariant in bound
   (hcs : SemSubcapt Γ cs1 cs2) -- covariant in capture set
   (hcs2_closed : CaptureSet.IsClosed cs2) -- cs2 is closed
-  (hT : SemSubtyp (Γ,C<:cb2) T1 T2) -- covariant in body under tighter bound
+  (hT : SemSubtyp (Γ,C[.access_only]<:cb2) T1 T2) -- covariant in body under tighter bound
   (hclosed_cb2 : cb2.IsClosed)
   : SemSubtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2) := by
   -- Unfold SemSubtyp for capturing types
@@ -3619,7 +3619,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
             -- Apply the original function body with this CS
             have heval1 := hbody m'' CS hCS_wf hsub_m'' hcompat hCS_satisfies_cb1
             -- Now use covariance hT
-            have henv' : EnvTyping (Γ,C<:cb2)
+            have henv' : EnvTyping (Γ,C[.access_only]<:cb2)
                 (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' := by
               simp only [TypeEnv.extend_cvar]
               constructor
@@ -3709,7 +3709,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
 --       exact hS_at_H m hsubsumes e hS1_at_C2
 
 lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
-  (hT : SemSubtyp (Γ,C<:.unbound) T1 T2) -- covariant in body
+  (hT : SemSubtyp (Γ,C[.can_drop]<:.unbound) T1 T2) -- covariant in body
   : SemSubtyp Γ (.exi T1) (.exi T2) := by
   -- Unfold SemSubtyp for exi types
   simp only [SemSubtyp]
@@ -3735,7 +3735,7 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
       constructor
       · exact hwf_CS
       · -- Construct EnvTyping for the extended context
-        have henv' : EnvTyping (Γ,C<:.unbound)
+        have henv' : EnvTyping (Γ,C[.can_drop]<:.unbound)
             (env.extend_cvar CS (cap := CS.ground_denot m)) m := by
           simp only [TypeEnv.extend_cvar]
           constructor
@@ -4024,7 +4024,7 @@ theorem sem_typ_unpack
   (ht : C1 # Γ ⊨ t : .exi T)
   (hu : ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar (.M .epsilon) (.there .here))
           ∪ (.cvar .drop (.there .here))) #
-        (Γ.push_cvar .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
+        (Γ.push_cvar .can_drop .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.unpack t u) : U := by
   intro env store hts hcompat
   simp only [Exp.subst]
@@ -4076,9 +4076,10 @@ theorem sem_typ_unpack
     case bound bx => cases bx
     case free fx =>
       obtain ⟨hwf_cs2, hQ1_body⟩ := hQ1
-      let ps := CaptureSet.peakset (Γ.push_cvar .unbound) T.captureSet
+      let ps := CaptureSet.peakset (Γ.push_cvar .can_drop .unbound) T.captureSet
       let env' := env.extend_cvar cs (cap := cs.ground_denot m1)
-      have hts_extended : EnvTyping (Γ.push_cvar .unbound,x:T) (env'.extend_var fx ps) m1 := by
+      have hts_extended :
+          EnvTyping (Γ.push_cvar .can_drop .unbound,x:T) (env'.extend_var fx ps) m1 := by
         constructor
         · exact hQ1_body
         · constructor
