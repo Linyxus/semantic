@@ -2,10 +2,17 @@ import Semantic.Consume.Syntax.Ty
 
 namespace Consume
 
+/-- A tag on "authority" of a capture variable. -/
+inductive Authority : Type where
+/-- The variable can be dropped. -/
+| can_drop : Authority
+/-- The variable can only be accessed, not dropped. -/
+| access_only : Authority
+
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : PureTy s -> Binding s .tvar
-| cvar : CaptureBound s -> Binding s .cvar
+| cvar : Authority -> CaptureBound s -> Binding s .cvar
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
