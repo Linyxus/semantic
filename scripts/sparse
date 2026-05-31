@@ -28,6 +28,8 @@ BASE_PATTERNS=(
   /AGENTS.md
   /GEMINI.md
   /README.md
+  /opencode.json
+  /.agents/
   /scripts/
   /notes/
   /Semantic/Prelude.lean
