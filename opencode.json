@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "lean4check": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "lean4check@latest"
+      ],
+      "enabled": true
+    }
+  }
+}

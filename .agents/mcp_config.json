@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "lean4check": {
+      "command": "uvx",
+      "args": [
+        "lean4check@latest"
+      ]
+    }
+  }
+}
