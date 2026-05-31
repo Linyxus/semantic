@@ -78,7 +78,7 @@ theorem sem_typ_var
   (hx : Γ.LookupVar x T) :
   {} # Γ ⊨ (Exp.var (.bound x)) :
     (.typ (T.refineCaptureSet (.var (.M .epsilon) (.bound x)))) := by
-  intro env m hts _
+  intro env m hts _ _
   apply Eval.eval_var
   simp only [Ty.exi_val_denot]
   -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
@@ -1299,9 +1299,69 @@ theorem semtyp_to_exi_exp_denot
     {ρ : TypeEnv s} {m : Memory}
     (ht : C # Γ ⊨ e : E)
     (hts : EnvTyping Γ ρ m)
+    (hdsep : DroppableSep Γ ρ)
     (hcompat : m.is_compatible (C.denot ρ m)) :
     Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ)) :=
-  ht ρ m hts hcompat
+  ht ρ m hts hdsep hcompat
+
+/-! ### Preservation of `DroppableSep` under environment extension
+
+`DroppableSep` quantifies only over `.can_drop` capture variables. Extending the
+context with a `var`/`tvar` binding, or with an `.access_only` cvar, introduces
+no new droppable cvar, so separation is preserved verbatim (every cvar in the
+extended context is `.there`-shifted, and both `lookup_authority` and the stored
+capability reduce definitionally to the underlying context/env). Extending with a
+fresh `.can_drop` cvar additionally requires the new capability to be disjoint
+from every existing droppable cvar — a freshness obligation supplied by the
+caller. -/
+
+theorem DroppableSep.extend_var {Γ : Ctx s} {env : TypeEnv s} {T : Ty .capt s}
+    {n : Nat} {ps : PeakSet s} (h : DroppableSep Γ env) :
+    DroppableSep (Γ.push_var T) (env.extend_var n ps) := by
+  intro c1 c2 hne ha1 ha2
+  cases c1 with
+  | there c1' => cases c2 with
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
+
+theorem DroppableSep.extend_tvar {Γ : Ctx s} {env : TypeEnv s} {S : PureTy s}
+    {d : Denot} (h : DroppableSep Γ env) :
+    DroppableSep (Γ.push_tvar S) (env.extend_tvar d) := by
+  intro c1 c2 hne ha1 ha2
+  cases c1 with
+  | there c1' => cases c2 with
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
+
+theorem DroppableSep.extend_cvar_access_only {Γ : Ctx s} {env : TypeEnv s}
+    {cb : CaptureBound s} {cs : CaptureSet {}} {cap : CapabilitySet}
+    (h : DroppableSep Γ env) :
+    DroppableSep (Γ.push_cvar .access_only cb) (env.extend_cvar cs cap) := by
+  intro c1 c2 hne ha1 ha2
+  cases c1 with
+  | here =>
+    exact Authority.noConfusion (show Authority.access_only = Authority.can_drop from ha1)
+  | there c1' => cases c2 with
+    | here =>
+      exact Authority.noConfusion (show Authority.access_only = Authority.can_drop from ha2)
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
+
+theorem DroppableSep.extend_cvar_can_drop {Γ : Ctx s} {env : TypeEnv s}
+    {cb : CaptureBound s} {cs : CaptureSet {}} {cap : CapabilitySet}
+    (h : DroppableSep Γ env)
+    (hfresh : ∀ c, Γ.lookup_authority c = .can_drop →
+      CapabilitySet.disjoint cap (env.lookup_cvar c).2) :
+    DroppableSep (Γ.push_cvar .can_drop cb) (env.extend_cvar cs cap) := by
+  intro c1 c2 hne ha1 ha2
+  cases c1 with
+  | here => cases c2 with
+    | here => exact absurd rfl hne
+    | there c2' =>
+      -- new (droppable) cvar vs. an existing droppable cvar `c2'`
+      exact hfresh c2' ha2
+  | there c1' => cases c2 with
+    | here =>
+      -- symmetric: existing droppable `c1'` vs. the new cvar
+      exact (hfresh c1' ha1).symm
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
 
 private theorem closed_capture_denot_monotonic
     {Cf : CaptureSet s} {env : TypeEnv s} {store m' : Memory} {Γ : Ctx s}
@@ -1334,7 +1394,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
   (ht : Cf.rename Rename.succ # Γ,x:T1 ⊨ e : T2) :
   ∅ # Γ ⊨ Exp.abs Cf T1 e : (T1.arrow Cf T2).typ := by
-  intro env store hts _
+  intro env store hts hdsep _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
   · simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1402,7 +1462,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
                   m'.is_compatible ((Cf.rename Rename.succ).denot (env.extend_var arg ps) m') :=
                 hauth ▸ hcompat
               -- New budget is exactly `C.denot`, so the hypothesis applies directly.
-              have htyped := ht (env.extend_var arg ps) m' henv hcompat'
+              have htyped := ht (env.extend_var arg ps) m' henv hdsep.extend_var hcompat'
               -- Show the body's authority equals the closure's authority.
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
@@ -1413,7 +1473,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
   (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
   (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
   ∅ # Γ ⊨ Exp.tabs Cf S e : (S.core.poly Cf T).typ := by
-  intro env store hts _
+  intro env store hts hdsep _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
   · simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1481,7 +1541,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
                   m'.is_compatible ((Cf.rename Rename.succ).denot (env.extend_tvar denot) m') :=
                 hauth ▸ hcompat
               -- New budget is exactly `C.denot`, so the hypothesis applies directly.
-              have htyped := ht (env.extend_tvar denot) m' henv hcompat'
+              have htyped := ht (env.extend_tvar denot) m' henv hdsep.extend_tvar hcompat'
               -- Show the authority matches
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
@@ -1492,7 +1552,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
   (hclosed_cabs : (Exp.cabs Cf cb e).IsClosed)
   (ht : Cf.rename Rename.succ # Γ,C[.access_only]<:cb ⊨ e : T) :
   ∅ # Γ ⊨ Exp.cabs Cf cb e : (Ty.cpoly cb Cf T).typ := by
-  intro env store hts _
+  intro env store hts hdsep _
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
   · simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1576,7 +1636,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                 hauth ▸ hcompat
               -- New budget is exactly `C.denot`, so the hypothesis applies directly.
               have htyped :=
-                ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv hcompat'
+                ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv
+                  hdsep.extend_cvar_access_only hcompat'
               -- Show capability sets match (using hcap_rename and hCf_closed above)
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
@@ -1589,7 +1650,7 @@ theorem sem_typ_pack
   (hclosed_e : (Exp.pack cs x).IsClosed)
   (ht : {} # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
   cs.applyAccess .drop # Γ ⊨ Exp.pack cs x : T.exi := by
-  intro env store hts _
+  intro env store hts hdsep _
   -- pack is no longer a simple value; use eval_pack instead
   have hsubst : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
          Exp.pack (cs.subst (Subst.from_TypeEnv env)) (x.subst (Subst.from_TypeEnv env)) := by
@@ -1618,7 +1679,7 @@ theorem sem_typ_pack
             (fun v m' => Ty.exi_val_denot env (T.subst (Subst.openCVar cs)).typ m' v) := by
         have hcompat0 : store.is_compatible ((∅ : CaptureSet s).denot env store) := by
           simpa using Memory.is_compatible_empty store
-        exact ht env store hts hcompat0
+        exact ht env store hts hdsep hcompat0
       have hvar : (Exp.var x).subst (Subst.from_TypeEnv env) =
              Exp.var (x.subst (Subst.from_TypeEnv env)) := by
         cases x <;> simp only [Exp.subst, Var.subst]
@@ -1931,9 +1992,9 @@ theorem sem_typ_app
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ T1) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   -- Extract function denotation (via the val_denot conjunct only)
-  have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
   have h1' := var_exp_denot_inv h1
   -- refineCaptureSet for arrow replaces the capture set:
@@ -1943,7 +2004,7 @@ theorem sem_typ_app
   -- Extract the arrow structure
   have ⟨fx, hfx, cs', T0, e0, hval, R, hlk, hR0_sub, hfun⟩ := abs_val_denot_inv h1'
   -- Extract argument denotation
-  have h2 := semtyp_to_exi_exp_denot hy hts (Memory.is_compatible_empty store)
+  have h2 := semtyp_to_exi_exp_denot hy hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h2
   have h2' := var_exp_denot_inv h2
   simp only [Ty.exi_val_denot] at h2'
@@ -1983,9 +2044,9 @@ theorem sem_typ_tapp
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (Ty.poly S.core (.var (.M .epsilon) (.bound x)) T)) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   -- Extract function denotation
-  have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot] at h1'
@@ -2026,9 +2087,9 @@ theorem sem_typ_capp
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
     .typ (.cpoly (.bound D) (.var (.M .epsilon) (.bound x)) T)) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   -- Extract function denotation
-  have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot] at h1'
@@ -2078,16 +2139,16 @@ theorem sem_typ_invoke
     .typ .unit) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : .typ .unit := by
-  intro env store hts _
+  intro env store hts hdsep _
   -- Extract capability denotation from hx
-  have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot] at h1'
   -- Extract the capability structure
   have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'
   -- Extract unit denotation from hy
-  have h2 := semtyp_to_exi_exp_denot hy hts (Memory.is_compatible_empty store)
+  have h2 := semtyp_to_exi_exp_denot hy hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h2
   have h2' := var_exp_denot_inv h2
   simp only [Ty.exi_val_denot] at h2'
@@ -2109,7 +2170,7 @@ theorem sem_typ_invoke
 
 theorem sem_typ_unit :
   {} # Γ ⊨ Exp.unit : .typ .unit := by
-  intro env store hts _
+  intro env store hts _ _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.unit
@@ -2117,7 +2178,7 @@ theorem sem_typ_unit :
 
 theorem sem_typ_btrue :
   {} # Γ ⊨ Exp.btrue : .typ .bool := by
-  intro env store hts _
+  intro env store hts _ _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.btrue
@@ -2126,7 +2187,7 @@ theorem sem_typ_btrue :
 
 theorem sem_typ_bfalse :
   {} # Γ ⊨ Exp.bfalse : .typ .bool := by
-  intro env store hts _
+  intro env store hts _ _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.bfalse
@@ -2140,7 +2201,7 @@ theorem sem_typ_cond
   (ht2 : C2 # Γ ⊨ e2 : T)
   (ht3 : C3 # Γ ⊨ e3 : T) :
   (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond x e2 e3) : T := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   simp only [Exp.subst, List.empty_eq]
   -- Each sub-budget's denotation is contained in the outer `(C1 ∪ C2 ∪ C3).denot`.
   have hsubC1 :
@@ -2156,7 +2217,7 @@ theorem sem_typ_cond
   -- Guard: the new budget is exactly `C1.denot`, a subset of the outer budget.
   have hcompat_C1 : store.is_compatible (C1.denot env store) :=
     Memory.is_compatible_subset hsubC1 hcompat
-  have hguard_base := semtyp_to_exi_exp_denot ht1 hts hcompat_C1
+  have hguard_base := semtyp_to_exi_exp_denot ht1 hts hdsep hcompat_C1
   simp only [Ty.exi_exp_denot] at hguard_base
   -- The guard is a `.var`, so by `Eval.var_inv` the bool postcondition holds at `store`.
   have hQ1_at_store : Ty.val_denot env .bool store (.var (x.subst (Subst.from_TypeEnv env))) := by
@@ -2174,17 +2235,17 @@ theorem sem_typ_cond
   apply Eval.eval_cond hres
   · -- true branch: run `e2` at its own budget, widen to the outer budget.
     intro _hres_true
-    exact eval_capability_set_monotonic (ht2 env store hts hcompat_C2) hsubC2
+    exact eval_capability_set_monotonic (ht2 env store hts hdsep hcompat_C2) hsubC2
   · -- false branch
     intro _hres_false
-    exact eval_capability_set_monotonic (ht3 env store hts hcompat_C3) hsubC3
+    exact eval_capability_set_monotonic (ht3 env store hts hdsep hcompat_C3) hsubC3
 
 theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
   (hx : Γ.LookupVar x (.cell C)) :
   {} # Γ ⊨ Exp.reader (.bound x) :
     (.typ (.reader (.var (.M .ro) (.bound x)))) := by
-  intro env store hts _
+  intro env store hts _ _
   simp only [Exp.subst]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.reader
@@ -2222,11 +2283,11 @@ theorem sem_typ_alloc
   {x : BVar s .var}
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ .bool) :
   {} # Γ ⊨ Exp.alloc (.bound x) : .exi (.cell (.cvar (.M .epsilon) .here)) := by
-  intro env store hts _
+  intro env store hts hdsep _
   simp only [Exp.subst, Var.subst, Subst.from_TypeEnv, List.empty_eq]
   set fx := (env.lookup_var x).1
   -- From hx, the variable resolves to a bool in `store`.
-  have hx_eval := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have hx_eval := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [Ty.exi_exp_denot, Ty.exi_val_denot,
     Exp.subst, Var.subst, Subst.from_TypeEnv, List.empty_eq] at hx_eval
   have hbool : Ty.val_denot env .bool store (.var (.free fx)) := by
@@ -2290,9 +2351,9 @@ theorem sem_typ_drop {x : BVar s .var}
     .typ (.cell (.var (.M .epsilon) (.bound x))))
   (_hΓ : Γ.IsClosed) :
   (.var .drop (.bound x)) # Γ ⊨ Exp.drop (.bound x) : .typ .unit := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   -- Extract cell denotation from hx
-  have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot] at h1'
@@ -2337,9 +2398,9 @@ theorem sem_typ_read
   (_hΓ : Γ.IsClosed)
   (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.reader C)) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ .bool := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   -- Extract reader denotation from hx
-  have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot] at h1'
@@ -2395,16 +2456,16 @@ theorem sem_typ_write
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ .bool) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨
     Exp.write (.bound x) (.bound y) : .typ .unit := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   -- Extract cell denotation from hx
-  have h1 := semtyp_to_exi_exp_denot hx hts (Memory.is_compatible_empty store)
+  have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
   have h1' := var_exp_denot_inv h1
   simp only [Ty.exi_val_denot] at h1'
   -- Extract the cell structure
   have ⟨fx, b0, ℓ0, hfx, hlk_cell, hmem_cell⟩ := cell_val_denot_inv h1'
   -- Extract bool denotation from hy
-  have h2 := semtyp_to_exi_exp_denot hy hts (Memory.is_compatible_empty store)
+  have h2 := semtyp_to_exi_exp_denot hy hts hdsep (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h2
   have h2' := var_exp_denot_inv h2
   simp only [Ty.exi_val_denot] at h2'
@@ -2965,7 +3026,7 @@ theorem sem_typ_letin
   (ht1 : C1 # Γ ⊨ e1 : .typ T)
   (ht2 : C2.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.letin e1 e2) : U := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   simp only [Exp.subst]
   have hunion_denot :
       (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
@@ -2983,7 +3044,7 @@ theorem sem_typ_letin
       rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
     have hcompat_C1 : store.is_compatible (C1.denot env store) :=
       Memory.is_compatible_subset hsubC1 hcompat
-    have h1 := ht1 env store hts hcompat_C1
+    have h1 := ht1 env store hts hdsep hcompat_C1
     simpa only [Ty.exi_val_denot] using h1
   case h_nonstuck =>
     intro m1 v hQ1
@@ -3027,7 +3088,7 @@ theorem sem_typ_letin
         m_ext.is_compatible ((C2.rename Rename.succ).denot (env.extend_var l' ps) m_ext) := by
       rw [congrFun hcap_rename_C2 m_ext, ← hC2_mono]
       exact Memory.is_compatible_extend_val m1 l' heapval hwf_v rfl hfresh hcompat_m1
-    have h2 := ht2 (env.extend_var l' ps) m_ext henv_body hcompat_body
+    have h2 := ht2 (env.extend_var l' ps) m_ext henv_body hdsep.extend_var hcompat_body
     have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
     have h2' : Eval _ m_ext
         ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free l')))
@@ -3065,7 +3126,7 @@ theorem sem_typ_letin
           m1.is_compatible ((C2.rename Rename.succ).denot (env.extend_var fx ps) m1) := by
         rw [congrFun hcap_rename_C2 m1, ← hC2_mono]
         exact hcompat_m1
-      have h2 := ht2 (env.extend_var fx ps) m1 henv_body hcompat_body
+      have h2 := ht2 (env.extend_var fx ps) m1 henv_body hdsep.extend_var hcompat_body
       have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
       have h2' : Eval _ m1
           ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (Var.free fx)))
@@ -3940,14 +4001,14 @@ theorem sem_typ_subtyp
   (_hclosed_C1 : C1.IsClosed) (hclosed_E1 : E1.IsClosed)
   (_hclosed_C2 : C2.IsClosed) (hclosed_E2 : E2.IsClosed) :
   C2 # Γ ⊨ e : E2 := by
-  intro env m htyping hcompat
+  intro env m htyping hdsep hcompat
   -- Use fundamental_subcapt to get C1.denot ⊆ C2.denot (semantic subcapt)
   have hsubcapt_sem := fundamental_subcapt hsubcapt env m htyping
   -- New budget: `hcompat` is compat for `C2.denot`; since `C1.denot ⊆ C2.denot`,
   -- the compat for `C1.denot` (the precondition `ht` needs) follows.
   have hcompat_C1 : m.is_compatible (C1.denot env m) :=
     Memory.is_compatible_subset hsubcapt_sem hcompat
-  have h_eval_E1 := ht env m htyping hcompat_C1
+  have h_eval_E1 := ht env m htyping hdsep hcompat_C1
   -- Widen the budget from `C1.denot` to `C2.denot` via the semantic subcapt.
   have h_eval_E1_at_C2 := eval_capability_set_monotonic h_eval_E1 hsubcapt_sem
   -- Use fundamental_subtyp to get E1 → E2 semantically.
@@ -4026,7 +4087,7 @@ theorem sem_typ_unpack
           ∪ (.cvar .drop (.there .here))) #
         (Γ.push_cvar .can_drop .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
   C1 ∪ C2 # Γ ⊨ (Exp.unpack t u) : U := by
-  intro env store hts hcompat
+  intro env store hts hdsep hcompat
   simp only [Exp.subst]
   have hunion_denot :
       (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
@@ -4041,7 +4102,7 @@ theorem sem_typ_unpack
   case a =>
     have hsubC1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
       rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
-    exact ht env store hts (Memory.is_compatible_subset hsubC1 hcompat)
+    exact ht env store hts hdsep (Memory.is_compatible_subset hsubC1 hcompat)
   case h_nonstuck =>
     intro m1 v hQ1
     change Ty.exi_val_denot env (.exi T) m1 v at hQ1
@@ -4158,7 +4219,19 @@ theorem sem_typ_unpack
                 ∪ (CaptureSet.cvar .drop (.there .here))).denot (env'.extend_var fx ps) m1) := by
         rw [hbudget_denot, hC2_mono, hReq]
         exact hcompat_m1
-      have hu'' := hu (env'.extend_var fx ps) m1 hts_extended hcompat_body
+      -- GAP (the only `sorry`): the freshly-unpacked capability `cs` is disjoint
+      -- from every existing droppable cvar. This is the operational freshness /
+      -- separation invariant — an unpacked capability does not alias the live owned
+      -- (droppable) capabilities tracked by `env`. Its justification needs the
+      -- compatibility (`hcompat_m1`) and `SeqComp` (`hseq`) history of this unpack;
+      -- it is the same environment-separation gap as `captureSet_seqcomp_denot`.
+      have hfresh : ∀ c, Γ.lookup_authority c = .can_drop →
+          CapabilitySet.disjoint (cs.ground_denot m1) (env.lookup_cvar c).2 := by
+        sorry
+      have hdsep_ext :
+          DroppableSep (Γ.push_cvar .can_drop .unbound,x:T) (env'.extend_var fx ps) :=
+        (hdsep.extend_cvar_can_drop hfresh).extend_var
+      have hu'' := hu (env'.extend_var fx ps) m1 hts_extended hdsep_ext hcompat_body
       change Eval (C2.denot env store ∪ cs.reachability m1 ∪ (cs.reachability m1).to_drop) m1
         ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
         (fun v m' => Ty.exi_val_denot env U m' v)

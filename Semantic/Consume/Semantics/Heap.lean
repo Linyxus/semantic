@@ -587,6 +587,10 @@ def disjoint (C1 C2 : CapabilitySet) : Prop :=
   ∀ (mu1 mu2 : CapMode) (l : Nat),
     hasmem mu1 l C1 → hasmem mu2 l C2 → False
 
+/-- Disjointness is symmetric. -/
+theorem disjoint.symm {C1 C2 : CapabilitySet} (h : disjoint C1 C2) : disjoint C2 C1 :=
+  fun mu1 mu2 l h1 h2 => h mu2 mu1 l h2 h1
+
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C
