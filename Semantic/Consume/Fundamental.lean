@@ -3007,6 +3007,7 @@ private theorem useset_subset_seqcomp_right
 theorem captureSet_seqcomp_denot
     {C1 C2 : CaptureSet s} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store)
+    (hdsep : DroppableSep Γ env)
     (hseq : CaptureSet.SeqComp Γ C1 C2) :
     (C1.denot env store).SeqComp (C2.denot env store) := sorry
 
@@ -3140,7 +3141,7 @@ theorem sem_typ_letin
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
   case hseq =>
-    exact captureSet_seqcomp_denot hts hseq
+    exact captureSet_seqcomp_denot hts hdsep hseq
   case hagg =>
     rw [hunion_denot]
     exact CapabilitySet.Subset.refl
@@ -4247,7 +4248,7 @@ theorem sem_typ_unpack
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv_composed).2
   case hseq =>
-    exact captureSet_seqcomp_denot hts hseq
+    exact captureSet_seqcomp_denot hts hdsep hseq
   case hagg =>
     rw [hunion_denot]
     exact CapabilitySet.Subset.refl
