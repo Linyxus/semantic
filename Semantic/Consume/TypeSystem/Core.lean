@@ -154,6 +154,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   C.droppable Γ ->
+  C.is_valid_inst Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
   HasType (C.applyAccess .drop) Γ (.pack C x) (.exi T)
@@ -169,6 +170,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (.var (.M .epsilon) x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
 | capp {D : CaptureSet s} {I : CaptureSet s} :
   D.IsClosed ->
+  D.is_valid_inst Γ ->
   HasType {} Γ (.var x) (.typ (.cpoly (.bound D) (.var (.M .epsilon) x) T)) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))

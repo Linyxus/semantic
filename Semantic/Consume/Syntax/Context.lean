@@ -451,6 +451,17 @@ expand it to peaks, then check every capture variable peak is bound with
 def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   PeakSet.droppable Γ (C.peakset Γ)
 
+/-- A peak set is a *valid capture-parameter instance* when none of its peaks
+carries `.drop` authority — i.e. no capture variable in it is consumed. -/
+def PeakSet.is_valid_inst (P : PeakSet s) : Prop :=
+  ∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ P.cs → False
+
+/-- Is this capture set a valid instance for a capture
+parameter? This is only true if the peaks of this set
+do not contain any `drop` authority. -/
+def CaptureSet.is_valid_inst (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  PeakSet.is_valid_inst (C.peakset Γ)
+
 /-
 RETIRED (2026-05-25): the access/consume machinery below was keyed on the
 per-binding `UseMode` and on context `lock`s, both now removed. It is kept
