@@ -1637,7 +1637,7 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                       (env.extend_cvar CS (cap := CS.ground_denot m')) m') :=
                 hauth ▸ hcompat
               -- New budget is exactly `C.denot`, so the hypothesis applies directly.
-              -- GAP (`sorry`): the capture argument `CS` supplied to this
+              -- GAP: the capture argument `CS` supplied to this
               -- abstraction is disjoint from every existing droppable cvar — the
               -- environment-separation invariant that a borrowed capture does not
               -- alias a live owned (droppable) capability. Same gap family as
@@ -3000,26 +3000,113 @@ private theorem useset_subset_seqcomp_right
     | lock => exact CaptureSet.Subset.refl
 -/
 
+/-- Peak-level decomposition: any member of a *peaks-only* capture set's
+    denotation comes from one of its capture-variable peaks. Pure structural
+    induction on `PeaksOnly` (`empty | union | cvar`); the `cvar` leaf uses the
+    `EnvTyping` bridge `(.cvar m c).denot = (lookup_cvar c).2.applyAccess m`. -/
+private theorem peaks_denot_mem_decomp
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store)
+    {P : CaptureSet s} (hP : P.PeaksOnly) {l : Nat} {mu : CapMode}
+    (hmem : (P.denot env store).hasmem mu l) :
+    ∃ (a : Access) (c : BVar s .cvar),
+      (CaptureSet.cvar a c) ⊆ P ∧ ∃ mu', ((env.lookup_cvar c).2).hasmem mu' l := by
+  induction hP generalizing mu with
+  | empty =>
+    simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot] at hmem
+    exact (CapabilitySet.not_hasmem_empty hmem).elim
+  | union hP1 hP2 ih1 ih2 =>
+    rename_i C1 C2
+    have hunion : (C1.union C2).denot env store
+        = C1.denot env store ∪ C2.denot env store := rfl
+    rw [hunion] at hmem
+    cases hmem with
+    | left hm =>
+      obtain ⟨a, c, hsub, mu', hmemc⟩ := ih1 hm
+      exact ⟨a, c, hsub.union_right_left, mu', hmemc⟩
+    | right hm =>
+      obtain ⟨a, c, hsub, mu', hmemc⟩ := ih2 hm
+      exact ⟨a, c, hsub.union_right_right, mu', hmemc⟩
+  | cvar =>
+    rename_i m c
+    have hdenot :
+        (CaptureSet.cvar m c).denot env store
+          = ((env.lookup_cvar c).2).applyAccess m := by
+      change ((env.lookup_cvar c).1.applyAccess m).ground_denot store = _
+      rw [captureSet_ground_denot_applyAccess_comm, ← typed_env_cvar_cap_eq hts c]
+    rw [hdenot] at hmem
+    obtain ⟨mu', hmem'⟩ := hasmem_of_applyAccess hmem
+    exact ⟨m, c, CaptureSet.Subset.refl, mu', hmem'⟩
+
+/-- C2-side bridge: a member of `C.denot` (at any mode) traces to a
+    capture-variable peak of `C` whose stored capability holds the location.
+    Composes the (mode-lossy) `hasmem_compute_peaks_denot` with the peak
+    decomposition, then rewrites `compute_peaks env C` back to `C.peaks Γ`. -/
+private theorem mem_denot_peak
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
+    {C : CaptureSet s} (hC : C.IsClosed) {l : Nat} {mu : CapMode}
+    (hmem : (C.denot env store).hasmem mu l) :
+    ∃ (a : Access) (c : BVar s .cvar),
+      (CaptureSet.cvar a c) ⊆ CaptureSet.peaks Γ C ∧
+        ∃ mu', ((env.lookup_cvar c).2).hasmem mu' l := by
+  obtain ⟨mu', hmem'⟩ := hasmem_compute_peaks_denot hts hΓ C hC hmem
+  obtain ⟨a, c, hsub, mu'', hmemc⟩ :=
+    peaks_denot_mem_decomp hts (compute_peaks_is_peak env C) hmem'
+  refine ⟨a, c, ?_, mu'', hmemc⟩
+  rw [compute_peaks_correct hts C]
+  exact hsub
+
+/-- C1-side bridge (**THE GAP**). A `.drop` cap in `C.denot` should trace to a
+    `.drop`-access capture-variable peak. This is *false in general*: a closure
+    captured by a cvar can carry a `.drop` in its reachability (the deliberately
+    retired `reachability_no_drop` invariant — see `Semantics/Heap.lean:2268`),
+    so a `.drop` cap surfaces under a *non-`.drop`* peak that the syntactic peak
+    set cannot observe. This is the single remaining `sorry`, and it is exactly
+    the obstruction in the counterexample to the bridge. -/
+private theorem drop_denot_peak
+    {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
+    {C : CaptureSet s} (hC : C.IsClosed) {l : Nat}
+    (hmem : (C.denot env store).hasmem .drop l) :
+    ∃ (c : BVar s .cvar),
+      (CaptureSet.cvar .drop c) ⊆ CaptureSet.peaks Γ C ∧
+        ∃ mu', ((env.lookup_cvar c).2).hasmem mu' l :=
+  sorry
+
 /-- Bridge: the syntactic, peak-level sequential-composition check
     `SeqComp Γ C1 C2` (no capture variable consumed by `C1` is used at any mode
     by `C2`) transfers, under a well-typed environment, to the runtime
     capability level: no *location* consumed (`.drop`) by `C1`'s denotation is
     touched at any mode by `C2`'s denotation.
 
-    This is the separation/linearity content that the logical-relation
-    construction itself does not need — it re-enters only to discharge the
-    `hseq` premise newly threaded onto `Eval.eval_letin`/`eval_unpack`. The
-    proof must connect peak cvars to the free locations they ground to via
-    `Subst.from_TypeEnv`; its crux is that distinct capture variables denote
-    *separated* capability sets (otherwise two different cvars could alias the
-    same location and break the transfer), which is an environment-separation
-    invariant of `EnvTyping`. Stated here, proof deferred to the next task. -/
+    Proof structure: bridge both denotations to their syntactic peaks. A
+    location `l` consumed by `C1` and used by `C2` yields cvar peaks `c1`
+    (`.drop`-access in `C1`) and `c2` (any access in `C2`).
+    - `c1 = c2`: the syntactic `hseq` rules it out directly.
+    - `c1 ≠ c2`: `hdrop` makes `c1` droppable, so the (tightened) `DroppableSep`
+      gives `(lookup_cvar c1).2` and `(lookup_cvar c2).2` disjoint, contradicting
+      that `l` lies in both.
+
+    The `.drop`-side bridge `drop_denot_peak` is the one open gap. -/
 theorem captureSet_seqcomp_denot
     {C1 C2 : CaptureSet s} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store)
+    (hΓ : Γ.IsClosed) (hC1 : C1.IsClosed) (hC2 : C2.IsClosed)
     (hdsep : DroppableSep Γ env)
+    (hdrop : ∀ (c : BVar s .cvar),
+      (CaptureSet.cvar .drop c) ⊆ CaptureSet.peaks Γ C1 →
+        Γ.lookup_authority c = .can_drop)
     (hseq : CaptureSet.SeqComp Γ C1 C2) :
-    (C1.denot env store).SeqComp (C2.denot env store) := sorry
+    (C1.denot env store).SeqComp (C2.denot env store) := by
+  intro mu l h1 h2
+  obtain ⟨c1, hsub1, mu1, hmem1⟩ := drop_denot_peak hts hΓ hC1 h1
+  obtain ⟨a2, c2, hsub2, mu2, hmem2⟩ := mem_denot_peak hts hΓ hC2 h2
+  by_cases hc : c1 = c2
+  · subst hc
+    simp only [CaptureSet.SeqComp, PeakSet.SeqComp, CaptureSet.peakset] at hseq
+    exact hseq a2 c1 hsub1 hsub2
+  · exact hdsep c1 c2 hc (hdrop c1 hsub1) mu1 mu2 l hmem1 hmem2
 
 /-- Semantic typing for `letin`. The `SeqComp Γ C1 C2` linearity premise
     (`hseq`) is now threaded through to `eval_letin`'s `hseq` premise via the
@@ -3151,7 +3238,16 @@ theorem sem_typ_letin
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv).2
   case hseq =>
-    exact captureSet_seqcomp_denot hts hdsep hseq
+    -- Secondary obligations (distinct from the key `drop_denot_peak` gap):
+    -- `Γ.IsClosed` (context closedness, threaded elsewhere via the `var` rule)
+    -- and budget drop-droppability (a kinding invariant of well-typed budgets).
+    -- Neither is in scope at this semantic-typing lemma.
+    obtain ⟨hΓ, hdrop⟩ :
+        Γ.IsClosed ∧
+        (∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ CaptureSet.peaks Γ C1 →
+            Γ.lookup_authority c = .can_drop) := by
+      sorry
+    exact captureSet_seqcomp_denot hts hΓ _hclosed_C1 _hclosed_C2 hdsep hdrop hseq
   case hagg =>
     rw [hunion_denot]
     exact CapabilitySet.Subset.refl
@@ -4258,7 +4354,16 @@ theorem sem_typ_unpack
       apply eval_post_monotonic _ hcompose
       exact Denot.imply_to_entails _ _ (Denot.equiv_to_imply heqv_composed).2
   case hseq =>
-    exact captureSet_seqcomp_denot hts hdsep hseq
+    -- Secondary obligations (distinct from the key `drop_denot_peak` gap):
+    -- `Γ.IsClosed` (context closedness, threaded elsewhere via the `var` rule)
+    -- and budget drop-droppability (a kinding invariant of well-typed budgets).
+    -- Neither is in scope at this semantic-typing lemma.
+    obtain ⟨hΓ, hdrop⟩ :
+        Γ.IsClosed ∧
+        (∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ CaptureSet.peaks Γ C1 →
+            Γ.lookup_authority c = .can_drop) := by
+      sorry
+    exact captureSet_seqcomp_denot hts hΓ _hclosed_C1 hclosed_C2 hdsep hdrop hseq
   case hagg =>
     rw [hunion_denot]
     exact CapabilitySet.Subset.refl
