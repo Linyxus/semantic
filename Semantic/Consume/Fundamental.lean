@@ -1318,50 +1318,52 @@ caller. -/
 theorem DroppableSep.extend_var {Γ : Ctx s} {env : TypeEnv s} {T : Ty .capt s}
     {n : Nat} {ps : PeakSet s} (h : DroppableSep Γ env) :
     DroppableSep (Γ.push_var T) (env.extend_var n ps) := by
-  intro c1 c2 hne ha1 ha2
+  intro c1 c2 hne ha1
   cases c1 with
   | there c1' => cases c2 with
-    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1
 
 theorem DroppableSep.extend_tvar {Γ : Ctx s} {env : TypeEnv s} {S : PureTy s}
     {d : Denot} (h : DroppableSep Γ env) :
     DroppableSep (Γ.push_tvar S) (env.extend_tvar d) := by
-  intro c1 c2 hne ha1 ha2
+  intro c1 c2 hne ha1
   cases c1 with
   | there c1' => cases c2 with
-    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1
 
 theorem DroppableSep.extend_cvar_access_only {Γ : Ctx s} {env : TypeEnv s}
     {cb : CaptureBound s} {cs : CaptureSet {}} {cap : CapabilitySet}
-    (h : DroppableSep Γ env) :
+    (h : DroppableSep Γ env)
+    (hfresh : ∀ c, Γ.lookup_authority c = .can_drop →
+      CapabilitySet.disjoint (env.lookup_cvar c).2 cap) :
     DroppableSep (Γ.push_cvar .access_only cb) (env.extend_cvar cs cap) := by
-  intro c1 c2 hne ha1 ha2
+  intro c1 c2 hne ha1
   cases c1 with
   | here =>
     exact Authority.noConfusion (show Authority.access_only = Authority.can_drop from ha1)
   | there c1' => cases c2 with
     | here =>
-      exact Authority.noConfusion (show Authority.access_only = Authority.can_drop from ha2)
-    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
+      -- existing droppable `c1'` vs. the new (access-only) cvar
+      exact hfresh c1' ha1
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1
 
 theorem DroppableSep.extend_cvar_can_drop {Γ : Ctx s} {env : TypeEnv s}
     {cb : CaptureBound s} {cs : CaptureSet {}} {cap : CapabilitySet}
     (h : DroppableSep Γ env)
-    (hfresh : ∀ c, Γ.lookup_authority c = .can_drop →
-      CapabilitySet.disjoint cap (env.lookup_cvar c).2) :
+    (hfresh : ∀ c, CapabilitySet.disjoint cap (env.lookup_cvar c).2) :
     DroppableSep (Γ.push_cvar .can_drop cb) (env.extend_cvar cs cap) := by
-  intro c1 c2 hne ha1 ha2
+  intro c1 c2 hne ha1
   cases c1 with
   | here => cases c2 with
     | here => exact absurd rfl hne
     | there c2' =>
-      -- new (droppable) cvar vs. an existing droppable cvar `c2'`
-      exact hfresh c2' ha2
+      -- new (droppable) cvar vs. an existing cvar `c2'`
+      exact hfresh c2'
   | there c1' => cases c2 with
     | here =>
       -- symmetric: existing droppable `c1'` vs. the new cvar
-      exact (hfresh c1' ha1).symm
-    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1 ha2
+      exact (hfresh c1').symm
+    | there c2' => exact h c1' c2' (fun heq => hne (by rw [heq])) ha1
 
 private theorem closed_capture_denot_monotonic
     {Cf : CaptureSet s} {env : TypeEnv s} {store m' : Memory} {Γ : Ctx s}
@@ -1635,9 +1637,17 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                       (env.extend_cvar CS (cap := CS.ground_denot m')) m') :=
                 hauth ▸ hcompat
               -- New budget is exactly `C.denot`, so the hypothesis applies directly.
+              -- GAP (`sorry`): the capture argument `CS` supplied to this
+              -- abstraction is disjoint from every existing droppable cvar — the
+              -- environment-separation invariant that a borrowed capture does not
+              -- alias a live owned (droppable) capability. Same gap family as
+              -- `captureSet_seqcomp_denot`.
+              have hfresh_cabs : ∀ c, Γ.lookup_authority c = .can_drop →
+                  CapabilitySet.disjoint (env.lookup_cvar c).2 (CS.ground_denot m') := by
+                sorry
               have htyped :=
                 ht (env.extend_cvar CS (cap := CS.ground_denot m')) m' henv
-                  hdsep.extend_cvar_access_only hcompat'
+                  (hdsep.extend_cvar_access_only hfresh_cabs) hcompat'
               -- Show capability sets match (using hcap_rename and hCf_closed above)
               rw [← authority_eq_expand_captures hcap_rename
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
@@ -4221,12 +4231,12 @@ theorem sem_typ_unpack
         rw [hbudget_denot, hC2_mono, hReq]
         exact hcompat_m1
       -- GAP (the only `sorry`): the freshly-unpacked capability `cs` is disjoint
-      -- from every existing droppable cvar. This is the operational freshness /
-      -- separation invariant — an unpacked capability does not alias the live owned
-      -- (droppable) capabilities tracked by `env`. Its justification needs the
-      -- compatibility (`hcompat_m1`) and `SeqComp` (`hseq`) history of this unpack;
-      -- it is the same environment-separation gap as `captureSet_seqcomp_denot`.
-      have hfresh : ∀ c, Γ.lookup_authority c = .can_drop →
+      -- from every existing cvar. This is the operational freshness / separation
+      -- invariant — an unpacked capability does not alias any capability already
+      -- tracked by `env`. Its justification needs the compatibility (`hcompat_m1`)
+      -- and `SeqComp` (`hseq`) history of this unpack; it is the same
+      -- environment-separation gap as `captureSet_seqcomp_denot`.
+      have hfresh : ∀ c,
           CapabilitySet.disjoint (cs.ground_denot m1) (env.lookup_cvar c).2 := by
         sorry
       have hdsep_ext :
