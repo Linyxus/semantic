@@ -276,7 +276,7 @@ theorem HasType.use_set_is_closed
       | union h' _ =>
         exact CaptureSet.IsClosed.union ih1
           (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv h'))
-  case pack hC _ _ _ =>
+  case pack hC _ _ _ _ =>
     exact CaptureSet.applyAccess_isClosed hC
   case app =>
     rename_i ht_x _ _ _
@@ -471,7 +471,7 @@ theorem HasType.type_is_closed
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openTVar S)).IsClosed
     exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
-  case capp hD_closed _ ih =>
+  case capp hD_closed _ _ ih =>
     rename_i x D T
     -- ih : (.typ (.cpoly m (.var .epsilon x) T)).IsClosed
     -- hD_closed : D.IsClosed
