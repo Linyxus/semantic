@@ -3057,13 +3057,12 @@ private theorem mem_denot_peak
   rw [compute_peaks_correct hts C]
   exact hsub
 
-/-- C1-side bridge (**THE GAP**). A `.drop` cap in `C.denot` should trace to a
+/-- A `.drop` cap in `C.denot` should trace to a
     `.drop`-access capture-variable peak. This is *false in general*: a closure
     captured by a cvar can carry a `.drop` in its reachability (the deliberately
     retired `reachability_no_drop` invariant — see `Semantics/Heap.lean:2268`),
     so a `.drop` cap surfaces under a *non-`.drop`* peak that the syntactic peak
-    set cannot observe. This is the single remaining `sorry`, and it is exactly
-    the obstruction in the counterexample to the bridge. -/
+    set cannot observe. -/
 private theorem drop_denot_peak
     {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store) (hΓ : Γ.IsClosed)
