@@ -574,7 +574,6 @@ def DroppableSep (Γ : Ctx s) (env : TypeEnv s) : Prop :=
   ∀ (c1 c2 : BVar s .cvar),
     c1 ≠ c2 →
     Γ.lookup_authority c1 = .can_drop →
-    Γ.lookup_authority c2 = .can_drop →
     CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
