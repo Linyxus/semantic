@@ -565,7 +565,41 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
   (cap.BoundedBy (B.denot env m)) ∧
   cap = cs.ground_denot m ∧
+  cap.drop_free ∧
   EnvTyping Γ env m
+
+/-- From `EnvTyping`, every capture variable's stored capability is drop-free —
+the `hcv` invariant, a direct consequence of the `cap.drop_free` conjunct now
+recorded in each cvar binding. -/
+theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
+    (hts : EnvTyping Γ env m) (c : BVar s .cvar) :
+    (env.lookup_cvar c).2.drop_free := by
+  induction Γ with
+  | empty => cases c
+  | push Γ' b ih =>
+    cases b
+    case var T =>
+      match env with
+      | .extend env' (.var n ps) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case tvar S =>
+      match env with
+      | .extend env' (.tvar d) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, _, _, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case cvar B =>
+      match env with
+      | .extend env' (.cvar cs cap) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, _, _, hdf, henv'⟩ := hts
+        cases c with
+        | here => exact hdf
+        | there c' => exact ih henv' c'
 
 /-- Separation of droppable capture variables: any two *distinct* capture
 variables in `Γ` that both carry `.can_drop` authority denote disjoint
@@ -605,7 +639,7 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     exact CaptureSet.applyAccess_rename
   | _, .push Γ' (.cvar _ B), .extend ρ' (.cvar cs _), .there x' =>
     simp only [EnvTyping] at h
-    obtain ⟨_, _, _, _, h'⟩ := h
+    obtain ⟨_, _, _, _, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyAccess_rename
@@ -996,8 +1030,9 @@ theorem typed_env_is_implying_simple_ans
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem.heap ∧
               cap.BoundedBy (B.denot env' mem) ∧
               cap = cs.ground_denot mem ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem at ht
-          have ⟨hwf, _, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           unfold TypeEnv.is_implying_simple_ans at ih_result ⊢
           intro x
@@ -1060,8 +1095,9 @@ theorem typed_env_is_implying_wf
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem.heap ∧
               cap.BoundedBy (B.denot env' mem) ∧
               cap = cs.ground_denot mem ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem at ht
-          have ⟨hwf, _, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           unfold TypeEnv.is_implying_wf at ih_result ⊢
           intro x
@@ -1129,8 +1165,9 @@ theorem typed_env_enforces_pure
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem.heap ∧
               cap.BoundedBy (B.denot env' mem) ∧
               cap = cs.ground_denot mem ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem at ht
-          have ⟨hwf, _, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           unfold TypeEnv.is_enforcing_pure at ih_result ⊢
           intro x
@@ -1279,7 +1316,7 @@ theorem from_TypeEnv_wf_in_heap
         cases info with
         | cvar cs cap =>
           unfold EnvTyping at htyping
-          have ⟨hwf, _, hsub, _, htyping'⟩ := htyping
+          have ⟨hwf, _, hsub, _, _, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -1447,8 +1484,9 @@ theorem typed_env_is_monotonic
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem.heap ∧
               cap.BoundedBy (B.denot env' mem) ∧
               cap = cs.ground_denot mem ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem at ht
-          have ⟨hwf, _, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           constructor
           · intro x
@@ -1513,8 +1551,9 @@ theorem typed_env_is_transparent
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem.heap ∧
               cap.BoundedBy (B.denot env' mem) ∧
               cap = cs.ground_denot mem ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem at ht
-          have ⟨hwf, _, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           unfold TypeEnv.is_transparent at ih_result ⊢
           intro x
@@ -1579,8 +1618,9 @@ theorem typed_env_is_bool_independent
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem.heap ∧
               cap.BoundedBy (B.denot env' mem) ∧
               cap = cs.ground_denot mem ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem at ht
-          have ⟨hwf, _, hsub, _, ht'⟩ := ht
+          have ⟨hwf, _, hsub, _, _, ht'⟩ := ht
           have ih_result := ih ht'
           unfold TypeEnv.is_bool_independent at ih_result ⊢
           intro x
@@ -2406,14 +2446,16 @@ theorem env_typing_monotonic
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem1.heap ∧
               cap.BoundedBy (B.denot env' mem1) ∧
               cap = cs.ground_denot mem1 ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem1 at ht
           change
             cs.WfInHeap mem2.heap ∧
               (B.subst (Subst.from_TypeEnv env')).WfInHeap mem2.heap ∧
               cap.BoundedBy (B.denot env' mem2) ∧
               cap = cs.ground_denot mem2 ∧
+              cap.drop_free ∧
               EnvTyping Γ env' mem2
-          have ⟨hwf, hwf_bound, hsub, hcap, ht'⟩ := ht
+          have ⟨hwf, hwf_bound, hsub, hcap, hdf, ht'⟩ := ht
           constructor
           · -- Prove: cs.WfInHeap mem2.heap
             exact CaptureSet.wf_monotonic hmem hwf
@@ -2428,6 +2470,9 @@ theorem env_typing_monotonic
             simpa [hcap, h_denot_eq] using hsub
           constructor
           · rw [hcap, ground_denot_is_monotonic hwf hmem]
+          constructor
+          · -- `drop_free` is memory-independent; the cap is unchanged.
+            exact hdf
           · exact ih ht'
 /-- Semantic subcapturing. -/
 def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=

@@ -399,25 +399,25 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hsub hcompat hsub_bound
+      intro m' CS hwf_CS hdf hsub hcompat hsub_bound
       let cap1 : CapabilitySet := CS.ground_denot m'
       let ρ1 : Retype (env1.extend_cvar CS cap1) σ.lift
                       (env2.extend_cvar CS cap1) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap1)
       have heqv := retype_exi_val_denot ρ1 T
-      specialize hd m' CS hwf_CS hsub hcompat hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat hsub_bound
       apply eval_post_monotonic_general _ hd
       intro m'' _hsub' v hval
       exact (heqv m'' v).mp hval
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hsub hcompat hsub_bound
+      intro m' CS hwf_CS hdf hsub hcompat hsub_bound
       let cap2 : CapabilitySet := CS.ground_denot m'
       let ρ2 : Retype (env1.extend_cvar CS cap2) σ.lift
                       (env2.extend_cvar CS cap2) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap2)
       have heqv := retype_exi_val_denot ρ2 T
-      specialize hd m' CS hwf_CS hsub hcompat hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat hsub_bound
       apply eval_post_monotonic_general _ hd
       intro m'' _hsub' v hval
       exact (heqv m'' v).mpr hval
@@ -444,8 +444,8 @@ def retype_exi_val_denot
       case pack =>
         rename_i CS y
         simp only [List.empty_eq, and_congr_right_iff]
-        -- Goal: CS.WfInHeap s.heap → (... ↔ ...)
-        intro _hwf
+        -- Goal: CS.WfInHeap s.heap → drop-free → (... ↔ ...)
+        intro _hwf _hdf
         have ih := retype_val_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot s)) T
         exact ih s (Exp.var y)
       all_goals {
