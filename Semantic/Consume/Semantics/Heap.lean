@@ -591,6 +591,12 @@ def disjoint (C1 C2 : CapabilitySet) : Prop :=
 theorem disjoint.symm {C1 C2 : CapabilitySet} (h : disjoint C1 C2) : disjoint C2 C1 :=
   fun mu1 mu2 l h1 h2 => h mu2 mu1 l h2 h1
 
+/-- A capability set is *drop-free* when it holds no `.drop`-mode capability at any
+location. This is the runtime image of a capture-parameter instance carrying no
+`.drop` authority (`CaptureSet.is_valid_inst`). -/
+def drop_free (C : CapabilitySet) : Prop :=
+  ∀ l, ¬ hasmem .drop l C
+
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
   Subset C C

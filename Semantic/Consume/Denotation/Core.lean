@@ -492,6 +492,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     R0 ⊆ (cs.denot env m) ∧
     (∀ (m' : Memory) (CS : CaptureSet {}),
       CS.WfInHeap m'.heap ->
+      (CS.ground_denot m').drop_free ->
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
       m'.is_compatible R0 ->
@@ -508,6 +509,7 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
   match resolve m.heap e with
   | some (.pack CS x) =>
     CS.WfInHeap m.heap ∧
+    (CS.ground_denot m).drop_free ∧
     Ty.val_denot (ρ.extend_cvar CS (cap := CS.ground_denot m)) T m (.var x)
   | _ => False
 
@@ -1834,6 +1836,7 @@ theorem exi_val_denot_is_transparent {env : TypeEnv s}
     change match resolve m.heap (.var (.free x)) with
       | some (.pack CS x) =>
         CS.WfInHeap m.heap ∧
+          (CS.ground_denot m).drop_free ∧
           Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m)) T m (.var x)
       | _ => False
     simp only [resolve, hlookup]
@@ -2215,12 +2218,12 @@ def val_denot_is_monotonic {env : TypeEnv s}
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [← hcs_eq, hcs'_eq]
             exact hR0_sub
-          · intro m' CS hwf _ msub hcompat hbounded
+          · intro m' CS hwf hdf _ msub hcompat hbounded
             have hs0 := Memory.subsumes_trans msub hmem
             have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
             rw [hcs'_eq]
             rw [hcs'_eq] at hcompat
-            exact hfun m' CS hwf hs0 hcompat hbounded
+            exact hfun m' CS hwf hdf hs0 hcompat hbounded
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
@@ -2248,20 +2251,19 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         rw [hresolve1] at ht
         -- ht now says: CS.WfInHeap m1.heap ∧
         --   Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m1)) T m1 (var y)
-        obtain ⟨hwf_CS_m1, ht_body⟩ := ht
+        obtain ⟨hwf_CS_m1, hdf_m1, ht_body⟩ := ht
         -- Use resolve_monotonic to show resolve m2.heap e = some (pack CS y)
         have hresolve2 : resolve m2.heap e = some (Exp.pack CS y) := by
           apply resolve_monotonic hmem hresolve1
         rw [hresolve2]
-        -- Now need to show: CS.WfInHeap m2.heap ∧
-        --   Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m2)) T m2 (var y)
-        constructor
-        · -- Well-formedness is monotonic
-          exact CaptureSet.wf_monotonic hmem hwf_CS_m1
+        -- ground_denot is stable under subsumption.
+        have hcap_eq : CS.ground_denot m1 = CS.ground_denot m2 :=
+          ground_denot_is_monotonic hwf_CS_m1 hmem
+        -- Now need to show: CS.WfInHeap m2.heap ∧ drop-free ∧ val_denot at m2
+        refine ⟨CaptureSet.wf_monotonic hmem hwf_CS_m1, ?_, ?_⟩
+        · -- drop-freeness transfers via `hcap_eq`
+          rw [← hcap_eq]; exact hdf_m1
         · -- Use monotonicity of val_denot
-          -- First show ground_denot is monotonic
-          have hcap_eq : CS.ground_denot m1 = CS.ground_denot m2 :=
-            ground_denot_is_monotonic hwf_CS_m1 hmem
           have henv' : (env.extend_cvar CS (cap := CS.ground_denot m1)).IsMonotonic := by
             constructor
             · intro X
