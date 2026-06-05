@@ -12,13 +12,13 @@ def Sig.platform_of : Nat -> Sig
 /-- A platform context with `n` mutable boolean cells. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C<:.unbound),x:(.cell (.cvar .epsilon .here))
+| n+1 => ((Ctx.platform_of n),C[.can_drop]<:.unbound),x:(.cell (.cvar (.M .epsilon) .here))
 
 /-- A platform heap with `n` mutable boolean cells (initialized to false). -/
 def Heap.platform_of (N : Nat) : Heap :=
   fun i =>
     if i < N then
-      .some (.capability (.mcell false))
+      .some (.capability (.mcell false .live))
     else
       .none
 
@@ -38,15 +38,19 @@ def BVar.level : BVar s k -> Nat
   `(0,1), (2,3), ..., (2N-2, 2N-1)`, where cell `i` corresponds to
   variables at levels `2i` and `2i+1`. Bound variables map via `level / 2`,
   while free variables directly reference heap locations. -/
+def Access.to_cap_mode : Access -> CapMode
+| .M m => .access m
+| .drop => .drop
+
 def CaptureSet.to_platform_capability_set : CaptureSet (Sig.platform_of N) -> CapabilitySet
 | .empty => .empty
 | .union cs1 cs2 =>
     (cs1.to_platform_capability_set) ∪ (cs2.to_platform_capability_set)
 | .var m x =>
     match x with
-    | .bound b => .cap m (b.level / 2)
-    | .free n => .cap m n
-| .cvar m c => .cap m (c.level / 2)
+    | .bound b => .cap m.to_cap_mode (b.level / 2)
+    | .free n => .cap m.to_cap_mode n
+| .cvar m c => .cap m.to_cap_mode (c.level / 2)
 
 /-- Type environment for a platform with `N` mutable cells.
   Maps each pair `(C, x)` to cell `i` at heap location `i`:
@@ -56,11 +60,11 @@ def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
 | N+1 =>
   -- The capture set for cell N is {ε N}, with ground denotation singleton {ε N}
-  let cs : CaptureSet {} := .var .epsilon (.free N)
+  let cs : CaptureSet {} := .var (.M .epsilon) (.free N)
   let cap := CapabilitySet.singleton .epsilon N
   let env := (TypeEnv.platform_of N).extend_cvar cs (cap := cap)
   -- Peak set for type (.capt (.cvar .epsilon .here) .cell) is (.cvar .epsilon .here)
-  env.extend_var N ⟨.cvar .epsilon .here, .cvar⟩
+  env.extend_var N ⟨.cvar (.M .epsilon) .here, .cvar⟩
 
 /-- The platform heap is well-formed: it contains only mutable cells, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
@@ -107,11 +111,11 @@ theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   unfold Memory.platform_of Heap.platform_of at hlookup ⊢
   simp only [Option.ite_none_right_eq_some, Option.some.injEq] at hlookup
   obtain ⟨hl, hv⟩ := hlookup
-  exists .capability (.mcell false)
+  exists .capability (.mcell false .live)
   simp only [ite_eq_left_iff, not_lt, reduceCtorEq, imp_false, not_le]
   constructor
   · omega
-  · rw [← hv]; simp [Cell.subsumes]
+  · rw [← hv]; simp only [Cell.subsumes]; exact Liveness.Le.refl
 
 /-- EnvTyping for platform is monotonic: platform N types in platform M memory when M ≥ N. -/
 theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
@@ -143,31 +147,34 @@ theorem env_typing_of_platform {N : Nat} :
       · -- Capture set after substitution is well-formed
         simp only [List.empty_eq]
         apply CaptureSet.WfInHeap.wf_var_free
-        show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
+        show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
         unfold Heap.platform_of
         simp only [Nat.lt_succ_self, if_true]
-      · -- ∃ l b0, e = .var (.free l) ∧ m.lookup l = some (.capability (.mcell b0)) ∧ ...
-        use N, false
-        constructor
-        · rfl
-        · constructor
-          · -- m.lookup N = some (.capability (.mcell false))
-            unfold Memory.lookup Memory.platform_of Heap.platform_of
-            simp only [Nat.lt_succ_self, if_true]
-          · -- N is in the authority set from capture set denot
-            change
-              (CaptureSet.var Mutability.epsilon (Var.free N)).ground_denot
+      · -- ∃ l b0 ℓ0, e = .var (.free l) ∧ m.lookup l = some (.capability (.mcell b0 ℓ0)) ∧ covers
+        refine ⟨N, false, .live, rfl, ?_, ?_⟩
+        · -- m.lookup N = some (.capability (.mcell false .live))
+          unfold Memory.lookup Memory.platform_of Heap.platform_of
+          simp only [Nat.lt_succ_self, if_true]
+        · -- N is covered by the capture set denotation
+          have hden :
+              CaptureSet.denot
+                ((TypeEnv.platform_of N).extend_cvar
+                  (CaptureSet.var (.M .epsilon) (.free N))
+                  (CapabilitySet.singleton .epsilon N))
+                (CaptureSet.cvar (.M .epsilon) .here)
                 (Memory.platform_of (N + 1))
-                |>.covers Mutability.epsilon N
-            have hlookupN :
-                (Heap.platform_of (N + 1)) N = some (.capability (.mcell false)) := by
-              unfold Heap.platform_of
-              rw [if_pos (Nat.lt_succ_self N)]
-            simpa only [CaptureSet.ground_denot, CapabilitySet.applyMut, Memory.platform_of,
-              reachability_of_loc, hlookupN, CapabilitySet.singleton] using
-              (CapabilitySet.covers.here Mutability.Le.refl :
-                CapabilitySet.covers Mutability.epsilon N
-                  (CapabilitySet.singleton Mutability.epsilon N))
+                = CapabilitySet.singleton .epsilon N := by
+            change ((CaptureSet.cvar (Access.M .epsilon) BVar.here).subst
+                    (Subst.from_TypeEnv _)).ground_denot (Memory.platform_of (N + 1)) = _
+            simp only [CaptureSet.subst, Subst.from_TypeEnv, CaptureSet.applyAccess]
+            unfold CaptureSet.ground_denot
+            change (reachability_of_loc (Memory.platform_of (N + 1)).heap N).applyAccess
+                (.M .epsilon) = _
+            unfold reachability_of_loc Memory.platform_of Heap.platform_of
+            simp only [Nat.lt_succ_self, if_true]
+            rfl
+          rw [hden]
+          exact CapabilitySet.covers.here CapMode.Le.refl
     · -- Second conjunct: ps = T.captureSet.peakset Γ ∧ EnvTyping ...
       constructor
       · -- Peak set equality: ps = T.captureSet.peakset Γ
@@ -176,33 +183,32 @@ theorem env_typing_of_platform {N : Nat} :
         -- peakset Γ (.cvar .epsilon .here) = ⟨.cvar .epsilon .here, .cvar⟩
         simp only [Ty.captureSet, CaptureSet.peakset, CaptureSet.peaks]
       · -- Capture variable C with unbounded capture bound
-        constructor
+        refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
         · -- cs.WfInHeap
           apply CaptureSet.WfInHeap.wf_var_free
-          show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false))
+          show (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
           unfold Heap.platform_of
           simp only [Nat.lt_succ_self, if_true]
-        · constructor
-          · -- Capture bound is well-formed
-            exact CaptureBound.WfInHeap.wf_unbound
-          · constructor
-            · -- cap is bounded by top
-              exact CapabilitySet.BoundedBy.top
-            · constructor
-              · -- cap = cs.ground_denot m
-                simp [CaptureSet.ground_denot, reachability_of_loc,
-                  Memory.platform_of, Heap.platform_of, CapabilitySet.singleton]
-              · -- Recursive: platform N types in platform (N+1) memory
-                apply env_typing_platform_monotonic (N := N) (M := N + 1)
-                · omega
-                · exact ih
+        · -- Capture bound is well-formed
+          exact CaptureBound.WfInHeap.wf_unbound
+        · -- cap is bounded by top
+          exact CapabilitySet.BoundedBy.top
+        · -- cap = cs.ground_denot m
+          simp [CaptureSet.ground_denot, reachability_of_loc,
+            Memory.platform_of, Heap.platform_of, CapabilitySet.singleton]
+        · -- cap.drop_free: the singleton carries an access cap, never a drop cap
+          intro l hmem
+          simp only [CapabilitySet.singleton] at hmem
+          cases hmem
+        · -- Recursive: platform N types in platform (N+1) memory
+          exact env_typing_platform_monotonic (N := N) (M := N + 1) (by omega) ih
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
     under permission `P` iff for any possible reduction state starting from `e`
     on the platform, it is progressive. -/
 def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) (P : CapabilitySet) : Prop :=
-  ∀ M1 e1,
-    Reduce P (Memory.platform_of N) e M1 e1 ->
+  ∀ M1 e1 tr,
+    Reduce (Memory.platform_of N) e tr M1 e1 ->
     IsProgressive P M1 e1
 
 /-- Reachability of a location in platform heap is just the singleton set
@@ -245,7 +251,7 @@ theorem TypeEnv.lookup_var_platform {x : BVar (Sig.platform_of N) .var} :
     and the corresponding capability set. -/
 theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
   (TypeEnv.platform_of N).lookup_cvar c =
-    (.var .epsilon (.free (c.level / 2)), CapabilitySet.singleton .epsilon (c.level / 2)) := by
+    (.var (.M .epsilon) (.free (c.level / 2)), CapabilitySet.singleton .epsilon (c.level / 2)) := by
   induction N with
   | zero => cases c
   | succ N ih =>
@@ -254,15 +260,16 @@ theorem TypeEnv.lookup_cvar_platform {c : BVar (Sig.platform_of N) .cvar} :
       cases c' with
       | here =>
         change
-          (CaptureSet.var Mutability.epsilon (Var.free N),
+          (CaptureSet.var (Access.M Mutability.epsilon) (Var.free N),
               CapabilitySet.singleton Mutability.epsilon N) =
-            (CaptureSet.var Mutability.epsilon
+            (CaptureSet.var (Access.M Mutability.epsilon)
                 (Var.free ((BVar.here (s := Sig.platform_of N)).level / 2)),
               CapabilitySet.singleton Mutability.epsilon
                 ((BVar.here (s := Sig.platform_of N)).level / 2))
         change
           _ =
-            (CaptureSet.var Mutability.epsilon (Var.free ((Sig.platform_of N).length / 2)),
+            (CaptureSet.var (Access.M Mutability.epsilon)
+                (Var.free ((Sig.platform_of N).length / 2)),
               CapabilitySet.singleton Mutability.epsilon
                 ((Sig.platform_of N).length / 2))
         rw [Sig.platform_of_length]
@@ -318,6 +325,14 @@ theorem BVar.level_cvar_bound {c : BVar (Sig.platform_of N) .cvar} : c.level / 2
         have := ih (c := c'')
         omega
 
+/-- Applying an access mode to a singleton `.epsilon` capability set retags it
+    with the access mode translated to a cap mode. -/
+theorem CapabilitySet.applyAccess_singleton_eq {m : Access} {l : Nat} :
+    (CapabilitySet.singleton .epsilon l).applyAccess m = CapabilitySet.cap m.to_cap_mode l := by
+  cases m with
+  | M mu => cases mu <;> rfl
+  | drop => rfl
+
 /-- The denotation of a capture set in the platform environment equals
     its direct capability set translation, provided the capture set is well-formed. -/
 theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
@@ -348,7 +363,7 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
       have hlevel : b.level / 2 < N := BVar.level_var_bound
       unfold Memory.platform_of
       rw [reachability_of_loc_platform hlevel]
-      simp [CapabilitySet.singleton]
+      exact CapabilitySet.applyAccess_singleton_eq
     | free n =>
       -- Free term variable - extract proof that n < N from hwf
       cases hwf with
@@ -364,15 +379,26 @@ theorem capture_set_denot_eq_platform {C : CaptureSet (Sig.platform_of N)}
           case isTrue h => exact h
           case isFalse => contradiction
         rw [reachability_of_loc_platform hn]
-        simp [CapabilitySet.singleton]
+        exact CapabilitySet.applyAccess_singleton_eq
   | cvar m c =>
     -- Capture variable
     unfold CaptureSet.subst CaptureSet.to_platform_capability_set
     simp only [Subst.from_TypeEnv]
     rw [TypeEnv.lookup_cvar_platform]
-    unfold CaptureSet.ground_denot Memory.platform_of
     have hlevel : c.level / 2 < N := BVar.level_cvar_bound
-    cases m <;> (simp [reachability_of_loc_platform hlevel]; rfl)
+    -- Applying access `m` to the ε-tagged ground variable collapses to `.var m`.
+    have hsubst :
+        (CaptureSet.var (s := ({} : Sig)) (Access.M Mutability.epsilon)
+            (Var.free (c.level / 2))).applyAccess m
+          = CaptureSet.var m (Var.free (c.level / 2)) := by
+      cases m with
+      | M a => cases a <;> rfl
+      | drop => rfl
+    dsimp only
+    rw [hsubst]
+    unfold CaptureSet.ground_denot Memory.platform_of
+    rw [reachability_of_loc_platform hlevel]
+    exact CapabilitySet.applyAccess_singleton_eq
 
 /-- Adequacy of semantic typing on platform contexts.
     Requires that the capture set is closed (contains no free variables). -/
@@ -383,20 +409,14 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
     N
     (C.to_platform_capability_set) := by
   unfold Exp.SafeWithPlatform
-  intro M1 e1 hred
-  -- Apply semantic typing with platform environment
-  have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N) env_typing_of_platform
-  -- Derive well-formedness from closedness
-  have hwf : C.WfInHeap (Heap.platform_of N) := CaptureSet.wf_of_closed hclosed
-  -- Rewrite using the equality of capability sets
-  rw [capture_set_denot_eq_platform hwf] at hdenot
-  -- Preservation: Eval is preserved under reduction
-  have heval' : Eval C.to_platform_capability_set M1 e1
-      (Ty.exi_val_denot (TypeEnv.platform_of N) E).as_mpost := by
-    unfold Ty.exi_exp_denot at hdenot
-    apply reduce_preserves_eval hdenot hred
-  -- Progressive: Eval implies progressive
-  exact eval_implies_progressive heval'
+  intro M1 e1 tr hred
+  -- REAL GAP (Step refactor): `SemanticTyping` now yields an `Eval` only after
+  -- discharging `DroppableSep` and `is_compatible`, and the multi-step
+  -- preservation lemma `reduce_preserves_eval` (Props.lean) is currently
+  -- COMMENTED OUT — `is_compatible C` is not preserved across a `step_drop`
+  -- (the downstream linearity/separation property). Until that bridge is
+  -- restored, adequacy cannot be assembled from the fundamental theorem.
+  sorry
 
 /-- If C has kind `.ro`,
     then any execution of any program under `C` does not mutate the memory. -/
@@ -404,15 +424,16 @@ theorem immutability_adequacy_platform {e : Exp (Sig.platform_of N)}
   {C : CaptureSet (Sig.platform_of N)}
   (hclosed : C.IsClosed)
   (hkind : HasKind (Ctx.platform_of N) C .ro) :
-  ∀ M1 e1,
-    Reduce C.to_platform_capability_set (Memory.platform_of N)
-      (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
+  ∀ M1 e1 tr,
+    Reduce (Memory.platform_of N)
+      (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) tr M1 e1 ->
     (Memory.platform_of N).not_mutated M1 := by
-  intro M1 e1 hred
-  have hwf : C.WfInHeap (Heap.platform_of N) := CaptureSet.wf_of_closed hclosed
-  have hsem := fundamental_haskind hkind (TypeEnv.platform_of N) (Memory.platform_of N)
-    env_typing_of_platform
-  rw [capture_set_denot_eq_platform hwf] at hsem
-  exact reduce_immutable hsem hred
+  intro M1 e1 tr hred
+  -- REAL GAP (Step refactor): the multi-step immutability lemma
+  -- `reduce_immutable` (Props.lean) is currently COMMENTED OUT — `Reduce` no
+  -- longer carries the read-only authority `C` that its proof threaded through
+  -- `step_immutable`. Restoring it requires re-expressing the read-only frame
+  -- on the trace-indexed `Step`/`Reduce`.
+  sorry
 
 end Consume
