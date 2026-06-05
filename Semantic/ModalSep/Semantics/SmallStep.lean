@@ -1,8 +1,8 @@
-import Semantic.ModalCapybara.Syntax
-import Semantic.ModalCapybara.Substitution
-import Semantic.ModalCapybara.Semantics.Heap
+import Semantic.ModalSep.Syntax
+import Semantic.ModalSep.Substitution
+import Semantic.ModalSep.Semantics.Heap
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- Small-step evaluation relation indexed by a capability set upper bound.
   Step C m e m' e' means that expression e in memory m steps to e' in memory m'
@@ -91,4 +91,4 @@ theorem reduce_trans
   | refl => exact hred2
   | step h rest ih => exact Reduce.step h (ih hred2)
 
-end ModalCapybara
+end ModalSep

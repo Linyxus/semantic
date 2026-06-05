@@ -1,8 +1,8 @@
-import Semantic.ModalCapybara.Syntax
-import Semantic.ModalCapybara.Substitution
+import Semantic.ModalSep.Syntax
+import Semantic.ModalSep.Substitution
 import Mathlib.Data.Finset.Basic
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- A set of capability labels, representing an "authority":
   they are the set of capabilities a program at most uses. -/
@@ -2464,4 +2464,4 @@ theorem subset_right
 
 end CapabilitySet.Noninterference
 
-end ModalCapybara
+end ModalSep

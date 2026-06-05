@@ -1,6 +1,6 @@
-import Semantic.ModalCapybara.Syntax
+import Semantic.ModalSep.Syntax
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- A substitution maps bound variables of each kind to terms of the appropriate sort. -/
 structure Subst (s1 s2 : Sig) where
@@ -1558,4 +1558,4 @@ def Ty.interfere_set : Ty sort s -> Option (CaptureSet s)
     T.interfere_set.map (fun cs => cs.subst (Subst.openCVar {}))
 | .typ T => T.interfere_set
 
-end ModalCapybara
+end ModalSep

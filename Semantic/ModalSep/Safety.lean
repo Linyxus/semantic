@@ -1,6 +1,6 @@
-import Semantic.ModalCapybara.Fundamental
-import Semantic.ModalCapybara.Semantics.Props
-namespace ModalCapybara
+import Semantic.ModalSep.Fundamental
+import Semantic.ModalSep.Semantics.Props
+namespace ModalSep
 
 /-! The following defines _platforms_. -/
 
@@ -417,4 +417,4 @@ theorem immutability_adequacy_platform {e : Exp (Sig.platform_of N)}
   rw [capture_set_denot_eq_platform (CaptureSet.wf_of_closed hclosed)] at hsem
   exact reduce_immutable hsem hred
 
-end ModalCapybara
+end ModalSep

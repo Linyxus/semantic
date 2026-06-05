@@ -1,10 +1,10 @@
-import Semantic.ModalCapybara.Syntax.Ty
+import Semantic.ModalSep.Syntax.Ty
 
 /-!
 Expression definitions and operations for CC.
 -/
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- An expression in CC. -/
 inductive Exp : Sig -> Type where
@@ -248,4 +248,4 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | cond : Var.IsClosed x -> Exp.IsClosed e2 -> Exp.IsClosed e3 -> Exp.IsClosed (.cond x e2 e3)
 | par : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.par e1 e2)
 
-end ModalCapybara
+end ModalSep

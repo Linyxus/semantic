@@ -1,7 +1,7 @@
-import Semantic.ModalCapybara.Syntax
-import Semantic.ModalCapybara.Substitution
+import Semantic.ModalSep.Syntax
+import Semantic.ModalSep.Substitution
 
-namespace ModalCapybara
+namespace ModalSep
 
 inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_trans :
@@ -287,4 +287,4 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 
 notation:65 C " # " Γ " ⊢ " e " : " T => HasType C Γ e T
 
-end ModalCapybara
+end ModalSep

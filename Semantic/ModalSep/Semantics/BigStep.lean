@@ -1,8 +1,8 @@
-import Semantic.ModalCapybara.Syntax
-import Semantic.ModalCapybara.Substitution
-import Semantic.ModalCapybara.Semantics.Heap
+import Semantic.ModalSep.Syntax
+import Semantic.ModalSep.Substitution
+import Semantic.ModalSep.Semantics.Heap
 
-namespace ModalCapybara
+namespace ModalSep
 
 inductive Eval : CapabilitySet -> Memory -> Exp {} -> Mpost -> Prop where
 | eval_val :
@@ -583,4 +583,4 @@ theorem eval_capability_set_monotonic {A1 A2 : CapabilitySet}
   case eval_par heval1 heval2 hni hsub_cap _ _ =>
     exact Eval.eval_par heval1 heval2 hni (CapabilitySet.Subset.trans hsub_cap hsub)
 
-end ModalCapybara
+end ModalSep

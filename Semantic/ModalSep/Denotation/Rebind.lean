@@ -1,5 +1,5 @@
-import Semantic.ModalCapybara.Denotation.Core
-namespace ModalCapybara
+import Semantic.ModalSep.Denotation.Core
+namespace ModalSep
 
 structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Prop where
   var :
@@ -620,4 +620,4 @@ lemma lweaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
   Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.extend_lock) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.lweaken) (T:=T)
 
-end ModalCapybara
+end ModalSep

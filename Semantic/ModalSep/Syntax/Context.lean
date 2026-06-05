@@ -1,6 +1,6 @@
-import Semantic.ModalCapybara.Syntax.Ty
+import Semantic.ModalSep.Syntax.Ty
 
-namespace ModalCapybara
+namespace ModalSep
 
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
@@ -386,4 +386,4 @@ theorem CaptureSet.var_peaks {Γ : Ctx s}
           unfold peaks; rfl] at ih
     rw [ih, ← CaptureSet.applyMut_rename, ← peaks_rename_succ_eq]
 
-end ModalCapybara
+end ModalSep

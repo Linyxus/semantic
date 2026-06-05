@@ -1,12 +1,12 @@
-import Semantic.ModalCapybara.Debruijn
-import Semantic.ModalCapybara.Syntax.CaptureSet
-import Semantic.ModalCapybara.Syntax.SepCtx
+import Semantic.ModalSep.Debruijn
+import Semantic.ModalSep.Syntax.CaptureSet
+import Semantic.ModalSep.Syntax.SepCtx
 
 /-!
 Type definitions and operations for CC.
 -/
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- The sort of a type: capturing, shape, or existential. -/
 inductive TySort : Type where
@@ -255,4 +255,4 @@ theorem PureTy.rename_comp {T : PureTy s1} {f : Rename s1 s2} {g : Rename s2 s3}
 def PureTy.IsClosed (T : PureTy s) : Prop :=
   T.core.IsClosed
 
-end ModalCapybara
+end ModalSep

@@ -1,8 +1,8 @@
-import Semantic.ModalCapybara.Semantics
-import Semantic.ModalCapybara.TypeSystem
+import Semantic.ModalSep.Semantics
+import Semantic.ModalSep.TypeSystem
 import Semantic.Prelude
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- Denotation of types. -/
 def Denot := Memory -> Exp {} -> Prop
@@ -2867,4 +2867,4 @@ theorem coveredby_mono {env : TypeEnv s} {C1 C2 : CaptureSet s}
 
 end TypeEnv.HasSepDom
 
-end ModalCapybara
+end ModalSep

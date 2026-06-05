@@ -4,7 +4,7 @@ import Mathlib.Tactic
 De Bruijn indices and variable renamings for CC.
 -/
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- Kind of a variable. -/
 inductive Kind : Type where
@@ -111,4 +111,4 @@ theorem Rename.lift_comp {f1 : Rename s1 s2} {f2 : Rename s2 s3} :
   intro k x
   cases x <;> rfl
 
-end ModalCapybara
+end ModalSep

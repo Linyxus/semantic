@@ -1,6 +1,6 @@
-import Semantic.ModalCapybara.Semantics.SmallStep
-import Semantic.ModalCapybara.Semantics.BigStep
-namespace ModalCapybara
+import Semantic.ModalSep.Semantics.SmallStep
+import Semantic.ModalSep.Semantics.BigStep
+namespace ModalSep
 
 /-- The result of looking up a variable in the heap is deterministic. -/
 theorem Heap.lookup_deterministic {H : Heap}
@@ -1695,4 +1695,4 @@ theorem reduce_immutable {C : CapabilitySet}
   | step hstep _ ih =>
     exact not_mutated_trans (step_immutable himm hstep) ih
 
-end ModalCapybara
+end ModalSep

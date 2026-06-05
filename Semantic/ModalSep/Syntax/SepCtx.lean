@@ -1,6 +1,6 @@
-import Semantic.ModalCapybara.Syntax.CaptureSet
+import Semantic.ModalSep.Syntax.CaptureSet
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- A separation constraint. -/
 inductive SepCtx : Sig -> Type where
@@ -152,4 +152,4 @@ inductive SepCtx.IsClosed : SepCtx s -> Prop where
 | empty : SepCtx.IsClosed .empty
 | cons : SepCtx.IsClosed K -> CaptureSet.IsClosed C -> SepCtx.IsClosed (.cons K C m)
 
-end ModalCapybara
+end ModalSep

@@ -1,6 +1,6 @@
-import Semantic.ModalCapybara.Denotation
-import Semantic.ModalCapybara.Semantics
-namespace ModalCapybara
+import Semantic.ModalSep.Denotation
+import Semantic.ModalSep.Semantics
+namespace ModalSep
 
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env store)
@@ -3443,4 +3443,4 @@ theorem fundamental
         (ht_ih ht_closed)
         (hu_ih hu_closed)
 
-end ModalCapybara
+end ModalSep

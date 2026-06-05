@@ -1,4 +1,4 @@
-import Semantic.ModalCapybara.TypeSystem.Core
+import Semantic.ModalSep.TypeSystem.Core
 
 /-!
 Basic properties of the type system.
@@ -9,7 +9,7 @@ This module contains fundamental properties about:
 - Typing judgments
 -/
 
-namespace ModalCapybara
+namespace ModalSep
 
 -- Context lookup properties
 
@@ -518,4 +518,4 @@ theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
       apply Ctx.LookupVar.there
       exact h
 
-end ModalCapybara
+end ModalSep

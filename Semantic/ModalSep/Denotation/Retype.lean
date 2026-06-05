@@ -1,6 +1,6 @@
-import Semantic.ModalCapybara.Denotation.Core
-import Semantic.ModalCapybara.Denotation.Rebind
-namespace ModalCapybara
+import Semantic.ModalSep.Denotation.Core
+import Semantic.ModalSep.Denotation.Rebind
+namespace ModalSep
 
 /-- Interpret a variable in an environment to get its free variable index. -/
 def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
@@ -714,4 +714,4 @@ theorem open_carg_exi_exp_denot
     Ty.exi_exp_denot env (T.subst (Subst.openCVar C)) R := by
   apply retype_exi_exp_denot (Retype.open_carg cap)
 
-end ModalCapybara
+end ModalSep

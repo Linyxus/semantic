@@ -1,10 +1,10 @@
-import Semantic.ModalCapybara.Debruijn
+import Semantic.ModalSep.Debruijn
 
 /-!
 This module defines the capture set syntax of CC.
 -/
 
-namespace ModalCapybara
+namespace ModalSep
 
 /-- Mutability mode for captured variables: read-write (epsilon) or read-only (ro). -/
 inductive Mutability : Type where
@@ -643,4 +643,4 @@ theorem cvar_subset_coveredby {m : Mutability} {c : BVar s .cvar} {C1 C2 : Captu
 
 end CaptureSet.CoveredBy
 
-end ModalCapybara
+end ModalSep
