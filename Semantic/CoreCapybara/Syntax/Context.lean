@@ -310,6 +310,10 @@ def PeakSet.droppable (Γ : Ctx s) (P : PeakSet s) : Prop :=
 def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   PeakSet.droppable Γ (C.peakset Γ)
 
+/-- A capture set is access-only in `Γ` when none of its peaks is dropped. -/
+def CaptureSet.AccessOnly (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  ∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ (C.peakset Γ).cs → False
+
 theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.rename Rename.succ).peaks (Γ.push b) = (C.peaks Γ).rename Rename.succ := by
   induction C generalizing k with
