@@ -4,18 +4,113 @@ import Mathlib.Data.Finset.Basic
 
 namespace CoreCapybara
 
+inductive CapMode : Type where
+| access : Mutability -> CapMode
+| drop : CapMode
+
+namespace CapMode
+
+/-- Partial order on capability modes: access modes are ordered by their
+    underlying mutability; `.drop` is comparable only to itself. -/
+inductive Le : CapMode -> CapMode -> Prop where
+| access {m1 m2 : Mutability} : m1 ≤ m2 -> Le (.access m1) (.access m2)
+| drop : Le .drop .drop
+
+instance instLE : LE CapMode := ⟨CapMode.Le⟩
+
+theorem Le.refl {m : CapMode} : m ≤ m := by
+  cases m with
+  | access _ => exact .access Mutability.Le.refl
+  | drop => exact .drop
+
+theorem Le.trans {m1 m2 m3 : CapMode} (h1 : m1 ≤ m2) (h2 : m2 ≤ m3) : m1 ≤ m3 := by
+  cases h1 with
+  | access h1' =>
+    cases h2 with
+    | access h2' => exact .access (Mutability.Le.trans h1' h2')
+  | drop => cases h2; exact .drop
+
+/-- Read-only image of a mode: access modes become `.access .ro`, drop is fixed. -/
+def applyRO : CapMode -> CapMode
+| .access _ => .access .ro
+| .drop => .drop
+
+@[simp]
+theorem applyRO_idempotent {m : CapMode} : m.applyRO.applyRO = m.applyRO := by
+  cases m <;> rfl
+
+theorem applyRO_le {m : CapMode} : m.applyRO ≤ m := by
+  cases m with
+  | access m' => exact .access Mutability.Le.ro_le
+  | drop => exact .drop
+
+/-- Boolean equality on capability modes. -/
+def beq : CapMode → CapMode → Bool
+| .access .epsilon, .access .epsilon => true
+| .access .ro, .access .ro => true
+| .drop, .drop => true
+| _, _ => false
+
+theorem beq_iff_eq : ∀ {m1 m2 : CapMode}, m1.beq m2 = true ↔ m1 = m2
+  | .access .epsilon, .access .epsilon => by simp only [beq]
+  | .access .epsilon, .access .ro      => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .access .epsilon => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .access .ro      => by simp only [beq]
+  | .access .epsilon, .drop            => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .drop            => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .epsilon => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .ro      => by simp only [beq]; exact ⟨nofun, nofun⟩
+  | .drop,            .drop            => by simp only [beq]
+
+/-- Boolean check for `m1 ≤ m2`. Reflects `CapMode.Le`. -/
+def leBool : CapMode → CapMode → Bool
+| .access .epsilon, .access .epsilon => true
+| .access .ro,      .access .epsilon => true
+| .access .ro,      .access .ro      => true
+| .drop,            .drop            => true
+| _, _ => false
+
+theorem leBool_iff_le : ∀ {m1 m2 : CapMode}, m1.leBool m2 = true ↔ m1 ≤ m2
+  | .access .epsilon, .access .epsilon => by
+      simp only [leBool]
+      exact ⟨fun _ => .access .refl, fun _ => trivial⟩
+  | .access .epsilon, .access .ro      => by
+      simp only [leBool]
+      refine ⟨nofun, fun h => ?_⟩
+      cases h; rename_i h; cases h
+  | .access .ro,      .access .epsilon => by
+      simp only [leBool]
+      exact ⟨fun _ => .access .ro_eps, fun _ => trivial⟩
+  | .access .ro,      .access .ro      => by
+      simp only [leBool]
+      exact ⟨fun _ => .access .refl, fun _ => trivial⟩
+  | .access .epsilon, .drop            => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .access .ro,      .drop            => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .epsilon => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .drop,            .access .ro      => by
+      simp only [leBool]; exact ⟨nofun, nofun⟩
+  | .drop,            .drop            => by
+      simp only [leBool]
+      exact ⟨fun _ => .drop, fun _ => trivial⟩
+
+end CapMode
+
 /-- A set of capability labels, representing an "authority":
   they are the set of capabilities a program at most uses. -/
 inductive CapabilitySet : Type where
 | empty : CapabilitySet
-| cap : Mutability -> Nat -> CapabilitySet
+| cap : CapMode -> Nat -> CapabilitySet
 | union : CapabilitySet -> CapabilitySet -> CapabilitySet
 
 namespace CapabilitySet
 
-/-- `covers m l C` means capability set `C` covers location `l` with at least mutability `m`.
-    If `m = .ro`, any capability at `l` suffices. If `m = .epsilon`, we need read-write access. -/
-inductive covers : Mutability -> Nat -> CapabilitySet -> Prop where
+/-- `covers m l C` means capability set `C` covers location `l` with at least
+    cap mode `m`.  Access modes follow the underlying mutability ordering;
+    `.drop` is only covered by `.drop`. -/
+inductive covers : CapMode -> Nat -> CapabilitySet -> Prop where
 | here : m1 ≤ m2 -> CapabilitySet.covers m1 l (CapabilitySet.cap m2 l)
 | left {m l C1 C2} :
   CapabilitySet.covers m l C1 ->
@@ -25,7 +120,7 @@ inductive covers : Mutability -> Nat -> CapabilitySet -> Prop where
   CapabilitySet.covers m l (CapabilitySet.union C1 C2)
 
 /-- `hasmem m l C` means capability set `C` contains capability `(m, l)` exactly. -/
-inductive hasmem : Mutability -> Nat -> CapabilitySet -> Prop where
+inductive hasmem : CapMode -> Nat -> CapabilitySet -> Prop where
 | here : CapabilitySet.hasmem m l (CapabilitySet.cap m l)
 | left {m l C1 C2} :
   CapabilitySet.hasmem m l C1 ->
@@ -44,18 +139,18 @@ theorem not_covers_empty : ¬ covers m l .empty := by
   intro h
   cases h
 
-/-- Exact membership implies coverage with the same mutability. -/
+/-- Exact membership implies coverage with the same mode. -/
 theorem hasmem_implies_covers : hasmem m l C -> covers m l C := by
   intro h
   induction h with
-  | here => exact .here Mutability.Le.refl
+  | here => exact .here CapMode.Le.refl
   | left _ ih => exact .left ih
   | right _ ih => exact .right ih
 
-/-- Coverage can be weakened to a smaller mutability. -/
+/-- Coverage can be weakened to a smaller mode. -/
 theorem covers_weaken (h : covers m1 l C) (hle : m2 ≤ m1) : covers m2 l C := by
   induction h with
-  | here hle' => exact .here (Mutability.Le.trans hle hle')
+  | here hle' => exact .here (CapMode.Le.trans hle hle')
   | left _ ih => exact .left ih
   | right _ ih => exact .right ih
 
@@ -64,7 +159,8 @@ theorem covers_of_hasmem_le (h : hasmem m2 l C) (hle : m1 ≤ m2) : covers m1 l 
   exact covers_weaken (hasmem_implies_covers h) hle
 
 /-- Characterization of membership in a singleton. -/
-theorem hasmem_cap_iff : hasmem m l (.cap m' l') ↔ m = m' ∧ l = l' := by
+theorem hasmem_cap_iff {m m' : CapMode} :
+    hasmem m l (.cap m' l') ↔ m = m' ∧ l = l' := by
   constructor
   · intro h
     cases h
@@ -74,7 +170,8 @@ theorem hasmem_cap_iff : hasmem m l (.cap m' l') ↔ m = m' ∧ l = l' := by
     exact .here
 
 /-- Characterization of coverage in a singleton. -/
-theorem covers_cap_iff : covers m l (.cap m' l') ↔ m ≤ m' ∧ l = l' := by
+theorem covers_cap_iff {m m' : CapMode} :
+    covers m l (.cap m' l') ↔ m ≤ m' ∧ l = l' := by
   constructor
   · intro h
     cases h
@@ -132,16 +229,18 @@ theorem covers_union_left (h : covers m l C1) : covers m l (C1 ∪ C2) :=
 theorem covers_union_right (h : covers m l C2) : covers m l (C1 ∪ C2) :=
   .right h
 
+/-- A singleton capability at mutability `m` (always in access mode). -/
 def singleton (m : Mutability) (l : Nat) : CapabilitySet :=
-  .cap m l
+  .cap (.access m) l
 
 instance instSingleton : Singleton Nat CapabilitySet :=
   ⟨CapabilitySet.singleton .ro⟩
 
-/-- Apply read-only mutability to all elements in a capability set. -/
+/-- Apply read-only mutability to all elements in a capability set.
+    Access caps are demoted to `.access .ro`; drop caps are preserved. -/
 def applyRO : CapabilitySet -> CapabilitySet
 | .empty => .empty
-| .cap _ l => .cap .ro l
+| .cap m l => .cap m.applyRO l
 | .union C1 C2 => .union C1.applyRO C2.applyRO
 
 /-- Apply a mutability to all elements in a capability set.
@@ -151,13 +250,130 @@ def applyMut (m : Mutability) (C : CapabilitySet) : CapabilitySet :=
   | .epsilon => C
   | .ro => C.applyRO
 
+/-- Replace every cap mode in `C` with `.drop`. -/
+def to_drop : CapabilitySet -> CapabilitySet
+| .empty => .empty
+| .cap _ l => .cap .drop l
+| .union C1 C2 => .union C1.to_drop C2.to_drop
+
+/-- Apply an access mode to all elements: a mutability acts via `applyMut`,
+    and `.drop` retags every cap with `.drop` (real consume authority) via
+    `to_drop`. -/
+def applyAccess (a : Access) (C : CapabilitySet) : CapabilitySet :=
+  match a with
+  | .M m => C.applyMut m
+  | .drop => C.to_drop
+
+@[simp] theorem applyAccess_M {m : Mutability} {C : CapabilitySet} :
+    C.applyAccess (.M m) = C.applyMut m := rfl
+@[simp] theorem applyAccess_drop {C : CapabilitySet} :
+    C.applyAccess .drop = C.to_drop := rfl
+
+/-- Decidable check that `(mu, l)` is covered by `C` (i.e. there is some
+    `(mu', l)` in `C` with `mu ≤ mu'`). -/
+def coversCap (mu : CapMode) (l : Nat) : CapabilitySet → Bool
+| .empty => false
+| .cap mu' l' => mu.leBool mu' && decide (l = l')
+| .union C1 C2 => coversCap mu l C1 || coversCap mu l C2
+
+/-- Covers-based intersection with mode-meet semantics: keep caps from `C1`
+    at locations also represented in `C2`, weakening the mode if `C2` doesn't
+    cover the requested mode but does cover its read-only image.
+
+    For `(.access .ε, l)` in `C1` and only `(.access .ro, l)` in `C2`, the
+    survivor is `(.access .ro, l)` — meaning "you asked for `.ε` but only
+    `.ro` was available, so you got `.ro`." This is what restores
+    monotonicity of `intersect` in its left argument under `Subset` (which
+    includes `cap_ro : .ro ⊆ .ε`). -/
+def intersect : CapabilitySet → CapabilitySet → CapabilitySet
+| .empty, _ => .empty
+| .cap mu l, C2 =>
+    if C2.coversCap mu l then .cap mu l
+    else if C2.coversCap mu.applyRO l then .cap mu.applyRO l
+    else .empty
+| .union C1a C1b, C2 => .union (intersect C1a C2) (intersect C1b C2)
+
+instance : Inter CapabilitySet := ⟨intersect⟩
+
 /-- applyRO is idempotent. -/
 @[simp]
 theorem applyRO_applyRO {C : CapabilitySet} : C.applyRO.applyRO = C.applyRO := by
   induction C with
   | empty => rfl
-  | cap _ l => rfl
+  | cap m l => simp only [applyRO, CapMode.applyRO_idempotent]
   | union C1 C2 ih1 ih2 => simp only [applyRO, ih1, ih2]
+
+/-- `applyRO` fixes `to_drop`: every cap is already `.drop`, and `applyRO`
+    preserves `.drop`. -/
+@[simp]
+theorem to_drop_applyRO {C : CapabilitySet} : C.to_drop.applyRO = C.to_drop := by
+  induction C with
+  | empty => rfl
+  | cap m l => rfl
+  | union C1 C2 ih1 ih2 => simp only [to_drop, applyRO, ih1, ih2]
+
+/-- `to_drop` is idempotent. -/
+@[simp]
+theorem to_drop_to_drop {C : CapabilitySet} : C.to_drop.to_drop = C.to_drop := by
+  induction C with
+  | empty => rfl
+  | cap m l => rfl
+  | union C1 C2 ih1 ih2 => simp only [to_drop, ih1, ih2]
+
+/-- `applyMut` is absorbed by `to_drop` (every mode is overwritten with `.drop`). -/
+@[simp]
+theorem to_drop_applyMut {C : CapabilitySet} {m : Mutability} :
+    (C.applyMut m).to_drop = C.to_drop := by
+  cases m with
+  | epsilon => rfl
+  | ro =>
+    simp only [applyMut]
+    induction C with
+    | empty => rfl
+    | cap m' l => rfl
+    | union C1 C2 ih1 ih2 => simp only [applyRO, to_drop, ih1, ih2]
+
+/-- `applyAccess` is absorbed by `to_drop`. -/
+@[simp]
+theorem to_drop_applyAccess {C : CapabilitySet} {a : Access} :
+    (C.applyAccess a).to_drop = C.to_drop := by
+  cases a with
+  | M m => simp only [applyAccess_M, to_drop_applyMut]
+  | drop => simp only [applyAccess_drop, to_drop_to_drop]
+
+/-- Membership lifts through `to_drop` at mode `.drop` (locations preserved,
+    every mode becomes `.drop`). -/
+theorem hasmem_to_drop_of_hasmem {C : CapabilitySet} :
+    hasmem m l C -> hasmem .drop l C.to_drop := by
+  intro h
+  induction h with
+  | here => exact .here
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
+
+/-- Membership in `C.to_drop` is always at mode `.drop`, and witnesses some
+    member of `C` at the same location. -/
+theorem hasmem_to_drop_imp {C : CapabilitySet} {mu : CapMode} {l : Nat} :
+    hasmem mu l C.to_drop -> mu = .drop ∧ ∃ m', hasmem m' l C := by
+  intro h
+  induction C with
+  | empty => simp only [to_drop] at h; cases h
+  | cap m' l' => simp only [to_drop] at h; cases h; exact ⟨rfl, m', .here⟩
+  | union C1 C2 ih1 ih2 =>
+    simp only [to_drop] at h
+    cases h with
+    | left h => obtain ⟨he, m', hm'⟩ := ih1 h; exact ⟨he, m', .left hm'⟩
+    | right h => obtain ⟨he, m', hm'⟩ := ih2 h; exact ⟨he, m', .right hm'⟩
+
+/-- Coverage lifts through `to_drop`: any cover of `l` in `Y` gives a `.drop`
+    cover of `l` in `Y.to_drop`. -/
+theorem covers_to_drop_of_covers {Y : CapabilitySet} {mu : CapMode} {l : Nat} :
+    covers mu l Y -> covers .drop l Y.to_drop := by
+  intro h
+  induction h with
+  | here _ => exact .here CapMode.Le.drop
+  | left _ ih => exact .left ih
+  | right _ ih => exact .right ih
 
 /-- Applying mutability m to an epsilon singleton gives an m singleton. -/
 @[simp]
@@ -165,68 +381,177 @@ theorem applyMut_singleton_epsilon {m : Mutability} {l : Nat} :
     (singleton .epsilon l).applyMut m = singleton m l := by
   cases m <;> rfl
 
-/-- Applying mutability m to an epsilon cap gives an m cap. -/
+/-- Applying mutability m to an epsilon access cap gives an m access cap. -/
 @[simp]
 theorem applyMut_cap_epsilon {m : Mutability} {l : Nat} :
-    (cap .epsilon l).applyMut m = cap m l := by
+    (cap (.access .epsilon) l).applyMut m = cap (.access m) l := by
   cases m <;> rfl
 
-/-- Membership at location l in C implies ro-membership at l in C.applyRO. -/
-theorem hasmem_applyRO_of_hasmem {C : CapabilitySet} : hasmem m l C -> hasmem .ro l C.applyRO := by
+/-- A singleton (access-mode by construction) never has a `.drop` cap. -/
+theorem singleton_no_drop {m : Mutability} {l l' : Nat} :
+    ¬ hasmem .drop l (singleton m l') := by
+  intro hmem
+  simp only [singleton] at hmem
+  cases hmem
+
+/-- Membership at location `l` in `C` lifts to membership at `m.applyRO` in `C.applyRO`. -/
+theorem hasmem_applyRO_of_hasmem {C : CapabilitySet} :
+    hasmem m l C -> hasmem m.applyRO l C.applyRO := by
   intro h
   induction h with
   | here => exact .here
   | left _ ih => exact .left ih
   | right _ ih => exact .right ih
 
-/-- Membership in C.applyRO is always at ro mutability. -/
-theorem hasmem_applyRO_ro {C : CapabilitySet} : hasmem m l C.applyRO -> m = .ro := by
+/-- Membership in `C.applyRO` is always at a mode fixed by `applyRO` (i.e.,
+    `.access .ro` or `.drop`). -/
+theorem hasmem_applyRO_fixed {C : CapabilitySet} :
+    hasmem m l C.applyRO -> m = m.applyRO := by
   intro h
   induction C with
   | empty => cases h
   | cap m' l' =>
     simp only [applyRO] at h
     cases h
-    rfl
+    cases m' <;> rfl
   | union C1 C2 ih1 ih2 =>
     simp only [applyRO] at h
     cases h with
     | left h => exact ih1 h
     | right h => exact ih2 h
 
-/-- Characterization of membership in C.applyRO. -/
+/-- Characterization of membership in `C.applyRO`. -/
 theorem hasmem_applyRO_iff {C : CapabilitySet} :
-    hasmem m l C.applyRO ↔ m = .ro ∧ ∃ m', hasmem m' l C := by
+    hasmem m l C.applyRO ↔ ∃ m', m = m'.applyRO ∧ hasmem m' l C := by
   constructor
   · intro h
-    constructor
-    · exact hasmem_applyRO_ro h
-    · induction C with
-      | empty => cases h
-      | cap m' l' =>
-        simp only [applyRO] at h
-        cases h
-        exact ⟨m', .here⟩
-      | union C1 C2 ih1 ih2 =>
-        simp only [applyRO] at h
-        cases h with
-        | left h =>
-          obtain ⟨m', hm'⟩ := ih1 h
-          exact ⟨m', .left hm'⟩
-        | right h =>
-          obtain ⟨m', hm'⟩ := ih2 h
-          exact ⟨m', .right hm'⟩
-  · intro ⟨hm, m', hm'⟩
-    subst hm
+    induction C with
+    | empty => cases h
+    | cap m' l' =>
+      simp only [applyRO] at h
+      cases h
+      exact ⟨m', rfl, .here⟩
+    | union C1 C2 ih1 ih2 =>
+      simp only [applyRO] at h
+      cases h with
+      | left h =>
+        obtain ⟨m', heq, hm'⟩ := ih1 h
+        exact ⟨m', heq, .left hm'⟩
+      | right h =>
+        obtain ⟨m', heq, hm'⟩ := ih2 h
+        exact ⟨m', heq, .right hm'⟩
+  · intro ⟨m', heq, hm'⟩
+    subst heq
     exact hasmem_applyRO_of_hasmem hm'
 
-/-- Coverage in C implies coverage in C.applyRO (ro covers everything ro covers). -/
+/-- `applyRO` preserves drop-freeness: `.drop` caps survive, `.access` caps stay
+    `.access`, so neither gets introduced where it was absent. -/
+theorem applyRO_no_drop {C : CapabilitySet} {l : Nat}
+    (h : ¬ hasmem .drop l C) : ¬ hasmem .drop l C.applyRO := by
+  intro hmem
+  rw [hasmem_applyRO_iff] at hmem
+  obtain ⟨m', hmu, hm'⟩ := hmem
+  have : m' = .drop := by
+    cases m' with
+    | access _ => simp only [CapMode.applyRO] at hmu; cases hmu
+    | drop => rfl
+  subst this
+  exact h hm'
+
+/-- `applyMut` preserves drop-freeness. -/
+theorem applyMut_no_drop {C : CapabilitySet} {m : Mutability} {l : Nat}
+    (h : ¬ hasmem .drop l C) : ¬ hasmem .drop l (C.applyMut m) := by
+  cases m with
+  | epsilon => exact h
+  | ro => exact applyRO_no_drop h
+
+/- RETIRED (2026-05-27): `applyAccess` no longer preserves drop-freeness now
+   that `.drop ↦ to_drop` is real consume authority — the `.drop` case
+   genuinely introduces `.drop` caps. The `wf_reach_no_drop` invariant this
+   supported has been removed.
+/-- `applyAccess` preserves drop-freeness (the `drop` case is a placeholder
+    identity for now). -/
+theorem applyAccess_no_drop {C : CapabilitySet} {a : Access} {l : Nat}
+    (h : ¬ hasmem .drop l C) : ¬ hasmem .drop l (C.applyAccess a) := by
+  cases a with
+  | M m => exact applyMut_no_drop h
+  | drop => exact applyRO_no_drop h
+-/
+
+/-- applyRO commutes with applyAccess (reading off the read-only image of the mode). -/
+theorem applyAccess_applyRO {C : CapabilitySet} {a : Access} :
+    (C.applyAccess a).applyRO = C.applyAccess a.applyRO := by
+  cases a with
+  | M m =>
+    cases m with
+    | epsilon => simp only [applyAccess_M, applyMut, Access.applyRO]
+    | ro => simp only [applyAccess_M, applyMut, Access.applyRO, applyRO_applyRO]
+  | drop => simp only [applyAccess_drop, Access.applyRO, to_drop_applyRO]
+
+/-- Membership in `C.applyMut mu_op` implies coverage in `C` at the same mode:
+    `applyMut` can only weaken modes (or be identity), so a member of the
+    weakened set is covered by some original mode ≥ it. -/
+theorem hasmem_applyMut_implies_covers {C : CapabilitySet} {mu_op : Mutability}
+    {mu : CapMode} {l : Nat} (h : (C.applyMut mu_op).hasmem mu l) :
+    C.covers mu l := by
+  cases mu_op with
+  | epsilon => exact hasmem_implies_covers h
+  | ro =>
+    simp only [applyMut] at h
+    obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
+    subst heq
+    exact covers_of_hasmem_le hm' CapMode.applyRO_le
+
+/- RETIRED (2026-05-27): false under real `.drop ↦ to_drop`. Membership at
+   `.drop` in `C.to_drop` only witnesses *some* cap at `l` in `C` (any mode),
+   which does NOT give `C.covers .drop l` (`.drop` is covered only by `.drop`).
+   Only ever used by the now-retired context-frame proofs in `Fundamental`.
+/-- Membership in `C.applyAccess a` implies coverage in `C` at the same mode. -/
+theorem hasmem_applyAccess_implies_covers {C : CapabilitySet} {a : Access}
+    {mu : CapMode} {l : Nat} (h : (C.applyAccess a).hasmem mu l) :
+    C.covers mu l := by
+  cases a with
+  | M m =>
+    simp only [applyAccess_M] at h
+    exact hasmem_applyMut_implies_covers h
+  | drop =>
+    simp only [applyAccess_drop] at h
+    obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
+    subst heq
+    exact covers_of_hasmem_le hm' CapMode.applyRO_le
+-/
+
+/-- Coverage in C is preserved by applyRO when the mode is RO-stable (i.e.,
+    `.access .ro` or `.drop`). -/
+theorem covers_applyRO_of_covers {C : CapabilitySet} {m : CapMode}
+    (h : covers m l C) (hfix : m = m.applyRO) : covers m l C.applyRO := by
+  induction C generalizing m with
+  | empty => cases h
+  | cap m' l' =>
+    cases h
+    rename_i hle
+    -- Goal: covers m l (cap m'.applyRO l')
+    simp only [applyRO]
+    apply covers.here
+    cases hle with
+    | access hmu =>
+      rename_i mu1 mu2
+      -- hfix : .access mu1 = (.access mu1).applyRO = .access .ro, so mu1 = .ro
+      have : mu1 = .ro := by cases hfix; rfl
+      subst this
+      cases mu2 with
+      | epsilon => exact .access Mutability.Le.refl
+      | ro => exact .access Mutability.Le.refl
+    | drop => exact .drop
+  | union C1 C2 ih1 ih2 =>
+    cases h with
+    | left h' => exact .left (ih1 h' hfix)
+    | right h' => exact .right (ih2 h' hfix)
+
+/-- Specialization: coverage in C at `.access .ro` passes through to `C.applyRO`. -/
 theorem covers_applyRO_of_covers_ro {C : CapabilitySet}
-    (h : covers .ro l C) : covers .ro l C.applyRO := by
-  induction h with
-  | here _ => exact .here Mutability.Le.refl
-  | left _ ih => exact .left ih
-  | right _ ih => exact .right ih
+    (h : covers (.access .ro) l C) : covers (.access .ro) l C.applyRO :=
+  covers_applyRO_of_covers h rfl
 
 /-- Coverage in C.applyRO implies coverage in C (since applyRO only weakens). -/
 theorem covers_of_covers_applyRO {C : CapabilitySet}
@@ -237,12 +562,40 @@ theorem covers_of_covers_applyRO {C : CapabilitySet}
     simp only [applyRO] at h
     cases h
     rename_i hle
-    exact .here (Mutability.Le.trans hle Mutability.Le.ro_le)
+    exact .here (CapMode.Le.trans hle CapMode.applyRO_le)
   | union C1 C2 ih1 ih2 =>
     simp only [applyRO] at h
     cases h with
     | left h => exact .left (ih1 h)
     | right h => exact .right (ih2 h)
+
+/-- Sequential composition check on capability sets: running a computation
+authorized by `C1` and then one authorized by `C2` is valid when no location
+consumed (`.drop`) in `C1` is used again — at any mode — in `C2` (no
+use-after-consume). The runtime mirror of `PeakSet.SeqComp`: membership is
+exact (`hasmem`, not `covers`), and the check is ∀-quantified over the second
+use's mode `mu`. -/
+def SeqComp (C1 C2 : CapabilitySet) : Prop :=
+  ∀ (mu : CapMode) (l : Nat),
+    hasmem .drop l C1 → hasmem mu l C2 → False
+
+/-- Two capability sets are disjoint when they share no capability: no location
+is a member of both `C1` and `C2`, at any cap modes. Like `SeqComp`, membership
+is exact (`hasmem`); unlike `SeqComp`, the first use's mode is also universally
+quantified, so the check is symmetric and location-level. -/
+def disjoint (C1 C2 : CapabilitySet) : Prop :=
+  ∀ (mu1 mu2 : CapMode) (l : Nat),
+    hasmem mu1 l C1 → hasmem mu2 l C2 → False
+
+/-- Disjointness is symmetric. -/
+theorem disjoint.symm {C1 C2 : CapabilitySet} (h : disjoint C1 C2) : disjoint C2 C1 :=
+  fun mu1 mu2 l h1 h2 => h mu2 mu1 l h2 h1
+
+/-- A capability set is *drop-free* when it holds no `.drop`-mode capability at any
+location. This is the runtime image of a capture-parameter instance carrying no
+`.drop` authority (`CaptureSet.is_valid_inst`). -/
+def drop_free (C : CapabilitySet) : Prop :=
+  ∀ l, ¬ hasmem .drop l C
 
 inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | refl :
@@ -262,7 +615,7 @@ inductive Subset : CapabilitySet -> CapabilitySet -> Prop where
 | union_right_right :
   Subset C1 (C2 ∪ C1)
 | cap_ro :
-  Subset (.cap .ro l) (.cap .epsilon l)
+  Subset (.cap (.access .ro) l) (.cap (.access .epsilon) l)
 
 instance instHasSubset : HasSubset CapabilitySet :=
   ⟨CapabilitySet.Subset⟩
@@ -270,16 +623,304 @@ instance instHasSubset : HasSubset CapabilitySet :=
 instance instTransSubset : Trans (α := CapabilitySet) (· ⊆ ·) (· ⊆ ·) (· ⊆ ·) where
   trans := CapabilitySet.Subset.trans
 
+/-- `cap mu.applyRO l ⊆ cap mu l`: the read-only image is a subset (the only
+    nontrivial case is `mu = .access .ε`, where `cap_ro` applies). -/
+private theorem cap_applyRO_subset_cap {mu : CapMode} {l : Nat} :
+    (CapabilitySet.cap mu.applyRO l) ⊆ (CapabilitySet.cap mu l) := by
+  cases mu with
+  | access mu' =>
+    cases mu' with
+    | epsilon => exact Subset.cap_ro
+    | ro => exact Subset.refl
+  | drop => exact Subset.refl
+
+/-- The covers-based intersection is a subset of its first argument. -/
+theorem intersect_subset_left :
+    ∀ {C1 C2 : CapabilitySet}, C1.intersect C2 ⊆ C1
+| .empty, _ => Subset.empty
+| .cap mu l, C2 => by
+    unfold intersect
+    split
+    · exact Subset.refl
+    · split
+      · exact cap_applyRO_subset_cap
+      · exact Subset.empty
+| .union C1a C1b, C2 => by
+    unfold intersect
+    exact Subset.union_left
+      (Subset.trans (intersect_subset_left (C1 := C1a) (C2 := C2))
+        Subset.union_right_left)
+      (Subset.trans (intersect_subset_left (C1 := C1b) (C2 := C2))
+        Subset.union_right_right)
+
+/-- Bool-Prop bridge: `coversCap` reflects `covers`. -/
+theorem coversCap_iff_covers :
+    ∀ {C : CapabilitySet} {mu : CapMode} {l : Nat},
+      C.coversCap mu l = true ↔ C.covers mu l
+| .empty, _, _ => by
+    constructor
+    · intro h; unfold coversCap at h; cases h
+    · intro h; cases h
+| .cap mu' l', mu, l => by
+    unfold coversCap
+    constructor
+    · intro h
+      have hand : mu.leBool mu' = true ∧ decide (l = l') = true := by
+        rw [← Bool.and_eq_true]; exact h
+      obtain ⟨hmu, hl⟩ := hand
+      have hl_eq : l = l' := of_decide_eq_true hl
+      subst hl_eq
+      exact .here (CapMode.leBool_iff_le.mp hmu)
+    · intro h
+      cases h with
+      | here hle =>
+        rw [Bool.and_eq_true]
+        exact ⟨CapMode.leBool_iff_le.mpr hle, decide_eq_true rfl⟩
+| .union C1 C2, mu, l => by
+    unfold coversCap
+    constructor
+    · intro h
+      rw [Bool.or_eq_true] at h
+      cases h with
+      | inl h1 =>
+        exact .left ((@coversCap_iff_covers C1 mu l).mp h1)
+      | inr h2 =>
+        exact .right ((@coversCap_iff_covers C2 mu l).mp h2)
+    · intro h
+      rw [Bool.or_eq_true]
+      cases h with
+      | left h1 =>
+        exact Or.inl ((@coversCap_iff_covers C1 mu l).mpr h1)
+      | right h2 =>
+        exact Or.inr ((@coversCap_iff_covers C2 mu l).mpr h2)
+
+/-- If every cap in `C1` is covered by `C2`, the intersection equals `C1`. -/
+theorem intersect_eq_self_when_covered :
+    ∀ {C1 C2 : CapabilitySet},
+      (∀ mu l, C1.hasmem mu l → C2.covers mu l) →
+      C1.intersect C2 = C1
+| .empty, _, _ => rfl
+| .cap mu l, C2, h => by
+    unfold intersect
+    have hcov : C2.covers mu l := h mu l hasmem.here
+    rw [coversCap_iff_covers.mpr hcov]
+    rfl
+| .union C1a C1b, C2, h => by
+    unfold intersect
+    have h_a : ∀ mu l, C1a.hasmem mu l → C2.covers mu l := fun mu l hm =>
+      h mu l (hasmem.left hm)
+    have h_b : ∀ mu l, C1b.hasmem mu l → C2.covers mu l := fun mu l hm =>
+      h mu l (hasmem.right hm)
+    rw [intersect_eq_self_when_covered h_a, intersect_eq_self_when_covered h_b]
+
+/-- Distributivity of `intersect` over `union` on the left (definitional). -/
+@[simp]
+theorem intersect_union_left {C1 C2 C3 : CapabilitySet} :
+    (C1 ∪ C2).intersect C3 = C1.intersect C3 ∪ C2.intersect C3 := rfl
+
+/-- Sub-distributivity of `intersect` over `union` on the right: a cap surviving
+    the intersection with `B ∪ C` is covered by `B` or by `C`, hence survives one
+    of the two pointwise intersections. -/
+theorem intersect_union_right_subset :
+    ∀ {A B C : CapabilitySet}, A.intersect (B ∪ C) ⊆ A.intersect B ∪ A.intersect C
+| .empty, _, _ => Subset.empty
+| .cap mu l, B, C => by
+    simp only [intersect]
+    by_cases hB1 : B.coversCap mu l = true
+    · rw [if_pos (show (B ∪ C).coversCap mu l = true by
+        simp only [coversCap, hB1, Bool.true_or]), if_pos hB1]
+      exact Subset.union_right_left
+    · by_cases hC1 : C.coversCap mu l = true
+      · rw [if_pos (show (B ∪ C).coversCap mu l = true by
+          simp only [coversCap, hC1, Bool.or_true]), if_neg hB1, if_pos hC1]
+        exact Subset.union_right_right
+      · rw [if_neg (show ¬ (B ∪ C).coversCap mu l = true by
+          simp only [coversCap, Bool.or_eq_true, not_or]; exact ⟨hB1, hC1⟩),
+          if_neg hB1, if_neg hC1]
+        by_cases hB2 : B.coversCap mu.applyRO l = true
+        · rw [if_pos (show (B ∪ C).coversCap mu.applyRO l = true by
+            simp only [coversCap, hB2, Bool.true_or]), if_pos hB2]
+          exact Subset.union_right_left
+        · by_cases hC2 : C.coversCap mu.applyRO l = true
+          · rw [if_pos (show (B ∪ C).coversCap mu.applyRO l = true by
+              simp only [coversCap, hC2, Bool.or_true]), if_neg hB2, if_pos hC2]
+            exact Subset.union_right_right
+          · rw [if_neg (show ¬ (B ∪ C).coversCap mu.applyRO l = true by
+              simp only [coversCap, Bool.or_eq_true, not_or]; exact ⟨hB2, hC2⟩),
+              if_neg hB2, if_neg hC2]
+            exact Subset.empty
+| .union A1 A2, B, C => by
+    simp only [intersect]
+    apply Subset.union_left
+    · exact Subset.trans (intersect_union_right_subset (A := A1) (B := B) (C := C))
+        (Subset.union_left
+          (Subset.trans Subset.union_right_left Subset.union_right_left)
+          (Subset.trans Subset.union_right_left Subset.union_right_right))
+    · exact Subset.trans (intersect_union_right_subset (A := A2) (B := B) (C := C))
+        (Subset.union_left
+          (Subset.trans Subset.union_right_right Subset.union_right_left)
+          (Subset.trans Subset.union_right_right Subset.union_right_right))
+
+/-- A weaker mode gives a smaller singleton cap. -/
+theorem mode_le_cap_subset {mu mu' : CapMode} {l : Nat} (h : mu ≤ mu') :
+    (CapabilitySet.cap mu l) ⊆ (CapabilitySet.cap mu' l) := by
+  cases h with
+  | drop => exact Subset.refl
+  | access hm =>
+    cases hm with
+    | refl => exact Subset.refl
+    | ro_eps => exact Subset.cap_ro
+
+/-- If `C` covers `(mu, l)`, then the singleton `cap mu l` is a subset of `C`. -/
+theorem covers_imp_cap_subset {C : CapabilitySet} {mu : CapMode} {l : Nat}
+    (h : C.covers mu l) : (CapabilitySet.cap mu l) ⊆ C := by
+  induction h with
+  | here hle => exact mode_le_cap_subset hle
+  | left _ ih => exact Subset.trans ih Subset.union_right_left
+  | right _ ih => exact Subset.trans ih Subset.union_right_right
+
+/-- The covers-based intersection is a subset of its second argument: every
+    surviving cap is covered by `B`, hence already present (up to mode) in `B`. -/
+theorem intersect_subset_right :
+    ∀ {A B : CapabilitySet}, A.intersect B ⊆ B
+| .empty, _ => Subset.empty
+| .cap mu l, B => by
+    simp only [intersect]
+    by_cases h1 : B.coversCap mu l = true
+    · rw [if_pos h1]
+      exact covers_imp_cap_subset (coversCap_iff_covers.mp h1)
+    · rw [if_neg h1]
+      by_cases h2 : B.coversCap mu.applyRO l = true
+      · rw [if_pos h2]
+        exact covers_imp_cap_subset (coversCap_iff_covers.mp h2)
+      · rw [if_neg h2]
+        exact Subset.empty
+| .union A1 A2, B => by
+    simp only [intersect]
+    exact Subset.union_left intersect_subset_right intersect_subset_right
+
+/-- `covers` is anti-monotonic in the mode: stronger mode implies weaker. -/
+private theorem covers_anti_mu :
+    ∀ {C : CapabilitySet} {mu1 mu2 : CapMode} {l : Nat},
+      mu1 ≤ mu2 → C.covers mu2 l → C.covers mu1 l := by
+  intro C mu1 mu2 l hle hcov
+  induction hcov with
+  | here hle2 => exact covers.here (CapMode.Le.trans hle hle2)
+  | left _ ih => exact covers.left ih
+  | right _ ih => exact covers.right ih
+
+/-- `intersect` is monotone in its first argument under `Subset`. With the
+    mode-meet semantics of `intersect`, weakening `C1` via `cap_ro` (`.ro → .ε`)
+    only weakens the surviving mode, which is still a subset of the larger
+    side's surviving cap. -/
+theorem intersect_mono_left :
+    ∀ {C1 C1' C2 : CapabilitySet}, C1 ⊆ C1' → C1.intersect C2 ⊆ C1'.intersect C2 := by
+  intro C1 C1' C2 hsub
+  induction hsub with
+  | refl => exact Subset.refl
+  | empty => exact Subset.empty
+  | trans _ _ ih1 ih2 => exact Subset.trans ih1 ih2
+  | union_left _ _ ih1 ih2 => exact Subset.union_left ih1 ih2
+  | union_right_left => exact Subset.union_right_left
+  | union_right_right => exact Subset.union_right_right
+  | cap_ro =>
+    rename_i l
+    -- LHS = intersect (cap (access ro) l) C2.
+    -- Since (access ro).applyRO = (access ro), LHS reduces to:
+    --   if C2.coversCap (access ro) l then cap (access ro) l else empty.
+    -- RHS = intersect (cap (access ε) l) C2 with two-branch fallback.
+    -- Case-split on whether C2 covers (access ro) l.
+    unfold intersect
+    by_cases hro : C2.coversCap (.access .ro) l = true
+    · -- LHS = cap (access ro) l. Need RHS contains it.
+      rw [if_pos hro]
+      -- For RHS: case-split on whether C2 covers (access ε) l.
+      by_cases heps : C2.coversCap (.access .epsilon) l = true
+      · -- RHS = cap (access ε) l. cap (access ro) l ⊆ cap (access ε) l via cap_ro.
+        rw [if_pos heps]
+        exact Subset.cap_ro
+      · -- RHS fallback fires with (access ε).applyRO = (access ro), and hro covers it.
+        rw [if_neg heps]
+        have h_ro_eq : ((CapMode.access Mutability.epsilon).applyRO) = CapMode.access .ro := rfl
+        rw [h_ro_eq, if_pos hro]
+        exact Subset.refl
+    · -- LHS first branch fails. Since (access ro).applyRO = (access ro), fallback
+      -- has the same test, also fails. LHS = empty.
+      rw [if_neg hro]
+      have h_ro_eq : ((CapMode.access Mutability.ro).applyRO) = CapMode.access .ro := rfl
+      rw [h_ro_eq, if_neg hro]
+      exact Subset.empty
+
+/-- `Subset` preserves `covers`: a larger capability set covers everything
+    the smaller one does (at the same or stronger modes). -/
+theorem covers_mono :
+    ∀ {C C' : CapabilitySet}, C ⊆ C' → ∀ {mu l}, C.covers mu l → C'.covers mu l := by
+  intro C C' hsub mu l hcov
+  induction hsub with
+  | refl => exact hcov
+  | empty => cases hcov
+  | trans _ _ ih1 ih2 => exact ih2 (ih1 hcov)
+  | union_left _ _ ih1 ih2 =>
+    cases hcov with
+    | left h => exact ih1 h
+    | right h => exact ih2 h
+  | union_right_left => exact covers_union_left hcov
+  | union_right_right => exact covers_union_right hcov
+  | cap_ro =>
+    cases hcov
+    rename_i hle
+    -- hle : mu ≤ .access .ro; goal: covers mu l (.cap (.access .ε) l)
+    apply covers.here
+    cases hle with
+    | access hmu =>
+      exact CapMode.Le.access (Mutability.Le.trans hmu Mutability.Le.ro_le)
+
+/-- `intersect` is monotone in its second argument under `Subset`. Since
+    `Subset` preserves `covers` (see `covers_mono`), widening the right side
+    of intersection can only retain more caps from the left side. -/
+theorem intersect_mono_right :
+    ∀ {C D D' : CapabilitySet}, D ⊆ D' → C.intersect D ⊆ C.intersect D'
+| .empty, _, _, _ => Subset.empty
+| .cap mu l, D, D', hsub => by
+    unfold intersect
+    split
+    · -- D covers mu l: LHS = cap mu l; D' also covers, so RHS = cap mu l.
+      rename_i hcov
+      have hcov_prop : D.covers mu l := coversCap_iff_covers.mp hcov
+      have hcov_prop' : D'.covers mu l := covers_mono hsub hcov_prop
+      rw [if_pos (coversCap_iff_covers.mpr hcov_prop')]
+      exact Subset.refl
+    · split
+      · -- D covers mu.applyRO l (but not mu l): LHS = cap mu.applyRO l.
+        -- D' covers mu.applyRO l too; if D' also covers mu l, RHS = cap mu l
+        -- (and cap_applyRO_subset_cap closes); else RHS = cap mu.applyRO l.
+        rename_i hcov_low
+        have hcov_low_prop : D.covers mu.applyRO l := coversCap_iff_covers.mp hcov_low
+        have hcov_low_prop' : D'.covers mu.applyRO l := covers_mono hsub hcov_low_prop
+        split
+        · exact cap_applyRO_subset_cap
+        · rw [if_pos (coversCap_iff_covers.mpr hcov_low_prop')]
+          exact Subset.refl
+      · exact Subset.empty
+| .union Ca Cb, D, D', hsub => by
+    unfold intersect
+    exact Subset.union_left
+      (Subset.trans (intersect_mono_right (C := Ca) hsub) Subset.union_right_left)
+      (Subset.trans (intersect_mono_right (C := Cb) hsub) Subset.union_right_right)
+
 /-- A capability set has a certain mutability kind.
-    HasKind C .ro means all capabilities in C have mutability .ro.
-    HasKind C .epsilon is always true. -/
+    `HasKind C .ro` means every cap in C is either `.access .ro` (immutable
+    access) or `.drop` (exclusive — does not grant any read/write authority).
+    `HasKind C .epsilon` is always true. -/
 inductive HasKind : CapabilitySet -> Mutability -> Prop where
 | eps :
   HasKind C .epsilon
 | ro_empty :
   HasKind .empty .ro
 | ro_cap :
-  HasKind (.cap .ro l) .ro
+  HasKind (.cap (.access .ro) l) .ro
+| ro_drop :
+  HasKind (.cap .drop l) .ro
 | ro_union :
   HasKind C1 .ro ->
   HasKind C2 .ro ->
@@ -289,7 +930,10 @@ inductive HasKind : CapabilitySet -> Mutability -> Prop where
 theorem HasKind.applyRO {C : CapabilitySet} : C.applyRO.HasKind .ro := by
   induction C with
   | empty => exact HasKind.ro_empty
-  | cap _ _ => exact HasKind.ro_cap
+  | cap m _ =>
+    cases m with
+    | access _ => exact HasKind.ro_cap
+    | drop => exact HasKind.ro_drop
   | union _ _ ih1 ih2 => exact HasKind.ro_union ih1 ih2
 
 /-- Weakening: if C has kind m1 and m1 ≤ m2, then C has kind m2. -/
@@ -325,15 +969,17 @@ theorem applyRO_subset_applyMut {C : CapabilitySet} {m : Mutability} :
     induction C with
     | empty => exact Subset.refl
     | cap m' l =>
-      -- .cap .ro l ⊆ .cap m' l
-      cases m'
-      · exact Subset.cap_ro
-      · exact Subset.refl
+      -- Need: .cap m'.applyRO l ⊆ .cap m' l
+      cases m' with
+      | access mu =>
+        cases mu with
+        | epsilon => exact Subset.cap_ro
+        | ro => exact Subset.refl
+      | drop => exact Subset.refl
     | union C1 C2 ih1 ih2 =>
       simp only [applyRO]
-      exact Subset.union_left
-        (Subset.trans ih1 Subset.union_right_left)
-        (Subset.trans ih2 Subset.union_right_right)
+      exact Subset.union_left (Subset.trans ih1 Subset.union_right_left)
+                               (Subset.trans ih2 Subset.union_right_right)
   case ro =>
     simp only [applyMut]
     exact Subset.refl
@@ -358,7 +1004,7 @@ theorem applyRO_mono {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2) :
     simp only [applyRO]
     exact Subset.refl
 
-theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : Mutability} {x : Nat}
+theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : CapMode} {x : Nat}
   (hsub : C1 ⊆ C2)
   (hcov : covers m x C1) :
   covers m x C2 := by
@@ -375,49 +1021,209 @@ theorem subset_preserves_covers {C1 C2 : CapabilitySet} {m : Mutability} {x : Na
   case cap_ro =>
     cases hcov
     case here hle =>
-      -- hle : m ≤ .ro, need to show covers m x (cap .epsilon x)
-      -- By cases on hle, m must be .ro (since only .ro ≤ .ro by refl)
-      cases hle
-      -- Now m = .ro, goal is covers .ro x (cap .epsilon x)
-      exact covers.here Mutability.Le.ro_eps
+      -- hle : m ≤ .access .ro, so m = .access .ro.
+      cases hle with
+      | access hmu =>
+        cases hmu
+        -- Goal: covers (.access .ro) x (cap (.access .epsilon) x)
+        exact covers.here (.access Mutability.Le.ro_eps)
 
-/-- If a capability set covers a location, then the singleton is a subset of the set. -/
+/-- If a capability set covers a location via an access cap, then the
+    RO singleton is a subset of the set. -/
 theorem covers_imp_singleton_subset {C : CapabilitySet} {m : Mutability} {x : Nat}
-  (hcov : covers m x C) :
+  (hcov : covers (.access m) x C) :
   {x} ⊆ C := by
-  -- {x} = cap .ro x, so we need cap .ro x ⊆ C
+  -- {x} = cap (.access .ro) x, so we need cap (.access .ro) x ⊆ C
   induction C with
   | empty => cases hcov
   | cap m' y =>
     cases hcov
     case here hle =>
-      -- covers m x (cap m' x) with m ≤ m'
-      -- Need: cap .ro x ⊆ cap m' x
-      cases m'
-      · exact Subset.cap_ro  -- .epsilon case
-      · exact Subset.refl    -- .ro case
+      -- covers (.access m) x (cap m' x) with .access m ≤ m'
+      cases hle with
+      | access hmu =>
+        -- m' = .access mu' with m ≤ mu'
+        rename_i mu'
+        cases mu' with
+        | epsilon => exact Subset.cap_ro
+        | ro =>
+          -- m ≤ .ro means m = .ro
+          cases hmu
+          exact Subset.refl
   | union C1 C2 ih1 ih2 =>
     cases hcov with
-    | left h => exact Subset.trans (ih1 h) Subset.union_right_left
-    | right h => exact Subset.trans (ih2 h) Subset.union_right_right
+    | left h =>
+      apply Subset.trans (ih1 h)
+      apply Subset.union_right_left
+    | right h =>
+      apply Subset.trans (ih2 h)
+      apply Subset.union_right_right
 
-/-- If a capability set covers a location with .epsilon mutability,
+/-- If a capability set covers a location with .epsilon access,
     then the epsilon singleton is a subset of the set. -/
 theorem covers_eps_imp_singleton_eps_subset {C : CapabilitySet} {x : Nat}
-  (hcov : covers .epsilon x C) :
+  (hcov : covers (.access .epsilon) x C) :
   singleton .epsilon x ⊆ C := by
-  -- singleton .epsilon x = cap .epsilon x
+  -- singleton .epsilon x = cap (.access .epsilon) x
   induction C with
   | empty => cases hcov
   | cap m' y =>
     cases hcov
     case here hle =>
-      cases hle
-      exact Subset.refl
+      -- covers (.access .epsilon) x (cap m' x) with .access .epsilon ≤ m'
+      -- This means m' = .access .epsilon.
+      cases hle with
+      | access hmu => cases hmu; exact Subset.refl
   | union C1 C2 ih1 ih2 =>
     cases hcov with
-    | left h => exact Subset.trans (ih1 h) Subset.union_right_left
-    | right h => exact Subset.trans (ih2 h) Subset.union_right_right
+    | left h =>
+      apply Subset.trans (ih1 h)
+      apply Subset.union_right_left
+    | right h =>
+      apply Subset.trans (ih2 h)
+      apply Subset.union_right_right
+
+/-- Inversion: a covered location must come from some explicit member with a
+    weaker-or-equal mode. -/
+theorem covers_imp_exists_hasmem
+    {C : CapabilitySet} {m : CapMode} {l : Nat}
+    (hcov : covers m l C) :
+    ∃ m', hasmem m' l C ∧ m ≤ m' := by
+  induction hcov with
+  | here hle => exact ⟨_, hasmem.here, hle⟩
+  | left _ ih =>
+    obtain ⟨m', hm, hle⟩ := ih
+    exact ⟨m', hasmem.left hm, hle⟩
+  | right _ ih =>
+    obtain ⟨m', hm, hle⟩ := ih
+    exact ⟨m', hasmem.right hm, hle⟩
+
+/-! ## Subset modulo a domain predicate
+
+`SubsetMod P C1 C2` says: every element of `C1` whose location satisfies `P` is
+covered by `C2`. Elements failing `P` are unconstrained.
+
+Intended use: `P l := h l ≠ none` for a heap `h` — i.e., "C1 ⊆ C2 modulo what
+is already allocated in h". This relaxation excuses freshly-allocated witnesses
+that would otherwise break a strict reachability bound.
+-/
+
+/-- "C1 is a subset of C2 modulo predicate P". -/
+def SubsetMod (P : Nat -> Prop) (C1 C2 : CapabilitySet) : Prop :=
+  ∀ mu l, hasmem mu l C1 → P l → covers mu l C2
+
+namespace SubsetMod
+
+/-- Reflexivity. -/
+theorem refl {P : Nat -> Prop} {C : CapabilitySet} : SubsetMod P C C := by
+  intros mu l hm _
+  exact hasmem_implies_covers hm
+
+/-- Transitivity. -/
+theorem trans {P : Nat -> Prop} {C1 C2 C3 : CapabilitySet}
+    (h12 : SubsetMod P C1 C2) (h23 : SubsetMod P C2 C3) :
+    SubsetMod P C1 C3 := by
+  intros mu l hm hP
+  obtain ⟨mu', hm', hle⟩ := covers_imp_exists_hasmem (h12 mu l hm hP)
+  exact covers_weaken (h23 mu' l hm' hP) hle
+
+/-- Strict subset implies subset modulo any predicate. -/
+theorem of_subset {P : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (hsub : C1 ⊆ C2) : SubsetMod P C1 C2 := by
+  intros mu l hm _
+  exact subset_preserves_covers hsub (hasmem_implies_covers hm)
+
+/-- Empty is below anything. -/
+theorem empty {P : Nat -> Prop} {C : CapabilitySet} :
+    SubsetMod P .empty C := by
+  intros _ _ hm _
+  cases hm
+
+/-- Anti-monotonicity in the predicate: a stronger premise predicate makes the
+    relation easier to satisfy. -/
+theorem weaken_pred
+    {P P' : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (himp : ∀ l, P l → P' l)
+    (h : SubsetMod P' C1 C2) :
+    SubsetMod P C1 C2 := by
+  intros mu l hm hP
+  exact h mu l hm (himp l hP)
+
+/-- Right-side monotonicity via strict subset. -/
+theorem mono_right {P : Nat -> Prop} {C1 C2 C2' : CapabilitySet}
+    (h : SubsetMod P C1 C2) (hsub : C2 ⊆ C2') :
+    SubsetMod P C1 C2' := by
+  intros mu l hm hP
+  exact subset_preserves_covers hsub (h mu l hm hP)
+
+/-- Left-side anti-monotonicity via strict subset. -/
+theorem mono_left {P : Nat -> Prop} {C1 C1' C2 : CapabilitySet}
+    (hsub : C1' ⊆ C1) (h : SubsetMod P C1 C2) :
+    SubsetMod P C1' C2 :=
+  trans (of_subset hsub) h
+
+/-- Union elimination on the left. -/
+theorem union_elim_left {P : Nat -> Prop} {C1 C2 C : CapabilitySet}
+    (h : SubsetMod P (C1 ∪ C2) C) : SubsetMod P C1 C := by
+  intros mu l hm hP
+  exact h mu l (hasmem_union_left hm) hP
+
+/-- Union elimination on the right. -/
+theorem union_elim_right {P : Nat -> Prop} {C1 C2 C : CapabilitySet}
+    (h : SubsetMod P (C1 ∪ C2) C) : SubsetMod P C2 C := by
+  intros mu l hm hP
+  exact h mu l (hasmem_union_right hm) hP
+
+/-- Union introduction. -/
+theorem union_intro {P : Nat -> Prop} {C1 C2 C : CapabilitySet}
+    (h1 : SubsetMod P C1 C) (h2 : SubsetMod P C2 C) :
+    SubsetMod P (C1 ∪ C2) C := by
+  intros mu l hm hP
+  cases hasmem_union_iff.mp hm with
+  | inl hm1 => exact h1 mu l hm1 hP
+  | inr hm2 => exact h2 mu l hm2 hP
+
+/-- Iff-style union split. -/
+theorem union_iff {P : Nat -> Prop} {C1 C2 C : CapabilitySet} :
+    SubsetMod P (C1 ∪ C2) C ↔ SubsetMod P C1 C ∧ SubsetMod P C2 C :=
+  ⟨fun h => ⟨union_elim_left h, union_elim_right h⟩,
+   fun ⟨h1, h2⟩ => union_intro h1 h2⟩
+
+/-- Right-side injection into a union. -/
+theorem union_right_left {P : Nat -> Prop} {C1 C2 : CapabilitySet} :
+    SubsetMod P C1 (C1 ∪ C2) :=
+  of_subset Subset.union_right_left
+
+/-- Right-side injection into a union (other side). -/
+theorem union_right_right {P : Nat -> Prop} {C1 C2 : CapabilitySet} :
+    SubsetMod P C1 (C2 ∪ C1) :=
+  of_subset Subset.union_right_right
+
+/-- Vacuity: if every member of `C1` fails `P`, then `C1 ⊆ C2 mod P` for any
+    `C2`. This is the load-bearing lemma — it's how a freshly-allocated witness
+    (where `P l = h l ≠ none` and `l` is fresh) trivially fits inside any budget. -/
+theorem vacuous {P : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (hfresh : ∀ mu l, hasmem mu l C1 → ¬ P l) :
+    SubsetMod P C1 C2 := by
+  intros mu l hm hP
+  exact (hfresh mu l hm hP).elim
+
+/-- Compatibility with `applyRO` on both sides. -/
+theorem applyRO {P : Nat -> Prop} {C1 C2 : CapabilitySet}
+    (h : SubsetMod P C1 C2) :
+    SubsetMod P C1.applyRO C2.applyRO := by
+  intros mu l hm hP
+  rw [hasmem_applyRO_iff] at hm
+  obtain ⟨mu', hmu, hm'⟩ := hm
+  subst hmu
+  have hcov : covers mu' l C2 := h mu' l hm' hP
+  -- Coverage at mu' passes through to applyRO at mu'.applyRO via
+  -- `covers_applyRO_of_covers` after weakening to the RO image.
+  have hcov_ro : covers mu'.applyRO l C2 :=
+    covers_weaken hcov CapMode.applyRO_le
+  exact covers_applyRO_of_covers hcov_ro CapMode.applyRO_idempotent.symm
+
+end SubsetMod
 
 end CapabilitySet
 
@@ -440,10 +1246,32 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
   | .btrue, .btrue => .btrue
   | .bfalse, .bfalse => .bfalse
 
+inductive Liveness : Type where
+| live : Liveness
+| dead : Liveness
+
+namespace Liveness
+
+/-- Forward lifecycle order: a cell can transition from live to dead but never
+    back.  `Le ℓ_old ℓ_new` means `ℓ_old` may evolve into `ℓ_new` as time
+    advances.  This is the liveness component of memory subsumption. -/
+inductive Le : Liveness → Liveness → Prop where
+| refl {ℓ : Liveness} : Le ℓ ℓ
+| live_dead : Le .live .dead
+
+instance instLE : LE Liveness := ⟨Liveness.Le⟩
+
+theorem Le.trans {ℓ1 ℓ2 ℓ3 : Liveness} (h1 : ℓ1 ≤ ℓ2) (h2 : ℓ2 ≤ ℓ3) : ℓ1 ≤ ℓ3 := by
+  cases h1 with
+  | refl => exact h2
+  | live_dead => cases h2; exact .live_dead
+
+end Liveness
+
 /-- Underlying info of a capability. -/
 inductive CapabilityInfo : Type where
 | basic : CapabilityInfo
-| mcell : Bool -> CapabilityInfo
+| mcell : Bool -> Liveness -> CapabilityInfo
 
 /-- A heap cell. -/
 inductive Cell : Type where
@@ -464,14 +1292,20 @@ def Heap.extend (h : Heap) (l : Nat) (v : HeapVal) : Heap :=
 def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
   fun l' => if l' = l then some (.capability .basic) else h l'
 
+/-- Heap extension with a fresh mutable cell capability.  Fresh cells start `.live`. -/
+def Heap.extend_mcell (h : Heap) (l : Nat) (b : Bool) : Heap :=
+  fun l' => if l' = l then some (.capability (.mcell b .live)) else h l'
+
 /-- Update a cell in the heap with a new cell value. -/
 def Heap.update_cell (h : Heap) (l : Nat) (c : Cell) : Heap :=
   fun l' => if l' = l then some c else h l'
 
 /-- Auxiliary relation: one cell subsumes another.
-    For mutable cells, the boolean value is irrelevant. -/
+    For mutable cells, the boolean value is irrelevant and liveness is allowed
+    to advance forward in time (live → dead) but never to be resurrected
+    (dead ↛ live).  Subsumption is the "memory in the future" relation. -/
 def Cell.subsumes : Cell -> Cell -> Prop
-| .capability (.mcell _), .capability (.mcell _) => True
+| .capability (.mcell _ ℓ1), .capability (.mcell _ ℓ2) => ℓ2 ≤ ℓ1
 | c1, c2 => c1 = c2
 
 theorem Cell.subsumes_refl (c : Cell) : c.subsumes c := by
@@ -480,17 +1314,24 @@ theorem Cell.subsumes_refl (c : Cell) : c.subsumes c := by
   | capability info =>
     cases info with
     | basic => rfl
-    | mcell _ => trivial
+    | mcell _ _ => exact Liveness.Le.refl
   | masked => rfl
 
 theorem Cell.subsumes_trans {c1 c2 c3 : Cell}
   (h12 : c1.subsumes c2) (h23 : c2.subsumes c3) : c1.subsumes c3 := by
   cases c1 <;> cases c2 <;> cases c3
+  all_goals
+    try simp only [Cell.subsumes] at h12 h23 ⊢
   case capability.capability.capability info1 info2 info3 =>
     cases info1 <;> cases info2 <;> cases info3 <;>
-      simp only [Cell.subsumes] at h12 h23 ⊢ <;> simp_all
-  all_goals
-    simp only [Cell.subsumes] at h12 h23 ⊢ <;> simp_all
+      simp only at h12 h23 ⊢
+    case basic.basic.mcell _ _ => exact h23
+    case basic.mcell.mcell _ _ _ _ => cases h12
+    case mcell.basic.basic _ _ => cases h12
+    case mcell.basic.mcell _ _ _ _ => cases h12
+    case mcell.mcell.basic _ _ _ _ => cases h23
+    case mcell.mcell.mcell _ _ _ _ _ _ => exact Liveness.Le.trans h23 h12
+  all_goals aesop
 
 def Heap.subsumes (big small : Heap) : Prop :=
   ∀ l v, small l = some v -> ∃ v', big l = some v' ∧ v'.subsumes v
@@ -501,6 +1342,17 @@ theorem Heap.subsumes_refl (h : Heap) : h.subsumes h := by
   constructor
   · exact hlookup
   · exact Cell.subsumes_refl v
+
+/-- Subsumption preserves "is fresh" backwards: if a location is unallocated
+    in the larger heap, it is unallocated in the smaller heap as well. -/
+theorem Heap.none_of_subsumes_none {big small : Heap} {l : Nat}
+    (hsub : big.subsumes small) (hnone : big l = none) : small l = none := by
+  match hopt : small l with
+  | none => rfl
+  | some v =>
+    obtain ⟨_, hv', _⟩ := hsub l v hopt
+    rw [hnone] at hv'
+    cases hv'
 
 /-- Heap predicate. -/
 def Hprop := Heap -> Prop
@@ -536,32 +1388,27 @@ def Heap.subsumes_trans {h1 h2 h3 : Heap}
   · exact hv1
   · exact Cell.subsumes_trans hsub12 hsub23
 
-/-- Updating an mcell with another mcell creates a heap that subsumes the original. -/
-theorem Heap.update_mcell_subsumes (h : Heap) (l : Nat)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) :
-  (h.update_cell l (.capability (.mcell b))).subsumes h := by
+/-- Updating an mcell with another mcell creates a heap that subsumes the original.
+    Liveness is preserved by the update. -/
+theorem Heap.update_mcell_subsumes (h : Heap) (l : Nat) (ℓ : Liveness)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool) :
+  (h.update_cell l (.capability (.mcell b ℓ))).subsumes h := by
   intro l' v hlookup
   unfold Heap.update_cell
   split
   case isTrue heq =>
-    -- l' = l
     subst heq
     obtain ⟨b0, hb0⟩ := hexists
     rw [hb0] at hlookup
     cases hlookup
-    simp [Cell.subsumes]
+    exact ⟨.capability (.mcell b ℓ), rfl, Liveness.Le.refl⟩
   case isFalse hneq =>
-    -- l' ≠ l
-    exists v
-    constructor
-    · exact hlookup
-    · exact Cell.subsumes_refl v
+    exact ⟨v, hlookup, Cell.subsumes_refl v⟩
 
 theorem Heap.extend_lookup_eq
   (h : Heap) (l : Nat) (v : HeapVal) :
   (h.extend l v) l = some (.val v) := by
-  unfold Heap.extend
-  rw [if_pos rfl]
+  simp only [Heap.extend, if_true]
 
 theorem Heap.extend_subsumes {H : Heap} {l : Nat}
   (hfresh : H l = none) :
@@ -690,6 +1537,12 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
 | wf_reader :
   Var.WfInHeap x H ->
   Exp.WfInHeap (.reader x) H
+| wf_alloc :
+  Var.WfInHeap x H ->
+  Exp.WfInHeap (.alloc x) H
+| wf_drop :
+  Var.WfInHeap x H ->
+  Exp.WfInHeap (.drop x) H
 | wf_pack :
   CaptureSet.WfInHeap cs H ->
   Var.WfInHeap x H ->
@@ -806,6 +1659,8 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
   | bfalse => exact Exp.WfInHeap.wf_bfalse
   | var hx => exact Exp.WfInHeap.wf_var (Var.wf_of_closed hx)
   | reader hx => exact Exp.WfInHeap.wf_reader (Var.wf_of_closed hx)
+  | alloc hx => exact Exp.WfInHeap.wf_alloc (Var.wf_of_closed hx)
+  | drop hx => exact Exp.WfInHeap.wf_drop (Var.wf_of_closed hx)
   | unwrap hx => exact Exp.WfInHeap.wf_unwrap (Var.wf_of_closed hx)
   | read hx => exact Exp.WfInHeap.wf_read (Var.wf_of_closed hx)
   | abs hcs hT _ ih =>
@@ -916,6 +1771,8 @@ theorem Exp.wf_monotonic
   | wf_bfalse => exact Exp.WfInHeap.wf_bfalse
   | wf_var hwf_x => exact Exp.WfInHeap.wf_var (Var.wf_monotonic hsub hwf_x)
   | wf_reader hwf_x => exact Exp.WfInHeap.wf_reader (Var.wf_monotonic hsub hwf_x)
+  | wf_alloc hwf_x => exact Exp.WfInHeap.wf_alloc (Var.wf_monotonic hsub hwf_x)
+  | wf_drop hwf_x => exact Exp.WfInHeap.wf_drop (Var.wf_monotonic hsub hwf_x)
   | wf_unwrap hwf_x => exact Exp.WfInHeap.wf_unwrap (Var.wf_monotonic hsub hwf_x)
   | wf_read hwf_x => exact Exp.WfInHeap.wf_read (Var.wf_monotonic hsub hwf_x)
   | wf_abs hwf_cs hwf_T _ ih_e =>
@@ -1011,6 +1868,116 @@ structure Subst.WfInHeap (s : Subst s1 s2) (H : Heap) where
   wf_cvar :
     ∀ C, CaptureSet.WfInHeap (s.cvar C) H
 
+/-! ## Domain-only heap subsumption
+
+`Heap.dom_subsumes big small` asserts that `big`'s domain covers `small`'s,
+without constraining the cell contents.  This is strictly weaker than
+`Heap.subsumes` and is preserved by `drop_mcell` (which alters cell content
+but not the domain).  All `WfInHeap` predicates only inspect heap domains, so
+they propagate along `dom_subsumes`. -/
+
+def Heap.dom_subsumes (big small : Heap) : Prop :=
+  ∀ l v, small l = some v → ∃ v', big l = some v'
+
+theorem Heap.subsumes.dom_subsumes {big small : Heap}
+    (h : big.subsumes small) : big.dom_subsumes small :=
+  fun l v hv => let ⟨v', hv', _⟩ := h l v hv; ⟨v', hv'⟩
+
+theorem Var.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : Var.WfInHeap x h1) : Var.WfInHeap x h2 := by
+  cases hwf with
+  | wf_bound => exact .wf_bound
+  | wf_free hex => obtain ⟨_, hv'⟩ := hsub _ _ hex; exact .wf_free hv'
+
+theorem CaptureSet.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : CaptureSet.WfInHeap cs h1) :
+    CaptureSet.WfInHeap cs h2 := by
+  induction hwf with
+  | wf_empty => exact .wf_empty
+  | wf_union _ _ ih1 ih2 => exact .wf_union (ih1 hsub) (ih2 hsub)
+  | wf_var_free hex => obtain ⟨_, hv'⟩ := hsub _ _ hex; exact .wf_var_free hv'
+  | wf_var_bound => exact .wf_var_bound
+  | wf_cvar => exact .wf_cvar
+
+theorem SepCtx.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : SepCtx.WfInHeap Ψ h1) :
+    SepCtx.WfInHeap Ψ h2 := by
+  induction hwf with
+  | wf_empty => exact .wf_empty
+  | wf_cons _ hwf_C ih => exact .wf_cons (ih hsub) (CaptureSet.wf_dom_subsumes hsub hwf_C)
+
+theorem CaptureBound.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : CaptureBound.WfInHeap cb h1) :
+    CaptureBound.WfInHeap cb h2 := by
+  cases hwf with
+  | wf_unbound => exact .wf_unbound
+  | wf_bound hwf_cs => exact .wf_bound (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+
+theorem Ty.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : Ty.WfInHeap T h1) : Ty.WfInHeap T h2 := by
+  induction hwf generalizing h2 with
+  | wf_top => exact .wf_top
+  | wf_tvar => exact .wf_tvar
+  | wf_unit => exact .wf_unit
+  | wf_bool => exact .wf_bool
+  | wf_arrow _ hwf_cs _ ih1 ih2 =>
+    exact .wf_arrow (ih1 hsub) (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih2 hsub)
+  | wf_poly _ hwf_cs _ ih1 ih2 =>
+    exact .wf_poly (ih1 hsub) (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih2 hsub)
+  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
+    exact .wf_cpoly (CaptureBound.wf_dom_subsumes hsub hwf_cb)
+                    (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_T hsub)
+  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
+    exact .wf_modal (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+                    (SepCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_T hsub)
+  | wf_cap hwf_cs => exact .wf_cap (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+  | wf_cell hwf_cs => exact .wf_cell (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+  | wf_reader hwf_cs => exact .wf_reader (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+  | wf_exi _ ih => exact .wf_exi (ih hsub)
+  | wf_typ _ ih => exact .wf_typ (ih hsub)
+
+theorem Exp.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : Exp.WfInHeap e h1) : Exp.WfInHeap e h2 := by
+  induction hwf generalizing h2 with
+  | wf_var hwf_x => exact .wf_var (Var.wf_dom_subsumes hsub hwf_x)
+  | wf_abs hwf_cs hwf_T _ ih_e =>
+    exact .wf_abs (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+                  (Ty.wf_dom_subsumes hsub hwf_T) (ih_e hsub)
+  | wf_tabs hwf_cs hwf_T _ ih_e =>
+    exact .wf_tabs (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+                   (Ty.wf_dom_subsumes hsub hwf_T) (ih_e hsub)
+  | wf_cabs hwf_cs hwf_cb _ ih_e =>
+    exact .wf_cabs (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+                   (CaptureBound.wf_dom_subsumes hsub hwf_cb) (ih_e hsub)
+  | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
+    exact .wf_boxed (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+                    (SepCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_e hsub)
+  | wf_reader hwf_x => exact .wf_reader (Var.wf_dom_subsumes hsub hwf_x)
+  | wf_alloc hwf_x => exact .wf_alloc (Var.wf_dom_subsumes hsub hwf_x)
+  | wf_drop hwf_x => exact .wf_drop (Var.wf_dom_subsumes hsub hwf_x)
+  | wf_pack hwf_cs hwf_x =>
+    exact .wf_pack (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+                   (Var.wf_dom_subsumes hsub hwf_x)
+  | wf_app hwf_x hwf_y =>
+    exact .wf_app (Var.wf_dom_subsumes hsub hwf_x) (Var.wf_dom_subsumes hsub hwf_y)
+  | wf_tapp hwf_x hwf_T =>
+    exact .wf_tapp (Var.wf_dom_subsumes hsub hwf_x) (Ty.wf_dom_subsumes hsub hwf_T)
+  | wf_capp hwf_x hwf_cs =>
+    exact .wf_capp (Var.wf_dom_subsumes hsub hwf_x)
+                   (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+  | wf_unwrap hwf_x => exact .wf_unwrap (Var.wf_dom_subsumes hsub hwf_x)
+  | wf_letin _ _ ih1 ih2 => exact .wf_letin (ih1 hsub) (ih2 hsub)
+  | wf_unpack _ _ ih1 ih2 => exact .wf_unpack (ih1 hsub) (ih2 hsub)
+  | wf_unit => exact .wf_unit
+  | wf_btrue => exact .wf_btrue
+  | wf_bfalse => exact .wf_bfalse
+  | wf_read hwf_x => exact .wf_read (Var.wf_dom_subsumes hsub hwf_x)
+  | wf_write hwf_x hwf_y =>
+    exact .wf_write (Var.wf_dom_subsumes hsub hwf_x) (Var.wf_dom_subsumes hsub hwf_y)
+  | wf_cond hwf_x _ _ ih2 ih3 =>
+    exact .wf_cond (Var.wf_dom_subsumes hsub hwf_x) (ih2 hsub) (ih3 hsub)
+  | wf_par _ _ ih1 ih2 => exact .wf_par (ih1 hsub) (ih2 hsub)
+
 /-- Lookup the reachability set of a location. -/
 def reachability_of_loc
   (h : Heap)
@@ -1023,14 +1990,14 @@ def reachability_of_loc
   | none => {}
 
 /-- Resolve reachability of each element of the capture set.
-    Applies the mutability from each captured variable to the result. -/
+    Applies the access mode from each captured variable to the result. -/
 def expand_captures
   (h : Heap)
   (cs : CaptureSet {}) :
   CapabilitySet :=
   match cs with
   | .empty => {}
-  | .var m (.free loc) => (reachability_of_loc h loc).applyMut m
+  | .var m (.free loc) => (reachability_of_loc h loc).applyAccess m
   | .union cs1 cs2 => expand_captures h cs1 ∪ expand_captures h cs2
 
 /-- Compute reachability for a heap value. -/
@@ -1043,7 +2010,7 @@ def compute_reachability
   | .tabs cs _ _ => expand_captures h cs
   | .cabs cs _ _ => expand_captures h cs
   | .boxed cs _ _ => expand_captures h cs
-  | .reader (.free loc) => .cap .ro loc
+  | .reader (.free loc) => .cap (.access .ro) loc
   | .unit => {}
   | .btrue => {}
   | .bfalse => {}
@@ -1084,44 +2051,33 @@ theorem resolve_monotonic {H1 H2 : Heap}
       -- hres tells us what m1.heap fx is
       cases hfx : H1 fx
       · -- m1.heap fx = none, contradiction with hres
-        have : none = some v := by
-          simpa only [hfx] using hres
-        cases this
+        simp [hfx] at hres
       · -- m1.heap fx = some cell
         rename_i cell
+        rw [hfx] at hres
         cases cell
         case val heapval =>
-          have hres' : some heapval.unwrap = some v := by
-            simpa only [hfx] using hres
-          obtain ⟨cell', hv', hsub_v⟩ := hsub fx (.val heapval) hfx
-          cases cell' with
-          | val heapval' =>
-            have hEq : Cell.val heapval' = Cell.val heapval := by
-              simpa only [Cell.subsumes] using hsub_v
-            injection hEq with hv_eq
-            subst hv_eq
-            rw [hv']
-            simpa using hres'
-          | capability info =>
-            have : Cell.capability info = Cell.val heapval := by
-              simpa only [Cell.subsumes] using hsub_v
-            cases this
-          | masked =>
-            have : Cell.masked = Cell.val heapval := by
-              simpa only [Cell.subsumes] using hsub_v
-            cases this
+          cases hres
+          -- hres now says: heapval.unwrap = v
+          -- Need to show resolve m2.heap (.var (.free fx)) = some v
+          -- We know hsub : H2.subsumes H1
+          obtain ⟨v', hv', hsub_v⟩ := hsub fx (.val heapval) hfx
+          -- For val cells, subsumes requires equality
+          have hsub_v' : v' = .val heapval := by
+            simpa only [Cell.subsumes] using hsub_v
+          subst hsub_v'
+          simp only [hv']
         case capability =>
-          have : none = some v := by
-            simpa only [hfx] using hres
-          cases this
+          -- resolve yields none on capabilities; contradiction with hres
+          simp at hres
         case masked =>
-          have : none = some v := by
-            simpa only [hfx] using hres
-          cases this
+          -- resolve yields none on masked cells; contradiction
+          simp at hres
     -- For .var (.bound _), already contradicted; done
   -- For other expressions, resolve returns them unchanged
   all_goals
-    simpa only [resolve] using hres
+    simp only [resolve] at hres
+    simp only [resolve, hres]
 
 theorem reachability_of_loc_monotonic
   {h1 h2 : Heap}
@@ -1130,8 +2086,47 @@ theorem reachability_of_loc_monotonic
   (hex : h1 l = some v) :
   reachability_of_loc h2 l = reachability_of_loc h1 l := by
   obtain ⟨v', h2_eq, hsub_v⟩ := hsub l v hex
-  cases v <;> cases v' <;>
-    simp only [reachability_of_loc, hex, h2_eq, Cell.subsumes] at hsub_v ⊢ <;> simp_all
+  simp only [reachability_of_loc, hex, h2_eq]
+  cases v with
+  | val hv =>
+    cases v' with
+    | val hv' =>
+      have hEq : Cell.val hv' = Cell.val hv := by
+        simpa only [Cell.subsumes] using hsub_v
+      cases hEq
+      rfl
+    | capability info =>
+      have hEq : Cell.capability info = Cell.val hv := by
+        simpa only [Cell.subsumes] using hsub_v
+      cases hEq
+    | masked =>
+      have hEq : Cell.masked = Cell.val hv := by
+        simpa only [Cell.subsumes] using hsub_v
+      cases hEq
+  | capability info =>
+    cases v' with
+    | val hv =>
+      have hEq : Cell.val hv = Cell.capability info := by
+        simpa only [Cell.subsumes] using hsub_v
+      cases hEq
+    | capability info' =>
+      rfl
+    | masked =>
+      have hEq : Cell.masked = Cell.capability info := by
+        simpa only [Cell.subsumes] using hsub_v
+      cases hEq
+  | masked =>
+    cases v' with
+    | val hv =>
+      have hEq : Cell.val hv = Cell.masked := by
+        simpa only [Cell.subsumes] using hsub_v
+      cases hEq
+    | capability info =>
+      have hEq : Cell.capability info = Cell.masked := by
+        simpa only [Cell.subsumes] using hsub_v
+      cases hEq
+    | masked =>
+      rfl
 
 /-- Expanding a capture set in a bigger heap yields the same result.
 Proof by induction on cs. Requires all free locations in cs to exist in h1. -/
@@ -1151,20 +2146,20 @@ theorem expand_captures_monotonic
       -- Impossible: no bound variables in empty signature
       cases x
     | free loc =>
+      -- Variable case: use reachability_of_loc_monotonic
+      -- Extract existence proof from well-formedness
       cases hwf with
       | wf_var_free hex =>
-        change (reachability_of_loc h2 loc).applyMut m =
-            (reachability_of_loc h1 loc).applyMut m
-        exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_monotonic hsub loc hex)
+        -- We have hex : h1 loc = some cell_val
+        simpa only [expand_captures] using
+          congrArg (CapabilitySet.applyAccess m) (reachability_of_loc_monotonic hsub loc hex)
   | cvar m C =>
     -- Impossible: no capability variables in empty signature
     cases C
   | union cs1 cs2 ih1 ih2 =>
     cases hwf with
     | wf_union hwf1 hwf2 =>
-      change expand_captures h2 cs1 ∪ expand_captures h2 cs2 =
-          expand_captures h1 cs1 ∪ expand_captures h1 cs2
-      rw [ih1 hwf1, ih2 hwf2]
+      simp only [expand_captures, ih1 hwf1, ih2 hwf2]
 
 theorem resolve_reachability_monotonic
   {H1 H2 : Heap}
@@ -1188,7 +2183,7 @@ theorem resolve_reachability_monotonic
   | wf_tabs hwf_cs _ _ =>
     change expand_captures H2 _ = expand_captures H1 _
     exact expand_captures_monotonic hsub _ hwf_cs
-  | wf_cabs hwf_cs _ =>
+  | wf_cabs hwf_cs _ _ =>
     change expand_captures H2 _ = expand_captures H1 _
     exact expand_captures_monotonic hsub _ hwf_cs
   | wf_boxed hwf_cs _ _ =>
@@ -1202,6 +2197,8 @@ theorem resolve_reachability_monotonic
     | wf_free =>
       rename_i loc hex
       rfl
+  | wf_alloc _ => rfl
+  | wf_drop _ => rfl
   | wf_pack _ _ => rfl
   | wf_app _ _ => rfl
   | wf_tapp _ _ => rfl
@@ -1264,23 +2261,23 @@ theorem compute_reachability_monotonic
     rfl
 
 /-- Updating an mcell preserves reachability_of_loc for all locations. -/
-theorem reachability_of_loc_update_mcell (h : Heap) (l : Nat)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) (l' : Nat) :
-  reachability_of_loc (h.update_cell l (.capability (.mcell b))) l' =
+theorem reachability_of_loc_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool) (l' : Nat) :
+  reachability_of_loc (h.update_cell l (.capability (.mcell b ℓ))) l' =
   reachability_of_loc h l' := by
   unfold reachability_of_loc Heap.update_cell
   by_cases heq : l' = l
   · -- l' = l case
     subst heq
     obtain ⟨b0, hb0⟩ := hexists
-    simp [hb0]
+    simp only [hb0, if_true]
   · -- l' ≠ l case
-    simp [heq]
+    simp only [heq, if_false]
 
 /-- Updating an mcell preserves expand_captures. -/
-theorem expand_captures_update_mcell (h : Heap) (l : Nat)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool) (cs : CaptureSet {}) :
-  expand_captures (h.update_cell l (.capability (.mcell b))) cs =
+theorem expand_captures_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool) (cs : CaptureSet {}) :
+  expand_captures (h.update_cell l (.capability (.mcell b ℓ))) cs =
   expand_captures h cs := by
   induction cs with
   | empty => rfl
@@ -1288,43 +2285,88 @@ theorem expand_captures_update_mcell (h : Heap) (l : Nat)
     cases x with
     | bound bv => cases bv
     | free loc =>
-      change (reachability_of_loc (h.update_cell l (.capability (.mcell b))) loc).applyMut m =
-          (reachability_of_loc h loc).applyMut m
-      exact congrArg (CapabilitySet.applyMut m) (reachability_of_loc_update_mcell h l hexists b loc)
+      simpa only [expand_captures] using
+        congrArg (CapabilitySet.applyAccess m)
+          (reachability_of_loc_update_mcell h l ℓ hexists b loc)
   | union cs1 cs2 ih1 ih2 =>
-    change expand_captures (h.update_cell l (.capability (.mcell b))) cs1 ∪
-        expand_captures (h.update_cell l (.capability (.mcell b))) cs2 =
-      expand_captures h cs1 ∪ expand_captures h cs2
-    rw [ih1, ih2]
+    simp only [expand_captures, ih1, ih2]
   | cvar m c => cases c
 
 /-- Updating an mcell preserves compute_reachability. -/
-theorem compute_reachability_update_mcell (h : Heap) (l : Nat)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0))) (b : Bool)
+theorem compute_reachability_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool)
   (v : Exp {}) (hv : v.IsSimpleVal) :
-  compute_reachability (h.update_cell l (.capability (.mcell b))) v hv =
+  compute_reachability (h.update_cell l (.capability (.mcell b ℓ))) v hv =
   compute_reachability h v hv := by
   cases hv with
   | abs =>
-    change expand_captures (h.update_cell l (.capability (.mcell b))) _ = expand_captures h _
-    exact expand_captures_update_mcell h l hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
   | tabs =>
-    change expand_captures (h.update_cell l (.capability (.mcell b))) _ = expand_captures h _
-    exact expand_captures_update_mcell h l hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
   | cabs =>
-    change expand_captures (h.update_cell l (.capability (.mcell b))) _ = expand_captures h _
-    exact expand_captures_update_mcell h l hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
   | boxed =>
-    change expand_captures (h.update_cell l (.capability (.mcell b))) _ = expand_captures h _
-    exact expand_captures_update_mcell h l hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
   | reader =>
     rename_i x
     cases x with
-    | free loc => rfl
+    | free loc => simp only [compute_reachability]
     | bound bx => cases bx
-  | unit => rfl
-  | btrue => rfl
-  | bfalse => rfl
+  | unit | btrue | bfalse => rfl
+
+/-- Dropping a live mcell preserves `reachability_of_loc` for all locations:
+    both the live and dead mcell at `l` reduce to the same singleton, and
+    other locations are untouched. -/
+theorem reachability_of_loc_drop_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0 .live))) (l' : Nat) :
+  reachability_of_loc (h.update_cell l (.capability (.mcell false .dead))) l' =
+  reachability_of_loc h l' := by
+  unfold reachability_of_loc Heap.update_cell
+  by_cases heq : l' = l
+  · subst heq
+    obtain ⟨b0, hb0⟩ := hexists
+    simp only [hb0, if_true]
+  · simp only [heq, if_false]
+
+/-- Dropping a live mcell preserves `expand_captures`. -/
+theorem expand_captures_drop_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0 .live))) (cs : CaptureSet {}) :
+  expand_captures (h.update_cell l (.capability (.mcell false .dead))) cs =
+  expand_captures h cs := by
+  induction cs with
+  | empty => rfl
+  | var m x =>
+    cases x with
+    | bound bv => cases bv
+    | free loc =>
+      simpa only [expand_captures] using
+        congrArg (CapabilitySet.applyAccess m)
+          (reachability_of_loc_drop_mcell h l hexists loc)
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [expand_captures, ih1, ih2]
+  | cvar m c => cases c
+
+/-- Dropping a live mcell preserves `compute_reachability`. -/
+theorem compute_reachability_drop_mcell (h : Heap) (l : Nat)
+  (hexists : ∃ b0, h l = some (.capability (.mcell b0 .live)))
+  (v : Exp {}) (hv : v.IsSimpleVal) :
+  compute_reachability (h.update_cell l (.capability (.mcell false .dead))) v hv =
+  compute_reachability h v hv := by
+  cases hv with
+  | abs =>
+    simpa only [compute_reachability] using expand_captures_drop_mcell h l hexists _
+  | tabs =>
+    simpa only [compute_reachability] using expand_captures_drop_mcell h l hexists _
+  | cabs =>
+    simpa only [compute_reachability] using expand_captures_drop_mcell h l hexists _
+  | boxed =>
+    simpa only [compute_reachability] using expand_captures_drop_mcell h l hexists _
+  | reader =>
+    rename_i x
+    cases x with
+    | free loc => simp only [compute_reachability]
+    | bound bx => cases bx
+  | unit | btrue | bfalse => rfl
 
 /-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
 structure Heap.WfHeap (H : Heap) : Prop where
@@ -1531,6 +2573,10 @@ theorem Exp.wf_rename
         ih_e)
   | wf_reader hwf_x =>
     simpa only [Exp.rename] using (Exp.WfInHeap.wf_reader (Var.wf_rename hwf_x))
+  | wf_alloc hwf_x =>
+    simpa only [Exp.rename] using (Exp.WfInHeap.wf_alloc (Var.wf_rename hwf_x))
+  | wf_drop hwf_x =>
+    simpa only [Exp.rename] using (Exp.WfInHeap.wf_drop (Var.wf_rename hwf_x))
   | wf_pack hwf_cs hwf_x =>
     simpa only [Exp.rename] using
       (Exp.WfInHeap.wf_pack (CaptureSet.wf_rename hwf_cs) (Var.wf_rename hwf_x))
@@ -1573,7 +2619,7 @@ theorem Exp.wf_rename
 
 /-- A well-formed variable yields a well-formed capture set. -/
 theorem CaptureSet.wf_of_var
-  {m : Mutability}
+  {m : Access}
   {x : Var .var s}
   {H : Heap}
   (hwf : Var.WfInHeap x H) :
@@ -1651,6 +2697,31 @@ theorem CaptureSet.wf_applyMut
   | ro =>
     simpa only [CaptureSet.applyMut] using wf_applyRO hwf
 
+/-- applyDrop preserves well-formedness of capture sets. -/
+theorem CaptureSet.wf_applyDrop
+  {cs : CaptureSet s}
+  {H : Heap}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap cs.applyDrop H := by
+  induction hwf with
+  | wf_empty => exact WfInHeap.wf_empty
+  | wf_union _ _ ih1 ih2 => exact WfInHeap.wf_union ih1 ih2
+  | wf_var_free hex => exact WfInHeap.wf_var_free hex
+  | wf_var_bound => exact WfInHeap.wf_var_bound
+  | wf_cvar => exact WfInHeap.wf_cvar
+
+/-- applyAccess preserves well-formedness of capture sets. -/
+theorem CaptureSet.wf_applyAccess
+  {cs : CaptureSet s}
+  {H : Heap}
+  {a : Access}
+  (hwf : CaptureSet.WfInHeap cs H) :
+  CaptureSet.WfInHeap (cs.applyAccess a) H := by
+  cases a with
+  | M m => exact wf_applyMut hwf
+  | drop => exact wf_applyDrop hwf
+
+
 /-- Well-formed substitutions preserve well-formedness of capture sets. -/
 theorem CaptureSet.wf_subst
   {cs : CaptureSet s1}
@@ -1672,7 +2743,7 @@ theorem CaptureSet.wf_subst
     simpa only [CaptureSet.subst, Var.subst] using
       (CaptureSet.wf_of_var (Var.wf_subst (Var.WfInHeap.wf_bound) hwf_σ))
   | wf_cvar =>
-    simpa only [CaptureSet.subst] using CaptureSet.wf_applyMut (hwf_σ.wf_cvar _)
+    simpa only [CaptureSet.subst] using CaptureSet.wf_applyAccess (hwf_σ.wf_cvar _)
 
 theorem SepCtx.wf_subst
   {Ψ : SepCtx s1}
@@ -1796,6 +2867,10 @@ theorem Exp.wf_subst
         (ih_e hwf_σ))
   | wf_reader hwf_x =>
     simpa only [Exp.subst] using (Exp.WfInHeap.wf_reader (Var.wf_subst hwf_x hwf_σ))
+  | wf_alloc hwf_x =>
+    simpa only [Exp.subst] using (Exp.WfInHeap.wf_alloc (Var.wf_subst hwf_x hwf_σ))
+  | wf_drop hwf_x =>
+    simpa only [Exp.subst] using (Exp.WfInHeap.wf_drop (Var.wf_subst hwf_x hwf_σ))
   | wf_pack hwf_cs hwf_x =>
     simpa only [Exp.subst] using
       (Exp.WfInHeap.wf_pack
@@ -2072,6 +3147,71 @@ def extend_cap (m : Memory) (l : Nat)
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_cap_has_fin_dom hdom hfresh⟩
 
+/-- Heap extension with mcell subsumes original heap. -/
+theorem Heap.extend_mcell_subsumes {H : Heap} {l : Nat} {b : Bool}
+  (hfresh : H l = none) :
+  (H.extend_mcell l b).subsumes H := by
+  intro l' v' hlookup
+  unfold Heap.extend_mcell
+  split
+  case isTrue heq =>
+    subst heq
+    rw [hfresh] at hlookup
+    contradiction
+  case isFalse =>
+    exists v'
+    exact ⟨hlookup, Cell.subsumes_refl v'⟩
+
+theorem Heap.extend_mcell_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat} {b : Bool}
+  (hdom : H.HasFinDom dom) (hfresh : H l = none) :
+  (H.extend_mcell l b).HasFinDom (dom ∪ {l}) := by
+  intro l'
+  unfold Heap.extend_mcell
+  split
+  case isTrue heq =>
+    subst heq
+    constructor
+    · intro _; simp
+    · intro _; simp
+  case isFalse hneq =>
+    constructor
+    · intro h
+      have : l' ∈ dom := (hdom l').mp h
+      simp only [Finset.mem_union, Finset.mem_singleton, this, true_or]
+    · intro h
+      rw [Finset.mem_union, Finset.mem_singleton] at h
+      rcases h with h | h
+      · exact (hdom l').mpr h
+      · contradiction
+
+/-- Extend memory with a fresh mutable cell capability. -/
+def extend_mcell (m : Memory) (l : Nat) (b : Bool)
+  (hfresh : m.heap l = none) : Memory where
+  heap := m.heap.extend_mcell l b
+  wf := by
+    constructor
+    · intro l' hv' hlookup
+      unfold Heap.extend_mcell at hlookup
+      split at hlookup
+      case isTrue _ =>
+        cases hlookup
+      case isFalse _ =>
+        exact Exp.wf_monotonic (Heap.extend_mcell_subsumes hfresh)
+          (m.wf.wf_val l' hv' hlookup)
+    · intro l' v' hv' R' hlookup
+      unfold Heap.extend_mcell at hlookup
+      split at hlookup
+      case isTrue _ =>
+        cases hlookup
+      case isFalse _ =>
+        have heq := m.wf.wf_reach l' v' hv' R' hlookup
+        rw [heq]
+        exact (compute_reachability_monotonic (Heap.extend_mcell_subsumes hfresh) v' hv'
+          (m.wf.wf_val l' _ hlookup)).symm
+  findom :=
+    let ⟨dom, hdom⟩ := m.findom
+    ⟨dom ∪ {l}, Heap.extend_mcell_has_fin_dom hdom hfresh⟩
+
 /-- Extend memory with a value that's well-formed in the current heap.
     This is often more convenient than `extend` in practice. -/
 def extend_val (m : Memory) (l : Nat) (v : HeapVal)
@@ -2085,10 +3225,11 @@ def extend_val (m : Memory) (l : Nat) (v : HeapVal)
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
 
 /-- Update a mutable cell in memory with a new boolean value.
-    Requires proof that the location contains a mutable cell. -/
-def update_mcell (m : Memory) (l : Nat) (b : Bool)
-  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0))) : Memory where
-  heap := m.heap.update_cell l (.capability (.mcell b))
+    Requires proof that the location contains a mutable cell with liveness `ℓ`.
+    The update preserves the cell's liveness. -/
+def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
+  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ))) : Memory where
+  heap := m.heap.update_cell l (.capability (.mcell b ℓ))
   wf := by
     constructor
     · -- wf_val case: updating a capability doesn't affect value well-formedness
@@ -2104,8 +3245,8 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool)
         -- First, get well-formedness from the original heap
         have hwf_orig : hv'.unwrap.WfInHeap m.heap := m.wf.wf_val l' hv' hlookup
         -- Show that the updated heap subsumes the original heap
-        have hsub : (m.heap.update_cell l (.capability (.mcell b))).subsumes m.heap :=
-          Heap.update_mcell_subsumes m.heap l hexists b
+        have hsub : (m.heap.update_cell l (.capability (.mcell b ℓ))).subsumes m.heap :=
+          Heap.update_mcell_subsumes m.heap l ℓ hexists b
         -- Apply monotonicity
         exact Exp.wf_monotonic hsub hwf_orig
     · -- wf_reach case: updating a capability doesn't affect reachability computation
@@ -2123,7 +3264,7 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool)
           m.wf.wf_reach l' v' hv' R' hlookup
         -- Show that compute_reachability is preserved
         rw [hreach_orig]
-        exact (compute_reachability_update_mcell m.heap l hexists b v' hv').symm
+        exact (compute_reachability_update_mcell m.heap l ℓ hexists b v' hv').symm
   findom := by
     -- Domain remains unchanged when updating an existing cell
     obtain ⟨dom, hdom⟩ := m.findom
@@ -2152,6 +3293,66 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool)
       case isTrue => simp
       case isFalse => exact (hdom l').mpr hin_dom
 
+/-- Mark a live mutable cell as dead.  This is the operational counterpart of
+    the `drop` form: the cell remains in the heap (so locations referring to
+    it stay well-formed) but is flagged `.dead`, ruling out future reads/writes
+    by the live-only premises of `eval_read` / `eval_write_*`.
+
+    Subsumption is *not* preserved by this operation: the dropped memory does
+    not subsume the original (live ≠ dead), reflecting that drop is a
+    destructive transition. -/
+def drop_mcell (m : Memory) (l : Nat)
+  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) : Memory where
+  heap := m.heap.update_cell l (.capability (.mcell false .dead))
+  wf := by
+    -- The new heap dominates the old domain: only the cell at `l` changes,
+    -- and it remains `some _`.
+    have hdom_sub :
+        (m.heap.update_cell l (.capability (.mcell false .dead))).dom_subsumes m.heap := by
+      intro l' v hlookup
+      unfold Heap.update_cell
+      by_cases hl : l' = l
+      · subst hl; exact ⟨_, by rw [if_pos rfl]⟩
+      · exact ⟨v, by rw [if_neg hl]; exact hlookup⟩
+    constructor
+    · intro l' hv' hlookup
+      unfold Heap.update_cell at hlookup
+      split at hlookup
+      case isTrue _ => cases hlookup
+      case isFalse _ =>
+        exact Exp.wf_dom_subsumes hdom_sub (m.wf.wf_val l' hv' hlookup)
+    · intro l' v' hv' R' hlookup
+      unfold Heap.update_cell at hlookup
+      split at hlookup
+      case isTrue _ => cases hlookup
+      case isFalse _ =>
+        have heq := m.wf.wf_reach l' v' hv' R' hlookup
+        rw [heq]
+        exact (compute_reachability_drop_mcell m.heap l hexists v' hv').symm
+  findom := by
+    -- Domain unchanged: dropping replaces a `some` cell with another `some` cell.
+    obtain ⟨dom, hdom⟩ := m.findom
+    exists dom
+    intro l'
+    constructor
+    · intro hne_none
+      unfold Heap.update_cell at hne_none
+      split at hne_none
+      case isTrue heq =>
+        obtain ⟨b0, hb0⟩ := hexists
+        rw [←heq] at hb0
+        apply (hdom l').mp
+        intro hcontra
+        rw [hb0] at hcontra
+        cases hcontra
+      case isFalse hneq =>
+        exact (hdom l').mp hne_none
+    · intro hin_dom
+      unfold Heap.update_cell
+      split
+      case isTrue => simp
+      case isFalse => exact (hdom l').mpr hin_dom
+
 /-- Memory subsumption: m1 subsumes m2 if m1's heap subsumes m2's heap. -/
 def subsumes (m1 m2 : Memory) : Prop :=
   m1.heap.subsumes m2.heap
@@ -2168,50 +3369,99 @@ theorem subsumes_trans {m1 m2 m3 : Memory}
   Heap.subsumes_trans h12 h23
 
 /-- Updating a mutable cell creates a memory that subsumes the original. -/
-theorem update_mcell_subsumes (m : Memory) (l : Nat) (b : Bool)
-  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0))) :
-  (m.update_mcell l b hexists).subsumes m := by
-  unfold subsumes update_mcell Heap.subsumes
+theorem update_mcell_subsumes (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
+  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ))) :
+  (m.update_mcell l b ℓ hexists).subsumes m := by
+  change (m.heap.update_cell l (.capability (.mcell b ℓ))).subsumes m.heap
+  exact Heap.update_mcell_subsumes m.heap l ℓ hexists b
+
+/-- Extending two subsuming memories with the same mcell at the same location
+preserves subsumption. -/
+theorem extend_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
+  (hfresh1 : m1.heap l = none) (hfresh2 : m2.heap l = none)
+  (hsub : m2.subsumes m1) :
+  (m2.extend_mcell l b hfresh2).subsumes (m1.extend_mcell l b hfresh1) := by
+  change (m2.heap.extend_mcell l b).subsumes (m1.heap.extend_mcell l b)
   intro l' v hlookup
-  change ∃ v',
-      (if l' = l then some (.capability (.mcell b)) else m.heap l') = some v' ∧ v'.subsumes v
-  split
-  case isTrue heq =>
-    subst heq
+  unfold Heap.extend_mcell at hlookup ⊢
+  by_cases hneq : l' = l
+  · subst hneq
+    rw [if_pos rfl] at hlookup
+    cases hlookup
+    exact ⟨_, by rw [if_pos rfl], Cell.subsumes_refl _⟩
+  · rw [if_neg hneq] at hlookup
+    obtain ⟨v', hlookup', hsub_v⟩ := hsub l' v hlookup
+    exact ⟨v', by rw [if_neg hneq]; exact hlookup', hsub_v⟩
+
+/-- Updating mcells in subsuming memories preserves subsumption.  Both memories
+    must carry the same liveness for the cell, which is automatic for any pair
+    related by `subsumes`. -/
+theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
+  (ℓ : Liveness)
+  (hexists1 : ∃ b0, m1.heap l = some (.capability (.mcell b0 ℓ)))
+  (hexists2 : ∃ b0, m2.heap l = some (.capability (.mcell b0 ℓ)))
+  (hsub : m2.subsumes m1) :
+  (m2.update_mcell l b ℓ hexists2).subsumes (m1.update_mcell l b ℓ hexists1) := by
+  change (m2.heap.update_cell l (.capability (.mcell b ℓ))).subsumes
+    (m1.heap.update_cell l (.capability (.mcell b ℓ)))
+  unfold Heap.subsumes
+  intro l' v hlookup
+  unfold Heap.update_cell at hlookup ⊢
+  by_cases hneq : l' = l
+  · subst hneq
+    rw [if_pos rfl] at hlookup
+    cases hlookup
+    refine ⟨.capability (.mcell b ℓ), ?_, ?_⟩
+    · rw [if_pos rfl]
+    · simp only [Cell.subsumes]; exact Liveness.Le.refl
+  · rw [if_neg hneq] at hlookup
+    exact ⟨_, by rw [if_neg hneq]; exact (hsub l' v hlookup).choose_spec.1,
+           (hsub l' v hlookup).choose_spec.2⟩
+
+/-- Dropping a live mutable cell yields a memory that subsumes the original.
+    With the relaxed `Cell.subsumes`, this is now sound: the cell transitions
+    `live → dead`, which is allowed by `Liveness.Le.live_dead`. -/
+theorem drop_mcell_subsumes (m : Memory) (l : Nat)
+  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) :
+  (m.drop_mcell l hexists).subsumes m := by
+  change (m.heap.update_cell l (.capability (.mcell false .dead))).subsumes m.heap
+  intro l' v hlookup
+  unfold Heap.update_cell
+  by_cases hneq : l' = l
+  · subst hneq
     obtain ⟨b0, hb0⟩ := hexists
     rw [hb0] at hlookup
-    refine ⟨.capability (.mcell b), ?_, ?_⟩
-    · rfl
-    · cases hlookup
-      simp only [Cell.subsumes]
-  case isFalse hneq =>
-    exact ⟨v, hlookup, Cell.subsumes_refl v⟩
-
-/-- Updating mcells in subsuming memories preserves subsumption. -/
-theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
-  (hexists1 : ∃ b0, m1.heap l = some (.capability (.mcell b0)))
-  (hexists2 : ∃ b0, m2.heap l = some (.capability (.mcell b0)))
-  (hsub : m2.subsumes m1) :
-  (m2.update_mcell l b hexists2).subsumes (m1.update_mcell l b hexists1) := by
-  unfold subsumes update_mcell Heap.subsumes
-  intro l' v hlookup
-  change (if l' = l then some (.capability (.mcell b)) else m1.heap l') = some v at hlookup
-  change ∃ v',
-      (if l' = l then some (.capability (.mcell b)) else m2.heap l') = some v' ∧ v'.subsumes v
-  split at hlookup
-  case isTrue heq =>
-    subst heq
     cases hlookup
-    refine ⟨.capability (.mcell b), ?_, ?_⟩
+    refine ⟨.capability (.mcell false .dead), ?_, ?_⟩
     · rw [if_pos rfl]
-    · simp only [Cell.subsumes]
-  case isFalse hneq =>
-    split
-    case isTrue heq =>
-      subst heq
-      contradiction
-    case isFalse =>
-      exact hsub l' v hlookup
+    · simp only [Cell.subsumes]; exact Liveness.Le.live_dead
+  · refine ⟨v, ?_, Cell.subsumes_refl v⟩
+    rw [if_neg hneq]; exact hlookup
+
+/-- Dropping mcells in subsuming memories preserves subsumption.  The cell at
+    `l` becomes `(.mcell false .dead)` in both heaps (so they agree exactly
+    there); other cells are unchanged and the subsumption hypothesis carries
+    them across. -/
+theorem drop_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat)
+  (hexists1 : ∃ b0, m1.heap l = some (.capability (.mcell b0 .live)))
+  (hexists2 : ∃ b0, m2.heap l = some (.capability (.mcell b0 .live)))
+  (hsub : m2.subsumes m1) :
+  (m2.drop_mcell l hexists2).subsumes (m1.drop_mcell l hexists1) := by
+  change (m2.heap.update_cell l (.capability (.mcell false .dead))).subsumes
+    (m1.heap.update_cell l (.capability (.mcell false .dead)))
+  unfold Heap.subsumes
+  intro l' v hlookup
+  unfold Heap.update_cell at hlookup ⊢
+  by_cases hneq : l' = l
+  · subst hneq
+    rw [if_pos rfl] at hlookup
+    cases hlookup
+    refine ⟨.capability (.mcell false .dead), ?_, ?_⟩
+    · rw [if_pos rfl]
+    · simp only [Cell.subsumes]; exact Liveness.Le.refl
+  · rw [if_neg hneq] at hlookup
+    exact ⟨_, by rw [if_neg hneq]; exact (hsub l' v hlookup).choose_spec.1,
+           (hsub l' v hlookup).choose_spec.2⟩
 
 /-- Looking up from a memory after extension at the same location returns the value. -/
 theorem extend_lookup_eq (m : Memory) (l : Nat) (v : HeapVal)
@@ -2219,7 +3469,7 @@ theorem extend_lookup_eq (m : Memory) (l : Nat) (v : HeapVal)
   (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
   (hfresh : m.heap l = none) :
   (m.extend l v hwf_v hreach hfresh).lookup l = some (.val v) := by
-  simp [lookup, extend, Heap.extend]
+  simp only [lookup, extend, Heap.extend, if_true]
 
 /-- Extension subsumes the original memory. -/
 theorem extend_subsumes (m : Memory) (l : Nat) (v : HeapVal)
@@ -2246,6 +3496,18 @@ theorem extend_cap_subsumes (m : Memory) (l : Nat)
   change (m.heap.extend_cap l).subsumes m.heap
   exact Heap.extend_cap_subsumes hfresh
 
+/-- Mutable cell extension subsumes the original memory. -/
+theorem extend_mcell_subsumes (m : Memory) (l : Nat) (b : Bool)
+  (hfresh : m.heap l = none) :
+  (m.extend_mcell l b hfresh).subsumes m := by
+  change (m.heap.extend_mcell l b).subsumes m.heap
+  exact Heap.extend_mcell_subsumes hfresh
+
+theorem extend_mcell_lookup {m : Memory} {l : Nat} {b : Bool}
+  (hfresh : m.heap l = none) :
+  (m.extend_mcell l b hfresh).lookup l = some (.capability (.mcell b .live)) := by
+  simp only [lookup, extend_mcell, Heap.extend_mcell, if_true]
+
 /-- Well-formedness is preserved under memory subsumption. -/
 theorem wf_monotonic {e : Exp {}} {m1 m2 : Memory}
   (hsub : m2.subsumes m1)
@@ -2258,6 +3520,122 @@ theorem wf_lookup {m : Memory} {l : Nat} {hv : HeapVal}
   (hlookup : m.lookup l = some (.val hv)) :
   Exp.WfInHeap hv.unwrap m.heap :=
   Heap.wf_lookup m.wf hlookup
+
+/-- A memory is *compatible* with a capability set when every capability in the
+    set whose location is realised as a mutable cell in the memory is currently
+    `.live`.  Capabilities pointing at non-mcell locations (basic capabilities,
+    values, masked, or absent) impose no liveness constraint. -/
+def is_compatible (m : Memory) (C : CapabilitySet) : Prop :=
+  ∀ mu l b ℓ,
+    CapabilitySet.hasmem mu l C →
+    m.heap l = some (.capability (.mcell b ℓ)) →
+    ℓ = .live
+
+theorem is_compatible_empty (m : Memory) : m.is_compatible .empty := by
+  intro mu l b ℓ hmem _
+  exact (CapabilitySet.not_hasmem_empty hmem).elim
+
+theorem is_compatible_union_left {m : Memory} {C1 C2 : CapabilitySet}
+  (hcompat : m.is_compatible (C1 ∪ C2)) : m.is_compatible C1 := by
+  intro mu l b ℓ hmem hheap
+  exact hcompat mu l b ℓ (CapabilitySet.hasmem.left hmem) hheap
+
+theorem is_compatible_union_right {m : Memory} {C1 C2 : CapabilitySet}
+  (hcompat : m.is_compatible (C1 ∪ C2)) : m.is_compatible C2 := by
+  intro mu l b ℓ hmem hheap
+  exact hcompat mu l b ℓ (CapabilitySet.hasmem.right hmem) hheap
+
+/-- `Subset` preserves location membership (modulo mutability). -/
+private theorem hasmem_of_subset {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2) :
+    ∀ mu l, CapabilitySet.hasmem mu l C1 → ∃ mu', CapabilitySet.hasmem mu' l C2 := by
+  induction hsub with
+  | refl => intro mu l hmem; exact ⟨mu, hmem⟩
+  | empty => intro _ _ hmem; exact (CapabilitySet.not_hasmem_empty hmem).elim
+  | trans _ _ ih1 ih2 =>
+    intro mu l hmem
+    obtain ⟨mu', hmem'⟩ := ih1 mu l hmem
+    exact ih2 mu' l hmem'
+  | union_left _ _ ih1 ih2 =>
+    intro mu l hmem
+    cases hmem with
+    | left hmem' => exact ih1 mu l hmem'
+    | right hmem' => exact ih2 mu l hmem'
+  | union_right_left =>
+    intro mu l hmem; exact ⟨mu, CapabilitySet.hasmem.left hmem⟩
+  | union_right_right =>
+    intro mu l hmem; exact ⟨mu, CapabilitySet.hasmem.right hmem⟩
+  | cap_ro =>
+    intro mu l hmem; cases hmem
+    exact ⟨.access .epsilon, CapabilitySet.hasmem.here⟩
+
+/-- `is_compatible` is anti-monotonic in the capability set: if `C1 ⊆ C2` and `m`
+    is compatible with `C2`, then it is compatible with `C1`. The mutability shift
+    in `Subset.cap_ro` is harmless because compatibility only checks the
+    underlying location, not the mutability. -/
+theorem is_compatible_subset {m : Memory} {C1 C2 : CapabilitySet}
+    (hsub : C1 ⊆ C2) (hcompat : m.is_compatible C2) : m.is_compatible C1 := by
+  intro mu l b ℓ hmem hheap
+  obtain ⟨mu', hmem'⟩ := hasmem_of_subset hsub mu l hmem
+  exact hcompat mu' l b ℓ hmem' hheap
+
+/-- `is_compatible` is preserved by extending memory with a fresh value cell:
+    the new cell holds a value, not a mutable cell, so it cannot break the
+    liveness condition that `is_compatible` checks. -/
+theorem is_compatible_extend_val (m : Memory) (l : Nat) (v : HeapVal)
+    (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+    (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+    (hfresh : m.heap l = none) {C : CapabilitySet}
+    (hcompat : m.is_compatible C) :
+    (m.extend_val l v hwf_v hreach hfresh).is_compatible C := by
+  intro mu l' b ℓ hmem hheap
+  change (m.heap.extend l v) l' = some (.capability (.mcell b ℓ)) at hheap
+  unfold Heap.extend at hheap
+  split at hheap
+  · cases hheap
+  · exact hcompat mu l' b ℓ hmem hheap
+
+/-- `is_compatible` is preserved by extending memory with a fresh *live* mutable
+    cell: the new cell is live, so it cannot violate the liveness condition. -/
+theorem is_compatible_extend_mcell (m : Memory) (l : Nat) (b : Bool)
+    (hfresh : m.heap l = none) {C : CapabilitySet}
+    (hcompat : m.is_compatible C) :
+    (m.extend_mcell l b hfresh).is_compatible C := by
+  intro mu l' b' ℓ hmem hheap
+  change (m.heap.extend_mcell l b) l' = some (.capability (.mcell b' ℓ)) at hheap
+  unfold Heap.extend_mcell at hheap
+  split at hheap
+  · injection hheap with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
+  · exact hcompat mu l' b' ℓ hmem hheap
+
+/-- `is_compatible` is preserved by updating a mutable cell to a *live* value:
+    the cell stays live, so the liveness condition is maintained. -/
+theorem is_compatible_update_mcell (m : Memory) (l : Nat) (b : Bool)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) {C : CapabilitySet}
+    (hcompat : m.is_compatible C) :
+    (m.update_mcell l b .live hexists).is_compatible C := by
+  intro mu l' b' ℓ hmem hheap
+  change (m.heap.update_cell l (.capability (.mcell b .live))) l' = some (.capability (.mcell b' ℓ))
+    at hheap
+  unfold Heap.update_cell at hheap
+  split at hheap
+  · injection hheap with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
+  · exact hcompat mu l' b' ℓ hmem hheap
+
+/-- `is_compatible` is preserved by `drop_mcell` *provided the dropped location is
+    not a member of the capability set*. Dropping marks the cell `.dead`, which
+    would break liveness for that location — so we require it absent from `C`. -/
+theorem is_compatible_drop_mcell (m : Memory) (l : Nat)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) {C : CapabilitySet}
+    (hnotin : ∀ mu, ¬ CapabilitySet.hasmem mu l C)
+    (hcompat : m.is_compatible C) :
+    (m.drop_mcell l hexists).is_compatible C := by
+  intro mu l' b' ℓ hmem hheap
+  change (m.heap.update_cell l (.capability (.mcell false .dead))) l'
+    = some (.capability (.mcell b' ℓ)) at hheap
+  unfold Heap.update_cell at hheap
+  split at hheap
+  · rename_i hl'eq; subst hl'eq; exact absurd hmem (hnotin mu)
+  · exact hcompat mu l' b' ℓ hmem hheap
 
 end Memory
 
@@ -2328,12 +3706,212 @@ def CapabilitySet.to_finset : CapabilitySet -> Finset Nat
 | .cap _ x => {x}
 
 def Heap.not_mutated (init after : Heap) : Prop :=
-  ∀ l b,
-    init l = some (.capability (.mcell b)) ->
-    after l = some (.capability (.mcell b))
+  ∀ l b ℓ,
+    init l = some (.capability (.mcell b ℓ)) ->
+    after l = some (.capability (.mcell b ℓ))
 
 def Memory.not_mutated (init after : Memory) : Prop :=
   init.heap.not_mutated after.heap
+
+/-- `drops_authorized m1 m2 C` says that every memory cell which slips from
+    `.live` in `m1` to `.dead` in `m2` is accounted for by `C` at `.drop`
+    mode.  In other words, `C` authorizes every live-to-dead transition
+    between `m1` and `m2`. -/
+def Memory.drops_authorized (m1 m2 : Memory) (C : CapabilitySet) : Prop :=
+  ∀ l b1 b2,
+    m1.heap l = some (.capability (.mcell b1 .live)) →
+    m2.heap l = some (.capability (.mcell b2 .dead)) →
+    C.hasmem .drop l
+
+/-- A memory is always `drops_authorized` with respect to itself, since no
+    live-to-dead transitions can occur in a comparison of `m` against itself. -/
+theorem Memory.drops_authorized_refl (m : Memory) (C : CapabilitySet) :
+    m.drops_authorized m C := by
+  intro l b1 b2 hlive hdead
+  rw [hlive] at hdead
+  cases hdead
+
+/-- If the underlying heaps are equal, no live cell can have slipped to dead. -/
+theorem Memory.drops_authorized_of_heap_eq
+    {m1 m2 : Memory} {C : CapabilitySet} (h : m1.heap = m2.heap) :
+    m1.drops_authorized m2 C := by
+  intro l b1 b2 hlive hdead
+  rw [h] at hlive
+  rw [hlive] at hdead
+  cases hdead
+
+/-- If `m2` is not mutated with respect to `m1`, all `live` mcells stay
+    `live`, so any `C` (including `∅`) authorizes the transition. -/
+theorem Memory.drops_authorized_of_not_mutated
+    {m1 m2 : Memory} {C : CapabilitySet} (h : m1.not_mutated m2) :
+    m1.drops_authorized m2 C := by
+  intro l b1 b2 hlive hdead
+  have hpres := h l b1 .live hlive
+  rw [hpres] at hdead
+  cases hdead
+
+/-- `.drop`-membership is preserved under `Subset`: the only `Subset` rule
+    that changes mutability is `cap_ro`, which only affects `.access` modes,
+    not `.drop`. -/
+private theorem CapabilitySet.hasmem_drop_of_subset
+    {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2)
+    {l : Nat} (h : C1.hasmem .drop l) : C2.hasmem .drop l := by
+  induction hsub with
+  | refl => exact h
+  | empty => exact (not_hasmem_empty h).elim
+  | trans _ _ ih1 ih2 => exact ih2 (ih1 h)
+  | union_left _ _ ih1 ih2 =>
+    cases h with
+    | left h' => exact ih1 h'
+    | right h' => exact ih2 h'
+  | union_right_left => exact hasmem.left h
+  | union_right_right => exact hasmem.right h
+  | cap_ro => cases h
+
+/-- `drops_authorized` is monotonic in the capability set: enlarging `C`
+    only weakens the obligation. -/
+theorem Memory.drops_authorized_subset
+    {m1 m2 : Memory} {C1 C2 : CapabilitySet}
+    (h : m1.drops_authorized m2 C1) (hsub : C1 ⊆ C2) :
+    m1.drops_authorized m2 C2 := by
+  intro l b1 b2 hlive hdead
+  exact CapabilitySet.hasmem_drop_of_subset hsub (h l b1 b2 hlive hdead)
+
+/-- Drop authority can be widened to a union on the left. -/
+theorem Memory.drops_authorized_union_left
+    {m1 m2 : Memory} {C1 C2 : CapabilitySet}
+    (h : m1.drops_authorized m2 C1) :
+    m1.drops_authorized m2 (C1 ∪ C2) :=
+  drops_authorized_subset h CapabilitySet.Subset.union_right_left
+
+/-- Drop authority can be widened to a union on the right. -/
+theorem Memory.drops_authorized_union_right
+    {m1 m2 : Memory} {C1 C2 : CapabilitySet}
+    (h : m1.drops_authorized m2 C2) :
+    m1.drops_authorized m2 (C1 ∪ C2) :=
+  drops_authorized_subset h CapabilitySet.Subset.union_right_right
+
+/-- Composition: if `m2.subsumes m1`, the `C1`-authorized `m1 → m2` and the
+    `C2`-authorized `m2 → m3` compose to a `(C1 ∪ C2)`-authorized `m1 → m3`.
+    Every live cell in `m1` that ends up dead in `m3` either dropped during
+    the first step (covered by `C1`) or during the second step (covered by
+    `C2`). -/
+theorem Memory.drops_authorized_trans
+    {m1 m2 m3 : Memory} {C1 C2 : CapabilitySet}
+    (hsub : m2.subsumes m1)
+    (h12 : m1.drops_authorized m2 C1)
+    (h23 : m2.drops_authorized m3 C2) :
+    m1.drops_authorized m3 (C1 ∪ C2) := by
+  intro l b1 b3 hlive hdead
+  obtain ⟨c2, hm2_l, hsub_c⟩ := hsub l (.capability (.mcell b1 .live)) hlive
+  cases c2 with
+  | val _ =>
+    simp only [Cell.subsumes] at hsub_c
+    cases hsub_c
+  | capability info =>
+    cases info with
+    | basic =>
+      simp only [Cell.subsumes] at hsub_c
+      cases hsub_c
+    | mcell b2 ℓ2 =>
+      simp only [Cell.subsumes] at hsub_c
+      cases hsub_c with
+      | refl =>
+        exact CapabilitySet.hasmem.right (h23 l b2 b3 hm2_l hdead)
+      | live_dead =>
+        exact CapabilitySet.hasmem.left (h12 l b1 b2 hlive hm2_l)
+  | masked =>
+    simp only [Cell.subsumes] at hsub_c
+    cases hsub_c
+
+/-- Extending memory with a fresh value cell introduces no live-to-dead
+    transitions, so any `C` authorizes it. -/
+theorem Memory.extend_drops_authorized
+    (m : Memory) (l : Nat) (v : HeapVal)
+    (hwf_v : Exp.WfInHeap v.unwrap m.heap)
+    (hreach : v.reachability = compute_reachability m.heap v.unwrap v.isVal)
+    (hfresh : m.heap l = none) (C : CapabilitySet) :
+    m.drops_authorized (m.extend l v hwf_v hreach hfresh) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.extend Heap.extend at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [hfresh] at hlive
+    cases hlive
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Extending memory with a fresh mutable cell (starting `.live`) introduces
+    no live-to-dead transitions, so any `C` authorizes it. -/
+theorem Memory.extend_mcell_drops_authorized
+    (m : Memory) (l : Nat) (b : Bool) (hfresh : m.heap l = none)
+    (C : CapabilitySet) :
+    m.drops_authorized (m.extend_mcell l b hfresh) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.extend_mcell Heap.extend_mcell at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [if_pos rfl] at hdead
+    cases hdead
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Extending memory with a fresh basic capability introduces no live-to-dead
+    transitions, so any `C` authorizes it. -/
+theorem Memory.extend_cap_drops_authorized
+    (m : Memory) (l : Nat) (hfresh : m.heap l = none) (C : CapabilitySet) :
+    m.drops_authorized (m.extend_cap l hfresh) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.extend_cap Heap.extend_cap at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [if_pos rfl] at hdead
+    cases hdead
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Updating a mutable cell preserves its liveness, so any `C` authorizes
+    the resulting transition. -/
+theorem Memory.update_mcell_drops_authorized
+    (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ)))
+    (C : CapabilitySet) :
+    m.drops_authorized (m.update_mcell l b ℓ hexists) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.update_mcell Heap.update_cell at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl
+    rw [if_pos rfl] at hdead
+    cases hdead
+    obtain ⟨b0, hb0⟩ := hexists
+    rw [hb0] at hlive
+    cases hlive
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
+
+/-- Dropping a live mutable cell requires the corresponding `.drop`
+    capability in `C`. -/
+theorem Memory.drop_mcell_drops_authorized
+    (m : Memory) (l : Nat)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live)))
+    {C : CapabilitySet} (hmem : C.hasmem .drop l) :
+    m.drops_authorized (m.drop_mcell l hexists) C := by
+  intro l' b1 b2 hlive hdead
+  unfold Memory.drop_mcell Heap.update_cell at hdead
+  simp only at hdead
+  by_cases hl : l' = l
+  · subst hl; exact hmem
+  · rw [if_neg hl] at hdead
+    rw [hlive] at hdead
+    cases hdead
 
 /-- Non-interference checking for capability sets. -/
 inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
@@ -2347,8 +3925,8 @@ inductive CapabilitySet.Noninterference : CapabilitySet -> CapabilitySet -> Prop
   Noninterference cs2 C ->
   Noninterference (cs1 ∪ cs2) C
 | ni_ro :
-  Noninterference (.cap .ro l1) (.cap .ro l2)
-| ni_disj :
+  Noninterference (.cap (.access .ro) l1) (.cap (.access .ro) l2)
+| ni_disj {m1 m2 : CapMode} :
   (l1 ≠ l2) ->
   Noninterference (.cap m1 l1) (.cap m2 l2)
 
@@ -2427,8 +4005,8 @@ theorem subset_left
 where
   weaken_epsilon_ro_aux {l : Nat} {cs1 cs2 : CapabilitySet}
     (hni : Noninterference cs1 cs2) :
-    (cs1 = .cap .epsilon l → Noninterference (.cap .ro l) cs2) ∧
-    (cs2 = .cap .epsilon l → Noninterference cs1 (.cap .ro l)) := by
+    (cs1 = .cap (.access .epsilon) l → Noninterference (.cap (.access .ro) l) cs2) ∧
+    (cs2 = .cap (.access .epsilon) l → Noninterference cs1 (.cap (.access .ro) l)) := by
     induction hni with
     | ni_symm _ ih =>
       exact ⟨fun h => ni_symm (ih.2 h), fun h => ni_symm (ih.1 h)⟩
@@ -2452,8 +4030,8 @@ where
         cases h
         exact ni_disj hne
   weaken_epsilon_ro {l : Nat} {cs : CapabilitySet}
-    (hni : Noninterference (.cap .epsilon l) cs) :
-    Noninterference (.cap .ro l) cs :=
+    (hni : Noninterference (.cap (.access .epsilon) l) cs) :
+    Noninterference (.cap (.access .ro) l) cs :=
     (weaken_epsilon_ro_aux hni).1 rfl
 
 theorem subset_right
@@ -2463,5 +4041,37 @@ theorem subset_right
   ni_symm (subset_left (ni_symm hni) hsub)
 
 end CapabilitySet.Noninterference
+
+/-- Compute the reachability of a capture set in a given memory. -/
+def CaptureSet.reachability : CaptureSet {} -> Memory -> CapabilitySet
+| .empty => fun _ => {}
+| .union cs1 cs2 => fun m =>
+  (cs1.reachability m) ∪ (cs2.reachability m)
+| .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyAccess m'
+
+/-- Reachability is preserved under memory subsumption when cs is well-formed. -/
+theorem CaptureSet.reachability_monotonic
+  {m1 m2 : Memory}
+  (hsub : m2.subsumes m1)
+  (cs : CaptureSet {})
+  (hwf : CaptureSet.WfInHeap cs m1.heap) :
+  cs.reachability m2 = cs.reachability m1 := by
+  induction cs with
+  | empty => rfl
+  | var m x =>
+    cases x with
+    | bound x => cases x
+    | free loc =>
+      cases hwf with
+      | wf_var_free hex =>
+        simpa only [CaptureSet.reachability] using
+          congrArg (CapabilitySet.applyAccess m) (reachability_of_loc_monotonic hsub loc hex)
+  | cvar m C =>
+    cases C
+  | union cs1 cs2 ih1 ih2 =>
+    cases hwf with
+    | wf_union hwf1 hwf2 =>
+      simp only [CaptureSet.reachability, ih1 hwf1, ih2 hwf2]
+
 
 end CoreCapybara
