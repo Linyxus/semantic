@@ -171,6 +171,26 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.typ T1) (.typ T2)
 
+inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| seq_sc :
+  Subcapt Γ C1 C1' ->
+  SeqComp Γ C1' C2 ->
+  --------------------
+  SeqComp Γ C1 C2
+| seq_union :
+  SeqComp Γ C1 C ->
+  SeqComp Γ C2 C ->
+  --------------------
+  SeqComp Γ (C1 ∪ C2) C
+| seq_access_only :
+  CaptureSet.AccessOnly Γ C1 ->
+  ----------------------
+  SeqComp Γ C1 C2
+| seq_drop :
+  SepCheck Γ C1 C2 ->
+  ----------------------
+  SeqComp Γ C1.applyDrop C2
+
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
   Γ.IsClosed ->
