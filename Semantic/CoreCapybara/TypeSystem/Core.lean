@@ -26,8 +26,8 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x T ->
   ----------------------------------
   Subcapt Γ (.var m (.bound x)) T.captureSet
-| sc_cvar :
-  Ctx.LookupCVar Γ c (.bound C) ->
+| sc_cvar {a : Authority} :
+  Ctx.LookupCVar Γ c a (.bound C) ->
   ----------------------------------
   Subcapt Γ (.cvar .epsilon c) C
 | sc_ro :
@@ -142,7 +142,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | cpoly :
   Subbound Γ cb2 cb1 ->
   Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ,C<:cb2) T1 T2 ->
+  Subtyp (Γ,C[.access_only]<:cb2) T1 T2 ->
   ----------------------------------------
   Subtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
 | modal :
@@ -155,7 +155,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   ----------------------------------
   Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
 | exi :
-  Subtyp (Γ,C<:.unbound) T1 T2 ->
+  Subtyp (Γ,C[.can_drop]<:.unbound) T1 T2 ->
   --------------------------
   Subtyp Γ (.exi T1) (.exi T2)
 | typ :
@@ -194,7 +194,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
+  HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
 | wrap :
@@ -205,6 +205,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
+  C.droppable Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
   HasType {} Γ (.pack C x) (.exi T)
@@ -237,7 +238,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType C Γ t (.exi T) ->
   HasType
     ((C.rename Rename.succ).rename Rename.succ)
-    (Γ,C<:.unbound,x:T)
+    (Γ,C[.can_drop]<:.unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------

@@ -293,6 +293,16 @@ end
 def CaptureSet.peakset (Γ : Ctx s) (cs : CaptureSet s) : PeakSet s :=
   ⟨peaks Γ cs, CaptureSet.peaks_peaksOnly Γ cs⟩
 
+/-- A peak set is droppable in `Γ` when every capture variable occurring in it
+is bound with `can_drop` authority. -/
+def PeakSet.droppable (Γ : Ctx s) (P : PeakSet s) : Prop :=
+  ∀ (m : Mutability) (c : BVar s .cvar),
+    (CaptureSet.cvar m c) ⊆ P.cs → Γ.lookup_authority c = .can_drop
+
+/-- A capture set is droppable in `Γ` when all of its peaks are droppable. -/
+def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  PeakSet.droppable Γ (C.peakset Γ)
+
 theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.rename Rename.succ).peaks (Γ.push b) = (C.peaks Γ).rename Rename.succ := by
   induction C generalizing k with
