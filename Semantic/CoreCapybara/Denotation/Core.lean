@@ -2036,20 +2036,25 @@ def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
     EnvTyping Γ env m ->
     B1.denot env m ⊆ B2.denot env m
 
-/-- Semantic separation check. -/
+/-- Semantic separation check. The `DroppableSep` premise is needed by the
+`sep_droppable` rule: separation of two distinct droppable capture variables
+is an environment invariant, not derivable from `EnvTyping` alone. -/
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   ∀ env H,
     EnvTyping Γ env H ->
+    DroppableSep Γ env ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
-/-- Semantic subtyping relation. -/
+/-- Semantic subtyping relation. Carries `DroppableSep` (like `SemanticTyping`)
+because the `modal_modal` rule interprets a syntactic `Satisfy` premise, whose
+`SepCheck` components may use `sep_droppable`. -/
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
   | .capt =>
-    ∀ env H, EnvTyping Γ env H ->
+    ∀ env H, EnvTyping Γ env H -> DroppableSep Γ env ->
       (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)
   | .exi =>
-    ∀ env H, EnvTyping Γ env H ->
+    ∀ env H, EnvTyping Γ env H -> DroppableSep Γ env ->
       (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
 
 -- NOTE: The following theorems are no longer needed after the type hierarchy collapse.

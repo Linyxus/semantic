@@ -183,6 +183,7 @@ inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   SeqComp Γ (C1 ∪ C2) C
 | seq_access_only :
+  C1.IsClosed ->
   CaptureSet.AccessOnly Γ C1 ->
   ----------------------
   SeqComp Γ C1 C2
