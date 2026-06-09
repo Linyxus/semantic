@@ -14,6 +14,8 @@ inductive Exp : Sig -> Type where
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | boxed : CaptureSet s -> SepCtx s -> Exp s -> Exp s
 | reader : Var .var s -> Exp s
+| alloc : Var .var s -> Exp s
+| drop : Var .var s -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
@@ -37,6 +39,8 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
 | .boxed cs Ψ e, f => .boxed (cs.rename f) (Ψ.rename f) (e.rename f)
 | .reader x, f => .reader (x.rename f)
+| .alloc x, f => .alloc (x.rename f)
+| .drop x, f => .drop (x.rename f)
 | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
@@ -114,6 +118,10 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     exact congrArg (Exp.boxed cs Ψ) ih
   | reader x =>
     simp only [Exp.rename, Var.rename_id]
+  | alloc x =>
+    simp only [Exp.rename, Var.rename_id]
+  | drop x =>
+    simp only [Exp.rename, Var.rename_id]
   | pack cs x =>
     simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
   | app x y =>
@@ -177,6 +185,10 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
       congrArg (Exp.boxed (cs.rename (f.comp g)) (Ψ.rename (f.comp g))) (ih (f := f) (g := g))
   | reader x =>
     simp only [Exp.rename, Var.rename_comp]
+  | alloc x =>
+    simp only [Exp.rename, Var.rename_comp]
+  | drop x =>
+    simp only [Exp.rename, Var.rename_comp]
   | pack cs x =>
     simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
   | app x y =>
@@ -233,6 +245,8 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | boxed : CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Exp.IsClosed e ->
     Exp.IsClosed (.boxed cs Ψ e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
+| alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
+| drop : Var.IsClosed x -> Exp.IsClosed (.drop x)
 | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)

@@ -20,7 +20,7 @@ def Subst.lift (s : Subst s1 s2) : Subst (s1,,k) (s2,,k) where
     case there x => exact (s.tvar x).rename Rename.succ
   cvar := fun x => by
     cases x
-    case here => exact .cvar .epsilon .here
+    case here => exact .cvar (.M .epsilon) .here
     case there x => exact (s.cvar x).rename Rename.succ
 
 /-- Lifts a substitution under multiple binders. -/
@@ -33,7 +33,7 @@ def Subst.liftMany (s : Subst s1 s2) (K : Sig) : Subst (s1 ++ K) (s2 ++ K) :=
 def Subst.id {s : Sig} : Subst s s where
   var := fun x => .bound x
   tvar := fun x => PureTy.tvar x
-  cvar := fun x => .cvar .epsilon x
+  cvar := fun x => .cvar (.M .epsilon) x
 
 /-- Applies a substitution to a variable. Free variables remain unchanged. -/
 def Var.subst : Var .var s1 -> Subst s1 s2 -> Var .var s2
@@ -45,7 +45,7 @@ def CaptureSet.subst : CaptureSet s1 -> Subst s1 s2 -> CaptureSet s2
 | .empty, _ => .empty
 | .union cs1 cs2, σ => .union (cs1.subst σ) (cs2.subst σ)
 | .var m x, σ => .var m (x.subst σ)
-| .cvar m x, σ => (σ.cvar x).applyMut m
+| .cvar m x, σ => (σ.cvar x).applyAccess m
 
 /-- Applies a substitution to a capture bound. -/
 def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
@@ -109,6 +109,8 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
 | .boxed cs Ψ e, s => .boxed (cs.subst s) (Ψ.subst s) (e.subst s)
 | .reader x, s => .reader (x.subst s)
+| .alloc x, s => .alloc (x.subst s)
+| .drop x, s => .drop (x.subst s)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
@@ -132,7 +134,7 @@ def Subst.openVar (x : Var .var s) : Subst (s,x) s where
   tvar := fun
     | .there x0 => PureTy.tvar x0
   cvar := fun
-    | .there x0 => .cvar .epsilon x0
+    | .there x0 => .cvar (.M .epsilon) x0
 
 /-- Opens a type variable binder, substituting `U` for the innermost bound. -/
 def Subst.openTVar (U : PureTy s) : Subst (s,X) s where
@@ -142,7 +144,7 @@ def Subst.openTVar (U : PureTy s) : Subst (s,X) s where
     | .here => U
     | .there x => PureTy.tvar x
   cvar := fun
-    | .there x => .cvar .epsilon x
+    | .there x => .cvar (.M .epsilon) x
 
 /-- Opens a capture variable binder, substituting `C` for the innermost bound. -/
 def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
@@ -152,7 +154,7 @@ def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
     | .there x => PureTy.tvar x
   cvar := fun
     | .here => C
-    | .there x => .cvar .epsilon x
+    | .there x => .cvar (.M .epsilon) x
 
 /-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
 def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
@@ -161,7 +163,7 @@ def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
     | .there (.there x0) => .bound x0
   cvar := fun
     | .there (.here) => C
-    | .there (.there c0) => .cvar .epsilon c0
+    | .there (.there c0) => .cvar (.M .epsilon) c0
   tvar := fun
     | .there (.there X0) => PureTy.tvar X0
 
@@ -287,7 +289,7 @@ theorem CaptureSet.weaken_subst_comm_liftMany {cs : CaptureSet (s1 ++ K)} {σ : 
     exact congrArg (CaptureSet.var m) Var.weaken_subst_comm_liftMany
   | cvar m C =>
     simp only [CaptureSet.subst, CaptureSet.rename]
-    rw [CaptureSet.applyMut_rename]
+    rw [CaptureSet.applyAccess_rename]
     rw [CVar.weaken_subst_comm_liftMany]
 
 theorem SepCtx.weaken_subst_comm_liftMany {Ψ : SepCtx (s1 ++ K)} {σ : Subst s1 s2} :
@@ -406,7 +408,7 @@ theorem CaptureSet.weaken_subst_comm_base {cs : CaptureSet s1} {σ : Subst s1 s2
     exact congrArg (CaptureSet.var m) Var.weaken_subst_comm_base
   | cvar m C =>
     simp only [CaptureSet.subst, CaptureSet.rename]
-    rw [CaptureSet.applyMut_rename]
+    rw [CaptureSet.applyAccess_rename]
     rw [CVar.weaken_subst_comm_base]
 
 theorem SepCtx.weaken_subst_comm_base {Ψ : SepCtx s1} {σ : Subst s1 s2} :
@@ -448,7 +450,12 @@ theorem Subst.comp_lift {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} {k : Kind} :
       simp only [PureTy.weaken_subst_comm_base, Subst.comp]
   · intro C
     cases C with
-    | here => rfl
+    | here =>
+      change
+        (CaptureSet.cvar (.M .epsilon) (BVar.here : BVar (s2,,.cvar) .cvar)).subst
+            (σ2.lift (k := .cvar)) =
+          CaptureSet.cvar (.M .epsilon) (BVar.here : BVar (s3,,.cvar) .cvar)
+      rfl
     | there C0 =>
       simp only [Subst.comp, Subst.lift]
       exact CaptureSet.weaken_subst_comm_base.symm
@@ -481,17 +488,30 @@ theorem CaptureSet.applyRO_subst {cs : CaptureSet s1} {σ : Subst s1 s2} :
   | var _ x =>
     simp only [CaptureSet.applyRO, CaptureSet.subst]
   | cvar _ x =>
-    simp only [
-      CaptureSet.applyRO,
-      CaptureSet.subst,
-      CaptureSet.applyMut_ro,
-      CaptureSet.applyMut_applyRO
-    ]
+    simp only [CaptureSet.applyRO, CaptureSet.subst, CaptureSet.applyAccess_applyRO]
 
 /-- applyMut distributes over substitution. -/
 theorem CaptureSet.applyMut_subst {cs : CaptureSet s1} {σ : Subst s1 s2} {m : Mutability} :
     (cs.applyMut m).subst σ = (cs.subst σ).applyMut m := by
   cases m <;> simp only [CaptureSet.applyMut_epsilon, CaptureSet.applyMut_ro, applyRO_subst]
+
+/-- applyDrop distributes over substitution. -/
+theorem CaptureSet.applyDrop_subst {cs : CaptureSet s1} {σ : Subst s1 s2} :
+    cs.applyDrop.subst σ = (cs.subst σ).applyDrop := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.applyDrop, CaptureSet.subst, ih1, ih2]
+  | var _ x => simp only [CaptureSet.applyDrop, CaptureSet.subst]
+  | cvar _ x =>
+    simp only [CaptureSet.applyDrop, CaptureSet.subst, CaptureSet.applyAccess_drop,
+               CaptureSet.applyAccess_applyDrop]
+
+/-- applyAccess distributes over substitution. -/
+theorem CaptureSet.applyAccess_subst {cs : CaptureSet s1} {σ : Subst s1 s2} {a : Access} :
+    (cs.applyAccess a).subst σ = (cs.subst σ).applyAccess a := by
+  cases a with
+  | M m => simp only [CaptureSet.applyAccess_M, applyMut_subst]
+  | drop => simp only [CaptureSet.applyAccess_drop, applyDrop_subst]
 
 /-- Substitution on capture sets distributes over composition of substitutions. -/
 theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
@@ -504,7 +524,7 @@ theorem CaptureSet.subst_comp {cs : CaptureSet s1} {σ1 : Subst s1 s2} {σ2 : Su
     simp only [CaptureSet.subst]
     exact congrArg (CaptureSet.var m) Var.subst_comp
   | cvar m C =>
-    simp only [CaptureSet.subst, Subst.comp, CaptureSet.applyMut_subst]
+    simp only [CaptureSet.subst, Subst.comp, CaptureSet.applyAccess_subst]
 
 theorem CaptureBound.subst_comp {cb : CaptureBound s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (cb.subst σ1).subst σ2 = cb.subst (σ1.comp σ2) := by
@@ -579,6 +599,8 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
         simp only [SepCtx.subst, ihΨ, CaptureSet.subst_comp]
     simp only [Exp.subst, CaptureSet.subst_comp, hΨ, ih_e]
   | reader x => simp only [Exp.subst, Var.subst_comp]
+  | alloc x => simp only [Exp.subst, Var.subst_comp]
+  | drop x => simp only [Exp.subst, Var.subst_comp]
   | pack cs x =>
     simp only [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp only [Exp.subst, Var.subst_comp]
@@ -630,13 +652,19 @@ theorem CaptureSet.subst_id {cs : CaptureSet s} :
   | var m x =>
     simp only [CaptureSet.subst, Var.subst_id]
   | cvar m C =>
-    cases m <;> simp only [
-      CaptureSet.subst,
-      Subst.id,
-      CaptureSet.applyRO_cvar,
-      CaptureSet.applyMut_epsilon,
-      CaptureSet.applyMut_ro
-    ]
+    cases m with
+    | M m =>
+      cases m <;> simp only [
+        CaptureSet.subst,
+        Subst.id,
+        CaptureSet.applyAccess_M,
+        Access.applyRO,
+        CaptureSet.applyRO_cvar,
+        CaptureSet.applyMut_epsilon,
+        CaptureSet.applyMut_ro
+      ]
+    | drop =>
+      simp only [CaptureSet.subst, Subst.id, CaptureSet.applyAccess_drop, CaptureSet.applyDrop]
 
 /-- Lifting the identity substitution yields the identity. -/
 theorem Subst.lift_id :
@@ -724,6 +752,10 @@ theorem Exp.subst_id {e : Exp s} :
     simp only [Exp.subst, CaptureSet.subst_id, hΨ, ih]
   | reader x =>
     simp only [Exp.subst, Var.subst_id]
+  | alloc x =>
+    simp only [Exp.subst, Var.subst_id]
+  | drop x =>
+    simp only [Exp.subst, Var.subst_id]
   | pack cs x =>
     simp only [Exp.subst, CaptureSet.subst_id, Var.subst_id]
   | app x y =>
@@ -767,7 +799,7 @@ theorem SepCtx.subst_id {K : SepCtx s} :
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
   var := fun x => .bound (f.var x)
   tvar := fun X => PureTy.tvar (f.var X)
-  cvar := fun C => .cvar .epsilon (f.var C)
+  cvar := fun C => .cvar (.M .epsilon) (f.var C)
 
 /-- Lifting a renaming and then converting to a substitution is the same as
   converting to a substitution and then lifting the substitution. -/
@@ -804,14 +836,26 @@ theorem CaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
   | var m x =>
     simp only [CaptureSet.subst, CaptureSet.rename, Var.subst_asSubst]
   | cvar m C =>
-    cases m <;> simp only [
-      CaptureSet.subst,
-      CaptureSet.rename,
-      Rename.asSubst,
-      CaptureSet.applyRO_cvar,
-      CaptureSet.applyMut_epsilon,
-      CaptureSet.applyMut_ro
-    ]
+    cases m with
+    | M m =>
+      cases m <;> simp only [
+        CaptureSet.subst,
+        CaptureSet.rename,
+        Rename.asSubst,
+        CaptureSet.applyAccess_M,
+        Access.applyRO,
+        CaptureSet.applyRO_cvar,
+        CaptureSet.applyMut_epsilon,
+        CaptureSet.applyMut_ro
+      ]
+    | drop =>
+      simp only [
+        CaptureSet.subst,
+        CaptureSet.rename,
+        Rename.asSubst,
+        CaptureSet.applyAccess_drop,
+        CaptureSet.applyDrop
+      ]
 
 theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :
   cb.subst (f.asSubst) = cb.rename f := by
@@ -887,6 +931,10 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
         simp only [SepCtx.subst, SepCtx.rename, ihΨ, CaptureSet.subst_asSubst]
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, hΨ, ih]
   | reader x =>
+    simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | alloc x =>
+    simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | drop x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | pack cs x =>
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
@@ -1031,9 +1079,7 @@ def CaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : Subst s1 s2}
     exact IsClosed.union (ih1 h1) (ih2 h2)
   | cvar m C =>
     simp only [CaptureSet.subst]
-    -- Need to prove (σ.cvar C).applyMut m is closed
-    -- Since σ.cvar C is closed and applyMut preserves closedness
-    exact CaptureSet.applyMut_isClosed (hsubst.cvar_closed C)
+    exact CaptureSet.applyAccess_isClosed (hsubst.cvar_closed C)
   | var m x =>
     cases hc with | var_bound =>
     rename_i bx
@@ -1246,6 +1292,14 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     cases hc with | reader hx =>
     simp only [Exp.subst]
     exact IsClosed.reader (Var.is_closed_subst hx hsubst)
+  | alloc x =>
+    cases hc with | alloc hx =>
+    simp only [Exp.subst]
+    exact IsClosed.alloc (Var.is_closed_subst hx hsubst)
+  | drop x =>
+    cases hc with | drop hx =>
+    simp only [Exp.subst]
+    exact IsClosed.drop (Var.is_closed_subst hx hsubst)
   | pack cs x =>
     cases hc with | pack hcs hx =>
     simp only [Exp.subst]
@@ -1485,6 +1539,14 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | reader hx =>
     exact IsClosed.reader (Var.subst_closed_inv hx)
+  | alloc x =>
+    simp only [Exp.subst] at hclosed
+    cases hclosed with | alloc hx =>
+    exact IsClosed.alloc (Var.subst_closed_inv hx)
+  | drop x =>
+    simp only [Exp.subst] at hclosed
+    cases hclosed with | drop hx =>
+    exact IsClosed.drop (Var.subst_closed_inv hx)
   | pack cs x =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | pack hcs hx =>

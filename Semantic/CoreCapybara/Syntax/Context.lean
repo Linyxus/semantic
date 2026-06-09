@@ -237,9 +237,9 @@ theorem Ctx.lookup_lock_eq_rename (Γ : Ctx (s,,k)) (ℓ : BVar (s,,k) .lock) :
 
 mutual
 /-- Helper: peak up a bound var in context. -/
-def CaptureSet.peaksVarBound : (Γ : Ctx s) → (m : Mutability) → BVar s .var → CaptureSet s
+def CaptureSet.peaksVarBound : (Γ : Ctx s) → (a : Access) → BVar s .var → CaptureSet s
 | .push Γ (.var T), m, .here =>
-    (CaptureSet.peaks Γ T.captureSet).rename Rename.succ |> .applyMut m
+    (CaptureSet.peaks Γ T.captureSet).rename Rename.succ |> .applyAccess m
 | .push Γ _, m, .there x =>
     (peaksVarBound Γ m x).rename Rename.succ
 termination_by Γ _ x => (sizeOf Γ, sizeOf x + 1)
@@ -263,12 +263,12 @@ theorem CaptureSet.peaks_union (Γ : Ctx s) (cs1 cs2 : CaptureSet s) :
 
 mutual
 /-- peaksVarBound always returns a PeaksOnly capture set. -/
-theorem CaptureSet.peaksVarBound_peaksOnly (Γ : Ctx s) (m : Mutability) (x : BVar s .var) :
+theorem CaptureSet.peaksVarBound_peaksOnly (Γ : Ctx s) (m : Access) (x : BVar s .var) :
     (peaksVarBound Γ m x).PeaksOnly := by
   match Γ, x with
   | .push Γ (.var T), .here =>
     rw [CaptureSet.peaksVarBound]
-    exact (CaptureSet.peaks_peaksOnly Γ T.captureSet).rename Rename.succ |>.applyMut m
+    exact (CaptureSet.peaks_peaksOnly Γ T.captureSet).rename Rename.succ |>.applyAccess m
   | .push Γ _, .there x =>
     rw [CaptureSet.peaksVarBound]
     exact (CaptureSet.peaksVarBound_peaksOnly Γ m x).rename Rename.succ
@@ -296,8 +296,8 @@ def CaptureSet.peakset (Γ : Ctx s) (cs : CaptureSet s) : PeakSet s :=
 /-- A peak set is droppable in `Γ` when every capture variable occurring in it
 is bound with `can_drop` authority. -/
 def PeakSet.droppable (Γ : Ctx s) (P : PeakSet s) : Prop :=
-  ∀ (m : Mutability) (c : BVar s .cvar),
-    (CaptureSet.cvar m c) ⊆ P.cs → Γ.lookup_authority c = .can_drop
+  ∀ (a : Access) (c : BVar s .cvar),
+    (CaptureSet.cvar a c) ⊆ P.cs → Γ.lookup_authority c = .can_drop
 
 /-- A capture set is droppable in `Γ` when all of its peaks are droppable. -/
 def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
@@ -387,7 +387,7 @@ theorem CaptureSet.peaks_applyRO_comm (Γ : Ctx s) (C : CaptureSet s) :
     rfl
   | .push Γ' (.var T), .var m (.bound .here) =>
     simp only [CaptureSet.applyRO, CaptureSet.peaks, CaptureSet.peaksVarBound,
-      CaptureSet.applyMut_ro, CaptureSet.applyMut_applyRO]
+      CaptureSet.applyAccess_applyRO]
   | .push Γ' _, .var m (.bound (.there x')) =>
     simp only [CaptureSet.applyRO, CaptureSet.peaks, CaptureSet.peaksVarBound]
     have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
@@ -403,18 +403,46 @@ theorem CaptureSet.peaks_applyMut_comm {Γ : Ctx s} {C : CaptureSet s} {m : Muta
     simp only [CaptureSet.applyMut_ro]
     exact peaks_applyRO_comm Γ C
 
+theorem CaptureSet.peaks_applyDrop_comm (Γ : Ctx s) (C : CaptureSet s) :
+  C.applyDrop.peaks Γ = (C.peaks Γ).applyDrop := by
+  match Γ, C with
+  | _, .empty => simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+  | Γ, .union C1 C2 =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+    rw [peaks_applyDrop_comm Γ C1, peaks_applyDrop_comm Γ C2]
+    rfl
+  | _, .cvar _ _ => simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+  | _, .var _ (.free _) =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks]
+    rfl
+  | .push Γ' (.var T), .var m (.bound .here) =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks, CaptureSet.peaksVarBound,
+      CaptureSet.applyAccess_drop, CaptureSet.applyAccess_applyDrop]
+  | .push Γ' _, .var m (.bound (.there x')) =>
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks, CaptureSet.peaksVarBound]
+    have ih := peaks_applyDrop_comm Γ' (.var m (.bound x'))
+    simp only [CaptureSet.applyDrop, CaptureSet.peaks] at ih
+    rw [ih, CaptureSet.applyDrop_rename]
+termination_by (sizeOf Γ, sizeOf C)
+
+theorem CaptureSet.peaks_applyAccess_comm {Γ : Ctx s} {C : CaptureSet s} {a : Access} :
+  (C.applyAccess a).peaks Γ = (C.peaks Γ).applyAccess a := by
+  cases a with
+  | M m => simp only [CaptureSet.applyAccess_M]; exact peaks_applyMut_comm
+  | drop => simp only [CaptureSet.applyAccess_drop]; exact peaks_applyDrop_comm Γ C
+
 theorem CaptureSet.var_peaks {Γ : Ctx s}
   (hb : Γ.LookupVar x T) :
-  (CaptureSet.peaks Γ (CaptureSet.var m (.bound x))) = (T.captureSet.applyMut m).peaks Γ := by
+  (CaptureSet.peaks Γ (CaptureSet.var m (.bound x))) = (T.captureSet.applyAccess m).peaks Γ := by
   induction hb with
   | here =>
     simp only [CaptureSet.peaks, CaptureSet.peaksVarBound, Ty.captureSet_rename,
-               peaks_rename_succ_eq, peaks_applyMut_comm]
+               peaks_rename_succ_eq, peaks_applyAccess_comm]
   | there hb' ih =>
     conv_lhs => unfold peaks peaksVarBound
     simp only [Ty.captureSet_rename]
     rw [show peaks _ (CaptureSet.var m (.bound _)) = peaksVarBound _ m _ from by
           unfold peaks; rfl] at ih
-    rw [ih, ← CaptureSet.applyMut_rename, ← peaks_rename_succ_eq]
+    rw [ih, ← CaptureSet.applyAccess_rename, ← peaks_rename_succ_eq]
 
 end CoreCapybara
