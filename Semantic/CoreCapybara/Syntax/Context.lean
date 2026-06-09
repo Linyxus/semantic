@@ -2,10 +2,14 @@ import Semantic.CoreCapybara.Syntax.Ty
 
 namespace CoreCapybara
 
+inductive Authority : Type where
+| can_drop : Authority
+| access_only : Authority
+
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : PureTy s -> Binding s .tvar
-| cvar : CaptureBound s -> Binding s .cvar
+| cvar : Authority -> CaptureBound s -> Binding s .cvar
 | lock : SepCtx s -> Binding s .lock
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
