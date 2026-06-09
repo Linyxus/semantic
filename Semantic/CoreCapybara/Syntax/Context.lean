@@ -314,6 +314,11 @@ def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
 def CaptureSet.AccessOnly (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   ∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ (C.peakset Γ).cs → False
 
+/-- A capture bound is valid in `Γ` when concrete bounds are access-only. -/
+def CaptureBound.IsValid (Γ : Ctx s) : CaptureBound s -> Prop
+| .unbound => True
+| .bound C => C.AccessOnly Γ
+
 theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.rename Rename.succ).peaks (Γ.push b) = (C.peaks Γ).rename Rename.succ := by
   induction C generalizing k with
