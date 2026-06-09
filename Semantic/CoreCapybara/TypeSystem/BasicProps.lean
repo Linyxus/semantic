@@ -39,10 +39,11 @@ theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
       have eq := ih h2'
       rw [eq]
 
-theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar} {cb1 cb2 : CaptureBound s} :
-    Γ.LookupCVar c cb1 -> Γ.LookupCVar c cb2 -> cb1 = cb2 := by
+theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar}
+    {a1 a2 : Authority} {cb1 cb2 : CaptureBound s} :
+    Γ.LookupCVar c a1 cb1 -> Γ.LookupCVar c a2 cb2 -> cb1 = cb2 := by
   intro h1 h2
-  induction h1
+  induction h1 generalizing a2
   case here =>
     cases h2
     case here => rfl
@@ -262,9 +263,9 @@ theorem HasType.typed_var_closed
 
 /-- The capture set `{m x}` is closed when `x` is a typed variable. -/
 theorem HasType.typed_var_capture_closed
-  {x : Var Kind.var s} {m : Mutability}
+  {x : Var Kind.var s} {a : Access}
   (ht : C # Γ ⊢ Exp.var x : T) :
-  (CaptureSet.var m x).IsClosed := by
+  (CaptureSet.var a x).IsClosed := by
   have hx := typed_var_closed ht
   cases x with
   | bound => exact CaptureSet.IsClosed.var_bound
@@ -273,30 +274,39 @@ theorem HasType.typed_var_capture_closed
 theorem HasType.use_set_is_closed
   (ht : C # Γ ⊢ e : T) :
   C.IsClosed := by
-  induction ht <;> try (solve | constructor | grind only [CaptureSet.IsClosed])
-  case app =>
-    rename_i ht_x _ _ _
-    exact HasType.typed_var_capture_closed ht_x
-  case tapp =>
-    rename_i _ ht_x _
-    exact HasType.typed_var_capture_closed ht_x
-  case capp _ ht_x _ =>
-    exact HasType.typed_var_capture_closed ht_x
-  case unwrap ht_x _ _ =>
-    exact HasType.typed_var_capture_closed ht_x
-  case read =>
-    rename_i ht_x _
-    exact HasType.typed_var_capture_closed ht_x
-  case write =>
-    rename_i ht_x _ _ _
-    exact HasType.typed_var_capture_closed ht_x
-  case invoke =>
-    rename_i ht_x _ _ _
-    exact HasType.typed_var_capture_closed ht_x
-  case cond ih1 ih2 ih3 =>
+  induction ht with
+  | var => exact CaptureSet.IsClosed.empty
+  | reader => exact CaptureSet.IsClosed.empty
+  | abs => exact CaptureSet.IsClosed.empty
+  | tabs => exact CaptureSet.IsClosed.empty
+  | cabs => exact CaptureSet.IsClosed.empty
+  | wrap => exact CaptureSet.IsClosed.empty
+  | pack hC _ _ _ => exact CaptureSet.applyAccess_isClosed hC
+  | app ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
+  | tapp _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
+  | capp _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
+  | unwrap ht_x _ _ => exact HasType.typed_var_capture_closed ht_x
+  | letin _ _ _ ih1 ih2 =>
+    exact CaptureSet.IsClosed.union ih1 (CaptureSet.rename_closed_inv ih2)
+  | unpack _ _ _ ih1 ih2 =>
+    cases ih2 with
+    | union hleft _ =>
+      cases hleft with
+      | union hC2 _ =>
+        exact CaptureSet.IsClosed.union ih1
+          (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv hC2))
+  | unit => exact CaptureSet.IsClosed.empty
+  | btrue => exact CaptureSet.IsClosed.empty
+  | bfalse => exact CaptureSet.IsClosed.empty
+  | alloc => exact CaptureSet.IsClosed.empty
+  | drop _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
+  | read ht_x _ => exact HasType.typed_var_capture_closed ht_x
+  | write ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
+  | cond _ _ _ ih1 ih2 ih3 =>
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
-  case par ih1 ih2 =>
-    exact CaptureSet.IsClosed.union ih1 ih2
+  | par _ _ _ ih1 ih2 => exact CaptureSet.IsClosed.union ih1 ih2
+  | invoke ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
+  | subtyp _ _ _ hC _ _ => exact hC
 
 theorem HasType.exp_is_closed
   (ht : C # Γ ⊢ e : T) :
@@ -396,6 +406,14 @@ theorem HasType.exp_is_closed
     cases ih_x with
     | var hx_closed =>
       exact Exp.IsClosed.unwrap hx_closed
+  case alloc ih_x =>
+    cases ih_x with
+    | var hx_closed =>
+      exact Exp.IsClosed.alloc hx_closed
+  case drop ih_x =>
+    cases ih_x with
+    | var hx_closed =>
+      exact Exp.IsClosed.drop hx_closed
   case invoke =>
     rename_i ih_x ih_y
     constructor
@@ -474,8 +492,8 @@ theorem HasType.type_is_closed
     -- hT : T.IsClosed
     -- Need: (T.subst (Subst.openTVar S)).IsClosed
     exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
-  case capp hD_closed _ ih =>
-    rename_i x D T
+  case capp =>
+    rename_i x D T hD_closed _ _ ih
     -- ih : (.typ (.cpoly m (.var .epsilon x) T)).IsClosed
     -- hD_closed : D.IsClosed
     -- Extract: T.IsClosed
@@ -492,6 +510,8 @@ theorem HasType.type_is_closed
     -- ih2 : ((U.rename Rename.succ).rename Rename.succ).IsClosed
     -- Need: U.IsClosed
     exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
+  case alloc =>
+    exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar)
 -- More context lookup properties
 
 theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
