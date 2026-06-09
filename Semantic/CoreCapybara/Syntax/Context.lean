@@ -98,6 +98,13 @@ def Ctx.lookup_authority : Ctx s -> BVar s .cvar -> Authority
 | .push _ (.cvar a _), .here => a
 | .push Γ _, .there c => Γ.lookup_authority c
 
+/-- Two capture variables are distinct droppable variables in `Γ` when both are
+bound with `can_drop` authority and they are not the same de Bruijn variable. -/
+def Ctx.TwoDistinctDroppable (Γ : Ctx s) (c1 c2 : BVar s .cvar) : Prop :=
+  Γ.lookup_authority c1 = .can_drop ∧
+  Γ.lookup_authority c2 = .can_drop ∧
+  c1 ≠ c2
+
 def Ctx.lookup_lock : Ctx s -> BVar s .lock -> SepCtx s
 | .push _ (.lock Ψ), .here => Ψ.rename Rename.succ
 | .push Γ _, .there ℓ => (Γ.lookup_lock ℓ).rename Rename.succ

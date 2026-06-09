@@ -105,6 +105,10 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
   --------------------
   SepCheck Γ C1 C2
+| sep_droppable {c1 c2 : BVar s .cvar} :
+  Γ.TwoDistinctDroppable c1 c2 ->
+  --------------------
+  SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
 inductive Satisfy : Ctx s -> SepCtx s -> Prop where
 | satisfy {Ψ : SepCtx s} :
