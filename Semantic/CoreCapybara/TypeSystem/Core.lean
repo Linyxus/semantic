@@ -233,6 +233,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
+  C.AccessOnly Γ ->
   C.droppable Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
