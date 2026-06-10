@@ -213,6 +213,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | seq_sc :
   Subcapt Γ C1 C1' ->
+  CaptureSet.EquivP Γ C1 C1' ->
   SeqComp Γ C1' C2 ->
   --------------------
   SeqComp Γ C1 C2

@@ -3473,19 +3473,30 @@ theorem captureSet_seqcomp_denot
     (C1.denot env store).SeqComp (C2.denot env store) := by
   revert hdsep
   induction hseq with
-  | seq_sc _ _ ih =>
-    -- GAP (provably unfixable as stated): `seq_sc` shrinks the left budget
-    -- `C1 ⊑ C1'` while the sequencing evidence lives at `C1'`. The
-    -- environment-separation invariant available here is relativized to the
-    -- conclusion's `C1 ∪ C2` and does not cover droppable pairs peaked only
-    -- in `C1'` — and even with the `.access_only`-restricted `sc_cvar`,
-    -- `C1` can be an `.access_only` capture variable whose *bound* mentions
-    -- a droppable one, hiding the consumed locations entirely (`IsValid`
-    -- bounds don't help — validity is mode-based). The bridge statement is
-    -- FALSE: see `CoreCapybara.Gaps.seqcomp_denot_false`, and the
-    -- `CoreCapybara.Gaps` module docstring for the exact gap and the
-    -- device-level solution it calls for (bound-closed "deep" peaks).
-    sorry
+  | seq_sc hsub hequiv _ ih =>
+    -- `seq_sc`'s `EquivP` premise keeps the evidence budget's peaks covered
+    -- by the conclusion's, so the environment-separation invariant
+    -- transports; the consumed location flows into the evidence budget's
+    -- denotation by subcapture monotonicity.
+    rename_i E1 D1' E2 _
+    intro hdsep mu l h1 h2
+    have hdsep' : env.DropSepIn (D1' ∪ E2) := by
+      intro c1 c2 a1 a2 hne ha1 ha2 hp1 hp2
+      have transport : ∀ (a : Access) (c : BVar _ .cvar),
+          (CaptureSet.cvar a c) ⊆ compute_peaks env (D1' ∪ E2) →
+          ∃ a', (CaptureSet.cvar a' c) ⊆ compute_peaks env (E1 ∪ E2) := by
+        intro a c hp
+        rcases cvar_subset_cp_union_inv hp with h | h
+        · rw [← compute_peaks_correct hts] at h
+          obtain ⟨a', h'⟩ := hequiv.2.cvar_subset h
+          rw [compute_peaks_correct hts] at h'
+          exact ⟨a', cvar_subset_cp_union_l h'⟩
+        · exact ⟨a, cvar_subset_cp_union_r h⟩
+      obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
+      obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
+      exact hdsep c1 c2 a1' a2' hne ha1 ha2 hp1' hp2'
+    exact ih hdsep' mu l
+      (hasmem_drop_of_subset (fundamental_subcapt hsub env store hts) h1) h2
   | seq_union _ _ ih1 ih2 =>
     intro hdsep mu l h1 h2
     cases h1 with

@@ -788,6 +788,43 @@ theorem CaptureSet.CoveredBy.cvar_subset {A B : CaptureSet s}
     obtain ⟨a', h'⟩ := ih h
     exact ⟨a', .union_right_right h'⟩
 
+/-- `CoveredBy` transports `.drop`-mode capture-variable atoms exactly:
+mutability application leaves `.drop` untouched (`Access.applyRO .drop =
+.drop`), so a consuming atom of the covered set is a consuming atom of the
+covering set. -/
+theorem CaptureSet.CoveredBy.cvar_drop_subset {A B : CaptureSet s}
+    {c : BVar s .cvar}
+    (hcov : A.CoveredBy B)
+    (h : (CaptureSet.cvar .drop c) ⊆ A) :
+    (CaptureSet.cvar .drop c) ⊆ B := by
+  induction hcov with
+  | refl hm =>
+    rename_i C m1 m2
+    have h0 : (CaptureSet.cvar .drop c) ⊆ C := by
+      cases m1 with
+      | epsilon => simpa only [CaptureSet.applyMut_epsilon] using h
+      | ro =>
+        simp only [CaptureSet.applyMut_ro] at h
+        obtain ⟨a0, heq, h0⟩ := CaptureSet.cvar_subset_applyRO_inv h
+        cases a0 with
+        | M m => cases heq
+        | drop => exact h0
+    cases m2 with
+    | epsilon => simpa only [CaptureSet.applyMut_epsilon] using h0
+    | ro =>
+      simp only [CaptureSet.applyMut_ro]
+      have := CaptureSet.cvar_subset_applyRO_fwd (a := .drop) h0
+      simpa only [Access.applyRO] using this
+  | empty => exact absurd h CaptureSet.cvar_not_subset_empty
+  | union_left _ _ ih1 ih2 =>
+    cases CaptureSet.cvar_subset_union_inv h with
+    | inl h' => exact ih1 h'
+    | inr h' => exact ih2 h'
+  | union_right_left _ ih =>
+    exact .union_right_left (ih h)
+  | union_right_right _ ih =>
+    exact .union_right_right (ih h)
+
 /-! ## Droppable peak monotonicity along `Subcapt`
 
 A droppable capture variable's peak occurrence is preserved when a capture set
@@ -885,18 +922,10 @@ theorem SeqComp.cross_droppable {Γ : Ctx s} {C1 C2 : CaptureSet s}
     (hpb : (CaptureSet.cvar a2 c2) ⊆ C2.peaks Γ) :
     Γ.TwoDistinctDroppable c1 c2 := by
   induction hseq generalizing c1 with
-  | seq_sc hsub _ ih =>
-    -- GAP (provably unfixable as stated): `seq_sc` lets the left budget
-    -- shrink along `Subcapt`, and even the `.access_only`-restricted
-    -- `sc_cvar` can introduce an `.access_only` capture variable whose
-    -- *bound* mentions a droppable one — the `.drop`-mode peak `c1` of the
-    -- shrunken budget then need not be droppable at all. (`cabs`'s
-    -- `IsValid` bound annotations don't help: validity is mode-based and
-    -- does not constrain bound-peak authority.) The statement is FALSE: see
-    -- `CoreCapybara.Gaps.seqcomp_cross_droppable_false`, and the module
-    -- docstring of `CoreCapybara.Gaps` for the exact gap and the
-    -- device-level solution it calls for (bound-closed "deep" peaks).
-    sorry
+  | seq_sc hsub hequiv _ ih =>
+    -- `seq_sc`'s `EquivP` premise transports the `.drop`-mode peak (exactly,
+    -- since mutability application fixes `.drop`) into the evidence budget.
+    exact ih (hequiv.1.cvar_drop_subset hpa) hpb
   | seq_union _ _ ih1 ih2 =>
     cases CaptureSet.cvar_subset_peaks_union_inv hpa with
     | inl h => exact ih1 h hpb
