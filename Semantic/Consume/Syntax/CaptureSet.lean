@@ -470,7 +470,7 @@ theorem CaptureSet.IsEmpty.rename {cs : CaptureSet s1} (h : cs.IsEmpty) (ρ : Re
   | empty => exact IsEmpty.empty
   | union _ _ ih1 ih2 => exact IsEmpty.union ih1 ih2
 
-/-- The subset relation on capture sets. -/
+/-- The mode-aware subset relation on capture sets. -/
 inductive CaptureSet.CoveredBy : CaptureSet s -> CaptureSet s -> Prop where
 | refl {C : CaptureSet s} {m1 m2 : Mutability} :
   (hm : m1 ≤ m2) ->

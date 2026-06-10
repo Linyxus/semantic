@@ -250,7 +250,6 @@ def CaptureSet.peaks : Ctx s -> CaptureSet s -> CaptureSet s
 termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 end
 
-
 @[simp]
 theorem CaptureSet.peaks_union (Γ : Ctx s) (cs1 cs2 : CaptureSet s) :
     CaptureSet.peaks Γ (cs1 ∪ cs2) = CaptureSet.peaks Γ cs1 ∪ CaptureSet.peaks Γ cs2 := by
