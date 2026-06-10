@@ -7,84 +7,69 @@ Every remaining `sorry` of the development is not merely unproven but
 contexts, environments, and memories — refuting the exact statement each
 `sorry` stands for.
 
-## The closed gaps (for the record)
-
-* **Subcapture laundering** is gone: `sep_sc`/`seq_sc` carry a
-  `CaptureSet.EquivP` premise (peak-preserving budget shrinking), so
-  separation/sequencing evidence cannot be moved to a budget whose peaks hide
-  its droppable anchors. `fundamental_sepcheck`, `captureSet_seqcomp_denot`,
-  and `SeqComp.cross_droppable` are fully proven, and
-  `TypeEnv.DropSepIn.of_subcapt` holds thanks to the `.access_only`
-  restriction of `sc_cvar`.
-
-* **Closure creation** is gone: the closure denotations (`arrow`, `poly`,
-  `cpoly`, `modal` in `Ty.val_denot`) carry an `env.DropSepIn cs` premise on
-  their body conditions, where `cs` is the capture annotation. Creation sites
-  (`abs`/`tabs`/`cabs`/`wrap`) discharge the body's separation invariant from
-  the premise (the body's budget is the weakened annotation), and elimination
-  sites (`app`/`tapp`/`capp`/`unwrap`) supply it from their own budget — the
-  elimination rules' use-set *is* the annotation `{ε·x}`. The previously
-  `sorry`ed (and false) `TypeEnv.DropSepIn.of_envtyping` is deleted;
-  `envtyping_dropsep_false` below records why no `EnvTyping`-only discharge
-  could ever have worked. The premise transports along `Rebind` (proven) and
-  along `Retype` via the droppable-peak correspondence fields
-  (`var_peaks`/`dpeak_cvar_*`, yielding `Retype.dsep`).
-
 ## The remaining gaps
-
-All remaining gaps are *transport* failures of the closure premise — places
-where a `Retype`-style conversion must relate droppable peaks across a
-substitution or a peak-set change and the relation is genuinely false:
 
 1. **Capture instantiation erases peak identity** (`Retype.open_carg`, used
    at `capp` and `unpack`): the bound capture variable `.here` is one atomic
    peak with one stored authority and capability, while its image `C` may
-   have zero droppable peaks (a ground witness — refuting the forward
-   transport, `open_carg_dpeak_fwd_false`) or several (a union argument —
-   refuting uniqueness, `open_carg_dpeak_unique_false`).
+   have zero droppable peaks (a ground witness — `open_carg_dpeak_fwd_false`)
+   or several (a union argument — `open_carg_dpeak_unique_false`).
 
 2. **Subsumption peak slack** (`sem_typ_app`'s `hps`, `sem_subtyp_arrow`'s
    identity-`Retype`): converting between the peaks of a variable's
    *declared* type and the peaks of the (super)type the elimination rule
-   demands requires a peak-membership *equivalence*, but `Subcapt` only
-   yields one-directional droppable-peak coverage
-   (`subcapt_peak_slack_false`), and a well-typed environment can bind a
-   variable whose stored peaks are strictly below its semantic type's peaks
-   (`app_peak_slack_false`). Moreover the natural *antitone* repair — let
-   stored peak sets droppably under-approximate the declared type's peaks —
-   is also refuted (`fundamental_sepcheck_underapprox_false`): the
-   `sc_var`/`EquivP` re-budgeting of `sep_sc`/`seq_sc` lets derivations
-   spend a variable's full declared-type peaks, so stored peaks are the
-   budget currency and cannot be under-reported. The slack is therefore not
-   closable on the environment side at all; the demands themselves must
-   become peak-faithful (see below).
+   demands requires a peak-membership *equivalence*, but a well-typed
+   environment can bind a variable whose stored peaks are strictly below its
+   semantic type's peaks (`app_peak_slack_false`), and the antitone repair —
+   stored peaks under-approximating declared peaks — is also refuted
+   (`fundamental_sepcheck_underapprox_false`).
 
-3. **Lock-stored separation facts** (`fundamental_sepcheck_global`,
-   pre-existing): lock facts are consumed at arbitrary later program points
-   with no budget in scope, and `EnvTyping` admits aliased droppable capture
-   variables (`sepcheck_global_droppable_false`).
+3. **Lock-stored separation facts** (`fundamental_sepcheck_global`): lock
+   facts are consumed at arbitrary later program points with no budget in
+   scope, and `EnvTyping` admits aliased droppable capture variables
+   (`sepcheck_global_droppable_false`).
 
-What a solution must provide, WITHOUT restricting the type system: peak
-information that survives instantiation and subsumption. The refutations
-bracket the design space from both sides — environments can neither
-over-report (the transports break, `app_peak_slack_false`) nor under-report
-(the budgets break, `fundamental_sepcheck_underapprox_false`) a variable's
-droppable peaks relative to what derivations can spend. The remaining
-candidate is to make the *spending* peak-faithful: treat variables (and
-instantiated capture binders) as atomic peaks of their budgets — `peaks`/
-`compute_peaks` stop resolving through bindings, `{ε·x}` owes `x`-facts
-rather than declared-type facts, the `EquivP` laundering of `sc_var`
-disappears, and `openVar`/`openCVar` become peak-faithful by construction
-(the substituted atom maps to the argument's atom). This is a redesign of
-the peak system (`CaptureSet.peaks`, `compute_peaks`, `DropSepIn`'s
-selection, and the `sep_sc`/`seq_sc` transports) — "shallow peaks with
-atomic variables" rather than the current "resolve-through-variables". The
-lock gap additionally needs a device carrying cross-variable separation
-facts to budget-less program points. Re-phrasings of the *invariant* alone
-do not help: the existential dead-set variant ("everything is separate
-except an excused, already-dropped set the budget avoids") collapses back to
-`DropSepIn` exactly (`dropSepExcept_collapse` at the end of this file).
--/
+## Why the closure premise is rigid (the three-way pincer)
+
+The closure denotations carry `env.DropSepIn cs` on their body conditions.
+Could a different premise `P env m cs` close the transport gaps? No premise
+exists, because three machine-checked constraints pin `P` from three sides:
+
+* **Supply** (`dropSepTouch_unsuppliable`): at `app`, the caller owns only
+  its own budget invariant — `DropSepIn` at the annotation's *peaks* (the
+  variable `f`'s stored peak set is the annotation's peak set). In a
+  pack/unpack-aliased environment (`env2`), `DropSepIn` of a single-peak
+  budget holds vacuously while any *value-level* premise (droppable
+  capabilities touching the budget's denotation must be disjoint) is false:
+  the dead alias touches without peaking. So `P` must not demand more than
+  the budget's peak pairs.
+
+* **Discharge** (`dropSepTouch_insufficient`): at `abs`, `P cs` must imply
+  the body judgment's `DropSepIn (cs.rename succ)`, whose droppable pairs
+  are the *peaks* of the annotation — routed through variables' *stored*
+  (declared-type) peak sets. A variable may under-fill its declared capture
+  annotation (a closure value capturing nothing, declared at a two-peak
+  capture set — `env5`), so its value's capabilities touch no droppable name
+  while its stored peaks demand a pair. So `P` must demand at least the
+  budget's peak pairs.
+
+* **Transport**: hence `P` is exactly peak-pair separation (`DropSepIn`,
+  up to equivalence), and its transport along `openVar` needs the
+  peak-membership equivalence between a variable's stored peaks and its
+  occurrence's peaks — which subsumption breaks (`app_peak_slack_false`).
+
+The same pincer disposes of the invariant *re-phrasings*: the existential
+dead-set variant ("everything is separate except an excused, already-dropped
+set the budget avoids") is logically equivalent to `DropSepIn`
+(`dropSepExcept_collapse`), so it changes nothing. A *threaded* (global,
+non-existential) dead set would have to mark the pack/unpack alias pair
+asymmetrically — per-name data that the extension-only environment
+architecture cannot update, and per-location data cannot express (`env2`'s
+two names share their capabilities).
+
+Closing these gaps therefore requires a *static* change — making demands
+peak-faithful across subsumption and instantiation — which is a type-system
+design decision, not a proof device. -/
 
 namespace CoreCapybara.Gaps
 
@@ -159,21 +144,6 @@ theorem env2_not_dropsep : ¬ env2.DropSepIn Cb2 := by
       (by intro heq; cases heq) rfl rfl
       (.union_right_left .refl) (.union_right_right .refl))
 
-/-! ## Why the closure premise exists: `EnvTyping` alone cannot supply the
-separation invariant
-
-This refutes any `EnvTyping`-only discharge of the closure body's
-separation invariant (the deleted `TypeEnv.DropSepIn.of_envtyping`):
-well-typed environments may alias droppable capture variables, so the
-invariant must instead be *carried* — which is exactly what the `DropSepIn`
-premise of the closure denotations does. -/
-
-theorem envtyping_dropsep_false :
-    ¬ (∀ {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory} (C : CaptureSet s),
-        EnvTyping Γ env m → env.DropSepIn C) := by
-  intro h
-  exact env2_not_dropsep (h Cb2 envtyping2)
-
 /-! ## Gap 1: capture instantiation erases peak identity
 
 These refute the `.here` branches of `Retype.open_carg`'s droppable-peak
@@ -219,18 +189,6 @@ These refute the peak-membership equivalences needed by `sem_typ_app` (the
 `hps` hypothesis of `Retype.open_arg`) and by `sem_subtyp_arrow` (the
 `.here` branch of `var_peaks` for the identity `Retype` between the sub- and
 supertype's argument peak sets). -/
-
-/-- `Subcapt` does not preserve peak membership as an equivalence — it only
-gives one-directional coverage. A budget may grow a fresh droppable peak. -/
-theorem subcapt_peak_slack_false :
-    ¬ (∀ {s : Sig} (Γ : Ctx s) (env : TypeEnv s) (C1 C2 : CaptureSet s),
-        Subcapt Γ C1 C2 →
-        ∀ d, env.HasPeak C1 d ↔ env.HasPeak C2 d) := by
-  intro h
-  have hiff := h Γ2 env2 (.cvar (.M .epsilon) .here) Cb2
-    (.sc_elem (.union_right_right .refl)) (.there .here)
-  obtain ⟨a, hsub⟩ := hiff.mpr ⟨.M .epsilon, .union_right_left .refl⟩
-  cases (CaptureSet.cvar_subset_cvar_inv hsub).2
 
 /-- The aliased two-droppable context extended with a value binding at a
 *ground* capability type: the stored peak set of the variable is empty. -/
@@ -304,12 +262,7 @@ peaks, the budget `{ε·x} ∪ {ε·c1}` has no droppable peak pair — yet
 `sep_droppable c2 c1`, and in an aliased environment its interpretation is
 false. (Under the stored-peak *equality* of `EnvTyping`, the same world makes
 the `DropSepIn` premise unsatisfiable and the instance vacuous — the equality
-is load-bearing.) Consequently the subsumption slack cannot be closed on the
-environment side at all: any sound device must instead make the *demands*
-peak-faithful — e.g. treat variables as atomic peaks of their budgets
-(so `{ε·x}` owes `x`-facts, not declared-type facts, and `openVar` becomes
-peak-faithful by construction), which is a redesign of `peaks`/
-`compute_peaks`/`DropSepIn` and the `sep_sc`/`seq_sc` transports. -/
+is load-bearing.) -/
 theorem fundamental_sepcheck_underapprox_false :
     ¬ (∀ {s : Sig} (Γ : Ctx s) (T : Ty .capt s) (env : TypeEnv s) (m : Memory)
         (n : Nat) (ps : PeakSet s) (C1 C2 : CaptureSet (s,x)),
@@ -415,11 +368,7 @@ the budget` ("everything I am not using may as well be dead"), which is
 exactly the reading budget-relativization already implements. The collapse is
 machine-checked below (`dropSepExcept_collapse`); consequently every
 transport obligation of the closure premise, and every counterexample above,
-applies to the dead-set phrasing verbatim. The dead set is stated as an atom
-predicate `BVar s .cvar → Prop`; a `CaptureSet`-valued dead set factors
-through it via `TypeEnv.HasPeak env dead`, and conversely every predicate
-over the (finitely many) capture variables of a signature is realized by a
-finite union of cvar atoms, which `compute_peaks` fixes. -/
+applies to the dead-set phrasing verbatim. -/
 
 /-- Global environment separation with an excused ("dead") set of capture
 variables: every pair of distinct droppable capture variables *not* declared
@@ -446,5 +395,134 @@ theorem dropSepExcept_collapse (env : TypeEnv s) (C : CaptureSet s) :
     obtain ⟨a1, hp1⟩ : env.HasPeak C c1 := Classical.byContradiction hd1
     obtain ⟨a2, hp2⟩ : env.HasPeak C c2 := Classical.byContradiction hd2
     exact hdsi c1 c2 a1 a2 hne h1 h2 hp1 hp2
+
+/-! ## The value-level ("spendable denotation") closure premise is refuted
+from both sides
+
+The remaining repair direction for the closure premise was to make it
+*value-level*: instead of selecting droppable capture variables by the
+budget's **peaks** (which subsumption and instantiation break), select them
+by **capability contact** — any droppable name whose capabilities touch the
+budget's denotation. Value-level statements transport perfectly (denotations
+are preserved by `Retype` substitutions and shrink along `Subcapt`), so the
+three transport gaps would vanish. The two theorems below show the premise
+is nevertheless unusable: it can neither be *supplied* at the elimination
+sites nor *consumed* at the creation sites. -/
+
+/-- The value-level closure premise: any two distinct droppable capture
+variables whose capabilities both touch the budget's denotation have disjoint
+capabilities. -/
+def DropSepTouch (env : TypeEnv s) (m : Memory) (C : CaptureSet s) : Prop :=
+  ∀ (c1 c2 : BVar s .cvar),
+    c1 ≠ c2 →
+    env.lookup_cvar_auth c1 = .can_drop →
+    env.lookup_cvar_auth c2 = .can_drop →
+    (∃ mu l, ((env.lookup_cvar c1).2).hasmem mu l ∧ (C.denot env m).hasmem mu l) →
+    (∃ mu l, ((env.lookup_cvar c2).2).hasmem mu l ∧ (C.denot env m).hasmem mu l) →
+    CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
+
+/-- **Supply fails.** At `app`, all the caller owns is `DropSepIn` of its own
+budget, whose peaks are the annotation's peaks. In the aliased world `env2`,
+`DropSepIn {ε·cB}` holds vacuously (a single peak has no pairs), but
+`DropSepTouch {ε·cB}` demands disjointness of the alias pair — both `cA` and
+`cB` *touch* the budget's denotation `cap0` — which is false. A value-level
+closure premise is strictly stronger than what elimination sites can pay. -/
+theorem dropSepTouch_unsuppliable :
+    ¬ (∀ {s : Sig} (Γ : Ctx s) (env : TypeEnv s) (m : Memory) (C : CaptureSet s),
+        EnvTyping Γ env m →
+        env.DropSepIn C →
+        DropSepTouch env m C) := by
+  intro h
+  have hdsi : env2.DropSepIn (.cvar (.M .epsilon) .here) := by
+    intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    exact absurd
+      (((CaptureSet.cvar_subset_cvar_inv hp1).2).trans
+        ((CaptureSet.cvar_subset_cvar_inv hp2).2).symm)
+      hne
+  have ht := h Γ2 env2 mem1 (.cvar (.M .epsilon) .here) envtyping2 hdsi
+  exact cap0_not_disjoint_self
+    (ht (.there .here) .here (by intro heq; cases heq) rfl rfl
+      ⟨.access .epsilon, 0, .here, .here⟩
+      ⟨.access .epsilon, 0, .here, .here⟩)
+
+/-- The closure value for the under-fill world: a lambda capturing nothing. -/
+def absVal : HeapVal where
+  unwrap := .abs CaptureSet.empty .top (.var (.bound .here))
+  isVal := .abs
+  reachability := {}
+
+/-- The under-fill memory: `mem1` extended at location `1` with `absVal`. -/
+def mem5 : Memory :=
+  mem1.extend 1 absVal
+    (.wf_abs .wf_empty .wf_top (.wf_var .wf_bound))
+    rfl
+    rfl
+
+/-- The under-fill type: a function type whose capture annotation names both
+droppable capture variables of `Γ2` — legally inhabited by `absVal`, which
+captures *nothing*. -/
+def T5 : Ty .capt ({},C,C) := .arrow .top Cb2 (.typ .top)
+
+def Γ5 : Ctx ({},C,C,x) := Γ2.push_var T5
+
+/-- The matching environment: `env2` extended with the variable bound to the
+empty-capture closure at location `1`, stored (per `EnvTyping`) at the
+declared type's peak set — both droppable capture variables. -/
+def env5 : TypeEnv ({},C,C,x) :=
+  env2.extend (.var 1 (T5.captureSet.peakset Γ2))
+
+theorem envtyping5 : EnvTyping Γ5 env5 mem5 := by
+  refine ⟨?_, rfl, ?_, ?_, ?_, rfl, ?_, rfl, ?_, ?_, ?_, rfl, ?_, rfl, trivial⟩
+  · change Ty.val_denot env2 T5 mem5 (.var (.free 1))
+    simp only [T5, Ty.val_denot]
+    refine ⟨.wf_var (.wf_free (val := .val absVal) rfl), ?_, ?_⟩
+    · exact .wf_union (.wf_var_free (val := .capability .basic) rfl)
+        (.wf_var_free (val := .capability .basic) rfl)
+    · refine ⟨CaptureSet.empty, .top, .var (.bound .here), rfl, .wf_empty, .empty, ?_⟩
+      intro arg m' _ _ hdsep _
+      exact absurd hdsep env2_not_dropsep
+  · exact .wf_var_free (val := .capability .basic) rfl
+  · exact .wf_unbound
+  · exact .top
+  · exact cap0_drop_free
+  · exact .wf_var_free (val := .capability .basic) rfl
+  · exact .wf_unbound
+  · exact .top
+  · exact cap0_drop_free
+
+/-- **Discharge fails.** At `abs`, the closure premise must imply the body
+judgment's `DropSepIn`, whose droppable pairs are the budget's *stored peaks*.
+In the under-fill world `env5`, the variable's budget `{ε·x}` *touches* no
+droppable capability at all (the closure value captures nothing, so its
+denotation is empty) — `DropSepTouch` holds vacuously — while its stored
+peaks are the declared annotation's two aliased droppable capture variables,
+so `DropSepIn {ε·x}` is false. A value-level closure premise is strictly
+weaker than what creation sites must pay. -/
+theorem dropSepTouch_insufficient :
+    ¬ (∀ {s : Sig} (Γ : Ctx s) (env : TypeEnv s) (m : Memory) (C : CaptureSet s),
+        EnvTyping Γ env m →
+        DropSepTouch env m C →
+        env.DropSepIn C) := by
+  intro h
+  have htouch : DropSepTouch env5 mem5 (.var (.M .epsilon) (.bound .here)) := by
+    intro c1 c2 hne h1 h2 ht1 ht2
+    obtain ⟨mu, l, -, hd⟩ := ht1
+    cases hd
+  have hdsi := h Γ5 env5 mem5 (.var (.M .epsilon) (.bound .here)) envtyping5 htouch
+  have hpk : compute_peaks env5 (.var (.M .epsilon) (.bound .here))
+      = ((CaptureSet.cvar (.M .epsilon) (.there (.there .here)))
+          ∪ (.cvar (.M .epsilon) (.there .here))) := by
+    change ((CaptureSet.peaks Γ2
+        ((CaptureSet.cvar (.M .epsilon) (.there .here))
+          ∪ (.cvar (.M .epsilon) .here))).rename Rename.succ).applyAccess (.M .epsilon) = _
+    rw [CaptureSet.peaks_union, CaptureSet.peaks, CaptureSet.peaks]
+    rfl
+  refine cap0_not_disjoint_self
+    (hdsi (.there (.there .here)) (.there .here) (.M .epsilon) (.M .epsilon)
+      (by intro heq; cases heq) rfl rfl ?_ ?_)
+  · rw [hpk]
+    exact .union_right_left .refl
+  · rw [hpk]
+    exact .union_right_right .refl
 
 end CoreCapybara.Gaps

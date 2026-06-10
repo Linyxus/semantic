@@ -2083,14 +2083,14 @@ theorem sem_typ_app
   -- the peaks of the arrow's domain `T1`. The `subtyp` rule may widen `y`'s
   -- type to `T1`, adding droppable peaks, and nothing in the semantic
   -- premises relates the two — see the definition-level counterexample
-  -- `CoreCapybara.Gaps.app_peak_slack_false`. The antitone repair (let
-  -- stored peaks under-approximate the declared type's peaks) is ALSO
-  -- refuted — `CoreCapybara.Gaps.fundamental_sepcheck_underapprox_false`:
-  -- the `sc_var`/`EquivP` re-budgeting lets derivations spend a variable's
-  -- full declared-type peaks, so stored peaks cannot be under-reported.
-  -- Closing this requires making the *demands* peak-faithful (variables as
-  -- atomic peaks of their budgets), not a change to the environment side —
-  -- see the `CoreCapybara.Gaps` module docstring.
+  -- `CoreCapybara.Gaps.app_peak_slack_false`. Every repair direction is
+  -- refuted in `CoreCapybara.Gaps` (the three-way pincer, see its module
+  -- docstring): stored peaks can be neither under-reported
+  -- (`fundamental_sepcheck_underapprox_false`) nor replaced by value-level
+  -- selection (`dropSepTouch_unsuppliable`/`dropSepTouch_insufficient`),
+  -- and invariant re-phrasings collapse back (`dropSepExcept_collapse`).
+  -- Closing this gap requires a *static* change to how peaks behave across
+  -- subsumption — a type-system design decision.
   have hps : ∀ (d : BVar s .cvar),
       env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) (.bound y)) d := by
     sorry
@@ -3928,10 +3928,12 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                     -- peak sets requires the two domains' droppable peaks to
                     -- coincide, but arrow subtyping is contravariant in the
                     -- domain and `Subcapt` only gives one-directional peak
-                    -- coverage. Same gap as in `sem_typ_app`; the antitone
-                    -- repair is also refuted — see
-                    -- `CoreCapybara.Gaps.app_peak_slack_false` and
-                    -- `CoreCapybara.Gaps.fundamental_sepcheck_underapprox_false`.
+                    -- coverage. Same gap as in `sem_typ_app`; every repair
+                    -- direction is refuted in `CoreCapybara.Gaps` — see
+                    -- `app_peak_slack_false`,
+                    -- `fundamental_sepcheck_underapprox_false`, and the
+                    -- value-level pincer `dropSepTouch_unsuppliable`/
+                    -- `dropSepTouch_insufficient`.
                     sorry
                   | there z =>
                     refine TypeEnv.HasPeak.of_peaks_eq ?_
