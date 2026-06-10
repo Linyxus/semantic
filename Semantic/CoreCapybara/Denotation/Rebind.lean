@@ -400,23 +400,25 @@ def rebind_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
+      intro m' denot hsub hcompat hdsep hproper himply_simple_ans himply hpure
       let R0 := expand_captures m.heap cs'
       have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
+      specialize hd m' denot hsub hcompat ((ρ.drop_sep_in cs).mpr hdsep)
+        hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
+      intro m' denot hsub hcompat hdsep hproper himply_simple_ans himply hpure
       let R0 := expand_captures m.heap cs'
       have ih2 := rebind_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.rename f)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat hproper himply_simple_ans himply' hpure
+      specialize hd m' denot hsub hcompat ((ρ.drop_sep_in cs).mp hdsep)
+        hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
   | .cpoly B cs T => by
     have hB := rebind_capturebound_denot ρ B
@@ -428,16 +430,16 @@ def rebind_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hdf hsub hcompat hsub_bound
+      intro m' CS hwf_CS hdf hsub hcompat hdsep hsub_bound
       let R0 := expand_captures m.heap cs'
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
-      specialize hd m' CS hwf_CS hdf hsub hcompat hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.drop_sep_in cs).mpr hdsep) hsub_bound
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hdf hsub hcompat hsub_bound
+      intro m' CS hwf_CS hdf hsub hcompat hdsep hsub_bound
       let R0 := expand_captures m.heap cs'
-      specialize hd m' CS hwf_CS hdf hsub hcompat hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.drop_sep_in cs).mp hdsep) hsub_bound
       exact (rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0 m' _).mpr hd
   | .modal cs Ψ T => by
     intro m e
@@ -450,7 +452,7 @@ def rebind_val_denot
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
       · intro m' hsub hsat'
         exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mpr hsat')
-      · intro m' hsub hcompat hkind hsep
+      · intro m' hsub hcompat hdsep hkind hsep
         let R0 := expand_captures m.heap cs0
         have ih := rebind_exi_exp_denot ρ T R0
         have hkind' :
@@ -467,13 +469,13 @@ def rebind_val_denot
           simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
             rebind_captureset_denot (ρ := ρ) (C := C2)] using
               hsep (C1.rename f) m1 (C2.rename f) m2 (hdistinct.rename)
-        exact (ih m' _).mp (hbody m' hsub hcompat hkind' hsep')
+        exact (ih m' _).mp (hbody m' hsub hcompat ((ρ.drop_sep_in cs).mpr hdsep) hkind' hsep')
     · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
         hsat, hR0_sub, hbody⟩
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
       · intro m' hsub hsat'
         exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mp hsat')
-      · intro m' hsub hcompat hkind hsep
+      · intro m' hsub hcompat hdsep hkind hsep
         let R0 := expand_captures m.heap cs0
         have ih := rebind_exi_exp_denot ρ T R0
         have hkind' :
@@ -492,7 +494,7 @@ def rebind_val_denot
           simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
             rebind_captureset_denot (ρ := ρ) (C := D2)] using
               hsep D1 m1 D2 m2 hdistinct0
-        exact (ih m' _).mpr (hbody m' hsub hcompat hkind' hsep')
+        exact (ih m' _).mpr (hbody m' hsub hcompat ((ρ.drop_sep_in cs).mp hdsep) hkind' hsep')
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

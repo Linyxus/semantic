@@ -545,6 +545,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (m' : Memory) (denot : Denot),
       m'.subsumes m ->
       m'.is_compatible R0 ->
+      env.DropSepIn cs ->
       denot.is_proper ->
       denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
@@ -568,6 +569,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
       m'.is_compatible R0 ->
+      env.DropSepIn cs ->
       ((A0 m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS (cap := CS.ground_denot m'))
@@ -590,6 +592,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (m' : Memory),
       m'.subsumes m ->
       m'.is_compatible R0 ->
+      env.DropSepIn cs ->
      (∀ C mode,
         Ψ.Has C mode ->
         CapabilitySet.HasKind (C.denot env m') mode) ->
@@ -2730,8 +2733,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
     · -- Body condition
-      intro m' denot hsub hprop himply_simple himply hpure
-      exact hbody m' denot hsub hprop himply_simple himply hpure
+      intro m' denot hsub hcompat hdsepx hprop himply_simple himply
+      exact hbody m' denot hsub hcompat
+        (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hprop himply_simple himply
   | cpoly B cs T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
@@ -2770,8 +2774,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
     · -- Body condition
-      intro m' CS hwf hsub hbdd
-      exact hbody m' CS hwf hsub hbdd
+      intro m' CS hwf hdf hsub hcompat hdsepx hbdd
+      exact hbody m' CS hwf hdf hsub hcompat
+        (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hbdd
   | modal cs Ψ T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hres, hwf_cs',
@@ -2811,7 +2816,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · exact hbody
+    · intro m' hsub hcompat hdsepx hkind hsep
+      exact hbody m' hsub hcompat
+        (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hkind hsep
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
