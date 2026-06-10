@@ -263,14 +263,16 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
 -- DEVIATION from the original rule (approved): `cabs` requires its bound
--- annotation to be borrow-only — bounds may not mention owned (droppable)
--- capture variables. Without this, `sc_cvar` can expand an `.access_only`
--- capture variable into a bound that peaks a droppable one, laundering
--- separation/sequencing evidence away from the budget the environment-
--- separation invariant is relativized to (see `CoreCapybara.Gaps`).
+-- annotation to be valid (`CaptureBound.IsValid`: concrete bounds are
+-- access-only, i.e. carry no `.drop`-mode peaks), consistent with the
+-- validity demanded of capture arguments at `capp`. NOTE: validity is
+-- mode-based; it does NOT constrain the *authority* of the variables a bound
+-- peaks, so it does not close the bound-expansion gap in the separation
+-- proofs — see the module docstring of `CoreCapybara.Gaps` for the exact
+-- remaining gap.
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
-  cb.BorrowOnly Γ ->
+  cb.IsValid Γ ->
   HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))

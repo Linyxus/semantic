@@ -864,14 +864,12 @@ theorem SeqComp.cross_droppable {Γ : Ctx s} {C1 C2 : CaptureSet s}
     -- shrink along `Subcapt`, and even the `.access_only`-restricted
     -- `sc_cvar` can introduce an `.access_only` capture variable whose
     -- *bound* mentions a droppable one — the `.drop`-mode peak `c1` of the
-    -- shrunken budget then need not be droppable at all. The `cabs` rule now
-    -- requires borrow-only bounds, but this lemma quantifies over arbitrary
-    -- contexts, so the statement remains FALSE: see
-    -- `CoreCapybara.Gaps.seqcomp_cross_droppable_false`. Exploiting the
-    -- `cabs` restriction would require a context-validity hypothesis here
-    -- AND relativizing the separation invariant to bound-closed ("deep")
-    -- peaks, since `sc_cvar` moves capabilities from a variable to its
-    -- bound's peaks, outside the syntactic peaks the invariant tracks.
+    -- shrunken budget then need not be droppable at all. (`cabs`'s
+    -- `IsValid` bound annotations don't help: validity is mode-based and
+    -- does not constrain bound-peak authority.) The statement is FALSE: see
+    -- `CoreCapybara.Gaps.seqcomp_cross_droppable_false`, and the module
+    -- docstring of `CoreCapybara.Gaps` for the exact gap and the
+    -- device-level solution it calls for (bound-closed "deep" peaks).
     sorry
   | seq_union _ _ ih1 ih2 =>
     cases CaptureSet.cvar_subset_peaks_union_inv hpa with

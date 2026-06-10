@@ -1103,8 +1103,13 @@ this: well-typed environments may alias two droppable capture variables. The
 statement of this lemma is FALSE — see
 `CoreCapybara.Gaps.envtyping_dropsep_false` for the definition-level
 counterexample (an environment with two aliased `.can_drop` capture
-variables). A `BorrowOnly` restriction on closure capture sets would make the
-obligation vacuous; without it, this gap is irreducible. -/
+variables). Closing this gap without restricting the type system requires a
+semantic device that carries separation facts from the closure's *creation
+site* (where the surrounding term's budget covers the captured set) to its
+*application sites* — i.e. a substitution-stable separation premise inside
+the closure cases of `val_denot`, which the current `Retype`/`openCVar`
+transport does not support because substitution erases capture-variable
+identity and authority. -/
 theorem TypeEnv.DropSepIn.of_envtyping {Γ : Ctx s} {env : TypeEnv s}
     {C : CaptureSet s} {m : Memory}
     (hts : EnvTyping Γ env m) : env.DropSepIn C := by
@@ -3233,11 +3238,10 @@ theorem fundamental_sepcheck
     -- be entirely outside it. Even with the `.access_only`-restricted
     -- `sc_cvar` this happens: an `.access_only` capture variable whose
     -- *bound* mentions a droppable one launders the evidence away from the
-    -- budget. The `cabs` rule now requires borrow-only bounds, but this
-    -- statement quantifies over arbitrary contexts, so it remains FALSE:
-    -- see `CoreCapybara.Gaps.fundamental_sepcheck_false`. Exploiting the
-    -- `cabs` restriction would require a context-validity hypothesis AND
-    -- relativizing `DropSepIn` to bound-closed ("deep") peaks.
+    -- budget (`IsValid` bounds don't help — validity is mode-based). The
+    -- statement is FALSE: see `CoreCapybara.Gaps.fundamental_sepcheck_false`,
+    -- and the `CoreCapybara.Gaps` module docstring for the exact gap and
+    -- the device-level solution it calls for (bound-closed "deep" peaks).
     sorry
   | sep_lock hlock hdistinct =>
     intro _hΓ env H henv _hdsep
@@ -3464,12 +3468,11 @@ theorem captureSet_seqcomp_denot
     -- conclusion's `C1 ∪ C2` and does not cover droppable pairs peaked only
     -- in `C1'` — and even with the `.access_only`-restricted `sc_cvar`,
     -- `C1` can be an `.access_only` capture variable whose *bound* mentions
-    -- a droppable one, hiding the consumed locations entirely. The `cabs`
-    -- rule now requires borrow-only bounds, but this statement quantifies
-    -- over arbitrary contexts, so it remains FALSE: see
-    -- `CoreCapybara.Gaps.seqcomp_denot_false`. Exploiting the `cabs`
-    -- restriction would require a context-validity hypothesis AND
-    -- relativizing `DropSepIn` to bound-closed ("deep") peaks.
+    -- a droppable one, hiding the consumed locations entirely (`IsValid`
+    -- bounds don't help — validity is mode-based). The bridge statement is
+    -- FALSE: see `CoreCapybara.Gaps.seqcomp_denot_false`, and the
+    -- `CoreCapybara.Gaps` module docstring for the exact gap and the
+    -- device-level solution it calls for (bound-closed "deep" peaks).
     sorry
   | seq_union _ _ ih1 ih2 =>
     intro hdsep mu l h1 h2

@@ -14,15 +14,49 @@ approved deviation), which makes droppable peaks monotone along `Subcapt` and
 renders `TypeEnv.DropSepIn.of_subcapt` provable — that gap is gone. The
 laundering counterexamples below survive the restriction: they expand an
 `.access_only` capture variable whose *bound* mentions a droppable one, which
-the restricted rule still permits. The `cabs` rule now requires borrow-only
-bounds (`CaptureBound.BorrowOnly`, an approved deviation), so such contexts
-cannot arise in *typing derivations* — but the refuted lemmas quantify over
-arbitrary contexts, and the budget-relative invariant `DropSepIn` only sees
-*syntactic* peaks of the budget, which `sc_cvar` escapes by moving a
-capability under its bound's peaks. Exploiting the `cabs` restriction
-therefore requires both a context-validity hypothesis on these lemmas and a
-relativization of `DropSepIn` to bound-closed ("deep") peaks — a redesign of
-the invariant and all its suppliers, left as future work.
+the restricted rule still permits.
+
+## The exact remaining gap (the laundering family)
+
+`DropSepIn env C` — the invariant supplying disjointness of droppable
+capabilities — is relativized to the *syntactic* capture-variable peaks of
+the budget `C`. Subcapture preserves capability *containment*
+(`Subcapt C C' → C.denot ⊆ C'.denot`) but not peak *identity*: `sc_cvar`
+replaces an `.access_only` variable by its bound, so a capability can flow
+through a budget while the droppable variable owning it disappears from the
+budget's peaks. `CaptureBound.IsValid` (now required of `cabs` bound
+annotations) does not prevent this: validity is *mode*-based (bounds carry no
+`.drop`-mode peaks), while the gap is about the *authority* of the variables
+a bound peaks — `Γ4`'s bound `{ε·c₁}` is `IsValid` even though `c₁` is
+droppable.
+
+Concretely (`Γ4`/`env4` below): `c₃` is `.access_only` with the `IsValid`
+bound `{ε·c₁}`; `c₁`, `c₂` are droppable; the environment aliases all three
+capabilities. `sep_sc`/`seq_sc` + `sc_cvar` produce
+`SepCheck Γ4 {ε·c₃} {ε·c₂}` (and the `SeqComp` analogue) from evidence
+anchored at `(c₁, c₂)` — but the conclusion's budget peaks only `{c₃, c₂}`,
+no droppable pair, so the `DropSepIn` hypothesis is vacuously satisfied by
+the aliased environment and cannot refute it.
+
+What a solution must provide, WITHOUT restricting the type system: an
+invariant that follows capability containment through bounds — e.g.
+relativizing `DropSepIn` to bound-closed ("deep") peaks, where an
+`.access_only` variable's peaks include its bound's peaks. `sc_cvar` then
+preserves deep peaks by construction, and the counterexample environments
+violate the (deep) invariant hypothesis instead of satisfying it. The cost:
+every supplier of `DropSepIn` must be re-proven (notably the
+unpack-extension freshness argument), and the static peak lemma kit must be
+restated on deep peaks. Bound-descent terminates by de Bruijn index (bounds
+reference earlier variables); the delicate case is `.access_only` *unbounded*
+variables, whose capabilities are unconstrained (`BoundedBy ⊤`) — their
+`.drop`-mode peaks must be excluded through derivation structure (no
+`SeqComp`/`DisjCheck` rule can consume them non-vacuously), not capability
+containment.
+
+The other two gaps (closure capture, lock-stored `sep_droppable`) are
+independent of subcapture: they fail because `EnvTyping` records no
+cross-variable disjointness at all, and their program points have no budget
+to relativize an invariant to.
 
 All counterexamples share one tiny world: a memory `mem1` holding a single
 capability cell at location `0`, and environments binding several capture

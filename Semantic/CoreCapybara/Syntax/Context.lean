@@ -319,22 +319,6 @@ def CaptureBound.IsValid (Γ : Ctx s) : CaptureBound s -> Prop
 | .unbound => True
 | .bound C => C.AccessOnly Γ
 
-/-- A capture set is borrow-only in `Γ` when every capture-variable peak has
-`.access_only` authority: it mentions no *owned* capability. Note the contrast
-with `CaptureSet.AccessOnly`, which is about `.drop`-MODE peak occurrences;
-this is about the peaks' declared *authority*. -/
-def CaptureSet.BorrowOnly (Γ : Ctx s) (C : CaptureSet s) : Prop :=
-  ∀ (a : Access) (c : BVar s .cvar),
-    (CaptureSet.cvar a c) ⊆ (C.peakset Γ).cs → Γ.lookup_authority c = .access_only
-
-/-- A capture bound is borrow-only in `Γ` when its concrete bound set is.
-Required of `cabs` bound annotations: a capture variable's bound may not
-mention owned (droppable) capture variables, so expanding a variable into its
-bound (`sc_cvar`) can never hide an owned capability. -/
-def CaptureBound.BorrowOnly (Γ : Ctx s) : CaptureBound s -> Prop
-| .unbound => True
-| .bound C => C.BorrowOnly Γ
-
 theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : CaptureSet s} :
   (C.rename Rename.succ).peaks (Γ.push b) = (C.peaks Γ).rename Rename.succ := by
   induction C generalizing k with
