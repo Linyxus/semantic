@@ -2,12 +2,20 @@ import Semantic.CoreCapybara.Fundamental
 
 /-! # Definition-level counterexamples for the irreducible proof gaps
 
-The restored type system (authority-general `sc_cvar`, the `sep_sc`/`seq_sc`
-subcapture rules, unrestricted closure capture, and locks storing full
-`SepCheck` facts) leaves six `sorry`s in the development. Each of them is not
-merely unproven but *unprovable*: this file constructs explicit, concrete
-instances — contexts, environments, and memories — refuting the exact
-statement each `sorry` stands for.
+The restored type system (the `sep_sc`/`seq_sc` subcapture rules,
+unrestricted closure capture, and locks storing full `SepCheck` facts) leaves
+five `sorry`s in the development. Each of them is not merely unproven but
+*unprovable*: this file constructs explicit, concrete instances — contexts,
+environments, and memories — refuting the exact statement each `sorry` stands
+for.
+
+Note that `sc_cvar` is restricted to `.access_only` capture variables (an
+approved deviation), which makes droppable peaks monotone along `Subcapt` and
+renders `TypeEnv.DropSepIn.of_subcapt` provable — that gap is gone. The
+laundering counterexamples below survive the restriction: they expand an
+`.access_only` capture variable whose *bound* mentions a droppable one, which
+the restricted rule still permits (`cabs` does not require
+`CaptureBound.IsValid` of its bound annotation).
 
 All counterexamples share one tiny world: a memory `mem1` holding a single
 capability cell at location `0`, and environments binding several capture
@@ -126,55 +134,11 @@ theorem sepcheck_global_droppable_false :
     env2 mem1 envtyping2
   exact noninterference_cap0_self_false hni
 
-/-! ## The bound-laundering context
-
-`Γ3` binds a droppable `c₂` (outer) and a droppable `c₁` whose *bound* is
-`{ε·c₂}`; `env3` aliases both to `cap0` — legal, since `EnvTyping` only checks
-each binding against its own bound. The authority-general `sc_cvar` then
-launders `c₁` into its bound, hiding the droppable peak. -/
-
-def Γ3 : Ctx ({},C,C) :=
-  ((Ctx.empty).push_cvar .can_drop .unbound).push_cvar .can_drop
-    (.bound (.cvar (.M .epsilon) .here))
-
-theorem envtyping3 : EnvTyping Γ3 env2 mem1 := by
-  refine ⟨?_, ?_, ?_, rfl, ?_, rfl, ?_, ?_, ?_, rfl, ?_, rfl, trivial⟩
-  · exact .wf_var_free (val := .capability .basic) rfl
-  · exact .wf_bound (.wf_var_free (val := .capability .basic) rfl)
-  · exact .set .refl
-  · exact cap0_drop_free
-  · exact .wf_var_free (val := .capability .basic) rfl
-  · exact .wf_unbound
-  · exact .top
-  · exact cap0_drop_free
-
-/-! ## Gap 3: the invariant does not restrict along `Subcapt`
-
-This refutes `TypeEnv.DropSepIn.of_subcapt` (used at `sem_typ_subtyp` to
-restrict the invariant from the grown budget back to the term's budget): with
-authority-general `sc_cvar`, the smaller budget can peak a droppable capture
-variable that the larger budget hides under its bound. -/
-
-theorem dropsep_of_subcapt_false :
-    ¬ (∀ {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {C1 C2 : CaptureSet s} {m : Memory},
-        EnvTyping Γ env m → Subcapt Γ C1 C2 →
-        env.DropSepIn C2 → env.DropSepIn C1) := by
-  intro h
-  have hsub : Subcapt Γ3 Cb2 (.cvar (.M .epsilon) (.there .here)) := by
-    refine .sc_union (.sc_elem .refl) ?_
-    exact .sc_cvar (C := .cvar (.M .epsilon) (.there .here)) .here
-  have hdsep2 : env2.DropSepIn (.cvar (.M .epsilon) (.there .here)) := by
-    intro c1 c2 a1 a2 hne _ _ hp1 hp2
-    obtain ⟨_, hc1⟩ := CaptureSet.cvar_subset_cvar_inv hp1
-    obtain ⟨_, hc2⟩ := CaptureSet.cvar_subset_cvar_inv hp2
-    subst hc1; subst hc2
-    exact absurd rfl hne
-  exact env2_not_dropsep (h envtyping3 hsub hdsep2)
-
 /-! ## The authority-laundering context
 
-`Γ4` additionally binds an `.access_only` capture variable `c₃` whose bound is
-the droppable `c₁`. `sc_cvar` + `sep_sc`/`seq_sc` then transfer separation or
+`Γ4` binds two droppable capture variables `c₁`, `c₂` and an `.access_only`
+capture variable `c₃` whose bound is `{ε·c₁}`. Even the `.access_only`-restricted
+`sc_cvar` applies to `c₃`, so `sep_sc`/`seq_sc` transfer separation or
 sequencing evidence anchored at `(c₁, c₂)` to `c₃`, whose authority no longer
 records droppability — and whose capability may alias `c₂`'s. -/
 

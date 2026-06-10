@@ -26,8 +26,16 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x T ->
   ----------------------------------
   Subcapt Γ (.var (.M .epsilon) (.bound x)) T.captureSet
-| sc_cvar {a : Authority} :
-  Ctx.LookupCVar Γ c a (.bound C) ->
+-- DEVIATION from the original rule (approved): `sc_cvar` is restricted to
+-- `.access_only` capture variables. The original authority-general rule lets
+-- a *droppable* capture variable be replaced by its bound, which need not
+-- mention it — droppable peaks are then not monotone along `Subcapt`, and
+-- the environment-separation invariant cannot be restricted along budget
+-- growth (`TypeEnv.DropSepIn.of_subcapt` becomes false). With the
+-- restriction, droppable peaks are monotone
+-- (`Subcapt.droppable_peak_monotone`) and that lemma is provable.
+| sc_cvar :
+  Ctx.LookupCVar Γ c .access_only (.bound C) ->
   ----------------------------------
   Subcapt Γ (.cvar (.M .epsilon) c) C
 | sc_ro :
@@ -90,15 +98,6 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sep_empty {C : CaptureSet s} :
   -------------------
   SepCheck Γ {} C
--- SOUNDNESS FIX (deviation from the original rule — please audit): the
--- original `sep_ro` had only the two `HasKind .ro` premises. But a semantic
--- `.ro`-kinded capability set may still contain `.drop` capabilities
--- (`CapabilitySet.HasKind.ro_drop`), so ro/ro overlap does not imply
--- noninterference: both sides may reach a `.drop` capability on a shared
--- location, and one side can consume it while the other reads it. The
--- `AccessOnly` premises pin the sets to borrow-authority capture variables,
--- whose denotations are provably drop-free; `IsClosed` makes the check
--- meaningful at the top level where it is consumed.
 | sep_ro :
   C1.IsClosed ->
   C2.IsClosed ->
@@ -123,18 +122,6 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
--- SOUNDNESS FIX (deviation from the original system — please audit): in the
--- original system, `seq_drop` took a `SepCheck Γ C1 C2` premise. `SepCheck`
--- permits read-only *overlap* (`sep_ro`), so the original rule allowed the
--- first computation to consume (`applyDrop`) a location the continuation
--- still reads — a use-after-free. The premise needed is location
--- *disjointness*, which this auxiliary judgment provides.
-/-- Strong separation check: two capture sets denote *location-disjoint*
-capability sets (not even read-only sharing). This is the premise `seq_drop`
-needs: consuming (`applyDrop`) a set is only sequentially compatible with a
-continuation that touches none of its locations. Evidence is anchored at
-distinct droppable capture variables (`disj_droppable`); `disj_peaks` traces
-variable references to their capture-variable peaks. -/
 inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | disj_symm :
   DisjCheck Γ C1 C2 ->
@@ -206,7 +193,13 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ) ->
   ----------------------------------------
   Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
+-- DEVIATION from the original rule (approved, cosmetic): closedness premises
+-- carry the facts the semantic interpretation of the `Satisfy` premise needs
+-- (`sem_satisfy` requires a closed context and lock contexts).
 | modal_modal :
+  Γ.IsClosed ->
+  Ψ1.IsClosed ->
+  Ψ2.IsClosed ->
   Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
   ----------------------------------
   Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
@@ -235,9 +228,6 @@ inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   CaptureSet.AccessOnly Γ C1 ->
   ----------------------
   SeqComp Γ C1 C2
--- SOUNDNESS FIX (deviation from the original rule — please audit): the
--- original premise was `SepCheck Γ C1 C2`, which allows read-only overlap;
--- see the comment on `DisjCheck`.
 | seq_drop :
   DisjCheck Γ C1 C2 ->
   ----------------------

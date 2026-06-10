@@ -762,16 +762,58 @@ theorem Ctx.TwoDistinctDroppable.symm {Γ : Ctx s} {c1 c2 : BVar s .cvar}
     (h : Γ.TwoDistinctDroppable c1 c2) : Γ.TwoDistinctDroppable c2 c1 :=
   ⟨h.2.1, h.1, fun he => h.2.2 he.symm⟩
 
-/-! ## Droppable peak monotonicity along `Subcapt` — FALSE
+/-! ## Droppable peak monotonicity along `Subcapt`
 
-With the original (authority-general) `sc_cvar`, a droppable capture
-variable's peak occurrence is *not* preserved when a capture set is widened
-by subcapture: `sc_cvar` can replace a droppable capture variable by its
-bound, which need not mention it. See
-`CoreCapybara.Gaps.droppable_peak_monotone_false` for the definition-level
-counterexample. Consequently `TypeEnv.DropSepIn.of_subcapt` (restriction of
-the environment-separation invariant along `Subcapt`) is also false; see
-`CoreCapybara.Gaps.dropsep_of_subcapt_false`. -/
+A droppable capture variable's peak occurrence is preserved when a capture set
+is widened by subcapture: the only peak-eliminating rule is `sc_cvar`, which
+is restricted to `.access_only` capture variables. -/
+
+theorem Subcapt.droppable_peak_monotone {Γ : Ctx s} {C1 C2 : CaptureSet s}
+    {c : BVar s .cvar} {a : Access}
+    (hsub : Subcapt Γ C1 C2)
+    (hauth : Γ.lookup_authority c = .can_drop)
+    (hpeak : (CaptureSet.cvar a c) ⊆ C1.peaks Γ) :
+    ∃ a', (CaptureSet.cvar a' c) ⊆ C2.peaks Γ := by
+  induction hsub generalizing a with
+  | sc_trans _ _ ih1 ih2 =>
+    obtain ⟨a', h'⟩ := ih1 hauth hpeak
+    exact ih2 hauth h'
+  | sc_elem hss =>
+    exact ⟨a, CaptureSet.Subset.trans hpeak (CaptureSet.peaks_subset_monotone hss)⟩
+  | sc_mode hle =>
+    rw [CaptureSet.peaks_applyMut_comm] at hpeak ⊢
+    obtain ⟨a0, hsub0⟩ := CaptureSet.cvar_subset_applyMut_inv hpeak
+    exact CaptureSet.cvar_subset_applyMut_fwd _ hsub0
+  | sc_union _ _ ih1 ih2 =>
+    cases CaptureSet.cvar_subset_peaks_union_inv hpeak with
+    | inl h => exact ih1 hauth h
+    | inr h => exact ih2 hauth h
+  | sc_var hlookup =>
+    rename_i x T
+    rw [CaptureSet.var_peaks hlookup] at hpeak
+    simp only [CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon] at hpeak
+    exact ⟨a, hpeak⟩
+  | sc_cvar hlookup =>
+    rw [CaptureSet.peaks] at hpeak
+    obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hpeak
+    subst hc
+    rw [← hlookup.eq_authority] at hauth
+    cases hauth
+  | sc_ro =>
+    rw [CaptureSet.peaks_applyRO_comm] at hpeak
+    obtain ⟨a0, _, hsub0⟩ := CaptureSet.cvar_subset_applyRO_inv hpeak
+    exact ⟨a0, hsub0⟩
+  | sc_ro_mono _ ih =>
+    rw [CaptureSet.peaks_applyRO_comm] at hpeak ⊢
+    obtain ⟨a0, _, hsub0⟩ := CaptureSet.cvar_subset_applyRO_inv hpeak
+    obtain ⟨a', h'⟩ := ih hauth hsub0
+    exact ⟨a'.applyRO, CaptureSet.cvar_subset_applyRO_fwd h'⟩
+  | sc_drop_mono _ ih =>
+    simp only [CaptureSet.applyAccess_drop] at hpeak ⊢
+    rw [CaptureSet.peaks_applyDrop_comm] at hpeak ⊢
+    obtain ⟨_, a0, hsub0⟩ := CaptureSet.cvar_subset_applyDrop_inv hpeak
+    obtain ⟨a', h'⟩ := ih hauth hsub0
+    exact ⟨.drop, CaptureSet.cvar_subset_applyDrop_fwd h'⟩
 
 /-! ## Cross-peak lemmas for the separation judgments
 
@@ -819,12 +861,13 @@ theorem SeqComp.cross_droppable {Γ : Ctx s} {C1 C2 : CaptureSet s}
   induction hseq generalizing c1 with
   | seq_sc hsub _ ih =>
     -- GAP (provably unfixable as stated): `seq_sc` lets the left budget
-    -- shrink along `Subcapt`, and the authority-general `sc_cvar` can
-    -- introduce an `.access_only` capture variable whose *bound* is a
-    -- droppable one — the `.drop`-mode peak `c1` of the shrunken budget then
-    -- need not be droppable at all. The statement of this lemma is FALSE for
-    -- the restored rules: see
-    -- `CoreCapybara.Gaps.seqcomp_cross_droppable_false` for the
+    -- shrink along `Subcapt`, and even the `.access_only`-restricted
+    -- `sc_cvar` can introduce an `.access_only` capture variable whose
+    -- *bound* mentions a droppable one — the `.drop`-mode peak `c1` of the
+    -- shrunken budget then need not be droppable at all. (Such bounds are
+    -- exactly what `CaptureBound.IsValid` would forbid, but `cabs` does not
+    -- require validity of its bound annotation.) The statement is FALSE:
+    -- see `CoreCapybara.Gaps.seqcomp_cross_droppable_false` for the
     -- definition-level counterexample.
     sorry
   | seq_union _ _ ih1 ih2 =>

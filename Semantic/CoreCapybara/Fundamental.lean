@@ -1054,10 +1054,10 @@ theorem semtyp_to_exi_exp_denot
 
 `DropSepIn env C` is the budget-relativized environment-separation invariant:
 distinct droppable capture variables peaked in `C` have disjoint capabilities.
-It transports generically along environment weakenings (via `Rebind`) and
-restricts along unions. It does NOT restrict along `Subcapt` (the
-authority-general `sc_cvar` can hide a droppable peak under its bound), and it
-is NOT a consequence of `EnvTyping` (environments may alias droppable capture
+It transports generically along environment weakenings (via `Rebind`),
+restricts along unions, and restricts along `Subcapt` (droppable peaks are
+monotone, thanks to the `.access_only` restriction of `sc_cvar`). It is NOT a
+consequence of `EnvTyping` alone (environments may alias droppable capture
 variables) — see the `CoreCapybara.Gaps` counterexamples. -/
 
 theorem TypeEnv.DropSepIn.extend_var {env : TypeEnv s} {C : CaptureSet s}
@@ -1110,21 +1110,23 @@ theorem TypeEnv.DropSepIn.of_envtyping {Γ : Ctx s} {env : TypeEnv s}
     (hts : EnvTyping Γ env m) : env.DropSepIn C := by
   sorry
 
-/-- GAP (provably unfixable as stated): restriction of the invariant along
-subcapture. With the authority-general `sc_cvar`, a droppable capture
-variable can be replaced by its *bound* when a budget grows, so a droppable
-peak of the smaller budget need not be peaked in the larger one — its
-disjointness obligations are then not covered by the larger budget's
-invariant. The statement of this lemma is FALSE — see
-`CoreCapybara.Gaps.dropsep_of_subcapt_false` for the definition-level
-counterexample (a droppable capture variable bounded by another, aliased,
-droppable one). Restricting `sc_cvar` to `.access_only` capture variables
-would make droppable peaks monotone and this lemma provable. -/
+/-- Restriction along subcapture: droppable peaks are monotone under
+`Subcapt` (thanks to the `.access_only` restriction of `sc_cvar`), so the
+invariant for the larger budget covers the smaller one. -/
 theorem TypeEnv.DropSepIn.of_subcapt {Γ : Ctx s} {env : TypeEnv s}
     {C1 C2 : CaptureSet s} {m : Memory}
     (hts : EnvTyping Γ env m) (hsub : Subcapt Γ C1 C2)
     (h : env.DropSepIn C2) : env.DropSepIn C1 := by
-  sorry
+  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+  rw [← compute_peaks_correct hts C1] at hp1 hp2
+  have h1' := h1
+  have h2' := h2
+  rw [envtyping_lookup_cvar_auth hts c1] at h1'
+  rw [envtyping_lookup_cvar_auth hts c2] at h2'
+  obtain ⟨a1', hp1'⟩ := hsub.droppable_peak_monotone h1' hp1
+  obtain ⟨a2', hp2'⟩ := hsub.droppable_peak_monotone h2' hp2
+  rw [compute_peaks_correct hts C2] at hp1' hp2'
+  exact h c1 c2 a1' a2' hne h1 h2 hp1' hp2'
 
 /-- Under `EnvTyping`, computed peaks of statically-computed peaks collapse. -/
 theorem compute_peaks_peaks {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
@@ -3228,11 +3230,14 @@ theorem fundamental_sepcheck
     -- evidence to a *larger* left set `C1 ⊒ C1'`, but the consumer's
     -- environment-separation invariant is relativized to the conclusion's
     -- budget `C1' ∪ C2` — the droppable pair the evidence is anchored at may
-    -- be entirely outside it (hidden under a bound via the authority-general
-    -- `sc_cvar`). The statement `SepCheck → SemSepCheck` is FALSE for the
-    -- restored rules: see `CoreCapybara.Gaps.fundamental_sepcheck_false`
-    -- for the definition-level counterexample (an `.access_only` capture
-    -- variable bounded by a droppable one that aliases the other side).
+    -- be entirely outside it. Even with the `.access_only`-restricted
+    -- `sc_cvar` this happens: an `.access_only` capture variable whose
+    -- *bound* mentions a droppable one launders the evidence away from the
+    -- budget (such bounds are what `CaptureBound.IsValid` would forbid, but
+    -- `cabs` does not require validity of its bound annotation). The
+    -- statement `SepCheck → SemSepCheck` is FALSE: see
+    -- `CoreCapybara.Gaps.fundamental_sepcheck_false` for the
+    -- definition-level counterexample.
     sorry
   | sep_lock hlock hdistinct =>
     intro _hΓ env H henv _hdsep
@@ -3457,11 +3462,11 @@ theorem captureSet_seqcomp_denot
     -- `C1 ⊑ C1'` while the sequencing evidence lives at `C1'`. The
     -- environment-separation invariant available here is relativized to the
     -- conclusion's `C1 ∪ C2` and does not cover droppable pairs peaked only
-    -- in `C1'` — and via the authority-general `sc_cvar`, `C1` can be an
-    -- `.access_only` capture variable whose bound is a droppable one, hiding
-    -- the consumed locations entirely. The bridge statement is FALSE for the
-    -- restored rules: see `CoreCapybara.Gaps.seqcomp_denot_false` for the
-    -- definition-level counterexample.
+    -- in `C1'` — and even with the `.access_only`-restricted `sc_cvar`,
+    -- `C1` can be an `.access_only` capture variable whose *bound* mentions
+    -- a droppable one, hiding the consumed locations entirely. The bridge
+    -- statement is FALSE: see `CoreCapybara.Gaps.seqcomp_denot_false` for
+    -- the definition-level counterexample.
     sorry
   | seq_union _ _ ih1 ih2 =>
     intro hdsep mu l h1 h2
@@ -4374,7 +4379,6 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
           (fun C1 m1 C2 m2 hdistinct => hsat_Ψ1.sep C1 m1 C2 m2 hdistinct)
 
 theorem fundamental_subtyp
-  (hΓ : Γ.IsClosed)
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
   (hsub : Subtyp Γ T1 T2) :
   SemSubtyp Γ T1 T2 := by
@@ -4392,14 +4396,13 @@ theorem fundamental_subtyp
     -- Apply sem_subtyp_arrow
     apply sem_subtyp_arrow
     · -- Prove SemSubtyp Γ T2_arg T1_arg (contravariant)
-      exact ih_arg hΓ hT2_arg_closed hT1_arg_closed
+      exact ih_arg hT2_arg_closed hT1_arg_closed
     · -- Prove SemSubcapt Γ cs1 cs2
       exact fundamental_subcapt hsub_cs
     · -- Prove closedness of cs2
       exact hcs2_closed
     · -- Prove SemSubtyp (Γ,x:T2_arg) U1 U2 (covariant)
-      exact ih_res (Ctx.IsClosed.push hΓ (Binding.IsClosed.var hT2_arg_closed))
-        hU1_closed hU2_closed
+      exact ih_res hU1_closed hU2_closed
   case refl =>
     -- T1 = T2
     exact sem_subtyp_refl
@@ -4408,7 +4411,7 @@ theorem fundamental_subtyp
     -- hT2_mid : T2_mid.IsClosed (provided by the trans rule)
     -- ih12 : T1.IsClosed → T2_mid.IsClosed → SemSubtyp Γ T1 T2_mid
     -- ih23 : T2_mid.IsClosed → T2.IsClosed → SemSubtyp Γ T2_mid T2
-    exact sem_subtyp_trans (ih12 hΓ hT1 hT2_mid) (ih23 hΓ hT2_mid hT2)
+    exact sem_subtyp_trans (ih12 hT1 hT2_mid) (ih23 hT2_mid hT2)
   case cpoly hle hsub_cs hsub_body ih_body =>
     -- T1 = (.cpoly m1 cs1 T1_body), T2 = (.cpoly m2 cs2 T2_body)
     -- hle : cb2 <: cb1 (contravariant)
@@ -4422,8 +4425,7 @@ theorem fundamental_subtyp
     · exact fundamental_subbound hle
     · exact fundamental_subcapt hsub_cs
     · exact hcs2_closed
-    · exact ih_body (Ctx.IsClosed.push hΓ (Binding.IsClosed.cvar hcb2_closed))
-        hT1_body_closed hT2_body_closed
+    · exact ih_body hT1_body_closed hT2_body_closed
     · exact hcb2_closed
   case poly hsub_bound hsub_cs hsub_body ih_bound ih_body =>
     -- T1 = (.poly S1.core cs1 T1_body), T2 = (.poly S2.core cs2 T2_body)
@@ -4435,11 +4437,10 @@ theorem fundamental_subtyp
     cases hT2 with | poly hS2_closed hcs2_closed hT2_body_closed =>
     -- Apply sem_subtyp_poly
     apply sem_subtyp_poly
-    · exact ih_bound hΓ hS2_closed hS1_closed  -- contravariant
+    · exact ih_bound hS2_closed hS1_closed  -- contravariant
     · exact fundamental_subcapt hsub_cs
     · exact hcs2_closed
-    · exact ih_body (Ctx.IsClosed.push hΓ (Binding.IsClosed.tvar hS2_closed))
-        hT1_body_closed hT2_body_closed
+    · exact ih_body hT1_body_closed hT2_body_closed
   case modal hsub_cs hsub_body ih_body =>
     cases hT1 with
     | modal _ hΨ_closed hE1_closed =>
@@ -4449,9 +4450,8 @@ theorem fundamental_subtyp
         · exact fundamental_subcapt hsub_cs
         · exact hcs2_closed
         · exact hΨ_closed
-        · exact ih_body (Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hΨ_closed))
-            (Ty.rename_closed hE1_closed) (Ty.rename_closed hE2_closed)
-  case modal_modal hsat =>
+        · exact ih_body (Ty.rename_closed hE1_closed) (Ty.rename_closed hE2_closed)
+  case modal_modal hΓ _hΨ1_closed' _hΨ2_closed' hsat =>
     cases hT1 with
     | modal _ hΨ1_closed _ =>
       cases hT2 with
@@ -4464,9 +4464,7 @@ theorem fundamental_subtyp
     cases hT1 with | exi hT1_body_closed =>
     cases hT2 with | exi hT2_body_closed =>
     -- Apply sem_subtyp_exi
-    exact sem_subtyp_exi (ih_body
-      (Ctx.IsClosed.push hΓ (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
-      hT1_body_closed hT2_body_closed)
+    exact sem_subtyp_exi (ih_body hT1_body_closed hT2_body_closed)
   case typ hsub_body ih_body =>
     -- T1 = (.typ T1_body), T2 = (.typ T2_body)
     -- hsub_body : Subtyp Γ T1_body T2_body
@@ -4474,12 +4472,11 @@ theorem fundamental_subtyp
     cases hT1 with | typ hT1_body_closed =>
     cases hT2 with | typ hT2_body_closed =>
     -- Apply sem_subtyp_typ
-    exact sem_subtyp_typ (ih_body hΓ hT1_body_closed hT2_body_closed)
+    exact sem_subtyp_typ (ih_body hT1_body_closed hT2_body_closed)
 
 
 theorem sem_typ_subtyp
   {C1 C2 : CaptureSet s} {E1 E2 : Ty .exi s}
-  (hΓ : Γ.IsClosed)
   (ht : C1 # Γ ⊨ e : E1)
   (hsubcapt : Subcapt Γ C1 C2)
   (hsubtyp : Subtyp Γ E1 E2)
@@ -4499,7 +4496,7 @@ theorem sem_typ_subtyp
   -- Lift the evaluation from C1 to C2 using capability set monotonicity
   have h_eval_E1_at_C2 := eval_capability_set_monotonic h_eval_E1 hsubcapt_sem
   -- Use fundamental_subtyp to get E1 <: E2 semantically
-  have hsubtyp_sem := fundamental_subtyp hΓ hclosed_E1 hclosed_E2 hsubtyp env m htyping
+  have hsubtyp_sem := fundamental_subtyp hclosed_E1 hclosed_E2 hsubtyp env m htyping
   have h_entails := Denot.imply_after_to_m_entails_after hsubtyp_sem
   refine eval_post_monotonic_general ?_ h_eval_E1_at_C2
   intro m3 hsub3 v hpost
@@ -5274,7 +5271,7 @@ theorem fundamental
   case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
     have hclosed_C1 := HasType.use_set_is_closed ht_syn
     have hclosed_E1 := HasType.type_is_closed ht_syn
-    exact sem_typ_subtyp hΓ (ht_ih hΓ hclosed_e) hsubcapt hsubtyp
+    exact sem_typ_subtyp (ht_ih hΓ hclosed_e) hsubcapt hsubtyp
       hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
   case unpack hseq ht_syn hu_syn ht_ih hu_ih =>
     cases hclosed_e with
