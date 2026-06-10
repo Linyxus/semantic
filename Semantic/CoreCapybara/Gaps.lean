@@ -80,7 +80,10 @@ the peak system (`CaptureSet.peaks`, `compute_peaks`, `DropSepIn`'s
 selection, and the `sep_sc`/`seq_sc` transports) — "shallow peaks with
 atomic variables" rather than the current "resolve-through-variables". The
 lock gap additionally needs a device carrying cross-variable separation
-facts to budget-less program points.
+facts to budget-less program points. Re-phrasings of the *invariant* alone
+do not help: the existential dead-set variant ("everything is separate
+except an excused, already-dropped set the budget avoids") collapses back to
+`DropSepIn` exactly (`dropSepExcept_collapse` at the end of this file).
 -/
 
 namespace CoreCapybara.Gaps
@@ -395,5 +398,53 @@ theorem sepcheck_global_droppable_false :
     (.push (.push .empty (.cvar .unbound)) (.cvar .unbound))
     env2 mem1 envtyping2
   exact noninterference_cap0_self_false hni
+
+/-! ## A non-repair: the existential "dead set" re-phrasing of `DropSepIn`
+
+A natural-looking alternative to the budget-relativized `DropSepIn` premise:
+maintain a *global* separation invariant with an excused set — pick a set
+`dead` of already-dropped (hence legitimately overlapping, non-accessible)
+capture variables, require every pair of droppable peaks *outside* `dead` to
+be separate, and require the judgment's use set to be disjoint from `dead`.
+The premise shape would be `∃ dead, DropSepExcept env dead ∧ peaks(C) # dead`.
+
+This is not a repair: with the dead set chosen *per judgment* (existentially),
+the proposal is logically **equivalent** to `DropSepIn env C` — in the (⇐)
+direction choose the complement, `dead := the capture variables NOT peaked in
+the budget` ("everything I am not using may as well be dead"), which is
+exactly the reading budget-relativization already implements. The collapse is
+machine-checked below (`dropSepExcept_collapse`); consequently every
+transport obligation of the closure premise, and every counterexample above,
+applies to the dead-set phrasing verbatim. The dead set is stated as an atom
+predicate `BVar s .cvar → Prop`; a `CaptureSet`-valued dead set factors
+through it via `TypeEnv.HasPeak env dead`, and conversely every predicate
+over the (finitely many) capture variables of a signature is realized by a
+finite union of cvar atoms, which `compute_peaks` fixes. -/
+
+/-- Global environment separation with an excused ("dead") set of capture
+variables: every pair of distinct droppable capture variables *not* declared
+dead has disjoint capabilities. -/
+def DropSepExcept (env : TypeEnv s) (dead : BVar s .cvar → Prop) : Prop :=
+  ∀ (c1 c2 : BVar s .cvar),
+    c1 ≠ c2 →
+    env.lookup_cvar_auth c1 = .can_drop →
+    env.lookup_cvar_auth c2 = .can_drop →
+    ¬ dead c1 → ¬ dead c2 →
+    CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
+
+/-- The collapse: the per-judgment existential dead-set premise is equivalent
+to `DropSepIn`. (⇐) excuses the complement: `dead c := ¬ env.HasPeak C c`. -/
+theorem dropSepExcept_collapse (env : TypeEnv s) (C : CaptureSet s) :
+    (∃ dead : BVar s .cvar → Prop, DropSepExcept env dead ∧
+      (∀ c, env.HasPeak C c → ¬ dead c)) ↔ env.DropSepIn C := by
+  constructor
+  · rintro ⟨dead, hdse, hdisj⟩ c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    exact hdse c1 c2 hne h1 h2 (hdisj c1 ⟨a1, hp1⟩) (hdisj c2 ⟨a2, hp2⟩)
+  · intro hdsi
+    refine ⟨fun c => ¬ env.HasPeak C c, ?_, fun c hp hn => hn hp⟩
+    intro c1 c2 hne h1 h2 hd1 hd2
+    obtain ⟨a1, hp1⟩ : env.HasPeak C c1 := Classical.byContradiction hd1
+    obtain ⟨a2, hp2⟩ : env.HasPeak C c2 := Classical.byContradiction hd2
+    exact hdsi c1 c2 a1 a2 hne h1 h2 hp1 hp2
 
 end CoreCapybara.Gaps
