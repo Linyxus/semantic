@@ -1082,16 +1082,19 @@ theorem TypeEnv.DropSepIn.extend_lock {env : TypeEnv s} {C : CaptureSet s}
 
 theorem TypeEnv.DropSepIn.union_left {env : TypeEnv s} {C1 C2 : CaptureSet s}
     (h : env.DropSepIn (C1 ∪ C2)) : env.DropSepIn C1 := by
+  apply TypeEnv.DropSepIn.of_pairs
   intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  exact h c1 c2 a1 a2 hne h1 h2 (.union_right_left hp1) (.union_right_left hp2)
+  exact h.pairs c1 c2 a1 a2 hne h1 h2 (.union_right_left hp1) (.union_right_left hp2)
 
 theorem TypeEnv.DropSepIn.union_right {env : TypeEnv s} {C1 C2 : CaptureSet s}
     (h : env.DropSepIn (C1 ∪ C2)) : env.DropSepIn C2 := by
+  apply TypeEnv.DropSepIn.of_pairs
   intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  exact h c1 c2 a1 a2 hne h1 h2 (.union_right_right hp1) (.union_right_right hp2)
+  exact h.pairs c1 c2 a1 a2 hne h1 h2 (.union_right_right hp1) (.union_right_right hp2)
 
 theorem TypeEnv.DropSepIn.empty {env : TypeEnv s} :
     env.DropSepIn ({} : CaptureSet s) := by
+  apply TypeEnv.DropSepIn.of_pairs
   intro c1 c2 a1 a2 _ _ _ hp1 _
   exact absurd hp1 CaptureSet.cvar_not_subset_empty
 
@@ -1102,6 +1105,7 @@ theorem TypeEnv.DropSepIn.of_subcapt {Γ : Ctx s} {env : TypeEnv s}
     {C1 C2 : CaptureSet s} {m : Memory}
     (hts : EnvTyping Γ env m) (hsub : Subcapt Γ C1 C2)
     (h : env.DropSepIn C2) : env.DropSepIn C1 := by
+  apply TypeEnv.DropSepIn.of_pairs
   intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
   rw [← compute_peaks_correct hts C1] at hp1 hp2
   have h1' := h1
@@ -1111,7 +1115,7 @@ theorem TypeEnv.DropSepIn.of_subcapt {Γ : Ctx s} {env : TypeEnv s}
   obtain ⟨a1', hp1'⟩ := hsub.droppable_peak_monotone h1' hp1
   obtain ⟨a2', hp2'⟩ := hsub.droppable_peak_monotone h2' hp2
   rw [compute_peaks_correct hts C2] at hp1' hp2'
-  exact h c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+  exact h.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
 
 /-- Under `EnvTyping`, computed peaks of statically-computed peaks collapse. -/
 theorem compute_peaks_peaks {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
@@ -3054,8 +3058,9 @@ private theorem cvar_subset_cp_union_r {env : TypeEnv s} {a : Access}
 /-- Commutativity of the budget union for `DropSepIn`. -/
 private theorem TypeEnv.DropSepIn.union_comm {env : TypeEnv s} {A B : CaptureSet s}
     (h : env.DropSepIn (A ∪ B)) : env.DropSepIn (B ∪ A) := by
+  apply TypeEnv.DropSepIn.of_pairs
   intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  refine h c1 c2 a1 a2 hne h1 h2 ?_ ?_
+  refine h.pairs c1 c2 a1 a2 hne h1 h2 ?_ ?_
   · cases cvar_subset_cp_union_inv hp1 with
     | inl hh => exact cvar_subset_cp_union_r hh
     | inr hh => exact cvar_subset_cp_union_l hh
@@ -3070,6 +3075,7 @@ private theorem TypeEnv.DropSepIn.union_mono_left {env : TypeEnv s}
       (CaptureSet.cvar a c) ⊆ compute_peaks env A' →
       ∃ a', (CaptureSet.cvar a' c) ⊆ compute_peaks env A)
     (h : env.DropSepIn (A ∪ B)) : env.DropSepIn (A' ∪ B) := by
+  apply TypeEnv.DropSepIn.of_pairs
   intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
   have transfer : ∀ (a : Access) (c : BVar s .cvar),
       (CaptureSet.cvar a c) ⊆ compute_peaks env (A' ∪ B) →
@@ -3082,7 +3088,7 @@ private theorem TypeEnv.DropSepIn.union_mono_left {env : TypeEnv s}
     | inr hh => exact ⟨a, cvar_subset_cp_union_r hh⟩
   obtain ⟨a1', hp1'⟩ := transfer a1 c1 hp1
   obtain ⟨a2', hp2'⟩ := transfer a2 c2 hp2
-  exact h c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+  exact h.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
 
 /-- Peaks collapse: replacing a budget by its static peaks preserves the
 computed peaks (under `EnvTyping`), hence the invariant. -/
@@ -3223,7 +3229,7 @@ theorem sem_sepcheck_droppable {c1 c2 : BVar s .cvar} {m1 m2 : Access}
     rw [envtyping_lookup_cvar_auth hts c1]; exact ha1
   have ha2' : env.lookup_cvar_auth c2 = .can_drop := by
     rw [envtyping_lookup_cvar_auth hts c2]; exact ha2
-  exact hdsep c1 c2 m1 m2 hne ha1' ha2'
+  exact hdsep.pairs c1 c2 m1 m2 hne ha1' ha2'
     (cvar_subset_cp_union_l .refl) (cvar_subset_cp_union_r .refl)
     mu1' mu2' l h1' h2'
 
@@ -3248,6 +3254,7 @@ theorem fundamental_sepcheck
     rename_i E1 E2 D1 _
     intro hΓ env H hts hdsep
     have hdsep' : env.DropSepIn (E1 ∪ E2) := by
+      apply TypeEnv.DropSepIn.of_pairs
       intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
       have transport : ∀ (a : Access) (c : BVar _ .cvar),
           (CaptureSet.cvar a c) ⊆ compute_peaks env (E1 ∪ E2) →
@@ -3261,7 +3268,7 @@ theorem fundamental_sepcheck
         · exact ⟨a, cvar_subset_cp_union_r h⟩
       obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
       obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
-      exact hdsep c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+      exact hdsep.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
     exact CapabilitySet.Noninterference.subset_left
       (ih hΓ env H hts hdsep') (fundamental_subcapt hsub env H hts)
   | sep_lock hlock hdistinct =>
@@ -3457,7 +3464,7 @@ theorem fundamental_disjcheck
     rw [hdenot2] at h2
     obtain ⟨mu1', h1'⟩ := hasmem_of_applyAccess h1
     obtain ⟨mu2', h2'⟩ := hasmem_of_applyAccess h2
-    exact hdsep c1 c2 a1 a2 hne ha1' ha2'
+    exact hdsep.pairs c1 c2 a1 a2 hne ha1' ha2'
       (cvar_subset_cp_union_l .refl) (cvar_subset_cp_union_r .refl)
       mu1' mu2' l h1' h2'
 
@@ -3490,6 +3497,7 @@ theorem captureSet_seqcomp_denot
     rename_i E1 D1' E2 _
     intro hdsep mu l h1 h2
     have hdsep' : env.DropSepIn (D1' ∪ E2) := by
+      apply TypeEnv.DropSepIn.of_pairs
       intro c1 c2 a1 a2 hne ha1 ha2 hp1 hp2
       have transport : ∀ (a : Access) (c : BVar _ .cvar),
           (CaptureSet.cvar a c) ⊆ compute_peaks env (D1' ∪ E2) →
@@ -3503,7 +3511,7 @@ theorem captureSet_seqcomp_denot
         · exact ⟨a, cvar_subset_cp_union_r h⟩
       obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
       obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
-      exact hdsep c1 c2 a1' a2' hne ha1 ha2 hp1' hp2'
+      exact hdsep.pairs c1 c2 a1' a2' hne ha1 ha2 hp1' hp2'
     exact ih hdsep' mu l
       (hasmem_drop_of_subset (fundamental_subcapt hsub env store hts) h1) h2
   | seq_union _ _ ih1 ih2 =>
@@ -4877,7 +4885,7 @@ theorem sem_typ_unpack
             refine cvar_subset_cp_union_r ?_
             rw [← compute_peaks_correct hts]
             exact hpk'
-          exact hdsep c1' c' .drop a' hne ha1' ha2' hp1 hp2 mu' mu2 l hc1mem hl2
+          exact hdsep.pairs c1' c' .drop a' hne ha1' ha2' hp1 hp2 mu' mu2 l hc1mem hl2
         · -- the location is fresh relative to `store`, but the stored
           -- capability is domain-closed in `store`.
           have hcap_eq := typed_env_cvar_cap_eq hts c'
@@ -4887,6 +4895,7 @@ theorem sem_typ_unpack
       have hdsep_inner :
           env'.DropSepIn ((C2.rename Rename.succ)
             ∪ (.cvar (.M .epsilon) .here) ∪ (.cvar .drop .here)) := by
+        apply TypeEnv.DropSepIn.of_pairs
         intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
         -- Decompose peak membership in the inner budget.
         have hsplit : ∀ (a0 : Access) (c0 : BVar (s,C) .cvar),
@@ -4935,7 +4944,7 @@ theorem sem_typ_unpack
         · -- two existing droppables, both peaked in `C2`
           subst hc1; subst hc2
           have hne' : c1' ≠ c2' := fun heq => hne (by rw [heq])
-          refine hdsep c1' c2' a1' a2' hne' h1 h2 ?_ ?_
+          refine hdsep.pairs c1' c2' a1' a2' hne' h1 h2 ?_ ?_
           · refine cvar_subset_cp_union_r ?_
             rw [← compute_peaks_correct hts]
             exact hpk1

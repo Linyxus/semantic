@@ -58,14 +58,16 @@ exists, because three machine-checked constraints pin `P` from three sides:
   peak-membership equivalence between a variable's stored peaks and its
   occurrence's peaks — which subsumption breaks (`app_peak_slack_false`).
 
-The same pincer disposes of the invariant *re-phrasings*: the existential
-dead-set variant ("everything is separate except an excused, already-dropped
-set the budget avoids") is logically equivalent to `DropSepIn`
-(`dropSepExcept_collapse`), so it changes nothing. A *threaded* (global,
-non-existential) dead set would have to mark the pack/unpack alias pair
-asymmetrically — per-name data that the extension-only environment
-architecture cannot update, and per-location data cannot express (`env2`'s
-two names share their capabilities).
+The dead-set formulation itself ("everything is separate except an excused,
+already-dropped set the budget avoids") is *implemented*: `TypeEnv.DropSepIn`
+is defined in exactly that form (see `Denotation/Core.lean`), with peak-pair
+separation derived as its intro/elim characterization (`pairs`/`of_pairs`,
+restated here as `dropSepExcept_collapse`). The equivalence is also why the
+re-phrasing cannot by itself repair anything: every transport obligation is
+left intact. A *threaded* (global, non-existential) dead set would have to
+mark the pack/unpack alias pair asymmetrically — per-name data that the
+extension-only environment architecture cannot update, and per-location data
+cannot express (`env2`'s two names share their capabilities).
 
 Closing these gaps therefore requires a *static* change — making demands
 peak-faithful across subsumption and instantiation — which is a type-system
@@ -140,7 +142,7 @@ def Cb2 : CaptureSet ({},C,C) :=
 theorem env2_not_dropsep : ¬ env2.DropSepIn Cb2 := by
   intro h
   exact cap0_not_disjoint_self
-    (h (.there .here) .here (.M .epsilon) (.M .epsilon)
+    (h.pairs (.there .here) .here (.M .epsilon) (.M .epsilon)
       (by intro heq; cases heq) rfl rfl
       (.union_right_left .refl) (.union_right_right .refl))
 
@@ -312,6 +314,7 @@ theorem fundamental_sepcheck_underapprox_false :
   have hdsep : (env2.extend_var 0 ⟨CaptureSet.empty, .empty⟩).DropSepIn
       ((CaptureSet.var (.M .epsilon) (.bound .here))
         ∪ (.cvar (.M .epsilon) (.there (.there .here)))) := by
+    apply TypeEnv.DropSepIn.of_pairs
     intro c1 c2 a1 a2 hne hauth1 hauth2 hp1 hp2
     have key : ∀ (a : Access) (c : BVar ({},C,C,x) .cvar),
         (CaptureSet.cvar a c) ⊆
@@ -352,49 +355,31 @@ theorem sepcheck_global_droppable_false :
     env2 mem1 envtyping2
   exact noninterference_cap0_self_false hni
 
-/-! ## A non-repair: the existential "dead set" re-phrasing of `DropSepIn`
+/-! ## The dead-set formulation is the premise — and it changes no obligation
 
-A natural-looking alternative to the budget-relativized `DropSepIn` premise:
-maintain a *global* separation invariant with an excused set — pick a set
-`dead` of already-dropped (hence legitimately overlapping, non-accessible)
-capture variables, require every pair of droppable peaks *outside* `dead` to
-be separate, and require the judgment's use set to be disjoint from `dead`.
-The premise shape would be `∃ dead, DropSepExcept env dead ∧ peaks(C) # dead`.
-
-This is not a repair: with the dead set chosen *per judgment* (existentially),
-the proposal is logically **equivalent** to `DropSepIn env C` — in the (⇐)
-direction choose the complement, `dead := the capture variables NOT peaked in
-the budget` ("everything I am not using may as well be dead"), which is
-exactly the reading budget-relativization already implements. The collapse is
-machine-checked below (`dropSepExcept_collapse`); consequently every
+`TypeEnv.DropSepIn` *is defined* in the dead-set form (an excused set of
+already-dropped capture variables, separation outside it, the budget's peaks
+avoiding it — see `Denotation/Core.lean`). The collapse below records why
+this re-phrasing, while it is the intended reading of the invariant, cannot
+*by itself* repair any transport gap: with the dead set chosen per judgment
+(existentially), the premise is logically equivalent to peak-pair separation
+— the dead set may always be taken to be the complement of the budget's
+peaks ("everything I am not using may as well be dead"). Consequently every
 transport obligation of the closure premise, and every counterexample above,
 applies to the dead-set phrasing verbatim. -/
 
-/-- Global environment separation with an excused ("dead") set of capture
-variables: every pair of distinct droppable capture variables *not* declared
-dead has disjoint capabilities. -/
-def DropSepExcept (env : TypeEnv s) (dead : BVar s .cvar → Prop) : Prop :=
-  ∀ (c1 c2 : BVar s .cvar),
-    c1 ≠ c2 →
-    env.lookup_cvar_auth c1 = .can_drop →
-    env.lookup_cvar_auth c2 = .can_drop →
-    ¬ dead c1 → ¬ dead c2 →
-    CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
-
-/-- The collapse: the per-judgment existential dead-set premise is equivalent
-to `DropSepIn`. (⇐) excuses the complement: `dead c := ¬ env.HasPeak C c`. -/
+/-- The collapse: the existential dead-set premise (here phrased via
+`TypeEnv.HasPeak`) is equivalent to peak-pair separation. -/
 theorem dropSepExcept_collapse (env : TypeEnv s) (C : CaptureSet s) :
-    (∃ dead : BVar s .cvar → Prop, DropSepExcept env dead ∧
+    (∃ dead : BVar s .cvar → Prop, TypeEnv.DropSepExcept env dead ∧
       (∀ c, env.HasPeak C c → ¬ dead c)) ↔ env.DropSepIn C := by
   constructor
-  · rintro ⟨dead, hdse, hdisj⟩ c1 c2 a1 a2 hne h1 h2 hp1 hp2
-    exact hdse c1 c2 hne h1 h2 (hdisj c1 ⟨a1, hp1⟩) (hdisj c2 ⟨a2, hp2⟩)
-  · intro hdsi
-    refine ⟨fun c => ¬ env.HasPeak C c, ?_, fun c hp hn => hn hp⟩
-    intro c1 c2 hne h1 h2 hd1 hd2
-    obtain ⟨a1, hp1⟩ : env.HasPeak C c1 := Classical.byContradiction hd1
-    obtain ⟨a2, hp2⟩ : env.HasPeak C c2 := Classical.byContradiction hd2
-    exact hdsi c1 c2 a1 a2 hne h1 h2 hp1 hp2
+  · rintro ⟨dead, hdse, hdisj⟩
+    exact ⟨dead, hdse, fun a c hp => hdisj c ⟨a, hp⟩⟩
+  · rintro ⟨dead, hdse, havoid⟩
+    exact ⟨dead, hdse, fun c hp => by
+      obtain ⟨a, hsub⟩ := hp
+      exact havoid a c hsub⟩
 
 /-! ## The value-level ("spendable denotation") closure premise is refuted
 from both sides
@@ -434,6 +419,7 @@ theorem dropSepTouch_unsuppliable :
         DropSepTouch env m C) := by
   intro h
   have hdsi : env2.DropSepIn (.cvar (.M .epsilon) .here) := by
+    apply TypeEnv.DropSepIn.of_pairs
     intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
     exact absurd
       (((CaptureSet.cvar_subset_cvar_inv hp1).2).trans
@@ -518,7 +504,7 @@ theorem dropSepTouch_insufficient :
     rw [CaptureSet.peaks_union, CaptureSet.peaks, CaptureSet.peaks]
     rfl
   refine cap0_not_disjoint_self
-    (hdsi (.there (.there .here)) (.there .here) (.M .epsilon) (.M .epsilon)
+    (hdsi.pairs (.there (.there .here)) (.there .here) (.M .epsilon) (.M .epsilon)
       (by intro heq; cases heq) rfl rfl ?_ ?_)
   · rw [hpk]
     exact .union_right_left .refl

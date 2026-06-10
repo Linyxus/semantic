@@ -273,11 +273,12 @@ theorem Rebind.drop_sep_in
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
   (ρ : Rebind env1 f env2) (cs : CaptureSet s1) :
   env1.DropSepIn cs ↔ env2.DropSepIn (cs.rename f) := by
-  unfold TypeEnv.DropSepIn
   have hpeaks := rebind_compute_peaks ρ cs
   have hpo := compute_peaks_is_peak env1 cs
   constructor
-  · intro h c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
+  · intro h
+    apply TypeEnv.DropSepIn.of_pairs
+    intro c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
     rw [← hpeaks] at hsub1 hsub2
     obtain ⟨c1', hc1, hsub1'⟩ := hpo.cvar_subset_rename_inv hsub1
     obtain ⟨c2', hc2, hsub2'⟩ := hpo.cvar_subset_rename_inv hsub2
@@ -285,9 +286,11 @@ theorem Rebind.drop_sep_in
     have hne' : c1' ≠ c2' := fun heq => hne (by rw [heq])
     rw [← ρ.cvar_auth c1'] at hauth1
     rw [← ρ.cvar_auth c2'] at hauth2
-    have := h c1' c2' a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
+    have := h.pairs c1' c2' a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
     rwa [ρ.cvar c1', ρ.cvar c2'] at this
-  · intro h c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
+  · intro h
+    apply TypeEnv.DropSepIn.of_pairs
+    intro c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
     have hsub1' : (.cvar a1 (f.var c1)) ⊆ compute_peaks env2 (cs.rename f) := by
       rw [← hpeaks]
       exact hsub1.rename'
@@ -297,7 +300,7 @@ theorem Rebind.drop_sep_in
     have hne' : f.var c1 ≠ f.var c2 := fun heq => hne (ρ.cvar_injective c1 c2 heq)
     rw [ρ.cvar_auth c1] at hauth1
     rw [ρ.cvar_auth c2] at hauth2
-    have := h (f.var c1) (f.var c2) a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
+    have := h.pairs (f.var c1) (f.var c2) a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
     rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
 
 theorem rebind_satisfy_iff

@@ -469,7 +469,9 @@ theorem Retype.dsep
     (ρ : Retype env1 σ env2 D) (cs : CaptureSet s1) :
     TypeEnv.DropSepIn env1 cs ↔ TypeEnv.DropSepIn env2 (cs.subst σ) := by
   constructor
-  · intro h d1 d2 a1 a2 hne hauth1 hauth2 hp1 hp2
+  · intro h
+    apply TypeEnv.DropSepIn.of_pairs
+    intro d1 d2 a1 a2 hne hauth1 hauth2 hp1 hp2
     obtain ⟨c1, c2, hne', hc1, hc2, hcap1, hcap2⟩ :=
       ρ.dpeak_back (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) d1 d2
         ⟨hauth1, (ρ.peaks d1 cs).mp ⟨a1, hp1⟩⟩
@@ -478,8 +480,10 @@ theorem Retype.dsep
     obtain ⟨hauth2', a2', hpc2⟩ := hc2
     rw [compute_peaks_idem] at hpc1 hpc2
     rw [← hcap1, ← hcap2]
-    exact h c1 c2 a1' a2' (hne' hne) hauth1' hauth2' hpc1 hpc2
-  · intro h c1 c2 a1 a2 hne hauth1 hauth2 hp1 hp2
+    exact h.pairs c1 c2 a1' a2' (hne' hne) hauth1' hauth2' hpc1 hpc2
+  · intro h
+    apply TypeEnv.DropSepIn.of_pairs
+    intro c1 c2 a1 a2 hne hauth1 hauth2 hp1 hp2
     obtain ⟨d1, d2, hne', hd1, hd2, hcap1, hcap2⟩ :=
       ρ.dpeak_fwd (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) c1 c2
         ⟨hauth1, a1, by rw [compute_peaks_idem]; exact hp1⟩
@@ -489,7 +493,7 @@ theorem Retype.dsep
     obtain ⟨a1', hp1'⟩ := (ρ.peaks d1 cs).mpr hpa1
     obtain ⟨a2', hp2'⟩ := (ρ.peaks d2 cs).mpr hpa2
     rw [← hcap1, ← hcap2]
-    exact h d1 d2 a1' a2' (hne' hne) hauth1' hauth2' hp1' hp2'
+    exact h.pairs d1 d2 a1' a2' (hne' hne) hauth1' hauth2' hp1' hp2'
 
 /-- The peak-membership hypothesis needed to lift a `Retype` under a value
 binder, when the two stored peak sets are the computed peaks of an argument
