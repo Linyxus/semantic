@@ -110,6 +110,7 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sep_sc {C1 C2 C1' : CaptureSet s} :
   SepCheck Γ C1 C2 ->
   Subcapt Γ C1' C1 ->
+  CaptureSet.EquivP Γ C1' C1 ->
   --------------------
   SepCheck Γ C1' C2
 | sep_lock {C1 C2 : CaptureSet s} :
@@ -193,9 +194,6 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ) ->
   ----------------------------------------
   Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
--- DEVIATION from the original rule (approved, cosmetic): closedness premises
--- carry the facts the semantic interpretation of the `Satisfy` premise needs
--- (`sem_satisfy` requires a closed context and lock contexts).
 | modal_modal :
   Γ.IsClosed ->
   Ψ1.IsClosed ->

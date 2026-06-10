@@ -461,4 +461,12 @@ theorem CaptureSet.var_peaks {Γ : Ctx s}
           unfold peaks; rfl] at ih
     rw [ih, ← CaptureSet.applyAccess_rename, ← peaks_rename_succ_eq]
 
+/-- Peak-level subsetting -/
+def CaptureSet.SubP (Γ : Ctx s) (cs1 cs2 : CaptureSet s) : Prop :=
+  (CaptureSet.peaks Γ cs1).CoveredBy (CaptureSet.peaks Γ cs2)
+
+/-- Peak-level equivalence -/
+def CaptureSet.EquivP (Γ : Ctx s) (cs1 cs2 : CaptureSet s) : Prop :=
+  CaptureSet.SubP Γ cs1 cs2 ∧ CaptureSet.SubP Γ cs2 cs1
+
 end CoreCapybara
