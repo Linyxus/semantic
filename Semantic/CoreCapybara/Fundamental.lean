@@ -2083,11 +2083,16 @@ theorem sem_typ_app
   -- the peaks of the arrow's domain `T1`. The `subtyp` rule may widen `y`'s
   -- type to `T1`, adding droppable peaks, and nothing in the semantic
   -- premises relates the two — see the definition-level counterexample
-  -- `CoreCapybara.Gaps.app_peak_slack_false`. Closing this requires peak
-  -- information to flow through subtyping (a peak-faithful subsumption
-  -- device), not a change to the rules.
+  -- `CoreCapybara.Gaps.app_peak_slack_false`. The antitone repair (let
+  -- stored peaks under-approximate the declared type's peaks) is ALSO
+  -- refuted — `CoreCapybara.Gaps.fundamental_sepcheck_underapprox_false`:
+  -- the `sc_var`/`EquivP` re-budgeting lets derivations spend a variable's
+  -- full declared-type peaks, so stored peaks cannot be under-reported.
+  -- Closing this requires making the *demands* peak-faithful (variables as
+  -- atomic peaks of their budgets), not a change to the environment side —
+  -- see the `CoreCapybara.Gaps` module docstring.
   have hps : ∀ (d : BVar s .cvar),
-      env.PeaksAt ps.cs d ↔ env.PeaksAt (.var (.M .epsilon) (.bound y)) d := by
+      env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) (.bound y)) d := by
     sorry
   have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (ps:=ps) (T:=T2)
     (R:=expand_captures store.heap cs') hps
@@ -3923,11 +3928,13 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                     -- peak sets requires the two domains' droppable peaks to
                     -- coincide, but arrow subtyping is contravariant in the
                     -- domain and `Subcapt` only gives one-directional peak
-                    -- coverage. Same gap as in `sem_typ_app` — see
-                    -- `CoreCapybara.Gaps.app_peak_slack_false`.
+                    -- coverage. Same gap as in `sem_typ_app`; the antitone
+                    -- repair is also refuted — see
+                    -- `CoreCapybara.Gaps.app_peak_slack_false` and
+                    -- `CoreCapybara.Gaps.fundamental_sepcheck_underapprox_false`.
                     sorry
                   | there z =>
-                    refine TypeEnv.PeaksAt.of_peaks_eq ?_
+                    refine TypeEnv.HasPeak.of_peaks_eq ?_
                     exact Eq.trans
                       (compute_peaks_peaksOnly_fixed
                         ((env.lookup_var z).2.h.rename Rename.succ)).symm

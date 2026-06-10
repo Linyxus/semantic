@@ -50,7 +50,14 @@ substitution or a peak-set change and the relation is genuinely false:
    yields one-directional droppable-peak coverage
    (`subcapt_peak_slack_false`), and a well-typed environment can bind a
    variable whose stored peaks are strictly below its semantic type's peaks
-   (`app_peak_slack_false`).
+   (`app_peak_slack_false`). Moreover the natural *antitone* repair — let
+   stored peak sets droppably under-approximate the declared type's peaks —
+   is also refuted (`fundamental_sepcheck_underapprox_false`): the
+   `sc_var`/`EquivP` re-budgeting of `sep_sc`/`seq_sc` lets derivations
+   spend a variable's full declared-type peaks, so stored peaks are the
+   budget currency and cannot be under-reported. The slack is therefore not
+   closable on the environment side at all; the demands themselves must
+   become peak-faithful (see below).
 
 3. **Lock-stored separation facts** (`fundamental_sepcheck_global`,
    pre-existing): lock facts are consumed at arbitrary later program points
@@ -58,12 +65,22 @@ substitution or a peak-set change and the relation is genuinely false:
    variables (`sepcheck_global_droppable_false`).
 
 What a solution must provide, WITHOUT restricting the type system: peak
-information that survives instantiation and subsumption — e.g. "deep peaks"
-(environments record, for every capture-variable binding, the peaks of the
-set it was instantiated with, and peak computation resolves through them), so
-that `openCVar`/`openVar` become peak-faithful and the `Retype` fields become
-provable; the lock gap additionally needs a device carrying cross-variable
-separation facts to budget-less program points.
+information that survives instantiation and subsumption. The refutations
+bracket the design space from both sides — environments can neither
+over-report (the transports break, `app_peak_slack_false`) nor under-report
+(the budgets break, `fundamental_sepcheck_underapprox_false`) a variable's
+droppable peaks relative to what derivations can spend. The remaining
+candidate is to make the *spending* peak-faithful: treat variables (and
+instantiated capture binders) as atomic peaks of their budgets — `peaks`/
+`compute_peaks` stop resolving through bindings, `{ε·x}` owes `x`-facts
+rather than declared-type facts, the `EquivP` laundering of `sc_var`
+disappears, and `openVar`/`openCVar` become peak-faithful by construction
+(the substituted atom maps to the argument's atom). This is a redesign of
+the peak system (`CaptureSet.peaks`, `compute_peaks`, `DropSepIn`'s
+selection, and the `sep_sc`/`seq_sc` transports) — "shallow peaks with
+atomic variables" rather than the current "resolve-through-variables". The
+lock gap additionally needs a device carrying cross-variable separation
+facts to budget-less program points.
 -/
 
 namespace CoreCapybara.Gaps
@@ -169,7 +186,7 @@ theorem open_carg_dpeak_fwd_false :
         (cap : CapabilitySet) (a : Authority) (c : BVar (s,C) .cvar),
         (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a).lookup_cvar_auth c
           = .can_drop →
-        ∃ d, TypeEnv.DropPeak env ((Subst.openCVar C).cvar c) d ∧
+        ∃ d, TypeEnv.HasDroppablePeak env ((Subst.openCVar C).cvar c) d ∧
           (env.lookup_cvar d).2
             = ((env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a).lookup_cvar c).2) := by
   intro h
@@ -185,8 +202,8 @@ authority of the peaks). Refutes the `.here` branch of `Retype.open_carg`'s
 theorem open_carg_dpeak_unique_false :
     ¬ (∀ {s : Sig} (env : TypeEnv s) (C : CaptureSet s) (c : BVar (s,C) .cvar)
         (d1 d2 : BVar s .cvar),
-        TypeEnv.DropPeak env ((Subst.openCVar C).cvar c) d1 →
-        TypeEnv.DropPeak env ((Subst.openCVar C).cvar c) d2 → d1 = d2) := by
+        TypeEnv.HasDroppablePeak env ((Subst.openCVar C).cvar c) d1 →
+        TypeEnv.HasDroppablePeak env ((Subst.openCVar C).cvar c) d2 → d1 = d2) := by
   intro h
   have heq := h env2 Cb2 .here (.there .here) .here
     ⟨rfl, .M .epsilon, .union_right_left .refl⟩
@@ -205,7 +222,7 @@ gives one-directional coverage. A budget may grow a fresh droppable peak. -/
 theorem subcapt_peak_slack_false :
     ¬ (∀ {s : Sig} (Γ : Ctx s) (env : TypeEnv s) (C1 C2 : CaptureSet s),
         Subcapt Γ C1 C2 →
-        ∀ d, env.PeaksAt C1 d ↔ env.PeaksAt C2 d) := by
+        ∀ d, env.HasPeak C1 d ↔ env.HasPeak C2 d) := by
   intro h
   have hiff := h Γ2 env2 (.cvar (.M .epsilon) .here) Cb2
     (.sc_elem (.union_right_right .refl)) (.there .here)
@@ -250,8 +267,8 @@ theorem app_peak_slack_false :
         EnvTyping Γ env store →
         Ty.val_denot env T1 store (.var (.free (env.lookup_var y).1)) →
         ∀ (d : BVar s .cvar),
-          env.PeaksAt (compute_peakset env T1.captureSet).cs d ↔
-          env.PeaksAt (.var (.M .epsilon) (.bound y)) d) := by
+          env.HasPeak (compute_peakset env T1.captureSet).cs d ↔
+          env.HasPeak (.var (.M .epsilon) (.bound y)) d) := by
   intro h
   have hval : Ty.val_denot env4 (.cap (.cvar (.M .epsilon) (.there .here))) mem1
       (.var (.free (env4.lookup_var .here).1)) := by
@@ -269,6 +286,92 @@ theorem app_peak_slack_false :
     rfl
   rw [heq] at hsub
   exact CaptureSet.cvar_not_subset_empty hsub
+
+/-- The natural repair attempt — close the slack *antitonically*, by letting
+a variable's stored peak set droppably **under-approximate** the peaks of its
+declared type (weakening `EnvTyping`'s `ps = T.captureSet.peakset Γ` to
+coverage) — is itself refuted. Stored peaks are the currency budgets pay in:
+`sc_var` together with the `EquivP` premise of `sep_sc` lets a derivation
+re-budget `{ε·x}` to the full capture set of `x`'s *declared* type (their
+static peaks coincide), so the interpretation of `SepCheck` can demand
+declared-type peak facts that an under-approximating environment no longer
+reports. Concretely: with `x` declared at `cap {ε·c2}` but stored with empty
+peaks, the budget `{ε·x} ∪ {ε·c1}` has no droppable peak pair — yet
+`SepCheck (Γ,x) {ε·x} {ε·c1}` is derivable via `sep_sc`/`sc_var` ending in
+`sep_droppable c2 c1`, and in an aliased environment its interpretation is
+false. (Under the stored-peak *equality* of `EnvTyping`, the same world makes
+the `DropSepIn` premise unsatisfiable and the instance vacuous — the equality
+is load-bearing.) Consequently the subsumption slack cannot be closed on the
+environment side at all: any sound device must instead make the *demands*
+peak-faithful — e.g. treat variables as atomic peaks of their budgets
+(so `{ε·x}` owes `x`-facts, not declared-type facts, and `openVar` becomes
+peak-faithful by construction), which is a redesign of `peaks`/
+`compute_peaks`/`DropSepIn` and the `sep_sc`/`seq_sc` transports. -/
+theorem fundamental_sepcheck_underapprox_false :
+    ¬ (∀ {s : Sig} (Γ : Ctx s) (T : Ty .capt s) (env : TypeEnv s) (m : Memory)
+        (n : Nat) (ps : PeakSet s) (C1 C2 : CaptureSet (s,x)),
+        SepCheck (Γ.push_var T) C1 C2 →
+        EnvTyping Γ env m →
+        Ty.val_denot env T m (.var (.free n)) →
+        (∀ d, env.HasDroppablePeak ps.cs d → env.HasDroppablePeak T.captureSet d) →
+        (env.extend_var n ps).DropSepIn (C1 ∪ C2) →
+        CapabilitySet.Noninterference
+          (C1.denot (env.extend_var n ps) m)
+          (C2.denot (env.extend_var n ps) m)) := by
+  intro h
+  -- The world: `Γ2` (two aliased droppables cA = .there .here, cB = .here),
+  -- extended with `x : cap {ε·cB}`, but `x` STORED with empty peaks.
+  -- The check: `SepCheck {ε·x} {ε·cA}` via re-budgeting `{ε·x}` to `{ε·cB}`.
+  have hval : Ty.val_denot env2 (.cap (.cvar (.M .epsilon) .here)) mem1
+      (.var (.free 0)) := by
+    simp only [Ty.val_denot]
+    exact ⟨.wf_var (.wf_free (val := .capability .basic) rfl),
+      .wf_var_free (val := .capability .basic) rfl,
+      0, rfl, rfl, CapabilitySet.covers.here CapMode.Le.refl⟩
+  have hpeaks_eq :
+      CaptureSet.peaks (Γ2.push_var (.cap (.cvar (.M .epsilon) .here)))
+        (.var (.M .epsilon) (.bound .here))
+      = CaptureSet.peaks (Γ2.push_var (.cap (.cvar (.M .epsilon) .here)))
+        (.cvar (.M .epsilon) (.there .here)) := by
+    change CaptureSet.peaks (Ctx.push Γ2 (.var (.cap (.cvar (.M .epsilon) .here))))
+        (.var (.M .epsilon) (.bound .here))
+      = CaptureSet.peaks (Ctx.push Γ2 (.var (.cap (.cvar (.M .epsilon) .here))))
+        (.cvar (.M .epsilon) (.there .here))
+    rw [CaptureSet.peaks, CaptureSet.peaks, CaptureSet.peaksVarBound]
+    simp only [Ty.captureSet]
+    rw [CaptureSet.peaks]
+    rfl
+  have hsep : SepCheck (Γ2.push_var (.cap (.cvar (.M .epsilon) .here)))
+      (.var (.M .epsilon) (.bound .here))
+      (.cvar (.M .epsilon) (.there (.there .here))) := by
+    refine .sep_sc (.sep_droppable ⟨rfl, rfl, ?_⟩) (.sc_var .here) ⟨?_, ?_⟩
+    · intro heq
+      cases heq
+    · unfold CaptureSet.SubP
+      rw [hpeaks_eq]
+      exact CaptureSet.CoveredBy.refl'
+    · unfold CaptureSet.SubP
+      rw [hpeaks_eq]
+      exact CaptureSet.CoveredBy.refl'
+  have hdsep : (env2.extend_var 0 ⟨CaptureSet.empty, .empty⟩).DropSepIn
+      ((CaptureSet.var (.M .epsilon) (.bound .here))
+        ∪ (.cvar (.M .epsilon) (.there (.there .here)))) := by
+    intro c1 c2 a1 a2 hne hauth1 hauth2 hp1 hp2
+    have key : ∀ (a : Access) (c : BVar ({},C,C,x) .cvar),
+        (CaptureSet.cvar a c) ⊆
+          compute_peaks (env2.extend_var 0 ⟨CaptureSet.empty, .empty⟩)
+            ((CaptureSet.var (.M .epsilon) (.bound .here))
+              ∪ (.cvar (.M .epsilon) (.there (.there .here)))) →
+        c = .there (.there .here) := by
+      intro a c hp
+      rcases CaptureSet.cvar_subset_union_inv hp with h | h
+      · exact absurd h CaptureSet.cvar_not_subset_empty
+      · exact (CaptureSet.cvar_subset_cvar_inv h).2
+    exact absurd ((key a1 c1 hp1).trans (key a2 c2 hp2).symm) hne
+  exact noninterference_cap0_self_false
+    (h Γ2 (.cap (.cvar (.M .epsilon) .here)) env2 mem1 0 ⟨CaptureSet.empty, .empty⟩
+      _ _ hsep envtyping2 hval
+      (fun d hd => absurd hd.2 TypeEnv.HasPeak.not_empty) hdsep)
 
 /-! ## Gap 3: lock-stored `sep_droppable` facts
 
