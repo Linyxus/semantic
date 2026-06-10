@@ -14,8 +14,15 @@ approved deviation), which makes droppable peaks monotone along `Subcapt` and
 renders `TypeEnv.DropSepIn.of_subcapt` provable — that gap is gone. The
 laundering counterexamples below survive the restriction: they expand an
 `.access_only` capture variable whose *bound* mentions a droppable one, which
-the restricted rule still permits (`cabs` does not require
-`CaptureBound.IsValid` of its bound annotation).
+the restricted rule still permits. The `cabs` rule now requires borrow-only
+bounds (`CaptureBound.BorrowOnly`, an approved deviation), so such contexts
+cannot arise in *typing derivations* — but the refuted lemmas quantify over
+arbitrary contexts, and the budget-relative invariant `DropSepIn` only sees
+*syntactic* peaks of the budget, which `sc_cvar` escapes by moving a
+capability under its bound's peaks. Exploiting the `cabs` restriction
+therefore requires both a context-validity hypothesis on these lemmas and a
+relativization of `DropSepIn` to bound-closed ("deep") peaks — a redesign of
+the invariant and all its suppliers, left as future work.
 
 All counterexamples share one tiny world: a memory `mem1` holding a single
 capability cell at location `0`, and environments binding several capture

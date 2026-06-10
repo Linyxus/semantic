@@ -3233,11 +3233,11 @@ theorem fundamental_sepcheck
     -- be entirely outside it. Even with the `.access_only`-restricted
     -- `sc_cvar` this happens: an `.access_only` capture variable whose
     -- *bound* mentions a droppable one launders the evidence away from the
-    -- budget (such bounds are what `CaptureBound.IsValid` would forbid, but
-    -- `cabs` does not require validity of its bound annotation). The
-    -- statement `SepCheck → SemSepCheck` is FALSE: see
-    -- `CoreCapybara.Gaps.fundamental_sepcheck_false` for the
-    -- definition-level counterexample.
+    -- budget. The `cabs` rule now requires borrow-only bounds, but this
+    -- statement quantifies over arbitrary contexts, so it remains FALSE:
+    -- see `CoreCapybara.Gaps.fundamental_sepcheck_false`. Exploiting the
+    -- `cabs` restriction would require a context-validity hypothesis AND
+    -- relativizing `DropSepIn` to bound-closed ("deep") peaks.
     sorry
   | sep_lock hlock hdistinct =>
     intro _hΓ env H henv _hdsep
@@ -3464,9 +3464,12 @@ theorem captureSet_seqcomp_denot
     -- conclusion's `C1 ∪ C2` and does not cover droppable pairs peaked only
     -- in `C1'` — and even with the `.access_only`-restricted `sc_cvar`,
     -- `C1` can be an `.access_only` capture variable whose *bound* mentions
-    -- a droppable one, hiding the consumed locations entirely. The bridge
-    -- statement is FALSE: see `CoreCapybara.Gaps.seqcomp_denot_false` for
-    -- the definition-level counterexample.
+    -- a droppable one, hiding the consumed locations entirely. The `cabs`
+    -- rule now requires borrow-only bounds, but this statement quantifies
+    -- over arbitrary contexts, so it remains FALSE: see
+    -- `CoreCapybara.Gaps.seqcomp_denot_false`. Exploiting the `cabs`
+    -- restriction would require a context-validity hypothesis AND
+    -- relativizing `DropSepIn` to bound-closed ("deep") peaks.
     sorry
   | seq_union _ _ ih1 ih2 =>
     intro hdsep mu l h1 h2
