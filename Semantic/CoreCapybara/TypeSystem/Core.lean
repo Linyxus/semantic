@@ -26,8 +26,8 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x T ->
   ----------------------------------
   Subcapt Γ (.var (.M .epsilon) (.bound x)) T.captureSet
-| sc_cvar {a : Authority} :
-  Ctx.LookupCVar Γ c a (.bound C) ->
+| sc_cvar :
+  Ctx.LookupCVar Γ c .access_only (.bound C) ->
   ----------------------------------
   Subcapt Γ (.cvar (.M .epsilon) c) C
 | sc_ro :
@@ -77,6 +77,14 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
   -------------------
   Subbound Γ B .unbound
 
+/-- Separation check: two capture sets denote non-interfering capability sets
+(read-only sharing allowed). Rules either anchor separation at exact sets
+(`sep_ro` for drop-free read-only sets, `sep_lock` for lock-stored facts,
+`sep_droppable` for distinct owned capture variables) or are structural
+(`sep_symm`/`sep_union`/`sep_empty`/`sep_peaks`). There is deliberately no
+subcapture rule: shrinking a budget can move separation evidence away from the
+capture variables it is anchored at; budgets are instead *grown* via the
+`subtyp` typing rule to match the sets separation is derived at. -/
 inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sep_symm :
   SepCheck Γ C1 C2 ->
@@ -91,15 +99,19 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   -------------------
   SepCheck Γ {} C
 | sep_ro :
+  C1.IsClosed ->
+  C2.IsClosed ->
+  C1.AccessOnly Γ ->
+  C2.AccessOnly Γ ->
   HasKind Γ C1 .ro ->
   HasKind Γ C2 .ro ->
   -------------------
   SepCheck Γ C1 C2
-| sep_sc {C1 C2 C1' : CaptureSet s} :
-  SepCheck Γ C1 C2 ->
-  Subcapt Γ C1' C1 ->
+| sep_peaks :
+  C1.IsClosed ->
+  SepCheck Γ (C1.peaks Γ) C2 ->
   --------------------
-  SepCheck Γ C1' C2
+  SepCheck Γ C1 C2
 | sep_lock {C1 C2 : CaptureSet s} :
   Ctx.LookupLock Γ ℓ Ψ ->
   SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
@@ -110,10 +122,79 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
+/-- Lock-storable separation check: the fragment of `SepCheck` whose semantic
+content holds in *every* well-typed environment, with no environment-separation
+invariant about droppable capture variables. This is the judgment a lock
+(`Satisfy`) may store: lock-stored facts are consumed at arbitrary later
+program points (and inside `modal_modal` subtyping derivations) where no
+budget-relative droppable-separation invariant is available, so
+`sep_droppable` must not be smuggled in through a lock. -/
+inductive SepCheckL : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| sep_symm :
+  SepCheckL Γ C1 C2 ->
+  -------------------
+  SepCheckL Γ C2 C1
+| sep_union :
+  SepCheckL Γ C1 C3 ->
+  SepCheckL Γ C2 C3 ->
+  -------------------
+  SepCheckL Γ (C1 ∪ C2) C3
+| sep_empty {C : CaptureSet s} :
+  -------------------
+  SepCheckL Γ {} C
+| sep_ro :
+  C1.IsClosed ->
+  C2.IsClosed ->
+  C1.AccessOnly Γ ->
+  C2.AccessOnly Γ ->
+  HasKind Γ C1 .ro ->
+  HasKind Γ C2 .ro ->
+  -------------------
+  SepCheckL Γ C1 C2
+| sep_peaks :
+  C1.IsClosed ->
+  SepCheckL Γ (C1.peaks Γ) C2 ->
+  --------------------
+  SepCheckL Γ C1 C2
+| sep_lock {C1 C2 : CaptureSet s} :
+  Ctx.LookupLock Γ ℓ Ψ ->
+  SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
+  --------------------
+  SepCheckL Γ C1 C2
+
+/-- Strong separation check: two capture sets denote *location-disjoint*
+capability sets (not even read-only sharing). This is the premise `seq_drop`
+needs: consuming (`applyDrop`) a set is only sequentially compatible with a
+continuation that touches none of its locations. Evidence is anchored at
+distinct droppable capture variables (`disj_droppable`); `disj_peaks` traces
+variable references to their capture-variable peaks. -/
+inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| disj_symm :
+  DisjCheck Γ C1 C2 ->
+  -------------------
+  DisjCheck Γ C2 C1
+| disj_empty {C : CaptureSet s} :
+  -------------------
+  DisjCheck Γ {} C
+| disj_union :
+  DisjCheck Γ C1 C3 ->
+  DisjCheck Γ C2 C3 ->
+  -------------------
+  DisjCheck Γ (C1 ∪ C2) C3
+| disj_peaks :
+  C1.IsClosed ->
+  DisjCheck Γ (C1.peaks Γ) C2 ->
+  --------------------
+  DisjCheck Γ C1 C2
+| disj_droppable {c1 c2 : BVar s .cvar} :
+  Γ.TwoDistinctDroppable c1 c2 ->
+  --------------------
+  DisjCheck Γ (.cvar a1 c1) (.cvar a2 c2)
+
 inductive Satisfy : Ctx s -> SepCtx s -> Prop where
 | satisfy {Ψ : SepCtx s} :
   (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
-  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
+  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheckL Γ C1 C2) ->
   -------------------------------------------
   Satisfy Γ Ψ
 
@@ -159,6 +240,9 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   ----------------------------------------
   Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
 | modal_modal :
+  Γ.IsClosed ->
+  Ψ1.IsClosed ->
+  Ψ2.IsClosed ->
   Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
   ----------------------------------
   Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
@@ -171,12 +255,12 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   --------------------------
   Subtyp Γ (.typ T1) (.typ T2)
 
+/-- Sequential composition: a computation budgeted by `C1` may be followed by
+one budgeted by `C2` (no use-after-consume). Either `C1` consumes nothing
+(`seq_access_only`), or what it consumes is *location-disjoint* from `C2`
+(`seq_drop`, via `DisjCheck`). There is no subcapture rule (see `SepCheck`);
+the first computation's budget is grown via `subtyp` to match instead. -/
 inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
-| seq_sc :
-  Subcapt Γ C1 C1' ->
-  SeqComp Γ C1' C2 ->
-  --------------------
-  SeqComp Γ C1 C2
 | seq_union :
   SeqComp Γ C1 C ->
   SeqComp Γ C2 C ->
@@ -188,7 +272,7 @@ inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   ----------------------
   SeqComp Γ C1 C2
 | seq_drop :
-  SepCheck Γ C1 C2 ->
+  DisjCheck Γ C1 C2 ->
   ----------------------
   SeqComp Γ C1.applyDrop C2
 
@@ -213,21 +297,25 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (.typ (.reader (.var (.M .ro) (.bound x))))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
+  cs.BorrowOnly Γ ->
   HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
   ----------------------------
   HasType {} Γ (.abs cs T1 e) (.typ (.arrow T1 cs T2))
 | tabs {S : PureTy s} :
   S.IsClosed ->
+  cs.BorrowOnly Γ ->
   HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
   HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
+  cs.BorrowOnly Γ ->
   HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
 | wrap :
   Ψ.IsClosed ->
+  cs.BorrowOnly Γ ->
   HasType
     (cs.rename Rename.succ) (Γ.push_lock Ψ)
     (e.rename Rename.succ) (E.rename Rename.succ) ->

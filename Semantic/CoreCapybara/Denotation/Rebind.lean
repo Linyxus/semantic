@@ -14,6 +14,9 @@ structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Pr
   cvar :
     ∀ (x : BVar s1 .cvar),
       env1.lookup_cvar x = env2.lookup_cvar (f.var x)
+  cvar_auth :
+    ∀ (x : BVar s1 .cvar),
+      env1.lookup_cvar_auth x = env2.lookup_cvar_auth (f.var x)
   cvar_injective :
     ∀ (x y : BVar s1 .cvar),
       f.var x = f.var y → x = y
@@ -54,6 +57,10 @@ def Rebind.liftVar
     | .there y => by
       simp only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
+  cvar_auth := fun
+    | .there y => by
+      simp only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_cvar_auth]
+      exact ρ.cvar_auth y
   cvar_injective := fun
     | .there x, .there y, h => by
       simp only [Rename.lift] at h
@@ -85,14 +92,19 @@ def Rebind.liftTVar
     | .there y => by
       simp only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
+  cvar_auth := fun
+    | .there y => by
+      simp only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_cvar_auth]
+      exact ρ.cvar_auth y
   cvar_injective := fun
     | .there x, .there y, h => by
       simp only [Rename.lift] at h
       exact congrArg BVar.there (ρ.cvar_injective x y (BVar.there.inj h))
 
 def Rebind.liftCVar
-  (ρ : Rebind env1 f env2) (cs : CaptureSet {}) (cap : CapabilitySet := .empty) :
-  Rebind (env1.extend_cvar cs cap) (f.lift) (env2.extend_cvar cs cap) where
+  (ρ : Rebind env1 f env2) (cs : CaptureSet {}) (cap : CapabilitySet := .empty)
+  (a : Authority := .access_only) :
+  Rebind (env1.extend_cvar cs cap a) (f.lift) (env2.extend_cvar cs cap a) where
   var := fun
     | .there y => by
       simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_var]
@@ -116,6 +128,11 @@ def Rebind.liftCVar
     | .there y => by
       simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
+  cvar_auth := fun
+    | .here => rfl
+    | .there y => by
+      simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_cvar_auth]
+      exact ρ.cvar_auth y
   cvar_injective := fun
     | .here, .here, _ => rfl
     | .there x, .there y, h => by
@@ -250,6 +267,37 @@ theorem Rebind.hassepdom
     have hne' : f.var c1 ≠ f.var c2 := by
       intro heq; exact hne (ρ.cvar_injective c1 c2 heq)
     have := h m1 (f.var c1) m2 (f.var c2) hsub1' hsub2' hne'
+    rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
+
+theorem Rebind.drop_sep_in
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
+  (ρ : Rebind env1 f env2) (cs : CaptureSet s1) :
+  env1.DropSepIn cs ↔ env2.DropSepIn (cs.rename f) := by
+  unfold TypeEnv.DropSepIn
+  have hpeaks := rebind_compute_peaks ρ cs
+  have hpo := compute_peaks_is_peak env1 cs
+  constructor
+  · intro h c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
+    rw [← hpeaks] at hsub1 hsub2
+    obtain ⟨c1', hc1, hsub1'⟩ := hpo.cvar_subset_rename_inv hsub1
+    obtain ⟨c2', hc2, hsub2'⟩ := hpo.cvar_subset_rename_inv hsub2
+    subst hc1; subst hc2
+    have hne' : c1' ≠ c2' := fun heq => hne (by rw [heq])
+    rw [← ρ.cvar_auth c1'] at hauth1
+    rw [← ρ.cvar_auth c2'] at hauth2
+    have := h c1' c2' a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
+    rwa [ρ.cvar c1', ρ.cvar c2'] at this
+  · intro h c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
+    have hsub1' : (.cvar a1 (f.var c1)) ⊆ compute_peaks env2 (cs.rename f) := by
+      rw [← hpeaks]
+      exact hsub1.rename'
+    have hsub2' : (.cvar a2 (f.var c2)) ⊆ compute_peaks env2 (cs.rename f) := by
+      rw [← hpeaks]
+      exact hsub2.rename'
+    have hne' : f.var c1 ≠ f.var c2 := fun heq => hne (ρ.cvar_injective c1 c2 heq)
+    rw [ρ.cvar_auth c1] at hauth1
+    rw [ρ.cvar_auth c2] at hauth2
+    have := h (f.var c1) (f.var c2) a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
     rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
 
 theorem rebind_satisfy_iff
@@ -471,7 +519,8 @@ def rebind_exi_val_denot
         simp only [List.empty_eq, and_congr_right_iff]
         -- Goal: CS.WfInHeap m.heap → drop-free → (... ↔ ...)
         intro _hwf _hdf
-        exact rebind_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m)) T m (Exp.var y)
+        exact rebind_val_denot
+          (ρ.liftCVar CS (cap := CS.ground_denot m) (a := .can_drop)) T m (Exp.var y)
       all_goals {
         -- resolve returned non-pack
         simp only
@@ -486,9 +535,13 @@ def rebind_exi_exp_denot
   simp only [Ty.exi_exp_denot]
   constructor
   · intro h
-    exact eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply ih).1) h
+    refine eval_post_monotonic ?_ h
+    intro m'' v hpost
+    exact ⟨(ih m'' v).mp hpost.1, hpost.2⟩
   · intro h
-    exact eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply ih).2) h
+    refine eval_post_monotonic ?_ h
+    intro m'' v hpost
+    exact ⟨(ih m'' v).mpr hpost.1, hpost.2⟩
 
 end
 
@@ -498,6 +551,7 @@ def Rebind.weaken {env : TypeEnv s} {x : Nat} {ps : PeakSet s} :
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
+  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
 def Rebind.tweaken {env : TypeEnv s} {d : Denot} :
@@ -506,14 +560,17 @@ def Rebind.tweaken {env : TypeEnv s} {d : Denot} :
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
+  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
-def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet} :
-  Rebind env Rename.succ (env.extend_cvar cs cap) where
+def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
+  {a : Authority} :
+  Rebind env Rename.succ (env.extend_cvar cs cap a) where
   var := fun _ => rfl
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
+  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
 def Rebind.lweaken {env : TypeEnv s} :
@@ -522,6 +579,7 @@ def Rebind.lweaken {env : TypeEnv s} :
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
+  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
 theorem typed_env_satisfy_rebind
@@ -570,11 +628,11 @@ theorem typed_env_lookup_lock_satisfy
       cases env with
       | extend env0 info =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht
           exact typed_env_satisfy_rebind
             (Rebind.cweaken (env := env0) (cs := cs) (cap := cap))
-            (ih ht.2.2.2.2.2)
+            (ih ht.2.2.2.2.2.2)
     | lock Ψ1 =>
       cases env with
       | extend env0 info =>
@@ -601,15 +659,15 @@ lemma tweaken_exi_val_denot {env : TypeEnv s} {T : Ty .exi s} :
   apply rebind_exi_val_denot (ρ:=Rebind.tweaken) (T:=T)
 
 lemma cweaken_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
-  {T : Ty .capt s} :
+  {a : Authority} {T : Ty .capt s} :
   Ty.val_denot env T ≈
-    Ty.val_denot (env.extend_cvar cs cap) (T.rename Rename.succ) := by
+    Ty.val_denot (env.extend_cvar cs cap a) (T.rename Rename.succ) := by
   apply rebind_val_denot (ρ:=Rebind.cweaken) (T:=T)
 
 lemma cweaken_exi_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
-  {T : Ty .exi s} :
+  {a : Authority} {T : Ty .exi s} :
   Ty.exi_val_denot env T ≈
-    Ty.exi_val_denot (env.extend_cvar cs cap) (T.rename Rename.succ) := by
+    Ty.exi_val_denot (env.extend_cvar cs cap a) (T.rename Rename.succ) := by
   apply rebind_exi_val_denot (ρ:=Rebind.cweaken) (T:=T)
 
 lemma lweaken_val_denot {env : TypeEnv s} {T : Ty .capt s} :

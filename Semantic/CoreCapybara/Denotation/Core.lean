@@ -155,8 +155,12 @@ inductive TypeInfo : Sig -> Kind -> Type where
 | tvar :
   Denot ->
   TypeInfo s .tvar
-/-- Type information for a capture variable is a ground capture set. -/
+/-- Type information for a capture variable is its authority, a ground capture
+set, and a capability set. The authority mirrors the context binding's
+authority (tied by `EnvTyping`); it lets the environment-separation invariant
+`DropSepIn` be stated on environments alone. -/
 | cvar :
+  Authority ->
   CaptureSet {} ->
   CapabilitySet ->
   TypeInfo s .cvar
@@ -177,9 +181,10 @@ def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar
-  (Γ : TypeEnv s) (ground : CaptureSet {}) (cap : CapabilitySet := .empty) :
+  (Γ : TypeEnv s) (ground : CaptureSet {}) (cap : CapabilitySet := .empty)
+  (a : Authority := .access_only) :
   TypeEnv (s,C) :=
-  Γ.extend (.cvar ground cap)
+  Γ.extend (.cvar a ground cap)
 
 def TypeEnv.extend_lock (Γ : TypeEnv s) : TypeEnv (s,,.lock) :=
   Γ.extend .lock
@@ -195,8 +200,13 @@ def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> Denot
 | .extend Γ _, .there x => Γ.lookup_tvar x
 
 def TypeEnv.lookup_cvar : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> CaptureSet {} × CapabilitySet
-| .extend _ (.cvar cs cap), .here => (cs, cap)
+| .extend _ (.cvar _ cs cap), .here => (cs, cap)
 | .extend Γ _, .there x => Γ.lookup_cvar x
+
+/-- The authority recorded for a capture variable in the environment. -/
+def TypeEnv.lookup_cvar_auth : (Γ : TypeEnv s) -> (x : BVar s .cvar) -> Authority
+| .extend _ (.cvar a _ _), .here => a
+| .extend Γ _, .there x => Γ.lookup_cvar_auth x
 
 def Subst.from_TypeEnv (env : TypeEnv s) : Subst s {} where
   var := fun x => .free (env.lookup_var x).1
@@ -436,6 +446,42 @@ structure TypeEnv.Satisfy (env : TypeEnv s) (ctx : SepCtx s) (m : Memory) where
     ctx.HasTwoDistinct C1 m1 C2 m2 ->
     CapabilitySet.Noninterference (C1.denot env m) (C2.denot env m)
 
+/-- Environment separation invariant, relativized to a budget capture set `C`:
+any two *distinct* capture variables that are both bound with `.can_drop`
+authority and both occur as peaks of `C` have disjoint capability sets. The
+relativization is essential: a pack/unpack round-trip can legitimately create a
+droppable capture variable aliasing the (consumed) source variable, but the
+sequencing discipline guarantees the source is never a peak of any budget that
+also peaks at the new variable. -/
+def TypeEnv.DropSepIn (env : TypeEnv s) (C : CaptureSet s) : Prop :=
+  ∀ (c1 c2 : BVar s .cvar) (a1 a2 : Access),
+    c1 ≠ c2 →
+    env.lookup_cvar_auth c1 = .can_drop →
+    env.lookup_cvar_auth c2 = .can_drop →
+    (CaptureSet.cvar a1 c1) ⊆ compute_peaks env C →
+    (CaptureSet.cvar a2 c2) ⊆ compute_peaks env C →
+    CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
+
+/-- `DropSepIn` only depends on the budget through its computed peaks. -/
+theorem TypeEnv.DropSepIn.of_peaks_eq {env : TypeEnv s} {C1 C2 : CaptureSet s}
+    (heq : compute_peaks env C1 = compute_peaks env C2)
+    (h : env.DropSepIn C2) : env.DropSepIn C1 := by
+  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+  rw [heq] at hp1 hp2
+  exact h c1 c2 a1 a2 hne h1 h2 hp1 hp2
+
+/-- Pack-witness authority bound: if a computation that started at memory `m`
+with budget `R` results in a pack value, then every location reachable from
+the pack's witness either was consumable (`.drop`) under `R`, or is fresh
+(allocated after `m`). This is the runtime trace of `eval_pack`'s budget
+premise threaded through evaluation; it lets `unpack` derive that the witness
+is disjoint from any capability the continuation's budget can still name. -/
+def pack_bound (R : CapabilitySet) (m : Memory) : Exp {} -> Memory -> Prop :=
+  fun v m' => ∀ (cs : CaptureSet {}) (x : Var .var {}),
+    v = .pack cs x ->
+    ∀ mu l, (cs.reachability m').hasmem mu l ->
+      R.hasmem .drop l ∨ m.lookup l = none
+
 mutual
 
 /-- Value denotation for capturing types. -/
@@ -556,7 +602,7 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
   | some (.pack CS x) =>
     CS.WfInHeap m.heap ∧
     (CS.ground_denot m).drop_free ∧
-    Ty.val_denot (ρ.extend_cvar CS (cap := CS.ground_denot m)) T m (.var x)
+    Ty.val_denot (ρ.extend_cvar CS (cap := CS.ground_denot m) (a := .can_drop)) T m (.var x)
   | _ => False
 
 /-- Expression denotation for capturing types.
@@ -566,10 +612,13 @@ def Ty.exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
   Eval R m e (Ty.val_denot ρ T).as_mpost
 
 /-- Expression denotation for existential types.
-    Takes an explicit capture set (the use set from the typing judgment). -/
+    Takes an explicit capture set (the use set from the typing judgment).
+    The postcondition carries, besides the value denotation, the pack-witness
+    authority bound `pack_bound` relating any resulting pack value's witness to
+    the budget `R` and starting memory `m`. -/
 def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
 | ρ, T, R => fun m (e : Exp {}) =>
-  Eval R m e (Ty.exi_val_denot ρ T).as_mpost
+  Eval R m e (fun v m' => Ty.exi_val_denot ρ T m' v ∧ pack_bound R m v m')
 
 end
 
@@ -607,12 +656,13 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   denot.ImplyAfter m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
   EnvTyping Γ env m
-| .push Γ (.cvar _ B), .extend env (.cvar cs cap), m =>
+| .push Γ (.cvar a B), .extend env (.cvar a' cs cap), m =>
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
   (cap.BoundedBy (B.denot env m)) ∧
   cap = cs.ground_denot m ∧
   cap.drop_free ∧
+  a' = a ∧
   EnvTyping Γ env m
 | .push Γ (.lock sepctx), .extend env .lock, m =>
   env.Satisfy sepctx m ∧
@@ -644,9 +694,9 @@ theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
         | there c' => exact ih henv' c'
     case cvar a B =>
       match env with
-      | .extend env' (.cvar cs cap) =>
+      | .extend env' (.cvar _ cs cap) =>
         simp only [EnvTyping] at hts
-        obtain ⟨_, _, _, _, hdf, henv'⟩ := hts
+        obtain ⟨_, _, _, _, hdf, _, henv'⟩ := hts
         cases c with
         | here => exact hdf
         | there c' => exact ih henv' c'
@@ -658,16 +708,44 @@ theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
         cases c with
         | there c' => exact ih henv' c'
 
-/-- Separation of droppable capture variables: any two *distinct* capture
-variables in `Γ` that both carry `.can_drop` authority denote disjoint
-capability sets under `env`. This rules out two owned (droppable) cvars
-aliasing the same location — the environment-separation invariant needed to
-bridge syntactic `SeqComp` to its runtime counterpart. -/
-def DroppableSep (Γ : Ctx s) (env : TypeEnv s) : Prop :=
-  ∀ (c1 c2 : BVar s .cvar),
-    c1 ≠ c2 →
-    Γ.lookup_authority c1 = .can_drop →
-    CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
+/-- From `EnvTyping`, the authority recorded in the environment for each
+capture variable matches the context binding's authority. -/
+theorem envtyping_lookup_cvar_auth {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
+    (hts : EnvTyping Γ env m) (c : BVar s .cvar) :
+    env.lookup_cvar_auth c = Γ.lookup_authority c := by
+  induction Γ with
+  | empty => cases c
+  | push Γ' b ih =>
+    cases b
+    case var T =>
+      match env with
+      | .extend env' (.var n ps) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case tvar S =>
+      match env with
+      | .extend env' (.tvar d) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, _, _, _, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
+    case cvar a B =>
+      match env with
+      | .extend env' (.cvar a' cs cap) =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, _, _, _, _, hauth, henv'⟩ := hts
+        cases c with
+        | here => exact hauth
+        | there c' => exact ih henv' c'
+    case lock Ψ =>
+      match env with
+      | .extend env' .lock =>
+        simp only [EnvTyping] at hts
+        obtain ⟨_, henv'⟩ := hts
+        cases c with
+        | there c' => exact ih henv' c'
 
 /-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
@@ -694,9 +772,9 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyAccess_rename
-  | _, .push Γ' (.cvar _ B), .extend ρ' (.cvar cs _), .there x' =>
+  | _, .push Γ' (.cvar _ B), .extend ρ' (.cvar _ cs _), .there x' =>
     simp only [EnvTyping] at h
-    obtain ⟨_, _, _, _, _, h'⟩ := h
+    obtain ⟨_, _, _, _, _, _, h'⟩ := h
     rw [CaptureSet.peaksVarBound]
     rw [peaks_var_bound_eq h' x' m0]
     exact CaptureSet.applyAccess_rename
@@ -751,7 +829,7 @@ theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m ->
-    DroppableSep Γ ρ ->
+    ρ.DropSepIn C ->
     m.is_compatible (C.denot ρ m) ->
     Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
 
@@ -939,9 +1017,9 @@ theorem typed_env_is_implying_simple_ans
           | there x => exact ih ht' x
       | cvar _ B =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht
-          obtain ⟨_, _, _, _, _, ht'⟩ := ht
+          obtain ⟨_, _, _, _, _, _, ht'⟩ := ht
           unfold TypeEnv.is_implying_simple_ans
           intro x; cases x with
           | there x => exact ih ht' x
@@ -988,9 +1066,9 @@ theorem typed_env_is_implying_wf
           | there x => exact ih ht' x
       | cvar _ B =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht
-          obtain ⟨_, _, _, _, _, ht'⟩ := ht
+          obtain ⟨_, _, _, _, _, _, ht'⟩ := ht
           unfold TypeEnv.is_implying_wf
           intro x; cases x with
           | there x => exact ih ht' x
@@ -1042,9 +1120,9 @@ theorem typed_env_enforces_pure
           | there x => exact ih ht' x
       | cvar _ B =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht
-          obtain ⟨_, _, _, _, _, ht'⟩ := ht
+          obtain ⟨_, _, _, _, _, _, ht'⟩ := ht
           unfold TypeEnv.is_enforcing_pure
           intro x; cases x with
           | there x => exact ih ht' x
@@ -1166,9 +1244,9 @@ theorem from_TypeEnv_wf_in_heap
       | cvar _ B =>
         -- Capture variable binding: doesn't affect term variable substitution
         cases info with
-        | cvar cs =>
+        | cvar a cs =>
           unfold EnvTyping at htyping
-          have ⟨hwf, _, hsub, _, _, htyping'⟩ := htyping
+          have ⟨hwf, _, hsub, _, _, _, htyping'⟩ := htyping
           have ih_wf := ih htyping'
           constructor
           · intro x
@@ -1329,9 +1407,9 @@ theorem typed_env_is_monotonic
             | there x => exact (ih ht').tvar x
       | cvar _ B =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht
-          obtain ⟨_, _, _, _, _, ht'⟩ := ht
+          obtain ⟨_, _, _, _, _, _, ht'⟩ := ht
           constructor
           · intro x; cases x with
             | there x => exact (ih ht').tvar x
@@ -1377,9 +1455,9 @@ theorem typed_env_is_transparent
           | there x => exact ih ht' x
       | cvar _ B =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht
-          obtain ⟨_, _, _, _, _, ht'⟩ := ht
+          obtain ⟨_, _, _, _, _, _, ht'⟩ := ht
           unfold TypeEnv.is_transparent
           intro x; cases x with
           | there x => exact ih ht' x
@@ -1425,9 +1503,9 @@ theorem typed_env_is_bool_independent
           | there x => exact ih ht' x
       | cvar _ B =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht
-          obtain ⟨_, _, _, _, _, ht'⟩ := ht
+          obtain ⟨_, _, _, _, _, _, ht'⟩ := ht
           unfold TypeEnv.is_bool_independent
           intro x; cases x with
           | there x => exact ih ht' x
@@ -1907,7 +1985,8 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
         rw [hresolve2]
         have hcap_eq : CS.ground_denot m1 = CS.ground_denot m2 :=
           ground_denot_is_monotonic hwf_CS_m1 hmem
-        have henv' : (env.extend_cvar CS (cap := CS.ground_denot m1)).IsMonotonic :=
+        have henv' : (env.extend_cvar CS (cap := CS.ground_denot m1)
+            (a := .can_drop)).IsMonotonic :=
           ⟨fun X => by cases X with | there X' => exact henv.tvar X'⟩
         exact ⟨CaptureSet.wf_monotonic hmem hwf_CS_m1,
           by rw [← hcap_eq]; exact hdf_m1,
@@ -1952,24 +2031,6 @@ def exp_denot_is_monotonic {env : TypeEnv s}
     (Denot.as_mpost_is_bool_independent (val_denot_is_bool_independent henv_bool T))
     hmem hcompat hwf ht
 
-/-- Existential expression denotation is monotonic with respect to memory subsumption. -/
-def exi_exp_denot_is_monotonic {env : TypeEnv s}
-  (henv_mono : env.IsMonotonic)
-  (henv_bool : env.is_bool_independent)
-  (T : Ty .exi s) :
-  ∀ {R : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
-    Exp.WfInHeap e m1.heap ->
-    m2.subsumes m1 ->
-    m2.is_compatible R ->
-    (Ty.exi_exp_denot env T R) m1 e ->
-    (Ty.exi_exp_denot env T R) m2 e := by
-  intro R m1 m2 e hwf hmem hcompat ht
-  simp only [Ty.exi_exp_denot] at ht ⊢
-  exact eval_monotonic
-    (Denot.as_mpost_is_monotonic (exi_val_denot_is_monotonic henv_mono T))
-    (Denot.as_mpost_is_bool_independent (exi_val_denot_is_bool_independent henv_bool T))
-    hmem hcompat hwf ht
-
 end
 
 theorem env_typing_monotonic
@@ -2000,14 +2061,14 @@ theorem env_typing_monotonic
             Denot.imply_after_subsumes himply hmem, hpure, ih ht'⟩
       | cvar _ B =>
         cases info with
-        | cvar cs cap =>
+        | cvar a cs cap =>
           simp only [EnvTyping] at ht ⊢
-          obtain ⟨hwf, hwf_bound, hsub, hcap, hdf, ht'⟩ := ht
+          obtain ⟨hwf, hwf_bound, hsub, hcap, hdf, hauth, ht'⟩ := ht
           have h_denot_eq := ground_denot_is_monotonic hwf hmem
           have h_bound_eq : B.denot env' mem1 = B.denot env' mem2 :=
             capture_bound_denot_is_monotonic hwf_bound hmem
           refine ⟨CaptureSet.wf_monotonic hmem hwf, CaptureBound.wf_monotonic hmem hwf_bound,
-            ?_, by rw [hcap, h_denot_eq], hdf, ih ht'⟩
+            ?_, by rw [hcap, h_denot_eq], hdf, hauth, ih ht'⟩
           rw [hcap, h_denot_eq] at hsub
           rw [← h_bound_eq]
           simpa [hcap, h_denot_eq] using hsub
@@ -2036,25 +2097,47 @@ def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
     EnvTyping Γ env m ->
     B1.denot env m ⊆ B2.denot env m
 
-/-- Semantic separation check. The `DroppableSep` premise is needed by the
-`sep_droppable` rule: separation of two distinct droppable capture variables
-is an environment invariant, not derivable from `EnvTyping` alone. -/
+/-- Semantic separation check. The `DropSepIn` premise (relativized to the
+two sets being separated) is needed by the `sep_droppable` rule: separation
+of two distinct droppable capture variables is an environment invariant, not
+derivable from `EnvTyping` alone. The `Γ.IsClosed` hypothesis serves the
+`sep_ro` rule's drop-freedom argument (peak tracing requires closed types). -/
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
+  Γ.IsClosed ->
   ∀ env H,
     EnvTyping Γ env H ->
-    DroppableSep Γ env ->
+    env.DropSepIn (C1 ∪ C2) ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
-/-- Semantic subtyping relation. Carries `DroppableSep` (like `SemanticTyping`)
-because the `modal_modal` rule interprets a syntactic `Satisfy` premise, whose
-`SepCheck` components may use `sep_droppable`. -/
+/-- Semantic lock-storable separation check: like `SemSepCheck` but with no
+environment-separation premise — `SepCheckL` has no `sep_droppable` rule, so
+its content holds in every well-typed environment. This is what lets locks
+store separation facts consumable at arbitrary later program points. -/
+def SemSepCheckL (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
+  Γ.IsClosed ->
+  ∀ env H,
+    EnvTyping Γ env H ->
+    CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
+
+/-- Semantic strong separation check: the two sets denote *location-disjoint*
+capability sets. -/
+def SemDisjCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
+  Γ.IsClosed ->
+  ∀ env H,
+    EnvTyping Γ env H ->
+    env.DropSepIn (C1 ∪ C2) ->
+    CapabilitySet.disjoint (C1.denot env H) (C2.denot env H)
+
+/-- Semantic subtyping relation. Carries no environment-separation premise:
+the only separation content interpreted inside subtyping is `modal_modal`'s
+`Satisfy` premise, which is restricted to the droppable-free `SepCheckL`. -/
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
   | .capt =>
-    ∀ env H, EnvTyping Γ env H -> DroppableSep Γ env ->
+    ∀ env H, EnvTyping Γ env H ->
       (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)
   | .exi =>
-    ∀ env H, EnvTyping Γ env H -> DroppableSep Γ env ->
+    ∀ env H, EnvTyping Γ env H ->
       (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
 
 -- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
@@ -2276,14 +2359,16 @@ theorem val_denot_implyafter_lift {R : CapabilitySet}
   exact eval_post_monotonic_general
     (Mpost.entails_after_subsumes (Denot.imply_after_to_m_entails_after himp) hsub) heval
 
-/-- Existential expression denotation implication lift. -/
+/-- Existential expression denotation implication lift. The `pack_bound`
+component of the postcondition is type-independent and carried through. -/
 theorem exi_denot_implyafter_lift {R : CapabilitySet}
   (himp : (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)) :
   (Ty.exi_exp_denot env T1 R).ImplyAfter H (Ty.exi_exp_denot env T2 R) := by
   intro m' hsub e heval
   unfold Ty.exi_exp_denot at heval ⊢
-  exact eval_post_monotonic_general
-    (Mpost.entails_after_subsumes (Denot.imply_after_to_m_entails_after himp) hsub) heval
+  refine eval_post_monotonic_general ?_ heval
+  intro m'' hsub'' v hpost
+  exact ⟨himp m'' (Memory.subsumes_trans hsub'' hsub) v hpost.1, hpost.2⟩
 
 private theorem resolve_reachability_subset_of_resolve_aux
     {m : Memory} {e v : Exp {}}

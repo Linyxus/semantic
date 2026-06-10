@@ -29,8 +29,9 @@ lemma tweaken_interp_var {x : Var .var s} :
   interp_var env x = interp_var (env.extend_tvar d) (x.rename Rename.succ) := by
   cases x <;> rfl
 
-lemma cweaken_interp_var {cs : CaptureSet {}} {cap : CapabilitySet} {x : Var .var s} :
-  interp_var env x = interp_var (env.extend_cvar cs cap) (x.rename Rename.succ) := by
+lemma cweaken_interp_var {cs : CaptureSet {}} {cap : CapabilitySet} {a : Authority}
+  {x : Var .var s} :
+  interp_var env x = interp_var (env.extend_cvar cs cap a) (x.rename Rename.succ) := by
   cases x <;> rfl
 
 theorem Retype.liftVar
@@ -212,29 +213,31 @@ theorem Retype.liftTVar
 
 theorem Retype.liftCVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-  (ρ : Retype env1 σ env2 D) (cs : CaptureSet {}) (cap : CapabilitySet := .empty) :
-  Retype (env1.extend_cvar cs cap) (σ.lift) (env2.extend_cvar cs cap) (D.rename Rename.succ) where
+  (ρ : Retype env1 σ env2 D) (cs : CaptureSet {}) (cap : CapabilitySet := .empty)
+  (a : Authority := .access_only) :
+  Retype (env1.extend_cvar cs cap a) (σ.lift) (env2.extend_cvar cs cap a)
+    (D.rename Rename.succ) where
   var := fun
     | .there x => by
       change (env1.lookup_var x).1
-        = interp_var (env2.extend_cvar cs cap) ((σ.var x).rename Rename.succ)
+        = interp_var (env2.extend_cvar cs cap a) ((σ.var x).rename Rename.succ)
       rw [← cweaken_interp_var]
       exact ρ.var x
   tvar := fun
     | .there X => by
       change
         env1.lookup_tvar X ≈
-          Ty.val_denot (env2.extend_cvar cs cap) (((σ.tvar X).rename Rename.succ).core)
+          Ty.val_denot (env2.extend_cvar cs cap a) (((σ.tvar X).rename Rename.succ).core)
       apply Denot.equiv_trans _ _ _ (ρ.tvar X)
       apply cweaken_val_denot
   cvar := fun
     | .here => by
       change cs = (CaptureSet.cvar (.M Mutability.epsilon) (BVar.here (s := s2))).subst
-        (Subst.from_TypeEnv (env2.extend_cvar cs cap))
+        (Subst.from_TypeEnv (env2.extend_cvar cs cap a))
       rfl
     | .there C => by
       change (env1.lookup_cvar C).1
-        = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_cvar cs cap))
+        = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_cvar cs cap a))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
 
@@ -582,7 +585,8 @@ def retype_exi_val_denot
         simp only [List.empty_eq, and_congr_right_iff]
         -- Goal: CS.WfInHeap s.heap → drop-free → (... ↔ ...)
         intro _hwf _hdf
-        exact retype_val_denot (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot s)) T s (Exp.var y)
+        exact retype_val_denot
+          (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot s) (a:=.can_drop)) T s (Exp.var y)
       all_goals {
         -- resolve returned non-pack
         simp
@@ -597,9 +601,13 @@ def retype_exi_exp_denot
   simp only [Ty.exi_exp_denot]
   constructor
   · intro h
-    exact eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply ih).1) h
+    refine eval_post_monotonic ?_ h
+    intro m'' v hpost
+    exact ⟨(ih m'' v).mp hpost.1, hpost.2⟩
   · intro h
-    exact eval_post_monotonic (Denot.imply_to_entails _ _ (Denot.equiv_to_imply ih).2) h
+    refine eval_post_monotonic ?_ h
+    intro m'' v hpost
+    exact ⟨(ih m'' v).mpr hpost.1, hpost.2⟩
 
 end
 

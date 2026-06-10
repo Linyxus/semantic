@@ -314,6 +314,16 @@ def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
 def CaptureSet.AccessOnly (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   ∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ (C.peakset Γ).cs → False
 
+/-- A capture set is borrow-only in `Γ` when none of its peaks is a `can_drop`
+capture variable: it captures no *owned* capability. Closure-forming values
+(`abs`/`tabs`/`cabs`/`boxed`) are restricted to borrow-only capture sets, so
+that a closure body's separation obligations about owned capture variables
+are vacuous; owned capabilities reach function bodies through capture
+polymorphism (`cpoly`) or unpacking instead of through closure capture. -/
+def CaptureSet.BorrowOnly (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  ∀ (a : Access) (c : BVar s .cvar),
+    (CaptureSet.cvar a c) ⊆ (C.peakset Γ).cs → Γ.lookup_authority c = .access_only
+
 /-- A capture bound is valid in `Γ` when concrete bounds are access-only. -/
 def CaptureBound.IsValid (Γ : Ctx s) : CaptureBound s -> Prop
 | .unbound => True
