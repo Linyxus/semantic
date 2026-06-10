@@ -2368,7 +2368,34 @@ theorem compute_reachability_drop_mcell (h : Heap) (l : Nat)
     | bound bx => cases bx
   | unit | btrue | bfalse => rfl
 
-/-- A heap is well-formed if all values stored in it contain well-formed expressions. -/
+/-- Membership unwrapping through `applyAccess` (any access mode). -/
+theorem CapabilitySet.hasmem_of_applyAccess' {C : CapabilitySet} {a : Access}
+    {mu : CapMode} {l : Nat}
+    (h : (C.applyAccess a).hasmem mu l) : ∃ mu', C.hasmem mu' l := by
+  cases a with
+  | M m =>
+    cases m with
+    | epsilon => exact ⟨mu, h⟩
+    | ro =>
+      simp only [applyAccess_M, applyMut] at h
+      clear * - h
+      induction C with
+      | empty => exact absurd h CapabilitySet.not_hasmem_empty
+      | cap m' l' =>
+        cases h
+        exact ⟨m', .here⟩
+      | union C1 C2 ih1 ih2 =>
+        cases h with
+        | left h => obtain ⟨mu', h'⟩ := ih1 h; exact ⟨mu', .left h'⟩
+        | right h => obtain ⟨mu', h'⟩ := ih2 h; exact ⟨mu', .right h'⟩
+  | drop =>
+    simp only [applyAccess_drop] at h
+    obtain ⟨_, mu', h'⟩ := CapabilitySet.hasmem_to_drop_imp h
+    exact ⟨mu', h'⟩
+
+/-- A heap is well-formed if all values stored in it contain well-formed
+expressions, stored reachability sets are computed faithfully, and stored
+reachability sets only mention allocated locations. -/
 structure Heap.WfHeap (H : Heap) : Prop where
   wf_val :
     ∀ l hv, H l = some (.val hv) -> Exp.WfInHeap hv.unwrap H
@@ -2376,11 +2403,97 @@ structure Heap.WfHeap (H : Heap) : Prop where
     ∀ l v hv R,
       H l = some (.val ⟨v, hv, R⟩) ->
         R = compute_reachability H v hv
+  wf_reach_dom :
+    ∀ l v hv R,
+      H l = some (.val ⟨v, hv, R⟩) ->
+        ∀ mu l', R.hasmem mu l' -> H l' ≠ none
+
+/-- Members of a location's reachability are allocated, given the heap-wide
+domain-closure of stored reachability sets. -/
+theorem reachability_of_loc_dom {H : Heap}
+    (hdom : ∀ l v hv R, H l = some (.val ⟨v, hv, R⟩) ->
+      ∀ mu l', R.hasmem mu l' -> H l' ≠ none)
+    {l l' : Nat} {mu : CapMode}
+    (h : (reachability_of_loc H l).hasmem mu l') : H l' ≠ none := by
+  unfold reachability_of_loc at h
+  cases hcell : H l with
+  | none =>
+    rw [hcell] at h
+    exact absurd h CapabilitySet.not_hasmem_empty
+  | some cell =>
+    rw [hcell] at h
+    cases cell with
+    | capability _ =>
+      cases h
+      rw [hcell]
+      intro hcontra
+      cases hcontra
+    | masked =>
+      cases h
+      rw [hcell]
+      intro hcontra
+      cases hcontra
+    | val v =>
+      obtain ⟨unwrap, isVal, R⟩ := v
+      exact hdom l unwrap isVal R hcell mu l' h
+
+/-- Members of an expanded ground capture set are allocated. -/
+theorem expand_captures_dom {H : Heap}
+    (hdom : ∀ l v hv R, H l = some (.val ⟨v, hv, R⟩) ->
+      ∀ mu l', R.hasmem mu l' -> H l' ≠ none)
+    {cs : CaptureSet {}} {l : Nat} {mu : CapMode}
+    (h : (expand_captures H cs).hasmem mu l) : H l ≠ none := by
+  induction cs with
+  | empty => exact absurd h CapabilitySet.not_hasmem_empty
+  | union cs1 cs2 ih1 ih2 =>
+    cases h with
+    | left h => exact ih1 h
+    | right h => exact ih2 h
+  | var m x =>
+    cases x with
+    | bound bx => cases bx
+    | free n =>
+      obtain ⟨mu0, h0⟩ := CapabilitySet.hasmem_of_applyAccess' h
+      exact reachability_of_loc_dom hdom h0
+  | cvar _ c => cases c
+
+/-- Members of a (well-formed) simple value's computed reachability are
+allocated. -/
+theorem compute_reachability_dom {H : Heap}
+    (hdom : ∀ l v hv R, H l = some (.val ⟨v, hv, R⟩) ->
+      ∀ mu l', R.hasmem mu l' -> H l' ≠ none)
+    {v : Exp {}} {hv : v.IsSimpleVal}
+    (hwf : Exp.WfInHeap v H)
+    {mu : CapMode} {l : Nat}
+    (h : (compute_reachability H v hv).hasmem mu l) : H l ≠ none := by
+  cases v with
+  | abs cs _ _ => exact expand_captures_dom hdom h
+  | tabs cs _ _ => exact expand_captures_dom hdom h
+  | cabs cs _ _ => exact expand_captures_dom hdom h
+  | boxed cs _ _ => exact expand_captures_dom hdom h
+  | reader x =>
+    cases x with
+    | bound bx => cases bx
+    | free loc =>
+      cases h
+      cases hwf with
+      | wf_reader hwfv =>
+        cases hwfv with
+        | wf_free hsome =>
+          rw [hsome]
+          intro hcontra
+          cases hcontra
+  | unit => exact absurd h CapabilitySet.not_hasmem_empty
+  | btrue => exact absurd h CapabilitySet.not_hasmem_empty
+  | bfalse => exact absurd h CapabilitySet.not_hasmem_empty
+  | _ => cases hv
+
 
 /-- The empty heap is well-formed. -/
 theorem Heap.wf_empty : Heap.WfHeap ∅ := by
   constructor
   · intro l hv hlookup; cases hlookup
+  · intros _ _ _ _ hlookup; cases hlookup
   · intros _ _ _ _ hlookup; cases hlookup
 
 /-- Extending a well-formed heap with a well-formed value preserves well-formedness. -/
@@ -2415,6 +2528,22 @@ theorem Heap.wf_extend
       rw [heq]
       exact (compute_reachability_monotonic (Heap.extend_subsumes hfresh) v' hv'
         (hwf_H.wf_val l' _ hlookup)).symm
+  · -- wf_reach_dom case
+    intro l' v' hv' R' hlookup mu l'' hmem
+    have hold : H l'' ≠ none := by
+      unfold Heap.extend at hlookup
+      split at hlookup
+      case isTrue heq =>
+        cases hlookup
+        have hreach' : R' = compute_reachability H v' hv' := hreach
+        rw [hreach'] at hmem
+        exact compute_reachability_dom hwf_H.wf_reach_dom hwf_v hmem
+      case isFalse hneq =>
+        exact hwf_H.wf_reach_dom l' v' hv' R' hlookup mu l'' hmem
+    unfold Heap.extend
+    split
+    · intro hcontra; cases hcontra
+    · exact hold
 
 /-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
 theorem Heap.wf_lookup
@@ -3143,6 +3272,18 @@ def extend_cap (m : Memory) (l : Nat)
         rw [heq]
         exact (compute_reachability_monotonic (Heap.extend_cap_subsumes hfresh) v' hv'
           (m.wf.wf_val l' _ hlookup)).symm
+    · -- wf_reach_dom case
+      intro l' v' hv' R' hlookup mu l'' hmem
+      have hold : m.heap l'' ≠ none := by
+        unfold Heap.extend_cap at hlookup
+        split at hlookup
+        case isTrue heq => cases hlookup
+        case isFalse hneq =>
+          exact m.wf.wf_reach_dom l' v' hv' R' hlookup mu l'' hmem
+      unfold Heap.extend_cap
+      split
+      · intro hcontra; cases hcontra
+      · exact hold
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_cap_has_fin_dom hdom hfresh⟩
@@ -3208,6 +3349,17 @@ def extend_mcell (m : Memory) (l : Nat) (b : Bool)
         rw [heq]
         exact (compute_reachability_monotonic (Heap.extend_mcell_subsumes hfresh) v' hv'
           (m.wf.wf_val l' _ hlookup)).symm
+    · intro l' v' hv' R' hlookup mu l'' hmem
+      have hold : m.heap l'' ≠ none := by
+        unfold Heap.extend_mcell at hlookup
+        split at hlookup
+        case isTrue _ => cases hlookup
+        case isFalse _ =>
+          exact m.wf.wf_reach_dom l' v' hv' R' hlookup mu l'' hmem
+      unfold Heap.extend_mcell
+      split
+      · intro hcontra; cases hcontra
+      · exact hold
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_mcell_has_fin_dom hdom hfresh⟩
@@ -3265,6 +3417,18 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
         -- Show that compute_reachability is preserved
         rw [hreach_orig]
         exact (compute_reachability_update_mcell m.heap l ℓ hexists b v' hv').symm
+    · -- wf_reach_dom: the update keeps every location allocated
+      intro l' v' hv' R' hlookup mu l'' hmem
+      have hold : m.heap l'' ≠ none := by
+        unfold Heap.update_cell at hlookup
+        split at hlookup
+        case isTrue heq => cases hlookup
+        case isFalse hneq =>
+          exact m.wf.wf_reach_dom l' v' hv' R' hlookup mu l'' hmem
+      unfold Heap.update_cell
+      split
+      · intro hcontra; cases hcontra
+      · exact hold
   findom := by
     -- Domain remains unchanged when updating an existing cell
     obtain ⟨dom, hdom⟩ := m.findom
@@ -3329,6 +3493,17 @@ def drop_mcell (m : Memory) (l : Nat)
         have heq := m.wf.wf_reach l' v' hv' R' hlookup
         rw [heq]
         exact (compute_reachability_drop_mcell m.heap l hexists v' hv').symm
+    · intro l' v' hv' R' hlookup mu l'' hmem
+      have hold : m.heap l'' ≠ none := by
+        unfold Heap.update_cell at hlookup
+        split at hlookup
+        case isTrue _ => cases hlookup
+        case isFalse _ =>
+          exact m.wf.wf_reach_dom l' v' hv' R' hlookup mu l'' hmem
+      unfold Heap.update_cell
+      split
+      · intro hcontra; cases hcontra
+      · exact hold
   findom := by
     -- Domain unchanged: dropping replaces a `some` cell with another `some` cell.
     obtain ⟨dom, hdom⟩ := m.findom
@@ -4048,6 +4223,26 @@ def CaptureSet.reachability : CaptureSet {} -> Memory -> CapabilitySet
 | .union cs1 cs2 => fun m =>
   (cs1.reachability m) ∪ (cs2.reachability m)
 | .var m' (.free x) => fun m => (reachability_of_loc m.heap x).applyAccess m'
+
+/-- Members of a well-formed ground capture set's reachability are allocated:
+stored reachability sets are domain-closed (`wf_reach_dom`), and syntactic
+locations resolve through allocated cells. -/
+theorem CaptureSet.reachability_dom {m : Memory} {cs : CaptureSet {}}
+    {mu : CapMode} {l : Nat}
+    (h : (cs.reachability m).hasmem mu l) : m.heap l ≠ none := by
+  induction cs with
+  | empty => exact absurd h CapabilitySet.not_hasmem_empty
+  | union cs1 cs2 ih1 ih2 =>
+    cases h with
+    | left h => exact ih1 h
+    | right h => exact ih2 h
+  | var m0 x =>
+    cases x with
+    | bound bx => cases bx
+    | free n =>
+      obtain ⟨mu0, h0⟩ := CapabilitySet.hasmem_of_applyAccess' h
+      exact reachability_of_loc_dom m.wf.wf_reach_dom h0
+  | cvar _ c => cases c
 
 /-- Reachability is preserved under memory subsumption when cs is well-formed. -/
 theorem CaptureSet.reachability_monotonic

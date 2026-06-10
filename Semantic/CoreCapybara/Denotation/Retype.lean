@@ -690,16 +690,17 @@ theorem open_targ_exi_exp_denot
     Ty.exi_exp_denot env (T.subst (Subst.openTVar S)) R := by
   apply retype_exi_exp_denot Retype.open_targ
 
-def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet := .empty) :
+def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet := .empty)
+  (a : Authority := .access_only) :
   Retype
-    (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap)
+    (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a)
     (Subst.openCVar C)
     env
     ⟨CaptureSet.empty, .empty⟩ where
   var := fun x => by cases x; rfl
   tvar := fun
     | .there X => by
-      change (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap).lookup_tvar X.there
+      change (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a).lookup_tvar X.there
         ≈ Ty.val_denot env (PureTy.tvar X).core
       apply Denot.eq_to_equiv
       unfold PureTy.tvar Ty.val_denot
@@ -715,22 +716,24 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet :
       rfl
 
 theorem open_carg_val_denot
-    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .capt (s,C)} (cap : CapabilitySet := .empty) :
-  Ty.val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap) T ≈
+    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .capt (s,C)} (cap : CapabilitySet := .empty)
+    (a : Authority := .access_only) :
+  Ty.val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a) T ≈
     Ty.val_denot env (T.subst (Subst.openCVar C)) := by
-  apply retype_val_denot (Retype.open_carg cap)
+  apply retype_val_denot (Retype.open_carg cap a)
 
 theorem open_carg_exi_val_denot
-    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} (cap : CapabilitySet := .empty) :
-  Ty.exi_val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap) T ≈
+    {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} (cap : CapabilitySet := .empty)
+    (a : Authority := .access_only) :
+  Ty.exi_val_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a) T ≈
     Ty.exi_val_denot env (T.subst (Subst.openCVar C)) := by
-  apply retype_exi_val_denot (Retype.open_carg cap)
+  apply retype_exi_val_denot (Retype.open_carg cap a)
 
 theorem open_carg_exi_exp_denot
     {env : TypeEnv s} {C : CaptureSet s} {T : Ty .exi (s,C)} {R : CapabilitySet}
-    (cap : CapabilitySet := .empty) :
-  Ty.exi_exp_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap) T R ≈
+    (cap : CapabilitySet := .empty) (a : Authority := .access_only) :
+  Ty.exi_exp_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a) T R ≈
     Ty.exi_exp_denot env (T.subst (Subst.openCVar C)) R := by
-  apply retype_exi_exp_denot (Retype.open_carg cap)
+  apply retype_exi_exp_denot (Retype.open_carg cap a)
 
 end CoreCapybara

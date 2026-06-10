@@ -223,11 +223,13 @@ theorem Subst.from_TypeEnv_empty :
   · intro X; cases X
   · intro C; cases C
 
-/-- The substitution from TypeEnv is independent of the cap parameter in extend_cvar. -/
+/-- The substitution from TypeEnv is independent of the cap and authority
+parameters in extend_cvar. -/
 theorem Subst.from_TypeEnv_extend_cvar_cap_irrelevant
-  {env : TypeEnv s} {cs : CaptureSet {}} {cap cap' : CapabilitySet} :
-  Subst.from_TypeEnv (env.extend_cvar cs cap) =
-  Subst.from_TypeEnv (env.extend_cvar cs cap') := by
+  {env : TypeEnv s} {cs : CaptureSet {}} {cap cap' : CapabilitySet}
+  {a a' : Authority} :
+  Subst.from_TypeEnv (env.extend_cvar cs cap a) =
+  Subst.from_TypeEnv (env.extend_cvar cs cap' a') := by
   apply Subst.funext
   · intro x
     cases x with
@@ -243,9 +245,10 @@ theorem Subst.from_TypeEnv_extend_cvar_cap_irrelevant
 /-- Cap-irrelevance extends to environments further extended with extend_var. -/
 theorem Subst.from_TypeEnv_extend_cvar_extend_var_cap_irrelevant
   {env : TypeEnv s} {cs : CaptureSet {}} {cap cap' : CapabilitySet}
+  {a a' : Authority}
   {x : Nat} {ps : PeakSet (s,C)} :
-  Subst.from_TypeEnv ((env.extend_cvar cs cap).extend_var x ps) =
-  Subst.from_TypeEnv ((env.extend_cvar cs cap').extend_var x ps) := by
+  Subst.from_TypeEnv ((env.extend_cvar cs cap a).extend_var x ps) =
+  Subst.from_TypeEnv ((env.extend_cvar cs cap' a').extend_var x ps) := by
   apply Subst.funext
   · intro y
     cases y with
