@@ -3230,19 +3230,31 @@ theorem fundamental_sepcheck
     exact sem_sepcheck_empty
   | sep_ro hcl1 hcl2 hao1 hao2 hk1 hk2 =>
     exact sem_sepcheck_ro hcl1 hcl2 hao1 hao2 hk1 hk2
-  | sep_sc _ _ ih =>
-    -- GAP (provably unfixable as stated): `sep_sc` moves the separation
-    -- evidence to a *larger* left set `C1 ⊒ C1'`, but the consumer's
-    -- environment-separation invariant is relativized to the conclusion's
-    -- budget `C1' ∪ C2` — the droppable pair the evidence is anchored at may
-    -- be entirely outside it. Even with the `.access_only`-restricted
-    -- `sc_cvar` this happens: an `.access_only` capture variable whose
-    -- *bound* mentions a droppable one launders the evidence away from the
-    -- budget (`IsValid` bounds don't help — validity is mode-based). The
-    -- statement is FALSE: see `CoreCapybara.Gaps.fundamental_sepcheck_false`,
-    -- and the `CoreCapybara.Gaps` module docstring for the exact gap and
-    -- the device-level solution it calls for (bound-closed "deep" peaks).
-    sorry
+  | sep_sc _ hsub hequiv ih =>
+    -- `sep_sc` moves the separation evidence to a larger left set
+    -- `C1 ⊒ C1'`, but its `EquivP` premise guarantees the peaks of `C1'`
+    -- and `C1` mutually cover each other — so every droppable pair the
+    -- evidence is anchored at is still peaked in the conclusion's budget,
+    -- and the environment-separation invariant transports.
+    rename_i E1 E2 D1 _
+    intro hΓ env H hts hdsep
+    have hdsep' : env.DropSepIn (E1 ∪ E2) := by
+      intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+      have transport : ∀ (a : Access) (c : BVar _ .cvar),
+          (CaptureSet.cvar a c) ⊆ compute_peaks env (E1 ∪ E2) →
+          ∃ a', (CaptureSet.cvar a' c) ⊆ compute_peaks env (D1 ∪ E2) := by
+        intro a c hp
+        rcases cvar_subset_cp_union_inv hp with h | h
+        · rw [← compute_peaks_correct hts] at h
+          obtain ⟨a', h'⟩ := hequiv.2.cvar_subset h
+          rw [compute_peaks_correct hts] at h'
+          exact ⟨a', cvar_subset_cp_union_l h'⟩
+        · exact ⟨a, cvar_subset_cp_union_r h⟩
+      obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
+      obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
+      exact hdsep c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+    exact CapabilitySet.Noninterference.subset_left
+      (ih hΓ env H hts hdsep') (fundamental_subcapt hsub env H hts)
   | sep_lock hlock hdistinct =>
     intro _hΓ env H henv _hdsep
     exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
@@ -3277,7 +3289,7 @@ theorem fundamental_sepcheck_global
       (fundamental_haskind hk1 env H hts) (fundamental_haskind hk2 env H hts)
       (accessonly_denot_drop_free hts hΓ hcl1 hao1)
       (accessonly_denot_drop_free hts hΓ hcl2 hao2)
-  | sep_sc _ hsub ih =>
+  | sep_sc _ hsub _ ih =>
     intro env H hts
     exact CapabilitySet.Noninterference.subset_left (ih env H hts)
       (fundamental_subcapt hsub env H hts)

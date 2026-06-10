@@ -762,6 +762,32 @@ theorem Ctx.TwoDistinctDroppable.symm {Γ : Ctx s} {c1 c2 : BVar s .cvar}
     (h : Γ.TwoDistinctDroppable c1 c2) : Γ.TwoDistinctDroppable c2 c1 :=
   ⟨h.2.1, h.1, fun he => h.2.2 he.symm⟩
 
+/-- `CoveredBy` transports capture-variable atoms: every capture-variable
+atom of the covered set occurs, at some access, in the covering set. This is
+what makes the `EquivP` premise of `sep_sc` strong enough to carry the
+environment-separation invariant across budget shrinking: peaks cannot be
+hidden. -/
+theorem CaptureSet.CoveredBy.cvar_subset {A B : CaptureSet s}
+    {a : Access} {c : BVar s .cvar}
+    (hcov : A.CoveredBy B)
+    (h : (CaptureSet.cvar a c) ⊆ A) :
+    ∃ a', (CaptureSet.cvar a' c) ⊆ B := by
+  induction hcov generalizing a with
+  | refl hm =>
+    obtain ⟨a0, h0⟩ := CaptureSet.cvar_subset_applyMut_inv h
+    exact CaptureSet.cvar_subset_applyMut_fwd _ h0
+  | empty => exact absurd h CaptureSet.cvar_not_subset_empty
+  | union_left _ _ ih1 ih2 =>
+    cases CaptureSet.cvar_subset_union_inv h with
+    | inl h' => exact ih1 h'
+    | inr h' => exact ih2 h'
+  | union_right_left _ ih =>
+    obtain ⟨a', h'⟩ := ih h
+    exact ⟨a', .union_right_left h'⟩
+  | union_right_right _ ih =>
+    obtain ⟨a', h'⟩ := ih h
+    exact ⟨a', .union_right_right h'⟩
+
 /-! ## Droppable peak monotonicity along `Subcapt`
 
 A droppable capture variable's peak occurrence is preserved when a capture set

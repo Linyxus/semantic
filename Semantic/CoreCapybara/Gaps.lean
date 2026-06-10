@@ -2,12 +2,18 @@ import Semantic.CoreCapybara.Fundamental
 
 /-! # Definition-level counterexamples for the irreducible proof gaps
 
-The restored type system (the `sep_sc`/`seq_sc` subcapture rules,
-unrestricted closure capture, and locks storing full `SepCheck` facts) leaves
-five `sorry`s in the development. Each of them is not merely unproven but
-*unprovable*: this file constructs explicit, concrete instances — contexts,
-environments, and memories — refuting the exact statement each `sorry` stands
-for.
+The restored type system (the `seq_sc` subcapture rule, unrestricted closure
+capture, and locks storing full `SepCheck` facts) leaves four `sorry`s in the
+development. Each of them is not merely unproven but *unprovable*: this file
+constructs explicit, concrete instances — contexts, environments, and
+memories — refuting the exact statement each `sorry` stands for.
+
+`sep_sc` is no longer in this list: its `CaptureSet.EquivP` premise (peaks of
+the shrunken and original budgets mutually cover each other) keeps the
+separation evidence's droppable anchors peaked in the conclusion's budget, so
+the environment-separation invariant transports and `fundamental_sepcheck` is
+fully proven. The analogous premise on `seq_sc` would close Gaps 4 and 6
+below — that is a rule-design decision.
 
 Note that `sc_cvar` is restricted to `.access_only` capture variables (an
 approved deviation), which makes droppable peaks monotone along `Subcapt` and
@@ -16,7 +22,7 @@ laundering counterexamples below survive the restriction: they expand an
 `.access_only` capture variable whose *bound* mentions a droppable one, which
 the restricted rule still permits.
 
-## The exact remaining gap (the laundering family)
+## The exact remaining gap (the `seq_sc` laundering family)
 
 `DropSepIn env C` — the invariant supplying disjointness of droppable
 capabilities — is relativized to the *syntactic* capture-variable peaks of
@@ -32,26 +38,28 @@ droppable.
 
 Concretely (`Γ4`/`env4` below): `c₃` is `.access_only` with the `IsValid`
 bound `{ε·c₁}`; `c₁`, `c₂` are droppable; the environment aliases all three
-capabilities. `sep_sc`/`seq_sc` + `sc_cvar` produce
-`SepCheck Γ4 {ε·c₃} {ε·c₂}` (and the `SeqComp` analogue) from evidence
-anchored at `(c₁, c₂)` — but the conclusion's budget peaks only `{c₃, c₂}`,
-no droppable pair, so the `DropSepIn` hypothesis is vacuously satisfied by
-the aliased environment and cannot refute it.
+capabilities. `seq_sc` + `sc_drop_mono` + `sc_cvar` produce
+`SeqComp Γ4 {drop·c₃} {ε·c₂}` from evidence anchored at `(c₁, c₂)` — but the
+conclusion's budget peaks only `{c₃, c₂}`, no droppable pair, so the
+`DropSepIn` hypothesis is vacuously satisfied by the aliased environment and
+cannot refute it.
 
-What a solution must provide, WITHOUT restricting the type system: an
-invariant that follows capability containment through bounds — e.g.
-relativizing `DropSepIn` to bound-closed ("deep") peaks, where an
-`.access_only` variable's peaks include its bound's peaks. `sc_cvar` then
-preserves deep peaks by construction, and the counterexample environments
-violate the (deep) invariant hypothesis instead of satisfying it. The cost:
-every supplier of `DropSepIn` must be re-proven (notably the
-unpack-extension freshness argument), and the static peak lemma kit must be
-restated on deep peaks. Bound-descent terminates by de Bruijn index (bounds
-reference earlier variables); the delicate case is `.access_only` *unbounded*
-variables, whose capabilities are unconstrained (`BoundedBy ⊤`) — their
-`.drop`-mode peaks must be excluded through derivation structure (no
-`SeqComp`/`DisjCheck` rule can consume them non-vacuously), not capability
-containment.
+Two solutions, a rule-side one and a device-side one:
+1. (Rule-side, as just done for `sep_sc`:) give `seq_sc` a
+   `CaptureSet.EquivP Γ C1 C1'` premise — peak-preserving shrinking only.
+   Then the invariant transports exactly as in `fundamental_sepcheck`'s
+   `sep_sc` case, and Gaps 4 and 6 close.
+2. (Device-side, no rule change:) an invariant that follows capability
+   containment through bounds — relativize `DropSepIn` to bound-closed
+   ("deep") peaks, where an `.access_only` variable's peaks include its
+   bound's peaks. `sc_cvar` then preserves deep peaks by construction. The
+   cost: every supplier of `DropSepIn` must be re-proven (notably the
+   unpack-extension freshness argument), and the static peak lemma kit must
+   be restated on deep peaks. Bound-descent terminates by de Bruijn index;
+   the delicate case is `.access_only` *unbounded* variables, whose
+   capabilities are unconstrained (`BoundedBy ⊤`) — their `.drop`-mode peaks
+   must be excluded through derivation structure (no `SeqComp`/`DisjCheck`
+   rule can consume them non-vacuously), not capability containment.
 
 The other two gaps (closure capture, lock-stored `sep_droppable`) are
 independent of subcapture: they fail because `EnvTyping` records no
@@ -269,41 +277,6 @@ theorem seqcomp_cross_droppable_false :
     exact .refl
   have htdd := h hseq hpa hpb
   cases htdd.1
-
-/-! ## Gap 5: `fundamental_sepcheck` fails at `sep_sc`
-
-`sep_droppable (c₁, c₂)` is laundered by `sep_sc`/`sc_cvar` into
-`SepCheck Γ4 {ε·c₃} {ε·c₂}`. In `env4`, the conclusion's budget peaks only
-`{c₃, c₂}` — no droppable pair, so the separation invariant holds vacuously —
-yet both sides denote the same capability `cap0`, which interferes with
-itself. -/
-
-theorem fundamental_sepcheck_false :
-    ¬ (∀ {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s},
-        SepCheck Γ C1 C2 → SemSepCheck Γ C1 C2) := by
-  intro h
-  have hsd : SepCheck Γ4 (.cvar (.M .epsilon) c1) (.cvar (.M .epsilon) c2) :=
-    .sep_droppable two_distinct_c1_c2
-  have hsub3 : Subcapt Γ4 (.cvar (.M .epsilon) c3) (.cvar (.M .epsilon) c1) :=
-    .sc_cvar .here
-  have hsep : SepCheck Γ4 (.cvar (.M .epsilon) c3) (.cvar (.M .epsilon) c2) :=
-    .sep_sc hsd hsub3
-  have hdsep : env4.DropSepIn
-      ((CaptureSet.cvar (.M .epsilon) c3) ∪ (.cvar (.M .epsilon) c2)) := by
-    refine dropsep_c3_c2 ?_
-    intro a c hp
-    have hp0 : (CaptureSet.cvar a c) ⊆
-        (compute_peaks env4 (.cvar (.M .epsilon) c3))
-          ∪ (compute_peaks env4 (.cvar (.M .epsilon) c2)) := hp
-    rcases CaptureSet.cvar_subset_union_inv hp0 with hp' | hp'
-    · have hp'' : (CaptureSet.cvar a c) ⊆ (.cvar (.M .epsilon) c3) := hp'
-      obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hp''
-      exact Or.inl hc
-    · have hp'' : (CaptureSet.cvar a c) ⊆ (.cvar (.M .epsilon) c2) := hp'
-      obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hp''
-      exact Or.inr hc
-  have hni := h hsep Γ4_closed env4 mem1 envtyping4 hdsep
-  exact noninterference_cap0_self_false hni
 
 /-! ## Gap 6: the `SeqComp` bridge fails at `seq_sc`
 
