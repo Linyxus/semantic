@@ -12,6 +12,8 @@ import Semantic.CoreCapybara.Denotation
 
 import Semantic.CoreCapybara.Fundamental
 
+import Semantic.CoreCapybara.Gaps
+
 import Semantic.CoreCapybara.Safety
 
 /-!

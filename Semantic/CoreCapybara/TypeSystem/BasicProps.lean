@@ -342,7 +342,7 @@ theorem HasType.exp_is_closed
       · exact ih2
       · exact ih3
   case abs T1 ih =>
-    rename_i T1_closed _
+    rename_i T1_closed
     constructor
     · -- cs✝.IsClosed
       exact CaptureSet.rename_closed_inv (HasType.use_set_is_closed T1)
@@ -351,7 +351,7 @@ theorem HasType.exp_is_closed
     · -- e✝.IsClosed
       exact ih
   case tabs S ih =>
-    rename_i S_closed _
+    rename_i S_closed
     constructor
     · -- cs✝.IsClosed
       have h_use := HasType.use_set_is_closed S
@@ -368,7 +368,7 @@ theorem HasType.exp_is_closed
     · assumption
     · -- e✝.IsClosed
       exact ih
-  case wrap hΨ_closed _hborrow ht_body ih =>
+  case wrap hΨ_closed ht_body ih =>
     constructor
     · have h_use := HasType.use_set_is_closed ht_body
       exact CaptureSet.rename_closed_inv h_use
@@ -435,13 +435,13 @@ theorem HasType.type_is_closed
     -- Goal: (.typ (.reader (.var .ro (.bound x)))).IsClosed
     constructor
     exact Ty.IsClosed.reader CaptureSet.IsClosed.var_bound
-  case abs T1_closed _hborrow ht_body ih =>
+  case abs T1_closed ht_body ih =>
     -- Goal: (.typ (.arrow T1 cs T2)).IsClosed
     constructor
     -- Need: (.arrow T1 cs T2).IsClosed i.e. T1.IsClosed, cs.IsClosed, T2.IsClosed
     have h_use := HasType.use_set_is_closed ht_body
     exact Ty.IsClosed.arrow T1_closed (CaptureSet.rename_closed_inv h_use) ih
-  case tabs S_closed _hborrow ht_body ih =>
+  case tabs S_closed ht_body ih =>
     -- Goal: (.typ (.poly S.core cs T)).IsClosed
     constructor
     -- Need: (.poly S.core cs T).IsClosed
@@ -452,9 +452,9 @@ theorem HasType.type_is_closed
     constructor
     -- Need: (.cpoly m cs T).IsClosed
     have h_use := HasType.use_set_is_closed ht_body
-    rename_i hcb_closed _
+    rename_i hcb_closed
     exact Ty.IsClosed.cpoly hcb_closed (CaptureSet.rename_closed_inv h_use) ih
-  case wrap hΨ_closed _hborrow ht_body ih =>
+  case wrap hΨ_closed ht_body ih =>
     constructor
     have h_use := HasType.use_set_is_closed ht_body
     exact Ty.IsClosed.modal
@@ -762,58 +762,16 @@ theorem Ctx.TwoDistinctDroppable.symm {Γ : Ctx s} {c1 c2 : BVar s .cvar}
     (h : Γ.TwoDistinctDroppable c1 c2) : Γ.TwoDistinctDroppable c2 c1 :=
   ⟨h.2.1, h.1, fun he => h.2.2 he.symm⟩
 
-/-! ## Droppable peak monotonicity along `Subcapt`
+/-! ## Droppable peak monotonicity along `Subcapt` — FALSE
 
-A droppable capture variable's peak occurrence is preserved when a capture set
-is widened by subcapture: the only peak-eliminating rule is `sc_cvar`, which
-is restricted to `.access_only` capture variables. -/
-
-theorem Subcapt.droppable_peak_monotone {Γ : Ctx s} {C1 C2 : CaptureSet s}
-    {c : BVar s .cvar} {a : Access}
-    (hsub : Subcapt Γ C1 C2)
-    (hauth : Γ.lookup_authority c = .can_drop)
-    (hpeak : (CaptureSet.cvar a c) ⊆ C1.peaks Γ) :
-    ∃ a', (CaptureSet.cvar a' c) ⊆ C2.peaks Γ := by
-  induction hsub generalizing a with
-  | sc_trans _ _ ih1 ih2 =>
-    obtain ⟨a', h'⟩ := ih1 hauth hpeak
-    exact ih2 hauth h'
-  | sc_elem hss =>
-    exact ⟨a, CaptureSet.Subset.trans hpeak (CaptureSet.peaks_subset_monotone hss)⟩
-  | sc_mode hle =>
-    rw [CaptureSet.peaks_applyMut_comm] at hpeak ⊢
-    obtain ⟨a0, hsub0⟩ := CaptureSet.cvar_subset_applyMut_inv hpeak
-    exact CaptureSet.cvar_subset_applyMut_fwd _ hsub0
-  | sc_union _ _ ih1 ih2 =>
-    cases CaptureSet.cvar_subset_peaks_union_inv hpeak with
-    | inl h => exact ih1 hauth h
-    | inr h => exact ih2 hauth h
-  | sc_var hlookup =>
-    rename_i x T
-    rw [CaptureSet.var_peaks hlookup] at hpeak
-    simp only [CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon] at hpeak
-    exact ⟨a, hpeak⟩
-  | sc_cvar hlookup =>
-    rw [CaptureSet.peaks] at hpeak
-    obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hpeak
-    subst hc
-    rw [← hlookup.eq_authority] at hauth
-    cases hauth
-  | sc_ro =>
-    rw [CaptureSet.peaks_applyRO_comm] at hpeak
-    obtain ⟨a0, _, hsub0⟩ := CaptureSet.cvar_subset_applyRO_inv hpeak
-    exact ⟨a0, hsub0⟩
-  | sc_ro_mono _ ih =>
-    rw [CaptureSet.peaks_applyRO_comm] at hpeak ⊢
-    obtain ⟨a0, _, hsub0⟩ := CaptureSet.cvar_subset_applyRO_inv hpeak
-    obtain ⟨a', h'⟩ := ih hauth hsub0
-    exact ⟨a'.applyRO, CaptureSet.cvar_subset_applyRO_fwd h'⟩
-  | sc_drop_mono _ ih =>
-    simp only [CaptureSet.applyAccess_drop] at hpeak ⊢
-    rw [CaptureSet.peaks_applyDrop_comm] at hpeak ⊢
-    obtain ⟨_, a0, hsub0⟩ := CaptureSet.cvar_subset_applyDrop_inv hpeak
-    obtain ⟨a', h'⟩ := ih hauth hsub0
-    exact ⟨.drop, CaptureSet.cvar_subset_applyDrop_fwd h'⟩
+With the original (authority-general) `sc_cvar`, a droppable capture
+variable's peak occurrence is *not* preserved when a capture set is widened
+by subcapture: `sc_cvar` can replace a droppable capture variable by its
+bound, which need not mention it. See
+`CoreCapybara.Gaps.droppable_peak_monotone_false` for the definition-level
+counterexample. Consequently `TypeEnv.DropSepIn.of_subcapt` (restriction of
+the environment-separation invariant along `Subcapt`) is also false; see
+`CoreCapybara.Gaps.dropsep_of_subcapt_false`. -/
 
 /-! ## Cross-peak lemmas for the separation judgments
 
@@ -859,6 +817,16 @@ theorem SeqComp.cross_droppable {Γ : Ctx s} {C1 C2 : CaptureSet s}
     (hpb : (CaptureSet.cvar a2 c2) ⊆ C2.peaks Γ) :
     Γ.TwoDistinctDroppable c1 c2 := by
   induction hseq generalizing c1 with
+  | seq_sc hsub _ ih =>
+    -- GAP (provably unfixable as stated): `seq_sc` lets the left budget
+    -- shrink along `Subcapt`, and the authority-general `sc_cvar` can
+    -- introduce an `.access_only` capture variable whose *bound* is a
+    -- droppable one — the `.drop`-mode peak `c1` of the shrunken budget then
+    -- need not be droppable at all. The statement of this lemma is FALSE for
+    -- the restored rules: see
+    -- `CoreCapybara.Gaps.seqcomp_cross_droppable_false` for the
+    -- definition-level counterexample.
+    sorry
   | seq_union _ _ ih1 ih2 =>
     cases CaptureSet.cvar_subset_peaks_union_inv hpa with
     | inl h => exact ih1 h hpb

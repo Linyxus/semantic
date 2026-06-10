@@ -2112,16 +2112,6 @@ def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
     env.DropSepIn (C1 ∪ C2) ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
-/-- Semantic lock-storable separation check: like `SemSepCheck` but with no
-environment-separation premise — `SepCheckL` has no `sep_droppable` rule, so
-its content holds in every well-typed environment. This is what lets locks
-store separation facts consumable at arbitrary later program points. -/
-def SemSepCheckL (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
-  Γ.IsClosed ->
-  ∀ env H,
-    EnvTyping Γ env H ->
-    CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
-
 /-- Semantic strong separation check: the two sets denote *location-disjoint*
 capability sets. -/
 def SemDisjCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
@@ -2131,9 +2121,7 @@ def SemDisjCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
     env.DropSepIn (C1 ∪ C2) ->
     CapabilitySet.disjoint (C1.denot env H) (C2.denot env H)
 
-/-- Semantic subtyping relation. Carries no environment-separation premise:
-the only separation content interpreted inside subtyping is `modal_modal`'s
-`Satisfy` premise, which is restricted to the droppable-free `SepCheckL`. -/
+/-- Semantic subtyping relation. Carries no environment-separation premise. -/
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
   | .capt =>
