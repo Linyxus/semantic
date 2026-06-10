@@ -527,6 +527,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
       m'.is_compatible R0 ->
+      env.DropSepIn cs ->
       Ty.val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
@@ -2687,8 +2688,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
     · -- Body condition
-      intro arg m' hsub hval
-      exact hbody arg m' hsub hval
+      intro arg m' hsub hcompat hdsepx
+      exact hbody arg m' hsub hcompat (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx)
   | poly T1 cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
