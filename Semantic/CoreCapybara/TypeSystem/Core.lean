@@ -26,14 +26,6 @@ inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   Ctx.LookupVar Γ x T ->
   ----------------------------------
   Subcapt Γ (.var (.M .epsilon) (.bound x)) T.captureSet
--- DEVIATION from the original rule (approved): `sc_cvar` is restricted to
--- `.access_only` capture variables. The original authority-general rule lets
--- a *droppable* capture variable be replaced by its bound, which need not
--- mention it — droppable peaks are then not monotone along `Subcapt`, and
--- the environment-separation invariant cannot be restricted along budget
--- growth (`TypeEnv.DropSepIn.of_subcapt` becomes false). With the
--- restriction, droppable peaks are monotone
--- (`Subcapt.droppable_peak_monotone`) and that lemma is provable.
 | sc_cvar :
   Ctx.LookupCVar Γ c .access_only (.bound C) ->
   ----------------------------------
@@ -232,12 +224,13 @@ inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   ----------------------
   SeqComp Γ C1.applyDrop C2
 
-inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
+inductive HasType : CaptureSet s -> CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
   Γ.IsClosed ->
   Γ.LookupVar x T ->
   ----------------------------
   HasType
+    K
     {}
     Γ
     (.var (.bound x))
@@ -247,78 +240,73 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   Γ.LookupVar x (.cell C) ->
   ---------------------------------
   HasType
+    K
     {}
     Γ
     (.reader (.bound x))
     (.typ (.reader (.var (.M .ro) (.bound x))))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
+  HasType (K.rename Rename.succ) (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
   ----------------------------
-  HasType {} Γ (.abs cs T1 e) (.typ (.arrow T1 .empty cs T2))
+  HasType K {} Γ (.abs cs T1 e) (.typ (.arrow T1 .empty cs T2))
 | tabs {S : PureTy s} :
   S.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
+  HasType (K.rename Rename.succ) (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
-  HasType {} Γ (.tabs cs S e) (.typ (.poly S.core .empty cs T))
--- DEVIATION from the original rule (approved): `cabs` requires its bound
--- annotation to be valid (`CaptureBound.IsValid`: concrete bounds are
--- access-only, i.e. carry no `.drop`-mode peaks), consistent with the
--- validity demanded of capture arguments at `capp`. NOTE: validity is
--- mode-based; it does NOT constrain the *authority* of the variables a bound
--- peaks, so it does not close the bound-expansion gap in the separation
--- proofs — see the module docstring of `CoreCapybara.Gaps` for the exact
--- remaining gap.
+  HasType K {} Γ (.tabs cs S e) (.typ (.poly S.core .empty cs T))
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
   cb.IsValid Γ ->
-  HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
+  HasType (K.rename Rename.succ) (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
-  HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb .empty cs T))
+  HasType K {} Γ (.cabs cs cb e) (.typ (.cpoly cb .empty cs T))
 | wrap :
   Ψ.IsClosed ->
   HasType
-    (cs.rename Rename.succ) (Γ.push_lock Ψ)
+    (K.rename Rename.succ) (cs.rename Rename.succ) (Γ.push_lock Ψ)
     (e.rename Rename.succ) (E.rename Rename.succ) ->
-  HasType {} Γ (.boxed cs Ψ e) (.typ (.modal .empty cs Ψ E))
+  HasType K {} Γ (.boxed cs Ψ e) (.typ (.modal .empty cs Ψ E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   C.AccessOnly Γ ->
   C.droppable Γ ->
-  HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
+  HasType K {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
-  HasType (C.applyAccess .drop) Γ (.pack C x) (.exi T)
+  HasType K (C.applyAccess .drop) Γ (.pack C x) (.exi T)
 | app :
-  HasType {} Γ (.var x) (.typ (.arrow T1 ds (.var (.M .epsilon) x) T2)) ->
-  HasType {} Γ (.var y) (.typ T1) ->
+  HasType K {} Γ (.var x) (.typ (.arrow T1 ds (.var (.M .epsilon) x) T2)) ->
+  HasType K {} Γ (.var y) (.typ T1) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
+  HasType K (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
 | tapp {S : PureTy s} :
   S.IsClosed ->
-  HasType {} Γ (.var x) (.typ (.poly S.core ds (.var (.M .epsilon) x) T)) ->
+  HasType K {} Γ (.var x) (.typ (.poly S.core ds (.var (.M .epsilon) x) T)) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
+  HasType K (.var (.M .epsilon) x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
 | capp {D : CaptureSet s} {I : CaptureSet s} :
   D.IsClosed ->
   CaptureBound.IsValid Γ (.bound D) ->
-  HasType {} Γ (.var x) (.typ (.cpoly (.bound D) ds (.var (.M .epsilon) x) T)) ->
+  HasType K {} Γ (.var x) (.typ (.cpoly (.bound D) ds (.var (.M .epsilon) x) T)) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))
+  HasType K (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | unwrap :
-  HasType {} Γ (.var x) (.typ (.modal ds (.var (.M .epsilon) x) Ψ E)) ->
+  HasType K {} Γ (.var x) (.typ (.modal ds (.var (.M .epsilon) x) Ψ E)) ->
   Satisfy Γ Ψ ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.unwrap x) E
+  HasType K (.var (.M .epsilon) x) Γ (.unwrap x) E
 | letin :
   SeqComp Γ C1 C2 ->
-  HasType C1 Γ e1 (.typ T) ->
-  HasType (C2.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
+  HasType K C1 Γ e1 (.typ T) ->
+  HasType ((K ∪ C1.consumed_peaks Γ).rename Rename.succ) (C2.rename Rename.succ) (Γ,x:T) e2
+    (U.rename Rename.succ) ->
   --------------------------------
-  HasType (C1 ∪ C2) Γ (.letin e1 e2) U
+  HasType K (C1 ∪ C2) Γ (.letin e1 e2) U
 | unpack :
   SeqComp Γ C1 C2 ->
-  HasType C1 Γ t (.exi T) ->
+  HasType K C1 Γ t (.exi T) ->
   HasType
+    (((K ∪ C1.consumed_peaks Γ).rename Rename.succ).rename Rename.succ)
     (((C2.rename Rename.succ).rename Rename.succ) ∪
      (.cvar (.M .epsilon) (.there .here)) ∪
      (.cvar .drop (.there .here)))
@@ -326,60 +314,60 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------
-  HasType (C1 ∪ C2) Γ (.unpack t u) U
+  HasType K (C1 ∪ C2) Γ (.unpack t u) U
 | unit :
   ----------------------------
-  HasType {} Γ (.unit) (.typ .unit)
+  HasType K {} Γ (.unit) (.typ .unit)
 | btrue :
   ----------------------------
-  HasType {} Γ (.btrue) (.typ .bool)
+  HasType K {} Γ (.btrue) (.typ .bool)
 | bfalse :
   ----------------------------
-  HasType {} Γ (.bfalse) (.typ .bool)
+  HasType K {} Γ (.bfalse) (.typ .bool)
 | alloc :
-  HasType {} Γ (.var x) (.typ .bool) ->
+  HasType K {} Γ (.var x) (.typ .bool) ->
   ----------------------------
-  HasType {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here)))
+  HasType K {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here)))
 | drop :
   Γ.IsClosed ->
   (CaptureSet.var (.M .epsilon) x).droppable Γ ->
-  HasType {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x))) ->
+  HasType K {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x))) ->
   ----------------------------
-  HasType (.var .drop x) Γ (.drop x) (.typ .unit)
+  HasType K (.var .drop x) Γ (.drop x) (.typ .unit)
 | read :
-  HasType {} Γ (.var x) (.typ (.reader C)) ->
+  HasType K {} Γ (.var x) (.typ (.reader C)) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.read x) (.typ .bool)
+  HasType K (.var (.M .epsilon) x) Γ (.read x) (.typ .bool)
 | write :
-  HasType {} Γ (.var x) (.typ (.cell Cx)) ->
-  HasType {} Γ (.var y) (.typ .bool) ->
+  HasType K {} Γ (.var x) (.typ (.cell Cx)) ->
+  HasType K {} Γ (.var y) (.typ .bool) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.write x y) (.typ .unit)
+  HasType K (.var (.M .epsilon) x) Γ (.write x y) (.typ .unit)
 | cond :
-  HasType C1 Γ (.var x) (.typ .bool) ->
-  HasType C2 Γ e2 T ->
-  HasType C3 Γ e3 T ->
+  HasType K C1 Γ (.var x) (.typ .bool) ->
+  HasType K C2 Γ e2 T ->
+  HasType K C3 Γ e3 T ->
   ----------------------------
-  HasType (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
+  HasType K (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
 | par :
-  HasType C1 Γ e1 E ->
-  HasType C2 Γ e2 E ->
+  HasType K C1 Γ e1 E ->
+  HasType K C2 Γ e2 E ->
   SepCheck Γ C1 C2 ->
   ----------------------------
-  HasType (C1 ∪ C2) Γ (.par e1 e2) E
+  HasType K (C1 ∪ C2) Γ (.par e1 e2) E
 | invoke :
-  HasType {} Γ (.var x) (.typ (.cap (.var (.M .epsilon) x))) ->
-  HasType {} Γ (.var y) (.typ .unit) ->
+  HasType K {} Γ (.var x) (.typ (.cap (.var (.M .epsilon) x))) ->
+  HasType K {} Γ (.var y) (.typ .unit) ->
   ------------------------------------------------
-  HasType (.var (.M .epsilon) x) Γ (.app x y) (.typ .unit)
+  HasType K (.var (.M .epsilon) x) Γ (.app x y) (.typ .unit)
 | subtyp :
-  HasType C1 Γ e E1 ->
+  HasType K C1 Γ e E1 ->
   Subcapt Γ C1 C2 ->
   Subtyp Γ E1 E2 ->
   C2.IsClosed -> E2.IsClosed ->
   ----------------------------
-  HasType C2 Γ e E2
+  HasType K C2 Γ e E2
 
-notation:65 C " # " Γ " ⊢ " e " : " T => HasType C Γ e T
+notation:65 C " # " Γ " ⊢ " e " : " T => HasType {} C Γ e T
 
 end CoreCapybara

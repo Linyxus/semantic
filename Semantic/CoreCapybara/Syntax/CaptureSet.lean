@@ -218,6 +218,17 @@ def CaptureSet.applyAccess (a : Access) (cs : CaptureSet s) : CaptureSet s :=
 @[simp] theorem CaptureSet.applyAccess_drop {cs : CaptureSet s} :
     cs.applyAccess .drop = cs.applyDrop := rfl
 
+/-- Filters a capture set to its consumed *peaks* — capture variables held at
+    `.drop` access mode. Access-mode peaks and variable atoms are discarded;
+    resolve through a context with `CaptureSet.peaks` first to account for
+    consumed variables. -/
+def CaptureSet.consumed : CaptureSet s -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => .union (cs1.consumed) (cs2.consumed)
+| .cvar .drop c => .cvar .drop c
+| .cvar (.M _) _ => .empty
+| .var _ _ => .empty
+
 /-- applyDrop distributes over rename. -/
 theorem CaptureSet.applyDrop_rename {cs : CaptureSet s1} {f : Rename s1 s2} :
     cs.applyDrop.rename f = (cs.rename f).applyDrop := by
@@ -435,6 +446,22 @@ theorem CaptureSet.PeaksOnly.applyAccess {cs : CaptureSet s} (h : cs.PeaksOnly) 
 
 def PeakSet.rename {s1 s2 : Sig} (ps : PeakSet s1) (ρ : Rename s1 s2) : PeakSet s2 :=
   ⟨ps.cs.rename ρ, ps.h.rename ρ⟩
+
+/-- Filtering to consumed peaks preserves `PeaksOnly`. -/
+theorem CaptureSet.PeaksOnly.consumed {cs : CaptureSet s} (h : cs.PeaksOnly) :
+    cs.consumed.PeaksOnly := by
+  induction h with
+  | empty => exact PeaksOnly.empty
+  | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
+  | cvar =>
+    rename_i m c
+    cases m with
+    | M _ => exact PeaksOnly.empty
+    | drop => exact PeaksOnly.cvar
+
+/-- The consumed (`.drop`-mode) peaks of a peak set. -/
+def PeakSet.consumed (P : PeakSet s) : PeakSet s :=
+  ⟨P.cs.consumed, P.h.consumed⟩
 
 /-- Whether this capture set is equivalent to an empty set. -/
 inductive CaptureSet.IsEmpty : CaptureSet s -> Prop where

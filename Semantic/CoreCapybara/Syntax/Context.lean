@@ -300,6 +300,11 @@ end
 def CaptureSet.peakset (Γ : Ctx s) (cs : CaptureSet s) : PeakSet s :=
   ⟨peaks Γ cs, CaptureSet.peaks_peaksOnly Γ cs⟩
 
+/-- The consumed peaks of a capture set in context `Γ`: resolve the capture set
+to its peaks, then keep those held at `.drop` access mode. -/
+def CaptureSet.consumed_peaks (Γ : Ctx s) (cs : CaptureSet s) : CaptureSet s :=
+  (cs.peakset Γ).consumed.cs
+
 /-- A peak set is droppable in `Γ` when every capture variable occurring in it
 is bound with `can_drop` authority. -/
 def PeakSet.droppable (Γ : Ctx s) (P : PeakSet s) : Prop :=
