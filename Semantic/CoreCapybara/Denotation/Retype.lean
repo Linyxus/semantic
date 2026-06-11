@@ -319,10 +319,10 @@ theorem TypeEnv.HasPeak.ty_captureSet_subst {T : Ty .capt s1} {σ : Subst s1 s2}
   | top => exact Iff.rfl
   | unit => exact Iff.rfl
   | bool => exact Iff.rfl
-  | arrow T1 cs T2 => exact Iff.rfl
-  | poly T1 cs T2 => exact Iff.rfl
-  | cpoly cb cs T => exact Iff.rfl
-  | modal cs Ψ T => exact Iff.rfl
+  | arrow T1 _ cs T2 => exact Iff.rfl
+  | poly T1 _ cs T2 => exact Iff.rfl
+  | cpoly cb _ cs T => exact Iff.rfl
+  | modal _ cs Ψ T => exact Iff.rfl
   | cap cs => exact Iff.rfl
   | cell cs => exact Iff.rfl
   | reader cs => exact Iff.rfl
@@ -1112,7 +1112,7 @@ def retype_val_denot
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
     rw [← retype_captureset_denot ρ cs]
-  | .arrow T1 cs T2 => by
+  | .arrow T1 _ cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1141,7 +1141,7 @@ def retype_val_denot
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub hcompat ((ρ.dsep cs).mp hdsep) harg'
       exact (ih2 m' _).mpr hd
-  | .poly T1 cs T2 => by
+  | .poly T1 _ cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1170,7 +1170,7 @@ def retype_val_denot
       specialize hd m' denot hsub hcompat ((ρ.dsep cs).mp hdsep)
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
-  | .cpoly B cs T => by
+  | .cpoly B _ cs T => by
     have hB := retype_capturebound_denot ρ B
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1199,7 +1199,7 @@ def retype_val_denot
         ρ.liftCVar (cs:=CS) (cap:=cap2)
       specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.dsep cs).mp hdsep) hsub_bound
       exact (retype_exi_exp_denot ρ2 T R0 m' _).mpr hd
-  | .modal cs Ψ T => by
+  | .modal _ cs Ψ T => by
     intro m e
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]

@@ -176,31 +176,31 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subcapt Γ cs1 cs2 ->
   Subtyp (Γ,x:T2) U1 U2 ->
   --------------------------
-  Subtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2)
+  Subtyp Γ (.arrow T1 ds cs1 U1) (.arrow T2 ds cs2 U2)
 | poly {S1 S2 : PureTy s} :
   Subtyp Γ S2.core S1.core ->
   Subcapt Γ cs1 cs2 ->
   Subtyp (Γ,X<:S2) T1 T2 ->
   --------------------------
-  Subtyp Γ (.poly S1.core cs1 T1) (.poly S2.core cs2 T2)
+  Subtyp Γ (.poly S1.core ds cs1 T1) (.poly S2.core ds cs2 T2)
 | cpoly :
   Subbound Γ cb2 cb1 ->
   Subcapt Γ cs1 cs2 ->
   Subtyp (Γ,C[.access_only]<:cb2) T1 T2 ->
   ----------------------------------------
-  Subtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
+  Subtyp Γ (.cpoly cb1 ds cs1 T1) (.cpoly cb2 ds cs2 T2)
 | modal :
   Subcapt Γ cs1 cs2 ->
   Subtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ) ->
   ----------------------------------------
-  Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
+  Subtyp Γ (.modal ds cs1 Ψ E1) (.modal ds cs2 Ψ E2)
 | modal_modal :
   Γ.IsClosed ->
   Ψ1.IsClosed ->
   Ψ2.IsClosed ->
   Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
   ----------------------------------
-  Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
+  Subtyp Γ (.modal ds cs Ψ1 E) (.modal ds cs Ψ2 E)
 | exi :
   Subtyp (Γ,C[.can_drop]<:.unbound) T1 T2 ->
   --------------------------
@@ -255,12 +255,12 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   T1.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
   ----------------------------
-  HasType {} Γ (.abs cs T1 e) (.typ (.arrow T1 cs T2))
+  HasType {} Γ (.abs cs T1 e) (.typ (.arrow T1 .empty cs T2))
 | tabs {S : PureTy s} :
   S.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
-  HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
+  HasType {} Γ (.tabs cs S e) (.typ (.poly S.core .empty cs T))
 -- DEVIATION from the original rule (approved): `cabs` requires its bound
 -- annotation to be valid (`CaptureBound.IsValid`: concrete bounds are
 -- access-only, i.e. carry no `.drop`-mode peaks), consistent with the
@@ -274,13 +274,13 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   cb.IsValid Γ ->
   HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
-  HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
+  HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb .empty cs T))
 | wrap :
   Ψ.IsClosed ->
   HasType
     (cs.rename Rename.succ) (Γ.push_lock Ψ)
     (e.rename Rename.succ) (E.rename Rename.succ) ->
-  HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
+  HasType {} Γ (.boxed cs Ψ e) (.typ (.modal .empty cs Ψ E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   C.AccessOnly Γ ->
@@ -289,23 +289,23 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (C.applyAccess .drop) Γ (.pack C x) (.exi T)
 | app :
-  HasType {} Γ (.var x) (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
+  HasType {} Γ (.var x) (.typ (.arrow T1 ds (.var (.M .epsilon) x) T2)) ->
   HasType {} Γ (.var y) (.typ T1) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
 | tapp {S : PureTy s} :
   S.IsClosed ->
-  HasType {} Γ (.var x) (.typ (.poly S.core (.var (.M .epsilon) x) T)) ->
+  HasType {} Γ (.var x) (.typ (.poly S.core ds (.var (.M .epsilon) x) T)) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
 | capp {D : CaptureSet s} {I : CaptureSet s} :
   D.IsClosed ->
   CaptureBound.IsValid Γ (.bound D) ->
-  HasType {} Γ (.var x) (.typ (.cpoly (.bound D) (.var (.M .epsilon) x) T)) ->
+  HasType {} Γ (.var x) (.typ (.cpoly (.bound D) ds (.var (.M .epsilon) x) T)) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))
 | unwrap :
-  HasType {} Γ (.var x) (.typ (.modal (.var (.M .epsilon) x) Ψ E)) ->
+  HasType {} Γ (.var x) (.typ (.modal ds (.var (.M .epsilon) x) Ψ E)) ->
   Satisfy Γ Ψ ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.unwrap x) E

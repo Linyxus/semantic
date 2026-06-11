@@ -1468,24 +1468,28 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap (.tvar x) H
 | wf_arrow :
   Ty.WfInHeap T1 H ->
+  CaptureSet.WfInHeap ds H ->
   CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T2 H ->
-  Ty.WfInHeap (.arrow T1 cs T2) H
+  Ty.WfInHeap (.arrow T1 ds cs T2) H
 | wf_poly :
   Ty.WfInHeap T1 H ->
+  CaptureSet.WfInHeap ds H ->
   CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T2 H ->
-  Ty.WfInHeap (.poly T1 cs T2) H
+  Ty.WfInHeap (.poly T1 ds cs T2) H
 | wf_cpoly :
   CaptureBound.WfInHeap cb H ->
+  CaptureSet.WfInHeap ds H ->
   CaptureSet.WfInHeap cs H ->
   Ty.WfInHeap T H ->
-  Ty.WfInHeap (.cpoly cb cs T) H
+  Ty.WfInHeap (.cpoly cb ds cs T) H
 | wf_modal :
+  CaptureSet.WfInHeap ds H ->
   CaptureSet.WfInHeap cs H ->
   SepCtx.WfInHeap Ψ H ->
   Ty.WfInHeap T H ->
-  Ty.WfInHeap (.modal cs Ψ T) H
+  Ty.WfInHeap (.modal ds cs Ψ T) H
 | wf_unit :
   Ty.WfInHeap .unit H
 | wf_cap :
@@ -1635,14 +1639,16 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   | tvar => exact Ty.WfInHeap.wf_tvar
   | unit => exact Ty.WfInHeap.wf_unit
   | bool => exact Ty.WfInHeap.wf_bool
-  | arrow _ hcs _ ih1 ih2 =>
-    exact Ty.WfInHeap.wf_arrow ih1 (CaptureSet.wf_of_closed hcs) ih2
-  | poly _ hcs _ ih1 ih2 =>
-    exact Ty.WfInHeap.wf_poly ih1 (CaptureSet.wf_of_closed hcs) ih2
-  | cpoly hcb hcs _ ih =>
-    exact Ty.WfInHeap.wf_cpoly (CaptureBound.wf_of_closed hcb) (CaptureSet.wf_of_closed hcs) ih
-  | modal hcs hΨ _ ih =>
-    exact Ty.WfInHeap.wf_modal (CaptureSet.wf_of_closed hcs) (SepCtx.wf_of_closed hΨ) ih
+  | arrow _ hds hcs _ ih1 ih2 =>
+    exact Ty.WfInHeap.wf_arrow ih1 (CaptureSet.wf_of_closed hds) (CaptureSet.wf_of_closed hcs) ih2
+  | poly _ hds hcs _ ih1 ih2 =>
+    exact Ty.WfInHeap.wf_poly ih1 (CaptureSet.wf_of_closed hds) (CaptureSet.wf_of_closed hcs) ih2
+  | cpoly hcb hds hcs _ ih =>
+    exact Ty.WfInHeap.wf_cpoly (CaptureBound.wf_of_closed hcb) (CaptureSet.wf_of_closed hds)
+      (CaptureSet.wf_of_closed hcs) ih
+  | modal hds hcs hΨ _ ih =>
+    exact Ty.WfInHeap.wf_modal (CaptureSet.wf_of_closed hds) (CaptureSet.wf_of_closed hcs)
+      (SepCtx.wf_of_closed hΨ) ih
   | cap hcs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_of_closed hcs)
   | cell hcs => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_of_closed hcs)
   | reader hcs => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_of_closed hcs)
@@ -1744,16 +1750,20 @@ theorem Ty.wf_monotonic
   | wf_tvar => exact Ty.WfInHeap.wf_tvar
   | wf_unit => exact Ty.WfInHeap.wf_unit
   | wf_bool => exact Ty.WfInHeap.wf_bool
-  | wf_arrow _ hwf_cs _ ih1 ih2 =>
-    exact Ty.WfInHeap.wf_arrow (ih1 hsub) (CaptureSet.wf_monotonic hsub hwf_cs) (ih2 hsub)
-  | wf_poly _ hwf_cs _ ih1 ih2 =>
-    exact Ty.WfInHeap.wf_poly (ih1 hsub) (CaptureSet.wf_monotonic hsub hwf_cs) (ih2 hsub)
-  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
+  | wf_arrow _ hwf_ds hwf_cs _ ih1 ih2 =>
+    exact Ty.WfInHeap.wf_arrow (ih1 hsub) (CaptureSet.wf_monotonic hsub hwf_ds)
+      (CaptureSet.wf_monotonic hsub hwf_cs) (ih2 hsub)
+  | wf_poly _ hwf_ds hwf_cs _ ih1 ih2 =>
+    exact Ty.WfInHeap.wf_poly (ih1 hsub) (CaptureSet.wf_monotonic hsub hwf_ds)
+      (CaptureSet.wf_monotonic hsub hwf_cs) (ih2 hsub)
+  | wf_cpoly hwf_cb hwf_ds hwf_cs _ ih_T =>
     exact Ty.WfInHeap.wf_cpoly
-      (CaptureBound.wf_monotonic hsub hwf_cb) (CaptureSet.wf_monotonic hsub hwf_cs) (ih_T hsub)
-  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
+      (CaptureBound.wf_monotonic hsub hwf_cb) (CaptureSet.wf_monotonic hsub hwf_ds)
+      (CaptureSet.wf_monotonic hsub hwf_cs) (ih_T hsub)
+  | wf_modal hwf_ds hwf_cs hwf_Ψ _ ih_T =>
     exact Ty.WfInHeap.wf_modal
-      (CaptureSet.wf_monotonic hsub hwf_cs) (SepCtx.wf_monotonic hsub hwf_Ψ) (ih_T hsub)
+      (CaptureSet.wf_monotonic hsub hwf_ds) (CaptureSet.wf_monotonic hsub hwf_cs)
+      (SepCtx.wf_monotonic hsub hwf_Ψ) (ih_T hsub)
   | wf_cap hwf_cs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_monotonic hsub hwf_cs)
   | wf_cell hwf_cs => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_monotonic hsub hwf_cs)
   | wf_reader hwf_cs => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_monotonic hsub hwf_cs)
@@ -1920,15 +1930,19 @@ theorem Ty.wf_dom_subsumes {h1 h2 : Heap}
   | wf_tvar => exact .wf_tvar
   | wf_unit => exact .wf_unit
   | wf_bool => exact .wf_bool
-  | wf_arrow _ hwf_cs _ ih1 ih2 =>
-    exact .wf_arrow (ih1 hsub) (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih2 hsub)
-  | wf_poly _ hwf_cs _ ih1 ih2 =>
-    exact .wf_poly (ih1 hsub) (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih2 hsub)
-  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
+  | wf_arrow _ hwf_ds hwf_cs _ ih1 ih2 =>
+    exact .wf_arrow (ih1 hsub) (CaptureSet.wf_dom_subsumes hsub hwf_ds)
+                    (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih2 hsub)
+  | wf_poly _ hwf_ds hwf_cs _ ih1 ih2 =>
+    exact .wf_poly (ih1 hsub) (CaptureSet.wf_dom_subsumes hsub hwf_ds)
+                   (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih2 hsub)
+  | wf_cpoly hwf_cb hwf_ds hwf_cs _ ih_T =>
     exact .wf_cpoly (CaptureBound.wf_dom_subsumes hsub hwf_cb)
+                    (CaptureSet.wf_dom_subsumes hsub hwf_ds)
                     (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_T hsub)
-  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
-    exact .wf_modal (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+  | wf_modal hwf_ds hwf_cs hwf_Ψ _ ih_T =>
+    exact .wf_modal (CaptureSet.wf_dom_subsumes hsub hwf_ds)
+                    (CaptureSet.wf_dom_subsumes hsub hwf_cs)
                     (SepCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_T hsub)
   | wf_cap hwf_cs => exact .wf_cap (CaptureSet.wf_dom_subsumes hsub hwf_cs)
   | wf_cell hwf_cs => exact .wf_cell (CaptureSet.wf_dom_subsumes hsub hwf_cs)
@@ -2629,21 +2643,23 @@ theorem Ty.wf_rename
     simpa only [Ty.rename] using (Ty.WfInHeap.wf_top)
   | wf_tvar =>
     simpa only [Ty.rename] using (Ty.WfInHeap.wf_tvar)
-  | wf_arrow _ hwf_cs _ ih1 ih2 =>
+  | wf_arrow _ hwf_ds hwf_cs _ ih1 ih2 =>
     simpa only [Ty.rename] using
-      (Ty.WfInHeap.wf_arrow ih1 (CaptureSet.wf_rename hwf_cs) ih2)
-  | wf_poly _ hwf_cs _ ih1 ih2 =>
+      (Ty.WfInHeap.wf_arrow ih1 (CaptureSet.wf_rename hwf_ds) (CaptureSet.wf_rename hwf_cs) ih2)
+  | wf_poly _ hwf_ds hwf_cs _ ih1 ih2 =>
     simpa only [Ty.rename] using
-      (Ty.WfInHeap.wf_poly ih1 (CaptureSet.wf_rename hwf_cs) ih2)
-  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
+      (Ty.WfInHeap.wf_poly ih1 (CaptureSet.wf_rename hwf_ds) (CaptureSet.wf_rename hwf_cs) ih2)
+  | wf_cpoly hwf_cb hwf_ds hwf_cs _ ih_T =>
     simpa only [Ty.rename] using
       (Ty.WfInHeap.wf_cpoly
         (CaptureBound.wf_rename hwf_cb)
+        (CaptureSet.wf_rename hwf_ds)
         (CaptureSet.wf_rename hwf_cs)
         ih_T)
-  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
+  | wf_modal hwf_ds hwf_cs hwf_Ψ _ ih_T =>
     simpa only [Ty.rename] using
       (Ty.WfInHeap.wf_modal
+        (CaptureSet.wf_rename hwf_ds)
         (CaptureSet.wf_rename hwf_cs)
         (SepCtx.wf_rename hwf_Ψ)
         ih_T)
@@ -2915,27 +2931,31 @@ theorem Ty.wf_subst
     simpa only [Ty.subst] using (Ty.WfInHeap.wf_top)
   | wf_tvar =>
     simpa only [Ty.subst, PureTy.WfInHeap] using hwf_σ.wf_tvar _
-  | wf_arrow _ hwf_cs _ ih1 ih2 =>
+  | wf_arrow _ hwf_ds hwf_cs _ ih1 ih2 =>
     simpa only [Ty.subst] using
       (Ty.WfInHeap.wf_arrow
         (ih1 hwf_σ)
+        (CaptureSet.wf_subst hwf_ds hwf_σ)
         (CaptureSet.wf_subst hwf_cs hwf_σ)
         (ih2 (Subst.wf_lift hwf_σ)))
-  | wf_poly _ hwf_cs _ ih1 ih2 =>
+  | wf_poly _ hwf_ds hwf_cs _ ih1 ih2 =>
     simpa only [Ty.subst] using
       (Ty.WfInHeap.wf_poly
         (ih1 hwf_σ)
+        (CaptureSet.wf_subst hwf_ds hwf_σ)
         (CaptureSet.wf_subst hwf_cs hwf_σ)
         (ih2 (Subst.wf_lift hwf_σ)))
-  | wf_cpoly hwf_cb hwf_cs _ ih_T =>
+  | wf_cpoly hwf_cb hwf_ds hwf_cs _ ih_T =>
     simpa only [Ty.subst] using
       (Ty.WfInHeap.wf_cpoly
         (CaptureBound.wf_subst hwf_cb hwf_σ)
+        (CaptureSet.wf_subst hwf_ds hwf_σ)
         (CaptureSet.wf_subst hwf_cs hwf_σ)
         (ih_T (Subst.wf_lift hwf_σ)))
-  | wf_modal hwf_cs hwf_Ψ _ ih_T =>
+  | wf_modal hwf_ds hwf_cs hwf_Ψ _ ih_T =>
     simpa only [Ty.subst] using
       (Ty.WfInHeap.wf_modal
+        (CaptureSet.wf_subst hwf_ds hwf_σ)
         (CaptureSet.wf_subst hwf_cs hwf_σ)
         (SepCtx.wf_subst hwf_Ψ hwf_σ)
         (ih_T hwf_σ))

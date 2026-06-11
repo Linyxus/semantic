@@ -215,10 +215,10 @@ theorem Ty.captureSet_isClosed {T : Ty .capt s}
   cases T <;> simp only [Ty.captureSet]
   case top => exact CaptureSet.IsClosed.empty
   case tvar => exact CaptureSet.IsClosed.empty
-  case arrow => cases h with | arrow _ hcs _ => exact hcs
-  case poly => cases h with | poly _ hcs _ => exact hcs
-  case cpoly => cases h with | cpoly _ hcs _ => exact hcs
-  case modal => cases h with | modal hcs _ _ => exact hcs
+  case arrow => cases h with | arrow _ _ hcs _ => exact hcs
+  case poly => cases h with | poly _ _ hcs _ => exact hcs
+  case cpoly => cases h with | cpoly _ _ hcs _ => exact hcs
+  case modal => cases h with | modal _ hcs _ _ => exact hcs
   case cap => cases h with | cap hcs => exact hcs
   case cell => cases h with | cell hcs => exact hcs
   case reader => cases h with | reader hcs => exact hcs
@@ -1154,7 +1154,7 @@ private theorem authority_eq_expand_captures
 theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
   (ht : Cf.rename Rename.succ # Γ,x:T1 ⊨ e : T2) :
-  ∅ # Γ ⊨ Exp.abs Cf T1 e : (T1.arrow Cf T2).typ := by
+  ∅ # Γ ⊨ Exp.abs Cf T1 e : (T1.arrow .empty Cf T2).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
@@ -1239,7 +1239,7 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
 theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s}
   (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
   (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.tabs Cf S e : (S.core.poly Cf T).typ := by
+  ∅ # Γ ⊨ Exp.tabs Cf S e : (S.core.poly .empty Cf T).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
@@ -1322,7 +1322,7 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
 theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : CaptureBound s}
   (hclosed_cabs : (Exp.cabs Cf cb e).IsClosed)
   (ht : Cf.rename Rename.succ # Γ,C[.access_only]<:cb ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.cabs Cf cb e : (Ty.cpoly cb Cf T).typ := by
+  ∅ # Γ ⊨ Exp.cabs Cf cb e : (Ty.cpoly cb .empty Cf T).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
@@ -1501,7 +1501,7 @@ theorem sem_typ_pack
 
 
 theorem abs_val_denot_inv
-  (hv : Ty.val_denot env (.arrow T1 cs T2) store (.var x)) :
+  (hv : Ty.val_denot env (.arrow T1 ds cs T2) store (.var x)) :
   ∃ fx, x = .free fx
     ∧ ∃ cs' T0 e0 hval R,
       store.heap fx = some (Cell.val ⟨Exp.abs cs' T0 e0, hval, R⟩)
@@ -1541,7 +1541,7 @@ theorem abs_val_denot_inv
 
 
 theorem tabs_val_denot_inv
-  (hv : Ty.val_denot env (.poly T1 cs T2) store (.var x)) :
+  (hv : Ty.val_denot env (.poly T1 ds cs T2) store (.var x)) :
   ∃ fx, x = .free fx
     ∧ ∃ cs' S0 e0 hval R,
       store.heap fx = some (Cell.val ⟨Exp.tabs cs' S0 e0, hval, R⟩)
@@ -1583,7 +1583,7 @@ theorem tabs_val_denot_inv
         simp at hresolve
 
 theorem cabs_val_denot_inv
-  (hv : Ty.val_denot env (.cpoly B cs T) store (.var x)) :
+  (hv : Ty.val_denot env (.cpoly B ds cs T) store (.var x)) :
   ∃ fx, x = .free fx
     ∧ ∃ cs' B0 e0 hval R,
       store.heap fx = some (Cell.val ⟨Exp.cabs cs' B0 e0, hval, R⟩)
@@ -1955,7 +1955,7 @@ theorem sem_typ_wrap
   {cs : CaptureSet s} {Ψ : SepCtx s} {e : Exp s} {E : Ty .exi s}
   (hclosed_e : (Exp.boxed cs Ψ e).IsClosed)
   (ht : cs.rename Rename.succ # Γ.push_lock Ψ ⊨ e.rename Rename.succ : E.rename Rename.succ) :
-  ∅ # Γ ⊨ Exp.boxed cs Ψ e : (Ty.modal cs Ψ E).typ := by
+  ∅ # Γ ⊨ Exp.boxed cs Ψ e : (Ty.modal .empty cs Ψ E).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot, Ty.exi_val_denot]
   apply Eval.eval_val
@@ -2051,7 +2051,7 @@ theorem sem_typ_app
   {T1 : Ty .capt s} {T2 : Ty .exi (s,x)}
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ ((Ty.arrow T1 (.var (.M .epsilon) (.bound x)) T2)))
+    .typ ((Ty.arrow T1 ds (.var (.M .epsilon) (.bound x)) T2)))
   (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ T1) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨
     Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
@@ -2124,7 +2124,7 @@ theorem sem_typ_tapp
   {S : PureTy s} {T : Ty .exi (s,X)}
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (Ty.poly S.core (.var (.M .epsilon) (.bound x)) T)) :
+    .typ (Ty.poly S.core ds (.var (.M .epsilon) (.bound x)) T)) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
   intro env store hts hdsep hcompat
   -- Extract function denotation
@@ -2172,7 +2172,7 @@ theorem sem_typ_capp
   (hD_closed : D.IsClosed)
   (hvalid_D : CaptureBound.IsValid Γ (.bound D))
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cpoly (.bound D) (.var (.M .epsilon) (.bound x)) T)) :
+    .typ (.cpoly (.bound D) ds (.var (.M .epsilon) (.bound x)) T)) :
   (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
   intro env store hts hdsep hcompat
   -- Extract function denotation
@@ -3838,7 +3838,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
   (hcs_static : Subcapt Γ cs1 cs2)
   (hcs2_closed : CaptureSet.IsClosed cs2)
   (hres : SemSubtyp (Γ,x:T2) U1 U2) :
-  SemSubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2) := by
+  SemSubtyp Γ (.arrow T1 ds cs1 U1) (.arrow T2 ds cs2 U2) := by
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
   intro env H htyping
@@ -4081,7 +4081,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
   (hcs2_closed : CaptureSet.IsClosed cs2) -- cs2 is closed
   (hT : SemSubtyp (Γ,C[.access_only]<:cb2) T1 T2) -- covariant in body under tighter bound
   (hclosed_cb2 : cb2.IsClosed)
-  : SemSubtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2) := by
+  : SemSubtyp Γ (.cpoly cb1 ds cs1 T1) (.cpoly cb2 ds cs2 T2) := by
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
   intro env H htyping
@@ -4288,7 +4288,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
   (hcs_static : Subcapt Γ cs1 cs2)
   (hcs2_closed : CaptureSet.IsClosed cs2) -- cs2 is closed
   (hT : SemSubtyp (Γ,X<:S2) T1 T2) -- covariant in body under tighter bound
-  : SemSubtyp Γ (.poly S1.core cs1 T1) (.poly S2.core cs2 T2) := by
+  : SemSubtyp Γ (.poly S1.core ds cs1 T1) (.poly S2.core ds cs2 T2) := by
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
   intro env H htyping
@@ -4372,7 +4372,7 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
   (hcs2_closed : CaptureSet.IsClosed cs2)
   (hΨ_closed : SepCtx.IsClosed Ψ)
   (hT : SemSubtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ)) :
-  SemSubtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2) := by
+  SemSubtyp Γ (.modal ds cs1 Ψ E1) (.modal ds cs2 Ψ E2) := by
   unfold SemSubtyp
   intro env H htyping
   unfold Denot.ImplyAfter
@@ -4448,7 +4448,7 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
   (hΨ1_closed : SepCtx.IsClosed Ψ1)
   (hΨ2_closed : SepCtx.IsClosed Ψ2)
   (hsat : Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ)) :
-  SemSubtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E) := by
+  SemSubtyp Γ (.modal ds cs Ψ1 E) (.modal ds cs Ψ2 E) := by
   unfold SemSubtyp
   intro env H htyping
   unfold Denot.ImplyAfter
@@ -4508,8 +4508,8 @@ theorem fundamental_subtyp
     -- hsub_cs : Subcapt Γ cs1 cs2 (covariant)
     -- hsub_res : Subtyp (Γ,x:T2_arg) U1 U2 (covariant)
     -- Extract closedness from arrow types
-    cases hT1 with | arrow hT1_arg_closed hcs1_closed hU1_closed =>
-    cases hT2 with | arrow hT2_arg_closed hcs2_closed hU2_closed =>
+    cases hT1 with | arrow hT1_arg_closed _ hcs1_closed hU1_closed =>
+    cases hT2 with | arrow hT2_arg_closed _ hcs2_closed hU2_closed =>
     -- Apply sem_subtyp_arrow
     apply sem_subtyp_arrow
     · -- Prove SemSubtyp Γ T2_arg T1_arg (contravariant)
@@ -4537,8 +4537,8 @@ theorem fundamental_subtyp
     -- hsub_cs : Subcapt Γ cs1 cs2 (covariant)
     -- hsub_body : Subtyp (Γ,C<:m2) T1_body T2_body (covariant)
     -- Extract closedness from cpoly types
-    cases hT1 with | cpoly hcb1_closed hcs1_closed hT1_body_closed =>
-    cases hT2 with | cpoly hcb2_closed hcs2_closed hT2_body_closed =>
+    cases hT1 with | cpoly hcb1_closed _ hcs1_closed hT1_body_closed =>
+    cases hT2 with | cpoly hcb2_closed _ hcs2_closed hT2_body_closed =>
     -- Apply sem_subtyp_cpoly
     apply sem_subtyp_cpoly
     · exact fundamental_subbound hle
@@ -4553,8 +4553,8 @@ theorem fundamental_subtyp
     -- hsub_cs : Subcapt Γ cs1 cs2 (covariant)
     -- hsub_body : Subtyp (Γ,X<:S2) T1_body T2_body (covariant)
     -- Extract closedness from poly types
-    cases hT1 with | poly hS1_closed hcs1_closed hT1_body_closed =>
-    cases hT2 with | poly hS2_closed hcs2_closed hT2_body_closed =>
+    cases hT1 with | poly hS1_closed _ hcs1_closed hT1_body_closed =>
+    cases hT2 with | poly hS2_closed _ hcs2_closed hT2_body_closed =>
     -- Apply sem_subtyp_poly
     apply sem_subtyp_poly
     · exact ih_bound hS2_closed hS1_closed  -- contravariant
@@ -4564,9 +4564,9 @@ theorem fundamental_subtyp
     · exact ih_body hT1_body_closed hT2_body_closed
   case modal hsub_cs hsub_body ih_body =>
     cases hT1 with
-    | modal _ hΨ_closed hE1_closed =>
+    | modal _ _ hΨ_closed hE1_closed =>
       cases hT2 with
-      | modal hcs2_closed _ hE2_closed =>
+      | modal _ hcs2_closed _ hE2_closed =>
         apply sem_subtyp_modal
         · exact fundamental_subcapt hsub_cs
         · exact hsub_cs
@@ -4575,9 +4575,9 @@ theorem fundamental_subtyp
         · exact ih_body (Ty.rename_closed hE1_closed) (Ty.rename_closed hE2_closed)
   case modal_modal hΓ _hΨ1_closed' _hΨ2_closed' hsat =>
     cases hT1 with
-    | modal _ hΨ1_closed _ =>
+    | modal _ _ hΨ1_closed _ =>
       cases hT2 with
-      | modal _ hΨ2_closed _ =>
+      | modal _ _ hΨ2_closed _ =>
         exact sem_subtyp_modal_modal hΓ hΨ1_closed hΨ2_closed hsat
   case exi hsub_body ih_body =>
     -- T1 = (.exi T1_body), T2 = (.exi T2_body)
@@ -5182,12 +5182,12 @@ theorem sem_typ_unwrap
   (hclosed_Ψ : Ψ.IsClosed)
   (hΓ : Γ.IsClosed)
   (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.modal (.var (.M .epsilon) (.bound x)) Ψ E))
+    .typ (.modal ds (.var (.M .epsilon) (.bound x)) Ψ E))
   (hsatisfy : Satisfy Γ Ψ) :
   (CaptureSet.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.unwrap (.bound x) : E := by
   intro env store hts hdsep hcompat
   have hmodal_exp :
-      Ty.exi_exp_denot env (.typ (.modal (.var (.M .epsilon) (.bound x)) Ψ E))
+      Ty.exi_exp_denot env (.typ (.modal ds (.var (.M .epsilon) (.bound x)) Ψ E))
         (CaptureSet.denot env {} store) store
         (.var (.free (env.lookup_var x).1)) := by
     simpa [Exp.subst, Var.subst, Subst.from_TypeEnv] using
@@ -5309,7 +5309,7 @@ theorem fundamental
       have hx := hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound)
       exact sem_typ_capp (var_typing_extract_closed hx_syn) hD_closed_exp hvalid_D hx
   case unwrap =>
-    rename_i x Ψ E hx hsatisfy ih_x
+    rename_i x _ Ψ E hx hsatisfy ih_x
     have hx_closed := HasType.typed_var_closed hx
     cases x with
     | free fx =>
@@ -5319,7 +5319,7 @@ theorem fundamental
         cases HasType.type_is_closed hx with
         | typ hclosed_modal =>
           cases hclosed_modal with
-          | modal _ hclosed_Ψ _ =>
+          | modal _ _ hclosed_Ψ _ =>
             exact hclosed_Ψ
       exact sem_typ_unwrap (x := bx) hclosed_Ψ hΓ
         (ih_x hΓ (by constructor; constructor))

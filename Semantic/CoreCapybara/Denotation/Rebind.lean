@@ -361,7 +361,7 @@ def rebind_val_denot
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]
     rw [← rebind_captureset_denot ρ cs]
-  | .arrow T1 cs T2 => by
+  | .arrow T1 _ cs T2 => by
     have ih1 := rebind_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.rename]
@@ -394,7 +394,7 @@ def rebind_val_denot
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub hcompat ((ρ.drop_sep_in cs).mp hdsep) harg'
       exact (ih2 m' _).mpr hd
-  | .poly T1 cs T2 => by
+  | .poly T1 _ cs T2 => by
     have ih1 := rebind_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.rename]
@@ -423,7 +423,7 @@ def rebind_val_denot
       specialize hd m' denot hsub hcompat ((ρ.drop_sep_in cs).mp hdsep)
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
-  | .cpoly B cs T => by
+  | .cpoly B _ cs T => by
     have hB := rebind_capturebound_denot ρ B
     intro m e
     simp only [Ty.val_denot, Ty.rename]
@@ -444,7 +444,7 @@ def rebind_val_denot
       let R0 := expand_captures m.heap cs'
       specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.drop_sep_in cs).mp hdsep) hsub_bound
       exact (rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0 m' _).mpr hd
-  | .modal cs Ψ T => by
+  | .modal _ cs Ψ T => by
     intro m e
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]

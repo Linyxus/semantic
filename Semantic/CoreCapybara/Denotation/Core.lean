@@ -564,7 +564,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     e = .var (.free l) ∧
     m.lookup l = some (.capability (.mcell b0 ℓ0)) ∧
     (cs.denot env m).covers (.access .epsilon) l
-| env, .arrow T1 cs T2 => fun m e =>
+| env, .arrow T1 _ cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' T0 t0,
@@ -582,7 +582,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         T2
         R0
         m' (t0.subst (Subst.openVar (.free arg))))
-| env, .poly T1 cs T2 => fun m e =>
+| env, .poly T1 _ cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' S0 t0,
@@ -603,7 +603,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         T2
         R0
         m' (t0.subst (Subst.openTVar .top)))
-| env, .cpoly B cs T => fun m e =>
+| env, .cpoly B _ cs T => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' B0 t0,
@@ -624,7 +624,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         T
         R0
         m' (t0.subst (Subst.openCVar CS)))
-| env, .modal cs Ψ E => fun m e =>
+| env, .modal _ cs Ψ E => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs0 sepctx0 t0,
@@ -1252,7 +1252,7 @@ theorem from_TypeEnv_wf_in_heap
               cases hl
               exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free
                 (by simpa [Memory.lookup] using hlookup))
-            | cap cs | reader cs | arrow _ cs _ | poly _ cs _ | cpoly _ cs _ | modal cs _ _ =>
+            | cap _ | reader _ | arrow _ _ _ _ | poly _ _ _ _ | cpoly _ _ _ _ | modal _ _ _ _ =>
               unfold Ty.val_denot at htype
               exact htype.1
           cases hwf with
@@ -1617,7 +1617,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     have hval := v.isVal
     rw [hlabel] at hval
     cases hval
-  | arrow T1 cs T2 =>
+  | arrow T1 _ cs T2 =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     have hx' : m.heap x = some (.val v) := by simpa [Memory.lookup] using hx
@@ -1651,14 +1651,14 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     rw [resolve_var_heap_trans hx']
     exact ⟨Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hx'), hwf_cs,
       label, b0, ℓ0, hres, hlookup, hcov⟩
-  | poly T1 cs T2 | cpoly _ cs _ =>
+  | poly T1 _ cs T2 | cpoly _ _ cs _ =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     have hx' : m.heap x = some (.val v) := by simpa [Memory.lookup] using hx
     rw [resolve_var_heap_trans hx']
     obtain ⟨_, hwf_cs, hexists⟩ := ht
     exact ⟨Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hx'), hwf_cs, hexists⟩
-  | modal cs Ψ T =>
+  | modal _ cs Ψ T =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     have hx' : m.heap x = some (.val v) := by simpa [Memory.lookup] using hx
@@ -1699,16 +1699,16 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
     -- btrue and bfalse cannot resolve to a reader, so both sides are False
     unfold Ty.val_denot
     simp [resolve]
-  | arrow T1 cs T2 =>
+  | arrow T1 _ cs T2 =>
     unfold Ty.val_denot
     simp [resolve]
-  | poly T1 cs T2 =>
+  | poly T1 _ cs T2 =>
     unfold Ty.val_denot
     simp [resolve]
-  | cpoly B cs T =>
+  | cpoly B _ cs T =>
     unfold Ty.val_denot
     simp [resolve]
-  | modal cs Ψ T =>
+  | modal _ cs Ψ T =>
     unfold Ty.val_denot
     simp [resolve]
 
@@ -1956,7 +1956,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
         exact ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
           label, b', ℓ', resolve_monotonic hmem hres, hc',
           by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem]; exact hcov⟩
-  | arrow T1 cs T2 =>
+  | arrow T1 _ cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -1968,7 +1968,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
       fun arg m' hs' hcompat harg => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
     exact hfun arg m' (Memory.subsumes_trans hs' hmem) hcompat harg
-  | poly T1 cs T2 =>
+  | poly T1 _ cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -1980,7 +1980,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
       fun m' denot msub hcompat hdenot_proper himply => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
     exact hfun m' denot (Memory.subsumes_trans msub hmem) hcompat hdenot_proper himply
-  | cpoly B cs T =>
+  | cpoly B _ cs T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -1992,7 +1992,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
       fun m' CS hwf_CS hdf msub hcompat hbounded => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
     exact hfun m' CS hwf_CS hdf (Memory.subsumes_trans msub hmem) hcompat hbounded
-  | modal cs Ψ T =>
+  | modal _ cs Ψ T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs',
@@ -2309,16 +2309,16 @@ theorem val_denot_implies_wf {env : TypeEnv s}
   | cap cs =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | arrow T1 cs T2 =>
+  | arrow T1 _ cs T2 =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | poly T1 cs T2 =>
+  | poly T1 _ cs T2 =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | cpoly B cs T =>
+  | cpoly B _ cs T =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | modal cs Ψ T =>
+  | modal _ cs Ψ T =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
 
@@ -2357,19 +2357,19 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
     obtain ⟨_, _, _, heq, _, _⟩ := hdenot
     rw [heq]
     exact Exp.IsSimpleAns.is_var
-  | modal cs Ψ T =>
+  | modal _ cs Ψ T =>
     unfold Ty.val_denot at hdenot
     rcases hdenot with ⟨_, _, _, _, _, hres, _, _⟩
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.boxed
-  | arrow T1 cs T2 =>
+  | arrow T1 _ cs T2 =>
     unfold Ty.val_denot at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.abs
-  | poly T1 cs T2 =>
+  | poly T1 _ cs T2 =>
     unfold Ty.val_denot at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.tabs
-  | cpoly B cs T =>
+  | cpoly B _ cs T =>
     unfold Ty.val_denot at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.cabs
@@ -2554,7 +2554,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
                   CapabilitySet.covers_imp_singleton_subset hcov
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | arrow T1 cs T2 =>
+  | arrow T1 _ cs T2 =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -2583,7 +2583,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | poly T1 cs T2 =>
+  | poly T1 _ cs T2 =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -2612,7 +2612,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | cpoly B cs T =>
+  | cpoly B _ cs T =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -2641,7 +2641,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | modal cs Ψ T =>
+  | modal _ cs Ψ T =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, _, hres, _, _, _, hR0_sub, _⟩ := ht
@@ -2690,7 +2690,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   | bool =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     exact hdenot
-  | arrow T1 cs T2 =>
+  | arrow T1 _ cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
@@ -2741,7 +2741,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
     · -- Body condition
       intro arg m' hsub hcompat hdsepx
       exact hbody arg m' hsub hcompat (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx)
-  | poly T1 cs T2 =>
+  | poly T1 _ cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
@@ -2784,7 +2784,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       intro m' denot hsub hcompat hdsepx hprop himply_simple himply
       exact hbody m' denot hsub hcompat
         (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hprop himply_simple himply
-  | cpoly B cs T =>
+  | cpoly B _ cs T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
@@ -2825,7 +2825,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       intro m' CS hwf hdf hsub hcompat hdsepx hbdd
       exact hbody m' CS hwf hdf hsub hcompat
         (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hbdd
-  | modal cs Ψ T =>
+  | modal _ cs Ψ T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hres, hwf_cs',
       hwf_sepctx, hsat_impl, hR0_sub, hbody⟩ := hdenot
@@ -3070,14 +3070,14 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, _, _, hcov⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
-  case arrow T1 cs T2 | poly T1 cs T2 | cpoly B cs T =>
+  case arrow T1 _ cs T2 | poly T1 _ cs T2 | cpoly B _ cs T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, _, hres, _, hR0_sub, _⟩ := hdenot
     exact CapabilitySet.Subset.trans
       (resolve_reachability_subset_of_resolve hres)
       (by simpa [resolve_reachability] using hpure.denot_empty.subset_of_subset hR0_sub)
-  case modal cs Ψ T =>
+  case modal _ cs Ψ T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, _, hres, _, _, _, hR0_sub, _⟩ := hdenot
