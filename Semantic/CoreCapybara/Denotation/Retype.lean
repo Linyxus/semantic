@@ -461,39 +461,77 @@ theorem Retype.dpeak_fwd
   subst heq
   exact hne (ρ.dpeak_cvar_inj c1 c2 d1 hd1 hd2)
 
+/-- Forward deadness transport: if `d` is a droppable peak of `c`'s image and
+`c` is statically dead in `K`, then `d` is statically dead in `K`'s image. -/
+theorem Retype.dead_fwd
+    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+    (ρ : Retype env1 σ env2 D) (K : CaptureSet s1) {c : BVar s1 .cvar} {d : BVar s2 .cvar}
+    (hd : TypeEnv.HasDroppablePeak env2 (σ.cvar c) d)
+    (hdead : env1.DeadIn K c) : env2.DeadIn (K.subst σ) d := by
+  obtain ⟨aK, hp⟩ := hdead
+  exact (ρ.peaks d K).mpr (TypeEnv.HasDroppablePeak.subst_of_atom hp hd).2
+
+/-- Backward deadness transport: if `d` is a droppable peak of `c`'s image and
+`d` is statically dead in `K`'s image, then `c` is statically dead in `K`.
+Uses the injectivity field: `d` reflects through a unique source variable. -/
+theorem Retype.dead_back
+    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+    (ρ : Retype env1 σ env2 D) (K : CaptureSet s1) {c : BVar s1 .cvar} {d : BVar s2 .cvar}
+    (hd : TypeEnv.HasDroppablePeak env2 (σ.cvar c) d)
+    (hdead : env2.DeadIn (K.subst σ) d) : env1.DeadIn K c := by
+  have hpk : TypeEnv.HasDroppablePeak env2 ((compute_peaks env1 K).subst σ) d :=
+    ⟨hd.1, (ρ.peaks d K).mp hdead⟩
+  obtain ⟨cK, mK, hsK, hdK⟩ :=
+    TypeEnv.HasDroppablePeak.subst_peaksOnly_inv (compute_peaks_is_peak env1 K) hpk
+  cases ρ.dpeak_cvar_inj c cK d hd hdK
+  exact ⟨mK, hsK⟩
+
 /-- The environment-separation invariant transports along any `Retype`:
 budgets reduce to their peaks, and the `dpeak` fields provide a pairwise,
-capability-preserving droppable-peak correspondence. -/
+capability-preserving droppable-peak correspondence; the same fields
+transport static deadness in both directions for the avoidance condition. -/
 theorem Retype.dsep
     {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D) (cs : CaptureSet s1) :
-    TypeEnv.DropSepIn env1 cs ↔ TypeEnv.DropSepIn env2 (cs.subst σ) := by
+    (ρ : Retype env1 σ env2 D) (K cs : CaptureSet s1) :
+    TypeEnv.DropSepIn env1 K cs ↔ TypeEnv.DropSepIn env2 (K.subst σ) (cs.subst σ) := by
   constructor
   · intro h
     apply TypeEnv.DropSepIn.of_pairs
-    intro d1 d2 a1 a2 hne hauth1 hauth2 hp1 hp2
-    obtain ⟨c1, c2, hne', hc1, hc2, hcap1, hcap2⟩ :=
-      ρ.dpeak_back (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) d1 d2
-        ⟨hauth1, (ρ.peaks d1 cs).mp ⟨a1, hp1⟩⟩
-        ⟨hauth2, (ρ.peaks d2 cs).mp ⟨a2, hp2⟩⟩
-    obtain ⟨hauth1', a1', hpc1⟩ := hc1
-    obtain ⟨hauth2', a2', hpc2⟩ := hc2
-    rw [compute_peaks_idem] at hpc1 hpc2
-    rw [← hcap1, ← hcap2]
-    exact h.pairs c1 c2 a1' a2' (hne' hne) hauth1' hauth2' hpc1 hpc2
+    · intro d1 d2 a1 a2 hne hauth1 hauth2 hp1 hp2
+      obtain ⟨c1, c2, hne', hc1, hc2, hcap1, hcap2⟩ :=
+        ρ.dpeak_back (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) d1 d2
+          ⟨hauth1, (ρ.peaks d1 cs).mp ⟨a1, hp1⟩⟩
+          ⟨hauth2, (ρ.peaks d2 cs).mp ⟨a2, hp2⟩⟩
+      obtain ⟨hauth1', a1', hpc1⟩ := hc1
+      obtain ⟨hauth2', a2', hpc2⟩ := hc2
+      rw [compute_peaks_idem] at hpc1 hpc2
+      rw [← hcap1, ← hcap2]
+      exact h.pairs c1 c2 a1' a2' (hne' hne) hauth1' hauth2' hpc1 hpc2
+    · intro a d hp hauth hdead
+      have hd : TypeEnv.HasDroppablePeak env2 ((compute_peaks env1 cs).subst σ) d :=
+        ⟨hauth, (ρ.peaks d cs).mp ⟨a, hp⟩⟩
+      obtain ⟨c, m, hsub, hdc⟩ :=
+        TypeEnv.HasDroppablePeak.subst_peaksOnly_inv (compute_peaks_is_peak env1 cs) hd
+      exact h.avoid m c hsub (ρ.dpeak_cvar_back c d hdc).1 (ρ.dead_back K hdc hdead)
   · intro h
     apply TypeEnv.DropSepIn.of_pairs
-    intro c1 c2 a1 a2 hne hauth1 hauth2 hp1 hp2
-    obtain ⟨d1, d2, hne', hd1, hd2, hcap1, hcap2⟩ :=
-      ρ.dpeak_fwd (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) c1 c2
-        ⟨hauth1, a1, by rw [compute_peaks_idem]; exact hp1⟩
-        ⟨hauth2, a2, by rw [compute_peaks_idem]; exact hp2⟩
-    obtain ⟨hauth1', hpa1⟩ := hd1
-    obtain ⟨hauth2', hpa2⟩ := hd2
-    obtain ⟨a1', hp1'⟩ := (ρ.peaks d1 cs).mpr hpa1
-    obtain ⟨a2', hp2'⟩ := (ρ.peaks d2 cs).mpr hpa2
-    rw [← hcap1, ← hcap2]
-    exact h.pairs d1 d2 a1' a2' (hne' hne) hauth1' hauth2' hp1' hp2'
+    · intro c1 c2 a1 a2 hne hauth1 hauth2 hp1 hp2
+      obtain ⟨d1, d2, hne', hd1, hd2, hcap1, hcap2⟩ :=
+        ρ.dpeak_fwd (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) c1 c2
+          ⟨hauth1, a1, by rw [compute_peaks_idem]; exact hp1⟩
+          ⟨hauth2, a2, by rw [compute_peaks_idem]; exact hp2⟩
+      obtain ⟨hauth1', hpa1⟩ := hd1
+      obtain ⟨hauth2', hpa2⟩ := hd2
+      obtain ⟨a1', hp1'⟩ := (ρ.peaks d1 cs).mpr hpa1
+      obtain ⟨a2', hp2'⟩ := (ρ.peaks d2 cs).mpr hpa2
+      rw [← hcap1, ← hcap2]
+      exact h.pairs d1 d2 a1' a2' (hne' hne) hauth1' hauth2' hp1' hp2'
+    · intro a c hp hauth hdead
+      obtain ⟨d, hdc, hcap⟩ := ρ.dpeak_cvar_fwd c hauth
+      have hdp : TypeEnv.HasDroppablePeak env2 ((compute_peaks env1 cs).subst σ) d :=
+        TypeEnv.HasDroppablePeak.subst_of_atom hp hdc
+      obtain ⟨a', hp'⟩ := (ρ.peaks d cs).mpr hdp.2
+      exact h.avoid a' d hp' hdc.1 (ρ.dead_fwd K hdc hdead)
 
 /-- The peak-membership hypothesis needed to lift a `Retype` under a value
 binder, when the two stored peak sets are the computed peaks of an argument
@@ -1090,7 +1128,7 @@ def retype_val_denot
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
     rw [← retype_captureset_denot ρ cs]
-  | .arrow T1 _ cs T2 => by
+  | .arrow T1 ds cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1106,7 +1144,7 @@ def retype_val_denot
       have ih2 := retype_exi_exp_denot
         (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2) (ρ.lift_hps T1)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
-      specialize hd arg m' hsub hcompat ((ρ.dsep cs).mpr hdsep) harg'
+      specialize hd arg m' hsub hcompat ((ρ.dsep ds cs).mpr hdsep) harg'
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
@@ -1117,9 +1155,9 @@ def retype_val_denot
       have ih2 := retype_exi_exp_denot
         (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2) (ρ.lift_hps T1)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mp harg
-      specialize hd arg m' hsub hcompat ((ρ.dsep cs).mp hdsep) harg'
+      specialize hd arg m' hsub hcompat ((ρ.dsep ds cs).mp hdsep) harg'
       exact (ih2 m' _).mpr hd
-  | .poly T1 _ cs T2 => by
+  | .poly T1 ds cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1134,7 +1172,7 @@ def retype_val_denot
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat ((ρ.dsep cs).mpr hdsep)
+      specialize hd m' denot hsub hcompat ((ρ.dsep ds cs).mpr hdsep)
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
@@ -1145,10 +1183,10 @@ def retype_val_denot
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.subst σ)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat ((ρ.dsep cs).mp hdsep)
+      specialize hd m' denot hsub hcompat ((ρ.dsep ds cs).mp hdsep)
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
-  | .cpoly B _ cs T => by
+  | .cpoly B ds cs T => by
     have hB := retype_capturebound_denot ρ B
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1165,7 +1203,7 @@ def retype_val_denot
                       (env2.extend_cvar CS cap1) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap1)
       have ih2 := retype_exi_exp_denot ρ1 T R0
-      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.dsep cs).mpr hdsep) hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.dsep ds cs).mpr hdsep) hsub_bound
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
@@ -1175,9 +1213,9 @@ def retype_val_denot
       let ρ2 : Retype (env1.extend_cvar CS cap2) σ.lift
                       (env2.extend_cvar CS cap2) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap2)
-      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.dsep cs).mp hdsep) hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.dsep ds cs).mp hdsep) hsub_bound
       exact (retype_exi_exp_denot ρ2 T R0 m' _).mpr hd
-  | .modal _ cs Ψ T => by
+  | .modal ds cs Ψ T => by
     intro m e
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
@@ -1205,7 +1243,7 @@ def retype_val_denot
           simpa only [retype_captureset_denot (ρ := ρ) (C := C1),
             retype_captureset_denot (ρ := ρ) (C := C2)] using
               hsep (C1.subst σ) m1 (C2.subst σ) m2 (hdistinct.subst_retype)
-        exact (ih m' _).mp (hbody m' hsub hcompat ((ρ.dsep cs).mpr hdsep) hkind' hsep')
+        exact (ih m' _).mp (hbody m' hsub hcompat ((ρ.dsep ds cs).mpr hdsep) hkind' hsep')
     · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
         hsat, hR0_sub, hbody⟩
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
@@ -1230,7 +1268,7 @@ def retype_val_denot
           simpa only [retype_captureset_denot (ρ := ρ) (C := D1),
             retype_captureset_denot (ρ := ρ) (C := D2)] using
               hsep D1 m1 D2 m2 hdistinct0
-        exact (ih m' _).mpr (hbody m' hsub hcompat ((ρ.dsep cs).mp hdsep) hkind' hsep')
+        exact (ih m' _).mpr (hbody m' hsub hcompat ((ρ.dsep ds cs).mp hdsep) hkind' hsep')
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
@@ -1459,7 +1497,7 @@ definition-level in `CoreCapybara.Gaps` (`open_carg_dpeak_fwd_false`,
 correspondence are proven. This is the precise way in which `Retype`/
 `openCVar` transport "erases capture-variable identity and authority"
 (see the `CoreCapybara.Gaps` module docstring): the closure premise
-`env.DropSepIn cs` of `val_denot` cannot cross a `capp`/`unpack` boundary
+`env.DropSepIn ds cs` of `val_denot` cannot cross a `capp`/`unpack` boundary
 when the budget peaks at the instantiated capture variable. -/
 def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet := .empty)
   (a : Authority := .access_only) :

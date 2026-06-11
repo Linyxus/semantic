@@ -79,9 +79,9 @@ theorem pack_bound_of_ne_pack {R : CapabilitySet} {m m' : Memory} {v : Exp {}}
   fun cs x heq => absurd heq (h cs x)
 
 
-theorem sem_typ_var
+theorem sem_typ_var {K : CaptureSet s}
   (hx : Γ.LookupVar x T) :
-  {} # Γ ⊨ (Exp.var (.bound x)) :
+  SemanticTyping K {} Γ (Exp.var (.bound x))
     (.typ (T.refineCaptureSet (.var (.M .epsilon) (.bound x)))) := by
   intro env m hts _ _
   simp only [Ty.exi_exp_denot]
@@ -1041,81 +1041,121 @@ private theorem CapabilitySet.hasmem_to_drop_drop
 many call sites. Under the new budget model the budget is exactly `C.denot ρ m`
 on both sides, so this is just unfolding `SemanticTyping`/`exi_exp_denot`. -/
 theorem semtyp_to_exi_exp_denot
-    {s : Sig} {C : CaptureSet s} {Γ : Ctx s} {e : Exp s} {E : Ty .exi s}
+    {s : Sig} {K C : CaptureSet s} {Γ : Ctx s} {e : Exp s} {E : Ty .exi s}
     {ρ : TypeEnv s} {m : Memory}
-    (ht : C # Γ ⊨ e : E)
+    (ht : SemanticTyping K C Γ e E)
     (hts : EnvTyping Γ ρ m)
-    (hdsep : ρ.DropSepIn C)
+    (hdsep : ρ.DropSepIn K C)
     (hcompat : m.is_compatible (C.denot ρ m)) :
     Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ)) :=
   ht ρ m hts hdsep hcompat
 
 /-! ### The `DropSepIn` lemma kit
 
-`DropSepIn env C` is the budget-relativized environment-separation invariant:
-distinct droppable capture variables peaked in `C` have disjoint capabilities.
-It transports generically along environment weakenings (via `Rebind`),
+`DropSepIn env K C` is the environment-separation invariant relative to the
+static dead-set `K` and the budget `C`: distinct droppable capture variables
+peaked in `C` have disjoint capabilities, and `C`'s droppable peaks avoid
+`K`'s. It transports generically along environment weakenings (via `Rebind`),
 restricts along unions, and restricts along `Subcapt` (droppable peaks are
 monotone, thanks to the `.access_only` restriction of `sc_cvar`). It is NOT a
 consequence of `EnvTyping` alone (environments may alias droppable capture
 variables) — see the `CoreCapybara.Gaps` counterexamples. -/
 
-theorem TypeEnv.DropSepIn.extend_var {env : TypeEnv s} {C : CaptureSet s}
-    {n : Nat} {ps : PeakSet s} (h : env.DropSepIn C) :
-    (env.extend_var n ps).DropSepIn (C.rename Rename.succ) :=
-  ((Rebind.weaken (x := n) (ps := ps)).drop_sep_in C).mp h
+theorem TypeEnv.DropSepIn.extend_var {env : TypeEnv s} {K C : CaptureSet s}
+    {n : Nat} {ps : PeakSet s} (h : env.DropSepIn K C) :
+    (env.extend_var n ps).DropSepIn (K.rename Rename.succ) (C.rename Rename.succ) :=
+  ((Rebind.weaken (x := n) (ps := ps)).drop_sep_in K C).mp h
 
-theorem TypeEnv.DropSepIn.extend_tvar {env : TypeEnv s} {C : CaptureSet s}
-    {d : Denot} (h : env.DropSepIn C) :
-    (env.extend_tvar d).DropSepIn (C.rename Rename.succ) :=
-  ((Rebind.tweaken (d := d)).drop_sep_in C).mp h
+theorem TypeEnv.DropSepIn.extend_tvar {env : TypeEnv s} {K C : CaptureSet s}
+    {d : Denot} (h : env.DropSepIn K C) :
+    (env.extend_tvar d).DropSepIn (K.rename Rename.succ) (C.rename Rename.succ) :=
+  ((Rebind.tweaken (d := d)).drop_sep_in K C).mp h
 
-theorem TypeEnv.DropSepIn.extend_cvar {env : TypeEnv s} {C : CaptureSet s}
-    {cs : CaptureSet {}} {cap : CapabilitySet} {a : Authority} (h : env.DropSepIn C) :
-    (env.extend_cvar cs cap a).DropSepIn (C.rename Rename.succ) :=
-  ((Rebind.cweaken (cs := cs) (cap := cap) (a := a)).drop_sep_in C).mp h
+theorem TypeEnv.DropSepIn.extend_cvar {env : TypeEnv s} {K C : CaptureSet s}
+    {cs : CaptureSet {}} {cap : CapabilitySet} {a : Authority} (h : env.DropSepIn K C) :
+    (env.extend_cvar cs cap a).DropSepIn (K.rename Rename.succ) (C.rename Rename.succ) :=
+  ((Rebind.cweaken (cs := cs) (cap := cap) (a := a)).drop_sep_in K C).mp h
 
-theorem TypeEnv.DropSepIn.extend_lock {env : TypeEnv s} {C : CaptureSet s}
-    (h : env.DropSepIn C) :
-    (env.extend_lock).DropSepIn (C.rename Rename.succ) :=
-  ((Rebind.lweaken (env := env)).drop_sep_in C).mp h
+theorem TypeEnv.DropSepIn.extend_lock {env : TypeEnv s} {K C : CaptureSet s}
+    (h : env.DropSepIn K C) :
+    (env.extend_lock).DropSepIn (K.rename Rename.succ) (C.rename Rename.succ) :=
+  ((Rebind.lweaken (env := env)).drop_sep_in K C).mp h
 
-theorem TypeEnv.DropSepIn.union_left {env : TypeEnv s} {C1 C2 : CaptureSet s}
-    (h : env.DropSepIn (C1 ∪ C2)) : env.DropSepIn C1 := by
+theorem TypeEnv.DropSepIn.union_left {env : TypeEnv s} {K C1 C2 : CaptureSet s}
+    (h : env.DropSepIn K (C1 ∪ C2)) : env.DropSepIn K C1 := by
   apply TypeEnv.DropSepIn.of_pairs
-  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  exact h.pairs c1 c2 a1 a2 hne h1 h2 (.union_right_left hp1) (.union_right_left hp2)
+  · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    exact h.pairs c1 c2 a1 a2 hne h1 h2 (.union_right_left hp1) (.union_right_left hp2)
+  · intro a c hp hdrop
+    exact h.avoid a c (.union_right_left hp) hdrop
 
-theorem TypeEnv.DropSepIn.union_right {env : TypeEnv s} {C1 C2 : CaptureSet s}
-    (h : env.DropSepIn (C1 ∪ C2)) : env.DropSepIn C2 := by
+theorem TypeEnv.DropSepIn.union_right {env : TypeEnv s} {K C1 C2 : CaptureSet s}
+    (h : env.DropSepIn K (C1 ∪ C2)) : env.DropSepIn K C2 := by
   apply TypeEnv.DropSepIn.of_pairs
-  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  exact h.pairs c1 c2 a1 a2 hne h1 h2 (.union_right_right hp1) (.union_right_right hp2)
+  · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    exact h.pairs c1 c2 a1 a2 hne h1 h2 (.union_right_right hp1) (.union_right_right hp2)
+  · intro a c hp hdrop
+    exact h.avoid a c (.union_right_right hp) hdrop
 
-theorem TypeEnv.DropSepIn.empty {env : TypeEnv s} :
-    env.DropSepIn ({} : CaptureSet s) := by
+theorem TypeEnv.DropSepIn.empty {env : TypeEnv s} {K : CaptureSet s} :
+    env.DropSepIn K ({} : CaptureSet s) := by
   apply TypeEnv.DropSepIn.of_pairs
-  intro c1 c2 a1 a2 _ _ _ hp1 _
-  exact absurd hp1 CaptureSet.cvar_not_subset_empty
+  · intro c1 c2 a1 a2 _ _ _ hp1 _
+    exact absurd hp1 CaptureSet.cvar_not_subset_empty
+  · intro a c hp _
+    exact absurd hp CaptureSet.cvar_not_subset_empty
 
 /-- Restriction along subcapture: droppable peaks are monotone under
 `Subcapt` (thanks to the `.access_only` restriction of `sc_cvar`), so the
 invariant for the larger budget covers the smaller one. -/
 theorem TypeEnv.DropSepIn.of_subcapt {Γ : Ctx s} {env : TypeEnv s}
-    {C1 C2 : CaptureSet s} {m : Memory}
+    {K C1 C2 : CaptureSet s} {m : Memory}
     (hts : EnvTyping Γ env m) (hsub : Subcapt Γ C1 C2)
-    (h : env.DropSepIn C2) : env.DropSepIn C1 := by
+    (h : env.DropSepIn K C2) : env.DropSepIn K C1 := by
   apply TypeEnv.DropSepIn.of_pairs
-  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  rw [← compute_peaks_correct hts C1] at hp1 hp2
-  have h1' := h1
-  have h2' := h2
-  rw [envtyping_lookup_cvar_auth hts c1] at h1'
-  rw [envtyping_lookup_cvar_auth hts c2] at h2'
-  obtain ⟨a1', hp1'⟩ := hsub.droppable_peak_monotone h1' hp1
-  obtain ⟨a2', hp2'⟩ := hsub.droppable_peak_monotone h2' hp2
-  rw [compute_peaks_correct hts C2] at hp1' hp2'
-  exact h.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+  · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    rw [← compute_peaks_correct hts C1] at hp1 hp2
+    have h1' := h1
+    have h2' := h2
+    rw [envtyping_lookup_cvar_auth hts c1] at h1'
+    rw [envtyping_lookup_cvar_auth hts c2] at h2'
+    obtain ⟨a1', hp1'⟩ := hsub.droppable_peak_monotone h1' hp1
+    obtain ⟨a2', hp2'⟩ := hsub.droppable_peak_monotone h2' hp2
+    rw [compute_peaks_correct hts C2] at hp1' hp2'
+    exact h.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+  · intro a c hp hdrop
+    rw [← compute_peaks_correct hts C1] at hp
+    have hdrop' := hdrop
+    rw [envtyping_lookup_cvar_auth hts c] at hdrop'
+    obtain ⟨a', hp'⟩ := hsub.droppable_peak_monotone hdrop' hp
+    rw [compute_peaks_correct hts C2] at hp'
+    exact h.avoid a' c hp' hdrop
+
+/-- The dead-set may grow by what the first component of a sequential
+composition consumed: `SeqComp Γ C1 C2` guarantees (via its `DisjCheck`/
+access-only premises) that the second component's droppable peaks are
+distinct from every `.drop`-mode peak of the first, so the avoidance
+condition of `retarget` is satisfied. -/
+theorem TypeEnv.DropSepIn.seq_grow {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
+    {K C1 C2 : CaptureSet s}
+    (hts : EnvTyping Γ env m)
+    (hseq : SeqComp Γ C1 C2)
+    (h : env.DropSepIn K C2) :
+    env.DropSepIn (K ∪ C1.consumed_peaks Γ) C2 := by
+  refine h.retarget ?_
+  intro a c hp hdrop hdead
+  obtain ⟨a', hp'⟩ := hdead
+  rcases CaptureSet.cvar_subset_union_inv hp' with hk | hc
+  · exact h.avoid a c hp hdrop ⟨a', hk⟩
+  · -- the dead atom is a consumed (`.drop`-mode) peak of `C1`
+    have hpo : (C1.consumed_peaks Γ).PeaksOnly :=
+      (CaptureSet.peaks_peaksOnly Γ C1).consumed
+    rw [compute_peaks_peaksOnly_fixed hpo] at hc
+    have hdropC1 : (CaptureSet.cvar .drop c) ⊆ C1.peaks Γ :=
+      CaptureSet.cvar_subset_consumed_inv hc
+    rw [← compute_peaks_correct hts C2] at hp
+    obtain ⟨_, _, hne⟩ := hseq.cross_droppable hdropC1 hp
+    exact hne rfl
 
 /-- Under `EnvTyping`, computed peaks of statically-computed peaks collapse. -/
 theorem compute_peaks_peaks {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
@@ -1151,10 +1191,10 @@ private theorem authority_eq_expand_captures
     _ = expand_captures store.heap (Cf.subst (Subst.from_TypeEnv env)) := by
         rw [← expand_captures_eq_ground_denot]
 
-theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
+theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {K Cf : CaptureSet s}
   (hclosed_abs : (Exp.abs Cf T1 e).IsClosed)
-  (ht : Cf.rename Rename.succ # Γ,x:T1 ⊨ e : T2) :
-  ∅ # Γ ⊨ Exp.abs Cf T1 e : (T1.arrow .empty Cf T2).typ := by
+  (ht : SemanticTyping (K.rename Rename.succ) (Cf.rename Rename.succ) (Γ,x:T1) e T2) :
+  SemanticTyping K ∅ Γ (Exp.abs Cf T1 e) (T1.arrow K Cf T2).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
@@ -1236,10 +1276,10 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
               exact htyped
 
 
-theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s}
+theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {K Cf : CaptureSet s} {S : PureTy s}
   (hclosed_tabs : (Exp.tabs Cf S e).IsClosed)
-  (ht : Cf.rename Rename.succ # (Γ,X<:S) ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.tabs Cf S e : (S.core.poly .empty Cf T).typ := by
+  (ht : SemanticTyping (K.rename Rename.succ) (Cf.rename Rename.succ) (Γ,X<:S) e T) :
+  SemanticTyping K ∅ Γ (Exp.tabs Cf S e) (S.core.poly K Cf T).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
@@ -1319,10 +1359,11 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
               exact htyped
 
 
-theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : CaptureBound s}
+theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {K Cf : CaptureSet s} {cb : CaptureBound s}
   (hclosed_cabs : (Exp.cabs Cf cb e).IsClosed)
-  (ht : Cf.rename Rename.succ # Γ,C[.access_only]<:cb ⊨ e : T) :
-  ∅ # Γ ⊨ Exp.cabs Cf cb e : (Ty.cpoly cb .empty Cf T).typ := by
+  (ht : SemanticTyping (K.rename Rename.succ) (Cf.rename Rename.succ)
+    (Γ,C[.access_only]<:cb) e T) :
+  SemanticTyping K ∅ Γ (Exp.cabs Cf cb e) (Ty.cpoly cb K Cf T).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
@@ -1426,12 +1467,12 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               exact htyped
 
 theorem sem_typ_pack
-  {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
+  {T : Ty .capt (s,C)} {K cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
   (hclosed_e : (Exp.pack cs x).IsClosed)
   (hΓ : Γ.IsClosed)
   (hvalid_cs : cs.AccessOnly Γ)
-  (ht : {} # Γ ⊨ Exp.var x : (T.subst (Subst.openCVar cs)).typ) :
-  cs.applyAccess .drop # Γ ⊨ Exp.pack cs x : T.exi := by
+  (ht : SemanticTyping K {} Γ (Exp.var x) (T.subst (Subst.openCVar cs)).typ) :
+  SemanticTyping K (cs.applyAccess .drop) Γ (Exp.pack cs x) T.exi := by
   intro env store hts hdsep _
   -- pack is no longer a simple value; use eval_pack instead
   have hsubst : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
@@ -1509,7 +1550,7 @@ theorem abs_val_denot_inv
     ∧ (∀ (arg : Nat) (m' : Memory),
       m'.subsumes store ->
       m'.is_compatible (expand_captures store.heap cs') ->
-      env.DropSepIn cs ->
+      env.DropSepIn ds cs ->
       Ty.val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
@@ -1549,7 +1590,7 @@ theorem tabs_val_denot_inv
     ∧ (∀ (m' : Memory) (denot : Denot),
       m'.subsumes store ->
       m'.is_compatible (expand_captures store.heap cs') ->
-      env.DropSepIn cs ->
+      env.DropSepIn ds cs ->
       denot.is_proper ->
       denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
@@ -1593,7 +1634,7 @@ theorem cabs_val_denot_inv
       (CS.ground_denot m').drop_free ->
       m'.subsumes store ->
       m'.is_compatible (expand_captures store.heap cs') ->
-      env.DropSepIn cs ->
+      env.DropSepIn ds cs ->
       ((CS.denot TypeEnv.empty m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS (cap := CS.ground_denot m'))
@@ -1952,10 +1993,11 @@ theorem TypeEnv.satisfy_lweaken_iff
 
 /-- Modal introduction as a semantic typing rule. -/
 theorem sem_typ_wrap
-  {cs : CaptureSet s} {Ψ : SepCtx s} {e : Exp s} {E : Ty .exi s}
+  {K cs : CaptureSet s} {Ψ : SepCtx s} {e : Exp s} {E : Ty .exi s}
   (hclosed_e : (Exp.boxed cs Ψ e).IsClosed)
-  (ht : cs.rename Rename.succ # Γ.push_lock Ψ ⊨ e.rename Rename.succ : E.rename Rename.succ) :
-  ∅ # Γ ⊨ Exp.boxed cs Ψ e : (Ty.modal .empty cs Ψ E).typ := by
+  (ht : SemanticTyping (K.rename Rename.succ) (cs.rename Rename.succ) (Γ.push_lock Ψ)
+    (e.rename Rename.succ) (E.rename Rename.succ)) :
+  SemanticTyping K ∅ Γ (Exp.boxed cs Ψ e) (Ty.modal K cs Ψ E).typ := by
   intro env store hts _hdsep _
   simp only [Ty.exi_exp_denot, Ty.exi_val_denot]
   apply Eval.eval_val
@@ -2047,14 +2089,34 @@ theorem sem_typ_wrap
           exact ⟨(Denot.equiv_to_imply
             (lweaken_exi_val_denot (env := env) (T := E))).2 _ _ hpost.1, hpost.2⟩
 
+/-- GAP (dead-set supply at eliminations): a closure's denotation demands the
+environment-separation invariant relative to the closure's *stored* dead-set
+`ds` (recorded in its type at creation: `ds = K_creation`); the caller at an
+elimination site owns the invariant relative to the *ambient* dead-set `K`.
+By `TypeEnv.DropSepIn.retarget` the supply reduces to: the budget's droppable
+peaks avoid `deadIn ds`. In derivable programs this holds because dead-sets
+only grow along sequencing (`K_creation ⊑ K_call`) and the caller's own
+avoidance covers `K_call ⊇ ds`; but the elimination rules accept *any* `ds`
+(e.g. a function parameter whose annotated arrow type stores an arbitrary
+dead-set), and for such a type the statement below is FALSE — see
+`CoreCapybara.Gaps.dead_set_supply_false`. Closing it requires a static
+premise at the elimination rules (the function type's dead-set is covered by
+the ambient one, `ds ⊑ K`) or a well-formedness condition on closure types
+(the capture annotation avoids the stored dead-set). A type-system design
+decision — to be made with the human. -/
+theorem dead_set_supply {env : TypeEnv s} {K ds C : CaptureSet s}
+    (h : env.DropSepIn K C) : env.DropSepIn ds C := by
+  refine h.retarget ?_
+  sorry
+
 theorem sem_typ_app
-  {T1 : Ty .capt s} {T2 : Ty .exi (s,x)}
+  {T1 : Ty .capt s} {T2 : Ty .exi (s,x)} {K ds : CaptureSet s}
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-  (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ ((Ty.arrow T1 ds (.var (.M .epsilon) (.bound x)) T2)))
-  (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ T1) :
-  (.var (.M .epsilon) (.bound x)) # Γ ⊨
-    Exp.app (.bound x) (.bound y) : T2.subst (Subst.openVar (.bound y)) := by
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x))
+    (.typ ((Ty.arrow T1 ds (.var (.M .epsilon) (.bound x)) T2))))
+  (hy : SemanticTyping K {} Γ (Exp.var (.bound y)) (.typ T1)) :
+  SemanticTyping K (.var (.M .epsilon) (.bound x)) Γ
+    (Exp.app (.bound x) (.bound y)) (T2.subst (Subst.openVar (.bound y))) := by
   intro env store hts hdsep hcompat
   -- Extract function denotation
   have h1 := hx env store hts TypeEnv.DropSepIn.empty (Memory.is_compatible_empty store)
@@ -2078,7 +2140,8 @@ theorem sem_typ_app
   -- Apply function to argument. The closure's separation premise is exactly
   -- the caller's budget invariant: the `app` rule's use-set IS the arrow's
   -- capture annotation `{ε·x}`.
-  have happ := hfun fy store (Memory.subsumes_refl store) hcompat_closure hdsep h2'
+  have happ := hfun fy store (Memory.subsumes_refl store) hcompat_closure
+    (dead_set_supply hdsep) h2'
   -- The opening lemma relates extended environment to substituted type
   let ps := compute_peakset env T1.captureSet
   -- GAP (subsumption peak slack): opening the dependent result type at the
@@ -2087,14 +2150,12 @@ theorem sem_typ_app
   -- the peaks of the arrow's domain `T1`. The `subtyp` rule may widen `y`'s
   -- type to `T1`, adding droppable peaks, and nothing in the semantic
   -- premises relates the two — see the definition-level counterexample
-  -- `CoreCapybara.Gaps.app_peak_slack_false`. Every repair direction is
-  -- refuted in `CoreCapybara.Gaps` (the three-way pincer, see its module
-  -- docstring): stored peaks can be neither under-reported
-  -- (`fundamental_sepcheck_underapprox_false`) nor replaced by value-level
-  -- selection (`dropSepTouch_unsuppliable`/`dropSepTouch_insufficient`),
-  -- and invariant re-phrasings collapse back (`dropSepExcept_collapse`).
-  -- Closing this gap requires a *static* change to how peaks behave across
-  -- subsumption — a type-system design decision.
+  -- `CoreCapybara.Gaps.app_peak_slack_false`. The dead-set threading does
+  -- not touch this obligation: it concerns the *budget* peaks of the opened
+  -- result type, not the dead-set. Closing it requires a *static* change to
+  -- how peaks behave across subsumption (peak-faithful subsumption: `EquivP`
+  -- side conditions on the `Subcapt` premises inside `Subtyp`, the device
+  -- already adopted for `sep_sc`/`seq_sc`) — a type-system design decision.
   have hps : ∀ (d : BVar s .cvar),
       env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) (.bound y)) d := by
     sorry
@@ -2121,11 +2182,12 @@ theorem sem_typ_app
     (Eval.eval_apply hlk happ3)
 
 theorem sem_typ_tapp
-  {S : PureTy s} {T : Ty .exi (s,X)}
+  {S : PureTy s} {T : Ty .exi (s,X)} {K ds : CaptureSet s}
   {x : BVar s .var} -- x must be a BOUND variable (from typing rule)
-  (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (Ty.poly S.core ds (.var (.M .epsilon) (.bound x)) T)) :
-  (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.tapp (.bound x) S : T.subst (Subst.openTVar S) := by
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x))
+    (.typ (Ty.poly S.core ds (.var (.M .epsilon) (.bound x)) T))) :
+  SemanticTyping K (.var (.M .epsilon) (.bound x)) Γ
+    (Exp.tapp (.bound x) S) (T.subst (Subst.openTVar S)) := by
   intro env store hts hdsep hcompat
   -- Extract function denotation
   have h1 := hx env store hts TypeEnv.DropSepIn.empty (Memory.is_compatible_empty store)
@@ -2142,7 +2204,7 @@ theorem sem_typ_tapp
   have himply_simple := val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) S.core
   have happ := hfun store (Ty.val_denot env S.core) (Memory.subsumes_refl store)
     hcompat_closure
-    hdsep
+    (dead_set_supply hdsep)
     (val_denot_is_proper hts)
     himply_simple
     (by intro m' hsub; exact Denot.imply_implyat (Denot.imply_refl _))
@@ -2167,13 +2229,14 @@ theorem sem_typ_tapp
 theorem sem_typ_capp
   {x : BVar s .var}
   {T : Ty .exi (s,C)}
-  {D : CaptureSet s}
+  {K ds D : CaptureSet s}
   (hΓ : Γ.IsClosed)
   (hD_closed : D.IsClosed)
   (hvalid_D : CaptureBound.IsValid Γ (.bound D))
-  (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cpoly (.bound D) ds (.var (.M .epsilon) (.bound x)) T)) :
-  (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.capp (.bound x) D : T.subst (Subst.openCVar D) := by
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x))
+    (.typ (.cpoly (.bound D) ds (.var (.M .epsilon) (.bound x)) T))) :
+  SemanticTyping K (.var (.M .epsilon) (.bound x)) Γ
+    (Exp.capp (.bound x) D) (T.subst (Subst.openCVar D)) := by
   intro env store hts hdsep hcompat
   -- Extract function denotation
   have h1 := hx env store hts TypeEnv.DropSepIn.empty (Memory.is_compatible_empty store)
@@ -2206,7 +2269,7 @@ theorem sem_typ_capp
     hdf_D'
     (Memory.subsumes_refl store)
     hcompat_closure
-    hdsep
+    (dead_set_supply hdsep)
     (by
       rw [hD'_denot]
       simpa only [CaptureBound.denot] using
@@ -2231,13 +2294,14 @@ theorem sem_typ_capp
     Eval.eval_capply hlk happ3
 
 theorem sem_typ_invoke
+  {K : CaptureSet s}
   {x y : BVar s .var} -- x and y must be BOUND variables (from typing rule)
-    (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cap (.var (.M .epsilon) (.bound x))))
-  (hy : {} # Γ ⊨ Exp.var (.bound y) :
-    .typ .unit) :
-  (.var (.M .epsilon) (.bound x)) # Γ ⊨
-    Exp.app (.bound x) (.bound y) : .typ .unit := by
+    (hx : SemanticTyping K {} Γ (Exp.var (.bound x))
+    (.typ (.cap (.var (.M .epsilon) (.bound x)))))
+  (hy : SemanticTyping K {} Γ (Exp.var (.bound y))
+    (.typ .unit)) :
+  SemanticTyping K (.var (.M .epsilon) (.bound x)) Γ
+    (Exp.app (.bound x) (.bound y)) (.typ .unit) := by
   intro env store hts _hdsep _
   -- Extract capability denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts TypeEnv.DropSepIn.empty
@@ -2270,8 +2334,8 @@ theorem sem_typ_invoke
   exact ⟨by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
     pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
 
-theorem sem_typ_unit :
-  {} # Γ ⊨ Exp.unit : .typ .unit := by
+theorem sem_typ_unit {K : CaptureSet s} :
+  SemanticTyping K {} Γ Exp.unit (.typ .unit) := by
   intro env store hts _ _
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   apply Eval.eval_val
@@ -2279,8 +2343,8 @@ theorem sem_typ_unit :
   · exact ⟨by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
       pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
 
-theorem sem_typ_btrue :
-  {} # Γ ⊨ Exp.btrue : .typ .bool := by
+theorem sem_typ_btrue {K : CaptureSet s} :
+  SemanticTyping K {} Γ Exp.btrue (.typ .bool) := by
   intro env store hts _ _
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   apply Eval.eval_val
@@ -2289,8 +2353,8 @@ theorem sem_typ_btrue :
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
     left; trivial
 
-theorem sem_typ_bfalse :
-  {} # Γ ⊨ Exp.bfalse : .typ .bool := by
+theorem sem_typ_bfalse {K : CaptureSet s} :
+  SemanticTyping K {} Γ Exp.bfalse (.typ .bool) := by
   intro env store hts _ _
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   apply Eval.eval_val
@@ -2300,12 +2364,12 @@ theorem sem_typ_bfalse :
     right; trivial
 
 theorem sem_typ_cond
-  {C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
+  {K C1 C2 C3 : CaptureSet s} {Γ : Ctx s}
   {x : Var .var s} {e2 e3 : Exp s} {T : Ty .exi s}
-  (ht1 : C1 # Γ ⊨ (.var x) : .typ .bool)
-  (ht2 : C2 # Γ ⊨ e2 : T)
-  (ht3 : C3 # Γ ⊨ e3 : T) :
-  (C1 ∪ C2 ∪ C3) # Γ ⊨ (.cond x e2 e3) : T := by
+  (ht1 : SemanticTyping K C1 Γ (.var x) (.typ .bool))
+  (ht2 : SemanticTyping K C2 Γ e2 T)
+  (ht3 : SemanticTyping K C3 Γ e3 T) :
+  SemanticTyping K (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T := by
   intro env store hts hdsep hcompat
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   -- Each sub-budget's denotation is contained in the outer `(C1 ∪ C2 ∪ C3).denot`.
@@ -2354,10 +2418,10 @@ theorem sem_typ_cond
     intro _ v hpost
     exact ⟨hpost.1, pack_bound_mono hsubC3 (Memory.subsumes_refl store) hpost.2⟩
 
-theorem sem_typ_reader
+theorem sem_typ_reader {K : CaptureSet s}
   (_hclosed : Γ.IsClosed)
   (hx : Γ.LookupVar x (.cell C)) :
-  {} # Γ ⊨ Exp.reader (.bound x) :
+  SemanticTyping K {} Γ (Exp.reader (.bound x))
     (.typ (.reader (.var (.M .ro) (.bound x)))) := by
   intro env store hts _ _
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
@@ -2395,9 +2459,9 @@ theorem sem_typ_reader
       simpa [hden] using hcov_singleton
 
 theorem sem_typ_alloc
-  {x : BVar s .var}
-  (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ .bool) :
-  {} # Γ ⊨ Exp.alloc (.bound x) : .exi (.cell (.cvar (.M .epsilon) .here)) := by
+  {K : CaptureSet s} {x : BVar s .var}
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x)) (.typ .bool)) :
+  SemanticTyping K {} Γ (Exp.alloc (.bound x)) (.exi (.cell (.cvar (.M .epsilon) .here))) := by
   intro env store hts hdsep _
   simp only [Ty.exi_exp_denot, Exp.subst, Var.subst, Subst.from_TypeEnv, List.empty_eq]
   set fx := (env.lookup_var x).1
@@ -2482,11 +2546,11 @@ theorem sem_typ_alloc
       · exact hclose true (fun _ => hb) (by intro h; cases h)
       · exact hclose false (by intro h; cases h) (fun _ => hb)
 
-theorem sem_typ_drop {x : BVar s .var}
-  (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.cell (.var (.M .epsilon) (.bound x))))
+theorem sem_typ_drop {K : CaptureSet s} {x : BVar s .var}
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x))
+    (.typ (.cell (.var (.M .epsilon) (.bound x)))))
   (_hΓ : Γ.IsClosed) :
-  (.var .drop (.bound x)) # Γ ⊨ Exp.drop (.bound x) : .typ .unit := by
+  SemanticTyping K (.var .drop (.bound x)) Γ (Exp.drop (.bound x)) (.typ .unit) := by
   intro env store hts hdsep hcompat
   -- Extract cell denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts TypeEnv.DropSepIn.empty
@@ -2532,10 +2596,10 @@ theorem sem_typ_drop {x : BVar s .var}
       CaptureSet.ground_denot, CapabilitySet.applyAccess_drop] using hcov_drop
 
 theorem sem_typ_read
-  {x : BVar s .var}
+  {K : CaptureSet s} {x : BVar s .var}
   (_hΓ : Γ.IsClosed)
-  (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.reader C)) :
-  (.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.read (.bound x) : .typ .bool := by
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x)) (.typ (.reader C))) :
+  SemanticTyping K (.var (.M .epsilon) (.bound x)) Γ (Exp.read (.bound x)) (.typ .bool) := by
   intro env store hts hdsep hcompat
   -- Extract reader denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts TypeEnv.DropSepIn.empty
@@ -2590,12 +2654,12 @@ theorem sem_typ_read
   cases b0 <;> simp
 
 theorem sem_typ_write
-  {x y : BVar s .var}
+  {K : CaptureSet s} {x y : BVar s .var}
   (_hΓ : Γ.IsClosed)
-  (hx : {} # Γ ⊨ Exp.var (.bound x) : .typ (.cell Cx))
-  (hy : {} # Γ ⊨ Exp.var (.bound y) : .typ .bool) :
-  (.var (.M .epsilon) (.bound x)) # Γ ⊨
-    Exp.write (.bound x) (.bound y) : .typ .unit := by
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x)) (.typ (.cell Cx)))
+  (hy : SemanticTyping K {} Γ (Exp.var (.bound y)) (.typ .bool)) :
+  SemanticTyping K (.var (.M .epsilon) (.bound x)) Γ
+    (Exp.write (.bound x) (.bound y)) (.typ .unit) := by
   intro env store hts hdsep hcompat
   -- Extract cell denotation from hx
   have h1 := semtyp_to_exi_exp_denot hx hts TypeEnv.DropSepIn.empty
@@ -3056,27 +3120,29 @@ private theorem cvar_subset_cp_union_r {env : TypeEnv s} {a : Access}
   CaptureSet.Subset.union_right_right h
 
 /-- Commutativity of the budget union for `DropSepIn`. -/
-private theorem TypeEnv.DropSepIn.union_comm {env : TypeEnv s} {A B : CaptureSet s}
-    (h : env.DropSepIn (A ∪ B)) : env.DropSepIn (B ∪ A) := by
+private theorem TypeEnv.DropSepIn.union_comm {env : TypeEnv s} {K A B : CaptureSet s}
+    (h : env.DropSepIn K (A ∪ B)) : env.DropSepIn K (B ∪ A) := by
   apply TypeEnv.DropSepIn.of_pairs
-  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  refine h.pairs c1 c2 a1 a2 hne h1 h2 ?_ ?_
-  · cases cvar_subset_cp_union_inv hp1 with
-    | inl hh => exact cvar_subset_cp_union_r hh
-    | inr hh => exact cvar_subset_cp_union_l hh
-  · cases cvar_subset_cp_union_inv hp2 with
-    | inl hh => exact cvar_subset_cp_union_r hh
-    | inr hh => exact cvar_subset_cp_union_l hh
+  · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    refine h.pairs c1 c2 a1 a2 hne h1 h2 ?_ ?_
+    · cases cvar_subset_cp_union_inv hp1 with
+      | inl hh => exact cvar_subset_cp_union_r hh
+      | inr hh => exact cvar_subset_cp_union_l hh
+    · cases cvar_subset_cp_union_inv hp2 with
+      | inl hh => exact cvar_subset_cp_union_r hh
+      | inr hh => exact cvar_subset_cp_union_l hh
+  · intro a c hp hdrop
+    cases cvar_subset_cp_union_inv hp with
+    | inl hh => exact h.avoid a c (cvar_subset_cp_union_r hh) hdrop
+    | inr hh => exact h.avoid a c (cvar_subset_cp_union_l hh) hdrop
 
 /-- Restrict the left component of a budget union pointwise. -/
 private theorem TypeEnv.DropSepIn.union_mono_left {env : TypeEnv s}
-    {A A' B : CaptureSet s}
+    {K A A' B : CaptureSet s}
     (hsub : ∀ (a : Access) (c : BVar s .cvar),
       (CaptureSet.cvar a c) ⊆ compute_peaks env A' →
       ∃ a', (CaptureSet.cvar a' c) ⊆ compute_peaks env A)
-    (h : env.DropSepIn (A ∪ B)) : env.DropSepIn (A' ∪ B) := by
-  apply TypeEnv.DropSepIn.of_pairs
-  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    (h : env.DropSepIn K (A ∪ B)) : env.DropSepIn K (A' ∪ B) := by
   have transfer : ∀ (a : Access) (c : BVar s .cvar),
       (CaptureSet.cvar a c) ⊆ compute_peaks env (A' ∪ B) →
       ∃ a', (CaptureSet.cvar a' c) ⊆ compute_peaks env (A ∪ B) := by
@@ -3086,16 +3152,21 @@ private theorem TypeEnv.DropSepIn.union_mono_left {env : TypeEnv s}
       obtain ⟨a', hh'⟩ := hsub a c hh
       exact ⟨a', cvar_subset_cp_union_l hh'⟩
     | inr hh => exact ⟨a, cvar_subset_cp_union_r hh⟩
-  obtain ⟨a1', hp1'⟩ := transfer a1 c1 hp1
-  obtain ⟨a2', hp2'⟩ := transfer a2 c2 hp2
-  exact h.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+  apply TypeEnv.DropSepIn.of_pairs
+  · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    obtain ⟨a1', hp1'⟩ := transfer a1 c1 hp1
+    obtain ⟨a2', hp2'⟩ := transfer a2 c2 hp2
+    exact h.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+  · intro a c hp hdrop
+    obtain ⟨a', hp'⟩ := transfer a c hp
+    exact h.avoid a' c hp' hdrop
 
 /-- Peaks collapse: replacing a budget by its static peaks preserves the
 computed peaks (under `EnvTyping`), hence the invariant. -/
 private theorem TypeEnv.DropSepIn.of_static_peaks {Γ : Ctx s} {env : TypeEnv s}
-    {A B : CaptureSet s} {m : Memory}
+    {K A B : CaptureSet s} {m : Memory}
     (hts : EnvTyping Γ env m)
-    (h : env.DropSepIn (A ∪ B)) : env.DropSepIn ((A.peaks Γ) ∪ B) := by
+    (h : env.DropSepIn K (A ∪ B)) : env.DropSepIn K ((A.peaks Γ) ∪ B) := by
   refine TypeEnv.DropSepIn.union_mono_left ?_ h
   intro a c hp
   rw [compute_peaks_peaks hts] at hp
@@ -3104,9 +3175,9 @@ private theorem TypeEnv.DropSepIn.of_static_peaks {Γ : Ctx s} {env : TypeEnv s}
 /-- `applyDrop` on the left budget component preserves the invariant
 (droppable peak occurrences are mode-agnostic). -/
 private theorem TypeEnv.DropSepIn.of_applyDrop_left {Γ : Ctx s} {env : TypeEnv s}
-    {A B : CaptureSet s} {m : Memory}
+    {K A B : CaptureSet s} {m : Memory}
     (hts : EnvTyping Γ env m)
-    (h : env.DropSepIn (A.applyDrop ∪ B)) : env.DropSepIn (A ∪ B) := by
+    (h : env.DropSepIn K (A.applyDrop ∪ B)) : env.DropSepIn K (A ∪ B) := by
   refine TypeEnv.DropSepIn.union_mono_left ?_ h
   intro a c hp
   rw [← compute_peaks_correct hts] at hp ⊢
@@ -3116,25 +3187,25 @@ private theorem TypeEnv.DropSepIn.of_applyDrop_left {Γ : Ctx s} {env : TypeEnv 
 theorem sem_sepcheck_symm
   (ih : SemSepCheck Γ C1 C2) :
   SemSepCheck Γ C2 C1 := by
-  intro hΓ env H hts hdsep
-  exact CapabilitySet.Noninterference.ni_symm (ih hΓ env H hts hdsep.union_comm)
+  intro hΓ K env H hts hdsep
+  exact CapabilitySet.Noninterference.ni_symm (ih hΓ K env H hts hdsep.union_comm)
 
 theorem sem_sepcheck_union
   (ih1 : SemSepCheck Γ C1 C3)
   (ih2 : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ (C1 ∪ C2) C3 := by
-  intro hΓ env H hts hdsep
-  have hd1 : env.DropSepIn (C1 ∪ C3) := by
+  intro hΓ K env H hts hdsep
+  have hd1 : env.DropSepIn K (C1 ∪ C3) := by
     refine TypeEnv.DropSepIn.union_mono_left ?_ hdsep
     intro a c hp
     exact ⟨a, cvar_subset_cp_union_l hp⟩
-  have hd2 : env.DropSepIn (C2 ∪ C3) := by
+  have hd2 : env.DropSepIn K (C2 ∪ C3) := by
     refine TypeEnv.DropSepIn.union_mono_left ?_ hdsep
     intro a c hp
     exact ⟨a, cvar_subset_cp_union_r hp⟩
   simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
   exact CapabilitySet.Noninterference.ni_union
-    (ih1 hΓ env H hts hd1) (ih2 hΓ env H hts hd2)
+    (ih1 hΓ K env H hts hd1) (ih2 hΓ K env H hts hd2)
 
 /-- Two read-only *drop-free* capability sets do not interfere: any shared
 location is held read-only on both sides. The drop-freedom hypotheses rule
@@ -3172,7 +3243,7 @@ theorem CapabilitySet.noninterference_of_ro_ro
 
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
-  intro _hΓ env H hts _hdsep
+  intro _hΓ K env H hts _hdsep
   simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
   exact .ni_empty
 
@@ -3197,7 +3268,7 @@ theorem sem_sepcheck_ro
   (hk1 : HasKind Γ C1 .ro)
   (hk2 : HasKind Γ C2 .ro) :
   SemSepCheck Γ C1 C2 := by
-  intro hΓ env H hts _hdsep
+  intro hΓ K env H hts _hdsep
   exact CapabilitySet.noninterference_of_ro_ro
     (fundamental_haskind hk1 env H hts) (fundamental_haskind hk2 env H hts)
     (accessonly_denot_drop_free hts hΓ hcl1 hao1)
@@ -3210,7 +3281,7 @@ entails `Noninterference` at any access modes. -/
 theorem sem_sepcheck_droppable {c1 c2 : BVar s .cvar} {m1 m2 : Access}
   (hdistinct : Γ.TwoDistinctDroppable c1 c2) :
   SemSepCheck Γ (.cvar m1 c1) (.cvar m2 c2) := by
-  intro _hΓ env H hts hdsep
+  intro _hΓ K env H hts hdsep
   obtain ⟨ha1, ha2, hne⟩ := hdistinct
   have hdenot1 :
       (CaptureSet.cvar m1 c1).denot env H = ((env.lookup_cvar c1).2).applyAccess m1 := by
@@ -3252,10 +3323,8 @@ theorem fundamental_sepcheck
     -- evidence is anchored at is still peaked in the conclusion's budget,
     -- and the environment-separation invariant transports.
     rename_i E1 E2 D1 _
-    intro hΓ env H hts hdsep
-    have hdsep' : env.DropSepIn (E1 ∪ E2) := by
-      apply TypeEnv.DropSepIn.of_pairs
-      intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    intro hΓ K env H hts hdsep
+    have hdsep' : env.DropSepIn K (E1 ∪ E2) := by
       have transport : ∀ (a : Access) (c : BVar _ .cvar),
           (CaptureSet.cvar a c) ⊆ compute_peaks env (E1 ∪ E2) →
           ∃ a', (CaptureSet.cvar a' c) ⊆ compute_peaks env (D1 ∪ E2) := by
@@ -3266,13 +3335,18 @@ theorem fundamental_sepcheck
           rw [compute_peaks_correct hts] at h'
           exact ⟨a', cvar_subset_cp_union_l h'⟩
         · exact ⟨a, cvar_subset_cp_union_r h⟩
-      obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
-      obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
-      exact hdsep.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+      apply TypeEnv.DropSepIn.of_pairs
+      · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+        obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
+        obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
+        exact hdsep.pairs c1 c2 a1' a2' hne h1 h2 hp1' hp2'
+      · intro a c hp hdrop
+        obtain ⟨a', hp'⟩ := transport a c hp
+        exact hdsep.avoid a' c hp' hdrop
     exact CapabilitySet.Noninterference.subset_left
-      (ih hΓ env H hts hdsep') (fundamental_subcapt hsub env H hts)
+      (ih hΓ K env H hts hdsep') (fundamental_subcapt hsub env H hts)
   | sep_lock hlock hdistinct =>
-    intro _hΓ env H henv _hdsep
+    intro _hΓ K env H henv _hdsep
     exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
   | sep_droppable hdistinct =>
     exact sem_sepcheck_droppable hdistinct
@@ -3343,13 +3417,13 @@ theorem sem_satisfy
       exact fundamental_sepcheck_global (hsep C1 m1 C2 m2 hdistinct) hΓ env m henv
 
 theorem sem_typ_par
-  {C1 C2 : CaptureSet s} {Γ : Ctx s}
+  {K C1 C2 : CaptureSet s} {Γ : Ctx s}
   {e1 e2 : Exp s} {E : Ty .exi s}
   (hΓ : Γ.IsClosed)
-  (ht1 : C1 # Γ ⊨ e1 : E)
-  (ht2 : C2 # Γ ⊨ e2 : E)
+  (ht1 : SemanticTyping K C1 Γ e1 E)
+  (ht2 : SemanticTyping K C2 Γ e2 E)
   (hsep : SemSepCheck Γ C1 C2) :
-  (C1 ∪ C2) # Γ ⊨ (.par e1 e2) : E := by
+  SemanticTyping K (C1 ∪ C2) Γ (.par e1 e2) E := by
   intro env store hts hdsep hcompat
   suffices hpar :
       Eval (CaptureSet.denot env (C1 ∪ C2) store) store
@@ -3381,7 +3455,7 @@ theorem sem_typ_par
     refine eval_post_monotonic ?_ h
     intro _ v hpost
     exact ⟨hpost.1, pack_bound_mono hsubC2 (Memory.subsumes_refl store) hpost.2⟩
-  have hni := hsep hΓ env store hts hdsep
+  have hni := hsep hΓ K env store hts hdsep
   exact Eval.eval_par he1 he2 hni CapabilitySet.Subset.refl
 
 /-- Shared-location elimination for `Noninterference`: a location member of
@@ -3419,32 +3493,32 @@ theorem fundamental_disjcheck
   SemDisjCheck Γ C1 C2 := by
   induction hdisj with
   | disj_symm _ ih =>
-    intro hΓ env H hts hdsep
-    exact (ih hΓ env H hts hdsep.union_comm).symm
+    intro hΓ K env H hts hdsep
+    exact (ih hΓ K env H hts hdsep.union_comm).symm
   | disj_empty =>
-    intro _hΓ env H hts _hdsep mu1 mu2 l h1 _h2
+    intro _hΓ K env H hts _hdsep mu1 mu2 l h1 _h2
     exact CapabilitySet.not_hasmem_empty h1
   | disj_union _ _ ih1 ih2 =>
-    intro hΓ env H hts hdsep mu1 mu2 l h1 h2
+    intro hΓ K env H hts hdsep mu1 mu2 l h1 h2
     cases h1 with
     | left h =>
-      refine ih1 hΓ env H hts ?_ mu1 mu2 l h h2
+      refine ih1 hΓ K env H hts ?_ mu1 mu2 l h h2
       refine TypeEnv.DropSepIn.union_mono_left ?_ hdsep
       intro a c hp
       exact ⟨a, cvar_subset_cp_union_l hp⟩
     | right h =>
-      refine ih2 hΓ env H hts ?_ mu1 mu2 l h h2
+      refine ih2 hΓ K env H hts ?_ mu1 mu2 l h h2
       refine TypeEnv.DropSepIn.union_mono_left ?_ hdsep
       intro a c hp
       exact ⟨a, cvar_subset_cp_union_r hp⟩
   | disj_peaks hclosed _ ih =>
-    intro hΓ env H hts hdsep mu1 mu2 l h1 h2
+    intro hΓ K env H hts hdsep mu1 mu2 l h1 h2
     have hsub := denot_subset_compute_peaks_denot hts hΓ _ hclosed
     rw [← compute_peaks_correct hts] at hsub
     obtain ⟨mu1', h1'⟩ := hasmem_of_capabilitySet_subset hsub h1
-    exact ih hΓ env H hts (TypeEnv.DropSepIn.of_static_peaks hts hdsep) mu1' mu2 l h1' h2
+    exact ih hΓ K env H hts (TypeEnv.DropSepIn.of_static_peaks hts hdsep) mu1' mu2 l h1' h2
   | disj_droppable hd =>
-    intro _hΓ env H hts hdsep
+    intro _hΓ K env H hts hdsep
     rename_i a1 a2 c1 c2
     obtain ⟨ha1, ha2, hne⟩ := hd
     have ha1' : env.lookup_cvar_auth c1 = .can_drop := by
@@ -3481,10 +3555,10 @@ Per constructor:
 - `seq_drop`: `DisjCheck` gives full location-disjointness of `Ca` and `C2`;
   a consumed location of `Ca.applyDrop` is a location of `Ca`. -/
 theorem captureSet_seqcomp_denot
-    {C1 C2 : CaptureSet s} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
+    {K C1 C2 : CaptureSet s} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store)
     (hΓ : Γ.IsClosed)
-    (hdsep : env.DropSepIn (C1 ∪ C2))
+    (hdsep : env.DropSepIn K (C1 ∪ C2))
     (hseq : SeqComp Γ C1 C2) :
     (C1.denot env store).SeqComp (C2.denot env store) := by
   revert hdsep
@@ -3496,9 +3570,7 @@ theorem captureSet_seqcomp_denot
     -- denotation by subcapture monotonicity.
     rename_i E1 D1' E2 _
     intro hdsep mu l h1 h2
-    have hdsep' : env.DropSepIn (D1' ∪ E2) := by
-      apply TypeEnv.DropSepIn.of_pairs
-      intro c1 c2 a1 a2 hne ha1 ha2 hp1 hp2
+    have hdsep' : env.DropSepIn K (D1' ∪ E2) := by
       have transport : ∀ (a : Access) (c : BVar _ .cvar),
           (CaptureSet.cvar a c) ⊆ compute_peaks env (D1' ∪ E2) →
           ∃ a', (CaptureSet.cvar a' c) ⊆ compute_peaks env (E1 ∪ E2) := by
@@ -3509,9 +3581,14 @@ theorem captureSet_seqcomp_denot
           rw [compute_peaks_correct hts] at h'
           exact ⟨a', cvar_subset_cp_union_l h'⟩
         · exact ⟨a, cvar_subset_cp_union_r h⟩
-      obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
-      obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
-      exact hdsep.pairs c1 c2 a1' a2' hne ha1 ha2 hp1' hp2'
+      apply TypeEnv.DropSepIn.of_pairs
+      · intro c1 c2 a1 a2 hne ha1 ha2 hp1 hp2
+        obtain ⟨a1', hp1'⟩ := transport a1 c1 hp1
+        obtain ⟨a2', hp2'⟩ := transport a2 c2 hp2
+        exact hdsep.pairs c1 c2 a1' a2' hne ha1 ha2 hp1' hp2'
+      · intro a c hp hdrop
+        obtain ⟨a', hp'⟩ := transport a c hp
+        exact hdsep.avoid a' c hp' hdrop
     exact ih hdsep' mu l
       (hasmem_drop_of_subset (fundamental_subcapt hsub env store hts) h1) h2
   | seq_union _ _ ih1 ih2 =>
@@ -3540,7 +3617,7 @@ theorem captureSet_seqcomp_denot
       exact h
     rw [heq] at h1
     obtain ⟨_, mu1, h1'⟩ := CapabilitySet.hasmem_to_drop_imp h1
-    have hdisj' := fundamental_disjcheck hdisj hΓ env store hts
+    have hdisj' := fundamental_disjcheck hdisj hΓ K env store hts
       (TypeEnv.DropSepIn.of_applyDrop_left hts hdsep)
     exact hdisj' mu1 mu l h1' h2
 
@@ -3551,16 +3628,17 @@ theorem captureSet_seqcomp_denot
     `m1.is_compatible C2` (so we never derive it from `e1`'s behaviour), and
     `C2` is closed so its denotation is memory-stable. -/
 theorem sem_typ_letin
-  {C1 C2 : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
+  {K C1 C2 : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
   (hseq : SeqComp Γ C1 C2)
   (hΓ : Γ.IsClosed)
   (_hclosed_C1 : C1.IsClosed)
   (_hclosed_C2 : C2.IsClosed)
   (_hclosed_e : (Exp.letin e1 e2).IsClosed)
-  (ht1 : C1 # Γ ⊨ e1 : .typ T)
-  (ht2 : C2.rename Rename.succ # (Γ,x:T) ⊨ e2 : U.rename Rename.succ) :
-  C1 ∪ C2 # Γ ⊨ (Exp.letin e1 e2) : U := by
+  (ht1 : SemanticTyping K C1 Γ e1 (.typ T))
+  (ht2 : SemanticTyping ((K ∪ C1.consumed_peaks Γ).rename Rename.succ)
+    (C2.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ)) :
+  SemanticTyping K (C1 ∪ C2) Γ (Exp.letin e1 e2) U := by
   intro env store hts hdsep hcompat
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   have hunion_denot :
@@ -3627,7 +3705,7 @@ theorem sem_typ_letin
       rw [congrFun hcap_rename_C2 m_ext, ← hC2_mono]
       exact Memory.is_compatible_extend_val m1 l' heapval hwf_v rfl hfresh hcompat_m1
     have h2 := ht2 (env.extend_var l' ps) m_ext henv_body
-      (hdsep.union_right).extend_var hcompat_body
+      ((hdsep.union_right).seq_grow hts hseq).extend_var hcompat_body
     simp only [Ty.exi_exp_denot] at h2
     have hkey := @Exp.from_TypeEnv_weaken_open s env l' e2 ps
     have h2' : Eval _ m_ext
@@ -3673,7 +3751,7 @@ theorem sem_typ_letin
         rw [congrFun hcap_rename_C2 m1, ← hC2_mono]
         exact hcompat_m1
       have h2 := ht2 (env.extend_var fx ps) m1 henv_body
-        (hdsep.union_right).extend_var hcompat_body
+        ((hdsep.union_right).seq_grow hts hseq).extend_var hcompat_body
       simp only [Ty.exi_exp_denot] at h2
       have hkey := @Exp.from_TypeEnv_weaken_open s env fx e2 ps
       have h2' : Eval _ m1
@@ -3882,7 +3960,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             -- The separation premise converts contravariantly along the
             -- (covariant) annotation subcapture: droppable peaks are
             -- monotone along static `Subcapt` (`sc_cvar` is access-only).
-            have hdsep1 : env.DropSepIn cs1 :=
+            have hdsep1 : env.DropSepIn ds cs1 :=
               TypeEnv.DropSepIn.of_subcapt htyping hcs_static hdsep
             -- Use the computed peak sets
             let psT1 := compute_peakset env T1.captureSet
@@ -3936,12 +4014,9 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                     -- peak sets requires the two domains' droppable peaks to
                     -- coincide, but arrow subtyping is contravariant in the
                     -- domain and `Subcapt` only gives one-directional peak
-                    -- coverage. Same gap as in `sem_typ_app`; every repair
-                    -- direction is refuted in `CoreCapybara.Gaps` — see
-                    -- `app_peak_slack_false`,
-                    -- `fundamental_sepcheck_underapprox_false`, and the
-                    -- value-level pincer `dropSepTouch_unsuppliable`/
-                    -- `dropSepTouch_insufficient`.
+                    -- coverage. Same gap as in `sem_typ_app` — see
+                    -- `CoreCapybara.Gaps.app_peak_slack_false`; the same
+                    -- static lever (peak-faithful subsumption) closes both.
                     sorry
                   | there z =>
                     refine TypeEnv.HasPeak.of_peaks_eq ?_
@@ -4115,7 +4190,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
               _ ⊆ cs2.denot env m' := hcs_sem
           · -- Need to prove the body property with contravariant bound and covariant body
             intro m'' CS hCS_wf hdf hsub_m'' hcompat hdsep hCS_satisfies_cb2
-            have hdsep1 : env.DropSepIn cs1 :=
+            have hdsep1 : env.DropSepIn ds cs1 :=
               TypeEnv.DropSepIn.of_subcapt htyping hcs_static hdsep
             let A0 := CS.denot TypeEnv.empty
             have hCS_satisfies_cb1 : (A0 m'').BoundedBy (cb1.denot env m'') := by
@@ -4322,7 +4397,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
               _ ⊆ cs2.denot env m' := hcs_sem
           · -- Need to prove the body property with contravariant bound and covariant body
             intro m'' denot hsub_m'' hcompat hdsep hdenot_proper hdenot_simple himply_S2 hdenot_pure
-            have hdsep1 : env.DropSepIn cs1 :=
+            have hdsep1 : env.DropSepIn ds cs1 :=
               TypeEnv.DropSepIn.of_subcapt htyping hcs_static hdsep
             -- hbody expects denot.ImplyAfter m'' (Ty.val_denot env S1.core)
             -- We have himply_S2 : denot.ImplyAfter m'' (Ty.val_denot env S2.core)
@@ -4395,7 +4470,7 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
           _ ⊆ cs1.denot env m' := hR0_sub
           _ ⊆ cs2.denot env m' := hcs_sem
       · intro m'' hsubm'' hcompat hdsep hkind hsep
-        have hdsep1 : env.DropSepIn cs1 :=
+        have hdsep1 : env.DropSepIn ds cs1 :=
           TypeEnv.DropSepIn.of_subcapt htyping hcs_static hdsep
         have heval1 := hbody m'' hsubm'' hcompat hdsep1 hkind hsep
         have heval1_eval :
@@ -4598,13 +4673,13 @@ theorem fundamental_subtyp
 
 
 theorem sem_typ_subtyp
-  {C1 C2 : CaptureSet s} {E1 E2 : Ty .exi s}
-  (ht : C1 # Γ ⊨ e : E1)
+  {K C1 C2 : CaptureSet s} {E1 E2 : Ty .exi s}
+  (ht : SemanticTyping K C1 Γ e E1)
   (hsubcapt : Subcapt Γ C1 C2)
   (hsubtyp : Subtyp Γ E1 E2)
   (_hclosed_C1 : C1.IsClosed) (hclosed_E1 : E1.IsClosed)
   (_hclosed_C2 : C2.IsClosed) (hclosed_E2 : E2.IsClosed) :
-  C2 # Γ ⊨ e : E2 := by
+  SemanticTyping K C2 Γ e E2 := by
   intro env m htyping hdsep hcompat
   simp only [Ty.exi_exp_denot, List.empty_eq]
   -- The budget shrinks from C2 to C1 via subcapturing; the droppable-separation
@@ -4682,17 +4757,19 @@ theorem resolve_is_pack {e : Exp {}} {m : Memory}
     `R.to_drop`, matching `eval_unpack`'s budget; the `.M .epsilon` cvar denotes
     to `R`; and the doubly-renamed `C2` (closed) is memory-stable. -/
 theorem sem_typ_unpack
-  {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
+  {K C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
   (hseq : SeqComp Γ C1 C2)
   (hΓ : Γ.IsClosed)
   (hclosed_C1 : C1.IsClosed)
   (hclosed_C2 : C2.IsClosed)
-  (ht : C1 # Γ ⊨ t : .exi T)
-  (hu : ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar (.M .epsilon) (.there .here))
-          ∪ (.cvar .drop (.there .here))) #
-        (Γ.push_cvar .can_drop .unbound,x:T) ⊨ u : (U.rename Rename.succ).rename Rename.succ) :
-  C1 ∪ C2 # Γ ⊨ (Exp.unpack t u) : U := by
+  (ht : SemanticTyping K C1 Γ t (.exi T))
+  (hu : SemanticTyping
+        (((K ∪ C1.consumed_peaks Γ).rename Rename.succ).rename Rename.succ)
+        ((C2.rename Rename.succ).rename Rename.succ ∪ (.cvar (.M .epsilon) (.there .here))
+          ∪ (.cvar .drop (.there .here)))
+        (Γ.push_cvar .can_drop .unbound,x:T) u ((U.rename Rename.succ).rename Rename.succ)) :
+  SemanticTyping K (C1 ∪ C2) Γ (Exp.unpack t u) U := by
   intro env store hts hdsep hcompat
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   have hunion_denot :
@@ -4891,66 +4968,98 @@ theorem sem_typ_unpack
           have hcap_eq := typed_env_cvar_cap_eq hts c'
           rw [hcap_eq, CaptureSet.ground_denot_eq_reachability] at hl2
           exact CaptureSet.reachability_dom hl2 hfreshl
-      -- Build the body's environment-separation invariant.
+      -- Build the body's environment-separation invariant. The body's dead-set
+      -- is the ambient one grown by what `t` consumed, weakened under the
+      -- fresh capture binder.
+      have hsplit : ∀ (a0 : Access) (c0 : BVar (s,C) .cvar),
+          (CaptureSet.cvar a0 c0) ⊆ compute_peaks env'
+            ((C2.rename Rename.succ)
+              ∪ (.cvar (.M .epsilon) .here) ∪ (.cvar .drop .here)) →
+          c0 = .here ∨ ∃ (c0' : BVar s .cvar) (a0' : Access),
+            c0 = .there c0' ∧ (CaptureSet.cvar a0' c0') ⊆ CaptureSet.peaks Γ C2 := by
+        intro a0 c0 hp
+        rcases cvar_subset_cp_union_inv hp with hp' | hp'
+        · rcases cvar_subset_cp_union_inv hp' with hp'' | hp''
+          · right
+            have hren : (compute_peaks env C2).rename Rename.succ
+                = compute_peaks env' (C2.rename Rename.succ) :=
+              rebind_compute_peaks
+                (ρ := Rebind.cweaken (env:=env) (cs:=cs)
+                  (cap:=cs.ground_denot m1) (a:=.can_drop)) C2
+            rw [← hren] at hp''
+            obtain ⟨c0', hc0, hp3⟩ :=
+              (compute_peaks_is_peak env C2).cvar_subset_rename_inv hp''
+            refine ⟨c0', a0, ?_, ?_⟩
+            · rw [← hc0]; rfl
+            · rw [compute_peaks_correct hts C2]
+              exact hp3
+          · left
+            obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hp''
+            exact hc
+        · left
+          obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hp'
+          exact hc
       have hdsep_inner :
-          env'.DropSepIn ((C2.rename Rename.succ)
+          env'.DropSepIn ((K ∪ C1.consumed_peaks Γ).rename Rename.succ)
+            ((C2.rename Rename.succ)
             ∪ (.cvar (.M .epsilon) .here) ∪ (.cvar .drop .here)) := by
         apply TypeEnv.DropSepIn.of_pairs
-        intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-        -- Decompose peak membership in the inner budget.
-        have hsplit : ∀ (a0 : Access) (c0 : BVar (s,C) .cvar),
-            (CaptureSet.cvar a0 c0) ⊆ compute_peaks env'
-              ((C2.rename Rename.succ)
-                ∪ (.cvar (.M .epsilon) .here) ∪ (.cvar .drop .here)) →
-            c0 = .here ∨ ∃ (c0' : BVar s .cvar) (a0' : Access),
-              c0 = .there c0' ∧ (CaptureSet.cvar a0' c0') ⊆ CaptureSet.peaks Γ C2 := by
-          intro a0 c0 hp
-          rcases cvar_subset_cp_union_inv hp with hp' | hp'
-          · rcases cvar_subset_cp_union_inv hp' with hp'' | hp''
-            · right
-              have hren : (compute_peaks env C2).rename Rename.succ
-                  = compute_peaks env' (C2.rename Rename.succ) :=
-                rebind_compute_peaks
-                  (ρ := Rebind.cweaken (env:=env) (cs:=cs)
-                    (cap:=cs.ground_denot m1) (a:=.can_drop)) C2
-              rw [← hren] at hp''
-              obtain ⟨c0', hc0, hp3⟩ :=
-                (compute_peaks_is_peak env C2).cvar_subset_rename_inv hp''
-              refine ⟨c0', a0, ?_, ?_⟩
-              · rw [← hc0]; rfl
-              · rw [compute_peaks_correct hts C2]
-                exact hp3
-            · left
-              obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hp''
-              exact hc
-          · left
-            obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hp'
-            exact hc
-        rcases hsplit a1 c1 hp1 with hc1 | ⟨c1', a1', hc1, hpk1⟩ <;>
-          rcases hsplit a2 c2 hp2 with hc2 | ⟨c2', a2', hc2, hpk2⟩
-        · exact absurd (hc1.trans hc2.symm) hne
-        · -- new witness vs. an existing droppable peaked in `C2`
-          subst hc1; subst hc2
-          have hauth2' : Γ.lookup_authority c2' = .can_drop := by
-            rw [← envtyping_lookup_cvar_auth hts c2']
-            exact h2
-          exact hwitness_fresh c2' a2' hauth2' hpk2
-        · -- symmetric
-          subst hc1; subst hc2
-          have hauth1' : Γ.lookup_authority c1' = .can_drop := by
-            rw [← envtyping_lookup_cvar_auth hts c1']
-            exact h1
-          exact (hwitness_fresh c1' a1' hauth1' hpk1).symm
-        · -- two existing droppables, both peaked in `C2`
-          subst hc1; subst hc2
-          have hne' : c1' ≠ c2' := fun heq => hne (by rw [heq])
-          refine hdsep.pairs c1' c2' a1' a2' hne' h1 h2 ?_ ?_
-          · refine cvar_subset_cp_union_r ?_
+        · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
+          rcases hsplit a1 c1 hp1 with hc1 | ⟨c1', a1', hc1, hpk1⟩ <;>
+            rcases hsplit a2 c2 hp2 with hc2 | ⟨c2', a2', hc2, hpk2⟩
+          · exact absurd (hc1.trans hc2.symm) hne
+          · -- new witness vs. an existing droppable peaked in `C2`
+            subst hc1; subst hc2
+            have hauth2' : Γ.lookup_authority c2' = .can_drop := by
+              rw [← envtyping_lookup_cvar_auth hts c2']
+              exact h2
+            exact hwitness_fresh c2' a2' hauth2' hpk2
+          · -- symmetric
+            subst hc1; subst hc2
+            have hauth1' : Γ.lookup_authority c1' = .can_drop := by
+              rw [← envtyping_lookup_cvar_auth hts c1']
+              exact h1
+            exact (hwitness_fresh c1' a1' hauth1' hpk1).symm
+          · -- two existing droppables, both peaked in `C2`
+            subst hc1; subst hc2
+            have hne' : c1' ≠ c2' := fun heq => hne (by rw [heq])
+            refine hdsep.pairs c1' c2' a1' a2' hne' h1 h2 ?_ ?_
+            · refine cvar_subset_cp_union_r ?_
+              rw [← compute_peaks_correct hts]
+              exact hpk1
+            · refine cvar_subset_cp_union_r ?_
+              rw [← compute_peaks_correct hts]
+              exact hpk2
+        · -- avoidance: the budget's droppable peaks are not dead in the grown
+          -- dead-set (weakened under the fresh capture binder)
+          intro a0 c0 hp hdrop hdead
+          have hrenK : (compute_peaks env (K ∪ C1.consumed_peaks Γ)).rename Rename.succ
+              = compute_peaks env' ((K ∪ C1.consumed_peaks Γ).rename Rename.succ) :=
+            rebind_compute_peaks
+              (ρ := Rebind.cweaken (env:=env) (cs:=cs)
+                (cap:=cs.ground_denot m1) (a:=.can_drop)) _
+          rcases hsplit a0 c0 hp with hc0 | ⟨c0', a0', hc0, hpk⟩
+          · -- the fresh witness variable cannot be dead: the dead-set is
+            -- weakened from the base signature, so its peaks miss `.here`
+            subst hc0
+            obtain ⟨aK, hpK⟩ := hdead
+            rw [← hrenK] at hpK
+            obtain ⟨c'', hc'', -⟩ :=
+              (compute_peaks_is_peak env _).cvar_subset_rename_inv hpK
+            exact nomatch hc''
+          · -- an existing variable: transport deadness down the weakening and
+            -- use the grown ambient invariant
+            subst hc0
+            have hdead' : env.DeadIn (K ∪ C1.consumed_peaks Γ) c0' :=
+              ((Rebind.cweaken (env:=env) (cs:=cs)
+                (cap:=cs.ground_denot m1) (a:=.can_drop)).dead_in _ c0').mpr hdead
+            have hdrop' : env.lookup_cvar_auth c0' = .can_drop := by
+              rw [(Rebind.cweaken (env:=env) (cs:=cs)
+                (cap:=cs.ground_denot m1) (a:=.can_drop)).cvar_auth c0']
+              exact hdrop
+            refine ((hdsep.union_right).seq_grow hts hseq).avoid a0' c0' ?_ hdrop' hdead'
             rw [← compute_peaks_correct hts]
-            exact hpk1
-          · refine cvar_subset_cp_union_r ?_
-            rw [← compute_peaks_correct hts]
-            exact hpk2
+            exact hpk
       have hdsep_ext := hdsep_inner.extend_var (n := fx) (ps := ps)
       have hu'' := hu (env'.extend_var fx ps) m1 hts_extended hdsep_ext hcompat_body
       simp only [Ty.exi_exp_denot] at hu''
@@ -5167,7 +5276,7 @@ theorem var_denot_subset_captureSet_denot
     them). -/
 theorem var_typing_extract_closed
     {Γ : Ctx s} {x : BVar s .var} {E : Ty .exi s}
-    (ht : C # Γ ⊢ Exp.var (.bound x) : E) :
+    (ht : HasType K C Γ (Exp.var (.bound x)) E) :
     Γ.IsClosed := by
   generalize hexpr : Exp.var (Var.bound x) = e at ht
   induction ht
@@ -5178,13 +5287,13 @@ theorem var_typing_extract_closed
   all_goals (cases hexpr)
 
 theorem sem_typ_unwrap
-  {x : BVar s .var} {Ψ : SepCtx s} {E : Ty .exi s}
+  {x : BVar s .var} {Ψ : SepCtx s} {E : Ty .exi s} {K ds : CaptureSet s}
   (hclosed_Ψ : Ψ.IsClosed)
   (hΓ : Γ.IsClosed)
-  (hx : {} # Γ ⊨ Exp.var (.bound x) :
-    .typ (.modal ds (.var (.M .epsilon) (.bound x)) Ψ E))
+  (hx : SemanticTyping K {} Γ (Exp.var (.bound x))
+    (.typ (.modal ds (.var (.M .epsilon) (.bound x)) Ψ E)))
   (hsatisfy : Satisfy Γ Ψ) :
-  (CaptureSet.var (.M .epsilon) (.bound x)) # Γ ⊨ Exp.unwrap (.bound x) : E := by
+  SemanticTyping K (CaptureSet.var (.M .epsilon) (.bound x)) Γ (Exp.unwrap (.bound x)) E := by
   intro env store hts hdsep hcompat
   have hmodal_exp :
       Ty.exi_exp_denot env (.typ (.modal ds (.var (.M .epsilon) (.bound x)) Ψ E))
@@ -5205,7 +5314,7 @@ theorem sem_typ_unwrap
           pack_bound
             (CaptureSet.denot env (CaptureSet.var (.M .epsilon) (.bound x)) store)
             store v m') := by
-    have h := hbody store (Memory.subsumes_refl store) hcompat_body hdsep
+    have h := hbody store (Memory.subsumes_refl store) hcompat_body (dead_set_supply hdsep)
       (fun C mode hhas => hsat_Ψ.kind C mode hhas)
       (fun C1 m1 C2 m2 hdistinct => hsat_Ψ.sep C1 m1 C2 m2 hdistinct)
     simp only [Ty.exi_exp_denot] at h
@@ -5243,8 +5352,9 @@ theorem sem_typ_unwrap
 /-- The fundamental theorem of semantic type soundness. -/
 theorem fundamental
   (hΓ : Γ.IsClosed)
-  (ht : C # Γ ⊢ e : T) :
-  C # Γ ⊨ e : T := by
+  (hK : K.IsClosed)
+  (ht : HasType K C Γ e T) :
+  SemanticTyping K C Γ e T := by
   have hclosed_e := HasType.exp_is_closed ht
   induction ht
   case var _ hx =>
@@ -5256,25 +5366,29 @@ theorem fundamental
     · exact hclosed_e
     · cases hclosed_e
       rename_i hclosed_cs hclosed_T1 hclosed_e0
-      exact ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.var hclosed_T1)) hclosed_e0
+      exact ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.var hclosed_T1))
+        (CaptureSet.rename_closed hK) hclosed_e0
   case tabs ih =>
     apply sem_typ_tabs
     · exact hclosed_e
     · cases hclosed_e
       rename_i hclosed_cs hclosed_S hclosed_e0
-      exact ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.tvar hclosed_S)) hclosed_e0
+      exact ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.tvar hclosed_S))
+        (CaptureSet.rename_closed hK) hclosed_e0
   case cabs ih =>
     apply sem_typ_cabs
     · exact hclosed_e
     · cases hclosed_e
       rename_i hclosed_cs hclosed_cb hclosed_e0
-      exact ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.cvar hclosed_cb)) hclosed_e0
+      exact ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.cvar hclosed_cb))
+        (CaptureSet.rename_closed hK) hclosed_e0
   case wrap =>
     rename_i hΨ_closed ht_body ih
     cases hclosed_e with
     | boxed hclosed_cs hclosed_Ψ hclosed_body =>
       exact sem_typ_wrap (Exp.IsClosed.boxed hclosed_cs hclosed_Ψ hclosed_body)
         (ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hclosed_Ψ))
+          (CaptureSet.rename_closed hK)
           (HasType.exp_is_closed ht_body))
   case pack ih =>
     rename_i _hC_closed hvalid_cs _hdroppable hx_syn
@@ -5285,7 +5399,7 @@ theorem fundamental
       · exact Exp.IsClosed.pack hcs_closed Var.IsClosed.bound
       · exact var_typing_extract_closed hx_syn
       · exact hvalid_cs
-      · exact ih hΓ (Exp.IsClosed.var Var.IsClosed.bound)
+      · exact ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound)
   case app =>
     rename_i hx_syn _hy_syn hx_ih hy_ih
     cases hclosed_e with
@@ -5293,20 +5407,20 @@ theorem fundamental
       cases hx_closed
       cases hy_closed
       exact sem_typ_app
-        (hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
-        (hy_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
+        (hx_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
+        (hy_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
   case tapp =>
     rename_i _hS_closed hx_syn hx_ih
     cases hclosed_e with
     | tapp hx_closed hS_closed =>
       cases hx_closed
-      exact sem_typ_tapp (hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
+      exact sem_typ_tapp (hx_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
   case capp =>
     rename_i hD_closed hvalid_D hx_syn hx_ih
     cases hclosed_e with
     | capp hx_closed hD_closed_exp =>
       cases hx_closed
-      have hx := hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound)
+      have hx := hx_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound)
       exact sem_typ_capp (var_typing_extract_closed hx_syn) hD_closed_exp hvalid_D hx
   case unwrap =>
     rename_i x _ Ψ E hx hsatisfy ih_x
@@ -5316,13 +5430,13 @@ theorem fundamental
       cases hx_closed
     | bound bx =>
       have hclosed_Ψ : Ψ.IsClosed := by
-        cases HasType.type_is_closed hx with
+        cases HasType.type_is_closed hx hK with
         | typ hclosed_modal =>
           cases hclosed_modal with
           | modal _ _ hclosed_Ψ _ =>
             exact hclosed_Ψ
       exact sem_typ_unwrap (x := bx) hclosed_Ψ hΓ
-        (ih_x hΓ (by constructor; constructor))
+        (ih_x hΓ hK (by constructor; constructor))
         hsatisfy
   case invoke =>
     rename_i hx_syn _hy_syn ih_x ih_y
@@ -5331,8 +5445,8 @@ theorem fundamental
       cases hx_closed
       cases hy_closed
       exact sem_typ_invoke
-        (ih_x hΓ (Exp.IsClosed.var Var.IsClosed.bound))
-        (ih_y hΓ (Exp.IsClosed.var Var.IsClosed.bound))
+        (ih_x hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
+        (ih_y hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
   case unit => exact sem_typ_unit
   case btrue => exact sem_typ_btrue
   case bfalse => exact sem_typ_bfalse
@@ -5340,21 +5454,22 @@ theorem fundamental
     cases hclosed_e with
     | cond hclosed_guard hclosed_then hclosed_else =>
       exact sem_typ_cond
-        (ih1 hΓ (Exp.IsClosed.var hclosed_guard)) (ih2 hΓ hclosed_then) (ih3 hΓ hclosed_else)
+        (ih1 hΓ hK (Exp.IsClosed.var hclosed_guard)) (ih2 hΓ hK hclosed_then)
+        (ih3 hΓ hK hclosed_else)
   case alloc =>
     rename_i hx_syn hx_ih
     cases hclosed_e with
     | alloc hx_closed =>
       cases hx_closed
       exact sem_typ_alloc
-        (hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
+        (hx_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
   case drop =>
     rename_i hΓ_closed _hdroppable hx_syn hx_ih
     cases hclosed_e with
     | drop hx_closed =>
       cases hx_closed
       exact sem_typ_drop
-        (hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
+        (hx_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
         hΓ_closed
   case read =>
     rename_i hx_syn hx_ih
@@ -5362,7 +5477,7 @@ theorem fundamental
     | read hx_closed =>
       cases hx_closed
       exact sem_typ_read hΓ
-        (hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
+        (hx_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
   case write =>
     rename_i hx_syn _hy_syn hx_ih hy_ih
     cases hclosed_e with
@@ -5370,14 +5485,14 @@ theorem fundamental
       cases hx_closed
       cases hy_closed
       exact sem_typ_write hΓ
-        (hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
-        (hy_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
+        (hx_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
+        (hy_ih hΓ hK (Exp.IsClosed.var Var.IsClosed.bound))
   case par ht1_syn ht2_syn hsep_syn ht1_ih ht2_ih =>
     cases hclosed_e with
     | par hclosed_e1 hclosed_e2 =>
       exact sem_typ_par hΓ
-        (ht1_ih hΓ hclosed_e1)
-        (ht2_ih hΓ hclosed_e2)
+        (ht1_ih hΓ hK hclosed_e1)
+        (ht2_ih hΓ hK hclosed_e2)
         (fundamental_sepcheck hsep_syn)
   case letin =>
     rename_i hseq ht1_syn ht2_syn ht1_ih ht2_ih
@@ -5387,14 +5502,16 @@ theorem fundamental
         (HasType.use_set_is_closed ht1_syn)
         (CaptureSet.rename_closed_inv (HasType.use_set_is_closed ht2_syn))
         (Exp.IsClosed.letin he1_closed he2_closed)
-        (ht1_ih hΓ he1_closed)
-      apply ht2_ih ?_ he2_closed
-      cases HasType.type_is_closed ht1_syn with
-      | typ hT => exact Ctx.IsClosed.push hΓ (Binding.IsClosed.var hT)
+        (ht1_ih hΓ hK he1_closed)
+      apply ht2_ih ?_ ?_ he2_closed
+      · cases HasType.type_is_closed ht1_syn hK with
+        | typ hT => exact Ctx.IsClosed.push hΓ (Binding.IsClosed.var hT)
+      · exact CaptureSet.rename_closed (CaptureSet.IsClosed.union hK
+          ((CaptureSet.peaks_peaksOnly _ _).consumed.isClosed))
   case subtyp ht_syn hsubcapt hsubtyp hclosed_C2 hclosed_E2 ht_ih =>
     have hclosed_C1 := HasType.use_set_is_closed ht_syn
-    have hclosed_E1 := HasType.type_is_closed ht_syn
-    exact sem_typ_subtyp (ht_ih hΓ hclosed_e) hsubcapt hsubtyp
+    have hclosed_E1 := HasType.type_is_closed ht_syn hK
+    exact sem_typ_subtyp (ht_ih hΓ hK hclosed_e) hsubcapt hsubtyp
       hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
   case unpack hseq ht_syn hu_syn ht_ih hu_ih =>
     cases hclosed_e with
@@ -5408,12 +5525,15 @@ theorem fundamental
             cases h with
             | union h _ =>
               exact CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv h))
-        (ht_ih hΓ ht_closed)
-      apply hu_ih ?_ hu_closed
-      cases HasType.type_is_closed ht_syn with
-      | exi hT =>
-        exact Ctx.IsClosed.push
-          (Ctx.IsClosed.push hΓ (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
-          (Binding.IsClosed.var hT)
+        (ht_ih hΓ hK ht_closed)
+      apply hu_ih ?_ ?_ hu_closed
+      · cases HasType.type_is_closed ht_syn hK with
+        | exi hT =>
+          exact Ctx.IsClosed.push
+            (Ctx.IsClosed.push hΓ (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+            (Binding.IsClosed.var hT)
+      · exact CaptureSet.rename_closed (CaptureSet.rename_closed
+          (CaptureSet.IsClosed.union hK
+            ((CaptureSet.peaks_peaksOnly _ _).consumed.isClosed)))
 
 end CoreCapybara

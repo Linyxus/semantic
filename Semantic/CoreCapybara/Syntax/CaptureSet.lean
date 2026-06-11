@@ -414,6 +414,15 @@ theorem CaptureSet.PeaksOnly.rename {cs : CaptureSet s} (h : cs.PeaksOnly) (ρ :
   | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
   | cvar => exact PeaksOnly.cvar
 
+/-- A peaks-only capture set is closed: it consists of bound capture
+    variables only. -/
+theorem CaptureSet.PeaksOnly.isClosed {cs : CaptureSet s} (h : cs.PeaksOnly) :
+    cs.IsClosed := by
+  induction h with
+  | empty => exact IsClosed.empty
+  | union _ _ ih1 ih2 => exact IsClosed.union ih1 ih2
+  | cvar => exact IsClosed.cvar
+
 /-- PeaksOnly is preserved under applyRO. -/
 theorem CaptureSet.PeaksOnly.applyRO {cs : CaptureSet s} (h : cs.PeaksOnly) :
     cs.applyRO.PeaksOnly := by

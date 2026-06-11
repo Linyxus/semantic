@@ -259,7 +259,7 @@ theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt
 /-- A typed variable expression has a closed variable. -/
 theorem HasType.typed_var_closed
   {x : Var Kind.var s}
-  (ht : C # Γ ⊢ Exp.var x : T) :
+  (ht : HasType K C Γ (Exp.var x) T) :
   x.IsClosed := by
   generalize he : Exp.var x = e at ht
   induction ht with
@@ -270,7 +270,7 @@ theorem HasType.typed_var_closed
 /-- The capture set `{m x}` is closed when `x` is a typed variable. -/
 theorem HasType.typed_var_capture_closed
   {x : Var Kind.var s} {a : Access}
-  (ht : C # Γ ⊢ Exp.var x : T) :
+  (ht : HasType K C Γ (Exp.var x) T) :
   (CaptureSet.var a x).IsClosed := by
   have hx := typed_var_closed ht
   cases x with
@@ -278,7 +278,7 @@ theorem HasType.typed_var_capture_closed
   | free => cases hx
 
 theorem HasType.use_set_is_closed
-  (ht : C # Γ ⊢ e : T) :
+  (ht : HasType K C Γ e T) :
   C.IsClosed := by
   induction ht with
   | var => exact CaptureSet.IsClosed.empty
@@ -315,7 +315,7 @@ theorem HasType.use_set_is_closed
   | subtyp _ _ _ hC _ _ => exact hC
 
 theorem HasType.exp_is_closed
-  (ht : C # Γ ⊢ e : T) :
+  (ht : HasType K C Γ e T) :
   e.IsClosed := by
   induction ht <;>
     try
@@ -429,9 +429,11 @@ theorem HasType.exp_is_closed
       cases ih_y; assumption
 
 theorem HasType.type_is_closed
-  (ht : C # Γ ⊢ e : E) :
+  (ht : HasType K C Γ e E) (hK : K.IsClosed) :
   E.IsClosed := by
-  induction ht <;> try (solve | constructor | grind only [Ty.IsClosed])
+  revert hK
+  induction ht <;> intro hK <;>
+    try (solve | assumption | constructor | grind only [Ty.IsClosed])
   case var hΓ_closed hlookup =>
     constructor
     -- Need to prove: (T.refineCaptureSet (.var .epsilon (.bound x))).IsClosed
@@ -442,48 +444,45 @@ theorem HasType.type_is_closed
     constructor
     exact Ty.IsClosed.reader CaptureSet.IsClosed.var_bound
   case abs T1_closed ht_body ih =>
-    -- Goal: (.typ (.arrow T1 cs T2)).IsClosed
+    -- Goal: (.typ (.arrow T1 K cs T2)).IsClosed
     constructor
-    -- Need: (.arrow T1 cs T2).IsClosed i.e. T1.IsClosed, cs.IsClosed, T2.IsClosed
     have h_use := HasType.use_set_is_closed ht_body
-    exact Ty.IsClosed.arrow T1_closed CaptureSet.IsClosed.empty
-      (CaptureSet.rename_closed_inv h_use) ih
+    exact Ty.IsClosed.arrow T1_closed hK
+      (CaptureSet.rename_closed_inv h_use) (ih (CaptureSet.rename_closed hK))
   case tabs S_closed ht_body ih =>
-    -- Goal: (.typ (.poly S.core cs T)).IsClosed
+    -- Goal: (.typ (.poly S.core K cs T)).IsClosed
     constructor
-    -- Need: (.poly S.core cs T).IsClosed
     have h_use := HasType.use_set_is_closed ht_body
-    exact Ty.IsClosed.poly S_closed CaptureSet.IsClosed.empty
-      (CaptureSet.rename_closed_inv h_use) ih
+    exact Ty.IsClosed.poly S_closed hK
+      (CaptureSet.rename_closed_inv h_use) (ih (CaptureSet.rename_closed hK))
   case cabs ht_body ih =>
-    -- Goal: (.typ (.cpoly m cs T)).IsClosed
+    -- Goal: (.typ (.cpoly m K cs T)).IsClosed
     constructor
-    -- Need: (.cpoly m cs T).IsClosed
     have h_use := HasType.use_set_is_closed ht_body
     rename_i hcb_closed _
-    exact Ty.IsClosed.cpoly hcb_closed CaptureSet.IsClosed.empty
-      (CaptureSet.rename_closed_inv h_use) ih
+    exact Ty.IsClosed.cpoly hcb_closed hK
+      (CaptureSet.rename_closed_inv h_use) (ih (CaptureSet.rename_closed hK))
   case wrap hΨ_closed ht_body ih =>
     constructor
     have h_use := HasType.use_set_is_closed ht_body
     exact Ty.IsClosed.modal
-      CaptureSet.IsClosed.empty
+      hK
       (CaptureSet.rename_closed_inv h_use)
       hΨ_closed
-      (Ty.rename_closed_inv ih)
+      (Ty.rename_closed_inv (ih (CaptureSet.rename_closed hK)))
   case pack hC ih =>
     constructor
     -- ih : (T✝.subst (Subst.openCVar C✝)).typ.IsClosed
     -- Goal: T✝.IsClosed
     -- Extract closedness from .typ wrapper
-    cases ih with | typ hT =>
+    cases ih hK with | typ hT =>
     -- hT : (T✝.subst (Subst.openCVar C✝)).IsClosed
     -- Apply Ty.subst_closed_inv to get T✝.IsClosed
     exact Ty.subst_closed_inv hT
   case app ht_x ht_y ih_x ih_y =>
     -- Goal: (T2✝.subst (Subst.openVar y✝)).IsClosed
     -- Extract result type closedness from ih_x (dead set is the 2nd arrow field)
-    cases ih_x with | typ h =>
+    cases ih_x hK with | typ h =>
     cases h with | arrow _ _ _ hT2 =>
     -- Get y's closedness from the closed argument expression
     have hy_closed := HasType.exp_is_closed ht_y
@@ -491,22 +490,25 @@ theorem HasType.type_is_closed
     exact Ty.is_closed_subst hT2 (Subst.openVar_is_closed hy)
   case tapp hS_closed ht_x ih =>
     -- ih : (.typ (.poly S.core ds (.var .epsilon x) T)).IsClosed
-    cases ih with | typ h =>
+    cases ih hK with | typ h =>
     cases h with | poly _ _ _ hT =>
     exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
   case capp hD_closed _ _ ih =>
     -- ih : (.typ (.cpoly (.bound D) ds (.var .epsilon x) T)).IsClosed
-    cases ih with | typ h =>
+    cases ih hK with | typ h =>
     cases h with | cpoly _ _ _ hT =>
     exact Ty.is_closed_subst hT (Subst.openCVar_is_closed hD_closed)
   case letin ih1 ih2 =>
-    -- ih2 : (U.rename Rename.succ).IsClosed
-    -- Need: U.IsClosed
-    exact Ty.rename_closed_inv ih2
+    -- ih2 expects closedness of the extended dead set
+    -- (K ∪ C1.consumed_peaks Γ).rename Rename.succ
+    exact Ty.rename_closed_inv (ih2 (CaptureSet.rename_closed
+      (CaptureSet.IsClosed.union hK
+        ((CaptureSet.peaks_peaksOnly _ _).consumed.isClosed))))
   case unpack ih1 ih2 =>
-    -- ih2 : ((U.rename Rename.succ).rename Rename.succ).IsClosed
-    -- Need: U.IsClosed
-    exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
+    exact Ty.rename_closed_inv (Ty.rename_closed_inv (ih2
+      (CaptureSet.rename_closed (CaptureSet.rename_closed
+        (CaptureSet.IsClosed.union hK
+          ((CaptureSet.peaks_peaksOnly _ _).consumed.isClosed))))))
   case alloc =>
     exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar)
 -- More context lookup properties
@@ -592,6 +594,25 @@ theorem CaptureSet.cvar_not_subset_empty {a : Access} {c : BVar s .cvar}
 theorem CaptureSet.cvar_not_subset_var {a m : Access} {c : BVar s .cvar} {x : Var .var s}
     (h : (CaptureSet.cvar a c) ⊆ (CaptureSet.var m x)) : False := by
   cases h
+
+/-- Inversion for `consumed`: an atom of the consumed part of a capture set is
+a `.drop`-mode atom of the set itself. -/
+theorem CaptureSet.cvar_subset_consumed_inv {a : Access} {c : BVar s .cvar}
+    {C : CaptureSet s}
+    (h : (CaptureSet.cvar a c) ⊆ C.consumed) : (CaptureSet.cvar .drop c) ⊆ C := by
+  induction C with
+  | empty => exact absurd h CaptureSet.cvar_not_subset_empty
+  | union C1 C2 ih1 ih2 =>
+    cases CaptureSet.cvar_subset_union_inv h with
+    | inl h' => exact .union_right_left (ih1 h')
+    | inr h' => exact .union_right_right (ih2 h')
+  | cvar m c' =>
+    cases m with
+    | M _ => exact absurd h CaptureSet.cvar_not_subset_empty
+    | drop =>
+      obtain ⟨_, rfl⟩ := CaptureSet.cvar_subset_cvar_inv h
+      exact .refl
+  | var _ _ => exact absurd h CaptureSet.cvar_not_subset_empty
 
 /-- Raw-constructor version of `peaks_union`. -/
 theorem CaptureSet.peaks_union_raw (Γ : Ctx s) (cs1 cs2 : CaptureSet s) :

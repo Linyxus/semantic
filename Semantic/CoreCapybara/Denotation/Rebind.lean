@@ -269,39 +269,69 @@ theorem Rebind.hassepdom
     have := h m1 (f.var c1) m2 (f.var c2) hsub1' hsub2' hne'
     rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
 
+/-- Static deadness transports along a rebinding. -/
+theorem Rebind.dead_in
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
+  (ρ : Rebind env1 f env2) (K : CaptureSet s1) (c : BVar s1 .cvar) :
+  env1.DeadIn K c ↔ env2.DeadIn (K.rename f) (f.var c) := by
+  have hpeaks := rebind_compute_peaks ρ K
+  have hpo := compute_peaks_is_peak env1 K
+  constructor
+  · intro ⟨a, hsub⟩
+    refine ⟨a, ?_⟩
+    rw [← hpeaks]
+    exact hsub.rename'
+  · intro ⟨a, hsub⟩
+    rw [← hpeaks] at hsub
+    obtain ⟨c', hc, hsub'⟩ := hpo.cvar_subset_rename_inv hsub
+    cases ρ.cvar_injective c' c hc
+    exact ⟨a, hsub'⟩
+
 theorem Rebind.drop_sep_in
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (cs : CaptureSet s1) :
-  env1.DropSepIn cs ↔ env2.DropSepIn (cs.rename f) := by
+  (ρ : Rebind env1 f env2) (K cs : CaptureSet s1) :
+  env1.DropSepIn K cs ↔ env2.DropSepIn (K.rename f) (cs.rename f) := by
   have hpeaks := rebind_compute_peaks ρ cs
   have hpo := compute_peaks_is_peak env1 cs
   constructor
   · intro h
     apply TypeEnv.DropSepIn.of_pairs
-    intro c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
-    rw [← hpeaks] at hsub1 hsub2
-    obtain ⟨c1', hc1, hsub1'⟩ := hpo.cvar_subset_rename_inv hsub1
-    obtain ⟨c2', hc2, hsub2'⟩ := hpo.cvar_subset_rename_inv hsub2
-    subst hc1; subst hc2
-    have hne' : c1' ≠ c2' := fun heq => hne (by rw [heq])
-    rw [← ρ.cvar_auth c1'] at hauth1
-    rw [← ρ.cvar_auth c2'] at hauth2
-    have := h.pairs c1' c2' a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
-    rwa [ρ.cvar c1', ρ.cvar c2'] at this
+    · intro c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
+      rw [← hpeaks] at hsub1 hsub2
+      obtain ⟨c1', hc1, hsub1'⟩ := hpo.cvar_subset_rename_inv hsub1
+      obtain ⟨c2', hc2, hsub2'⟩ := hpo.cvar_subset_rename_inv hsub2
+      subst hc1; subst hc2
+      have hne' : c1' ≠ c2' := fun heq => hne (by rw [heq])
+      rw [← ρ.cvar_auth c1'] at hauth1
+      rw [← ρ.cvar_auth c2'] at hauth2
+      have := h.pairs c1' c2' a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
+      rwa [ρ.cvar c1', ρ.cvar c2'] at this
+    · intro a c hsub hauth hdead
+      rw [← hpeaks] at hsub
+      obtain ⟨c', hc, hsub'⟩ := hpo.cvar_subset_rename_inv hsub
+      subst hc
+      rw [← ρ.cvar_auth c'] at hauth
+      exact h.avoid a c' hsub' hauth ((ρ.dead_in K c').mpr hdead)
   · intro h
     apply TypeEnv.DropSepIn.of_pairs
-    intro c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
-    have hsub1' : (.cvar a1 (f.var c1)) ⊆ compute_peaks env2 (cs.rename f) := by
-      rw [← hpeaks]
-      exact hsub1.rename'
-    have hsub2' : (.cvar a2 (f.var c2)) ⊆ compute_peaks env2 (cs.rename f) := by
-      rw [← hpeaks]
-      exact hsub2.rename'
-    have hne' : f.var c1 ≠ f.var c2 := fun heq => hne (ρ.cvar_injective c1 c2 heq)
-    rw [ρ.cvar_auth c1] at hauth1
-    rw [ρ.cvar_auth c2] at hauth2
-    have := h.pairs (f.var c1) (f.var c2) a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
-    rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
+    · intro c1 c2 a1 a2 hne hauth1 hauth2 hsub1 hsub2
+      have hsub1' : (.cvar a1 (f.var c1)) ⊆ compute_peaks env2 (cs.rename f) := by
+        rw [← hpeaks]
+        exact hsub1.rename'
+      have hsub2' : (.cvar a2 (f.var c2)) ⊆ compute_peaks env2 (cs.rename f) := by
+        rw [← hpeaks]
+        exact hsub2.rename'
+      have hne' : f.var c1 ≠ f.var c2 := fun heq => hne (ρ.cvar_injective c1 c2 heq)
+      rw [ρ.cvar_auth c1] at hauth1
+      rw [ρ.cvar_auth c2] at hauth2
+      have := h.pairs (f.var c1) (f.var c2) a1 a2 hne' hauth1 hauth2 hsub1' hsub2'
+      rwa [← ρ.cvar c1, ← ρ.cvar c2] at this
+    · intro a c hsub hauth hdead
+      have hsub' : (.cvar a (f.var c)) ⊆ compute_peaks env2 (cs.rename f) := by
+        rw [← hpeaks]
+        exact hsub.rename'
+      rw [ρ.cvar_auth c] at hauth
+      exact h.avoid a (f.var c) hsub' hauth ((ρ.dead_in K c).mp hdead)
 
 theorem rebind_satisfy_iff
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -361,7 +391,7 @@ def rebind_val_denot
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]
     rw [← rebind_captureset_denot ρ cs]
-  | .arrow T1 _ cs T2 => by
+  | .arrow T1 ds cs T2 => by
     have ih1 := rebind_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.rename]
@@ -382,7 +412,7 @@ def rebind_val_denot
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
       have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
-      specialize hd arg m' hsub hcompat ((ρ.drop_sep_in cs).mpr hdsep) harg'
+      specialize hd arg m' hsub hcompat ((ρ.drop_sep_in ds cs).mpr hdsep) harg'
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
@@ -392,9 +422,9 @@ def rebind_val_denot
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
       have ih2 := rebind_exi_exp_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mp harg
-      specialize hd arg m' hsub hcompat ((ρ.drop_sep_in cs).mp hdsep) harg'
+      specialize hd arg m' hsub hcompat ((ρ.drop_sep_in ds cs).mp hdsep) harg'
       exact (ih2 m' _).mpr hd
-  | .poly T1 _ cs T2 => by
+  | .poly T1 ds cs T2 => by
     have ih1 := rebind_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.rename]
@@ -409,7 +439,7 @@ def rebind_val_denot
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat ((ρ.drop_sep_in cs).mpr hdsep)
+      specialize hd m' denot hsub hcompat ((ρ.drop_sep_in ds cs).mpr hdsep)
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
@@ -420,10 +450,10 @@ def rebind_val_denot
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.rename f)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat ((ρ.drop_sep_in cs).mp hdsep)
+      specialize hd m' denot hsub hcompat ((ρ.drop_sep_in ds cs).mp hdsep)
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
-  | .cpoly B _ cs T => by
+  | .cpoly B ds cs T => by
     have hB := rebind_capturebound_denot ρ B
     intro m e
     simp only [Ty.val_denot, Ty.rename]
@@ -436,15 +466,15 @@ def rebind_val_denot
       intro m' CS hwf_CS hdf hsub hcompat hdsep hsub_bound
       let R0 := expand_captures m.heap cs'
       have ih2 := rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0
-      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.drop_sep_in cs).mpr hdsep) hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.drop_sep_in ds cs).mpr hdsep) hsub_bound
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
       intro m' CS hwf_CS hdf hsub hcompat hdsep hsub_bound
       let R0 := expand_captures m.heap cs'
-      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.drop_sep_in cs).mp hdsep) hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.drop_sep_in ds cs).mp hdsep) hsub_bound
       exact (rebind_exi_exp_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T R0 m' _).mpr hd
-  | .modal _ cs Ψ T => by
+  | .modal ds cs Ψ T => by
     intro m e
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]
@@ -472,7 +502,7 @@ def rebind_val_denot
           simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
             rebind_captureset_denot (ρ := ρ) (C := C2)] using
               hsep (C1.rename f) m1 (C2.rename f) m2 (hdistinct.rename)
-        exact (ih m' _).mp (hbody m' hsub hcompat ((ρ.drop_sep_in cs).mpr hdsep) hkind' hsep')
+        exact (ih m' _).mp (hbody m' hsub hcompat ((ρ.drop_sep_in ds cs).mpr hdsep) hkind' hsep')
     · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
         hsat, hR0_sub, hbody⟩
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
@@ -497,7 +527,7 @@ def rebind_val_denot
           simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
             rebind_captureset_denot (ρ := ρ) (C := D2)] using
               hsep D1 m1 D2 m2 hdistinct0
-        exact (ih m' _).mpr (hbody m' hsub hcompat ((ρ.drop_sep_in cs).mp hdsep) hkind' hsep')
+        exact (ih m' _).mpr (hbody m' hsub hcompat ((ρ.drop_sep_in ds cs).mp hdsep) hkind' hsep')
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
