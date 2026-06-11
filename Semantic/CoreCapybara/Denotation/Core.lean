@@ -449,56 +449,85 @@ structure TypeEnv.Satisfy (env : TypeEnv s) (ctx : SepCtx s) (m : Memory) where
     ctx.HasTwoDistinct C1 m1 C2 m2 ->
     CapabilitySet.Noninterference (C1.denot env m) (C2.denot env m)
 
-/-- Environment separation outside a "dead set" of capture variables: every
-pair of distinct droppable capture variables *not* declared dead has disjoint
-capability sets. Intuitively, the dead variables are the already-dropped
-(consumed) ones — non-accessible, hence legitimately allowed to alias. -/
-def TypeEnv.DropSepExcept (env : TypeEnv s) (dead : BVar s .cvar → Prop) : Prop :=
+/-- A capture variable is *dead* according to the (peaks-only) dead-set `K`:
+it occurs in `K` at some access mode. Dead variables are the already-consumed
+ones; they may legitimately alias other capture variables and are excused
+from the environment-separation invariant. -/
+def PeakSet.DeadIn (K : PeakSet s) (c : BVar s .cvar) : Prop :=
+  ∃ a : Access, (CaptureSet.cvar a c) ⊆ K.cs
+
+/-- Environment separation outside the dead-set `K`: every pair of distinct
+droppable capture variables *not* dead in `K` has disjoint capability sets.
+Intuitively, the dead variables are the already-dropped (consumed) ones —
+non-accessible, hence legitimately allowed to alias. The dead-set is a
+concrete (peaks-only) capture set, not an existentially quantified
+predicate: it is the semantic image of the typing judgment's first-class
+dead-set index. -/
+def TypeEnv.DropSepExcept (env : TypeEnv s) (K : PeakSet s) : Prop :=
   ∀ (c1 c2 : BVar s .cvar),
     c1 ≠ c2 →
     env.lookup_cvar_auth c1 = .can_drop →
     env.lookup_cvar_auth c2 = .can_drop →
-    ¬ dead c1 → ¬ dead c2 →
+    ¬ K.DeadIn c1 →
+    ¬ K.DeadIn c2 →
     CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
 
 /-- Monotonicity of `DropSepExcept` in the dead set: enlarging the dead set
 exempts more pairs, hence weakens the requirement. -/
-theorem TypeEnv.DropSepExcept.mono {env : TypeEnv s} {dead dead' : BVar s .cvar → Prop}
-    (h : env.DropSepExcept dead) (hsub : ∀ c, dead c → dead' c) :
-    env.DropSepExcept dead' :=
+theorem TypeEnv.DropSepExcept.mono {env : TypeEnv s} {K K' : PeakSet s}
+    (h : env.DropSepExcept K) (hsub : ∀ c, K.DeadIn c → K'.DeadIn c) :
+    env.DropSepExcept K' :=
   fun c1 c2 hne h1 h2 hd1 hd2 =>
     h c1 c2 hne h1 h2 (fun hc => hd1 (hsub c1 hc)) (fun hc => hd2 (hsub c2 hc))
 
 /-- A capture variable is *dead* according to the static dead-set `K`: some
-access mode of it is peaked by `K` under the environment. Dead variables are
-the already-consumed ones; they may legitimately alias other capture
-variables and are excused from the environment-separation invariant. -/
+access mode of it is peaked by `K` under the environment. The capture-set
+form of `PeakSet.DeadIn`: `env.DeadIn K c ↔ (compute_peakset env K).DeadIn c`
+holds definitionally. -/
 def TypeEnv.DeadIn (env : TypeEnv s) (K : CaptureSet s) (c : BVar s .cvar) : Prop :=
   ∃ a : Access, (CaptureSet.cvar a c) ⊆ compute_peaks env K
 
 /-- Environment separation invariant, relative to a *static* dead-set `K` and
-a budget `C`: some dead set covering `K`'s peaks witnesses `DropSepExcept`,
-and the budget's droppable peaks avoid it. Intuitively `K` records what the
-computation so far has consumed: a pack/unpack round-trip legitimately
-creates a droppable capture variable aliasing the consumed witness peaks; the
-witness peaks are then in `K`, and the sequencing discipline guarantees the
-budget never routes through them again.
+a budget `C`: `K` is a *valid* dead-set for the environment — every pair of
+distinct droppable capture variables outside `K` is separate
+(`DropSepExcept`) — and the budget is *disjoint* from it: no droppable peak
+of `C` is dead in `K`. Both components are concrete in `K`; nothing is
+existentially quantified — the dead-set is exactly the semantic image of the
+typing judgment's first-class dead-set index.
 
-The avoidance condition is restricted to droppable peaks: the dead set's only
-role is to exempt droppable pairs from separation, and droppable peaks are
-monotone along subcapture (`Subcapt.droppable_peak_monotone`) while general
-peaks are not. -/
+Intuitively `K` records what the computation so far has consumed: a
+pack/unpack round-trip legitimately creates a droppable capture variable
+aliasing the consumed witness peaks; the witness peaks are then in `K` (and
+the alias pairs exempted from `DropSepExcept`), and the sequencing
+discipline guarantees the budget never routes through them again.
+
+The disjointness condition is restricted to droppable peaks: the dead set's
+only role is to exempt droppable pairs from separation, and droppable peaks
+are monotone along subcapture (`Subcapt.droppable_peak_monotone`) while
+general peaks are not. -/
 def TypeEnv.DropSepIn (env : TypeEnv s) (K C : CaptureSet s) : Prop :=
-  ∃ dead : BVar s .cvar → Prop,
-    (∀ c, env.DeadIn K c → dead c) ∧
-    env.DropSepExcept dead ∧
+  env.DropSepExcept (compute_peakset env K) ∧
+  ∀ (a : Access) (c : BVar s .cvar),
+    (CaptureSet.cvar a c) ⊆ compute_peaks env C →
+    env.lookup_cvar_auth c = .can_drop →
+    ¬ env.DeadIn K c
+
+/-- The validity component: `K` is a valid dead-set. -/
+theorem TypeEnv.DropSepIn.valid {env : TypeEnv s} {K C : CaptureSet s}
+    (h : env.DropSepIn K C) :
+    env.DropSepExcept (compute_peakset env K) := h.1
+
+/-- The disjointness component: the budget's droppable peaks are not dead. -/
+theorem TypeEnv.DropSepIn.avoid {env : TypeEnv s} {K C : CaptureSet s}
+    (h : env.DropSepIn K C) :
     ∀ (a : Access) (c : BVar s .cvar),
       (CaptureSet.cvar a c) ⊆ compute_peaks env C →
       env.lookup_cvar_auth c = .can_drop →
-      ¬ dead c
+      ¬ env.DeadIn K c := h.2
 
-/-- Elimination into the pair form: distinct droppable capture variables both
-peaked in the budget have disjoint capabilities. -/
+/-- Pair form: distinct droppable capture variables both peaked in the budget
+have disjoint capabilities (they are not dead, by disjointness, so validity
+separates them). -/
 theorem TypeEnv.DropSepIn.pairs {env : TypeEnv s} {K C : CaptureSet s}
     (h : env.DropSepIn K C) :
     ∀ (c1 c2 : BVar s .cvar) (a1 a2 : Access),
@@ -508,71 +537,44 @@ theorem TypeEnv.DropSepIn.pairs {env : TypeEnv s} {K C : CaptureSet s}
       (CaptureSet.cvar a1 c1) ⊆ compute_peaks env C →
       (CaptureSet.cvar a2 c2) ⊆ compute_peaks env C →
       CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2 := by
-  obtain ⟨dead, _, hdse, havoid⟩ := h
   intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  exact hdse c1 c2 hne h1 h2 (havoid a1 c1 hp1 h1) (havoid a2 c2 hp2 h2)
+  exact h.1 c1 c2 hne h1 h2 (h.2 a1 c1 hp1 h1) (h.2 a2 c2 hp2 h2)
 
-/-- Elimination into the avoidance form: the budget's droppable peaks are not
-statically dead. -/
-theorem TypeEnv.DropSepIn.avoid {env : TypeEnv s} {K C : CaptureSet s}
-    (h : env.DropSepIn K C) :
-    ∀ (a : Access) (c : BVar s .cvar),
-      (CaptureSet.cvar a c) ⊆ compute_peaks env C →
-      env.lookup_cvar_auth c = .can_drop →
-      ¬ env.DeadIn K c := by
-  obtain ⟨dead, hlow, _, havoid⟩ := h
-  intro a c hp hdrop hdead
-  exact havoid a c hp hdrop (hlow c hdead)
-
-/-- Introduction from the pair and avoidance forms: take everything that is
-statically dead or not a droppable peak of the budget to be dead. -/
-theorem TypeEnv.DropSepIn.of_pairs {env : TypeEnv s} {K C : CaptureSet s}
-    (h : ∀ (c1 c2 : BVar s .cvar) (a1 a2 : Access),
-      c1 ≠ c2 →
-      env.lookup_cvar_auth c1 = .can_drop →
-      env.lookup_cvar_auth c2 = .can_drop →
-      (CaptureSet.cvar a1 c1) ⊆ compute_peaks env C →
-      (CaptureSet.cvar a2 c2) ⊆ compute_peaks env C →
-      CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2)
+/-- A `DropSepIn` may be re-budgeted to any capture set whose droppable
+peaks the dead-set also avoids; validity is budget-independent. -/
+theorem TypeEnv.DropSepIn.rebudget {env : TypeEnv s} {K C C' : CaptureSet s}
+    (h : env.DropSepIn K C)
     (hav : ∀ (a : Access) (c : BVar s .cvar),
-      (CaptureSet.cvar a c) ⊆ compute_peaks env C →
+      (CaptureSet.cvar a c) ⊆ compute_peaks env C' →
       env.lookup_cvar_auth c = .can_drop →
       ¬ env.DeadIn K c) :
-    env.DropSepIn K C := by
-  refine ⟨fun c => env.DeadIn K c ∨ ¬ ∃ a, (CaptureSet.cvar a c) ⊆ compute_peaks env C,
-    fun c hc => Or.inl hc, ?_,
-    fun a c hp hdrop hor => hor.elim (hav a c hp hdrop) (fun hn => hn ⟨a, hp⟩)⟩
-  intro c1 c2 hne h1 h2 hd1 hd2
-  obtain ⟨a1, hp1⟩ : ∃ a, (CaptureSet.cvar a c1) ⊆ compute_peaks env C :=
-    Classical.byContradiction (fun hn => hd1 (Or.inr hn))
-  obtain ⟨a2, hp2⟩ : ∃ a, (CaptureSet.cvar a c2) ⊆ compute_peaks env C :=
-    Classical.byContradiction (fun hn => hd2 (Or.inr hn))
-  exact h c1 c2 a1 a2 hne h1 h2 hp1 hp2
+    env.DropSepIn K C' := ⟨h.1, hav⟩
 
 /-- `DropSepIn` only depends on the budget through its computed peaks. -/
 theorem TypeEnv.DropSepIn.of_peaks_eq {env : TypeEnv s} {K C1 C2 : CaptureSet s}
     (heq : compute_peaks env C1 = compute_peaks env C2)
-    (h : env.DropSepIn K C2) : env.DropSepIn K C1 := by
-  obtain ⟨dead, hlow, hdse, havoid⟩ := h
-  exact ⟨dead, hlow, hdse, fun a c hp hdrop => havoid a c (heq ▸ hp) hdrop⟩
+    (h : env.DropSepIn K C2) : env.DropSepIn K C1 :=
+  h.rebudget (fun a c hp hdrop => h.2 a c (heq ▸ hp) hdrop)
 
-/-- Retarget the dead-set: any `K'` whose dead variables avoid the budget's
-droppable peaks works in place of `K`. This is the workhorse for both the
-sequencing rules (growing the dead set by what the first computation
-consumed) and the closure rules (trading the ambient dead set for the
-closure's stored one). -/
-theorem TypeEnv.DropSepIn.retarget {env : TypeEnv s} {K K' C : CaptureSet s}
+/-- The budget may always be restricted to the empty capture set. -/
+theorem TypeEnv.DropSepIn.empty {env : TypeEnv s} {K C : CaptureSet s}
+    (h : env.DropSepIn K C) : env.DropSepIn K ({} : CaptureSet s) :=
+  h.rebudget (fun _ _ hp _ => absurd hp CaptureSet.cvar_not_subset_empty)
+
+/-- Growing the dead-set: enlarging `K` peak-wise preserves validity (more
+pairs are exempted), provided the budget also avoids the larger dead-set.
+This is the workhorse for the sequencing rules (growing the dead set by what
+the first computation consumed). Unlike the deleted existential `retarget`,
+the dead-set may only *grow*: validity outside a smaller `K'` is not implied. -/
+theorem TypeEnv.DropSepIn.grow {env : TypeEnv s} {K K' C : CaptureSet s}
     (h : env.DropSepIn K C)
+    (hsub : ∀ c, env.DeadIn K c → env.DeadIn K' c)
     (hav : ∀ (a : Access) (c : BVar s .cvar),
       (CaptureSet.cvar a c) ⊆ compute_peaks env C →
       env.lookup_cvar_auth c = .can_drop →
       ¬ env.DeadIn K' c) :
-    env.DropSepIn K' C := by
-  obtain ⟨dead, _, hdse, havoid⟩ := h
-  refine ⟨fun c => dead c ∨ env.DeadIn K' c, fun c hc => Or.inr hc,
-    hdse.mono (fun c hc => Or.inl hc), ?_⟩
-  intro a c hp hdrop hor
-  exact hor.elim (havoid a c hp hdrop) (hav a c hp hdrop)
+    env.DropSepIn K' C :=
+  ⟨h.1.mono hsub, hav⟩
 
 /-- Pack-witness authority bound: if a computation that started at memory `m`
 with budget `R` results in a pack value, then every location reachable from
