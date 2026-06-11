@@ -249,24 +249,24 @@ inductive HasType : CaptureSet s -> CaptureSet s -> Ctx s -> Exp s -> Ty .exi s 
   T1.IsClosed ->
   HasType (K.rename Rename.succ) (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
   ----------------------------
-  HasType K {} Γ (.abs cs T1 e) (.typ (.arrow T1 .empty cs T2))
+  HasType K {} Γ (.abs cs T1 e) (.typ (.arrow T1 K cs T2))
 | tabs {S : PureTy s} :
   S.IsClosed ->
   HasType (K.rename Rename.succ) (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
-  HasType K {} Γ (.tabs cs S e) (.typ (.poly S.core .empty cs T))
+  HasType K {} Γ (.tabs cs S e) (.typ (.poly S.core K cs T))
 | cabs {cb : CaptureBound s} :
   cb.IsClosed ->
   cb.IsValid Γ ->
   HasType (K.rename Rename.succ) (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
-  HasType K {} Γ (.cabs cs cb e) (.typ (.cpoly cb .empty cs T))
+  HasType K {} Γ (.cabs cs cb e) (.typ (.cpoly cb K cs T))
 | wrap :
   Ψ.IsClosed ->
   HasType
     (K.rename Rename.succ) (cs.rename Rename.succ) (Γ.push_lock Ψ)
     (e.rename Rename.succ) (E.rename Rename.succ) ->
-  HasType K {} Γ (.boxed cs Ψ e) (.typ (.modal .empty cs Ψ E))
+  HasType K {} Γ (.boxed cs Ψ e) (.typ (.modal K cs Ψ E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   C.AccessOnly Γ ->
