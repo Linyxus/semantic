@@ -377,22 +377,6 @@ theorem CaptureSet.rename_isClosed {cs : CaptureSet s1} {f : Rename s1 s2}
     simp only [CaptureSet.rename]
     exact IsClosed.cvar
 
-/-- Drops the outermost bound variable from a capture set. -/
-def CaptureSet.drop_here_var : CaptureSet (s,x) -> CaptureSet s
-| .empty => .empty
-| .union cs1 cs2 => .union (cs1.drop_here_var) (cs2.drop_here_var)
-| .var _ (.bound .here) => .empty
-| .var m (.bound (.there x)) => .var m (.bound x)
-| .var m (.free n) => .var m (.free n)
-| .cvar m (.there c) => .cvar m c
-
-def CaptureSet.drop_here_tvar : CaptureSet (s,X) -> CaptureSet s
-| .empty => .empty
-| .union cs1 cs2 => .union (cs1.drop_here_tvar) (cs2.drop_here_tvar)
-| .var m (.free x) => .var m (.free x)
-| .var m (.bound (.there x)) => .var m (.bound x)
-| .cvar m (.there c) => .cvar m c
-
 /-- Whether a capture set contains only peaks (capture variables). -/
 inductive CaptureSet.PeaksOnly : CaptureSet s -> Prop where
 | empty :

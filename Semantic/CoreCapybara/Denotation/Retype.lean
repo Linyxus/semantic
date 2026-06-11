@@ -699,28 +699,6 @@ private lemma drop_here_cvar_rename_succ_of_coveredby
       simp [Rename.succ] at hfc
     | there c => rfl
 
-private lemma drop_here_tvar_rename_succ (cs : CaptureSet (s,X)) :
-    cs.drop_here_tvar.rename (Rename.succ (k := .tvar)) = cs := by
-  induction cs with
-  | empty => rfl
-  | union cs1 cs2 ih1 ih2 =>
-    change CaptureSet.rename (CaptureSet.union _ _) _ = _
-    rw [show (CaptureSet.union cs1.drop_here_tvar cs2.drop_here_tvar).rename
-           (Rename.succ (k := .tvar))
-         = (cs1.drop_here_tvar.rename Rename.succ).union
-           (cs2.drop_here_tvar.rename Rename.succ) from rfl]
-    rw [ih1, ih2]
-    rfl
-  | var m x =>
-    cases x with
-    | free n => rfl
-    | bound x =>
-      cases x with
-      | there x => rfl
-  | cvar m c =>
-    cases c with
-    | there c => rfl
-
 theorem Retype.liftTVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   {d : Denot}
