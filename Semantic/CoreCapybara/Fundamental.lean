@@ -2014,23 +2014,8 @@ theorem sem_typ_app
     h2'
   -- The opening lemma relates extended environment to substituted type
   let ps := compute_peakset env T1.captureSet
-  -- GAP (subsumption peak slack): opening the dependent result type at the
-  -- argument variable `y` is peak-faithful only if `y`'s stored peak set
-  -- (the static peaks of its *declared* type, by `EnvTyping`) coincides with
-  -- the peaks of the arrow's domain `T1`. The `subtyp` rule may widen `y`'s
-  -- type to `T1`, adding droppable peaks, and nothing in the semantic
-  -- premises relates the two — see the definition-level counterexample
-  -- `CoreCapybara.Gaps.app_peak_slack_false`. The dead-set threading does
-  -- not touch this obligation: it concerns the *budget* peaks of the opened
-  -- result type, not the dead-set. Closing it requires a *static* change to
-  -- how peaks behave across subsumption (peak-faithful subsumption: `EquivP`
-  -- side conditions on the `Subcapt` premises inside `Subtyp`, the device
-  -- already adopted for `sep_sc`/`seq_sc`) — a type-system design decision.
-  have hps : ∀ (d : BVar s .cvar),
-      env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) (.bound y)) d := by
-    sorry
   have heqv := open_arg_exi_exp_denot (env:=env) (y:=.bound y) (ps:=ps) (T:=T2)
-    (R:=expand_captures store.heap cs') hps
+    (R:=expand_captures store.heap cs')
   have hinterp : interp_var env (Var.bound y) = fy := rfl
   rw [hinterp] at heqv
   have happ' :=
@@ -3697,7 +3682,6 @@ lemma sem_subtyp_tvar {X : BVar s .tvar} {S : PureTy s}
 lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty .exi (s,x)}
   (harg : SemSubtyp Γ T2 T1)
   (hcs : SemSubcapt Γ cs1 cs2)
-  (hcs_static : Subcapt Γ cs1 cs2)
   (hcs2_closed : CaptureSet.IsClosed cs2)
   (hres : SemSubtyp (Γ,x:T2) U1 U2) :
   SemSubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2) := by
@@ -3783,29 +3767,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                     change (env.lookup_cvar C).1 =
                       ((Subst.id.cvar C).rename Rename.succ).subst
                         (Subst.from_TypeEnv (env.extend_var arg psT2))
-                    rfl
-                var_peaks := by
-                  intro b dv
-                  cases b with
-                  | here =>
-                    -- GAP (subsumption peak slack): converting the result
-                    -- denotation between the sub- and supertype's argument
-                    -- peak sets requires the two domains' droppable peaks to
-                    -- coincide, but arrow subtyping is contravariant in the
-                    -- domain and `Subcapt` only gives one-directional peak
-                    -- coverage. Same gap as in `sem_typ_app` — see
-                    -- `CoreCapybara.Gaps.app_peak_slack_false`; the same
-                    -- static lever (peak-faithful subsumption) closes both.
-                    sorry
-                  | there z =>
-                    refine TypeEnv.HasPeak.of_peaks_eq ?_
-                    exact Eq.trans
-                      (compute_peaks_peaksOnly_fixed
-                        ((env.lookup_var z).2.h.rename Rename.succ)).symm
-                      (congrArg (compute_peaks (env.extend_var arg psT2))
-                        (CaptureSet.subst_id
-                          (cs := (env.lookup_var z).2.cs.rename Rename.succ)).symm)
-                }
+                    rfl }
             have heq_val := retype_exi_val_denot (ρ := hretype) U1
             -- Lift the evaluation along the exi-val equivalence
             have h_imply_val :=
@@ -4331,8 +4293,6 @@ theorem fundamental_subtyp
       exact ih_arg hT2_arg_closed hT1_arg_closed
     · -- Prove SemSubcapt Γ cs1 cs2
       exact fundamental_subcapt hsub_cs
-    · -- The static subcapture derivation (for the premise transport)
-      exact hsub_cs
     · -- Prove closedness of cs2
       exact hcs2_closed
     · -- Prove SemSubtyp (Γ,x:T2_arg) U1 U2 (covariant)

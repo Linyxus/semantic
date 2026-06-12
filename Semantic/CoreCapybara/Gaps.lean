@@ -18,22 +18,16 @@ distinct `can_drop` capture variables has disjoint capabilities. It is
 memory-independent and budget-independent; closure denotations carry *no*
 separation premise (closure creation bakes the invariant in), and killing
 only removes demanded pairs. This dissolved the former dead-set gaps
-(capture-instantiation peak transport, dead-set supply at eliminations).
+(capture-instantiation peak transport, dead-set supply at eliminations) AND
+the former subsumption-peak-slack gaps: stored peak sets are denotationally
+inert in this model (denotations read the environment only through
+`lookup_var.1`/`lookup_tvar`/`lookup_cvar`), so the `Retype` transport needs
+no per-variable peak correspondence and `sem_typ_app`/`sem_subtyp_arrow` are
+fully proven.
 
 ## The remaining gaps
 
-1. **Subsumption peak slack** (`sem_typ_app`'s `hps`, `sem_subtyp_arrow`'s
-   identity-`Retype` `var_peaks`): converting between the peaks of a
-   variable's *declared* type and the peaks of the (super)type the
-   elimination rule demands requires a peak-membership *equivalence*, but a
-   well-typed environment can bind a variable whose stored peaks are
-   strictly below its semantic type's peaks (`app_peak_slack_false`) — the
-   `subtyp` rule makes exactly this mismatch typeable. A static lever:
-   peak-faithful subsumption (`EquivP` side conditions on the `Subcapt`
-   premises inside `Subtyp`, the same device already adopted for `sep_sc`
-   and `seq_sc`).
-
-2. **Lock-stored separation facts** (`fundamental_sepcheck_global`): lock
+1. **Lock-stored separation facts** (`fundamental_sepcheck_global`): lock
    facts are consumed at arbitrary later program points — in particular
    inside `modal_modal` subtyping transports, where no `EnvSepWf` invariant
    is available (`SemSubtyp` cannot carry one: the `exi` rule transports
@@ -41,7 +35,7 @@ only removes demanded pairs. This dissolved the former dead-set gaps
    witness) — and `EnvTyping` admits aliased droppable capture variables
    (`sepcheck_global_droppable_false`).
 
-3. **Drop-authority laundering through subsumption**
+2. **Drop-authority laundering through subsumption**
    (`consumed_peaks_droppable`, used by `sem_typ_unpack`'s witness-separation
    argument): the leaf rules (`drop`, `pack`) only consume `can_drop`
    variables, but `subtyp`'s `Subcapt` premise admits widening a budget with
@@ -125,72 +119,7 @@ theorem env2_not_envsepwf : ¬ env2.EnvSepWf := by
   exact cap0_not_disjoint_self
     (h (.there .here) .here (by intro heq; cases heq) rfl rfl)
 
-/-! ## Gap 1: subsumption peak slack
-
-These refute the peak-membership equivalence needed by `sem_typ_app` (the
-`hps` hypothesis of `Retype.open_arg`) and by `sem_subtyp_arrow` (the
-`.here` branch of `var_peaks` for the identity `Retype` between the sub- and
-supertype's argument peak sets). -/
-
-/-- The aliased two-droppable context extended with a value binding at a
-*ground* capability type: the stored peak set of the variable is empty. -/
-def Γ4 : Ctx ({},C,x) :=
-  ((Ctx.empty).push_cvar .can_drop .unbound).push_var (.cap (.var (.M .epsilon) (.free 0)))
-
-/-- The matching environment: one droppable capture variable bound to `cap0`,
-and a value variable bound to location `0` with (statically computed, empty)
-peaks. -/
-def env4 : TypeEnv ({},C,x) :=
-  ((TypeEnv.empty).extend_cvar cs0 cap0 .can_drop).extend
-    (.var 0 ((Ty.cap (.var (.M .epsilon) (.free 0))).captureSet.peakset
-      ((Ctx.empty).push_cvar .can_drop .unbound)))
-
-theorem envtyping4 : EnvTyping Γ4 env4 mem1 := by
-  refine ⟨?_, rfl, ?_, ?_, ?_, rfl, ?_, rfl, trivial⟩
-  · change Ty.val_denot _ (.cap (.var (.M .epsilon) (.free 0))) mem1 (.var (.free 0))
-    simp only [Ty.val_denot]
-    exact ⟨.wf_var (.wf_free (val := .capability .basic) rfl),
-      .wf_var_free (val := .capability .basic) rfl,
-      0, rfl, rfl, CapabilitySet.covers.here CapMode.Le.refl⟩
-  · exact .wf_var_free (val := .capability .basic) rfl
-  · exact .wf_unbound
-  · exact .top
-  · exact cap0_drop_free
-
-/-- A well-typed environment can inhabit a variable at a semantic type whose
-peaks strictly exceed the variable's stored peaks: here `y`'s declared type
-is the ground `cap {ε·0}` (no peaks), while the value also inhabits
-`cap {ε·c}` for the droppable capture variable `c` (one droppable peak).
-This refutes the `hps` peak-membership equivalence that `sem_typ_app` must
-supply to `Retype.open_arg` when opening the dependent result type — the
-subsumption rule (`subtyp`) makes exactly this mismatch typeable. -/
-theorem app_peak_slack_false :
-    ¬ (∀ {s : Sig} (Γ : Ctx s) (env : TypeEnv s) (store : Memory)
-        (T1 : Ty .capt s) (y : BVar s .var),
-        EnvTyping Γ env store →
-        Ty.val_denot env T1 store (.var (.free (env.lookup_var y).1)) →
-        ∀ (d : BVar s .cvar),
-          env.HasPeak (compute_peakset env T1.captureSet).cs d ↔
-          env.HasPeak (.var (.M .epsilon) (.bound y)) d) := by
-  intro h
-  have hval : Ty.val_denot env4 (.cap (.cvar (.M .epsilon) (.there .here))) mem1
-      (.var (.free (env4.lookup_var .here).1)) := by
-    simp only [Ty.val_denot]
-    exact ⟨.wf_var (.wf_free (val := .capability .basic) rfl),
-      .wf_var_free (val := .capability .basic) rfl,
-      0, rfl, rfl, CapabilitySet.covers.here CapMode.Le.refl⟩
-  have hiff := h Γ4 env4 mem1 (.cap (.cvar (.M .epsilon) (.there .here))) .here
-    envtyping4 hval (.there .here)
-  obtain ⟨a, hsub⟩ := hiff.mp ⟨.M .epsilon, .refl⟩
-  have heq : compute_peaks env4 (.var (.M .epsilon) (.bound .here)) = .empty := by
-    change (CaptureSet.peaks ((Ctx.empty).push_cvar .can_drop .unbound)
-      (.var (.M .epsilon) (.free 0))).rename Rename.succ = .empty
-    rw [CaptureSet.peaks]
-    rfl
-  rw [heq] at hsub
-  exact CaptureSet.cvar_not_subset_empty hsub
-
-/-! ## Gap 2: lock-stored `sep_droppable` facts
+/-! ## Gap 1: lock-stored `sep_droppable` facts
 
 This refutes the `sep_droppable` case of `fundamental_sepcheck_global` (the
 interpretation of lock-stored `SepCheck` facts, which must hold with no
@@ -213,7 +142,7 @@ theorem sepcheck_global_droppable_false :
     env2 mem1 envtyping2
   exact noninterference_cap0_self_false hni
 
-/-! ## Gap 3: drop-authority laundering through subsumption
+/-! ## Gap 2: drop-authority laundering through subsumption
 
 This refutes `consumed_peaks_droppable` exactly as stated: a `.drop`-mode
 peak of a budget need not be a `can_drop` variable, because `subtyp`'s

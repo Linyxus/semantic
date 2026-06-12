@@ -340,17 +340,6 @@ def Retype.kill_cvar {env : TypeEnv s} (c : BVar s .cvar) :
       ((env.kill_cvar c).lookup_cvar C).1.applyAccess (.M .epsilon)
     rw [TypeEnv.kill_cvar_lookup_cvar]
     rfl
-  var_peaks := fun b d => by
-    change (env.kill_cvar c).HasPeak (.var (.M .epsilon) (.bound b)) d ↔
-      (env.kill_cvar c).HasPeak ((env.lookup_var b).2.cs.subst Subst.id) d
-    rw [CaptureSet.subst_id]
-    refine TypeEnv.HasPeak.of_peaks_eq ?_
-    change ((env.kill_cvar c).lookup_var b).2.cs.applyAccess (.M .epsilon) =
-      compute_peaks (env.kill_cvar c) (env.lookup_var b).2.cs
-    rw [TypeEnv.kill_cvar_lookup_var,
-        compute_peaks_peaksOnly_fixed (env.lookup_var b).2.h]
-    rfl
-
 theorem kill_cvar_val_denot {env : TypeEnv s} {c : BVar s .cvar}
     (T : Ty .capt s) :
     Ty.val_denot env T ≈ Ty.val_denot (env.kill_cvar c) T := by

@@ -11,9 +11,7 @@ def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
 /-! ### Peak machinery for transporting denotations along `Retype`
 
 To relate a denotation under an environment to the denotation of its
-substitution we factor capture-set budgets through their computed peaks
-(`compute_peaks` is idempotent) and track peak membership (`HasPeak`), which is
-stable under pre-computing peaks (`Retype.peaks`) and transports along
+substitution we track peak membership (`HasPeak`), which transports along
 environment rebindings. -/
 
 /-- `compute_peaks` is the identity on peaks-only capture sets. -/
@@ -275,60 +273,12 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) (D :
     ∀ (C : BVar s1 .cvar),
       (env1.lookup_cvar C).1 = (σ.cvar C).subst (Subst.from_TypeEnv env2)
 
-  /-- Per-variable peak correspondence: the peaks of a substituted variable
-  agree, as membership, with the peaks of the substitution of the variable's
-  stored peak set. -/
-  var_peaks :
-    ∀ (b : BVar s1 .var) (d : BVar s2 .cvar),
-      env2.HasPeak (.var (.M .epsilon) (σ.var b)) d ↔
-      env2.HasPeak ((env1.lookup_var b).2.cs.subst σ) d
-
-/-- Peak membership of a substituted budget only depends on the source budget
-through its computed peaks. Derived from the `var_peaks` field. -/
-theorem Retype.peaks
-    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D) (d : BVar s2 .cvar) (cs : CaptureSet s1) :
-    env2.HasPeak (cs.subst σ) d ↔
-    env2.HasPeak ((compute_peaks env1 cs).subst σ) d := by
-  induction cs with
-  | empty => exact Iff.rfl
-  | union cs1 cs2 ih1 ih2 =>
-    refine Iff.trans TypeEnv.HasPeak.union_iff ?_
-    exact Iff.trans (or_congr ih1 ih2) TypeEnv.HasPeak.union_iff.symm
-  | cvar m c => exact Iff.rfl
-  | var m x =>
-    cases x with
-    | free n =>
-      constructor
-      · intro h
-        exact absurd h TypeEnv.HasPeak.not_var_free
-      · intro h
-        exact absurd h TypeEnv.HasPeak.not_empty
-    | bound b =>
-      have hl : (CaptureSet.var m (Var.bound b)).subst σ
-          = (CaptureSet.var (.M .epsilon) (σ.var b)).applyAccess m := by
-        rw [CaptureSet.var_applyAccess]
-        rfl
-      have hr : (compute_peaks env1 (CaptureSet.var m (Var.bound b))).subst σ
-          = ((env1.lookup_var b).2.cs.subst σ).applyAccess m := by
-        change ((env1.lookup_var b).2.cs.applyAccess m).subst σ = _
-        rw [CaptureSet.applyAccess_subst]
-      rw [hl, hr]
-      refine Iff.trans TypeEnv.HasPeak.applyAccess_iff ?_
-      exact Iff.trans (ρ.var_peaks b d) TypeEnv.HasPeak.applyAccess_iff.symm
-
-/-- The peak-membership hypothesis needed to lift a `Retype` under a value
-binder, when the two stored peak sets are the computed peaks of an argument
-type and of its substitution (as in the arrow case of `val_denot`). -/
-theorem Retype.lift_hps
-    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D) (T1 : Ty .capt s1) :
-    ∀ (d : BVar s2 .cvar),
-      env2.HasPeak (compute_peakset env2 (T1.subst σ).captureSet).cs d ↔
-      env2.HasPeak ((compute_peakset env1 T1.captureSet).cs.subst σ) d := by
-  intro d
-  refine Iff.trans (TypeEnv.HasPeak.of_peaks_eq (compute_peaks_idem _)) ?_
-  exact Iff.trans TypeEnv.HasPeak.ty_captureSet_subst (ρ.peaks d T1.captureSet)
+-- NOTE: the structure used to carry a `var_peaks` field (per-variable peak
+-- correspondence between the stored peak sets). Under the killed-binding
+-- model, stored peak sets are denotationally inert — denotations read the
+-- environment only through `lookup_var.1`, `lookup_tvar`, and
+-- `lookup_cvar` — so the field (and the peak-slack obligations it forced on
+-- `sem_typ_app` and `sem_subtyp_arrow`) is gone.
 
 lemma weaken_interp_var {x : Var .var s} {ps : PeakSet s} :
   interp_var env x = interp_var (env.extend_var n ps) (x.rename Rename.succ) := by
@@ -346,9 +296,7 @@ lemma cweaken_interp_var {cs : CaptureSet {}} {cap : CapabilitySet} {a : Authori
 theorem Retype.liftVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   {x : Nat} {ps1 : PeakSet s1} {ps2 : PeakSet s2}
-  (ρ : Retype env1 σ env2 D)
-  (hps : ∀ (d : BVar s2 .cvar),
-    env2.HasPeak ps2.cs d ↔ env2.HasPeak (ps1.cs.subst σ) d) :
+  (ρ : Retype env1 σ env2 D) :
   Retype (env1.extend_var x ps1) (σ.lift) (env2.extend_var x ps2) (D.rename Rename.succ) where
   var := fun
     | .here => rfl
@@ -370,115 +318,6 @@ theorem Retype.liftVar
         = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_var x ps2))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set (Rebind.weaken (ps:=ps2))
-  var_peaks := fun b dv => by
-    cases b with
-    | here =>
-      cases dv with
-      | there d0 =>
-        have hsubst :
-            ((env1.extend_var x ps1).lookup_var BVar.here).2.cs.subst σ.lift
-            = (ps1.cs.subst σ).rename Rename.succ := by
-          change (ps1.cs.rename Rename.succ).subst σ.lift = _
-          exact subst_lift_eq_subst_rename _ _
-        rw [hsubst]
-        have hl : (env2.extend_var x ps2).HasPeak
-            (.var (.M .epsilon) (Subst.lift σ |>.var BVar.here)) (.there d0) ↔
-            (env2.extend_var x ps2).HasPeak (ps2.cs.rename Rename.succ) (.there d0) := by
-          refine TypeEnv.HasPeak.of_peaks_eq ?_
-          exact (compute_peaks_peaksOnly_fixed (ps2.h.rename Rename.succ)).symm
-        refine Iff.trans hl ?_
-        have h1 := (Rebind.weaken (env := env2) (x := x) (ps := ps2)).peaks_at ps2.cs d0
-        have h2 := (Rebind.weaken (env := env2) (x := x) (ps := ps2)).peaks_at
-          (ps1.cs.subst σ) d0
-        exact Iff.trans (Iff.trans h1.symm (hps d0)) h2
-    | there z =>
-      cases dv with
-      | there d0 =>
-        have hsubst :
-            ((env1.extend_var x ps1).lookup_var (BVar.there z)).2.cs.subst σ.lift
-            = ((env1.lookup_var z).2.cs.subst σ).rename Rename.succ := by
-          change ((env1.lookup_var z).2.cs.rename Rename.succ).subst σ.lift = _
-          exact subst_lift_eq_subst_rename _ _
-        rw [hsubst]
-        have h1 := (Rebind.weaken (env := env2) (x := x) (ps := ps2)).peaks_at
-          (.var (.M .epsilon) (σ.var z)) d0
-        have h2 := (Rebind.weaken (env := env2) (x := x) (ps := ps2)).peaks_at
-          ((env1.lookup_var z).2.cs.subst σ) d0
-        exact Iff.trans (Iff.trans h1.symm (ρ.var_peaks z d0)) h2
-private lemma subset_to_coveredby {A B : CaptureSet s} (h : A ⊆ B) : A.CoveredBy B := by
-  induction h with
-  | refl => exact CaptureSet.CoveredBy.refl'
-  | empty => exact .empty
-  | union_left _ _ ih1 ih2 => exact .union_left ih1 ih2
-  | union_right_left _ ih => exact .union_right_left ih
-  | union_right_right _ ih => exact .union_right_right ih
-
-private lemma coveredby_rename_cancel {A B : CaptureSet s} {k : Kind}
-    (hpoA : A.PeaksOnly) (hpoB : B.PeaksOnly)
-    (h : (A.rename (Rename.succ (k := k))).CoveredBy
-      (B.rename (Rename.succ (k := k)))) :
-    A.CoveredBy B := by
-  induction hpoA with
-  | empty => exact .empty
-  | cvar =>
-    rename_i m c
-    simp only [CaptureSet.rename, Rename.succ] at h
-    obtain ⟨m', hle, hsub'⟩ := CaptureSet.CoveredBy.cvar_subset_coveredby CaptureSet.Subset.refl h
-    obtain ⟨c', hfc, hsub''⟩ := hpoB.cvar_subset_rename_inv hsub'
-    cases BVar.there.inj hfc
-    have hcov'' : (CaptureSet.cvar m' c).CoveredBy B := subset_to_coveredby hsub''
-    cases hle with
-    | M hmu =>
-      cases hmu with
-      | refl => exact hcov''
-      | ro_eps => exact CaptureSet.CoveredBy.mut_mono_left Mutability.Le.ro_eps hcov''
-    | drop => exact hcov''
-  | union _ _ ih1 ih2 =>
-    simp only [CaptureSet.rename] at h
-    exact .union_left (ih1 h.union_coveredby_left) (ih2 h.union_coveredby_right)
-
--- Drops the innermost cvar binder, mapping .here cvar to .empty
-private def CaptureSet.drop_here_cvar : CaptureSet (s,C) -> CaptureSet s
-| .empty => .empty
-| .union cs1 cs2 => .union cs1.drop_here_cvar cs2.drop_here_cvar
-| .var m (.free n) => .var m (.free n)
-| .var m (.bound (.there x)) => .var m (.bound x)
-| .cvar _ .here => .empty
-| .cvar m (.there c) => .cvar m c
-
--- When cs' has no .here cvar (i.e. covered by a set with only .there cvars),
--- drop_here_cvar followed by rename Rename.succ is the identity.
-private lemma drop_here_cvar_rename_succ_of_coveredby
-    {s : Sig} {env : TypeEnv (s,C)} {D : PeakSet s} (cs' : CaptureSet (s,C))
-    (hcov : (compute_peaks env cs').CoveredBy (D.cs.rename (Rename.succ (k := .cvar)))) :
-    cs'.drop_here_cvar.rename (Rename.succ (k := .cvar)) = cs' := by
-  induction cs' with
-  | empty => rfl
-  | union cs1 cs2 ih1 ih2 =>
-    simp only [compute_peaks] at hcov
-    change CaptureSet.rename (CaptureSet.union _ _) _ = _
-    rw [show (CaptureSet.union cs1.drop_here_cvar cs2.drop_here_cvar).rename
-           (Rename.succ (k := .cvar))
-         = (cs1.drop_here_cvar.rename Rename.succ).union
-           (cs2.drop_here_cvar.rename Rename.succ) from rfl]
-    rw [ih1 hcov.union_coveredby_left, ih2 hcov.union_coveredby_right]
-    rfl
-  | var m x =>
-    cases x with
-    | free n => rfl
-    | bound x =>
-      cases x with
-      | there x => rfl
-  | cvar m c =>
-    cases c with
-    | here =>
-      simp only [compute_peaks] at hcov
-      obtain ⟨m', _, hsub⟩ :=
-        CaptureSet.CoveredBy.cvar_subset_coveredby CaptureSet.Subset.refl hcov
-      obtain ⟨c', hfc, _⟩ := D.h.cvar_subset_rename_inv hsub
-      simp [Rename.succ] at hfc
-    | there c => rfl
-
 theorem Retype.liftTVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   {d : Denot}
@@ -508,22 +347,6 @@ theorem Retype.liftTVar
         = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_tvar d))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.tweaken
-  var_peaks := fun b dv => by
-    cases b with
-    | there z =>
-      cases dv with
-      | there d0 =>
-        have hsubst :
-            ((env1.extend_tvar d).lookup_var (BVar.there z)).2.cs.subst σ.lift
-            = ((env1.lookup_var z).2.cs.subst σ).rename Rename.succ := by
-          change ((env1.lookup_var z).2.cs.rename Rename.succ).subst σ.lift = _
-          exact subst_lift_eq_subst_rename _ _
-        rw [hsubst]
-        have h1 := (Rebind.tweaken (env := env2) (d := d)).peaks_at
-          (.var (.M .epsilon) (σ.var z)) d0
-        have h2 := (Rebind.tweaken (env := env2) (d := d)).peaks_at
-          ((env1.lookup_var z).2.cs.subst σ) d0
-        exact Iff.trans (Iff.trans h1.symm (ρ.var_peaks z d0)) h2
 theorem Retype.liftCVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   (ρ : Retype env1 σ env2 D) (cs : CaptureSet {}) (cap : CapabilitySet := .empty)
@@ -553,34 +376,6 @@ theorem Retype.liftCVar
         = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_cvar cs cap a))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
-  var_peaks := fun b dv => by
-    cases b with
-    | there z =>
-      have hsubst :
-          ((env1.extend_cvar cs cap a).lookup_var (BVar.there z)).2.cs.subst σ.lift
-          = ((env1.lookup_var z).2.cs.subst σ).rename Rename.succ := by
-        change ((env1.lookup_var z).2.cs.rename Rename.succ).subst σ.lift = _
-        exact subst_lift_eq_subst_rename _ _
-      rw [hsubst]
-      cases dv with
-      | here =>
-        constructor
-        · intro h
-          obtain ⟨d0, hfd, -⟩ :=
-            (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).peaks_at_inv
-              (.var (.M .epsilon) (σ.var z)) .here h
-          cases (show BVar.there d0 = BVar.here from hfd)
-        · intro h
-          obtain ⟨d0, hfd, -⟩ :=
-            (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).peaks_at_inv
-              ((env1.lookup_var z).2.cs.subst σ) .here h
-          cases (show BVar.there d0 = BVar.here from hfd)
-      | there d0 =>
-        have h1 := (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).peaks_at
-          (.var (.M .epsilon) (σ.var z)) d0
-        have h2 := (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).peaks_at
-          ((env1.lookup_var z).2.cs.subst σ) d0
-        exact Iff.trans (Iff.trans h1.symm (ρ.var_peaks z d0)) h2
 def retype_resolved_capture_set
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   (ρ : Retype env1 σ env2 D) (C : CaptureSet s1) :
@@ -776,7 +571,7 @@ def retype_val_denot
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot
-        (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2) (ρ.lift_hps T1)) T2 R0
+        (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
       specialize hd arg m' hsub hcompat harg'
       exact (ih2 m' _).mp hd
@@ -787,7 +582,7 @@ def retype_val_denot
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot
-        (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2) (ρ.lift_hps T1)) T2 R0
+        (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mp harg
       specialize hd arg m' hsub hcompat harg'
       exact (ih2 m' _).mpr hd
@@ -955,9 +750,7 @@ def retype_exi_exp_denot
 
 end
 
-def Retype.open_arg {s : Sig} {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s}
-  (hps : ∀ (d : BVar s .cvar),
-    env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) y) d) :
+def Retype.open_arg {s : Sig} {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} :
   Retype
     (env.extend_var (interp_var env y) ps)
     (Subst.openVar y)
@@ -976,44 +769,24 @@ def Retype.open_arg {s : Sig} {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s
         (env.lookup_cvar C).1 =
           (CaptureSet.cvar (.M Mutability.epsilon) C).subst (Subst.from_TypeEnv env)
       rfl
-  var_peaks := fun b d => by
-    cases b with
-    | here =>
-      change env.HasPeak (.var (.M .epsilon) y) d ↔
-        env.HasPeak ((ps.cs.rename Rename.succ).subst (Subst.openVar y)) d
-      rw [CaptureSet.weaken_openVar]
-      exact (hps d).symm
-    | there z =>
-      change env.HasPeak (.var (.M .epsilon) (.bound z)) d ↔
-        env.HasPeak (((env.lookup_var z).2.cs.rename Rename.succ).subst (Subst.openVar y)) d
-      rw [CaptureSet.weaken_openVar]
-      refine TypeEnv.HasPeak.of_peaks_eq ?_
-      rw [compute_peaks_peaksOnly_fixed (env.lookup_var z).2.h]
-      rfl
 theorem open_arg_val_denot
-    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .capt (s,x)}
-    (hps : ∀ (d : BVar s .cvar),
-      env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) y) d) :
+    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .capt (s,x)} :
   Ty.val_denot (env.extend_var (interp_var env y) ps) T ≈
     Ty.val_denot env (T.subst (Subst.openVar y)) := by
-  apply retype_val_denot (Retype.open_arg hps)
+  apply retype_val_denot (Retype.open_arg (ps := ps))
 
 theorem open_arg_exi_val_denot
-    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .exi (s,x)}
-    (hps : ∀ (d : BVar s .cvar),
-      env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) y) d) :
+    {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .exi (s,x)} :
   Ty.exi_val_denot (env.extend_var (interp_var env y) ps) T ≈
     Ty.exi_val_denot env (T.subst (Subst.openVar y)) := by
-  apply retype_exi_val_denot (Retype.open_arg hps)
+  apply retype_exi_val_denot (Retype.open_arg (ps := ps))
 
 theorem open_arg_exi_exp_denot
     {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s}
-    {T : Ty .exi (s,x)} {R : CapabilitySet}
-    (hps : ∀ (d : BVar s .cvar),
-      env.HasPeak ps.cs d ↔ env.HasPeak (.var (.M .epsilon) y) d) :
+    {T : Ty .exi (s,x)} {R : CapabilitySet} :
   Ty.exi_exp_denot (env.extend_var (interp_var env y) ps) T R ≈
     Ty.exi_exp_denot env (T.subst (Subst.openVar y)) R := by
-  apply retype_exi_exp_denot (Retype.open_arg hps)
+  apply retype_exi_exp_denot (Retype.open_arg (ps := ps))
 
 def Retype.open_targ {env : TypeEnv s} {S : PureTy s} :
   Retype
@@ -1037,15 +810,6 @@ def Retype.open_targ {env : TypeEnv s} {S : PureTy s} :
       change
         (env.lookup_cvar C).1 =
           (CaptureSet.cvar (.M Mutability.epsilon) C).subst (Subst.from_TypeEnv env)
-      rfl
-  var_peaks := fun b d => by
-    cases b with
-    | there z =>
-      change env.HasPeak (.var (.M .epsilon) (.bound z)) d ↔
-        env.HasPeak (((env.lookup_var z).2.cs.rename Rename.succ).subst (Subst.openTVar S)) d
-      rw [CaptureSet.weaken_openTVar]
-      refine TypeEnv.HasPeak.of_peaks_eq ?_
-      rw [compute_peaks_peaksOnly_fixed (env.lookup_var z).2.h]
       rfl
 theorem open_targ_val_denot {env : TypeEnv s} {S : PureTy s} {T : Ty .capt (s,X)} :
   Ty.val_denot (env.extend_tvar (Ty.val_denot env S.core)) T ≈
@@ -1088,15 +852,6 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet :
       change
         (env.lookup_cvar C0).1 =
           (CaptureSet.cvar (.M Mutability.epsilon) C0).subst (Subst.from_TypeEnv env)
-      rfl
-  var_peaks := fun b d => by
-    cases b with
-    | there z =>
-      change env.HasPeak (.var (.M .epsilon) (.bound z)) d ↔
-        env.HasPeak (((env.lookup_var z).2.cs.rename Rename.succ).subst (Subst.openCVar C)) d
-      rw [CaptureSet.weaken_openCVar]
-      refine TypeEnv.HasPeak.of_peaks_eq ?_
-      rw [compute_peaks_peaksOnly_fixed (env.lookup_var z).2.h]
       rfl
 theorem open_carg_val_denot
     {env : TypeEnv s} {C : CaptureSet s} {T : Ty .capt (s,C)} (cap : CapabilitySet := .empty)
