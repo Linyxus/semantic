@@ -456,125 +456,16 @@ from the environment-separation invariant. -/
 def PeakSet.DeadIn (K : PeakSet s) (c : BVar s .cvar) : Prop :=
   ∃ a : Access, (CaptureSet.cvar a c) ⊆ K.cs
 
-/-- Environment separation outside the dead-set `K`: every pair of distinct
-droppable capture variables *not* dead in `K` has disjoint capability sets.
-Intuitively, the dead variables are the already-dropped (consumed) ones —
-non-accessible, hence legitimately allowed to alias. The dead-set is a
-concrete (peaks-only) capture set, not an existentially quantified
-predicate: it is the semantic image of the typing judgment's first-class
-dead-set index. -/
-def TypeEnv.DropSepExcept (env : TypeEnv s) (K : PeakSet s) : Prop :=
+/-- Environment separation well-formedness: every pair of distinct droppable
+capture variables has disjoint capability sets. This is the dead-set-free form
+of `DropSepExcept` — with no dead-set to exempt consumed pairs, *all* distinct
+droppable pairs must be separated. -/
+def TypeEnv.EnvSepWf (env : TypeEnv s) : Prop :=
   ∀ (c1 c2 : BVar s .cvar),
     c1 ≠ c2 →
     env.lookup_cvar_auth c1 = .can_drop →
     env.lookup_cvar_auth c2 = .can_drop →
-    ¬ K.DeadIn c1 →
-    ¬ K.DeadIn c2 →
     CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
-
-/-- Monotonicity of `DropSepExcept` in the dead set: enlarging the dead set
-exempts more pairs, hence weakens the requirement. -/
-theorem TypeEnv.DropSepExcept.mono {env : TypeEnv s} {K K' : PeakSet s}
-    (h : env.DropSepExcept K) (hsub : ∀ c, K.DeadIn c → K'.DeadIn c) :
-    env.DropSepExcept K' :=
-  fun c1 c2 hne h1 h2 hd1 hd2 =>
-    h c1 c2 hne h1 h2 (fun hc => hd1 (hsub c1 hc)) (fun hc => hd2 (hsub c2 hc))
-
-/-- A capture variable is *dead* according to the static dead-set `K`: some
-access mode of it is peaked by `K` under the environment. The capture-set
-form of `PeakSet.DeadIn`: `env.DeadIn K c ↔ (compute_peakset env K).DeadIn c`
-holds definitionally. -/
-def TypeEnv.DeadIn (env : TypeEnv s) (K : CaptureSet s) (c : BVar s .cvar) : Prop :=
-  ∃ a : Access, (CaptureSet.cvar a c) ⊆ compute_peaks env K
-
-/-- Environment separation invariant, relative to a *static* dead-set `K` and
-a budget `C`: `K` is a *valid* dead-set for the environment — every pair of
-distinct droppable capture variables outside `K` is separate
-(`DropSepExcept`) — and the budget is *disjoint* from it: no droppable peak
-of `C` is dead in `K`. Both components are concrete in `K`; nothing is
-existentially quantified — the dead-set is exactly the semantic image of the
-typing judgment's first-class dead-set index.
-
-Intuitively `K` records what the computation so far has consumed: a
-pack/unpack round-trip legitimately creates a droppable capture variable
-aliasing the consumed witness peaks; the witness peaks are then in `K` (and
-the alias pairs exempted from `DropSepExcept`), and the sequencing
-discipline guarantees the budget never routes through them again.
-
-The disjointness condition is restricted to droppable peaks: the dead set's
-only role is to exempt droppable pairs from separation, and droppable peaks
-are monotone along subcapture (`Subcapt.droppable_peak_monotone`) while
-general peaks are not. -/
-def TypeEnv.DropSepIn (env : TypeEnv s) (K C : CaptureSet s) : Prop :=
-  env.DropSepExcept (compute_peakset env K) ∧
-  ∀ (a : Access) (c : BVar s .cvar),
-    (CaptureSet.cvar a c) ⊆ compute_peaks env C →
-    env.lookup_cvar_auth c = .can_drop →
-    ¬ env.DeadIn K c
-
-/-- The validity component: `K` is a valid dead-set. -/
-theorem TypeEnv.DropSepIn.valid {env : TypeEnv s} {K C : CaptureSet s}
-    (h : env.DropSepIn K C) :
-    env.DropSepExcept (compute_peakset env K) := h.1
-
-/-- The disjointness component: the budget's droppable peaks are not dead. -/
-theorem TypeEnv.DropSepIn.avoid {env : TypeEnv s} {K C : CaptureSet s}
-    (h : env.DropSepIn K C) :
-    ∀ (a : Access) (c : BVar s .cvar),
-      (CaptureSet.cvar a c) ⊆ compute_peaks env C →
-      env.lookup_cvar_auth c = .can_drop →
-      ¬ env.DeadIn K c := h.2
-
-/-- Pair form: distinct droppable capture variables both peaked in the budget
-have disjoint capabilities (they are not dead, by disjointness, so validity
-separates them). -/
-theorem TypeEnv.DropSepIn.pairs {env : TypeEnv s} {K C : CaptureSet s}
-    (h : env.DropSepIn K C) :
-    ∀ (c1 c2 : BVar s .cvar) (a1 a2 : Access),
-      c1 ≠ c2 →
-      env.lookup_cvar_auth c1 = .can_drop →
-      env.lookup_cvar_auth c2 = .can_drop →
-      (CaptureSet.cvar a1 c1) ⊆ compute_peaks env C →
-      (CaptureSet.cvar a2 c2) ⊆ compute_peaks env C →
-      CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2 := by
-  intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-  exact h.1 c1 c2 hne h1 h2 (h.2 a1 c1 hp1 h1) (h.2 a2 c2 hp2 h2)
-
-/-- A `DropSepIn` may be re-budgeted to any capture set whose droppable
-peaks the dead-set also avoids; validity is budget-independent. -/
-theorem TypeEnv.DropSepIn.rebudget {env : TypeEnv s} {K C C' : CaptureSet s}
-    (h : env.DropSepIn K C)
-    (hav : ∀ (a : Access) (c : BVar s .cvar),
-      (CaptureSet.cvar a c) ⊆ compute_peaks env C' →
-      env.lookup_cvar_auth c = .can_drop →
-      ¬ env.DeadIn K c) :
-    env.DropSepIn K C' := ⟨h.1, hav⟩
-
-/-- `DropSepIn` only depends on the budget through its computed peaks. -/
-theorem TypeEnv.DropSepIn.of_peaks_eq {env : TypeEnv s} {K C1 C2 : CaptureSet s}
-    (heq : compute_peaks env C1 = compute_peaks env C2)
-    (h : env.DropSepIn K C2) : env.DropSepIn K C1 :=
-  h.rebudget (fun a c hp hdrop => h.2 a c (heq ▸ hp) hdrop)
-
-/-- The budget may always be restricted to the empty capture set. -/
-theorem TypeEnv.DropSepIn.empty {env : TypeEnv s} {K C : CaptureSet s}
-    (h : env.DropSepIn K C) : env.DropSepIn K ({} : CaptureSet s) :=
-  h.rebudget (fun _ _ hp _ => absurd hp CaptureSet.cvar_not_subset_empty)
-
-/-- Growing the dead-set: enlarging `K` peak-wise preserves validity (more
-pairs are exempted), provided the budget also avoids the larger dead-set.
-This is the workhorse for the sequencing rules (growing the dead set by what
-the first computation consumed). Unlike the deleted existential `retarget`,
-the dead-set may only *grow*: validity outside a smaller `K'` is not implied. -/
-theorem TypeEnv.DropSepIn.grow {env : TypeEnv s} {K K' C : CaptureSet s}
-    (h : env.DropSepIn K C)
-    (hsub : ∀ c, env.DeadIn K c → env.DeadIn K' c)
-    (hav : ∀ (a : Access) (c : BVar s .cvar),
-      (CaptureSet.cvar a c) ⊆ compute_peaks env C →
-      env.lookup_cvar_auth c = .can_drop →
-      ¬ env.DeadIn K' c) :
-    env.DropSepIn K' C :=
-  ⟨h.1.mono hsub, hav⟩
 
 /-- Pack-witness authority bound: if a computation that started at memory `m`
 with budget `R` results in a pack value, then every location reachable from
@@ -747,7 +638,6 @@ instance instCaptureSetHasDenotation :
 instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
-
 
 def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
 | .empty, .empty, _ => True
@@ -932,10 +822,10 @@ theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
 
     *Pre*: every cell in `C.denot ρ m` must be live at the start.
     *Post*: in any reachable result memory `m'`, the result satisfies `E`. -/
-def SemanticTyping (K C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
+def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
   ∀ ρ m,
     EnvTyping Γ ρ m ->
-    ρ.DropSepIn K C ->
+    ρ.EnvSepWf ->
     m.is_compatible (C.denot ρ m) ->
     Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
 
@@ -1303,7 +1193,7 @@ theorem from_TypeEnv_wf_in_heap
               cases hl
               exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free
                 (by simpa [Memory.lookup] using hlookup))
-            | cap _ | reader _ | arrow _ _ _ _ | poly _ _ _ _ | cpoly _ _ _ _ | modal _ _ _ _ =>
+            | cap _ | reader _ | arrow _ _ _ | poly _ _ _ | cpoly _ _ _ | modal _ _ _ =>
               unfold Ty.val_denot at htype
               exact htype.1
           cases hwf with
@@ -1668,7 +1558,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     have hval := v.isVal
     rw [hlabel] at hval
     cases hval
-  | arrow T1 _ cs T2 =>
+  | arrow T1 cs T2 =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     have hx' : m.heap x = some (.val v) := by simpa [Memory.lookup] using hx
@@ -1702,14 +1592,14 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     rw [resolve_var_heap_trans hx']
     exact ⟨Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hx'), hwf_cs,
       label, b0, ℓ0, hres, hlookup, hcov⟩
-  | poly T1 _ cs T2 | cpoly _ _ cs _ =>
+  | poly T1 cs T2 | cpoly _ cs _ =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     have hx' : m.heap x = some (.val v) := by simpa [Memory.lookup] using hx
     rw [resolve_var_heap_trans hx']
     obtain ⟨_, hwf_cs, hexists⟩ := ht
     exact ⟨Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hx'), hwf_cs, hexists⟩
-  | modal _ cs Ψ T =>
+  | modal cs Ψ T =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     have hx' : m.heap x = some (.val v) := by simpa [Memory.lookup] using hx
@@ -1750,16 +1640,16 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
     -- btrue and bfalse cannot resolve to a reader, so both sides are False
     unfold Ty.val_denot
     simp [resolve]
-  | arrow T1 _ cs T2 =>
+  | arrow T1 cs T2 =>
     unfold Ty.val_denot
     simp [resolve]
-  | poly T1 _ cs T2 =>
+  | poly T1 cs T2 =>
     unfold Ty.val_denot
     simp [resolve]
-  | cpoly B _ cs T =>
+  | cpoly B cs T =>
     unfold Ty.val_denot
     simp [resolve]
-  | modal _ cs Ψ T =>
+  | modal cs Ψ T =>
     unfold Ty.val_denot
     simp [resolve]
 
@@ -2007,7 +1897,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
         exact ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
           label, b', ℓ', resolve_monotonic hmem hres, hc',
           by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem]; exact hcov⟩
-  | arrow T1 _ cs T2 =>
+  | arrow T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -2019,7 +1909,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
       fun arg m' hs' hcompat harg => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
     exact hfun arg m' (Memory.subsumes_trans hs' hmem) hcompat harg
-  | poly T1 _ cs T2 =>
+  | poly T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -2031,7 +1921,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
       fun m' denot msub hcompat hdenot_proper himply => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
     exact hfun m' denot (Memory.subsumes_trans msub hmem) hcompat hdenot_proper himply
-  | cpoly B _ cs T =>
+  | cpoly B cs T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -2043,7 +1933,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
       fun m' CS hwf_CS hdf msub hcompat hbounded => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
     exact hfun m' CS hwf_CS hdf (Memory.subsumes_trans msub hmem) hcompat hbounded
-  | modal _ cs Ψ T =>
+  | modal cs Ψ T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs',
@@ -2203,25 +2093,25 @@ def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
     EnvTyping Γ env m ->
     B1.denot env m ⊆ B2.denot env m
 
-/-- Semantic separation check. The `DropSepIn` premise (relativized to the
-two sets being separated) is needed by the `sep_droppable` rule: separation
-of two distinct droppable capture variables is an environment invariant, not
-derivable from `EnvTyping` alone. The `Γ.IsClosed` hypothesis serves the
-`sep_ro` rule's drop-freedom argument (peak tracing requires closed types). -/
+/-- Semantic separation check. The `EnvSepWf` premise is needed by the
+`sep_droppable` rule: separation of two distinct droppable capture variables
+is an environment invariant, not derivable from `EnvTyping` alone. The
+`Γ.IsClosed` hypothesis serves the `sep_ro` rule's drop-freedom argument (peak
+tracing requires closed types). -/
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   Γ.IsClosed ->
-  ∀ (K : CaptureSet s) env H,
+  ∀ env H,
     EnvTyping Γ env H ->
-    env.DropSepIn K (C1 ∪ C2) ->
+    env.EnvSepWf ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
 /-- Semantic strong separation check: the two sets denote *location-disjoint*
 capability sets. -/
 def SemDisjCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   Γ.IsClosed ->
-  ∀ (K : CaptureSet s) env H,
+  ∀ env H,
     EnvTyping Γ env H ->
-    env.DropSepIn K (C1 ∪ C2) ->
+    env.EnvSepWf ->
     CapabilitySet.disjoint (C1.denot env H) (C2.denot env H)
 
 /-- Semantic subtyping relation. Carries no environment-separation premise. -/
@@ -2360,16 +2250,16 @@ theorem val_denot_implies_wf {env : TypeEnv s}
   | cap cs =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | arrow T1 _ cs T2 =>
+  | arrow T1 cs T2 =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | poly T1 _ cs T2 =>
+  | poly T1 cs T2 =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | cpoly B _ cs T =>
+  | cpoly B cs T =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
-  | modal _ cs Ψ T =>
+  | modal cs Ψ T =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
 
@@ -2408,19 +2298,19 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
     obtain ⟨_, _, _, heq, _, _⟩ := hdenot
     rw [heq]
     exact Exp.IsSimpleAns.is_var
-  | modal _ cs Ψ T =>
+  | modal cs Ψ T =>
     unfold Ty.val_denot at hdenot
     rcases hdenot with ⟨_, _, _, _, _, hres, _, _⟩
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.boxed
-  | arrow T1 _ cs T2 =>
+  | arrow T1 cs T2 =>
     unfold Ty.val_denot at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.abs
-  | poly T1 _ cs T2 =>
+  | poly T1 cs T2 =>
     unfold Ty.val_denot at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.tabs
-  | cpoly B _ cs T =>
+  | cpoly B cs T =>
     unfold Ty.val_denot at hdenot
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.cabs
@@ -2605,7 +2495,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
                   CapabilitySet.covers_imp_singleton_subset hcov
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | arrow T1 _ cs T2 =>
+  | arrow T1 cs T2 =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -2634,7 +2524,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | poly T1 _ cs T2 =>
+  | poly T1 cs T2 =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -2663,7 +2553,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | cpoly B _ cs T =>
+  | cpoly B cs T =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, t0, hres, _, hR0_sub, _⟩ := ht
@@ -2692,7 +2582,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
-  | modal _ cs Ψ T =>
+  | modal cs Ψ T =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, cs', _, _, hres, _, _, _, hR0_sub, _⟩ := ht
@@ -2741,7 +2631,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   | bool =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     exact hdenot
-  | arrow T1 _ cs T2 =>
+  | arrow T1 cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
@@ -2790,9 +2680,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
     · -- Body condition
-      intro arg m' hsub hcompat hdsepx
-      exact hbody arg m' hsub hcompat (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx)
-  | poly T1 _ cs T2 =>
+      intro arg m' hsub hcompat
+      exact hbody arg m' hsub hcompat
+  | poly T1 cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
@@ -2832,10 +2722,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
     · -- Body condition
-      intro m' denot hsub hcompat hdsepx hprop himply_simple himply
-      exact hbody m' denot hsub hcompat
-        (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hprop himply_simple himply
-  | cpoly B _ cs T =>
+      intro m' denot hsub hcompat hprop himply_simple himply
+      exact hbody m' denot hsub hcompat hprop himply_simple himply
+  | cpoly B cs T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
@@ -2873,10 +2762,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | masked => simp at hres
       | bound bx => cases bx
     · -- Body condition
-      intro m' CS hwf hdf hsub hcompat hdsepx hbdd
-      exact hbody m' CS hwf hdf hsub hcompat
-        (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hbdd
-  | modal _ cs Ψ T =>
+      intro m' CS hwf hdf hsub hcompat hbdd
+      exact hbody m' CS hwf hdf hsub hcompat hbdd
+  | modal cs Ψ T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hres, hwf_cs',
       hwf_sepctx, hsat_impl, hR0_sub, hbody⟩ := hdenot
@@ -2915,9 +2803,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · intro m' hsub hcompat hdsepx hkind hsep
-      exact hbody m' hsub hcompat
-        (TypeEnv.DropSepIn.of_peaks_eq hpeaks hdsepx) hkind hsep
+    · intro m' hsub hcompat hkind hsep
+      exact hbody m' hsub hcompat hkind hsep
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
@@ -3121,14 +3008,14 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, label, _, _, _, _, hcov⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
-  case arrow T1 _ cs T2 | poly T1 _ cs T2 | cpoly B _ cs T =>
+  case arrow T1 cs T2 | poly T1 cs T2 | cpoly B cs T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, _, hres, _, hR0_sub, _⟩ := hdenot
     exact CapabilitySet.Subset.trans
       (resolve_reachability_subset_of_resolve hres)
       (by simpa [resolve_reachability] using hpure.denot_empty.subset_of_subset hR0_sub)
-  case modal _ cs Ψ T =>
+  case modal cs Ψ T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
     obtain ⟨_, _, cs', _, _, hres, _, _, _, hR0_sub, _⟩ := hdenot
