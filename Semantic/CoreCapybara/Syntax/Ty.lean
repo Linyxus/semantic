@@ -44,10 +44,10 @@ inductive Ty : TySort -> Sig -> Type where
 -- capturing types
 | top : Ty .capt s
 | tvar : BVar s .tvar -> Ty .capt s
-| arrow : Ty .capt s -> CaptureSet s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
-| poly : Ty .capt s -> CaptureSet s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
-| cpoly : CaptureBound s -> CaptureSet s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
-| modal : CaptureSet s -> CaptureSet s -> SepCtx s -> Ty .exi s -> Ty .capt s
+| arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
+| poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
+| cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+| modal : CaptureSet s -> SepCtx s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
 | cell : CaptureSet s -> Ty .capt s
 | reader : CaptureSet s -> Ty .capt s
@@ -61,10 +61,10 @@ inductive Ty : TySort -> Sig -> Type where
 def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
-| .arrow T1 ds cs T2, f => .arrow (T1.rename f) (ds.rename f) (cs.rename f) (T2.rename (f.lift))
-| .poly T1 ds cs T2, f => .poly (T1.rename f) (ds.rename f) (cs.rename f) (T2.rename (f.lift))
-| .cpoly cb ds cs T, f => .cpoly (cb.rename f) (ds.rename f) (cs.rename f) (T.rename (f.lift))
-| .modal ds cs Ψ T, f => .modal (ds.rename f) (cs.rename f) (Ψ.rename f) (T.rename f)
+| .arrow T1 cs T2, f => .arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift))
+| .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
+| .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
+| .modal cs Ψ T, f => .modal (cs.rename f) (Ψ.rename f) (T.rename f)
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
@@ -79,18 +79,18 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   | top => rfl
   | tvar x =>
     simp only [Ty.rename, Rename.id]
-  | arrow T1 ds cs T2 ih1 ih2 =>
+  | arrow T1 cs T2 ih1 ih2 =>
     simp only [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1]
-    exact congrArg (Ty.arrow T1 ds cs) ih2
-  | poly T1 ds cs T2 ih1 ih2 =>
+    exact congrArg (Ty.arrow T1 cs) ih2
+  | poly T1 cs T2 ih1 ih2 =>
     simp only [Ty.rename, Rename.lift_id, CaptureSet.rename_id, ih1]
-    exact congrArg (Ty.poly T1 ds cs) ih2
-  | cpoly cb ds cs T ih =>
+    exact congrArg (Ty.poly T1 cs) ih2
+  | cpoly cb cs T ih =>
     simp only [Ty.rename, Rename.lift_id, CaptureBound.rename_id, CaptureSet.rename_id]
-    exact congrArg (Ty.cpoly cb ds cs) ih
-  | modal ds cs Ψ T ih =>
+    exact congrArg (Ty.cpoly cb cs) ih
+  | modal cs Ψ T ih =>
     simp only [Ty.rename, CaptureSet.rename_id, SepCtx.rename_id]
-    exact congrArg (Ty.modal ds cs Ψ) ih
+    exact congrArg (Ty.modal cs Ψ) ih
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_id]
   | cell cs =>
@@ -113,21 +113,21 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | top => rfl
   | tvar x =>
     simp only [Ty.rename, Rename.comp]
-  | arrow T1 ds cs T2 ih1 ih2 =>
+  | arrow T1 cs T2 ih1 ih2 =>
     simpa only [Ty.rename, CaptureSet.rename_comp, Rename.lift_comp, ih1] using
-      congrArg (Ty.arrow (T1.rename (f.comp g)) (ds.rename (f.comp g)) (cs.rename (f.comp g)))
+      congrArg (Ty.arrow (T1.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih2 (f := f.lift) (g := g.lift))
-  | poly T1 ds cs T2 ih1 ih2 =>
+  | poly T1 cs T2 ih1 ih2 =>
     simpa only [Ty.rename, CaptureSet.rename_comp, Rename.lift_comp, ih1] using
-      congrArg (Ty.poly (T1.rename (f.comp g)) (ds.rename (f.comp g)) (cs.rename (f.comp g)))
+      congrArg (Ty.poly (T1.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih2 (f := f.lift) (g := g.lift))
-  | cpoly cb ds cs T ih =>
+  | cpoly cb cs T ih =>
     simpa only [Ty.rename, CaptureBound.rename_comp, CaptureSet.rename_comp, Rename.lift_comp] using
-      congrArg (Ty.cpoly (cb.rename (f.comp g)) (ds.rename (f.comp g)) (cs.rename (f.comp g)))
+      congrArg (Ty.cpoly (cb.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
-  | modal ds cs Ψ T ih =>
+  | modal cs Ψ T ih =>
     simpa only [Ty.rename, CaptureSet.rename_comp, SepCtx.rename_comp] using
-      congrArg (Ty.modal (ds.rename (f.comp g)) (cs.rename (f.comp g)) (Ψ.rename (f.comp g)))
+      congrArg (Ty.modal (cs.rename (f.comp g)) (Ψ.rename (f.comp g)))
         (ih (f := f) (g := g))
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_comp]
@@ -152,10 +152,10 @@ theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
 def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .top => .empty
 | .tvar _ => .empty
-| .arrow _ _ cs _ => cs
-| .poly _ _ cs _ => cs
-| .cpoly _ _ cs _ => cs
-| .modal _ cs _ _ => cs
+| .arrow _ cs _ => cs
+| .poly _ cs _ => cs
+| .cpoly _ cs _ => cs
+| .modal cs _ _ => cs
 | .cap cs => cs
 | .cell cs => cs
 | .reader cs => cs
@@ -165,10 +165,10 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .top, _ => .top
 | .tvar x, _ => .tvar x
-| .arrow T1 ds _ T2, cs => .arrow T1 ds cs T2
-| .poly T1 ds _ T2, cs => .poly T1 ds cs T2
-| .cpoly cb ds _ T, cs => .cpoly cb ds cs T
-| .modal ds _ Ψ T, cs => .modal ds cs Ψ T
+| .arrow T1 _ T2, cs => .arrow T1 cs T2
+| .poly T1 _ T2, cs => .poly T1 cs T2
+| .cpoly cb _ T, cs => .cpoly cb cs T
+| .modal _ Ψ T, cs => .modal cs Ψ T
 | .cap _, cs => .cap cs
 | .cell _, cs => .cell cs
 | .reader _, cs => .reader cs
@@ -184,16 +184,16 @@ inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
 inductive Ty.IsClosed : Ty sort s -> Prop where
 | top : Ty.IsClosed .top
 | tvar : Ty.IsClosed (.tvar x)
-| arrow : Ty.IsClosed T1 -> CaptureSet.IsClosed ds -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
-    Ty.IsClosed (.arrow T1 ds cs T2)
-| poly : Ty.IsClosed T1 -> CaptureSet.IsClosed ds -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
-    Ty.IsClosed (.poly T1 ds cs T2)
+| arrow : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
+    Ty.IsClosed (.arrow T1 cs T2)
+| poly : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
+    Ty.IsClosed (.poly T1 cs T2)
 | cpoly :
-    CaptureBound.IsClosed cb -> CaptureSet.IsClosed ds -> CaptureSet.IsClosed cs -> Ty.IsClosed T ->
-    Ty.IsClosed (.cpoly cb ds cs T)
+    CaptureBound.IsClosed cb -> CaptureSet.IsClosed cs -> Ty.IsClosed T ->
+    Ty.IsClosed (.cpoly cb cs T)
 | modal :
-    CaptureSet.IsClosed ds -> CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Ty.IsClosed T ->
-    Ty.IsClosed (.modal ds cs Ψ T)
+    CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Ty.IsClosed T ->
+    Ty.IsClosed (.modal cs Ψ T)
 | unit : Ty.IsClosed .unit
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool
