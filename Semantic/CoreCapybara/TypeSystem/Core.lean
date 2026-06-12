@@ -299,7 +299,8 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | letin :
   SeqComp Γ C1 C2 ->
   HasType C1 Γ e1 (.typ T) ->
-  HasType (C2.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
+  HasType (C2.rename Rename.succ) ((Γ.kill_peaks ((C1.peakset Γ).consumed)),x:T) e2
+    (U.rename Rename.succ) ->
   --------------------------------
   HasType (C1 ∪ C2) Γ (.letin e1 e2) U
 | unpack :
@@ -309,7 +310,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (((C2.rename Rename.succ).rename Rename.succ) ∪
      (.cvar (.M .epsilon) (.there .here)) ∪
      (.cvar .drop (.there .here)))
-    (Γ,C[.can_drop]<:.unbound,x:T)
+    ((Γ.kill_peaks ((C1.peakset Γ).consumed)),C[.can_drop]<:.unbound,x:T)
     u
     ((U.rename Rename.succ).rename Rename.succ) ->
   --------------------------------------------

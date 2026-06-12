@@ -7,30 +7,22 @@ Every remaining `sorry` of the development is not merely unproven but
 contexts, environments, and memories — refuting the exact statement each
 `sorry` stands for.
 
-## The semantic model (dead-set form, first-class)
+## The semantic model (killed-binding form)
 
-The environment-separation invariant is `TypeEnv.DropSepIn env K C`: some
-dead set covering the peaks of the *static* dead-set `K` witnesses
-`DropSepExcept`, and the budget `C`'s droppable peaks avoid it. The typing
-judgment `HasType K C Γ e T` threads `K` explicitly, growing it at
-sequencing by what the first component consumed (`consumed_peaks`); closure
-types record their creation-time dead-set `ds`, and the closure denotations
-state their body premise relative to it. This *closed* the former
-closure-creation gap (the `abs`/`tabs`/`cabs`/`wrap` cases discharge their
-body premise exactly, `ds = K`) and the sequencing gap (`letin`/`unpack`
-grow the dead set by `TypeEnv.DropSepIn.seq_grow`, anchored at
-`SeqComp.cross_droppable`).
+Deadness is a *lifecycle state of a binding*: `Authority` has a third tag
+`.killed`, the `letin`/`unpack` rules type their continuations in a context
+where the consumed peaks of the scrutinee's budget are retagged via
+`Ctx.kill_peaks`, and elimination rules guard uses with `accessible`. The one
+environment-separation invariant is `TypeEnv.EnvSepWf`: every pair of
+distinct `can_drop` capture variables has disjoint capabilities. It is
+memory-independent and budget-independent; closure denotations carry *no*
+separation premise (closure creation bakes the invariant in), and killing
+only removes demanded pairs. This dissolved the former dead-set gaps
+(capture-instantiation peak transport, dead-set supply at eliminations).
 
 ## The remaining gaps
 
-1. **Capture instantiation erases peak identity** (`Retype.open_carg`, used
-   at `capp` and `pack`/`unpack`): the bound capture variable `.here` is one
-   atomic peak with one stored authority and capability, while its image `C`
-   may have zero droppable peaks (a ground witness —
-   `open_carg_dpeak_fwd_false`) or several (a union argument —
-   `open_carg_dpeak_unique_false`).
-
-2. **Subsumption peak slack** (`sem_typ_app`'s `hps`, `sem_subtyp_arrow`'s
+1. **Subsumption peak slack** (`sem_typ_app`'s `hps`, `sem_subtyp_arrow`'s
    identity-`Retype` `var_peaks`): converting between the peaks of a
    variable's *declared* type and the peaks of the (super)type the
    elimination rule demands requires a peak-membership *equivalence*, but a
@@ -41,26 +33,25 @@ grow the dead set by `TypeEnv.DropSepIn.seq_grow`, anchored at
    premises inside `Subtyp`, the same device already adopted for `sep_sc`
    and `seq_sc`).
 
-3. **Lock-stored separation facts** (`fundamental_sepcheck_global`): lock
-   facts are consumed at arbitrary later program points with no budget in
-   scope, and `EnvTyping` admits aliased droppable capture variables
+2. **Lock-stored separation facts** (`fundamental_sepcheck_global`): lock
+   facts are consumed at arbitrary later program points — in particular
+   inside `modal_modal` subtyping transports, where no `EnvSepWf` invariant
+   is available (`SemSubtyp` cannot carry one: the `exi` rule transports
+   under a `can_drop` binder with an arbitrary, possibly aliasing, pack
+   witness) — and `EnvTyping` admits aliased droppable capture variables
    (`sepcheck_global_droppable_false`).
 
-4. **Dead-set supply at eliminations** (`dead_set_supply`, used at `app`,
-   `tapp`, `capp`, `unwrap`): a closure's denotation demands the invariant
-   relative to the closure's *stored* dead-set `ds`; the caller owns it
-   relative to the *ambient* `K`. By `TypeEnv.DropSepIn.retarget` the supply
-   reduces to "the budget's droppable peaks avoid `deadIn ds`" — true in
-   derivable programs (dead-sets only grow along sequencing, so
-   `ds = K_creation ⊑ K_call`, and the caller's avoidance covers it), but
-   the elimination rules accept *any* `ds`: a lambda parameter may be
-   annotated with an arrow type whose stored dead-set names a live capture
-   variable that the arrow also captures, and then the supply is false
-   (`dead_set_supply_false`). Static fix options: an elimination-side
-   premise `ds ⊑ K` (the type's dead-set is covered by the ambient one), or
-   a well-formedness condition on closure types (the capture annotation's
-   droppable peaks avoid the stored dead-set). A type-system design
-   decision — to be made with the human. -/
+3. **Drop-authority laundering through subsumption**
+   (`consumed_peaks_droppable`, used by `sem_typ_unpack`'s witness-separation
+   argument): the leaf rules (`drop`, `pack`) only consume `can_drop`
+   variables, but `subtyp`'s `Subcapt` premise admits widening a budget with
+   an arbitrary `drop·c` atom over an `access_only` variable `c`
+   (`sc_elem`), and such a `c` may alias a live droppable with no separation
+   evidence anywhere — so "every `.drop`-mode peak of a budget is
+   `can_drop`" is false (`consumed_peaks_droppable_false`). Static fix
+   options: a premise `((C1.peakset Γ).consumed).droppable Γ` on
+   `letin`/`unpack`, or an `EquivP`-style side condition restricting
+   drop-atom widening in `subtyp`. -/
 
 namespace CoreCapybara.Gaps
 
@@ -124,60 +115,17 @@ theorem envtyping2 : EnvTyping Γ2 env2 mem1 := by
   · exact .top
   · exact cap0_drop_free
 
-/-- The budget peaking both droppable capture variables of `Γ2`. -/
-def Cb2 : CaptureSet ({},C,C) :=
-  (.cvar (.M .epsilon) (.there .here)) ∪ (.cvar (.M .epsilon) .here)
-
-/-- A well-typed environment may alias two droppable capture variables; no
-budget peaking both can satisfy the separation invariant, whatever the
-dead-set: the avoidance condition forbids excusing either peak. -/
-theorem env2_not_dropsep (K : CaptureSet ({},C,C)) : ¬ env2.DropSepIn K Cb2 := by
+/-- A well-typed environment may alias two droppable capture variables:
+`EnvTyping` records no cross-variable disjointness, so the environment
+separation invariant `EnvSepWf` is *not* a consequence of `EnvTyping` — it
+must be threaded as an invariant (which is exactly what `SemanticTyping`
+does). -/
+theorem env2_not_envsepwf : ¬ env2.EnvSepWf := by
   intro h
   exact cap0_not_disjoint_self
-    (h.pairs (.there .here) .here (.M .epsilon) (.M .epsilon)
-      (by intro heq; cases heq) rfl rfl
-      (.union_right_left .refl) (.union_right_right .refl))
+    (h (.there .here) .here (by intro heq; cases heq) rfl rfl)
 
-/-! ## Gap 1: capture instantiation erases peak identity
-
-These refute the `.here` branches of `Retype.open_carg`'s droppable-peak
-transport fields — the obstacle to transporting the closure premise through
-`capp` and `unpack`. -/
-
-/-- Forward transport fails: a droppable capture binder may be instantiated
-with a *ground* capture set, which has no droppable peak at all (this is
-exactly the `unpack` situation, where the witness is a runtime capture set).
-Refutes the `.here` branch of `Retype.open_carg`'s `dpeak_cvar_fwd`. -/
-theorem open_carg_dpeak_fwd_false :
-    ¬ (∀ {s : Sig} (env : TypeEnv s) (C : CaptureSet s)
-        (cap : CapabilitySet) (a : Authority) (c : BVar (s,C) .cvar),
-        (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a).lookup_cvar_auth c
-          = .can_drop →
-        ∃ d, TypeEnv.HasDroppablePeak env ((Subst.openCVar C).cvar c) d ∧
-          (env.lookup_cvar d).2
-            = ((env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a).lookup_cvar c).2) := by
-  intro h
-  obtain ⟨d, -, -⟩ :=
-    h (s := {}) TypeEnv.empty cs0 cap0 .can_drop .here rfl
-  cases d
-
-/-- Uniqueness fails: a capture binder may be instantiated with a capture set
-peaking *two distinct* droppable capture variables (this is the `capp`
-situation — `CaptureBound.IsValid` is mode-based and does not constrain the
-authority of the peaks). Refutes the `.here` branch of `Retype.open_carg`'s
-`dpeak_cvar_unique`. -/
-theorem open_carg_dpeak_unique_false :
-    ¬ (∀ {s : Sig} (env : TypeEnv s) (C : CaptureSet s) (c : BVar (s,C) .cvar)
-        (d1 d2 : BVar s .cvar),
-        TypeEnv.HasDroppablePeak env ((Subst.openCVar C).cvar c) d1 →
-        TypeEnv.HasDroppablePeak env ((Subst.openCVar C).cvar c) d2 → d1 = d2) := by
-  intro h
-  have heq := h env2 Cb2 .here (.there .here) .here
-    ⟨rfl, .M .epsilon, .union_right_left .refl⟩
-    ⟨rfl, .M .epsilon, .union_right_right .refl⟩
-  cases heq
-
-/-! ## Gap 2: subsumption peak slack
+/-! ## Gap 1: subsumption peak slack
 
 These refute the peak-membership equivalence needed by `sem_typ_app` (the
 `hps` hypothesis of `Retype.open_arg`) and by `sem_subtyp_arrow` (the
@@ -242,7 +190,7 @@ theorem app_peak_slack_false :
   rw [heq] at hsub
   exact CaptureSet.cvar_not_subset_empty hsub
 
-/-! ## Gap 3: lock-stored `sep_droppable` facts
+/-! ## Gap 2: lock-stored `sep_droppable` facts
 
 This refutes the `sep_droppable` case of `fundamental_sepcheck_global` (the
 interpretation of lock-stored `SepCheck` facts, which must hold with no
@@ -265,36 +213,28 @@ theorem sepcheck_global_droppable_false :
     env2 mem1 envtyping2
   exact noninterference_cap0_self_false hni
 
-/-! ## Gap 4: dead-set supply at eliminations
+/-! ## Gap 3: drop-authority laundering through subsumption
 
-This refutes `dead_set_supply` exactly as stated: the elimination rules
-accept a function type with an *arbitrary* stored dead-set `ds`, and nothing
-ties it to the ambient `K`. A well-typed world can hold a droppable capture
-variable that is live in the ambient dead-set (`K = ∅`) but named by the
-type's dead-set, while also being a budget peak — the avoidance condition of
-`DropSepIn ds` is then self-contradictory and cannot be supplied. -/
+This refutes `consumed_peaks_droppable` exactly as stated: a `.drop`-mode
+peak of a budget need not be a `can_drop` variable, because `subtyp`'s
+`Subcapt` premise admits `sc_elem`-widening the budget with an arbitrary
+`drop·c` atom over an `access_only` variable. `unpack`'s witness-separation
+argument then loses its anchor: such a `c` may alias a live droppable (the
+shared world `env2` with one authority flipped shows the semantic
+configurations are well-typed), and the freshly-unpacked witness — bounded
+only by the budget's consumed part (`pack_bound`) — may then alias the live
+droppable too, defeating `EnvSepWf` for the continuation. -/
 
-theorem dead_set_supply_false :
-    ¬ (∀ {s : Sig} (Γ : Ctx s) (env : TypeEnv s) (m : Memory) (K ds C : CaptureSet s),
-        EnvTyping Γ env m →
-        env.DropSepIn K C → env.DropSepIn ds C) := by
+/-- A context with a single *access-only* capture variable. -/
+def Γ1c : Ctx ({},C) := (Ctx.empty).push_cvar .access_only .unbound
+
+theorem consumed_peaks_droppable_false :
+    ¬ (∀ {s : Sig} (Γ : Ctx s) (C : CaptureSet s) (c : BVar s .cvar),
+        (CaptureSet.cvar .drop c) ⊆ CaptureSet.peaks Γ C →
+        Γ.lookup_authority c = .can_drop) := by
   intro h
-  -- The caller's invariant: ambient dead-set `∅`, budget `{ε·cB}` — holds
-  -- (a single peak has no pairs, and nothing is statically dead).
-  have hdsi : env2.DropSepIn .empty (.cvar (.M .epsilon) .here) := by
-    apply TypeEnv.DropSepIn.of_pairs
-    · intro c1 c2 a1 a2 hne h1 h2 hp1 hp2
-      exact absurd
-        (((CaptureSet.cvar_subset_cvar_inv hp1).2).trans
-          ((CaptureSet.cvar_subset_cvar_inv hp2).2).symm)
-        hne
-    · intro a c hp _ hdead
-      obtain ⟨a', hsub⟩ := hdead
-      exact CaptureSet.cvar_not_subset_empty hsub
-  -- The closure's demand: stored dead-set `{ε·cB}` — its avoidance condition
-  -- forbids the budget peak `cB` itself.
-  have h2 := h Γ2 env2 mem1 .empty (.cvar (.M .epsilon) .here)
-    (.cvar (.M .epsilon) .here) envtyping2 hdsi
-  exact h2.avoid (.M .epsilon) .here .refl rfl ⟨.M .epsilon, .refl⟩
+  have hauth := h Γ1c (.cvar .drop .here) .here
+    (by rw [CaptureSet.peaks]; exact .refl)
+  cases hauth
 
 end CoreCapybara.Gaps
