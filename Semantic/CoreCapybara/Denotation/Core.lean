@@ -619,7 +619,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     e = .var (.free l) ∧
     m.lookup l = some (.capability (.mcell b0 ℓ0)) ∧
     (cs.denot env m).covers (.access .epsilon) l
-| env, .arrow T1 ds cs T2 => fun m e =>
+| env, .arrow T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' T0 t0,
@@ -630,14 +630,13 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (arg : Nat) (m' : Memory),
       m'.subsumes m ->
       m'.is_compatible R0 ->
-      env.DropSepIn ds cs ->
       Ty.val_denot env T1 m' (.var (.free arg)) ->
       Ty.exi_exp_denot
         (env.extend_var arg (compute_peakset env T1.captureSet))
         T2
         R0
         m' (t0.subst (Subst.openVar (.free arg))))
-| env, .poly T1 ds cs T2 => fun m e =>
+| env, .poly T1 cs T2 => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' S0 t0,
@@ -648,7 +647,6 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (m' : Memory) (denot : Denot),
       m'.subsumes m ->
       m'.is_compatible R0 ->
-      env.DropSepIn ds cs ->
       denot.is_proper ->
       denot.implies_simple_ans ->
       denot.ImplyAfter m' (Ty.val_denot env T1) ->
@@ -658,7 +656,7 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         T2
         R0
         m' (t0.subst (Subst.openTVar .top)))
-| env, .cpoly B ds cs T => fun m e =>
+| env, .cpoly B cs T => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs' B0 t0,
@@ -672,14 +670,13 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
       let A0 := CS.denot TypeEnv.empty
       m'.subsumes m ->
       m'.is_compatible R0 ->
-      env.DropSepIn ds cs ->
       ((A0 m').BoundedBy (B.denot env m')) ->
       Ty.exi_exp_denot
         (env.extend_cvar CS (cap := CS.ground_denot m'))
         T
         R0
         m' (t0.subst (Subst.openCVar CS)))
-| env, .modal ds cs Ψ E => fun m e =>
+| env, .modal cs Ψ E => fun m e =>
   e.WfInHeap m.heap ∧
   (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
   ∃ cs0 sepctx0 t0,
@@ -695,7 +692,6 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (m' : Memory),
       m'.subsumes m ->
       m'.is_compatible R0 ->
-      env.DropSepIn ds cs ->
      (∀ C mode,
         Ψ.Has C mode ->
         CapabilitySet.HasKind (C.denot env m') mode) ->
