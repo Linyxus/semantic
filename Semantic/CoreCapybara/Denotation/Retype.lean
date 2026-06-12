@@ -8,14 +8,13 @@ def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
   | .free n => n
   | .bound x => (env.lookup_var x).1
 
-/-! ### Droppable-peak machinery for transporting `DropSepIn` along `Retype`
+/-! ### Peak machinery for transporting denotations along `Retype`
 
-`DropSepIn` selects pairs of distinct `.can_drop` capture variables peaked in
-a budget. To transport it along a substitution we factor budgets through
-their computed peaks (`compute_peaks` is idempotent), and require of a
-`Retype` a pairwise, capability-preserving correspondence between droppable
-peaks on the two sides (`dpeak_fwd`/`dpeak_back`), plus stability of peak
-membership under pre-computing peaks (`peaks`). -/
+To relate a denotation under an environment to the denotation of its
+substitution we factor capture-set budgets through their computed peaks
+(`compute_peaks` is idempotent) and track peak membership (`HasPeak`), which is
+stable under pre-computing peaks (`Retype.peaks`) and transports along
+environment rebindings. -/
 
 /-- `compute_peaks` is the identity on peaks-only capture sets. -/
 theorem compute_peaks_peaksOnly_fixed {env : TypeEnv s} {P : CaptureSet s}
@@ -135,11 +134,6 @@ theorem compute_peaks_subset_monotone {env : TypeEnv s} {C1 C2 : CaptureSet s}
 def TypeEnv.HasPeak (env : TypeEnv s) (C : CaptureSet s) (c : BVar s .cvar) : Prop :=
   ∃ a, (CaptureSet.cvar a c) ⊆ compute_peaks env C
 
-/-- A droppable peak of a budget: a `.can_drop`-authority capture variable
-among the budget's computed peaks. -/
-def TypeEnv.HasDroppablePeak (env : TypeEnv s) (C : CaptureSet s) (c : BVar s .cvar) : Prop :=
-  env.lookup_cvar_auth c = .can_drop ∧ env.HasPeak C c
-
 theorem TypeEnv.HasPeak.of_peaks_eq {env : TypeEnv s} {C1 C2 : CaptureSet s}
     {c : BVar s .cvar}
     (heq : compute_peaks env C1 = compute_peaks env C2) :
@@ -193,47 +187,6 @@ theorem TypeEnv.HasPeak.applyAccess_iff {env : TypeEnv s} {C : CaptureSet s}
     | M m => exact CaptureSet.cvar_subset_applyMut_fwd m h
     | drop => exact ⟨.drop, CaptureSet.cvar_subset_applyDrop_fwd h⟩
 
-theorem TypeEnv.HasDroppablePeak.applyAccess_iff {env : TypeEnv s} {C : CaptureSet s}
-    {a : Access} {c : BVar s .cvar} :
-    env.HasDroppablePeak (C.applyAccess a) c ↔ env.HasDroppablePeak C c :=
-  and_congr Iff.rfl TypeEnv.HasPeak.applyAccess_iff
-
-/-- Every droppable peak of a substituted peaks-only budget reflects through
-one of the budget's capture-variable atoms. -/
-theorem TypeEnv.HasDroppablePeak.subst_peaksOnly_inv {σ : Subst s1 s2} {env2 : TypeEnv s2}
-    {P : CaptureSet s1} (hP : P.PeaksOnly) {d : BVar s2 .cvar}
-    (h : TypeEnv.HasDroppablePeak env2 (P.subst σ) d) :
-    ∃ (c : BVar s1 .cvar) (m : Access),
-      (CaptureSet.cvar m c) ⊆ P ∧ TypeEnv.HasDroppablePeak env2 (σ.cvar c) d := by
-  obtain ⟨hauth, hp⟩ := h
-  revert hp
-  induction hP with
-  | empty =>
-    intro hp
-    exact absurd hp TypeEnv.HasPeak.not_empty
-  | union _ _ ih1 ih2 =>
-    intro hp
-    rcases TypeEnv.HasPeak.union_iff.mp hp with hp' | hp'
-    · obtain ⟨c, m, hsub, hd⟩ := ih1 hp'
-      exact ⟨c, m, .union_right_left hsub, hd⟩
-    · obtain ⟨c, m, hsub, hd⟩ := ih2 hp'
-      exact ⟨c, m, .union_right_right hsub, hd⟩
-  | cvar =>
-    intro hp
-    rename_i m c
-    exact ⟨c, m, .refl, hauth, TypeEnv.HasPeak.applyAccess_iff.mp hp⟩
-
-/-- Conversely, a droppable peak of the image of an atom of a budget is a
-droppable peak of the substituted budget. -/
-theorem TypeEnv.HasDroppablePeak.subst_of_atom {σ : Subst s1 s2} {env2 : TypeEnv s2}
-    {P : CaptureSet s1} {c : BVar s1 .cvar} {m : Access}
-    (hsub : (CaptureSet.cvar m c) ⊆ P) {d : BVar s2 .cvar}
-    (hd : TypeEnv.HasDroppablePeak env2 (σ.cvar c) d) :
-    TypeEnv.HasDroppablePeak env2 (P.subst σ) d := by
-  obtain ⟨a, hp⟩ := (TypeEnv.HasDroppablePeak.applyAccess_iff (a := m)).mpr hd |>.2
-  exact ⟨hd.1, a,
-    CaptureSet.Subset.trans hp (compute_peaks_subset_monotone hsub.subst)⟩
-
 /-- Peak membership transports along any environment rebinding. -/
 theorem Rebind.peaks_at {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
     (ρ : Rebind env1 f env2) (cs : CaptureSet s1) (c : BVar s1 .cvar) :
@@ -257,24 +210,6 @@ theorem Rebind.peaks_at_inv {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeE
   rw [← rebind_compute_peaks ρ] at h
   obtain ⟨c', hfc, h'⟩ := (compute_peaks_is_peak env1 cs).cvar_subset_rename_inv h
   exact ⟨c', hfc, a, h'⟩
-
-/-- Droppable peaks transport along any environment rebinding. -/
-theorem Rebind.has_droppable_peak {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-    (ρ : Rebind env1 f env2) (cs : CaptureSet s1) (c : BVar s1 .cvar) :
-    env1.HasDroppablePeak cs c ↔ env2.HasDroppablePeak (cs.rename f) (f.var c) := by
-  unfold TypeEnv.HasDroppablePeak
-  rw [ρ.cvar_auth c]
-  exact and_congr Iff.rfl (ρ.peaks_at cs c)
-
-theorem Rebind.has_droppable_peak_inv {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-    (ρ : Rebind env1 f env2) (cs : CaptureSet s1) (d : BVar s2 .cvar)
-    (h : env2.HasDroppablePeak (cs.rename f) d) :
-    ∃ c, f.var c = d ∧ env1.HasDroppablePeak cs c := by
-  obtain ⟨hauth, hp⟩ := h
-  obtain ⟨c, hfc, hp'⟩ := ρ.peaks_at_inv cs d hp
-  subst hfc
-  rw [← ρ.cvar_auth c] at hauth
-  exact ⟨c, rfl, hauth, hp'⟩
 
 /-- Over a non-capture binder, every peaks-only capture set is the weakening
 of a peaks-only capture set of the base signature. -/
@@ -319,10 +254,10 @@ theorem TypeEnv.HasPeak.ty_captureSet_subst {T : Ty .capt s1} {σ : Subst s1 s2}
   | top => exact Iff.rfl
   | unit => exact Iff.rfl
   | bool => exact Iff.rfl
-  | arrow T1 _ cs T2 => exact Iff.rfl
-  | poly T1 _ cs T2 => exact Iff.rfl
-  | cpoly cb _ cs T => exact Iff.rfl
-  | modal _ cs Ψ T => exact Iff.rfl
+  | arrow T1 cs T2 => exact Iff.rfl
+  | poly T1 cs T2 => exact Iff.rfl
+  | cpoly cb cs T => exact Iff.rfl
+  | modal cs Ψ T => exact Iff.rfl
   | cap cs => exact Iff.rfl
   | cell cs => exact Iff.rfl
   | reader cs => exact Iff.rfl
@@ -347,34 +282,6 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) (D :
     ∀ (b : BVar s1 .var) (d : BVar s2 .cvar),
       env2.HasPeak (.var (.M .epsilon) (σ.var b)) d ↔
       env2.HasPeak ((env1.lookup_var b).2.cs.subst σ) d
-
-  /-- Backward droppable-peak transport at a capture variable: a droppable
-  peak of the image of `c` reflects to droppability of `c`, with equal
-  capability set. -/
-  dpeak_cvar_back :
-    ∀ (c : BVar s1 .cvar) (d : BVar s2 .cvar),
-      TypeEnv.HasDroppablePeak env2 (σ.cvar c) d →
-      env1.lookup_cvar_auth c = .can_drop ∧
-      (env1.lookup_cvar c).2 = (env2.lookup_cvar d).2
-
-  /-- The image of a capture variable has at most one droppable peak. -/
-  dpeak_cvar_unique :
-    ∀ (c : BVar s1 .cvar) (d1 d2 : BVar s2 .cvar),
-      TypeEnv.HasDroppablePeak env2 (σ.cvar c) d1 →
-      TypeEnv.HasDroppablePeak env2 (σ.cvar c) d2 → d1 = d2
-
-  /-- Forward droppable-peak transport at a capture variable. -/
-  dpeak_cvar_fwd :
-    ∀ (c : BVar s1 .cvar),
-      env1.lookup_cvar_auth c = .can_drop →
-      ∃ d, TypeEnv.HasDroppablePeak env2 (σ.cvar c) d ∧
-        (env2.lookup_cvar d).2 = (env1.lookup_cvar c).2
-
-  /-- Distinct capture variables have distinct droppable peaks. -/
-  dpeak_cvar_inj :
-    ∀ (c1 c2 : BVar s1 .cvar) (d : BVar s2 .cvar),
-      TypeEnv.HasDroppablePeak env2 (σ.cvar c1) d →
-      TypeEnv.HasDroppablePeak env2 (σ.cvar c2) d → c1 = c2
 
 /-- Peak membership of a substituted budget only depends on the source budget
 through its computed peaks. Derived from the `var_peaks` field. -/
@@ -409,129 +316,6 @@ theorem Retype.peaks
       rw [hl, hr]
       refine Iff.trans TypeEnv.HasPeak.applyAccess_iff ?_
       exact Iff.trans (ρ.var_peaks b d) TypeEnv.HasPeak.applyAccess_iff.symm
-
-/-- Backward droppable-peak transport for peaks-only budgets: droppable peaks
-of the substituted budget are covered, pairwise-injectively and with equal
-capability sets, by droppable peaks of the source budget. -/
-theorem Retype.dpeak_back
-    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D)
-    (P : CaptureSet s1) (hP : P.PeaksOnly) (d1 d2 : BVar s2 .cvar)
-    (h1 : TypeEnv.HasDroppablePeak env2 (P.subst σ) d1)
-    (h2 : TypeEnv.HasDroppablePeak env2 (P.subst σ) d2) :
-    ∃ c1 c2,
-      (d1 ≠ d2 → c1 ≠ c2) ∧
-      TypeEnv.HasDroppablePeak env1 P c1 ∧ TypeEnv.HasDroppablePeak env1 P c2 ∧
-      (env1.lookup_cvar c1).2 = (env2.lookup_cvar d1).2 ∧
-      (env1.lookup_cvar c2).2 = (env2.lookup_cvar d2).2 := by
-  obtain ⟨c1, m1, hs1, hd1⟩ := TypeEnv.HasDroppablePeak.subst_peaksOnly_inv hP h1
-  obtain ⟨c2, m2, hs2, hd2⟩ := TypeEnv.HasDroppablePeak.subst_peaksOnly_inv hP h2
-  obtain ⟨hauth1, hcap1⟩ := ρ.dpeak_cvar_back c1 d1 hd1
-  obtain ⟨hauth2, hcap2⟩ := ρ.dpeak_cvar_back c2 d2 hd2
-  refine ⟨c1, c2, ?_,
-    ⟨hauth1, m1, by rw [compute_peaks_peaksOnly_fixed hP]; exact hs1⟩,
-    ⟨hauth2, m2, by rw [compute_peaks_peaksOnly_fixed hP]; exact hs2⟩,
-    hcap1, hcap2⟩
-  intro hne heq
-  subst heq
-  exact hne (ρ.dpeak_cvar_unique c1 d1 d2 hd1 hd2)
-
-/-- Forward droppable-peak transport for peaks-only budgets. -/
-theorem Retype.dpeak_fwd
-    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D)
-    (P : CaptureSet s1) (hP : P.PeaksOnly) (c1 c2 : BVar s1 .cvar)
-    (h1 : TypeEnv.HasDroppablePeak env1 P c1)
-    (h2 : TypeEnv.HasDroppablePeak env1 P c2) :
-    ∃ d1 d2,
-      (c1 ≠ c2 → d1 ≠ d2) ∧
-      TypeEnv.HasDroppablePeak env2 (P.subst σ) d1 ∧ TypeEnv.HasDroppablePeak env2 (P.subst σ) d2 ∧
-      (env2.lookup_cvar d1).2 = (env1.lookup_cvar c1).2 ∧
-      (env2.lookup_cvar d2).2 = (env1.lookup_cvar c2).2 := by
-  obtain ⟨hauth1, a1, hp1⟩ := h1
-  obtain ⟨hauth2, a2, hp2⟩ := h2
-  rw [compute_peaks_peaksOnly_fixed hP] at hp1 hp2
-  obtain ⟨d1, hd1, hcap1⟩ := ρ.dpeak_cvar_fwd c1 hauth1
-  obtain ⟨d2, hd2, hcap2⟩ := ρ.dpeak_cvar_fwd c2 hauth2
-  refine ⟨d1, d2, ?_,
-    TypeEnv.HasDroppablePeak.subst_of_atom hp1 hd1,
-    TypeEnv.HasDroppablePeak.subst_of_atom hp2 hd2,
-    hcap1, hcap2⟩
-  intro hne heq
-  subst heq
-  exact hne (ρ.dpeak_cvar_inj c1 c2 d1 hd1 hd2)
-
-/-- Forward deadness transport: if `d` is a droppable peak of `c`'s image and
-`c` is statically dead in `K`, then `d` is statically dead in `K`'s image. -/
-theorem Retype.dead_fwd
-    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D) (K : CaptureSet s1) {c : BVar s1 .cvar} {d : BVar s2 .cvar}
-    (hd : TypeEnv.HasDroppablePeak env2 (σ.cvar c) d)
-    (hdead : env1.DeadIn K c) : env2.DeadIn (K.subst σ) d := by
-  obtain ⟨aK, hp⟩ := hdead
-  exact (ρ.peaks d K).mpr (TypeEnv.HasDroppablePeak.subst_of_atom hp hd).2
-
-/-- Backward deadness transport: if `d` is a droppable peak of `c`'s image and
-`d` is statically dead in `K`'s image, then `c` is statically dead in `K`.
-Uses the injectivity field: `d` reflects through a unique source variable. -/
-theorem Retype.dead_back
-    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D) (K : CaptureSet s1) {c : BVar s1 .cvar} {d : BVar s2 .cvar}
-    (hd : TypeEnv.HasDroppablePeak env2 (σ.cvar c) d)
-    (hdead : env2.DeadIn (K.subst σ) d) : env1.DeadIn K c := by
-  have hpk : TypeEnv.HasDroppablePeak env2 ((compute_peaks env1 K).subst σ) d :=
-    ⟨hd.1, (ρ.peaks d K).mp hdead⟩
-  obtain ⟨cK, mK, hsK, hdK⟩ :=
-    TypeEnv.HasDroppablePeak.subst_peaksOnly_inv (compute_peaks_is_peak env1 K) hpk
-  cases ρ.dpeak_cvar_inj c cK d hd hdK
-  exact ⟨mK, hsK⟩
-
-/-- The environment-separation invariant transports along any `Retype`:
-budgets reduce to their peaks, and the `dpeak` fields provide a pairwise,
-capability-preserving droppable-peak correspondence; the same fields
-transport static deadness in both directions for the avoidance condition. -/
-theorem Retype.dsep
-    {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
-    (ρ : Retype env1 σ env2 D) (K cs : CaptureSet s1) :
-    TypeEnv.DropSepIn env1 K cs ↔ TypeEnv.DropSepIn env2 (K.subst σ) (cs.subst σ) := by
-  constructor
-  · intro h
-    apply TypeEnv.DropSepIn.of_pairs
-    · intro d1 d2 a1 a2 hne hauth1 hauth2 hp1 hp2
-      obtain ⟨c1, c2, hne', hc1, hc2, hcap1, hcap2⟩ :=
-        ρ.dpeak_back (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) d1 d2
-          ⟨hauth1, (ρ.peaks d1 cs).mp ⟨a1, hp1⟩⟩
-          ⟨hauth2, (ρ.peaks d2 cs).mp ⟨a2, hp2⟩⟩
-      obtain ⟨hauth1', a1', hpc1⟩ := hc1
-      obtain ⟨hauth2', a2', hpc2⟩ := hc2
-      rw [compute_peaks_idem] at hpc1 hpc2
-      rw [← hcap1, ← hcap2]
-      exact h.pairs c1 c2 a1' a2' (hne' hne) hauth1' hauth2' hpc1 hpc2
-    · intro a d hp hauth hdead
-      have hd : TypeEnv.HasDroppablePeak env2 ((compute_peaks env1 cs).subst σ) d :=
-        ⟨hauth, (ρ.peaks d cs).mp ⟨a, hp⟩⟩
-      obtain ⟨c, m, hsub, hdc⟩ :=
-        TypeEnv.HasDroppablePeak.subst_peaksOnly_inv (compute_peaks_is_peak env1 cs) hd
-      exact h.avoid m c hsub (ρ.dpeak_cvar_back c d hdc).1 (ρ.dead_back K hdc hdead)
-  · intro h
-    apply TypeEnv.DropSepIn.of_pairs
-    · intro c1 c2 a1 a2 hne hauth1 hauth2 hp1 hp2
-      obtain ⟨d1, d2, hne', hd1, hd2, hcap1, hcap2⟩ :=
-        ρ.dpeak_fwd (compute_peaks env1 cs) (compute_peaks_is_peak env1 cs) c1 c2
-          ⟨hauth1, a1, by rw [compute_peaks_idem]; exact hp1⟩
-          ⟨hauth2, a2, by rw [compute_peaks_idem]; exact hp2⟩
-      obtain ⟨hauth1', hpa1⟩ := hd1
-      obtain ⟨hauth2', hpa2⟩ := hd2
-      obtain ⟨a1', hp1'⟩ := (ρ.peaks d1 cs).mpr hpa1
-      obtain ⟨a2', hp2'⟩ := (ρ.peaks d2 cs).mpr hpa2
-      rw [← hcap1, ← hcap2]
-      exact h.pairs d1 d2 a1' a2' (hne' hne) hauth1' hauth2' hp1' hp2'
-    · intro a c hp hauth hdead
-      obtain ⟨d, hdc, hcap⟩ := ρ.dpeak_cvar_fwd c hauth
-      have hdp : TypeEnv.HasDroppablePeak env2 ((compute_peaks env1 cs).subst σ) d :=
-        TypeEnv.HasDroppablePeak.subst_of_atom hp hdc
-      obtain ⟨a', hp'⟩ := (ρ.peaks d cs).mpr hdp.2
-      exact h.avoid a' d hp' hdc.1 (ρ.dead_fwd K hdc hdead)
 
 /-- The peak-membership hypothesis needed to lift a `Retype` under a value
 binder, when the two stored peak sets are the computed peaks of an argument
@@ -621,48 +405,6 @@ theorem Retype.liftVar
         have h2 := (Rebind.weaken (env := env2) (x := x) (ps := ps2)).peaks_at
           ((env1.lookup_var z).2.cs.subst σ) d0
         exact Iff.trans (Iff.trans h1.symm (ρ.var_peaks z d0)) h2
-  dpeak_cvar_back := fun c dv hd => by
-    cases c with
-    | there c0 =>
-      obtain ⟨d0, hfd, hd0⟩ :=
-        (Rebind.weaken (env := env2) (x := x) (ps := ps2)).has_droppable_peak_inv (σ.cvar c0) dv hd
-      subst hfd
-      obtain ⟨hauth, hcap⟩ := ρ.dpeak_cvar_back c0 d0 hd0
-      exact ⟨hauth, hcap⟩
-  dpeak_cvar_unique := fun c dv1 dv2 hd1 hd2 => by
-    cases c with
-    | there c0 =>
-      obtain ⟨d01, hfd1, hd01⟩ :=
-        (Rebind.weaken (env := env2) (x := x) (ps := ps2)).has_droppable_peak_inv
-          (σ.cvar c0) dv1 hd1
-      obtain ⟨d02, hfd2, hd02⟩ :=
-        (Rebind.weaken (env := env2) (x := x) (ps := ps2)).has_droppable_peak_inv
-          (σ.cvar c0) dv2 hd2
-      subst hfd1
-      subst hfd2
-      rw [ρ.dpeak_cvar_unique c0 d01 d02 hd01 hd02]
-  dpeak_cvar_fwd := fun c hauth => by
-    cases c with
-    | there c0 =>
-      obtain ⟨d0, hd0, hcap⟩ := ρ.dpeak_cvar_fwd c0 hauth
-      refine ⟨.there d0, ?_, hcap⟩
-      exact ((Rebind.weaken (env := env2) (x := x) (ps := ps2)).has_droppable_peak
-        (σ.cvar c0) d0).mp hd0
-  dpeak_cvar_inj := fun c1 c2 dv hd1 hd2 => by
-    cases c1 with
-    | there c01 =>
-      cases c2 with
-      | there c02 =>
-        obtain ⟨d01, hfd1, hd01⟩ :=
-          (Rebind.weaken (env := env2) (x := x) (ps := ps2)).has_droppable_peak_inv
-            (σ.cvar c01) dv hd1
-        obtain ⟨d02, hfd2, hd02⟩ :=
-          (Rebind.weaken (env := env2) (x := x) (ps := ps2)).has_droppable_peak_inv
-            (σ.cvar c02) dv hd2
-        subst hfd1
-        cases BVar.there.inj hfd2
-        exact congrArg BVar.there (ρ.dpeak_cvar_inj c01 c02 d01 hd01 hd02)
-
 private lemma subset_to_coveredby {A B : CaptureSet s} (h : A ⊆ B) : A.CoveredBy B := by
   induction h with
   | refl => exact CaptureSet.CoveredBy.refl'
@@ -782,43 +524,6 @@ theorem Retype.liftTVar
         have h2 := (Rebind.tweaken (env := env2) (d := d)).peaks_at
           ((env1.lookup_var z).2.cs.subst σ) d0
         exact Iff.trans (Iff.trans h1.symm (ρ.var_peaks z d0)) h2
-  dpeak_cvar_back := fun c dv hd => by
-    cases c with
-    | there c0 =>
-      obtain ⟨d0, hfd, hd0⟩ :=
-        (Rebind.tweaken (env := env2) (d := d)).has_droppable_peak_inv (σ.cvar c0) dv hd
-      subst hfd
-      obtain ⟨hauth, hcap⟩ := ρ.dpeak_cvar_back c0 d0 hd0
-      exact ⟨hauth, hcap⟩
-  dpeak_cvar_unique := fun c dv1 dv2 hd1 hd2 => by
-    cases c with
-    | there c0 =>
-      obtain ⟨d01, hfd1, hd01⟩ :=
-        (Rebind.tweaken (env := env2) (d := d)).has_droppable_peak_inv (σ.cvar c0) dv1 hd1
-      obtain ⟨d02, hfd2, hd02⟩ :=
-        (Rebind.tweaken (env := env2) (d := d)).has_droppable_peak_inv (σ.cvar c0) dv2 hd2
-      subst hfd1
-      subst hfd2
-      rw [ρ.dpeak_cvar_unique c0 d01 d02 hd01 hd02]
-  dpeak_cvar_fwd := fun c hauth => by
-    cases c with
-    | there c0 =>
-      obtain ⟨d0, hd0, hcap⟩ := ρ.dpeak_cvar_fwd c0 hauth
-      refine ⟨.there d0, ?_, hcap⟩
-      exact ((Rebind.tweaken (env := env2) (d := d)).has_droppable_peak (σ.cvar c0) d0).mp hd0
-  dpeak_cvar_inj := fun c1 c2 dv hd1 hd2 => by
-    cases c1 with
-    | there c01 =>
-      cases c2 with
-      | there c02 =>
-        obtain ⟨d01, hfd1, hd01⟩ :=
-          (Rebind.tweaken (env := env2) (d := d)).has_droppable_peak_inv (σ.cvar c01) dv hd1
-        obtain ⟨d02, hfd2, hd02⟩ :=
-          (Rebind.tweaken (env := env2) (d := d)).has_droppable_peak_inv (σ.cvar c02) dv hd2
-        subst hfd1
-        cases BVar.there.inj hfd2
-        exact congrArg BVar.there (ρ.dpeak_cvar_inj c01 c02 d01 hd01 hd02)
-
 theorem Retype.liftCVar
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   (ρ : Retype env1 σ env2 D) (cs : CaptureSet {}) (cap : CapabilitySet := .empty)
@@ -876,77 +581,6 @@ theorem Retype.liftCVar
         have h2 := (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).peaks_at
           ((env1.lookup_var z).2.cs.subst σ) d0
         exact Iff.trans (Iff.trans h1.symm (ρ.var_peaks z d0)) h2
-  dpeak_cvar_back := fun c dv hd => by
-    cases c with
-    | here =>
-      obtain ⟨hauth, a', hp⟩ := hd
-      obtain ⟨-, heq⟩ := CaptureSet.cvar_subset_cvar_inv hp
-      subst heq
-      exact ⟨hauth, rfl⟩
-    | there c0 =>
-      obtain ⟨d0, hfd, hd0⟩ :=
-        (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak_inv
-          (σ.cvar c0) dv hd
-      subst hfd
-      obtain ⟨hauth, hcap⟩ := ρ.dpeak_cvar_back c0 d0 hd0
-      exact ⟨hauth, hcap⟩
-  dpeak_cvar_unique := fun c dv1 dv2 hd1 hd2 => by
-    cases c with
-    | here =>
-      obtain ⟨-, a1, hp1⟩ := hd1
-      obtain ⟨-, a2, hp2⟩ := hd2
-      rw [(CaptureSet.cvar_subset_cvar_inv hp1).2, (CaptureSet.cvar_subset_cvar_inv hp2).2]
-    | there c0 =>
-      obtain ⟨d01, hfd1, hd01⟩ :=
-        (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak_inv
-          (σ.cvar c0) dv1 hd1
-      obtain ⟨d02, hfd2, hd02⟩ :=
-        (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak_inv
-          (σ.cvar c0) dv2 hd2
-      subst hfd1
-      subst hfd2
-      rw [ρ.dpeak_cvar_unique c0 d01 d02 hd01 hd02]
-  dpeak_cvar_fwd := fun c hauth => by
-    cases c with
-    | here =>
-      exact ⟨.here, ⟨hauth, .M .epsilon, .refl⟩, rfl⟩
-    | there c0 =>
-      obtain ⟨d0, hd0, hcap⟩ := ρ.dpeak_cvar_fwd c0 hauth
-      refine ⟨.there d0, ?_, hcap⟩
-      exact ((Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak
-        (σ.cvar c0) d0).mp hd0
-  dpeak_cvar_inj := fun c1 c2 dv hd1 hd2 => by
-    cases c1 with
-    | here =>
-      cases c2 with
-      | here => rfl
-      | there c02 =>
-        obtain ⟨-, a1, hp1⟩ := hd1
-        obtain ⟨d02, hfd2, -⟩ :=
-          (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak_inv
-            (σ.cvar c02) dv hd2
-        rw [(CaptureSet.cvar_subset_cvar_inv hp1).2] at hfd2
-        cases (show BVar.there d02 = BVar.here from hfd2)
-    | there c01 =>
-      cases c2 with
-      | here =>
-        obtain ⟨-, a2, hp2⟩ := hd2
-        obtain ⟨d01, hfd1, -⟩ :=
-          (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak_inv
-            (σ.cvar c01) dv hd1
-        rw [(CaptureSet.cvar_subset_cvar_inv hp2).2] at hfd1
-        cases (show BVar.there d01 = BVar.here from hfd1)
-      | there c02 =>
-        obtain ⟨d01, hfd1, hd01⟩ :=
-          (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak_inv
-            (σ.cvar c01) dv hd1
-        obtain ⟨d02, hfd2, hd02⟩ :=
-          (Rebind.cweaken (env := env2) (cs := cs) (cap := cap) (a := a)).has_droppable_peak_inv
-            (σ.cvar c02) dv hd2
-        subst hfd1
-        cases BVar.there.inj hfd2
-        exact congrArg BVar.there (ρ.dpeak_cvar_inj c01 c02 d01 hd01 hd02)
-
 def retype_resolved_capture_set
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   (ρ : Retype env1 σ env2 D) (C : CaptureSet s1) :
@@ -1128,7 +762,7 @@ def retype_val_denot
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
     rw [← retype_captureset_denot ρ cs]
-  | .arrow T1 ds cs T2 => by
+  | .arrow T1 cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1137,27 +771,27 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro arg m' hsub hcompat hdsep harg
+      intro arg m' hsub hcompat harg
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot
         (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2) (ρ.lift_hps T1)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mpr harg
-      specialize hd arg m' hsub hcompat ((ρ.dsep ds cs).mpr hdsep) harg'
+      specialize hd arg m' hsub hcompat harg'
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro arg m' hsub hcompat hdsep harg
+      intro arg m' hsub hcompat harg
       let R0 := expand_captures m.heap cs'
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.subst σ).captureSet
       have ih2 := retype_exi_exp_denot
         (ρ.liftVar (x:=arg) (ps1:=ps1) (ps2:=ps2) (ρ.lift_hps T1)) T2 R0
       have harg' := (ih1 m' (.var (.free arg))).mp harg
-      specialize hd arg m' hsub hcompat ((ρ.dsep ds cs).mp hdsep) harg'
+      specialize hd arg m' hsub hcompat harg'
       exact (ih2 m' _).mpr hd
-  | .poly T1 ds cs T2 => by
+  | .poly T1 cs T2 => by
     have ih1 := retype_val_denot ρ T1
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1166,27 +800,27 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hcompat hdsep hproper himply_simple_ans himply hpure
+      intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
       let R0 := expand_captures m.heap cs'
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env1 T1) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mpr (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat ((ρ.dsep ds cs).mpr hdsep)
+      specialize hd m' denot hsub hcompat
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' denot hsub hcompat hdsep hproper himply_simple_ans himply hpure
+      intro m' denot hsub hcompat hproper himply_simple_ans himply hpure
       let R0 := expand_captures m.heap cs'
       have ih2 := retype_exi_exp_denot (ρ.liftTVar (d:=denot)) T2 R0
       have himply' : denot.ImplyAfter m' (Ty.val_denot env2 (T1.subst σ)) := by
         intro m'' hsub' e' hdenot
         exact (ih1 m'' e').mp (himply m'' hsub' e' hdenot)
-      specialize hd m' denot hsub hcompat ((ρ.dsep ds cs).mp hdsep)
+      specialize hd m' denot hsub hcompat
         hproper himply_simple_ans himply' hpure
       exact (ih2 m' _).mpr hd
-  | .cpoly B ds cs T => by
+  | .cpoly B cs T => by
     have hB := retype_capturebound_denot ρ B
     intro m e
     simp only [Ty.val_denot, Ty.subst]
@@ -1196,26 +830,26 @@ def retype_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hdf hsub hcompat hdsep hsub_bound
+      intro m' CS hwf_CS hdf hsub hcompat hsub_bound
       let R0 := expand_captures m.heap cs'
       let cap1 : CapabilitySet := CS.ground_denot m'
       let ρ1 : Retype (env1.extend_cvar CS cap1) σ.lift
                       (env2.extend_cvar CS cap1) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap1)
       have ih2 := retype_exi_exp_denot ρ1 T R0
-      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.dsep ds cs).mpr hdsep) hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat hsub_bound
       exact (ih2 m' _).mp hd
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro m' CS hwf_CS hdf hsub hcompat hdsep hsub_bound
+      intro m' CS hwf_CS hdf hsub hcompat hsub_bound
       let R0 := expand_captures m.heap cs'
       let cap2 : CapabilitySet := CS.ground_denot m'
       let ρ2 : Retype (env1.extend_cvar CS cap2) σ.lift
                       (env2.extend_cvar CS cap2) (D.rename Rename.succ) :=
         ρ.liftCVar (cs:=CS) (cap:=cap2)
-      specialize hd m' CS hwf_CS hdf hsub hcompat ((ρ.dsep ds cs).mp hdsep) hsub_bound
+      specialize hd m' CS hwf_CS hdf hsub hcompat hsub_bound
       exact (retype_exi_exp_denot ρ2 T R0 m' _).mpr hd
-  | .modal ds cs Ψ T => by
+  | .modal cs Ψ T => by
     intro m e
     simp only [Ty.val_denot, Ty.subst]
     rw [← retype_resolved_capture_set ρ]
@@ -1226,7 +860,7 @@ def retype_val_denot
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
       · intro m' hsub hsat'
         exact hsat m' hsub ((retype_satisfy_iff ρ Ψ m').mpr hsat')
-      · intro m' hsub hcompat hdsep hkind hsep
+      · intro m' hsub hcompat hkind hsep
         let R0 := expand_captures m.heap cs0
         have ih := retype_exi_exp_denot ρ T R0
         have hkind' :
@@ -1243,13 +877,13 @@ def retype_val_denot
           simpa only [retype_captureset_denot (ρ := ρ) (C := C1),
             retype_captureset_denot (ρ := ρ) (C := C2)] using
               hsep (C1.subst σ) m1 (C2.subst σ) m2 (hdistinct.subst_retype)
-        exact (ih m' _).mp (hbody m' hsub hcompat ((ρ.dsep ds cs).mpr hdsep) hkind' hsep')
+        exact (ih m' _).mp (hbody m' hsub hcompat hkind' hsep')
     · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
         hsat, hR0_sub, hbody⟩
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
       · intro m' hsub hsat'
         exact hsat m' hsub ((retype_satisfy_iff ρ Ψ m').mp hsat')
-      · intro m' hsub hcompat hdsep hkind hsep
+      · intro m' hsub hcompat hkind hsep
         let R0 := expand_captures m.heap cs0
         have ih := retype_exi_exp_denot ρ T R0
         have hkind' :
@@ -1268,7 +902,7 @@ def retype_val_denot
           simpa only [retype_captureset_denot (ρ := ρ) (C := D1),
             retype_captureset_denot (ρ := ρ) (C := D2)] using
               hsep D1 m1 D2 m2 hdistinct0
-        exact (ih m' _).mpr (hbody m' hsub hcompat ((ρ.dsep ds cs).mp hdsep) hkind' hsep')
+        exact (ih m' _).mpr (hbody m' hsub hcompat hkind' hsep')
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
@@ -1356,34 +990,6 @@ def Retype.open_arg {s : Sig} {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s
       refine TypeEnv.HasPeak.of_peaks_eq ?_
       rw [compute_peaks_peaksOnly_fixed (env.lookup_var z).2.h]
       rfl
-  dpeak_cvar_back := fun c d hd => by
-    cases c with
-    | there c0 =>
-      obtain ⟨hauth, a, hp⟩ := hd
-      obtain ⟨-, heq⟩ := CaptureSet.cvar_subset_cvar_inv hp
-      subst heq
-      exact ⟨hauth, rfl⟩
-  dpeak_cvar_unique := fun c d1 d2 hd1 hd2 => by
-    cases c with
-    | there c0 =>
-      obtain ⟨-, a1, hp1⟩ := hd1
-      obtain ⟨-, a2, hp2⟩ := hd2
-      rw [(CaptureSet.cvar_subset_cvar_inv hp1).2, (CaptureSet.cvar_subset_cvar_inv hp2).2]
-  dpeak_cvar_fwd := fun c hauth => by
-    cases c with
-    | there c0 =>
-      exact ⟨c0, ⟨hauth, .M .epsilon, .refl⟩, rfl⟩
-  dpeak_cvar_inj := fun c1 c2 d hd1 hd2 => by
-    cases c1 with
-    | there c01 =>
-      cases c2 with
-      | there c02 =>
-        obtain ⟨-, a1, hp1⟩ := hd1
-        obtain ⟨-, a2, hp2⟩ := hd2
-        exact congrArg BVar.there
-          (((CaptureSet.cvar_subset_cvar_inv hp1).2).symm.trans
-            (CaptureSet.cvar_subset_cvar_inv hp2).2)
-
 theorem open_arg_val_denot
     {env : TypeEnv s} {y : Var .var s} {ps : PeakSet s} {T : Ty .capt (s,x)}
     (hps : ∀ (d : BVar s .cvar),
@@ -1441,34 +1047,6 @@ def Retype.open_targ {env : TypeEnv s} {S : PureTy s} :
       refine TypeEnv.HasPeak.of_peaks_eq ?_
       rw [compute_peaks_peaksOnly_fixed (env.lookup_var z).2.h]
       rfl
-  dpeak_cvar_back := fun c d hd => by
-    cases c with
-    | there c0 =>
-      obtain ⟨hauth, a, hp⟩ := hd
-      obtain ⟨-, heq⟩ := CaptureSet.cvar_subset_cvar_inv hp
-      subst heq
-      exact ⟨hauth, rfl⟩
-  dpeak_cvar_unique := fun c d1 d2 hd1 hd2 => by
-    cases c with
-    | there c0 =>
-      obtain ⟨-, a1, hp1⟩ := hd1
-      obtain ⟨-, a2, hp2⟩ := hd2
-      rw [(CaptureSet.cvar_subset_cvar_inv hp1).2, (CaptureSet.cvar_subset_cvar_inv hp2).2]
-  dpeak_cvar_fwd := fun c hauth => by
-    cases c with
-    | there c0 =>
-      exact ⟨c0, ⟨hauth, .M .epsilon, .refl⟩, rfl⟩
-  dpeak_cvar_inj := fun c1 c2 d hd1 hd2 => by
-    cases c1 with
-    | there c01 =>
-      cases c2 with
-      | there c02 =>
-        obtain ⟨-, a1, hp1⟩ := hd1
-        obtain ⟨-, a2, hp2⟩ := hd2
-        exact congrArg BVar.there
-          (((CaptureSet.cvar_subset_cvar_inv hp1).2).symm.trans
-            (CaptureSet.cvar_subset_cvar_inv hp2).2)
-
 theorem open_targ_val_denot {env : TypeEnv s} {S : PureTy s} {T : Ty .capt (s,X)} :
   Ty.val_denot (env.extend_tvar (Ty.val_denot env S.core)) T ≈
     Ty.val_denot env (T.subst (Subst.openTVar S)) := by
@@ -1485,20 +1063,8 @@ theorem open_targ_exi_exp_denot
     Ty.exi_exp_denot env (T.subst (Subst.openTVar S)) R := by
   apply retype_exi_exp_denot Retype.open_targ
 
-/-- GAP (capture instantiation erases peak identity): opening a capture
-binder with a capture set `C` is not a peak-faithful operation. On the source
-side the bound variable `.here` is a single atomic peak with the stored
-authority and capability; its image `C` may have zero (e.g. a ground witness
-at `unpack`) or several (e.g. a union argument at `capp`) droppable peaks,
-with unrelated capability sets. The `.here` branches of the droppable-peak
-transport fields below are therefore `sorry`ed — each is refuted
-definition-level in `CoreCapybara.Gaps` (`open_carg_dpeak_fwd_false`,
-`open_carg_dpeak_unique_false`). The `.there` branches and the variable-peak
-correspondence are proven. This is the precise way in which `Retype`/
-`openCVar` transport "erases capture-variable identity and authority"
-(see the `CoreCapybara.Gaps` module docstring): the closure premise
-`env.DropSepIn ds cs` of `val_denot` cannot cross a `capp`/`unpack` boundary
-when the budget peaks at the instantiated capture variable. -/
+/-- Opening a capture binder by substituting the capture set `C` for the
+innermost bound capture variable. -/
 def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet := .empty)
   (a : Authority := .access_only) :
   Retype
@@ -1532,56 +1098,6 @@ def Retype.open_carg {env : TypeEnv s} {C : CaptureSet s} (cap : CapabilitySet :
       refine TypeEnv.HasPeak.of_peaks_eq ?_
       rw [compute_peaks_peaksOnly_fixed (env.lookup_var z).2.h]
       rfl
-  dpeak_cvar_back := fun c d hd => by
-    cases c with
-    | here =>
-      -- GAP: a droppable peak of `C` need not match the stored authority and
-      -- capability of the instantiated binder.
-      sorry
-    | there c0 =>
-      obtain ⟨hauth, a', hp⟩ := hd
-      obtain ⟨-, heq⟩ := CaptureSet.cvar_subset_cvar_inv hp
-      subst heq
-      exact ⟨hauth, rfl⟩
-  dpeak_cvar_unique := fun c d1 d2 hd1 hd2 => by
-    cases c with
-    | here =>
-      -- GAP: `C` may have several droppable peaks; refuted in
-      -- `CoreCapybara.Gaps.open_carg_dpeak_unique_false`.
-      sorry
-    | there c0 =>
-      obtain ⟨-, a1, hp1⟩ := hd1
-      obtain ⟨-, a2, hp2⟩ := hd2
-      rw [(CaptureSet.cvar_subset_cvar_inv hp1).2, (CaptureSet.cvar_subset_cvar_inv hp2).2]
-  dpeak_cvar_fwd := fun c hauth => by
-    cases c with
-    | here =>
-      -- GAP: a droppable binder may be instantiated with a peak-free (ground)
-      -- capture set; refuted in `CoreCapybara.Gaps.open_carg_dpeak_fwd_false`.
-      sorry
-    | there c0 =>
-      exact ⟨c0, ⟨hauth, .M .epsilon, .refl⟩, rfl⟩
-  dpeak_cvar_inj := fun c1 c2 d hd1 hd2 => by
-    cases c1 with
-    | here =>
-      cases c2 with
-      | here => rfl
-      | there c02 =>
-        -- GAP: `C` may peak at a capture variable that is also a direct peak
-        -- of the budget.
-        sorry
-    | there c01 =>
-      cases c2 with
-      | here =>
-        -- GAP: symmetric to the previous branch.
-        sorry
-      | there c02 =>
-        obtain ⟨-, a1, hp1⟩ := hd1
-        obtain ⟨-, a2, hp2⟩ := hd2
-        exact congrArg BVar.there
-          (((CaptureSet.cvar_subset_cvar_inv hp1).2).symm.trans
-            (CaptureSet.cvar_subset_cvar_inv hp2).2)
-
 theorem open_carg_val_denot
     {env : TypeEnv s} {C : CaptureSet s} {T : Ty .capt (s,C)} (cap : CapabilitySet := .empty)
     (a : Authority := .access_only) :
