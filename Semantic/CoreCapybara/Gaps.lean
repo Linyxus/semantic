@@ -23,9 +23,14 @@ the former subsumption-peak-slack gaps: stored peak sets are denotationally
 inert in this model (denotations read the environment only through
 `lookup_var.1`/`lookup_tvar`/`lookup_cvar`), so the `Retype` transport needs
 no per-variable peak correspondence and `sem_typ_app`/`sem_subtyp_arrow` are
-fully proven.
+fully proven. The former drop-authority-laundering gap is closed statically:
+the `unpack` rule carries the side condition
+`((C1.peakset Γ).consumed).droppable Γ` (consumed peaks must be droppable),
+which every leaf-generated budget satisfies and which rules out
+`sc_elem`-widening a sequenced budget with `drop·c` atoms over `access_only`
+variables.
 
-## The remaining gaps
+## The remaining gap
 
 1. **Lock-stored separation facts** (`fundamental_sepcheck_global`): lock
    facts are consumed at arbitrary later program points — in particular
@@ -33,19 +38,7 @@ fully proven.
    is available (`SemSubtyp` cannot carry one: the `exi` rule transports
    under a `can_drop` binder with an arbitrary, possibly aliasing, pack
    witness) — and `EnvTyping` admits aliased droppable capture variables
-   (`sepcheck_global_droppable_false`).
-
-2. **Drop-authority laundering through subsumption**
-   (`consumed_peaks_droppable`, used by `sem_typ_unpack`'s witness-separation
-   argument): the leaf rules (`drop`, `pack`) only consume `can_drop`
-   variables, but `subtyp`'s `Subcapt` premise admits widening a budget with
-   an arbitrary `drop·c` atom over an `access_only` variable `c`
-   (`sc_elem`), and such a `c` may alias a live droppable with no separation
-   evidence anywhere — so "every `.drop`-mode peak of a budget is
-   `can_drop`" is false (`consumed_peaks_droppable_false`). Static fix
-   options: a premise `((C1.peakset Γ).consumed).droppable Γ` on
-   `letin`/`unpack`, or an `EquivP`-style side condition restricting
-   drop-atom widening in `subtyp`. -/
+   (`sepcheck_global_droppable_false`). -/
 
 namespace CoreCapybara.Gaps
 
@@ -119,7 +112,7 @@ theorem env2_not_envsepwf : ¬ env2.EnvSepWf := by
   exact cap0_not_disjoint_self
     (h (.there .here) .here (by intro heq; cases heq) rfl rfl)
 
-/-! ## Gap 1: lock-stored `sep_droppable` facts
+/-! ## The gap: lock-stored `sep_droppable` facts
 
 This refutes the `sep_droppable` case of `fundamental_sepcheck_global` (the
 interpretation of lock-stored `SepCheck` facts, which must hold with no
@@ -141,29 +134,5 @@ theorem sepcheck_global_droppable_false :
     (.push (.push .empty (.cvar .unbound)) (.cvar .unbound))
     env2 mem1 envtyping2
   exact noninterference_cap0_self_false hni
-
-/-! ## Gap 2: drop-authority laundering through subsumption
-
-This refutes `consumed_peaks_droppable` exactly as stated: a `.drop`-mode
-peak of a budget need not be a `can_drop` variable, because `subtyp`'s
-`Subcapt` premise admits `sc_elem`-widening the budget with an arbitrary
-`drop·c` atom over an `access_only` variable. `unpack`'s witness-separation
-argument then loses its anchor: such a `c` may alias a live droppable (the
-shared world `env2` with one authority flipped shows the semantic
-configurations are well-typed), and the freshly-unpacked witness — bounded
-only by the budget's consumed part (`pack_bound`) — may then alias the live
-droppable too, defeating `EnvSepWf` for the continuation. -/
-
-/-- A context with a single *access-only* capture variable. -/
-def Γ1c : Ctx ({},C) := (Ctx.empty).push_cvar .access_only .unbound
-
-theorem consumed_peaks_droppable_false :
-    ¬ (∀ {s : Sig} (Γ : Ctx s) (C : CaptureSet s) (c : BVar s .cvar),
-        (CaptureSet.cvar .drop c) ⊆ CaptureSet.peaks Γ C →
-        Γ.lookup_authority c = .can_drop) := by
-  intro h
-  have hauth := h Γ1c (.cvar .drop .here) .here
-    (by rw [CaptureSet.peaks]; exact .refl)
-  cases hauth
 
 end CoreCapybara.Gaps

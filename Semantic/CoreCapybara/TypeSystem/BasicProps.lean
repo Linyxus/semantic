@@ -294,7 +294,7 @@ theorem HasType.use_set_is_closed
   | unwrap ht_x _ _ => exact HasType.typed_var_capture_closed ht_x
   | letin _ _ _ ih1 ih2 =>
     exact CaptureSet.IsClosed.union ih1 (CaptureSet.rename_closed_inv ih2)
-  | unpack _ _ _ ih1 ih2 =>
+  | unpack _ _ _ _ ih1 ih2 =>
     cases ih2 with
     | union hleft _ =>
       cases hleft with

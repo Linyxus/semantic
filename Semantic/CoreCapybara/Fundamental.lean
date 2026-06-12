@@ -4443,25 +4443,19 @@ theorem resolve_is_pack {e : Exp {}} {m : Memory}
           simp only [resolve, hval] at hres
           contradiction
 
-/-- GAP (drop-authority laundering through subsumption): the witness-separation
-argument at `unpack` needs every `.drop`-mode peak of the scrutinee's budget
-to be a `can_drop` variable. Then the kill at the sequencing point guarantees
-the witness aliases only *killed* variables (plus fresh cells), and
-`EnvSepWf` separates those killed sources from every live droppable. The leaf
-rules enforce droppability of consumed peaks (`drop` and `pack` carry
-`droppable` premises), but `subtyp`'s `Subcapt` premise admits `sc_elem`-style
-widening of a budget with an arbitrary `drop·c` atom over an `access_only`
-variable `c` — and such a `c` may alias a live droppable with no separation
-evidence anywhere. FALSE as stated: see
-`CoreCapybara.Gaps.consumed_peaks_droppable_false`. Static fix options:
-a premise `((C1.peakset Γ).consumed).droppable Γ` on `letin`/`unpack`
-(consumed peaks must be droppable — true of every leaf-generated budget), or
-an `EquivP`-style side condition restricting drop-atom widening in `subtyp`.
-A type-system design decision — to be made with the human. -/
+/-- Every `.drop`-mode peak of a budget whose consumed peaks are droppable is
+a `can_drop` variable. The `droppable` premise is the `unpack` rule's
+anti-laundering side condition (`((C1.peakset Γ).consumed).droppable Γ`):
+without it, `subtyp`'s `Subcapt` could widen a budget with a `drop·c` atom
+over an `access_only` variable `c` aliasing a live droppable, and the
+witness-separation argument below would lose its anchor. Leaf-generated
+budgets satisfy the premise by construction (`drop`/`pack` carry `droppable`
+premises). -/
 theorem consumed_peaks_droppable {Γ : Ctx s} {C : CaptureSet s} {c : BVar s .cvar}
+    (hdrop : ((C.peakset Γ).consumed).droppable Γ)
     (hsub : (CaptureSet.cvar .drop c) ⊆ CaptureSet.peaks Γ C) :
-    Γ.lookup_authority c = .can_drop := by
-  sorry
+    Γ.lookup_authority c = .can_drop :=
+  hdrop .drop c (CaptureSet.cvar_drop_subset_consumed hsub)
 
 /-- Semantic typing for `unpack`. As with `letin`, the inductive
     `SeqComp Γ C1 C2` premise (`hseq`) is threaded to `eval_unpack`'s `hseq`
@@ -4476,6 +4470,7 @@ theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
   (hseq : SeqComp Γ C1 C2)
+  (hdrop : ((C1.peakset Γ).consumed).droppable Γ)
   (hΓ : Γ.IsClosed)
   (hclosed_C1 : C1.IsClosed)
   (hclosed_C2 : C2.IsClosed)
@@ -4695,7 +4690,7 @@ theorem sem_typ_unpack
             cases hkilled
           have hauth1 : env.lookup_cvar_auth c1' = .can_drop := by
             rw [envtyping_lookup_cvar_auth hts c1']
-            exact consumed_peaks_droppable hpk1
+            exact consumed_peaks_droppable hdrop hpk1
           have hauth2 : env.lookup_cvar_auth c' = .can_drop :=
             TypeEnv.kill_peaks_cs_can_drop_inv hauth'
           exact hdsep c1' c' hne hauth1 hauth2 mu' mu2 l hc1mem hl2
@@ -5168,10 +5163,10 @@ theorem fundamental
     have hclosed_E1 := HasType.type_is_closed ht_syn
     exact sem_typ_subtyp (ht_ih hΓ hclosed_e) hsubcapt hsubtyp
       hclosed_C1 hclosed_E1 hclosed_C2 hclosed_E2
-  case unpack hseq ht_syn hu_syn ht_ih hu_ih =>
+  case unpack hseq hdrop ht_syn hu_syn ht_ih hu_ih =>
     cases hclosed_e with
     | unpack ht_closed hu_closed =>
-      apply sem_typ_unpack hseq hΓ
+      apply sem_typ_unpack hseq hdrop hΓ
         (HasType.use_set_is_closed ht_syn)
         (by
           have h := HasType.use_set_is_closed hu_syn

@@ -305,6 +305,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (C1 ∪ C2) Γ (.letin e1 e2) U
 | unpack :
   SeqComp Γ C1 C2 ->
+  ((C1.peakset Γ).consumed).droppable Γ ->
   HasType C1 Γ t (.exi T) ->
   HasType
     (((C2.rename Rename.succ).rename Rename.succ) ∪
