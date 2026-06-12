@@ -3,8 +3,12 @@ import Semantic.CoreCapybara.Syntax.Ty
 namespace CoreCapybara
 
 inductive Authority : Type where
+-- This capability may be dropped
 | can_drop : Authority
+-- This capability may only be accessed, not dropped
 | access_only : Authority
+-- This capability is already dropped, so it cannot be accessed or dropped again
+| killed : Authority
 
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
@@ -314,6 +318,34 @@ def PeakSet.droppable (Γ : Ctx s) (P : PeakSet s) : Prop :=
 /-- A capture set is droppable in `Γ` when all of its peaks are droppable. -/
 def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   PeakSet.droppable Γ (C.peakset Γ)
+
+/-- A peak set is accessible in `Γ` when every capture variable occurring in it
+is not bound with `.killed` authority. -/
+def PeakSet.accessible (Γ : Ctx s) (P : PeakSet s) : Prop :=
+  ∀ (a : Access) (c : BVar s .cvar),
+    (CaptureSet.cvar a c) ⊆ P.cs → Γ.lookup_authority c ≠ .killed
+
+/-- A capture set is accessible in `Γ` when all of its peaks are accessible. -/
+def CaptureSet.accessible (Γ : Ctx s) (C : CaptureSet s) : Prop :=
+  PeakSet.accessible Γ (C.peakset Γ)
+
+/-- Sets the authority of the capture variable `c` to `.killed`, leaving the
+rest of the context unchanged. -/
+def Ctx.kill_cvar : Ctx s -> BVar s .cvar -> Ctx s
+| .push Γ (.cvar _ cb), .here => .push Γ (.cvar .killed cb)
+| .push Γ b, .there c => .push (Γ.kill_cvar c) b
+
+/-- Kills every capture variable occurring in the capture set, turning each into
+`.killed`. Helper for `Ctx.kill_peaks`. -/
+def Ctx.kill_peaks_cs : Ctx s -> CaptureSet s -> Ctx s
+| Γ, .empty => Γ
+| Γ, .union cs1 cs2 => (Γ.kill_peaks_cs cs1).kill_peaks_cs cs2
+| Γ, .cvar _ c => Γ.kill_cvar c
+| Γ, .var _ _ => Γ
+
+/-- Turns all peaks in the peak set to `.killed` in the resulting context. -/
+def Ctx.kill_peaks (Γ : Ctx s) (P : PeakSet s) : Ctx s :=
+  Γ.kill_peaks_cs P.cs
 
 /-- A capture set is access-only in `Γ` when none of its peaks is dropped. -/
 def CaptureSet.AccessOnly (Γ : Ctx s) (C : CaptureSet s) : Prop :=
