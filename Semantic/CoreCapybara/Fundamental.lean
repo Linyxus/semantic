@@ -3107,64 +3107,62 @@ theorem fundamental_sepcheck
     exact sem_sepcheck_droppable hdistinct
 
 /-- Interpretation of lock-stored separation facts in *arbitrary* well-typed
-environments (no `EnvSepWf` available). Needed only by `modal_modal`
-subtyping, where `SemSubtyp` carries no environment-separation premise
-(it cannot: the `exi` rule transports under a `can_drop` binder with an
-arbitrary witness). -/
+environments carrying the `EnvSepWf` invariant. The `sep_droppable` case is the
+reason `EnvSepWf` is threaded: two distinct droppable capture variables denote
+disjoint capabilities exactly by that invariant (the former gap; the
+counterexample `Gaps.sepcheck_global_droppable_false` aliases them precisely
+because it is *not* `EnvSepWf`). The invariant reaches the `modal_modal`
+consumption point because `SemSubtyp` now carries it — the `exi` subtyping rule
+re-tags its fresh binder `.access_only`, which preserves `EnvSepWf`. -/
 theorem fundamental_sepcheck_global
   (hsep : SepCheck Γ C1 C2) (hΓ : Γ.IsClosed) :
   ∀ env H,
     EnvTyping Γ env H ->
+    env.EnvSepWf ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H) := by
   induction hsep with
   | sep_symm _ ih =>
-    intro env H hts
-    exact CapabilitySet.Noninterference.ni_symm (ih env H hts)
+    intro env H hts hdsep
+    exact CapabilitySet.Noninterference.ni_symm (ih env H hts hdsep)
   | sep_union _ _ ih1 ih2 =>
-    intro env H hts
+    intro env H hts hdsep
     simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
-    exact CapabilitySet.Noninterference.ni_union (ih1 env H hts) (ih2 env H hts)
+    exact CapabilitySet.Noninterference.ni_union (ih1 env H hts hdsep) (ih2 env H hts hdsep)
   | sep_empty =>
-    intro env H hts
+    intro env H hts _hdsep
     simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     exact .ni_empty
   | sep_ro hcl1 hcl2 hao1 hao2 hk1 hk2 =>
-    intro env H hts
+    intro env H hts _hdsep
     exact CapabilitySet.noninterference_of_ro_ro
       (fundamental_haskind hk1 env H hts) (fundamental_haskind hk2 env H hts)
       (accessonly_denot_drop_free hts hΓ hcl1 hao1)
       (accessonly_denot_drop_free hts hΓ hcl2 hao2)
   | sep_sc _ hsub _ ih =>
-    intro env H hts
-    exact CapabilitySet.Noninterference.subset_left (ih env H hts)
+    intro env H hts hdsep
+    exact CapabilitySet.Noninterference.subset_left (ih env H hts hdsep)
       (fundamental_subcapt hsub env H hts)
   | sep_lock hlock hdistinct =>
-    intro env H henv
+    intro env H henv _hdsep
     exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
   | sep_droppable hdistinct =>
-    -- GAP (lock-stored droppable separation): a lock stores a
-    -- `sep_droppable` fact about two distinct droppable capture variables,
-    -- but a merely well-typed environment may alias them: `EnvTyping`
-    -- records no cross-variable disjointness, and the consumption point
-    -- (`modal_modal` subtyping, transported inside value denotations) has
-    -- no `EnvSepWf` invariant available — `SemSubtyp` cannot carry one
-    -- because the `exi` rule transports under a `can_drop` binder with an
-    -- arbitrary pack witness. The statement is FALSE as is: see
-    -- `CoreCapybara.Gaps.sepcheck_global_droppable_false`. Restricting
-    -- lock-storable facts to a droppable-free fragment removes this case.
-    sorry
+    -- Two distinct droppable capture variables denote disjoint capabilities —
+    -- exactly the `EnvSepWf` invariant, now available. Identical content to
+    -- `sem_sepcheck_droppable`.
+    intro env H hts hdsep
+    exact sem_sepcheck_droppable hdistinct hΓ env H hts hdsep
 
-/-- `Satisfy` interpretation in arbitrary well-typed environments; inherits
-the `sep_droppable` gap of `fundamental_sepcheck_global`. Used only by
-`modal_modal`. -/
+/-- `Satisfy` interpretation in arbitrary well-typed environments carrying the
+`EnvSepWf` invariant. Used only by `modal_modal`. -/
 theorem sem_satisfy_global
   (hclosed_Ψ : Ψ.IsClosed)
   (hΓ : Γ.IsClosed)
   (hsatisfy : Satisfy Γ Ψ) :
   ∀ env m,
     EnvTyping Γ env m ->
+    env.EnvSepWf ->
     env.Satisfy Ψ m := by
-  intro env m henv
+  intro env m henv hdsep
   cases hsatisfy with
   | satisfy hkind hsep =>
     constructor
@@ -3174,7 +3172,7 @@ theorem sem_satisfy_global
     · intro C mode hhas
       exact fundamental_haskind (hkind C mode hhas) env m henv
     · intro C1 m1 C2 m2 hdistinct
-      exact fundamental_sepcheck_global (hsep C1 m1 C2 m2 hdistinct) hΓ env m henv
+      exact fundamental_sepcheck_global (hsep C1 m1 C2 m2 hdistinct) hΓ env m henv hdsep
 
 theorem sem_satisfy
   (hclosed_Ψ : Ψ.IsClosed)
@@ -3551,7 +3549,7 @@ lemma sem_subtyp_top {T : Ty .capt s}
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
   -- Introduce the environment, memory, and typing assumption
-  intro env H htyping
+  intro env H htyping _hdsep
   -- Unfold ImplyAfter to handle memory subsumption
   unfold Denot.ImplyAfter
   intro m' hsubsumes
@@ -3673,7 +3671,7 @@ lemma sem_subtyp_tvar {X : BVar s .tvar} {S : PureTy s}
   SemSubtyp Γ (.tvar X) S.core := by
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping _hdsep
   -- Extract the type variable bound using the helper lemma
   have himply := env_typing_lookup_tvar hlookup htyping
   -- The result follows directly from himply
@@ -3687,7 +3685,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
   SemSubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2) := by
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping hdsep
   -- Need to prove Denot.ImplyAfter for arrow types
   unfold Denot.ImplyAfter
   intro m' hsubsumes e h_arrow_T1_cs1_U1
@@ -3730,7 +3728,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             let psT2 := compute_peakset env T2.captureSet
             -- Apply contravariance: if arg satisfies T2, it also satisfies T1
             have harg_T1 : Ty.val_denot env T1 m'' (.var (.free arg)) := by
-              exact harg env H htyping m'' (Memory.subsumes_trans hsub hsubsumes)
+              exact harg env H htyping hdsep m'' (Memory.subsumes_trans hsub hsubsumes)
                 (.var (.free arg)) harg_T2
             -- Define the authority sets
             let R0 := expand_captures m'.heap cs'
@@ -3795,7 +3793,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             -- Apply semantic subtyping for the result
             have himply_entails :=
               Denot.imply_after_to_m_entails_after
-                (hres (env.extend_var arg psT2) m'' htyping_ext)
+                (hres (env.extend_var arg psT2) m'' htyping_ext hdsep.extend_var)
             -- Apply monotonicity - goal is already at psT2, no back-rebind needed
             unfold Ty.exi_exp_denot at hbody_psT2 ⊢
             refine eval_post_monotonic_general ?_ hbody_psT2
@@ -3811,18 +3809,18 @@ lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
   | capt =>
     unfold SemSubtyp at h12 h23 ⊢
     -- For capturing types
-    intro env H htyping
-    have h12' := h12 env H htyping
-    have h23' := h23 env H htyping
+    intro env H htyping hdsep
+    have h12' := h12 env H htyping hdsep
+    have h23' := h23 env H htyping hdsep
     unfold Denot.ImplyAfter at h12' h23' ⊢
     intro m' hsubsumes
     exact Denot.implyat_trans (h12' m' hsubsumes) (h23' m' hsubsumes)
   | exi =>
     unfold SemSubtyp at h12 h23 ⊢
     -- For existential types
-    intro env H htyping
-    have h12' := h12 env H htyping
-    have h23' := h23 env H htyping
+    intro env H htyping hdsep
+    have h12' := h12 env H htyping hdsep
+    have h23' := h23 env H htyping hdsep
     unfold Denot.ImplyAfter at h12' h23' ⊢
     intro m' hsubsumes
     exact Denot.implyat_trans (h12' m' hsubsumes) (h23' m' hsubsumes)
@@ -3833,14 +3831,14 @@ lemma sem_subtyp_refl {k : TySort} {T : Ty k s} :
   | capt =>
     unfold SemSubtyp
     -- For capturing types
-    intro env H htyping
+    intro env H htyping _hdsep
     unfold Denot.ImplyAfter
     intro m' hsubsumes
     exact Denot.imply_implyat (Denot.imply_refl _)
   | exi =>
     unfold SemSubtyp
     -- For existential types
-    intro env H htyping
+    intro env H htyping _hdsep
     unfold Denot.ImplyAfter
     intro m' hsubsumes
     exact Denot.imply_implyat (Denot.imply_refl _)
@@ -3869,7 +3867,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
   : SemSubtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2) := by
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping hdsep
   -- Need to prove Denot.ImplyAfter for cpoly types
   unfold Denot.ImplyAfter
   intro m' hsubsumes e h_cpoly_cb1_cs1_T1
@@ -3938,7 +3936,8 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
               simpa only [TypeEnv.extend_cvar] using henv'_base
             have himply_entails :=
               Denot.imply_after_to_m_entails_after
-                (hT (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' henv')
+                (hT (env.extend_cvar CS (cap := CS.ground_denot m'')) m'' henv'
+                  hdsep.extend_cvar_access_only)
             -- Use eval_post_monotonic_general to lift heval1 from T1 to T2,
             -- preserving the pack-witness bound component.
             unfold Ty.exi_exp_denot at heval1 ⊢
@@ -4008,10 +4007,10 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
 
 
 lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
-  (hT : SemSubtyp (Γ,C[.can_drop]<:.unbound) T1 T2) -- covariant in body
+  (hT : SemSubtyp (Γ,C[.access_only]<:.unbound) T1 T2) -- covariant in body
   : SemSubtyp Γ (.exi T1) (.exi T2) := by
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping hdsep
   unfold Denot.ImplyAfter Denot.ImplyAt
   intro m hsubsumes e h_exi_T1
   simp only [Ty.exi_val_denot] at h_exi_T1 ⊢
@@ -4024,11 +4023,16 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
     | pack CS x =>
       obtain ⟨hwf_CS, hdf_CS, h_body_T1⟩ := h_exi_T1
       refine ⟨hwf_CS, hdf_CS, ?_⟩
-      have henv' : EnvTyping (Γ,C[.can_drop]<:.unbound)
-          (env.extend_cvar CS (cap := CS.ground_denot m) (a := .can_drop)) m := by
+      -- The exi value denotation binds the witness `.can_drop`, but subtyping
+      -- never reads authority (`val_denot_auth_irrel`): re-tag the binder
+      -- `.access_only` so the ambient `EnvSepWf` is preserved across it
+      -- (`EnvSepWf.extend_cvar_access_only`), matching the `.access_only`
+      -- `exi` subtyping rule. The body membership is transported both ways.
+      have henv' : EnvTyping (Γ,C[.access_only]<:.unbound)
+          (env.extend_cvar CS (cap := CS.ground_denot m) (a := .access_only)) m := by
         have henv'_base :
-            EnvTyping (Γ,C[.can_drop]<:.unbound)
-              (.extend env (.cvar .can_drop CS (CS.ground_denot m))) m := by
+            EnvTyping (Γ,C[.access_only]<:.unbound)
+              (.extend env (.cvar .access_only CS (CS.ground_denot m))) m := by
           constructor
           · exact hwf_CS
           constructor
@@ -4045,9 +4049,17 @@ lemma sem_subtyp_exi {T1 T2 : Ty .capt (s,C)}
           · rfl
           · exact env_typing_monotonic htyping hsubsumes
         simpa only [TypeEnv.extend_cvar] using henv'_base
-      have hT_sem := hT (env.extend_cvar CS (cap := CS.ground_denot m) (a := .can_drop)) m henv'
+      have hT_sem := hT (env.extend_cvar CS (cap := CS.ground_denot m) (a := .access_only)) m
+        henv' hdsep.extend_cvar_access_only
       unfold Denot.ImplyAfter Denot.ImplyAt at hT_sem
-      exact hT_sem m (Memory.subsumes_refl m) (.var x) h_body_T1
+      have h_body_T1' :
+          Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m) (a := .access_only)) T1
+            m (.var x) :=
+        Denot.equiv_ltr (val_denot_auth_irrel (a1 := .can_drop) (a2 := .access_only) T1)
+          h_body_T1
+      have h_body_T2' := hT_sem m (Memory.subsumes_refl m) (.var x) h_body_T1'
+      exact Denot.equiv_rtl (val_denot_auth_irrel (a1 := .can_drop) (a2 := .access_only) T2)
+        h_body_T2'
     | _ =>
       cases h_exi_T1
 
@@ -4056,13 +4068,13 @@ lemma sem_subtyp_typ {T1 T2 : Ty .capt s}
   : SemSubtyp Γ (.typ T1) (.typ T2) := by
   -- Unfold SemSubtyp for exi types
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping hdsep
   -- Unfold exi_val_denot for .typ
   -- .typ T has denotation capt_val_denot env T
   simp only [Ty.exi_val_denot]
   -- The goal is now: (capt_val_denot env T1).ImplyAfter H (capt_val_denot env T2)
   -- Which is exactly SemSubtyp Γ T1 T2 (for capt types)
-  exact hT env H htyping
+  exact hT env H htyping hdsep
 
 
 lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .exi (s,X)}
@@ -4073,7 +4085,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
   : SemSubtyp Γ (.poly S1.core cs1 T1) (.poly S2.core cs2 T2) := by
   -- Unfold SemSubtyp for capturing types
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping hdsep
   -- Need to prove Denot.ImplyAfter for poly types
   unfold Denot.ImplyAfter
   intro m' hsubsumes e h_poly_S1_cs1_T1
@@ -4115,7 +4127,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
               have hS2 := himply_S2 m''' hsub_m''' e' hdenot_e
               have hS_trans :=
                 Memory.subsumes_trans hsub_m''' (Memory.subsumes_trans hsub_m'' hsubsumes)
-              have hS_sem := hS env H htyping
+              have hS_sem := hS env H htyping hdsep
               unfold Denot.ImplyAfter Denot.ImplyAt at hS_sem
               exact hS_sem m''' hS_trans e' hS2
             -- Apply the original function body with this denot
@@ -4137,7 +4149,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
                       · exact hdenot_pure
                       · apply env_typing_monotonic htyping
                           (Memory.subsumes_trans hsub_m'' hsubsumes)
-            have hT_sem := hT (env.extend_tvar denot) m'' henv'
+            have hT_sem := hT (env.extend_tvar denot) m'' henv' hdsep.extend_tvar
             -- Convert to postcondition entailment
             have himply_entails := Denot.imply_after_to_m_entails_after hT_sem
             -- Use eval_post_monotonic_general to lift heval1 from T1 to T2
@@ -4153,7 +4165,7 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
   (hT : SemSubtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ)) :
   SemSubtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2) := by
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping hdsep
   unfold Denot.ImplyAfter
   intro m' hsubsumes e h_modal
   simp only [Ty.val_denot] at h_modal ⊢
@@ -4196,7 +4208,7 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
           · exact htyping_m''
         have himply_entails :=
           Denot.imply_after_to_m_entails_after
-            (hT (env.extend_lock) m'' htyping_lock)
+            (hT (env.extend_lock) m'' htyping_lock hdsep.extend_lock)
         have heval1' :
             Eval (expand_captures m'.heap cs0) m'' t0
               (fun v m3 =>
@@ -4227,7 +4239,7 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
   (hsat : Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ)) :
   SemSubtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E) := by
   unfold SemSubtyp
-  intro env H htyping
+  intro env H htyping hdsep
   unfold Denot.ImplyAfter
   intro m' hsubsumes e h_modal
   simp only [Ty.val_denot] at h_modal ⊢
@@ -4246,7 +4258,7 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
           · exact htyping_m''
         have hsat_ren := sem_satisfy_global (SepCtx.rename_closed hΨ1_closed)
           (Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hΨ2_closed)) hsat
-          (env.extend_lock) m'' htyping_lock
+          (env.extend_lock) m'' htyping_lock hdsep.extend_lock
         have hsat_Ψ1 := (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
         exact hsat_impl m'' hsubm'' hsat_Ψ1
       · intro m'' hsubm'' hcompat hkind hsep
@@ -4266,7 +4278,7 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
           · exact htyping_m''
         have hsat_ren := sem_satisfy_global (SepCtx.rename_closed hΨ1_closed)
           (Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hΨ2_closed)) hsat
-          (env.extend_lock) m'' htyping_lock
+          (env.extend_lock) m'' htyping_lock hdsep.extend_lock
         have hsat_Ψ1 := (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
         exact hbody m'' hsubm'' hcompat
           (fun C mode hhas => hsat_Ψ1.kind C mode hhas)
@@ -4389,7 +4401,7 @@ theorem sem_typ_subtyp
   -- Lift the evaluation from C1 to C2 using capability set monotonicity
   have h_eval_E1_at_C2 := eval_capability_set_monotonic h_eval_E1 hsubcapt_sem
   -- Use fundamental_subtyp to get E1 <: E2 semantically
-  have hsubtyp_sem := fundamental_subtyp hclosed_E1 hclosed_E2 hsubtyp env m htyping
+  have hsubtyp_sem := fundamental_subtyp hclosed_E1 hclosed_E2 hsubtyp env m htyping hdsep
   have h_entails := Denot.imply_after_to_m_entails_after hsubtyp_sem
   refine eval_post_monotonic_general ?_ h_eval_E1_at_C2
   intro m3 hsub3 v hpost

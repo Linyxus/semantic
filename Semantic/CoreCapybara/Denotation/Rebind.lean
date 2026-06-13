@@ -14,9 +14,6 @@ structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Pr
   cvar :
     ∀ (x : BVar s1 .cvar),
       env1.lookup_cvar x = env2.lookup_cvar (f.var x)
-  cvar_auth :
-    ∀ (x : BVar s1 .cvar),
-      env1.lookup_cvar_auth x = env2.lookup_cvar_auth (f.var x)
   cvar_injective :
     ∀ (x y : BVar s1 .cvar),
       f.var x = f.var y → x = y
@@ -57,10 +54,6 @@ def Rebind.liftVar
     | .there y => by
       simp only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
-  cvar_auth := fun
-    | .there y => by
-      simp only [TypeEnv.extend_var, Rename.lift, TypeEnv.lookup_cvar_auth]
-      exact ρ.cvar_auth y
   cvar_injective := fun
     | .there x, .there y, h => by
       simp only [Rename.lift] at h
@@ -92,10 +85,6 @@ def Rebind.liftTVar
     | .there y => by
       simp only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
-  cvar_auth := fun
-    | .there y => by
-      simp only [TypeEnv.extend_tvar, Rename.lift, TypeEnv.lookup_cvar_auth]
-      exact ρ.cvar_auth y
   cvar_injective := fun
     | .there x, .there y, h => by
       simp only [Rename.lift] at h
@@ -128,11 +117,6 @@ def Rebind.liftCVar
     | .there y => by
       simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_cvar]
       exact ρ.cvar y
-  cvar_auth := fun
-    | .here => rfl
-    | .there y => by
-      simp only [TypeEnv.extend_cvar, Rename.lift, TypeEnv.lookup_cvar_auth]
-      exact ρ.cvar_auth y
   cvar_injective := fun
     | .here, .here, _ => rfl
     | .there x, .there y, h => by
@@ -522,7 +506,6 @@ def Rebind.weaken {env : TypeEnv s} {x : Nat} {ps : PeakSet s} :
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
-  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
 def Rebind.tweaken {env : TypeEnv s} {d : Denot} :
@@ -531,7 +514,6 @@ def Rebind.tweaken {env : TypeEnv s} {d : Denot} :
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
-  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
 def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
@@ -541,7 +523,6 @@ def Rebind.cweaken {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
-  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
 
 def Rebind.lweaken {env : TypeEnv s} :
@@ -550,8 +531,32 @@ def Rebind.lweaken {env : TypeEnv s} :
   var_peaks := fun _ => rfl
   tvar := fun _ => rfl
   cvar := fun _ => rfl
-  cvar_auth := fun _ => rfl
   cvar_injective := fun _ _ h => BVar.there.inj h
+
+theorem PeakSet.rename_id {s : Sig} {ps : PeakSet s} : ps.rename Rename.id = ps := by
+  cases ps; simp only [PeakSet.rename, CaptureSet.rename_id]
+
+/-- Authority is denotationally inert: `val_denot`/`exi_val_denot` read the
+environment only through `lookup_*`/`from_TypeEnv`, every one of which discards
+the authority tag. So the identity rename is a `Rebind` between two
+`extend_cvar` binders that differ only in their authority. -/
+def Rebind.auth_irrel {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
+  {a1 a2 : Authority} :
+  Rebind (env.extend_cvar cs cap a1) Rename.id (env.extend_cvar cs cap a2) where
+  var := fun x => by cases x with | there y => rfl
+  var_peaks := fun x => by cases x with | there y => exact PeakSet.rename_id
+  tvar := fun x => by cases x with | there y => rfl
+  cvar := fun x => by cases x <;> rfl
+  cvar_injective := fun _ _ h => h
+
+/-- Re-tagging the topmost `extend_cvar` binder leaves `val_denot` unchanged. -/
+theorem val_denot_auth_irrel {env : TypeEnv s} {cs : CaptureSet {}}
+  {cap : CapabilitySet} {a1 a2 : Authority} (T : Ty .capt (s,C)) :
+  Ty.val_denot (env.extend_cvar cs cap a1) T
+    ≈ Ty.val_denot (env.extend_cvar cs cap a2) T := by
+  have h := rebind_val_denot (Rebind.auth_irrel (env := env) (cs := cs)
+    (cap := cap) (a1 := a1) (a2 := a2)) T
+  rwa [Ty.rename_id] at h
 
 theorem typed_env_satisfy_rebind
   {env1 : TypeEnv s1} {env2 : TypeEnv s2} {f : Rename s1 s2}

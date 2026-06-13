@@ -2114,19 +2114,19 @@ def SemDisjCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
     env.EnvSepWf ->
     CapabilitySet.disjoint (C1.denot env H) (C2.denot env H)
 
-/-- Semantic subtyping relation. Carries no environment-separation premise:
-the `exi` subtyping rule transports denotations under a `can_drop` binder
-whose pack witness is arbitrary (possibly aliasing), so `EnvSepWf` of the
-extended environment cannot be supplied there. The price is paid at
-`modal_modal`: lock-stored `sep_droppable` facts cannot be interpreted in
-arbitrary well-typed environments (see `fundamental_sepcheck_global`). -/
+/-- Semantic subtyping relation. Carries the environment-separation invariant
+`EnvSepWf`, which `modal_modal` needs to interpret lock-stored `sep_droppable`
+facts (via `fundamental_sepcheck_global`). The `exi` subtyping rule transports
+denotations under a fresh capture binder; since authority is denotationally
+inert (`val_denot_auth_irrel`), that binder is re-tagged `.access_only` so
+`EnvSepWf` is preserved across it (`EnvSepWf.extend_cvar_access_only`). -/
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
   | .capt =>
-    ∀ env H, EnvTyping Γ env H ->
+    ∀ env H, EnvTyping Γ env H -> env.EnvSepWf ->
       (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)
   | .exi =>
-    ∀ env H, EnvTyping Γ env H ->
+    ∀ env H, EnvTyping Γ env H -> env.EnvSepWf ->
       (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
 
 -- NOTE: The following theorems are no longer needed after the type hierarchy collapse.

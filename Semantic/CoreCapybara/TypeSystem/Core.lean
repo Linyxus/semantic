@@ -194,7 +194,7 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   ----------------------------------
   Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
 | exi :
-  Subtyp (Γ,C[.can_drop]<:.unbound) T1 T2 ->
+  Subtyp (Γ,C[.access_only]<:.unbound) T1 T2 ->
   --------------------------
   Subtyp Γ (.exi T1) (.exi T2)
 | typ :
