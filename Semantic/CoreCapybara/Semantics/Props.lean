@@ -93,7 +93,7 @@ theorem step_memory_monotonic
   | step_rename | step_unpack | step_par_left | step_par_right =>
     exact Memory.subsumes_refl _
   | step_write_true _ hx _ | step_write_false _ hx _ =>
-    exact Memory.update_mcell_subsumes _ _ _ ⟨_, hx⟩
+    exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩
   | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih
   | step_lift hv hwf hfresh => exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
 

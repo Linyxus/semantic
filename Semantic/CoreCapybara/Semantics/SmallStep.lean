@@ -12,7 +12,7 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
   Step C m (.app (.free x) (.free y)) m (e.subst (Subst.openVar (.free y)))
 | step_invoke :
-  C.covers .epsilon x ->
+  C.covers (.access .epsilon) x ->
   m.lookup x = some (.capability .basic) ->
   m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
   Step C m (.app (.free x) (.free y)) m .unit
@@ -33,20 +33,20 @@ inductive Step : CapabilitySet -> Memory -> Exp {} -> Memory -> Exp {} -> Prop w
   m.lookup x = some (.val ⟨.bfalse, hv, R⟩) ->
   Step C m (.cond (.free x) e1 e2) m e2
 | step_read :
-  C.covers .ro y ->
+  C.covers (.access .ro) y ->
   m.lookup x = some (.val ⟨.reader (.free y), hv_reader, R_reader⟩) ->
-  m.lookup y = some (.capability (.mcell b)) ->
+  m.lookup y = some (.capability (.mcell b .live)) ->
   Step C m (.read (.free x)) m (if b then .btrue else .bfalse)
 | step_write_true :
-  C.covers .epsilon x ->
-  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  C.covers (.access .epsilon) x ->
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
-  Step C m (.write (.free x) (.free y)) (m.update_mcell x true ⟨b0, hx⟩) .unit
+  Step C m (.write (.free x) (.free y)) (m.update_mcell x true .live ⟨b0, hx⟩) .unit
 | step_write_false :
-  C.covers .epsilon x ->
-  (hx : m.lookup x = some (.capability (.mcell b0))) ->
+  C.covers (.access .epsilon) x ->
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
   m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
-  Step C m (.write (.free x) (.free y)) (m.update_mcell x false ⟨b0, hx⟩) .unit
+  Step C m (.write (.free x) (.free y)) (m.update_mcell x false .live ⟨b0, hx⟩) .unit
 | step_ctx_letin :
   Step C m e1 m' e1' ->
   Step C m (.letin e1 e2) m' (.letin e1' e2)
