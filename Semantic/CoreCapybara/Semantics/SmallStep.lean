@@ -17,10 +17,7 @@ abbrev Trace : Type := List TraceItem
 
 /-- Small-step evaluation relation instrumented with a trace.
   `Step t m e m' e'` means that expression `e` in memory `m` steps to `e'` in
-  memory `m'`, emitting the trace `t` of heap events performed by this step.
-  The operational semantics no longer checks a capability bound; instead each
-  read/write/alloc/dealloc is *recorded* in `t`, leaving capability soundness to
-  be established separately against the recorded trace. -/
+  memory `m'`, emitting the trace `t` of heap events performed by this step. -/
 inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_apply :
   m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
