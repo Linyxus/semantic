@@ -174,21 +174,25 @@ def Memory.SubsumeOk (m1 : Memory) (t : Trace) (m2 : Memory) : Prop :=
     ((∃ mu, TraceItem.access mu l ∈ t) ∨ TraceItem.dealloc l ∈ t) ->
     ∃ b', m2.lookup l = some (.capability (.mcell b' .live))
 
-/-- Memory-subsumption monotonicity of `Eval`.
+/-- Memory-subsumption monotonicity of `Eval`, under the trace-footprint
+  liveness side condition `hok`.
 
-  NOTE (liveness gap): the four access cases `eval_read`/`eval_write_true`/
-  `eval_write_false`/`eval_drop` are `sorry`.  Each requires the accessed mcell
-  to be `.live` at `m2`, but `Cell.subsumes` permits `live → dead`, so a
-  subsuming `m2` may have killed exactly the cell being read/written/dropped.
-  In the capability-indexed version this was ruled out by `is_compatible C`
-  (every authorized mcell is live); with the trace-based `Eval` there is no `C`,
-  so this lemma now needs a trace-footprint liveness hypothesis ("every mcell
-  the trace touches stays live in `m2`"), which belongs to the trace-discipline
-  layer rather than here.  Every other case ports unchanged. -/
+  The four access cases (`eval_read`/`eval_write_true`/`eval_write_false`/
+  `eval_drop`) are discharged by `hok`: at each, the concrete one-event trace
+  makes `SubsumeOk` fire on the accessed cell, yielding it live in `m2`.
+
+  REMAINING GAP (`eval_letin`/`eval_unpack`, two `sorry`s): lifting `e1` via the
+  IH needs `hok` specialised to `e1`'s postcondition `Q1`, i.e.
+  `∀ t v m, Q1 t v m → SubsumeOk m1 t m2`.  This is the trace-footprint analogue
+  of the old static `C1 ⊆ Cagg` subset, but it is NOT derivable from `hok` at the
+  letin's `Q`: `e1`'s traces are only *prefixes* of the `Q`-traces, and bridging
+  a `Q1`-result to a `Q`-result needs answer-existence (plus that `Q1`-results
+  subsume `m1`), which is unavailable at this layer.  See the case comments. -/
 theorem eval_monotonic {m1 m2 : Memory}
   (hpred : Q.is_monotonic)
   (hbool : Q.is_bool_independent)
   (hsub : m2.subsumes m1)
+  (hok : ∀ t v m, Q t v m -> Memory.SubsumeOk m1 t m2)
   (hwf : Exp.WfInHeap e m1.heap)
   (heval : Eval m1 e Q) :
   Eval m2 e Q := by
@@ -232,7 +236,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       subst hsub_v
       apply Eval.eval_apply
       · exact hx2
-      · apply ih hpred hbool hsub (by
+      · apply ih hpred hbool hsub hok (by
           apply Exp.wf_subst
           · have hwf_abs := Memory.wf_lookup hx
             have ⟨_, _, hwf_e⟩ := Exp.wf_inv_abs hwf_abs
@@ -257,7 +261,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     subst hsub_v
     apply Eval.eval_tapply
     · exact hx2
-    · apply ih hpred hbool hsub (by
+    · apply ih hpred hbool hsub hok (by
         apply Exp.wf_subst
         · have hwf_tabs := Memory.wf_lookup hx
           have ⟨_, _, hwf_e⟩ := Exp.wf_inv_tabs hwf_tabs
@@ -272,7 +276,7 @@ theorem eval_monotonic {m1 m2 : Memory}
       subst hsub_v
       apply Eval.eval_capply
       · exact hx2
-      · apply ih hpred hbool hsub (by
+      · apply ih hpred hbool hsub hok (by
           apply Exp.wf_subst
           · have hwf_cabs := Memory.wf_lookup hx
             have ⟨_, _, hwf_e⟩ := Exp.wf_inv_cabs hwf_cabs
@@ -288,14 +292,21 @@ theorem eval_monotonic {m1 m2 : Memory}
       simp only [Cell.subsumes] at hsub_v
       subst hsub_v
       apply Eval.eval_unwrap hx2
-      apply ih hpred hbool hsub
+      apply ih hpred hbool hsub hok
       have hwf_boxed := Memory.wf_lookup hx
       cases hwf_boxed with
       | wf_boxed _ _ hwf_e =>
         exact hwf_e
   case eval_letin Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig h_var_orig ih _ _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_letin hwf
-    have eval_e1' := ih hpred0 hbool0 hsub hwf1
+    -- Lifting `e1` to `m2` via the IH needs `hok` specialised to `Q1` (e1's
+    -- postcondition): `∀ t v m, Q1 t v m → SubsumeOk m1 t m2`.  This is the
+    -- trace-footprint analogue of the old static `C1 ⊆ Cagg` subset, but it is
+    -- NOT derivable from `hok` at `Q`: e1's traces `t1` are only *prefixes* of
+    -- the letin's `Q`-traces `t1 ++ t2`, and bridging `Q1 t1 v m` to a full
+    -- `Q (t1 ++ t2) …` needs answer-existence (`m ⊒ m1` + running the
+    -- continuation), which is unavailable here.  See report.
+    have eval_e1' := ih hpred0 hbool0 hsub (by sorry) hwf1
     apply Eval.eval_letin (Q1:=Q1) hpred0 hbool0 eval_e1'
     case h_nonstuck =>
       intro t1 m1 v hQ_orig
@@ -310,7 +321,9 @@ theorem eval_monotonic {m1 m2 : Memory}
       exact h_var_orig hs_orig hwf_x hq1
   case eval_unpack Q1 hpred0 hbool0 eval_e1 h_nonstuck_orig h_val_orig ih _ =>
     have ⟨hwf1, _hwf2⟩ := Exp.wf_inv_unpack hwf
-    have eval_e1' := ih hpred0 hbool0 hsub hwf1
+    -- As in `eval_letin`: the IH for `e1` needs `hok` specialised to `Q1`, not
+    -- derivable from `hok` at `Q` (see the `eval_letin` note / report).
+    have eval_e1' := ih hpred0 hbool0 hsub (by sorry) hwf1
     apply Eval.eval_unpack (Q1:=Q1) hpred0 hbool0 eval_e1'
     case h_nonstuck =>
       intro t1 m1 v hQ_orig
@@ -319,11 +332,62 @@ theorem eval_monotonic {m1 m2 : Memory}
       intro t1 m_ext' x cs hs_ext' hwf_x hwf_cs hq1
       have hs_orig := Memory.subsumes_trans hs_ext' hsub
       exact h_val_orig hs_orig hwf_x hwf_cs hq1
-  -- LIVENESS GAP (see note above): the accessed mcell may be dead at `m2`.
-  case eval_read => sorry
-  case eval_write_true => sorry
-  case eval_write_false => sorry
-  case eval_drop => sorry
+  case eval_read hmem hx hQ =>
+    rename_i b
+    obtain ⟨cx, hx2, hsub_x⟩ := hsub _ _ hmem
+    simp only [Cell.subsumes] at hsub_x
+    subst hsub_x
+    obtain ⟨b', hy2⟩ := (hok _ _ _ hQ) _ _ hx (Or.inl ⟨.ro, List.mem_singleton.mpr rfl⟩)
+    apply Eval.eval_read hx2 hy2
+    by_cases hb : b
+    · subst hb
+      have hQ_true := by simpa using hQ
+      by_cases hb' : b' = true
+      · subst b'
+        simpa using hpred (by constructor) hsub hQ_true
+      · have hb'_false : b' = false := by simpa using hb'
+        subst b'
+        have hQ_true_m2 := hpred (by constructor) hsub hQ_true
+        have hQ_false_m2 := hbool.mp hQ_true_m2
+        simpa using hQ_false_m2
+    · have hb_false : b = false := by simpa using hb
+      subst b
+      have hQ_false := by simpa using hQ
+      by_cases hb' : b' = true
+      · subst b'
+        have hQ_false_m2 := hpred (by constructor) hsub hQ_false
+        have hQ_true_m2 := hbool.mpr hQ_false_m2
+        simpa using hQ_true_m2
+      · have hb'_false : b' = false := by simpa using hb'
+        subst b'
+        simpa using hpred (by constructor) hsub hQ_false
+  case eval_write_true hx hy hQ =>
+    obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
+    simp only [Cell.subsumes] at hsub_y
+    subst hsub_y
+    obtain ⟨b0', hx2⟩ := (hok _ _ _ hQ) _ _ hx (Or.inl ⟨.epsilon, List.mem_singleton.mpr rfl⟩)
+    apply Eval.eval_write_true (hx := hx2) hy2
+    apply hpred
+    · constructor
+    · exact Memory.update_mcell_subsumes_compat _ _ _ (Exists.intro _ hx) (Exists.intro _ hx2) hsub
+    · exact hQ
+  case eval_write_false hx hy hQ =>
+    obtain ⟨cy, hy2, hsub_y⟩ := hsub _ _ hy
+    simp only [Cell.subsumes] at hsub_y
+    subst hsub_y
+    obtain ⟨b0', hx2⟩ := (hok _ _ _ hQ) _ _ hx (Or.inl ⟨.epsilon, List.mem_singleton.mpr rfl⟩)
+    apply Eval.eval_write_false (hx := hx2) hy2
+    apply hpred
+    · constructor
+    · exact Memory.update_mcell_subsumes_compat _ _ _ (Exists.intro _ hx) (Exists.intro _ hx2) hsub
+    · exact hQ
+  case eval_drop hx hQ =>
+    obtain ⟨b', hx2⟩ := (hok _ _ _ hQ) _ _ hx (Or.inr (List.mem_singleton.mpr rfl))
+    apply Eval.eval_drop hx2
+    apply hpred
+    · constructor
+    · exact Memory.drop_mcell_subsumes_compat _ ⟨_, hx⟩ ⟨_, hx2⟩ hsub
+    · exact hQ
   case eval_cond x hres h_true h_false ih_true ih_false =>
     rename_i _ _ _ m_orig
     have ⟨hwf_x, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
@@ -340,7 +404,7 @@ theorem eval_monotonic {m1 m2 : Memory}
         | inr h =>
           have := resolve_monotonic hsub h
           rw [this] at hres_m2_true; cases hres_m2_true
-      exact ih_true hres_orig hpred hbool hsub hwf2
+      exact ih_true hres_orig hpred hbool hsub hok hwf2
     · intro hres_m2_false
       have hres_orig : resolve m_orig.heap (.var x) = some .bfalse := by
         cases hres with
@@ -348,13 +412,13 @@ theorem eval_monotonic {m1 m2 : Memory}
           have := resolve_monotonic hsub h
           rw [this] at hres_m2_false; cases hres_m2_false
         | inr h => exact h
-      exact ih_false hres_orig hpred hbool hsub hwf3
+      exact ih_false hres_orig hpred hbool hsub hok hwf3
   case eval_par ih1 ih2 =>
     cases hwf with
     | wf_par hwf1 hwf2 =>
       exact Eval.eval_par
-        (ih1 hpred hbool hsub hwf1)
-        (ih2 hpred hbool hsub hwf2)
+        (ih1 hpred hbool hsub hok hwf1)
+        (ih2 hpred hbool hsub hok hwf2)
 
 -- The `Mpost`-level entailment-after machinery is retained for downstream
 -- (Denotation) consumers that still index by `Mpost`.
