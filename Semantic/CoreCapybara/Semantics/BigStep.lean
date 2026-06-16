@@ -159,6 +159,21 @@ theorem Eval.var_inv {m : Memory} {x : Var .var {}} {Q : Tpost}
   | eval_val hv _ => cases hv
   | eval_var hQ => exact hQ
 
+/-- Trace-footprint liveness condition for memory subsumption.
+
+  `SubsumeOk m1 t m2` holds when every mutable cell that is **live in `m1`** and
+  **touched by the trace `t`** — read or written (`access`) or dropped
+  (`dealloc`) — remains **live in `m2`**.  This is the side condition under which
+  `m2.subsumes m1` preserves the liveness the events in `t` rely on: `subsumes`
+  alone permits `live → dead`, while `SubsumeOk` forbids killing exactly the
+  cells that `t` touches.  (An `alloc` introduces a fresh location, so it imposes
+  no constraint here.) -/
+def Memory.SubsumeOk (m1 : Memory) (t : Trace) (m2 : Memory) : Prop :=
+  ∀ l b,
+    m1.lookup l = some (.capability (.mcell b .live)) ->
+    ((∃ mu, TraceItem.access mu l ∈ t) ∨ TraceItem.dealloc l ∈ t) ->
+    ∃ b', m2.lookup l = some (.capability (.mcell b' .live))
+
 /-- Memory-subsumption monotonicity of `Eval`.
 
   NOTE (liveness gap): the four access cases `eval_read`/`eval_write_true`/
