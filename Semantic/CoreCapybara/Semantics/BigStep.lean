@@ -301,6 +301,89 @@ theorem TraceOk.covers_of_extTouches {R : CapabilitySet} {l : Nat} {t : Trace}
   (htr : TraceOk t R) (htouch : Trace.extTouches t l) : ∃ mode, R.covers mode l :=
   TraceOkFrom.covers_of_extTouchesFrom htr htouch
 
+/-- The empty trace is `TraceOk` against any capability set. -/
+theorem TraceOk.nil {R : CapabilitySet} : TraceOk [] R := TraceOkFrom.nil
+
+/-- A single access event is `TraceOk` when the capability set covers it. -/
+theorem TraceOk.access {R : CapabilitySet} {mu : Mutability} {l : Nat}
+  (h : R.covers (.access mu) l) : TraceOk [.access mu l] R :=
+  TraceOkFrom.access (Or.inl h) TraceOkFrom.nil
+
+/-- A single dealloc event is `TraceOk` when the capability set covers the drop. -/
+theorem TraceOk.dealloc {R : CapabilitySet} {l : Nat}
+  (h : R.covers .drop l) : TraceOk [.dealloc l] R :=
+  TraceOkFrom.dealloc (Or.inl h) TraceOkFrom.nil
+
+/-- A single alloc event is always `TraceOk`: the location is trace-local. -/
+theorem TraceOk.alloc {R : CapabilitySet} {l : Nat} : TraceOk [.alloc l] R :=
+  TraceOkFrom.alloc TraceOkFrom.nil
+
+/-- `TraceOk` is monotone in the capability set: a larger budget covers every
+  access a smaller one does. -/
+theorem TraceOkFrom.mono {C C' : CapabilitySet} (hsub : C ⊆ C') :
+  ∀ {A : List Nat} {t : Trace}, TraceOkFrom C A t -> TraceOkFrom C' A t := by
+  intro A t h
+  induction h with
+  | nil => exact TraceOkFrom.nil
+  | alloc _ ih => exact TraceOkFrom.alloc ih
+  | access hcond _ ih =>
+    refine TraceOkFrom.access ?_ ih
+    rcases hcond with hcov | hin
+    · exact Or.inl (CapabilitySet.covers_mono hsub hcov)
+    · exact Or.inr hin
+  | dealloc hcond _ ih =>
+    refine TraceOkFrom.dealloc ?_ ih
+    rcases hcond with hcov | hin
+    · exact Or.inl (CapabilitySet.covers_mono hsub hcov)
+    · exact Or.inr hin
+
+theorem TraceOk.mono {C C' : CapabilitySet} {t : Trace}
+  (hsub : C ⊆ C') (h : TraceOk t C) : TraceOk t C' :=
+  TraceOkFrom.mono hsub h
+
+/-- `TraceOkFrom` is monotone in the allocated set: enlarging the set of
+  trace-local locations only adds exemptions. -/
+theorem TraceOkFrom.mono_alloc {C : CapabilitySet} :
+  ∀ {A A' : List Nat}, (∀ x, x ∈ A → x ∈ A') → ∀ {t : Trace},
+    TraceOkFrom C A t -> TraceOkFrom C A' t := by
+  intro A A' hsub t h
+  induction h generalizing A' with
+  | nil => exact TraceOkFrom.nil
+  | alloc _ ih =>
+    exact TraceOkFrom.alloc (ih (fun x hx => by
+      rcases List.mem_cons.mp hx with h | h
+      · exact List.mem_cons.mpr (Or.inl h)
+      · exact List.mem_cons.mpr (Or.inr (hsub x h))))
+  | access hc _ ih =>
+    refine TraceOkFrom.access ?_ (ih hsub)
+    rcases hc with h | h
+    · exact Or.inl h
+    · exact Or.inr (hsub _ h)
+  | dealloc hc _ ih =>
+    refine TraceOkFrom.dealloc ?_ (ih hsub)
+    rcases hc with h | h
+    · exact Or.inl h
+    · exact Or.inr (hsub _ h)
+
+/-- Concatenating two `TraceOk` traces against the same capability set is
+  `TraceOk`: the suffix only gains the prefix's allocations as extra exemptions. -/
+theorem TraceOkFrom.append {C : CapabilitySet} :
+  ∀ {A : List Nat} {t1 t2 : Trace},
+    TraceOkFrom C A t1 -> TraceOkFrom C A t2 -> TraceOkFrom C A (t1 ++ t2) := by
+  intro A t1 t2 h1
+  induction h1 with
+  | nil => intro h2; exact h2
+  | alloc _ ih =>
+    intro h2
+    refine TraceOkFrom.alloc (ih (TraceOkFrom.mono_alloc (fun x hx => ?_) h2))
+    exact List.mem_cons.mpr (Or.inr hx)
+  | access hc _ ih => intro h2; exact TraceOkFrom.access hc (ih h2)
+  | dealloc hc _ ih => intro h2; exact TraceOkFrom.dealloc hc (ih h2)
+
+theorem TraceOk.append {C : CapabilitySet} {t1 t2 : Trace}
+  (h1 : TraceOk t1 C) (h2 : TraceOk t2 C) : TraceOk (t1 ++ t2) C :=
+  TraceOkFrom.append h1 h2
+
 /-- Memory-subsumption monotonicity of `Eval`.
 
   The side condition `hok` carries the trace-footprint liveness: for every
