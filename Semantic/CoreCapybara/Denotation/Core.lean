@@ -2044,18 +2044,29 @@ def exp_denot_is_monotonic {env : TypeEnv s}
     m2.is_compatible R ->
     (Ty.exp_denot env T R) m1 e ->
     (Ty.exp_denot env T R) m2 e := by
-  intro R m1 m2 e hwf hmem _hcompat ht
+  intro R m1 m2 e hwf hmem hcompat ht
   simp only [Ty.exp_denot] at ht ⊢
   refine eval_monotonic
     (Denot.as_tpost_is_monotonic (val_denot_is_monotonic henv_mono T))
     (Denot.as_tpost_is_bool_independent (val_denot_is_bool_independent henv_bool T))
     hmem ?_ hwf ht
-  -- `hok` (trace-footprint liveness) is not provable from this postcondition:
-  -- `TraceOk t R ∧ val_denot m v` decouples `t` from `(v, m)`, leaving `t`
-  -- unconstrained, so a trace whose alloc'd location coincides with a cell live
-  -- in `m1` violates `SubsumeOk`.  Pinning `t` to actual evaluation traces
-  -- (allocs fresh w.r.t. `m1`) is the missing operational invariant.
-  sorry
+  -- `hok`: an externally-touched cell live in `m1` stays live in `m2`.  By
+  -- `TraceOk t R` (carried in the postcondition) such a cell is covered by `R`,
+  -- and `m2.is_compatible R` keeps `R`'s mcells live.
+  intro t v m _ hpost l b hlive htouch
+  obtain ⟨mode, hcov⟩ := TraceOk.covers_of_extTouches hpost.1 htouch
+  obtain ⟨mode', hmem_l, _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
+  obtain ⟨c, hl2, hsub_c⟩ := hmem _ _ hlive
+  cases c with
+  | val => cases hsub_c
+  | masked => cases hsub_c
+  | capability info =>
+    cases info with
+    | basic => cases hsub_c
+    | mcell b' ℓ' =>
+      have hℓ' : ℓ' = .live := hcompat mode' l b' ℓ' hmem_l hl2
+      subst hℓ'
+      exact ⟨b', hl2⟩
 
 end
 

@@ -154,16 +154,46 @@ theorem Eval.var_inv {m : Memory} {x : Var .var {}} {Q : Tpost}
   | eval_val hv _ => cases hv
   | eval_var hQ => exact hQ
 
+/-- `extTouchesFrom A l t`: location `l` is read/written/dropped somewhere in `t`
+  at a point where it has not yet been allocated within `t` (its location is not
+  in the running allocated set `A`).  An `alloc` extends `A` for the remainder. -/
+def Trace.extTouchesFrom : List Nat -> Nat -> Trace -> Prop
+| _, _, [] => False
+| A, l, (.alloc l' :: t) => Trace.extTouchesFrom (l' :: A) l t
+| A, l, (.access _ l' :: t) => (l = l' ∧ l ∉ A) ∨ Trace.extTouchesFrom A l t
+| A, l, (.dealloc l' :: t) => (l = l' ∧ l ∉ A) ∨ Trace.extTouchesFrom A l t
+
+/-- `l` is *externally* touched by `t`: accessed or dropped before being
+  allocated within `t`.  Such a location is governed by the ambient capability
+  set rather than by the trace's own allocations. -/
+def Trace.extTouches (t : Trace) (l : Nat) : Prop := Trace.extTouchesFrom [] l t
+
+theorem Trace.extTouchesFrom_append {A : List Nat} {l : Nat} {t1 t2 : Trace}
+  (h : Trace.extTouchesFrom A l t1) : Trace.extTouchesFrom A l (t1 ++ t2) := by
+  induction t1 generalizing A with
+  | nil => simp only [Trace.extTouchesFrom] at h
+  | cons it t1 ih =>
+    cases it with
+    | alloc l' => exact ih h
+    | access mu l' =>
+      rcases h with h | h
+      · exact Or.inl h
+      · exact Or.inr (ih h)
+    | dealloc l' =>
+      rcases h with h | h
+      · exact Or.inl h
+      · exact Or.inr (ih h)
+
 /-- Trace-footprint liveness condition for memory subsumption.
 
-  `SubsumeOk m1 t m2` holds when every mutable cell that is **live in `m1`** and
-  **touched by the trace `t`** — read or written (`access`) or dropped
-  (`dealloc`) — remains **live in `m2`**.  An `alloc` refers to a fresh location,
-  so it imposes no constraint. -/
+  `SubsumeOk m1 t m2` holds when every mutable cell **live in `m1`** that is
+  *externally* touched by `t` (read/written/dropped before being allocated within
+  `t`) remains **live in `m2`**.  Cells allocated within `t` are exempt — they are
+  the trace's own, not governed by the ambient budget — matching `TraceOk`. -/
 def Memory.SubsumeOk (m1 : Memory) (t : Trace) (m2 : Memory) : Prop :=
   ∀ l b,
     m1.lookup l = some (.capability (.mcell b .live)) ->
-    ((∃ mu, TraceItem.access mu l ∈ t) ∨ TraceItem.dealloc l ∈ t) ->
+    Trace.extTouches t l ->
     ∃ b', m2.lookup l = some (.capability (.mcell b' .live))
 
 /-- Answer existence: every `Eval m e Q` is witnessed by an actual answer — a
@@ -233,15 +263,43 @@ theorem eval_exists_answer (heval : Eval m e Q) :
     | inr hbfalse => exact ih_false hbfalse
   | eval_par _ _ ih1 _ => exact ih1
 
-/-- `SubsumeOk` is antitone in the trace: preserving the cells touched by a
-  longer trace `t1 ++ t2` in particular preserves those touched by `t1`. -/
+/-- `SubsumeOk` is antitone in the trace: an external touch in a prefix `t1`
+  remains an external touch in `t1 ++ t2`. -/
 theorem Memory.SubsumeOk.mono_append {m1 m2 : Memory} {t1 t2 : Trace}
   (h : Memory.SubsumeOk m1 (t1 ++ t2) m2) : Memory.SubsumeOk m1 t1 m2 := by
-  intro l b hlive htouched
-  refine h l b hlive ?_
-  rcases htouched with ⟨mu, hmem⟩ | hmem
-  · exact Or.inl ⟨mu, List.mem_append_left _ hmem⟩
-  · exact Or.inr (List.mem_append_left _ hmem)
+  intro l b hlive htouch
+  exact h l b hlive (Trace.extTouchesFrom_append htouch)
+
+/-- An externally-touched location of an `R`-OK trace is covered by `R`: by the
+  time it is touched it has not been allocated within the trace, so `TraceOk`'s
+  alloc exemption does not apply and `R` must cover it. -/
+theorem TraceOkFrom.covers_of_extTouchesFrom {R : CapabilitySet} {l : Nat} :
+  ∀ {A : List Nat} {t : Trace},
+    TraceOkFrom R A t -> Trace.extTouchesFrom A l t -> ∃ mode, R.covers mode l := by
+  intro A t htr
+  induction htr with
+  | nil => intro htouch; simp only [Trace.extTouchesFrom] at htouch
+  | alloc _ ih => intro htouch; exact ih htouch
+  | access hcond _ ih =>
+    intro htouch
+    rcases htouch with ⟨hl, hnotin⟩ | htouch
+    · subst hl
+      rcases hcond with hcov | hin
+      · exact ⟨_, hcov⟩
+      · exact absurd hin hnotin
+    · exact ih htouch
+  | dealloc hcond _ ih =>
+    intro htouch
+    rcases htouch with ⟨hl, hnotin⟩ | htouch
+    · subst hl
+      rcases hcond with hcov | hin
+      · exact ⟨_, hcov⟩
+      · exact absurd hin hnotin
+    · exact ih htouch
+
+theorem TraceOk.covers_of_extTouches {R : CapabilitySet} {l : Nat} {t : Trace}
+  (htr : TraceOk t R) (htouch : Trace.extTouches t l) : ∃ mode, R.covers mode l :=
+  TraceOkFrom.covers_of_extTouchesFrom htr htouch
 
 /-- Memory-subsumption monotonicity of `Eval`.
 
@@ -422,7 +480,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     simp only [Cell.subsumes] at hsub_x
     subst hsub_x
     obtain ⟨b', hy2⟩ := (hok _ _ _ (Memory.subsumes_refl _) hQ) _ _ hx
-      (Or.inl ⟨.ro, List.mem_singleton.mpr rfl⟩)
+      (by simp [Trace.extTouches, Trace.extTouchesFrom])
     apply Eval.eval_read hx2 hy2
     by_cases hb : b
     · subst hb
@@ -451,7 +509,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     simp only [Cell.subsumes] at hsub_y
     subst hsub_y
     obtain ⟨b0', hx2⟩ := (hok _ _ _ (Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩) hQ) _ _ hx
-      (Or.inl ⟨.epsilon, List.mem_singleton.mpr rfl⟩)
+      (by simp [Trace.extTouches, Trace.extTouchesFrom])
     apply Eval.eval_write_true (hx := hx2) hy2
     apply hpred
     · constructor
@@ -462,7 +520,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     simp only [Cell.subsumes] at hsub_y
     subst hsub_y
     obtain ⟨b0', hx2⟩ := (hok _ _ _ (Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩) hQ) _ _ hx
-      (Or.inl ⟨.epsilon, List.mem_singleton.mpr rfl⟩)
+      (by simp [Trace.extTouches, Trace.extTouchesFrom])
     apply Eval.eval_write_false (hx := hx2) hy2
     apply hpred
     · constructor
@@ -470,7 +528,7 @@ theorem eval_monotonic {m1 m2 : Memory}
     · exact hQ
   case eval_drop hx hQ =>
     obtain ⟨b', hx2⟩ := (hok _ _ _ (Memory.drop_mcell_subsumes _ _ ⟨_, hx⟩) hQ) _ _ hx
-      (Or.inr (List.mem_singleton.mpr rfl))
+      (by simp [Trace.extTouches, Trace.extTouchesFrom])
     apply Eval.eval_drop hx2
     apply hpred
     · constructor
