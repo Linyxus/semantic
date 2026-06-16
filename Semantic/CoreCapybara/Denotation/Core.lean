@@ -133,6 +133,31 @@ lemma Denot.imply_after_subsumes {d1 d2 : Denot}
   (himp : d1.ImplyAfter m1 d2) (hmem : m2.subsumes m1) : d1.ImplyAfter m2 d2 :=
   fun M hs => himp M (Memory.subsumes_trans hs hmem)
 
+/-- Trace-observing postcondition for an expression denotation: the result
+  satisfies the value denotation `d`, and the recorded trace `t` respects the
+  capability budget `R` (i.e. `TraceOk t R`). -/
+def Denot.as_tpost (d : Denot) (R : CapabilitySet) : Tpost :=
+  fun t e m => TraceOk t R ∧ d m e
+
+lemma Denot.as_tpost_is_monotonic {d : Denot} {R : CapabilitySet}
+  (hmon : d.is_monotonic) :
+  (d.as_tpost R).is_monotonic := by
+  intro t m1 m2 e hwf hsub h
+  obtain ⟨htr, hd⟩ := h
+  exact ⟨htr, hmon hsub hd⟩
+
+lemma Denot.as_tpost_is_bool_independent {d : Denot} {R : CapabilitySet}
+  (hbool : d.is_bool_independent) :
+  (d.as_tpost R).is_bool_independent := by
+  intro t m
+  simp only [Denot.as_tpost]
+  exact and_congr_right (fun _ => hbool (m := m))
+
+lemma Denot.imply_after_to_t_entails_after {d1 d2 : Denot} {m : Memory} {R : CapabilitySet}
+  (himp : d1.ImplyAfter m d2) :
+  (d1.as_tpost R).entails_after m (d2.as_tpost R) :=
+  fun m' hsub _t e h => ⟨h.1, himp m' hsub e h.2⟩
+
 lemma Denot.imply_after_to_imply_at {d1 d2 : Denot}
   (himp : d1.ImplyAfter m d2) : d1.ImplyAt m d2 :=
   fun e h1 => himp m (Memory.subsumes_refl m) e h1
@@ -606,7 +631,7 @@ def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
     Takes an explicit capture set (the use set from the typing judgment). -/
 def Ty.exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
 | ρ, T, R => fun m (e : Exp {}) =>
-  Eval R m e (Ty.val_denot ρ T).as_mpost
+  Eval m e ((Ty.val_denot ρ T).as_tpost R)
 
 /-- Expression denotation for existential types.
     Takes an explicit capture set (the use set from the typing judgment).
@@ -615,7 +640,7 @@ def Ty.exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
     the budget `R` and starting memory `m`. -/
 def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
 | ρ, T, R => fun m (e : Exp {}) =>
-  Eval R m e (fun v m' => Ty.exi_val_denot ρ T m' v ∧ pack_bound R m v m')
+  Eval m e (fun t v m' => TraceOk t R ∧ Ty.exi_val_denot ρ T m' v ∧ pack_bound R m v m')
 
 end
 
@@ -2007,9 +2032,8 @@ def exi_val_denot_is_bool_independent {env : TypeEnv s}
     exact ⟨False.elim, False.elim⟩
 
 /-- Expression denotation is monotonic with respect to memory subsumption.
-    The `is_compatible` premise is the budget-side liveness invariant
-    that `eval_monotonic` now requires: capabilities in `R` whose realisations
-    are mcells must be `.live` in `m2`. -/
+    The `is_compatible` premise is the budget-side liveness invariant for `R`:
+    capabilities in `R` whose realisations are mcells must be `.live` in `m2`. -/
 def exp_denot_is_monotonic {env : TypeEnv s}
   (henv_mono : env.IsMonotonic)
   (henv_bool : env.is_bool_independent)
@@ -2020,12 +2044,18 @@ def exp_denot_is_monotonic {env : TypeEnv s}
     m2.is_compatible R ->
     (Ty.exp_denot env T R) m1 e ->
     (Ty.exp_denot env T R) m2 e := by
-  intro R m1 m2 e hwf hmem hcompat ht
+  intro R m1 m2 e hwf hmem _hcompat ht
   simp only [Ty.exp_denot] at ht ⊢
-  exact eval_monotonic
-    (Denot.as_mpost_is_monotonic (val_denot_is_monotonic henv_mono T))
-    (Denot.as_mpost_is_bool_independent (val_denot_is_bool_independent henv_bool T))
-    hmem hcompat hwf ht
+  refine eval_monotonic
+    (Denot.as_tpost_is_monotonic (val_denot_is_monotonic henv_mono T))
+    (Denot.as_tpost_is_bool_independent (val_denot_is_bool_independent henv_bool T))
+    hmem ?_ hwf ht
+  -- `hok` (trace-footprint liveness) is not provable from this postcondition:
+  -- `TraceOk t R ∧ val_denot m v` decouples `t` from `(v, m)`, leaving `t`
+  -- unconstrained, so a trace whose alloc'd location coincides with a cell live
+  -- in `m1` violates `SubsumeOk`.  Pinning `t` to actual evaluation traces
+  -- (allocs fresh w.r.t. `m1`) is the missing operational invariant.
+  sorry
 
 end
 
@@ -2346,7 +2376,7 @@ theorem val_denot_implyafter_lift {R : CapabilitySet}
   intro m' hsub e heval
   unfold Ty.exp_denot at heval ⊢
   exact eval_post_monotonic_general
-    (Mpost.entails_after_subsumes (Denot.imply_after_to_m_entails_after himp) hsub) heval
+    (Tpost.entails_after_subsumes (Denot.imply_after_to_t_entails_after himp) hsub) heval
 
 /-- Existential expression denotation implication lift. The `pack_bound`
 component of the postcondition is type-independent and carried through. -/
@@ -2356,8 +2386,8 @@ theorem exi_denot_implyafter_lift {R : CapabilitySet}
   intro m' hsub e heval
   unfold Ty.exi_exp_denot at heval ⊢
   refine eval_post_monotonic_general ?_ heval
-  intro m'' hsub'' v hpost
-  exact ⟨himp m'' (Memory.subsumes_trans hsub'' hsub) v hpost.1, hpost.2⟩
+  intro m'' hsub'' t v hpost
+  exact ⟨hpost.1, himp m'' (Memory.subsumes_trans hsub'' hsub) v hpost.2.1, hpost.2.2⟩
 
 private theorem resolve_reachability_subset_of_resolve_aux
     {m : Memory} {e v : Exp {}}
