@@ -3822,6 +3822,17 @@ theorem is_compatible_drop_mcell (m : Memory) (l : Nat)
 
 end Memory
 
+/-- A single heap event.  `access` carries the `Mutability` that authorizes it
+  (`.epsilon` = write, `.ro` = read), `alloc` records a fresh allocation, and
+  `dealloc` records a drop. -/
+inductive TraceItem : Type where
+| access  : Mutability -> Nat -> TraceItem
+| alloc   : Nat -> TraceItem
+| dealloc : Nat -> TraceItem
+
+/-- A trace records the heap accesses performed during evaluation, in order. -/
+abbrev Trace : Type := List TraceItem
+
 /-- Memory predicate. -/
 def Mprop := Memory -> Prop
 

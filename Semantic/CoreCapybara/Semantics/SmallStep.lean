@@ -4,17 +4,6 @@ import Semantic.CoreCapybara.Semantics.Heap
 
 namespace CoreCapybara
 
-/-- A single heap event.  `access` carries the `Mutability` that authorizes it
-  (`.epsilon` = write, `.ro` = read), `alloc` records a fresh allocation, and
-  `dealloc` records a drop. -/
-inductive TraceItem : Type where
-| access  : Mutability -> Nat -> TraceItem
-| alloc   : Nat -> TraceItem
-| dealloc : Nat -> TraceItem
-
-/-- A trace records the heap accesses performed during evaluation, in order. -/
-abbrev Trace : Type := List TraceItem
-
 /-- Small-step evaluation relation instrumented with a trace.
   `Step t m e m' e'` means that expression `e` in memory `m` steps to `e'` in
   memory `m'`, emitting the trace `t` of heap events performed by this step. -/
