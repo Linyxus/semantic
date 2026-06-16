@@ -3363,20 +3363,24 @@ theorem captureSet_seqcomp_denot
 
 /-- Semantic typing for `letin`.
 
-    GAP (two `sorry`s, `h_val`/`h_var`): the trace-based `eval_letin`
-    (`Semantics/BigStep.lean`) quantifies its continuation premises over *every*
-    `m1 ⊒ store` satisfying the (necessarily monotone) intermediate postcondition
-    `Q1`.  The continuation `e2` is typed at budget `C2`, so it needs
-    `m1.is_compatible (C2.denot env store)` — an *anti-monotone* fact (`subsumes`
-    permits live → dead) that no monotone `Q1` can carry, and that the rule no
-    longer supplies.  The pre-refactor `eval_letin` provided it under a `SeqComp`
-    side condition (`_hseq`/`captureSet_seqcomp_denot`, now unused); the
-    trace-based rule must instead expose a frame/liveness guarantee for `m1`. -/
+    GAP (two `sorry`s, `h_val`/`h_var`, each `Memory.FrameLive store t1 m1`): the
+    continuation `e2` is typed at budget `C2`, so it needs
+    `m1.is_compatible (C2.denot env store)`.  Everything around it is proven: `C2`
+    is live at `store` (subset of the budget), present there (`reachability_dom`),
+    and never externally-dropped by `t1` (`TraceOk t1 C1` from `Q1`, plus `SeqComp
+    C1 C2` via `captureSet_seqcomp_denot` + `drop_covers_of_extDrops`).
+    `Memory.is_compatible_frame` then reduces the whole obligation to the SOLE
+    irreducible gap: a frame/liveness guarantee `FrameLive store t1 m1` ("cells
+    live in `store` and not dropped by `t1` stay live in `m1`").  This is exactly
+    what the trace-based `eval_letin` does NOT expose to `h_val`/`h_var`.  It is a
+    *base-relative*, antitone fact — operationally true, but wiring it onto the
+    `Eval` constructors breaks `eval_monotonic` (memory-subsumption monotonicity
+    allows liveness decay); see the memory note for the architectural fork. -/
 theorem sem_typ_letin
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {e1 : Exp s} {T : Ty .capt s}
   {e2 : Exp (s,,Kind.var)} {U : Ty .exi s}
-  (_hseq : SeqComp Γ C1 C2)
-  (_hΓ : Γ.IsClosed)
+  (hseq : SeqComp Γ C1 C2)
+  (hΓ : Γ.IsClosed)
   (_hclosed_C1 : C1.IsClosed)
   (_hclosed_C2 : C2.IsClosed)
   (_hclosed_e : (Exp.letin e1 e2).IsClosed)
@@ -3420,16 +3424,30 @@ theorem sem_typ_letin
     · exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1.2
   case h_val =>
     intro t1 m1 v hs1 hv hwf_v hQ1 l' hfresh
-    -- GAP (trace-based `eval_letin`): the continuation `e2` is typed at budget
-    -- `C2`, so `ht2` demands `m1.is_compatible (C2.denot env store)`.  Liveness is
-    -- *anti-monotone* under `subsumes` (a cell live in `store` may be dead in
-    -- `m1 ⊒ store`), so this fact cannot ride in the (necessarily monotone) `Q1`,
-    -- and `eval_letin`'s `h_val` — unlike the pre-refactor rule, which supplied
-    -- `m1.is_compatible C2` under a `SeqComp` side condition — no longer provides
-    -- it.  Closing this needs `eval_letin` to expose a frame/liveness guarantee
-    -- for `m1`.  See `hseq`/`captureSet_seqcomp_denot`, now unused.
-    have hcompat_m1 : m1.is_compatible (C2.denot env store) := by
+    -- The continuation `e2` is typed at budget `C2`, so `ht2` demands
+    -- `m1.is_compatible (C2.denot env store)`.  Everything but the frame is proven:
+    -- `C2` is live at `store` (subset of the budget `hcompat`), present in `store`
+    -- (reachability), and never externally-dropped by `t1` (its `TraceOk` against
+    -- `C1` in `Q1`, plus `SeqComp C1 C2`).  `is_compatible_frame` then reduces the
+    -- obligation to the SOLE genuine gap: a frame/liveness guarantee `FrameLive
+    -- store t1 m1` that the trace-based `eval_letin` does not (yet) expose — a
+    -- base-relative fact incompatible with `eval_monotonic` (see memory note).
+    have hcompat_C2 : store.is_compatible (C2.denot env store) :=
+      Memory.is_compatible_subset hsubC2 hcompat
+    have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
+      intro mu l hmem
+      simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
+      exact CaptureSet.reachability_dom hmem
+    have hnodrop_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → ¬ Trace.extDrops t1 l := by
+      intro mu l hmem hd
+      obtain ⟨m', hm', hle⟩ :=
+        CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hQ1.1 hd)
+      cases hle
+      exact captureSet_seqcomp_denot hts hΓ hdsep hseq mu l hm' hmem
+    have hframe : Memory.FrameLive store t1 m1 := by
       sorry
+    have hcompat_m1 : m1.is_compatible (C2.denot env store) :=
+      Memory.is_compatible_frame hcompat_C2 hpresent_C2 hframe hs1 hnodrop_C2
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
     -- The continuation is typed in the *killed* context: the consumed peaks
     -- of `C1` are retagged `.killed`. Kill the same atoms in the environment;
@@ -3506,10 +3524,23 @@ theorem sem_typ_letin
       exact CapabilitySet.Subset.union_right_right
   case h_var =>
     intro t1 m1 x hs1 hwf_x hQ1
-    -- GAP: same as `h_val` above — `m1`'s `C2`-compatibility is anti-monotone and
-    -- not supplied by the trace-based `eval_letin`.
-    have hcompat_m1 : m1.is_compatible (C2.denot env store) := by
+    -- Same reduction as `h_val`: the only gap is the frame `FrameLive store t1 m1`.
+    have hcompat_C2 : store.is_compatible (C2.denot env store) :=
+      Memory.is_compatible_subset hsubC2 hcompat
+    have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
+      intro mu l hmem
+      simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
+      exact CaptureSet.reachability_dom hmem
+    have hnodrop_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → ¬ Trace.extDrops t1 l := by
+      intro mu l hmem hd
+      obtain ⟨m', hm', hle⟩ :=
+        CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hQ1.1 hd)
+      cases hle
+      exact captureSet_seqcomp_denot hts hΓ hdsep hseq mu l hm' hmem
+    have hframe : Memory.FrameLive store t1 m1 := by
       sorry
+    have hcompat_m1 : m1.is_compatible (C2.denot env store) :=
+      Memory.is_compatible_frame hcompat_C2 hpresent_C2 hframe hs1 hnodrop_C2
     cases x
     case bound bv => cases bv
     case free fx =>
@@ -4496,23 +4527,22 @@ theorem consumed_peaks_droppable {Γ : Ctx s} {C : CaptureSet s} {c : BVar s .cv
 
 /-- Semantic typing for `unpack`.
 
-    GAP (two `sorry`s in `h_val`): like `letin`, the trace-based `eval_unpack`
-    over-quantifies the intermediate `(t1, m1)`.
-    (1) The continuation needs `m1.is_compatible (C2 ∪ R ∪ R.to_drop)` (R = the
-    unpacked witness's reachability) — anti-monotone, hence not carryable in `Q1`
-    nor supplied by the rule.
-    (2) The body trace `t2` may access the witness `R`, which lies outside
-    `C1 ∪ C2` and is `TraceOk`-exempt only if allocated within `t1`; the rule does
-    not expose that the witness was produced by `e1`, so `TraceOk (t1 ++ t2)`
-    against `(C1 ∪ C2).denot` is not derivable.
-    Both need `eval_unpack` to expose frame/provenance guarantees for `(t1, m1)`.
-    The body use-set's `.drop` cvar denotes to `R.to_drop` and the `.M .epsilon`
-    cvar to `R`; the doubly-renamed (closed) `C2` is memory-stable.  The
-    `_hseq`/`captureSet_seqcomp_denot` bridge is now unused. -/
+    THREE `sorry`s in `h_val`, splitting into the SAME two gaps as `letin`:
+    (frame) The `C2` slice of the continuation budget `C2 ∪ R ∪ R.to_drop`
+    (R = the unpacked witness's reachability) reduces, exactly as in `letin`, to
+    `FrameLive store t1 m1` via `is_compatible_frame` + `SeqComp C1 C2` — all
+    proven except that one frame `sorry`.
+    (existential witness) The remaining two `sorry`s are about the witness `R`:
+    (1) `m1.is_compatible (R ∪ R.to_drop)` — its liveness in `m1`; and
+    (2) `TraceOk (t1 ++ t2)` against `(C1 ∪ C2).denot`, where the body trace `t2`
+    accesses `R` (outside `C1 ∪ C2`), `TraceOk`-exempt only if `R` was allocated
+    within `t1`.  Both need `eval_unpack` to expose, for the unpacked witness, a
+    liveness + trace-allocation provenance guarantee that the trace alone (which
+    records accesses, not memory state) cannot supply. -/
 theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
-  (_hseq : SeqComp Γ C1 C2)
+  (hseq : SeqComp Γ C1 C2)
   (hdrop : ((C1.peakset Γ).consumed).droppable Γ)
   (hΓ : Γ.IsClosed)
   (hclosed_C1 : C1.IsClosed)
@@ -4590,13 +4620,41 @@ theorem sem_typ_unpack
           | wf_var hwf_v => exact hwf_v
   case h_val =>
     intro t1 m1 x cs hs1 hwf_x hwf_cs hQ1
-    -- GAP (same root as `letin`): the continuation's budget compatibility at `m1`
-    -- is anti-monotone under `subsumes`, so it cannot ride in the monotone `Q1`,
-    -- and the trace-based `eval_unpack` no longer supplies it (the pre-refactor
-    -- rule assumed `m1.is_compatible (C2 ∪ R ∪ R.to_drop)`).
+    -- The continuation budget is `C2 ∪ R ∪ R.to_drop` (R = the unpacked witness's
+    -- reachability).  The `C2` slice reduces, exactly as in `letin`, to the frame
+    -- provision `FrameLive store t1 m1` (via `is_compatible_frame`: `C2` is live at
+    -- `store`, present there, and undropped by `t1` from `TraceOk t1 C1` + `SeqComp
+    -- C1 C2`).  The witness slice `R` is the *separate* existential gap (the rule
+    -- must also expose that the unpacked witness is live in `m1`).
+    have hsubC2 : C2.denot env store ⊆ (C1 ∪ C2).denot env store := by
+      rw [hunion_denot]; exact CapabilitySet.Subset.union_right_right
+    have hcompat_C2 : m1.is_compatible (C2.denot env store) := by
+      have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
+        intro mu l hmem
+        simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
+        exact CaptureSet.reachability_dom hmem
+      have hnodrop_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → ¬ Trace.extDrops t1 l := by
+        intro mu l hmem hd
+        obtain ⟨m', hm', hle⟩ :=
+          CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hQ1.1 hd)
+        cases hle
+        exact captureSet_seqcomp_denot hts hΓ hdsep hseq mu l hm' hmem
+      have hframe : Memory.FrameLive store t1 m1 := by
+        sorry
+      exact Memory.is_compatible_frame (Memory.is_compatible_subset hsubC2 hcompat)
+        hpresent_C2 hframe hs1 hnodrop_C2
+    have hcompat_witness :
+        m1.is_compatible (cs.reachability m1 ∪ (cs.reachability m1).to_drop) := by
+      sorry
     have hcompat_m1 : m1.is_compatible (C2.denot env store ∪ cs.reachability m1
         ∪ (cs.reachability m1).to_drop) := by
-      sorry
+      intro mu l b ℓ hmem hheap
+      cases hmem with
+      | left h =>
+        cases h with
+        | left h => exact hcompat_C2 mu l b ℓ h hheap
+        | right h => exact hcompat_witness mu l b ℓ (CapabilitySet.hasmem.left h) hheap
+      | right h => exact hcompat_witness mu l b ℓ (CapabilitySet.hasmem.right h) hheap
     have hpb : pack_bound (C1.denot env store) store (.pack cs x) m1 := hQ1.2.2
     have hQ1v := hQ1.2.1
     change Ty.exi_val_denot env (.exi T) m1 (.pack cs x) at hQ1v

@@ -31,6 +31,42 @@ def Tpost.entails_refl (Q : Tpost) : Q.entails Q := by
   intros t m e hQ
   exact hQ
 
+/-- `extDropsFrom A l t`: `l` is dealloc'd in `t` before being allocated within
+  `t`.  Only `.dealloc` events count — the *drop* footprint of `t` (drop-only
+  sibling of `extTouches`), sharing `TraceOk`'s alloc exemption. -/
+def Trace.extDropsFrom : List Nat -> Nat -> Trace -> Prop
+| _, _, [] => False
+| A, l, (.alloc l' :: t) => Trace.extDropsFrom (l' :: A) l t
+| A, l, (.access _ _ :: t) => Trace.extDropsFrom A l t
+| A, l, (.dealloc l' :: t) => (l = l' ∧ l ∉ A) ∨ Trace.extDropsFrom A l t
+
+/-- `l` is *externally dropped* by `t`: dealloc'd before being allocated within
+  `t`.  For a location live before `t` runs (never freshly allocated within `t`),
+  this coincides with "dropped at all by `t`". -/
+def Trace.extDrops (t : Trace) (l : Nat) : Prop := Trace.extDropsFrom [] l t
+
+/-- Operational frame/liveness guarantee for an evaluation producing trace `t`
+  and ending memory `m'` from `m`: every mutable cell **live in `m`** that is *not
+  externally dropped* by `t` remains **live in `m'`** (the only event that kills an
+  existing live cell is a `.dealloc`). -/
+def Memory.FrameLive (m : Memory) (t : Trace) (m' : Memory) : Prop :=
+  ∀ l b,
+    m.lookup l = some (.capability (.mcell b .live)) ->
+    ¬ Trace.extDrops t l ->
+    ∃ b', m'.lookup l = some (.capability (.mcell b' .live))
+
+/-- `FrameLive` composes along a fixed trace. -/
+theorem Memory.FrameLive.trans {m1 m2 m3 : Memory} {t : Trace}
+    (h12 : Memory.FrameLive m1 t m2) (h23 : Memory.FrameLive m2 t m3) :
+    Memory.FrameLive m1 t m3 := by
+  intro l b hlive hnd
+  obtain ⟨b', hb'⟩ := h12 l b hlive hnd
+  exact h23 l b' hb' hnd
+
+/-- The identity step is `FrameLive` for any trace (no cell changes liveness). -/
+theorem Memory.FrameLive.refl {m : Memory} {t : Trace} : Memory.FrameLive m t m :=
+  fun _ b hl _ => ⟨b, hl⟩
+
 /-- Trace-instrumented big-step evaluation.
 
   `Eval m e Q` means: evaluating `e` from memory `m` produces some trace `t` of
@@ -300,6 +336,64 @@ theorem TraceOkFrom.covers_of_extTouchesFrom {R : CapabilitySet} {l : Nat} :
 theorem TraceOk.covers_of_extTouches {R : CapabilitySet} {l : Nat} {t : Trace}
   (htr : TraceOk t R) (htouch : Trace.extTouches t l) : ∃ mode, R.covers mode l :=
   TraceOkFrom.covers_of_extTouchesFrom htr htouch
+
+/-- An externally-*dropped* location of an `R`-OK trace is `.drop`-covered by `R`:
+  the dealloc precedes any alloc of the location, so `TraceOk`'s alloc exemption
+  does not apply and the `.drop` branch of the `dealloc` clause must hold. -/
+theorem TraceOkFrom.drop_covers_of_extDropsFrom {R : CapabilitySet} {l : Nat} :
+  ∀ {A : List Nat} {t : Trace},
+    TraceOkFrom R A t -> Trace.extDropsFrom A l t -> R.covers .drop l := by
+  intro A t htr
+  induction htr with
+  | nil => intro hd; simp only [Trace.extDropsFrom] at hd
+  | alloc _ ih => intro hd; exact ih hd
+  | access _ _ ih => intro hd; exact ih hd
+  | dealloc hcond _ ih =>
+    intro hd
+    rcases hd with ⟨hl, hnotin⟩ | hd
+    · subst hl
+      rcases hcond with hcov | hin
+      · exact hcov
+      · exact absurd hin hnotin
+    · exact ih hd
+
+theorem TraceOk.drop_covers_of_extDrops {R : CapabilitySet} {l : Nat} {t : Trace}
+  (htr : TraceOk t R) (hd : Trace.extDrops t l) : R.covers .drop l :=
+  TraceOkFrom.drop_covers_of_extDropsFrom htr hd
+
+/-- `is_compatible` transfers across a `FrameLive` step.  For a budget `R` whose
+  cells `m` keeps live (`hcompat`) and which are all present in `m` (`hpresent`),
+  if `t` externally-drops none of them then they stay live in `m'`.  This is the
+  bridge that turns the (missing) frame guarantee into the continuation's
+  `is_compatible` obligation in `Fundamental`'s `letin`/`unpack` proofs. -/
+theorem Memory.is_compatible_frame {m m' : Memory} {t : Trace} {R : CapabilitySet}
+    (hcompat : m.is_compatible R)
+    (hpresent : ∀ mu l, R.hasmem mu l -> m.heap l ≠ none)
+    (hframe : Memory.FrameLive m t m')
+    (hsub : m'.subsumes m)
+    (hnodrop : ∀ mu l, R.hasmem mu l -> ¬ Trace.extDrops t l) :
+    m'.is_compatible R := by
+  intro mu l b ℓ hmem hm1
+  cases hcell : m.heap l with
+  | none => exact absurd hcell (hpresent mu l hmem)
+  | some cell =>
+    obtain ⟨v', hv', hsubcell⟩ := hsub l cell hcell
+    rw [hv'] at hm1
+    injection hm1 with hm1eq
+    subst hm1eq
+    cases cell with
+    | val _ => simp [Cell.subsumes] at hsubcell
+    | masked => simp [Cell.subsumes] at hsubcell
+    | capability info =>
+      cases info with
+      | basic => simp [Cell.subsumes] at hsubcell
+      | mcell b0 ℓ0 =>
+        have hℓ0 : ℓ0 = .live := hcompat mu l b0 ℓ0 hmem hcell
+        subst hℓ0
+        obtain ⟨b'', hframe'⟩ :=
+          hframe l b0 (by rw [Memory.lookup]; exact hcell) (hnodrop mu l hmem)
+        rw [Memory.lookup, hv'] at hframe'
+        exact (CapabilityInfo.mcell.inj (Cell.capability.inj (Option.some.inj hframe'))).2
 
 /-- The empty trace is `TraceOk` against any capability set. -/
 theorem TraceOk.nil {R : CapabilitySet} : TraceOk [] R := TraceOkFrom.nil
