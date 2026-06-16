@@ -3833,6 +3833,29 @@ inductive TraceItem : Type where
 /-- A trace records the heap accesses performed during evaluation, in order. -/
 abbrev Trace : Type := List TraceItem
 
+/-- `TraceOkFrom C A t` holds when every access/dealloc in `t` is either covered
+  by the capability set `C`, or targets a location already allocated — recorded
+  in `A`, the locations the trace has allocated so far.  Each `alloc` extends `A`
+  for the remainder of the trace; an `alloc` itself needs no authority. -/
+inductive TraceOkFrom (C : CapabilitySet) : List Nat -> Trace -> Prop where
+| nil : TraceOkFrom C A []
+| alloc :
+  TraceOkFrom C (l :: A) t ->
+  TraceOkFrom C A (.alloc l :: t)
+| access :
+  (C.covers (.access mu) l ∨ l ∈ A) ->
+  TraceOkFrom C A t ->
+  TraceOkFrom C A (.access mu l :: t)
+| dealloc :
+  (C.covers .drop l ∨ l ∈ A) ->
+  TraceOkFrom C A t ->
+  TraceOkFrom C A (.dealloc l :: t)
+
+/-- A trace `t` is OK for a capability set `C` when every access/dealloc it
+  performs is either covered by `C`, or targets a location it allocated earlier
+  in `t` (hence freshly created during evaluation, and not governed by `C`). -/
+def TraceOk (t : Trace) (C : CapabilitySet) : Prop := TraceOkFrom C [] t
+
 /-- Memory predicate. -/
 def Mprop := Memory -> Prop
 
@@ -4286,6 +4309,5 @@ theorem CaptureSet.reachability_monotonic
     cases hwf with
     | wf_union hwf1 hwf2 =>
       simp only [CaptureSet.reachability, ih1 hwf1, ih2 hwf2]
-
 
 end CoreCapybara
