@@ -491,12 +491,12 @@ def rebind_exi_exp_denot
   constructor
   · intro h
     refine eval_post_monotonic ?_ h
-    intro m'' v hpost
-    exact ⟨(ih m'' v).mp hpost.1, hpost.2⟩
+    intro t mm v hpost
+    exact ⟨hpost.1, (ih mm v).mp hpost.2.1, hpost.2.2⟩
   · intro h
     refine eval_post_monotonic ?_ h
-    intro m'' v hpost
-    exact ⟨(ih m'' v).mpr hpost.1, hpost.2⟩
+    intro t mm v hpost
+    exact ⟨hpost.1, (ih mm v).mpr hpost.2.1, hpost.2.2⟩
 
 end
 
