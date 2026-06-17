@@ -372,7 +372,7 @@ inductive Safe : Memory -> Exp {} -> Prop where
   old CPS `eval_letin`'s `Q1.is_bool_independent` field).  Safety is bundled in,
   so this is no weaker than the old inductive `Eval`. -/
 def Eval (m : Memory) (e : Exp {}) (Q : Tpost) : Prop :=
-  Safe m e ∧ (∀ {m0 : Memory} t v m', m0.subsumes m -> BigStep m0 e t v m' -> Q t v m')
+  Safe m e ∧ (∀ t v m', BigStep m e t v m' -> Q t v m')
 
 /-- Every `BigStep` answer value is an answer (`IsAns`). -/
 theorem BigStep.isAns {m e t v m'} (h : BigStep m e t v m') : v.IsAns := by
@@ -1440,6 +1440,361 @@ theorem BigStep.live_appears_allocd {m : Memory} {e : Exp {}} {t v m' l b}
     · exact Or.inr (ih2 hsrc hl')
     · obtain ⟨b1, hc'⟩ := Memory.mcell_lookup_down hbs2.subsumes hsrc hl'
       exact Or.inl (ih1 hl hc')
+
+/- ============================================================================
+   BIT-VARIANT machinery: `withBits` produces `h1` with `h2`'s mcell BITS (same
+   liveness/values/domain).  It is a bit-variant of `h1` (mutually subsuming),
+   used to replay a faithful-`bs_read` run from a memory that reads `h2`'s bits.
+   ========================================================================= -/
+
+/-- `h1` with each mcell's bit overwritten by `h2`'s bit at the same location,
+  keeping `h1`'s liveness and all non-mcell cells. -/
+def Heap.withBits (h1 h2 : Heap) : Heap := fun l =>
+  match h1 l, h2 l with
+  | some (.capability (.mcell _ ℓ1)), some (.capability (.mcell b2 _)) =>
+      some (.capability (.mcell b2 ℓ1))
+  | c, _ => c
+
+/-- Either `withBits` leaves a cell untouched, or it is `h1`'s mcell with a
+  possibly-different bit but the SAME liveness. -/
+theorem Heap.withBits_cases (h1 h2 : Heap) (l : Nat) :
+    (h1.withBits h2) l = h1 l ∨
+      ∃ b ℓ b', h1 l = some (.capability (.mcell b ℓ)) ∧
+        (h1.withBits h2) l = some (.capability (.mcell b' ℓ)) := by
+  unfold Heap.withBits
+  cases hh1 : h1 l with
+  | none => exact Or.inl rfl
+  | some c1 =>
+    cases c1 with
+    | val _ => exact Or.inl rfl
+    | masked => exact Or.inl rfl
+    | capability info =>
+      cases info with
+      | basic => exact Or.inl rfl
+      | mcell b1 ℓ1 =>
+        cases hh2 : h2 l with
+        | none => exact Or.inl rfl
+        | some c2 =>
+          cases c2 with
+          | val _ => exact Or.inl rfl
+          | masked => exact Or.inl rfl
+          | capability info2 =>
+            cases info2 with
+            | basic => exact Or.inl rfl
+            | mcell b2 _ => exact Or.inr ⟨b1, ℓ1, b2, rfl, rfl⟩
+
+theorem Heap.withBits_subsumes_left (h1 h2 : Heap) : (h1.withBits h2).subsumes h1 := by
+  intro l v hlv
+  rcases Heap.withBits_cases h1 h2 l with h | ⟨b, ℓ, b', hh1, hw⟩
+  · exact ⟨v, by rw [h, hlv], Cell.subsumes_refl v⟩
+  · rw [hh1] at hlv; cases hlv
+    exact ⟨_, hw, by simp only [Cell.subsumes]; exact Liveness.Le.refl⟩
+
+theorem Heap.withBits_subsumes_right (h1 h2 : Heap) : h1.subsumes (h1.withBits h2) := by
+  intro l v hlv
+  rcases Heap.withBits_cases h1 h2 l with h | ⟨b, ℓ, b', hh1, hw⟩
+  · exact ⟨v, by rw [← h, hlv], Cell.subsumes_refl v⟩
+  · rw [hw] at hlv; cases hlv
+    exact ⟨_, hh1, by simp only [Cell.subsumes]; exact Liveness.Le.refl⟩
+
+/-- `withBits` preserves the set of allocated locations. -/
+theorem Heap.withBits_none_iff (h1 h2 : Heap) (l : Nat) :
+    (h1.withBits h2) l = none ↔ h1 l = none := by
+  rcases Heap.withBits_cases h1 h2 l with h | ⟨b, ℓ, b', hh1, hw⟩
+  · rw [h]
+  · rw [hh1, hw]; simp
+
+theorem Heap.withBits_findom {h1 h2 : Heap} {dom : Finset Nat}
+    (hdom : h1.HasFinDom dom) : (h1.withBits h2).HasFinDom dom := by
+  intro l; rw [← hdom l]; exact not_iff_not.mpr (Heap.withBits_none_iff h1 h2 l)
+
+/-- `withBits` installs `h2`'s bit at every shared mcell location. -/
+theorem Heap.withBits_bit {h1 h2 : Heap} {l : Nat} {b1 ℓ1 b2 ℓ2}
+    (h1l : h1 l = some (.capability (.mcell b1 ℓ1)))
+    (h2l : h2 l = some (.capability (.mcell b2 ℓ2))) :
+    (h1.withBits h2) l = some (.capability (.mcell b2 ℓ1)) := by
+  unfold Heap.withBits; rw [h1l, h2l]
+
+/-- A value cell in the smaller of two mutually-subsuming heaps is present, equal,
+  in the larger. -/
+theorem Heap.val_eq_of_subsumes {h h' : Heap} {l : Nat} {hv : HeapVal}
+    (hsub : h.subsumes h') (hl : h' l = some (.val hv)) : h l = some (.val hv) := by
+  obtain ⟨c, hc, hsubc⟩ := hsub l _ hl
+  cases c with
+  | val _ => simp only [Cell.subsumes] at hsubc; rw [hc, hsubc]
+  | capability _ => simp only [Cell.subsumes] at hsubc; exact absurd hsubc (by simp)
+  | masked => simp only [Cell.subsumes] at hsubc; exact absurd hsubc (by simp)
+
+/-- Well-formedness is preserved under mutually-subsuming heaps (which differ only
+  in mcell bits): value cells are equal, and `compute_reachability` agrees. -/
+theorem Heap.WfHeap.biSubsumes {h h' : Heap} (hwf : h.WfHeap)
+    (hsub : h'.subsumes h) (hsub' : h.subsumes h') : h'.WfHeap where
+  wf_val l hv hl := by
+    have hl1 : h l = some (.val hv) := Heap.val_eq_of_subsumes hsub' hl
+    exact Exp.wf_monotonic hsub (hwf.wf_val l hv hl1)
+  wf_reach l v hv R hl := by
+    have hl1 : h l = some (.val ⟨v, hv, R⟩) := Heap.val_eq_of_subsumes hsub' hl
+    have hr := hwf.wf_reach l v hv R hl1
+    have hwfv : Exp.WfInHeap v h := hwf.wf_val l ⟨v, hv, R⟩ hl1
+    rw [hr, compute_reachability_monotonic hsub v hv hwfv]
+  wf_reach_dom l v hv R hl mu l' hmem := by
+    have hl1 : h l = some (.val ⟨v, hv, R⟩) := Heap.val_eq_of_subsumes hsub' hl
+    intro hnone
+    exact hwf.wf_reach_dom l v hv R hl1 mu l' hmem (Heap.none_of_subsumes_none hsub hnone)
+
+/-- `m1` with `m2`'s mcell bits — a well-formed bit-variant of `m1`. -/
+def Memory.withBitsOf (m1 m2 : Memory) : Memory where
+  heap := m1.heap.withBits m2.heap
+  wf := Heap.WfHeap.biSubsumes m1.wf
+    (Heap.withBits_subsumes_left _ _) (Heap.withBits_subsumes_right _ _)
+  findom := ⟨m1.findom.choose, Heap.withBits_findom m1.findom.choose_spec⟩
+
+theorem Memory.withBitsOf_subsumes_left (m1 m2 : Memory) :
+    (m1.withBitsOf m2).subsumes m1 := Heap.withBits_subsumes_left _ _
+
+theorem Memory.withBitsOf_subsumes_right (m1 m2 : Memory) :
+    m1.subsumes (m1.withBitsOf m2) := Heap.withBits_subsumes_right _ _
+
+/-- `n` and `m` carry the same bit at every location where BOTH hold an mcell. -/
+def Memory.BitAgree (n m : Memory) : Prop :=
+  ∀ l b ℓ b' ℓ', n.lookup l = some (.capability (.mcell b ℓ)) ->
+    m.lookup l = some (.capability (.mcell b' ℓ')) -> b = b'
+
+theorem Memory.withBitsOf_bitAgree (m1 m2 : Memory) : (m1.withBitsOf m2).BitAgree m2 := by
+  intro l bn ℓn b2 ℓ2 hn hm2
+  have hnh : (m1.heap.withBits m2.heap) l = some (.capability (.mcell bn ℓn)) := hn
+  have hm2h : m2.heap l = some (.capability (.mcell b2 ℓ2)) := hm2
+  obtain ⟨b1, ℓ1, hh1⟩ : ∃ b1 ℓ1, m1.heap l = some (.capability (.mcell b1 ℓ1)) := by
+    rcases Heap.withBits_cases m1.heap m2.heap l with h | ⟨b1, ℓ1, b', hh1, _⟩
+    · exact ⟨bn, ℓn, by rw [← h]; exact hnh⟩
+    · exact ⟨b1, ℓ1, hh1⟩
+  rw [Heap.withBits_bit hh1 hm2h] at hnh
+  simp only [Option.some.injEq, Cell.capability.injEq, CapabilityInfo.mcell.injEq] at hnh
+  exact hnh.1.symm
+
+-- `BitAgree` is preserved by performing the SAME memory operation on both sides.
+theorem Memory.BitAgree.extend_mcell {n m : Memory} {L : Nat} {b : Bool} {h1 h2}
+    (hba : n.BitAgree m) :
+    (n.extend_mcell L b h1).BitAgree (m.extend_mcell L b h2) := by
+  intro l bn ℓn b2 ℓ2 hn hm2
+  by_cases hl : l = L
+  · subst hl
+    rw [show (n.extend_mcell l b h1).lookup l = some (.capability (.mcell b .live)) from by
+      simp [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell]] at hn
+    rw [show (m.extend_mcell l b h2).lookup l = some (.capability (.mcell b .live)) from by
+      simp [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell]] at hm2
+    simp only [Option.some.injEq, Cell.capability.injEq, CapabilityInfo.mcell.injEq] at hn hm2
+    rw [← hn.1, ← hm2.1]
+  · rw [show (n.extend_mcell L b h1).lookup l = n.lookup l from by
+      simp [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hl]] at hn
+    rw [show (m.extend_mcell L b h2).lookup l = m.lookup l from by
+      simp [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hl]] at hm2
+    exact hba l bn ℓn b2 ℓ2 hn hm2
+
+theorem Memory.BitAgree.update_mcell {n m : Memory} {x : Nat} {b : Bool} {ℓ} {h1 h2}
+    (hba : n.BitAgree m) :
+    (n.update_mcell x b ℓ h1).BitAgree (m.update_mcell x b ℓ h2) := by
+  intro l bn ℓn b2 ℓ2 hn hm2
+  by_cases hl : l = x
+  · subst hl
+    rw [show (n.update_mcell l b ℓ h1).lookup l = some (.capability (.mcell b ℓ)) from by
+      simp [Memory.lookup, Memory.update_mcell, Heap.update_cell]] at hn
+    rw [show (m.update_mcell l b ℓ h2).lookup l = some (.capability (.mcell b ℓ)) from by
+      simp [Memory.lookup, Memory.update_mcell, Heap.update_cell]] at hm2
+    simp only [Option.some.injEq, Cell.capability.injEq, CapabilityInfo.mcell.injEq] at hn hm2
+    rw [← hn.1, ← hm2.1]
+  · rw [Memory.update_mcell_lookup_ne hl] at hn
+    rw [Memory.update_mcell_lookup_ne hl] at hm2
+    exact hba l bn ℓn b2 ℓ2 hn hm2
+
+theorem Memory.BitAgree.drop_mcell {n m : Memory} {x : Nat} {h1 h2} (hba : n.BitAgree m) :
+    (n.drop_mcell x h1).BitAgree (m.drop_mcell x h2) := by
+  intro l bn ℓn b2 ℓ2 hn hm2
+  by_cases hl : l = x
+  · subst hl
+    rw [show (n.drop_mcell l h1).lookup l = some (.capability (.mcell false .dead)) from by
+      simp [Memory.lookup, Memory.drop_mcell, Heap.update_cell]] at hn
+    rw [show (m.drop_mcell l h2).lookup l = some (.capability (.mcell false .dead)) from by
+      simp [Memory.lookup, Memory.drop_mcell, Heap.update_cell]] at hm2
+    simp only [Option.some.injEq, Cell.capability.injEq, CapabilityInfo.mcell.injEq] at hn hm2
+    rw [← hn.1, ← hm2.1]
+  · rw [Memory.drop_mcell_lookup_ne hl] at hn
+    rw [Memory.drop_mcell_lookup_ne hl] at hm2
+    exact hba l bn ℓn b2 ℓ2 hn hm2
+
+theorem Memory.BitAgree.extend_val {n m : Memory} {L : Nat} {vn vm hwn hwm hrn hrm hfn hfm}
+    (hba : n.BitAgree m) :
+    (n.extend_val L vn hwn hrn hfn).BitAgree (m.extend_val L vm hwm hrm hfm) := by
+  intro l bn ℓn b2 ℓ2 hn hm2
+  by_cases hl : l = L
+  · subst hl; rw [Memory.extend_val_lookup_self] at hn; exact absurd hn (by simp)
+  · rw [Memory.extend_val_lookup_ne hl] at hn
+    rw [Memory.extend_val_lookup_ne hl] at hm2
+    exact hba l bn ℓn b2 ℓ2 hn hm2
+
+/-- **Same-bits replay.**  A run from `m2` is reproduced — SAME trace and value —
+  from any more-live bit-variant `n` that agrees with `m2`'s mcell bits.  Faithful
+  reads are fine because `n` reads exactly `m2`'s stored bits (`BitAgree`).  The
+  resulting `n'` again agrees with `m2'` on bits, so the invariant threads through
+  `letin`/`unpack`. -/
+theorem BigStep.replay {m2 : Memory} {e : Exp {}} {t : Trace} {v : Exp {}}
+    {m2' : Memory} (hbs : BigStep m2 e t v m2') :
+    ∀ {n : Memory}, m2.subsumes n -> n.BitAgree m2 -> Exp.WfInHeap e n.heap ->
+      ∃ n', BigStep n e t v n' ∧ m2'.subsumes n' ∧ n'.BitAgree m2' := by
+  induction hbs with
+  | bs_pack => intro n hsub hba _; exact ⟨n, BigStep.bs_pack, hsub, hba⟩
+  | bs_val hv => intro n hsub hba _; exact ⟨n, BigStep.bs_val hv, hsub, hba⟩
+  | bs_var => intro n hsub hba _; exact ⟨n, BigStep.bs_var, hsub, hba⟩
+  | bs_wrap => intro n hsub hba _; exact ⟨n, BigStep.bs_wrap, hsub, hba⟩
+  | bs_alloc hlk hfresh =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_alloc (.wf_free hx1) =>
+      have hcx := Memory.lookup_down hsub hx1 hlk
+      simp only [Cell.subsumes] at hcx; subst hcx
+      have hfresh1 : n.heap _ = none := Heap.none_of_subsumes_none hsub hfresh
+      exact ⟨_, BigStep.bs_alloc hx1 hfresh1,
+        Memory.extend_mcell_subsumes_compat _ _ hfresh1 hfresh hsub, hba.extend_mcell⟩
+  | bs_invoke hlkx hlky =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_app (.wf_free hx1) (.wf_free hy1) =>
+      have hcx := Memory.lookup_down hsub hx1 hlkx
+      have hcy := Memory.lookup_down hsub hy1 hlky
+      simp only [Cell.subsumes] at hcx hcy; subst hcx; subst hcy
+      exact ⟨n, BigStep.bs_invoke hx1 hy1, hsub, hba⟩
+  | bs_apply hlk hbody ih =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_app (.wf_free hx1) hwfy =>
+      have hcx := Memory.lookup_down hsub hx1 hlk
+      simp only [Cell.subsumes] at hcx; subst hcx
+      obtain ⟨_, _, he⟩ := Exp.wf_inv_abs (Memory.wf_lookup hx1)
+      obtain ⟨n', hbs1', hsub', hba'⟩ := ih hsub hba (Exp.wf_subst he (Subst.wf_openVar hwfy))
+      exact ⟨n', BigStep.bs_apply hx1 hbs1', hsub', hba'⟩
+  | bs_tapply hlk hbody ih =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_tapp (.wf_free hx1) _ =>
+      have hcx := Memory.lookup_down hsub hx1 hlk
+      simp only [Cell.subsumes] at hcx; subst hcx
+      obtain ⟨_, _, he⟩ := Exp.wf_inv_tabs (Memory.wf_lookup hx1)
+      obtain ⟨n', hbs1', hsub', hba'⟩ :=
+        ih hsub hba (Exp.wf_subst he (Subst.wf_openTVar Ty.WfInHeap.wf_top))
+      exact ⟨n', BigStep.bs_tapply hx1 hbs1', hsub', hba'⟩
+  | bs_capply hlk hbody ih =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_capp (.wf_free hx1) hcs =>
+      have hcx := Memory.lookup_down hsub hx1 hlk
+      simp only [Cell.subsumes] at hcx; subst hcx
+      obtain ⟨_, _, he⟩ := Exp.wf_inv_cabs (Memory.wf_lookup hx1)
+      obtain ⟨n', hbs1', hsub', hba'⟩ := ih hsub hba (Exp.wf_subst he (Subst.wf_openCVar hcs))
+      exact ⟨n', BigStep.bs_capply hx1 hbs1', hsub', hba'⟩
+  | bs_unwrap hlk hbody ih =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_unwrap (.wf_free hx1) =>
+      have hcx := Memory.lookup_down hsub hx1 hlk
+      simp only [Cell.subsumes] at hcx; subst hcx
+      obtain ⟨n', hbs1', hsub', hba'⟩ := ih hsub hba
+        (match Memory.wf_lookup hx1 with | .wf_boxed _ _ he => he)
+      exact ⟨n', BigStep.bs_unwrap hx1 hbs1', hsub', hba'⟩
+  | bs_read hlkx hlky =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_read (.wf_free hx1) =>
+      have hcx := Memory.lookup_down hsub hx1 hlkx
+      simp only [Cell.subsumes] at hcx; subst hcx
+      obtain ⟨b1, hy1⟩ := (match Memory.wf_lookup hx1 with
+        | .wf_reader (.wf_free hy0) => Memory.mcell_lookup_down hsub hy0 hlky)
+      have hbeq := hba _ _ _ _ _ hy1 hlky
+      subst hbeq
+      exact ⟨n, BigStep.bs_read hx1 hy1, hsub, hba⟩
+  | bs_write_true hlkx hlky =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_write (.wf_free hx1) (.wf_free hy1) =>
+      obtain ⟨b1, hx1'⟩ := Memory.mcell_lookup_down hsub hx1 hlkx
+      have hcy := Memory.lookup_down hsub hy1 hlky
+      simp only [Cell.subsumes] at hcy; subst hcy
+      exact ⟨_, BigStep.bs_write_true hx1' hy1,
+        Memory.update_mcell_subsumes_compat _ _ _ ⟨b1, hx1'⟩ ⟨_, hlkx⟩ hsub, hba.update_mcell⟩
+  | bs_write_false hlkx hlky =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_write (.wf_free hx1) (.wf_free hy1) =>
+      obtain ⟨b1, hx1'⟩ := Memory.mcell_lookup_down hsub hx1 hlkx
+      have hcy := Memory.lookup_down hsub hy1 hlky
+      simp only [Cell.subsumes] at hcy; subst hcy
+      exact ⟨_, BigStep.bs_write_false hx1' hy1,
+        Memory.update_mcell_subsumes_compat _ _ _ ⟨b1, hx1'⟩ ⟨_, hlkx⟩ hsub, hba.update_mcell⟩
+  | bs_drop hlkx =>
+    intro n hsub hba hwf
+    match hwf with
+    | .wf_drop (.wf_free hx1) =>
+      obtain ⟨b1, hx1'⟩ := Memory.mcell_lookup_down hsub hx1 hlkx
+      exact ⟨_, BigStep.bs_drop hx1',
+        Memory.drop_mcell_subsumes_compat _ ⟨b1, hx1'⟩ ⟨_, hlkx⟩ hsub, hba.drop_mcell⟩
+  | bs_letin_val hbs1 hv hwf_v hfresh hbs2 ih1 ih2 =>
+    intro n hsub hba hwf
+    rename_i _ _ _ _ _ _ _ _ w l
+    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
+    obtain ⟨n_1, hbs1', hsub1', hba1⟩ := ih1 hsub hba hwf_e1
+    have hwf_v1 := BigStep.wf_answer hbs1' hwf_e1
+    have hfresh1 := Heap.none_of_subsumes_none hsub1' hfresh
+    obtain ⟨n', hbs2', hsub2', hba2⟩ :=
+      ih2 (n := n_1.extend_val l ⟨w, hv, compute_reachability n_1.heap w hv⟩ hwf_v1 rfl hfresh1)
+        (Memory.extend_val_subsumes_compat
+          (by rw [compute_reachability_monotonic hsub1' _ hv hwf_v1])
+          hwf_v1 rfl hfresh1 hwf_v rfl hfresh hsub1')
+        hba1.extend_val
+        (Exp.wf_subst
+          (Exp.wf_monotonic
+            (Heap.subsumes_trans (Heap.extend_subsumes hfresh1) (BigStep.subsumes hbs1'))
+            hwf_e2)
+          (Subst.wf_openVar (Var.WfInHeap.wf_free (Heap.extend_lookup_eq _ _ _))))
+    exact ⟨n', BigStep.bs_letin_val hbs1' hv hwf_v1 hfresh1 hbs2', hsub2', hba2⟩
+  | bs_letin_var hbs1 hbs2 ih1 ih2 =>
+    intro n hsub hba hwf
+    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
+    obtain ⟨n_1, hbs1', hsub1', hba1⟩ := ih1 hsub hba hwf_e1
+    have hwf_body := Exp.wf_subst (Exp.wf_monotonic (BigStep.subsumes hbs1') hwf_e2)
+      (match BigStep.wf_answer hbs1' hwf_e1 with
+        | Exp.WfInHeap.wf_var hx => Subst.wf_openVar hx)
+    obtain ⟨n', hbs2', hsub2', hba2⟩ := ih2 hsub1' hba1 hwf_body
+    exact ⟨n', BigStep.bs_letin_var hbs1' hbs2', hsub2', hba2⟩
+  | bs_unpack hbs1 hbs2 ih1 ih2 =>
+    intro n hsub hba hwf
+    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_unpack hwf
+    obtain ⟨n_1, hbs1', hsub1', hba1⟩ := ih1 hsub hba hwf_e1
+    have hwf_body := Exp.wf_subst (Exp.wf_monotonic (BigStep.subsumes hbs1') hwf_e2)
+      (match BigStep.wf_answer hbs1' hwf_e1 with
+        | Exp.WfInHeap.wf_pack hcs hx => Subst.wf_unpack hcs hx)
+    obtain ⟨n', hbs2', hsub2', hba2⟩ := ih2 hsub1' hba1 hwf_body
+    exact ⟨n', BigStep.bs_unpack hbs1' hbs2', hsub2', hba2⟩
+  | bs_cond_true hres hbody ih =>
+    intro n hsub hba hwf
+    obtain ⟨hwfx, hwf2, _⟩ := Exp.wf_inv_cond hwf
+    obtain ⟨n', hbs1', hsub', hba'⟩ := ih hsub hba hwf2
+    refine ⟨n', BigStep.bs_cond_true ?_ hbs1', hsub', hba'⟩
+    match hwfx with
+    | .wf_free h => exact resolve_down hsub (Option.ne_none_iff_exists'.mpr ⟨_, h⟩) hres
+  | bs_cond_false hres hbody ih =>
+    intro n hsub hba hwf
+    obtain ⟨hwfx, _, hwf3⟩ := Exp.wf_inv_cond hwf
+    obtain ⟨n', hbs1', hsub', hba'⟩ := ih hsub hba hwf3
+    refine ⟨n', BigStep.bs_cond_false ?_ hbs1', hsub', hba'⟩
+    match hwfx with
+    | .wf_free h => exact resolve_down hsub (Option.ne_none_iff_exists'.mpr ⟨_, h⟩) hres
+  | bs_par_left hbody ih =>
+    intro n hsub hba hwf
+    obtain ⟨n', hbs1', hsub', hba'⟩ := ih hsub hba (match hwf with | .wf_par hwf1 _ => hwf1)
+    exact ⟨n', BigStep.bs_par_left hbs1', hsub', hba'⟩
+  | bs_par_right hbody ih =>
+    intro n hsub hba hwf
+    obtain ⟨n', hbs1', hsub', hba'⟩ := ih hsub hba (match hwf with | .wf_par _ hwf2 => hwf2)
+    exact ⟨n', BigStep.bs_par_right hbs1', hsub', hba'⟩
 
 /-- Safety lifts upward along subsumption: if `e` is safe from `m1` and every
   touched cell stays live in `m2` (`hok`, fed `m1`'s answers via `hpres`), then
