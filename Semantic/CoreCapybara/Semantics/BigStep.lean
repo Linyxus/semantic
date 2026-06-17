@@ -1972,6 +1972,323 @@ theorem eval_post_monotonic {Q1 Q2 : Tpost}
   Eval m e Q2 :=
   eval_post_monotonic_general (Tpost.entails_to_entails_after himp) heval
 
+/- ============================================================================
+   `Eval` INTRODUCTION COMBINATORS.  These reconstruct the old inductive `Eval`'s
+   constructors as lemmas about the new `def Eval := Safe ∧ preservation`, so the
+   `Fundamental` proofs (`apply Eval.eval_xxx`) port over.  The `Safe` half uses
+   the `Safe` constructors; the preservation half inverts the relational `BigStep`.
+   ============================================================================ -/
+
+/-- Lookup is a function, so two `val` lookups of the same location agree. -/
+theorem Memory.lookup_val_eq {m : Memory} {x : Nat} {v1 v2 : HeapVal}
+    (h1 : m.lookup x = some (.val v1)) (h2 : m.lookup x = some (.val v2)) : v1 = v2 :=
+  Cell.val.inj (Option.some.inj (h1 ▸ h2))
+
+/-- **Operational frame property.**  Every run keeps every live mcell alive
+  unless its trace externally drops it (the only event that kills a live cell is a
+  `.dealloc`).  This is exactly the liveness frame that the relational `Eval` can
+  expose to `letin`/`unpack` continuations — the actual `e1`-run is available, so
+  the frame is derivable — which the old CPS `Eval` could not. -/
+theorem Memory.update_mcell_preserves_live {m : Memory} (x : Nat) {b : Bool} {h} {l : Nat}
+    (hl : m.IsLive l) : (m.update_mcell x b .live h).IsLive l := by
+  by_cases hlx : l = x
+  · subst hlx; exact Memory.update_mcell_IsLive_self
+  · exact (Memory.update_mcell_IsLive_ne hlx).mpr hl
+
+theorem BigStep.frameLive {m : Memory} {e : Exp {}} {t v m'}
+    (hbs : BigStep m e t v m') : Memory.FrameLive m t m' := by
+  induction hbs with
+  | bs_pack | bs_val _ | bs_var | bs_wrap | bs_invoke _ _ | bs_read _ _ =>
+    exact Memory.FrameLive.refl
+  | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
+  | bs_cond_true _ _ ih | bs_cond_false _ _ ih | bs_par_left _ ih | bs_par_right _ ih =>
+    exact ih
+  | bs_alloc hlk hfr =>
+    intro l b hlive _
+    refine (Memory.extend_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact absurd hlive (by simp [Memory.lookup, hfr])
+  | bs_write_true hx hy | bs_write_false hx hy =>
+    intro l b hlive _
+    exact Memory.update_mcell_preserves_live _ ⟨b, hlive⟩
+  | bs_drop hx =>
+    intro l b hlive hnd
+    refine (Memory.drop_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact hnd (by simp [Trace.extDrops, Trace.extDropsFrom])
+  | bs_letin_val hrun_e1 hv hwf_v hfr hrun_e2 ih1 ih2 =>
+    refine Memory.FrameLive.append ih1 ?_ (fun l b hlive ha =>
+      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
+    intro l b hlive hnd
+    refine ih2 l b ((Memory.extend_val_lookup_ne ?_).trans hlive) hnd
+    rintro rfl; exact absurd hlive (by simp [hfr])
+  | bs_letin_var hrun_e1 hrun_e2 ih1 ih2 =>
+    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
+      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
+  | bs_unpack hrun_e1 hrun_e2 ih1 ih2 =>
+    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
+      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
+
+/-- A `BigStep` from a simple value is the trivial no-op step. -/
+theorem BigStep.simpleVal_eq {m : Memory} {v : Exp {}} {t v' m'}
+    (hv : Exp.IsSimpleVal v) (hbs : BigStep m v t v' m') : t = [] ∧ v' = v ∧ m' = m := by
+  cases hv <;> cases hbs <;> exact ⟨rfl, rfl, rfl⟩
+
+theorem Eval.eval_pack {m : Memory} {cs : CaptureSet {}} {x : Var .var {}} {Q : Tpost}
+    (hQ : Q [] (.pack cs x) m) : Eval m (.pack cs x) Q := by
+  refine ⟨Safe.ans (Exp.IsAns.is_val Exp.IsVal.pack), ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_pack => exact hQ
+  | bs_val hv => cases hv
+
+theorem Eval.eval_var {m : Memory} {x : Var .var {}} {Q : Tpost}
+    (hQ : Q [] (.var x) m) : Eval m (.var x) Q := by
+  refine ⟨Safe.ans Exp.IsAns.is_var, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_var => exact hQ
+  | bs_val hv => cases hv
+
+theorem Eval.eval_val {m : Memory} {v : Exp {}} {Q : Tpost}
+    (hv : Exp.IsSimpleVal v) (hQ : Q [] v m) : Eval m v Q := by
+  refine ⟨Safe.ans (Exp.IsAns.is_val hv.to_IsVal), ?_⟩
+  intro t v' m' hbs
+  obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq hv hbs
+  exact hQ
+
+theorem Eval.eval_read {m : Memory} {x : Nat} {y : Nat} {hv R} {b : Bool} {Q : Tpost}
+    (hlkx : m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩))
+    (hlky : m.lookup y = some (.capability (.mcell b .live)))
+    (hQ : ∀ b' : Bool, Q [.access .ro y] (if b' then .btrue else .bfalse) m) :
+    Eval m (.read (.free x)) Q := by
+  refine ⟨Safe.read hlkx hlky, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_read hlkx2 _ =>
+    have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlkx hlkx2)
+    simp only at heq
+    cases heq
+    exact hQ _
+  | bs_val hv => cases hv
+
+theorem Eval.eval_drop {m : Memory} {x : Nat} {b : Bool} {Q : Tpost}
+    (hx : m.lookup x = some (.capability (.mcell b .live)))
+    (hQ : Q [.dealloc x] .unit (m.drop_mcell x ⟨b, hx⟩)) :
+    Eval m (.drop (.free x)) Q := by
+  refine ⟨Safe.drop hx, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_drop hx2 => exact hQ
+  | bs_val hv => cases hv
+
+theorem Eval.eval_wrap {m : Memory} {cs : CaptureSet {}} {Ψ : SepCtx {}} {e : Exp {}}
+    {Q : Tpost} (hQ : Q [] (.boxed cs Ψ e) m) : Eval m (.boxed cs Ψ e) Q := by
+  refine ⟨Safe.ans (Exp.IsAns.is_val Exp.IsVal.boxed), ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_wrap => exact hQ
+  | bs_val _ => exact hQ
+
+theorem Eval.eval_invoke {m : Memory} {x : Nat} {y : Nat} {hv R} {Q : Tpost}
+    (hlkx : m.lookup x = some (.capability .basic))
+    (hlky : m.lookup y = some (.val ⟨.unit, hv, R⟩))
+    (hQ : Q [.access .epsilon x] .unit m) :
+    Eval m (.app (.free x) (.free y)) Q := by
+  refine ⟨Safe.invoke hlkx hlky, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_invoke hlkx2 hlky2 => exact hQ
+  | bs_apply hlk2 _ => rw [hlkx] at hlk2; exact absurd hlk2 (by simp)
+  | bs_val hv => cases hv
+
+theorem Eval.eval_apply {m : Memory} {x : Nat} {y : Var .var {}} {cs T e hv R} {Q : Tpost}
+    (hlk : m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩))
+    (hrec : Eval m (e.subst (Subst.openVar y)) Q) :
+    Eval m (.app (.free x) y) Q := by
+  refine ⟨Safe.apply hlk hrec.1, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_apply hlk2 hbody =>
+    have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+    simp only at heq; cases heq
+    exact hrec.2 _ _ _ hbody
+  | bs_invoke hlkx2 _ => rw [hlk] at hlkx2; exact absurd hlkx2 (by simp)
+  | bs_val hv => cases hv
+
+theorem Eval.eval_tapply {m : Memory} {x : Nat} {S} {cs T0 e hv R} {Q : Tpost}
+    (hlk : m.lookup x = some (.val ⟨.tabs cs T0 e, hv, R⟩))
+    (hrec : Eval m (e.subst (Subst.openTVar .top)) Q) :
+    Eval m (.tapp (.free x) S) Q := by
+  refine ⟨Safe.tapply hlk hrec.1, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_tapply hlk2 hbody =>
+    have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+    simp only at heq; cases heq
+    exact hrec.2 _ _ _ hbody
+  | bs_val hv => cases hv
+
+theorem Eval.eval_capply {m : Memory} {x : Nat} {CS} {cs B0 e hv R} {Q : Tpost}
+    (hlk : m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩))
+    (hrec : Eval m (e.subst (Subst.openCVar CS)) Q) :
+    Eval m (.capp (.free x) CS) Q := by
+  refine ⟨Safe.capply hlk hrec.1, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_capply hlk2 hbody =>
+    have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+    simp only at heq; cases heq
+    exact hrec.2 _ _ _ hbody
+  | bs_val hv => cases hv
+
+theorem Eval.eval_unwrap {m : Memory} {x : Nat} {cs Ψ e hv R} {Q : Tpost}
+    (hlk : m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩))
+    (hrec : Eval m e Q) :
+    Eval m (.unwrap (.free x)) Q := by
+  refine ⟨Safe.unwrap hlk hrec.1, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_unwrap hlk2 hbody =>
+    have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+    simp only at heq; cases heq
+    exact hrec.2 _ _ _ hbody
+  | bs_val hv => cases hv
+
+theorem Eval.eval_write_true {m : Memory} {x y : Nat} {b0 : Bool} {hv R} {Q : Tpost}
+    (hx : m.lookup x = some (.capability (.mcell b0 .live)))
+    (hlky : m.lookup y = some (.val ⟨.btrue, hv, R⟩))
+    (hQ : Q [.access .epsilon x] .unit (m.update_mcell x true .live ⟨b0, hx⟩)) :
+    Eval m (.write (.free x) (.free y)) Q := by
+  refine ⟨Safe.write_true hx hlky, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_write_true hx2 hlky2 => exact hQ
+  | bs_write_false hx2 hlky2 =>
+    exact absurd (congrArg HeapVal.unwrap (Memory.lookup_val_eq hlky hlky2)) (by simp)
+  | bs_val hv => cases hv
+
+theorem Eval.eval_write_false {m : Memory} {x y : Nat} {b0 : Bool} {hv R} {Q : Tpost}
+    (hx : m.lookup x = some (.capability (.mcell b0 .live)))
+    (hlky : m.lookup y = some (.val ⟨.bfalse, hv, R⟩))
+    (hQ : Q [.access .epsilon x] .unit (m.update_mcell x false .live ⟨b0, hx⟩)) :
+    Eval m (.write (.free x) (.free y)) Q := by
+  refine ⟨Safe.write_false hx hlky, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_write_false hx2 hlky2 => exact hQ
+  | bs_write_true hx2 hlky2 =>
+    exact absurd (congrArg HeapVal.unwrap (Memory.lookup_val_eq hlky hlky2)) (by simp)
+  | bs_val hv => cases hv
+
+theorem Eval.eval_alloc {m : Memory} {x : Nat} {b : Bool} {hv R} {Q : Tpost}
+    (hlk : m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩))
+    (h_post : ∀ l (hfresh : m.heap l = none),
+      Q [.alloc l] (.pack (.var (.M .epsilon) (.free l)) (.free l)) (m.extend_mcell l b hfresh)) :
+    Eval m (.alloc (.free x)) Q := by
+  refine ⟨Safe.alloc hlk, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | @bs_alloc _ _ b2 _ _ l2 hlk2 hfresh2 =>
+    have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+    simp only at heq
+    have hbb : b = b2 := by cases b <;> cases b2 <;> simp_all
+    subst hbb
+    exact h_post l2 hfresh2
+  | bs_val hv => cases hv
+
+theorem Eval.eval_cond {m : Memory} {x : Var .var {}} {e2 e3 : Exp {}} {Q : Tpost}
+    (hres : resolve m.heap (.var x) = some .btrue ∨ resolve m.heap (.var x) = some .bfalse)
+    (h_true : resolve m.heap (.var x) = some .btrue → Eval m e2 Q)
+    (h_false : resolve m.heap (.var x) = some .bfalse → Eval m e3 Q) :
+    Eval m (.cond x e2 e3) Q := by
+  refine ⟨Safe.cond hres (fun ht => (h_true ht).1) (fun hf => (h_false hf).1), ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_cond_true hres_t hbody => exact (h_true hres_t).2 _ _ _ hbody
+  | bs_cond_false hres_f hbody => exact (h_false hres_f).2 _ _ _ hbody
+  | bs_val hv => cases hv
+
+theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q : Tpost}
+    (hrec1 : Eval m e1 Q) (hrec2 : Eval m e2 Q) : Eval m (.par e1 e2) Q := by
+  refine ⟨Safe.par hrec1.1 hrec2.1, ?_⟩
+  intro t v m' hbs
+  cases hbs with
+  | bs_par_left hbody => exact hrec1.2 _ _ _ hbody
+  | bs_par_right hbody => exact hrec2.2 _ _ _ hbody
+  | bs_val hv => cases hv
+
+/-- `letin`: compose `e1`'s evaluation with the continuation.  Both halves run on
+  the ACTUAL `e1`-answer (`he1.2`), so — unlike the old CPS `eval_letin` — neither
+  `hpred` (monotonicity) nor `hbool` (bool-independence) is needed here; they are
+  kept only so `Fundamental`'s call sites port unchanged.
+
+  Crucially, `h_val`/`h_var` are handed the **operational frame** `FrameLive m t1 m1`
+  (the actual `e1`-run keeps live cells alive unless its trace drops them).  The
+  relational model exposes this because the `e1`-run is real; the old CPS `Eval`
+  could not, which is why `Fundamental`'s `letin` proof had a frame `sorry`. -/
+theorem Eval.eval_letin {m : Memory} {e1 : Exp {}} {e2 : Exp ({},x)} {Q Q1 : Tpost}
+    (_hpred : Q1.is_monotonic) (_hbool : Q1.is_bool_independent)
+    (he1 : Eval m e1 Q1)
+    (h_nonstuck : ∀ {t1 : Trace} {m1 : Memory} {v : Exp {}},
+      Q1 t1 v m1 -> v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap)
+    (h_val : ∀ {t1 : Trace} {m1} {v : Exp {}}, m1.subsumes m -> Memory.FrameLive m t1 m1 ->
+      (hv : Exp.IsSimpleVal v) -> (hwf_v : Exp.WfInHeap v m1.heap) -> Q1 t1 v m1 ->
+      ∀ l' (hfresh : m1.lookup l' = none),
+        Eval (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh)
+          (e2.subst (Subst.openVar (.free l'))) (fun t2 => Q (t1 ++ t2)))
+    (h_var : ∀ {t1 : Trace} {m1} {x : Var .var {}}, m1.subsumes m -> Memory.FrameLive m t1 m1 ->
+      (hwf_x : x.WfInHeap m1.heap) -> Q1 t1 (.var x) m1 ->
+      Eval m1 (e2.subst (Subst.openVar x)) (fun t2 => Q (t1 ++ t2))) :
+    Eval m (.letin e1 e2) Q := by
+  refine ⟨?_, ?_⟩
+  · refine Safe.letin he1.1 (fun t1 v m1 hrun => h_nonstuck (he1.2 t1 v m1 hrun)) ?_ ?_
+    · intro t1 m1 v hrun hv hwf_v l' hfresh
+      exact (h_val (BigStep.subsumes hrun) (BigStep.frameLive hrun) hv hwf_v
+        (he1.2 t1 v m1 hrun) l' hfresh).1
+    · intro t1 m1 x hrun
+      have hq1 := he1.2 t1 (.var x) m1 hrun
+      have hwfx : x.WfInHeap m1.heap := by cases (h_nonstuck hq1).2 with | wf_var h => exact h
+      exact (h_var (BigStep.subsumes hrun) (BigStep.frameLive hrun) hwfx hq1).1
+  · intro t v m' hbs
+    cases hbs with
+    | bs_letin_val hrun_e1 hv hwf_v hfresh hrun_e2 =>
+      exact (h_val (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hv hwf_v
+        (he1.2 _ _ _ hrun_e1) _ hfresh).2 _ _ _ hrun_e2
+    | bs_letin_var hrun_e1 hrun_e2 =>
+      have hq1 := he1.2 _ _ _ hrun_e1
+      cases (h_nonstuck hq1).2 with
+      | wf_var hwfx =>
+        exact (h_var (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hwfx hq1).2
+          _ _ _ hrun_e2
+    | bs_val hv => cases hv
+
+/-- `unpack`: like `letin`, but the `e1`-answer is a `pack`. -/
+theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : Tpost}
+    (_hpred : Q1.is_monotonic) (_hbool : Q1.is_bool_independent)
+    (he1 : Eval m e1 Q1)
+    (h_nonstuck : ∀ {t1 : Trace} {m1 : Memory} {v : Exp {}},
+      Q1 t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap)
+    (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : CaptureSet {}}, m1.subsumes m ->
+      Memory.FrameLive m t1 m1 ->
+      (hwf_x : x.WfInHeap m1.heap) -> (hwf_cs : cs.WfInHeap m1.heap) -> Q1 t1 (.pack cs x) m1 ->
+      Eval m1 (e2.subst (Subst.unpack cs x)) (fun t2 => Q (t1 ++ t2))) :
+    Eval m (.unpack e1 e2) Q := by
+  refine ⟨?_, ?_⟩
+  · refine Safe.unpack he1.1 (fun t1 v m1 hrun => h_nonstuck (he1.2 t1 v m1 hrun)) ?_
+    · intro t1 m1 x cs hrun
+      have hq1 := he1.2 t1 (.pack cs x) m1 hrun
+      cases (h_nonstuck hq1).2 with
+      | wf_pack hcs hx =>
+        exact (h_val (BigStep.subsumes hrun) (BigStep.frameLive hrun) hx hcs hq1).1
+  · intro t v m' hbs
+    cases hbs with
+    | bs_unpack hrun_e1 hrun_e2 =>
+      have hq1 := he1.2 _ _ _ hrun_e1
+      cases (h_nonstuck hq1).2 with
+      | wf_pack hcs hx =>
+        exact (h_val (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hx hcs hq1).2
+          _ _ _ hrun_e2
+    | bs_val hv => cases hv
+
 /-- Coverage in `C.to_drop` forces the mode to be `.drop`: `to_drop` rewrites
     every cap mode to `.drop`, and `.access _` is incomparable with `.drop`
     under `CapMode.Le`. -/

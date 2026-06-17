@@ -1393,24 +1393,21 @@ theorem sem_typ_pack
              Exp.var (x.subst (Subst.from_TypeEnv env)) := by
         cases x <;> simp only [Exp.subst, Var.subst]
       rw [hvar] at hx
-      cases hx
-      case eval_var hQ =>
-        have hQ' : Ty.val_denot env (T.subst (Subst.openCVar cs)) store
-            (Exp.var (x.subst (Subst.from_TypeEnv env))) := by
-          simpa only [Ty.exi_val_denot] using hQ.2.1
-        let cs' := cs.subst (Subst.from_TypeEnv env)
-        have hretype := open_carg_val_denot (env := env) (cap := cs'.ground_denot store)
-          (a := .can_drop) (C := cs) (T := T)
-        refine ⟨?_, (hretype store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ'⟩
-        -- A `.drop` in `cs`'s runtime image traces (via `drop_denot_peak`) to a
-        -- `.drop`-access peak of `cs`, contradicting `cs.AccessOnly Γ`.
-        intro l hmem
-        have hmem' : (cs.denot env store).hasmem .drop l := hmem
-        obtain ⟨c, hsub, _⟩ :=
-          drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hclosed_cs hmem'
-        exact hvalid_cs c hsub
-      case eval_val =>
-        contradiction
+      have hQ := Eval.var_inv hx
+      have hQ' : Ty.val_denot env (T.subst (Subst.openCVar cs)) store
+          (Exp.var (x.subst (Subst.from_TypeEnv env))) := by
+        simpa only [Ty.exi_val_denot] using hQ.2.1
+      let cs' := cs.subst (Subst.from_TypeEnv env)
+      have hretype := open_carg_val_denot (env := env) (cap := cs'.ground_denot store)
+        (a := .can_drop) (C := cs) (T := T)
+      refine ⟨?_, (hretype store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ'⟩
+      -- A `.drop` in `cs`'s runtime image traces (via `drop_denot_peak`) to a
+      -- `.drop`-access peak of `cs`, contradicting `cs.AccessOnly Γ`.
+      intro l hmem
+      have hmem' : (cs.denot env store).hasmem .drop l := hmem
+      obtain ⟨c, hsub, _⟩ :=
+        drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hclosed_cs hmem'
+      exact hvalid_cs c hsub
   · -- pack_bound: every witness location is consumable under the pack budget
     intro cs0 x0 heq mu l hmem
     cases heq
@@ -1681,9 +1678,7 @@ theorem var_exp_denot_inv {A : CapabilitySet}
   (hv : Ty.exi_exp_denot env T A store (.var x)) :
   Ty.exi_val_denot env T store (.var x) := by
   simp only [Ty.exi_exp_denot, List.empty_eq] at hv
-  cases hv
-  case eval_val _ hQ => exact hQ.2.1
-  case eval_var hQ => exact hQ.2.1
+  exact (Eval.var_inv hv).2.1
 
 theorem closed_var_inv (x : Var .var {}) :
   ∃ fx, x = .free fx := by
@@ -2318,10 +2313,8 @@ theorem sem_typ_alloc
     (Memory.is_compatible_empty store)
   simp only [Ty.exi_exp_denot, Ty.exi_val_denot,
     Exp.subst, Var.subst, Subst.from_TypeEnv, List.empty_eq] at hx_eval
-  have hbool : Ty.val_denot env .bool store (.var (.free fx)) := by
-    cases hx_eval with
-    | eval_val hv _ => cases hv
-    | eval_var hQ => exact hQ.2.1
+  have hbool : Ty.val_denot env .bool store (.var (.free fx)) :=
+    (Eval.var_inv hx_eval).2.1
   simp only [Ty.val_denot, resolve] at hbool
   -- Destruct the heap entry at `fx` to extract the underlying boolean value.
   cases hres : store.heap fx with
@@ -2498,9 +2491,12 @@ theorem sem_typ_read
   have hlookup_cell' : store.lookup y = some (.capability (.mcell b0 .live)) := by
     simpa [Memory.lookup] using hlookup_cell
   apply Eval.eval_read hlookup_reader' hlookup_cell'
-  refine ⟨TraceOk.access hcov, ?_, pack_bound_of_ne_pack (fun _ _ h => by cases b0 <;> simp at h)⟩
+  -- Reads are nondeterministic, so the postcondition must hold for BOTH result
+  -- bits.  The `bool` denotation is bool-independent, so each branch is fine.
+  intro b'
+  refine ⟨TraceOk.access hcov, ?_, pack_bound_of_ne_pack (fun _ _ h => by cases b' <;> simp at h)⟩
   simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
-  cases b0 <;> simp
+  cases b' <;> simp
 
 theorem sem_typ_write
   {x y : BVar s .var}
@@ -3401,14 +3397,14 @@ theorem sem_typ_letin
   -- letin trace `t1 ++ t2` can be reassembled, plus `e1`'s value denotation.
   apply Eval.eval_letin
     (Q1 := fun t v m' => TraceOk t (C1.denot env store) ∧ Ty.val_denot env T m' v)
-  case hpred =>
+  case _hpred =>
     intro _t m1 m2 e hwf hsub hQ
     exact ⟨hQ.1, val_denot_is_monotonic (typed_env_is_monotonic hts) T hsub hQ.2⟩
-  case hbool =>
+  case _hbool =>
     intro _t m'
     exact and_congr_right
       (fun _ => val_denot_is_bool_independent (typed_env_is_bool_independent hts) T)
-  case a =>
+  case he1 =>
     -- `e1` runs at exactly its own budget `C1.denot`, a subset of the union.
     have hcompat_C1 : store.is_compatible (C1.denot env store) :=
       Memory.is_compatible_subset hsubC1 hcompat
@@ -3423,7 +3419,7 @@ theorem sem_typ_letin
     · exact val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T m1 v hQ1.2
     · exact val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 v hQ1.2
   case h_val =>
-    intro t1 m1 v hs1 hv hwf_v hQ1 l' hfresh
+    intro t1 m1 v hs1 hframe hv hwf_v hQ1 l' hfresh
     -- The continuation `e2` is typed at budget `C2`, so `ht2` demands
     -- `m1.is_compatible (C2.denot env store)`.  Everything but the frame is proven:
     -- `C2` is live at `store` (subset of the budget `hcompat`), present in `store`
@@ -3444,8 +3440,6 @@ theorem sem_typ_letin
         CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hQ1.1 hd)
       cases hle
       exact captureSet_seqcomp_denot hts hΓ hdsep hseq mu l hm' hmem
-    have hframe : Memory.FrameLive store t1 m1 := by
-      sorry
     have hcompat_m1 : m1.is_compatible (C2.denot env store) :=
       Memory.is_compatible_frame hcompat_C2 hpresent_C2 hframe hs1 hnodrop_C2
     let heapval : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩
@@ -3523,8 +3517,8 @@ theorem sem_typ_letin
       rw [hunion_denot]
       exact CapabilitySet.Subset.union_right_right
   case h_var =>
-    intro t1 m1 x hs1 hwf_x hQ1
-    -- Same reduction as `h_val`: the only gap is the frame `FrameLive store t1 m1`.
+    intro t1 m1 x hs1 hframe hwf_x hQ1
+    -- The frame `FrameLive store t1 m1` is now supplied by `eval_letin`.
     have hcompat_C2 : store.is_compatible (C2.denot env store) :=
       Memory.is_compatible_subset hsubC2 hcompat
     have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
@@ -3537,8 +3531,6 @@ theorem sem_typ_letin
         CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hQ1.1 hd)
       cases hle
       exact captureSet_seqcomp_denot hts hΓ hdsep hseq mu l hm' hmem
-    have hframe : Memory.FrameLive store t1 m1 := by
-      sorry
     have hcompat_m1 : m1.is_compatible (C2.denot env store) :=
       Memory.is_compatible_frame hcompat_C2 hpresent_C2 hframe hs1 hnodrop_C2
     cases x
@@ -4527,18 +4519,26 @@ theorem consumed_peaks_droppable {Γ : Ctx s} {C : CaptureSet s} {c : BVar s .cv
 
 /-- Semantic typing for `unpack`.
 
-    THREE `sorry`s in `h_val`, splitting into the SAME two gaps as `letin`:
-    (frame) The `C2` slice of the continuation budget `C2 ∪ R ∪ R.to_drop`
-    (R = the unpacked witness's reachability) reduces, exactly as in `letin`, to
-    `FrameLive store t1 m1` via `is_compatible_frame` + `SeqComp C1 C2` — all
-    proven except that one frame `sorry`.
-    (existential witness) The remaining two `sorry`s are about the witness `R`:
-    (1) `m1.is_compatible (R ∪ R.to_drop)` — its liveness in `m1`; and
-    (2) `TraceOk (t1 ++ t2)` against `(C1 ∪ C2).denot`, where the body trace `t2`
-    accesses `R` (outside `C1 ∪ C2`), `TraceOk`-exempt only if `R` was allocated
-    within `t1`.  Both need `eval_unpack` to expose, for the unpacked witness, a
-    liveness + trace-allocation provenance guarantee that the trace alone (which
-    records accesses, not memory state) cannot supply. -/
+    **FRAME GAP: CLOSED** (the `letin` `sorry`s are gone too).  The `C2` slice of the
+    continuation budget reduces to `FrameLive store t1 m1`, which `eval_unpack` now
+    SUPPLIES (derived from the real `e1`-run via `BigStep.frameLive`).  This is the
+    relational model's payoff over CPS.
+
+    **REMAINING (two `sorry`s) — the existential-WITNESS gap, a genuine design
+    gap.**  `R := cs.reachability m1` is the unpacked witness's slice.  The
+    continuation needs `m1.is_compatible (R ∪ R.to_drop)` — `R`'s mcells LIVE in
+    `m1` — and a matching `TraceOk` exemption for body accesses to `R`.  This is
+    NOT derivable:
+    * It is not operational — a run can legally pack a *dead* witness
+      (`alloc a; drop a; pack {a} …`); only typing forbids it.
+    * It is not in the denotation — `exi_val_denot` of a `pack cs x` gives
+      `cs.WfInHeap` (presence) + `(cs.ground_denot).drop_free` (access mode), but
+      `drop_free` is about `.drop` *atoms*, NOT mcell liveness, so witness LIVENESS
+      is absent.  `pack_bound` only gives the provenance dichotomy
+      (`C1`-budget-droppable ∨ fresh), not liveness.
+    To close it, the pack/`exi` denotation must additionally carry witness liveness
+    (`is_compatible (cs.ground_denot m)`), discharged where packs are created.  That
+    is a denotation design change, hence left for human intervention. -/
 theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
@@ -4562,7 +4562,7 @@ theorem sem_typ_unpack
     (Q1 := fun t v m' => TraceOk t (C1.denot env store) ∧
       Ty.exi_val_denot env (.exi T) m' v ∧
       pack_bound (C1.denot env store) store v m')
-  case hpred =>
+  case _hpred =>
     intro _t m1 m2 e hwf hsub hQ
     refine ⟨hQ.1, exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T) hsub hQ.2.1, ?_⟩
     intro cs0 x0 heq mu l hmem
@@ -4573,7 +4573,7 @@ theorem sem_typ_unpack
         CaptureSet.reachability_monotonic hsub cs0 hwf_cs
       rw [hre] at hmem
       exact hQ.2.2 cs0 x0 rfl mu l hmem
-  case hbool =>
+  case _hbool =>
     intro _t m'
     constructor
     · intro hQ
@@ -4584,7 +4584,7 @@ theorem sem_typ_unpack
       exact ⟨hQ.1, (exi_val_denot_is_bool_independent
           (typed_env_is_bool_independent hts) (.exi T)).mpr hQ.2.1,
         fun _ _ heq => nomatch heq⟩
-  case a =>
+  case he1 =>
     have hsubC1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
       rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
     have h1 := ht env store hts hdsep (Memory.is_compatible_subset hsubC1 hcompat)
@@ -4619,7 +4619,7 @@ theorem sem_typ_unpack
           cases hwf_exp with
           | wf_var hwf_v => exact hwf_v
   case h_val =>
-    intro t1 m1 x cs hs1 hwf_x hwf_cs hQ1
+    intro t1 m1 x cs hs1 hframe hwf_x hwf_cs hQ1
     -- The continuation budget is `C2 ∪ R ∪ R.to_drop` (R = the unpacked witness's
     -- reachability).  The `C2` slice reduces, exactly as in `letin`, to the frame
     -- provision `FrameLive store t1 m1` (via `is_compatible_frame`: `C2` is live at
@@ -4639,12 +4639,16 @@ theorem sem_typ_unpack
           CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hQ1.1 hd)
         cases hle
         exact captureSet_seqcomp_denot hts hΓ hdsep hseq mu l hm' hmem
-      have hframe : Memory.FrameLive store t1 m1 := by
-        sorry
       exact Memory.is_compatible_frame (Memory.is_compatible_subset hsubC2 hcompat)
         hpresent_C2 hframe hs1 hnodrop_C2
     have hcompat_witness :
         m1.is_compatible (cs.reachability m1 ∪ (cs.reachability m1).to_drop) := by
+      -- GENUINE GAP (witness liveness): the unpacked witness `cs`'s mcells must be
+      -- LIVE in `m1`.  `hQ1v` (the pack denotation) gives only `cs.WfInHeap`
+      -- (presence) + `drop_free` (access mode), not mcell liveness; `hframe` covers
+      -- only `store`-live cells, not `e1`-fresh witness cells.  Closing this needs
+      -- `exi_val_denot` to carry `is_compatible (cs.ground_denot m)`.  See the
+      -- theorem doc.
       sorry
     have hcompat_m1 : m1.is_compatible (C2.denot env store ∪ cs.reachability m1
         ∪ (cs.reachability m1).to_drop) := by
@@ -4843,10 +4847,13 @@ theorem sem_typ_unpack
       refine eval_post_monotonic ?_ hu''
       intro t2 m v hpost
       refine ⟨?_, (Denot.equiv_to_imply heqv_composed).2 _ _ hpost.2.1, ?_⟩
-      · -- GAP (trace reassembly): `t2` may access the unpacked witness `cs`, which
-        -- is `TraceOk`-exempt only if alloc'd within `t1`.  The trace-based
-        -- `eval_unpack` does not expose that the witness was produced by `e1`, so
-        -- `TraceOk (t1 ++ t2) ((C1 ∪ C2).denot)` is not derivable from `Q1`.
+      · -- GENUINE GAP (witness trace provenance — same root as `hcompat_witness`).
+        -- `t2` may access the witness `cs`; the `TraceOk (t1 ++ t2) ((C1 ∪ C2).denot)`
+        -- exemption holds iff each witness cell is in the `C1 ∪ C2` budget OR alloc'd
+        -- within `t1`.  `pack_bound` gives the provenance dichotomy (budget-drop ∨
+        -- `store`-fresh) and the relational run gives `allocd`-provenance, but the
+        -- FRESH branch still needs witness LIVENESS (a fresh cell is `allocd t1` only
+        -- if live in `m1`) — the same missing denotation fact as above.
         sorry
       · -- Compose the body's pack-witness bound back to the outer budget/memory.
         intro cs0 x0 heq mu l hmem
