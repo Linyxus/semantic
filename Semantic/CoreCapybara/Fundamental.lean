@@ -87,7 +87,8 @@ theorem sem_typ_var
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_var
   simp only [Ty.exi_val_denot]
-  refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+  refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
   -- From typed_env_lookup_var, we get that .var (.free n) satisfies T
   have h_lookup := typed_env_lookup_var hts hx
   have hpeaks :
@@ -1092,7 +1093,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Goal structure for arrow val_denot:
     -- 1. e.WfInHeap m.heap
@@ -1177,7 +1179,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Goal structure for poly val_denot:
     -- 1. e.WfInHeap m.heap
@@ -1261,7 +1264,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
   simp only [Ty.exi_exp_denot]
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Goal structure for cpoly val_denot:
     -- 1. e.WfInHeap m.heap
@@ -1366,7 +1370,7 @@ theorem sem_typ_pack
   (hvalid_cs : cs.AccessOnly Γ)
   (ht : SemanticTyping {} Γ (Exp.var x) (T.subst (Subst.openCVar cs)).typ) :
   SemanticTyping (cs.applyAccess .drop) Γ (Exp.pack cs x) T.exi := by
-  intro env store hts hdsep _
+  intro env store hts hdsep hcompat
   -- pack is no longer a simple value; use eval_pack instead
   have hsubst : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
          Exp.pack (cs.subst (Subst.from_TypeEnv env)) (x.subst (Subst.from_TypeEnv env)) := by
@@ -1377,7 +1381,7 @@ theorem sem_typ_pack
   simp only [Ty.exi_exp_denot, List.empty_eq]
   rw [hsubst]
   apply Eval.eval_pack
-  refine ⟨TraceOk.nil, ?_, ?_⟩
+  refine ⟨TraceOk.nil, ?_, ?_, ?_⟩
   · -- the existential value denotation
     simp only [Ty.exi_val_denot]
     constructor
@@ -1422,6 +1426,19 @@ theorem sem_typ_pack
       rw [captureSet_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
     rw [hgoal]
     exact CapabilitySet.hasmem_to_drop_of_hasmem hmem
+  · -- witness_live: the witness `cs` is LIVE in `store`, because the pack budget
+    -- `cs.applyAccess .drop` (compatible by `hcompat`) covers the same locations.
+    intro cs0 x0 heq
+    cases heq
+    have hreach :
+        (cs.subst (Subst.from_TypeEnv env)).reachability store = cs.denot env store := by
+      rw [← CaptureSet.ground_denot_eq_reachability]; rfl
+    rw [hreach]
+    have hgoal :
+        CaptureSet.denot env (cs.applyAccess .drop) store = (cs.denot env store).to_drop := by
+      rw [captureSet_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
+    intro mu l b ℓ hmem hheap
+    exact hcompat .drop l b ℓ (hgoal ▸ CapabilitySet.hasmem_to_drop_of_hasmem hmem) hheap
 
 
 theorem abs_val_denot_inv
@@ -1880,7 +1897,8 @@ theorem sem_typ_wrap
   simp only [Ty.exi_exp_denot, Ty.exi_val_denot]
   apply Eval.eval_val
   · constructor
-  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.val_denot]
     cases hclosed_e with
     | boxed hclosed_cs hclosed_Ψ hclosed_body =>
@@ -1965,7 +1983,8 @@ theorem sem_typ_wrap
           refine eval_post_monotonic ?_ htyped
           intro t m v hpost
           exact ⟨hpost.1, (Denot.equiv_to_imply
-            (lweaken_exi_val_denot (env := env) (T := E))).2 _ _ hpost.2.1, hpost.2.2⟩
+            (lweaken_exi_val_denot (env := env) (T := E))).2 _ _ hpost.2.1,
+            hpost.2.2.1, hpost.2.2.2⟩
 
 theorem sem_typ_app
   {T1 : Ty .capt s} {T2 : Ty .exi (s,x)}
@@ -2016,11 +2035,12 @@ theorem sem_typ_app
         TraceOk t (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) ∧
         Ty.exi_val_denot env (T2.subst (Subst.openVar (Var.bound y))) m'' v ∧
         pack_bound
-          (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) store v m'') := by
+          (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) store v m'' ∧
+        witness_live v m'') := by
     refine eval_post_monotonic ?_ happ'
     intro t m v hpost
     exact ⟨TraceOk.mono hR0_sub hpost.1, hpost.2.1,
-      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
   simpa [Exp.subst, Var.subst, Subst.from_TypeEnv, Ty.exi_exp_denot] using
     (Eval.eval_apply hlk happ3)
 
@@ -2060,11 +2080,12 @@ theorem sem_typ_tapp
         TraceOk t (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) ∧
         Ty.exi_val_denot env (T.subst (Subst.openTVar S)) m'' v ∧
         pack_bound
-          (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) store v m'') := by
+          (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) store v m'' ∧
+        witness_live v m'') := by
     refine eval_post_monotonic ?_ happ'
     intro t m v hpost
     exact ⟨TraceOk.mono hR0_sub hpost.1, hpost.2.1,
-      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
   simpa [Exp.subst, Var.subst, Subst.from_TypeEnv, Ty.exi_exp_denot] using
     (Eval.eval_tapply hlk happ3)
 
@@ -2127,11 +2148,12 @@ theorem sem_typ_capp
         TraceOk t (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) ∧
         Ty.exi_val_denot env (T.subst (Subst.openCVar D)) m'' v ∧
         pack_bound
-          (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) store v m'') := by
+          (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store) store v m'' ∧
+        witness_live v m'') := by
     refine eval_post_monotonic ?_ happ2
     intro t m v hpost
     exact ⟨TraceOk.mono hR0_sub hpost.1, hpost.2.1,
-      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
   simpa [Exp.subst, Var.subst, Subst.from_TypeEnv, CaptureSet.subst, Ty.exi_exp_denot] using
     Eval.eval_capply hlk happ3
 
@@ -2173,7 +2195,8 @@ theorem sem_typ_invoke
       (.access .epsilon) (env.lookup_var x).1 := hmem_cap
   apply Eval.eval_invoke hlk_cap hlk_unit
   exact ⟨TraceOk.access hcov, by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-    pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
 
 theorem sem_typ_unit :
   SemanticTyping {} Γ Exp.unit (.typ .unit) := by
@@ -2182,7 +2205,8 @@ theorem sem_typ_unit :
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.unit
   · exact ⟨TraceOk.nil, by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
 
 theorem sem_typ_btrue :
   SemanticTyping {} Γ Exp.btrue (.typ .bool) := by
@@ -2190,7 +2214,8 @@ theorem sem_typ_btrue :
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.btrue
-  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
     left; trivial
 
@@ -2200,7 +2225,8 @@ theorem sem_typ_bfalse :
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.bfalse
-  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
     right; trivial
 
@@ -2251,7 +2277,7 @@ theorem sem_typ_cond
     refine eval_post_monotonic ?_ h2
     intro t m v hpost
     exact ⟨TraceOk.mono hsubC2 hpost.1, hpost.2.1,
-      pack_bound_mono hsubC2 (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hsubC2 (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
   · -- false branch
     intro _hres_false
     have h3 := ht3 env store hts hdsep hcompat_C3
@@ -2259,7 +2285,7 @@ theorem sem_typ_cond
     refine eval_post_monotonic ?_ h3
     intro t m v hpost
     exact ⟨TraceOk.mono hsubC3 hpost.1, hpost.2.1,
-      pack_bound_mono hsubC3 (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hsubC3 (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
 
 theorem sem_typ_reader
   (_hclosed : Γ.IsClosed)
@@ -2270,7 +2296,8 @@ theorem sem_typ_reader
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.reader
-  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+  · refine ⟨TraceOk.nil, ?_, pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     -- Get the cell denotation from the lookup
     have hcell := typed_env_lookup_var hts hx
@@ -2341,7 +2368,8 @@ theorem sem_typ_alloc
               TraceOk t (CaptureSet.denot env ∅ store) ∧
               Ty.exi_val_denot env
                 (Ty.exi (Ty.cell (CaptureSet.cvar (.M Mutability.epsilon) BVar.here))) m' v ∧
-              pack_bound (CaptureSet.denot env ∅ store) store v m') := by
+              pack_bound (CaptureSet.denot env ∅ store) store v m' ∧
+              witness_live v m') := by
         intro b hbt hbf
         have hunwrap : unwrap = (if b then Exp.btrue else Exp.bfalse) := by
           cases b
@@ -2355,7 +2383,7 @@ theorem sem_typ_alloc
           let m' := store.extend_mcell l b hfresh
           have hlookup_l : m'.heap l = some (.capability (.mcell b .live)) :=
             Memory.extend_mcell_lookup hfresh
-          refine ⟨TraceOk.alloc, ?_, ?_⟩
+          refine ⟨TraceOk.alloc, ?_, ?_, ?_⟩
           · simp only [Ty.exi_val_denot]
             change _ ∧ _ ∧ Ty.val_denot _ _ _ _
             refine ⟨CaptureSet.WfInHeap.wf_var_free hlookup_l, ?_, ?_⟩
@@ -2384,6 +2412,22 @@ theorem sem_typ_alloc
               rfl
             subst this
             exact hfresh
+          · -- witness_live: the freshly-allocated witness `l` is live in `m'`
+            intro cs0 x0 heq
+            cases heq
+            intro mu l' b' ℓ' hmem hheap
+            have hl'l : l' = l := by
+              change CapabilitySet.hasmem mu l'
+                (((CaptureSet.var (.M .epsilon) (.free l))).reachability m') at hmem
+              rw [← CaptureSet.ground_denot_eq_reachability] at hmem
+              simp only [CaptureSet.ground_denot, reachability_of_loc, hlookup_l] at hmem
+              cases hmem; rfl
+            subst hl'l
+            rw [hlookup_l] at hheap
+            injection hheap with hcell
+            injection hcell with hinfo
+            injection hinfo with _ hℓ
+            exact hℓ.symm
       rcases hbool with hb | hb
       · exact hclose true (fun _ => hb) (by intro h; cases h)
       · exact hclose false (by intro h; cases h) (fun _ => hb)
@@ -2425,7 +2469,8 @@ theorem sem_typ_drop {x : BVar s .var}
     simpa [Memory.lookup] using hlk_cell
   apply Eval.eval_drop (hx := hlk_cell')
   refine ⟨TraceOk.dealloc ?_, by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-    pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
   -- The `.drop` coverage comes directly from the drop-qualified budget:
   -- `(reachability_of_loc … x).to_drop` covers `x` at `.drop`.
   have hcov_access :
@@ -2494,7 +2539,8 @@ theorem sem_typ_read
   -- Reads are nondeterministic, so the postcondition must hold for BOTH result
   -- bits.  The `bool` denotation is bool-independent, so each branch is fine.
   intro b'
-  refine ⟨TraceOk.access hcov, ?_, pack_bound_of_ne_pack (fun _ _ h => by cases b' <;> simp at h)⟩
+  refine ⟨TraceOk.access hcov, ?_, pack_bound_of_ne_pack (fun _ _ h => by cases b' <;> simp at h),
+    witness_live_of_ne_pack (fun _ _ h => by cases b' <;> simp at h)⟩
   simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
   cases b' <;> simp
 
@@ -2553,10 +2599,12 @@ theorem sem_typ_write
   cases b
   · apply Eval.eval_write_false (hx := hlk_cell) hlk_bool
     exact ⟨TraceOk.access hcov, by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
   · apply Eval.eval_write_true (hx := hlk_cell) hlk_bool
     exact ⟨TraceOk.access hcov, by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
 
 /-- `CaptureSet.Subset` lifts to a `CapabilitySet.Subset` on denotations,
 independently of any context (the env merely determines what each cvar
@@ -3201,7 +3249,8 @@ theorem sem_typ_par
         (.par (e1.subst (Subst.from_TypeEnv env)) (e2.subst (Subst.from_TypeEnv env)))
         (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
           Ty.exi_val_denot env E m' v ∧
-          pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m') by
+          pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
+          witness_live v m')by
     simpa only [Ty.exi_exp_denot, Exp.subst, List.empty_eq] using hpar
   have hunion : (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
   have hcompat' := hunion ▸ hcompat
@@ -3213,24 +3262,26 @@ theorem sem_typ_par
       (e1.subst (Subst.from_TypeEnv env))
       (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
         Ty.exi_val_denot env E m' v ∧
-        pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m') := by
+        pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
+        witness_live v m') := by
     have h := ht1 env store hts hdsep (Memory.is_compatible_union_left hcompat')
     simp only [Ty.exi_exp_denot] at h
     refine eval_post_monotonic ?_ h
     intro t m v hpost
     exact ⟨TraceOk.mono hsubC1 hpost.1, hpost.2.1,
-      pack_bound_mono hsubC1 (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hsubC1 (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
   have he2 : Eval store
       (e2.subst (Subst.from_TypeEnv env))
       (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
         Ty.exi_val_denot env E m' v ∧
-        pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m') := by
+        pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
+        witness_live v m') := by
     have h := ht2 env store hts hdsep (Memory.is_compatible_union_right hcompat')
     simp only [Ty.exi_exp_denot] at h
     refine eval_post_monotonic ?_ h
     intro t m v hpost
     exact ⟨TraceOk.mono hsubC2 hpost.1, hpost.2.1,
-      pack_bound_mono hsubC2 (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hsubC2 (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
   exact Eval.eval_par he1 he2
 
 /-- Shared-location elimination for `Noninterference`: a location member of
@@ -3509,10 +3560,10 @@ theorem sem_typ_letin
     refine eval_post_monotonic ?_ h2'
     intro t2 m v hpost
     refine ⟨?_, (Denot.equiv_to_imply heqv_kill).2 _ _
-      ((Denot.equiv_to_imply heqv).2 _ _ hpost.2.1), ?_⟩
+      ((Denot.equiv_to_imply heqv).2 _ _ hpost.2.1), ?_, hpost.2.2.2⟩
     · exact TraceOk.append (TraceOk.mono hsubC1 hQ1.1)
         (TraceOk.mono hsubC2 (TraceOk.mono hsub_body hpost.1))
-    · refine pack_bound_mono ?_ hsub_full hpost.2.2
+    · refine pack_bound_mono ?_ hsub_full hpost.2.2.1
       refine CapabilitySet.Subset.trans hsub_body ?_
       rw [hunion_denot]
       exact CapabilitySet.Subset.union_right_right
@@ -3581,10 +3632,10 @@ theorem sem_typ_letin
       refine eval_post_monotonic ?_ h2'
       intro t2 m v hpost
       refine ⟨?_, (Denot.equiv_to_imply heqv_kill).2 _ _
-        ((Denot.equiv_to_imply heqv).2 _ _ hpost.2.1), ?_⟩
+        ((Denot.equiv_to_imply heqv).2 _ _ hpost.2.1), ?_, hpost.2.2.2⟩
       · exact TraceOk.append (TraceOk.mono hsubC1 hQ1.1)
           (TraceOk.mono hsubC2 (TraceOk.mono hsub_body hpost.1))
-      · refine pack_bound_mono ?_ hs1 hpost.2.2
+      · refine pack_bound_mono ?_ hs1 hpost.2.2.1
         refine CapabilitySet.Subset.trans hsub_body ?_
         rw [hunion_denot]
         exact CapabilitySet.Subset.union_right_right
@@ -3822,10 +3873,10 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
                 Eval m'' (t0.subst (Subst.openVar (.free arg)))
                   (fun t v m3 => TraceOk t R ∧
                     Ty.exi_val_denot (env.extend_var arg psT2) U1 m3 v ∧
-                    pack_bound R m'' v m3) := by
+                    pack_bound R m'' v m3 ∧ witness_live v m3) := by
               refine eval_post_monotonic_general ?_ hbody_spec
               intro m3 _ t v hpost
-              exact ⟨hpost.1, h_imply_val _ _ hpost.2.1, hpost.2.2⟩
+              exact ⟨hpost.1, h_imply_val _ _ hpost.2.1, hpost.2.2.1, hpost.2.2.2⟩
             -- Apply covariance: if body satisfies U1, it also satisfies U2
             -- Build EnvTyping for the extended context with T2's peak set
             have htyping_ext : EnvTyping (Γ,x:T2) (env.extend_var arg psT2) m'' := by
@@ -3845,7 +3896,7 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
             unfold Ty.exi_exp_denot at hbody_psT2 ⊢
             refine eval_post_monotonic_general ?_ hbody_psT2
             intro m3 hsub3 t v hpost
-            exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2⟩
+            exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2.1, hpost.2.2.2⟩
 
 
 lemma sem_subtyp_trans {k : TySort} {T1 T2 T3 : Ty k s}
@@ -3990,7 +4041,7 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
             unfold Ty.exi_exp_denot at heval1 ⊢
             refine eval_post_monotonic_general ?_ heval1
             intro m3 hsub3 t v hpost
-            exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2⟩
+            exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2.1, hpost.2.2.2⟩
 
 -- lemma sem_subtyp_capt {C1 C2 : CaptureSet s} {S1 S2 : Ty .shape s}
 --   (hC : SemSubcapt Γ C1 C2) -- covariant in capture set
@@ -4203,7 +4254,7 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
             unfold Ty.exi_exp_denot at heval1 ⊢
             refine eval_post_monotonic_general ?_ heval1
             intro m3 hsub3 t v hpost
-            exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2⟩
+            exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2.1, hpost.2.2.2⟩
 
 lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi s}
   (hcs : SemSubcapt Γ cs1 cs2)
@@ -4238,7 +4289,7 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
             Eval m'' t0
               (fun t v m3 => TraceOk t (expand_captures m'.heap cs0) ∧
                 Ty.exi_val_denot env E1 m3 v ∧
-                pack_bound (expand_captures m'.heap cs0) m'' v m3) := by
+                pack_bound (expand_captures m'.heap cs0) m'' v m3 ∧ witness_live v m3) := by
           simpa [Ty.exi_exp_denot] using heval1
         have htyping_m'' := env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
         have hsat_Ψ : env.Satisfy Ψ m'' := by
@@ -4261,24 +4312,26 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
             Eval m'' t0
               (fun t v m3 => TraceOk t (expand_captures m'.heap cs0) ∧
                 Ty.exi_val_denot (env.extend_lock) (E1.rename Rename.succ) m3 v ∧
-                pack_bound (expand_captures m'.heap cs0) m'' v m3) := by
+                pack_bound (expand_captures m'.heap cs0) m'' v m3 ∧ witness_live v m3) := by
           refine eval_post_monotonic ?_ heval1_eval
           intro t m v hpost
           exact ⟨hpost.1, (Denot.equiv_to_imply
-            (lweaken_exi_val_denot (env := env) (T := E1))).1 _ _ hpost.2.1, hpost.2.2⟩
+            (lweaken_exi_val_denot (env := env) (T := E1))).1 _ _ hpost.2.1,
+            hpost.2.2.1, hpost.2.2.2⟩
         have heval2' :
             Eval m'' t0
               (fun t v m3 => TraceOk t (expand_captures m'.heap cs0) ∧
                 Ty.exi_val_denot (env.extend_lock) (E2.rename Rename.succ) m3 v ∧
-                pack_bound (expand_captures m'.heap cs0) m'' v m3) := by
+                pack_bound (expand_captures m'.heap cs0) m'' v m3 ∧ witness_live v m3) := by
           refine eval_post_monotonic_general ?_ heval1'
           intro m3 hsub3 t v hpost
-          exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2⟩
+          exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2.1, hpost.2.2.2⟩
         simp only [Ty.exi_exp_denot]
         refine eval_post_monotonic ?_ heval2'
         intro t m v hpost
         exact ⟨hpost.1, (Denot.equiv_to_imply
-          (lweaken_exi_val_denot (env := env) (T := E2))).2 _ _ hpost.2.1, hpost.2.2⟩
+          (lweaken_exi_val_denot (env := env) (T := E2))).2 _ _ hpost.2.1,
+          hpost.2.2.1, hpost.2.2.2⟩
 
 lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .exi s}
   (hΓ : Γ.IsClosed)
@@ -4454,7 +4507,7 @@ theorem sem_typ_subtyp
   intro m3 hsub3 t v hpost
   exact ⟨TraceOk.mono hsubcapt_sem hpost.1,
     h_entails m3 hsub3 v hpost.2.1,
-    pack_bound_mono hsubcapt_sem (Memory.subsumes_refl m) hpost.2.2⟩
+    pack_bound_mono hsubcapt_sem (Memory.subsumes_refl m) hpost.2.2.1, hpost.2.2.2⟩
 
 lemma simple_val_not_pack {e : Exp s}
   (hsimple : e.IsSimpleVal)
@@ -4519,26 +4572,27 @@ theorem consumed_peaks_droppable {Γ : Ctx s} {C : CaptureSet s} {c : BVar s .cv
 
 /-- Semantic typing for `unpack`.
 
-    **FRAME GAP: CLOSED** (the `letin` `sorry`s are gone too).  The `C2` slice of the
-    continuation budget reduces to `FrameLive store t1 m1`, which `eval_unpack` now
-    SUPPLIES (derived from the real `e1`-run via `BigStep.frameLive`).  This is the
-    relational model's payoff over CPS.
+    **FRAME GAP: CLOSED** — `eval_unpack` supplies `FrameLive store t1 m1` from the
+    real `e1`-run (`BigStep.frameLive`); the relational model's payoff over CPS.
 
-    **REMAINING (two `sorry`s) — the existential-WITNESS gap, a genuine design
-    gap.**  `R := cs.reachability m1` is the unpacked witness's slice.  The
-    continuation needs `m1.is_compatible (R ∪ R.to_drop)` — `R`'s mcells LIVE in
-    `m1` — and a matching `TraceOk` exemption for body accesses to `R`.  This is
-    NOT derivable:
-    * It is not operational — a run can legally pack a *dead* witness
-      (`alloc a; drop a; pack {a} …`); only typing forbids it.
-    * It is not in the denotation — `exi_val_denot` of a `pack cs x` gives
-      `cs.WfInHeap` (presence) + `(cs.ground_denot).drop_free` (access mode), but
-      `drop_free` is about `.drop` *atoms*, NOT mcell liveness, so witness LIVENESS
-      is absent.  `pack_bound` only gives the provenance dichotomy
-      (`C1`-budget-droppable ∨ fresh), not liveness.
-    To close it, the pack/`exi` denotation must additionally carry witness liveness
-    (`is_compatible (cs.ground_denot m)`), discharged where packs are created.  That
-    is a denotation design change, hence left for human intervention. -/
+    **WITNESS-LIVENESS GAP: CLOSED.**  The continuation's `m1.is_compatible
+    (cs.reachability m1 ∪ to_drop)` (the unpacked witness is live in `m1`) is now
+    SUPPLIED by `Q1`'s `witness_live` conjunct (`hQ1.2.2.2`).  This is exactly the
+    syntactic-typing insight: a value denotation can't carry liveness (it is
+    anti-monotonic), but the existential *expression* postcondition can — it is
+    established at the pack-creation site (`sem_typ_pack`/`sem_typ_alloc`) from the
+    syntactic `AccessOnly` evidence + budget compatibility, and threaded through
+    `exi_exp_denot`.
+
+    **REMAINING (one `sorry`) — the witness TRACE-provenance reassembly.**  The body
+    trace `t2` may access/drop the witness; the outer `TraceOk (t1 ++ t2)
+    ((C1 ∪ C2).denot)` needs each witness cell to be `(C1 ∪ C2)`-covered OR allocated
+    within `t1`.  `pack_bound` gives the dichotomy (budget-drop ∨ `store`-fresh) and
+    `witness_live` + `BigStep.live_appears_allocd` now make the FRESH branch
+    `allocd t1` (it's live in `m1`).  This is CLOSEABLE but needs new trace machinery
+    (a sequential `TraceOkFrom` append threading `t1`'s allocations into `t2`'s
+    exemption set, plus exposing the allocd-provenance from `eval_unpack`) — a
+    distinct effort from the liveness gap above. -/
 theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
@@ -4561,29 +4615,7 @@ theorem sem_typ_unpack
   apply Eval.eval_unpack
     (Q1 := fun t v m' => TraceOk t (C1.denot env store) ∧
       Ty.exi_val_denot env (.exi T) m' v ∧
-      pack_bound (C1.denot env store) store v m')
-  case _hpred =>
-    intro _t m1 m2 e hwf hsub hQ
-    refine ⟨hQ.1, exi_val_denot_is_monotonic (typed_env_is_monotonic hts) (.exi T) hsub hQ.2.1, ?_⟩
-    intro cs0 x0 heq mu l hmem
-    subst heq
-    cases hwf with
-    | wf_pack hwf_cs _ =>
-      have hre : cs0.reachability m2 = cs0.reachability m1 :=
-        CaptureSet.reachability_monotonic hsub cs0 hwf_cs
-      rw [hre] at hmem
-      exact hQ.2.2 cs0 x0 rfl mu l hmem
-  case _hbool =>
-    intro _t m'
-    constructor
-    · intro hQ
-      exact ⟨hQ.1, (exi_val_denot_is_bool_independent
-          (typed_env_is_bool_independent hts) (.exi T)).mp hQ.2.1,
-        fun _ _ heq => nomatch heq⟩
-    · intro hQ
-      exact ⟨hQ.1, (exi_val_denot_is_bool_independent
-          (typed_env_is_bool_independent hts) (.exi T)).mpr hQ.2.1,
-        fun _ _ heq => nomatch heq⟩
+      pack_bound (C1.denot env store) store v m' ∧ witness_live v m')
   case he1 =>
     have hsubC1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store := by
       rw [hunion_denot]; exact CapabilitySet.Subset.union_right_left
@@ -4643,13 +4675,18 @@ theorem sem_typ_unpack
         hpresent_C2 hframe hs1 hnodrop_C2
     have hcompat_witness :
         m1.is_compatible (cs.reachability m1 ∪ (cs.reachability m1).to_drop) := by
-      -- GENUINE GAP (witness liveness): the unpacked witness `cs`'s mcells must be
-      -- LIVE in `m1`.  `hQ1v` (the pack denotation) gives only `cs.WfInHeap`
-      -- (presence) + `drop_free` (access mode), not mcell liveness; `hframe` covers
-      -- only `store`-live cells, not `e1`-fresh witness cells.  Closing this needs
-      -- `exi_val_denot` to carry `is_compatible (cs.ground_denot m)`.  See the
-      -- theorem doc.
-      sorry
+      -- Witness liveness is now SUPPLIED by `Q1` (the `witness_live` conjunct,
+      -- `hQ1.2.2.2`), established at the pack-creation site from the syntactic
+      -- `AccessOnly` evidence + budget compatibility and threaded through
+      -- `exi_exp_denot`.  `to_drop` only relabels access modes, so it adds no new
+      -- locations.
+      have hwit : m1.is_compatible (cs.reachability m1) := hQ1.2.2.2 cs x rfl
+      intro mu l b ℓ hmem hheap
+      cases hmem with
+      | left h => exact hwit mu l b ℓ h hheap
+      | right h =>
+        obtain ⟨mu', h'⟩ := (CapabilitySet.hasmem_to_drop_imp h).2
+        exact hwit mu' l b ℓ h' hheap
     have hcompat_m1 : m1.is_compatible (C2.denot env store ∪ cs.reachability m1
         ∪ (cs.reachability m1).to_drop) := by
       intro mu l b ℓ hmem hheap
@@ -4659,7 +4696,7 @@ theorem sem_typ_unpack
         | left h => exact hcompat_C2 mu l b ℓ h hheap
         | right h => exact hcompat_witness mu l b ℓ (CapabilitySet.hasmem.left h) hheap
       | right h => exact hcompat_witness mu l b ℓ (CapabilitySet.hasmem.right h) hheap
-    have hpb : pack_bound (C1.denot env store) store (.pack cs x) m1 := hQ1.2.2
+    have hpb : pack_bound (C1.denot env store) store (.pack cs x) m1 := hQ1.2.2.1
     have hQ1v := hQ1.2.1
     change Ty.exi_val_denot env (.exi T) m1 (.pack cs x) at hQ1v
     simp only [Ty.exi_val_denot, List.empty_eq] at hQ1v
@@ -4842,11 +4879,12 @@ theorem sem_typ_unpack
           ((u.subst (Subst.from_TypeEnv env).lift.lift).subst (Subst.unpack cs (Var.free fx)))
           (fun t2 v m' => TraceOk (t1 ++ t2) (CaptureSet.denot env (C1 ∪ C2) store) ∧
             Ty.exi_val_denot env U m' v ∧
-            pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m')
+            pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
+            witness_live v m')
       rw [hexp_eq]
       refine eval_post_monotonic ?_ hu''
       intro t2 m v hpost
-      refine ⟨?_, (Denot.equiv_to_imply heqv_composed).2 _ _ hpost.2.1, ?_⟩
+      refine ⟨?_, (Denot.equiv_to_imply heqv_composed).2 _ _ hpost.2.1, ?_, hpost.2.2.2⟩
       · -- GENUINE GAP (witness trace provenance — same root as `hcompat_witness`).
         -- `t2` may access the witness `cs`; the `TraceOk (t1 ++ t2) ((C1 ∪ C2).denot)`
         -- exemption holds iff each witness cell is in the `C1 ∪ C2` budget OR alloc'd
@@ -4857,7 +4895,7 @@ theorem sem_typ_unpack
         sorry
       · -- Compose the body's pack-witness bound back to the outer budget/memory.
         intro cs0 x0 heq mu l hmem
-        rcases hpost.2.2 cs0 x0 heq mu l hmem with hl | hr
+        rcases hpost.2.2.1 cs0 x0 heq mu l hmem with hl | hr
         · have hl' := hasmem_drop_of_subset hsub_budget hl
           cases hl' with
           | left hl2 =>
@@ -5085,7 +5123,8 @@ theorem sem_typ_unwrap
           Ty.exi_val_denot env E m' v ∧
           pack_bound
             (CaptureSet.denot env (CaptureSet.var (.M .epsilon) (.bound x)) store)
-            store v m') := by
+            store v m' ∧
+          witness_live v m') := by
     have h := hbody store (Memory.subsumes_refl store) hcompat_body
       (fun C mode hhas => hsat_Ψ.kind C mode hhas)
       (fun C1 m1 C2 m2 hdistinct => hsat_Ψ.sep C1 m1 C2 m2 hdistinct)
@@ -5093,7 +5132,7 @@ theorem sem_typ_unwrap
     refine eval_post_monotonic ?_ h
     intro t m v hpost
     exact ⟨TraceOk.mono hR0_sub hpost.1, hpost.2.1,
-      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2⟩
+      pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
   simp only [Ty.exi_exp_denot, Exp.subst, Var.subst, Subst.from_TypeEnv, List.empty_eq]
   simp only [resolve] at hres
   cases hcell : store.heap (env.lookup_var x).1 with

@@ -2263,7 +2263,6 @@ theorem Eval.eval_letin {m : Memory} {e1 : Exp {}} {e2 : Exp ({},x)} {Q Q1 : Tpo
 
 /-- `unpack`: like `letin`, but the `e1`-answer is a `pack`. -/
 theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : Tpost}
-    (_hpred : Q1.is_monotonic) (_hbool : Q1.is_bool_independent)
     (he1 : Eval m e1 Q1)
     (h_nonstuck : ∀ {t1 : Trace} {m1 : Memory} {v : Exp {}},
       Q1 t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap)

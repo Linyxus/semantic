@@ -504,6 +504,22 @@ def pack_bound (R : CapabilitySet) (m : Memory) : Exp {} -> Memory -> Prop :=
     ∀ mu l, (cs.reachability m').hasmem mu l ->
       R.hasmem .drop l ∨ m.lookup l = none
 
+/-- The unpacked existential WITNESS is live in the result memory.  This is
+  ANTI-monotonic (a more-dead memory can decay a witness cell), so it lives in the
+  EXPRESSION postcondition — asserted at the actual pack-producing result memory —
+  NOT in the (monotonic) value denotation `exi_val_denot`.  It is established at
+  pack creation (`sem_typ_pack`/`sem_typ_alloc`) from the syntactic `AccessOnly`
+  evidence plus budget-compatibility, and consumed at `sem_typ_unpack`.  Vacuous
+  for non-pack values (cf. `pack_bound`). -/
+def witness_live : Exp {} -> Memory -> Prop :=
+  fun v m' => ∀ (cs : CaptureSet {}) (x : Var .var {}),
+    v = .pack cs x -> m'.is_compatible (cs.reachability m')
+
+theorem witness_live_of_ne_pack {m' : Memory} {v : Exp {}}
+    (h : ∀ (cs : CaptureSet {}) (x : Var .var {}), v ≠ .pack cs x) :
+    witness_live v m' :=
+  fun cs x heq => absurd heq (h cs x)
+
 mutual
 
 /-- Value denotation for capturing types. -/
@@ -640,7 +656,8 @@ def Ty.exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
     the budget `R` and starting memory `m`. -/
 def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
 | ρ, T, R => fun m (e : Exp {}) =>
-  Eval m e (fun t v m' => TraceOk t R ∧ Ty.exi_val_denot ρ T m' v ∧ pack_bound R m v m')
+  Eval m e (fun t v m' =>
+    TraceOk t R ∧ Ty.exi_val_denot ρ T m' v ∧ pack_bound R m v m' ∧ witness_live v m')
 
 end
 
@@ -2398,7 +2415,8 @@ theorem exi_denot_implyafter_lift {R : CapabilitySet}
   unfold Ty.exi_exp_denot at heval ⊢
   refine eval_post_monotonic_general ?_ heval
   intro m'' hsub'' t v hpost
-  exact ⟨hpost.1, himp m'' (Memory.subsumes_trans hsub'' hsub) v hpost.2.1, hpost.2.2⟩
+  exact ⟨hpost.1, himp m'' (Memory.subsumes_trans hsub'' hsub) v hpost.2.1,
+    hpost.2.2.1, hpost.2.2.2⟩
 
 private theorem resolve_reachability_subset_of_resolve_aux
     {m : Memory} {e v : Exp {}}
