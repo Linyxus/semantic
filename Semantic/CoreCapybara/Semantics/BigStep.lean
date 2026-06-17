@@ -67,12 +67,18 @@ theorem Memory.FrameLive.trans {m1 m2 m3 : Memory} {t : Trace}
 theorem Memory.FrameLive.refl {m : Memory} {t : Trace} : Memory.FrameLive m t m :=
   fun _ b hl _ => ⟨b, hl⟩
 
-/-- Trace-instrumented big-step evaluation.
+/- ============================================================================
+   ROUTE B: the OLD CPS `Eval` inductive is COMMENTED OUT below for reference.
+   It is superseded by the relational `BigStep` relation and the new `def Eval`
+   (preservation form) that follow this block.
 
-  `Eval m e Q` means: evaluating `e` from memory `m` produces some trace `t` of
-  heap events, ending at a value and memory at which `Q t` holds.  Each heap
-  effect is recorded in the trace handed to `Q`; the per-rule traces agree with
-  `SmallStep.Step`. -/
+   OLD doc — Trace-instrumented big-step evaluation:
+   `Eval m e Q` means evaluating `e` from `m` produces a trace `t`, ending at a
+   value/memory at which `Q t` holds.  The defect this refactor fixes: the
+   `eval_letin`/`eval_unpack` continuations quantified over ABSTRACT `Q1`-triples
+   `(t1, m1)`, not real `e1`-answers, so `m1`'s budget liveness was unknowable.
+   ----------------------------------------------------------------------------
+
 inductive Eval : Memory -> Exp {} -> Tpost -> Prop where
 | eval_pack :
   (hQ : Q [] (.pack cs x) m) ->
@@ -181,6 +187,181 @@ inductive Eval : Memory -> Exp {} -> Tpost -> Prop where
   Eval m e1 Q ->
   Eval m e2 Q ->
   Eval m (.par e1 e2) Q
+   ============================================================================ -/
+
+/-- Relational big-step evaluation.  `BigStep m e t v m'` holds when evaluating
+  `e` from memory `m` terminates at value `v` and final memory `m'`, recording
+  the trace `t` of heap events.
+
+  Unlike the old CPS `Eval`, the intermediate result of a `letin`/`unpack` here
+  is an *actual* answer (`m1` is a genuine `e1`-result), which is exactly what
+  lets the continuation observe a live budget — closing the frame gap.
+
+  Per-rule traces agree with the old `Eval`. -/
+inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
+| bs_pack {m : Memory} :
+  BigStep m (.pack cs x) [] (.pack cs x) m
+| bs_alloc {m : Memory} {x : Nat} {b : Bool} {hv R} {l : Nat} :
+  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+  (hfresh : m.heap l = none) ->
+  BigStep m (.alloc (.free x)) [.alloc l]
+    (.pack (.var (.M .epsilon) (.free l)) (.free l)) (m.extend_mcell l b hfresh)
+| bs_val {m : Memory} {v : Exp {}} :
+  (hv : Exp.IsSimpleVal v) ->
+  BigStep m v [] v m
+| bs_var {m : Memory} {x : Var .var {}} :
+  BigStep m (.var x) [] (.var x) m
+| bs_apply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
+  BigStep m (e.subst (Subst.openVar y)) t v m' ->
+  BigStep m (.app (.free x) y) t v m'
+| bs_invoke {m : Memory} {x : Nat} :
+  m.lookup x = some (.capability .basic) ->
+  m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
+  BigStep m (.app (.free x) (.free y)) [.access .epsilon x] .unit m
+| bs_tapply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.tabs cs T0 e, hv, R⟩) ->
+  BigStep m (e.subst (Subst.openTVar .top)) t v m' ->
+  BigStep m (.tapp (.free x) S) t v m'
+| bs_capply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
+  BigStep m (e.subst (Subst.openCVar CS)) t v m' ->
+  BigStep m (.capp (.free x) CS) t v m'
+| bs_wrap {m : Memory} :
+  BigStep m (.boxed cs Ψ e) [] (.boxed cs Ψ e) m
+| bs_unwrap {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
+  BigStep m e t v m' ->
+  BigStep m (.unwrap (.free x)) t v m'
+| bs_letin_val {m m1 m2 : Memory} {v : Exp {}} {l' : Nat} :
+  BigStep m e1 t1 v m1 ->
+  (hv : Exp.IsSimpleVal v) ->
+  (hwf_v : Exp.WfInHeap v m1.heap) ->
+  (hfresh : m1.lookup l' = none) ->
+  BigStep (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh)
+    (e2.subst (Subst.openVar (.free l'))) t2 v2 m2 ->
+  BigStep m (.letin e1 e2) (t1 ++ t2) v2 m2
+| bs_letin_var {m m1 m2 : Memory} {x : Var .var {}} :
+  BigStep m e1 t1 (.var x) m1 ->
+  BigStep m1 (e2.subst (Subst.openVar x)) t2 v2 m2 ->
+  BigStep m (.letin e1 e2) (t1 ++ t2) v2 m2
+| bs_unpack {m m1 m2 : Memory} {x : Var .var {}} {cs : CaptureSet {}} :
+  BigStep m e1 t1 (.pack cs x) m1 ->
+  BigStep m1 (e2.subst (Subst.unpack cs x)) t2 v2 m2 ->
+  BigStep m (.unpack e1 e2) (t1 ++ t2) v2 m2
+| bs_read {m : Memory} {x : Nat} {b : Bool} :
+  m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell b .live)) ->
+  BigStep m (.read (.free x)) [.access .ro y] (if b then .btrue else .bfalse) m
+| bs_write_true {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
+  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  BigStep m (.write (.free x) (.free y)) [.access .epsilon x] .unit
+    (m.update_mcell x true .live ⟨b0, hx⟩)
+| bs_write_false {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
+  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
+  BigStep m (.write (.free x) (.free y)) [.access .epsilon x] .unit
+    (m.update_mcell x false .live ⟨b0, hx⟩)
+| bs_drop {m : Memory} {x : Nat} {b : Bool} :
+  (hx : m.lookup x = some (.capability (.mcell b .live))) ->
+  BigStep m (.drop (.free x)) [.dealloc x] .unit (m.drop_mcell x ⟨b, hx⟩)
+| bs_cond_true {m : Memory} {x : Var .var {}} :
+  resolve m.heap (.var x) = some .btrue ->
+  BigStep m e2 t v m' ->
+  BigStep m (.cond x e2 e3) t v m'
+| bs_cond_false {m : Memory} {x : Var .var {}} :
+  resolve m.heap (.var x) = some .bfalse ->
+  BigStep m e3 t v m' ->
+  BigStep m (.cond x e2 e3) t v m'
+| bs_par_left {m : Memory} :
+  BigStep m e1 t v m' ->
+  BigStep m (.par e1 e2) t v m'
+| bs_par_right {m : Memory} :
+  BigStep m e2 t v m' ->
+  BigStep m (.par e1 e2) t v m'
+
+/-- Progress / safety predicate: `Safe m e` means evaluating `e` from `m` never
+  gets stuck — every redex reached is reducible, and (inductively, since this is
+  a least fixed point) every path reaches an answer.
+
+  This is the old inductive `Eval`'s skeleton with the postcondition erased.  The
+  one structural change from the old `Eval`: `letin`/`unpack` quantify their
+  continuation over the *real* `BigStep` answers of the head (so the intermediate
+  `m1` is a genuine result), instead of over abstract `Q1`-triples. -/
+inductive Safe : Memory -> Exp {} -> Prop where
+| ans {m : Memory} {e : Exp {}} :
+  e.IsAns -> Safe m e
+| alloc {m : Memory} {x : Nat} {b : Bool} {hv R} :
+  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+  Safe m (.alloc (.free x))
+| apply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
+  Safe m (e.subst (Subst.openVar y)) ->
+  Safe m (.app (.free x) y)
+| invoke {m : Memory} {x : Nat} :
+  m.lookup x = some (.capability .basic) ->
+  m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
+  Safe m (.app (.free x) (.free y))
+| tapply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.tabs cs T0 e, hv, R⟩) ->
+  Safe m (e.subst (Subst.openTVar .top)) ->
+  Safe m (.tapp (.free x) S)
+| capply {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
+  Safe m (e.subst (Subst.openCVar CS)) ->
+  Safe m (.capp (.free x) CS)
+| unwrap {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
+  Safe m e ->
+  Safe m (.unwrap (.free x))
+| letin {m : Memory} :
+  Safe m e1 ->
+  (h_ans : ∀ t1 v m1, BigStep m e1 t1 v m1 -> v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap) ->
+  (h_val : ∀ {t1 : Trace} {m1} {v : Exp {}},
+    BigStep m e1 t1 v m1 -> (hv : Exp.IsSimpleVal v) -> (hwf_v : Exp.WfInHeap v m1.heap) ->
+    ∀ l' (hfresh : m1.lookup l' = none),
+      Safe (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh)
+        (e2.subst (Subst.openVar (.free l')))) ->
+  (h_var : ∀ {t1 : Trace} {m1} {x : Var .var {}},
+    BigStep m e1 t1 (.var x) m1 -> Safe m1 (e2.subst (Subst.openVar x))) ->
+  Safe m (.letin e1 e2)
+| unpack {m : Memory} :
+  Safe m e1 ->
+  (h_ans : ∀ t1 v m1, BigStep m e1 t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap) ->
+  (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : CaptureSet {}},
+    BigStep m e1 t1 (.pack cs x) m1 -> Safe m1 (e2.subst (Subst.unpack cs x))) ->
+  Safe m (.unpack e1 e2)
+| read {m : Memory} {x : Nat} {b : Bool} :
+  m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell b .live)) ->
+  Safe m (.read (.free x))
+| write_true {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
+  m.lookup x = some (.capability (.mcell b0 .live)) ->
+  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  Safe m (.write (.free x) (.free y))
+| write_false {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
+  m.lookup x = some (.capability (.mcell b0 .live)) ->
+  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
+  Safe m (.write (.free x) (.free y))
+| drop {m : Memory} {x : Nat} {b : Bool} :
+  m.lookup x = some (.capability (.mcell b .live)) ->
+  Safe m (.drop (.free x))
+| cond {m : Memory} {x : Var .var {}} :
+  (resolve m.heap (.var x) = some .btrue ∨ resolve m.heap (.var x) = some .bfalse) ->
+  (resolve m.heap (.var x) = some .btrue -> Safe m e2) ->
+  (resolve m.heap (.var x) = some .bfalse -> Safe m e3) ->
+  Safe m (.cond x e2 e3)
+| par {m : Memory} :
+  Safe m e1 ->
+  Safe m e2 ->
+  Safe m (.par e1 e2)
+
+/-- Trace-observing evaluation predicate (Route B): `e` from `m` is **safe**
+  (never stuck — `Safe m e`) **and** every answer it reaches satisfies `Q`.
+  Safety is bundled in, so this is no weaker than the old inductive `Eval`. -/
+def Eval (m : Memory) (e : Exp {}) (Q : Tpost) : Prop :=
+  Safe m e ∧ (∀ t v m', BigStep m e t v m' -> Q t v m')
 
 /-- `Eval` on a variable does not change memory and emits no events: the only
     rule producing `Eval m (.var x) Q` is `eval_var`. -/
