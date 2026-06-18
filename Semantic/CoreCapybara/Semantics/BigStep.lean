@@ -1149,6 +1149,69 @@ theorem Trace.allocd_append {t1 t2 : Trace} {l : Nat} :
   | cons it t1 ih =>
     cases it <;> simp only [List.cons_append, Trace.allocd, ih, or_assoc]
 
+/-- Locations freshly allocated within a trace, as a `List` (for `TraceOkFrom`'s
+  allocated-set argument). -/
+def Trace.allocList : Trace -> List Nat
+| [] => []
+| (.alloc l' :: t) => l' :: Trace.allocList t
+| (.access _ _ :: t) => Trace.allocList t
+| (.dealloc _ :: t) => Trace.allocList t
+
+theorem Trace.mem_allocList {t : Trace} {l : Nat} :
+    l ∈ Trace.allocList t ↔ Trace.allocd t l := by
+  induction t with
+  | nil => simp [Trace.allocList, Trace.allocd]
+  | cons it t ih =>
+    cases it <;> simp only [Trace.allocList, Trace.allocd, List.mem_cons, ih]
+
+/-- Sequential append: running `t1` (which collects its allocations) and then `t2`
+  with those allocations available as exemptions yields `TraceOk` for `t1 ++ t2`.
+  Unlike `TraceOkFrom.append`, the suffix `t2` may touch cells `t1` allocated. -/
+theorem TraceOkFrom.append_seq {C : CapabilitySet} :
+  ∀ {A : List Nat} {t1 t2 : Trace},
+    TraceOkFrom C A t1 -> TraceOkFrom C (Trace.allocList t1 ++ A) t2 ->
+    TraceOkFrom C A (t1 ++ t2) := by
+  intro A t1 t2 h1
+  induction h1 with
+  | nil => intro h2; exact h2
+  | alloc _ ih =>
+    intro h2
+    refine TraceOkFrom.alloc (ih ?_)
+    refine TraceOkFrom.mono_alloc (fun x hx => ?_) h2
+    simp only [Trace.allocList, List.cons_append, List.mem_cons, List.mem_append] at hx ⊢
+    tauto
+  | access hc _ ih => intro h2; exact TraceOkFrom.access hc (ih h2)
+  | dealloc hc _ ih => intro h2; exact TraceOkFrom.dealloc hc (ih h2)
+
+/-- Budget-translate with an extra exemption set `S`: if `t` is OK against `C`, and
+  every `C`-covered location is either `C'`-covered (at the same mode) or in `S`,
+  then `t` is OK against `C'` with `S` adjoined to the exemptions. -/
+theorem TraceOkFrom.translate {C C' : CapabilitySet} {S : List Nat} :
+  ∀ {A : List Nat} {t : Trace},
+    TraceOkFrom C A t ->
+    (∀ mode l, C.covers mode l -> C'.covers mode l ∨ l ∈ S) ->
+    TraceOkFrom C' (A ++ S) t := by
+  intro A t h
+  induction h with
+  | nil => intro _; exact TraceOkFrom.nil
+  | alloc _ ih => intro htr; exact TraceOkFrom.alloc (ih htr)
+  | access hc _ ih =>
+    intro htr
+    refine TraceOkFrom.access ?_ (ih htr)
+    rcases hc with hcov | hin
+    · rcases htr _ _ hcov with hc' | hs
+      · exact Or.inl hc'
+      · exact Or.inr (List.mem_append.mpr (Or.inr hs))
+    · exact Or.inr (List.mem_append.mpr (Or.inl hin))
+  | dealloc hc _ ih =>
+    intro htr
+    refine TraceOkFrom.dealloc ?_ (ih htr)
+    rcases hc with hcov | hin
+    · rcases htr _ _ hcov with hc' | hs
+      · exact Or.inl hc'
+      · exact Or.inr (List.mem_append.mpr (Or.inr hs))
+    · exact Or.inr (List.mem_append.mpr (Or.inl hin))
+
 theorem Memory.extend_mcell_IsLive_self {m : Memory} {l : Nat} {b : Bool} {h} :
     (m.extend_mcell l b h).IsLive l :=
   ⟨b, by simp [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell]⟩
@@ -1572,6 +1635,68 @@ theorem Memory.extend_val_lookup_mcell {m : Memory} {L : Nat} {v h1 h2 h3} {l : 
   by_cases hlL : l = L
   · subst hlL; rw [Memory.extend_val_lookup_self] at hl'; simp at hl'
   · rwa [Memory.extend_val_lookup_ne hlL] at hl'
+
+/-- A CAPABILITY found in `m.extend_val …` was already in `m` (the added cell is a
+  non-capability val). -/
+theorem Memory.extend_val_lookup_cap {m : Memory} {L : Nat} {v h1 h2 h3} {l : Nat} {c}
+    (hl' : (m.extend_val L v h1 h2 h3).lookup l = some (.capability c)) :
+    m.lookup l = some (.capability c) := by
+  by_cases hlL : l = L
+  · subst hlL; rw [Memory.extend_val_lookup_self] at hl'; simp at hl'
+  · rwa [Memory.extend_val_lookup_ne hlL] at hl'
+
+/-- A freshly-appeared CAPABILITY cell was allocated within the trace.  Only
+  `extend_mcell` adds capabilities (`extend_val` adds non-capability vals; the
+  other heap ops never grow the domain), so a capability present in `m'` but
+  absent in `m` traces to an `.alloc` event.  (The capability analogue of
+  `live_appears_allocd`, but needing no liveness.) -/
+theorem BigStep.appears_allocd_of_cap {m : Memory} {e : Exp {}} {t v m' l c}
+    (hbs : BigStep m e t v m') (hl : m.lookup l = none)
+    (hl' : m'.lookup l = some (.capability c)) : Trace.allocd t l := by
+  induction hbs generalizing c with
+  | bs_pack | bs_val _ | bs_var | bs_wrap | bs_invoke _ _ | bs_read _ _ =>
+    rw [hl] at hl'; simp at hl'
+  | bs_alloc _ hfresh =>
+    have heq := Memory.extend_mcell_lookup_eq_base_of_ne hl' hl
+    subst heq; simp [Trace.allocd]
+  | bs_write_true hx _ | bs_write_false hx _ =>
+    rw [Memory.update_mcell_lookup_none hl ⟨_, hx⟩] at hl'; simp at hl'
+  | bs_drop hx =>
+    rw [Memory.drop_mcell_lookup_none hl ⟨_, hx⟩] at hl'; simp at hl'
+  | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
+  | bs_cond_true _ _ ih | bs_cond_false _ _ ih | bs_par_left _ ih | bs_par_right _ ih =>
+    exact ih hl hl'
+  | bs_letin_val hbs1 hv hwf_v hfresh hbs2 ih1 ih2 =>
+    rename_i _ _ _ _ _ _ m1 _ vval l'
+    refine Trace.allocd_append.mpr ?_
+    rcases hsrc : (m1.extend_val l' ⟨vval, hv, compute_reachability m1.heap vval hv⟩
+        hwf_v rfl hfresh).lookup l with _ | c0
+    · exact Or.inr (ih2 hsrc hl')
+    · have hcy := Memory.lookup_down hbs2.subsumes hsrc hl'
+      cases c0 with
+      | val vv => simp [Cell.subsumes] at hcy
+      | masked => simp [Cell.subsumes] at hcy
+      | capability cc => exact Or.inl (ih1 hl (Memory.extend_val_lookup_cap hsrc))
+  | bs_letin_var hbs1 hbs2 ih1 ih2 =>
+    rename_i _ _ _ _ _ _ m1 _ _
+    refine Trace.allocd_append.mpr ?_
+    rcases hsrc : m1.lookup l with _ | c0
+    · exact Or.inr (ih2 hsrc hl')
+    · have hcy := Memory.lookup_down hbs2.subsumes hsrc hl'
+      cases c0 with
+      | val vv => simp [Cell.subsumes] at hcy
+      | masked => simp [Cell.subsumes] at hcy
+      | capability cc => exact Or.inl (ih1 hl hsrc)
+  | bs_unpack hbs1 hbs2 ih1 ih2 =>
+    rename_i _ _ _ _ _ _ m1 _ _ _
+    refine Trace.allocd_append.mpr ?_
+    rcases hsrc : m1.lookup l with _ | c0
+    · exact Or.inr (ih2 hsrc hl')
+    · have hcy := Memory.lookup_down hbs2.subsumes hsrc hl'
+      cases c0 with
+      | val vv => simp [Cell.subsumes] at hcy
+      | masked => simp [Cell.subsumes] at hcy
+      | capability cc => exact Or.inl (ih1 hl hsrc)
 
 /-- `extTouchesFrom` only consults the alloc-set through `l`-membership. -/
 theorem Trace.extTouchesFrom_mem_irrel {l : Nat} :
@@ -2268,6 +2393,8 @@ theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : 
       Q1 t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap)
     (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : CaptureSet {}}, m1.subsumes m ->
       Memory.FrameLive m t1 m1 ->
+      (∀ {l b}, m.lookup l = none ->
+        m1.lookup l = some (.capability (.mcell b .live)) -> Trace.allocd t1 l) ->
       (hwf_x : x.WfInHeap m1.heap) -> (hwf_cs : cs.WfInHeap m1.heap) -> Q1 t1 (.pack cs x) m1 ->
       Eval m1 (e2.subst (Subst.unpack cs x)) (fun t2 => Q (t1 ++ t2))) :
     Eval m (.unpack e1 e2) Q := by
@@ -2277,14 +2404,16 @@ theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : 
       have hq1 := he1.2 t1 (.pack cs x) m1 hrun
       cases (h_nonstuck hq1).2 with
       | wf_pack hcs hx =>
-        exact (h_val (BigStep.subsumes hrun) (BigStep.frameLive hrun) hx hcs hq1).1
+        exact (h_val (BigStep.subsumes hrun) (BigStep.frameLive hrun)
+          (BigStep.live_appears_allocd hrun) hx hcs hq1).1
   · intro t v m' hbs
     cases hbs with
     | bs_unpack hrun_e1 hrun_e2 =>
       have hq1 := he1.2 _ _ _ hrun_e1
       cases (h_nonstuck hq1).2 with
       | wf_pack hcs hx =>
-        exact (h_val (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hx hcs hq1).2
+        exact (h_val (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1)
+          (BigStep.live_appears_allocd hrun_e1) hx hcs hq1).2
           _ _ _ hrun_e2
     | bs_val hv => cases hv
 

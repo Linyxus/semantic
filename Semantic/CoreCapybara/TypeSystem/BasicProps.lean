@@ -287,7 +287,8 @@ theorem HasType.use_set_is_closed
   | tabs => exact CaptureSet.IsClosed.empty
   | cabs => exact CaptureSet.IsClosed.empty
   | wrap => exact CaptureSet.IsClosed.empty
-  | pack hC _ _ _ => exact CaptureSet.applyAccess_isClosed hC
+  | pack hC _ _ _ =>
+    exact CaptureSet.IsClosed.union hC (CaptureSet.applyAccess_isClosed hC)
   | app _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
   | tapp _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
   | capp _ _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x

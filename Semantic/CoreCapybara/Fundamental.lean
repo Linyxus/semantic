@@ -650,8 +650,8 @@ theorem pack_bound_mono {R R' : CapabilitySet} {m0 m1 m' : Memory} {v : Exp {}}
     (hRsub : R' ⊆ R) (hmm : m1.subsumes m0)
     (h : pack_bound R' m1 v m') : pack_bound R m0 v m' := by
   intro cs x heq mu l hmem
-  rcases h cs x heq mu l hmem with hl | hr
-  · exact Or.inl (hasmem_drop_of_subset hRsub hl)
+  rcases h cs x heq mu l hmem with ⟨hcov, hd⟩ | hr
+  · exact Or.inl ⟨CapabilitySet.covers_mono hRsub hcov, hasmem_drop_of_subset hRsub hd⟩
   · refine Or.inr ?_
     exact Heap.none_of_subsumes_none hmm hr
 
@@ -1369,7 +1369,7 @@ theorem sem_typ_pack
   (hΓ : Γ.IsClosed)
   (hvalid_cs : cs.AccessOnly Γ)
   (ht : SemanticTyping {} Γ (Exp.var x) (T.subst (Subst.openCVar cs)).typ) :
-  SemanticTyping (cs.applyAccess .drop) Γ (Exp.pack cs x) T.exi := by
+  SemanticTyping (cs ∪ cs.applyAccess .drop) Γ (Exp.pack cs x) T.exi := by
   intro env store hts hdsep hcompat
   -- pack is no longer a simple value; use eval_pack instead
   have hsubst : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
@@ -1412,7 +1412,9 @@ theorem sem_typ_pack
       obtain ⟨c, hsub, _⟩ :=
         drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hclosed_cs hmem'
       exact hvalid_cs c hsub
-  · -- pack_bound: every witness location is consumable under the pack budget
+  · -- pack_bound: every witness location is covered by the pack budget at its own
+    -- access mode (from the `cs` summand) AND consumable (`.drop`, from the
+    -- `cs.applyAccess .drop` summand).  R = `(cs ∪ cs.applyAccess .drop).denot`.
     intro cs0 x0 heq mu l hmem
     cases heq
     left
@@ -1424,21 +1426,21 @@ theorem sem_typ_pack
     have hgoal :
         CaptureSet.denot env (cs.applyAccess .drop) store = (cs.denot env store).to_drop := by
       rw [captureSet_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
+    refine ⟨CapabilitySet.covers_union_left (CapabilitySet.hasmem_implies_covers hmem), ?_⟩
+    refine CapabilitySet.hasmem_union_right ?_
+    change (CaptureSet.denot env (cs.applyAccess .drop) store).hasmem .drop l
     rw [hgoal]
     exact CapabilitySet.hasmem_to_drop_of_hasmem hmem
   · -- witness_live: the witness `cs` is LIVE in `store`, because the pack budget
-    -- `cs.applyAccess .drop` (compatible by `hcompat`) covers the same locations.
+    -- (compatible by `hcompat`) now contains `cs` directly (its `cs` summand).
     intro cs0 x0 heq
     cases heq
     have hreach :
         (cs.subst (Subst.from_TypeEnv env)).reachability store = cs.denot env store := by
       rw [← CaptureSet.ground_denot_eq_reachability]; rfl
     rw [hreach]
-    have hgoal :
-        CaptureSet.denot env (cs.applyAccess .drop) store = (cs.denot env store).to_drop := by
-      rw [captureSet_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
-    intro mu l b ℓ hmem hheap
-    exact hcompat .drop l b ℓ (hgoal ▸ CapabilitySet.hasmem_to_drop_of_hasmem hmem) hheap
+    refine Memory.is_compatible_subset ?_ hcompat
+    exact CapabilitySet.Subset.union_right_left
 
 
 theorem abs_val_denot_inv
@@ -4584,15 +4586,26 @@ theorem consumed_peaks_droppable {Γ : Ctx s} {C : CaptureSet s} {c : BVar s .cv
     syntactic `AccessOnly` evidence + budget compatibility, and threaded through
     `exi_exp_denot`.
 
-    **REMAINING (one `sorry`) — the witness TRACE-provenance reassembly.**  The body
-    trace `t2` may access/drop the witness; the outer `TraceOk (t1 ++ t2)
-    ((C1 ∪ C2).denot)` needs each witness cell to be `(C1 ∪ C2)`-covered OR allocated
-    within `t1`.  `pack_bound` gives the dichotomy (budget-drop ∨ `store`-fresh) and
-    `witness_live` + `BigStep.live_appears_allocd` now make the FRESH branch
-    `allocd t1` (it's live in `m1`).  This is CLOSEABLE but needs new trace machinery
-    (a sequential `TraceOkFrom` append threading `t1`'s allocations into `t2`'s
-    exemption set, plus exposing the allocd-provenance from `eval_unpack`) — a
-    distinct effort from the liveness gap above. -/
+    **WITNESS ACCESS-COVERAGE GAP: CLOSED** (the fix the user proposed).  The pack
+    rule's budget is now `C ∪ C.applyAccess .drop` (was `C.applyAccess .drop`), so
+    `pack_bound` records each witness cell at its natural ACCESS mode (`R.covers mu l`)
+    alongside `.drop` — not just `.drop`.  The `TraceOk (t1 ++ t2) ((C1 ∪ C2).denot)`
+    reassembly is now fully proved by trace machinery: `t1` is OK against the union
+    (mono), `t2` is OK against it with `t1`'s allocations exempt (`TraceOkFrom.translate`
+    routing each touched cell through `C2` / the witness via the strengthened `pack_bound`
+    / fresh-witness provenance), assembled by `TraceOkFrom.append_seq`.  A NON-fresh
+    witness `.access .epsilon` touch is now covered by `C1` at access (`pack_bound`'s
+    `covers` half + `covers_weaken`); `.drop` touches by `C1.drop`; FRESH cells are
+    `allocd t1`.
+
+    **REMAINING (one focused `sorry`, `hmcell`) — fresh-witness mcell-provenance.**  A
+    store-fresh member of `cs.reachability m1` is a live `.mcell` in `m1` (it is a
+    capability cell — `reachability_of_loc` only ranges over `.capability`/`.masked` —
+    and a store-fresh one is an `.mcell`, since only `extend_mcell` grows the capability
+    domain; `witness_live` then gives its liveness).  `BigStep.appears_allocd_of_cap`
+    is in place to consume it.  The missing piece is a `Heap.WfHeap` invariant
+    "reachability members are capabilities (not vals)" — a structural fact about
+    `compute_reachability`, separate from the access-coverage fix.  Human intervention. -/
 theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
@@ -4651,7 +4664,7 @@ theorem sem_typ_unpack
           cases hwf_exp with
           | wf_var hwf_v => exact hwf_v
   case h_val =>
-    intro t1 m1 x cs hs1 hframe hwf_x hwf_cs hQ1
+    intro t1 m1 x cs hs1 hframe halloc hwf_x hwf_cs hQ1
     -- The continuation budget is `C2 ∪ R ∪ R.to_drop` (R = the unpacked witness's
     -- reachability).  The `C2` slice reduces, exactly as in `letin`, to the frame
     -- provision `FrameLive store t1 m1` (via `is_compatible_frame`: `C2` is live at
@@ -4828,7 +4841,7 @@ theorem sem_typ_unpack
         rw [hReq] at hl1
         rcases hpb cs (Var.free fx) rfl mu1 l hl1 with hdropl | hfreshl
         · obtain ⟨c1', hpk1, mu', hc1mem⟩ :=
-            drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hclosed_C1 hdropl
+            drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hclosed_C1 hdropl.2
           -- the consumed source is killed; `c'` is live, so they differ
           have hkilled : Kenv.lookup_cvar_auth c1' = .killed :=
             TypeEnv.kill_peaks_cs_killed (a := .drop)
@@ -4885,35 +4898,102 @@ theorem sem_typ_unpack
       refine eval_post_monotonic ?_ hu''
       intro t2 m v hpost
       refine ⟨?_, (Denot.equiv_to_imply heqv_composed).2 _ _ hpost.2.1, ?_, hpost.2.2.2⟩
-      · -- GENUINE GAP (witness trace provenance — same root as `hcompat_witness`).
-        -- `t2` may access the witness `cs`; the `TraceOk (t1 ++ t2) ((C1 ∪ C2).denot)`
-        -- exemption holds iff each witness cell is in the `C1 ∪ C2` budget OR alloc'd
-        -- within `t1`.  `pack_bound` gives the provenance dichotomy (budget-drop ∨
-        -- `store`-fresh) and the relational run gives `allocd`-provenance, but the
-        -- FRESH branch still needs witness LIVENESS (a fresh cell is `allocd t1` only
-        -- if live in `m1`) — the same missing denotation fact as above.
-        sorry
+      · -- `TraceOk (t1 ++ t2) R`, R = `(C1 ∪ C2).denot`.  Assembled by `append_seq`:
+        -- `t1` is OK against R; `t2` is OK against R with `t1`'s allocations exempt.
+        -- The witness ACCESS-COVERAGE (the former gap) now CLOSES: the strengthened
+        -- pack budget `C ∪ C.applyAccess .drop` makes `pack_bound` supply
+        -- `C1.covers mu l` (the witness's natural access mode), not just `.drop`.
+        refine TraceOkFrom.append_seq
+          (TraceOkFrom.mono CapabilitySet.Subset.union_right_left hQ1.1) ?_
+        rw [List.append_nil]
+        have hbase : TraceOkFrom (C2.denot env store ∪ cs.reachability m1
+            ∪ (cs.reachability m1).to_drop) [] t2 := TraceOkFrom.mono hsub_budget hpost.1
+        -- Fresh witness cells were allocated within `t1` (so are exempt for `t2`).
+        have hfresh_allocd : ∀ mu l, (cs.reachability m1).hasmem mu l →
+            store.lookup l = none → l ∈ Trace.allocList t1 := by
+          intro mu l hmem hfresh
+          rw [Trace.mem_allocList]
+          have hmcell : ∃ b, m1.lookup l = some (.capability (.mcell b .live)) := by
+            -- FOCUSED GAP: a member of `cs.reachability m1` is a capability cell in
+            -- `m1` (`reachability_of_loc` only ranges over `.capability`/`.masked`
+            -- cells, and a store-fresh one is an `.mcell` since only `extend_mcell`
+            -- grows the capability domain); `witness_live` then gives its liveness.
+            -- This needs a `Heap.WfHeap` invariant "reachability members are
+            -- capabilities" that is not currently recorded — a separate effort from
+            -- the access-coverage fix (which IS done).  `BigStep.appears_allocd_of_cap`
+            -- is already in place to consume it.
+            sorry
+          obtain ⟨b, hmcell⟩ := hmcell
+          exact halloc hfresh hmcell
+        refine TraceOkFrom.translate hbase ?_
+        intro mode l hcov
+        rcases CapabilitySet.covers_union_iff.mp hcov with hc12 | htd
+        · rcases CapabilitySet.covers_union_iff.mp hc12 with hC2 | hreach
+          · exact Or.inl (CapabilitySet.covers_union_right hC2)
+          · obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem hreach
+            rcases hpb cs (Var.free fx) rfl mu' l hmem' with hd | hf
+            · exact Or.inl (CapabilitySet.covers_union_left
+                (CapabilitySet.covers_weaken hd.1 hle))
+            · exact Or.inr (hfresh_allocd mu' l hmem' hf)
+        · obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem htd
+          obtain ⟨hmu'drop, mu0, hl0⟩ := CapabilitySet.hasmem_to_drop_imp hmem'
+          subst hmu'drop
+          cases hle
+          rcases hpb cs (Var.free fx) rfl mu0 l hl0 with hd | hf
+          · exact Or.inl (CapabilitySet.covers_union_left
+              (CapabilitySet.hasmem_implies_covers hd.2))
+          · exact Or.inr (hfresh_allocd mu0 l hl0 hf)
       · -- Compose the body's pack-witness bound back to the outer budget/memory.
+        -- The body now supplies BOTH `covers mu l` (access) and `hasmem .drop l`;
+        -- lift each independently to `(C1 ∪ C2)` (∨ fresh), then combine — fresh in
+        -- either lift means the cell is fresh, otherwise both are covered.
         intro cs0 x0 heq mu l hmem
-        rcases hpost.2.2.1 cs0 x0 heq mu l hmem with hl | hr
-        · have hl' := hasmem_drop_of_subset hsub_budget hl
-          cases hl' with
-          | left hl2 =>
-            cases hl2 with
-            | left hl3 =>
-              -- consumable under the continuation budget `C2`
-              exact Or.inl (.right hl3)
-            | right hl3 =>
-              -- a witness location: defer to the witness's own bound
-              rcases hpb cs (Var.free fx) rfl .drop l hl3 with hd | hf
-              · exact Or.inl (.left hd)
+        rcases hpost.2.2.1 cs0 x0 heq mu l hmem with ⟨hcov_body, hdrop_body⟩ | hr
+        · -- Drop lift (the old argument, now reading `hd.2` from the witness bound).
+          have hdrop_result :
+              (CaptureSet.denot env (C1 ∪ C2) store).hasmem .drop l
+                ∨ store.lookup l = none := by
+            have hl' := hasmem_drop_of_subset hsub_budget hdrop_body
+            cases hl' with
+            | left hl2 =>
+              cases hl2 with
+              | left hl3 => exact Or.inl (.right hl3)
+              | right hl3 =>
+                rcases hpb cs (Var.free fx) rfl .drop l hl3 with hd | hf
+                · exact Or.inl (.left hd.2)
+                · exact Or.inr hf
+            | right hl2 =>
+              obtain ⟨_, mu0, hl0⟩ := CapabilitySet.hasmem_to_drop_imp hl2
+              rcases hpb cs (Var.free fx) rfl mu0 l hl0 with hd | hf
+              · exact Or.inl (.left hd.2)
               · exact Or.inr hf
-          | right hl2 =>
-            -- a consumed witness location: same as above
-            obtain ⟨_, mu0, hl0⟩ := CapabilitySet.hasmem_to_drop_imp hl2
-            rcases hpb cs (Var.free fx) rfl mu0 l hl0 with hd | hf
-            · exact Or.inl (.left hd)
+          -- Covers lift (new): the body covers `l` at `mu`; trace it through the
+          -- budget summands — `C2` directly, the witness via `hpb`'s `covers`.
+          have hcov_result :
+              (CaptureSet.denot env (C1 ∪ C2) store).covers mu l
+                ∨ store.lookup l = none := by
+            have hcov' := CapabilitySet.covers_mono hsub_budget hcov_body
+            rcases CapabilitySet.covers_union_iff.mp hcov' with hc12 | htd
+            · rcases CapabilitySet.covers_union_iff.mp hc12 with hC2 | hreach
+              · exact Or.inl (CapabilitySet.covers_union_right hC2)
+              · obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem hreach
+                rcases hpb cs (Var.free fx) rfl mu' l hmem' with hd | hf
+                · exact Or.inl
+                    (CapabilitySet.covers_union_left (CapabilitySet.covers_weaken hd.1 hle))
+                · exact Or.inr hf
+            · obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem htd
+              obtain ⟨hmu'drop, mu0, hl0⟩ := CapabilitySet.hasmem_to_drop_imp hmem'
+              subst hmu'drop
+              cases hle
+              rcases hpb cs (Var.free fx) rfl mu0 l hl0 with hd | hf
+              · exact Or.inl
+                  (CapabilitySet.covers_union_left (CapabilitySet.hasmem_implies_covers hd.2))
+              · exact Or.inr hf
+          rcases hcov_result with hc | hf
+          · rcases hdrop_result with hd | hf
+            · exact Or.inl ⟨hc, hd⟩
             · exact Or.inr hf
+          · exact Or.inr hf
         · exact Or.inr (Heap.none_of_subsumes_none hs1 hr)
 
 -- Helper: rename preserves subset

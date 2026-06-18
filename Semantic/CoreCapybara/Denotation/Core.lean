@@ -493,16 +493,20 @@ def TypeEnv.EnvSepWf (env : TypeEnv s) : Prop :=
     CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
 
 /-- Pack-witness authority bound: if a computation that started at memory `m`
-with budget `R` results in a pack value, then every location reachable from
-the pack's witness either was consumable (`.drop`) under `R`, or is fresh
-(allocated after `m`). This is the runtime trace of `eval_pack`'s budget
-premise threaded through evaluation; it lets `unpack` derive that the witness
-is disjoint from any capability the continuation's budget can still name. -/
+with budget `R` results in a pack value, then every location `l` reachable from
+the pack's witness at mode `mu` either is covered by `R` at that SAME mode `mu`
+AND consumable (`.drop`) under `R`, or is fresh (allocated after `m`). This is
+the runtime trace of `eval_pack`'s budget premise (now `C ∪ C.applyAccess .drop`,
+which records the witness at its natural ACCESS mode alongside `.drop`) threaded
+through evaluation. The `.drop` half lets `unpack` see the witness as consumable;
+the `R.covers mu l` half lets `unpack` cover the continuation's ACCESS touches of
+the witness — without it, a non-fresh witness accessed by the body would be
+uncovered (`.drop` does not cover `.access` under `CapMode.Le`). -/
 def pack_bound (R : CapabilitySet) (m : Memory) : Exp {} -> Memory -> Prop :=
   fun v m' => ∀ (cs : CaptureSet {}) (x : Var .var {}),
     v = .pack cs x ->
     ∀ mu l, (cs.reachability m').hasmem mu l ->
-      R.hasmem .drop l ∨ m.lookup l = none
+      (R.covers mu l ∧ R.hasmem .drop l) ∨ m.lookup l = none
 
 /-- The unpacked existential WITNESS is live in the result memory.  This is
   ANTI-monotonic (a more-dead memory can decay a witness cell), so it lives in the

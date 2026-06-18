@@ -271,7 +271,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   C.droppable Γ ->
   HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
   ----------------------------
-  HasType (C.applyAccess .drop) Γ (.pack C x) (.exi T)
+  HasType (C ∪ C.applyAccess .drop) Γ (.pack C x) (.exi T)
 | app :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
   HasType {} Γ (.var x) (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
