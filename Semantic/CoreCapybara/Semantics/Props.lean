@@ -929,4 +929,64 @@ theorem reduce_immutable
       (ih (fun l hm => hwr l (List.mem_append_right _ hm))
         (fun l hm => hdr l (List.mem_append_right _ hm)))
 
+/-- **Per-location immutability (single step).**  A step that neither writes
+    (`access .epsilon l`) nor drops (`dealloc l`) the specific cell `l` leaves
+    that cell unchanged — same bit and liveness.  Fresh allocations land at fresh
+    locations (distinct from the queried, already-allocated `l`); writes/drops at
+    other locations miss `l`; a write/drop at `l` itself is excluded by the
+    hypotheses.  This is the per-cell refinement of `step_immutable`, needed when
+    the trace *may* legitimately touch freshly allocated cells. -/
+theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {ℓ : Liveness}
+    (hstep : Step t m1 e1 m2 e2) :
+    TraceItem.access .epsilon l ∉ t -> TraceItem.dealloc l ∉ t ->
+    m1.heap l = some (.capability (.mcell b ℓ)) ->
+    m2.heap l = some (.capability (.mcell b ℓ)) := by
+  induction hstep with
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
+  | step_rename | step_unpack | step_par_left | step_par_right =>
+    intro _ _ hinit; exact hinit
+  | step_write_true _ _ | step_write_false _ _ =>
+    intro hwr _ hinit
+    simp only [Memory.update_mcell, Heap.update_cell]
+    split
+    · rename_i heq; subst heq; exact absurd (List.mem_singleton.mpr rfl) hwr
+    · exact hinit
+  | step_drop _ =>
+    intro _ hdr hinit
+    simp only [Memory.drop_mcell, Heap.update_cell]
+    split
+    · rename_i heq; subst heq; exact absurd (List.mem_singleton.mpr rfl) hdr
+    · exact hinit
+  | step_alloc _ hfresh =>
+    intro _ _ hinit
+    simp only [Memory.extend_mcell, Heap.extend_mcell]
+    split
+    · rename_i heq; rw [heq, hfresh] at hinit; cases hinit
+    · exact hinit
+  | step_lift hv hwf hfresh =>
+    intro _ _ hinit
+    simp only [Memory.extend, Heap.extend]
+    split
+    · rename_i heq; rw [heq, hfresh] at hinit; cases hinit
+    · exact hinit
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih =>
+    intro hwr hdr hinit; exact ih hwr hdr hinit
+
+/-- **Per-location immutability (reduction).**  A whole reduction that never
+    writes or drops the specific cell `l` leaves it unchanged. -/
+theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {ℓ : Liveness}
+    (hred : Reduce t m1 e1 m2 e2) :
+    TraceItem.access .epsilon l ∉ t -> TraceItem.dealloc l ∉ t ->
+    m1.heap l = some (.capability (.mcell b ℓ)) ->
+    m2.heap l = some (.capability (.mcell b ℓ)) := by
+  induction hred with
+  | refl => intro _ _ hinit; exact hinit
+  | step hstep _ ih =>
+    intro hwr hdr hinit
+    refine ih (fun hm => hwr (List.mem_append_right _ hm))
+      (fun hm => hdr (List.mem_append_right _ hm)) ?_
+    exact step_preserves_cell hstep (fun hm => hwr (List.mem_append_left _ hm))
+      (fun hm => hdr (List.mem_append_left _ hm)) hinit
+
 end CoreCapybara
