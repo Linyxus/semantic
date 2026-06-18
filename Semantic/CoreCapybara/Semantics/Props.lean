@@ -61,8 +61,9 @@ theorem step_memory_monotonic
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_left | step_par_right =>
+  | step_rename | step_unpack | step_par_join _ _ =>
     exact Memory.subsumes_refl _
+  | step_par_left _ ih | step_par_right _ ih => exact ih
   | step_write_true hx _ | step_write_false hx _ =>
     exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩
   | step_alloc _ hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh
@@ -309,14 +310,15 @@ theorem step_preserves_wf
       have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
       -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
-  | step_par_left =>
-    -- e1 = .par e1' e2', e2 = e1'
+  -- TODO(par): congruence preserves WF, but needs the sub-step's WF preservation
+  -- (recursion) + WF stability of the untouched branch under memory growth.  This
+  -- `cases` gives no IH; restructuring to `induction` is part of the par heavy-lift.
+  | step_par_left _ => sorry
+  | step_par_right _ => sorry
+  | step_par_join _ _ =>
+    -- Joins to the LEFT answer with memory unchanged; WF of the left branch.
     cases hwf with
-    | wf_par hwf1 hwf2 => exact hwf1
-  | step_par_right =>
-    -- e1 = .par e1' e2', e2 = e2'
-    cases hwf with
-    | wf_par hwf1 hwf2 => exact hwf2
+    | wf_par hwf1 _ => exact hwf1
 
 theorem reduce_preserves_wf
   (hred : Reduce C m1 e1 m2 e2)
@@ -504,8 +506,9 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
     -- e = .write (.free x) (.free y), can step via step_write_false
     exact IsProgressive.step (Step.step_write_false hx hy)
   | par _ _ _ _ =>
-    -- e = .par e1 e2, can step via step_par_left
-    exact IsProgressive.step Step.step_par_left
+    -- TODO(par): progress for interleaving `par` — step whichever branch is not
+    -- yet an answer (congruence), or `step_par_join` when both are answers.
+    sorry
 
 /-- An `Eval` is progressive: its bundled `Safe` half gives small-step progress. -/
 theorem eval_implies_progressive {m : Memory} {e : Exp {}} {Q : Tpost}
@@ -582,8 +585,11 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     | bs_unpack hrun hrun2 =>
       rw [← List.append_assoc]; exact BigStep.bs_unpack (ih hrun) hrun2
     | bs_val hv => cases hv
-  | step_par_left => intro t' v m' hbs; exact BigStep.bs_par_left hbs
-  | step_par_right => intro t' v m' hbs; exact BigStep.bs_par_right hbs
+  -- TODO(par): head-expanding a par-congruence/join step needs the (new) sequential
+  -- `bs_par` big-step rule and the diamond/commutation theory stated below.
+  | step_par_left _ => sorry
+  | step_par_right _ => sorry
+  | step_par_join _ _ => sorry
   | step_rename => intro t' v m' hbs; exact BigStep.bs_letin_var BigStep.bs_var hbs
   | step_unpack => intro t' v m' hbs; exact BigStep.bs_unpack BigStep.bs_pack hbs
   | step_lift hv hwf hfresh =>
@@ -678,15 +684,16 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
       · intro t1 m1' x cs hbs
         exact h_val (BigStep.head_expand hstep_inner hbs)
     | ans hans => cases hans with | is_val hv => cases hv
-  | step_par_left =>
+  -- TODO(par): congruence must preserve Safe of the stepped branch (via the IH)
+  -- AND of the untouched branch — the latter needs a frame/stability property of
+  -- `Safe` under a separated step's effects, part of the par heavy-lift.
+  | step_par_left _ _ => sorry
+  | step_par_right _ _ => sorry
+  | step_par_join _ _ =>
+    -- Joins to the LEFT answer with memory unchanged; Safe of the left branch.
     intro hsafe
     cases hsafe with
     | par hs1 _ => exact hs1
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_par_right =>
-    intro hsafe
-    cases hsafe with
-    | par _ hs2 => exact hs2
     | ans hans => cases hans with | is_val hv => cases hv
   | step_rename =>
     intro hsafe
@@ -856,9 +863,12 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
                 (by simp [Memory.lookup, hcell])) hred, hans⟩
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
-  | par _ _ ih1 _ =>
-    obtain ⟨t, m', a, hred, hans⟩ := ih1
-    exact ⟨_, _, _, Reduce.step Step.step_par_left hred, hans⟩
+  | par _ _ ih1 ih2 =>
+    -- TODO(par): a full interleaved reduction of `par` to its joined answer —
+    -- run each branch to its answer (the IHs give those), interleave (here:
+    -- left-then-right), then `step_par_join`.  Needs the congruence-lifting
+    -- lemmas (`reduce_par_left`/`reduce_par_right`) from the par heavy-lift.
+    sorry
 
 /-- Answer existence (small-step): `Eval m e Q` reduces to an answer satisfying
     `Q`.  Combine `Safe.has_reduction` with the adequacy bridge. -/
@@ -888,9 +898,12 @@ theorem step_immutable
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_left | step_par_right =>
+  | step_rename | step_unpack | step_par_join _ _ =>
     -- Memory is unchanged.
     exact hinit
+  | step_par_left _ ih | step_par_right _ ih =>
+    -- Congruence: the only change is the sub-step's, handled by the IH.
+    exact ih hwr hdr hinit
   | step_write_true _ _ | step_write_false _ _ =>
     -- The trace is `[access .epsilon x]`, excluded by `hwr`.
     exact absurd (List.mem_singleton.mpr rfl) (hwr _)
@@ -944,8 +957,11 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
   induction hstep with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_left | step_par_right =>
+  | step_rename | step_unpack | step_par_join _ _ =>
     intro _ _ hinit; exact hinit
+  | step_par_left _ ih | step_par_right _ ih =>
+    -- Congruence: the cell change is the sub-step's, handled by the IH.
+    intro hwr hdr hinit; exact ih hwr hdr hinit
   | step_write_true _ _ | step_write_false _ _ =>
     intro hwr _ hinit
     simp only [Memory.update_mcell, Heap.update_cell]
@@ -988,5 +1004,152 @@ theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool}
       (fun hm => hdr (List.mem_append_right _ hm)) ?_
     exact step_preserves_cell hstep (fun hm => hwr (List.mem_append_left _ hm))
       (fun hm => hdr (List.mem_append_left _ hm)) hinit
+
+/- ============================================================================
+   PARALLELISM — the DIAMOND / SEQUENTIALIZATION theory for `par`  (Route A).
+
+   `par e1 e2` now INTERLEAVES (see `SmallStep`): either branch may take the next
+   `Step` (`step_par_left`/`step_par_right` congruence), and once both reach
+   answers `step_par_join` retires the construct to the left answer.  Soundness of
+   this interleaving rests on the SEPARATION the `par` typing rule already enforces
+   (`SepCheck Γ C1 C2`): the two branches' footprints do not conflict, so their
+   steps COMMUTE.  The lemmas below are the commutation ("diamond") family and the
+   sequentialization payoff they build to — they are what let the existing,
+   SEQUENTIAL big-step `Eval` machinery serve as the specification for the
+   interleaved operational semantics.
+
+   STATUS: statements only (`sorry`), staged for audit.  The `Trace.Indep`
+   premises are the schematic, footprint-level independence facts; connecting them
+   to the typing-level `Noninterference` of the denoted budgets (via
+   `fundamental_sepcheck`) is a separate "footprint bridge" — see the notes after
+   `par_sequentialize`.
+   ============================================================================ -/
+
+/-- Location mentioned by a trace event. -/
+def TraceItem.loc : TraceItem → Nat
+  | .access _ l => l
+  | .alloc l => l
+  | .dealloc l => l
+
+/-- **Event independence.**  Two events may be reordered without changing the
+    observable result iff EITHER both are read-only accesses (reads always
+    commute — even of the same cell; and `bs_read` is value-nondeterministic
+    regardless), OR they touch DISTINCT locations.  A write / alloc / dealloc
+    sharing a location with another event is NOT independent. -/
+def TraceItem.Indep (a b : TraceItem) : Prop :=
+  (∃ l1 l2, a = .access .ro l1 ∧ b = .access .ro l2) ∨ a.loc ≠ b.loc
+
+/-- **Trace independence.**  Every event of `ta` is independent of every event of
+    `tb`.  Since a single `Step` emits at most one event, this is precisely the
+    pairwise independence of two steps' footprints. -/
+def Trace.Indep (ta tb : Trace) : Prop :=
+  ∀ a ∈ ta, ∀ b ∈ tb, TraceItem.Indep a b
+
+/-- **Local diamond.**  Two independent steps available from a common memory `m`
+    — `hA` transforming `eA`, `hB` transforming `eB` — can be performed in either
+    order and RECONVERGE at one memory `m12`, replaying the *same* result
+    expressions and the *same* traces.  This is the operational heart of
+    interleaved `par`: a left-branch step and a right-branch step with disjoint
+    footprints commute.  (All of `eA`'s preconditions survive `eB`'s step: value
+    cells are immutable, and `eB` touches only locations independent of `eA`'s
+    events, so no capability `eA` relies on is written/dropped.) -/
+theorem step_diamond
+    {ta tb : Trace} {m mA mB : Memory} {eA eA' eB eB' : Exp {}}
+    (hA : Step ta m eA mA eA')
+    (hB : Step tb m eB mB eB')
+    (hindep : Trace.Indep ta tb) :
+    ∃ m12, Step tb mA eB m12 eB' ∧ Step ta mB eA m12 eA' := by
+  sorry
+
+/-- **Strip lemma.**  A single step `hA`, independent of an entire reduction
+    sequence `hB`, can be pushed PAST it: from the post-`hA` memory the whole
+    reduction `hB` still runs, and from the post-`hB` memory `hA` still fires,
+    reconverging at one memory.  (Iterated `step_diamond` along `hB`.) -/
+theorem step_reduce_diamond
+    {ta tb : Trace} {m mA mB : Memory} {eA eA' eB eB' : Exp {}}
+    (hA : Step ta m eA mA eA')
+    (hB : Reduce tb m eB mB eB')
+    (hindep : Trace.Indep ta tb) :
+    ∃ m12, Reduce tb mA eB m12 eB' ∧ Step ta mB eA m12 eA' := by
+  sorry
+
+/-- **Reduction diamond (confluence under independence).**  Two reductions out of
+    a common memory whose footprints are pairwise independent reconverge at one
+    memory.  (Induct on `hA`, stripping one step at a time with
+    `step_reduce_diamond`.) -/
+theorem reduce_diamond
+    {ta tb : Trace} {m mA mB : Memory} {eA eA' eB eB' : Exp {}}
+    (hA : Reduce ta m eA mA eA')
+    (hB : Reduce tb m eB mB eB')
+    (hindep : Trace.Indep ta tb) :
+    ∃ m12, Reduce tb mA eB m12 eB' ∧ Reduce ta mB eA m12 eA' := by
+  sorry
+
+/-- Congruence lifting: a reduction of the LEFT branch lifts to a reduction of the
+    whole `par` (the right branch sits frozen).  Trivial fold of `step_par_left`
+    over the reduction; stated for use in `Safe.has_reduction`/sequentialization. -/
+theorem reduce_par_left
+    {t : Trace} {m m' : Memory} {e1 e1' e2 : Exp {}}
+    (hred : Reduce t m e1 m' e1') :
+    Reduce t m (.par e1 e2) m' (.par e1' e2) := by
+  sorry
+
+/-- Congruence lifting for the RIGHT branch (the left branch sits frozen). -/
+theorem reduce_par_right
+    {t : Trace} {m m' : Memory} {e1 e2 e2' : Exp {}}
+    (hred : Reduce t m e2 m' e2') :
+    Reduce t m (.par e1 e2) m' (.par e1 e2') := by
+  sorry
+
+/-- **Sequentialization of `par`** (the payoff).  Given that any reduction of the
+    left branch is independent of any reduction of the right branch (the
+    footprint-separation guarantee, ultimately from `SepCheck`/`Noninterference`),
+    an interleaved reduction of `par e1 e2` to a (joined) answer `a` can be
+    re-sequenced as "run `e1` fully, then `e2` fully": the branches reduce to
+    answers `a1`, `a2`, the final memory is the same `m'`, the joined result is the
+    LEFT answer (`a = a1`), and the interleaved trace `t` is a permutation of
+    `t1 ++ t2` (it is in fact an order-preserving riffle of the two — `Perm` is the
+    weak consequence stated here).
+
+    This is the theorem the SAFETY layer consumes: it reduces the interleaved
+    operational semantics to the sequential big-step spec, so `Eval`/`Safe` and
+    the postcondition transfer.  Built by de-interleaving `hred` with
+    `reduce_diamond` (bubble all left-steps before all right-steps). -/
+theorem par_sequentialize
+    {t : Trace} {m m' : Memory} {e1 e2 a : Exp {}}
+    (hred : Reduce t m (.par e1 e2) m' a)
+    (hans : a.IsAns)
+    (hindep : ∀ {ta tb ma mb a1 a2},
+        Reduce ta m e1 ma a1 → Reduce tb m e2 mb a2 → Trace.Indep ta tb) :
+    ∃ t1 t2 m1 a1 a2,
+      Reduce t1 m e1 m1 a1 ∧ a1.IsAns ∧
+      Reduce t2 m1 e2 m' a2 ∧ a2.IsAns ∧
+      a = a1 ∧ List.Perm t (t1 ++ t2) := by
+  sorry
+
+/- ----------------------------------------------------------------------------
+   FOOTPRINT BRIDGE (to design in the audit, not stated yet).
+
+   The `Trace.Indep` premises above are operational facts about which locations
+   the branches touch.  They must be DISCHARGED from typing:
+
+     (1) Footprint lemma:  a reduction of a branch well-typed at capture set `C`
+         only emits events whose locations are covered by `C.denot env H`
+         (or were freshly allocated within the run).  This is essentially the
+         `TraceOk` invariant already proven for `Reduce`, recast as "events stay
+         within the budget".
+
+     (2) Noninterference ⇒ Indep:  `SepCheck Γ C1 C2` gives, via
+         `fundamental_sepcheck`, `Noninterference (C1.denot ..) (C2.denot ..)` —
+         shared locations are RO/RO only, all else location-disjoint.  Combined
+         with (1) for each branch, every left-event is `TraceItem.Indep` of every
+         right-event, i.e. `Trace.Indep t1 t2`.
+
+   A second obligation, orthogonal to the diamonds: `TraceOk` (and `not_mutated`,
+   liveness) must be INVARIANT under the permutation/riffle in `par_sequentialize`,
+   so the budget `C1 ∪ C2` certifies the interleaved trace given the per-branch
+   certificates.  This is a trace-permutation lemma, provable from independence
+   (independent adjacent events commute without changing coverage).
+   ---------------------------------------------------------------------------- -/
 
 end CoreCapybara
