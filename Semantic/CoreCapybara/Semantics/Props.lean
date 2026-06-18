@@ -548,7 +548,7 @@ theorem eval_implies_progressive {m : Memory} {e : Exp {}} {Q : Tpost}
   safe_implies_progressive heval.1
 
 /- ============================================================================
-   SMALL-STEP ↔ BIG-STEP BRIDGE (Route B).  The new `Eval := Safe ∧ preservation`
+   SMALL-STEP ↔ BIG-STEP BRIDGE.  The new `Eval := Safe ∧ preservation`
    is phrased over the relational `BigStep`.  These lemmas connect it to the
    small-step `Step`/`Reduce`, so the small-step preservation/progress results
    (consumed by `Safety`) go through.  The keystone is *head expansion*:
