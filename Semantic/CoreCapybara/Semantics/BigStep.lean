@@ -1164,6 +1164,22 @@ theorem Trace.mem_allocList {t : Trace} {l : Nat} :
   | cons it t ih =>
     cases it <;> simp only [Trace.allocList, Trace.allocd, List.mem_cons, ih]
 
+/-- Locations `t` ACCESSES or DEALLOCATES (i.e. that appear as a non-`alloc`
+  trace event).  Every such location is a capability cell at the time of the
+  event (see `BigStep.trace_cells_cap`). -/
+def Trace.touched : Trace -> Nat -> Prop
+| [], _ => False
+| (.access _ l' :: t), l => l = l' ∨ Trace.touched t l
+| (.dealloc l' :: t), l => l = l' ∨ Trace.touched t l
+| (.alloc _ :: t), l => Trace.touched t l
+
+theorem Trace.touched_append {t1 t2 : Trace} {l : Nat} :
+    Trace.touched (t1 ++ t2) l ↔ Trace.touched t1 l ∨ Trace.touched t2 l := by
+  induction t1 with
+  | nil => simp [Trace.touched]
+  | cons it t1 ih =>
+    cases it <;> simp only [List.cons_append, Trace.touched, ih, or_assoc]
+
 /-- Sequential append: running `t1` (which collects its allocations) and then `t2`
   with those allocations available as exemptions yields `TraceOk` for `t1 ++ t2`.
   Unlike `TraceOkFrom.append`, the suffix `t2` may touch cells `t1` allocated. -/
@@ -1183,13 +1199,15 @@ theorem TraceOkFrom.append_seq {C : CapabilitySet} :
   | access hc _ ih => intro h2; exact TraceOkFrom.access hc (ih h2)
   | dealloc hc _ ih => intro h2; exact TraceOkFrom.dealloc hc (ih h2)
 
-/-- Budget-translate with an extra exemption set `S`: if `t` is OK against `C`, and
-  every `C`-covered location is either `C'`-covered (at the same mode) or in `S`,
-  then `t` is OK against `C'` with `S` adjoined to the exemptions. -/
+/-- Budget-translate with an extra exemption set `S`.  The re-bucketing hypothesis
+  is required only at TOUCHED locations (those `t` actually accesses/deallocates) —
+  the proof only consults it at events — which lets the caller discharge it from the
+  `BigStep` run (`trace_cells_cap`: touched cells are capabilities) instead of from a
+  global "all covered cells" fact. -/
 theorem TraceOkFrom.translate {C C' : CapabilitySet} {S : List Nat} :
   ∀ {A : List Nat} {t : Trace},
     TraceOkFrom C A t ->
-    (∀ mode l, C.covers mode l -> C'.covers mode l ∨ l ∈ S) ->
+    (∀ mode l, Trace.touched t l -> C.covers mode l -> C'.covers mode l ∨ l ∈ S) ->
     TraceOkFrom C' (A ++ S) t := by
   intro A t h
   induction h with
@@ -1197,17 +1215,17 @@ theorem TraceOkFrom.translate {C C' : CapabilitySet} {S : List Nat} :
   | alloc _ ih => intro htr; exact TraceOkFrom.alloc (ih htr)
   | access hc _ ih =>
     intro htr
-    refine TraceOkFrom.access ?_ (ih htr)
+    refine TraceOkFrom.access ?_ (ih (fun mode l htch hcov => htr mode l (Or.inr htch) hcov))
     rcases hc with hcov | hin
-    · rcases htr _ _ hcov with hc' | hs
+    · rcases htr _ _ (Or.inl rfl) hcov with hc' | hs
       · exact Or.inl hc'
       · exact Or.inr (List.mem_append.mpr (Or.inr hs))
     · exact Or.inr (List.mem_append.mpr (Or.inl hin))
   | dealloc hc _ ih =>
     intro htr
-    refine TraceOkFrom.dealloc ?_ (ih htr)
+    refine TraceOkFrom.dealloc ?_ (ih (fun mode l htch hcov => htr mode l (Or.inr htch) hcov))
     rcases hc with hcov | hin
-    · rcases htr _ _ hcov with hc' | hs
+    · rcases htr _ _ (Or.inl rfl) hcov with hc' | hs
       · exact Or.inl hc'
       · exact Or.inr (List.mem_append.mpr (Or.inr hs))
     · exact Or.inr (List.mem_append.mpr (Or.inl hin))
@@ -1697,6 +1715,68 @@ theorem BigStep.appears_allocd_of_cap {m : Memory} {e : Exp {}} {t v m' l c}
       | val vv => simp [Cell.subsumes] at hcy
       | masked => simp [Cell.subsumes] at hcy
       | capability cc => exact Or.inl (ih1 hl hsrc)
+
+/-- A CAPABILITY cell stays a capability upward along subsumption (subsumption only
+  changes mcell liveness, never cell KIND). -/
+theorem Memory.cap_subsumes_up {m1 m2 : Memory} {l : Nat} {c0 : CapabilityInfo}
+    (hsub : m2.subsumes m1) (h1 : m1.lookup l = some (.capability c0)) :
+    ∃ c', m2.lookup l = some (.capability c') := by
+  obtain ⟨c', h2, hsubc⟩ := hsub l _ h1
+  cases c' with
+  | capability cc => exact ⟨cc, h2⟩
+  | val _ => simp [Cell.subsumes] at hsubc
+  | masked => simp [Cell.subsumes] at hsubc
+
+/-- Every location a `BigStep` trace ACCESSES or DEALLOCATES is a capability cell in
+  the final memory.  This is the operational counterpart of "well-typed readers point
+  to mcells": `bs_read`/`bs_write`/`bs_drop` require a (live or just-dropped) mcell at
+  the target, `bs_invoke` a basic capability — all capabilities; the recursive/letin
+  cases carry the fact upward by `cap_subsumes_up`.  It lets `unpack` discharge the
+  fresh-witness exemption from the run (`trace_cells_cap`) rather than from a
+  capability-reachability invariant the wf cannot express. -/
+theorem BigStep.trace_cells_cap {m : Memory} {e : Exp {}} {t v m'}
+    (hbs : BigStep m e t v m') :
+    ∀ l, Trace.touched t l → ∃ c, m'.lookup l = some (.capability c) := by
+  induction hbs with
+  | bs_pack | bs_val _ | bs_var | bs_wrap | bs_alloc _ _ =>
+    intro l h; simp only [Trace.touched] at h
+  | bs_invoke hlkx _ =>
+    intro l h; simp only [Trace.touched, or_false] at h; subst h; exact ⟨_, hlkx⟩
+  | bs_read _ hlky =>
+    intro l h; simp only [Trace.touched, or_false] at h; subst h; exact ⟨_, hlky⟩
+  | bs_write_true hx _ =>
+    intro l h; simp only [Trace.touched, or_false] at h; subst h
+    exact ⟨.mcell true .live, by simp [Memory.lookup, Memory.update_mcell, Heap.update_cell]⟩
+  | bs_write_false hx _ =>
+    intro l h; simp only [Trace.touched, or_false] at h; subst h
+    exact ⟨.mcell false .live, by simp [Memory.lookup, Memory.update_mcell, Heap.update_cell]⟩
+  | bs_drop hx =>
+    intro l h; simp only [Trace.touched, or_false] at h; subst h
+    exact ⟨.mcell false .dead, by simp [Memory.lookup, Memory.drop_mcell, Heap.update_cell]⟩
+  | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
+  | bs_cond_true _ _ ih | bs_cond_false _ _ ih | bs_par_left _ ih | bs_par_right _ ih =>
+    exact ih
+  | bs_letin_val hbs1 hv hwf_v hfresh hbs2 ih1 ih2 =>
+    intro l h
+    rw [Trace.touched_append] at h
+    rcases h with h1 | h2
+    · obtain ⟨c, hc⟩ := ih1 l h1
+      exact Memory.cap_subsumes_up
+        (Memory.subsumes_trans hbs2.subsumes
+          (Memory.extend_val_subsumes _ _ _ hwf_v rfl hfresh)) hc
+    · exact ih2 l h2
+  | bs_letin_var hbs1 hbs2 ih1 ih2 =>
+    intro l h
+    rw [Trace.touched_append] at h
+    rcases h with h1 | h2
+    · obtain ⟨c, hc⟩ := ih1 l h1; exact Memory.cap_subsumes_up hbs2.subsumes hc
+    · exact ih2 l h2
+  | bs_unpack hbs1 hbs2 ih1 ih2 =>
+    intro l h
+    rw [Trace.touched_append] at h
+    rcases h with h1 | h2
+    · obtain ⟨c, hc⟩ := ih1 l h1; exact Memory.cap_subsumes_up hbs2.subsumes hc
+    · exact ih2 l h2
 
 /-- `extTouchesFrom` only consults the alloc-set through `l`-membership. -/
 theorem Trace.extTouchesFrom_mem_irrel {l : Nat} :
@@ -2393,8 +2473,8 @@ theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : 
       Q1 t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap)
     (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : CaptureSet {}}, m1.subsumes m ->
       Memory.FrameLive m t1 m1 ->
-      (∀ {l b}, m.lookup l = none ->
-        m1.lookup l = some (.capability (.mcell b .live)) -> Trace.allocd t1 l) ->
+      (∀ {l c}, m.lookup l = none ->
+        m1.lookup l = some (.capability c) -> Trace.allocd t1 l) ->
       (hwf_x : x.WfInHeap m1.heap) -> (hwf_cs : cs.WfInHeap m1.heap) -> Q1 t1 (.pack cs x) m1 ->
       Eval m1 (e2.subst (Subst.unpack cs x)) (fun t2 => Q (t1 ++ t2))) :
     Eval m (.unpack e1 e2) Q := by
@@ -2405,7 +2485,7 @@ theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : 
       cases (h_nonstuck hq1).2 with
       | wf_pack hcs hx =>
         exact (h_val (BigStep.subsumes hrun) (BigStep.frameLive hrun)
-          (BigStep.live_appears_allocd hrun) hx hcs hq1).1
+          (BigStep.appears_allocd_of_cap hrun) hx hcs hq1).1
   · intro t v m' hbs
     cases hbs with
     | bs_unpack hrun_e1 hrun_e2 =>
@@ -2413,7 +2493,7 @@ theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : 
       cases (h_nonstuck hq1).2 with
       | wf_pack hcs hx =>
         exact (h_val (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1)
-          (BigStep.live_appears_allocd hrun_e1) hx hcs hq1).2
+          (BigStep.appears_allocd_of_cap hrun_e1) hx hcs hq1).2
           _ _ _ hrun_e2
     | bs_val hv => cases hv
 

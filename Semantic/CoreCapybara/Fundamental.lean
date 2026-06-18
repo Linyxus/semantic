@@ -4598,14 +4598,21 @@ theorem consumed_peaks_droppable {Γ : Ctx s} {C : CaptureSet s} {c : BVar s .cv
     `covers` half + `covers_weaken`); `.drop` touches by `C1.drop`; FRESH cells are
     `allocd t1`.
 
-    **REMAINING (one focused `sorry`, `hmcell`) — fresh-witness mcell-provenance.**  A
-    store-fresh member of `cs.reachability m1` is a live `.mcell` in `m1` (it is a
-    capability cell — `reachability_of_loc` only ranges over `.capability`/`.masked` —
-    and a store-fresh one is an `.mcell`, since only `extend_mcell` grows the capability
-    domain; `witness_live` then gives its liveness).  `BigStep.appears_allocd_of_cap`
-    is in place to consume it.  The missing piece is a `Heap.WfHeap` invariant
-    "reachability members are capabilities (not vals)" — a structural fact about
-    `compute_reachability`, separate from the access-coverage fix.  Human intervention. -/
+    **FRESH-WITNESS PROVENANCE GAP: CLOSED — from the operational run, not the wf.**
+    The fresh-witness exemption needs a store-fresh witness cell touched by `t2` to be
+    `allocd t1` (only `extend_mcell` emits `.alloc`).  The naive route — "reachability
+    members are capabilities" — is FALSE under the presence-only wf (`compute_reachability
+    (.reader (.free loc)) = .cap _ loc`, Heap.lean:2021, puts a reader's raw target into
+    its reachability), and strengthening the wf cascades unresolvably into
+    `Subst.WfInHeap`.  The fix (user's insight) is to read the cell TYPE from the RUN
+    instead: `BigStep.trace_cells_cap` proves every cell a trace ACCESSES/DEALLOCATES is
+    a capability (`bs_read`/`write`/`drop` require an mcell, `bs_invoke` a basic cap),
+    and `TraceOkFrom.translate`'s obligation only ever fires at TOUCHED cells.  So the
+    body `Eval` is built manually (exposing the body run `hrun`); a touched fresh witness
+    cell is a capability in `m'` (`trace_cells_cap`), hence in `m1` (`lookup_down` +
+    `reachability_dom`), hence `allocd t1` (`appears_allocd_of_cap`).  No
+    capability-reachability wf invariant — the operational semantics already pins the
+    cell type at the point of use. -/
 theorem sem_typ_unpack
   {C1 C2 : CaptureSet s} {Γ : Ctx s} {t : Exp s} {T : Ty .capt (s,C)}
   {u : Exp (s,C,x)} {U : Ty .exi s}
@@ -4895,8 +4902,14 @@ theorem sem_typ_unpack
             pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
             witness_live v m')
       rw [hexp_eq]
-      refine eval_post_monotonic ?_ hu''
-      intro t2 m v hpost
+      -- Construct the body `Eval` manually (rather than `eval_post_monotonic`) so the
+      -- body RUN `hrun` is in scope: `BigStep.trace_cells_cap hrun` then gives that
+      -- every cell `t2` touches is a capability — the operational fact that discharges
+      -- the fresh-witness exemption WITHOUT a capability-reachability wf invariant.
+      refine ⟨hu''.1, ?_⟩
+      intro t2 v m' hrun
+      have hpost := hu''.2 t2 v m' hrun
+      have htc := BigStep.trace_cells_cap hrun
       refine ⟨?_, (Denot.equiv_to_imply heqv_composed).2 _ _ hpost.2.1, ?_, hpost.2.2.2⟩
       · -- `TraceOk (t1 ++ t2) R`, R = `(C1 ∪ C2).denot`.  Assembled by `append_seq`:
         -- `t1` is OK against R; `t2` is OK against R with `t1`'s allocations exempt.
@@ -4908,25 +4921,26 @@ theorem sem_typ_unpack
         rw [List.append_nil]
         have hbase : TraceOkFrom (C2.denot env store ∪ cs.reachability m1
             ∪ (cs.reachability m1).to_drop) [] t2 := TraceOkFrom.mono hsub_budget hpost.1
-        -- Fresh witness cells were allocated within `t1` (so are exempt for `t2`).
-        have hfresh_allocd : ∀ mu l, (cs.reachability m1).hasmem mu l →
+        -- Fresh witness cells the body TOUCHES were allocated within `t1` (hence exempt
+        -- for `t2`).  Operational route (no wf invariant needed): `t2` touches `l`
+        -- (`htouched`) ⇒ `l` is a capability in `m'` (`htc`, the body run); `l` is
+        -- present in `m1` (`reachability_dom`) ⇒ `l` is a capability in `m1`
+        -- (`lookup_down`); store-fresh ⇒ `allocd t1` (`halloc`, the `e1`-run's
+        -- capability-provenance).
+        have hfresh_allocd : ∀ mu l, Trace.touched t2 l → (cs.reachability m1).hasmem mu l →
             store.lookup l = none → l ∈ Trace.allocList t1 := by
-          intro mu l hmem hfresh
+          intro mu l htouched hmem hfresh
           rw [Trace.mem_allocList]
-          have hmcell : ∃ b, m1.lookup l = some (.capability (.mcell b .live)) := by
-            -- FOCUSED GAP: a member of `cs.reachability m1` is a capability cell in
-            -- `m1` (`reachability_of_loc` only ranges over `.capability`/`.masked`
-            -- cells, and a store-fresh one is an `.mcell` since only `extend_mcell`
-            -- grows the capability domain); `witness_live` then gives its liveness.
-            -- This needs a `Heap.WfHeap` invariant "reachability members are
-            -- capabilities" that is not currently recorded — a separate effort from
-            -- the access-coverage fix (which IS done).  `BigStep.appears_allocd_of_cap`
-            -- is already in place to consume it.
-            sorry
-          obtain ⟨b, hmcell⟩ := hmcell
-          exact halloc hfresh hmcell
+          obtain ⟨c2, hc2⟩ := htc l htouched
+          rcases hlk : m1.lookup l with _ | c0
+          · exact absurd hlk (CaptureSet.reachability_dom hmem)
+          · have hsubc := Memory.lookup_down (BigStep.subsumes hrun) hlk hc2
+            cases c0 with
+            | capability cc => exact halloc hfresh hlk
+            | val _ => simp [Cell.subsumes] at hsubc
+            | masked => simp [Cell.subsumes] at hsubc
         refine TraceOkFrom.translate hbase ?_
-        intro mode l hcov
+        intro mode l htouched hcov
         rcases CapabilitySet.covers_union_iff.mp hcov with hc12 | htd
         · rcases CapabilitySet.covers_union_iff.mp hc12 with hC2 | hreach
           · exact Or.inl (CapabilitySet.covers_union_right hC2)
@@ -4934,7 +4948,7 @@ theorem sem_typ_unpack
             rcases hpb cs (Var.free fx) rfl mu' l hmem' with hd | hf
             · exact Or.inl (CapabilitySet.covers_union_left
                 (CapabilitySet.covers_weaken hd.1 hle))
-            · exact Or.inr (hfresh_allocd mu' l hmem' hf)
+            · exact Or.inr (hfresh_allocd mu' l htouched hmem' hf)
         · obtain ⟨mu', hmem', hle⟩ := CapabilitySet.covers_imp_exists_hasmem htd
           obtain ⟨hmu'drop, mu0, hl0⟩ := CapabilitySet.hasmem_to_drop_imp hmem'
           subst hmu'drop
@@ -4942,7 +4956,7 @@ theorem sem_typ_unpack
           rcases hpb cs (Var.free fx) rfl mu0 l hl0 with hd | hf
           · exact Or.inl (CapabilitySet.covers_union_left
               (CapabilitySet.hasmem_implies_covers hd.2))
-          · exact Or.inr (hfresh_allocd mu0 l hl0 hf)
+          · exact Or.inr (hfresh_allocd mu0 l htouched hl0 hf)
       · -- Compose the body's pack-witness bound back to the outer budget/memory.
         -- The body now supplies BOTH `covers mu l` (access) and `hasmem .drop l`;
         -- lift each independently to `(C1 ∪ C2)` (∨ fresh), then combine — fresh in
