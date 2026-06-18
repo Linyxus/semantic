@@ -529,7 +529,7 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
   | write_false hx hy =>
     -- e = .write (.free x) (.free y), can step via step_write_false
     exact IsProgressive.step (Step.step_write_false hx hy)
-  | par _ h2 ih1 ih2 =>
+  | par _ h2 _ ih1 ih2 =>
     -- Progress for interleaving `par`: step whichever branch is not yet an answer
     -- (congruence), or join once both are.  Fully provable — progress only needs
     -- SOME step to exist, and the sequential schedule (advance the left branch, then
@@ -644,7 +644,7 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     -- still requires threading the type system's `Noninterference` through a
     -- sequentialization/diamond argument; it is FALSE at this raw, separation-free
     -- level.  This is the one fundamental gap interleaving `par` opens in the
-    -- small-step↔big-step bridge.
+    -- small-step <-> big-step bridge.
     sorry
   | step_rename => intro t' v m' hbs; exact BigStep.bs_letin_var BigStep.bs_var hbs
   | step_unpack => intro t' v m' hbs; exact BigStep.bs_unpack BigStep.bs_pack hbs
@@ -747,19 +747,31 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     -- pre-step one feeding the original handler).  No separation needed.
     intro hsafe
     cases hsafe with
-    | par hs1 h2 =>
-      refine Safe.par (ih hs1) ?_
-      intro t1 v m1' hbs
-      exact h2 (BigStep.head_expand hstep_inner hbs)
+    | par hs1 h2 hsep =>
+      refine Safe.par (ih hs1) ?_ ?_
+      · intro t1 v m1' hbs
+        exact h2 (BigStep.head_expand hstep_inner hbs)
+      · -- NI-preservation across the left step.  An `m2`-run of the frozen branch
+        -- `e2` simulates down to an `m1`-run with the SAME trace (so the original
+        -- `hsep` applies), modulo the step's fresh allocations (which `e2` cannot
+        -- touch).  `simulate_down` needs `Exp.WfInHeap e2 m1.heap`, which
+        -- `step_preserves_safe` does not carry — so this is part of the par-adequacy
+        -- build-out (WF threading + the cross-branch freshness lemma).  Same root as
+        -- the `step_par_right` gap below.
+        sorry
     | ans hans => cases hans with | is_val hv => cases hv
   | step_par_right _ _ =>
-    -- GENUINE DESIGN GAP (same root as `head_expand`'s `step_par_right`).  A RIGHT step
-    -- (`m1 → m2`) must leave the LEFT branch safe, but it may have dropped a cell the
-    -- left branch needs: `par (read r) (drop z)` with `r → z` — `Safe m1 (par …)` holds
-    -- (sequentially: read then drop), yet after the right `drop z` step the left
-    -- `read r` is STUCK, so `Safe m2 (par …)` FAILS.  Sound only under separation
-    -- (`Noninterference` forbids the right branch dropping a left-branch cell); FALSE
-    -- at this raw, separation-free level.
+    -- A RIGHT step (`m1 → m2`) must leave the LEFT branch safe (`Safe m2 e1`) and
+    -- re-establish separation.  The counterexample without separation is
+    -- `par (read r) (drop z)`, `r → z`: the right `drop z` strands the left `read r`.
+    -- This is now EXCLUDED by the `hsep` field (`Trace.Noninterfere` forbids the
+    -- right branch dropping a cell the left branch reads).  So the case is no longer
+    -- false — it is provable VIA `Safe.lift` (frame `e1` across the step, using `hsep`
+    -- to show no `e1`-touched cell is dropped) plus NI-preservation for the residual.
+    -- BLOCKER: both `Safe.lift` and the down-simulation need `Exp.WfInHeap e1 m1.heap`,
+    -- which `step_preserves_safe` does not thread.  Closing it = threading `WfInHeap`
+    -- through this lemma (and its callers) + the `hsep`-driven frame.  Same root as
+    -- the `step_par_left` `hsep` gap above and `head_expand`'s `step_par_right`.
     sorry
   | step_par_join _ _ =>
     -- `par a b → .unit`; the canonical unit result is an answer, hence trivially safe.
@@ -933,7 +945,7 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
                 (by simp [Memory.lookup, hcell])) hred, hans⟩
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
-  | par _ _ ih1 ih2 =>
+  | par _ _ _ ih1 ih2 =>
     -- Build the canonical (left-then-right-then-join) reduction to an answer: run e1
     -- fully (ih1), run e2 from e1's answer-memory (ih2, fed e1's big-step answer via
     -- `reduce_to_bigstep`), lift each through the par congruences, then join to `.unit`.

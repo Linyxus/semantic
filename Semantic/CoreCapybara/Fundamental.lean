@@ -3263,6 +3263,32 @@ theorem CapabilitySet.Noninterference.shared_ro
     cases h2
     exact absurd rfl hne
 
+/-- A capability mode below `.access .ro` IS `.access .ro` (`.ro` is the minimal
+  access mutability, and `.drop` is incomparable to any access). -/
+theorem CapMode.le_access_ro_eq {cm : CapMode} (h : cm ≤ CapMode.access .ro) :
+    cm = .access .ro := by
+  cases h with
+  | access hmu => cases hmu with | refl => rfl
+
+/-- **Discharge of `Trace.Noninterfere` from the budgets.**  If `t1`/`t2` are
+  `TraceOk` for non-interfering budgets `C1`/`C2`, their traces are
+  non-interfering: a location both externally touch is `covers`-ed by both
+  budgets, and `Noninterference.shared_ro` forces both covering members — hence
+  both touch modes — to `.access .ro`.  This is what lets `sem_typ_par` supply
+  `eval_par`'s separation premise. -/
+theorem traceOk_noninterfere {C1 C2 : CapabilitySet} {t1 t2 : Trace}
+    (h1 : TraceOk t1 C1) (h2 : TraceOk t2 C2)
+    (hni : CapabilitySet.Noninterference C1 C2) :
+    Trace.Noninterfere t1 t2 := by
+  intro l cm1 cm2 hext1 hext2
+  obtain ⟨mu1, hmem1, hle1⟩ :=
+    CapabilitySet.covers_imp_exists_hasmem (h1.covers_of_extTouchesMode hext1)
+  obtain ⟨mu2, hmem2, hle2⟩ :=
+    CapabilitySet.covers_imp_exists_hasmem (h2.covers_of_extTouchesMode hext2)
+  obtain ⟨hro1, hro2⟩ := hni.shared_ro hmem1 hmem2
+  subst hro1; subst hro2
+  exact ⟨CapMode.le_access_ro_eq hle1, CapMode.le_access_ro_eq hle2⟩
+
 theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
   {e1 e2 : Exp s} {E1 E2 : Ty .exi s}
@@ -3302,7 +3328,24 @@ theorem sem_typ_par
         pack_bound (C1.denot env store) store v m' ∧ witness_live v m') := by
     have h := ht1 env store hts hdsep (Memory.is_compatible_union_left hcompat')
     simpa only [Ty.exi_exp_denot] using h
-  apply Eval.eval_par he1
+  -- `e2`'s soundness run from `store` (not `m1`), used only to bound its trace by
+  -- `C2` when discharging the separation premise of `eval_par`.
+  have he2_store : Eval store (e2.subst (Subst.from_TypeEnv env))
+      (fun t v m' => TraceOk t (C2.denot env store) ∧ Ty.exi_val_denot env E2 m' v ∧
+        pack_bound (C2.denot env store) store v m' ∧ witness_live v m') := by
+    have h := ht2 env store hts hdsep (Memory.is_compatible_union_right hcompat')
+    simpa only [Ty.exi_exp_denot] using h
+  -- Separation premise: any `e1`-run and any `e2`-run from `store` have
+  -- non-interfering traces — their footprints are `TraceOk`-bounded by `C1`/`C2`,
+  -- which are non-interfering (`hni`).
+  have hsep_e : ∀ {t1 : Trace} {v1 : Exp {}} {ma : Memory}
+      {t2 : Trace} {v2 : Exp {}} {mb : Memory},
+      BigStep store (e1.subst (Subst.from_TypeEnv env)) t1 v1 ma →
+      BigStep store (e2.subst (Subst.from_TypeEnv env)) t2 v2 mb →
+      Trace.Noninterfere t1 t2 := by
+    intro t1 v1 ma t2 v2 mb hrun1 hrun2
+    exact traceOk_noninterfere (he1.2 _ _ _ hrun1).1 (he2_store.2 _ _ _ hrun2).1 hni
+  refine Eval.eval_par he1 hsep_e ?_
   -- Given `e1`'s answer at `m1`, run `e2` from `m1`.  `par` returns `.unit`, so
   -- the only separation content needed is framing `C2`'s compatibility across
   -- `e1`'s run (`t1`) so that `e2` may start from `m1` — the left/right branch

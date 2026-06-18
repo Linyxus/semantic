@@ -601,7 +601,7 @@ theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
     | inr hbfalse =>
       obtain ⟨t, v, m', hbs⟩ := ih_false hbfalse
       exact ⟨_, _, _, BigStep.bs_cond_false hbfalse hbs⟩
-  | par _ _ ih1 ih2 =>
+  | par _ _ _ ih1 ih2 =>
     obtain ⟨t1, v1, m1, hbs1⟩ := ih1
     obtain ⟨t2, v2, m2, hbs2⟩ := ih2 hbs1
     exact ⟨_, _, _, BigStep.bs_par hbs1 hbs2⟩
@@ -675,6 +675,38 @@ theorem TraceOkFrom.drop_covers_of_extDropsFrom {R : CapabilitySet} {l : Nat} :
 theorem TraceOk.drop_covers_of_extDrops {R : CapabilitySet} {l : Nat} {t : Trace}
   (htr : TraceOk t R) (hd : Trace.extDrops t l) : R.covers .drop l :=
   TraceOkFrom.drop_covers_of_extDropsFrom htr hd
+
+/-- An externally-touched location, with the mode of the touch, is covered by the
+  ambient budget at that very mode (mode-carrying refinement of
+  `drop_covers_of_extDropsFrom`).  Used to discharge `Trace.Noninterfere` from the
+  budgets' `Noninterference`. -/
+theorem TraceOkFrom.covers_of_extTouchesFromMode {R : CapabilitySet} {l : Nat} {cm : CapMode} :
+  ∀ {A : List Nat} {t : Trace},
+    TraceOkFrom R A t -> Trace.extTouchesFromMode A l cm t -> R.covers cm l := by
+  intro A t htr
+  induction htr with
+  | nil => intro ht; simp only [Trace.extTouchesFromMode] at ht
+  | alloc _ ih => intro ht; exact ih ht
+  | access hcond _ ih =>
+    intro ht
+    rcases ht with ⟨hl, hnotin, hcm⟩ | ht
+    · subst hl; subst hcm
+      rcases hcond with hcov | hin
+      · exact hcov
+      · exact absurd hin hnotin
+    · exact ih ht
+  | dealloc hcond _ ih =>
+    intro ht
+    rcases ht with ⟨hl, hnotin, hcm⟩ | ht
+    · subst hl; subst hcm
+      rcases hcond with hcov | hin
+      · exact hcov
+      · exact absurd hin hnotin
+    · exact ih ht
+
+theorem TraceOk.covers_of_extTouchesMode {R : CapabilitySet} {l : Nat} {cm : CapMode}
+  {t : Trace} (htr : TraceOk t R) (ht : Trace.extTouchesMode t l cm) : R.covers cm l :=
+  TraceOkFrom.covers_of_extTouchesFromMode htr ht
 
 /-- `is_compatible` transfers across a `FrameLive` step.  For a budget `R` whose
   cells `m` keeps live (`hcompat`) and which are all present in `m` (`hpresent`),
@@ -2034,7 +2066,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
       | inr hb1 =>
         exact ih_false hb1 hsub
           (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_false hb1 hbs)) hok hwf3
-  | par hs1 h2 ih1 ih2 =>
+  | par hs1 h2 hsep ih1 ih2 =>
     clear m1
     rename_i e1 e2 m1
     cases hwf with
@@ -2047,23 +2079,29 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
-        ?_
-      intro t1 v1 m1' hbs_m2
-      obtain ⟨m_sim, hbs_m1, hsub_sim, hlive⟩ := hbs_m2.simulate_down hsub hwf_e1
-      refine ih2 hbs_m1 hsub_sim (fun _ _ _ h => h) ?_
-        (Exp.wf_monotonic (BigStep.subsumes hbs_m1) hwf_e2)
-      intro t2 vc mc _ hbs_cont l bl hlk_l htouch
-      by_cases hal : Trace.allocd t1 l
-      · exact (hlive l (Or.inr hal)).mp ⟨bl, hlk_l⟩
-      · rcases hm1 : m1.lookup l with _ | c
-        · exact absurd (BigStep.live_appears_allocd hbs_m1 hm1 hlk_l) hal
-        · obtain ⟨b1, hm1_live⟩ := Memory.mcell_lookup_down hbs_m1.subsumes hm1 hlk_l
-          have htouchF : Trace.extTouches (t1 ++ t2) l :=
-            Trace.extTouchesFrom_append_right hal (by simp) htouch
-          have hfull := BigStep.bs_par hbs_m1 hbs_cont
-          obtain ⟨b2, hm2_live⟩ :=
-            hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
-          exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
+        ?_ ?_
+      · intro t1 v1 m1' hbs_m2
+        obtain ⟨m_sim, hbs_m1, hsub_sim, hlive⟩ := hbs_m2.simulate_down hsub hwf_e1
+        refine ih2 hbs_m1 hsub_sim (fun _ _ _ h => h) ?_
+          (Exp.wf_monotonic (BigStep.subsumes hbs_m1) hwf_e2)
+        intro t2 vc mc _ hbs_cont l bl hlk_l htouch
+        by_cases hal : Trace.allocd t1 l
+        · exact (hlive l (Or.inr hal)).mp ⟨bl, hlk_l⟩
+        · rcases hm1 : m1.lookup l with _ | c
+          · exact absurd (BigStep.live_appears_allocd hbs_m1 hm1 hlk_l) hal
+          · obtain ⟨b1, hm1_live⟩ := Memory.mcell_lookup_down hbs_m1.subsumes hm1 hlk_l
+            have htouchF : Trace.extTouches (t1 ++ t2) l :=
+              Trace.extTouchesFrom_append_right hal (by simp) htouch
+            have hfull := BigStep.bs_par hbs_m1 hbs_cont
+            obtain ⟨b2, hm2_live⟩ :=
+              hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
+            exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
+      · -- Lifted separation: each `m2`-run of a branch simulates down to an
+        -- `m1`-run with the SAME trace, so the original `hsep` (at `m1`) applies.
+        intro t1 v1 ma t2 v2 mb hrun1 hrun2
+        obtain ⟨_, hrun1_m1, _, _⟩ := hrun1.simulate_down hsub hwf_e1
+        obtain ⟨_, hrun2_m1, _, _⟩ := hrun2.simulate_down hsub hwf_e2
+        exact hsep hrun1_m1 hrun2_m1
   | letin _ h_ans h_val h_var ih1 ih_val ih_var =>
     clear m1
     rename_i e1 e2 m1 _
@@ -2520,15 +2558,22 @@ theorem Eval.eval_cond {m : Memory} {x : Var .var {}} {e2 e3 : Exp {}} {Q : Tpos
   `Q` for the unit value at the final memory.  Like `eval_letin`, both halves
   run on the ACTUAL `e1`-answer, so the composition is clean; the genuine
   *separation* content lives in `Fundamental`'s `sem_typ_par`, which builds `h2`
-  from the `Noninterference` of the two branches' footprints. -/
+  and `hsep_e` from the `Noninterference` of the two branches' footprints.
+
+  `hsep_e` is the operational separation that `Safe.par` now demands: every pair
+  of branch run-traces (both from `m`) is non-interfering.  `eval_par` cannot
+  prove this itself — it is supplied by the caller, where the budgets are known. -/
 theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     (he1 : Eval m e1 Q1)
+    (hsep_e : ∀ {t1 : Trace} {v1 : Exp {}} {m1 : Memory}
+      {t2 : Trace} {v2 : Exp {}} {m2 : Memory},
+      BigStep m e1 t1 v1 m1 -> BigStep m e2 t2 v2 m2 -> Trace.Noninterfere t1 t2)
     (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1 : Memory},
       m1.subsumes m -> Memory.FrameLive m t1 m1 -> Q1 t1 v1 m1 ->
       Eval m1 e2 (fun t2 _v2 m2 => Q (t1 ++ t2) .unit m2)) :
     Eval m (.par e1 e2) Q := by
   refine ⟨?_, ?_⟩
-  · refine Safe.par he1.1 ?_
+  · refine Safe.par he1.1 ?_ hsep_e
     intro t1 v1 m1 hrun
     exact (h2 hrun.subsumes hrun.frameLive (he1.2 t1 v1 m1 hrun)).1
   · intro t v m' hbs
