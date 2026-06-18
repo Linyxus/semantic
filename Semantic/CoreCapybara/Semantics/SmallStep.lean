@@ -64,24 +64,28 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 -- `par e1 e2` runs BOTH branches with interleaved (preemptive) scheduling.
 -- Either branch may take the next step (the two congruence rules), so a whole
 -- run is an arbitrary interleaving of the branches' events.  Once BOTH branches
--- have reached answers, `step_par_join` retires the construct, yielding the
--- LEFT branch's answer (the right branch ran for its effects).
---   * Result = left answer is a PROVISIONAL design choice (to be confirmed):
---     it keeps `par : E` type-correct (both branches : E) and, crucially, is
---     schedule-independent.
+-- have reached answers, a join rule retires the construct, yielding EITHER
+-- branch's answer (the result is nondeterministic — whichever branch you read
+-- off; both branches ran for their effects).
+--   * Result = either answer keeps `par : E` type-correct (both branches : E).
+--     Result-nondeterminism is consistent with the system's existing comfort with
+--     nondeterminism (cf. value-nondeterministic `bs_read`).
 --   * Separation — already required by the `par` typing rule (`SepCheck Γ C1 C2`)
---     — makes both the joined result and the final memory independent of the
---     interleaving; that is the content of the diamond/sequentialization theorems
---     stated in `Semantics.Props`.
+--     — makes the final memory independent of the interleaving, and makes both
+--     candidate results lie in the (shared) result type; that is the content of
+--     the diamond/sequentialization theorems stated in `Semantics.Props`.
 | step_par_left :
   Step t m e1 m' e1' ->
   Step t m (.par e1 e2) m' (.par e1' e2)
 | step_par_right :
   Step t m e2 m' e2' ->
   Step t m (.par e1 e2) m' (.par e1 e2')
-| step_par_join :
+| step_par_join_left :
   e1.IsAns -> e2.IsAns ->
   Step [] m (.par e1 e2) m e1
+| step_par_join_right :
+  e1.IsAns -> e2.IsAns ->
+  Step [] m (.par e1 e2) m e2
 | step_rename :
   Step [] m (.letin (.var (.free y)) e) m (e.subst (Subst.openVar (.free y)))
 -- Lifting a value to the heap is not a capability event, so it emits no trace.
