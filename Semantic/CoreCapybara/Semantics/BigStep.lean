@@ -400,8 +400,7 @@ theorem BigStep.isAns {m e t v m'} (h : BigStep m e t v m') : v.IsAns := by
   | bs_drop _ => exact Exp.IsAns.is_val Exp.IsVal.unit
   | bs_cond_true _ _ ih => exact ih
   | bs_cond_false _ _ ih => exact ih
-  | bs_par_left _ _ ih1 _ => exact ih1
-  | bs_par_right _ _ _ ih2 => exact ih2
+  | bs_par _ _ _ _ => exact Exp.IsAns.is_val Exp.IsVal.unit
 
 /-- `BigStep` evolves memory monotonically: the final memory subsumes the initial. -/
 theorem BigStep.subsumes {m e t v m'} (h : BigStep m e t v m') : m'.subsumes m := by
@@ -427,8 +426,7 @@ theorem BigStep.subsumes {m e t v m'} (h : BigStep m e t v m') : m'.subsumes m :
   | bs_drop hx => exact Memory.drop_mcell_subsumes _ _ ⟨_, hx⟩
   | bs_cond_true _ _ ih => exact ih
   | bs_cond_false _ _ ih => exact ih
-  | bs_par_left _ _ ih1 ih2 => exact Memory.subsumes_trans ih2 ih1
-  | bs_par_right _ _ ih1 ih2 => exact Memory.subsumes_trans ih2 ih1
+  | bs_par _ _ ih1 ih2 => exact Memory.subsumes_trans ih2 ih1
 
 /-- `Eval` on a variable does not change memory and emits no events: the only
     `BigStep` answer of `.var x` is `(.var x)` itself with an empty trace. -/
@@ -543,7 +541,7 @@ theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
   | par _ _ ih1 ih2 =>
     obtain ⟨t1, v1, m1, hbs1⟩ := ih1
     obtain ⟨t2, v2, m2, hbs2⟩ := ih2 hbs1
-    exact ⟨_, _, _, BigStep.bs_par_left hbs1 hbs2⟩
+    exact ⟨_, _, _, BigStep.bs_par hbs1 hbs2⟩
 
 /-- Answer existence: every `Eval m e Q` is witnessed by an actual answer — a
   trace `t`, an answer value `e'`, and a memory `m' ⊒ m` with `Q t e' m'`. -/
@@ -1127,10 +1125,7 @@ theorem BigStep.wf_answer {m : Memory} {e : Exp {}} {t v m'}
       (match ih1 hwf_e1 with | .wf_pack hwf_cs hwf_x => Subst.wf_unpack hwf_cs hwf_x))
   | bs_cond_true _ _ ih => exact ih (Exp.wf_inv_cond hwf).2.1
   | bs_cond_false _ _ ih => exact ih (Exp.wf_inv_cond hwf).2.2
-  | bs_par_left hbs1 hbs2 ih1 _ =>
-    exact Exp.wf_monotonic hbs2.subsumes (ih1 (match hwf with | .wf_par hwf1 _ => hwf1))
-  | bs_par_right hbs1 _ _ ih2 =>
-    exact ih2 (Exp.wf_monotonic hbs1.subsumes (match hwf with | .wf_par _ hwf2 => hwf2))
+  | bs_par _ _ _ _ => exact Exp.WfInHeap.wf_unit
 
 /-- A location holds a **live** mutable cell. -/
 def Memory.IsLive (m : Memory) (l : Nat) : Prop :=
@@ -1503,28 +1498,14 @@ theorem BigStep.simulate_down {m2 : Memory} {e : Exp {}} {t : Trace} {v : Exp {}
     refine ⟨m1', BigStep.bs_cond_false ?_ hbs1', hsub', hlive'⟩
     match hwfx with
     | .wf_free h => exact resolve_down hsub (Option.ne_none_iff_exists'.mpr ⟨_, h⟩) hres
-  | bs_par_left hbs1 hbs2 ih1 ih2 =>
+  | bs_par hbs1 hbs2 ih1 ih2 =>
     intro m1 hsub hwf
     cases hwf with
     | wf_par hwf_e1 hwf_e2 =>
       obtain ⟨m1_1, hbs1', hsub1', hlive1⟩ := ih1 hsub hwf_e1
       obtain ⟨m1', hbs2', hsub2', hlive2⟩ :=
         ih2 hsub1' (Exp.wf_monotonic (BigStep.subsumes hbs1') hwf_e2)
-      refine ⟨m1', BigStep.bs_par_left hbs1' hbs2', hsub2', ?_⟩
-      intro lc h
-      rcases h with hag | ha
-      · exact hlive2 lc (Or.inl (hlive1 lc (Or.inl hag)))
-      · rcases Trace.allocd_append.mp ha with h1 | h2
-        · exact hlive2 lc (Or.inl (hlive1 lc (Or.inr h1)))
-        · exact hlive2 lc (Or.inr h2)
-  | bs_par_right hbs1 hbs2 ih1 ih2 =>
-    intro m1 hsub hwf
-    cases hwf with
-    | wf_par hwf_e1 hwf_e2 =>
-      obtain ⟨m1_1, hbs1', hsub1', hlive1⟩ := ih1 hsub hwf_e1
-      obtain ⟨m1', hbs2', hsub2', hlive2⟩ :=
-        ih2 hsub1' (Exp.wf_monotonic (BigStep.subsumes hbs1') hwf_e2)
-      refine ⟨m1', BigStep.bs_par_right hbs1' hbs2', hsub2', ?_⟩
+      refine ⟨m1', BigStep.bs_par hbs1' hbs2', hsub2', ?_⟩
       intro lc h
       rcases h with hag | ha
       · exact hlive2 lc (Or.inl (hlive1 lc (Or.inl hag)))
@@ -1542,7 +1523,7 @@ theorem BigStep.alloc_fresh {m : Memory} {e : Exp {}} {t v m' l}
   | bs_alloc _ hfresh => simp only [Trace.allocd, or_false] at ha; subst ha; exact hfresh
   | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
   | bs_cond_true _ _ ih | bs_cond_false _ _ ih => exact ih ha
-  | bs_par_left hbs1 _ ih1 ih2 | bs_par_right hbs1 _ ih1 ih2 =>
+  | bs_par hbs1 _ ih1 ih2 =>
     rcases Trace.allocd_append.mp ha with h1 | h2
     · exact ih1 h1
     · exact Heap.none_of_subsumes_none hbs1.subsumes (ih2 h2)
@@ -1708,7 +1689,7 @@ theorem BigStep.appears_allocd_of_cap {m : Memory} {e : Exp {}} {t v m' l c}
   | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
   | bs_cond_true _ _ ih | bs_cond_false _ _ ih =>
     exact ih hl hl'
-  | bs_par_left hbs1 hbs2 ih1 ih2 | bs_par_right hbs1 hbs2 ih1 ih2 =>
+  | bs_par hbs1 hbs2 ih1 ih2 =>
     rename_i m1 _ _ _
     refine Trace.allocd_append.mpr ?_
     rcases hsrc : m1.lookup l with _ | c0
@@ -1790,7 +1771,7 @@ theorem BigStep.trace_cells_cap {m : Memory} {e : Exp {}} {t v m'}
   | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
   | bs_cond_true _ _ ih | bs_cond_false _ _ ih =>
     exact ih
-  | bs_par_left hbs1 hbs2 ih1 ih2 | bs_par_right hbs1 hbs2 ih1 ih2 =>
+  | bs_par hbs1 hbs2 ih1 ih2 =>
     intro l h
     rw [Trace.touched_append] at h
     rcases h with h1 | h2
@@ -1889,7 +1870,7 @@ theorem BigStep.live_appears_allocd {m : Memory} {e : Exp {}} {t v m' l b}
   | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
   | bs_cond_true _ _ ih | bs_cond_false _ _ ih =>
     exact ih hl hl'
-  | bs_par_left hbs1 hbs2 ih1 ih2 | bs_par_right hbs1 hbs2 ih1 ih2 =>
+  | bs_par hbs1 hbs2 ih1 ih2 =>
     rename_i m1 _ _ _
     refine Trace.allocd_append.mpr ?_
     rcases hsrc : m1.lookup l with _ | c
@@ -2015,7 +1996,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs1
         obtain ⟨t2, v2, mf, hbs2⟩ := (h2 hbs1).has_answer
-        have hfull := BigStep.bs_par_left hbs1 hbs2
+        have hfull := BigStep.bs_par hbs1 hbs2
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
@@ -2032,7 +2013,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
         · obtain ⟨b1, hm1_live⟩ := Memory.mcell_lookup_down hbs_m1.subsumes hm1 hlk_l
           have htouchF : Trace.extTouches (t1 ++ t2) l :=
             Trace.extTouchesFrom_append_right hal (by simp) htouch
-          have hfull := BigStep.bs_par_left hbs_m1 hbs_cont
+          have hfull := BigStep.bs_par hbs_m1 hbs_cont
           obtain ⟨b2, hm2_live⟩ :=
             hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
           exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
@@ -2279,7 +2260,7 @@ theorem BigStep.frameLive {m : Memory} {e : Exp {}} {t v m'}
   | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
   | bs_cond_true _ _ ih | bs_cond_false _ _ ih =>
     exact ih
-  | bs_par_left hbs1 hbs2 ih1 ih2 | bs_par_right hbs1 hbs2 ih1 ih2 =>
+  | bs_par hbs1 hbs2 ih1 ih2 =>
     exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
       absurd (BigStep.alloc_fresh hbs1 ha) (by rw [hlive]; simp))
   | bs_alloc hlk hfr =>
@@ -2487,17 +2468,17 @@ theorem Eval.eval_cond {m : Memory} {x : Var .var {}} {e2 e3 : Exp {}} {Q : Tpos
   | bs_val hv => cases hv
 
 /-- `par`: run `e1` to an answer (`he1`), then `e2` from that answer-memory
-  (`h2`).  The result is EITHER branch's answer, so `h2`'s postcondition must
-  certify `Q` for BOTH the left value `v1` and the right value `v2` at the final
-  memory.  Like `eval_letin`, both halves run on the ACTUAL `e1`-answer, so the
-  composition is clean; the genuine *separation* content (showing `v1` still
-  satisfies `Q` after `e2`'s run) lives in `Fundamental`'s `sem_typ_par`, which
-  builds `h2` from the `Noninterference` of the two branches' footprints. -/
+  (`h2`).  The result is always `.unit` (both branches run for effect; the
+  branch values are discarded), so `h2`'s postcondition only needs to certify
+  `Q` for the unit value at the final memory.  Like `eval_letin`, both halves
+  run on the ACTUAL `e1`-answer, so the composition is clean; the genuine
+  *separation* content lives in `Fundamental`'s `sem_typ_par`, which builds `h2`
+  from the `Noninterference` of the two branches' footprints. -/
 theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     (he1 : Eval m e1 Q1)
     (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1 : Memory},
       m1.subsumes m -> Memory.FrameLive m t1 m1 -> Q1 t1 v1 m1 ->
-      Eval m1 e2 (fun t2 v2 m2 => Q (t1 ++ t2) v1 m2 ∧ Q (t1 ++ t2) v2 m2)) :
+      Eval m1 e2 (fun t2 _v2 m2 => Q (t1 ++ t2) .unit m2)) :
     Eval m (.par e1 e2) Q := by
   refine ⟨?_, ?_⟩
   · refine Safe.par he1.1 ?_
@@ -2505,10 +2486,8 @@ theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     exact (h2 hrun.subsumes hrun.frameLive (he1.2 t1 v1 m1 hrun)).1
   · intro t v m' hbs
     cases hbs with
-    | bs_par_left hrun_e1 hrun_e2 =>
-      exact ((h2 hrun_e1.subsumes hrun_e1.frameLive (he1.2 _ _ _ hrun_e1)).2 _ _ _ hrun_e2).1
-    | bs_par_right hrun_e1 hrun_e2 =>
-      exact ((h2 hrun_e1.subsumes hrun_e1.frameLive (he1.2 _ _ _ hrun_e1)).2 _ _ _ hrun_e2).2
+    | bs_par hrun_e1 hrun_e2 =>
+      exact (h2 hrun_e1.subsumes hrun_e1.frameLive (he1.2 _ _ _ hrun_e1)).2 _ _ _ hrun_e2
     | bs_val hv => cases hv
 
 /-- `letin`: compose `e1`'s evaluation with the continuation.  Both halves run on
