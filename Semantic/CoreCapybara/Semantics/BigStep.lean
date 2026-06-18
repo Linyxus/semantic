@@ -296,6 +296,63 @@ inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
   BigStep m1 e2 t2 v2 m2 ->
   BigStep m (.par e1 e2) (t1 ++ t2) .unit m2
 
+/-- Locations `t` ACCESSES or DEALLOCATES (i.e. that appear as a non-`alloc`
+  trace event).  Every such location is a capability cell at the time of the
+  event (see `BigStep.trace_cells_cap`). -/
+def Trace.touched : Trace -> Nat -> Prop
+| [], _ => False
+| (.access _ l' :: t), l => l = l' ∨ Trace.touched t l
+| (.dealloc l' :: t), l => l = l' ∨ Trace.touched t l
+| (.alloc _ :: t), l => Trace.touched t l
+
+theorem Trace.touched_append {t1 t2 : Trace} {l : Nat} :
+    Trace.touched (t1 ++ t2) l <-> Trace.touched t1 l ∨ Trace.touched t2 l := by
+  induction t1 with
+  | nil => simp [Trace.touched]
+  | cons it t1 ih =>
+    cases it <;> simp only [List.cons_append, Trace.touched, ih, or_assoc]
+
+/-- `extTouchesFromMode A l cm t`: location `l` is externally touched by `t` — read,
+  written, or dropped at a point where it has not yet been allocated within `t`
+  (its location is not in the running allocated set `A`) — **with capability mode
+  `cm`** (`.access mu` for a read/write of mutability `mu`; `.drop` for a dealloc).
+  The mode-carrying refinement of `extTouchesFrom`; an `alloc` extends `A`. -/
+def Trace.extTouchesFromMode : List Nat -> Nat -> CapMode -> Trace -> Prop
+| _, _, _, [] => False
+| A, l, cm, (.alloc l' :: t) => Trace.extTouchesFromMode (l' :: A) l cm t
+| A, l, cm, (.access mu l' :: t) =>
+    (l = l' ∧ l ∉ A ∧ cm = .access mu) ∨ Trace.extTouchesFromMode A l cm t
+| A, l, cm, (.dealloc l' :: t) =>
+    (l = l' ∧ l ∉ A ∧ cm = .drop) ∨ Trace.extTouchesFromMode A l cm t
+
+/-- `l` is externally touched by `t` with mode `cm`: accessed (`cm = .access mu`)
+  or dropped (`cm = .drop`) before being allocated within `t`.  Such a location is
+  governed by the ambient capability set, not by `t`'s own allocations — so a cell
+  `t` allocates itself is NEVER externally touched by `t`. -/
+def Trace.extTouchesMode (t : Trace) (l : Nat) (cm : CapMode) : Prop :=
+  Trace.extTouchesFromMode [] l cm t
+
+/-- **Trace non-interference.**  Two traces do not interfere when every location
+  they BOTH touch *externally* is read-only on both sides: if `t1` externally
+  touches `l` with mode `cm1` and `t2` externally touches `l` with mode `cm2`,
+  then `cm1 = cm2 = .access .ro`.  Concurrent reads of a shared cell are fine; a
+  write or drop by either branch on a shared external cell is a conflict.
+
+  The *external* qualifier is what makes this sound: a cell a branch allocates
+  itself is private — never externally touched by that branch — so two branches
+  that each `alloc`-then-mutate a fresh cell do NOT interfere, even if their runs
+  happen to pick the same location index.  (A plain mutates/touches formulation
+  would wrongly flag that as a conflict.)
+
+  The type system discharges it from `Noninterference` of the branches' budgets:
+  a shared external touch with mode `cm` is `covers cm`-ed by that branch's budget,
+  and `Noninterference.shared_ro` forces the two covering members to `.access .ro`,
+  hence both `cm`s to `.access .ro`. -/
+def Trace.Noninterfere (t1 t2 : Trace) : Prop :=
+  ∀ l cm1 cm2,
+    Trace.extTouchesMode t1 l cm1 → Trace.extTouchesMode t2 l cm2 →
+      cm1 = .access .ro ∧ cm2 = .access .ro
+
 /-- Progress / safety predicate: `Safe m e` means evaluating `e` from `m` never
   gets stuck — every redex reached is reducible, and (inductively, since this is
   a least fixed point) every path reaches an answer.
@@ -370,6 +427,12 @@ inductive Safe : Memory -> Exp {} -> Prop where
 | par {m : Memory} :
   Safe m e1 ->
   (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1}, BigStep m e1 t1 v1 m1 -> Safe m1 e2) ->
+  -- Separation: any run of `e1` and any run of `e2`, both from the par node's
+  -- memory `m`, have non-interfering traces.  This is the operational image of
+  -- the type system's `SepCheck`, and it is exactly what makes the interleaving
+  -- safe — a right-branch step cannot mutate a cell the left branch needs.
+  (hsep : ∀ {t1 : Trace} {v1 : Exp {}} {m1} {t2 : Trace} {v2 : Exp {}} {m2},
+    BigStep m e1 t1 v1 m1 -> BigStep m e2 t2 v2 m2 -> Trace.Noninterfere t1 t2) ->
   Safe m (.par e1 e2)
 
 /-- Trace-observing evaluation predicate (Route B): `e` from `m` is **safe**
@@ -1159,22 +1222,6 @@ theorem Trace.mem_allocList {t : Trace} {l : Nat} :
   | nil => simp [Trace.allocList, Trace.allocd]
   | cons it t ih =>
     cases it <;> simp only [Trace.allocList, Trace.allocd, List.mem_cons, ih]
-
-/-- Locations `t` ACCESSES or DEALLOCATES (i.e. that appear as a non-`alloc`
-  trace event).  Every such location is a capability cell at the time of the
-  event (see `BigStep.trace_cells_cap`). -/
-def Trace.touched : Trace -> Nat -> Prop
-| [], _ => False
-| (.access _ l' :: t), l => l = l' ∨ Trace.touched t l
-| (.dealloc l' :: t), l => l = l' ∨ Trace.touched t l
-| (.alloc _ :: t), l => Trace.touched t l
-
-theorem Trace.touched_append {t1 t2 : Trace} {l : Nat} :
-    Trace.touched (t1 ++ t2) l ↔ Trace.touched t1 l ∨ Trace.touched t2 l := by
-  induction t1 with
-  | nil => simp [Trace.touched]
-  | cons it t1 ih =>
-    cases it <;> simp only [List.cons_append, Trace.touched, ih, or_assoc]
 
 /-- Sequential append: running `t1` (which collects its allocations) and then `t2`
   with those allocations available as exemptions yields `TraceOk` for `t1 ++ t2`.
