@@ -291,19 +291,10 @@ inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
   resolve m.heap (.var x) = some .bfalse ->
   BigStep m e3 t v m' ->
   BigStep m (.cond x e2 e3) t v m'
--- `par e1 e2` runs BOTH branches and returns EITHER branch's answer.  The
--- sequential schedule "e1 fully, then e2 fully" is the canonical spec: under the
--- separation the `par` typing rule enforces, every interleaving is observationally
--- equal to it (the diamond/sequentialization theorems in `Semantics.Props`).  The
--- two rules differ only in which branch's answer is read off (result-nondeterminism).
-| bs_par_left {m m1 m2 : Memory} {v1 v2 : Exp {}} :
+| bs_par {m m1 m2 : Memory} {v1 v2 : Exp {}} :
   BigStep m e1 t1 v1 m1 ->
   BigStep m1 e2 t2 v2 m2 ->
-  BigStep m (.par e1 e2) (t1 ++ t2) v1 m2
-| bs_par_right {m m1 m2 : Memory} {v1 v2 : Exp {}} :
-  BigStep m e1 t1 v1 m1 ->
-  BigStep m1 e2 t2 v2 m2 ->
-  BigStep m (.par e1 e2) (t1 ++ t2) v2 m2
+  BigStep m (.par e1 e2) (t1 ++ t2) .unit m2
 
 /-- Progress / safety predicate: `Safe m e` means evaluating `e` from `m` never
   gets stuck — every redex reached is reducible, and (inductively, since this is

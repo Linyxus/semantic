@@ -353,11 +353,11 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
 | par :
-  HasType C1 Γ e1 E ->
-  HasType C2 Γ e2 E ->
+  HasType C1 Γ e1 E1 ->
+  HasType C2 Γ e2 E2 ->
   SepCheck Γ C1 C2 ->
   ----------------------------
-  HasType (C1 ∪ C2) Γ (.par e1 e2) E
+  HasType (C1 ∪ C2) Γ (.par e1 e2) (.typ .unit)
 | invoke :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
   HasType {} Γ (.var x) (.typ (.cap (.var (.M .epsilon) x))) ->
