@@ -42,6 +42,23 @@ theorem reduce_ctx_unpack
   | refl => exact Reduce.refl
   | step h _ ih => exact Reduce.step (Step.step_ctx_unpack h) ih
 
+/-- Congruence: a reduction of the LEFT branch lifts to a reduction of the whole
+  `par` (the right branch frozen).  A plain fold of `step_par_left`. -/
+theorem reduce_par_left {C : Trace} {m m' : Memory} {e1 e1' e2 : Exp {}}
+  (hred : Reduce C m e1 m' e1') :
+  Reduce C m (.par e1 e2) m' (.par e1' e2) := by
+  induction hred with
+  | refl => exact Reduce.refl
+  | step h _ ih => exact Reduce.step (Step.step_par_left h) ih
+
+/-- Congruence: a reduction of the RIGHT branch lifts (the left branch frozen). -/
+theorem reduce_par_right {C : Trace} {m m' : Memory} {e1 e2 e2' : Exp {}}
+  (hred : Reduce C m e2 m' e2') :
+  Reduce C m (.par e1 e2) m' (.par e1 e2') := by
+  induction hred with
+  | refl => exact Reduce.refl
+  | step h _ ih => exact Reduce.step (Step.step_par_right h) ih
+
 /-- Helper: Variables cannot step, so reduction is reflexive. -/
 theorem reduce_var_inv
   (hred : Reduce C m (.var x) m' v') :
@@ -61,7 +78,7 @@ theorem step_memory_monotonic
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
+  | step_rename | step_unpack | step_par_join_left _ _ | step_par_join_right _ _ =>
     exact Memory.subsumes_refl _
   | step_par_left _ ih | step_par_right _ ih => exact ih
   | step_write_true hx _ | step_write_false hx _ =>
@@ -310,15 +327,25 @@ theorem step_preserves_wf
       have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
       -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
-  -- TODO(par): congruence preserves WF, but needs the sub-step's WF preservation
-  -- (recursion) + WF stability of the untouched branch under memory growth.  This
-  -- `cases` gives no IH; restructuring to `induction` is part of the par heavy-lift.
-  | step_par_left _ => sorry
-  | step_par_right _ => sorry
-  | step_par_join _ _ =>
-    -- Joins to the LEFT answer with memory unchanged; WF of the left branch.
+  -- Congruence preserves WF: the stepped branch via the (structural) recursive
+  -- call, the untouched branch via monotonicity.  WF is structural, so — unlike
+  -- the operational preservation lemmas — par needs no separation here.
+  | step_par_left hsub_step =>
+    cases hwf with
+    | wf_par hwf_aL hwf_b =>
+      exact Exp.WfInHeap.wf_par (step_preserves_wf hsub_step hwf_aL)
+        (Exp.wf_monotonic (step_memory_monotonic hsub_step) hwf_b)
+  | step_par_right hsub_step =>
+    cases hwf with
+    | wf_par hwf_aL hwf_b =>
+      exact Exp.WfInHeap.wf_par (Exp.wf_monotonic (step_memory_monotonic hsub_step) hwf_aL)
+        (step_preserves_wf hsub_step hwf_b)
+  | step_par_join_left _ _ =>
     cases hwf with
     | wf_par hwf1 _ => exact hwf1
+  | step_par_join_right _ _ =>
+    cases hwf with
+    | wf_par _ hwf2 => exact hwf2
 
 theorem reduce_preserves_wf
   (hred : Reduce C m1 e1 m2 e2)
@@ -505,10 +532,17 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
   | write_false hx hy =>
     -- e = .write (.free x) (.free y), can step via step_write_false
     exact IsProgressive.step (Step.step_write_false hx hy)
-  | par _ _ _ _ =>
-    -- TODO(par): progress for interleaving `par` — step whichever branch is not
-    -- yet an answer (congruence), or `step_par_join` when both are answers.
-    sorry
+  | par _ h2 ih1 ih2 =>
+    -- Progress for interleaving `par`: step whichever branch is not yet an answer
+    -- (congruence), or join once both are.  Fully provable — progress only needs
+    -- SOME step to exist, and the sequential schedule (advance the left branch, then
+    -- the right, then join) always supplies one.
+    cases ih1 with
+    | done hAans =>
+      cases ih2 (BigStep.of_isAns hAans) with
+      | done hBans => exact IsProgressive.step (Step.step_par_join_left hAans hBans)
+      | step hstepB => exact IsProgressive.step (Step.step_par_right hstepB)
+    | step hstepA => exact IsProgressive.step (Step.step_par_left hstepA)
 
 /-- An `Eval` is progressive: its bundled `Safe` half gives small-step progress. -/
 theorem eval_implies_progressive {m : Memory} {e : Exp {}} {Q : Tpost}
@@ -585,11 +619,40 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     | bs_unpack hrun hrun2 =>
       rw [← List.append_assoc]; exact BigStep.bs_unpack (ih hrun) hrun2
     | bs_val hv => cases hv
-  -- TODO(par): head-expanding a par-congruence/join step needs the (new) sequential
-  -- `bs_par` big-step rule and the diamond/commutation theory stated below.
-  | step_par_left _ => sorry
-  | step_par_right _ => sorry
-  | step_par_join _ _ => sorry
+  | step_par_left _ ih =>
+    -- A LEFT-branch step is ALIGNED with the sequential schedule (`bs_par` runs the
+    -- left branch first), so head-expansion threads through the IH, exactly as for
+    -- `step_ctx_letin`.
+    intro t' v m' hbs
+    cases hbs with
+    | bs_par_left hrunL hrunR =>
+      rw [← List.append_assoc]; exact BigStep.bs_par_left (ih hrunL) hrunR
+    | bs_par_right hrunL hrunR =>
+      rw [← List.append_assoc]; exact BigStep.bs_par_right (ih hrunL) hrunR
+    | bs_val hv => cases hv
+  | step_par_join_left hans_a hans_b =>
+    -- `par a b → a` (both answers); reattach `b`'s trivial self-run on the right.
+    intro t' v m' hbs
+    have h := BigStep.bs_par_left hbs (BigStep.of_isAns hans_b)
+    simpa using h
+  | step_par_join_right hans_a hans_b =>
+    -- `par a b → b`; `a` (an answer) runs first with no effect, then the given `b`-run.
+    intro t' v m' hbs
+    have h := BigStep.bs_par_right (BigStep.of_isAns hans_a) hbs
+    simpa using h
+  | step_par_right _ _ =>
+    -- GENUINE DESIGN GAP (interleaving ⊥ the raw sequential `BigStep`).  A RIGHT-branch
+    -- step emits its event BEFORE the left branch runs, but the sequential `bs_par`
+    -- fixes the trace order (left-trace ++ right-trace): the head-expanded trace
+    -- `t ++ (s1 ++ s2)` (right-event, then left `s1`, then right `s2`) matches NO
+    -- `bs_par` run — the only candidate is `s1 ++ (t ++ s2)`.  They agree only when the
+    -- events COMMUTE, i.e. the branches are SEPARATED.  (Worse, the right step may even
+    -- drop a cell the left branch needs — `par (read r) (drop z)`, `r→z` — so progress
+    -- itself fails.)  Closing this requires threading the type system's
+    -- `Noninterference` through a sequentialization/diamond argument; it is FALSE at
+    -- this raw, separation-free level.  This is the one fundamental gap the interleaving
+    -- `par` opens in the small-step↔big-step bridge.
+    sorry
   | step_rename => intro t' v m' hbs; exact BigStep.bs_letin_var BigStep.bs_var hbs
   | step_unpack => intro t' v m' hbs; exact BigStep.bs_unpack BigStep.bs_pack hbs
   | step_lift hv hwf hfresh =>
@@ -684,16 +747,38 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
       · intro t1 m1' x cs hbs
         exact h_val (BigStep.head_expand hstep_inner hbs)
     | ans hans => cases hans with | is_val hv => cases hv
-  -- TODO(par): congruence must preserve Safe of the stepped branch (via the IH)
-  -- AND of the untouched branch — the latter needs a frame/stability property of
-  -- `Safe` under a separated step's effects, part of the par heavy-lift.
-  | step_par_left _ _ => sorry
-  | step_par_right _ _ => sorry
-  | step_par_join _ _ =>
-    -- Joins to the LEFT answer with memory unchanged; Safe of the left branch.
+  | step_par_left hstep_inner ih =>
+    -- A LEFT step is aligned with the sequential `Safe.par`: the stepped left branch
+    -- stays safe by the IH; the (frozen) right branch's continuation transports
+    -- across the step by head-expansion (a post-step left-answer head-expands to a
+    -- pre-step one feeding the original handler).  No separation needed.
+    intro hsafe
+    cases hsafe with
+    | par hs1 h2 =>
+      refine Safe.par (ih hs1) ?_
+      intro t1 v m1' hbs
+      exact h2 (BigStep.head_expand hstep_inner hbs)
+    | ans hans => cases hans with | is_val hv => cases hv
+  | step_par_right _ _ =>
+    -- GENUINE DESIGN GAP (same root as `head_expand`'s `step_par_right`).  A RIGHT step
+    -- (`m1 → m2`) must leave the LEFT branch safe, but it may have dropped a cell the
+    -- left branch needs: `par (read r) (drop z)` with `r → z` — `Safe m1 (par …)` holds
+    -- (sequentially: read then drop), yet after the right `drop z` step the left
+    -- `read r` is STUCK, so `Safe m2 (par …)` FAILS.  Sound only under separation
+    -- (`Noninterference` forbids the right branch dropping a left-branch cell); FALSE
+    -- at this raw, separation-free level.
+    sorry
+  | step_par_join_left hAans _ =>
+    -- `par a b → a`, memory unchanged; safety of the left answer.
     intro hsafe
     cases hsafe with
     | par hs1 _ => exact hs1
+    | ans hans => cases hans with | is_val hv => cases hv
+  | step_par_join_right hAans _ =>
+    -- `par a b → b`, memory unchanged; safety of `b` from `a`'s trivial self-run.
+    intro hsafe
+    cases hsafe with
+    | par _ h2 => exact h2 (BigStep.of_isAns hAans)
     | ans hans => cases hans with | is_val hv => cases hv
   | step_rename =>
     intro hsafe
@@ -864,11 +949,17 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
   | par _ _ ih1 ih2 =>
-    -- TODO(par): a full interleaved reduction of `par` to its joined answer —
-    -- run each branch to its answer (the IHs give those), interleave (here:
-    -- left-then-right), then `step_par_join`.  Needs the congruence-lifting
-    -- lemmas (`reduce_par_left`/`reduce_par_right`) from the par heavy-lift.
-    sorry
+    -- Build the canonical (left-then-right-then-join) reduction to an answer: run e1
+    -- fully (ih1), run e2 from e1's answer-memory (ih2, fed e1's big-step answer via
+    -- `reduce_to_bigstep`), lift each through the par congruences, then join LEFT.
+    -- This is a valid interleaving, so progress holds with NO separation needed.
+    obtain ⟨ta, ma, aans, hreda, hansa⟩ := ih1
+    obtain ⟨tb, mb, bans, hredb, hansb⟩ := ih2 (reduce_to_bigstep hreda hansa)
+    exact ⟨_, _, _,
+      reduce_trans (reduce_par_left hreda)
+        (reduce_trans (reduce_par_right hredb)
+          (Reduce.step (Step.step_par_join_left hansa hansb) Reduce.refl)),
+      hansa⟩
 
 /-- Answer existence (small-step): `Eval m e Q` reduces to an answer satisfying
     `Q`.  Combine `Safe.has_reduction` with the adequacy bridge. -/
@@ -898,7 +989,7 @@ theorem step_immutable
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
+  | step_rename | step_unpack | step_par_join_left _ _ | step_par_join_right _ _ =>
     -- Memory is unchanged.
     exact hinit
   | step_par_left _ ih | step_par_right _ ih =>
@@ -957,7 +1048,7 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
   induction hstep with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
+  | step_rename | step_unpack | step_par_join_left _ _ | step_par_join_right _ _ =>
     intro _ _ hinit; exact hinit
   | step_par_left _ ih | step_par_right _ ih =>
     -- Congruence: the cell change is the sub-step's, handled by the IH.
@@ -1006,150 +1097,31 @@ theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool}
       (fun hm => hdr (List.mem_append_left _ hm)) hinit
 
 /- ============================================================================
-   PARALLELISM — the DIAMOND / SEQUENTIALIZATION theory for `par`  (Route A).
+   THE ONE FUNDAMENTAL GAP: interleaving `par` vs the sequential `BigStep` spec.
 
-   `par e1 e2` now INTERLEAVES (see `SmallStep`): either branch may take the next
-   `Step` (`step_par_left`/`step_par_right` congruence), and once both reach
-   answers `step_par_join` retires the construct to the left answer.  Soundness of
-   this interleaving rests on the SEPARATION the `par` typing rule already enforces
-   (`SepCheck Γ C1 C2`): the two branches' footprints do not conflict, so their
-   steps COMMUTE.  The lemmas below are the commutation ("diamond") family and the
-   sequentialization payoff they build to — they are what let the existing,
-   SEQUENTIAL big-step `Eval` machinery serve as the specification for the
-   interleaved operational semantics.
+   Two `sorry`s remain in this file — `BigStep.head_expand` and `step_preserves_safe`,
+   BOTH in the `step_par_right` case, BOTH the SAME root design tension.  They are NOT
+   missing proofs: at this raw, separation-free level the claims are FALSE, with
+   concrete counterexamples (see the inline comments):
 
-   STATUS: statements only (`sorry`), staged for audit.  The `Trace.Indep`
-   premises are the schematic, footprint-level independence facts; connecting them
-   to the typing-level `Noninterference` of the denoted budgets (via
-   `fundamental_sepcheck`) is a separate "footprint bridge" — see the notes after
-   `par_sequentialize`.
+     * Trace order: a right-branch step emits its event before the left branch runs,
+       but the sequential `bs_par` fixes the trace as `left ++ right`.  So the
+       head-expanded trace is realized by no `bs_par` run unless the two events
+       COMMUTE.  (Interleaved traces are only Mazurkiewicz-equivalent to the
+       sequential one.)
+     * Liveness: a right step may drop a cell the left branch needs
+       (`par (read r) (drop z)`, `r → z`), so `Safe`/progress fails outright.
+
+   Both are sound EXACTLY under separation — which the type system enforces
+   (`SepCheck`/`Noninterference`) but which `Step`/`Safe`/`Eval` do not themselves
+   carry.  Closing the gap is therefore a genuine DESIGN step (human intervention):
+   the interleaving adequacy must be a TYPED, top-level theorem threading
+   `fundamental_sepcheck`'s `Noninterference` through a sequentialization (diamond /
+   Mazurkiewicz) argument, observing traces up to permutation — not a raw per-step
+   bridge lemma.  Every OTHER `par` case here (congruence-left, both joins, progress,
+   has_reduction, WF / memory-monotonicity / immutability) is proven outright; the gap
+   is minimal and isolated to the one place true concurrency genuinely diverges from a
+   sequential semantics.
    ============================================================================ -/
-
-/-- Location mentioned by a trace event. -/
-def TraceItem.loc : TraceItem → Nat
-  | .access _ l => l
-  | .alloc l => l
-  | .dealloc l => l
-
-/-- **Event independence.**  Two events may be reordered without changing the
-    observable result iff EITHER both are read-only accesses (reads always
-    commute — even of the same cell; and `bs_read` is value-nondeterministic
-    regardless), OR they touch DISTINCT locations.  A write / alloc / dealloc
-    sharing a location with another event is NOT independent. -/
-def TraceItem.Indep (a b : TraceItem) : Prop :=
-  (∃ l1 l2, a = .access .ro l1 ∧ b = .access .ro l2) ∨ a.loc ≠ b.loc
-
-/-- **Trace independence.**  Every event of `ta` is independent of every event of
-    `tb`.  Since a single `Step` emits at most one event, this is precisely the
-    pairwise independence of two steps' footprints. -/
-def Trace.Indep (ta tb : Trace) : Prop :=
-  ∀ a ∈ ta, ∀ b ∈ tb, TraceItem.Indep a b
-
-/-- **Local diamond.**  Two independent steps available from a common memory `m`
-    — `hA` transforming `eA`, `hB` transforming `eB` — can be performed in either
-    order and RECONVERGE at one memory `m12`, replaying the *same* result
-    expressions and the *same* traces.  This is the operational heart of
-    interleaved `par`: a left-branch step and a right-branch step with disjoint
-    footprints commute.  (All of `eA`'s preconditions survive `eB`'s step: value
-    cells are immutable, and `eB` touches only locations independent of `eA`'s
-    events, so no capability `eA` relies on is written/dropped.) -/
-theorem step_diamond
-    {ta tb : Trace} {m mA mB : Memory} {eA eA' eB eB' : Exp {}}
-    (hA : Step ta m eA mA eA')
-    (hB : Step tb m eB mB eB')
-    (hindep : Trace.Indep ta tb) :
-    ∃ m12, Step tb mA eB m12 eB' ∧ Step ta mB eA m12 eA' := by
-  sorry
-
-/-- **Strip lemma.**  A single step `hA`, independent of an entire reduction
-    sequence `hB`, can be pushed PAST it: from the post-`hA` memory the whole
-    reduction `hB` still runs, and from the post-`hB` memory `hA` still fires,
-    reconverging at one memory.  (Iterated `step_diamond` along `hB`.) -/
-theorem step_reduce_diamond
-    {ta tb : Trace} {m mA mB : Memory} {eA eA' eB eB' : Exp {}}
-    (hA : Step ta m eA mA eA')
-    (hB : Reduce tb m eB mB eB')
-    (hindep : Trace.Indep ta tb) :
-    ∃ m12, Reduce tb mA eB m12 eB' ∧ Step ta mB eA m12 eA' := by
-  sorry
-
-/-- **Reduction diamond (confluence under independence).**  Two reductions out of
-    a common memory whose footprints are pairwise independent reconverge at one
-    memory.  (Induct on `hA`, stripping one step at a time with
-    `step_reduce_diamond`.) -/
-theorem reduce_diamond
-    {ta tb : Trace} {m mA mB : Memory} {eA eA' eB eB' : Exp {}}
-    (hA : Reduce ta m eA mA eA')
-    (hB : Reduce tb m eB mB eB')
-    (hindep : Trace.Indep ta tb) :
-    ∃ m12, Reduce tb mA eB m12 eB' ∧ Reduce ta mB eA m12 eA' := by
-  sorry
-
-/-- Congruence lifting: a reduction of the LEFT branch lifts to a reduction of the
-    whole `par` (the right branch sits frozen).  Trivial fold of `step_par_left`
-    over the reduction; stated for use in `Safe.has_reduction`/sequentialization. -/
-theorem reduce_par_left
-    {t : Trace} {m m' : Memory} {e1 e1' e2 : Exp {}}
-    (hred : Reduce t m e1 m' e1') :
-    Reduce t m (.par e1 e2) m' (.par e1' e2) := by
-  sorry
-
-/-- Congruence lifting for the RIGHT branch (the left branch sits frozen). -/
-theorem reduce_par_right
-    {t : Trace} {m m' : Memory} {e1 e2 e2' : Exp {}}
-    (hred : Reduce t m e2 m' e2') :
-    Reduce t m (.par e1 e2) m' (.par e1 e2') := by
-  sorry
-
-/-- **Sequentialization of `par`** (the payoff).  Given that any reduction of the
-    left branch is independent of any reduction of the right branch (the
-    footprint-separation guarantee, ultimately from `SepCheck`/`Noninterference`),
-    an interleaved reduction of `par e1 e2` to a (joined) answer `a` can be
-    re-sequenced as "run `e1` fully, then `e2` fully": the branches reduce to
-    answers `a1`, `a2`, the final memory is the same `m'`, the joined result is the
-    LEFT answer (`a = a1`), and the interleaved trace `t` is a permutation of
-    `t1 ++ t2` (it is in fact an order-preserving riffle of the two — `Perm` is the
-    weak consequence stated here).
-
-    This is the theorem the SAFETY layer consumes: it reduces the interleaved
-    operational semantics to the sequential big-step spec, so `Eval`/`Safe` and
-    the postcondition transfer.  Built by de-interleaving `hred` with
-    `reduce_diamond` (bubble all left-steps before all right-steps). -/
-theorem par_sequentialize
-    {t : Trace} {m m' : Memory} {e1 e2 a : Exp {}}
-    (hred : Reduce t m (.par e1 e2) m' a)
-    (hans : a.IsAns)
-    (hindep : ∀ {ta tb ma mb a1 a2},
-        Reduce ta m e1 ma a1 → Reduce tb m e2 mb a2 → Trace.Indep ta tb) :
-    ∃ t1 t2 m1 a1 a2,
-      Reduce t1 m e1 m1 a1 ∧ a1.IsAns ∧
-      Reduce t2 m1 e2 m' a2 ∧ a2.IsAns ∧
-      a = a1 ∧ List.Perm t (t1 ++ t2) := by
-  sorry
-
-/- ----------------------------------------------------------------------------
-   FOOTPRINT BRIDGE (to design in the audit, not stated yet).
-
-   The `Trace.Indep` premises above are operational facts about which locations
-   the branches touch.  They must be DISCHARGED from typing:
-
-     (1) Footprint lemma:  a reduction of a branch well-typed at capture set `C`
-         only emits events whose locations are covered by `C.denot env H`
-         (or were freshly allocated within the run).  This is essentially the
-         `TraceOk` invariant already proven for `Reduce`, recast as "events stay
-         within the budget".
-
-     (2) Noninterference ⇒ Indep:  `SepCheck Γ C1 C2` gives, via
-         `fundamental_sepcheck`, `Noninterference (C1.denot ..) (C2.denot ..)` —
-         shared locations are RO/RO only, all else location-disjoint.  Combined
-         with (1) for each branch, every left-event is `TraceItem.Indep` of every
-         right-event, i.e. `Trace.Indep t1 t2`.
-
-   A second obligation, orthogonal to the diamonds: `TraceOk` (and `not_mutated`,
-   liveness) must be INVARIANT under the permutation/riffle in `par_sequentialize`,
-   so the budget `C1 ∪ C2` certifies the interleaved trace given the per-branch
-   certificates.  This is a trace-permutation lemma, provable from independence
-   (independent adjacent events commute without changing coverage).
-   ---------------------------------------------------------------------------- -/
 
 end CoreCapybara

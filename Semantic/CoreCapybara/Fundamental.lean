@@ -3237,55 +3237,6 @@ theorem sem_satisfy
     · intro C1 m1 C2 m2 hdistinct
       exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) hΓ env m henv hdsep
 
-theorem sem_typ_par
-  {C1 C2 : CaptureSet s} {Γ : Ctx s}
-  {e1 e2 : Exp s} {E : Ty .exi s}
-  (_hΓ : Γ.IsClosed)
-  (ht1 : SemanticTyping C1 Γ e1 E)
-  (ht2 : SemanticTyping C2 Γ e2 E)
-  (_hsep : SemSepCheck Γ C1 C2) :
-  SemanticTyping (C1 ∪ C2) Γ (.par e1 e2) E := by
-  intro env store hts hdsep hcompat
-  suffices hpar :
-      Eval store
-        (.par (e1.subst (Subst.from_TypeEnv env)) (e2.subst (Subst.from_TypeEnv env)))
-        (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
-          Ty.exi_val_denot env E m' v ∧
-          pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
-          witness_live v m')by
-    simpa only [Ty.exi_exp_denot, Exp.subst, List.empty_eq] using hpar
-  have hunion : (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
-  have hcompat' := hunion ▸ hcompat
-  have hsubC1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store :=
-    CapabilitySet.Subset.union_right_left
-  have hsubC2 : C2.denot env store ⊆ (C1 ∪ C2).denot env store :=
-    CapabilitySet.Subset.union_right_right
-  have he1 : Eval store
-      (e1.subst (Subst.from_TypeEnv env))
-      (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
-        Ty.exi_val_denot env E m' v ∧
-        pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
-        witness_live v m') := by
-    have h := ht1 env store hts hdsep (Memory.is_compatible_union_left hcompat')
-    simp only [Ty.exi_exp_denot] at h
-    refine eval_post_monotonic ?_ h
-    intro t m v hpost
-    exact ⟨TraceOk.mono hsubC1 hpost.1, hpost.2.1,
-      pack_bound_mono hsubC1 (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
-  have he2 : Eval store
-      (e2.subst (Subst.from_TypeEnv env))
-      (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
-        Ty.exi_val_denot env E m' v ∧
-        pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
-        witness_live v m') := by
-    have h := ht2 env store hts hdsep (Memory.is_compatible_union_right hcompat')
-    simp only [Ty.exi_exp_denot] at h
-    refine eval_post_monotonic ?_ h
-    intro t m v hpost
-    exact ⟨TraceOk.mono hsubC2 hpost.1, hpost.2.1,
-      pack_bound_mono hsubC2 (Memory.subsumes_refl store) hpost.2.2.1, hpost.2.2.2⟩
-  exact Eval.eval_par he1 he2
-
 /-- Shared-location elimination for `Noninterference`: a location member of
 both sides must be held read-only on both sides (`ni_ro` is the only
 constructor permitting overlap). -/
@@ -3311,6 +3262,126 @@ theorem CapabilitySet.Noninterference.shared_ro
     cases h1
     cases h2
     exact absurd rfl hne
+
+theorem sem_typ_par
+  {C1 C2 : CaptureSet s} {Γ : Ctx s}
+  {e1 e2 : Exp s} {E : Ty .exi s}
+  (hΓ : Γ.IsClosed)
+  (_hclosed_C1 : C1.IsClosed)
+  (_hclosed_C2 : C2.IsClosed)
+  (ht1 : SemanticTyping C1 Γ e1 E)
+  (ht2 : SemanticTyping C2 Γ e2 E)
+  (hsep : SemSepCheck Γ C1 C2) :
+  SemanticTyping (C1 ∪ C2) Γ (.par e1 e2) E := by
+  intro env store hts hdsep hcompat
+  suffices hpar :
+      Eval store
+        (.par (e1.subst (Subst.from_TypeEnv env)) (e2.subst (Subst.from_TypeEnv env)))
+        (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
+          Ty.exi_val_denot env E m' v ∧
+          pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
+          witness_live v m')by
+    simpa only [Ty.exi_exp_denot, Exp.subst, List.empty_eq] using hpar
+  have hunion : (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
+  have hcompat' := hunion ▸ hcompat
+  have hsubC1 : C1.denot env store ⊆ (C1 ∪ C2).denot env store :=
+    CapabilitySet.Subset.union_right_left
+  have hsubC2 : C2.denot env store ⊆ (C1 ∪ C2).denot env store :=
+    CapabilitySet.Subset.union_right_right
+  -- Separation: the two branches' footprints are non-interfering.
+  have hni : CapabilitySet.Noninterference (C1.denot env store) (C2.denot env store) :=
+    hsep hΓ env store hts hdsep
+  -- The store-presence of `C2`'s footprint (a `reachability_dom` fact, reused).
+  have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
+    intro mu l hmem
+    simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
+    exact CaptureSet.reachability_dom hmem
+  -- `e1`'s soundness at its own budget `C1`, run from `store`.
+  have he1 : Eval store (e1.subst (Subst.from_TypeEnv env))
+      (fun t v m' => TraceOk t (C1.denot env store) ∧ Ty.exi_val_denot env E m' v ∧
+        pack_bound (C1.denot env store) store v m' ∧ witness_live v m') := by
+    have h := ht1 env store hts hdsep (Memory.is_compatible_union_left hcompat')
+    simpa only [Ty.exi_exp_denot] using h
+  apply Eval.eval_par he1
+  -- Given `e1`'s answer `v1` at `m1`, run `e2` from `m1` and certify `Q` for BOTH
+  -- the left value `v1` and the right value `v2` at the joined memory `m2`.
+  intro t1 v1 m1 hsub_m1 hframe hQ1
+  obtain ⟨hok1, hval1, hpack1, hwit1⟩ := hQ1
+  -- (A) Frame `C2`'s compatibility across `e1`'s run (`t1` never drops a `C2`-cell,
+  -- by non-interference) so that `e2` may run from `m1`.
+  have hnodrop_C2_t1 : ∀ mu l, (C2.denot env store).hasmem mu l → ¬ Trace.extDrops t1 l := by
+    intro mu l hmem hd
+    obtain ⟨m', hm', hle⟩ :=
+      CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hok1 hd)
+    cases hle
+    obtain ⟨hc, _⟩ := hni.shared_ro hm' hmem
+    simp at hc
+  have hcompat_m1_C2 : m1.is_compatible (C2.denot env store) :=
+    Memory.is_compatible_frame (Memory.is_compatible_union_right hcompat')
+      hpresent_C2 hframe hsub_m1 hnodrop_C2_t1
+  -- `C2`'s denotation is stable under the memory growth (it is closed).
+  have hC2_eq : C2.denot env store = C2.denot env m1 :=
+    closed_capture_denot_monotonic _hclosed_C2 hts hsub_m1
+  -- `e2`'s soundness at `C2`, run from `m1`.
+  have he2 : Eval m1 (e2.subst (Subst.from_TypeEnv env))
+      (fun t v m' => TraceOk t (C2.denot env m1) ∧ Ty.exi_val_denot env E m' v ∧
+        pack_bound (C2.denot env m1) m1 v m' ∧ witness_live v m') := by
+    have h := ht2 env m1 (env_typing_monotonic hts hsub_m1) hdsep (hC2_eq ▸ hcompat_m1_C2)
+    simpa only [Ty.exi_exp_denot] using h
+  -- The witness capture set of `v1` (when it is a pack) is well-formed in `m1`.
+  have hcs_wf_of : ∀ (cs : CaptureSet {}) (x : Var .var {}),
+      v1 = .pack cs x → cs.WfInHeap m1.heap := by
+    intro cs x heq
+    subst heq
+    cases E with
+    | typ T =>
+      simp only [Ty.exi_val_denot] at hval1
+      cases val_denot_implies_wf (typed_env_is_implying_wf hts) T m1 (.pack cs x) hval1 with
+      | wf_pack hcs _ => exact hcs
+    | exi T =>
+      cases x with
+      | bound bx => cases bx
+      | free fx =>
+        simp only [Ty.exi_val_denot] at hval1
+        exact hval1.1
+  refine ⟨he2.1, ?_⟩
+  intro t2 v2 m2 hbs2
+  obtain ⟨hok2, hval2, hpack2, hwit2⟩ := he2.2 t2 v2 m2 hbs2
+  have hsub_m2 : m2.subsumes m1 := hbs2.subsumes
+  have hok2' : TraceOk t2 (C2.denot env store) := hC2_eq.symm ▸ hok2
+  have hTraceOk : TraceOk (t1 ++ t2) ((C1 ∪ C2).denot env store) :=
+    TraceOk.append (TraceOk.mono hsubC1 hok1) (TraceOk.mono hsubC2 hok2')
+  -- `e2`'s trace never drops a location of `v1`'s witness: such a location is
+  -- either `C1`-droppable (excluded by non-interference vs the `C2`-budget that
+  -- bounds `t2`'s drops) or fresh w.r.t. `store` (excluded by `C2`-presence).
+  have hnodrop_left : ∀ (mu : CapMode) (l : Nat),
+      ((C1.denot env store).covers mu l ∧ (C1.denot env store).hasmem .drop l) ∨
+        store.lookup l = none → ¬ Trace.extDrops t2 l := by
+    intro mu l hcase hd
+    obtain ⟨m', hm', hle⟩ :=
+      CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hok2' hd)
+    cases hle
+    rcases hcase with ⟨_, hdrop1⟩ | hfresh
+    · obtain ⟨hc, _⟩ := hni.shared_ro hdrop1 hm'; simp at hc
+    · exact hpresent_C2 .drop l hm' hfresh
+  refine ⟨⟨hTraceOk, ?_, ?_, ?_⟩, ⟨hTraceOk, hval2, ?_, hwit2⟩⟩
+  -- LEFT value `v1` at `m2`:
+  · -- exi_val_denot: monotone under `m2 ⊒ m1`.
+    exact exi_val_denot_is_monotonic (typed_env_is_monotonic hts) E hsub_m2 hval1
+  · -- pack_bound: lift `C1 → C1∪C2`, then `m1 → m2` via reachability stability.
+    have hpack1' : pack_bound ((C1 ∪ C2).denot env store) store v1 m1 :=
+      pack_bound_mono hsubC1 (Memory.subsumes_refl store) hpack1
+    intro cs x heq mu l hmem2
+    rw [CaptureSet.reachability_monotonic hsub_m2 cs (hcs_wf_of cs x heq)] at hmem2
+    exact hpack1' cs x heq mu l hmem2
+  · -- witness_live: frame `v1`'s witness across `e2`'s separated run.
+    intro cs x heq
+    rw [CaptureSet.reachability_monotonic hsub_m2 cs (hcs_wf_of cs x heq)]
+    exact Memory.is_compatible_frame (hwit1 cs x heq)
+      (fun mu l h => CaptureSet.reachability_dom h) hbs2.frameLive hsub_m2
+      (fun mu l hmem => hnodrop_left mu l (hpack1 cs x heq mu l hmem))
+  -- RIGHT value `v2` at `m2`: pack_bound lifts `C2 → C1∪C2` and `m1 → store`.
+  · exact pack_bound_mono hsubC2 hsub_m1 (hC2_eq.symm ▸ hpack2)
 
 /-- Semantic interpretation of `DisjCheck`: the two sets denote
 location-disjoint capability sets. Evidence is anchored at distinct droppable
@@ -5392,6 +5463,8 @@ theorem fundamental
     cases hclosed_e with
     | par hclosed_e1 hclosed_e2 =>
       exact sem_typ_par hΓ
+        (HasType.use_set_is_closed ht1_syn)
+        (HasType.use_set_is_closed ht2_syn)
         (ht1_ih hΓ hclosed_e1)
         (ht2_ih hΓ hclosed_e2)
         (fundamental_sepcheck hsep_syn)
