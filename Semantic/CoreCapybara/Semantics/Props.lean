@@ -78,7 +78,7 @@ theorem step_memory_monotonic
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join_left _ _ | step_par_join_right _ _ =>
+  | step_rename | step_unpack | step_par_join _ _ =>
     exact Memory.subsumes_refl _
   | step_par_left _ ih | step_par_right _ ih => exact ih
   | step_write_true hx _ | step_write_false hx _ =>
@@ -340,12 +340,9 @@ theorem step_preserves_wf
     | wf_par hwf_aL hwf_b =>
       exact Exp.WfInHeap.wf_par (Exp.wf_monotonic (step_memory_monotonic hsub_step) hwf_aL)
         (step_preserves_wf hsub_step hwf_b)
-  | step_par_join_left _ _ =>
-    cases hwf with
-    | wf_par hwf1 _ => exact hwf1
-  | step_par_join_right _ _ =>
-    cases hwf with
-    | wf_par _ hwf2 => exact hwf2
+  | step_par_join _ _ =>
+    -- The join retires `par` to the canonical `.unit`, trivially well-formed.
+    exact Exp.WfInHeap.wf_unit
 
 theorem reduce_preserves_wf
   (hred : Reduce C m1 e1 m2 e2)
@@ -540,7 +537,7 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
     cases ih1 with
     | done hAans =>
       cases ih2 (BigStep.of_isAns hAans) with
-      | done hBans => exact IsProgressive.step (Step.step_par_join_left hAans hBans)
+      | done hBans => exact IsProgressive.step (Step.step_par_join hAans hBans)
       | step hstepB => exact IsProgressive.step (Step.step_par_right hstepB)
     | step hstepA => exact IsProgressive.step (Step.step_par_left hstepA)
 
@@ -625,21 +622,15 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     -- `step_ctx_letin`.
     intro t' v m' hbs
     cases hbs with
-    | bs_par_left hrunL hrunR =>
-      rw [← List.append_assoc]; exact BigStep.bs_par_left (ih hrunL) hrunR
-    | bs_par_right hrunL hrunR =>
-      rw [← List.append_assoc]; exact BigStep.bs_par_right (ih hrunL) hrunR
+    | bs_par hrunL hrunR =>
+      rw [← List.append_assoc]; exact BigStep.bs_par (ih hrunL) hrunR
     | bs_val hv => cases hv
-  | step_par_join_left hans_a hans_b =>
-    -- `par a b → a` (both answers); reattach `b`'s trivial self-run on the right.
+  | step_par_join hans_a hans_b =>
+    -- `par a b → .unit` (both answers); the reduct `.unit` self-runs trivially, and
+    -- `bs_par` over the two answers' (empty) self-runs rebuilds the original.
     intro t' v m' hbs
-    have h := BigStep.bs_par_left hbs (BigStep.of_isAns hans_b)
-    simpa using h
-  | step_par_join_right hans_a hans_b =>
-    -- `par a b → b`; `a` (an answer) runs first with no effect, then the given `b`-run.
-    intro t' v m' hbs
-    have h := BigStep.bs_par_right (BigStep.of_isAns hans_a) hbs
-    simpa using h
+    obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq Exp.IsSimpleVal.unit hbs
+    exact BigStep.bs_par (BigStep.of_isAns hans_a) (BigStep.of_isAns hans_b)
   | step_par_right _ _ =>
     -- GENUINE DESIGN GAP (interleaving ⊥ the raw sequential `BigStep`).  A RIGHT-branch
     -- step emits its event BEFORE the left branch runs, but the sequential `bs_par`
@@ -648,10 +639,12 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     -- `bs_par` run — the only candidate is `s1 ++ (t ++ s2)`.  They agree only when the
     -- events COMMUTE, i.e. the branches are SEPARATED.  (Worse, the right step may even
     -- drop a cell the left branch needs — `par (read r) (drop z)`, `r→z` — so progress
-    -- itself fails.)  Closing this requires threading the type system's
-    -- `Noninterference` through a sequentialization/diamond argument; it is FALSE at
-    -- this raw, separation-free level.  This is the one fundamental gap the interleaving
-    -- `par` opens in the small-step↔big-step bridge.
+    -- itself fails.)  Unit-typing fixed the result-confluence half of the story (the
+    -- join is now a single `.unit`), but NOT this trace-order/liveness half: closing it
+    -- still requires threading the type system's `Noninterference` through a
+    -- sequentialization/diamond argument; it is FALSE at this raw, separation-free
+    -- level.  This is the one fundamental gap interleaving `par` opens in the
+    -- small-step↔big-step bridge.
     sorry
   | step_rename => intro t' v m' hbs; exact BigStep.bs_letin_var BigStep.bs_var hbs
   | step_unpack => intro t' v m' hbs; exact BigStep.bs_unpack BigStep.bs_pack hbs
@@ -768,18 +761,10 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     -- (`Noninterference` forbids the right branch dropping a left-branch cell); FALSE
     -- at this raw, separation-free level.
     sorry
-  | step_par_join_left hAans _ =>
-    -- `par a b → a`, memory unchanged; safety of the left answer.
-    intro hsafe
-    cases hsafe with
-    | par hs1 _ => exact hs1
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_par_join_right hAans _ =>
-    -- `par a b → b`, memory unchanged; safety of `b` from `a`'s trivial self-run.
-    intro hsafe
-    cases hsafe with
-    | par _ h2 => exact h2 (BigStep.of_isAns hAans)
-    | ans hans => cases hans with | is_val hv => cases hv
+  | step_par_join _ _ =>
+    -- `par a b → .unit`; the canonical unit result is an answer, hence trivially safe.
+    intro _
+    exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
   | step_rename =>
     intro hsafe
     cases hsafe with
@@ -951,15 +936,15 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
   | par _ _ ih1 ih2 =>
     -- Build the canonical (left-then-right-then-join) reduction to an answer: run e1
     -- fully (ih1), run e2 from e1's answer-memory (ih2, fed e1's big-step answer via
-    -- `reduce_to_bigstep`), lift each through the par congruences, then join LEFT.
+    -- `reduce_to_bigstep`), lift each through the par congruences, then join to `.unit`.
     -- This is a valid interleaving, so progress holds with NO separation needed.
     obtain ⟨ta, ma, aans, hreda, hansa⟩ := ih1
     obtain ⟨tb, mb, bans, hredb, hansb⟩ := ih2 (reduce_to_bigstep hreda hansa)
     exact ⟨_, _, _,
       reduce_trans (reduce_par_left hreda)
         (reduce_trans (reduce_par_right hredb)
-          (Reduce.step (Step.step_par_join_left hansa hansb) Reduce.refl)),
-      hansa⟩
+          (Reduce.step (Step.step_par_join hansa hansb) Reduce.refl)),
+      Exp.IsAns.is_val Exp.IsVal.unit⟩
 
 /-- Answer existence (small-step): `Eval m e Q` reduces to an answer satisfying
     `Q`.  Combine `Safe.has_reduction` with the adequacy bridge. -/
@@ -989,7 +974,7 @@ theorem step_immutable
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join_left _ _ | step_par_join_right _ _ =>
+  | step_rename | step_unpack | step_par_join _ _ =>
     -- Memory is unchanged.
     exact hinit
   | step_par_left _ ih | step_par_right _ ih =>
@@ -1048,7 +1033,7 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
   induction hstep with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join_left _ _ | step_par_join_right _ _ =>
+  | step_rename | step_unpack | step_par_join _ _ =>
     intro _ _ hinit; exact hinit
   | step_par_left _ ih | step_par_right _ ih =>
     -- Congruence: the cell change is the sub-step's, handled by the IH.
@@ -1112,16 +1097,25 @@ theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool}
      * Liveness: a right step may drop a cell the left branch needs
        (`par (read r) (drop z)`, `r → z`), so `Safe`/progress fails outright.
 
-   Both are sound EXACTLY under separation — which the type system enforces
+   NOTE the design has split this into two independent sub-problems, ONE of which is
+   now CLOSED:
+     (a) RESULT-confluence — solved.  Unit-typing `par` (`par e1 e2 : .typ .unit`)
+         plus the SINGLE canonical join (`step_par_join … → .unit`, `bs_par … → .unit`)
+         makes the join deterministic: no value critical pair, so all schedules agree
+         on the result.  (The old either-branch join was non-confluent at the join
+         itself, independent of any effect reasoning.)
+     (b) EFFECT/trace ordering + liveness — STILL OPEN, the two `sorry`s above.
+
+   (b) is sound EXACTLY under separation — which the type system enforces
    (`SepCheck`/`Noninterference`) but which `Step`/`Safe`/`Eval` do not themselves
-   carry.  Closing the gap is therefore a genuine DESIGN step (human intervention):
-   the interleaving adequacy must be a TYPED, top-level theorem threading
-   `fundamental_sepcheck`'s `Noninterference` through a sequentialization (diamond /
-   Mazurkiewicz) argument, observing traces up to permutation — not a raw per-step
-   bridge lemma.  Every OTHER `par` case here (congruence-left, both joins, progress,
-   has_reduction, WF / memory-monotonicity / immutability) is proven outright; the gap
-   is minimal and isolated to the one place true concurrency genuinely diverges from a
-   sequential semantics.
+   carry.  Closing it is a genuine DESIGN step (human intervention): the interleaving
+   adequacy must be a TYPED, top-level theorem threading `fundamental_sepcheck`'s
+   `Noninterference` through a sequentialization (diamond / Mazurkiewicz) argument,
+   observing traces up to permutation — not a raw per-step bridge lemma.  Every OTHER
+   `par` case here (congruence-left, the join, progress, has_reduction, WF /
+   memory-monotonicity / immutability) is proven outright; the gap is minimal and
+   isolated to the one place true concurrency genuinely diverges from a sequential
+   semantics.
    ============================================================================ -/
 
 end CoreCapybara

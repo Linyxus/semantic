@@ -64,28 +64,24 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 -- `par e1 e2` runs BOTH branches with interleaved (preemptive) scheduling.
 -- Either branch may take the next step (the two congruence rules), so a whole
 -- run is an arbitrary interleaving of the branches' events.  Once BOTH branches
--- have reached answers, a join rule retires the construct, yielding EITHER
--- branch's answer (the result is nondeterministic — whichever branch you read
--- off; both branches ran for their effects).
---   * Result = either answer keeps `par : E` type-correct (both branches : E).
---     Result-nondeterminism is consistent with the system's existing comfort with
---     nondeterminism (cf. value-nondeterministic `bs_read`).
+-- have reached answers, the single join rule retires the construct, yielding the
+-- canonical unit value `.unit` (both branches ran only for their effects; their
+-- result values are discarded).
+--   * Result = `.unit` keeps `par : .typ .unit` type-correct and, crucially,
+--     CONFLUENT: a single join rule with a fixed result is not a critical pair,
+--     so all schedules agree on the result (unlike an either-branch join).
 --   * Separation — already required by the `par` typing rule (`SepCheck Γ C1 C2`)
---     — makes the final memory independent of the interleaving, and makes both
---     candidate results lie in the (shared) result type; that is the content of
---     the diamond/sequentialization theorems stated in `Semantics.Props`.
+--     — makes the final memory independent of the interleaving; that is the
+--     content of the sequentialization theorems stated in `Semantics.Props`.
 | step_par_left :
   Step t m e1 m' e1' ->
   Step t m (.par e1 e2) m' (.par e1' e2)
 | step_par_right :
   Step t m e2 m' e2' ->
   Step t m (.par e1 e2) m' (.par e1 e2')
-| step_par_join_left :
+| step_par_join :
   e1.IsAns -> e2.IsAns ->
-  Step [] m (.par e1 e2) m e1
-| step_par_join_right :
-  e1.IsAns -> e2.IsAns ->
-  Step [] m (.par e1 e2) m e2
+  Step [] m (.par e1 e2) m .unit
 | step_rename :
   Step [] m (.letin (.var (.free y)) e) m (e.subst (Subst.openVar (.free y)))
 -- Lifting a value to the heap is not a capability event, so it emits no trace.
