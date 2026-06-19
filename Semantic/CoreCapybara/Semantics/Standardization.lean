@@ -1,79 +1,138 @@
-import Semantic.CoreCapybara.Semantics.SmallStep
+import Semantic.CoreCapybara.Semantics.Props
 
-/-! # Standardization (theorem B): trace permutation & heap/memory isomorphism
+/-! # Standardization (theorem B): trace equivalence & heap/memory isomorphism
 
   The standardization theorem relates the GENUINE interleaving `Step` to the
   SEQUENTIAL `SeqStep`: every `Step` run is equivalent to a `SeqStep` run, where
   "equivalent" means
 
-  * its **trace** is a PERMUTATION of the sequential trace — an interleaving emits
-    the same multiset of events as the left-then-right schedule, only reordered
-    (Mazurkiewicz reordering of the two separated branches' events), and
-  * its **final memory** is ISOMORPHIC to the sequential one — the two schedules may
+  * its **trace** is `Trace.Equiv` to the sequential trace — the two record the same
+    EXTERNAL access/drop *sequence* at every location (Mazurkiewicz trace equivalence
+    with locations as independent objects: independent touches commute, same-location
+    order is preserved).  Restricting to *external* touches makes it robust to
+    fresh-cell renaming (a self-allocated cell is private, never externally touched),
+    so trace equivalence needs no location bijection — it is orthogonal to the heap
+    isomorphism below.
+  * its **final memory** is `Memory.Iso` to the sequential one — the two schedules may
     allocate fresh cells in different orders, so the final heaps agree up to a
     relabelling of (fresh) locations.
 
-  This file defines those two equivalences (`Trace.Perm`, `Memory.Iso`).  The
-  standardization theorem itself (`Step` run ⇒ ∃ `SeqReduce` run with `Trace.Perm`
+  This file defines those two equivalences (`Trace.Equiv`, `Memory.Iso`).  The
+  standardization theorem itself (`Step` run ⇒ ∃ `SeqReduce` run with `Trace.Equiv`
   + `Memory.Iso`) is developed separately on top of the diamond
   `BigStep.step_run_commute`. -/
 
 namespace CoreCapybara
 
-/-! ## Trace permutation equivalence
+/-! ## Trace equivalence
 
-  Two traces are equivalent when one is a reordering of the other — plain `List.Perm`.
-  This is exactly the right notion: each branch, run in isolation, emits a fixed
-  sequence of events; the interleaving SHUFFLES the two branches' events while the
-  sequential schedule CONCATENATES them, and a shuffle of two lists is a permutation
-  of their concatenation.  Using `List.Perm` gives us its whole API for free
-  (it is an equivalence, and membership / multiplicity are invariant — which is all
-  the immutability facts, being trace-membership facts, need). -/
+  Two traces are equivalent when, at EVERY location, they record the same external
+  access/drop *sequence* — the mode-carrying, order-preserving refinement of the
+  existing `Trace.extTouchesFromMode` (existence) / `Trace.Noninterfere`.  This is
+  Mazurkiewicz trace equivalence: touches to *different* locations are independent
+  (commute), touches to the *same* location keep their order.
 
-/-- Rename the location mentioned by a single trace item along `σ`. -/
-def TraceItem.renameLoc (σ : Nat → Nat) : TraceItem → TraceItem
-| .access mu l => .access mu (σ l)
-| .alloc l     => .alloc (σ l)
-| .dealloc l   => .dealloc (σ l)
+  Restricting to *external* touches (a self-allocated cell — its index in the running
+  set `A` — is private and contributes nothing) makes the relation robust to
+  fresh-cell renaming, so it carries no location bijection and is orthogonal to
+  `Memory.Iso`.  It still transports the immutability facts: for an external (e.g.
+  platform) cell `l`, `.access .epsilon ∈ extSeq l t ↔ access .epsilon l ∈ t`. -/
 
-/-- Rename every location in a trace along `σ`.  Used in the combined standardization
-  statement: when the two schedules allocate fresh cells under different names (a
-  non-identity `σ` in the memory isomorphism below), the interleaving trace matches
-  the sequential one only after renaming its locations by `σ` — i.e.
-  `Trace.Perm (t.renameLoc σ) t'`.  When `σ = id` (matching allocation names) this is
-  just `Trace.Perm t t'`. -/
-def Trace.renameLoc (σ : Nat → Nat) (t : Trace) : Trace :=
-  t.map (TraceItem.renameLoc σ)
+/-- The external access/drop **sequence** to `l` in `t`, given the running set `A` of
+  locations already allocated within `t`.  Each external read/write contributes its
+  `.access mu` mode and each external drop a `.drop`, in order; an `alloc` extends `A`
+  (so a self-allocated cell is thereafter internal).  This is the order-recording
+  refinement of `Trace.extTouchesFromMode`. -/
+def Trace.extSeqFrom (A : List Nat) (l : Nat) : Trace → List CapMode
+| []                   => []
+| (.alloc l' :: t)     => Trace.extSeqFrom (l' :: A) l t
+| (.access mu l' :: t) =>
+    if l = l' ∧ l ∉ A then .access mu :: Trace.extSeqFrom A l t
+    else Trace.extSeqFrom A l t
+| (.dealloc l' :: t)   =>
+    if l = l' ∧ l ∉ A then .drop :: Trace.extSeqFrom A l t
+    else Trace.extSeqFrom A l t
 
-/-- **Trace permutation equivalence.**  `t1` and `t2` record the same heap events up
-  to reordering.  Defined as `List.Perm`, so the full `List.Perm` API applies. -/
-def Trace.Perm (t1 t2 : Trace) : Prop := List.Perm t1 t2
+/-- The external access/drop sequence to `l` in a whole trace (nothing allocated yet). -/
+def Trace.extSeq (l : Nat) (t : Trace) : List CapMode := Trace.extSeqFrom [] l t
 
-namespace Trace.Perm
+/-- **Trace equivalence.**  `t1` and `t2` have the same external access/drop sequence
+  at every location.  An equivalence relation (it is per-location equality of
+  sequences), and it subsumes "same external (location, mode) touch set". -/
+def Trace.Equiv (t1 t2 : Trace) : Prop := ∀ l, Trace.extSeq l t1 = Trace.extSeq l t2
 
--- NB: `Trace.Perm` is a `def` for `List.Perm`, so dot-notation `h.symm` would resolve
--- to `Trace.Perm.symm` (self-recursion); we call the `List.Perm` lemmas explicitly.
-theorem refl (t : Trace) : Trace.Perm t t := List.Perm.refl t
+namespace Trace.Equiv
 
-theorem symm {t1 t2 : Trace} (h : Trace.Perm t1 t2) : Trace.Perm t2 t1 :=
-  List.Perm.symm h
+theorem refl (t : Trace) : Trace.Equiv t t := fun _ => rfl
+
+theorem symm {t1 t2 : Trace} (h : Trace.Equiv t1 t2) : Trace.Equiv t2 t1 :=
+  fun l => (h l).symm
 
 theorem trans {t1 t2 t3 : Trace}
-    (h1 : Trace.Perm t1 t2) (h2 : Trace.Perm t2 t3) : Trace.Perm t1 t3 :=
-  List.Perm.trans h1 h2
+    (h1 : Trace.Equiv t1 t2) (h2 : Trace.Equiv t2 t3) : Trace.Equiv t1 t3 :=
+  fun l => (h1 l).trans (h2 l)
 
-/-- Membership is invariant under trace permutation — the transport principle the
-  immutability facts (e.g. `access .epsilon l ∉ t`) ride on. -/
-theorem mem_iff {t1 t2 : Trace} (h : Trace.Perm t1 t2) {it : TraceItem} :
-    it ∈ t1 ↔ it ∈ t2 := List.Perm.mem_iff h
+end Trace.Equiv
 
-/-- A reordered interleaving of two branch-traces: `t1 ++ t2` (sequential) is a
-  permutation of any interleaving.  Concretely, appending is permutation-commutative,
-  the seed for relating `bs_par`'s `t1 ++ t2` to a shuffled `Step` trace. -/
-theorem append_comm (t1 t2 : Trace) : Trace.Perm (t1 ++ t2) (t2 ++ t1) :=
-  List.perm_append_comm
+/-- **Bridge to the existence-level external touch.**  A mode `cm` appears in the
+  external sequence to `l` exactly when `l` is externally touched with mode `cm` —
+  connecting `Trace.Equiv` to the existing `Trace.extTouchesFromMode`/`Noninterfere`
+  machinery. -/
+theorem Trace.mem_extSeqFrom_iff {A : List Nat} {l : Nat} {cm : CapMode} {t : Trace} :
+    cm ∈ Trace.extSeqFrom A l t ↔ Trace.extTouchesFromMode A l cm t := by
+  induction t generalizing A with
+  | nil => simp [Trace.extSeqFrom, Trace.extTouchesFromMode]
+  | cons it t ih =>
+    cases it with
+    | alloc l' =>
+      simp only [Trace.extSeqFrom, Trace.extTouchesFromMode]; exact ih
+    | access mu l' =>
+      simp only [Trace.extSeqFrom, Trace.extTouchesFromMode]
+      split
+      · rename_i hcond
+        simp only [List.mem_cons, ih]
+        constructor
+        · rintro (rfl | h)
+          · exact Or.inl ⟨hcond.1, hcond.2, rfl⟩
+          · exact Or.inr h
+        · rintro (⟨_, _, rfl⟩ | h)
+          · exact Or.inl rfl
+          · exact Or.inr h
+      · rename_i hcond
+        rw [ih]
+        constructor
+        · exact Or.inr
+        · rintro (⟨h1, h2, _⟩ | h)
+          · exact absurd ⟨h1, h2⟩ hcond
+          · exact h
+    | dealloc l' =>
+      simp only [Trace.extSeqFrom, Trace.extTouchesFromMode]
+      split
+      · rename_i hcond
+        simp only [List.mem_cons, ih]
+        constructor
+        · rintro (rfl | h)
+          · exact Or.inl ⟨hcond.1, hcond.2, rfl⟩
+          · exact Or.inr h
+        · rintro (⟨_, _, rfl⟩ | h)
+          · exact Or.inl rfl
+          · exact Or.inr h
+      · rename_i hcond
+        rw [ih]
+        constructor
+        · exact Or.inr
+        · rintro (⟨h1, h2, _⟩ | h)
+          · exact absurd ⟨h1, h2⟩ hcond
+          · exact h
 
-end Trace.Perm
+/-- Equivalent traces externally touch every location with the same modes — the
+  transport principle the immutability facts (e.g. `access .epsilon l ∉ t`) ride on. -/
+theorem Trace.Equiv.extTouchesMode_iff {t1 t2 : Trace} (h : Trace.Equiv t1 t2)
+    {l : Nat} {cm : CapMode} :
+    Trace.extTouchesMode t1 l cm ↔ Trace.extTouchesMode t2 l cm := by
+  unfold Trace.extTouchesMode
+  rw [← Trace.mem_extSeqFrom_iff, ← Trace.mem_extSeqFrom_iff,
+      show Trace.extSeqFrom [] l t1 = Trace.extSeqFrom [] l t2 from h l]
 
 /-! ## Heap / memory isomorphism
 

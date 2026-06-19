@@ -16,6 +16,8 @@ import Semantic.CoreCapybara.Gaps
 
 import Semantic.CoreCapybara.Safety
 
+import Semantic.CoreCapybara.Semantics.Standardization
+
 /-!
 # Semantic Type Soundness for CoreCapybara
 
