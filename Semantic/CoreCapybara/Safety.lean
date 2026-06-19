@@ -199,17 +199,19 @@ theorem env_typing_of_platform {N : Nat} :
         exact env_typing_platform_monotonic (N := N) (M := N + 1) (by omega) ih
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
-    iff for any reduction state reachable from `e` on the platform, it is
-    progressive (an answer, or able to take another step).
+    iff for any SEQUENTIAL reduction state reachable from `e` on the platform, it is
+    progressive (an answer, or able to take another `SeqStep`).
 
-    The `(∀ l, dealloc l ∉ t)` side-condition (the reduction performs no
-    deallocation) is the condition under which the current `par`-safety preservation
-    frames the frozen branch of a `par` across the other branch's step
-    (`step_preserves_live`).  Removing it requires separation-based framing: the
-    stepping branch never drops the *frozen* branch's cells (`Safe.par`'s `hni`). -/
+    Safety is stated for the sequential schedule `SeqReduce`, for which the big-step
+    bridge is exact; lifting to the full interleaving `Reduce` is the standardization
+    theorem (B).  The `(∀ l, dealloc l ∉ t)` side-condition (the reduction performs
+    no deallocation) keeps every platform cell live (`AllLive`), which `par`-safety
+    preservation needs so the frozen branch's robust safety applies.  Removing it
+    requires separation-based framing: the stepping branch never drops the *frozen*
+    branch's cells (`Safe.par`'s `hni`). -/
 def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) : Prop :=
   ∀ t M1 e1,
-    Reduce t (Memory.platform_of N) e M1 e1 ->
+    SeqReduce t (Memory.platform_of N) e M1 e1 ->
     (∀ l, TraceItem.dealloc l ∉ t) ->
     IsProgressive M1 e1
 
@@ -363,7 +365,7 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     (hkind : HasKind (Ctx.platform_of N) C .ro)
     (hdf : (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)).drop_free) :
     ∀ t M1 e1,
-      Reduce t (Memory.platform_of N)
+      SeqReduce t (Memory.platform_of N)
         (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
       (∀ l, TraceItem.dealloc l ∉ t) ->
       (Memory.platform_of N).not_mutated M1 := by
@@ -383,7 +385,7 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
   -- Extend the partial reduction to a full run, obtaining a `TraceOk` trace.
   obtain ⟨trest, M2, a, hred2, hans⟩ :=
     (reduce_preserves_safe hred hwf hdf_red (platform_allLive N) hdenot.1).has_reduction
-  have hbig := reduce_to_bigstep (reduce_trans hred hred2) hans
+  have hbig := reduce_to_bigstep (seqreduce_trans hred hred2) hans
   have htok : TraceOk (t ++ trest)
       (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)) := (hdenot.2 _ _ _ hbig).1
   -- Each platform cell is unchanged.
@@ -399,7 +401,7 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     traceok_no_write (haskind_ro_not_covers_eps hro l) htok (by simp) hl_alloc
   have hdr : TraceItem.dealloc l ∉ (t ++ trest) :=
     traceok_no_dealloc (dropfree_not_covers_drop hdf l) htok (by simp) hl_alloc
-  exact reduce_preserves_cell hred
+  exact reduce_preserves_cell hred.toReduce
     (fun hm => hwr (List.mem_append_left _ hm))
     (fun hm => hdr (List.mem_append_left _ hm)) hinit
 
