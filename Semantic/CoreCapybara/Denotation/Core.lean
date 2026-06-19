@@ -1560,17 +1560,6 @@ theorem typed_env_is_bool_independent
           intro x; cases x with
           | there x => exact ih ht' x
 
--- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
--- They relied on TypeEnv.is_reachability_safe, TypeEnv.is_reachability_monotonic,
--- and TypeEnv.is_tight which are now trivially provable.
---
--- theorem typed_env_is_reachability_safe
---   (ht : EnvTyping Γ env mem) : env.is_reachability_safe := ...
--- theorem typed_env_is_reachability_monotonic
---   (ht : EnvTyping Γ env mem) : env.is_reachability_monotonic := ...
--- theorem typed_env_is_tight
---   (ht : EnvTyping Γ env mem) : env.is_tight := ...
-
 theorem val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
   (T : Ty .capt s) :
@@ -2191,23 +2180,6 @@ def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
     ∀ env H, EnvTyping Γ env H -> env.EnvSepWf ->
       (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
 
--- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
--- They relied on Denot.is_reachability_safe and Denot.is_reachability_monotonic which are now
--- trivially True.
---
--- theorem val_denot_is_reachability_safe {env : TypeEnv s}
---   (_hts : env.is_reachability_safe) (T : Ty .capt s) :
---   (Ty.val_denot env T).is_reachability_safe := trivial
--- theorem shape_val_denot_is_reachability_safe {env : TypeEnv s}
---   (hts : env.is_reachability_safe) (T : Ty .capt s) :
---   (Ty.val_denot env T).is_reachability_safe := val_denot_is_reachability_safe hts T
--- theorem val_denot_is_reachability_monotonic {env : TypeEnv s}
---   (_hts : env.is_reachability_monotonic) (T : Ty .capt s) :
---   (Ty.val_denot env T).is_reachability_monotonic := trivial
--- theorem shape_val_denot_is_reachability_monotonic {env : TypeEnv s}
---   (hts : env.is_reachability_monotonic) (T : Ty .capt s) :
---   (Ty.val_denot env T).is_reachability_monotonic := val_denot_is_reachability_monotonic hts T
-
 /-- If resolve succeeds with a simple value, the expression is a simple answer.
     This works because resolve returns the expression itself for non-variables,
     or looks up the stored value for variables. -/
@@ -2284,8 +2256,7 @@ lemma wf_from_resolve_bfalse
   | bfalse => exact Exp.WfInHeap.wf_bfalse
   | _ => simp [resolve] at hresolve
 
-/-- Ported from old shape_val_denot_implies_wf.
-    For Denot (not PreDenot), implies_wf says d m e → e.WfInHeap m.heap. -/
+/-- `implies_wf` for `val_denot`: `d m e → e.WfInHeap m.heap`. -/
 theorem val_denot_implies_wf {env : TypeEnv s}
   (hts : env.is_implying_wf)
   (T : Ty .capt s) :
@@ -2382,18 +2353,7 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
     obtain ⟨_, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.cabs
 
--- NOTE: The following theorems are no longer needed after the type hierarchy collapse.
--- They relied on Denot.is_tight which is now trivially True.
---
--- theorem val_denot_is_tight {env : TypeEnv s}
---   (_hts : env.is_tight) (T : Ty .capt s) :
---   (Ty.val_denot env T).is_tight := trivial
--- theorem shape_val_denot_is_tight {env : TypeEnv s}
---   (hts : env.is_tight) (T : Ty .capt s) :
---   (Ty.val_denot env T).is_tight := val_denot_is_tight hts T
-
-/-- Ported from old shape_val_denot_is_proper.
-    Now uses Denot.is_proper (monotonic ∧ transparent ∧ bool_independent ∧ implies_wf). -/
+/-- `val_denot` is proper: monotonic ∧ transparent ∧ bool_independent ∧ implies_wf. -/
 theorem val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
   (hts : EnvTyping Γ env m) :
   (Ty.val_denot env T).is_proper :=

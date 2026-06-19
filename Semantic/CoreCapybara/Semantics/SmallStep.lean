@@ -61,18 +61,14 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_ctx_unpack :
   Step t m e1 m' e1' ->
   Step t m (.unpack e1 e2) m' (.unpack e1' e2)
--- `par e1 e2` runs BOTH branches with interleaved (preemptive) scheduling.
--- Either branch may take the next step (the two congruence rules), so a whole
--- run is an arbitrary interleaving of the branches' events.  Once BOTH branches
--- have reached answers, the single join rule retires the construct, yielding the
--- canonical unit value `.unit` (both branches ran only for their effects; their
--- result values are discarded).
---   * Result = `.unit` keeps `par : .typ .unit` type-correct and, crucially,
---     CONFLUENT: a single join rule with a fixed result is not a critical pair,
---     so all schedules agree on the result (unlike an either-branch join).
---   * Separation — already required by the `par` typing rule (`SepCheck Γ C1 C2`)
---     — makes the final memory independent of the interleaving; that is the
---     content of the sequentialization theorems stated in `Semantics.Props`.
+-- `par e1 e2` runs BOTH branches with GENUINE INTERLEAVING: either branch may take
+-- the next step (the two congruence rules), so a whole run is an arbitrary
+-- interleaving of the branches' events.  Once BOTH branches are answers the single
+-- join rule retires the construct to the canonical unit value `.unit` — which keeps
+-- `par : .typ .unit` type-correct and the join confluent (single rule, fixed
+-- result).  Separation (the `par` typing rule's `SepCheck Γ C1 C2`) is what makes
+-- the interleaving sound; CSL soundness of parallel composition is
+-- `Fundamental.sem_typ_par`.
 | step_par_left :
   Step t m e1 m' e1' ->
   Step t m (.par e1 e2) m' (.par e1' e2)

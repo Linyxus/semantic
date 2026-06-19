@@ -465,19 +465,6 @@ theorem applyMut_no_drop {C : CapabilitySet} {m : Mutability} {l : Nat}
   | epsilon => exact h
   | ro => exact applyRO_no_drop h
 
-/- RETIRED (2026-05-27): `applyAccess` no longer preserves drop-freeness now
-   that `.drop ↦ to_drop` is real consume authority — the `.drop` case
-   genuinely introduces `.drop` caps. The `wf_reach_no_drop` invariant this
-   supported has been removed.
-/-- `applyAccess` preserves drop-freeness (the `drop` case is a placeholder
-    identity for now). -/
-theorem applyAccess_no_drop {C : CapabilitySet} {a : Access} {l : Nat}
-    (h : ¬ hasmem .drop l C) : ¬ hasmem .drop l (C.applyAccess a) := by
-  cases a with
-  | M m => exact applyMut_no_drop h
-  | drop => exact applyRO_no_drop h
--/
-
 /-- applyRO commutes with applyAccess (reading off the read-only image of the mode). -/
 theorem applyAccess_applyRO {C : CapabilitySet} {a : Access} :
     (C.applyAccess a).applyRO = C.applyAccess a.applyRO := by
@@ -501,25 +488,6 @@ theorem hasmem_applyMut_implies_covers {C : CapabilitySet} {mu_op : Mutability}
     obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
     subst heq
     exact covers_of_hasmem_le hm' CapMode.applyRO_le
-
-/- RETIRED (2026-05-27): false under real `.drop ↦ to_drop`. Membership at
-   `.drop` in `C.to_drop` only witnesses *some* cap at `l` in `C` (any mode),
-   which does NOT give `C.covers .drop l` (`.drop` is covered only by `.drop`).
-   Only ever used by the now-retired context-frame proofs in `Fundamental`.
-/-- Membership in `C.applyAccess a` implies coverage in `C` at the same mode. -/
-theorem hasmem_applyAccess_implies_covers {C : CapabilitySet} {a : Access}
-    {mu : CapMode} {l : Nat} (h : (C.applyAccess a).hasmem mu l) :
-    C.covers mu l := by
-  cases a with
-  | M m =>
-    simp only [applyAccess_M] at h
-    exact hasmem_applyMut_implies_covers h
-  | drop =>
-    simp only [applyAccess_drop] at h
-    obtain ⟨m', heq, hm'⟩ := hasmem_applyRO_iff.mp h
-    subst heq
-    exact covers_of_hasmem_le hm' CapMode.applyRO_le
--/
 
 /-- Coverage in C is preserved by applyRO when the mode is RO-stable (i.e.,
     `.access .ro` or `.drop`). -/
@@ -1829,6 +1797,14 @@ theorem Exp.wf_inv_unpack
   Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H := by
   cases hwf with
   | wf_unpack hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
+
+/-- Inversion for parallel composition: if `par e1 e2` is well-formed, so are both. -/
+theorem Exp.wf_inv_par
+  {e1 e2 : Exp s} {H : Heap}
+  (hwf : Exp.WfInHeap (.par e1 e2) H) :
+  Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H := by
+  cases hwf with
+  | wf_par hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
 
 /-- Inversion for conditionals. -/
 theorem Exp.wf_inv_cond
@@ -3713,6 +3689,16 @@ def is_compatible (m : Memory) (C : CapabilitySet) : Prop :=
     CapabilitySet.hasmem mu l C →
     m.heap l = some (.capability (.mcell b ℓ)) →
     ℓ = .live
+
+/-- Every mutable cell present in `m` is LIVE.  A budget-agnostic invariant: it
+    holds at a freshly-built platform (all cells `.live`) and is preserved by any
+    `dealloc`-free reduction (only a drop turns a cell dead).  It implies
+    `is_compatible m C` for ANY budget `C`. -/
+def AllLive (m : Memory) : Prop :=
+  ∀ l b ℓ, m.heap l = some (.capability (.mcell b ℓ)) → ℓ = .live
+
+theorem AllLive.is_compatible {m : Memory} (h : m.AllLive) (C : CapabilitySet) :
+    m.is_compatible C := fun _ l b ℓ _ hlk => h l b ℓ hlk
 
 theorem is_compatible_empty (m : Memory) : m.is_compatible .empty := by
   intro mu l b ℓ hmem _

@@ -1371,7 +1371,7 @@ theorem sem_typ_pack
   (ht : SemanticTyping {} Γ (Exp.var x) (T.subst (Subst.openCVar cs)).typ) :
   SemanticTyping (cs ∪ cs.applyAccess .drop) Γ (Exp.pack cs x) T.exi := by
   intro env store hts hdsep hcompat
-  -- pack is no longer a simple value; use eval_pack instead
+  -- pack is not a simple value; use eval_pack
   have hsubst : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
          Exp.pack (cs.subst (Subst.from_TypeEnv env)) (x.subst (Subst.from_TypeEnv env)) := by
     simp only [Exp.subst]
@@ -3152,9 +3152,9 @@ theorem fundamental_sepcheck
 /-- Interpretation of lock-stored separation facts in *arbitrary* well-typed
 environments carrying the `EnvSepWf` invariant. The `sep_droppable` case is the
 reason `EnvSepWf` is threaded: two distinct droppable capture variables denote
-disjoint capabilities exactly by that invariant (the former gap; the
-counterexample `Gaps.sepcheck_global_droppable_false` aliases them precisely
-because it is *not* `EnvSepWf`). The invariant reaches the `modal_modal`
+disjoint capabilities exactly by that invariant (the counterexample
+`Gaps.sepcheck_global_droppable_false` aliases them precisely because it is *not*
+`EnvSepWf`). The invariant reaches the `modal_modal`
 consumption point because `SemSubtyp` now carries it — the `exi` subtyping rule
 re-tags its fresh binder `.access_only`, which preserves `EnvSepWf`. -/
 theorem fundamental_sepcheck_global
@@ -3237,57 +3237,8 @@ theorem sem_satisfy
     · intro C1 m1 C2 m2 hdistinct
       exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) hΓ env m henv hdsep
 
-/-- Shared-location elimination for `Noninterference`: a location member of
-both sides must be held read-only on both sides (`ni_ro` is the only
-constructor permitting overlap). -/
-theorem CapabilitySet.Noninterference.shared_ro
-    {C1 C2 : CapabilitySet} {mu1 mu2 : CapMode} {l : Nat}
-    (hni : CapabilitySet.Noninterference C1 C2)
-    (h1 : C1.hasmem mu1 l) (h2 : C2.hasmem mu2 l) :
-    mu1 = .access .ro ∧ mu2 = .access .ro := by
-  induction hni generalizing mu1 mu2 with
-  | ni_symm _ ih =>
-    obtain ⟨ha, hb⟩ := ih h2 h1
-    exact ⟨hb, ha⟩
-  | ni_empty => cases h1
-  | ni_union _ _ ih1 ih2 =>
-    cases h1 with
-    | left h => exact ih1 h h2
-    | right h => exact ih2 h h2
-  | ni_ro =>
-    cases h1
-    cases h2
-    exact ⟨rfl, rfl⟩
-  | ni_disj hne =>
-    cases h1
-    cases h2
-    exact absurd rfl hne
-
-/-- A capability mode below `.access .ro` IS `.access .ro` (`.ro` is the minimal
-  access mutability, and `.drop` is incomparable to any access). -/
-theorem CapMode.le_access_ro_eq {cm : CapMode} (h : cm ≤ CapMode.access .ro) :
-    cm = .access .ro := by
-  cases h with
-  | access hmu => cases hmu with | refl => rfl
-
-/-- **Discharge of `Trace.Noninterfere` from the budgets.**  If `t1`/`t2` are
-  `TraceOk` for non-interfering budgets `C1`/`C2`, their traces are
-  non-interfering: a location both externally touch is `covers`-ed by both
-  budgets, and `Noninterference.shared_ro` forces both covering members — hence
-  both touch modes — to `.access .ro`.  This is what lets `sem_typ_par` supply
-  `eval_par`'s separation premise. -/
-theorem traceOk_noninterfere {C1 C2 : CapabilitySet} {t1 t2 : Trace}
-    (h1 : TraceOk t1 C1) (h2 : TraceOk t2 C2)
-    (hni : CapabilitySet.Noninterference C1 C2) :
-    Trace.Noninterfere t1 t2 := by
-  intro l cm1 cm2 hext1 hext2
-  obtain ⟨mu1, hmem1, hle1⟩ :=
-    CapabilitySet.covers_imp_exists_hasmem (h1.covers_of_extTouchesMode hext1)
-  obtain ⟨mu2, hmem2, hle2⟩ :=
-    CapabilitySet.covers_imp_exists_hasmem (h2.covers_of_extTouchesMode hext2)
-  obtain ⟨hro1, hro2⟩ := hni.shared_ro hmem1 hmem2
-  subst hro1; subst hro2
-  exact ⟨CapMode.le_access_ro_eq hle1, CapMode.le_access_ro_eq hle2⟩
+-- `CapabilitySet.Noninterference.shared_ro`, `CapMode.le_access_ro_eq` and
+-- `traceOk_noninterfere` are defined in `Semantics/BigStep.lean`.
 
 theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
@@ -3295,6 +3246,8 @@ theorem sem_typ_par
   (hΓ : Γ.IsClosed)
   (_hclosed_C1 : C1.IsClosed)
   (_hclosed_C2 : C2.IsClosed)
+  (hclosed_e1 : e1.IsClosed)
+  (hclosed_e2 : e2.IsClosed)
   (ht1 : SemanticTyping C1 Γ e1 E1)
   (ht2 : SemanticTyping C2 Γ e2 E2)
   (hsep : SemSepCheck Γ C1 C2) :
@@ -3328,24 +3281,52 @@ theorem sem_typ_par
         pack_bound (C1.denot env store) store v m' ∧ witness_live v m') := by
     have h := ht1 env store hts hdsep (Memory.is_compatible_union_left hcompat')
     simpa only [Ty.exi_exp_denot] using h
-  -- `e2`'s soundness run from `store` (not `m1`), used only to bound its trace by
-  -- `C2` when discharging the separation premise of `eval_par`.
+  -- `e2`'s soundness run from `store`, used only to bound its trace by `C2` when
+  -- discharging the separation premise of `eval_par`.
   have he2_store : Eval store (e2.subst (Subst.from_TypeEnv env))
       (fun t v m' => TraceOk t (C2.denot env store) ∧ Ty.exi_val_denot env E2 m' v ∧
         pack_bound (C2.denot env store) store v m' ∧ witness_live v m') := by
     have h := ht2 env store hts hdsep (Memory.is_compatible_union_right hcompat')
     simpa only [Ty.exi_exp_denot] using h
-  -- Separation premise: any `e1`-run and any `e2`-run from `store` have
-  -- non-interfering traces — their footprints are `TraceOk`-bounded by `C1`/`C2`,
-  -- which are non-interfering (`hni`).
-  have hsep_e : ∀ {t1 : Trace} {v1 : Exp {}} {ma : Memory}
-      {t2 : Trace} {v2 : Exp {}} {mb : Memory},
-      BigStep store (e1.subst (Subst.from_TypeEnv env)) t1 v1 ma →
-      BigStep store (e2.subst (Subst.from_TypeEnv env)) t2 v2 mb →
-      Trace.Noninterfere t1 t2 := by
-    intro t1 v1 ma t2 v2 mb hrun1 hrun2
-    exact traceOk_noninterfere (he1.2 _ _ _ hrun1).1 (he2_store.2 _ _ _ hrun2).1 hni
-  refine Eval.eval_par he1 hsep_e ?_
+  -- Robust budget bounds for `Safe.par`: a `BigStep` run of a branch from any
+  -- `m' ⊒ store` replays from `store` with the SAME trace (`simulate_down`), where
+  -- the branch's denotation (`he1`/`he2_store`) bounds it by `C1`/`C2`.
+  have hwf_e1s : Exp.WfInHeap (e1.subst (Subst.from_TypeEnv env)) store.heap :=
+    Exp.wf_subst (Exp.wf_of_closed hclosed_e1) (from_TypeEnv_wf_in_heap hts)
+  have hwf_e2s : Exp.WfInHeap (e2.subst (Subst.from_TypeEnv env)) store.heap :=
+    Exp.wf_subst (Exp.wf_of_closed hclosed_e2) (from_TypeEnv_wf_in_heap hts)
+  have hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+      m'.subsumes store → Exp.WfInHeap (e1.subst (Subst.from_TypeEnv env)) m'.heap →
+      BigStep m' (e1.subst (Subst.from_TypeEnv env)) t v m'' →
+      TraceOk t (C1.denot env store) := by
+    intro m' t v m'' hsub' _ hbs
+    obtain ⟨ms, hbs_s, _, _⟩ := hbs.simulate_down hsub' hwf_e1s
+    exact (he1.2 _ _ _ hbs_s).1
+  have hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+      m'.subsumes store → Exp.WfInHeap (e2.subst (Subst.from_TypeEnv env)) m'.heap →
+      BigStep m' (e2.subst (Subst.from_TypeEnv env)) t v m'' →
+      TraceOk t (C2.denot env store) := by
+    intro m' t v m'' hsub' _ hbs
+    obtain ⟨ms, hbs_s, _, _⟩ := hbs.simulate_down hsub' hwf_e2s
+    exact (he2_store.2 _ _ _ hbs_s).1
+  -- ROBUST RIGHT-BRANCH SAFETY: `e2` is safe from any `m' ⊒ store` in which `C2` is
+  -- compatible — re-run `e2`'s semantic typing at `m'` (`env_typing` lifts
+  -- monotonically; `C2`'s denotation is stable as it is closed).
+  have hrs2 : ∀ {m' : Memory}, m'.subsumes store →
+      m'.is_compatible (C2.denot env store) →
+      Safe m' (e2.subst (Subst.from_TypeEnv env)) := by
+    intro m' hsub' hcompat'
+    have hC2_eq : C2.denot env store = C2.denot env m' :=
+      closed_capture_denot_monotonic _hclosed_C2 hts hsub'
+    have h := ht2 env m' (env_typing_monotonic hts hsub') hdsep (hC2_eq ▸ hcompat')
+    exact (show Eval m' (e2.subst (Subst.from_TypeEnv env)) _ by
+      simpa only [Ty.exi_exp_denot] using h).1
+  -- The store-presence of `C1`'s footprint (mirror of `hpresent_C2`).
+  have hpresent_C1 : ∀ mu l, (C1.denot env store).hasmem mu l → store.heap l ≠ none := by
+    intro mu l hmem
+    simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
+    exact CaptureSet.reachability_dom hmem
+  refine Eval.eval_par he1 hb1 hb2 hrs2 hpresent_C1 hpresent_C2 hni ?_
   -- Given `e1`'s answer at `m1`, run `e2` from `m1`.  `par` returns `.unit`, so
   -- the only separation content needed is framing `C2`'s compatibility across
   -- `e1`'s run (`t1`) so that `e2` may start from `m1` — the left/right branch
@@ -3533,13 +3514,11 @@ theorem sem_typ_letin
   case h_val =>
     intro t1 m1 v hs1 hframe hv hwf_v hQ1 l' hfresh
     -- The continuation `e2` is typed at budget `C2`, so `ht2` demands
-    -- `m1.is_compatible (C2.denot env store)`.  Everything but the frame is proven:
-    -- `C2` is live at `store` (subset of the budget `hcompat`), present in `store`
-    -- (reachability), and never externally-dropped by `t1` (its `TraceOk` against
-    -- `C1` in `Q1`, plus `SeqComp C1 C2`).  `is_compatible_frame` then reduces the
-    -- obligation to the SOLE genuine gap: a frame/liveness guarantee `FrameLive
-    -- store t1 m1` that the trace-based `eval_letin` does not (yet) expose — a
-    -- base-relative fact incompatible with `eval_monotonic` (see memory note).
+    -- `m1.is_compatible (C2.denot env store)`.  `C2` is live at `store` (subset of
+    -- the budget `hcompat`), present in `store` (reachability), and never
+    -- externally-dropped by `t1` (its `TraceOk` against `C1` in `Q1`, plus
+    -- `SeqComp C1 C2`); `is_compatible_frame` lifts compatibility across `t1` via the
+    -- operational frame `hframe`.
     have hcompat_C2 : store.is_compatible (C2.denot env store) :=
       Memory.is_compatible_subset hsubC2 hcompat
     have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
@@ -4972,9 +4951,9 @@ theorem sem_typ_unpack
       refine ⟨?_, (Denot.equiv_to_imply heqv_composed).2 _ _ hpost.2.1, ?_, hpost.2.2.2⟩
       · -- `TraceOk (t1 ++ t2) R`, R = `(C1 ∪ C2).denot`.  Assembled by `append_seq`:
         -- `t1` is OK against R; `t2` is OK against R with `t1`'s allocations exempt.
-        -- The witness ACCESS-COVERAGE (the former gap) now CLOSES: the strengthened
-        -- pack budget `C ∪ C.applyAccess .drop` makes `pack_bound` supply
-        -- `C1.covers mu l` (the witness's natural access mode), not just `.drop`.
+        -- Witness access-coverage: the pack budget `C ∪ C.applyAccess .drop` makes
+        -- `pack_bound` supply `C1.covers mu l` (the witness's natural access mode),
+        -- not just `.drop`.
         refine TraceOkFrom.append_seq
           (TraceOkFrom.mono CapabilitySet.Subset.union_right_left hQ1.1) ?_
         rw [List.append_nil]
@@ -5022,7 +5001,7 @@ theorem sem_typ_unpack
         -- either lift means the cell is fresh, otherwise both are covered.
         intro cs0 x0 heq mu l hmem
         rcases hpost.2.2.1 cs0 x0 heq mu l hmem with ⟨hcov_body, hdrop_body⟩ | hr
-        · -- Drop lift (the old argument, now reading `hd.2` from the witness bound).
+        · -- Drop lift: read `hd.2` from the witness bound.
           have hdrop_result :
               (CaptureSet.denot env (C1 ∪ C2) store).hasmem .drop l
                 ∨ store.lookup l = none := by
@@ -5453,6 +5432,8 @@ theorem fundamental
       exact sem_typ_par hΓ
         (HasType.use_set_is_closed ht1_syn)
         (HasType.use_set_is_closed ht2_syn)
+        hclosed_e1
+        hclosed_e2
         (ht1_ih hΓ hclosed_e1)
         (ht2_ih hΓ hclosed_e2)
         (fundamental_sepcheck hsep_syn)

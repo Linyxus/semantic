@@ -80,6 +80,14 @@ def Memory.platform_of (N : Nat) : Memory where
   wf := Heap.platform_of_wf N
   findom := ⟨Finset.range N, Heap.platform_of_has_fin_dom N⟩
 
+/-- Every cell of the platform memory is live (they all start `.live`). -/
+theorem platform_allLive (N : Nat) : (Memory.platform_of N).AllLive := by
+  intro l b ℓ hlk
+  simp only [Memory.platform_of, Heap.platform_of] at hlk
+  split at hlk
+  · injection hlk with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
+  · cases hlk
+
 /-- Platform memory M subsumes platform memory N when M ≥ N. -/
 theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   (Memory.platform_of M).subsumes (Memory.platform_of N) := by
@@ -192,29 +200,42 @@ theorem env_typing_of_platform {N : Nat} :
 
 /-- An expression `e` is safe with a platform environment of `N` mutable cells
     iff for any reduction state reachable from `e` on the platform, it is
-    progressive (an answer, or able to take another step). -/
+    progressive (an answer, or able to take another step).
+
+    The `(∀ l, dealloc l ∉ t)` side-condition (the reduction performs no
+    deallocation) is the condition under which the current `par`-safety preservation
+    frames the frozen branch of a `par` across the other branch's step
+    (`step_preserves_live`).  Removing it requires separation-based framing: the
+    stepping branch never drops the *frozen* branch's cells (`Safe.par`'s `hni`). -/
 def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) : Prop :=
   ∀ t M1 e1,
     Reduce t (Memory.platform_of N) e M1 e1 ->
+    (∀ l, TraceItem.dealloc l ∉ t) ->
     IsProgressive M1 e1
 
 /-- **Adequacy of semantic typing on platform contexts.**  A semantically
     well-typed, closed program is safe with the platform: every reachable state
-    is progressive.  The capability index is gone — the trace-indexed reduction
-    needs no ambient budget, and the platform memory is compatible with any
-    budget and separation-well-formed, so the two extra `SemanticTyping`
-    obligations discharge trivially. -/
+    is progressive.  The platform memory is compatible with any budget and is
+    separation-well-formed, so the two extra `SemanticTyping` obligations discharge
+    trivially. -/
 theorem adequacy_platform {e : Exp (Sig.platform_of N)}
-  (ht : SemanticTyping C (Ctx.platform_of N) e E) :
+  (ht : SemanticTyping C (Ctx.platform_of N) e E)
+  (hwfe : Exp.WfInHeap e (Heap.platform_of N)) :
   (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform N := by
   unfold Exp.SafeWithPlatform
-  intro t M1 e1 hred
+  intro t M1 e1 hred hdf
   -- Apply semantic typing with the platform environment.
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N)
     env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
   -- The denotation is an `Eval`; preserve it under reduction, then conclude progress.
   unfold Ty.exi_exp_denot at hdenot
-  exact eval_implies_progressive (reduce_preserves_eval hdenot hred)
+  -- The substituted program is well-formed in the platform heap, and all platform
+  -- cells are live (`platform_allLive`); the reduction is dealloc-free by `hdf`.
+  have hwf : Exp.WfInHeap (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N)))
+      (Memory.platform_of N).heap :=
+    Exp.wf_subst hwfe (from_TypeEnv_wf_in_heap env_typing_of_platform)
+  exact eval_implies_progressive
+    (reduce_preserves_eval hdenot hwf hdf (platform_allLive N) hred)
 
 /-! ## Immutability
 
@@ -334,30 +355,34 @@ theorem traceok_no_dealloc {C : CapabilitySet} {l : Nat}
 
     Both premises are essential.  `ro` rules out writes; drop-freeness rules out
     deallocations (which `ro` would otherwise permit, and which mutate liveness).
-    Unlike the old capability-indexed reduction — which carried the budget and so
-    self-bounded its trace — the trace-indexed reduction needs the semantic
-    typing to relate the run's trace to the budget. -/
+    The semantic typing is what relates the run's trace to the budget. -/
 theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     {C : CaptureSet (Sig.platform_of N)} {E : Ty .exi (Sig.platform_of N)}
     (ht : SemanticTyping C (Ctx.platform_of N) e E)
+    (hwfe : Exp.WfInHeap e (Heap.platform_of N))
     (hkind : HasKind (Ctx.platform_of N) C .ro)
     (hdf : (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)).drop_free) :
     ∀ t M1 e1,
       Reduce t (Memory.platform_of N)
         (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
+      (∀ l, TraceItem.dealloc l ∉ t) ->
       (Memory.platform_of N).not_mutated M1 := by
-  intro t M1 e1 hred
+  intro t M1 e1 hred hdf_red
   -- The budget `R := C.denot ρ m`.
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N)
     env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
   unfold Ty.exi_exp_denot at hdenot
+  have hwf : Exp.WfInHeap (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N)))
+      (Memory.platform_of N).heap :=
+    Exp.wf_subst hwfe (from_TypeEnv_wf_in_heap env_typing_of_platform)
   -- The budget is read-only.
   have hro : CapabilitySet.HasKind
       (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)) .ro :=
     fundamental_haskind hkind (TypeEnv.platform_of N) (Memory.platform_of N)
       env_typing_of_platform
   -- Extend the partial reduction to a full run, obtaining a `TraceOk` trace.
-  obtain ⟨trest, M2, a, hred2, hans⟩ := (reduce_preserves_safe hred hdenot.1).has_reduction
+  obtain ⟨trest, M2, a, hred2, hans⟩ :=
+    (reduce_preserves_safe hred hwf hdf_red (platform_allLive N) hdenot.1).has_reduction
   have hbig := reduce_to_bigstep (reduce_trans hred hred2) hans
   have htok : TraceOk (t ++ trest)
       (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)) := (hdenot.2 _ _ _ hbig).1
