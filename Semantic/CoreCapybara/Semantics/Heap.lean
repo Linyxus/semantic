@@ -1557,9 +1557,11 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap e3 H ->
   Exp.WfInHeap (.cond x e2 e3) H
 | wf_par :
+  CaptureSet.WfInHeap C1 H ->
+  CaptureSet.WfInHeap C2 H ->
   Exp.WfInHeap e1 H ->
   Exp.WfInHeap e2 H ->
-  Exp.WfInHeap (.par e1 e2) H
+  Exp.WfInHeap (.par C1 C2 e1 e2) H
 
 -- Closedness implies well-formedness in any heap
 
@@ -1654,7 +1656,8 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
     exact Exp.WfInHeap.wf_write (Var.wf_of_closed hx) (Var.wf_of_closed hy)
   | letin _ _ ih1 ih2 => exact Exp.WfInHeap.wf_letin ih1 ih2
   | unpack _ _ ih1 ih2 => exact Exp.WfInHeap.wf_unpack ih1 ih2
-  | par _ _ ih1 ih2 => exact Exp.WfInHeap.wf_par ih1 ih2
+  | par hc1 hc2 _ _ ih1 ih2 =>
+    exact Exp.WfInHeap.wf_par (CaptureSet.wf_of_closed hc1) (CaptureSet.wf_of_closed hc2) ih1 ih2
   | cond hx _ _ ih2 ih3 =>
     exact Exp.WfInHeap.wf_cond (Var.wf_of_closed hx) ih2 ih3
 
@@ -1774,7 +1777,9 @@ theorem Exp.wf_monotonic
     exact Exp.WfInHeap.wf_write (Var.wf_monotonic hsub hwf_x) (Var.wf_monotonic hsub hwf_y)
   | wf_letin _ _ ih1 ih2 => exact Exp.WfInHeap.wf_letin (ih1 hsub) (ih2 hsub)
   | wf_unpack _ _ ih1 ih2 => exact Exp.WfInHeap.wf_unpack (ih1 hsub) (ih2 hsub)
-  | wf_par _ _ ih1 ih2 => exact Exp.WfInHeap.wf_par (ih1 hsub) (ih2 hsub)
+  | wf_par hwf_C1 hwf_C2 _ _ ih1 ih2 =>
+    exact Exp.WfInHeap.wf_par (CaptureSet.wf_monotonic hsub hwf_C1)
+      (CaptureSet.wf_monotonic hsub hwf_C2) (ih1 hsub) (ih2 hsub)
   | wf_cond hwf_x _ _ ih2 ih3 =>
     exact Exp.WfInHeap.wf_cond (Var.wf_monotonic hsub hwf_x) (ih2 hsub) (ih3 hsub)
 
@@ -1800,11 +1805,11 @@ theorem Exp.wf_inv_unpack
 
 /-- Inversion for parallel composition: if `par e1 e2` is well-formed, so are both. -/
 theorem Exp.wf_inv_par
-  {e1 e2 : Exp s} {H : Heap}
-  (hwf : Exp.WfInHeap (.par e1 e2) H) :
+  {C1 C2 : CaptureSet s} {e1 e2 : Exp s} {H : Heap}
+  (hwf : Exp.WfInHeap (.par C1 C2 e1 e2) H) :
   Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H := by
   cases hwf with
-  | wf_par hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
+  | wf_par _ _ hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
 
 /-- Inversion for conditionals. -/
 theorem Exp.wf_inv_cond
@@ -1960,7 +1965,9 @@ theorem Exp.wf_dom_subsumes {h1 h2 : Heap}
     exact .wf_write (Var.wf_dom_subsumes hsub hwf_x) (Var.wf_dom_subsumes hsub hwf_y)
   | wf_cond hwf_x _ _ ih2 ih3 =>
     exact .wf_cond (Var.wf_dom_subsumes hsub hwf_x) (ih2 hsub) (ih3 hsub)
-  | wf_par _ _ ih1 ih2 => exact .wf_par (ih1 hsub) (ih2 hsub)
+  | wf_par hwf_C1 hwf_C2 _ _ ih1 ih2 =>
+    exact .wf_par (CaptureSet.wf_dom_subsumes hsub hwf_C1)
+      (CaptureSet.wf_dom_subsumes hsub hwf_C2) (ih1 hsub) (ih2 hsub)
 
 /-- Lookup the reachability set of a location. -/
 def reachability_of_loc
@@ -2196,7 +2203,7 @@ theorem resolve_reachability_monotonic
   | wf_read _ => rfl
   | wf_write _ _ => rfl
   | wf_cond _ _ _ => rfl
-  | wf_par _ _ => rfl
+  | wf_par _ _ _ _ => rfl
 
 /-- Computing reachability of a value in a bigger heap yields the same result.
 Proof by cases on hv, using expand_captures_monotonic. -/
@@ -2725,8 +2732,9 @@ theorem Exp.wf_rename
   | wf_cond hwf_x _ _ ih2 ih3 =>
     simpa only [Exp.rename] using
       (Exp.WfInHeap.wf_cond (Var.wf_rename hwf_x) ih2 ih3)
-  | wf_par _ _ ih1 ih2 =>
-    simpa only [Exp.rename] using (Exp.WfInHeap.wf_par ih1 ih2)
+  | wf_par hwf_C1 hwf_C2 _ _ ih1 ih2 =>
+    simpa only [Exp.rename] using
+      (Exp.WfInHeap.wf_par (CaptureSet.wf_rename hwf_C1) (CaptureSet.wf_rename hwf_C2) ih1 ih2)
 
 -- Substitution well-formedness preservation
 
@@ -3025,8 +3033,10 @@ theorem Exp.wf_subst
   | wf_cond hwf_x hwf2 hwf3 ih2 ih3 =>
     simpa only [Exp.subst] using
       (Exp.WfInHeap.wf_cond (Var.wf_subst hwf_x hwf_σ) (ih2 hwf_σ) (ih3 hwf_σ))
-  | wf_par _ _ ih1 ih2 =>
-    simpa only [Exp.subst] using (Exp.WfInHeap.wf_par (ih1 hwf_σ) (ih2 hwf_σ))
+  | wf_par hwf_C1 hwf_C2 _ _ ih1 ih2 =>
+    simpa only [Exp.subst] using
+      (Exp.WfInHeap.wf_par (CaptureSet.wf_subst hwf_C1 hwf_σ) (CaptureSet.wf_subst hwf_C2 hwf_σ)
+        (ih1 hwf_σ) (ih2 hwf_σ))
 
 -- Well-formedness of opening substitutions
 

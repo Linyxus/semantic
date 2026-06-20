@@ -71,13 +71,13 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 -- `Fundamental.sem_typ_par`.
 | step_par_left :
   Step t m e1 m' e1' ->
-  Step t m (.par e1 e2) m' (.par e1' e2)
+  Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1' e2)
 | step_par_right :
   Step t m e2 m' e2' ->
-  Step t m (.par e1 e2) m' (.par e1 e2')
+  Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1 e2')
 | step_par_join :
   e1.IsAns -> e2.IsAns ->
-  Step [] m (.par e1 e2) m .unit
+  Step [] m (.par C1 C2 e1 e2) m .unit
 | step_rename :
   Step [] m (.letin (.var (.free y)) e) m (e.subst (Subst.openVar (.free y)))
 -- Lifting a value to the heap is not a capability event, so it emits no trace.
@@ -178,16 +178,16 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
   SeqStep t m (.unpack e1 e2) m' (.unpack e1' e2)
 | step_par_left :
   SeqStep t m e1 m' e1' ->
-  SeqStep t m (.par e1 e2) m' (.par e1' e2)
+  SeqStep t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1' e2)
 -- The RIGHT branch steps only once the LEFT branch is an answer: this is the single
 -- difference from `Step`, sequentializing the `par` schedule.
 | step_par_right :
   e1.IsAns ->
   SeqStep t m e2 m' e2' ->
-  SeqStep t m (.par e1 e2) m' (.par e1 e2')
+  SeqStep t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1 e2')
 | step_par_join :
   e1.IsAns -> e2.IsAns ->
-  SeqStep [] m (.par e1 e2) m .unit
+  SeqStep [] m (.par C1 C2 e1 e2) m .unit
 | step_rename :
   SeqStep [] m (.letin (.var (.free y)) e) m (e.subst (Subst.openVar (.free y)))
 | step_lift :

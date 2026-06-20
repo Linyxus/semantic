@@ -169,7 +169,7 @@ inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
 | bs_par {m m1 m2 : Memory} {v1 v2 : Exp {}} :
   BigStep m e1 t1 v1 m1 ->
   BigStep m1 e2 t2 v2 m2 ->
-  BigStep m (.par e1 e2) (t1 ++ t2) .unit m2
+  BigStep m (.par C1 C2 e1 e2) (t1 ++ t2) .unit m2
 
 /-- Locations `t` ACCESSES or DEALLOCATES (i.e. that appear as a non-`alloc`
   trace event).  Every such location is a capability cell at the time of the
@@ -319,7 +319,7 @@ inductive Safe : Memory -> Exp {} -> Prop where
   -- bounds this yields trace non-interference for any pair of branch runs
   -- (`traceOk_noninterfere`).
   (hni : CapabilitySet.Noninterference C1 C2) ->
-  Safe m (.par e1 e2)
+  Safe m (.par Cs1 Cs2 e1 e2)
 
 /-- Trace-observing evaluation predicate: `e` from `m` is **safe** (never stuck —
   `Safe m e`) **and** every answer it reaches satisfies `Q`. -/
@@ -1283,7 +1283,7 @@ theorem BigStep.simulate_down {m2 : Memory} {e : Exp {}} {t : Trace} {v : Exp {}
   | bs_par hbs1 hbs2 ih1 ih2 =>
     intro m1 hsub hwf
     cases hwf with
-    | wf_par hwf_e1 hwf_e2 =>
+    | wf_par _ _ hwf_e1 hwf_e2 =>
       obtain ⟨m1_1, hbs1', hsub1', hlive1⟩ := ih1 hsub hwf_e1
       obtain ⟨m1', hbs2', hsub2', hlive2⟩ :=
         ih2 hsub1' (Exp.wf_monotonic (BigStep.subsumes hbs1') hwf_e2)
@@ -1767,7 +1767,7 @@ theorem BigStep.frame_off {ma mb : Memory} {e : Exp {}} {t v ma' : _} {c : Nat}
     obtain ⟨cib, hcib⟩ := hcb
     rw [Trace.touched_append, not_or] at hnt
     match hwf with
-    | .wf_par hwf_e1 hwf_e2 =>
+    | .wf_par _ _ hwf_e1 hwf_e2 =>
       obtain ⟨mb1, run1, ag1, cpres1⟩ := ih1 ⟨ci, hci⟩ ⟨cib, hcib⟩ hag hnt.1 hwf_e1
       have hc1 := BigStep.untouched_preserved hbs1 (by rw [hci]; simp) hnt.1
       obtain ⟨mb2, run2, ag2, cpres2⟩ :=
@@ -2041,7 +2041,7 @@ theorem BigStep.frame_off_absent {ma mb : Memory} {e : Exp {}} {t v ma' : _} {c 
       exact ⟨mb', BigStep.bs_cond_false hresb hbsb, hag', hcpres, hnt'⟩
   | bs_par hbs1 hbs2 ih1 ih2 =>
     match hwf with
-    | .wf_par hwf_e1 hwf_e2 =>
+    | .wf_par _ _ hwf_e1 hwf_e2 =>
       obtain ⟨mb1, run1, ag1, cpres1, hnt1⟩ := ih1 hc hcb hag hwf_e1
       have hc1 : _ ≠ none :=
         fun h => hc ((BigStep.untouched_preserved hbs1 hc hnt1).symm.trans h)
@@ -3213,14 +3213,14 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
           (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_false hb1 hbs)) hok hwf3
   | par hs1 h2 hb1 hb2 hrs2 hpres1 hpres2 hni ih1 ih2 _hrs2ih =>
     clear m1
-    rename_i e1 e2 m1 C1 C2
+    rename_i e1 e2 Cs1 Cs2 m1 _ _
     cases hwf with
-    | wf_par hwf_e1 hwf_e2 =>
+    | wf_par _ _ hwf_e1 hwf_e2 =>
       have hok_e1 : ∀ t v m, m.subsumes m1 -> BigStep m1 e1 t v m ->
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs1
         obtain ⟨t2, v2, mf, hbs2⟩ := (h2 hbs1).has_answer
-        have hfull := BigStep.bs_par hbs1 hbs2
+        have hfull := BigStep.bs_par (C1 := Cs1) (C2 := Cs2) hbs1 hbs2
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
@@ -3237,7 +3237,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
           · obtain ⟨b1, hm1_live⟩ := Memory.mcell_lookup_down hbs_m1.subsumes hm1 hlk_l
             have htouchF : Trace.extTouches (t1 ++ t2) l :=
               Trace.extTouchesFrom_append_right hal (by simp) htouch
-            have hfull := BigStep.bs_par hbs_m1 hbs_cont
+            have hfull := BigStep.bs_par (C1 := Cs1) (C2 := Cs2) hbs_m1 hbs_cont
             obtain ⟨b2, hm2_live⟩ :=
               hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
             exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
@@ -3706,7 +3706,7 @@ theorem Eval.eval_cond {m : Memory} {x : Var .var {}} {e2 e3 : Exp {}} {Q : Tpos
   sequential `bs_par` realization (`e1` to an answer, then `e2` from that
   answer-memory via `h2`); the result is always `.unit`. -/
 theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
-    {C1 C2 : CapabilitySet}
+    {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}}
     (he1 : Eval m e1 Q1)
     (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
       m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' -> TraceOk t C1)
@@ -3719,7 +3719,7 @@ theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1 : Memory},
       m1.subsumes m -> Memory.FrameLive m t1 m1 -> Q1 t1 v1 m1 ->
       Eval m1 e2 (fun t2 _v2 m2 => Q (t1 ++ t2) .unit m2)) :
-    Eval m (.par e1 e2) Q := by
+    Eval m (.par Cs1 Cs2 e1 e2) Q := by
   refine ⟨Safe.par he1.1 ?_ hb1 hb2 hrs2 hpres1 hpres2 hni, ?_⟩
   · intro t1 v1 m1 hrun
     exact (h2 hrun.subsumes hrun.frameLive (he1.2 t1 v1 m1 hrun)).1
