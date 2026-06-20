@@ -3251,11 +3251,12 @@ theorem sem_typ_par
   (ht1 : SemanticTyping C1 Γ e1 E1)
   (ht2 : SemanticTyping C2 Γ e2 E2)
   (hsep : SemSepCheck Γ C1 C2) :
-  SemanticTyping (C1 ∪ C2) Γ (.par e1 e2) (.typ .unit) := by
+  SemanticTyping (C1 ∪ C2) Γ (.par C1 C2 e1 e2) (.typ .unit) := by
   intro env store hts hdsep hcompat
   suffices hpar :
       Eval store
-        (.par (e1.subst (Subst.from_TypeEnv env)) (e2.subst (Subst.from_TypeEnv env)))
+        (.par (C1.subst (Subst.from_TypeEnv env)) (C2.subst (Subst.from_TypeEnv env))
+          (e1.subst (Subst.from_TypeEnv env)) (e2.subst (Subst.from_TypeEnv env)))
         (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
           Ty.exi_val_denot env (.typ .unit) m' v ∧
           pack_bound (CaptureSet.denot env (C1 ∪ C2) store) store v m' ∧
@@ -3321,12 +3322,30 @@ theorem sem_typ_par
     have h := ht2 env m' (env_typing_monotonic hts hsub') hdsep (hC2_eq ▸ hcompat')
     exact (show Eval m' (e2.subst (Subst.from_TypeEnv env)) _ by
       simpa only [Ty.exi_exp_denot] using h).1
-  -- The store-presence of `C1`'s footprint (mirror of `hpresent_C2`).
-  have hpresent_C1 : ∀ mu l, (C1.denot env store).hasmem mu l → store.heap l ≠ none := by
-    intro mu l hmem
-    simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
-    exact CaptureSet.reachability_dom hmem
-  refine Eval.eval_par he1 hb1 hb2 hrs2 hpresent_C1 hpresent_C2 hni ?_
+  -- ROBUST LEFT-BRANCH SAFETY (mirror of `hrs2`): `e1` is safe from any `m' ⊒ store`
+  -- in which `C1` is compatible.
+  have hrs1 : ∀ {m' : Memory}, m'.subsumes store →
+      m'.is_compatible (C1.denot env store) →
+      Safe m' (e1.subst (Subst.from_TypeEnv env)) := by
+    intro m' hsub' hcompat'
+    have hC1_eq : C1.denot env store = C1.denot env m' :=
+      closed_capture_denot_monotonic _hclosed_C1 hts hsub'
+    have h := ht1 env m' (env_typing_monotonic hts hsub') hdsep (hC1_eq ▸ hcompat')
+    exact (show Eval m' (e1.subst (Subst.from_TypeEnv env)) _ by
+      simpa only [Ty.exi_exp_denot] using h).1
+  -- Bridge the denotational budgets to the operational reachability budgets that
+  -- `eval_par` expects (they are pointwise equal on ground capture sets).
+  have hrC1 : C1.denot env store = (C1.subst (Subst.from_TypeEnv env)).reachability store :=
+    CaptureSet.ground_denot_eq_reachability _ _
+  have hrC2 : C2.denot env store = (C2.subst (Subst.from_TypeEnv env)).reachability store :=
+    CaptureSet.ground_denot_eq_reachability _ _
+  rw [hrC1] at hb1 hrs1
+  rw [hrC2] at hb2 hrs2
+  have hni' : CapabilitySet.Noninterference
+      ((C1.subst (Subst.from_TypeEnv env)).reachability store)
+      ((C2.subst (Subst.from_TypeEnv env)).reachability store) := by
+    rw [← hrC1, ← hrC2]; exact hni
+  refine Eval.eval_par he1 hb1 hb2 hrs1 hrs2 hni' ?_
   -- Given `e1`'s answer at `m1`, run `e2` from `m1`.  `par` returns `.unit`, so
   -- the only separation content needed is framing `C2`'s compatibility across
   -- `e1`'s run (`t1`) so that `e2` may start from `m1` — the left/right branch
@@ -5428,10 +5447,10 @@ theorem fundamental
         (hy_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
   case par ht1_syn ht2_syn hsep_syn ht1_ih ht2_ih =>
     cases hclosed_e with
-    | par hclosed_e1 hclosed_e2 =>
+    | par hclosed_C1 hclosed_C2 hclosed_e1 hclosed_e2 =>
       exact sem_typ_par hΓ
-        (HasType.use_set_is_closed ht1_syn)
-        (HasType.use_set_is_closed ht2_syn)
+        hclosed_C1
+        hclosed_C2
         hclosed_e1
         hclosed_e2
         (ht1_ih hΓ hclosed_e1)

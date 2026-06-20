@@ -348,6 +348,11 @@ theorem HasType.exp_is_closed
       · exact hx_closed
       · exact ih2
       · exact ih3
+  case par ht1 ht2 _ ih1 ih2 =>
+    -- The capture annotations `C1`/`C2` are closed because they are the use-sets of
+    -- the (well-typed) branches.
+    exact Exp.IsClosed.par (HasType.use_set_is_closed ht1)
+      (HasType.use_set_is_closed ht2) ih1 ih2
   case abs T1 ih =>
     rename_i T1_closed
     constructor
