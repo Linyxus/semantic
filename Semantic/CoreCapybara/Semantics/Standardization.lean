@@ -290,6 +290,39 @@ theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory}
       exact traceOk_noninterfere (hb1 hsub1 hwf1 hr1) (hb2 hsub2 hwf2 hr2) hni
   | ans hans => cases hans with | is_val hv => cases hv
 
+/-- **`SeqReduce ⊆ Reduce` (the guard-discharge direction).**  A sequential reduction of
+  a `Safe` configuration lifts to a genuine-interleaving `Reduce`.  Now that `Step`'s
+  `par` rules carry guards — each branch step's budget bound `TraceOk t (Cs.reachability m)`
+  and the two branches' budget non-interference `Noninterference (Cs1.reachability m)
+  (Cs2.reachability m)` — this inclusion is no longer the trivial fold it was for the
+  unguarded relations: every `par`-step must DISCHARGE its guards.
+
+  Premises (for audit):
+  * `hsafe : Safe m e` — the essential one.  At each `par` node the `Safe.par` carrier
+    supplies the non-interference (`hni`) and the per-branch budget bounds (`hb1`/`hb2`)
+    that the `Step` guards demand.
+  * `hwf : Exp.WfInHeap e m.heap` — feeds the step machinery (`simulate_down`, etc.).
+  * `hdf`/`hal` (drop-free + `AllLive`) — let `Safe` be THREADED across the reduction
+    (`step_preserves_safe`), so the carrier — hence the guards — is available at every
+    intermediate `par` node, not just at `m`.
+
+  KNOWN TENSION (the crux for the proof, flagged for audit): the guard budget is the
+  FIXED `Cs.reachability m`, whereas the carrier bounds a branch's runs by its GROWABLE
+  budget `C ⊇ Cs.reachability m` (grown by `capsOf` to absorb the branch's own fresh
+  allocations).  A per-`par`-step that touches a self-allocated cell is bounded by the
+  grown budget but NOT by `Cs.reachability m`, so its guard `TraceOk t (Cs.reachability m)`
+  need not hold.  Whether this direction is provable as stated — or needs the `Step`
+  guard to use a growable / allocation-exempt budget instead of the fixed reachability —
+  is exactly what this statement is meant to expose. -/
+theorem SeqReduce.toReduce {t : Trace} {m m' : Memory} {e e' : Exp {}}
+    (hwf : Exp.WfInHeap e m.heap)
+    (hdf : ∀ l, TraceItem.dealloc l ∉ t)
+    (hal : m.AllLive)
+    (hsafe : Safe m e)
+    (hred : SeqReduce t m e m' e') :
+    Reduce t m e m' e' :=
+  sorry
+
 theorem standardization {m mf : Memory} {e a : Exp {}} {t : Trace}
     (hwf : Exp.WfInHeap e m.heap) (hsafe : Safe m e)
     (hred : Reduce t m e mf a) (hans : a.IsAns) :
