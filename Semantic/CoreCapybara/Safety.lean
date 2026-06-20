@@ -401,7 +401,7 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     traceok_no_write (haskind_ro_not_covers_eps hro l) htok (by simp) hl_alloc
   have hdr : TraceItem.dealloc l ∉ (t ++ trest) :=
     traceok_no_dealloc (dropfree_not_covers_drop hdf l) htok (by simp) hl_alloc
-  exact reduce_preserves_cell hred.toReduce
+  exact reduce_preserves_cell hred
     (fun hm => hwr (List.mem_append_left _ hm))
     (fun hm => hdr (List.mem_append_left _ hm)) hinit
 

@@ -297,31 +297,33 @@ inductive Safe : Memory -> Exp {} -> Prop where
   (resolve m.heap (.var x) = some .btrue -> Safe m e2) ->
   (resolve m.heap (.var x) = some .bfalse -> Safe m e3) ->
   Safe m (.cond x e2 e3)
-| par {m : Memory} {Cs1 Cs2 : CaptureSet {}} :
+| par {m : Memory} {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}} :
   -- Left branch safe at the current memory.
   Safe m e1 ->
   -- Sequential continuation: after `e1` runs to an answer, `e2` is safe at the
   -- result memory.
   (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1}, BigStep m e1 t1 v1 m1 -> Safe m1 e2) ->
   -- Robust budget bounds: every run of a branch from ANY memory `m' ⊒ m` has its
-  -- trace bounded by that branch's static budget — the reachability of its capture
-  -- annotation at `m` (subsumption-invariant, so the bound at `m'` agrees).
+  -- trace bounded by that branch's budget `Cᵢ`.  The budget is GROWABLE (not pinned
+  -- to `Csᵢ.reachability m`): a branch's own fresh allocations must be absorbed into
+  -- the reduct's budget by `step_preserves_safe` (via `capsOf`), so `Cᵢ` is left
+  -- abstract here and instantiated to `Csᵢ.reachability m` by `sem_typ_par`.
   (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-    m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' ->
-    TraceOk t (Cs1.reachability m)) ->
+    m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' -> TraceOk t C1) ->
   (hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-    m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' ->
-    TraceOk t (Cs2.reachability m)) ->
+    m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' -> TraceOk t C2) ->
   -- Robust branch safety: each branch is safe from any `m' ⊒ m` whose memory is
   -- compatible with that branch's budget.  Memory-monotone, so `Safe.lift` preserves it.
-  (hrs1 : ∀ {m' : Memory},
-    m'.subsumes m -> m'.is_compatible (Cs1.reachability m) -> Safe m' e1) ->
-  (hrs2 : ∀ {m' : Memory},
-    m'.subsumes m -> m'.is_compatible (Cs2.reachability m) -> Safe m' e2) ->
+  (hrs1 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C1 -> Safe m' e1) ->
+  (hrs2 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C2 -> Safe m' e2) ->
+  -- Budget presence: each branch's budget references only cells present in `m`, so a
+  -- step's fresh allocation is distinct from every budget cell.
+  (hpres1 : ∀ mu l, C1.hasmem mu l -> m.heap l ≠ none) ->
+  (hpres2 : ∀ mu l, C2.hasmem mu l -> m.heap l ≠ none) ->
   -- The two budgets are non-interfering (the type system's `SepCheck`): with the
   -- bounds this yields trace non-interference for any pair of branch runs
   -- (`traceOk_noninterfere`).
-  (hni : CapabilitySet.Noninterference (Cs1.reachability m) (Cs2.reachability m)) ->
+  (hni : CapabilitySet.Noninterference C1 C2) ->
   Safe m (.par Cs1 Cs2 e1 e2)
 
 /-- Trace-observing evaluation predicate: `e` from `m` is **safe** (never stuck —
@@ -518,7 +520,7 @@ theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
     | inr hbfalse =>
       obtain ⟨t, v, m', hbs⟩ := ih_false hbfalse
       exact ⟨_, _, _, BigStep.bs_cond_false hbfalse hbs⟩
-  | par _ _ _ _ _ _ _ ih1 ih2 _ _ =>
+  | par _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
     obtain ⟨t1, v1, m1, hbs1⟩ := ih1
     obtain ⟨t2, v2, m2, hbs2⟩ := ih2 hbs1
     exact ⟨_, _, _, BigStep.bs_par hbs1 hbs2⟩
@@ -3072,7 +3074,7 @@ theorem step_touched_present {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
 /-- A cell a step ALLOCATES is fresh in the pre-step memory (only `step_alloc`
   allocates, requiring `m1.heap l = none`). -/
 theorem step_allocd_fresh {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
-    (hstep : Step t m1 e1 m2 e2) (hal : Trace.allocd t l) : m1.heap l = none := by
+    (hstep : SeqStep t m1 e1 m2 e2) (hal : Trace.allocd t l) : m1.heap l = none := by
   induction hstep with
   | step_apply | step_invoke _ _ | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
@@ -3081,12 +3083,12 @@ theorem step_allocd_fresh {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
     simp only [Trace.allocd] at hal
   | step_alloc _ hfresh =>
     simp only [Trace.allocd, or_false] at hal; subst hal; exact hfresh
-  | step_ctx_letin _ ih | step_ctx_unpack _ ih
-  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih | step_par_left _ ih => exact ih hal
+  | step_par_right _ _ ih => exact ih hal
 
 /-- A cell a step ALLOCATES is present in the post-step memory. -/
 theorem step_allocd_present {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
-    (hstep : Step t m1 e1 m2 e2) (hal : Trace.allocd t l) : m2.heap l ≠ none := by
+    (hstep : SeqStep t m1 e1 m2 e2) (hal : Trace.allocd t l) : m2.heap l ≠ none := by
   induction hstep with
   | step_apply | step_invoke _ _ | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
@@ -3096,8 +3098,8 @@ theorem step_allocd_present {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
   | step_alloc _ hfresh =>
     simp only [Trace.allocd, or_false] at hal; subst hal
     simp [Memory.extend_mcell, Heap.extend_mcell]
-  | step_ctx_letin _ ih | step_ctx_unpack _ ih
-  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih | step_par_left _ ih => exact ih hal
+  | step_par_right _ _ ih => exact ih hal
 
 /-- **A step's trace is `TraceOk`-bounded by the stepping expression's budget.**
   Given a full run `hrun` of `e` whose trace `τ` (bounded by `C`) is a permutation
@@ -3227,17 +3229,13 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
       | inr hb1 =>
         exact ih_false hb1 hsub
           (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_false hb1 hbs)) hok hwf3
-  | par hs1 h2 hb1 hb2 hrs1 hrs2 hni ih1 ih2 _ih_hrs1 _ih_hrs2 =>
+  | par hs1 h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hni ih1 ih2 _ih_hrs1 _ih_hrs2 =>
     clear m1
-    rename_i e1 e2 m1 Cs1 Cs2
+    rename_i e1 e2 m1 _ _ Cs1 Cs2
     cases hwf with
-    | wf_par hwf_Cs1 hwf_Cs2 hwf_e1 hwf_e2 =>
-      -- Reachability is subsumption-invariant, so the lifted node's budgets (at `m2`)
-      -- coincide with the original node's (at `m1`).  This bridges every budget field.
-      have hr1 : Cs1.reachability m2 = Cs1.reachability m1 :=
-        CaptureSet.reachability_monotonic hsub Cs1 hwf_Cs1
-      have hr2 : Cs2.reachability m2 = Cs2.reachability m1 :=
-        CaptureSet.reachability_monotonic hsub Cs2 hwf_Cs2
+    | wf_par _ _ hwf_e1 hwf_e2 =>
+      -- Budgets are ABSTRACT (`C1`/`C2`) and unchanged by lifting; bounds/safety/NI
+      -- transport by `subsumes_trans`, presence by `none_of_subsumes_none`.
       have hok_e1 : ∀ t v m, m.subsumes m1 -> BigStep m1 e1 t v m ->
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs1
@@ -3246,7 +3244,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
-        ?_ ?_ ?_ ?_ ?_ ?_
+        ?_ ?_ ?_ ?_ ?_ ?_ ?_ hni
       · intro t1 v1 m1' hbs_m2
         obtain ⟨m_sim, hbs_m1, hsub_sim, hlive⟩ := hbs_m2.simulate_down hsub hwf_e1
         refine ih2 hbs_m1 hsub_sim (fun _ _ _ h => h) ?_
@@ -3263,25 +3261,22 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
             obtain ⟨b2, hm2_live⟩ :=
               hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
             exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
-      · -- Lifted bound `hb1`: a bound over `m' ⊒ m1` is, a fortiori, a bound over
-        -- `m' ⊒ m2` (since `m2 ⊒ m1`); the budget set is the same by `hr1`.
+      · -- Lifted bound `hb1`: a bound over `m' ⊒ m1` is a fortiori over `m' ⊒ m2`.
         intro m' t v m'' hsub' hwf' hbs
-        rw [hr1]
         exact hb1 (Memory.subsumes_trans hsub' hsub) hwf' hbs
       · intro m' t v m'' hsub' hwf' hbs
-        rw [hr2]
         exact hb2 (Memory.subsumes_trans hsub' hsub) hwf' hbs
       · -- Lifted robust left-branch safety: monotone in the base memory.
         intro m' hsub' hcompat
-        rw [hr1] at hcompat
         exact hrs1 (Memory.subsumes_trans hsub' hsub) hcompat
       · -- Lifted robust right-branch safety: monotone in the base memory.
         intro m' hsub' hcompat
-        rw [hr2] at hcompat
         exact hrs2 (Memory.subsumes_trans hsub' hsub) hcompat
-      · -- Lifted non-interference: same budget sets by `hr1`/`hr2`.
-        rw [hr1, hr2]
-        exact hni
+      · -- Budget presence is preserved upward (subsumption keeps cells present).
+        intro mu l hmem hcontra
+        exact hpres1 mu l hmem (Heap.none_of_subsumes_none hsub hcontra)
+      · intro mu l hmem hcontra
+        exact hpres2 mu l hmem (Heap.none_of_subsumes_none hsub hcontra)
   | letin _ h_ans h_val h_var ih1 ih_val ih_var =>
     clear m1
     rename_i e1 e2 m1 _
@@ -3750,7 +3745,11 @@ theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
       m1.subsumes m -> Memory.FrameLive m t1 m1 -> Q1 t1 v1 m1 ->
       Eval m1 e2 (fun t2 _v2 m2 => Q (t1 ++ t2) .unit m2)) :
     Eval m (.par Cs1 Cs2 e1 e2) Q := by
-  refine ⟨Safe.par he1.1 ?_ hb1 hb2 hrs1 hrs2 hni, ?_⟩
+  -- The carrier budget is abstract+growable; instantiate it to the reachability of the
+  -- annotation here.  Presence (`hpres`) is exactly `reachability_dom`.
+  refine ⟨Safe.par he1.1 ?_ hb1 hb2 hrs1 hrs2
+    (fun _ _ h => CaptureSet.reachability_dom h)
+    (fun _ _ h => CaptureSet.reachability_dom h) hni, ?_⟩
   · intro t1 v1 m1 hrun
     exact (h2 hrun.subsumes hrun.frameLive (he1.2 t1 v1 m1 hrun)).1
   · intro t v m' hbs

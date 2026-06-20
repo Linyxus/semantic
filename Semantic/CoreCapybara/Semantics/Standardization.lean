@@ -278,65 +278,18 @@ theorem Trace.equiv_comm_of_noninterfere {t s : Trace}
 
 /-- **Separation of branch runs.**  From `Safe.par`, any two runs of the two branches —
   from any memories `⊒` the par node's `m` — have non-interfering traces. -/
-theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory} {e1 e2 v1 v2 : Exp {}}
+theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory}
+    {Cs1 Cs2 : CaptureSet {}} {e1 e2 v1 v2 : Exp {}}
     {t1 t2 : Trace}
-    (hsafe : Safe m (.par e1 e2))
+    (hsafe : Safe m (.par Cs1 Cs2 e1 e2))
     (hr1 : BigStep m1 e1 t1 v1 m1') (hsub1 : m1.subsumes m) (hwf1 : Exp.WfInHeap e1 m1.heap)
     (hr2 : BigStep m2 e2 t2 v2 m2') (hsub2 : m2.subsumes m) (hwf2 : Exp.WfInHeap e2 m2.heap) :
     Trace.Noninterfere t1 t2 := by
   cases hsafe with
-  | par _ _ hb1 hb2 _ _ _ hni =>
+  | par _ _ hb1 hb2 _ _ _ _ hni =>
       exact traceOk_noninterfere (hb1 hsub1 hwf1 hr1) (hb2 hsub2 hwf2 hr2) hni
   | ans hans => cases hans with | is_val hv => cases hv
 
-/-- **Standardization (theorem B).**  Every interleaving run to an answer is matched by
-  a SEQUENTIAL run reaching the IDENTICAL final memory and answer, the only difference
-  being a `Trace.Equiv` reordering of the trace.
-
-  The hypotheses are only the natural ones: `e` is well-formed in `m` (`WfInHeap`) and
-  the configuration is `Safe` — the runtime separation carrier, whose `par` nodes supply
-  the `Noninterference` (`Safe.par_noninterfere`) that justifies reordering.
-
-  ## Architecture: this must be a SMALL-STEP postponement, NOT routed through `BigStep`
-
-  The tempting route `Reduce → BigStep → SeqReduce` is BROKEN at its second leg:
-  `BigStep → SeqReduce` is FALSE.  `bs_read` yields a NONDETERMINISTIC result bit `b'`
-  (independent of the stored bit), whereas `Step`/`SeqStep.step_read` return the STORED
-  bit deterministically.  So `SeqReduce → BigStep` holds only because the stored bit is
-  ONE admissible `bs_read` outcome — and that inclusion does NOT reverse: a `BigStep`
-  read can produce a value no small-step run realizes.  Consequently the proven diamond
-  `BigStep.step_run_commute` cannot reach the `SeqReduce` conclusion; it yields a
-  `BigStep` that need not correspond to any sequential small-step schedule.  Premature
-  `step_par_right`s must therefore be postponed at the SMALL-STEP level directly (both
-  `Step` and `SeqStep` read the stored bit, so a reordered sequential schedule of a
-  GIVEN run reads exactly the same bits — the conclusion stays faithful).  The proven
-  trace algebra above (`extSeqFrom_*`, `equiv_comm_of_noninterfere`) supplies the
-  `Trace.Equiv` bookkeeping for each swap.
-
-  ## The genuine, single design gap (the sorry below)
-
-  Postponing a premature `step_par_right` — `Step tb m (.par eL eR) mB (.par eL eR')`
-  with `eL` not yet an answer — past the left branch's activity needs `tb` to not
-  interfere with `eL`'s steps, i.e. `TraceOk tb C2`.  The LEFT analogue is FREE: `Safe.par`
-  carries `Safe m eL`, so `Safe.has_answer` yields a `BigStep m eL` run and
-  `bound_step_trace` bounds any left step by `C1`.  The RIGHT branch has NO run from `m`:
-  `Safe.par` carries only the CONDITIONAL `hrs2 : m'.is_compatible C2 → Safe m' eR`.  A run
-  of `eR` from `m` can be borrowed from the par's own `has_answer` run (which runs `eR`
-  from `mL`, AFTER `eL`) via `simulate_down`, but that run may follow a different read
-  path (`bs_read`'s free bit can feed a `cond`), so it need not contain `tb`'s event —
-  and `bound_step_trace` needs a run that actually STARTS with `tb`.  Reconstructing such
-  a run by head-expanding `tb` over `eR`'s continuation runs into `eR`'s OWN internal
-  separation (nested `par`s) — the SAME gap one level down — i.e. the right branch's
-  separation carrier at `m`.
-
-  Equivalently: discharging the `is_compatible C2` gate at a mid-reduction `m` is the
-  dynamic-footprint / ownership fact — `eR` owns its `C2` mcells, the separated `eL`
-  never drops them, so they stay live until `eR`'s turn — that `Safe` does not currently
-  carry.  This is exactly what an `AllLive` premise bought.
-
-  This is the precise human-intervention point: either re-admit a liveness premise, or
-  carry the right branch's separation/footprint robustly (a symmetric `Safe.par`,
-  constructible in `sem_typ_par` but a large ripple through `Fundamental`). -/
 theorem standardization {m mf : Memory} {e a : Exp {}} {t : Trace}
     (hwf : Exp.WfInHeap e m.heap) (hsafe : Safe m e)
     (hred : Reduce t m e mf a) (hans : a.IsAns) :
