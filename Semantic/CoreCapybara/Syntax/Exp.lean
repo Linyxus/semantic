@@ -29,7 +29,10 @@ inductive Exp : Sig -> Type where
 | read : Var .var s -> Exp s
 | write : Var .var s -> Var .var s -> Exp s
 | cond : Var .var s -> Exp s -> Exp s -> Exp s
-| par : Exp s -> Exp s -> Exp s
+| par :
+  CaptureSet s -> CaptureSet s ->
+  Exp s -> Exp s ->
+  Exp s
 
 /-- Applies a renaming to all bound variables in an expression. -/
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
@@ -54,7 +57,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .read x, f => .read (x.rename f)
 | .write x y, f => .write (x.rename f) (y.rename f)
 | .cond x e2 e3, f => .cond (x.rename f) (e2.rename f) (e3.rename f)
-| .par e1 e2, f => .par (e1.rename f) (e2.rename f)
+| .par C1 C2 e1 e2, f => .par (C1.rename f) (C2.rename f) (e1.rename f) (e2.rename f)
 
 /-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
@@ -148,9 +151,8 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | cond x e2 e3 ih2 ih3 =>
     simp only [Exp.rename, Var.rename_id, ih2]
     exact congrArg (Exp.cond x e2) ih3
-  | par e1 e2 ih1 ih2 =>
-    simp only [Exp.rename, ih1]
-    exact congrArg (Exp.par e1) ih2
+  | par C1 C2 e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, CaptureSet.rename_id, ih1, ih2]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Var.rename_comp {x : Var k s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -216,9 +218,8 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | cond x e2 e3 ih2 ih3 =>
     simpa only [Exp.rename, Var.rename_comp, ih2] using
       congrArg (Exp.cond (x.rename (f.comp g)) (e2.rename (f.comp g))) (ih3 (f := f) (g := g))
-  | par e1 e2 ih1 ih2 =>
-    simpa only [Exp.rename, ih1] using
-      congrArg (Exp.par (e1.rename (f.comp g))) (ih2 (f := f) (g := g))
+  | par C1 C2 e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, CaptureSet.rename_comp, ih1, ih2]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Var.weaken_rename_comm {x : Var k s1} {f : Rename s1 s2} :
@@ -260,6 +261,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | read : Var.IsClosed x -> Exp.IsClosed (.read x)
 | write : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.write x y)
 | cond : Var.IsClosed x -> Exp.IsClosed e2 -> Exp.IsClosed e3 -> Exp.IsClosed (.cond x e2 e3)
-| par : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.par e1 e2)
+| par : CaptureSet.IsClosed C1 -> CaptureSet.IsClosed C2 ->
+    Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.par C1 C2 e1 e2)
 
 end CoreCapybara
