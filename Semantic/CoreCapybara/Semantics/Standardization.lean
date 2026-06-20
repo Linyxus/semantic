@@ -300,11 +300,9 @@ theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory}
   Premises (for audit):
   * `hsafe : Safe m e` — the essential one.  At each `par` node the `Safe.par` carrier
     supplies the non-interference (`hni`) and the per-branch budget bounds (`hb1`/`hb2`)
-    that the `Step` guards demand.
+    that the `Step` guards demand; threaded across the reduction by `reduce_preserves_safe`
+    (which is now drop-free/`AllLive`-FREE).
   * `hwf : Exp.WfInHeap e m.heap` — feeds the step machinery (`simulate_down`, etc.).
-  * `hdf`/`hal` (drop-free + `AllLive`) — let `Safe` be THREADED across the reduction
-    (`step_preserves_safe`), so the carrier — hence the guards — is available at every
-    intermediate `par` node, not just at `m`.
 
   KNOWN TENSION (the crux for the proof, flagged for audit): the guard budget is the
   FIXED `Cs.reachability m`, whereas the carrier bounds a branch's runs by its GROWABLE
@@ -316,8 +314,6 @@ theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory}
   is exactly what this statement is meant to expose. -/
 theorem SeqReduce.toReduce {t : Trace} {m m' : Memory} {e e' : Exp {}}
     (hwf : Exp.WfInHeap e m.heap)
-    (hdf : ∀ l, TraceItem.dealloc l ∉ t)
-    (hal : m.AllLive)
     (hsafe : Safe m e)
     (hred : SeqReduce t m e m' e') :
     Reduce t m e m' e' :=

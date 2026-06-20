@@ -705,148 +705,73 @@ theorem reduce_to_bigstep {t : Trace} {m e m' a}
   | refl => exact BigStep.of_isAns hans
   | step hstep _ ih => exact BigStep.head_expand hstep (ih hans)
 
-/-- **A drop-free `Step` preserves liveness.**  Only `step_drop` emits a `dealloc`
-    event and only it marks a cell `.dead`; every other redex keeps live cells live
-    (writes change the *bit*, not the liveness; `alloc`/`lift` only add cells).  So a
-    `Step` whose trace contains no `dealloc` keeps every live cell live.  This is the
-    operational core of the platform's drop-freeness: with `.access_only` capture
-    variables the reduction emits no `dealloc`, hence NO cell ever dies, hence the
-    liveness frame (`Memory.SubsumeOk`) of `Safe.lift` holds for free. -/
-theorem step_preserves_live {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
-    (hstep : SeqStep t m1 e1 m2 e2) (hdf : ∀ l, TraceItem.dealloc l ∉ t)
-    (hlive : m1.IsLive l) : m2.IsLive l := by
-  induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
-  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
-    exact hlive
-  | step_par_left _ ih => exact ih hdf hlive
-  | step_par_right _ _ ih => exact ih hdf hlive
-  | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih hdf hlive
-  | step_write_true hx _ | step_write_false hx _ =>
-    exact Memory.update_mcell_preserves_live _ hlive
-  | step_drop _ =>
-    exact absurd (List.mem_singleton.mpr rfl) (hdf _)
-  | step_alloc _ hfresh =>
-    obtain ⟨b, hb⟩ := hlive
-    simp only [Memory.lookup] at hb
-    refine ⟨b, ?_⟩
-    simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell]
-    split
-    · rename_i heq; rw [heq, hfresh] at hb; cases hb
-    · exact hb
-  | step_lift hv hwf hfresh =>
-    obtain ⟨b, hb⟩ := hlive
-    simp only [Memory.lookup] at hb
-    refine ⟨b, ?_⟩
-    simp only [Memory.lookup, Memory.extend, Heap.extend]
-    split
-    · rename_i heq; rw [heq, hfresh] at hb; cases hb
-    · exact hb
-
-/-- A drop-free `Step` preserves the `AllLive` invariant (no cell ever dies; fresh
-    cells start live). -/
-theorem step_preserves_allLive {t : Trace} {m1 e1 m2 e2 : _}
-    (hstep : SeqStep t m1 e1 m2 e2) (hdf : ∀ l, TraceItem.dealloc l ∉ t)
-    (hal : m1.AllLive) : m2.AllLive := by
-  induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
-  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
-    exact hal
-  | step_par_left _ ih => exact ih hdf hal
-  | step_par_right _ _ ih => exact ih hdf hal
-  | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih hdf hal
-  | step_write_true hx _ | step_write_false hx _ =>
-    intro l b ℓ hlk
-    simp only [Memory.update_mcell, Heap.update_cell] at hlk
-    split at hlk
-    · injection hlk with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
-    · exact hal l b ℓ hlk
-  | step_drop _ => exact absurd (List.mem_singleton.mpr rfl) (hdf _)
-  | step_alloc _ hfresh =>
-    intro l b ℓ hlk
-    simp only [Memory.extend_mcell, Heap.extend_mcell] at hlk
-    split at hlk
-    · injection hlk with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
-    · exact hal l b ℓ hlk
-  | step_lift hv hwf hfresh =>
-    intro l b ℓ hlk
-    simp only [Memory.extend, Heap.extend] at hlk
-    split at hlk
-    · exact absurd hlk (by simp)
-    · exact hal l b ℓ hlk
-
 /-- **Preservation of `Safe` (sequential small-step).**  A `SeqStep` preserves
     big-step safety.  Mirrors `step_preserves_wf`: invert the `Safe` derivation per
     redex; the `letin`/`unpack` continuations transport across the inner step by
     head expansion, since a post-step `BigStep` of the head head-expands to a
-    pre-step one feeding the original handler.  Threads `Exp.WfInHeap` (for the `par`
-    cases' head-expansion) and `m1.AllLive` (so the frozen `par` branch's robust
-    safety `hrs2` applies at the `C2`-compatible `m1`), kept alive across steps by a
-    drop-free hypothesis (`no dealloc`).  The forward Step-lemmas it calls
-    (`step_memory_monotonic`, `step_preserves_wf`, `step_allocd_*`) are reused via
-    `SeqStep.toStep`. -/
+    pre-step one feeding the original handler.  Threads only `Exp.WfInHeap` (for the
+    `par` cases' head-expansion).  NO `AllLive`/drop-free crutch: the frozen `par`
+    branch's safety comes from the UNGATED continuation `h2` (the frozen branch is an
+    answer), and the reduct branch's robust safety from the bound-driven `Safe.lift`. -/
 theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     (hstep : SeqStep t m1 e1 m2 e2) :
-    Exp.WfInHeap e1 m1.heap → (∀ l, TraceItem.dealloc l ∉ t) → m1.AllLive →
-      Safe m1 e1 → Safe m2 e2 := by
+    Exp.WfInHeap e1 m1.heap → Safe m1 e1 → Safe m2 e2 := by
   induction hstep with
   | step_apply hlk =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | apply hlk2 hbody =>
       have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
       simp only at heq; cases heq; exact hbody
     | invoke hlkx2 _ => rw [hlk] at hlkx2; exact absurd hlkx2 (by simp)
     | ans hans => cases hans with | is_val hv => cases hv
-  | step_invoke _ _ => intro _ _ _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
+  | step_invoke _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
   | step_tapply hlk =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | tapply hlk2 hbody =>
       have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
       simp only at heq; cases heq; exact hbody
     | ans hans => cases hans with | is_val hv => cases hv
   | step_capply hlk =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | capply hlk2 hbody =>
       have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
       simp only at heq; cases heq; exact hbody
     | ans hans => cases hans with | is_val hv => cases hv
   | step_unwrap hlk =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | unwrap hlk2 hbody =>
       have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
       simp only at heq; cases heq; exact hbody
     | ans hans => cases hans with | is_val hv => cases hv
   | step_cond_var_true hlk =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | cond hres h_true _ =>
       simp only [Memory.lookup] at hlk
       exact h_true (by simp only [resolve, hlk])
     | ans hans => cases hans with | is_val hv => cases hv
   | step_cond_var_false hlk =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | cond hres _ h_false =>
       simp only [Memory.lookup] at hlk
       exact h_false (by simp only [resolve, hlk])
     | ans hans => cases hans with | is_val hv => cases hv
-  | step_read _ _ => intro _ _ _ _; exact Safe.ans (Exp.IsAns.is_val (by split <;> constructor))
-  | step_write_true _ _ => intro _ _ _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_write_false _ _ => intro _ _ _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_alloc _ _ => intro _ _ _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.pack)
-  | step_drop _ => intro _ _ _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
+  | step_read _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val (by split <;> constructor))
+  | step_write_true _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
+  | step_write_false _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
+  | step_alloc _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.pack)
+  | step_drop _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
   | step_ctx_letin hstep_inner ih =>
-    intro hwf hdf hal hsafe
+    intro hwf hsafe
     obtain ⟨hwf1, _⟩ := Exp.wf_inv_letin hwf
     cases hsafe with
     | letin hse1 h_ans h_val h_var =>
-      refine Safe.letin (ih hwf1 hdf hal hse1) ?_ ?_ ?_
+      refine Safe.letin (ih hwf1 hse1) ?_ ?_ ?_
       · intro t1 v m1' hbs
         exact h_ans _ _ _ (BigStep.head_expand hstep_inner hbs)
       · intro t1 m1' v hbs hv hwf_v l' hfresh
@@ -855,25 +780,25 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         exact h_var (BigStep.head_expand hstep_inner hbs)
     | ans hans => cases hans with | is_val hv => cases hv
   | step_ctx_unpack hstep_inner ih =>
-    intro hwf hdf hal hsafe
+    intro hwf hsafe
     obtain ⟨hwf1, _⟩ := Exp.wf_inv_unpack hwf
     cases hsafe with
     | unpack hse1 h_ans h_val =>
-      refine Safe.unpack (ih hwf1 hdf hal hse1) ?_ ?_
+      refine Safe.unpack (ih hwf1 hse1) ?_ ?_
       · intro t1 v m1' hbs
         exact h_ans _ _ _ (BigStep.head_expand hstep_inner hbs)
       · intro t1 m1' x cs hbs
         exact h_val (BigStep.head_expand hstep_inner hbs)
     | ans hans => cases hans with | is_val hv => cases hv
   | @step_par_left t m1 a m2 a' Cs1 Cs2 b hstep_a ih =>
-    intro hwf hdf hal hsafe
+    intro hwf hsafe
     obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
     cases hsafe with
     | ans hans => cases hans with | is_val hv => cases hv
     | par hse_a h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hni =>
       rename_i C1 C2
       have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_a
-      have hse_a2' : Safe m2 a' := ih hwf_a hdf hal hse_a
+      have hse_a2' : Safe m2 a' := ih hwf_a hse_a
       -- Reduct `a'`'s budget GROWS by the step's fresh allocations `capsOf (allocList t)`;
       -- the frozen right branch `b` keeps budget `C2`.
       have hb1_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
@@ -944,7 +869,7 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         intro l hl mu' hm
         exact hpres2 mu' l hm (step_allocd_fresh hstep_a (Trace.mem_allocList.mp hl))
   | @step_par_right t m1 b m2 b' Cs1 Cs2 a hans_a hstep_b ih =>
-    intro hwf hdf hal hsafe
+    intro hwf hsafe
     obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
     cases hsafe with
     | ans hans => cases hans with | is_val hv => cases hv
@@ -954,7 +879,7 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
       -- The frozen LEFT branch `a` is an ANSWER (sequential schedule): `b` is safe at
       -- `m1` via the UNGATED continuation `h2` applied to `a`'s trivial self-run.
       have hse_b1 : Safe m1 b := h2 (BigStep.of_isAns hans_a)
-      have hse_b2' : Safe m2 b' := ih hwf_b hdf hal hse_b1
+      have hse_b2' : Safe m2 b' := ih hwf_b hse_b1
       -- Reduct `b'`'s budget GROWS by the step's fresh allocations.
       have hb2_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
           m'.subsumes m2 -> Exp.WfInHeap b' m'.heap -> BigStep m' b' s v m'' ->
@@ -1025,20 +950,20 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         · exact step_allocd_present hstep_b (Trace.mem_allocList.mp (capsOf_hasmem hA))
   | step_par_join _ _ =>
     -- `par a b → .unit`; the canonical unit result is an answer, hence trivially safe.
-    intro _ _ _ _
+    intro _ _
     exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
   | step_rename =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | letin _ _ _ h_var => exact h_var BigStep.bs_var
     | ans hans => cases hans with | is_val hv => cases hv
   | step_lift hv hwf_v hfresh =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | letin _ _ h_val _ => exact h_val (BigStep.bs_val hv) hv hwf_v _ hfresh
     | ans hans => cases hans with | is_val hv2 => cases hv2
   | step_unpack =>
-    intro _ _ _ hsafe
+    intro _ hsafe
     cases hsafe with
     | unpack _ _ h_val => exact h_val BigStep.bs_pack
     | ans hans => cases hans with | is_val hv => cases hv
@@ -1047,10 +972,9 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     is keyed on the *whole* trace, a step *shifts* it by the step's own trace `t`:
     every answer reached after the step prepends `t` as seen from before it. -/
 theorem step_preserves_eval {t : Trace} {m1 e1 m2 e2} {Q : Tpost}
-    (he : Eval m1 e1 Q) (hwf : Exp.WfInHeap e1 m1.heap) (hdf : ∀ l, TraceItem.dealloc l ∉ t)
-    (hal : m1.AllLive) (hstep : SeqStep t m1 e1 m2 e2) :
+    (he : Eval m1 e1 Q) (hwf : Exp.WfInHeap e1 m1.heap) (hstep : SeqStep t m1 e1 m2 e2) :
     Eval m2 e2 (fun t' => Q (t ++ t')) := by
-  refine ⟨step_preserves_safe hstep hwf hdf hal he.1, ?_⟩
+  refine ⟨step_preserves_safe hstep hwf he.1, ?_⟩
   intro t' v m' hbs
   exact he.2 (t ++ t') v m' (BigStep.head_expand hstep hbs)
 
@@ -1067,29 +991,22 @@ theorem BigStep.reduce_expand {t : Trace} {m1 e1 m2 e2}
     exact BigStep.head_expand hstep (ih hbs)
 
 /-- Sequential reduction preserves big-step safety (iterate `step_preserves_safe`).
-    Threads `Exp.WfInHeap` and a drop-free hypothesis (no `dealloc` anywhere in the
-    trace), both needed by `step_preserves_safe`'s `par` cases.  The forward Step
-    preservation lemmas are reused via `SeqStep.toStep`. -/
+    Threads only `Exp.WfInHeap` — no drop-free/`AllLive` crutch. -/
 theorem reduce_preserves_safe {t : Trace} {m1 e1 m2 e2}
-    (hred : SeqReduce t m1 e1 m2 e2) (hwf : Exp.WfInHeap e1 m1.heap)
-    (hdf : ∀ l, TraceItem.dealloc l ∉ t) (hal : m1.AllLive) : Safe m1 e1 → Safe m2 e2 := by
+    (hred : SeqReduce t m1 e1 m2 e2) (hwf : Exp.WfInHeap e1 m1.heap) :
+    Safe m1 e1 → Safe m2 e2 := by
   induction hred with
   | refl => exact id
   | @step t1 m1 e1 m2 e2 t2 m3 e3 hstep hred_rest ih =>
     intro hsafe
-    have hdf1 : ∀ l, TraceItem.dealloc l ∉ t1 := fun l hm => hdf l (List.mem_append_left _ hm)
-    have hdf2 : ∀ l, TraceItem.dealloc l ∉ t2 := fun l hm => hdf l (List.mem_append_right _ hm)
-    have hal2 := step_preserves_allLive hstep hdf1 hal
-    exact ih (step_preserves_wf hstep hwf) hdf2 hal2
-      (step_preserves_safe hstep hwf hdf1 hal hsafe)
+    exact ih (step_preserves_wf hstep hwf) (step_preserves_safe hstep hwf hsafe)
 
 /-- **Preservation of `Eval` (sequential reduction).**  As `step_preserves_eval`,
     with the postcondition shifted by the reduction's accumulated trace. -/
 theorem reduce_preserves_eval {t : Trace} {m1 e1 m2 e2} {Q : Tpost}
-    (he : Eval m1 e1 Q) (hwf : Exp.WfInHeap e1 m1.heap) (hdf : ∀ l, TraceItem.dealloc l ∉ t)
-    (hal : m1.AllLive) (hred : SeqReduce t m1 e1 m2 e2) :
+    (he : Eval m1 e1 Q) (hwf : Exp.WfInHeap e1 m1.heap) (hred : SeqReduce t m1 e1 m2 e2) :
     Eval m2 e2 (fun t' => Q (t ++ t')) := by
-  refine ⟨reduce_preserves_safe hred hwf hdf hal he.1, ?_⟩
+  refine ⟨reduce_preserves_safe hred hwf he.1, ?_⟩
   intro t' v m' hbs
   exact he.2 (t ++ t') v m' (BigStep.reduce_expand hred hbs)
 

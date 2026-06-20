@@ -80,14 +80,6 @@ def Memory.platform_of (N : Nat) : Memory where
   wf := Heap.platform_of_wf N
   findom := ⟨Finset.range N, Heap.platform_of_has_fin_dom N⟩
 
-/-- Every cell of the platform memory is live (they all start `.live`). -/
-theorem platform_allLive (N : Nat) : (Memory.platform_of N).AllLive := by
-  intro l b ℓ hlk
-  simp only [Memory.platform_of, Heap.platform_of] at hlk
-  split at hlk
-  · injection hlk with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
-  · cases hlk
-
 /-- Platform memory M subsumes platform memory N when M ≥ N. -/
 theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   (Memory.platform_of M).subsumes (Memory.platform_of N) := by
@@ -204,15 +196,13 @@ theorem env_typing_of_platform {N : Nat} :
 
     Safety is stated for the sequential schedule `SeqReduce`, for which the big-step
     bridge is exact; lifting to the full interleaving `Reduce` is the standardization
-    theorem (B).  The `(∀ l, dealloc l ∉ t)` side-condition (the reduction performs
-    no deallocation) keeps every platform cell live (`AllLive`), which `par`-safety
-    preservation needs so the frozen branch's robust safety applies.  Removing it
-    requires separation-based framing: the stepping branch never drops the *frozen*
-    branch's cells (`Safe.par`'s `hni`). -/
+    theorem (B).  No `AllLive`/drop-free side-condition is needed: `par`-safety
+    preservation gets the frozen branch's safety from the ungated continuation `h2`
+    (the frozen branch is an answer) and the reduct's robust safety from the
+    bound-driven `Safe.lift`. -/
 def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) : Prop :=
   ∀ t M1 e1,
     SeqReduce t (Memory.platform_of N) e M1 e1 ->
-    (∀ l, TraceItem.dealloc l ∉ t) ->
     IsProgressive M1 e1
 
 /-- **Adequacy of semantic typing on platform contexts.**  A semantically
@@ -225,19 +215,17 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   (hwfe : Exp.WfInHeap e (Heap.platform_of N)) :
   (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform N := by
   unfold Exp.SafeWithPlatform
-  intro t M1 e1 hred hdf
+  intro t M1 e1 hred
   -- Apply semantic typing with the platform environment.
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N)
     env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
   -- The denotation is an `Eval`; preserve it under reduction, then conclude progress.
   unfold Ty.exi_exp_denot at hdenot
-  -- The substituted program is well-formed in the platform heap, and all platform
-  -- cells are live (`platform_allLive`); the reduction is dealloc-free by `hdf`.
   have hwf : Exp.WfInHeap (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N)))
       (Memory.platform_of N).heap :=
     Exp.wf_subst hwfe (from_TypeEnv_wf_in_heap env_typing_of_platform)
   exact eval_implies_progressive
-    (reduce_preserves_eval hdenot hwf hdf (platform_allLive N) hred)
+    (reduce_preserves_eval hdenot hwf hred)
 
 /-! ## Immutability
 
@@ -367,9 +355,8 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     ∀ t M1 e1,
       SeqReduce t (Memory.platform_of N)
         (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
-      (∀ l, TraceItem.dealloc l ∉ t) ->
       (Memory.platform_of N).not_mutated M1 := by
-  intro t M1 e1 hred hdf_red
+  intro t M1 e1 hred
   -- The budget `R := C.denot ρ m`.
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N)
     env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
@@ -384,7 +371,7 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
       env_typing_of_platform
   -- Extend the partial reduction to a full run, obtaining a `TraceOk` trace.
   obtain ⟨trest, M2, a, hred2, hans⟩ :=
-    (reduce_preserves_safe hred hwf hdf_red (platform_allLive N) hdenot.1).has_reduction
+    (reduce_preserves_safe hred hwf hdenot.1).has_reduction
   have hbig := reduce_to_bigstep (seqreduce_trans hred hred2) hans
   have htok : TraceOk (t ++ trest)
       (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)) := (hdenot.2 _ _ _ hbig).1

@@ -3700,16 +3700,6 @@ def is_compatible (m : Memory) (C : CapabilitySet) : Prop :=
     m.heap l = some (.capability (.mcell b ℓ)) →
     ℓ = .live
 
-/-- Every mutable cell present in `m` is LIVE.  A budget-agnostic invariant: it
-    holds at a freshly-built platform (all cells `.live`) and is preserved by any
-    `dealloc`-free reduction (only a drop turns a cell dead).  It implies
-    `is_compatible m C` for ANY budget `C`. -/
-def AllLive (m : Memory) : Prop :=
-  ∀ l b ℓ, m.heap l = some (.capability (.mcell b ℓ)) → ℓ = .live
-
-theorem AllLive.is_compatible {m : Memory} (h : m.AllLive) (C : CapabilitySet) :
-    m.is_compatible C := fun _ l b ℓ _ hlk => h l b ℓ hlk
-
 theorem is_compatible_empty (m : Memory) : m.is_compatible .empty := by
   intro mu l b ℓ hmem _
   exact (CapabilitySet.not_hasmem_empty hmem).elim
