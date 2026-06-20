@@ -267,164 +267,17 @@ theorem Trace.equiv_comm_of_noninterfere {t s : Trace}
           · exact (hni l x cm2 (Trace.mem_extSeqFrom_iff.mp hx) hes2).1
           · exact (hni l cm1 x hes1 (Trace.mem_extSeqFrom_iff.mp hx)).2
 
-/-! ## The down-frame lemma (`Safe.frame_down`)
-
-  The downward companion of `Safe.lift`: safety transfers from a larger memory `ma` to
-  a smaller `m1` that AGREES with it on the cells `b` touches.  The reachability worry
-  is dissolved by IMMUTABILITY: only mcells are ever written/dropped, and they are
-  exactly the cells the budgets track — so value cells (readers, abstractions) are
-  preserved by subsumption for free, and the frame only needs to constrain mcells. -/
-
-/-- Down-frame condition: a live mcell of `ma` that `t` externally touches is the SAME
-  live mcell in the smaller `m1`.  (Dual of `Memory.SubsumeOk`.) -/
-def Memory.AgreeOk (m1 : Memory) (t : Trace) (ma : Memory) : Prop :=
-  ∀ l b,
-    ma.lookup l = some (.capability (.mcell b .live)) →
-    Trace.extTouches t l →
-    m1.lookup l = some (.capability (.mcell b .live))
-
-/-- **Down-frame for safety.**  If `b` is safe at the larger `ma` and the smaller `m1`
-  agrees with `ma` on every mcell `b` touches (the frame `hok`), then `b` is safe at
-  `m1`.  Mirrors `Safe.lift` in the opposite subsumption direction; value cells are
-  recovered by `Memory.lookup_down` (subsumption pins them), mcells by the frame. -/
-theorem Safe.frame_down {ma : Memory} {b : Exp {}} {Q : Tpost} (hsafe : Safe ma b)
-    (hsub : ma.subsumes m1)
-    (hpres : ∀ t v m', BigStep ma b t v m' → Q t v m')
-    (hok : ∀ t v m, m.subsumes ma → Q t v m → Memory.AgreeOk m1 t ma)
-    (hwf : Exp.WfInHeap b m1.heap) : Safe m1 b := by
-  induction hsafe generalizing m1 Q with
-  | ans hans => exact Safe.ans hans
-  | alloc hlka =>
-    cases hwf with
-    | wf_alloc hwfx => cases hwfx with
-      | wf_free hxm1 =>
-        have hc := Memory.lookup_down hsub hxm1 hlka
-        simp only [Cell.subsumes] at hc; subst hc
-        exact Safe.alloc hxm1
-  | invoke hlkx hlky =>
-    cases hwf with
-    | wf_app hwfx hwfy => cases hwfx with
-      | wf_free hxm1 => cases hwfy with
-        | wf_free hym1 =>
-          have hcx := Memory.lookup_down hsub hxm1 hlkx
-          have hcy := Memory.lookup_down hsub hym1 hlky
-          simp only [Cell.subsumes] at hcx hcy; subst hcx; subst hcy
-          exact Safe.invoke hxm1 hym1
-  | apply hlk _ ih =>
-    cases hwf with
-    | wf_app hwfx hwfy => cases hwfx with
-      | wf_free hxm1 =>
-        have hc := Memory.lookup_down hsub hxm1 hlk
-        simp only [Cell.subsumes] at hc; subst hc
-        obtain ⟨_, _, he⟩ := Exp.wf_inv_abs (Memory.wf_lookup hxm1)
-        exact Safe.apply hxm1 (ih hsub
-          (fun t v m' hbs => hpres t v m' (BigStep.bs_apply hlk hbs)) hok
-          (Exp.wf_subst he (Subst.wf_openVar hwfy)))
-  | tapply hlk _ ih =>
-    cases hwf with
-    | wf_tapp hwfx hwfS => cases hwfx with
-      | wf_free hxm1 =>
-        have hc := Memory.lookup_down hsub hxm1 hlk
-        simp only [Cell.subsumes] at hc; subst hc
-        obtain ⟨_, _, he⟩ := Exp.wf_inv_tabs (Memory.wf_lookup hxm1)
-        exact Safe.tapply hxm1 (ih hsub
-          (fun t v m' hbs => hpres t v m' (BigStep.bs_tapply hlk hbs)) hok
-          (Exp.wf_subst he (Subst.wf_openTVar Ty.WfInHeap.wf_top)))
-  | capply hlk _ ih =>
-    cases hwf with
-    | wf_capp hwfx hcs => cases hwfx with
-      | wf_free hxm1 =>
-        have hc := Memory.lookup_down hsub hxm1 hlk
-        simp only [Cell.subsumes] at hc; subst hc
-        obtain ⟨_, _, he⟩ := Exp.wf_inv_cabs (Memory.wf_lookup hxm1)
-        exact Safe.capply hxm1 (ih hsub
-          (fun t v m' hbs => hpres t v m' (BigStep.bs_capply hlk hbs)) hok
-          (Exp.wf_subst he (Subst.wf_openCVar hcs)))
-  | unwrap hlk _ ih =>
-    cases hwf with
-    | wf_unwrap hwfx => cases hwfx with
-      | wf_free hxm1 =>
-        have hc := Memory.lookup_down hsub hxm1 hlk
-        simp only [Cell.subsumes] at hc; subst hc
-        exact Safe.unwrap hxm1 (ih hsub
-          (fun t v m' hbs => hpres t v m' (BigStep.bs_unwrap hlk hbs)) hok
-          (match Memory.wf_lookup hxm1 with | .wf_boxed _ _ he => he))
-  | read hlkx hlky =>
-    cases hwf with
-    | wf_read hwfx => cases hwfx with
-      | wf_free hxm1 =>
-        have hcx := Memory.lookup_down hsub hxm1 hlkx
-        simp only [Cell.subsumes] at hcx; subst hcx
-        have hagree := hok _ _ _ (Memory.subsumes_refl _)
-          (hpres _ _ _ (BigStep.bs_read (b' := true) hlkx hlky))
-        exact Safe.read hxm1 (hagree _ _ hlky (by simp [Trace.extTouches, Trace.extTouchesFrom]))
-  | write_true hlkx hlky =>
-    cases hwf with
-    | wf_write hwfx hwfy => cases hwfy with
-      | wf_free hym1 =>
-        have hcy := Memory.lookup_down hsub hym1 hlky
-        simp only [Cell.subsumes] at hcy; subst hcy
-        have hagree := hok _ _ _ (Memory.update_mcell_subsumes _ _ _ _ ⟨_, hlkx⟩)
-          (hpres _ _ _ (BigStep.bs_write_true hlkx hlky))
-        exact Safe.write_true
-          (hagree _ _ hlkx (by simp [Trace.extTouches, Trace.extTouchesFrom])) hym1
-  | write_false hlkx hlky =>
-    cases hwf with
-    | wf_write hwfx hwfy => cases hwfy with
-      | wf_free hym1 =>
-        have hcy := Memory.lookup_down hsub hym1 hlky
-        simp only [Cell.subsumes] at hcy; subst hcy
-        have hagree := hok _ _ _ (Memory.update_mcell_subsumes _ _ _ _ ⟨_, hlkx⟩)
-          (hpres _ _ _ (BigStep.bs_write_false hlkx hlky))
-        exact Safe.write_false
-          (hagree _ _ hlkx (by simp [Trace.extTouches, Trace.extTouchesFrom])) hym1
-  | drop hlkx =>
-    have hagree := hok _ _ _ (Memory.drop_mcell_subsumes _ _ ⟨_, hlkx⟩)
-      (hpres _ _ _ (BigStep.bs_drop hlkx))
-    exact Safe.drop (hagree _ _ hlkx (by simp [Trace.extTouches, Trace.extTouchesFrom]))
-  | @cond e2 e3 ma2 xv hres h_true h_false ih_true ih_false =>
-    obtain ⟨xn, rfl⟩ := Var.free_cases xv
-    obtain ⟨hwfx, hwf2, hwf3⟩ := Exp.wf_inv_cond hwf
-    cases hwfx with
-    | wf_free hxm1 =>
-      have hxne : m1.heap xn ≠ none := by rw [hxm1]; simp
-      refine Safe.cond (hres.imp (resolve_down hsub hxne) (resolve_down hsub hxne)) ?_ ?_
-      · intro hbt
-        cases hres with
-        | inl hb1 =>
-          exact ih_true hb1 hsub
-            (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_true hb1 hbs)) hok hwf2
-        | inr hbf => rw [resolve_down hsub hxne hbf] at hbt; simp at hbt
-      · intro hbf
-        cases hres with
-        | inl hbt => rw [resolve_down hsub hxne hbt] at hbf; simp at hbf
-        | inr hb1 =>
-          exact ih_false hb1 hsub
-            (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_false hb1 hbs)) hok hwf3
-  -- REMAINING (3 of 15 cases; the 12 leaf/`cond` cases above are PROVEN, which already
-  -- disproves the earlier "research-grade reachability" fear — value cells are immutable,
-  -- so the footprint stays mcell-tracked and the downward extraction goes through):
-  --  * `letin`/`unpack` reconstruct safety at the SMALLER `m1`, whose continuation
-  --    fields quantify over `m1`-runs of the head; using the `ma`-side handlers needs
-  --    lifting an `m1`-run UP to an `ma`-run (a `simulate_up`, dual to `simulate_down`,
-  --    ~100 lines and not yet present).  Buildable; not a design gap.
-  --  * `par` (nested) reconstructs `Safe.par`'s robust bounds at `m1`, re-anchoring them
-  --    from `ma` to the smaller `m1` — the genuine remaining crux (a bound `∀ m' ⊒ ma`
-  --    does not directly give `∀ m' ⊒ m1`).
-  | par hs1 h2 hb1 hb2 hrs2 hpres1 hpres2 hni ih1 ih2 _hrs2ih => sorry
-  | letin _ h_ans h_val h_var ih1 ih_val ih_var => sorry
-  | unpack _ h_ans h_val ih1 ih_val => sorry
-
 /-! ## The separation carrier and the standardization theorem
 
   The runtime separation invariant is `Safe` itself (plus `WfInHeap`): each `Safe.par`
   node bundles the robust budget bounds `hb1`/`hb2` and `Noninterference` `hni`, which
   compose — via `traceOk_noninterfere` — into `Trace.Noninterfere` between any two
-  branch runs.  That is exactly what the diamond `BigStep.step_run_commute` consumes,
-  and it is what the platform supplies (the fundamental theorem hands us `Safe`). -/
+  branch runs (`Safe.par_noninterfere`).  This non-interference is the fuel for
+  reordering separated steps; it is what the platform supplies (the fundamental theorem
+  hands us `Safe`). -/
 
-/-- **The diamond's fuel.**  From `Safe.par`, any two runs of the two branches — from
-  any memories `⊒` the par node's `m` — have non-interfering traces. -/
+/-- **Separation of branch runs.**  From `Safe.par`, any two runs of the two branches —
+  from any memories `⊒` the par node's `m` — have non-interfering traces. -/
 theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory} {e1 e2 v1 v2 : Exp {}}
     {t1 t2 : Trace}
     (hsafe : Safe m (.par e1 e2))
@@ -440,52 +293,54 @@ theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory} {e1 e2 v1 v2 : Exp {}}
   a SEQUENTIAL run reaching the IDENTICAL final memory and answer, the only difference
   being a `Trace.Equiv` reordering of the trace.
 
-  The hypotheses are only the natural ones: `e` is well-formed in `m` (`WfInHeap`, what
-  the diamond needs), and the configuration is `Safe` — the runtime separation carrier,
-  whose `par` nodes supply the `Noninterference` that drives the diamond.
+  The hypotheses are only the natural ones: `e` is well-formed in `m` (`WfInHeap`) and
+  the configuration is `Safe` — the runtime separation carrier, whose `par` nodes supply
+  the `Noninterference` (`Safe.par_noninterfere`) that justifies reordering.
 
-  Proof engine: postponement — bubble each premature right-branch step past the
-  remaining left-run via the EXACT-meet diamond `BigStep.step_run_commute` (fed by
-  `Safe.par_noninterfere`), each swap preserving `(mf, a)` and reordering the trace
-  within `Trace.Equiv` (the trace algebra above — `extSeqFrom_*`,
-  `equiv_comm_of_noninterfere` — is the complete, proven foundation for that step).
+  ## Architecture: this must be a SMALL-STEP postponement, NOT routed through `BigStep`
 
-  **The remaining obstruction is a genuine, fundamental design gap (the sorry below).**
-  Postponing `step_par_right` (`b` steps while the left branch `a` is mid-run) requires
-  bounding `b`'s step by its budget `C2`, which needs a run of `b` from the pre-step
-  memory `m1`, which needs `Safe m1 b`.  But `Safe.par` is ASYMMETRIC: it carries
-  `Safe m e1` (the LEFT branch, safe at the par's own memory) yet only CONDITIONAL
-  right-branch safety `hrs2 : m'.is_compatible C2 → Safe m' e2`.  Discharging
-  `is_compatible C2` at a general `m1` is exactly what `AllLive` bought; without it,
-  `Safe m1 b` must be derived operationally — `b`'s touched cells are live at `m1`
-  because the run uses them and the separated left branch never disturbs them.  That is
-  the dynamic-footprint / ownership-transfer reasoning the project's DEFINITIVE FINDING
-  established as research-grade; equivalently, it is the symmetric branch-safety field
-  (`Safe m e2`) that `Safe.par` would need to carry (constructible in `sem_typ_par` from
-  `is_compatible C2 ⊆ is_compatible C`, but a large ripple through `Fundamental` and the
-  `SeqStep` theory, and itself maintained per-step only via the same ownership argument).
+  The tempting route `Reduce → BigStep → SeqReduce` is BROKEN at its second leg:
+  `BigStep → SeqReduce` is FALSE.  `bs_read` yields a NONDETERMINISTIC result bit `b'`
+  (independent of the stored bit), whereas `Step`/`SeqStep.step_read` return the STORED
+  bit deterministically.  So `SeqReduce → BigStep` holds only because the stored bit is
+  ONE admissible `bs_read` outcome — and that inclusion does NOT reverse: a `BigStep`
+  read can produce a value no small-step run realizes.  Consequently the proven diamond
+  `BigStep.step_run_commute` cannot reach the `SeqReduce` conclusion; it yields a
+  `BigStep` that need not correspond to any sequential small-step schedule.  Premature
+  `step_par_right`s must therefore be postponed at the SMALL-STEP level directly (both
+  `Step` and `SeqStep` read the stored bit, so a reordered sequential schedule of a
+  GIVEN run reads exactly the same bits — the conclusion stays faithful).  The proven
+  trace algebra above (`extSeqFrom_*`, `equiv_comm_of_noninterfere`) supplies the
+  `Trace.Equiv` bookkeeping for each swap.
 
-  CONCRETE FINDING (from attempting the down-frame lemma `Safe.frame_down`, the downward
-  companion of `Safe.lift`): it needs `m1` and `ma` to AGREE on `b`'s reachable footprint,
-  and that footprint is strictly broader than `C2`.  The `read` leaf is the witness:
-  `read x` resolves a `reader y` cell at `x`, then accesses `y` — the trace carries only
-  `access ro y` (so `C2` covers `y`), but the `reader` cell at `x` emits NO trace event, so
-  `x ∉ C2`, yet the redex needs `m1`/`ma` to agree at `x`.  Since `a` genuinely modifies its
-  OWN cells, the agreement is necessarily PARTIAL (`b`'s footprint, not all of `m1`), so it
-  cannot even be STATED without `b`'s reachability closure — the denotation-level
-  reachability/capture machinery (`compute_reachability`).  The induction must also maintain
-  "`b` stays within its footprint" across `alloc`/`drop`.  This definitively places the gap
-  in the dynamic-footprint development that threads operational safety through the
-  DENOTATION — research-grade, exactly as the DEFINITIVE FINDING predicted.
+  ## The genuine, single design gap (the sorry below)
+
+  Postponing a premature `step_par_right` — `Step tb m (.par eL eR) mB (.par eL eR')`
+  with `eL` not yet an answer — past the left branch's activity needs `tb` to not
+  interfere with `eL`'s steps, i.e. `TraceOk tb C2`.  The LEFT analogue is FREE: `Safe.par`
+  carries `Safe m eL`, so `Safe.has_answer` yields a `BigStep m eL` run and
+  `bound_step_trace` bounds any left step by `C1`.  The RIGHT branch has NO run from `m`:
+  `Safe.par` carries only the CONDITIONAL `hrs2 : m'.is_compatible C2 → Safe m' eR`.  A run
+  of `eR` from `m` can be borrowed from the par's own `has_answer` run (which runs `eR`
+  from `mL`, AFTER `eL`) via `simulate_down`, but that run may follow a different read
+  path (`bs_read`'s free bit can feed a `cond`), so it need not contain `tb`'s event —
+  and `bound_step_trace` needs a run that actually STARTS with `tb`.  Reconstructing such
+  a run by head-expanding `tb` over `eR`'s continuation runs into `eR`'s OWN internal
+  separation (nested `par`s) — the SAME gap one level down — i.e. the right branch's
+  separation carrier at `m`.
+
+  Equivalently: discharging the `is_compatible C2` gate at a mid-reduction `m` is the
+  dynamic-footprint / ownership fact — `eR` owns its `C2` mcells, the separated `eL`
+  never drops them, so they stay live until `eR`'s turn — that `Safe` does not currently
+  carry.  This is exactly what an `AllLive` premise bought.
 
   This is the precise human-intervention point: either re-admit a liveness premise, or
-  build the operational dynamic-footprint development / symmetric `Safe.par`. -/
+  carry the right branch's separation/footprint robustly (a symmetric `Safe.par`,
+  constructible in `sem_typ_par` but a large ripple through `Fundamental`). -/
 theorem standardization {m mf : Memory} {e a : Exp {}} {t : Trace}
     (hwf : Exp.WfInHeap e m.heap) (hsafe : Safe m e)
     (hred : Reduce t m e mf a) (hans : a.IsAns) :
     ∃ t', SeqReduce t' m e mf a ∧ Trace.Equiv t t' :=
-  -- GAP: needs symmetric branch safety `Safe m1 b` from `Safe m1 (.par a b)` without
-  -- `AllLive` — the research-grade dynamic-footprint kernel documented above.
   sorry
 
 end CoreCapybara
