@@ -55,20 +55,24 @@ theorem seqreduce_ctx_unpack
 theorem seqreduce_par_left {C : Trace} {m m' : Memory}
   {Cs1 Cs2 : CaptureSet {}} {e1 e1' e2 : Exp {}}
   (hred : SeqReduce C m e1 m' e1') :
-  SeqReduce C m (.par Cs1 Cs2 e1 e2) m' (.par Cs1 Cs2 e1' e2) := by
-  induction hred with
+  SeqReduce C m (.par Cs1 Cs2 e1 e2) m' (.par (Cs1.growByAllocs C) Cs2 e1' e2) := by
+  induction hred generalizing Cs1 with
   | refl => exact SeqReduce.refl
-  | step h _ ih => exact SeqReduce.step (SeqStep.step_par_left h) ih
+  | step h _ ih =>
+    rw [CaptureSet.growByAllocs_append]
+    exact SeqReduce.step (SeqStep.step_par_left h) ih
 
 /-- Sequential congruence for the RIGHT branch: the LEFT branch must be a (frozen)
-  answer throughout, as `SeqStep.step_par_right` demands. -/
+  answer throughout, as `SeqStep.step_par_right` demands.  The right annotation grows. -/
 theorem seqreduce_par_right {C : Trace} {m m' : Memory}
   {Cs1 Cs2 : CaptureSet {}} {a e2 e2' : Exp {}}
   (hans : a.IsAns) (hred : SeqReduce C m e2 m' e2') :
-  SeqReduce C m (.par Cs1 Cs2 a e2) m' (.par Cs1 Cs2 a e2') := by
-  induction hred with
+  SeqReduce C m (.par Cs1 Cs2 a e2) m' (.par Cs1 (Cs2.growByAllocs C) a e2') := by
+  induction hred generalizing Cs2 with
   | refl => exact SeqReduce.refl
-  | step h _ ih => exact SeqReduce.step (SeqStep.step_par_right hans h) ih
+  | step h _ ih =>
+    rw [CaptureSet.growByAllocs_append]
+    exact SeqReduce.step (SeqStep.step_par_right hans h) ih
 
 /-- Helper: Variables cannot step, so reduction is reflexive. -/
 theorem reduce_var_inv
@@ -346,7 +350,9 @@ theorem step_preserves_wf
     cases hwf with
     | wf_par hwf_C1 hwf_C2 hwf_aL hwf_b =>
       exact Exp.WfInHeap.wf_par
-        (CaptureSet.wf_monotonic (step_memory_monotonic hsub_step) hwf_C1)
+        (CaptureSet.growByAllocs_wf
+          (CaptureSet.wf_monotonic (step_memory_monotonic hsub_step) hwf_C1)
+          (fun l hl => step_allocd_present hsub_step (Trace.mem_allocList.mp hl)))
         (CaptureSet.wf_monotonic (step_memory_monotonic hsub_step) hwf_C2)
         (step_preserves_wf hsub_step hwf_aL)
         (Exp.wf_monotonic (step_memory_monotonic hsub_step) hwf_b)
@@ -355,7 +361,9 @@ theorem step_preserves_wf
     | wf_par hwf_C1 hwf_C2 hwf_aL hwf_b =>
       exact Exp.WfInHeap.wf_par
         (CaptureSet.wf_monotonic (step_memory_monotonic hsub_step) hwf_C1)
-        (CaptureSet.wf_monotonic (step_memory_monotonic hsub_step) hwf_C2)
+        (CaptureSet.growByAllocs_wf
+          (CaptureSet.wf_monotonic (step_memory_monotonic hsub_step) hwf_C2)
+          (fun l hl => step_allocd_present hsub_step (Trace.mem_allocList.mp hl)))
         (Exp.wf_monotonic (step_memory_monotonic hsub_step) hwf_aL)
         (step_preserves_wf hsub_step hwf_b)
   | step_par_join _ _ =>
@@ -546,7 +554,7 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
   | write_false hx hy =>
     -- e = .write (.free x) (.free y), can step via step_write_false
     exact IsProgressive.step (SeqStep.step_write_false hx hy)
-  | par _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
+  | par _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
     -- Progress for sequential `par`: advance the left branch until it is an answer
     -- (congruence), then the right branch (`step_par_right` needs the left answer),
     -- then join once both are answers.  Progress needs only SOME step to exist.
@@ -793,9 +801,11 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
   | @step_par_left t m1 a m2 a' Cs1 Cs2 b hstep_a ih =>
     intro hwf hsafe
     obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
+    have hwfC1 : Cs1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
+    have hwfC2 : Cs2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
     cases hsafe with
     | ans hans => cases hans with | is_val hv => cases hv
-    | par hse_a h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hni =>
+    | par hse_a h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
       rename_i C1 C2
       have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_a
       have hse_a2' : Safe m2 a' := ih hwf_a hse_a
@@ -826,7 +836,12 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         exact ⟨cm, (hb1_robust hsub'' (Exp.wf_monotonic hsub'' hwf_a2') hbs_a')
           |>.covers_of_extTouchesMode hext⟩
       refine Safe.par (C1 := C1 ∪ capsOf (Trace.allocList t)) (C2 := C2)
-        hse_a2' ?h2' (@hb1_robust) ?hb2' ?hrs1' ?hrs2' ?hpres1' ?hpres2' ?hni'
+        hse_a2' ?h2' (@hb1_robust) ?hb2' ?hrs1' ?hrs2' ?hpres1' ?hpres2' ?hcov1' ?hcov2' ?hni'
+      case hcov1' =>
+        exact Safe.hcov_step hsub21 hwfC1
+          (fun l hl => step_allocd_mcell hstep_a (Trace.mem_allocList.mp hl)) hcov1
+      case hcov2' =>
+        rw [CaptureSet.reachability_monotonic hsub21 Cs2 hwfC2]; exact hcov2
       case h2' =>
         intro t1 v1 m1' hbs
         exact h2 (BigStep.head_expand hstep_a hbs)
@@ -871,9 +886,11 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
   | @step_par_right t m1 b m2 b' Cs1 Cs2 a hans_a hstep_b ih =>
     intro hwf hsafe
     obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
+    have hwfC1 : Cs1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
+    have hwfC2 : Cs2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
     cases hsafe with
     | ans hans => cases hans with | is_val hv => cases hv
-    | par _hse_a h2 hb1 hb2 _hrs1 _hrs2 hpres1 hpres2 hni =>
+    | par _hse_a h2 hb1 hb2 _hrs1 _hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
       rename_i C1 C2
       have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_b
       -- The frozen LEFT branch `a` is an ANSWER (sequential schedule): `b` is safe at
@@ -912,7 +929,13 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         exact ⟨cm, (hb2_robust hsub'' (Exp.wf_monotonic hsub'' hwf_b2') hbs_b')
           |>.covers_of_extTouchesMode hext⟩
       refine Safe.par (C1 := C1) (C2 := C2 ∪ capsOf (Trace.allocList t))
-        (Safe.ans hans_a) ?h2' ?hb1' (@hb2_robust) ?hrs1' ?hrs2' ?hpres1' ?hpres2' hni_grown
+        (Safe.ans hans_a) ?h2' ?hb1' (@hb2_robust) ?hrs1' ?hrs2' ?hpres1' ?hpres2'
+        ?hcov1' ?hcov2' hni_grown
+      case hcov1' =>
+        rw [CaptureSet.reachability_monotonic hsub21 Cs1 hwfC1]; exact hcov1
+      case hcov2' =>
+        exact Safe.hcov_step hsub21 hwfC2
+          (fun l hl => step_allocd_mcell hstep_b (Trace.mem_allocList.mp hl)) hcov2
       case h2' =>
         intro t1 v1 m1' hbs_a2
         obtain ⟨rfl, rfl, rfl⟩ := BigStep.isAns_inv hbs_a2 hans_a
@@ -1115,7 +1138,7 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
                 (by simp [Memory.lookup, hcell])) hred, hans⟩
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
-  | par _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
+  | par _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
     -- Build the canonical sequential (left-then-right-then-join) reduction to an
     -- answer: run e1 fully (ih1), run e2 from e1's answer-memory (ih2, fed e1's
     -- big-step answer via `reduce_to_bigstep`), lift each through the `SeqReduce` par

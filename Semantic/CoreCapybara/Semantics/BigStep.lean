@@ -320,6 +320,13 @@ inductive Safe : Memory -> Exp {} -> Prop where
   -- step's fresh allocation is distinct from every budget cell.
   (hpres1 : ∀ mu l, C1.hasmem mu l -> m.heap l ≠ none) ->
   (hpres2 : ∀ mu l, C2.hasmem mu l -> m.heap l ≠ none) ->
+  -- Budget = annotation reachability (mutual `⊆`): the abstract budget `Cᵢ` tracks the
+  -- term annotation `Csᵢ`'s reachability.  Holds at construction (`Cᵢ := Csᵢ.reachability m`)
+  -- and is maintained as BOTH grow in lockstep — the budget by `capsOf`, the annotation by
+  -- `growByAllocs` — via the coincidence lemmas.  This is what lets `SeqStep.toStep`
+  -- discharge `Step`'s `par` guards (phrased via `Csᵢ.reachability m`) from the carrier.
+  (hcov1 : C1 ⊆ Cs1.reachability m ∧ Cs1.reachability m ⊆ C1) ->
+  (hcov2 : C2 ⊆ Cs2.reachability m ∧ Cs2.reachability m ⊆ C2) ->
   -- The two budgets are non-interfering (the type system's `SepCheck`): with the
   -- bounds this yields trace non-interference for any pair of branch runs
   -- (`traceOk_noninterfere`).
@@ -520,7 +527,7 @@ theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
     | inr hbfalse =>
       obtain ⟨t, v, m', hbs⟩ := ih_false hbfalse
       exact ⟨_, _, _, BigStep.bs_cond_false hbfalse hbs⟩
-  | par _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
+  | par _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
     obtain ⟨t1, v1, m1, hbs1⟩ := ih1
     obtain ⟨t2, v2, m2, hbs2⟩ := ih2 hbs1
     exact ⟨_, _, _, BigStep.bs_par hbs1 hbs2⟩
@@ -2845,6 +2852,191 @@ theorem CapabilitySet.noninterference_capsOf_fresh {C : CapabilitySet} {A : List
         (CapabilitySet.noninterference_cap_fresh (h l' (List.mem_cons_self ..)))
         (ih (fun l hl mu' => h l (List.mem_cons_of_mem _ hl) mu')))
 
+/-! ### Coincidence of the grown annotation's reachability with `capsOf`
+
+  The `par` annotation grows by `CaptureSet.growByAllocs` as a branch allocates; the
+  matching `Safe.par` budget grows by `capsOf`.  For a live mcell `l`, the full-authority
+  capture `.var (.M .epsilon) (.free l)` reaches `.cap (.access .epsilon) l` and
+  `.var .drop (.free l)` reaches `.cap .drop l`, so the grown annotation's reachability
+  and `C.reachability m ∪ capsOf (allocList t)` mutually contain each other. -/
+
+/-- Reachability of an access-mode capture of a live capability cell. -/
+theorem reachability_var_eps {m : Memory} {l : Nat} {info : CapabilityInfo}
+    (h : m.heap l = some (.capability info)) :
+    (CaptureSet.var (.M .epsilon) (.free l) : CaptureSet {}).reachability m
+      = .cap (.access .epsilon) l := by
+  change (reachability_of_loc m.heap l).applyAccess (.M .epsilon) = _
+  simp only [reachability_of_loc, h, CapabilitySet.singleton, CapabilitySet.applyAccess,
+    CapabilitySet.applyMut]
+
+/-- Reachability of a drop-mode capture of a live capability cell. -/
+theorem reachability_var_drop {m : Memory} {l : Nat} {info : CapabilityInfo}
+    (h : m.heap l = some (.capability info)) :
+    (CaptureSet.var .drop (.free l) : CaptureSet {}).reachability m = .cap .drop l := by
+  change (reachability_of_loc m.heap l).applyAccess .drop = _
+  simp only [reachability_of_loc, h, CapabilitySet.singleton, CapabilitySet.applyAccess,
+    CapabilitySet.to_drop]
+
+/-- The cells freshly allocated by a single `SeqStep` are live mcells in the post-memory
+  (a strengthening of `step_allocd_present`). -/
+theorem step_allocd_mcell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
+    (hstep : SeqStep t m1 e1 m2 e2) (hal : Trace.allocd t l) :
+    ∃ info, m2.heap l = some (.capability info) := by
+  induction hstep with
+  | step_apply | step_invoke _ _ | step_tapply | step_capply | step_unwrap
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
+  | step_write_true _ _ | step_write_false _ _ | step_drop _
+  | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
+    simp only [Trace.allocd] at hal
+  | step_alloc _ hfresh =>
+    simp only [Trace.allocd, or_false] at hal; subst hal
+    exact ⟨_, Memory.extend_mcell_lookup hfresh⟩
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih | step_par_left _ ih => exact ih hal
+  | step_par_right _ _ ih => exact ih hal
+
+/-- The original annotation's reachability is contained in the grown one (growth only
+  ADDS captures, and reachability is monotone). -/
+theorem growByAllocs_reachability_ge {m : Memory} :
+    ∀ {t : Trace} {C : CaptureSet {}}, C.reachability m ⊆ (C.growByAllocs t).reachability m := by
+  intro t
+  induction t with
+  | nil => intro C; exact CapabilitySet.Subset.refl
+  | cons it t ih =>
+    intro C
+    cases it with
+    | alloc l =>
+      refine CapabilitySet.Subset.trans ?_ ih
+      exact CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
+        CapabilitySet.Subset.union_right_right
+    | access mu l => exact ih
+    | dealloc l => exact ih
+
+/-- Reachability distributes over capture-set union (definitional). -/
+@[simp] theorem CaptureSet.reachability_union {A B : CaptureSet {}} {m : Memory} :
+    (A ∪ B).reachability m = A.reachability m ∪ B.reachability m := rfl
+
+/-- The freshly-allocated cells' caps are contained in the grown annotation's reachability
+  (each fresh cell joins the annotation at FULL authority). -/
+theorem capsOf_subset_growByAllocs_reachability {m : Memory} :
+    ∀ {t : Trace} {C : CaptureSet {}},
+      (∀ l, l ∈ Trace.allocList t → ∃ info, m.heap l = some (.capability info)) →
+      capsOf (Trace.allocList t) ⊆ (C.growByAllocs t).reachability m := by
+  intro t
+  induction t with
+  | nil => intro C _; exact CapabilitySet.Subset.empty
+  | cons it t ih =>
+    intro C hlive
+    cases it with
+    | alloc l =>
+      obtain ⟨info, hinfo⟩ := hlive l (by simp [Trace.allocList])
+      have hlive' : ∀ l', l' ∈ Trace.allocList t → ∃ info, m.heap l' = some (.capability info) :=
+        fun l' hl' => hlive l' (by simp only [Trace.allocList, List.mem_cons]; exact Or.inr hl')
+      simp only [Trace.allocList, capsOf]
+      refine CapabilitySet.Subset.union_left ?_ (CapabilitySet.Subset.union_left ?_ (ih hlive'))
+      · rw [← reachability_var_eps hinfo]
+        exact CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
+          (growByAllocs_reachability_ge (C := (CaptureSet.var (.M .epsilon) (.free l))
+            ∪ ((CaptureSet.var .drop (.free l)) ∪ C)))
+      · rw [← reachability_var_drop hinfo]
+        exact CapabilitySet.Subset.trans
+          (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
+            CapabilitySet.Subset.union_right_right)
+          (growByAllocs_reachability_ge (C := (CaptureSet.var (.M .epsilon) (.free l))
+            ∪ ((CaptureSet.var .drop (.free l)) ∪ C)))
+    | access mu l => exact ih hlive
+    | dealloc l => exact ih hlive
+
+/-- The grown annotation's reachability adds nothing beyond `capsOf` of the fresh cells. -/
+theorem growByAllocs_reachability_le {m : Memory} :
+    ∀ {t : Trace} {C : CaptureSet {}},
+      (∀ l, l ∈ Trace.allocList t → ∃ info, m.heap l = some (.capability info)) →
+      (C.growByAllocs t).reachability m ⊆ C.reachability m ∪ capsOf (Trace.allocList t) := by
+  intro t
+  induction t with
+  | nil => intro C _; exact CapabilitySet.Subset.union_right_left
+  | cons it t ih =>
+    intro C hlive
+    cases it with
+    | alloc l =>
+      obtain ⟨info, hinfo⟩ := hlive l (by simp [Trace.allocList])
+      have hlive' : ∀ l', l' ∈ Trace.allocList t → ∃ info, m.heap l' = some (.capability info) :=
+        fun l' hl' => hlive l' (by simp only [Trace.allocList, List.mem_cons]; exact Or.inr hl')
+      refine CapabilitySet.Subset.trans
+        (ih (C := (CaptureSet.var (.M .epsilon) (.free l))
+          ∪ ((CaptureSet.var .drop (.free l)) ∪ C)) hlive') ?_
+      -- ((var_e ∪ (var_d ∪ C)).reach ∪ capsOf rest) ⊆ C.reach ∪ capsOf (l :: rest)
+      simp only [Trace.allocList, capsOf, CaptureSet.reachability_union,
+        reachability_var_eps hinfo, reachability_var_drop hinfo]
+      -- goal: (cap_e ∪ (cap_d ∪ C.reach)) ∪ caps ⊆ C.reach ∪ (cap_e ∪ (cap_d ∪ caps))
+      refine CapabilitySet.Subset.union_left
+        (CapabilitySet.Subset.union_left ?_ (CapabilitySet.Subset.union_left ?_ ?_)) ?_
+      · -- cap_e ⊆ RHS
+        exact CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
+          CapabilitySet.Subset.union_right_right
+      · -- cap_d ⊆ RHS
+        exact CapabilitySet.Subset.trans
+          (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
+            CapabilitySet.Subset.union_right_right)
+          CapabilitySet.Subset.union_right_right
+      · -- C.reach ⊆ RHS
+        exact CapabilitySet.Subset.union_right_left
+      · -- caps ⊆ RHS
+        exact CapabilitySet.Subset.trans
+          (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
+            CapabilitySet.Subset.union_right_right)
+          CapabilitySet.Subset.union_right_right
+    | access mu l => exact ih hlive
+    | dealloc l => exact ih hlive
+
+/-- Well-formedness of a grown annotation: every cell `growByAllocs` adds is freshly
+  allocated, hence present in the post-trace memory.  The base `C` must be well-formed in
+  that same (final) memory (the allocations are not present in the start memory). -/
+theorem CaptureSet.growByAllocs_wf {m : Memory} :
+    ∀ {t : Trace} {C : CaptureSet {}},
+      CaptureSet.WfInHeap C m.heap →
+      (∀ l, l ∈ Trace.allocList t → m.heap l ≠ none) →
+      CaptureSet.WfInHeap (C.growByAllocs t) m.heap := by
+  intro t
+  induction t with
+  | nil => intro C hwf _; exact hwf
+  | cons it t ih =>
+    intro C hwf hpres
+    cases it with
+    | alloc l =>
+      have hl : m.heap l ≠ none := hpres l (by simp [Trace.allocList])
+      cases hh : m.heap l with
+      | none => exact absurd hh hl
+      | some val =>
+        refine ih ?_ (fun l' hl' =>
+          hpres l' (by simp only [Trace.allocList, List.mem_cons]; exact Or.inr hl'))
+        exact CaptureSet.WfInHeap.wf_union (CaptureSet.WfInHeap.wf_var_free hh)
+          (CaptureSet.WfInHeap.wf_union (CaptureSet.WfInHeap.wf_var_free hh) hwf)
+    | access mu l =>
+      exact ih hwf (fun l' hl' => hpres l' (by simpa only [Trace.allocList] using hl'))
+    | dealloc l =>
+      exact ih hwf (fun l' hl' => hpres l' (by simpa only [Trace.allocList] using hl'))
+
+/-- **Link maintenance under a step.**  When the budget grows by `capsOf` and the
+  annotation by `growByAllocs` (in lockstep), the budget = annotation-reachability link
+  (mutual `⊆`) is preserved.  Maintains `Safe.par`'s `hcov` field across a branch step. -/
+theorem Safe.hcov_step {m1 m2 : Memory} {Cs1 : CaptureSet {}} {C1 : CapabilitySet} {t : Trace}
+    (hsub21 : m2.subsumes m1) (hwfC1 : Cs1.WfInHeap m1.heap)
+    (hlive : ∀ l, l ∈ Trace.allocList t → ∃ info, m2.heap l = some (.capability info))
+    (hcov1 : C1 ⊆ Cs1.reachability m1 ∧ Cs1.reachability m1 ⊆ C1) :
+    (C1 ∪ capsOf (Trace.allocList t)) ⊆ (Cs1.growByAllocs t).reachability m2 ∧
+    (Cs1.growByAllocs t).reachability m2 ⊆ (C1 ∪ capsOf (Trace.allocList t)) := by
+  have hmono : Cs1.reachability m2 = Cs1.reachability m1 :=
+    CaptureSet.reachability_monotonic hsub21 Cs1 hwfC1
+  constructor
+  · refine CapabilitySet.Subset.union_left ?_ (capsOf_subset_growByAllocs_reachability hlive)
+    refine CapabilitySet.Subset.trans hcov1.1 ?_
+    rw [← hmono]; exact growByAllocs_reachability_ge
+  · refine CapabilitySet.Subset.trans (growByAllocs_reachability_le hlive) ?_
+    rw [hmono]
+    exact CapabilitySet.Subset.union_left
+      (CapabilitySet.Subset.trans hcov1.2 CapabilitySet.Subset.union_right_left)
+      CapabilitySet.Subset.union_right_right
+
 /-- The **robust budget** predicate: every `BigStep` run of `e` — from ANY memory
   `m' ⊒ m` — has its trace bounded by `C`.  This is exactly the `hb1`/`hb2` field
   of `Safe.par`, given a name so the bound can be threaded and transformed. -/
@@ -3229,13 +3421,14 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
       | inr hb1 =>
         exact ih_false hb1 hsub
           (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_false hb1 hbs)) hok hwf3
-  | par hs1 h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hni ih1 ih2 _ih_hrs1 _ih_hrs2 =>
+  | par hs1 h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni ih1 ih2 _ih_hrs1 _ih_hrs2 =>
     clear m1
     rename_i e1 e2 m1 _ _ Cs1 Cs2
     cases hwf with
-    | wf_par _ _ hwf_e1 hwf_e2 =>
+    | wf_par hwf_C1 hwf_C2 hwf_e1 hwf_e2 =>
       -- Budgets are ABSTRACT (`C1`/`C2`) and unchanged by lifting; bounds/safety/NI
-      -- transport by `subsumes_trans`, presence by `none_of_subsumes_none`.
+      -- transport by `subsumes_trans`, presence by `none_of_subsumes_none`.  The link
+      -- `hcov` transports by `reachability_monotonic` (annotation reachability is fixed).
       have hok_e1 : ∀ t v m, m.subsumes m1 -> BigStep m1 e1 t v m ->
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs1
@@ -3244,7 +3437,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
-        ?_ ?_ ?_ ?_ ?_ ?_ ?_ hni
+        ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ hni
       · intro t1 v1 m1' hbs_m2
         obtain ⟨m_sim, hbs_m1, hsub_sim, hlive⟩ := hbs_m2.simulate_down hsub hwf_e1
         refine ih2 hbs_m1 hsub_sim (fun _ _ _ h => h) ?_
@@ -3277,6 +3470,9 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
         exact hpres1 mu l hmem (Heap.none_of_subsumes_none hsub hcontra)
       · intro mu l hmem hcontra
         exact hpres2 mu l hmem (Heap.none_of_subsumes_none hsub hcontra)
+      · -- Link transported by `reachability_monotonic` (annotation reachability frozen).
+        rw [CaptureSet.reachability_monotonic hsub _ hwf_C1]; exact hcov1
+      · rw [CaptureSet.reachability_monotonic hsub _ hwf_C2]; exact hcov2
   | letin _ h_ans h_val h_var ih1 ih_val ih_var =>
     clear m1
     rename_i e1 e2 m1 _
@@ -3749,7 +3945,9 @@ theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
   -- annotation here.  Presence (`hpres`) is exactly `reachability_dom`.
   refine ⟨Safe.par he1.1 ?_ hb1 hb2 hrs1 hrs2
     (fun _ _ h => CaptureSet.reachability_dom h)
-    (fun _ _ h => CaptureSet.reachability_dom h) hni, ?_⟩
+    (fun _ _ h => CaptureSet.reachability_dom h)
+    ⟨CapabilitySet.Subset.refl, CapabilitySet.Subset.refl⟩
+    ⟨CapabilitySet.Subset.refl, CapabilitySet.Subset.refl⟩ hni, ?_⟩
   · intro t1 v1 m1 hrun
     exact (h2 hrun.subsumes hrun.frameLive (he1.2 t1 v1 m1 hrun)).1
   · intro t v m' hbs

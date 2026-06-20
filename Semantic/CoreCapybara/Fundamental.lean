@@ -3152,11 +3152,9 @@ theorem fundamental_sepcheck
 /-- Interpretation of lock-stored separation facts in *arbitrary* well-typed
 environments carrying the `EnvSepWf` invariant. The `sep_droppable` case is the
 reason `EnvSepWf` is threaded: two distinct droppable capture variables denote
-disjoint capabilities exactly by that invariant (the counterexample
-`Gaps.sepcheck_global_droppable_false` aliases them precisely because it is *not*
-`EnvSepWf`). The invariant reaches the `modal_modal`
-consumption point because `SemSubtyp` now carries it — the `exi` subtyping rule
-re-tags its fresh binder `.access_only`, which preserves `EnvSepWf`. -/
+disjoint capabilities exactly by that invariant. The invariant reaches the
+`modal_modal` consumption point because `SemSubtyp` carries it — the `exi`
+subtyping rule re-tags its fresh binder `.access_only`, which preserves `EnvSepWf`. -/
 theorem fundamental_sepcheck_global
   (hsep : SepCheck Γ C1 C2) (hΓ : Γ.IsClosed) :
   ∀ env H,

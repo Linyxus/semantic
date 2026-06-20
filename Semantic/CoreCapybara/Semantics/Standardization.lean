@@ -286,93 +286,88 @@ theorem Safe.par_noninterfere {m m1 m2 m1' m2' : Memory}
     (hr2 : BigStep m2 e2 t2 v2 m2') (hsub2 : m2.subsumes m) (hwf2 : Exp.WfInHeap e2 m2.heap) :
     Trace.Noninterfere t1 t2 := by
   cases hsafe with
-  | par _ _ hb1 hb2 _ _ _ _ hni =>
+  | par _ _ hb1 hb2 _ _ _ _ _ _ hni =>
       exact traceOk_noninterfere (hb1 hsub1 hwf1 hr1) (hb2 hsub2 hwf2 hr2) hni
   | ans hans => cases hans with | is_val hv => cases hv
 
 /-! ## `SeqReduce ⊆ Reduce` — the guard-discharge direction
 
   A sequential reduction of a `Safe` configuration lifts to a genuine-interleaving
-  `Reduce`.  Structurally this is just a fold of the single-step lift `SeqStep.toStep`,
-  threaded by `step_preserves_safe`/`step_preserves_wf`.  ALL the content sits at the
-  `par` nodes, where the lift must discharge `Step`'s `par`-rule guards — isolated below
-  into `step_par_{left,right}_lift`, the single (and irreducible) gap. -/
+  `Reduce`: a fold of the single-step lift `SeqStep.toStep`, threaded by
+  `step_preserves_safe`/`step_preserves_wf`.  The non-structural content is at the `par`
+  nodes, where the lift discharges `Step`'s `par`-rule guards (`step_par_{left,right}_lift`):
+  each branch step's trace is bounded by the branch's annotation reachability, and the two
+  branches' reachabilities are non-interfering. -/
 
-/-- **THE GAP — discharging the interleaving `par` guards from `Safe`.**
+/-- **Discharging the interleaving `par` guards from `Safe` (left branch).**
 
-  `SeqStep.toStep`'s only non-structural obligation is, at a `par` node, to turn a branch
-  step `Step t m e1 m' e1'` into a *guarded* interleaving `Step ... (.par C1 C2 e1 e2) ...`.
-  `Step.step_par_left`/`step_par_right` demand TWO guards, BOTH phrased via the FIXED
-  term annotations' reachability `Cᵢ.reachability m`:
+  At a `par` node, `SeqStep.toStep` turns a branch step `Step t m e1 m' e1'` into a
+  *guarded* interleaving step, growing the annotation to `C1.growByAllocs t`.  The two
+  guards `Step.step_par_left` demands — `ht : TraceOk t (C1.reachability m)` and
+  `hni : Noninterference (C1.reachability m) (C2.reachability m)` — are discharged from the
+  `Safe.par` carrier:
 
-    (1) `hni : Noninterference (C1.reachability m) (C2.reachability m)`, and
-    (2) `ht  : TraceOk t (C1.reachability m)`   (resp. `C2` for the right branch).
+  * `hni` follows from the carrier's `Noninterference C1ᵇ C2ᵇ` by DOWNWARD CLOSURE
+    (`Noninterference.subset_left`), using the link `hcov` (`Cᵢ.reachability m ⊆ Cᵢᵇ`).
 
-  Neither is dischargeable from the current `Safe.par` carrier:
+  * `ht` follows by RUN EXTENSION: the reduct `e1'` is `Safe` (preservation), hence has a
+    `BigStep` run (`Safe.has_answer`); head-expanding the step onto it gives a full run of
+    `e1`, bounded by `C1ᵇ` via the carrier's `hb1`; `TraceOk.prefix` restricts to the
+    step's trace `t`, and `TraceOk.mono` with the link `hcov.1` (`C1ᵇ ⊆ C1.reachability m`)
+    re-bases it to the annotation's reachability.
 
-  * **(1) is NOT a fundamental gap — only missing bookkeeping.**  The carrier supplies
-    `Noninterference C1ᵇ C2ᵇ` for ABSTRACT budgets `Cᵢᵇ` that are *disconnected* from the
-    term annotations `Cᵢ`: `Safe.par` records no `Cᵢ.reachability m ⊆ Cᵢᵇ` field.  Adding
-    that field WOULD suffice — it holds at construction (`eval_par` sets
-    `Cᵢᵇ := Cᵢ.reachability m`) and survives steps, since `reachability` is
-    subsumption-invariant (`CaptureSet.reachability_monotonic`) while `Cᵢᵇ` only grows.
-    With it, (1) follows from the carrier's `hni` by downward closure.
-
-  * **(2) IS a fundamental gap — FALSE as stated.**  A branch legitimately accesses or
-    drops a cell IT ALLOCATED ITSELF.  Note `TraceOk` DOES exempt a branch's own fresh
-    cells — but only those allocated EARLIER IN THE SAME TRACE `t` (the `l ∈ A` clause of
-    `TraceOkFrom`, where the exempt set `A` accumulates the `.alloc`s scanned so far and
-    STARTS EMPTY).  The catch is that the `Step` guard runs on a SINGLE step's trace, so
-    `A` resets to `[]` every step: the exemption does NOT survive across steps.  Concrete
-    counterexample: the left branch `e1 = unpack (alloc x) (drop •)` reduces in three
-    steps — `[.alloc l]` (alloc), `[]` (unpack), then `[.dealloc l]` (drop).  The whole
-    branch trace `[.alloc l, .dealloc l]` IS `TraceOk` for any budget (this is exactly
-    what the carrier's run bound `hbᵢ` provides), but the DROP STEP's own one-element
-    trace `[.dealloc l]` is checked with `A = []`, so it requires `(C1.reachability m)`
-    to cover `.drop` at `l` — and `l ∉ C1.reachability m`, since `l` is fresh, hence
-    unreachable from the fixed annotation `C1` (`CaptureSet.reachability` of a closed
-    capture set ranges only over cells syntactically reachable from `C1`, and is frozen
-    under memory growth by `reachability_monotonic`).  The grown carrier budget `Cᵢᵇ`
-    (extended by `capsOf` to absorb the branch's allocations) DOES contain `l`, but the
-    guard reads `C1.reachability m`, not `Cᵢᵇ`.  (Verified concretely: `TraceOk
-    [.alloc l, .dealloc l] C` for any `C`, vs. `TraceOk [.dealloc l] C → C.covers .drop l`.)
-
-  **ROOT CAUSE (shared):** the `Step` `par` guard is phrased against the FIXED
-  term-annotation reachability `Cᵢ.reachability m` — frozen under memory growth and blind
-  to a branch's own fresh private cells — whereas the only available semantic budget
-  (`Safe.par`'s growable `Cᵢᵇ`) is exactly the one that absorbs those cells.
-
-  **REQUIRED DEVICE (human decision, reserved for audit):** rephrase `Step`'s `par` guard
-  so a branch's own prior allocations stay exempt across steps.  Two equivalent shapes:
-  (a) carry the branch's accumulated allocation set `A` and guard with
-  `TraceOkFrom (Cᵢ.reachability m) A t` (using `TraceOkFrom`'s existing `l ∈ A`
-  exemption, rather than resetting `A = []`); or (b) bound the step's trace by a GROWABLE
-  budget mirroring the `Safe.par` carrier `Cᵢᵇ` (already extended by `capsOf` to absorb
-  the branch's allocations).  Either way, (2) then discharges from the carrier's run bound
-  `hbᵢ` restricted to the step, and (1) directly from the carrier's `hni`. -/
+  The annotation `C1` grows by `growByAllocs` in lockstep with the carrier budget `C1ᵇ`
+  (by `capsOf`), so a branch's own freshly-allocated cells join its reachability; the link
+  `hcov` keeps the two in sync (`Safe.hcov_step`). -/
 theorem step_par_left_lift {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
     {e1 e2 e1' : Exp {}}
     (hsafe : Safe m (.par C1 C2 e1 e2))
     (hwf : Exp.WfInHeap (.par C1 C2 e1 e2) m.heap)
+    (hstep : SeqStep t m e1 m' e1')
     (hbranch : Step t m e1 m' e1') :
-    Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1' e2) :=
-  sorry
+    Step t m (.par C1 C2 e1 e2) m' (.par (C1.growByAllocs t) C2 e1' e2) := by
+  obtain ⟨hwf_e1, _⟩ := Exp.wf_inv_par hwf
+  cases hsafe with
+  | ans hans => cases hans with | is_val hv => cases hv
+  | par hse_a h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
+    have hsafe1' : Safe m' e1' := step_preserves_safe hstep hwf_e1 hse_a
+    obtain ⟨s, v, m'', hrun'⟩ := hsafe1'.has_answer
+    have hfull : BigStep m e1 (t ++ s) v m'' := BigStep.head_expand hstep hrun'
+    have htok : TraceOk (t ++ s) _ := hb1 (Memory.subsumes_refl _) hwf_e1 hfull
+    have ht : TraceOk t (C1.reachability m) := TraceOk.mono hcov1.1 (TraceOk.prefix htok)
+    have hni' : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m) :=
+      (((hni.subset_left hcov1.2).ni_symm).subset_left hcov2.2).ni_symm
+    exact Step.step_par_left hbranch ht hni'
 
-/-- Right-branch companion of `step_par_left_lift`; the same gap, on the right branch's
-  budget `C2`.  See `step_par_left_lift` for the full analysis. -/
+/-- Right-branch companion of `step_par_left_lift` (right branch steps, left frozen as an
+  answer; the right annotation `C2` grows).  Same discharge as the left case. -/
 theorem step_par_right_lift {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
     {e1 e2 e2' : Exp {}}
     (hsafe : Safe m (.par C1 C2 e1 e2))
     (hwf : Exp.WfInHeap (.par C1 C2 e1 e2) m.heap)
+    (hans : e1.IsAns)
+    (hstep : SeqStep t m e2 m' e2')
     (hbranch : Step t m e2 m' e2') :
-    Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1 e2') :=
-  sorry
+    Step t m (.par C1 C2 e1 e2) m' (.par C1 (C2.growByAllocs t) e1 e2') := by
+  obtain ⟨_, hwf_e2⟩ := Exp.wf_inv_par hwf
+  cases hsafe with
+  | ans hans' => cases hans' with | is_val hv => cases hv
+  | par hse_a h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
+    have hse_e2 : Safe m e2 := h2 (BigStep.of_isAns hans)
+    have hsafe2' : Safe m' e2' := step_preserves_safe hstep hwf_e2 hse_e2
+    obtain ⟨s, v, m'', hrun'⟩ := hsafe2'.has_answer
+    have hfull : BigStep m e2 (t ++ s) v m'' := BigStep.head_expand hstep hrun'
+    have htok : TraceOk (t ++ s) _ := hb2 (Memory.subsumes_refl _) hwf_e2 hfull
+    have ht : TraceOk t (C2.reachability m) := TraceOk.mono hcov2.1 (TraceOk.prefix htok)
+    have hni' : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m) :=
+      (((hni.subset_left hcov1.2).ni_symm).subset_left hcov2.2).ni_symm
+    exact Step.step_par_right ht hni' hbranch
 
 /-- The left branch of a `Safe` `par` node is safe. -/
 theorem Safe.par_inv_left {m : Memory} {C1 C2 : CaptureSet {}} {e1 e2 : Exp {}}
     (h : Safe m (.par C1 C2 e1 e2)) : Safe m e1 := by
   cases h with
-  | par hsa _ _ _ _ _ _ _ _ => exact hsa
+  | par hsa _ _ _ _ _ _ _ _ _ _ => exact hsa
   | ans hans => cases hans with | is_val hv => cases hv
 
 /-- Once the left branch of a `Safe` `par` node is an answer, the right branch is safe
@@ -380,12 +375,12 @@ theorem Safe.par_inv_left {m : Memory} {C1 C2 : CaptureSet {}} {e1 e2 : Exp {}}
 theorem Safe.par_inv_right {m : Memory} {C1 C2 : CaptureSet {}} {e1 e2 : Exp {}}
     (h : Safe m (.par C1 C2 e1 e2)) (hans : e1.IsAns) : Safe m e2 := by
   cases h with
-  | par _ h2 _ _ _ _ _ _ _ => exact h2 (BigStep.of_isAns hans)
+  | par _ h2 _ _ _ _ _ _ _ _ _ => exact h2 (BigStep.of_isAns hans)
   | ans hans' => cases hans' with | is_val hv => cases hv
 
 /-- **`SeqStep ⊆ Step` over a `Safe` configuration.**  Every sequential step lifts to a
   guarded interleaving step.  All cases are a direct constructor re-use except the two
-  `par` congruences, whose guard discharge is `step_par_{left,right}_lift` (THE GAP). -/
+  `par` congruences, whose guard discharge is `step_par_{left,right}_lift`. -/
 theorem SeqStep.toStep {t : Trace} {m m' : Memory} {e e' : Exp {}}
     (hstep : SeqStep t m e m' e') :
     Exp.WfInHeap e m.heap → Safe m e → Step t m e m' e' := by
@@ -419,19 +414,18 @@ theorem SeqStep.toStep {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_par_left hstep_a ih =>
     intro hwf hsafe
     obtain ⟨hwf1, _⟩ := Exp.wf_inv_par hwf
-    exact step_par_left_lift hsafe hwf (ih hwf1 (Safe.par_inv_left hsafe))
+    exact step_par_left_lift hsafe hwf hstep_a (ih hwf1 (Safe.par_inv_left hsafe))
   | step_par_right hans_a hstep_b ih =>
     intro hwf hsafe
     obtain ⟨_, hwf2⟩ := Exp.wf_inv_par hwf
-    exact step_par_right_lift hsafe hwf (ih hwf2 (Safe.par_inv_right hsafe hans_a))
+    exact step_par_right_lift hsafe hwf hans_a hstep_b (ih hwf2 (Safe.par_inv_right hsafe hans_a))
   | step_par_join h1 h2 => exact fun _ _ => Step.step_par_join h1 h2
   | step_rename => exact fun _ _ => Step.step_rename
   | step_lift hv hwf_v hfresh => exact fun _ _ => Step.step_lift hv hwf_v hfresh
   | step_unpack => exact fun _ _ => Step.step_unpack
 
 /-- **`SeqReduce ⊆ Reduce`.**  Fold `SeqStep.toStep` over the sequential run, threading
-  `Safe`/`WfInHeap` by `step_preserves_safe`/`step_preserves_wf`.  Sorry-free given the
-  single-step lift; the only residual gap is `step_par_{left,right}_lift`. -/
+  `Safe`/`WfInHeap` by `step_preserves_safe`/`step_preserves_wf`. -/
 theorem SeqReduce.toReduce {t : Trace} {m m' : Memory} {e e' : Exp {}}
     (hwf : Exp.WfInHeap e m.heap)
     (hsafe : Safe m e)

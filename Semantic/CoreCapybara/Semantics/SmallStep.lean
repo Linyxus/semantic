@@ -4,6 +4,28 @@ import Semantic.CoreCapybara.Semantics.Heap
 
 namespace CoreCapybara
 
+/-- Grow a capture set `C` by the cells freshly allocated within a trace `t`, each given
+  FULL authority (access `.M .epsilon` and `.drop`).  Used to GROW a `par` branch's
+  annotation as it allocates: a branch's own fresh cells join its footprint, so a later
+  access/drop of such a cell is covered by the (grown) annotation's reachability.  Defined
+  as a LEFT FOLD so that `growByAllocs C [] = C` (definitionally) and it telescopes over
+  `++` (`growByAllocs_append`).  For a live mcell `l`, `(.var (.M .epsilon) (.free l))`'s
+  reachability is `.cap (.access .epsilon) l` and `(.var .drop (.free l))`'s is `.cap .drop l`,
+  so `(growByAllocs C t).reachability m` set-equals `C.reachability m ∪ capsOf (allocList t)`. -/
+def CaptureSet.growByAllocs : CaptureSet {} → Trace → CaptureSet {}
+| C, [] => C
+| C, (.alloc l :: t) =>
+    CaptureSet.growByAllocs ((.var (.M .epsilon) (.free l)) ∪ ((.var .drop (.free l)) ∪ C)) t
+| C, (.access _ _ :: t) => CaptureSet.growByAllocs C t
+| C, (.dealloc _ :: t) => CaptureSet.growByAllocs C t
+
+/-- `growByAllocs` telescopes over trace concatenation (it is a left fold). -/
+theorem CaptureSet.growByAllocs_append (C : CaptureSet {}) (t1 t2 : Trace) :
+    C.growByAllocs (t1 ++ t2) = (C.growByAllocs t1).growByAllocs t2 := by
+  induction t1 generalizing C with
+  | nil => rfl
+  | cons it t1 ih => cases it <;> simp only [List.cons_append, CaptureSet.growByAllocs, ih]
+
 /-- Small-step evaluation relation instrumented with a trace.
   `Step t m e m' e'` means that expression `e` in memory `m` steps to `e'` in
   memory `m'`, emitting the trace `t` of heap events performed by this step. -/
@@ -73,12 +95,12 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
   Step t m e1 m' e1' ->
   (ht : TraceOk t (C1.reachability m)) ->
   (hni : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m)) ->
-  Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1' e2)
+  Step t m (.par C1 C2 e1 e2) m' (.par (C1.growByAllocs t) C2 e1' e2)
 | step_par_right :
   (ht : TraceOk t (C2.reachability m)) ->
   (hni : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m)) ->
   Step t m e2 m' e2' ->
-  Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1 e2')
+  Step t m (.par C1 C2 e1 e2) m' (.par C1 (C2.growByAllocs t) e1 e2')
 | step_par_join :
   e1.IsAns -> e2.IsAns ->
   Step [] m (.par C1 C2 e1 e2) m .unit
@@ -183,13 +205,13 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
   SeqStep t m (.unpack e1 e2) m' (.unpack e1' e2)
 | step_par_left :
   SeqStep t m e1 m' e1' ->
-  SeqStep t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1' e2)
+  SeqStep t m (.par C1 C2 e1 e2) m' (.par (C1.growByAllocs t) C2 e1' e2)
 -- The RIGHT branch steps only once the LEFT branch is an answer: this is the single
 -- difference from `Step`, sequentializing the `par` schedule.
 | step_par_right :
   e1.IsAns ->
   SeqStep t m e2 m' e2' ->
-  SeqStep t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1 e2')
+  SeqStep t m (.par C1 C2 e1 e2) m' (.par C1 (C2.growByAllocs t) e1 e2')
 | step_par_join :
   e1.IsAns -> e2.IsAns ->
   SeqStep [] m (.par C1 C2 e1 e2) m .unit
@@ -226,14 +248,9 @@ theorem seqreduce_trans
     rw [List.append_assoc]
     exact SeqReduce.step h (ih hred2)
 
--- NOTE: `SeqStep.toStep` / `SeqReduce.toReduce` (the `SeqStep ⊆ Step` bridge) used
--- to live here as unconditional lemmas.  Now that `Step`'s `par` rules carry the
--- budget (`TraceOk`) and non-interference (`Noninterference`) guards, this inclusion
--- is NO LONGER unconditional: a `SeqStep` whose `par` branches violate their budgets
--- or interfere has no corresponding `Step`.  Discharging the guards needs a semantic
--- invariant (`Safe`) at every `par` node, and `Safe` is only available downstream
--- (`BigStep.lean`).  The bridge therefore moves to a `Safe`-aware file, restated as
--- `SeqStep.toStep (hsafe : Safe m e) : ...` (this is the non-trivial half of the
--- standardization development; the other half is `Reduce`-run ≈ `SeqReduce`-run).
+-- The `SeqStep ⊆ Step` inclusion (`SeqStep.toStep` / `SeqReduce.toReduce`) lives in
+-- `Semantics/Standardization.lean`: discharging the budget (`TraceOk`) and
+-- non-interference (`Noninterference`) guards on `Step`'s `par` rules requires the `Safe`
+-- invariant at every `par` node, which is only available there.
 
 end CoreCapybara
