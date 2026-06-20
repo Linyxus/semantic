@@ -69,10 +69,14 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 -- result).  Separation (the `par` typing rule's `SepCheck Γ C1 C2`) is what makes
 -- the interleaving sound; CSL soundness of parallel composition is
 -- `Fundamental.sem_typ_par`.
-| step_par_left :
+| step_par_left {C1 C2 : CaptureSet {}} :
   Step t m e1 m' e1' ->
+  (ht : TraceOk t (C1.reachability m)) ->
+  (hni : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m)) ->
   Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1' e2)
 | step_par_right :
+  (ht : TraceOk t (C2.reachability m)) ->
+  (hni : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m)) ->
   Step t m e2 m' e2' ->
   Step t m (.par C1 C2 e1 e2) m' (.par C1 C2 e1 e2')
 | step_par_join :
@@ -120,9 +124,10 @@ theorem reduce_trans
   answer (`step_par_right` carries `e1.IsAns`).  This is the canonical schedule for
   which the sequential big-step bridge is *exact* (`bs_par` runs the branches in this
   order), so the small↔big preservation/progress results go through with no trace
-  reordering.  Every `SeqStep` is a `Step` (`SeqStep.toStep`); the converse — every
-  `Step` run is permutation-equivalent to a `SeqStep` run — is the standardization
-  theorem relating the two schedules. -/
+  reordering.  Every `SeqStep` over a `Safe` configuration is a `Step` (the bounds/NI
+  guards on `Step`'s `par` rules are discharged from `Safe`; proven downstream); the
+  converse — every `Step` run is permutation-equivalent to a `SeqStep` run — is the
+  standardization theorem relating the two schedules. -/
 inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_apply :
   m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
@@ -221,34 +226,14 @@ theorem seqreduce_trans
     rw [List.append_assoc]
     exact SeqReduce.step h (ih hred2)
 
-/-- Every sequential step is an (interleaving) step: `SeqStep ⊆ Step`. -/
-theorem SeqStep.toStep (h : SeqStep t m e m' e') : Step t m e m' e' := by
-  induction h with
-  | step_apply hlk => exact Step.step_apply hlk
-  | step_invoke hx hy => exact Step.step_invoke hx hy
-  | step_tapply hlk => exact Step.step_tapply hlk
-  | step_capply hlk => exact Step.step_capply hlk
-  | step_unwrap hlk => exact Step.step_unwrap hlk
-  | step_cond_var_true hlk => exact Step.step_cond_var_true hlk
-  | step_cond_var_false hlk => exact Step.step_cond_var_false hlk
-  | step_read hr hc => exact Step.step_read hr hc
-  | step_write_true hx hy => exact Step.step_write_true hx hy
-  | step_write_false hx hy => exact Step.step_write_false hx hy
-  | step_alloc hlk hfresh => exact Step.step_alloc hlk hfresh
-  | step_drop hx => exact Step.step_drop hx
-  | step_ctx_letin _ ih => exact Step.step_ctx_letin ih
-  | step_ctx_unpack _ ih => exact Step.step_ctx_unpack ih
-  | step_par_left _ ih => exact Step.step_par_left ih
-  | step_par_right _ _ ih => exact Step.step_par_right ih
-  | step_par_join h1 h2 => exact Step.step_par_join h1 h2
-  | step_rename => exact Step.step_rename
-  | step_lift hv hwf hfresh => exact Step.step_lift hv hwf hfresh
-  | step_unpack => exact Step.step_unpack
-
-/-- Every sequential reduction is an (interleaving) reduction: `SeqReduce ⊆ Reduce`. -/
-theorem SeqReduce.toReduce (h : SeqReduce t m e m' e') : Reduce t m e m' e' := by
-  induction h with
-  | refl => exact Reduce.refl
-  | step hstep _ ih => exact Reduce.step hstep.toStep ih
+-- NOTE: `SeqStep.toStep` / `SeqReduce.toReduce` (the `SeqStep ⊆ Step` bridge) used
+-- to live here as unconditional lemmas.  Now that `Step`'s `par` rules carry the
+-- budget (`TraceOk`) and non-interference (`Noninterference`) guards, this inclusion
+-- is NO LONGER unconditional: a `SeqStep` whose `par` branches violate their budgets
+-- or interfere has no corresponding `Step`.  Discharging the guards needs a semantic
+-- invariant (`Safe`) at every `par` node, and `Safe` is only available downstream
+-- (`BigStep.lean`).  The bridge therefore moves to a `Safe`-aware file, restated as
+-- `SeqStep.toStep (hsafe : Safe m e) : ...` (this is the non-trivial half of the
+-- standardization development; the other half is `Reduce`-run ≈ `SeqReduce`-run).
 
 end CoreCapybara

@@ -297,28 +297,31 @@ inductive Safe : Memory -> Exp {} -> Prop where
   (resolve m.heap (.var x) = some .btrue -> Safe m e2) ->
   (resolve m.heap (.var x) = some .bfalse -> Safe m e3) ->
   Safe m (.cond x e2 e3)
-| par {m : Memory} {C1 C2 : CapabilitySet} :
+| par {m : Memory} {Cs1 Cs2 : CaptureSet {}} :
+  -- Left branch safe at the current memory.
   Safe m e1 ->
   -- Sequential continuation: after `e1` runs to an answer, `e2` is safe at the
   -- result memory.
   (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1}, BigStep m e1 t1 v1 m1 -> Safe m1 e2) ->
   -- Robust budget bounds: every run of a branch from ANY memory `m' ⊒ m` has its
-  -- trace bounded by that branch's static budget (`C1`/`C2`).
+  -- trace bounded by that branch's static budget — the reachability of its capture
+  -- annotation at `m` (subsumption-invariant, so the bound at `m'` agrees).
   (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-    m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' -> TraceOk t C1) ->
+    m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' ->
+    TraceOk t (Cs1.reachability m)) ->
   (hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-    m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' -> TraceOk t C2) ->
-  -- Robust right-branch safety: `e2` is safe from any `m' ⊒ m` whose memory is
-  -- `C2`-compatible.  Memory-monotone, so `Safe.lift` preserves it.
-  (hrs2 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C2 -> Safe m' e2) ->
-  -- Budget presence: each branch's static budget references only cells present in
-  -- `m`, so a step's fresh allocation is distinct from every budget cell.
-  (hpres1 : ∀ mu l, C1.hasmem mu l -> m.heap l ≠ none) ->
-  (hpres2 : ∀ mu l, C2.hasmem mu l -> m.heap l ≠ none) ->
+    m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' ->
+    TraceOk t (Cs2.reachability m)) ->
+  -- Robust branch safety: each branch is safe from any `m' ⊒ m` whose memory is
+  -- compatible with that branch's budget.  Memory-monotone, so `Safe.lift` preserves it.
+  (hrs1 : ∀ {m' : Memory},
+    m'.subsumes m -> m'.is_compatible (Cs1.reachability m) -> Safe m' e1) ->
+  (hrs2 : ∀ {m' : Memory},
+    m'.subsumes m -> m'.is_compatible (Cs2.reachability m) -> Safe m' e2) ->
   -- The two budgets are non-interfering (the type system's `SepCheck`): with the
   -- bounds this yields trace non-interference for any pair of branch runs
   -- (`traceOk_noninterfere`).
-  (hni : CapabilitySet.Noninterference C1 C2) ->
+  (hni : CapabilitySet.Noninterference (Cs1.reachability m) (Cs2.reachability m)) ->
   Safe m (.par Cs1 Cs2 e1 e2)
 
 /-- Trace-observing evaluation predicate: `e` from `m` is **safe** (never stuck —
@@ -515,7 +518,7 @@ theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
     | inr hbfalse =>
       obtain ⟨t, v, m', hbs⟩ := ih_false hbfalse
       exact ⟨_, _, _, BigStep.bs_cond_false hbfalse hbs⟩
-  | par _ _ _ _ _ _ _ _ ih1 ih2 _ =>
+  | par _ _ _ _ _ _ _ ih1 ih2 _ _ =>
     obtain ⟨t1, v1, m1, hbs1⟩ := ih1
     obtain ⟨t2, v2, m2, hbs2⟩ := ih2 hbs1
     exact ⟨_, _, _, BigStep.bs_par hbs1 hbs2⟩
@@ -2273,7 +2276,8 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
     (hstep : Step ts m1 e2 m2 e2')
     (hrun : BigStep m2 e1 s e1res mb)
     (hsep : Trace.Noninterfere s ts)
-    (hwf1 : Exp.WfInHeap e1 m1.heap) :
+    (hwf1 : Exp.WfInHeap e1 m1.heap)
+    (hwf2 : Exp.WfInHeap e2 m1.heap) :
     ∃ mc, BigStep m1 e1 s e1res mc ∧ Step ts mc e2 mb e2' := by
   induction hstep with
   | step_apply hlk =>
@@ -2410,17 +2414,29 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
       · rw [Memory.drop_mcell_lookup_ne hlx, ag l hlx]
     exact ⟨mc, run, hmb ▸ Step.step_drop mcx⟩
   | step_ctx_letin hinner ih =>
-    obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1
+    obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1 (Exp.wf_inv_letin hwf2).1
     exact ⟨mc, run, Step.step_ctx_letin stepc⟩
   | step_ctx_unpack hinner ih =>
-    obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1
+    obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1 (Exp.wf_inv_unpack hwf2).1
     exact ⟨mc, run, Step.step_ctx_unpack stepc⟩
-  | step_par_left hinner ih =>
-    obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1
-    exact ⟨mc, run, Step.step_par_left stepc⟩
-  | step_par_right hinner ih =>
-    obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1
-    exact ⟨mc, run, Step.step_par_right stepc⟩
+  | step_par_left hinner ht hni ih =>
+    cases hwf2 with
+    | wf_par hwfC1 hwfC2 hwfa hwfb =>
+      obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1 hwfa
+      -- reachability is subsumption-invariant (`mc ⊒ m1`), so the original guards at
+      -- `m1` transport to the reconstructed step at `mc`.
+      have hr1 := CaptureSet.reachability_monotonic run.subsumes _ hwfC1
+      have hr2 := CaptureSet.reachability_monotonic run.subsumes _ hwfC2
+      exact ⟨mc, run, Step.step_par_left stepc (by rw [hr1]; exact ht)
+        (by rw [hr1, hr2]; exact hni)⟩
+  | step_par_right ht hni hinner ih =>
+    cases hwf2 with
+    | wf_par hwfC1 hwfC2 hwfa hwfb =>
+      obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1 hwfb
+      have hr1 := CaptureSet.reachability_monotonic run.subsumes _ hwfC1
+      have hr2 := CaptureSet.reachability_monotonic run.subsumes _ hwfC2
+      exact ⟨mc, run, Step.step_par_right (by rw [hr2]; exact ht)
+        (by rw [hr1, hr2]; exact hni) stepc⟩
   | step_par_join h1 h2 =>
     exact ⟨mb, hrun, Step.step_par_join h1 h2⟩
   | step_rename =>
@@ -3051,7 +3067,7 @@ theorem step_touched_present {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
     rw [hx]; simp
   | step_alloc _ _ => simp only [Trace.touched] at htch
   | step_ctx_letin _ ih | step_ctx_unpack _ ih
-  | step_par_left _ ih | step_par_right _ ih => exact ih htch
+  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih htch
 
 /-- A cell a step ALLOCATES is fresh in the pre-step memory (only `step_alloc`
   allocates, requiring `m1.heap l = none`). -/
@@ -3066,7 +3082,7 @@ theorem step_allocd_fresh {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
   | step_alloc _ hfresh =>
     simp only [Trace.allocd, or_false] at hal; subst hal; exact hfresh
   | step_ctx_letin _ ih | step_ctx_unpack _ ih
-  | step_par_left _ ih | step_par_right _ ih => exact ih hal
+  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
 
 /-- A cell a step ALLOCATES is present in the post-step memory. -/
 theorem step_allocd_present {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
@@ -3081,7 +3097,7 @@ theorem step_allocd_present {t : Trace} {m1 e1 m2 e2 : _} {l : Nat}
     simp only [Trace.allocd, or_false] at hal; subst hal
     simp [Memory.extend_mcell, Heap.extend_mcell]
   | step_ctx_letin _ ih | step_ctx_unpack _ ih
-  | step_par_left _ ih | step_par_right _ ih => exact ih hal
+  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
 
 /-- **A step's trace is `TraceOk`-bounded by the stepping expression's budget.**
   Given a full run `hrun` of `e` whose trace `τ` (bounded by `C`) is a permutation
@@ -3211,11 +3227,17 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
       | inr hb1 =>
         exact ih_false hb1 hsub
           (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_false hb1 hbs)) hok hwf3
-  | par hs1 h2 hb1 hb2 hrs2 hpres1 hpres2 hni ih1 ih2 _hrs2ih =>
+  | par hs1 h2 hb1 hb2 hrs1 hrs2 hni ih1 ih2 _ih_hrs1 _ih_hrs2 =>
     clear m1
-    rename_i e1 e2 Cs1 Cs2 m1 _ _
+    rename_i e1 e2 m1 Cs1 Cs2
     cases hwf with
-    | wf_par _ _ hwf_e1 hwf_e2 =>
+    | wf_par hwf_Cs1 hwf_Cs2 hwf_e1 hwf_e2 =>
+      -- Reachability is subsumption-invariant, so the lifted node's budgets (at `m2`)
+      -- coincide with the original node's (at `m1`).  This bridges every budget field.
+      have hr1 : Cs1.reachability m2 = Cs1.reachability m1 :=
+        CaptureSet.reachability_monotonic hsub Cs1 hwf_Cs1
+      have hr2 : Cs2.reachability m2 = Cs2.reachability m1 :=
+        CaptureSet.reachability_monotonic hsub Cs2 hwf_Cs2
       have hok_e1 : ∀ t v m, m.subsumes m1 -> BigStep m1 e1 t v m ->
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs1
@@ -3224,7 +3246,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
-        ?_ ?_ ?_ ?_ ?_ ?_ hni
+        ?_ ?_ ?_ ?_ ?_ ?_
       · intro t1 v1 m1' hbs_m2
         obtain ⟨m_sim, hbs_m1, hsub_sim, hlive⟩ := hbs_m2.simulate_down hsub hwf_e1
         refine ih2 hbs_m1 hsub_sim (fun _ _ _ h => h) ?_
@@ -3242,19 +3264,24 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
               hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
             exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
       · -- Lifted bound `hb1`: a bound over `m' ⊒ m1` is, a fortiori, a bound over
-        -- `m' ⊒ m2` (since `m2 ⊒ m1`).  Monotone, no `simulate_down` needed.
+        -- `m' ⊒ m2` (since `m2 ⊒ m1`); the budget set is the same by `hr1`.
         intro m' t v m'' hsub' hwf' hbs
+        rw [hr1]
         exact hb1 (Memory.subsumes_trans hsub' hsub) hwf' hbs
       · intro m' t v m'' hsub' hwf' hbs
+        rw [hr2]
         exact hb2 (Memory.subsumes_trans hsub' hsub) hwf' hbs
+      · -- Lifted robust left-branch safety: monotone in the base memory.
+        intro m' hsub' hcompat
+        rw [hr1] at hcompat
+        exact hrs1 (Memory.subsumes_trans hsub' hsub) hcompat
       · -- Lifted robust right-branch safety: monotone in the base memory.
         intro m' hsub' hcompat
+        rw [hr2] at hcompat
         exact hrs2 (Memory.subsumes_trans hsub' hsub) hcompat
-      · -- Budget presence is preserved upward (subsumption keeps cells present).
-        intro mu l hmem hcontra
-        exact hpres1 mu l hmem (Heap.none_of_subsumes_none hsub hcontra)
-      · intro mu l hmem hcontra
-        exact hpres2 mu l hmem (Heap.none_of_subsumes_none hsub hcontra)
+      · -- Lifted non-interference: same budget sets by `hr1`/`hr2`.
+        rw [hr1, hr2]
+        exact hni
   | letin _ h_ans h_val h_var ih1 ih_val ih_var =>
     clear m1
     rename_i e1 e2 m1 _
@@ -3706,21 +3733,24 @@ theorem Eval.eval_cond {m : Memory} {x : Var .var {}} {e2 e3 : Exp {}} {Q : Tpos
   sequential `bs_par` realization (`e1` to an answer, then `e2` from that
   answer-memory via `h2`); the result is always `.unit`. -/
 theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
-    {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}}
+    {Cs1 Cs2 : CaptureSet {}}
     (he1 : Eval m e1 Q1)
     (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-      m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' -> TraceOk t C1)
+      m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' ->
+      TraceOk t (Cs1.reachability m))
     (hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-      m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' -> TraceOk t C2)
-    (hrs2 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C2 -> Safe m' e2)
-    (hpres1 : ∀ mu l, C1.hasmem mu l -> m.heap l ≠ none)
-    (hpres2 : ∀ mu l, C2.hasmem mu l -> m.heap l ≠ none)
-    (hni : CapabilitySet.Noninterference C1 C2)
+      m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' ->
+      TraceOk t (Cs2.reachability m))
+    (hrs1 : ∀ {m' : Memory},
+      m'.subsumes m -> m'.is_compatible (Cs1.reachability m) -> Safe m' e1)
+    (hrs2 : ∀ {m' : Memory},
+      m'.subsumes m -> m'.is_compatible (Cs2.reachability m) -> Safe m' e2)
+    (hni : CapabilitySet.Noninterference (Cs1.reachability m) (Cs2.reachability m))
     (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1 : Memory},
       m1.subsumes m -> Memory.FrameLive m t1 m1 -> Q1 t1 v1 m1 ->
       Eval m1 e2 (fun t2 _v2 m2 => Q (t1 ++ t2) .unit m2)) :
     Eval m (.par Cs1 Cs2 e1 e2) Q := by
-  refine ⟨Safe.par he1.1 ?_ hb1 hb2 hrs2 hpres1 hpres2 hni, ?_⟩
+  refine ⟨Safe.par he1.1 ?_ hb1 hb2 hrs1 hrs2 hni, ?_⟩
   · intro t1 v1 m1 hrun
     exact (h2 hrun.subsumes hrun.frameLive (he1.2 t1 v1 m1 hrun)).1
   · intro t v m' hbs
