@@ -37,12 +37,6 @@ theorem reduce_ctx_unpack
   | refl => exact Reduce.refl
   | step h _ ih => exact Reduce.step (Step.step_ctx_unpack h) ih
 
--- NOTE: the genuine-`Reduce` `par` congruences (`reduce_par_left`/`reduce_par_right`)
--- are no longer derivable as plain folds now that `Step`'s `par` rules carry the
--- budget/NI guards: lifting a branch `Reduce` to a whole-`par` `Reduce` requires the
--- per-step guard data.  They were unused, so they are dropped here; the guarded
--- versions belong to the standardization development (where `Safe` supplies the guards).
-
 /-- Sequential congruence: a `SeqReduce` of the LEFT branch of `letin` lifts. -/
 theorem seqreduce_ctx_letin
   (hred : SeqReduce C m e1 m' e1') :
@@ -1346,19 +1340,5 @@ theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool}
       (fun hm => hdr (List.mem_append_right _ hm)) ?_
     exact step_preserves_cell hstep (fun hm => hwr (List.mem_append_left _ hm))
       (fun hm => hdr (List.mem_append_left _ hm)) hinit
-
-/- Scope and known limitations of `par` adequacy:
-   * This bridge is stated for the SEQUENTIAL schedule `SeqStep`/`SeqReduce`, for
-     which the big-step `bs_par` (left-then-right) is exact — so `head_expand` and
-     all preservation/progress results are `sorry`-free.  Lifting adequacy to the
-     full interleaving `Step` requires the standardization theorem: every `Step` run
-     is permutation-equivalent (Mazurkiewicz) to a `SeqStep` run, via the diamond
-     `BigStep.step_run_commute` and `Safe.par`'s separation.  That is the separate
-     development (B); `SeqStep.toStep` is its trivial half.
-   * `step_preserves_safe` keeps the frozen `par` branch's robust safety (`hrs2`)
-     applicable by maintaining `AllLive` across steps, which needs a drop-free (no
-     `dealloc`) hypothesis.  So `adequacy_platform` / `immutability_adequacy_platform`
-     carry a dealloc-free side-condition.  Removing it needs separation-based framing
-     of the frozen branch's cells (operational ownership transfer through `drop`). -/
 
 end CoreCapybara
