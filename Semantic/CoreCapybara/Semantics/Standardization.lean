@@ -2146,24 +2146,193 @@ theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
       intro l hl mu' hm
       exact hpres2 mu' l hm (Step.alloc_fresh hstep (Trace.mem_allocList.mp hl))
 
-/-- **The premature-`par_right` safety gap — the fundamental boundary.**  A `par_right` step whose
-  left branch is not yet an answer.  Rebuilding `Safe m₂ (par C₁ C₂ eL eR')` needs the node's
-  sequential continuation `h2' : ∀ BigStep m₂ eL → Safe · eR'` and reduct right-budget `hb2'`.  The
-  carrier supplies the right branch's safety/bound ONLY conditionally — `h2 : ∀ BigStep m eL →
-  Safe · eR` runs eL FIRST — so deriving `h2'`/`hb2'` needs ROBUST preservation of the right step
-  at every post-left memory, which the asymmetric `Safe.par` does not provide.  This is the
-  dynamic-footprint/ownership fact: the right branch is independently safe at mid-reduction.  The
-  principled fix is a SYMMETRIC `Safe.par` (robust right-branch safety) established at
-  `sem_typ_par` — a type-system-level change with a large `Fundamental` ripple, hence human design
-  intervention.  (`absorb` avoids this by bubbling premature steps past the already-sequential
-  left run and reading `h2` at the post-left memory; the gap surfaces only when preserving `Safe`
-  along a GENUINE interleaved run.) -/
+/-- **A genuine step preserves liveness off its drop-footprint.**  Single-step analogue of
+  `BigStep.frameLive`: every cell live before the step that the step does not externally drop is
+  live after.  Only `step_drop` deallocates; the other leaves allocate/mutate/extend (preserving
+  existing live cells), and the congruences recurse. -/
+theorem Step.frameLive {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
+    (hstep : Step t m1 e1 m2 e2) : Memory.FrameLive m1 t m2 := by
+  induction hstep with
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
+  | step_rename | step_unpack | step_par_join _ _ =>
+    exact Memory.FrameLive.refl
+  | step_write_true _ _ | step_write_false _ _ =>
+    intro l b hlive _
+    exact Memory.update_mcell_preserves_live _ ⟨b, hlive⟩
+  | step_alloc _ hfr =>
+    intro l b hlive _
+    refine (Memory.extend_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact absurd hlive (by simp [Memory.lookup, hfr])
+  | step_drop _ =>
+    intro l b hlive hnd
+    refine (Memory.drop_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact hnd (by simp [Trace.extDrops, Trace.extDropsFrom])
+  | step_lift hv hwf hfr =>
+    intro l b hlive _
+    refine ⟨b, ?_⟩
+    simp only [Memory.lookup, Memory.extend, Heap.extend] at hlive ⊢
+    split
+    · rename_i heq; rw [heq, hfr] at hlive; cases hlive
+    · exact hlive
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih
+  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih
+
+/-- **Separated budgets do not drop each other's cells.**  If a trace `t` is `TraceOk` for `B2`
+  and `B1`/`B2` are non-interfering, then no cell of `B1` is externally dropped by `t`: a drop
+  would force the covering `B2` member to `.access .ro` (`shared_ro`), contradicting `.drop`. -/
+theorem not_extDrops_of_noninterf {B1 B2 : CapabilitySet} {t : Trace} {l : Nat} {mu1 : CapMode}
+    (htok : TraceOk t B2) (hni : CapabilitySet.Noninterference B1 B2)
+    (hmem : B1.hasmem mu1 l) : ¬ Trace.extDrops t l := by
+  intro hd
+  obtain ⟨mu2, hmem2, hle⟩ :=
+    CapabilitySet.covers_imp_exists_hasmem (htok.drop_covers_of_extDrops hd)
+  obtain ⟨_, hro2⟩ := hni.shared_ro hmem hmem2
+  subst hro2
+  cases hle
+
+/-- **Branch-safety transports across a separated transition.**  If `e` is `Safe` at `ma` with its
+  runs bounded by budget `B`, and `ma → ma'` keeps every live `B`-cell live (`hlive`), then `e` is
+  `Safe` at `ma'`.  The frame condition `hlive` is supplied per-call from separation (the
+  transition's footprint is disjoint from `B`) or compatibility (`is_compatible`).  Factors the
+  `Safe.lift` boilerplate: a run's externally-touched cell is covered by `B`, hence in `B`. -/
+theorem Safe.frame_lift {ma ma' : Memory} {e : Exp {}} {B : CapabilitySet}
+    (hse : Safe ma e) (hsub : ma'.subsumes ma) (hwf : Exp.WfInHeap e ma.heap)
+    (hbnd : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
+      m'.subsumes ma → Exp.WfInHeap e m'.heap → BigStep m' e s v m'' → TraceOk s B)
+    (hlive : ∀ l b, (∃ mu, B.hasmem mu l) →
+      ma.lookup l = some (.capability (.mcell b .live)) →
+      ∃ b', ma'.lookup l = some (.capability (.mcell b' .live))) :
+    Safe ma' e := by
+  refine Safe.lift hse hsub (Q := fun s val m => BigStep ma e s val m)
+    (fun _ _ _ h => h) ?_ hwf
+  intro s v m _ hbs l b hl htouch
+  have hnal : ¬ Trace.allocd s l := fun ha => by
+    have := BigStep.alloc_fresh hbs ha; rw [hl] at this; cases this
+  obtain ⟨cm, hext⟩ :=
+    Trace.extTouchesMode_of_touched hnal (Trace.touched_of_extTouches htouch)
+  obtain ⟨mu, hmem, _⟩ :=
+    CapabilitySet.covers_imp_exists_hasmem
+      ((hbnd (Memory.subsumes_refl _) hwf hbs).covers_of_extTouchesMode hext)
+  exact hlive l b ⟨mu, hmem⟩ hl
+
+set_option maxHeartbeats 1000000 in
+-- The 11-field `Safe.par` carrier rebuild, each field threading the diamond/frame-lift, exceeds
+-- the default heartbeat budget.
+/-- **Premature-`par_right` preservation — the carrier-asymmetry gap, ISOLATED to one fact.**  A
+  genuine right step with the left branch NOT an answer.  EVERY field of the reduct's `Safe.par`
+  carrier is proven here — the frozen left's safety (`Safe.frame_lift` across the separated right
+  step), the reduct-right continuation `h2'` and robust safety `hrs2'` (`Safe.frame_lift` of the
+  reduct-right `Safe m2 eR'`), the grown right budget `hb2'` (genuine head-expansion +
+  `TraceOk.equiv_invariant`), and the bookkeeping fields — EXCEPT for the single
+  fact `Safe m1 eR`: **the right branch is safe at the par node's OWN memory, before the left
+  branch runs.**  The carrier provides right-branch safety only POST-LEFT (`h2`, needs an `eL`
+  run) or COMPAT-CONDITIONED (`hrs2`, needs `m1.is_compatible C2`, the dynamic-ownership fact
+  `reachability` does NOT give — a `reachability` member may be a DEAD mcell).  A premature right
+  step needs it UNCONDITIONALLY at `m1`.  This is THE asymmetry of `Safe.par`: left-safety is
+  unconditional (`hse_a`), right-safety is not.
+
+  The fix is a SYMMETRIC `Safe.par` field `hse_b : Safe m e2`.  It IS available at construction
+  (`sem_typ_par`'s `he2_store.1 : Safe store e2`, currently discarded) and preservable across a
+  genuine left step (separated frame, exactly the `?hfroz` field below) and right step (it becomes
+  the reduct safety `ih hse_b`).  What makes it a genuine metatheory change rather than a free
+  addition: the GENERIC `Safe.lift` (lifting a `par` carrier across memory subsumption) cannot lift
+  `hse_b`, because `bs_par` schedules `e1`-then-`e2`, so when `e1` is not an answer the right
+  branch's footprint frame is not extractable from `Safe.lift`'s par-level `hok` (which sees only
+  `e1++e2` traces).  Closing it therefore needs a coordinated change to `Safe.par` AND `Safe.lift`'s
+  contract (and the `eval_par`/`sem_typ_par`/`step_preserves_safe` ripple) — a human design
+  decision (cf. the never-restrict-the-type-system mandate; `Safe` is a proof device, but this
+  reshapes the separation carrier the whole `Fundamental` core is built against). -/
 theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
     {C1 C2 : CaptureSet {}} {eL eR eR' : Exp {}}
-    (hstep : Step t m1 eR m2 eR') (hsafe : Safe m1 (.par C1 C2 eL eR))
-    (hwf : Exp.WfInHeap (.par C1 C2 eL eR) m1.heap) :
-    Safe m2 (.par C1 (C2.growByAllocs t) eL eR') :=
-  sorry
+    (hstep : Step t m1 eR m2 eR') (ht_g : TraceOk t (C2.reachability m1))
+    (hsafe : Safe m1 (.par C1 C2 eL eR))
+    (hwf : Exp.WfInHeap (.par C1 C2 eL eR) m1.heap)
+    (ih : Exp.WfInHeap eR m1.heap → Safe m1 eR → Safe m2 eR') :
+    Safe m2 (.par C1 (C2.growByAllocs t) eL eR') := by
+  obtain ⟨hwf_eL, hwf_eR⟩ := Exp.wf_inv_par hwf
+  have hwfC1 : C1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
+  have hwfC2 : C2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
+  cases hsafe with
+  | ans hans => cases hans with | is_val hv => cases hv
+  | par hse_a h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
+    rename_i Cb1 Cb2
+    have hsub21 : m2.subsumes m1 := Step.subsumes hstep
+    have htok_t : TraceOk t Cb2 := TraceOk.mono hcov2.2 ht_g
+    -- ============================================================================
+    -- THE SINGLE FUNDAMENTAL GAP: the right branch is safe at the par's OWN memory.
+    -- The carrier gives this only conditionally (h2 post-left / hrs2 compat-conditioned);
+    -- a premature right step needs it unconditionally.  See the docstring.
+    have hse_eR : Safe m1 eR := sorry
+    -- ============================================================================
+    have hse_b2' : Safe m2 eR' := ih hwf_eR hse_eR
+    have hwf_b2' : Exp.WfInHeap eR' m2.heap := Step.preserves_wf hstep hwf_eR
+    -- Grown right budget bound (genuine head-expansion up to `Trace.Equiv` + invariance).
+    have hb2_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
+        m'.subsumes m2 → Exp.WfInHeap eR' m'.heap → BigStep m' eR' s v m'' →
+        TraceOk s (Cb2 ∪ capsOf (Trace.allocList t)) := by
+      intro m' s v m'' hsub' hwf' hbs
+      obtain ⟨ms, hbs_m2, _, _⟩ := hbs.simulate_down hsub' hwf_b2'
+      obtain ⟨tt, hfull, heq, _⟩ := Step.head_expand_bigstep hstep hse_eR hwf_eR hbs_m2
+      have htok' : TraceOk tt Cb2 := hb2 (Memory.subsumes_refl _) hwf_eR hfull
+      have htok : TraceOk (t ++ s) Cb2 := TraceOk.equiv_invariant htok' heq.symm
+      have := TraceOkFrom.absorb_exempt (TraceOkFrom.split_append htok)
+      rwa [List.append_nil] at this
+    have hni_grown : CapabilitySet.Noninterference Cb1 (Cb2 ∪ capsOf (Trace.allocList t)) := by
+      refine CapabilitySet.Noninterference.ni_symm (CapabilitySet.Noninterference.ni_union
+        (CapabilitySet.Noninterference.ni_symm hni)
+        (CapabilitySet.noninterference_capsOf_fresh ?_))
+      intro l hl mu' hm
+      exact hpres1 mu' l hm (Step.alloc_fresh hstep (Trace.mem_allocList.mp hl))
+    refine Safe.par (C1 := Cb1) (C2 := Cb2 ∪ capsOf (Trace.allocList t))
+      ?hfroz ?h2' ?hb1' (@hb2_robust) ?hrs1' ?hrs2' ?hpres1' ?hpres2' ?hcov1' ?hcov2' hni_grown
+    case hfroz =>
+      -- Frozen left `eL` stays safe at `m2`: the right step's footprint (⊆ Cb2) does not drop
+      -- `eL`'s (⊆ Cb1) cells (`hni`), so `Step.frameLive` keeps them live.
+      exact Safe.frame_lift hse_a hsub21 hwf_eL hb1
+        (fun l b ⟨mu, hmem⟩ hl =>
+          Step.frameLive hstep l b hl (not_extDrops_of_noninterf htok_t hni hmem))
+    case h2' =>
+      -- After `eL` runs (from m2 to mL), the reduct right `eR'` stays safe: `eL`'s run (⊆ Cb1)
+      -- does not drop `eR'`'s (⊆ Cb2∪caps) cells (`hni_grown`), so `BigStep.frameLive` keeps them.
+      intro t1 v1 mL hLrun
+      refine Safe.frame_lift hse_b2' hLrun.subsumes hwf_b2' hb2_robust
+        (fun l b ⟨mu, hmem⟩ hl =>
+          hLrun.frameLive l b hl
+            (not_extDrops_of_noninterf (hb1 hsub21 (Exp.wf_monotonic hsub21 hwf_eL) hLrun)
+              (CapabilitySet.Noninterference.ni_symm hni_grown) hmem))
+    case hb1' =>
+      intro m' s v m'' hsub' hwf' hbs
+      exact hb1 (Memory.subsumes_trans hsub' hsub21) hwf' hbs
+    case hrs1' =>
+      intro m' hsub' hc
+      exact hrs1 (Memory.subsumes_trans hsub' hsub21) hc
+    case hrs2' =>
+      intro m' hsub' hc
+      refine Safe.frame_lift hse_b2' hsub' hwf_b2' hb2_robust (fun l b ⟨mu, hmem⟩ hl => ?_)
+      obtain ⟨c', hc'', hsubc⟩ := hsub' l (.capability (.mcell b .live)) hl
+      cases c' with
+      | val _ => simp [Cell.subsumes] at hsubc
+      | masked => simp [Cell.subsumes] at hsubc
+      | capability cc =>
+        cases cc with
+        | mcell b'' ℓ'' =>
+          have hℓ := hc mu l b'' ℓ'' hmem hc''
+          exact ⟨b'', by rw [hℓ] at hc''; exact hc''⟩
+        | basic => simp [Cell.subsumes] at hsubc
+    case hcov1' =>
+      rw [CaptureSet.reachability_monotonic hsub21 C1 hwfC1]; exact hcov1
+    case hcov2' =>
+      exact Safe.hcov_step hsub21 hwfC2
+        (fun l hl => Step.allocd_mcell hstep (Trace.mem_allocList.mp hl)) hcov2
+    case hpres1' =>
+      intro mu l hmem
+      exact (fun hc => hpres1 mu l hmem (Heap.none_of_subsumes_none hsub21 hc))
+    case hpres2' =>
+      intro mu l hmem
+      rcases CapabilitySet.hasmem_union_iff.mp hmem with h2m | hA
+      · exact (fun hc => hpres2 mu l h2m (Heap.none_of_subsumes_none hsub21 hc))
+      · exact Step.allocd_present hstep (Trace.mem_allocList.mp (capsOf_hasmem hA))
 
 /-- **Genuine interleaving step preserves safety.**  The leaf and join steps are `SeqStep`s, so
   they reduce to the sequential `step_preserves_safe`.  The `letin`/`unpack` congruence cases
@@ -2221,7 +2390,7 @@ theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
   | step_par_left inner ht hni ih =>
     exact Step.preserves_safe_par_left inner hsafe hwf ih
   | step_par_right ht hni inner ih =>
-    exact Step.preserves_safe_par_right inner hsafe hwf
+    exact Step.preserves_safe_par_right inner ht hsafe hwf ih
 
 /-- **Standardization (theorem B).**  Every genuine interleaving run to an answer is matched by
   a sequential (left-first) run reaching the IDENTICAL final memory and answer, the traces
