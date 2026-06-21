@@ -1626,37 +1626,602 @@ theorem Step.preserves_wf {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
         (Exp.wf_monotonic (Step.subsumes inner) hwf_aL)
         (ih hwf_b)
 
-/-- **Genuine interleaving step preserves safety — THE FUNDAMENTAL GAP.**
+/-! ## Step-indexed big-step (`BigStepN`) — the run-size measure for genuine head-expansion
 
-  This is the ONLY remaining `sorry` in the standardization development, and it reveals a
-  genuine design boundary of the current `Safe.par` carrier, not an unfinished proof.
+  `BigStep` is a `Prop`, so it admits no derivation-height function (large elimination is
+  forbidden).  The genuine head-expansion `Step.head_expand_bigstep` needs to recurse on a
+  STRICTLY SMALLER run in the premature-`par_right` case (bubble the step past the left run with
+  the BigStep diamond `step_run_commute`, then head-expand the strictly-smaller right run).  A
+  step-indexed mirror `BigStepN n` supplies that measure: each rule's premises sit at index `n`
+  and its conclusion at `n+1`, so inverting a `BigStepN (n+1)` exposes every sub-run at `n`, and
+  the recursion is plain `induction` on the index. -/
 
-  All cases EXCEPT a *premature* `par_right` (the right branch steps while the left branch is
-  not yet an answer) are provable exactly as the sequential `step_preserves_safe` (the leaf
-  and congruence cases are structural, and the `par_left`/answer-`par_right` cases reuse the
-  carrier's `h2`/`hb`/`Safe.lift` machinery).  The premature `par_right` case is the boundary:
+/-- Depth-indexed mirror of `BigStep`: `BigStepN n` is derivable with all premise sub-runs at
+  index `n` and the conclusion at `n+1` (so `BigStepN 0` is empty, and inversion drops the
+  index by one). -/
+inductive BigStepN : Nat -> Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
+| bs_pack {n} {m : Memory} :
+  BigStepN (n+1) m (.pack cs x) [] (.pack cs x) m
+| bs_alloc {n} {m : Memory} {x : Nat} {b : Bool} {hv R} {l : Nat} :
+  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+  (hfresh : m.heap l = none) ->
+  BigStepN (n+1) m (.alloc (.free x)) [.alloc l]
+    (.pack (.var (.M .epsilon) (.free l)) (.free l)) (m.extend_mcell l b hfresh)
+| bs_val {n} {m : Memory} {v : Exp {}} :
+  (hv : Exp.IsSimpleVal v) ->
+  BigStepN (n+1) m v [] v m
+| bs_var {n} {m : Memory} {x : Var .var {}} :
+  BigStepN (n+1) m (.var x) [] (.var x) m
+| bs_apply {n} {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
+  BigStepN n m (e.subst (Subst.openVar y)) t v m' ->
+  BigStepN (n+1) m (.app (.free x) y) t v m'
+| bs_invoke {n} {m : Memory} {x : Nat} :
+  m.lookup x = some (.capability .basic) ->
+  m.lookup y = some (.val ⟨.unit, hv, R⟩) ->
+  BigStepN (n+1) m (.app (.free x) (.free y)) [.access .epsilon x] .unit m
+| bs_tapply {n} {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.tabs cs T0 e, hv, R⟩) ->
+  BigStepN n m (e.subst (Subst.openTVar .top)) t v m' ->
+  BigStepN (n+1) m (.tapp (.free x) S) t v m'
+| bs_capply {n} {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.cabs cs B0 e, hv, R⟩) ->
+  BigStepN n m (e.subst (Subst.openCVar CS)) t v m' ->
+  BigStepN (n+1) m (.capp (.free x) CS) t v m'
+| bs_wrap {n} {m : Memory} :
+  BigStepN (n+1) m (.boxed cs Ψ e) [] (.boxed cs Ψ e) m
+| bs_unwrap {n} {m : Memory} {x : Nat} :
+  m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
+  BigStepN n m e t v m' ->
+  BigStepN (n+1) m (.unwrap (.free x)) t v m'
+| bs_letin_val {n} {m m1 m2 : Memory} {v : Exp {}} {l' : Nat} :
+  BigStepN n m e1 t1 v m1 ->
+  (hv : Exp.IsSimpleVal v) ->
+  (hwf_v : Exp.WfInHeap v m1.heap) ->
+  (hfresh : m1.lookup l' = none) ->
+  BigStepN n (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh)
+    (e2.subst (Subst.openVar (.free l'))) t2 v2 m2 ->
+  BigStepN (n+1) m (.letin e1 e2) (t1 ++ t2) v2 m2
+| bs_letin_var {n} {m m1 m2 : Memory} {x : Var .var {}} :
+  BigStepN n m e1 t1 (.var x) m1 ->
+  BigStepN n m1 (e2.subst (Subst.openVar x)) t2 v2 m2 ->
+  BigStepN (n+1) m (.letin e1 e2) (t1 ++ t2) v2 m2
+| bs_unpack {n} {m m1 m2 : Memory} {x : Var .var {}} {cs : CaptureSet {}} :
+  BigStepN n m e1 t1 (.pack cs x) m1 ->
+  BigStepN n m1 (e2.subst (Subst.unpack cs x)) t2 v2 m2 ->
+  BigStepN (n+1) m (.unpack e1 e2) (t1 ++ t2) v2 m2
+| bs_read {n} {m : Memory} {x : Nat} {b b' : Bool} :
+  m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell b .live)) ->
+  BigStepN (n+1) m (.read (.free x)) [.access .ro y] (if b' then .btrue else .bfalse) m
+| bs_write_true {n} {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
+  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  BigStepN (n+1) m (.write (.free x) (.free y)) [.access .epsilon x] .unit
+    (m.update_mcell x true .live ⟨b0, hx⟩)
+| bs_write_false {n} {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
+  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
+  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
+  BigStepN (n+1) m (.write (.free x) (.free y)) [.access .epsilon x] .unit
+    (m.update_mcell x false .live ⟨b0, hx⟩)
+| bs_drop {n} {m : Memory} {x : Nat} {b : Bool} :
+  (hx : m.lookup x = some (.capability (.mcell b .live))) ->
+  BigStepN (n+1) m (.drop (.free x)) [.dealloc x] .unit (m.drop_mcell x ⟨b, hx⟩)
+| bs_cond_true {n} {m : Memory} {x : Var .var {}} :
+  resolve m.heap (.var x) = some .btrue ->
+  BigStepN n m e2 t v m' ->
+  BigStepN (n+1) m (.cond x e2 e3) t v m'
+| bs_cond_false {n} {m : Memory} {x : Var .var {}} :
+  resolve m.heap (.var x) = some .bfalse ->
+  BigStepN n m e3 t v m' ->
+  BigStepN (n+1) m (.cond x e2 e3) t v m'
+| bs_par {n} {m m1 m2 : Memory} {v1 v2 : Exp {}} :
+  BigStepN n m e1 t1 v1 m1 ->
+  BigStepN n m1 e2 t2 v2 m2 ->
+  BigStepN (n+1) m (.par C1 C2 e1 e2) (t1 ++ t2) .unit m2
 
-  Rebuilding `Safe m₂ (par C₁ C₂ eL eR')` after a premature right step needs the new node's
-  sequential continuation field `h2' : ∀ BigStep m₂ eL → Safe · eR'`.  But the carrier supplies
-  the right branch's safety ONLY conditionally — `h2 : ∀ BigStep m eL → Safe · eR` runs eL
-  FIRST — so deriving `h2'` would require ROBUST preservation of the right step at every
-  post-left memory.  The `Safe.par` carrier (asymmetric: the right branch is safe only after
-  the left answers) does not provide this.
+/-- Forget the index: every `BigStepN` is a `BigStep`. -/
+theorem BigStepN.toBigStep {n : Nat} {m : Memory} {e : Exp {}} {t : Trace} {v : Exp {}}
+    {m' : Memory} (h : BigStepN n m e t v m') : BigStep m e t v m' := by
+  induction h with
+  | bs_pack => exact BigStep.bs_pack
+  | bs_alloc hlk hfresh => exact BigStep.bs_alloc hlk hfresh
+  | bs_val hv => exact BigStep.bs_val hv
+  | bs_var => exact BigStep.bs_var
+  | bs_apply hlk _ ih => exact BigStep.bs_apply hlk ih
+  | bs_invoke h1 h2 => exact BigStep.bs_invoke h1 h2
+  | bs_tapply hlk _ ih => exact BigStep.bs_tapply hlk ih
+  | bs_capply hlk _ ih => exact BigStep.bs_capply hlk ih
+  | bs_wrap => exact BigStep.bs_wrap
+  | bs_unwrap hlk _ ih => exact BigStep.bs_unwrap hlk ih
+  | bs_letin_val _ hv hwf_v hfresh _ ih1 ih2 => exact BigStep.bs_letin_val ih1 hv hwf_v hfresh ih2
+  | bs_letin_var _ _ ih1 ih2 => exact BigStep.bs_letin_var ih1 ih2
+  | bs_unpack _ _ ih1 ih2 => exact BigStep.bs_unpack ih1 ih2
+  | bs_read h1 h2 => exact BigStep.bs_read h1 h2
+  | bs_write_true hx hy => exact BigStep.bs_write_true hx hy
+  | bs_write_false hx hy => exact BigStep.bs_write_false hx hy
+  | bs_drop hx => exact BigStep.bs_drop hx
+  | bs_cond_true hres _ ih => exact BigStep.bs_cond_true hres ih
+  | bs_cond_false hres _ ih => exact BigStep.bs_cond_false hres ih
+  | bs_par _ _ ih1 ih2 => exact BigStep.bs_par ih1 ih2
 
-  This is exactly the dynamic-footprint/ownership fact: the right branch is independently safe
-  at mid-reduction (before the left runs).  The principled fix is a SYMMETRIC `Safe.par`
-  carrying robust right-branch safety, established at `sem_typ_par` — a type-system-level change
-  with a large `Fundamental` ripple, hence requiring human design intervention.
+/-- Index weakening by one. -/
+theorem BigStepN.mono {n : Nat} {m : Memory} {e : Exp {}} {t : Trace} {v : Exp {}}
+    {m' : Memory} (h : BigStepN n m e t v m') : BigStepN (n+1) m e t v m' := by
+  induction h with
+  | bs_pack => exact BigStepN.bs_pack
+  | bs_alloc hlk hfresh => exact BigStepN.bs_alloc hlk hfresh
+  | bs_val hv => exact BigStepN.bs_val hv
+  | bs_var => exact BigStepN.bs_var
+  | bs_apply hlk _ ih => exact BigStepN.bs_apply hlk ih
+  | bs_invoke h1 h2 => exact BigStepN.bs_invoke h1 h2
+  | bs_tapply hlk _ ih => exact BigStepN.bs_tapply hlk ih
+  | bs_capply hlk _ ih => exact BigStepN.bs_capply hlk ih
+  | bs_wrap => exact BigStepN.bs_wrap
+  | bs_unwrap hlk _ ih => exact BigStepN.bs_unwrap hlk ih
+  | bs_letin_val _ hv hwf_v hfresh _ ih1 ih2 => exact BigStepN.bs_letin_val ih1 hv hwf_v hfresh ih2
+  | bs_letin_var _ _ ih1 ih2 => exact BigStepN.bs_letin_var ih1 ih2
+  | bs_unpack _ _ ih1 ih2 => exact BigStepN.bs_unpack ih1 ih2
+  | bs_read h1 h2 => exact BigStepN.bs_read h1 h2
+  | bs_write_true hx hy => exact BigStepN.bs_write_true hx hy
+  | bs_write_false hx hy => exact BigStepN.bs_write_false hx hy
+  | bs_drop hx => exact BigStepN.bs_drop hx
+  | bs_cond_true hres _ ih => exact BigStepN.bs_cond_true hres ih
+  | bs_cond_false hres _ ih => exact BigStepN.bs_cond_false hres ih
+  | bs_par _ _ ih1 ih2 => exact BigStepN.bs_par ih1 ih2
 
-  Note `absorb` itself does NOT need this lemma: it bubbles a premature step past the
-  ALREADY-SEQUENTIAL left run via the diamond `step_reduce_swap`, recovering the left's `BigStep`
-  and applying `h2` at the post-left memory.  The gap surfaces only when preserving `Safe`
-  along a GENUINE interleaved run (`standardization`'s induction), where no such ordering is in
-  hand. -/
+/-- Index weakening (monotone). -/
+theorem BigStepN.le_mono {n n' : Nat} {m : Memory} {e : Exp {}} {t : Trace} {v : Exp {}}
+    {m' : Memory} (h : BigStepN n m e t v m') (hle : n ≤ n') : BigStepN n' m e t v m' := by
+  induction n', hle using Nat.le_induction with
+  | base => exact h
+  | succ _ _ ih => exact ih.mono
+
+/-- Every `BigStep` is derivable at some index. -/
+theorem BigStep.toBigStepN {m : Memory} {e : Exp {}} {t : Trace} {v : Exp {}} {m' : Memory}
+    (h : BigStep m e t v m') : ∃ n, BigStepN n m e t v m' := by
+  induction h with
+  | bs_pack => exact ⟨1, BigStepN.bs_pack⟩
+  | bs_alloc hlk hfresh => exact ⟨1, BigStepN.bs_alloc hlk hfresh⟩
+  | bs_val hv => exact ⟨1, BigStepN.bs_val hv⟩
+  | bs_var => exact ⟨1, BigStepN.bs_var⟩
+  | bs_apply hlk _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_apply hlk hn⟩
+  | bs_invoke h1 h2 => exact ⟨1, BigStepN.bs_invoke h1 h2⟩
+  | bs_tapply hlk _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_tapply hlk hn⟩
+  | bs_capply hlk _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_capply hlk hn⟩
+  | bs_wrap => exact ⟨1, BigStepN.bs_wrap⟩
+  | bs_unwrap hlk _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_unwrap hlk hn⟩
+  | bs_letin_val _ hv hwf_v hfresh _ ih1 ih2 =>
+    obtain ⟨n1, hn1⟩ := ih1; obtain ⟨n2, hn2⟩ := ih2
+    exact ⟨max n1 n2 + 1, BigStepN.bs_letin_val (hn1.le_mono (Nat.le_max_left ..)) hv hwf_v hfresh
+      (hn2.le_mono (Nat.le_max_right ..))⟩
+  | bs_letin_var _ _ ih1 ih2 =>
+    obtain ⟨n1, hn1⟩ := ih1; obtain ⟨n2, hn2⟩ := ih2
+    exact ⟨max n1 n2 + 1, BigStepN.bs_letin_var (hn1.le_mono (Nat.le_max_left ..))
+      (hn2.le_mono (Nat.le_max_right ..))⟩
+  | bs_unpack _ _ ih1 ih2 =>
+    obtain ⟨n1, hn1⟩ := ih1; obtain ⟨n2, hn2⟩ := ih2
+    exact ⟨max n1 n2 + 1, BigStepN.bs_unpack (hn1.le_mono (Nat.le_max_left ..))
+      (hn2.le_mono (Nat.le_max_right ..))⟩
+  | bs_read h1 h2 => exact ⟨1, BigStepN.bs_read h1 h2⟩
+  | bs_write_true hx hy => exact ⟨1, BigStepN.bs_write_true hx hy⟩
+  | bs_write_false hx hy => exact ⟨1, BigStepN.bs_write_false hx hy⟩
+  | bs_drop hx => exact ⟨1, BigStepN.bs_drop hx⟩
+  | bs_cond_true hres _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_cond_true hres hn⟩
+  | bs_cond_false hres _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_cond_false hres hn⟩
+  | bs_par _ _ ih1 ih2 =>
+    obtain ⟨n1, hn1⟩ := ih1; obtain ⟨n2, hn2⟩ := ih2
+    exact ⟨max n1 n2 + 1, BigStepN.bs_par (hn1.le_mono (Nat.le_max_left ..))
+      (hn2.le_mono (Nat.le_max_right ..))⟩
+
+/-- Inversion of a `BigStepN` `par` run: both branch sub-runs sit at the predecessor index. -/
+theorem BigStepN.par_inv {n : Nat} {m : Memory} {C1 C2 : CaptureSet {}} {e1 e2 : Exp {}}
+    {s : Trace} {v : Exp {}} {m' : Memory}
+    (h : BigStepN (n + 1) m (.par C1 C2 e1 e2) s v m') :
+    ∃ (t1 : Trace) (v1 : Exp {}) (m1 : Memory) (t2 : Trace) (v2 : Exp {}),
+      s = t1 ++ t2 ∧ v = .unit ∧
+      BigStepN n m e1 t1 v1 m1 ∧ BigStepN n m1 e2 t2 v2 m' := by
+  cases h with
+  | bs_par hL hR => exact ⟨_, _, _, _, _, rfl, rfl, hL, hR⟩
+  | bs_val hv => cases hv
+
+/-- Allocation-equivalence is a congruence for a common suffix. -/
+theorem allocd_congr_left_append {ta ta' tb : Trace}
+    (h : ∀ l, Trace.allocd ta l ↔ Trace.allocd ta' l) (l : Nat) :
+    Trace.allocd (ta ++ tb) l ↔ Trace.allocd (ta' ++ tb) l := by
+  rw [Trace.allocd_append, Trace.allocd_append]; exact or_congr_left (h l)
+
+/-- **Converse of `TraceOkFrom.covers_of_extTouchesFromMode`.**  If every external touch of `t`
+  (relative to the running allocation set `A`) is covered by `C`, then `t` is `TraceOkFrom C A`:
+  every event is either covered or internal (its target already allocated in `A`). -/
+theorem TraceOkFrom.of_extTouchesFromMode {C : CapabilitySet} :
+    ∀ {A : List Nat} {t : Trace},
+      (∀ l cm, Trace.extTouchesFromMode A l cm t → C.covers cm l) → TraceOkFrom C A t := by
+  intro A t
+  induction t generalizing A with
+  | nil => intro _; exact TraceOkFrom.nil
+  | cons it t ih =>
+    intro h
+    cases it with
+    | alloc l' =>
+      exact TraceOkFrom.alloc (ih (fun l cm hext => h l cm hext))
+    | access mu l' =>
+      refine TraceOkFrom.access ?_ (ih (fun l cm hext => h l cm (Or.inr hext)))
+      by_cases hin : l' ∈ A
+      · exact Or.inr hin
+      · exact Or.inl (h l' (.access mu) (Or.inl ⟨rfl, hin, rfl⟩))
+    | dealloc l' =>
+      refine TraceOkFrom.dealloc ?_ (ih (fun l cm hext => h l cm (Or.inr hext)))
+      by_cases hin : l' ∈ A
+      · exact Or.inr hin
+      · exact Or.inl (h l' .drop (Or.inl ⟨rfl, hin, rfl⟩))
+
+/-- `TraceOk` is determined by the external touches it must cover. -/
+theorem TraceOk.of_extTouchesMode {C : CapabilitySet} {t : Trace}
+    (h : ∀ l cm, Trace.extTouchesMode t l cm → C.covers cm l) : TraceOk t C :=
+  TraceOkFrom.of_extTouchesFromMode h
+
+/-- **`TraceOk` is `Trace.Equiv`-invariant.**  Equivalent traces externally touch the same
+  locations with the same modes (`Trace.Equiv.extTouchesMode_iff`), and `TraceOk` is exactly
+  "every external touch is covered" (`covers_of_extTouchesMode` / `of_extTouchesMode`), so a
+  budget bound transports across any Mazurkiewicz reordering. -/
+theorem TraceOk.equiv_invariant {C : CapabilitySet} {t t' : Trace}
+    (h : TraceOk t C) (heq : Trace.Equiv t t') : TraceOk t' C :=
+  TraceOk.of_extTouchesMode (fun _ _ hext =>
+    h.covers_of_extTouchesMode ((heq.extTouchesMode_iff).mpr hext))
+
+/-- A cell a genuine step ALLOCATES is a capability in the post-step memory. -/
+theorem Step.allocd_mcell {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}} {l : Nat}
+    (hstep : Step t m1 e1 m2 e2) (hal : Trace.allocd t l) :
+    ∃ info, m2.heap l = some (.capability info) := by
+  induction hstep with
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
+  | step_write_true _ _ | step_write_false _ _ | step_drop _
+  | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
+    simp only [Trace.allocd] at hal
+  | step_alloc _ hfresh =>
+    simp only [Trace.allocd, or_false] at hal; subst hal
+    exact ⟨_, Memory.extend_mcell_lookup hfresh⟩
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih
+  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
+
+set_option maxHeartbeats 1000000 in
+-- The induction has 21 step cases; the premature-`par_right` case threads the BigStep diamond
+-- plus the 11-field `Safe.par` carrier and the trace-commutation algebra, exceeding the default.
+/-- **Genuine big-step head-expansion (step-indexed).**  If `e1` steps to `e2` (a genuine,
+  possibly premature, interleaving step) and `e2` then big-steps to `v` at `m'`, then `e1`
+  big-steps to the SAME `v` at the SAME `m'`, on a trace `t'` that is `Trace.Equiv`-equal to
+  `t ++ s` (and allocates the same cells).  Proved by `induction` on the run's step index: the
+  "aligned" leaf/join/letin/unpack/par_left shapes are head-expanded with the trace EXACTLY
+  `t ++ s` (the sequential `BigStep.head_expand`, no reordering); the premature `par_right` case
+  bubbles the step past the left branch's run with the diamond `step_run_commute` (non-interference
+  off the `Safe.par` carrier) and recurses on the strictly-smaller right run, whence the trace
+  reorders only up to `Trace.Equiv`. -/
+theorem Step.head_expand_bigstepN :
+    ∀ (n : Nat) {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}},
+      Step t m1 e1 m2 e2 → Safe m1 e1 → Exp.WfInHeap e1 m1.heap →
+      ∀ {s : Trace} {v : Exp {}} {m' : Memory},
+        BigStepN n m2 e2 s v m' →
+        ∃ t', BigStep m1 e1 t' v m' ∧ Trace.Equiv (t ++ s) t' ∧
+          (∀ l, Trace.allocd (t ++ s) l ↔ Trace.allocd t' l) := by
+  intro n
+  induction n with
+  | zero =>
+    intro _ _ _ _ _ _ _ _ _ _ _ hr; cases hr
+  | succ n ihn =>
+    intro t m1 m2 e1 e2 hstep hsafe hwf s v m' hr
+    cases hstep with
+    | step_apply hlk =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_apply hlk) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_invoke h1 h2 =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_invoke h1 h2) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_tapply hlk =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_tapply hlk) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_capply hlk =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_capply hlk) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_unwrap hlk =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_unwrap hlk) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_cond_var_true hlk =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_cond_var_true hlk) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_cond_var_false hlk =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_cond_var_false hlk) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_read h1 h2 =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_read h1 h2) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_write_true h1 h2 =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_write_true h1 h2) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_write_false h1 h2 =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_write_false h1 h2) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_alloc h1 h2 =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_alloc h1 h2) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_drop hx =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_drop hx) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_rename =>
+      exact ⟨_, BigStep.head_expand SeqStep.step_rename hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_lift hv hwf_v hfresh =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_lift hv hwf_v hfresh) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_unpack =>
+      exact ⟨_, BigStep.head_expand SeqStep.step_unpack hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_par_join h1 h2 =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_par_join h1 h2) hr.toBigStep,
+        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
+    | step_ctx_letin inner =>
+      have hse := Safe.letin_inv_left hsafe
+      have hwfh := (Exp.wf_inv_letin hwf).1
+      cases hr with
+      | bs_val hv => cases hv
+      | bs_letin_val hh hv hwf_v hfresh hc =>
+        obtain ⟨th'', hh', heqh, haeh⟩ := ihn inner hse hwfh hh
+        refine ⟨th'' ++ _, BigStep.bs_letin_val hh' hv hwf_v hfresh hc.toBigStep, ?_, ?_⟩
+        · rw [← List.append_assoc]; exact Trace.Equiv.append_right_congr heqh haeh
+        · intro l; rw [← List.append_assoc]; exact allocd_congr_left_append haeh l
+      | bs_letin_var hh hc =>
+        obtain ⟨th'', hh', heqh, haeh⟩ := ihn inner hse hwfh hh
+        refine ⟨th'' ++ _, BigStep.bs_letin_var hh' hc.toBigStep, ?_, ?_⟩
+        · rw [← List.append_assoc]; exact Trace.Equiv.append_right_congr heqh haeh
+        · intro l; rw [← List.append_assoc]; exact allocd_congr_left_append haeh l
+    | step_ctx_unpack inner =>
+      have hse := Safe.unpack_inv_left hsafe
+      have hwfh := (Exp.wf_inv_unpack hwf).1
+      cases hr with
+      | bs_val hv => cases hv
+      | bs_unpack hh hc =>
+        obtain ⟨th'', hh', heqh, haeh⟩ := ihn inner hse hwfh hh
+        refine ⟨th'' ++ _, BigStep.bs_unpack hh' hc.toBigStep, ?_, ?_⟩
+        · rw [← List.append_assoc]; exact Trace.Equiv.append_right_congr heqh haeh
+        · intro l; rw [← List.append_assoc]; exact allocd_congr_left_append haeh l
+    | step_par_left inner ht_g hni_g =>
+      have hse := Safe.par_inv_left hsafe
+      have hwfL := (Exp.wf_inv_par hwf).1
+      cases hr with
+      | bs_val hv => cases hv
+      | bs_par hL hR =>
+        obtain ⟨sL'', hL', heqL, haeL⟩ := ihn inner hse hwfL hL
+        refine ⟨sL'' ++ _, BigStep.bs_par hL' hR.toBigStep, ?_, ?_⟩
+        · rw [← List.append_assoc]; exact Trace.Equiv.append_right_congr heqL haeL
+        · intro l; rw [← List.append_assoc]; exact allocd_congr_left_append haeL l
+    | step_par_right ht_g hni_g inner =>
+      obtain ⟨hwf_eL, hwf_eR⟩ := Exp.wf_inv_par hwf
+      obtain ⟨sL, vL, mL, sR, vR, rfl, rfl, hL, hR⟩ := hr.par_inv
+      cases hsafe with
+      | ans hh' => cases hh' with | is_val hv => cases hv
+      | par hse_a h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
+        have hsub1 : m2.subsumes m1 := Step.subsumes inner
+        have hbsL_m2 : BigStep m2 _ sL vL mL := hL.toBigStep
+        have htokL : TraceOk sL _ := hb1 hsub1 (Exp.wf_monotonic hsub1 hwf_eL) hbsL_m2
+        have htok_t : TraceOk t _ := TraceOk.mono hcov2.2 ht_g
+        have hsep : Trace.Noninterfere sL t := traceOk_noninterfere htokL htok_t hni
+        obtain ⟨mc, hL', inner'⟩ :=
+          BigStep.step_run_commute inner hbsL_m2 hsep hwf_eL hwf_eR
+        have hsafe_eR : Safe mc _ := h2 hL'
+        have hwf_eR_mc : Exp.WfInHeap _ mc.heap := Exp.wf_monotonic (BigStep.subsumes hL') hwf_eR
+        obtain ⟨tR'', hR', heqR, haeR⟩ := ihn inner' hsafe_eR hwf_eR_mc hR
+        have hf1 : ∀ l, Trace.allocd sL l → Trace.extSeqFrom [] l t = [] := fun l hal =>
+          fresh_not_extSeq ht_g
+            (Heap.none_of_subsumes_none hsub1 (BigStep.alloc_fresh hbsL_m2 hal))
+        have hf2 : ∀ l, Trace.allocd t l → Trace.extSeqFrom [] l sL = [] := fun l hal =>
+          fresh_not_extSeq (TraceOk.mono hcov1.1 htokL) (Step.alloc_fresh inner hal)
+        have hcomm : Trace.Equiv (t ++ sL) (sL ++ t) :=
+          Trace.equiv_comm_of_noninterfere hsep.symm hf1 hf2
+        have hcommAE : ∀ l, Trace.allocd (t ++ sL) l ↔ Trace.allocd (sL ++ t) l := by
+          intro l; rw [Trace.allocd_append, Trace.allocd_append]; exact or_comm
+        refine ⟨sL ++ tR'', BigStep.bs_par hL' hR', ?_, ?_⟩
+        · have stepA : Trace.Equiv (t ++ (sL ++ sR)) (sL ++ (t ++ sR)) := by
+            rw [← List.append_assoc, ← List.append_assoc]
+            exact Trace.Equiv.append_right_congr hcomm hcommAE
+          have stepB : Trace.Equiv (sL ++ (t ++ sR)) (sL ++ tR'') :=
+            Trace.Equiv.append_left_congr heqR
+          exact stepA.trans stepB
+        · intro l
+          calc Trace.allocd (t ++ (sL ++ sR)) l
+              ↔ Trace.allocd t l ∨ Trace.allocd sL l ∨ Trace.allocd sR l := by
+                rw [Trace.allocd_append, Trace.allocd_append]
+            _ ↔ Trace.allocd sL l ∨ Trace.allocd t l ∨ Trace.allocd sR l := or_left_comm
+            _ ↔ Trace.allocd sL l ∨ Trace.allocd (t ++ sR) l := by rw [Trace.allocd_append]
+            _ ↔ Trace.allocd sL l ∨ Trace.allocd tR'' l := or_congr_right (haeR l)
+            _ ↔ Trace.allocd (sL ++ tR'') l := Trace.allocd_append.symm
+
+/-- **Genuine big-step head-expansion** (wrapper, run-index erased): a genuine step prepended to a
+  big-step run of the reduct recovers a run of the original, on a trace `Trace.Equiv` to `t ++ s`
+  (same allocations).  See `Step.head_expand_bigstepN`. -/
+theorem Step.head_expand_bigstep {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
+    (hstep : Step t m1 e1 m2 e2) (hsafe : Safe m1 e1) (hwf : Exp.WfInHeap e1 m1.heap)
+    {s : Trace} {v : Exp {}} {m' : Memory} (hr : BigStep m2 e2 s v m') :
+    ∃ t', BigStep m1 e1 t' v m' ∧ Trace.Equiv (t ++ s) t' ∧
+      (∀ l, Trace.allocd (t ++ s) l ↔ Trace.allocd t' l) := by
+  obtain ⟨n, hrN⟩ := hr.toBigStepN
+  exact Step.head_expand_bigstepN n hstep hsafe hwf hrN
+
+set_option maxHeartbeats 1000000 in
+-- The 11-field `Safe.par` carrier rebuild, each field threading the diamond/head-expansion, exceeds
+-- the default heartbeat budget.
+/-- **Premature-`par_left` preservation.**  A genuine left-branch step.  Mirrors the sequential
+  `step_preserves_safe` `par_left` case, but every appeal to head-expansion now goes through the
+  GENUINE `Step.head_expand_bigstep` (which reorders the recovered trace up to `Trace.Equiv`).  The
+  one field this matters for — the reduct's LEFT BUDGET `hb1'` — is closed by `TraceOk`'s
+  `Trace.Equiv`-invariance (`TraceOk.equiv_invariant`): the recovered run's trace is `Trace.Equiv`
+  to `t ++ s`, so its `hb1` budget bound transports to `t ++ s` and the step's allocations absorb
+  into the reduct budget via `split_append`/`absorb_exempt` exactly as in the sequential proof.  The
+  continuation `h2'` and robust-safety fields only need the recovered value/memory (trace-free). -/
+theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
+    {C1 C2 : CaptureSet {}} {eL eL' eR : Exp {}}
+    (hstep : Step t m1 eL m2 eL')
+    (hsafe : Safe m1 (.par C1 C2 eL eR)) (hwf : Exp.WfInHeap (.par C1 C2 eL eR) m1.heap)
+    (ih : Exp.WfInHeap eL m1.heap → Safe m1 eL → Safe m2 eL') :
+    Safe m2 (.par (C1.growByAllocs t) C2 eL' eR) := by
+  obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
+  have hwfC1 : C1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
+  have hwfC2 : C2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
+  cases hsafe with
+  | ans hans => cases hans with | is_val hv => cases hv
+  | par hse_a h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
+    rename_i Cb1 Cb2
+    have hsub21 : m2.subsumes m1 := Step.subsumes hstep
+    have hse_a2' : Safe m2 eL' := ih hwf_a hse_a
+    have hb1_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
+        m'.subsumes m2 → Exp.WfInHeap eL' m'.heap → BigStep m' eL' s v m'' →
+        TraceOk s (Cb1 ∪ capsOf (Trace.allocList t)) := by
+      intro m' s v m'' hsub' hwf' hbs
+      have hwfa' := Step.preserves_wf hstep hwf_a
+      obtain ⟨ms, hbs_m2, _, _⟩ := hbs.simulate_down hsub' hwfa'
+      obtain ⟨tt, hfull, heq, _⟩ := Step.head_expand_bigstep hstep hse_a hwf_a hbs_m2
+      have htok' : TraceOk tt Cb1 := hb1 (Memory.subsumes_refl _) hwf_a hfull
+      have htok : TraceOk (t ++ s) Cb1 := TraceOk.equiv_invariant htok' heq.symm
+      have := TraceOkFrom.absorb_exempt (TraceOkFrom.split_append htok)
+      rwa [List.append_nil] at this
+    have hwf_a2' : Exp.WfInHeap eL' m2.heap := Step.preserves_wf hstep hwf_a
+    have hcov_of_touch : ∀ {m'' : Memory} {s : Trace} {v : Exp {}} {mf : Memory} {l : Nat}
+        {bb : Bool}, m''.subsumes m2 → BigStep m'' eL' s v mf →
+        m2.lookup l = some (.capability (.mcell bb .live)) → Trace.extTouches s l →
+        ∃ cm, (Cb1 ∪ capsOf (Trace.allocList t)).covers cm l := by
+      intro m'' s v mf l bb hsub'' hbs_a' hlive htouch
+      have hnal : ¬ Trace.allocd s l := fun ha => by
+        have hnone : m''.heap l = none := hbs_a'.alloc_fresh ha
+        have : m2.heap l = none := Heap.none_of_subsumes_none hsub'' hnone
+        rw [show m2.lookup l = m2.heap l from rfl, this] at hlive; cases hlive
+      obtain ⟨cm, hext⟩ :=
+        Trace.extTouchesMode_of_touched hnal (Trace.touched_of_extTouches htouch)
+      exact ⟨cm, (hb1_robust hsub'' (Exp.wf_monotonic hsub'' hwf_a2') hbs_a')
+        |>.covers_of_extTouchesMode hext⟩
+    refine Safe.par (C1 := Cb1 ∪ capsOf (Trace.allocList t)) (C2 := Cb2)
+      hse_a2' ?h2' (@hb1_robust) ?hb2' ?hrs1' ?hrs2' ?hpres1' ?hpres2' ?hcov1' ?hcov2' ?hni'
+    case hcov1' =>
+      exact Safe.hcov_step hsub21 hwfC1
+        (fun l hl => Step.allocd_mcell hstep (Trace.mem_allocList.mp hl)) hcov1
+    case hcov2' =>
+      rw [CaptureSet.reachability_monotonic hsub21 C2 hwfC2]; exact hcov2
+    case h2' =>
+      intro t1 v1 m1' hbs
+      obtain ⟨_, hfull, _, _⟩ := Step.head_expand_bigstep hstep hse_a hwf_a hbs
+      exact h2 hfull
+    case hb2' =>
+      intro m' s v m'' hsub' hwf' hbs
+      exact hb2 (Memory.subsumes_trans hsub' hsub21) hwf' hbs
+    case hrs1' =>
+      intro m' hsub' hc
+      refine Safe.lift hse_a2' hsub' (Q := fun s val m => BigStep m2 eL' s val m)
+        (fun _ _ _ h => h) ?_ hwf_a2'
+      intro s v m _ hbs_a' l b hlive htouch
+      obtain ⟨cm, hcov⟩ := hcov_of_touch (Memory.subsumes_refl _) hbs_a' hlive htouch
+      obtain ⟨mu', hmem', _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
+      obtain ⟨c', hc'', hsubc⟩ := hsub' l (.capability (.mcell b .live)) hlive
+      cases c' with
+      | val _ => simp [Cell.subsumes] at hsubc
+      | masked => simp [Cell.subsumes] at hsubc
+      | capability cc =>
+        cases cc with
+        | mcell b'' ℓ'' =>
+          have hℓ := hc mu' l b'' ℓ'' hmem' hc''
+          exact ⟨b'', by rw [hℓ] at hc''; exact hc''⟩
+        | basic => simp [Cell.subsumes] at hsubc
+    case hrs2' =>
+      intro m' hsub' hc
+      exact hrs2 (Memory.subsumes_trans hsub' hsub21) hc
+    case hpres1' =>
+      intro mu l hmem
+      rcases CapabilitySet.hasmem_union_iff.mp hmem with h1 | hA
+      · exact (fun hc => hpres1 mu l h1 (Heap.none_of_subsumes_none hsub21 hc))
+      · exact Step.allocd_present hstep (Trace.mem_allocList.mp (capsOf_hasmem hA))
+    case hpres2' =>
+      intro mu l hmem
+      exact (fun hc => hpres2 mu l hmem (Heap.none_of_subsumes_none hsub21 hc))
+    case hni' =>
+      refine CapabilitySet.Noninterference.ni_union hni
+        (CapabilitySet.noninterference_capsOf_fresh ?_)
+      intro l hl mu' hm
+      exact hpres2 mu' l hm (Step.alloc_fresh hstep (Trace.mem_allocList.mp hl))
+
+/-- **The premature-`par_right` safety gap — the fundamental boundary.**  A `par_right` step whose
+  left branch is not yet an answer.  Rebuilding `Safe m₂ (par C₁ C₂ eL eR')` needs the node's
+  sequential continuation `h2' : ∀ BigStep m₂ eL → Safe · eR'` and reduct right-budget `hb2'`.  The
+  carrier supplies the right branch's safety/bound ONLY conditionally — `h2 : ∀ BigStep m eL →
+  Safe · eR` runs eL FIRST — so deriving `h2'`/`hb2'` needs ROBUST preservation of the right step
+  at every post-left memory, which the asymmetric `Safe.par` does not provide.  This is the
+  dynamic-footprint/ownership fact: the right branch is independently safe at mid-reduction.  The
+  principled fix is a SYMMETRIC `Safe.par` (robust right-branch safety) established at
+  `sem_typ_par` — a type-system-level change with a large `Fundamental` ripple, hence human design
+  intervention.  (`absorb` avoids this by bubbling premature steps past the already-sequential
+  left run and reading `h2` at the post-left memory; the gap surfaces only when preserving `Safe`
+  along a GENUINE interleaved run.) -/
+theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
+    {C1 C2 : CaptureSet {}} {eL eR eR' : Exp {}}
+    (hstep : Step t m1 eR m2 eR') (hsafe : Safe m1 (.par C1 C2 eL eR))
+    (hwf : Exp.WfInHeap (.par C1 C2 eL eR) m1.heap) :
+    Safe m2 (.par C1 (C2.growByAllocs t) eL eR') :=
+  sorry
+
+/-- **Genuine interleaving step preserves safety.**  The leaf and join steps are `SeqStep`s, so
+  they reduce to the sequential `step_preserves_safe`.  The `letin`/`unpack` congruence cases
+  rebuild `Safe` via the IH plus genuine head-expansion (`Step.head_expand_bigstep`).  The two
+  `par`-congruence cases delegate to `Step.preserves_safe_par_left`/`_par_right`; the latter is
+  the documented carrier-asymmetry gap. -/
 theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
     (hstep : Step t m1 e1 m2 e2) (hwf : e1.WfInHeap m1.heap) (hsafe : Safe m1 e1) :
-    Safe m2 e2 :=
-  sorry
+    Safe m2 e2 := by
+  induction hstep with
+  | step_apply hlk => exact step_preserves_safe (SeqStep.step_apply hlk) hwf hsafe
+  | step_invoke h1 h2 => exact step_preserves_safe (SeqStep.step_invoke h1 h2) hwf hsafe
+  | step_tapply hlk => exact step_preserves_safe (SeqStep.step_tapply hlk) hwf hsafe
+  | step_capply hlk => exact step_preserves_safe (SeqStep.step_capply hlk) hwf hsafe
+  | step_unwrap hlk => exact step_preserves_safe (SeqStep.step_unwrap hlk) hwf hsafe
+  | step_cond_var_true hlk => exact step_preserves_safe (SeqStep.step_cond_var_true hlk) hwf hsafe
+  | step_cond_var_false hlk => exact step_preserves_safe (SeqStep.step_cond_var_false hlk) hwf hsafe
+  | step_read h1 h2 => exact step_preserves_safe (SeqStep.step_read h1 h2) hwf hsafe
+  | step_write_true h1 h2 => exact step_preserves_safe (SeqStep.step_write_true h1 h2) hwf hsafe
+  | step_write_false h1 h2 => exact step_preserves_safe (SeqStep.step_write_false h1 h2) hwf hsafe
+  | step_alloc h1 h2 => exact step_preserves_safe (SeqStep.step_alloc h1 h2) hwf hsafe
+  | step_drop hx => exact step_preserves_safe (SeqStep.step_drop hx) hwf hsafe
+  | step_rename => exact step_preserves_safe SeqStep.step_rename hwf hsafe
+  | step_lift hv hwf_v hfresh =>
+    exact step_preserves_safe (SeqStep.step_lift hv hwf_v hfresh) hwf hsafe
+  | step_unpack => exact step_preserves_safe SeqStep.step_unpack hwf hsafe
+  | step_par_join h1 h2 => exact step_preserves_safe (SeqStep.step_par_join h1 h2) hwf hsafe
+  | step_ctx_letin inner ih =>
+    obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
+    cases hsafe with
+    | letin hse1 h_ans h_val h_var =>
+      refine Safe.letin (ih hwf1 hse1) ?_ ?_ ?_
+      · intro t1 v m1' hbs
+        obtain ⟨t', hbs', _, _⟩ := Step.head_expand_bigstep inner hse1 hwf1 hbs
+        exact h_ans _ _ _ hbs'
+      · intro t1 m1' v hbs hv hwf_v l' hfresh
+        obtain ⟨t', hbs', _, _⟩ := Step.head_expand_bigstep inner hse1 hwf1 hbs
+        exact h_val hbs' hv hwf_v l' hfresh
+      · intro t1 m1' x hbs
+        obtain ⟨t', hbs', _, _⟩ := Step.head_expand_bigstep inner hse1 hwf1 hbs
+        exact h_var hbs'
+    | ans hh => cases hh with | is_val hv => cases hv
+  | step_ctx_unpack inner ih =>
+    obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
+    cases hsafe with
+    | unpack hse1 h_ans h_val =>
+      refine Safe.unpack (ih hwf1 hse1) ?_ ?_
+      · intro t1 v m1' hbs
+        obtain ⟨t', hbs', _, _⟩ := Step.head_expand_bigstep inner hse1 hwf1 hbs
+        exact h_ans _ _ _ hbs'
+      · intro t1 m1' x cs hbs
+        obtain ⟨t', hbs', _, _⟩ := Step.head_expand_bigstep inner hse1 hwf1 hbs
+        exact h_val hbs'
+    | ans hh => cases hh with | is_val hv => cases hv
+  | step_par_left inner ht hni ih =>
+    exact Step.preserves_safe_par_left inner hsafe hwf ih
+  | step_par_right ht hni inner ih =>
+    exact Step.preserves_safe_par_right inner hsafe hwf
 
 /-- **Standardization (theorem B).**  Every genuine interleaving run to an answer is matched by
   a sequential (left-first) run reaching the IDENTICAL final memory and answer, the traces
