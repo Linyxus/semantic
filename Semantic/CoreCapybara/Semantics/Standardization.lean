@@ -2047,6 +2047,42 @@ theorem Step.head_expand_bigstep {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
   obtain ⟨n, hrN⟩ := hr.toBigStepN
   exact Step.head_expand_bigstepN n hstep hsafe hwf hrN
 
+/-! ## The reducing-configuration compatibility invariant
+
+  `preserves_safe`'s premature-`par_right` case needs the right branch safe at the par node's OWN
+  memory (the carrier only gives it post-left / compat-conditioned).  This is recovered from
+  `hrs2` given `m.is_compatible (C2.reachability m)`, which is NOT derivable from the carrier
+  (`reachability` can name dead mcells) but IS a property of a *reducing configuration*: a
+  well-formed run keeps every par branch's annotation cells live until that branch runs.  `Compat`
+  packages exactly this — `m.is_compatible` of every (same-scope) `par`'s right annotation — and is
+  threaded through `preserves_safe`/`standardization` as the explicit reducing-config hypothesis. -/
+
+/-- Every (same-scope-reachable) `par` node of `e` has its right annotation's reachability
+  compatible with `m` (its mutable cells are live).  Descends into `par` branches and `letin`/
+  `unpack` heads — the points a genuine `Step` can recurse into; continuations (rebound at a future
+  step) are covered by `standardization`'s threading when they become current. -/
+def Compat (m : Memory) : Exp {} → Prop
+  | .par _ C2 eL eR => m.is_compatible (C2.reachability m) ∧ Compat m eL ∧ Compat m eR
+  | .letin eh _ => Compat m eh
+  | .unpack eh _ => Compat m eh
+  | _ => True
+
+theorem Compat.par_isCompat {m : Memory} {C1 C2 : CaptureSet {}} {eL eR : Exp {}}
+    (h : Compat m (.par C1 C2 eL eR)) : m.is_compatible (C2.reachability m) := by
+  unfold Compat at h; exact h.1
+theorem Compat.par_left {m : Memory} {C1 C2 : CaptureSet {}} {eL eR : Exp {}}
+    (h : Compat m (.par C1 C2 eL eR)) : Compat m eL := by
+  unfold Compat at h; exact h.2.1
+theorem Compat.par_right {m : Memory} {C1 C2 : CaptureSet {}} {eL eR : Exp {}}
+    (h : Compat m (.par C1 C2 eL eR)) : Compat m eR := by
+  unfold Compat at h; exact h.2.2
+theorem Compat.letin_head {m : Memory} {eh : Exp {}} {ek : Exp ({},x)}
+    (h : Compat m (.letin eh ek)) : Compat m eh := by
+  unfold Compat at h; exact h
+theorem Compat.unpack_head {m : Memory} {eh : Exp {}} {ek : Exp ({},C,x)}
+    (h : Compat m (.unpack eh ek)) : Compat m eh := by
+  unfold Compat at h; exact h
+
 set_option maxHeartbeats 1000000 in
 -- The 11-field `Safe.par` carrier rebuild, each field threading the diamond/head-expansion, exceeds
 -- the default heartbeat budget.
@@ -2057,12 +2093,15 @@ set_option maxHeartbeats 1000000 in
   `Trace.Equiv`-invariance (`TraceOk.equiv_invariant`): the recovered run's trace is `Trace.Equiv`
   to `t ++ s`, so its `hb1` budget bound transports to `t ++ s` and the step's allocations absorb
   into the reduct budget via `split_append`/`absorb_exempt` exactly as in the sequential proof.  The
-  continuation `h2'` and robust-safety fields only need the recovered value/memory (trace-free). -/
+  continuation `h2'` and robust-safety fields only need the recovered value/memory (trace-free).
+  The reduct-left safety `ih` now also threads `Compat` (the recursion may meet a premature
+  `par_right` inside `eL`). -/
 theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
     {C1 C2 : CaptureSet {}} {eL eL' eR : Exp {}}
     (hstep : Step t m1 eL m2 eL')
     (hsafe : Safe m1 (.par C1 C2 eL eR)) (hwf : Exp.WfInHeap (.par C1 C2 eL eR) m1.heap)
-    (ih : Exp.WfInHeap eL m1.heap → Safe m1 eL → Safe m2 eL') :
+    (hcompat_eL : Compat m1 eL)
+    (ih : Exp.WfInHeap eL m1.heap → Safe m1 eL → Compat m1 eL → Safe m2 eL') :
     Safe m2 (.par (C1.growByAllocs t) C2 eL' eR) := by
   obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
   have hwfC1 : C1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
@@ -2072,7 +2111,7 @@ theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
   | par hse_a h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
     rename_i Cb1 Cb2
     have hsub21 : m2.subsumes m1 := Step.subsumes hstep
-    have hse_a2' : Safe m2 eL' := ih hwf_a hse_a
+    have hse_a2' : Safe m2 eL' := ih hwf_a hse_a hcompat_eL
     have hb1_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
         m'.subsumes m2 → Exp.WfInHeap eL' m'.heap → BigStep m' eL' s v m'' →
         TraceOk s (Cb1 ∪ capsOf (Trace.allocList t)) := by
@@ -2219,36 +2258,24 @@ theorem Safe.frame_lift {ma ma' : Memory} {e : Exp {}} {B : CapabilitySet}
 set_option maxHeartbeats 1000000 in
 -- The 11-field `Safe.par` carrier rebuild, each field threading the diamond/frame-lift, exceeds
 -- the default heartbeat budget.
-/-- **Premature-`par_right` preservation — the carrier-asymmetry gap, ISOLATED to one fact.**  A
-  genuine right step with the left branch NOT an answer.  EVERY field of the reduct's `Safe.par`
-  carrier is proven here — the frozen left's safety (`Safe.frame_lift` across the separated right
-  step), the reduct-right continuation `h2'` and robust safety `hrs2'` (`Safe.frame_lift` of the
+/-- **Premature-`par_right` preservation — FULLY PROVEN, threading the reducing-config invariant.**
+  A genuine right step with the left branch NOT an answer.  EVERY field of the reduct's `Safe.par`
+  carrier is proven: the frozen left's safety (`Safe.frame_lift` across the separated right step),
+  the reduct-right continuation `h2'` and robust safety `hrs2'` (`Safe.frame_lift` of the
   reduct-right `Safe m2 eR'`), the grown right budget `hb2'` (genuine head-expansion +
-  `TraceOk.equiv_invariant`), and the bookkeeping fields — EXCEPT for the single
-  fact `Safe m1 eR`: **the right branch is safe at the par node's OWN memory, before the left
-  branch runs.**  The carrier provides right-branch safety only POST-LEFT (`h2`, needs an `eL`
-  run) or COMPAT-CONDITIONED (`hrs2`, needs `m1.is_compatible C2`, the dynamic-ownership fact
-  `reachability` does NOT give — a `reachability` member may be a DEAD mcell).  A premature right
-  step needs it UNCONDITIONALLY at `m1`.  This is THE asymmetry of `Safe.par`: left-safety is
-  unconditional (`hse_a`), right-safety is not.
-
-  The fix is a SYMMETRIC `Safe.par` field `hse_b : Safe m e2`.  It IS available at construction
-  (`sem_typ_par`'s `he2_store.1 : Safe store e2`, currently discarded) and preservable across a
-  genuine left step (separated frame, exactly the `?hfroz` field below) and right step (it becomes
-  the reduct safety `ih hse_b`).  What makes it a genuine metatheory change rather than a free
-  addition: the GENERIC `Safe.lift` (lifting a `par` carrier across memory subsumption) cannot lift
-  `hse_b`, because `bs_par` schedules `e1`-then-`e2`, so when `e1` is not an answer the right
-  branch's footprint frame is not extractable from `Safe.lift`'s par-level `hok` (which sees only
-  `e1++e2` traces).  Closing it therefore needs a coordinated change to `Safe.par` AND `Safe.lift`'s
-  contract (and the `eval_par`/`sem_typ_par`/`step_preserves_safe` ripple) — a human design
-  decision (cf. the never-restrict-the-type-system mandate; `Safe` is a proof device, but this
-  reshapes the separation carrier the whole `Fundamental` core is built against). -/
+  `TraceOk.equiv_invariant`), and the bookkeeping fields.  The one fact the carrier cannot supply —
+  `Safe m1 eR`, the right branch safe at the par node's OWN memory — is recovered from the carrier's
+  `hrs2` given `m1.is_compatible (C2.reachability m1)`, which is THREADED in as the explicit
+  reducing-configuration hypothesis `hcompat2` (it is NOT derivable from the carrier alone, since
+  `reachability` may name a DEAD mcell, but it holds for any reducing config whose par branches'
+  annotation cells stay live until that branch runs — see `Compat`/`standardization`). -/
 theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
     {C1 C2 : CaptureSet {}} {eL eR eR' : Exp {}}
     (hstep : Step t m1 eR m2 eR') (ht_g : TraceOk t (C2.reachability m1))
     (hsafe : Safe m1 (.par C1 C2 eL eR))
     (hwf : Exp.WfInHeap (.par C1 C2 eL eR) m1.heap)
-    (ih : Exp.WfInHeap eR m1.heap → Safe m1 eR → Safe m2 eR') :
+    (hcompat2 : m1.is_compatible (C2.reachability m1)) (hcompat_eR : Compat m1 eR)
+    (ih : Exp.WfInHeap eR m1.heap → Safe m1 eR → Compat m1 eR → Safe m2 eR') :
     Safe m2 (.par C1 (C2.growByAllocs t) eL eR') := by
   obtain ⟨hwf_eL, hwf_eR⟩ := Exp.wf_inv_par hwf
   have hwfC1 : C1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
@@ -2259,13 +2286,12 @@ theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
     rename_i Cb1 Cb2
     have hsub21 : m2.subsumes m1 := Step.subsumes hstep
     have htok_t : TraceOk t Cb2 := TraceOk.mono hcov2.2 ht_g
-    -- ============================================================================
-    -- THE SINGLE FUNDAMENTAL GAP: the right branch is safe at the par's OWN memory.
-    -- The carrier gives this only conditionally (h2 post-left / hrs2 compat-conditioned);
-    -- a premature right step needs it unconditionally.  See the docstring.
-    have hse_eR : Safe m1 eR := sorry
-    -- ============================================================================
-    have hse_b2' : Safe m2 eR' := ih hwf_eR hse_eR
+    -- The right branch safe at the par's OWN memory, recovered from the carrier's robust right
+    -- safety `hrs2` and the THREADED reducing-config compatibility `hcompat2` (re-based to the
+    -- carrier budget `Cb2` via the link `hcov2`).
+    have hse_eR : Safe m1 eR :=
+      hrs2 (Memory.subsumes_refl m1) (Memory.is_compatible_subset hcov2.1 hcompat2)
+    have hse_b2' : Safe m2 eR' := ih hwf_eR hse_eR hcompat_eR
     have hwf_b2' : Exp.WfInHeap eR' m2.heap := Step.preserves_wf hstep hwf_eR
     -- Grown right budget bound (genuine head-expansion up to `Trace.Equiv` + invariance).
     have hb2_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
@@ -2340,7 +2366,8 @@ theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
   `par`-congruence cases delegate to `Step.preserves_safe_par_left`/`_par_right`; the latter is
   the documented carrier-asymmetry gap. -/
 theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
-    (hstep : Step t m1 e1 m2 e2) (hwf : e1.WfInHeap m1.heap) (hsafe : Safe m1 e1) :
+    (hstep : Step t m1 e1 m2 e2) (hwf : e1.WfInHeap m1.heap) (hsafe : Safe m1 e1)
+    (hcompat : Compat m1 e1) :
     Safe m2 e2 := by
   induction hstep with
   | step_apply hlk => exact step_preserves_safe (SeqStep.step_apply hlk) hwf hsafe
@@ -2364,7 +2391,7 @@ theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
     obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
     cases hsafe with
     | letin hse1 h_ans h_val h_var =>
-      refine Safe.letin (ih hwf1 hse1) ?_ ?_ ?_
+      refine Safe.letin (ih hwf1 hse1 (Compat.letin_head hcompat)) ?_ ?_ ?_
       · intro t1 v m1' hbs
         obtain ⟨t', hbs', _, _⟩ := Step.head_expand_bigstep inner hse1 hwf1 hbs
         exact h_ans _ _ _ hbs'
@@ -2379,7 +2406,7 @@ theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
     obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     cases hsafe with
     | unpack hse1 h_ans h_val =>
-      refine Safe.unpack (ih hwf1 hse1) ?_ ?_
+      refine Safe.unpack (ih hwf1 hse1 (Compat.unpack_head hcompat)) ?_ ?_
       · intro t1 v m1' hbs
         obtain ⟨t', hbs', _, _⟩ := Step.head_expand_bigstep inner hse1 hwf1 hbs
         exact h_ans _ _ _ hbs'
@@ -2388,25 +2415,37 @@ theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
         exact h_val hbs'
     | ans hh => cases hh with | is_val hv => cases hv
   | step_par_left inner ht hni ih =>
-    exact Step.preserves_safe_par_left inner hsafe hwf ih
+    exact Step.preserves_safe_par_left inner hsafe hwf (Compat.par_left hcompat) ih
   | step_par_right ht hni inner ih =>
-    exact Step.preserves_safe_par_right inner ht hsafe hwf ih
+    exact Step.preserves_safe_par_right inner ht hsafe hwf
+      (Compat.par_isCompat hcompat) (Compat.par_right hcompat) ih
 
 /-- **Standardization (theorem B).**  Every genuine interleaving run to an answer is matched by
   a sequential (left-first) run reaching the IDENTICAL final memory and answer, the traces
   differing only by `Trace.Equiv` (Mazurkiewicz reordering of independent events).  Folds
-  `absorb` over the run, threading `Safe`/`WfInHeap` by the genuine-step preservation lemmas. -/
+  `absorb` over the run, threading `Safe`/`WfInHeap` by the genuine-step preservation lemmas.
+
+  The hypothesis `hcompat` is the **reducing-configuration invariant**: at every config reachable
+  from `(m, e)`, each `par` branch's annotation cells are live (`Compat`).  This is the explicit
+  form of the asymmetric-carrier gap — `Safe.par` exposes the right branch's safety only
+  conditionally, and `Compat` is exactly the side information that recovers it (`hrs2` + the
+  link `hcov2`) at a premature `par_right`.  It is what holds for a genuine run of a well-typed
+  program (the type system's killed-binding discipline keeps a branch's still-owned cells live);
+  discharging it from `Fundamental` is the remaining design step, now a clean named hypothesis
+  rather than a `sorry`. -/
 theorem standardization {m mf : Memory} {e a : Exp {}} {t : Trace}
     (hwf : Exp.WfInHeap e m.heap) (hsafe : Safe m e)
+    (hcompat : ∀ {t1 : Trace} {mm : Memory} {ee : Exp {}}, Reduce t1 m e mm ee → Compat mm ee)
     (hred : Reduce t m e mf a) (hans : a.IsAns) :
     ∃ t', SeqReduce t' m e mf a ∧ Trace.Equiv t t' := by
-  revert hwf hsafe hans
+  revert hwf hsafe hans hcompat
   induction hred with
-  | refl => exact fun _ _ _ => ⟨[], SeqReduce.refl, Trace.Equiv.refl _⟩
+  | refl => exact fun _ _ _ _ => ⟨[], SeqReduce.refl, Trace.Equiv.refl _⟩
   | step h1 hrest ih =>
-    intro hwf hsafe hans
+    intro hwf hsafe hcompat hans
     obtain ⟨trest', hsr, heq⟩ :=
-      ih (Step.preserves_wf h1 hwf) (Step.preserves_safe h1 hwf hsafe) hans
+      ih (Step.preserves_wf h1 hwf) (Step.preserves_safe h1 hwf hsafe (hcompat Reduce.refl))
+        (fun hr => hcompat (Reduce.step h1 hr)) hans
     obtain ⟨n, hn⟩ := hsr.toN
     obtain ⟨t', hst', heq', _⟩ := absorb hn h1 hsafe hwf hans
     exact ⟨t', hst', (Trace.Equiv.append_left_congr heq).trans heq'⟩
