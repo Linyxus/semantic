@@ -3343,7 +3343,7 @@ theorem sem_typ_par
       ((C1.subst (Subst.from_TypeEnv env)).reachability store)
       ((C2.subst (Subst.from_TypeEnv env)).reachability store) := by
     rw [← hrC1, ← hrC2]; exact hni
-  refine Eval.eval_par he1 hb1 hb2 hrs1 hrs2 hni' ?_
+  refine Eval.eval_par he1 he2_store.1 hb1 hb2 hrs1 hrs2 hni' ?_
   -- Given `e1`'s answer at `m1`, run `e2` from `m1`.  `par` returns `.unit`, so
   -- the only separation content needed is framing `C2`'s compatibility across
   -- `e1`'s run (`t1`) so that `e2` may start from `m1` — the left/right branch

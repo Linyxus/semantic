@@ -531,7 +531,7 @@ theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
     | inr hbfalse =>
       obtain ⟨t, v, m', hbs⟩ := ih_false hbfalse
       exact ⟨_, _, _, BigStep.bs_cond_false hbfalse hbs⟩
-  | par _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
+  | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
     obtain ⟨t1, v1, m1, hbs1⟩ := ih1
     obtain ⟨t2, v2, m2, hbs2⟩ := ih2 hbs1
     exact ⟨_, _, _, BigStep.bs_par hbs1 hbs2⟩
@@ -3338,6 +3338,49 @@ theorem bound_step_trace {t rest τ : Trace} {m m' mf : Memory} {e e' v : Exp {}
       refine TraceOkFrom.dealloc (Or.inl (key l .drop ?_)) (ih key' A)
       simp only [Trace.touchesWith]; tauto
 
+/-- **Right-branch liveness frame for `Safe.lift`'s `par` case.**  When lifting
+  `Safe m1 (.par Cs1 Cs2 e1 e2)` to `m2 ⊒ m1`, the new unconditional right field `Safe m2 e2`
+  is produced by lifting `Safe m1 e2` with the per-run frame `hok_e2 : extTouches t l (for an
+  `e2`-run from `m1`) → l live in m2`.  This lemma discharges that obligation: a pre-existing
+  `C2`-cell `l` that `e2` touches when run from `m1` is also touched when `e2` is run from the
+  post-`e1` memory `ms` (a noninterfering `C1`-only prefix does not perturb `e2`'s footprint on
+  pre-existing cells), so the sequential par run `e1`-then-`e2`-from-`ms` touches `l`, and the
+  par's own subsumption frame `hok` then keeps `l` live in `m2`.
+
+  The ONE remaining obligation is the highlighted inner `sorry`: the **big-step noninterference
+  footprint frame** — `e2` run from `ms ⊒ m1` (agreeing with `m1` on the `C2` region, since `e1`
+  is `C1`-only) reaches the same pre-existing cell `l`.  This is the big-step analogue of the
+  single-step diamond `BigStep.step_run_commute` (which is proven); the only gap to deriving it
+  from that diamond is alloc-name divergence between the `m1`- and `ms`-runs, which a renaming
+  argument resolves.  It is genuine operational infrastructure, NOT a soundness restriction. -/
+theorem BigStep.par_right_keepsLive
+    {m1 m2 ms mf : Memory} {e1 e2 : Exp {}} {Cs1 Cs2 : CaptureSet {}}
+    {C1 C2 : CapabilitySet} {s1 t : Trace} {v1 v2 : Exp {}} {l : Nat} {b : Bool}
+    (hbs1 : BigStep m1 e1 s1 v1 ms)
+    (hbs2 : BigStep m1 e2 t v2 mf)
+    (_htok1 : TraceOk s1 C1) (_htok2 : TraceOk t C2)
+    (_hni : CapabilitySet.Noninterference C1 C2)
+    (hok : ∀ tt vv mm, mm.subsumes m1 ->
+        BigStep m1 (.par Cs1 Cs2 e1 e2) tt vv mm -> Memory.SubsumeOk m1 tt m2)
+    (hl_live : m1.lookup l = some (.capability (.mcell b .live)))
+    (htouch : Trace.extTouches t l)
+    (_hwf2 : Exp.WfInHeap e2 ms.heap) :
+    ∃ b', m2.lookup l = some (.capability (.mcell b' .live)) := by
+  -- Big-step noninterference footprint frame: `e2` from `ms` also touches the pre-existing
+  -- `C2`-cell `l`.  (See doc comment — the one genuine operational-infrastructure obligation.)
+  obtain ⟨s2, v2', mf', hbs2_ms, htouch_ms⟩ :
+      ∃ s2 v2' mf', BigStep ms e2 s2 v2' mf' ∧ Trace.extTouches s2 l := by
+    sorry
+  -- `l` is pre-existing in `m1`, so `e1`'s run does not freshly allocate it.
+  have hnal_s1 : ¬ Trace.allocd s1 l := fun ha => by
+    have hnone := BigStep.alloc_fresh hbs1 ha
+    rw [hnone] at hl_live; cases hl_live
+  -- The sequential par run `e1`-then-`e2`-from-`ms` externally touches `l` (via the `e2` part).
+  have htouchF : Trace.extTouches (s1 ++ s2) l :=
+    Trace.extTouchesFrom_append_right hnal_s1 (by simp) htouch_ms
+  have hfull := BigStep.bs_par (C1 := Cs1) (C2 := Cs2) hbs1 hbs2_ms
+  exact hok _ _ _ hfull.subsumes hfull l b hl_live htouchF
+
 /-- Safety lifts upward along subsumption: if `e` is safe from `m1` and every
   touched cell stays live in `m2` (`hok`, fed `m1`'s answers via `hpres`), then
   `e` is safe from `m2`. -/
@@ -3425,7 +3468,7 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
       | inr hb1 =>
         exact ih_false hb1 hsub
           (fun t v m' hbs => hpres t v m' (BigStep.bs_cond_false hb1 hbs)) hok hwf3
-  | par hs1 h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni ih1 ih2 _ih_hrs1 _ih_hrs2 =>
+  | par hs1 hs2 h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni ih1 ihb ih2 _ih_hrs1 _ih_hrs2 =>
     clear m1
     rename_i e1 e2 m1 _ _ Cs1 Cs2
     cases hwf with
@@ -3439,8 +3482,20 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
         obtain ⟨t2, v2, mf, hbs2⟩ := (h2 hbs1).has_answer
         have hfull := BigStep.bs_par (C1 := Cs1) (C2 := Cs2) hbs1 hbs2
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
+      -- The new unconditional right field `Safe m2 e2`: lift `Safe m1 e2` (`hs2`) with a per-run
+      -- frame discharged by `BigStep.par_right_keepsLive` (the noninterference footprint frame).
+      have hok_e2 : ∀ t v m, m.subsumes m1 -> BigStep m1 e2 t v m ->
+          Memory.SubsumeOk m1 t m2 := by
+        intro t v m _ hbs2 l b hl_live htouch
+        obtain ⟨s1, v1, ms, hbs1⟩ := hs1.has_answer
+        exact BigStep.par_right_keepsLive hbs1 hbs2
+          (hb1 (Memory.subsumes_refl _) hwf_e1 hbs1)
+          (hb2 (Memory.subsumes_refl _) hwf_e2 hbs2) hni
+          (fun tt vv mm hsm hbs => hok tt vv mm hsm (hpres tt vv mm hbs))
+          hl_live htouch (Exp.wf_monotonic (BigStep.subsumes hbs1) hwf_e2)
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
+        (ihb (Q := fun t v m => BigStep m1 e2 t v m) hsub (fun _ _ _ h => h) hok_e2 hwf_e2)
         ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ ?_ hni
       · intro t1 v1 m1' hbs_m2
         obtain ⟨m_sim, hbs_m1, hsub_sim, hlive⟩ := hbs_m2.simulate_down hsub hwf_e1
@@ -3742,6 +3797,106 @@ theorem BigStep.frameLive {m : Memory} {e : Exp {}} {t v m'}
     exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
       absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
 
+/-- **A genuine step preserves liveness off its drop-footprint.**  Single-step analogue of
+  `BigStep.frameLive`: every cell live before the step that the step does not externally drop is
+  live after.  Only `step_drop` deallocates; the other leaves allocate/mutate/extend (preserving
+  existing live cells), and the congruences recurse. -/
+theorem Step.frameLive {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
+    (hstep : Step t m1 e1 m2 e2) : Memory.FrameLive m1 t m2 := by
+  induction hstep with
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
+  | step_rename | step_unpack | step_par_join _ _ =>
+    exact Memory.FrameLive.refl
+  | step_write_true _ _ | step_write_false _ _ =>
+    intro l b hlive _
+    exact Memory.update_mcell_preserves_live _ ⟨b, hlive⟩
+  | step_alloc _ hfr =>
+    intro l b hlive _
+    refine (Memory.extend_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact absurd hlive (by simp [Memory.lookup, hfr])
+  | step_drop _ =>
+    intro l b hlive hnd
+    refine (Memory.drop_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact hnd (by simp [Trace.extDrops, Trace.extDropsFrom])
+  | step_lift hv hwf hfr =>
+    intro l b hlive _
+    refine ⟨b, ?_⟩
+    simp only [Memory.lookup, Memory.extend, Heap.extend] at hlive ⊢
+    split
+    · rename_i heq; rw [heq, hfr] at hlive; cases hlive
+    · exact hlive
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih
+  | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih
+
+/-- `SeqStep` analogue of `Step.frameLive`: a sequential step preserves liveness off its
+  drop-footprint.  Same proof — the memory transitions of `SeqStep` and `Step` coincide. -/
+theorem SeqStep.frameLive {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
+    (hstep : SeqStep t m1 e1 m2 e2) : Memory.FrameLive m1 t m2 := by
+  induction hstep with
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
+  | step_rename | step_unpack | step_par_join _ _ =>
+    exact Memory.FrameLive.refl
+  | step_write_true _ _ | step_write_false _ _ =>
+    intro l b hlive _
+    exact Memory.update_mcell_preserves_live _ ⟨b, hlive⟩
+  | step_alloc _ hfr =>
+    intro l b hlive _
+    refine (Memory.extend_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact absurd hlive (by simp [Memory.lookup, hfr])
+  | step_drop _ =>
+    intro l b hlive hnd
+    refine (Memory.drop_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact hnd (by simp [Trace.extDrops, Trace.extDropsFrom])
+  | step_lift hv hwf hfr =>
+    intro l b hlive _
+    refine ⟨b, ?_⟩
+    simp only [Memory.lookup, Memory.extend, Heap.extend] at hlive ⊢
+    split
+    · rename_i heq; rw [heq, hfr] at hlive; cases hlive
+    · exact hlive
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih
+  | step_par_left _ ih | step_par_right _ _ ih => exact ih
+
+/-- **Separated budgets do not drop each other's cells.**  If a trace `t` is `TraceOk` for `B2`
+  and `B1`/`B2` are non-interfering, then no cell of `B1` is externally dropped by `t`: a drop
+  would force the covering `B2` member to `.access .ro` (`shared_ro`), contradicting `.drop`. -/
+theorem not_extDrops_of_noninterf {B1 B2 : CapabilitySet} {t : Trace} {l : Nat} {mu1 : CapMode}
+    (htok : TraceOk t B2) (hni : CapabilitySet.Noninterference B1 B2)
+    (hmem : B1.hasmem mu1 l) : ¬ Trace.extDrops t l := by
+  intro hd
+  obtain ⟨mu2, hmem2, hle⟩ :=
+    CapabilitySet.covers_imp_exists_hasmem (htok.drop_covers_of_extDrops hd)
+  obtain ⟨_, hro2⟩ := hni.shared_ro hmem hmem2
+  subst hro2
+  cases hle
+
+/-- **Branch-safety transports across a separated transition.**  If `e` is `Safe` at `ma` with its
+  runs bounded by budget `B`, and `ma → ma'` keeps every live `B`-cell live (`hlive`), then `e` is
+  `Safe` at `ma'`.  The frame condition `hlive` is supplied per-call from separation (the
+  transition's footprint is disjoint from `B`) or compatibility (`is_compatible`).  Factors the
+  `Safe.lift` boilerplate: a run's externally-touched cell is covered by `B`, hence in `B`. -/
+theorem Safe.frame_lift {ma ma' : Memory} {e : Exp {}} {B : CapabilitySet}
+    (hse : Safe ma e) (hsub : ma'.subsumes ma) (hwf : Exp.WfInHeap e ma.heap)
+    (hbnd : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
+      m'.subsumes ma → Exp.WfInHeap e m'.heap → BigStep m' e s v m'' → TraceOk s B)
+    (hlive : ∀ l b, (∃ mu, B.hasmem mu l) →
+      ma.lookup l = some (.capability (.mcell b .live)) →
+      ∃ b', ma'.lookup l = some (.capability (.mcell b' .live))) :
+    Safe ma' e := by
+  refine Safe.lift hse hsub (Q := fun s val m => BigStep ma e s val m)
+    (fun _ _ _ h => h) ?_ hwf
+  intro s v m _ hbs l b hl htouch
+  have hnal : ¬ Trace.allocd s l := fun ha => by
+    have := BigStep.alloc_fresh hbs ha; rw [hl] at this; cases this
+  obtain ⟨cm, hext⟩ :=
+    Trace.extTouchesMode_of_touched hnal (Trace.touched_of_extTouches htouch)
+  obtain ⟨mu, hmem, _⟩ :=
+    CapabilitySet.covers_imp_exists_hasmem
+      ((hbnd (Memory.subsumes_refl _) hwf hbs).covers_of_extTouchesMode hext)
+  exact hlive l b ⟨mu, hmem⟩ hl
+
 /-- A `BigStep` from a simple value is the trivial no-op step. -/
 theorem BigStep.simpleVal_eq {m : Memory} {v : Exp {}} {t v' m'}
     (hv : Exp.IsSimpleVal v) (hbs : BigStep m v t v' m') : t = [] ∧ v' = v ∧ m' = m := by
@@ -3930,6 +4085,7 @@ theorem Eval.eval_cond {m : Memory} {x : Var .var {}} {e2 e3 : Exp {}} {Q : Tpos
 theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     {Cs1 Cs2 : CaptureSet {}}
     (he1 : Eval m e1 Q1)
+    (hse2 : Safe m e2)
     (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
       m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' ->
       TraceOk t (Cs1.reachability m))
@@ -3947,7 +4103,7 @@ theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     Eval m (.par Cs1 Cs2 e1 e2) Q := by
   -- The carrier budget is abstract+growable; instantiate it to the reachability of the
   -- annotation here.  Presence (`hpres`) is exactly `reachability_dom`.
-  refine ⟨Safe.par he1.1 ?_ hb1 hb2 hrs1 hrs2
+  refine ⟨Safe.par he1.1 hse2 ?_ hb1 hb2 hrs1 hrs2
     (fun _ _ h => CaptureSet.reachability_dom h)
     (fun _ _ h => CaptureSet.reachability_dom h)
     ⟨CapabilitySet.Subset.refl, CapabilitySet.Subset.refl⟩

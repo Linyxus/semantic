@@ -554,7 +554,7 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
   | write_false hx hy =>
     -- e = .write (.free x) (.free y), can step via step_write_false
     exact IsProgressive.step (SeqStep.step_write_false hx hy)
-  | par _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
+  | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
     -- Progress for sequential `par`: advance the left branch until it is an answer
     -- (congruence), then the right branch (`step_par_right` needs the left answer),
     -- then join once both are answers.  Progress needs only SOME step to exist.
@@ -805,10 +805,21 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     have hwfC2 : Cs2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
     cases hsafe with
     | ans hans => cases hans with | is_val hv => cases hv
-    | par hse_a h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
+    | par hse_a hse_b h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
       rename_i C1 C2
       have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_a
       have hse_a2' : Safe m2 a' := ih hwf_a hse_a
+      -- Left step's trace `t` is bounded by `C1` (head-expand `a'`'s answer, restrict the prefix).
+      have htok_t : TraceOk t C1 := by
+        obtain ⟨s, vv, ms, hbs_a'⟩ := hse_a2'.has_answer
+        have hfull : BigStep m1 a (t ++ s) vv ms := BigStep.head_expand hstep_a hbs_a'
+        exact TraceOk.prefix (hb1 (Memory.subsumes_refl _) hwf_a hfull)
+      -- Frozen right branch `b` stays safe at `m2`: the left step's footprint (⊆ C1) does not drop
+      -- `b`'s cells (⊆ C2) by non-interference, so `SeqStep.frameLive` keeps them live.
+      have hse_b2' : Safe m2 b :=
+        Safe.frame_lift hse_b hsub21 hwf_b hb2 (fun l bb ⟨_, hmem⟩ hl =>
+          SeqStep.frameLive hstep_a l bb hl
+            (not_extDrops_of_noninterf htok_t (CapabilitySet.Noninterference.ni_symm hni) hmem))
       -- Reduct `a'`'s budget GROWS by the step's fresh allocations `capsOf (allocList t)`;
       -- the frozen right branch `b` keeps budget `C2`.
       have hb1_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
@@ -836,7 +847,8 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         exact ⟨cm, (hb1_robust hsub'' (Exp.wf_monotonic hsub'' hwf_a2') hbs_a')
           |>.covers_of_extTouchesMode hext⟩
       refine Safe.par (C1 := C1 ∪ capsOf (Trace.allocList t)) (C2 := C2)
-        hse_a2' ?h2' (@hb1_robust) ?hb2' ?hrs1' ?hrs2' ?hpres1' ?hpres2' ?hcov1' ?hcov2' ?hni'
+        hse_a2' hse_b2' ?h2' (@hb1_robust) ?hb2' ?hrs1' ?hrs2' ?hpres1' ?hpres2'
+        ?hcov1' ?hcov2' ?hni'
       case hcov1' =>
         exact Safe.hcov_step hsub21 hwfC1
           (fun l hl => step_allocd_mcell hstep_a (Trace.mem_allocList.mp hl)) hcov1
@@ -890,13 +902,11 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     have hwfC2 : Cs2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
     cases hsafe with
     | ans hans => cases hans with | is_val hv => cases hv
-    | par _hse_a h2 hb1 hb2 _hrs1 _hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
+    | par _hse_a hse_b _h2 hb1 hb2 _hrs1 _hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
       rename_i C1 C2
       have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_b
-      -- The frozen LEFT branch `a` is an ANSWER (sequential schedule): `b` is safe at
-      -- `m1` via the UNGATED continuation `h2` applied to `a`'s trivial self-run.
-      have hse_b1 : Safe m1 b := h2 (BigStep.of_isAns hans_a)
-      have hse_b2' : Safe m2 b' := ih hwf_b hse_b1
+      -- `b` is safe at `m1` directly from the symmetric right field of the `par` carrier.
+      have hse_b2' : Safe m2 b' := ih hwf_b hse_b
       -- Reduct `b'`'s budget GROWS by the step's fresh allocations.
       have hb2_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
           m'.subsumes m2 -> Exp.WfInHeap b' m'.heap -> BigStep m' b' s v m'' ->
@@ -929,7 +939,7 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         exact ⟨cm, (hb2_robust hsub'' (Exp.wf_monotonic hsub'' hwf_b2') hbs_b')
           |>.covers_of_extTouchesMode hext⟩
       refine Safe.par (C1 := C1) (C2 := C2 ∪ capsOf (Trace.allocList t))
-        (Safe.ans hans_a) ?h2' ?hb1' (@hb2_robust) ?hrs1' ?hrs2' ?hpres1' ?hpres2'
+        (Safe.ans hans_a) hse_b2' ?h2' ?hb1' (@hb2_robust) ?hrs1' ?hrs2' ?hpres1' ?hpres2'
         ?hcov1' ?hcov2' hni_grown
       case hcov1' =>
         rw [CaptureSet.reachability_monotonic hsub21 Cs1 hwfC1]; exact hcov1
@@ -1138,7 +1148,7 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
                 (by simp [Memory.lookup, hcell])) hred, hans⟩
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
-  | par _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 _ _ =>
+  | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
     -- Build the canonical sequential (left-then-right-then-join) reduction to an
     -- answer: run e1 fully (ih1), run e2 from e1's answer-memory (ih2, fed e1's
     -- big-step answer via `reduce_to_bigstep`), lift each through the `SeqReduce` par
