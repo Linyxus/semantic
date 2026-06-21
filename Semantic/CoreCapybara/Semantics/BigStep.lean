@@ -300,6 +300,10 @@ inductive Safe : Memory -> Exp {} -> Prop where
 | par {m : Memory} {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}} :
   -- Left branch safe at the current memory.
   Safe m e1 ->
+  -- Right branch safe at the current memory (SYMMETRIC to the left): the two branches
+  -- are INDEPENDENTLY safe — the genuine separation content needed to schedule the
+  -- right branch before the left has finished (premature interleaving).
+  Safe m e2 ->
   -- Sequential continuation: after `e1` runs to an answer, `e2` is safe at the
   -- result memory.
   (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1}, BigStep m e1 t1 v1 m1 -> Safe m1 e2) ->

@@ -2047,28 +2047,29 @@ theorem Step.head_expand_bigstep {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
   obtain ⟨n, hrN⟩ := hr.toBigStepN
   exact Step.head_expand_bigstepN n hstep hsafe hwf hrN
 
-/-! ## The reducing-configuration compatibility invariant
+/-! ## The reducing-configuration separation invariant
 
   `preserves_safe`'s premature-`par_right` case needs the right branch safe at the par node's OWN
-  memory (the carrier only gives it post-left / compat-conditioned).  This is recovered from
-  `hrs2` given `m.is_compatible (C2.reachability m)`, which is NOT derivable from the carrier
-  (`reachability` can name dead mcells) but IS a property of a *reducing configuration*: a
-  well-formed run keeps every par branch's annotation cells live until that branch runs.  `Compat`
-  packages exactly this — `m.is_compatible` of every (same-scope) `par`'s right annotation — and is
-  threaded through `preserves_safe`/`standardization` as the explicit reducing-config hypothesis. -/
+  memory (the carrier supplies right-branch safety only post-left / compat-conditioned).  The
+  *fundamental* property a reducing configuration has — the genuine separation/independence of the
+  two `par` branches — is exactly that the right branch is safe at the current memory.  `Compat`
+  packages this: at every (same-scope-reachable) `par` node, the RIGHT branch is `Safe` at `m`
+  (recursively for both branches).  Crucially it is `Safe`-based, NOT `is_compatible`-based: it
+  stays TRUE after a drop (the reduct right branch no longer references the dropped cell, so it is
+  still safe), so it needs no drop-freedom or full-liveness restriction. -/
 
-/-- Every (same-scope-reachable) `par` node of `e` has its right annotation's reachability
-  compatible with `m` (its mutable cells are live).  Descends into `par` branches and `letin`/
-  `unpack` heads — the points a genuine `Step` can recurse into; continuations (rebound at a future
-  step) are covered by `standardization`'s threading when they become current. -/
+/-- At every (same-scope-reachable) `par` node of `e`, the RIGHT branch is `Safe` at `m`.  Descends
+  into `par` branches and `letin`/`unpack` heads — the points a genuine `Step` can recurse into;
+  continuations (rebound at a future step) become current expressions covered by `standardization`'s
+  threading. -/
 def Compat (m : Memory) : Exp {} → Prop
-  | .par _ C2 eL eR => m.is_compatible (C2.reachability m) ∧ Compat m eL ∧ Compat m eR
+  | .par _ _ eL eR => Safe m eR ∧ Compat m eL ∧ Compat m eR
   | .letin eh _ => Compat m eh
   | .unpack eh _ => Compat m eh
   | _ => True
 
-theorem Compat.par_isCompat {m : Memory} {C1 C2 : CaptureSet {}} {eL eR : Exp {}}
-    (h : Compat m (.par C1 C2 eL eR)) : m.is_compatible (C2.reachability m) := by
+theorem Compat.par_safe {m : Memory} {C1 C2 : CaptureSet {}} {eL eR : Exp {}}
+    (h : Compat m (.par C1 C2 eL eR)) : Safe m eR := by
   unfold Compat at h; exact h.1
 theorem Compat.par_left {m : Memory} {C1 C2 : CaptureSet {}} {eL eR : Exp {}}
     (h : Compat m (.par C1 C2 eL eR)) : Compat m eL := by
@@ -2258,23 +2259,22 @@ theorem Safe.frame_lift {ma ma' : Memory} {e : Exp {}} {B : CapabilitySet}
 set_option maxHeartbeats 1000000 in
 -- The 11-field `Safe.par` carrier rebuild, each field threading the diamond/frame-lift, exceeds
 -- the default heartbeat budget.
-/-- **Premature-`par_right` preservation — FULLY PROVEN, threading the reducing-config invariant.**
-  A genuine right step with the left branch NOT an answer.  EVERY field of the reduct's `Safe.par`
-  carrier is proven: the frozen left's safety (`Safe.frame_lift` across the separated right step),
-  the reduct-right continuation `h2'` and robust safety `hrs2'` (`Safe.frame_lift` of the
-  reduct-right `Safe m2 eR'`), the grown right budget `hb2'` (genuine head-expansion +
-  `TraceOk.equiv_invariant`), and the bookkeeping fields.  The one fact the carrier cannot supply —
-  `Safe m1 eR`, the right branch safe at the par node's OWN memory — is recovered from the carrier's
-  `hrs2` given `m1.is_compatible (C2.reachability m1)`, which is THREADED in as the explicit
-  reducing-configuration hypothesis `hcompat2` (it is NOT derivable from the carrier alone, since
-  `reachability` may name a DEAD mcell, but it holds for any reducing config whose par branches'
-  annotation cells stay live until that branch runs — see `Compat`/`standardization`). -/
+/-- **Premature-`par_right` preservation — FULLY PROVEN.**  A genuine right step with the left
+  branch NOT an answer.  EVERY field of the reduct's `Safe.par` carrier is proven: the frozen
+  left's safety (`Safe.frame_lift` across the separated right step), the reduct-right continuation
+  `h2'` and robust safety `hrs2'` (`Safe.frame_lift` of the reduct-right `Safe m2 eR'`), the grown
+  right budget `hb2'` (genuine head-expansion + `TraceOk.equiv_invariant`), and the bookkeeping
+  fields.  The one fact the carrier cannot supply — `Safe m1 eR`, the right branch safe at the par
+  node's OWN memory — is taken as a parameter (the genuine separation/independence of the par
+  branches); it is provided by the `Compat` invariant (`Compat.par_safe`), which holds for any
+  reducing configuration and needs NO drop-freedom (a `Safe` branch stays safe after dropping its
+  own cells). -/
 theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
     {C1 C2 : CaptureSet {}} {eL eR eR' : Exp {}}
     (hstep : Step t m1 eR m2 eR') (ht_g : TraceOk t (C2.reachability m1))
     (hsafe : Safe m1 (.par C1 C2 eL eR))
     (hwf : Exp.WfInHeap (.par C1 C2 eL eR) m1.heap)
-    (hcompat2 : m1.is_compatible (C2.reachability m1)) (hcompat_eR : Compat m1 eR)
+    (hse_eR : Safe m1 eR) (hcompat_eR : Compat m1 eR)
     (ih : Exp.WfInHeap eR m1.heap → Safe m1 eR → Compat m1 eR → Safe m2 eR') :
     Safe m2 (.par C1 (C2.growByAllocs t) eL eR') := by
   obtain ⟨hwf_eL, hwf_eR⟩ := Exp.wf_inv_par hwf
@@ -2286,11 +2286,6 @@ theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
     rename_i Cb1 Cb2
     have hsub21 : m2.subsumes m1 := Step.subsumes hstep
     have htok_t : TraceOk t Cb2 := TraceOk.mono hcov2.2 ht_g
-    -- The right branch safe at the par's OWN memory, recovered from the carrier's robust right
-    -- safety `hrs2` and the THREADED reducing-config compatibility `hcompat2` (re-based to the
-    -- carrier budget `Cb2` via the link `hcov2`).
-    have hse_eR : Safe m1 eR :=
-      hrs2 (Memory.subsumes_refl m1) (Memory.is_compatible_subset hcov2.1 hcompat2)
     have hse_b2' : Safe m2 eR' := ih hwf_eR hse_eR hcompat_eR
     have hwf_b2' : Exp.WfInHeap eR' m2.heap := Step.preserves_wf hstep hwf_eR
     -- Grown right budget bound (genuine head-expansion up to `Trace.Equiv` + invariance).
@@ -2418,7 +2413,7 @@ theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
     exact Step.preserves_safe_par_left inner hsafe hwf (Compat.par_left hcompat) ih
   | step_par_right ht hni inner ih =>
     exact Step.preserves_safe_par_right inner ht hsafe hwf
-      (Compat.par_isCompat hcompat) (Compat.par_right hcompat) ih
+      (Compat.par_safe hcompat) (Compat.par_right hcompat) ih
 
 /-- **Standardization (theorem B).**  Every genuine interleaving run to an answer is matched by
   a sequential (left-first) run reaching the IDENTICAL final memory and answer, the traces
