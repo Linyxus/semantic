@@ -480,6 +480,22 @@ theorem BigStep.isAns_inv {m : Memory} {e : Exp {}} {t v m'}
       | exact ⟨rfl, rfl, rfl⟩
       | (cases hans with | is_val hv => cases hv)
 
+/-- A fresh location avoiding a given finite set `S` (and the current domain). -/
+theorem Memory.exists_fresh_avoiding (m : Memory) (S : Finset Nat) :
+    ∃ l : Nat, l ∉ S ∧ m.lookup l = none := by
+  obtain ⟨dom, hdom⟩ := m.findom
+  refine ⟨(dom ∪ S).sup id + 1, ?_, ?_⟩
+  · intro hin
+    have hle : (dom ∪ S).sup id + 1 ≤ (dom ∪ S).sup id :=
+      Finset.le_sup (f := id) (Finset.mem_union_right dom hin)
+    omega
+  · unfold Memory.lookup
+    by_contra h
+    have hmem : (dom ∪ S).sup id + 1 ∈ dom := (hdom _).mp h
+    have hle : (dom ∪ S).sup id + 1 ≤ (dom ∪ S).sup id :=
+      Finset.le_sup (f := id) (Finset.mem_union_left S hmem)
+    omega
+
 /-- Progress: a `Safe` configuration reaches at least one `BigStep` answer. -/
 theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
     ∃ t v m', BigStep m e t v m' := by
@@ -3338,46 +3354,546 @@ theorem bound_step_trace {t rest τ : Trace} {m m' mf : Memory} {e e' v : Exp {}
       refine TraceOkFrom.dealloc (Or.inl (key l .drop ?_)) (ih key' A)
       simp only [Trace.touchesWith]; tauto
 
-/-- **Right-branch liveness frame for `Safe.lift`'s `par` case.**  When lifting
-  `Safe m1 (.par Cs1 Cs2 e1 e2)` to `m2 ⊒ m1`, the new unconditional right field `Safe m2 e2`
-  is produced by lifting `Safe m1 e2` with the per-run frame `hok_e2 : extTouches t l (for an
-  `e2`-run from `m1`) → l live in m2`.  This lemma discharges that obligation: a pre-existing
-  `C2`-cell `l` that `e2` touches when run from `m1` is also touched when `e2` is run from the
-  post-`e1` memory `ms` (a noninterfering `C1`-only prefix does not perturb `e2`'s footprint on
-  pre-existing cells), so the sequential par run `e1`-then-`e2`-from-`ms` touches `l`, and the
-  par's own subsumption frame `hok` then keeps `l` live in `m2`.
+/-- The "cells added by a run avoid `S`" property composes along a two-stage run. -/
+theorem added_avoid_trans {m m1 m' : Memory} {S : Finset Nat}
+    (h1 : ∀ c, m1.lookup c ≠ none → m.lookup c = none → c ∉ S)
+    (h2 : ∀ c, m'.lookup c ≠ none → m1.lookup c = none → c ∉ S) :
+    ∀ c, m'.lookup c ≠ none → m.lookup c = none → c ∉ S := by
+  intro c hc' hc
+  rcases hm1 : m1.lookup c with _ | cell
+  · exact h2 c hc' hm1
+  · exact h1 c (by rw [hm1]; exact Option.some_ne_none cell) hc
 
-  The ONE remaining obligation is the highlighted inner `sorry`: the **big-step noninterference
-  footprint frame** — `e2` run from `ms ⊒ m1` (agreeing with `m1` on the `C2` region, since `e1`
-  is `C1`-only) reaches the same pre-existing cell `l`.  This is the big-step analogue of the
-  single-step diamond `BigStep.step_run_commute` (which is proven); the only gap to deriving it
-  from that diamond is alloc-name divergence between the `m1`- and `ms`-runs, which a renaming
-  argument resolves.  It is genuine operational infrastructure, NOT a soundness restriction. -/
+/-- **Progress with fresh-name avoidance.**  A `Safe` configuration reaches a `BigStep` answer
+  whose freshly-allocated cells (every cell present afterwards but absent before) all avoid a
+  given finite set `S`.  Same construction as `Safe.has_answer`, but every fresh choice is taken
+  outside `S` (`Memory.exists_fresh_avoiding`).  Used to schedule the left branch of a `par` so its
+  fresh names are disjoint from the right branch's, letting the right run replay verbatim. -/
+theorem Safe.has_answer_avoiding {m : Memory} {e : Exp {}} (h : Safe m e) (S : Finset Nat) :
+    ∃ t v m', BigStep m e t v m' ∧
+      (∀ c, m'.lookup c ≠ none → m.lookup c = none → c ∉ S) := by
+  induction h with
+  | ans hans => exact ⟨_, _, _, BigStep.of_isAns hans, fun c hc' hc => absurd hc hc'⟩
+  | alloc hlk =>
+    obtain ⟨l, hlS, hfresh⟩ := Memory.exists_fresh_avoiding _ S
+    refine ⟨_, _, _, BigStep.bs_alloc hlk hfresh, fun c hc' hc => ?_⟩
+    obtain ⟨cell, hcc⟩ := Option.ne_none_iff_exists'.mp hc'
+    have : c = l := Memory.extend_mcell_lookup_eq_base_of_ne hcc hc
+    subst this; exact hlS
+  | apply hlk _ ih =>
+    obtain ⟨t, v, m', hbs, hadd⟩ := ih
+    exact ⟨_, _, _, BigStep.bs_apply hlk hbs, hadd⟩
+  | invoke hlk1 hlk2 => exact ⟨_, _, _, BigStep.bs_invoke hlk1 hlk2, fun c hc' hc => absurd hc hc'⟩
+  | tapply hlk _ ih =>
+    obtain ⟨t, v, m', hbs, hadd⟩ := ih
+    exact ⟨_, _, _, BigStep.bs_tapply hlk hbs, hadd⟩
+  | capply hlk _ ih =>
+    obtain ⟨t, v, m', hbs, hadd⟩ := ih
+    exact ⟨_, _, _, BigStep.bs_capply hlk hbs, hadd⟩
+  | unwrap hlk _ ih =>
+    obtain ⟨t, v, m', hbs, hadd⟩ := ih
+    exact ⟨_, _, _, BigStep.bs_unwrap hlk hbs, hadd⟩
+  | letin _ h_ans _ _ ih1 ih_val ih_var =>
+    obtain ⟨t1, v, m1, hbs1, hadd1⟩ := ih1
+    obtain ⟨hsa, hwf1⟩ := h_ans _ _ _ hbs1
+    cases hsa with
+    | is_simple_val hv =>
+      obtain ⟨l', hl'S, hfresh⟩ := Memory.exists_fresh_avoiding m1 S
+      obtain ⟨t2, v2, m2, hbs2, hadd2⟩ := ih_val hbs1 hv hwf1 l' hfresh
+      refine ⟨_, _, _, BigStep.bs_letin_val hbs1 hv hwf1 hfresh hbs2, ?_⟩
+      refine added_avoid_trans (added_avoid_trans hadd1 (fun c hc' hc => ?_)) hadd2
+      obtain ⟨cell, hcc⟩ := Option.ne_none_iff_exists'.mp hc'
+      by_cases hcl : c = l'
+      · subst hcl; exact hl'S
+      · rw [Memory.extend_val_lookup_ne hcl] at hcc; rw [hcc] at hc; exact absurd hc (by simp)
+    | is_var =>
+      obtain ⟨t2, v2, m2, hbs2, hadd2⟩ := ih_var hbs1
+      exact ⟨_, _, _, BigStep.bs_letin_var hbs1 hbs2, added_avoid_trans hadd1 hadd2⟩
+  | unpack _ h_ans _ ih1 ih_val =>
+    obtain ⟨t1, v, m1, hbs1, hadd1⟩ := ih1
+    obtain ⟨hpack, hwf1⟩ := h_ans _ _ _ hbs1
+    cases hpack with
+    | pack =>
+      obtain ⟨t2, v2, m2, hbs2, hadd2⟩ := ih_val hbs1
+      exact ⟨_, _, _, BigStep.bs_unpack hbs1 hbs2, added_avoid_trans hadd1 hadd2⟩
+  | read hlk1 hlk2 =>
+    exact ⟨_, _, _, BigStep.bs_read (b' := true) hlk1 hlk2, fun c hc' hc => absurd hc hc'⟩
+  | write_true hx hy =>
+    refine ⟨_, _, _, BigStep.bs_write_true hx hy, fun c hc' hc => ?_⟩
+    rw [Memory.update_mcell_lookup_none hc ⟨_, hx⟩] at hc'; exact absurd rfl hc'
+  | write_false hx hy =>
+    refine ⟨_, _, _, BigStep.bs_write_false hx hy, fun c hc' hc => ?_⟩
+    rw [Memory.update_mcell_lookup_none hc ⟨_, hx⟩] at hc'; exact absurd rfl hc'
+  | drop hx =>
+    refine ⟨_, _, _, BigStep.bs_drop hx, fun c hc' hc => ?_⟩
+    rw [Memory.drop_mcell_lookup_none hc ⟨_, hx⟩] at hc'; exact absurd rfl hc'
+  | cond hres _ _ ih_true ih_false =>
+    cases hres with
+    | inl hbtrue =>
+      obtain ⟨t, v, m', hbs, hadd⟩ := ih_true hbtrue
+      exact ⟨_, _, _, BigStep.bs_cond_true hbtrue hbs, hadd⟩
+    | inr hbfalse =>
+      obtain ⟨t, v, m', hbs, hadd⟩ := ih_false hbfalse
+      exact ⟨_, _, _, BigStep.bs_cond_false hbfalse hbs, hadd⟩
+  | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
+    obtain ⟨t1, v1, m1, hbs1, hadd1⟩ := ih1
+    obtain ⟨t2, v2, m2, hbs2, hadd2⟩ := ih2 hbs1
+    exact ⟨_, _, _, BigStep.bs_par hbs1 hbs2, added_avoid_trans hadd1 hadd2⟩
+
+/-- A `BigStep` never shrinks the heap domain (`alloc`/`extend` add, `write` mutates in place,
+  `drop` leaves a dead mcell). -/
+theorem BigStep.lookup_ne_none_mono {m : Memory} {e : Exp {}} {t v m'}
+    (hbs : BigStep m e t v m') {c : Nat} (hc : m.lookup c ≠ none) : m'.lookup c ≠ none := by
+  obtain ⟨cell, hcell⟩ := Option.ne_none_iff_exists'.mp hc
+  obtain ⟨cell', hcell', _⟩ := hbs.subsumes c cell hcell
+  rw [show m'.lookup c = m'.heap c from rfl, hcell']; exact Option.some_ne_none cell'
+
+/-- A value cell is reproduced (exactly) in a subsuming memory. -/
+theorem Memory.val_up {m ms : Memory} (hsub : ms.subsumes m) {x : Nat} {v : HeapVal}
+    (hx : m.lookup x = some (.val v)) : ms.lookup x = some (.val v) := by
+  obtain ⟨c', hc', hsubc⟩ := hsub x _ hx
+  cases c' with
+  | val w => simp only [Cell.subsumes] at hsubc; rw [hsubc] at hc'; exact hc'
+  | capability _ => simp [Cell.subsumes] at hsubc
+  | masked => simp [Cell.subsumes] at hsubc
+
+/-- A basic capability is reproduced (exactly) in a subsuming memory. -/
+theorem Memory.basic_up {m ms : Memory} (hsub : ms.subsumes m) {x : Nat}
+    (hx : m.lookup x = some (.capability .basic)) :
+    ms.lookup x = some (.capability .basic) := by
+  obtain ⟨c', hc', hsubc⟩ := hsub x _ hx
+  cases c' with
+  | val _ => simp [Cell.subsumes] at hsubc
+  | masked => simp [Cell.subsumes] at hsubc
+  | capability ci => cases ci with
+    | basic => exact hc'
+    | mcell _ _ => simp [Cell.subsumes] at hsubc
+
+set_option maxHeartbeats 1000000 in
+-- The full induction over `BigStep` with threaded subsumption/liveness/freshness invariants
+-- exceeds the default heartbeat budget.
+/-- **Same-trace replay in a subsuming super-memory (UP transfer).**  A run replays VERBATIM
+  (same trace, same value) from `ms ⊒ m`, provided every mcell the run touches and is live for is
+  also live in `ms` (`hrel`, an `IsLive` biconditional at touched cells) and every cell the run
+  allocates or leaves behind is fresh in `ms` (`hfresh`).  Names are preserved (no renaming): the
+  `letin` reachability divergence is killed by `compute_reachability_monotonic`.  Conclusions
+  thread the induction: `ms' ⊒ m'`, the fresh-tracking, and the `simulate_down`-style liveness
+  biconditional.  Dual of `BigStep.simulate_down` (which goes DOWN and derives liveness from
+  subsumption; UP needs `hrel`/`hfresh` because subsumption does not preserve liveness upward). -/
+theorem BigStep.transfer {m : Memory} {e : Exp {}} {t v m'} (hbs : BigStep m e t v m') :
+    ∀ {ms : Memory}, ms.subsumes m → Exp.WfInHeap e m.heap →
+      (hrel : ∀ l, Trace.touched t l → (m.IsLive l ↔ ms.IsLive l)) →
+      (hfresh : ∀ c, (Trace.allocd t c ∨ (m'.lookup c ≠ none ∧ m.lookup c = none)) →
+        ms.lookup c = none) →
+      ∃ ms', BigStep ms e t v ms' ∧ ms'.subsumes m' ∧
+        (∀ c, ms.lookup c = none → m'.lookup c = none → ms'.lookup c = none) ∧
+        (∀ l, ((m.IsLive l ↔ ms.IsLive l) ∨ Trace.allocd t l) → (m'.IsLive l ↔ ms'.IsLive l)) := by
+  induction hbs with
+  | bs_pack =>
+    intro ms hsub _ _ _
+    exact ⟨ms, BigStep.bs_pack, hsub, (fun c hcms _ => hcms),
+      fun l h => h.resolve_right (by simp [Trace.allocd])⟩
+  | bs_val hv =>
+    intro ms hsub _ _ _
+    exact ⟨ms, BigStep.bs_val hv, hsub, (fun c hcms _ => hcms),
+      fun l h => h.resolve_right (by simp [Trace.allocd])⟩
+  | bs_var =>
+    intro ms hsub _ _ _
+    exact ⟨ms, BigStep.bs_var, hsub, (fun c hcms _ => hcms),
+      fun l h => h.resolve_right (by simp [Trace.allocd])⟩
+  | bs_wrap =>
+    intro ms hsub _ _ _
+    exact ⟨ms, BigStep.bs_wrap, hsub, (fun c hcms _ => hcms),
+      fun l h => h.resolve_right (by simp [Trace.allocd])⟩
+  | bs_invoke hlkx hlky =>
+    intro ms hsub _ _ _
+    exact ⟨ms, BigStep.bs_invoke (Memory.basic_up hsub hlkx) (Memory.val_up hsub hlky), hsub,
+      (fun c hcms _ => hcms), fun l h => h.resolve_right (by simp [Trace.allocd])⟩
+  | bs_read hlkx hlky =>
+    intro ms hsub _ hrel _
+    obtain ⟨b', hyms⟩ := (hrel _ (by simp [Trace.touched])).mp ⟨_, hlky⟩
+    exact ⟨ms, BigStep.bs_read (Memory.val_up hsub hlkx) hyms, hsub,
+      (fun c hcms _ => hcms), fun l h => h.resolve_right (by simp [Trace.allocd])⟩
+  | bs_alloc hlk hfreshl =>
+    intro ms hsub _hwf _hrel hfresh
+    rename_i l
+    have hlms : ms.heap l = none := hfresh _ (Or.inl (by simp [Trace.allocd]))
+    refine ⟨_, BigStep.bs_alloc (Memory.val_up hsub hlk) hlms,
+      Memory.extend_mcell_subsumes_compat _ _ hfreshl hlms hsub, ?_, ?_⟩
+    · intro c hcms hc'
+      have hcl : c ≠ l := fun he => by
+        subst he; rw [Memory.extend_mcell_lookup hfreshl] at hc'; cases hc'
+      simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hcl]; exact hcms
+    · intro lc h
+      rcases h with hag | ha
+      · exact Memory.extend_mcell_IsLive_agree hag
+      · simp only [Trace.allocd, or_false] at ha; subst ha
+        exact iff_of_true Memory.extend_mcell_IsLive_self Memory.extend_mcell_IsLive_self
+  | bs_apply hlk _ ih =>
+    intro ms hsub hwf hrel hfresh
+    match hwf with
+    | .wf_app (.wf_free _) hwfy =>
+      obtain ⟨_, _, he⟩ := Exp.wf_inv_abs (Memory.wf_lookup hlk)
+      obtain ⟨ms', hbs', hsub', hft', hrel'⟩ :=
+        ih (ms := ms) hsub (Exp.wf_subst he (Subst.wf_openVar hwfy)) hrel hfresh
+      exact ⟨ms', BigStep.bs_apply (Memory.val_up hsub hlk) hbs', hsub', hft', hrel'⟩
+  | bs_tapply hlk _ ih =>
+    intro ms hsub hwf hrel hfresh
+    match hwf with
+    | .wf_tapp (.wf_free _) _ =>
+      obtain ⟨_, _, he⟩ := Exp.wf_inv_tabs (Memory.wf_lookup hlk)
+      obtain ⟨ms', hbs', hsub', hft', hrel'⟩ :=
+        ih (ms := ms) hsub (Exp.wf_subst he (Subst.wf_openTVar Ty.WfInHeap.wf_top)) hrel hfresh
+      exact ⟨ms', BigStep.bs_tapply (Memory.val_up hsub hlk) hbs', hsub', hft', hrel'⟩
+  | bs_capply hlk _ ih =>
+    intro ms hsub hwf hrel hfresh
+    match hwf with
+    | .wf_capp (.wf_free _) hcs =>
+      obtain ⟨_, _, he⟩ := Exp.wf_inv_cabs (Memory.wf_lookup hlk)
+      obtain ⟨ms', hbs', hsub', hft', hrel'⟩ :=
+        ih (ms := ms) hsub (Exp.wf_subst he (Subst.wf_openCVar hcs)) hrel hfresh
+      exact ⟨ms', BigStep.bs_capply (Memory.val_up hsub hlk) hbs', hsub', hft', hrel'⟩
+  | bs_unwrap hlk _ ih =>
+    intro ms hsub hwf hrel hfresh
+    match hwf with
+    | .wf_unwrap (.wf_free _) =>
+      obtain ⟨ms', hbs', hsub', hft', hrel'⟩ :=
+        ih (ms := ms) hsub (match Memory.wf_lookup hlk with | .wf_boxed _ _ he => he) hrel hfresh
+      exact ⟨ms', BigStep.bs_unwrap (Memory.val_up hsub hlk) hbs', hsub', hft', hrel'⟩
+  | bs_cond_true hres _ ih =>
+    intro ms hsub hwf hrel hfresh
+    obtain ⟨_, hwf2, _⟩ := Exp.wf_inv_cond hwf
+    obtain ⟨ms', hbs', hsub', hft', hrel'⟩ := ih (ms := ms) hsub hwf2 hrel hfresh
+    exact ⟨ms', BigStep.bs_cond_true (resolve_monotonic hsub hres) hbs', hsub', hft', hrel'⟩
+  | bs_cond_false hres _ ih =>
+    intro ms hsub hwf hrel hfresh
+    obtain ⟨_, _, hwf3⟩ := Exp.wf_inv_cond hwf
+    obtain ⟨ms', hbs', hsub', hft', hrel'⟩ := ih (ms := ms) hsub hwf3 hrel hfresh
+    exact ⟨ms', BigStep.bs_cond_false (resolve_monotonic hsub hres) hbs', hsub', hft', hrel'⟩
+  | bs_write_true hx hy =>
+    intro ms hsub _ hrel _
+    obtain ⟨_, hxms⟩ := (hrel _ (by simp [Trace.touched])).mp ⟨_, hx⟩
+    refine ⟨_, BigStep.bs_write_true hxms (Memory.val_up hsub hy),
+      Memory.update_mcell_subsumes_compat _ _ _ ⟨_, hx⟩ ⟨_, hxms⟩ hsub,
+      (fun c hcms _ => Memory.update_mcell_lookup_none hcms ⟨_, hxms⟩), ?_⟩
+    intro lc h
+    exact Memory.update_mcell_IsLive_agree (h.resolve_right (by simp [Trace.allocd]))
+  | bs_write_false hx hy =>
+    intro ms hsub _ hrel _
+    obtain ⟨_, hxms⟩ := (hrel _ (by simp [Trace.touched])).mp ⟨_, hx⟩
+    refine ⟨_, BigStep.bs_write_false hxms (Memory.val_up hsub hy),
+      Memory.update_mcell_subsumes_compat _ _ _ ⟨_, hx⟩ ⟨_, hxms⟩ hsub,
+      (fun c hcms _ => Memory.update_mcell_lookup_none hcms ⟨_, hxms⟩), ?_⟩
+    intro lc h
+    exact Memory.update_mcell_IsLive_agree (h.resolve_right (by simp [Trace.allocd]))
+  | bs_drop hx =>
+    intro ms hsub _ hrel _
+    obtain ⟨_, hxms⟩ := (hrel _ (by simp [Trace.touched])).mp ⟨_, hx⟩
+    refine ⟨_, BigStep.bs_drop hxms,
+      Memory.drop_mcell_subsumes_compat _ ⟨_, hx⟩ ⟨_, hxms⟩ hsub,
+      (fun c hcms _ => Memory.drop_mcell_lookup_none hcms ⟨_, hxms⟩), ?_⟩
+    intro lc h
+    exact Memory.drop_mcell_IsLive_agree (h.resolve_right (by simp [Trace.allocd]))
+  | bs_letin_val hbs1 hv hwf1 hfreshl hbs2 ih1 ih2 =>
+    intro ms hsub hwf hrel hfresh
+    rename_i th tk vf ekb m0 mh mfin vh ln
+    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
+    have hfresh_h : ∀ c, (Trace.allocd th c ∨ (mh.lookup c ≠ none ∧ m0.lookup c = none)) →
+        ms.lookup c = none := by
+      intro c h
+      rcases h with ha | ⟨h1, h0⟩
+      · exact hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inl ha)))
+      · have hcl : c ≠ ln := fun he => by subst he; exact h1 hfreshl
+        exact hfresh c (Or.inr
+          ⟨hbs2.lookup_ne_none_mono (by rw [Memory.extend_val_lookup_ne hcl]; exact h1), h0⟩)
+    obtain ⟨msh, hbs_h', hsubh, hFTh, hrelh⟩ := ih1 (ms := ms) hsub hwf_e1
+      (fun l hl => hrel l (Trace.touched_append.mpr (Or.inl hl))) hfresh_h
+    have hm_ln : m0.lookup ln = none := by
+      by_contra h; exact (hbs1.lookup_ne_none_mono h) hfreshl
+    have hmfin_ln : mfin.lookup ln ≠ none :=
+      hbs2.lookup_ne_none_mono (by rw [Memory.extend_val_lookup_self]; exact Option.some_ne_none _)
+    have hl'msh : msh.lookup ln = none := hFTh ln (hfresh ln (Or.inr ⟨hmfin_ln, hm_ln⟩)) hfreshl
+    have hReq : compute_reachability msh.heap vh hv = compute_reachability mh.heap vh hv :=
+      compute_reachability_monotonic hsubh vh hv hwf1
+    have hwf_v_msh : Exp.WfInHeap vh msh.heap := Exp.wf_monotonic hsubh hwf1
+    have hwf_body : Exp.WfInHeap (ekb.subst (Subst.openVar (.free ln)))
+        (mh.extend_val ln ⟨vh, hv, compute_reachability mh.heap vh hv⟩ hwf1 rfl hfreshl).heap :=
+      Exp.wf_subst (Exp.wf_monotonic
+        (Heap.subsumes_trans (Heap.extend_subsumes hfreshl) (BigStep.subsumes hbs1)) hwf_e2)
+        (Subst.wf_openVar (Var.WfInHeap.wf_free (Heap.extend_lookup_eq _ _ _)))
+    have hsub_k : (msh.extend_val ln ⟨vh, hv, compute_reachability msh.heap vh hv⟩ hwf_v_msh rfl
+        hl'msh).subsumes (mh.extend_val ln ⟨vh, hv, compute_reachability mh.heap vh hv⟩ hwf1 rfl
+        hfreshl) :=
+      Memory.extend_val_subsumes_compat (by rw [hReq]) hwf1 rfl hfreshl hwf_v_msh rfl hl'msh hsubh
+    have hrel_k : ∀ lc, Trace.touched tk lc →
+        ((mh.extend_val ln ⟨vh, hv, compute_reachability mh.heap vh hv⟩ hwf1 rfl hfreshl).IsLive lc
+          ↔ (msh.extend_val ln ⟨vh, hv, compute_reachability msh.heap vh hv⟩ hwf_v_msh rfl
+            hl'msh).IsLive lc) := by
+      intro lc hlc
+      by_cases hcl : lc = ln
+      · subst hcl
+        exact iff_of_false Memory.extend_val_not_IsLive_self Memory.extend_val_not_IsLive_self
+      · rw [Memory.extend_val_IsLive_ne hcl, Memory.extend_val_IsLive_ne hcl]
+        exact hrelh lc (Or.inl (hrel lc (Trace.touched_append.mpr (Or.inr hlc))))
+    have hfresh_k : ∀ c, (Trace.allocd tk c ∨ (mfin.lookup c ≠ none ∧
+          (mh.extend_val ln ⟨vh, hv, compute_reachability mh.heap vh hv⟩ hwf1 rfl hfreshl).lookup c
+            = none)) →
+        (msh.extend_val ln ⟨vh, hv, compute_reachability msh.heap vh hv⟩ hwf_v_msh rfl
+          hl'msh).lookup c = none := by
+      intro c h
+      rcases h with ha | ⟨h1, h0⟩
+      · have hext0 := hbs2.alloc_fresh ha
+        have hcl : c ≠ ln := fun he => by
+          subst he; rw [Memory.extend_val_lookup_self] at hext0; cases hext0
+        have hmhc : mh.lookup c = none := by
+          rw [Memory.extend_val_lookup_ne hcl] at hext0; exact hext0
+        rw [Memory.extend_val_lookup_ne hcl]
+        exact hFTh c (hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inr ha)))) hmhc
+      · have hcl : c ≠ ln := fun he => by
+          subst he; rw [Memory.extend_val_lookup_self] at h0; cases h0
+        have hmhc : mh.lookup c = none := by rw [Memory.extend_val_lookup_ne hcl] at h0; exact h0
+        have hm0c : m0.lookup c = none := by
+          by_contra hh; exact (hbs1.lookup_ne_none_mono hh) hmhc
+        rw [Memory.extend_val_lookup_ne hcl]
+        exact hFTh c (hfresh c (Or.inr ⟨h1, hm0c⟩)) hmhc
+    obtain ⟨msf, hbs_k', hsubf, hFTf, hrelf⟩ := ih2 (ms := msh.extend_val ln
+        ⟨vh, hv, compute_reachability msh.heap vh hv⟩ hwf_v_msh rfl hl'msh) hsub_k hwf_body
+      hrel_k hfresh_k
+    refine ⟨msf, BigStep.bs_letin_val hbs_h' hv hwf_v_msh hl'msh hbs_k', hsubf, ?_, ?_⟩
+    · intro c hcms hcmf
+      have hmhext : (mh.extend_val ln ⟨vh, hv, compute_reachability mh.heap vh hv⟩ hwf1 rfl
+          hfreshl).lookup c = none := by by_contra h; exact (hbs2.lookup_ne_none_mono h) hcmf
+      have hcl : c ≠ ln := fun he => by
+        subst he; rw [Memory.extend_val_lookup_self] at hmhext; cases hmhext
+      have hmhc : mh.lookup c = none := by
+        rw [Memory.extend_val_lookup_ne hcl] at hmhext; exact hmhext
+      exact hFTf c (by rw [Memory.extend_val_lookup_ne hcl]; exact hFTh c hcms hmhc) hcmf
+    · intro lc h
+      apply hrelf
+      by_cases hcl : lc = ln
+      · subst hcl
+        exact Or.inl (iff_of_false Memory.extend_val_not_IsLive_self
+          Memory.extend_val_not_IsLive_self)
+      · rw [Memory.extend_val_IsLive_ne hcl, Memory.extend_val_IsLive_ne hcl]
+        rcases h with hag | ha
+        · exact Or.inl (hrelh lc (Or.inl hag))
+        · rcases Trace.allocd_append.mp ha with h1 | h2
+          · exact Or.inl (hrelh lc (Or.inr h1))
+          · exact Or.inr h2
+  | bs_letin_var hbs1 hbs2 ih1 ih2 =>
+    intro ms hsub hwf hrel hfresh
+    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
+    obtain ⟨msh, hbs_h', hsubh, hFTh, hrelh⟩ := ih1 (ms := ms) hsub hwf_e1
+      (fun l hl => hrel l (Trace.touched_append.mpr (Or.inl hl)))
+      (fun c h => h.elim (fun ha => hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inl ha))))
+        (fun ⟨h1, h0⟩ => hfresh c (Or.inr ⟨hbs2.lookup_ne_none_mono h1, h0⟩)))
+    have hwf_body := Exp.wf_subst (Exp.wf_monotonic (BigStep.subsumes hbs1) hwf_e2)
+      (match BigStep.wf_answer hbs1 hwf_e1 with | Exp.WfInHeap.wf_var hx => Subst.wf_openVar hx)
+    obtain ⟨msf, hbs_k', hsubf, hFTf, hrelf⟩ := ih2 (ms := msh) hsubh hwf_body
+      (fun lc hlc => hrelh lc (Or.inl (hrel lc (Trace.touched_append.mpr (Or.inr hlc)))))
+      (fun c h => h.elim
+        (fun ha => hFTh c (hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inr ha))))
+          (hbs2.alloc_fresh ha))
+        (fun ⟨h1, h0⟩ => hFTh c (hfresh c (Or.inr ⟨h1, by
+          by_contra hh; exact (hbs1.lookup_ne_none_mono hh) h0⟩)) h0))
+    refine ⟨msf, BigStep.bs_letin_var hbs_h' hbs_k', hsubf,
+      (fun c hcms hcmf => hFTf c (hFTh c hcms
+        (by by_contra hh; exact (hbs2.lookup_ne_none_mono hh) hcmf)) hcmf), ?_⟩
+    intro lc h
+    apply hrelf
+    rcases h with hag | ha
+    · exact Or.inl (hrelh lc (Or.inl hag))
+    · rcases Trace.allocd_append.mp ha with h1 | h2
+      · exact Or.inl (hrelh lc (Or.inr h1))
+      · exact Or.inr h2
+  | bs_unpack hbs1 hbs2 ih1 ih2 =>
+    intro ms hsub hwf hrel hfresh
+    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_unpack hwf
+    obtain ⟨msh, hbs_h', hsubh, hFTh, hrelh⟩ := ih1 (ms := ms) hsub hwf_e1
+      (fun l hl => hrel l (Trace.touched_append.mpr (Or.inl hl)))
+      (fun c h => h.elim (fun ha => hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inl ha))))
+        (fun ⟨h1, h0⟩ => hfresh c (Or.inr ⟨hbs2.lookup_ne_none_mono h1, h0⟩)))
+    have hwf_body := Exp.wf_subst (Exp.wf_monotonic (BigStep.subsumes hbs1) hwf_e2)
+      (match BigStep.wf_answer hbs1 hwf_e1 with
+        | Exp.WfInHeap.wf_pack hcs hx => Subst.wf_unpack hcs hx)
+    obtain ⟨msf, hbs_k', hsubf, hFTf, hrelf⟩ := ih2 (ms := msh) hsubh hwf_body
+      (fun lc hlc => hrelh lc (Or.inl (hrel lc (Trace.touched_append.mpr (Or.inr hlc)))))
+      (fun c h => h.elim
+        (fun ha => hFTh c (hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inr ha))))
+          (hbs2.alloc_fresh ha))
+        (fun ⟨h1, h0⟩ => hFTh c (hfresh c (Or.inr ⟨h1, by
+          by_contra hh; exact (hbs1.lookup_ne_none_mono hh) h0⟩)) h0))
+    refine ⟨msf, BigStep.bs_unpack hbs_h' hbs_k', hsubf,
+      (fun c hcms hcmf => hFTf c (hFTh c hcms
+        (by by_contra hh; exact (hbs2.lookup_ne_none_mono hh) hcmf)) hcmf), ?_⟩
+    intro lc h
+    apply hrelf
+    rcases h with hag | ha
+    · exact Or.inl (hrelh lc (Or.inl hag))
+    · rcases Trace.allocd_append.mp ha with h1 | h2
+      · exact Or.inl (hrelh lc (Or.inr h1))
+      · exact Or.inr h2
+  | bs_par hbs1 hbs2 ih1 ih2 =>
+    intro ms hsub hwf hrel hfresh
+    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_par hwf
+    obtain ⟨msh, hbs_h', hsubh, hFTh, hrelh⟩ := ih1 (ms := ms) hsub hwf_e1
+      (fun l hl => hrel l (Trace.touched_append.mpr (Or.inl hl)))
+      (fun c h => h.elim (fun ha => hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inl ha))))
+        (fun ⟨h1, h0⟩ => hfresh c (Or.inr ⟨hbs2.lookup_ne_none_mono h1, h0⟩)))
+    obtain ⟨msf, hbs_k', hsubf, hFTf, hrelf⟩ :=
+      ih2 (ms := msh) hsubh (Exp.wf_monotonic (BigStep.subsumes hbs1) hwf_e2)
+      (fun lc hlc => hrelh lc (Or.inl (hrel lc (Trace.touched_append.mpr (Or.inr hlc)))))
+      (fun c h => h.elim
+        (fun ha => hFTh c (hfresh c (Or.inl (Trace.allocd_append.mpr (Or.inr ha))))
+          (hbs2.alloc_fresh ha))
+        (fun ⟨h1, h0⟩ => hFTh c (hfresh c (Or.inr ⟨h1, by
+          by_contra hh; exact (hbs1.lookup_ne_none_mono hh) h0⟩)) h0))
+    refine ⟨msf, BigStep.bs_par hbs_h' hbs_k', hsubf,
+      (fun c hcms hcmf => hFTf c (hFTh c hcms
+        (by by_contra hh; exact (hbs2.lookup_ne_none_mono hh) hcmf)) hcmf), ?_⟩
+    intro lc h
+    apply hrelf
+    rcases h with hag | ha
+    · exact Or.inl (hrelh lc (Or.inl hag))
+    · rcases Trace.allocd_append.mp ha with h1 | h2
+      · exact Or.inl (hrelh lc (Or.inr h1))
+      · exact Or.inr h2
+
+/-- Writing an mcell (keeping it live) preserves the liveness of every cell `l`. -/
+theorem Memory.update_mcell_preserves_live {m : Memory} (x : Nat) {b : Bool} {h} {l : Nat}
+    (hl : m.IsLive l) : (m.update_mcell x b .live h).IsLive l := by
+  by_cases hlx : l = x
+  · subst hlx; exact Memory.update_mcell_IsLive_self
+  · exact (Memory.update_mcell_IsLive_ne hlx).mpr hl
+
+/-- A `BigStep` keeps every live cell live unless its trace externally drops it. -/
+theorem BigStep.frameLive {m : Memory} {e : Exp {}} {t v m'}
+    (hbs : BigStep m e t v m') : Memory.FrameLive m t m' := by
+  induction hbs with
+  | bs_pack | bs_val _ | bs_var | bs_wrap | bs_invoke _ _ | bs_read _ _ =>
+    exact Memory.FrameLive.refl
+  | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
+  | bs_cond_true _ _ ih | bs_cond_false _ _ ih =>
+    exact ih
+  | bs_par hbs1 hbs2 ih1 ih2 =>
+    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
+      absurd (BigStep.alloc_fresh hbs1 ha) (by rw [hlive]; simp))
+  | bs_alloc hlk hfr =>
+    intro l b hlive _
+    refine (Memory.extend_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact absurd hlive (by simp [Memory.lookup, hfr])
+  | bs_write_true hx hy | bs_write_false hx hy =>
+    intro l b hlive _
+    exact Memory.update_mcell_preserves_live _ ⟨b, hlive⟩
+  | bs_drop hx =>
+    intro l b hlive hnd
+    refine (Memory.drop_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
+    rintro rfl; exact hnd (by simp [Trace.extDrops, Trace.extDropsFrom])
+  | bs_letin_val hrun_e1 hv hwf_v hfr hrun_e2 ih1 ih2 =>
+    refine Memory.FrameLive.append ih1 ?_ (fun l b hlive ha =>
+      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
+    intro l b hlive hnd
+    refine ih2 l b ((Memory.extend_val_lookup_ne ?_).trans hlive) hnd
+    rintro rfl; exact absurd hlive (by simp [hfr])
+  | bs_letin_var hrun_e1 hrun_e2 ih1 ih2 =>
+    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
+      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
+  | bs_unpack hrun_e1 hrun_e2 ih1 ih2 =>
+    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
+      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
+
+/-- **Separated budgets do not drop each other's cells.**  If a trace `t` is `TraceOk` for `B2`
+  and `B1`/`B2` are non-interfering, then no cell of `B1` is externally dropped by `t`: a drop
+  would force the covering `B2` member to `.access .ro` (`shared_ro`), contradicting `.drop`. -/
+theorem not_extDrops_of_noninterf {B1 B2 : CapabilitySet} {t : Trace} {l : Nat} {mu1 : CapMode}
+    (htok : TraceOk t B2) (hni : CapabilitySet.Noninterference B1 B2)
+    (hmem : B1.hasmem mu1 l) : ¬ Trace.extDrops t l := by
+  intro hd
+  obtain ⟨mu2, hmem2, hle⟩ :=
+    CapabilitySet.covers_imp_exists_hasmem (htok.drop_covers_of_extDrops hd)
+  obtain ⟨_, hro2⟩ := hni.shared_ro hmem hmem2
+  subst hro2
+  cases hle
+
+set_option maxHeartbeats 1000000 in
+-- The case split (pre-existing vs `e2`-allocated touched cells) over the noninterference frame.
+/-- **Right-branch liveness frame for `Safe.lift`'s `par` case — FULLY PROVEN.**  When lifting
+  `Safe m1 (.par Cs1 Cs2 e1 e2)` to `m2 ⊒ m1`, the new unconditional right field `Safe m2 e2` is
+  produced by lifting `Safe m1 e2` with the per-run frame `hok_e2 : extTouches t l → l live in m2`.
+  This discharges that obligation WITHOUT any renaming/equivariance: schedule the left branch's
+  answer run to AVOID `e2`'s fresh names (`Safe.has_answer_avoiding` over `dom(mf) ∪ allocList t`,
+  a superset of `e2`'s fresh cells), so `e2` REPLAYS VERBATIM from the post-`e1` memory `ms`
+  (`BigStep.transfer`: names preserved, mcell liveness off the noninterference frame
+  `hb1`/`hb2`/`hni`, reachability via `compute_reachability_monotonic`).  The replayed run touches
+  the same `l`, so the par run `e1`-then-`e2`-from-`ms` touches `l`, and the par's frame `hok`
+  keeps `l` live in `m2`. -/
 theorem BigStep.par_right_keepsLive
-    {m1 m2 ms mf : Memory} {e1 e2 : Exp {}} {Cs1 Cs2 : CaptureSet {}}
-    {C1 C2 : CapabilitySet} {s1 t : Trace} {v1 v2 : Exp {}} {l : Nat} {b : Bool}
-    (hbs1 : BigStep m1 e1 s1 v1 ms)
-    (hbs2 : BigStep m1 e2 t v2 mf)
-    (_htok1 : TraceOk s1 C1) (_htok2 : TraceOk t C2)
-    (_hni : CapabilitySet.Noninterference C1 C2)
+    {m1 m2 mf : Memory} {e1 e2 : Exp {}} {Cs1 Cs2 : CaptureSet {}}
+    {C1 C2 : CapabilitySet} {t : Trace} {v2 : Exp {}} {l : Nat} {b : Bool}
+    (hs1 : Safe m1 e1) (hbs2 : BigStep m1 e2 t v2 mf)
+    (hwf_e1 : Exp.WfInHeap e1 m1.heap) (hwf_e2 : Exp.WfInHeap e2 m1.heap)
+    (hb1 : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
+      m'.subsumes m1 → Exp.WfInHeap e1 m'.heap → BigStep m' e1 s v m'' → TraceOk s C1)
+    (hb2 : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
+      m'.subsumes m1 → Exp.WfInHeap e2 m'.heap → BigStep m' e2 s v m'' → TraceOk s C2)
+    (hni : CapabilitySet.Noninterference C1 C2)
+    (hpres2 : ∀ mu c, C2.hasmem mu c → m1.heap c ≠ none)
     (hok : ∀ tt vv mm, mm.subsumes m1 ->
         BigStep m1 (.par Cs1 Cs2 e1 e2) tt vv mm -> Memory.SubsumeOk m1 tt m2)
     (hl_live : m1.lookup l = some (.capability (.mcell b .live)))
-    (htouch : Trace.extTouches t l)
-    (_hwf2 : Exp.WfInHeap e2 ms.heap) :
+    (htouch : Trace.extTouches t l) :
     ∃ b', m2.lookup l = some (.capability (.mcell b' .live)) := by
-  -- Big-step noninterference footprint frame: `e2` from `ms` also touches the pre-existing
-  -- `C2`-cell `l`.  (See doc comment — the one genuine operational-infrastructure obligation.)
-  obtain ⟨s2, v2', mf', hbs2_ms, htouch_ms⟩ :
-      ∃ s2 v2' mf', BigStep ms e2 s2 v2' mf' ∧ Trace.extTouches s2 l := by
-    sorry
+  -- `S` overapproximates `e2`'s fresh names; schedule `e1` to avoid them.
+  obtain ⟨dommf, hdommf⟩ := mf.findom
+  obtain ⟨s1, v1, ms, hbs1, hadd1⟩ := hs1.has_answer_avoiding (dommf ∪ (Trace.allocList t).toFinset)
+  have htok1 : TraceOk s1 C1 := hb1 (Memory.subsumes_refl _) hwf_e1 hbs1
+  have htok2 : TraceOk t C2 := hb2 (Memory.subsumes_refl _) hwf_e2 hbs2
+  have hsub : ms.subsumes m1 := BigStep.subsumes hbs1
+  -- membership of a touched cell in `S`
+  have hmemS : ∀ c, Trace.allocd t c → c ∈ dommf ∪ (Trace.allocList t).toFinset := fun c ha =>
+    Finset.mem_union.mpr (Or.inr (List.mem_toFinset.mpr (Trace.mem_allocList.mpr ha)))
+  -- liveness biconditional at touched cells (`e1` is `C1`-only, disjoint from `C2 ∋` touched cells)
+  have hrel : ∀ c, Trace.touched t c → (m1.IsLive c ↔ ms.IsLive c) := by
+    intro c hc
+    by_cases hcm1 : m1.lookup c = none
+    · constructor
+      · rintro ⟨bb, hbb⟩; rw [hcm1] at hbb; cases hbb
+      · rintro ⟨bb, hbb⟩
+        have hal : Trace.allocd t c := by
+          by_contra hnal
+          obtain ⟨cm, hext⟩ :=
+            Trace.extTouchesMode_of_touched hnal hc
+          obtain ⟨mu, hmem, _⟩ :=
+            CapabilitySet.covers_imp_exists_hasmem (htok2.covers_of_extTouchesMode hext)
+          exact hpres2 mu c hmem hcm1
+        exact absurd (hadd1 c (Option.ne_none_iff_exists'.mpr ⟨_, hbb⟩) hcm1) (by
+          simp only [not_not]; exact hmemS c hal)
+    · have hnal : ¬ Trace.allocd t c := fun ha => hcm1 (BigStep.alloc_fresh hbs2 ha)
+      obtain ⟨cm, hext⟩ := Trace.extTouchesMode_of_touched hnal hc
+      obtain ⟨mu, hmem, _⟩ :=
+        CapabilitySet.covers_imp_exists_hasmem (htok2.covers_of_extTouchesMode hext)
+      obtain ⟨c0, hc0⟩ := Option.ne_none_iff_exists'.mp hcm1
+      constructor
+      · rintro ⟨bb, hbb⟩
+        exact BigStep.frameLive hbs1 c bb hbb
+          (not_extDrops_of_noninterf htok1 (CapabilitySet.Noninterference.ni_symm hni) hmem)
+      · rintro ⟨bb, hbb⟩
+        exact Memory.mcell_lookup_down hsub hc0 hbb
+  -- freshness: every cell `e2` allocates or leaves behind is fresh in `ms`
+  have hfresh : ∀ c, (Trace.allocd t c ∨ (mf.lookup c ≠ none ∧ m1.lookup c = none)) →
+      ms.lookup c = none := by
+    intro c h
+    by_contra hne
+    rcases h with ha | ⟨h1, h0⟩
+    · exact hadd1 c hne (BigStep.alloc_fresh hbs2 ha) (hmemS c ha)
+    · exact hadd1 c hne h0 (Finset.mem_union.mpr (Or.inl ((hdommf c).mp h1)))
+  obtain ⟨ms', hbs2_ms, _, _, _⟩ := hbs2.transfer hsub hwf_e2 hrel hfresh
   -- `l` is pre-existing in `m1`, so `e1`'s run does not freshly allocate it.
   have hnal_s1 : ¬ Trace.allocd s1 l := fun ha => by
-    have hnone := BigStep.alloc_fresh hbs1 ha
-    rw [hnone] at hl_live; cases hl_live
-  -- The sequential par run `e1`-then-`e2`-from-`ms` externally touches `l` (via the `e2` part).
-  have htouchF : Trace.extTouches (s1 ++ s2) l :=
-    Trace.extTouchesFrom_append_right hnal_s1 (by simp) htouch_ms
+    have hnone := BigStep.alloc_fresh hbs1 ha; rw [hnone] at hl_live; cases hl_live
+  -- the sequential par run `e1`-then-`e2`-from-`ms` externally touches `l` (via `e2`'s part `t`).
+  have htouchF : Trace.extTouches (s1 ++ t) l :=
+    Trace.extTouchesFrom_append_right hnal_s1 (by simp) htouch
   have hfull := BigStep.bs_par (C1 := Cs1) (C2 := Cs2) hbs1 hbs2_ms
   exact hok _ _ _ hfull.subsumes hfull l b hl_live htouchF
 
@@ -3487,12 +4003,8 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
       have hok_e2 : ∀ t v m, m.subsumes m1 -> BigStep m1 e2 t v m ->
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs2 l b hl_live htouch
-        obtain ⟨s1, v1, ms, hbs1⟩ := hs1.has_answer
-        exact BigStep.par_right_keepsLive hbs1 hbs2
-          (hb1 (Memory.subsumes_refl _) hwf_e1 hbs1)
-          (hb2 (Memory.subsumes_refl _) hwf_e2 hbs2) hni
-          (fun tt vv mm hsm hbs => hok tt vv mm hsm (hpres tt vv mm hbs))
-          hl_live htouch (Exp.wf_monotonic (BigStep.subsumes hbs1) hwf_e2)
+        exact BigStep.par_right_keepsLive hs1 hbs2 hwf_e1 hwf_e2 hb1 hb2 hni hpres2
+          (fun tt vv mm hsm hbs => hok tt vv mm hsm (hpres tt vv mm hbs)) hl_live htouch
       refine Safe.par
         (ih1 (Q := fun t v m => BigStep m1 e1 t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e1)
         (ihb (Q := fun t v m => BigStep m1 e2 t v m) hsub (fun _ _ _ h => h) hok_e2 hwf_e2)
@@ -3755,48 +4267,6 @@ theorem Memory.lookup_val_eq {m : Memory} {x : Nat} {v1 v2 : HeapVal}
     (h1 : m.lookup x = some (.val v1)) (h2 : m.lookup x = some (.val v2)) : v1 = v2 :=
   Cell.val.inj (Option.some.inj (h1 ▸ h2))
 
-/-- Writing an mcell (keeping it live) preserves the liveness of every cell `l`. -/
-theorem Memory.update_mcell_preserves_live {m : Memory} (x : Nat) {b : Bool} {h} {l : Nat}
-    (hl : m.IsLive l) : (m.update_mcell x b .live h).IsLive l := by
-  by_cases hlx : l = x
-  · subst hlx; exact Memory.update_mcell_IsLive_self
-  · exact (Memory.update_mcell_IsLive_ne hlx).mpr hl
-
-theorem BigStep.frameLive {m : Memory} {e : Exp {}} {t v m'}
-    (hbs : BigStep m e t v m') : Memory.FrameLive m t m' := by
-  induction hbs with
-  | bs_pack | bs_val _ | bs_var | bs_wrap | bs_invoke _ _ | bs_read _ _ =>
-    exact Memory.FrameLive.refl
-  | bs_apply _ _ ih | bs_tapply _ _ ih | bs_capply _ _ ih | bs_unwrap _ _ ih
-  | bs_cond_true _ _ ih | bs_cond_false _ _ ih =>
-    exact ih
-  | bs_par hbs1 hbs2 ih1 ih2 =>
-    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
-      absurd (BigStep.alloc_fresh hbs1 ha) (by rw [hlive]; simp))
-  | bs_alloc hlk hfr =>
-    intro l b hlive _
-    refine (Memory.extend_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
-    rintro rfl; exact absurd hlive (by simp [Memory.lookup, hfr])
-  | bs_write_true hx hy | bs_write_false hx hy =>
-    intro l b hlive _
-    exact Memory.update_mcell_preserves_live _ ⟨b, hlive⟩
-  | bs_drop hx =>
-    intro l b hlive hnd
-    refine (Memory.drop_mcell_IsLive_ne ?_).mpr ⟨b, hlive⟩
-    rintro rfl; exact hnd (by simp [Trace.extDrops, Trace.extDropsFrom])
-  | bs_letin_val hrun_e1 hv hwf_v hfr hrun_e2 ih1 ih2 =>
-    refine Memory.FrameLive.append ih1 ?_ (fun l b hlive ha =>
-      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
-    intro l b hlive hnd
-    refine ih2 l b ((Memory.extend_val_lookup_ne ?_).trans hlive) hnd
-    rintro rfl; exact absurd hlive (by simp [hfr])
-  | bs_letin_var hrun_e1 hrun_e2 ih1 ih2 =>
-    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
-      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
-  | bs_unpack hrun_e1 hrun_e2 ih1 ih2 =>
-    exact Memory.FrameLive.append ih1 ih2 (fun l b hlive ha =>
-      absurd (BigStep.alloc_fresh hrun_e1 ha) (by rw [hlive]; simp))
-
 /-- **A genuine step preserves liveness off its drop-footprint.**  Single-step analogue of
   `BigStep.frameLive`: every cell live before the step that the step does not externally drop is
   live after.  Only `step_drop` deallocates; the other leaves allocate/mutate/extend (preserving
@@ -3858,19 +4328,6 @@ theorem SeqStep.frameLive {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
     · exact hlive
   | step_ctx_letin _ ih | step_ctx_unpack _ ih
   | step_par_left _ ih | step_par_right _ _ ih => exact ih
-
-/-- **Separated budgets do not drop each other's cells.**  If a trace `t` is `TraceOk` for `B2`
-  and `B1`/`B2` are non-interfering, then no cell of `B1` is externally dropped by `t`: a drop
-  would force the covering `B2` member to `.access .ro` (`shared_ro`), contradicting `.drop`. -/
-theorem not_extDrops_of_noninterf {B1 B2 : CapabilitySet} {t : Trace} {l : Nat} {mu1 : CapMode}
-    (htok : TraceOk t B2) (hni : CapabilitySet.Noninterference B1 B2)
-    (hmem : B1.hasmem mu1 l) : ¬ Trace.extDrops t l := by
-  intro hd
-  obtain ⟨mu2, hmem2, hle⟩ :=
-    CapabilitySet.covers_imp_exists_hasmem (htok.drop_covers_of_extDrops hd)
-  obtain ⟨_, hro2⟩ := hni.shared_ro hmem hmem2
-  subst hro2
-  cases hle
 
 /-- **Branch-safety transports across a separated transition.**  If `e` is `Safe` at `ma` with its
   runs bounded by budget `B`, and `ma → ma'` keeps every live `B`-cell live (`hlive`), then `e` is
