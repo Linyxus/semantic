@@ -1,5 +1,4 @@
 import Semantic.CoreCapybara.Semantics.BigStep
--- import Semantic.CoreCapybara.Semantics.SmallStep
 
 /-!
 # CC Semantics

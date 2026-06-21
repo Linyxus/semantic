@@ -83,13 +83,10 @@ theorem reachability_of_loc_eq_resolve_reachability
   (m : Memory) (x : Nat) (v : HeapVal)
   (hx : m.heap x = some (Cell.val v)) :
   reachability_of_loc m.heap x = resolve_reachability m.heap v.unwrap := by
-  -- reachability_of_loc m.heap x = v.reachability by definition
   unfold reachability_of_loc
   rw [hx]
   change v.reachability = resolve_reachability m.heap v.unwrap
-  -- v.reachability = compute_reachability m.heap v.unwrap v.isVal
   rw [Memory.reachability_invariant m x v hx]
-  -- compute_reachability = resolve_reachability for simple values
   exact compute_reachability_eq_resolve_reachability m.heap v.unwrap v.isVal
 
 lemma Denot.as_mpost_is_monotonic {d : Denot}
@@ -181,9 +178,9 @@ inductive TypeInfo : Sig -> Kind -> Type where
   Denot ->
   TypeInfo s .tvar
 /-- Type information for a capture variable is its authority, a ground capture
-set, and a capability set. The authority mirrors the context binding's
-authority (tied by `EnvTyping`); it lets the environment-separation invariant
-`DropSepIn` be stated on environments alone. -/
+set, and a capability set. The authority mirrors the context binding's authority
+(tied by `EnvTyping`), letting the environment-separation invariant be stated on
+environments alone. -/
 | cvar :
   Authority ->
   CaptureSet {} ->
@@ -402,12 +399,11 @@ def Denot.enforce_pure (d : Denot) : Prop :=
     d m e ->
     resolve_reachability m.heap e ⊆ .empty
 
-/-- `m'.preserves_liveness_full m` says: every mcell in `m` is still an
-    mcell in `m'` with the same liveness component. The boolean component
-    is unconstrained (writes are allowed). This is the drop-frame condition
-    without exceptions — exactly what a function body delivers, since the
-    `lock` in the body's typing context disables every consume peak of the
-    body's typing context, so no cell can be dropped. -/
+/-- `m'.preserves_liveness_full m` says: every mcell in `m` is still an mcell in
+    `m'` with the same liveness component (the boolean component is unconstrained,
+    so writes are allowed). The drop-frame condition without exceptions, as
+    delivered by a function body whose typing context's `lock` disables every
+    consume peak, so no cell can be dropped. -/
 def Memory.preserves_liveness_full (m' m : Memory) : Prop :=
   ∀ l b ℓ,
     m.heap l = some (.capability (.mcell b ℓ)) →
@@ -494,27 +490,23 @@ def TypeEnv.EnvSepWf (env : TypeEnv s) : Prop :=
 
 /-- Pack-witness authority bound: if a computation that started at memory `m`
 with budget `R` results in a pack value, then every location `l` reachable from
-the pack's witness at mode `mu` either is covered by `R` at that SAME mode `mu`
-AND consumable (`.drop`) under `R`, or is fresh (allocated after `m`). This is
-the runtime trace of `eval_pack`'s budget premise (now `C ∪ C.applyAccess .drop`,
-which records the witness at its natural ACCESS mode alongside `.drop`) threaded
-through evaluation. The `.drop` half lets `unpack` see the witness as consumable;
-the `R.covers mu l` half lets `unpack` cover the continuation's ACCESS touches of
-the witness — without it, a non-fresh witness accessed by the body would be
-uncovered (`.drop` does not cover `.access` under `CapMode.Le`). -/
+the pack's witness at mode `mu` is either covered by `R` at that same mode `mu`
+and consumable (`.drop`) under `R`, or fresh (allocated after `m`). The `.drop`
+half lets `unpack` see the witness as consumable; the `R.covers mu l` half lets
+`unpack` cover the continuation's access touches of the witness (`.drop` alone
+does not cover `.access` under `CapMode.Le`). -/
 def pack_bound (R : CapabilitySet) (m : Memory) : Exp {} -> Memory -> Prop :=
   fun v m' => ∀ (cs : CaptureSet {}) (x : Var .var {}),
     v = .pack cs x ->
     ∀ mu l, (cs.reachability m').hasmem mu l ->
       (R.covers mu l ∧ R.hasmem .drop l) ∨ m.lookup l = none
 
-/-- The unpacked existential WITNESS is live in the result memory.  This is
-  ANTI-monotonic (a more-dead memory can decay a witness cell), so it lives in the
-  EXPRESSION postcondition — asserted at the actual pack-producing result memory —
-  NOT in the (monotonic) value denotation `exi_val_denot`.  It is established at
-  pack creation (`sem_typ_pack`/`sem_typ_alloc`) from the syntactic `AccessOnly`
-  evidence plus budget-compatibility, and consumed at `sem_typ_unpack`.  Vacuous
-  for non-pack values (cf. `pack_bound`). -/
+/-- The unpacked existential witness is live in the result memory. Anti-monotonic
+  (a more-dead memory can decay a witness cell), so it lives in the expression
+  postcondition asserted at the actual pack-producing result memory, not in the
+  monotonic value denotation `exi_val_denot`. Established at pack creation
+  (`sem_typ_pack`/`sem_typ_alloc`) and consumed at `sem_typ_unpack`. Vacuous for
+  non-pack values (cf. `pack_bound`). -/
 def witness_live : Exp {} -> Memory -> Prop :=
   fun v m' => ∀ (cs : CaptureSet {}) (x : Var .var {}),
     v = .pack cs x -> m'.is_compatible (cs.reachability m')
@@ -710,9 +702,8 @@ def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
   env.Satisfy sepctx m ∧
   EnvTyping Γ env m
 
-/-- From `EnvTyping`, every capture variable's stored capability is drop-free —
-the `hcv` invariant, a direct consequence of the `cap.drop_free` conjunct now
-recorded in each cvar binding. -/
+/-- From `EnvTyping`, every capture variable's stored capability is drop-free,
+from the `cap.drop_free` conjunct of each cvar binding. -/
 theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
     (hts : EnvTyping Γ env m) (c : BVar s .cvar) :
     (env.lookup_cvar c).2.drop_free := by
@@ -789,7 +780,7 @@ theorem envtyping_lookup_cvar_auth {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m :
         cases c with
         | there c' => exact ih henv' c'
 
-/-- Helper lemma: For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
+/-- For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Access) :
     CaptureSet.peaksVarBound Γ m0 x = (ρ.lookup_var x).2.cs.applyAccess m0 := by
@@ -850,21 +841,16 @@ theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
 theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
   ∀ C, C.peakset Γ = compute_peakset ρ C := by
   intro C
-  -- peakset Γ C = ⟨peaks Γ C, peaks_peaksOnly Γ C⟩
-  -- compute_peakset ρ C = ⟨compute_peaks ρ C, compute_peaks_is_peak ρ C⟩
-  -- By compute_peaks_correct: peaks Γ C = compute_peaks ρ C
   simp only [CaptureSet.peakset, compute_peakset]
-  -- Two PeakSet values with equal cs fields are equal (proof irrelevance)
   congr 1
   exact compute_peaks_correct h C
 
 /-- Semantic typing.
 
-    The Eval budget is `C.denot ρ m`. In the post-refactor model, use/drop
-    information lives on `C`'s `Access` qualifiers, and `ground_denot` already
-    applies them per peak (`.M m ↦ applyMut m` for the access budget,
-    `.drop ↦ to_drop` for the drop budget). So `C` self-describes the entire
-    budget — no context-side use-set/drop-set split is needed.
+    The Eval budget is `C.denot ρ m`. Use/drop information lives on `C`'s `Access`
+    qualifiers, and `ground_denot` applies them per peak (`.M m ↦ applyMut m` for
+    the access budget, `.drop ↦ to_drop` for the drop budget), so `C` self-describes
+    the entire budget.
 
     *Pre*: every cell in `C.denot ρ m` must be live at the start.
     *Post*: in any reachable result memory `m'`, the result satisfies `E`. -/
@@ -959,12 +945,9 @@ theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
   (Subst.from_TypeEnv ρ).lift.lift.comp (Subst.unpack cs (.free x)) =
     Subst.from_TypeEnv ((ρ.extend_cvar cs).extend_var x ps) := by
   apply Subst.funext
-  · -- var case
-    intro y
+  · intro y
     cases y
     case here =>
-      -- LHS: unpack maps .here to .free x, which is unchanged by subst
-      -- RHS: from_TypeEnv of extend_var maps .here to .free x
       rfl
     case there y' =>
       cases y'
@@ -972,25 +955,17 @@ theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
         change (((Subst.from_TypeEnv ρ).lift.lift).var (.there (.there v))).subst
           (Subst.unpack cs (.free x)) = .free (ρ.lookup_var v).1
         rfl
-  · -- tvar case
-    intro X
+  · intro X
     cases X
     case there X' =>
       cases X'
       case there X0 =>
-        -- Both sides map to .top
         rfl
-  · -- cvar case
-    intro c
+  · intro c
     cases c
     case there c' =>
       cases c'
       case here =>
-        -- LHS: comp maps .there .here through unpack then lift.lift
-        -- unpack.cvar (.there .here) = cs
-        -- Then cs.subst lift.lift, but cs : CaptureSet {} has no bound vars
-        -- Need to show: (lift.lift.cvar (.there .here)).subst unpack = cs
-        -- This is unpack.cvar (.there .here) = cs by definition
         change (((Subst.from_TypeEnv ρ).lift.lift).cvar (.there (.here))).subst
           (Subst.unpack cs (.free x)) = cs
         rfl
@@ -1179,11 +1154,9 @@ theorem typed_env_enforces_pure
 
 /--
 If a TypeEnv is typed with EnvTyping, then the substitution obtained from it
-via `Subst.from_TypeEnv` is well-formed in the heap.
-
-This is a key lemma connecting the semantic typing judgment to syntactic well-formedness.
-Since `EnvTyping` ensures each variable location in the environment exists in memory,
-the substitution that maps variables to these locations must be well-formed.
+via `Subst.from_TypeEnv` is well-formed in the heap. Connects the semantic typing
+judgment to syntactic well-formedness: `EnvTyping` ensures each variable location
+exists in memory, so the substitution mapping variables to them is well-formed.
 -/
 theorem from_TypeEnv_wf_in_heap
   {Γ : Ctx s} {ρ : TypeEnv s} {m : Memory}
@@ -1191,7 +1164,6 @@ theorem from_TypeEnv_wf_in_heap
   (Subst.from_TypeEnv ρ).WfInHeap m.heap := by
   induction Γ with
   | empty =>
-    -- Base case: empty context has no variables
     cases ρ with
     | empty =>
       constructor
@@ -1199,19 +1171,14 @@ theorem from_TypeEnv_wf_in_heap
       · intro X; cases X
       · intro C; cases C
   | push Γ' k ih =>
-    -- Inductive case: handle each kind of binding
     cases ρ with
     | extend ρ' info =>
       cases k with
       | var T =>
-        -- Variable binding: extract well-formedness from typing
         cases info with
         | var n ps =>
           unfold EnvTyping at htyping
           obtain ⟨htype, _, htyping'⟩ := htyping
-          -- htype : ⟦T⟧_[ρ'] m (.var (.free n))
-          -- Extract well-formedness from the denotation
-          -- For all type constructors, val_denot implies WfInHeap
           have hwf : Exp.WfInHeap (s := {}) (.var (.free n)) m.heap := by
             change Ty.val_denot _ _ _ _ at htype
             cases T with
@@ -1244,7 +1211,6 @@ theorem from_TypeEnv_wf_in_heap
               exact htype.1
           cases hwf with
           | wf_var hwf_var =>
-            -- hwf_var : Var.WfInHeap (.free n) m.heap
             have ih_wf := ih htyping'
             constructor
             · intro x
@@ -1262,7 +1228,6 @@ theorem from_TypeEnv_wf_in_heap
               | there C' =>
                 simpa only [Subst.from_TypeEnv] using ih_wf.wf_cvar C'
       | tvar S =>
-        -- Type variable binding: doesn't affect term variable substitution
         cases info with
         | tvar denot =>
           unfold EnvTyping at htyping
@@ -1284,7 +1249,6 @@ theorem from_TypeEnv_wf_in_heap
             | there C' =>
               simpa only [Subst.from_TypeEnv] using ih_wf.wf_cvar C'
       | cvar _ B =>
-        -- Capture variable binding: doesn't affect term variable substitution
         cases info with
         | cvar a cs =>
           unfold EnvTyping at htyping
@@ -1306,8 +1270,6 @@ theorem from_TypeEnv_wf_in_heap
             | there C' =>
               simpa only [Subst.from_TypeEnv] using ih_wf.wf_cvar C'
       | lock Ψ =>
-        -- TODO(ctx-lock): if locks later contribute semantic substitutions,
-        -- strengthen this branch beyond simple context-shape preservation.
         cases info with
         | lock =>
           simp only [EnvTyping] at htyping
@@ -1588,8 +1550,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     have ⟨_, _, label, hlabel, hcap, hmem⟩ := ht
-    -- v.unwrap = .var (.free label), but v.isVal says it's a simple value
-    -- Variables are not simple values, so this is a contradiction
+    -- Vacuous: the witness is a variable, contradicting v.isVal.
     have hval := v.isVal
     rw [hlabel] at hval
     cases hval
@@ -1614,8 +1575,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
     obtain ⟨_, l, b0, ℓ0, heq, hlookup_and_mem⟩ := ht
-    -- v.unwrap = .var (.free l), but v.isVal says it's a simple value
-    -- Variables are not simple values, so this is a contradiction
+    -- Vacuous: the witness is a variable, contradicting v.isVal.
     have hval := v.isVal
     rw [heq] at hval
     cases hval
@@ -1708,26 +1668,23 @@ theorem ground_denot_is_monotonic {C : CaptureSet {}} :
   intro m1 m2 hwf hsub
   induction C with
   | empty =>
-    -- Empty set denotes {} at all memories
     unfold CaptureSet.ground_denot
     rfl
   | union cs1 cs2 ih1 ih2 =>
-    -- Union: use IH on both components
     unfold CaptureSet.ground_denot
     cases hwf with
     | wf_union hwf1 hwf2 =>
       rw [ih1 hwf1, ih2 hwf2]
   | var m v =>
     cases v with
-    | bound x => cases x  -- No bound variables in empty signature
+    | bound x => cases x
     | free x =>
-      -- Free variable: use reachability_of_loc_monotonic
       unfold CaptureSet.ground_denot
       cases hwf with
       | wf_var_free hex =>
         exact congrArg (CapabilitySet.applyAccess m)
           (reachability_of_loc_monotonic hsub x hex).symm
-  | cvar m c => cases c  -- No capture variables in empty signature
+  | cvar m c => cases c
 
 theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
   (C.denot ρ).is_monotonic_for (C.subst (Subst.from_TypeEnv ρ)) := by
@@ -1735,7 +1692,6 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
   intro m1 m2 hwf hsub
   induction C with
   | empty =>
-    -- Empty set denotes {} at all memories
     unfold CaptureSet.denot
     rfl
   | union C1 C2 ih1 ih2 =>
@@ -1756,7 +1712,6 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
   | var m v =>
     cases v with
     | bound x =>
-      -- Bound variable: after substitution becomes free variable
       unfold CaptureSet.denot
       change CaptureSet.WfInHeap (.var m (.free (ρ.lookup_var x).1)) m1.heap at hwf
       change (CaptureSet.ground_denot (.var m (.free (ρ.lookup_var x).1))) m1 =
@@ -1767,7 +1722,6 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
         exact congrArg (CapabilitySet.applyAccess m)
           (reachability_of_loc_monotonic hsub (ρ.lookup_var x).1 hex).symm
     | free x =>
-      -- Free variable: stays as free variable
       unfold CaptureSet.denot
       change CaptureSet.WfInHeap (.var m (.free x)) m1.heap at hwf
       change (CaptureSet.ground_denot (.var m (.free x))) m1 =
@@ -1778,7 +1732,6 @@ theorem capture_set_denot_is_monotonic {C : CaptureSet s} :
         exact congrArg (CapabilitySet.applyAccess m)
           (reachability_of_loc_monotonic hsub x hex).symm
   | cvar m c =>
-    -- Capture variable: after substitution becomes ground capture set
     unfold CaptureSet.denot
     change CaptureSet.ground_denot (((ρ.lookup_cvar c).1).applyAccess m) m1 =
       CaptureSet.ground_denot (((ρ.lookup_cvar c).1).applyAccess m) m2
@@ -1835,7 +1788,7 @@ theorem ground_denot_applyRO_subset {C : CaptureSet {}} {m : Memory} :
       | drop => exact CapabilitySet.Subset.refl
   | cvar m' c => cases c
 
-/-- Key lemma: (C.ground_denot m).applyRO = C.applyRO.ground_denot m -/
+/-- (C.ground_denot m).applyRO = C.applyRO.ground_denot m -/
 theorem ground_denot_applyRO_comm {C : CaptureSet {}} {m : Memory} :
   (C.ground_denot m).applyRO = C.applyRO.ground_denot m := by
   induction C with
@@ -1995,22 +1948,14 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
   | exi T =>
     intro m1 m2 e hmem ht
     simp only [Ty.exi_val_denot] at ht ⊢
-    -- ht: match (resolve m1.heap e) with some (pack CS x) => ... | _ => False
-    -- Goal: match (resolve m2.heap e) with some (pack CS x) => ... | _ => False
     cases hresolve1 : resolve m1.heap e
-    · -- resolve m1.heap e = none, so ht is False
-      simp [hresolve1] at ht
-    · -- resolve m1.heap e = some e'
-      rename_i e'
+    · simp [hresolve1] at ht
+    · rename_i e'
       cases e'
       case pack =>
-        -- resolve m1.heap e = some (pack CS y)
         rename_i CS y
         rw [hresolve1] at ht
-        -- ht now says: CS.WfInHeap m1.heap ∧ drop-free ∧
-        --   Ty.val_denot (env.extend_cvar CS (cap := CS.ground_denot m1)) T m1 (var y)
         obtain ⟨hwf_CS_m1, hdf_m1, ht_body⟩ := ht
-        -- Use resolve_monotonic to show resolve m2.heap e = some (pack CS y)
         have hresolve2 : resolve m2.heap e = some (Exp.pack CS y) := by
           exact resolve_monotonic hmem hresolve1
         rw [hresolve2]
@@ -2023,7 +1968,6 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
           by rw [← hcap_eq]; exact hdf_m1,
           by rw [← hcap_eq]; exact val_denot_is_monotonic henv' T hmem ht_body⟩
       all_goals {
-        -- resolve returned non-pack, so ht is False
         rw [hresolve1] at ht
         cases ht
       }
@@ -2418,23 +2362,18 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
   intro e ht
   cases T with
   | top =>
-    -- captureSet = .empty, denotation gives resolve_reachability ⊆ .empty
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     simp only [Ty.val_denot] at ht
     exact ht.2.2
   | tvar X =>
-    -- captureSet = .empty, type variable denotation enforces purity
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     simp only [Ty.val_denot] at ht
-    -- From EnvTyping, we know the type variable denotation enforces purity
     have hpure := typed_env_enforces_pure hts X
     simp only [Denot.enforce_pure] at hpure
     exact hpure m e ht
   | unit =>
-    -- captureSet = .empty, unit has empty reachability
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     simp only [Ty.val_denot] at ht
-    -- resolve m.heap e = some .unit
     cases e with
     | unit =>
       simp only [resolve_reachability]
@@ -2450,7 +2389,6 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
       | bound bx => cases bx
     | _ => simp [resolve] at ht
   | bool =>
-    -- captureSet = .empty, bool has empty reachability
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     simp only [Ty.val_denot] at ht
     cases e with
@@ -2479,7 +2417,6 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
       | bound bx => cases bx
     | _ => simp [resolve] at ht
   | cap cs =>
-    -- captureSet = cs, e = .var (.free label), covers .epsilon label
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, label, heq, hlookup, hcov⟩ := ht
@@ -2488,7 +2425,6 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     simp only [reachability_of_loc, hlookup]
     exact CapabilitySet.covers_eps_imp_singleton_eps_subset hcov
   | cell cs =>
-    -- captureSet = cs, e = .var (.free l), covers .epsilon l
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, l, _, _, heq, hlookup, hcov⟩ := ht
@@ -2497,11 +2433,9 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     simp only [reachability_of_loc, hlookup]
     exact CapabilitySet.covers_eps_imp_singleton_eps_subset hcov
   | reader cs =>
-    -- captureSet = cs, resolve e = .reader (.free label), covers .ro label
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
     obtain ⟨_, _, label, _, _, hres, hlookup, hcov⟩ := ht
-    -- resolve_reachability for expression that resolves to .reader
     cases e with
     | reader x =>
       cases x with
@@ -2663,14 +2597,11 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
-    · -- WfInHeap for (.var (.M .epsilon) x).subst
-      simp only [CaptureSet.subst]
+    · simp only [CaptureSet.subst]
       cases hwf_e with
       | wf_var hwf_var =>
         exact CaptureSet.wf_of_var hwf_var
-    · -- expand_captures m.heap cs' ⊆ (.var (.M .epsilon) x).denot env m
-      -- Key: use wf_reach to show expand_captures = reachability_of_loc
-      simp only [resolve] at hres
+    · simp only [resolve] at hres
       cases hv : x.subst (Subst.from_TypeEnv env) with
       | free n =>
         simp only [hv] at hres hwf_e ⊢
@@ -2681,25 +2612,18 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           cases cell with
           | val v =>
             injection hres with hres
-            -- hres : v.unwrap = .abs cs' x0 t0
-            -- By wf_reach: v.reachability = compute_reachability m.heap v.unwrap v.isVal
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
-            -- Transport v.isVal along hres to get IsSimpleVal for the abs
             have habs_isval : (Exp.abs cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
-            -- compute_reachability for abs is expand_captures
             have hcomp :
                 compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
                   = compute_reachability m.heap (Exp.abs cs' x0 t0) habs_isval := by
                       simp only [hres]
                 _ = expand_captures m.heap cs' := rfl
-            -- reachability_of_loc = v.reachability
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
               simp only [reachability_of_loc, hcell]
-            -- Chain: expand_captures = compute_reachability = v.reachability = reachability_of_loc
             have heq : expand_captures m.heap cs' = reachability_of_loc m.heap n := by
               rw [hreach_loc, hwf_reach, hcomp]
-            -- (.var (.M .epsilon) x).denot env m = reachability_of_loc m.heap n
             simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
                        CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
             rw [heq]
@@ -2707,20 +2631,17 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition
-      intro arg m' hsub hcompat
+    · intro arg m' hsub hcompat
       exact hbody arg m' hsub hcompat
   | poly T1 cs T2 =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub, hbody⟩ := hdenot
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_, ?_⟩
-    · -- WfInHeap for (.var (.M .epsilon) x).subst
-      simp only [CaptureSet.subst]
+    · simp only [CaptureSet.subst]
       cases hwf_e with
       | wf_var hwf_var =>
         exact CaptureSet.wf_of_var hwf_var
-    · -- expand_captures ⊆ (.var (.M .epsilon) x).denot - same reasoning as arrow
-      simp only [resolve] at hres
+    · simp only [resolve] at hres
       cases hv : x.subst (Subst.from_TypeEnv env) with
       | free n =>
         simp only [hv] at hres hwf_e ⊢
@@ -2749,8 +2670,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition
-      intro m' denot hsub hcompat hprop himply_simple himply
+    · intro m' denot hsub hcompat hprop himply_simple himply
       exact hbody m' denot hsub hcompat hprop himply_simple himply
   | cpoly B cs T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
@@ -2789,8 +2709,7 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · -- Body condition
-      intro m' CS hwf hdf hsub hcompat hbdd
+    · intro m' CS hwf hdf hsub hcompat hbdd
       exact hbody m' CS hwf hdf hsub hcompat hbdd
   | modal cs Ψ T =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
@@ -2836,22 +2755,15 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
-    -- heq : Exp.var (x.subst ...) = Exp.var (Var.free label)
-    -- Extract variable equality via injection
     simp only [Exp.var.injEq] at heq
-    -- Now heq : x.subst (Subst.from_TypeEnv env) = Var.free label
     refine ⟨hwf_e, ?_, label, ?_, hlookup, ?_⟩
-    · -- WfInHeap for (.var (.M .epsilon) x).subst
-      simp only [CaptureSet.subst]
+    · simp only [CaptureSet.subst]
       cases hwf_e with
       | wf_var hwf_var =>
         exact CaptureSet.wf_of_var hwf_var
-    · -- e = .var (.free label)
-      simp only [heq]
-    · -- covers .epsilon label ((.var (.M .epsilon) x).denot env m)
-      simp only [CaptureSet.denot, CaptureSet.subst, heq,
+    · simp only [heq]
+    · simp only [CaptureSet.denot, CaptureSet.subst, heq,
                  CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
-      -- reachability_of_loc for capability cell is singleton .epsilon label
       change m.heap label = some (Cell.capability .basic) at hlookup
       cases hcell : m.heap label with
       | none => simp [hcell] at hlookup
@@ -2865,18 +2777,13 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
   | cell cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_cs, label, b0, ℓ0, heq, hlookup, hcov⟩ := hdenot
-    -- heq : Exp.var (x.subst ...) = Exp.var (Var.free label)
     simp only [Exp.var.injEq] at heq
     refine ⟨?_, label, b0, ℓ0, ?_, hlookup, ?_⟩
-    · -- WfInHeap for (.var (.M .epsilon) x).subst
-      simp only [CaptureSet.subst]
-      -- x.subst gives us (.free label), which is well-formed
+    · simp only [CaptureSet.subst]
       rw [heq]
       exact CaptureSet.WfInHeap.wf_var_free (by simpa only [Memory.lookup] using hlookup)
-    · -- e = .var (.free label)
-      simp only [heq]
-    · -- covers .epsilon label ((.var (.M .epsilon) x).denot env m)
-      simp only [CaptureSet.denot, CaptureSet.subst, heq,
+    · simp only [heq]
+    · simp only [CaptureSet.denot, CaptureSet.subst, heq,
                  CaptureSet.ground_denot, CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
       change m.heap label = some (Cell.capability (.mcell b0 ℓ0)) at hlookup
       cases hcell : m.heap label with
@@ -2892,15 +2799,11 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, loc, label, ℓ0, hres, hlookup, hcov⟩ := hdenot
     refine ⟨hwf_e, ?_, loc, label, ℓ0, hres, hlookup, ?_⟩
-    · -- WfInHeap for (.var (.M .epsilon) x).subst
-      simp only [CaptureSet.subst]
+    · simp only [CaptureSet.subst]
       cases hwf_e with
       | wf_var hwf_var =>
         exact CaptureSet.wf_of_var hwf_var
-    · -- Need: covers .ro label ((.var (.M .epsilon) x).denot env m)
-      simp only [CaptureSet.denot, CaptureSet.subst]
-      -- The expression e = .var (x.subst ...) resolves to .reader (.free label)
-      -- x.subst gives us the location, and reachability_of_loc gives the reachability
+    · simp only [CaptureSet.denot, CaptureSet.subst]
       simp only [resolve] at hres
       cases hv : x.subst (Subst.from_TypeEnv env) with
       | free n =>
@@ -2912,8 +2815,6 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           cases cell with
           | val v =>
             injection hres with hres
-            -- v.unwrap = .reader (.free loc)
-            -- By wf_reach: v.reachability = compute_reachability = .cap (.access .ro) loc
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
             have hreader_isval : (Exp.reader (Var.free loc)).IsSimpleVal := hres ▸ v.isVal
             have hcomp :
@@ -2926,7 +2827,6 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
               simp only [reachability_of_loc, hcell]
             have heq : reachability_of_loc m.heap n = .cap (.access .ro) loc := by
               rw [hreach_loc, hwf_reach, hcomp]
-            -- ground_denot for (.var (.M .epsilon) (Var.free n)) = reachability_of_loc m.heap n
             simp only [CaptureSet.ground_denot, CapabilitySet.applyAccess_M,
                        CapabilitySet.applyMut]
             rw [heq]
@@ -3074,23 +2974,18 @@ theorem union_intro {env : TypeEnv s} {C1 C2 : CaptureSet s}
       ((env.lookup_cvar c2).2.applyAccess m2)) :
   env.HasSepDom (C1 ∪ C2) := by
   intro m1 c1 m2 c2 hsub1 hsub2 hne
-  -- Case analysis on where each cvar comes from
   cases hsub1 with
   | union_right_left hsub1' =>
     cases hsub2 with
     | union_right_left hsub2' =>
-      -- Both in C1: use h1
       exact h1 m1 c1 m2 c2 hsub1' hsub2' hne
     | union_right_right hsub2' =>
-      -- c1 in C1, c2 in C2: use hcross
       exact hcross m1 c1 m2 c2 hsub1' hsub2' hne
   | union_right_right hsub1' =>
     cases hsub2 with
     | union_right_left hsub2' =>
-      -- c1 in C2, c2 in C1: use hcross with symmetry
       exact CapabilitySet.Noninterference.ni_symm (hcross m2 c2 m1 c1 hsub2' hsub1' (Ne.symm hne))
     | union_right_right hsub2' =>
-      -- Both in C2: use h2
       exact h2 m1 c1 m2 c2 hsub1' hsub2' hne
 
 theorem union_comm {env : TypeEnv s} {C1 C2 : CaptureSet s}

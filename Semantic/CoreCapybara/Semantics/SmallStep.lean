@@ -5,13 +5,11 @@ import Semantic.CoreCapybara.Semantics.Heap
 namespace CoreCapybara
 
 /-- Grow a capture set `C` by the cells freshly allocated within a trace `t`, each given
-  FULL authority (access `.M .epsilon` and `.drop`).  Used to GROW a `par` branch's
-  annotation as it allocates: a branch's own fresh cells join its footprint, so a later
-  access/drop of such a cell is covered by the (grown) annotation's reachability.  Defined
-  as a LEFT FOLD so that `growByAllocs C [] = C` (definitionally) and it telescopes over
-  `++` (`growByAllocs_append`).  For a live mcell `l`, `(.var (.M .epsilon) (.free l))`'s
-  reachability is `.cap (.access .epsilon) l` and `(.var .drop (.free l))`'s is `.cap .drop l`,
-  so `(growByAllocs C t).reachability m` set-equals `C.reachability m ∪ capsOf (allocList t)`. -/
+  full authority (access `.M .epsilon` and `.drop`).  Grows a `par` branch's annotation as
+  it allocates, so a later access/drop of an own fresh cell is covered by the grown
+  annotation's reachability.  A left fold, so `growByAllocs C [] = C` definitionally and it
+  telescopes over `++` (`growByAllocs_append`).  For a live mcell `l`,
+  `(growByAllocs C t).reachability m` set-equals `C.reachability m ∪ capsOf (allocList t)`. -/
 def CaptureSet.growByAllocs : CaptureSet {} → Trace → CaptureSet {}
 | C, [] => C
 | C, (.alloc l :: t) =>
@@ -43,7 +41,7 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step [] m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
--- Boxed terms are values, so wrap has no reduction rule; only unwrap steps.
+-- Boxed terms are values: no `wrap` reduction rule, only `unwrap`.
 | step_unwrap :
   m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
   Step [] m (.unwrap (.free x)) m e
@@ -83,14 +81,11 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_ctx_unpack :
   Step t m e1 m' e1' ->
   Step t m (.unpack e1 e2) m' (.unpack e1' e2)
--- `par e1 e2` runs BOTH branches with GENUINE INTERLEAVING: either branch may take
--- the next step (the two congruence rules), so a whole run is an arbitrary
--- interleaving of the branches' events.  Once BOTH branches are answers the single
--- join rule retires the construct to the canonical unit value `.unit` — which keeps
--- `par : .typ .unit` type-correct and the join confluent (single rule, fixed
--- result).  Separation (the `par` typing rule's `SepCheck Γ C1 C2`) is what makes
--- the interleaving sound; CSL soundness of parallel composition is
--- `Fundamental.sem_typ_par`.
+-- `par e1 e2` interleaves both branches: either branch may take the next step (the two
+-- congruence rules), so a run is an arbitrary interleaving of the branches' events.  Once
+-- both are answers the single join rule reduces to `.unit`, keeping `par : .typ .unit`
+-- type-correct and the join confluent.  Separation (the `par` typing rule's
+-- `SepCheck Γ C1 C2`) is what makes the interleaving sound.
 | step_par_left {C1 C2 : CaptureSet {}} :
   Step t m e1 m' e1' ->
   (ht : TraceOk t (C1.reachability m)) ->
@@ -106,7 +101,7 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
   Step [] m (.par C1 C2 e1 e2) m .unit
 | step_rename :
   Step [] m (.letin (.var (.free y)) e) m (e.subst (Subst.openVar (.free y)))
--- Lifting a value to the heap is not a capability event, so it emits no trace.
+-- Lifting a value to the heap is not a capability event: it emits no trace.
 | step_lift :
   (hv : Exp.IsSimpleVal v) ->
   (hwf : Exp.WfInHeap v m.heap) ->
@@ -141,15 +136,13 @@ theorem reduce_trans
     rw [List.append_assoc]
     exact Reduce.step h (ih hred2)
 
-/-- **Sequential** small-step relation.  Identical to `Step` except that `par` is
-  scheduled left-to-right: the RIGHT branch may step only once the LEFT branch is an
-  answer (`step_par_right` carries `e1.IsAns`).  This is the canonical schedule for
-  which the sequential big-step bridge is *exact* (`bs_par` runs the branches in this
-  order), so the small↔big preservation/progress results go through with no trace
-  reordering.  Every `SeqStep` over a `Safe` configuration is a `Step` (the bounds/NI
-  guards on `Step`'s `par` rules are discharged from `Safe`; proven downstream); the
-  converse — every `Step` run is permutation-equivalent to a `SeqStep` run — is the
-  standardization theorem relating the two schedules. -/
+/-- Sequential small-step relation.  Identical to `Step` except that `par` is scheduled
+  left-to-right: the right branch may step only once the left branch is an answer
+  (`step_par_right` carries `e1.IsAns`).  This is the schedule for which the sequential
+  big-step bridge is exact (`bs_par` runs the branches in this order), so the small↔big
+  preservation/progress results go through with no trace reordering.  Every `SeqStep` over
+  a `Safe` configuration is a `Step`; the converse — every `Step` run is
+  permutation-equivalent to a `SeqStep` run — is the standardization theorem. -/
 inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_apply :
   m.lookup x = some (.val ⟨.abs cs T e, hv, R⟩) ->
@@ -206,8 +199,7 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_par_left :
   SeqStep t m e1 m' e1' ->
   SeqStep t m (.par C1 C2 e1 e2) m' (.par (C1.growByAllocs t) C2 e1' e2)
--- The RIGHT branch steps only once the LEFT branch is an answer: this is the single
--- difference from `Step`, sequentializing the `par` schedule.
+-- Right branch steps only once the left is an answer: the single difference from `Step`.
 | step_par_right :
   e1.IsAns ->
   SeqStep t m e2 m' e2' ->
@@ -249,8 +241,7 @@ theorem seqreduce_trans
     exact SeqReduce.step h (ih hred2)
 
 -- The `SeqStep ⊆ Step` inclusion (`SeqStep.toStep` / `SeqReduce.toReduce`) lives in
--- `Semantics/Standardization.lean`: discharging the budget (`TraceOk`) and
--- non-interference (`Noninterference`) guards on `Step`'s `par` rules requires the `Safe`
--- invariant at every `par` node, which is only available there.
+-- `Semantics/Standardization.lean`: discharging the `TraceOk` and `Noninterference` guards
+-- on `Step`'s `par` rules needs the `Safe` invariant at every `par` node, available there.
 
 end CoreCapybara

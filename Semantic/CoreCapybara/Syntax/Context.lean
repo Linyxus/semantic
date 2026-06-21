@@ -7,7 +7,7 @@ inductive Authority : Type where
 | can_drop : Authority
 -- This capability may only be accessed, not dropped
 | access_only : Authority
--- This capability is already dropped, so it cannot be accessed or dropped again
+-- This capability is already dropped: it can neither be accessed nor dropped
 | killed : Authority
 
 inductive Binding : Sig -> Kind -> Type where

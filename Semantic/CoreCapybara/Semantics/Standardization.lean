@@ -1394,8 +1394,7 @@ theorem Trace.Noninterfere.symm {t s : Trace} (h : Trace.Noninterfere t s) :
   fun l cm1 cm2 h1 h2 => ⟨(h l cm2 cm1 h2 h1).2, (h l cm2 cm1 h2 h1).1⟩
 
 set_option maxHeartbeats 1000000 in
--- The single monolithic induction has 21 step cases; the `par` cases each thread the diamond
--- plus the 11-field `Safe.par` carrier extraction, so it exceeds the default heartbeat budget.
+-- Large case split: the `par` cases thread the diamond and the `Safe.par` carrier.
 /-- **Absorb a step into a sequential run.**  Prepending a (possibly premature, interleaving)
   `Step` to a left-first `SeqReduce` recovers a left-first `SeqReduce` reaching the SAME final
   state, up to `Trace.Equiv` (with the same allocations).  The non-structural work is at `par`
@@ -1532,7 +1531,6 @@ theorem absorb : ∀ {n : Nat} {t1 t2 : Trace} {m0 m1 mf : Memory} {e e1 a : Exp
           Exp.wf_monotonic (reduce_memory_monotonic hredL') hwf_eR
         obtain ⟨tR'', hredR'', heqR, haeR⟩ :=
           ihn nR' (by omega) hredR hstep1' hsafe_eR hwf_eR_mc haR
-        -- freshness for the trace commute
         have hf1 : ∀ l, Trace.allocd tL l → Trace.extSeq l t1 = [] := fun l hal =>
           fresh_not_extSeq ht
             (Heap.none_of_subsumes_none hsub1 (SeqReduce.alloc_fresh hredL.toSeqReduce hal))
@@ -1547,7 +1545,7 @@ theorem absorb : ∀ {n : Nat} {t1 t2 : Trace} {m0 m1 mf : Memory} {e e1 a : Exp
           exact seqreduce_trans (seqreduce_trans (seqreduce_par_left hredL')
             (seqreduce_par_right haL hredR''))
             (SeqReduce.step (SeqStep.step_par_join haL haR) SeqReduce.refl)
-        · -- Equiv (t1 ++ (tL ++ tR')) (tL ++ tR'')
+        · -- trace-equivalence obligation: commute `t1` past `tL`, then congr on the suffix
           have step1 : Trace.Equiv (t1 ++ (tL ++ tR')) (tL ++ (t1 ++ tR')) := by
             rw [← List.append_assoc, ← List.append_assoc]
             exact Trace.Equiv.append_right_congr hcomm hcommAE
@@ -1887,8 +1885,8 @@ theorem Step.allocd_mcell {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}} {l : Nat
   | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
 
 set_option maxHeartbeats 1000000 in
--- The induction has 21 step cases; the premature-`par_right` case threads the BigStep diamond
--- plus the 11-field `Safe.par` carrier and the trace-commutation algebra, exceeding the default.
+-- Large case split: the premature-`par_right` case threads the BigStep diamond, the
+-- `Safe.par` carrier, and the trace-commutation algebra.
 /-- **Genuine big-step head-expansion (step-indexed).**  If `e1` steps to `e2` (a genuine,
   possibly premature, interleaving step) and `e2` then big-steps to `v` at `m'`, then `e1`
   big-steps to the SAME `v` at the SAME `m'`, on a trace `t'` that is `Trace.Equiv`-equal to
@@ -2049,28 +2047,20 @@ theorem Step.head_expand_bigstep {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
 
 /-! ## Premature-`par_right` and the symmetric carrier
 
-  `preserves_safe`'s premature-`par_right` case needs the right branch safe at the par node's OWN
-  memory.  The *fundamental* property a reducing configuration has — the genuine
-  separation/independence of the two `par` branches — is exactly that the right branch is safe at
-  the current memory.  This is now supplied DIRECTLY by the SYMMETRIC right field of the `Safe.par`
-  carrier (`Safe m eR`), recovered by inversion (`Safe.par_inv_right`).  No `Compat` /
-  `is_compatible` / drop-freedom side condition is needed: the carrier itself records that the right
-  branch is independently safe, and that field stays true after a drop (a `Safe` branch no longer
-  references its dropped cell), so it survives the subsumption lift via
-  `BigStep.par_right_keepsLive`. -/
+  `preserves_safe`'s premature-`par_right` case needs the right branch safe at the par node's
+  own memory — the separation/independence of the two `par` branches.  This is the symmetric
+  right field of the `Safe.par` carrier (`Safe m eR`), recovered by inversion
+  (`Safe.par_inv_right`).  The field stays true after a drop (a `Safe` branch does not reference
+  its dropped cell), so it survives the subsumption lift via `BigStep.par_right_keepsLive`. -/
 
 set_option maxHeartbeats 1000000 in
--- The 11-field `Safe.par` carrier rebuild, each field threading the diamond/head-expansion, exceeds
--- the default heartbeat budget.
-/-- **Premature-`par_left` preservation.**  A genuine left-branch step.  Mirrors the sequential
-  `step_preserves_safe` `par_left` case, but every appeal to head-expansion now goes through the
-  GENUINE `Step.head_expand_bigstep` (which reorders the recovered trace up to `Trace.Equiv`).  The
-  one field this matters for — the reduct's LEFT BUDGET `hb1'` — is closed by `TraceOk`'s
-  `Trace.Equiv`-invariance (`TraceOk.equiv_invariant`): the recovered run's trace is `Trace.Equiv`
-  to `t ++ s`, so its `hb1` budget bound transports to `t ++ s` and the step's allocations absorb
-  into the reduct budget via `split_append`/`absorb_exempt` exactly as in the sequential proof.  The
-  continuation `h2'` and robust-safety fields only need the recovered value/memory (trace-free).
-  The new SYMMETRIC field — the frozen right branch `eR` safe at `m2` — is `Safe.frame_lift` of the
+-- Rebuilds every `Safe.par` carrier field, each threading the diamond/head-expansion.
+/-- **Premature-`par_left` preservation.**  A genuine left-branch step.  Head-expansion goes
+  through the genuine `Step.head_expand_bigstep`, which reorders the recovered trace up to
+  `Trace.Equiv`.  The reduct's left budget `hb1'` is closed by `TraceOk.equiv_invariant`: the
+  recovered run's trace is `Trace.Equiv` to `t ++ s`, so its `hb1` bound transports to `t ++ s`
+  and the step's allocations absorb into the reduct budget via `split_append`/`absorb_exempt`.
+  The symmetric field — the frozen right branch `eR` safe at `m2` — is `Safe.frame_lift` of the
   carrier's `Safe m1 eR` across the separated left step (`Step.frameLive` + non-interference). -/
 theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
     {C1 C2 : CaptureSet {}} {eL eL' eR : Exp {}}
@@ -2087,8 +2077,8 @@ theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
     rename_i Cb1 Cb2
     have hsub21 : m2.subsumes m1 := Step.subsumes hstep
     have hse_a2' : Safe m2 eL' := ih hwf_a hse_a
-    -- Left step's trace `t` is bounded by `Cb1` (head-expand `eL'`'s answer up to `Equiv`,
-    -- then restrict the prefix), used to frame the frozen right branch `eR`.
+    -- Left step's trace `t` is bounded by `Cb1` (head-expand to `eL'`'s answer up to `Equiv`,
+    -- then restrict the prefix); used to frame the frozen right branch `eR`.
     have htok_t : TraceOk t Cb1 := by
       obtain ⟨s, vv, ms, hrun⟩ := hse_a2'.has_answer
       obtain ⟨tt, hfull, heq, _⟩ := Step.head_expand_bigstep hstep hse_a hwf_a hrun
@@ -2176,17 +2166,14 @@ theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
 
 
 set_option maxHeartbeats 1000000 in
--- The 11-field `Safe.par` carrier rebuild, each field threading the diamond/frame-lift, exceeds
--- the default heartbeat budget.
-/-- **Premature-`par_right` preservation — FULLY PROVEN.**  A genuine right step with the left
-  branch NOT an answer.  EVERY field of the reduct's `Safe.par` carrier is proven: the frozen
+-- Rebuilds every `Safe.par` carrier field, each threading the diamond/frame-lift.
+/-- **Premature-`par_right` preservation.**  A genuine right step with the left
+  branch not an answer.  Every field of the reduct's `Safe.par` carrier is rebuilt: the frozen
   left's safety (`Safe.frame_lift` across the separated right step), the reduct-right continuation
-  `h2'` and robust safety `hrs2'` (`Safe.frame_lift` of the reduct-right `Safe m2 eR'`), the grown
-  right budget `hb2'` (genuine head-expansion + `TraceOk.equiv_invariant`), and the bookkeeping
-  fields.  The key fact — `Safe m1 eR`, the right branch safe at the par node's OWN memory (the
-  genuine separation/independence of the par branches) — is now supplied DIRECTLY by the SYMMETRIC
-  right field of the `Safe.par` carrier (extracted by the `cases`).  No `Compat` / drop-freedom side
-  condition is needed (a `Safe` branch stays safe after dropping its own cells). -/
+  `h2'` and robust safety `hrs2'` (`Safe.frame_lift` of the reduct-right `Safe m2 eR'`), and the
+  grown right budget `hb2'` (genuine head-expansion + `TraceOk.equiv_invariant`).  The key fact —
+  `Safe m1 eR`, the right branch safe at the par node's own memory — is the symmetric right field of
+  the `Safe.par` carrier, extracted by `cases`. -/
 theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
     {C1 C2 : CaptureSet {}} {eL eR eR' : Exp {}}
     (hstep : Step t m1 eR m2 eR') (ht_g : TraceOk t (C2.reachability m1))
@@ -2203,8 +2190,7 @@ theorem Step.preserves_safe_par_right {t : Trace} {m1 m2 : Memory}
     rename_i Cb1 Cb2
     have hsub21 : m2.subsumes m1 := Step.subsumes hstep
     have htok_t : TraceOk t Cb2 := TraceOk.mono hcov2.2 ht_g
-    -- The right branch is safe at the par node's OWN memory — directly from the SYMMETRIC
-    -- right field of the `Safe.par` carrier (no `Compat` / drop-freedom side condition needed).
+    -- Right branch safe at the par node's own memory: the symmetric right field of the carrier.
     have hse_b2' : Safe m2 eR' := ih hwf_eR hse_b
     have hwf_b2' : Exp.WfInHeap eR' m2.heap := Step.preserves_wf hstep hwf_eR
     -- Grown right budget bound (genuine head-expansion up to `Trace.Equiv` + invariance).
@@ -2338,10 +2324,8 @@ theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
   differing only by `Trace.Equiv` (Mazurkiewicz reordering of independent events).  Folds
   `absorb` over the run, threading `Safe`/`WfInHeap` by the genuine-step preservation lemmas.
 
-  The reducing-configuration separation invariant (each `par`'s right branch is safe at its own
-  memory) is carried by `Safe` ITSELF, via the SYMMETRIC right field of the `Safe.par` carrier — so
-  no extra hypothesis (no `Compat`, no `is_compatible`, no drop-freedom) is threaded here.  `Safe`
-  is the single separation invariant. -/
+  The separation invariant (each `par`'s right branch is safe at its own memory) is carried by
+  `Safe` itself, via the symmetric right field of the `Safe.par` carrier. -/
 theorem standardization {m mf : Memory} {e a : Exp {}} {t : Trace}
     (hwf : Exp.WfInHeap e m.heap) (hsafe : Safe m e)
     (hred : Reduce t m e mf a) (hans : a.IsAns) :

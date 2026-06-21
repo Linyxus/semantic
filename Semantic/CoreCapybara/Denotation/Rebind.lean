@@ -151,7 +151,6 @@ theorem rebind_captureset_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
   (ρ : Rebind env1 f env2) (C : CaptureSet s1) :
   CaptureSet.denot env1 C = CaptureSet.denot env2 (C.rename f) := by
-  -- Use rebind_resolved_capture_set
   unfold CaptureSet.denot
   congr 1
   exact rebind_resolved_capture_set ρ
@@ -290,8 +289,8 @@ theorem rebind_satisfy_iff
         hsat.sep (C1.rename f) m1 (C2.rename f) m2 hdistinct'
 
 set_option maxHeartbeats 1000000 in
--- The mutual rebind denotation definitions trigger heavy reducibility checks after the
--- modal branch started carrying higher-order assumption transport.
+-- The mutual rebind denotation definitions trigger heavy reducibility checks
+-- from the higher-order assumption transport in the modal branch.
 mutual
 
 def rebind_val_denot
@@ -462,22 +461,17 @@ def rebind_exi_val_denot
   | .exi T => by
     intro m e
     simp only [Ty.exi_val_denot, Ty.rename]
-    -- Both sides are match expressions on resolve m.heap e
     cases hresolve : resolve m.heap e
-    · -- resolve = none
-      simp only
-    · -- resolve = some e'
-      rename_i e'
+    · simp only
+    · rename_i e'
       cases e'
       case pack =>
         rename_i CS y
         simp only [List.empty_eq, and_congr_right_iff]
-        -- Goal: CS.WfInHeap m.heap → drop-free → (... ↔ ...)
         intro _hwf _hdf
         exact rebind_val_denot
           (ρ.liftCVar CS (cap := CS.ground_denot m) (a := .can_drop)) T m (Exp.var y)
       all_goals {
-        -- resolve returned non-pack
         simp only
       }
 
@@ -537,9 +531,9 @@ theorem PeakSet.rename_id {s : Sig} {ps : PeakSet s} : ps.rename Rename.id = ps 
   cases ps; simp only [PeakSet.rename, CaptureSet.rename_id]
 
 /-- Authority is denotationally inert: `val_denot`/`exi_val_denot` read the
-environment only through `lookup_*`/`from_TypeEnv`, every one of which discards
-the authority tag. So the identity rename is a `Rebind` between two
-`extend_cvar` binders that differ only in their authority. -/
+environment only through `lookup_*`/`from_TypeEnv`, which discard the authority
+tag. Hence the identity rename is a `Rebind` between two `extend_cvar` binders
+differing only in authority. -/
 def Rebind.auth_irrel {env : TypeEnv s} {cs : CaptureSet {}} {cap : CapabilitySet}
   {a1 a2 : Authority} :
   Rebind (env.extend_cvar cs cap a1) Rename.id (env.extend_cvar cs cap a2) where

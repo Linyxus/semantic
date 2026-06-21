@@ -8,7 +8,7 @@ Type definitions and operations for CC.
 
 namespace CoreCapybara
 
-/-- The sort of a type: capturing, shape, or existential. -/
+/-- The sort of a type: capturing or existential. -/
 inductive TySort : Type where
 /-- capturing types -/
 | capt : TySort
@@ -39,7 +39,7 @@ theorem CaptureBound.rename_comp
   | unbound => rfl
   | bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
 
-/-- A type in CC, indexed by its sort (capturing, shape, or existential). -/
+/-- A type in CC, indexed by its sort (capturing or existential). -/
 inductive Ty : TySort -> Sig -> Type where
 -- capturing types
 | top : Ty .capt s

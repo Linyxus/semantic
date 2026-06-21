@@ -147,7 +147,6 @@ def CaptureSet.applyMut (m : Mutability) (cs : CaptureSet s) : CaptureSet s :=
   | .epsilon => cs
   | .ro => cs.applyRO
 
--- applyRO simp lemmas (definitional)
 @[simp] theorem CaptureSet.applyRO_empty : (CaptureSet.empty (s:=s)).applyRO = .empty := rfl
 @[simp] theorem CaptureSet.applyRO_union {cs1 cs2 : CaptureSet s} :
     (cs1.union cs2).applyRO = cs1.applyRO.union cs2.applyRO := rfl
@@ -156,7 +155,6 @@ def CaptureSet.applyMut (m : Mutability) (cs : CaptureSet s) : CaptureSet s :=
 @[simp] theorem CaptureSet.applyRO_cvar {a : Access} {x : BVar s .cvar} :
     (CaptureSet.cvar a x).applyRO = .cvar a.applyRO x := rfl
 
--- applyMut simp lemmas
 @[simp] theorem CaptureSet.applyMut_epsilon {cs : CaptureSet s} :
     cs.applyMut .epsilon = cs := rfl
 @[simp] theorem CaptureSet.applyMut_ro {cs : CaptureSet s} :
@@ -490,7 +488,8 @@ theorem CaptureSet.IsEmpty.rename {cs : CaptureSet s1} (h : cs.IsEmpty) (ρ : Re
   | empty => exact IsEmpty.empty
   | union _ _ ih1 ih2 => exact IsEmpty.union ih1 ih2
 
-/-- The subset relation on capture sets. -/
+/-- Covering relation on capture sets: a mutability-aware subset where a set may be
+    covered by the same set at a weaker (`≤`) mutability. -/
 inductive CaptureSet.CoveredBy : CaptureSet s -> CaptureSet s -> Prop where
 | refl {C : CaptureSet s} {m1 m2 : Mutability} :
   (hm : m1 ≤ m2) ->
@@ -515,7 +514,7 @@ inductive CaptureSet.CoveredBy : CaptureSet s -> CaptureSet s -> Prop where
 
 namespace CaptureSet.CoveredBy
 
--- Helper: reflexivity for CoveredBy (any C covers itself)
+/-- Reflexivity of `CoveredBy`: any `C` covers itself. -/
 theorem refl' {C : CaptureSet s} : C.CoveredBy C := by
   have h : (C.applyMut .epsilon).CoveredBy (C.applyMut .epsilon) := .refl Mutability.Le.refl
   simp only [CaptureSet.applyMut_epsilon] at h
@@ -528,9 +527,6 @@ theorem mut_mono_left {C1 C2 : CaptureSet s} {m1 m2 : Mutability}
   cases hm with
   | refl => exact hsub
   | ro_eps =>
-    -- m1 = .ro, m2 = .epsilon
-    -- hsub : C1.CoveredBy C2
-    -- Goal: C1.applyRO.CoveredBy C2
     simp only [CaptureSet.applyMut_epsilon] at hsub
     simp only [CaptureSet.applyMut_ro]
     induction hsub with
@@ -548,28 +544,22 @@ theorem mut_mono_left {C1 C2 : CaptureSet s} {m1 m2 : Mutability}
     | union_right_right _ ih =>
       exact .union_right_right ih
 
--- General helper: extract from union equality
 private theorem union_coveredby_left_aux {AB A B C : CaptureSet s}
   (he : A.union B = AB)
   (h : AB.CoveredBy C) : A.CoveredBy C := by
   induction h generalizing A B with
   | refl hm =>
     rename_i D m1 m2
-    -- he : A.union B = D.applyMut m1
-    -- Goal: A.CoveredBy (D.applyMut m2)
     cases m1 with
     | epsilon =>
       simp only [CaptureSet.applyMut_epsilon] at he
       subst he
-      -- Goal: A.CoveredBy ((A.union B).applyMut m2)
       cases hm with
       | refl =>
         simp only [CaptureSet.applyMut_epsilon]
         exact .union_right_left refl'
     | ro =>
       simp only [CaptureSet.applyMut_ro] at he
-      -- he : A.union B = D.applyRO
-      -- Case split on D to handle the equality
       cases D with
       | empty =>
         simp only [CaptureSet.applyRO] at he
@@ -578,11 +568,9 @@ private theorem union_coveredby_left_aux {AB A B C : CaptureSet s}
         simp only [CaptureSet.applyRO] at he
         injection he with hA hB
         subst hA
-        -- Goal: D1.applyRO.CoveredBy ((D1.union D2).applyMut m2)
         cases m2 with
         | epsilon =>
           simp only [CaptureSet.applyMut_epsilon]
-          -- Goal: D1.applyRO.CoveredBy (D1.union D2)
           have h1 : D1.applyRO.CoveredBy D1 := .refl Mutability.Le.ro_eps
           exact .union_right_left h1
         | ro =>
@@ -605,12 +593,11 @@ private theorem union_coveredby_left_aux {AB A B C : CaptureSet s}
   | union_right_right _ ih =>
     exact .union_right_right (ih he)
 
--- Helper: if a union is covered by C, so is the left component
+/-- If a union is covered by `C`, so is its left component. -/
 theorem union_coveredby_left {A B C : CaptureSet s}
   (h : (A ∪ B).CoveredBy C) : A.CoveredBy C :=
   union_coveredby_left_aux rfl h
 
--- General helper: extract from union equality (right component)
 private theorem union_coveredby_right_aux {AB A B C : CaptureSet s}
   (he : A.union B = AB)
   (h : AB.CoveredBy C) : B.CoveredBy C := by
@@ -660,7 +647,7 @@ private theorem union_coveredby_right_aux {AB A B C : CaptureSet s}
   | union_right_right _ ih =>
     exact .union_right_right (ih he)
 
--- Helper: if a union is covered by C, so is the right component
+/-- If a union is covered by `C`, so is its right component. -/
 theorem union_coveredby_right {A B C : CaptureSet s}
   (h : (A ∪ B).CoveredBy C) : B.CoveredBy C :=
   union_coveredby_right_aux rfl h
@@ -669,27 +656,16 @@ theorem trans {C1 C2 C3 : CaptureSet s}
   (h1 : C1.CoveredBy C2) (h2 : C2.CoveredBy C3) : C1.CoveredBy C3 := by
   induction h1 generalizing C3 with
   | refl hm1 =>
-    -- C1 = D.applyMut m1, C2 = D.applyMut m2, hm1 : m1 ≤ m2
-    -- h2 : (D.applyMut m2).CoveredBy C3
-    -- Goal: (D.applyMut m1).CoveredBy C3
     exact mut_mono_left hm1 h2
   | empty => exact empty
   | union_left _ _ ih1 ih2 =>
-    -- C1 = C1a ∪ C1b
-    -- Goal: (C1a ∪ C1b).CoveredBy C3
     exact .union_left (ih1 h2) (ih2 h2)
   | union_right_left _ ih =>
-    -- C2 = C1' ∪ C2' where original h1 came from C1.CoveredBy C1'
-    -- h2 : (C1' ∪ C2').CoveredBy C3
-    -- ih : C1'.CoveredBy C3 → C1.CoveredBy C3
     exact ih (union_coveredby_left h2)
   | union_right_right _ ih =>
-    -- C2 = C1' ∪ C2' where original h1 came from C1.CoveredBy C2'
-    -- h2 : (C1' ∪ C2').CoveredBy C3
-    -- ih : C2'.CoveredBy C3 → C1.CoveredBy C3
     exact ih (union_coveredby_right h2)
 
--- Helper: rename preserves CoveredBy
+/-- Renaming preserves `CoveredBy`. -/
 theorem rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
   (hcov : C1.CoveredBy C2) : (C1.rename f).CoveredBy (C2.rename f) := by
   induction hcov with
@@ -709,7 +685,7 @@ theorem rename {C1 C2 : CaptureSet s1} {f : Rename s1 s2}
     simp only [CaptureSet.rename]
     exact .union_right_right ih
 
--- Helper: applyRO preserves CoveredBy
+/-- applyRO preserves `CoveredBy`. -/
 theorem applyRO_mono {C1 C2 : CaptureSet s}
   (hcov : C1.CoveredBy C2) : C1.applyRO.CoveredBy C2.applyRO := by
   induction hcov with
@@ -729,14 +705,14 @@ theorem applyRO_mono {C1 C2 : CaptureSet s}
     simp only [CaptureSet.applyRO]
     exact .union_right_right ih
 
--- Helper: applyMut preserves CoveredBy
+/-- applyMut preserves `CoveredBy`. -/
 theorem applyMut_mono {C1 C2 : CaptureSet s} {m : Mutability}
   (hcov : C1.CoveredBy C2) : (C1.applyMut m).CoveredBy (C2.applyMut m) := by
   cases m with
   | epsilon => simp only [CaptureSet.applyMut_epsilon]; exact hcov
   | ro => simp only [CaptureSet.applyMut_ro]; exact hcov.applyRO_mono
 
-/-- Helper: if (.cvar a c) ⊆ D, then (.cvar a.applyRO c) ⊆ D.applyRO -/
+/-- If `(.cvar a c) ⊆ D` then `(.cvar a.applyRO c) ⊆ D.applyRO`. -/
 private theorem cvar_subset_applyRO {a : Access} {c : BVar s .cvar} {D : CaptureSet s}
   (hsub : (.cvar a c) ⊆ D) : (.cvar a.applyRO c) ⊆ D.applyRO := by
   induction D with
@@ -752,8 +728,8 @@ private theorem cvar_subset_applyRO {a : Access} {c : BVar s .cvar} {D : Capture
     simp only [CaptureSet.applyRO]
     exact .refl
 
-/-- Helper: a cvar inside `D.applyRO` comes from an original cvar in `D`, and its
-    mode is the read-only image of that original mode. -/
+/-- A cvar inside `D.applyRO` comes from an original cvar in `D`, with its mode the
+    read-only image of that original mode. -/
 private theorem cvar_subset_of_applyRO {a : Access} {c : BVar s .cvar} {D : CaptureSet s}
   (hsub : (.cvar a c) ⊆ D.applyRO) : ∃ a0, (.cvar a0 c) ⊆ D ∧ a = a0.applyRO := by
   induction D with
@@ -794,7 +770,7 @@ theorem cvar_subset_coveredby {a : Access} {c : BVar s .cvar} {C1 C2 : CaptureSe
         simp only [CaptureSet.applyMut_epsilon]
         exact ⟨a, Access.Le.refl, hsub⟩
       | ro =>
-        -- hm : .epsilon ≤ .ro is false, this case is impossible
+        -- impossible: .epsilon ≤ .ro does not hold
         cases hm
     | ro =>
       simp only [CaptureSet.applyMut_ro] at hsub

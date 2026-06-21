@@ -82,7 +82,6 @@ theorem reduce_var_inv
   induction hred with
   | refl => exact ⟨rfl, he ▸ rfl⟩
   | step hstep _ ih =>
-    -- No Step rule applies to a bare variable
     subst he
     cases hstep
 
@@ -154,12 +153,9 @@ theorem reduce_letin_inv
       (m0.extend l0 ⟨v0, hv, compute_reachability m0.heap v0 hv⟩ hwf rfl hfresh)
       (e2.subst (Subst.openVar (.free l0)))
       m' a) := by
-  -- Generalize the letin expression to enable induction.  The trace now
-  -- decomposes across the step, so the sub-reductions carry their own traces.
   generalize hgen : Exp.letin e1 e2 = e_full at hred
   induction hred generalizing e1 e2 with
   | refl =>
-    -- Base case: e_full = a, but a is an answer and e_full = .letin e1 e2
     rw [←hgen] at hans
     cases hans with
     | is_val hv => cases hv
@@ -167,7 +163,6 @@ theorem reduce_letin_inv
     rw [←hgen] at hstep
     cases hstep with
     | step_ctx_letin hstep_e1 =>
-      -- e1 steps to e1'; combine with the reduction obtained from the IH.
       have ih_result := ih hans rfl
       cases ih_result with
       | inl h_var =>
@@ -177,10 +172,8 @@ theorem reduce_letin_inv
         obtain ⟨t1, t2, m0, v0, hv, hwf, l0, hfresh, hred_e1', hred_body⟩ := h_val
         exact Or.inr ⟨_, _, m0, v0, hv, hwf, l0, hfresh, Reduce.step hstep_e1 hred_e1', hred_body⟩
     | step_rename =>
-      -- e1 = .var (.free y); the e1-reduction is reflexive (empty trace).
       exact Or.inl ⟨_, _, _, _, Reduce.refl, rest⟩
     | step_lift hv hwf hfresh =>
-      -- e1 is a simple value, allocated at l; the e1-reduction is reflexive.
       exact Or.inr ⟨_, _, _, _, hv, hwf, _, hfresh, Reduce.refl, rest⟩
 
 theorem step_preserves_wf
@@ -189,55 +182,35 @@ theorem step_preserves_wf
   e2.WfInHeap m2.heap := by
   cases hstep with
   | step_apply hlookup =>
-    -- e1 = .app (.free x) (.free y), e2 = body.subst (openVar y)
-    -- Extract well-formedness of x and y from the application
     rename_i x y cs T e_body hv R
     cases hwf with
     | wf_app hwf_x hwf_y =>
-      -- Get well-formedness of the abstraction from the heap
       have hwf_abs : Exp.WfInHeap (.abs cs T e_body) m1.heap :=
         m1.wf.wf_val _ _ hlookup
-      -- Extract well-formedness of the body
       have ⟨_, _, hwf_body⟩ := Exp.wf_inv_abs hwf_abs
-      -- Build well-formed substitution
       have hwf_subst := Subst.wf_openVar hwf_y
-      -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
   | step_invoke _ _ =>
-    -- e1 = .app (.free x) (.free y), e2 = .unit
-    -- Unit is always well-formed
     exact Exp.WfInHeap.wf_unit
   | step_tapply hlookup =>
-    -- e1 = .tapp (.free x) S, e2 = body.subst (openTVar .top)
-    -- Extract well-formedness of x and S from the type application
     rename_i x S cs S' e_body hv R
     cases hwf with
     | wf_tapp hwf_x hwf_S =>
-      -- Get well-formedness of the type abstraction from the heap
       have hwf_tabs : Exp.WfInHeap (.tabs cs S' e_body) m1.heap :=
         m1.wf.wf_val _ _ hlookup
-      -- Extract well-formedness of the body
       have ⟨_, _, hwf_body⟩ := Exp.wf_inv_tabs hwf_tabs
-      -- Build well-formed substitution: .top is always well-formed
       have hwf_top : PureTy.WfInHeap (PureTy.top (s:=∅)) m1.heap :=
         Ty.WfInHeap.wf_top
       have hwf_subst := Subst.wf_openTVar hwf_top
-      -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
   | step_capply hlookup =>
-    -- e1 = .capp (.free x) CS, e2 = body.subst (openCVar CS)
-    -- Extract well-formedness of x and CS from the capability application
     rename_i x CS cs B e_body hv R
     cases hwf with
     | wf_capp hwf_x hwf_CS =>
-      -- Get well-formedness of the capability abstraction from the heap
       have hwf_cabs : Exp.WfInHeap (.cabs cs B e_body) m1.heap :=
         m1.wf.wf_val _ _ hlookup
-      -- Extract well-formedness of the body
       have ⟨_, _, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
-      -- Build well-formed substitution
       have hwf_subst := Subst.wf_openCVar hwf_CS
-      -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
   | step_unwrap hlookup =>
     rename_i x cs Ψ R hv
@@ -253,68 +226,42 @@ theorem step_preserves_wf
     have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
     exact hwf_else
   | step_read hreader hcell =>
-    -- e1 = .read (.free x), e2 = if b then .btrue else .bfalse
-    -- Both branches are boolean values, always well-formed
     split
     · exact Exp.WfInHeap.wf_btrue
     · exact Exp.WfInHeap.wf_bfalse
   | step_write_true _ _ =>
-    -- e1 = .write (.free x) (.free y), e2 = .unit
-    -- Unit is always well-formed in any heap
     exact Exp.WfInHeap.wf_unit
   | step_write_false _ _ =>
-    -- e1 = .write (.free x) (.free y), e2 = .unit
-    -- Unit is always well-formed in any heap
     exact Exp.WfInHeap.wf_unit
   | step_alloc _ hfresh =>
-    -- e1 = .alloc (.free x); e2 = .pack (.var (.M .epsilon) (.free l)) (.free l),
-    -- where l is freshly allocated as a live mcell in m2.  The expected type
-    -- pins the boolean, so `extend_mcell_lookup` is inlined into the `exact`.
     exact Exp.WfInHeap.wf_pack
       (CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh))
       (Var.WfInHeap.wf_free (Memory.extend_mcell_lookup hfresh))
   | step_drop _ =>
-    -- e1 = .drop (.free x), e2 = .unit; unit is always well-formed
     exact Exp.WfInHeap.wf_unit
   | step_ctx_letin hstep_e1 =>
-    -- e1 = .letin e1' e2', e2 = .letin e1'' e2'
-    -- Use IH recursively
     have ⟨hwf_e1', hwf_e2'⟩ := Exp.wf_inv_letin hwf
     have hwf_e1'' := step_preserves_wf hstep_e1 hwf_e1'
-    -- Memory might have changed, need monotonicity
     have hsub := step_memory_monotonic hstep_e1
     have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
     exact Exp.WfInHeap.wf_letin hwf_e1'' hwf_e2''
   | step_ctx_unpack hstep_e1 =>
-    -- e1 = .unpack e1' e2', e2 = .unpack e1'' e2'
-    -- Use IH recursively
     have ⟨hwf_e1', hwf_e2'⟩ := Exp.wf_inv_unpack hwf
     have hwf_e1'' := step_preserves_wf hstep_e1 hwf_e1'
-    -- Memory might have changed, need monotonicity
     have hsub := step_memory_monotonic hstep_e1
     have hwf_e2'' := Exp.wf_monotonic hsub hwf_e2'
     exact Exp.WfInHeap.wf_unpack hwf_e1'' hwf_e2''
   | step_rename =>
-    -- e1 = .letin (.var (.free y)) e, e2 = e.subst (openVar y)
     rename_i y e_body
-    -- Extract well-formedness from letin
     have ⟨hwf_var, hwf_body⟩ := Exp.wf_inv_letin hwf
-    -- Extract Var.WfInHeap from Exp.WfInHeap
     cases hwf_var with
     | wf_var hwf_y =>
-      -- Build well-formed substitution
       have hwf_subst := Subst.wf_openVar hwf_y
-      -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
   | step_lift hv hwf_v hfresh =>
-    -- e1 = .letin v e, e2 = e.subst (openVar (.free l))
     rename_i v e_body l
-    -- Extract well-formedness from letin
     have ⟨hwf_v', hwf_body⟩ := Exp.wf_inv_letin hwf
-    -- Memory extends with the value
-    -- The resulting memory is m1.extend l ...
     let m_ext := m1.extend l ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
-    -- Show (.free l) is well-formed in the extended heap
     have hwf_l : Var.WfInHeap (.free l : Var .var ∅) m_ext.heap := by
       have hlookup_l :
           m_ext.heap l = some (.val ⟨v, hv, compute_reachability m1.heap v hv⟩) := by
@@ -323,29 +270,20 @@ theorem step_preserves_wf
           (Memory.extend_lookup_eq m1 l
             ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh)
       exact Var.WfInHeap.wf_free hlookup_l
-    -- e_body is well-formed in the extended heap (by monotonicity)
     have hsub := Memory.extend_subsumes m1 l
       ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh
     have hwf_body_ext := Exp.wf_monotonic hsub hwf_body
-    -- Build well-formed substitution
     have hwf_subst := Subst.wf_openVar hwf_l
-    -- Apply substitution preservation
     exact Exp.wf_subst hwf_body_ext hwf_subst
   | step_unpack =>
-    -- e1 = .unpack (.pack cs (.free x)) e, e2 = e.subst (unpack cs x)
     rename_i cs x e_body
-    -- Extract well-formedness from unpack
     have ⟨hwf_pack, hwf_body⟩ := Exp.wf_inv_unpack hwf
-    -- Extract well-formedness from pack
     cases hwf_pack with
     | wf_pack hwf_cs hwf_x =>
-      -- Build well-formed substitution
       have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
-      -- Apply substitution preservation
       exact Exp.wf_subst hwf_body hwf_subst
-  -- Congruence preserves WF: the stepped branch via the (structural) recursive
-  -- call, the untouched branch via monotonicity.  WF is structural, so — unlike
-  -- the operational preservation lemmas — par needs no separation here.
+  -- Congruence preserves WF: stepped branch via the structural recursive call,
+  -- untouched branch via monotonicity; WF is structural so par needs no separation.
   | step_par_left hsub_step =>
     cases hwf with
     | wf_par hwf_C1 hwf_C2 hwf_aL hwf_b =>
@@ -367,7 +305,6 @@ theorem step_preserves_wf
         (Exp.wf_monotonic (step_memory_monotonic hsub_step) hwf_aL)
         (step_preserves_wf hsub_step hwf_b)
   | step_par_join _ _ =>
-    -- The join retires `par` to the canonical `.unit`, trivially well-formed.
     exact Exp.WfInHeap.wf_unit
 
 theorem reduce_preserves_wf
@@ -387,11 +324,9 @@ theorem reduce_unpack_inv
   ∃ (t1 t2 : Trace) (m0 : Memory) (cs : CaptureSet {}) (x : Nat),
     Reduce t1 m e1 m0 (.pack cs (.free x)) ∧
     Reduce t2 m0 (e2.subst (Subst.unpack cs (.free x))) m' a := by
-  -- Use generalization to make induction work; sub-reductions carry their own traces.
   generalize hgen : Exp.unpack e1 e2 = e_full at hred
   induction hred generalizing e1 e2 with
   | refl =>
-    -- Base case: no reduction, but unpack is not an answer
     rw [←hgen] at hans
     cases hans; rename_i hv
     cases hv
@@ -399,19 +334,16 @@ theorem reduce_unpack_inv
     rw [←hgen] at hstep
     cases hstep with
     | step_ctx_unpack hstep_e1 =>
-      -- e1 steps to e1', then continue with induction
       rename_i e1'
       have ih_result := ih (e1 := e1') (e2 := e2) hans rfl
       obtain ⟨t1, t2, m0, cs, x, hred_e1', hred_body⟩ := ih_result
       exact ⟨_, _, m0, cs, x, Reduce.step hstep_e1 hred_e1', hred_body⟩
     | step_unpack =>
-      -- e1 is already .pack cs (.free x); its reduction is reflexive (empty trace).
       exact ⟨_, _, _, _, _, Reduce.refl, rest⟩
 
--- Progress predicate: an expression is *progressive* in memory `m` if it is
--- already an answer, or it can take at least one sequential `SeqStep`.  The `step`
--- witness's trace is hidden existentially (progress only asserts that *some* step
--- exists).
+/-- An expression is *progressive* in memory `m` if it is already an answer, or it
+  can take at least one sequential `SeqStep` (the step's trace is hidden
+  existentially). -/
 inductive IsProgressive : Memory -> Exp {} -> Prop where
 | done :
   e.IsAns ->
@@ -455,25 +387,20 @@ theorem Exp.isPack_cases {e : Exp {}} (h : e.IsPack) :
     exact ⟨cs, n, rfl⟩
 
 /-- **Progress (sequential small-step).**  A `Safe` configuration is *progressive*:
-    it is already an answer, or it can take a sequential `SeqStep`.  The recursion
-    mirrors the `Safe` derivation; for `letin`/`unpack` the head's progress
-    (`ih_e1`) is used, and when the head is already an answer, `h_ans` (applied to
-    the trivial self-run `BigStep.of_isAns`) classifies it as a simple value or
-    variable so that `step_lift`/`step_rename`/`step_unpack` fire. -/
+    already an answer, or it can take a sequential `SeqStep`.  For `letin`/`unpack`,
+    when the head is an answer, `h_ans` on the trivial self-run classifies it as a
+    simple value or variable so that `step_lift`/`step_rename`/`step_unpack` fire. -/
 theorem safe_implies_progressive {m : Memory} {e : Exp {}}
   (h : Safe m e) :
   IsProgressive m e := by
   induction h with
   | ans hans => exact IsProgressive.done hans
   | alloc hlookup =>
-    -- e = .alloc (.free x); steps via step_alloc to a fresh live mcell
     obtain ⟨l, hfresh⟩ := Memory.exists_fresh _
     exact IsProgressive.step (SeqStep.step_alloc (l := l) hlookup hfresh)
   | drop hx =>
-    -- e = .drop (.free x); steps via step_drop
     exact IsProgressive.step (SeqStep.step_drop hx)
   | @apply cs T e_abs hv R y m x hlookup _ _ =>
-    -- e = .app (.free x) y; y is free (empty signature), so step_apply applies
     obtain ⟨y', rfl⟩ := Var.free_cases y
     exact IsProgressive.step (SeqStep.step_apply hlookup)
   | invoke hlookup_x hlookup_y =>
@@ -485,34 +412,24 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
   | unwrap hlookup _ _ =>
     exact IsProgressive.step (SeqStep.step_unwrap hlookup)
   | letin _ h_ans _ _ ih_e1 _ _ =>
-    -- e = .letin e1 e2; by `ih_e1`, e1 is progressive
     cases ih_e1 with
     | done hans =>
-      -- e1 is an answer: classify it via h_ans on the trivial self-run
       obtain ⟨hsimple_ans, hwf⟩ := h_ans _ _ _ (BigStep.of_isAns hans)
       rcases Exp.isSimpleAns_cases hsimple_ans with hv | ⟨n, rfl⟩
-      · -- e1 is a simple value: step_lift to a fresh location (heap is finite)
-        obtain ⟨l0, hfresh⟩ := Memory.exists_fresh _
+      · obtain ⟨l0, hfresh⟩ := Memory.exists_fresh _
         exact IsProgressive.step (SeqStep.step_lift (l := l0) hv hwf hfresh)
-      · -- e1 is a free variable: step_rename
-        exact IsProgressive.step SeqStep.step_rename
+      · exact IsProgressive.step SeqStep.step_rename
     | step hstep =>
-      -- e1 can step, so letin e1 e2 steps via step_ctx_letin
       exact IsProgressive.step (SeqStep.step_ctx_letin hstep)
   | unpack _ h_ans _ ih_e1 _ =>
-    -- e = .unpack e1 e2; by `ih_e1`, e1 is progressive
     cases ih_e1 with
     | done hans =>
-      -- e1 is an answer: classify it as a pack with a free witness via h_ans
       obtain ⟨hpack, hwf⟩ := h_ans _ _ _ (BigStep.of_isAns hans)
       obtain ⟨cs, n, rfl⟩ := Exp.isPack_cases hpack
       exact IsProgressive.step SeqStep.step_unpack
     | step hstep =>
-      -- e1 can step, so unpack e1 e2 steps via step_ctx_unpack
       exact IsProgressive.step (SeqStep.step_ctx_unpack hstep)
   | @cond e2 e3 m x hres _ _ _ _ =>
-    -- e = .cond x e2 e3; the guard resolves to a boolean (hres), so the
-    -- conditional can step directly via step_cond_var_true/false.
     obtain ⟨fx, rfl⟩ := Var.free_cases x
     cases hres with
     | inl hbtrue =>
@@ -546,18 +463,14 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
   | read hlookup_reader hlookup_cell =>
-    -- e = .read (.free x), can step via step_read
     exact IsProgressive.step (SeqStep.step_read hlookup_reader hlookup_cell)
   | write_true hx hy =>
-    -- e = .write (.free x) (.free y), can step via step_write_true
     exact IsProgressive.step (SeqStep.step_write_true hx hy)
   | write_false hx hy =>
-    -- e = .write (.free x) (.free y), can step via step_write_false
     exact IsProgressive.step (SeqStep.step_write_false hx hy)
   | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
-    -- Progress for sequential `par`: advance the left branch until it is an answer
-    -- (congruence), then the right branch (`step_par_right` needs the left answer),
-    -- then join once both are answers.  Progress needs only SOME step to exist.
+    -- Sequential `par`: advance the left branch to an answer, then the right
+    -- (`step_par_right` needs the left answer), then join. Some step always exists.
     cases ih1 with
     | done hAans =>
       cases ih2 (BigStep.of_isAns hAans) with
@@ -571,13 +484,12 @@ theorem eval_implies_progressive {m : Memory} {e : Exp {}} {Q : Tpost}
   IsProgressive m e :=
   safe_implies_progressive heval.1
 
-/- ============================================================================
-   SMALL-STEP ↔ BIG-STEP BRIDGE.  The new `Eval := Safe ∧ preservation`
-   is phrased over the relational `BigStep`.  These lemmas connect it to the
-   small-step `Step`/`Reduce`, so the small-step preservation/progress results
-   (consumed by `Safety`) go through.  The keystone is *head expansion*:
-   prepending a `Step` to a `BigStep` run is again a `BigStep` run.
-   ============================================================================ -/
+/-! ## Small-step ↔ big-step bridge
+
+`Eval := Safe ∧ preservation` is phrased over the relational `BigStep`.  These
+lemmas connect it to the small-step `Step`/`Reduce`, so the small-step
+preservation/progress results (consumed by `Safety`) go through.  The keystone is
+*head expansion*: prepending a `Step` to a `BigStep` run is again a `BigStep` run. -/
 
 /-- An external touch of a prefix `t` is an external touch of `t ++ t'` (same mode):
     the suffix `t'` is processed after `t`, so it cannot un-do `t`'s external touch. -/
@@ -608,14 +520,10 @@ theorem Trace.Noninterfere_of_append_right {t1 t t' : Trace}
 
 /-- **Head expansion (sequential).**  A `SeqStep` prefixed to a `BigStep` run is
     itself a `BigStep` run, with the step's trace prepended.  Read-nondeterminism is
-    no obstacle: the faithful `step_read` bit is one admissible `bs_read` outcome
-    (`b' = b`); the `letin`/`unpack`/`par` congruence steps recurse through the
-    inductive hypothesis.  The `step_par_right` case threads exactly *because* the
-    sequential schedule fixes the left branch as an answer before the right branch
-    runs — matching `bs_par`'s left-then-right order — so the head-expanded trace
-    aligns with a `bs_par` run.  (For unrestricted interleaving this is false at the
-    exact trace: it holds only up to Mazurkiewicz permutation, which is the content
-    of the standardization theorem relating `Step` to `SeqStep`.) -/
+    no obstacle: the `step_read` bit is one admissible `bs_read` outcome (`b' = b`).
+    `step_par_right` threads because the sequential schedule fixes the left branch as
+    an answer before the right runs, matching `bs_par`'s left-then-right order.  (For
+    unrestricted interleaving this holds only up to Mazurkiewicz permutation.) -/
 theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     (hstep : SeqStep t m1 e1 m2 e2) :
     ∀ {t' : Trace} {v : Exp {}} {m' : Memory},
@@ -673,25 +581,16 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
       rw [← List.append_assoc]; exact BigStep.bs_unpack (ih hrun) hrun2
     | bs_val hv => cases hv
   | step_par_left _ ih =>
-    -- A LEFT-branch step is ALIGNED with the sequential schedule (`bs_par` runs the
-    -- left branch first), so head-expansion threads through the IH, exactly as for
-    -- `step_ctx_letin`.
     intro t' v m' hbs
     cases hbs with
     | bs_par hrunL hrunR =>
       rw [← List.append_assoc]; exact BigStep.bs_par (ih hrunL) hrunR
     | bs_val hv => cases hv
   | step_par_join hans_a hans_b =>
-    -- `par a b → .unit` (both answers); the reduct `.unit` self-runs trivially, and
-    -- `bs_par` over the two answers' (empty) self-runs rebuilds the original.
     intro t' v m' hbs
     obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq Exp.IsSimpleVal.unit hbs
     exact BigStep.bs_par (BigStep.of_isAns hans_a) (BigStep.of_isAns hans_b)
   | step_par_right hans_a _ ih =>
-    -- A RIGHT-branch step under the sequential schedule has the LEFT branch `a`
-    -- already an answer (`hans_a`).  So `a` runs trivially (empty trace, `isAns_inv`)
-    -- and the head-expanded trace `t ++ ([] ++ s2)` IS a `bs_par` run: `a` (empty)
-    -- then `b` head-expanded through the IH.  No permutation needed.
     intro t' v m' hbs
     cases hbs with
     | bs_par hrunA hrunB =>
@@ -714,13 +613,12 @@ theorem reduce_to_bigstep {t : Trace} {m e m' a}
   | step hstep _ ih => exact BigStep.head_expand hstep (ih hans)
 
 /-- **Preservation of `Safe` (sequential small-step).**  A `SeqStep` preserves
-    big-step safety.  Mirrors `step_preserves_wf`: invert the `Safe` derivation per
-    redex; the `letin`/`unpack` continuations transport across the inner step by
-    head expansion, since a post-step `BigStep` of the head head-expands to a
-    pre-step one feeding the original handler.  Threads only `Exp.WfInHeap` (for the
-    `par` cases' head-expansion).  NO `AllLive`/drop-free crutch: the frozen `par`
-    branch's safety comes from the UNGATED continuation `h2` (the frozen branch is an
-    answer), and the reduct branch's robust safety from the bound-driven `Safe.lift`. -/
+    big-step safety.  Invert the `Safe` derivation per redex; the `letin`/`unpack`
+    continuations transport across the inner step by head expansion (a post-step
+    `BigStep` of the head head-expands to a pre-step one feeding the original
+    handler).  Threads only `Exp.WfInHeap`.  The frozen `par` branch's safety comes
+    from the continuation `h2` (it is an answer); the reduct branch's from the
+    bound-driven `Safe.lift`. -/
 theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     (hstep : SeqStep t m1 e1 m2 e2) :
     Exp.WfInHeap e1 m1.heap → Safe m1 e1 → Safe m2 e2 := by
@@ -809,19 +707,18 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
       rename_i C1 C2
       have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_a
       have hse_a2' : Safe m2 a' := ih hwf_a hse_a
-      -- Left step's trace `t` is bounded by `C1` (head-expand `a'`'s answer, restrict the prefix).
+      -- Left step's trace `t` is bounded by `C1`.
       have htok_t : TraceOk t C1 := by
         obtain ⟨s, vv, ms, hbs_a'⟩ := hse_a2'.has_answer
         have hfull : BigStep m1 a (t ++ s) vv ms := BigStep.head_expand hstep_a hbs_a'
         exact TraceOk.prefix (hb1 (Memory.subsumes_refl _) hwf_a hfull)
-      -- Frozen right branch `b` stays safe at `m2`: the left step's footprint (⊆ C1) does not drop
-      -- `b`'s cells (⊆ C2) by non-interference, so `SeqStep.frameLive` keeps them live.
+      -- Frozen right branch `b` stays safe at `m2`: the left step's footprint (⊆ C1) does
+      -- not drop `b`'s cells (⊆ C2) by non-interference, so `SeqStep.frameLive` keeps them live.
       have hse_b2' : Safe m2 b :=
         Safe.frame_lift hse_b hsub21 hwf_b hb2 (fun l bb ⟨_, hmem⟩ hl =>
           SeqStep.frameLive hstep_a l bb hl
             (not_extDrops_of_noninterf htok_t (CapabilitySet.Noninterference.ni_symm hni) hmem))
-      -- Reduct `a'`'s budget GROWS by the step's fresh allocations `capsOf (allocList t)`;
-      -- the frozen right branch `b` keeps budget `C2`.
+      -- Reduct `a'`'s budget grows by the step's fresh allocations `capsOf (allocList t)`.
       have hb1_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
           m'.subsumes m2 -> Exp.WfInHeap a' m'.heap -> BigStep m' a' s v m'' ->
           TraceOk s (C1 ∪ capsOf (Trace.allocList t)) := by
@@ -861,8 +758,6 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         intro m' s v m'' hsub' hwf' hbs
         exact hb2 (Memory.subsumes_trans hsub' hsub21) hwf' hbs
       case hrs1' =>
-        -- Reduct `a'` safe at any `m' ⊒ m2` compatible with the grown budget: lift
-        -- `Safe m2 a'` with the bound-driven liveness frame.
         intro m' hsub' hc
         refine Safe.lift hse_a2' hsub' (Q := fun s val m => BigStep m2 a' s val m)
           (fun _ _ _ h => h) ?_ hwf_a2'
@@ -905,9 +800,8 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
     | par _hse_a hse_b _h2 hb1 hb2 _hrs1 _hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
       rename_i C1 C2
       have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_b
-      -- `b` is safe at `m1` directly from the symmetric right field of the `par` carrier.
       have hse_b2' : Safe m2 b' := ih hwf_b hse_b
-      -- Reduct `b'`'s budget GROWS by the step's fresh allocations.
+      -- Reduct `b'`'s budget grows by the step's fresh allocations.
       have hb2_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
           m'.subsumes m2 -> Exp.WfInHeap b' m'.heap -> BigStep m' b' s v m'' ->
           TraceOk s (C2 ∪ capsOf (Trace.allocList t)) := by
@@ -982,7 +876,6 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         · exact (fun hc => hpres2 mu l h2m (Heap.none_of_subsumes_none hsub21 hc))
         · exact step_allocd_present hstep_b (Trace.mem_allocList.mp (capsOf_hasmem hA))
   | step_par_join _ _ =>
-    -- `par a b → .unit`; the canonical unit result is an answer, hence trivially safe.
     intro _ _
     exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
   | step_rename =>
@@ -1023,8 +916,7 @@ theorem BigStep.reduce_expand {t : Trace} {m1 e1 m2 e2}
     rw [List.append_assoc]
     exact BigStep.head_expand hstep (ih hbs)
 
-/-- Sequential reduction preserves big-step safety (iterate `step_preserves_safe`).
-    Threads only `Exp.WfInHeap` — no drop-free/`AllLive` crutch. -/
+/-- Sequential reduction preserves big-step safety (iterate `step_preserves_safe`). -/
 theorem reduce_preserves_safe {t : Trace} {m1 e1 m2 e2}
     (hred : SeqReduce t m1 e1 m2 e2) (hwf : Exp.WfInHeap e1 m1.heap) :
     Safe m1 e1 → Safe m2 e2 := by
@@ -1149,10 +1041,9 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
   | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
-    -- Build the canonical sequential (left-then-right-then-join) reduction to an
-    -- answer: run e1 fully (ih1), run e2 from e1's answer-memory (ih2, fed e1's
-    -- big-step answer via `reduce_to_bigstep`), lift each through the `SeqReduce` par
-    -- congruences (the right congruence needs e1's answer `hansa`), then join to `.unit`.
+    -- Canonical left-then-right-then-join reduction: run e1 fully (ih1), run e2 from
+    -- e1's answer-memory (ih2), lift each through the `SeqReduce` par congruences (the
+    -- right congruence needs e1's answer `hansa`), then join to `.unit`.
     obtain ⟨ta, ma, aans, hreda, hansa⟩ := ih1
     obtain ⟨tb, mb, bans, hredb, hansb⟩ := ih2 (reduce_to_bigstep hreda hansa)
     exact ⟨_, _, _,
@@ -1187,25 +1078,20 @@ theorem step_immutable
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ =>
-    -- Memory is unchanged.
     exact hinit
   | step_par_left _ ih => exact ih hwr hdr hinit
   | step_par_right _ _ ih => exact ih hwr hdr hinit
   | step_write_true _ _ | step_write_false _ _ =>
-    -- The trace is `[access .epsilon x]`, excluded by `hwr`.
     exact absurd (List.mem_singleton.mpr rfl) (hwr _)
   | step_drop _ =>
-    -- The trace is `[dealloc x]`, excluded by `hdr`.
     exact absurd (List.mem_singleton.mpr rfl) (hdr _)
   | step_alloc _ hfresh =>
-    -- A fresh mcell is added at the fresh location; the queried cell (which is
-    -- allocated, by hinit) is therefore distinct and untouched.
+    -- The fresh mcell is at a fresh location, distinct from the queried (allocated) cell.
     simp only [Memory.extend_mcell, Heap.extend_mcell]
     split
     · rename_i heq; rw [heq, hfresh] at hinit; cases hinit
     · exact hinit
   | step_lift hv hwf hfresh =>
-    -- A fresh value cell is added; the queried (allocated) cell is untouched.
     simp only [Memory.extend, Heap.extend]
     split
     · rename_i heq; rw [heq, hfresh] at hinit; cases hinit
@@ -1222,7 +1108,6 @@ theorem reduce_immutable
   induction hred with
   | refl => exact not_mutated_refl
   | step hstep rest ih =>
-    -- The trace splits as t1 ++ t2; neither half can contain a write/dealloc.
     exact not_mutated_trans
       (step_immutable (fun l hm => hwr l (List.mem_append_left _ hm))
         (fun l hm => hdr l (List.mem_append_left _ hm)) hstep)

@@ -128,22 +128,14 @@ inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
 | bs_read {m : Memory} {x : Nat} {b b' : Bool} :
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
   m.lookup y = some (.capability (.mcell b .live)) ->
-  -- The RESULT bit `b'` is NONDETERMINISTIC — independent of the stored bit `b`.
-  -- This is a deliberate, structural choice, NOT a workaround: `BigStep` is the
-  -- resource/effect-tracking abstract machine this type system reasons about, and
-  -- the system tracks EFFECTS (the `.access` event), capabilities, capture and
-  -- liveness — never bool DATA.  So a `read` is modelled as "use the capability
-  -- (emit `.access y`; requires `y` live) and yield some `Bool`", abstracting the
-  -- value exactly at the type system's own abstraction boundary.
-  --   * Soundness transfers to real runs: faithful (stored-bit) execution is the
-  --     instance `b' = b`, so faithful runs ⊆ these runs, and `Safe` + the
-  --     postcondition — proved here for ALL runs — hold for the faithful one.  The
-  --     stored bit is pinned back only where needed, downstream in adequacy.
-  --   * It is exactly what makes `Eval` Kripke-monotone.  `Cell.subsumes` ignores
-  --     the mcell bit, so `m2 ⊒ m1` may flip a live cell; a stored-bit read would
-  --     make `letin (read y) (cond ..)` branch differently in `m1` vs `m2`, and
-  --     `eval_monotonic` would be FALSE.  Covering both outcomes is equivalent to
-  --     reading faithfully in EVERY bit-variant of `m`.
+  -- The result bit `b'` is nondeterministic, independent of the stored bit `b`: a
+  -- `read` uses the capability (emit `.access y`; requires `y` live) and yields some
+  -- `Bool`, abstracting the value at the type system's abstraction boundary (it tracks
+  -- effects/capabilities/capture/liveness, never bool data). Faithful execution is the
+  -- instance `b' = b`, so faithful runs ⊆ these runs and soundness transfers. Covering
+  -- both outcomes is what makes `Eval` Kripke-monotone: `Cell.subsumes` ignores the
+  -- mcell bit, so `m2 ⊒ m1` may flip a live cell, and a stored-bit read would break
+  -- `eval_monotonic`.
   BigStep m (.read (.free x)) [.access .ro y] (if b' then .btrue else .bfalse) m
 | bs_write_true {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
   (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
@@ -229,10 +221,10 @@ def Trace.Noninterfere (t1 t2 : Trace) : Prop :=
       cm1 = .access .ro ∧ cm2 = .access .ro
 
 /-- Progress / safety predicate: `Safe m e` means evaluating `e` from `m` never
-  gets stuck — every redex reached is reducible, and (inductively, since this is
-  a least fixed point) every path reaches an answer.
+  gets stuck — every redex reached is reducible, and (inductively, as a least fixed
+  point) every path reaches an answer.
 
-  The `letin`/`unpack` continuations quantify over the *real* `BigStep` answers of
+  The `letin`/`unpack` continuations quantify over the actual `BigStep` answers of
   the head, so the intermediate `m1` is a genuine result. -/
 inductive Safe : Memory -> Exp {} -> Prop where
 | ans {m : Memory} {e : Exp {}} :
@@ -298,42 +290,33 @@ inductive Safe : Memory -> Exp {} -> Prop where
   (resolve m.heap (.var x) = some .bfalse -> Safe m e3) ->
   Safe m (.cond x e2 e3)
 | par {m : Memory} {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}} :
-  -- Left branch safe at the current memory.
+  -- Each branch independently safe at the current memory: the separation content
+  -- needed to schedule the right branch before the left has finished.
   Safe m e1 ->
-  -- Right branch safe at the current memory (SYMMETRIC to the left): the two branches
-  -- are INDEPENDENTLY safe — the genuine separation content needed to schedule the
-  -- right branch before the left has finished (premature interleaving).
   Safe m e2 ->
-  -- Sequential continuation: after `e1` runs to an answer, `e2` is safe at the
-  -- result memory.
+  -- Sequential continuation: after `e1` runs to an answer, `e2` is safe at the result.
   (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1}, BigStep m e1 t1 v1 m1 -> Safe m1 e2) ->
-  -- Robust budget bounds: every run of a branch from ANY memory `m' ⊒ m` has its
-  -- trace bounded by that branch's budget `Cᵢ`.  The budget is GROWABLE (not pinned
-  -- to `Csᵢ.reachability m`): a branch's own fresh allocations must be absorbed into
-  -- the reduct's budget by `step_preserves_safe` (via `capsOf`), so `Cᵢ` is left
-  -- abstract here and instantiated to `Csᵢ.reachability m` by `sem_typ_par`.
+  -- Robust budget bounds: every run of a branch from any `m' ⊒ m` has its trace bounded
+  -- by that branch's budget `Cᵢ`. `Cᵢ` is growable (left abstract here), absorbing a
+  -- branch's own fresh allocations into the reduct's budget via `capsOf`.
   (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
     m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' -> TraceOk t C1) ->
   (hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
     m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' -> TraceOk t C2) ->
-  -- Robust branch safety: each branch is safe from any `m' ⊒ m` whose memory is
-  -- compatible with that branch's budget.  Memory-monotone, so `Safe.lift` preserves it.
+  -- Robust branch safety: each branch is safe from any `m' ⊒ m` compatible with its
+  -- budget. Memory-monotone, so `Safe.lift` preserves it.
   (hrs1 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C1 -> Safe m' e1) ->
   (hrs2 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C2 -> Safe m' e2) ->
-  -- Budget presence: each branch's budget references only cells present in `m`, so a
-  -- step's fresh allocation is distinct from every budget cell.
+  -- Budget presence: each branch's budget references only cells present in `m`.
   (hpres1 : ∀ mu l, C1.hasmem mu l -> m.heap l ≠ none) ->
   (hpres2 : ∀ mu l, C2.hasmem mu l -> m.heap l ≠ none) ->
   -- Budget = annotation reachability (mutual `⊆`): the abstract budget `Cᵢ` tracks the
-  -- term annotation `Csᵢ`'s reachability.  Holds at construction (`Cᵢ := Csᵢ.reachability m`)
-  -- and is maintained as BOTH grow in lockstep — the budget by `capsOf`, the annotation by
-  -- `growByAllocs` — via the coincidence lemmas.  This is what lets `SeqStep.toStep`
-  -- discharge `Step`'s `par` guards (phrased via `Csᵢ.reachability m`) from the carrier.
+  -- annotation `Csᵢ`'s reachability, maintained as both grow in lockstep (budget by
+  -- `capsOf`, annotation by `growByAllocs`).
   (hcov1 : C1 ⊆ Cs1.reachability m ∧ Cs1.reachability m ⊆ C1) ->
   (hcov2 : C2 ⊆ Cs2.reachability m ∧ Cs2.reachability m ⊆ C2) ->
-  -- The two budgets are non-interfering (the type system's `SepCheck`): with the
-  -- bounds this yields trace non-interference for any pair of branch runs
-  -- (`traceOk_noninterfere`).
+  -- The two budgets are non-interfering (`SepCheck`): with the bounds this yields trace
+  -- non-interference for any pair of branch runs (`traceOk_noninterfere`).
   (hni : CapabilitySet.Noninterference C1 C2) ->
   Safe m (.par Cs1 Cs2 e1 e2)
 
@@ -708,9 +691,8 @@ theorem traceOk_noninterfere {C1 C2 : CapabilitySet} {t1 t2 : Trace}
 
 /-- `is_compatible` transfers across a `FrameLive` step.  For a budget `R` whose
   cells `m` keeps live (`hcompat`) and which are all present in `m` (`hpresent`),
-  if `t` externally-drops none of them then they stay live in `m'`.  This is the
-  bridge that turns the (missing) frame guarantee into the continuation's
-  `is_compatible` obligation in `Fundamental`'s `letin`/`unpack` proofs. -/
+  if `t` externally-drops none of them then they stay live in `m'`.  Yields the
+  continuation's `is_compatible` obligation in `Fundamental`'s `letin`/`unpack`. -/
 theorem Memory.is_compatible_frame {m m' : Memory} {t : Trace} {R : CapabilitySet}
     (hcompat : m.is_compatible R)
     (hpresent : ∀ mu l, R.hasmem mu l -> m.heap l ≠ none)
@@ -1066,8 +1048,7 @@ theorem Memory.drop_mcell_IsLive_ne {m : Memory} {x : Nat} {h} {l : Nat}
   simp only [Memory.IsLive, Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_neg hne]
 
 -- "Agree" lemmas: a memory operation applied to two memories that agree on `l`'s
--- liveness yields memories that still agree on `l` — the location-`by_cases` is
--- internalized so `simulate_down`'s cases needn't name the operated location.
+-- liveness yields memories that still agree on `l` (location-`by_cases` internalized).
 theorem Memory.extend_mcell_IsLive_agree {m1 m2 : Memory} {L : Nat} {b1 b2 : Bool}
     {h1 h2} {l : Nat} (hag : m1.IsLive l ↔ m2.IsLive l) :
     (m1.extend_mcell L b1 h1).IsLive l ↔ (m2.extend_mcell L b2 h2).IsLive l := by
@@ -1709,20 +1690,13 @@ theorem BigStep.frame_off {ma mb : Memory} {e : Exp {}} {t v ma' : _} {c : Nat}
     rename_i vval l'
     rw [Trace.touched_append, not_or] at hnt
     obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
-    -- replay `e1` from `mb`
     obtain ⟨mb1, run1, ag1, cpres1⟩ := ih1 ⟨ci, hci⟩ ⟨cib, hcib⟩ hag hnt.1 hwf_e1
-    -- `c` stays a capability through `e1`, in both runs
     have hc_m1 := (BigStep.untouched_preserved hbs1 (by rw [hci]; simp) hnt.1).trans hci
     have hc_mb1 := cpres1.trans hcib
-    -- the lift location `l'` is `≠ c` (fresh in `m1`, but `c` is live there)
     have hl'c : l' ≠ c := fun h => by rw [h, hc_m1] at hfresh; cases hfresh
-    -- `l'` is fresh in `mb1` as well
     have hfreshb : mb1.lookup l' = none := (ag1 l' hl'c).symm.trans hfresh
-    -- the lifted value is well-formed in `mb1`
     have hwf_vb := BigStep.wf_answer run1 hwf_e1
-    -- the stored reachability agrees between the two extended cells
     have hreach_eq := compute_reachability_frame hc_m1 hc_mb1 ag1 vval hv
-    -- replay `e2` from the extended `mb`-memory
     obtain ⟨mb2, run2, ag2, cpres2⟩ :=
       ih2 (mb := mb1.extend_val l' ⟨vval, hv, compute_reachability mb1.heap vval hv⟩
               hwf_vb rfl hfreshb)
@@ -1938,7 +1912,6 @@ theorem BigStep.frame_off_absent {ma mb : Memory} {e : Exp {}} {t v ma' : _} {c 
       have hxc : xx ≠ c := fun h => by
         rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
       have hlkxb := (hag xx hxc) ▸ hlkx
-      -- the reader's target exists in `mb` (memory wf), hence `≠ c`
       match Memory.wf_lookup hlkxb with
       | .wf_reader (.wf_free (n := yy) hy1) =>
         have hyc : yy ≠ c := fun h => by
@@ -2339,11 +2312,9 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
   | step_write_true hx hy =>
     rename_i x m0 y b0 hv R
     have hyx : y ≠ x := fun h => by rw [h, hx] at hy; cases hy
-    -- `x` is a live mcell in both `m0` and `m0.update_mcell x ..`
     have hcx : (m0.update_mcell x true .live ⟨_, hx⟩).lookup x =
         some (Cell.capability (.mcell true .live)) := by
       simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
-    -- `s` does not touch `x` (it externally writes `x` with mode `.epsilon`)
     have hnal : ¬ Trace.allocd s x := fun ha => by
       have := BigStep.alloc_fresh hrun ha
       rw [show (m0.update_mcell x true .live ⟨_, hx⟩).lookup x = _ from hcx] at this; cases this
@@ -2396,14 +2367,12 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
     exact ⟨mc, run, hmb ▸ Step.step_write_false mcx mcy⟩
   | step_alloc hlk hfresh =>
     rename_i l m0 x b hv R
-    -- the freshly-allocated `l` is a capability in `m0.extend_mcell l b`, absent in `m0`
     have hcl : (m0.extend_mcell l b hfresh).lookup l =
         some (Cell.capability (.mcell b .live)) := Memory.extend_mcell_lookup hfresh
     obtain ⟨mc, run, ag, cpres, hnt⟩ :=
       hrun.frame_off_fresh ⟨_, hcl⟩ hfresh
         (fun k hk => by
           simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hk]) hwf1
-    -- `x` (a value cell) survives `e1`'s run
     have mcx : mc.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) :=
       BigStep.val_preserved run hlk
     have hmb : mc.extend_mcell l b cpres = mb := by
@@ -2426,8 +2395,6 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
       rw [show (m0.drop_mcell x ⟨_, hx⟩).lookup x = _ from hcx] at this; cases this
     have hntsx : ¬ Trace.touched s x :=
       Trace.not_touched_of_noninterfere hsep (Or.inl ⟨rfl, by simp, rfl⟩) (by simp) hnal
-    -- after the drop, `x` is a (dead) capability in `m0.drop_mcell`, and `x` is a live
-    -- capability in `m0`; both are `some (.capability ..)`, so `frame_off` applies
     obtain ⟨mc, run, ag, cpres⟩ :=
       hrun.frame_off ⟨_, hcx⟩ ⟨_, hx⟩
         (fun l hl => Memory.drop_mcell_lookup_ne hl) hntsx hwf1
@@ -2452,8 +2419,7 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
     cases hwf2 with
     | wf_par hwfC1 hwfC2 hwfa hwfb =>
       obtain ⟨mc, run, stepc⟩ := ih hrun hsep hwf1 hwfa
-      -- reachability is subsumption-invariant (`mc ⊒ m1`), so the original guards at
-      -- `m1` transport to the reconstructed step at `mc`.
+      -- reachability is subsumption-invariant (`mc ⊒ m1`), so the `m1` guards transport to `mc`.
       have hr1 := CaptureSet.reachability_monotonic run.subsumes _ hwfC1
       have hr2 := CaptureSet.reachability_monotonic run.subsumes _ hwfC2
       exact ⟨mc, run, Step.step_par_left stepc (by rw [hr1]; exact ht)
@@ -2472,7 +2438,6 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
     exact ⟨mb, hrun, Step.step_rename⟩
   | step_lift hv hwf hfresh =>
     rename_i v m0 _ l
-    -- the freshly-lifted value cell `l` is present in `m0.extend l ..`, absent in `m0`
     have hcl : (m0.extend l ⟨v, hv, compute_reachability m0.heap v hv⟩ hwf rfl hfresh).lookup l
         = some (Cell.val ⟨v, hv, compute_reachability m0.heap v hv⟩) := by
       simp only [Memory.lookup, Memory.extend, Heap.extend_lookup_eq]
@@ -2480,8 +2445,6 @@ theorem BigStep.step_run_commute {ts s : Trace} {m1 m2 mb : Memory}
       hrun.frame_off_absent (by rw [hcl]; simp) hfresh
         (fun k hk => by
           simp only [Memory.lookup, Memory.extend, Heap.extend, if_neg hk]) hwf1
-    -- value is wf in `mc` and its reachability matches (both heaps agree with `m0`,
-    -- where `v` is well-formed)
     have hwfc : v.WfInHeap mc.heap := Exp.wf_monotonic (BigStep.subsumes run) hwf
     have hreach : compute_reachability mc.heap v hv = compute_reachability m0.heap v hv :=
       compute_reachability_monotonic (BigStep.subsumes run) v hv hwf
@@ -2984,24 +2947,19 @@ theorem growByAllocs_reachability_le {m : Memory} :
       refine CapabilitySet.Subset.trans
         (ih (C := (CaptureSet.var (.M .epsilon) (.free l))
           ∪ ((CaptureSet.var .drop (.free l)) ∪ C)) hlive') ?_
-      -- ((var_e ∪ (var_d ∪ C)).reach ∪ capsOf rest) ⊆ C.reach ∪ capsOf (l :: rest)
       simp only [Trace.allocList, capsOf, CaptureSet.reachability_union,
         reachability_var_eps hinfo, reachability_var_drop hinfo]
       -- goal: (cap_e ∪ (cap_d ∪ C.reach)) ∪ caps ⊆ C.reach ∪ (cap_e ∪ (cap_d ∪ caps))
       refine CapabilitySet.Subset.union_left
         (CapabilitySet.Subset.union_left ?_ (CapabilitySet.Subset.union_left ?_ ?_)) ?_
-      · -- cap_e ⊆ RHS
-        exact CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
+      · exact CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
           CapabilitySet.Subset.union_right_right
-      · -- cap_d ⊆ RHS
-        exact CapabilitySet.Subset.trans
+      · exact CapabilitySet.Subset.trans
           (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_left
             CapabilitySet.Subset.union_right_right)
           CapabilitySet.Subset.union_right_right
-      · -- C.reach ⊆ RHS
-        exact CapabilitySet.Subset.union_right_left
-      · -- caps ⊆ RHS
-        exact CapabilitySet.Subset.trans
+      · exact CapabilitySet.Subset.union_right_left
+      · exact CapabilitySet.Subset.trans
           (CapabilitySet.Subset.trans CapabilitySet.Subset.union_right_right
             CapabilitySet.Subset.union_right_right)
           CapabilitySet.Subset.union_right_right
@@ -3102,7 +3060,6 @@ theorem TraceOkFrom.drop_unused_exempt {C : CapabilitySet} {S : List Nat} :
     | alloc l =>
       cases h with
       | alloc h =>
-        -- recurse with `S` and exemptions `l :: A`, re-bracketed
         refine TraceOkFrom.alloc (ih (A := l :: A) ?_ (fun l' h' => hnt l' (by
           simp only [Trace.touched]; exact h')))
         exact TraceOkFrom.mono_alloc (A := l :: (S ++ A)) (A' := S ++ l :: A)
@@ -3324,7 +3281,6 @@ theorem bound_step_trace {t rest τ : Trace} {m m' mf : Memory} {e e' v : Exp {}
     (hstep : Step t m e m' e') (hrun : BigStep m e τ v mf)
     (hperm : List.Perm τ (t ++ rest)) (htok : TraceOk τ C) :
     TraceOk t C := by
-  -- Reduce to: every access/dealloc cell of `t` is `C`-covered (allocs are free).
   have key : ∀ l cm, Trace.touchesWith t l cm -> C.covers cm l := by
     intro l cm htw_t
     have htw_full : Trace.touchesWith (t ++ rest) l cm :=
@@ -3472,14 +3428,14 @@ theorem Memory.basic_up {m ms : Memory} (hsub : ms.subsumes m) {x : Nat}
 set_option maxHeartbeats 1000000 in
 -- The full induction over `BigStep` with threaded subsumption/liveness/freshness invariants
 -- exceeds the default heartbeat budget.
-/-- **Same-trace replay in a subsuming super-memory (UP transfer).**  A run replays VERBATIM
+/-- **Same-trace replay in a subsuming super-memory (up transfer).**  A run replays verbatim
   (same trace, same value) from `ms ⊒ m`, provided every mcell the run touches and is live for is
   also live in `ms` (`hrel`, an `IsLive` biconditional at touched cells) and every cell the run
   allocates or leaves behind is fresh in `ms` (`hfresh`).  Names are preserved (no renaming): the
   `letin` reachability divergence is killed by `compute_reachability_monotonic`.  Conclusions
   thread the induction: `ms' ⊒ m'`, the fresh-tracking, and the `simulate_down`-style liveness
-  biconditional.  Dual of `BigStep.simulate_down` (which goes DOWN and derives liveness from
-  subsumption; UP needs `hrel`/`hfresh` because subsumption does not preserve liveness upward). -/
+  biconditional.  Dual of `BigStep.simulate_down` (which goes down and derives liveness from
+  subsumption; up needs `hrel`/`hfresh` because subsumption does not preserve liveness upward). -/
 theorem BigStep.transfer {m : Memory} {e : Exp {}} {t v m'} (hbs : BigStep m e t v m') :
     ∀ {ms : Memory}, ms.subsumes m → Exp.WfInHeap e m.heap →
       (hrel : ∀ l, Trace.touched t l → (m.IsLive l ↔ ms.IsLive l)) →
@@ -3816,17 +3772,16 @@ theorem not_extDrops_of_noninterf {B1 B2 : CapabilitySet} {t : Trace} {l : Nat} 
   cases hle
 
 set_option maxHeartbeats 1000000 in
--- The case split (pre-existing vs `e2`-allocated touched cells) over the noninterference frame.
-/-- **Right-branch liveness frame for `Safe.lift`'s `par` case — FULLY PROVEN.**  When lifting
+-- The multi-stage construction (avoiding run + verbatim transfer) exceeds the default budget.
+/-- **Right-branch liveness frame for `Safe.lift`'s `par` case.**  When lifting
   `Safe m1 (.par Cs1 Cs2 e1 e2)` to `m2 ⊒ m1`, the new unconditional right field `Safe m2 e2` is
   produced by lifting `Safe m1 e2` with the per-run frame `hok_e2 : extTouches t l → l live in m2`.
-  This discharges that obligation WITHOUT any renaming/equivariance: schedule the left branch's
-  answer run to AVOID `e2`'s fresh names (`Safe.has_answer_avoiding` over `dom(mf) ∪ allocList t`,
-  a superset of `e2`'s fresh cells), so `e2` REPLAYS VERBATIM from the post-`e1` memory `ms`
-  (`BigStep.transfer`: names preserved, mcell liveness off the noninterference frame
-  `hb1`/`hb2`/`hni`, reachability via `compute_reachability_monotonic`).  The replayed run touches
-  the same `l`, so the par run `e1`-then-`e2`-from-`ms` touches `l`, and the par's frame `hok`
-  keeps `l` live in `m2`. -/
+  Discharged without any renaming/equivariance: schedule the left branch's answer run to avoid
+  `e2`'s fresh names (`Safe.has_answer_avoiding` over `dom(mf) ∪ allocList t`, a superset of `e2`'s
+  fresh cells), so `e2` replays verbatim from the post-`e1` memory `ms` (`BigStep.transfer`: names
+  preserved, mcell liveness off the noninterference frame `hb1`/`hb2`/`hni`, reachability via
+  `compute_reachability_monotonic`).  The replayed run touches the same `l`, so the par run
+  `e1`-then-`e2`-from-`ms` touches `l`, and the par's frame `hok` keeps `l` live in `m2`. -/
 theorem BigStep.par_right_keepsLive
     {m1 m2 mf : Memory} {e1 e2 : Exp {}} {Cs1 Cs2 : CaptureSet {}}
     {C1 C2 : CapabilitySet} {t : Trace} {v2 : Exp {}} {l : Nat} {b : Bool}
@@ -3849,10 +3804,9 @@ theorem BigStep.par_right_keepsLive
   have htok1 : TraceOk s1 C1 := hb1 (Memory.subsumes_refl _) hwf_e1 hbs1
   have htok2 : TraceOk t C2 := hb2 (Memory.subsumes_refl _) hwf_e2 hbs2
   have hsub : ms.subsumes m1 := BigStep.subsumes hbs1
-  -- membership of a touched cell in `S`
   have hmemS : ∀ c, Trace.allocd t c → c ∈ dommf ∪ (Trace.allocList t).toFinset := fun c ha =>
     Finset.mem_union.mpr (Or.inr (List.mem_toFinset.mpr (Trace.mem_allocList.mpr ha)))
-  -- liveness biconditional at touched cells (`e1` is `C1`-only, disjoint from `C2 ∋` touched cells)
+  -- liveness biconditional at touched cells: `e1` is `C1`-only, disjoint from `C2`'s touched cells.
   have hrel : ∀ c, Trace.touched t c → (m1.IsLive c ↔ ms.IsLive c) := by
     intro c hc
     by_cases hcm1 : m1.lookup c = none
@@ -3879,7 +3833,6 @@ theorem BigStep.par_right_keepsLive
           (not_extDrops_of_noninterf htok1 (CapabilitySet.Noninterference.ni_symm hni) hmem)
       · rintro ⟨bb, hbb⟩
         exact Memory.mcell_lookup_down hsub hc0 hbb
-  -- freshness: every cell `e2` allocates or leaves behind is fresh in `ms`
   have hfresh : ∀ c, (Trace.allocd t c ∨ (mf.lookup c ≠ none ∧ m1.lookup c = none)) →
       ms.lookup c = none := by
     intro c h
@@ -3891,7 +3844,6 @@ theorem BigStep.par_right_keepsLive
   -- `l` is pre-existing in `m1`, so `e1`'s run does not freshly allocate it.
   have hnal_s1 : ¬ Trace.allocd s1 l := fun ha => by
     have hnone := BigStep.alloc_fresh hbs1 ha; rw [hnone] at hl_live; cases hl_live
-  -- the sequential par run `e1`-then-`e2`-from-`ms` externally touches `l` (via `e2`'s part `t`).
   have htouchF : Trace.extTouches (s1 ++ t) l :=
     Trace.extTouchesFrom_append_right hnal_s1 (by simp) htouch
   have hfull := BigStep.bs_par (C1 := Cs1) (C2 := Cs2) hbs1 hbs2_ms
@@ -3989,17 +3941,16 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
     rename_i e1 e2 m1 _ _ Cs1 Cs2
     cases hwf with
     | wf_par hwf_C1 hwf_C2 hwf_e1 hwf_e2 =>
-      -- Budgets are ABSTRACT (`C1`/`C2`) and unchanged by lifting; bounds/safety/NI
-      -- transport by `subsumes_trans`, presence by `none_of_subsumes_none`.  The link
-      -- `hcov` transports by `reachability_monotonic` (annotation reachability is fixed).
+      -- Budgets `C1`/`C2` are unchanged by lifting; bounds/safety/NI transport by `subsumes_trans`,
+      -- presence by `none_of_subsumes_none`, the `hcov` link by `reachability_monotonic`.
       have hok_e1 : ∀ t v m, m.subsumes m1 -> BigStep m1 e1 t v m ->
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs1
         obtain ⟨t2, v2, mf, hbs2⟩ := (h2 hbs1).has_answer
         have hfull := BigStep.bs_par (C1 := Cs1) (C2 := Cs2) hbs1 hbs2
         exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
-      -- The new unconditional right field `Safe m2 e2`: lift `Safe m1 e2` (`hs2`) with a per-run
-      -- frame discharged by `BigStep.par_right_keepsLive` (the noninterference footprint frame).
+      -- Right field `Safe m2 e2`: lift `Safe m1 e2` with a per-run frame discharged by
+      -- `BigStep.par_right_keepsLive`.
       have hok_e2 : ∀ t v m, m.subsumes m1 -> BigStep m1 e2 t v m ->
           Memory.SubsumeOk m1 t m2 := by
         intro t v m _ hbs2 l b hl_live htouch
@@ -4048,8 +3999,8 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
     clear m1
     rename_i e1 e2 m1 _
     obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
-    -- `hok` for `e1`: run the continuation to a `letin`-answer, apply the outer
-    -- `hok` to the full run, and restrict the footprint back to `t` via `mono_append`.
+    -- `hok` for `e1`: run the continuation to a `letin`-answer, apply the outer `hok` to the
+    -- full run, and restrict the footprint back to `t` via `mono_append`.
     have hok_e1 : ∀ t v m, m.subsumes m1 -> BigStep m1 e1 t v m ->
         Memory.SubsumeOk m1 t m2 := by
       intro t v m _ hbs1
@@ -4558,8 +4509,8 @@ theorem Eval.eval_par {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
       m1.subsumes m -> Memory.FrameLive m t1 m1 -> Q1 t1 v1 m1 ->
       Eval m1 e2 (fun t2 _v2 m2 => Q (t1 ++ t2) .unit m2)) :
     Eval m (.par Cs1 Cs2 e1 e2) Q := by
-  -- The carrier budget is abstract+growable; instantiate it to the reachability of the
-  -- annotation here.  Presence (`hpres`) is exactly `reachability_dom`.
+  -- Instantiate the abstract carrier budget to the annotation's reachability; presence is
+  -- exactly `reachability_dom`.
   refine ⟨Safe.par he1.1 hse2 ?_ hb1 hb2 hrs1 hrs2
     (fun _ _ h => CaptureSet.reachability_dom h)
     (fun _ _ h => CaptureSet.reachability_dom h)

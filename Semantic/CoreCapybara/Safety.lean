@@ -31,26 +31,21 @@ def Heap.platform_of (N : Nat) : Heap :=
 def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
 | N+1 =>
-  -- The capture set for cell N is {ε N}, with ground denotation singleton {ε N}
   let cs : CaptureSet {} := .var (.M .epsilon) (.free N)
   let cap := CapabilitySet.singleton .epsilon N
   let env := (TypeEnv.platform_of N).extend_cvar cs (cap := cap)
-  -- Peak set for type (.capt (.cvar (.M .epsilon) .here) .cell) is (.cvar (.M .epsilon) .here)
   env.extend_var N ⟨.cvar (.M .epsilon) .here, .cvar⟩
 
 /-- The platform heap is well-formed: it contains only mutable cells, no values. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
   constructor
-  · -- wf_val: no values in the platform heap
-    intro l hv hlookup
+  · intro l hv hlookup
     unfold Heap.platform_of at hlookup
     split at hlookup <;> cases hlookup
-  · -- wf_reach: no values in the platform heap
-    intro l v hv R hlookup
+  · intro l v hv R hlookup
     unfold Heap.platform_of at hlookup
     split at hlookup <;> cases hlookup
-  · -- wf_reach_dom: no values in the platform heap
-    intro l v hv R hlookup
+  · intro l v hv R hlookup
     unfold Heap.platform_of at hlookup
     split at hlookup <;> cases hlookup
 
@@ -60,15 +55,13 @@ theorem Heap.platform_of_has_fin_dom (N : Nat) :
   intro l
   unfold Heap.platform_of
   constructor
-  · -- If heap is not none, then l < N
-    intro h
+  · intro h
     split at h
     case isTrue hlt =>
       simp [Finset.mem_range, hlt]
     case isFalse =>
       contradiction
-  · -- If l ∈ range N, then heap is not none
-    intro h
+  · intro h
     simp [Finset.mem_range] at h
     split
     case isTrue => simp
@@ -100,9 +93,9 @@ theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
   EnvTyping Γ env (Memory.platform_of M) := by
   exact env_typing_monotonic ht (platform_memory_subsumes hNM)
 
-/-- The platform memory is compatible with ANY capability set: every location it
-  holds is a *live* mcell, so the liveness obligation of `is_compatible` is met,
-  and locations outside its domain are `none` (vacuously fine). -/
+/-- The platform memory is compatible with any capability set: every location it
+  holds is a live mcell, so the liveness obligation of `is_compatible` is met, and
+  locations outside its domain are `none` (vacuously fine). -/
 theorem platform_is_compatible {N : Nat} (C : CapabilitySet) :
     (Memory.platform_of N).is_compatible C := by
   intro mu l b ℓ _ hheap
@@ -134,32 +127,25 @@ theorem env_typing_of_platform {N : Nat} :
     (Memory.platform_of N) := by
   induction N with
   | zero =>
-    -- Base case: empty environment
     unfold Ctx.platform_of TypeEnv.platform_of
     exact True.intro
   | succ N ih =>
-    -- Inductive case: add capture variable C and term variable x
     unfold Ctx.platform_of TypeEnv.platform_of EnvTyping
     simp only [List.empty_eq]
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-    · -- Term variable x : .cell (.cvar (.M .epsilon) .here) at location N
-      change Ty.val_denot _ (.cell _) _ _
+    · change Ty.val_denot _ (.cell _) _ _
       unfold Ty.val_denot
       refine ⟨?_, N, false, .live, rfl, ?_, ?_⟩
-      · -- Capture set after substitution is well-formed
-        simp only [List.empty_eq]
+      · simp only [List.empty_eq]
         apply CaptureSet.WfInHeap.wf_var_free
         change (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
         unfold Heap.platform_of
         simp
-      · -- m.lookup N = some (.capability (.mcell false .live))
-        change (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
+      · change (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
         unfold Heap.platform_of
         simp
-      · -- (cs.denot env m).covers (.access .epsilon) N
-        simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
+      · simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
           CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
-        -- `lookup_cvar .here` returns the stored ground `.var (.M .epsilon) (.free N)`
         change ((CaptureSet.var (.M .epsilon) (.free N)).ground_denot
           (Memory.platform_of (N + 1))).covers (.access .epsilon) N
         have hg : (CaptureSet.var (.M .epsilon) (.free N)).ground_denot
@@ -168,58 +154,40 @@ theorem env_typing_of_platform {N : Nat} :
             Heap.platform_of, CapabilitySet.singleton]
         rw [hg]
         exact CapabilitySet.covers.here CapMode.Le.refl
-    · -- Peak set equality
-      simp only [Ty.captureSet, CaptureSet.peakset, CaptureSet.peaks]
-    · -- cs.WfInHeap
-      apply CaptureSet.WfInHeap.wf_var_free
+    · simp only [Ty.captureSet, CaptureSet.peakset, CaptureSet.peaks]
+    · apply CaptureSet.WfInHeap.wf_var_free
       change (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
       unfold Heap.platform_of
       simp
-    · -- (B.subst).WfInHeap : .unbound is trivially well-formed
-      exact CaptureBound.WfInHeap.wf_unbound
-    · -- cap.BoundedBy (B.denot env m)
-      exact CapabilitySet.BoundedBy.top
-    · -- cap = cs.ground_denot m
-      simp [CaptureSet.ground_denot, reachability_of_loc,
+    · exact CaptureBound.WfInHeap.wf_unbound
+    · exact CapabilitySet.BoundedBy.top
+    · simp [CaptureSet.ground_denot, reachability_of_loc,
         Memory.platform_of, Heap.platform_of, CapabilitySet.singleton]
-    · -- cap.drop_free ∧ a' = a ∧ recursion
-      refine ⟨?_, rfl, ?_⟩
-      · -- cap.drop_free
-        intro l hmem
+    · refine ⟨?_, rfl, ?_⟩
+      · intro l hmem
         cases hmem
-      · -- Recursive: platform N types in platform (N+1) memory
-        exact env_typing_platform_monotonic (N := N) (M := N + 1) (by omega) ih
+      · exact env_typing_platform_monotonic (N := N) (M := N + 1) (by omega) ih
 
-/-- An expression `e` is safe with a platform environment of `N` mutable cells
-    iff for any SEQUENTIAL reduction state reachable from `e` on the platform, it is
-    progressive (an answer, or able to take another `SeqStep`).
-
-    Safety is stated for the sequential schedule `SeqReduce`, for which the big-step
-    bridge is exact; lifting to the full interleaving `Reduce` is the standardization
-    theorem (B).  No `AllLive`/drop-free side-condition is needed: `par`-safety
-    preservation gets the frozen branch's safety from the ungated continuation `h2`
-    (the frozen branch is an answer) and the reduct's robust safety from the
-    bound-driven `Safe.lift`. -/
+/-- An expression `e` is safe with a platform environment of `N` mutable cells iff
+    every state reachable from `e` on the platform under the sequential schedule
+    `SeqReduce` is progressive (an answer, or able to take another `SeqStep`). -/
 def Exp.SafeWithPlatform (e : Exp {}) (N : Nat) : Prop :=
   ∀ t M1 e1,
     SeqReduce t (Memory.platform_of N) e M1 e1 ->
     IsProgressive M1 e1
 
-/-- **Adequacy of semantic typing on platform contexts.**  A semantically
-    well-typed, closed program is safe with the platform: every reachable state
-    is progressive.  The platform memory is compatible with any budget and is
-    separation-well-formed, so the two extra `SemanticTyping` obligations discharge
-    trivially. -/
+/-- Adequacy of semantic typing on platform contexts: a semantically well-typed,
+    closed program is safe with the platform — every reachable state is
+    progressive. The platform memory is compatible with any budget and is
+    separation-well-formed, discharging the two extra `SemanticTyping` obligations. -/
 theorem adequacy_platform {e : Exp (Sig.platform_of N)}
   (ht : SemanticTyping C (Ctx.platform_of N) e E)
   (hwfe : Exp.WfInHeap e (Heap.platform_of N)) :
   (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatform N := by
   unfold Exp.SafeWithPlatform
   intro t M1 e1 hred
-  -- Apply semantic typing with the platform environment.
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N)
     env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
-  -- The denotation is an `Eval`; preserve it under reduction, then conclude progress.
   unfold Ty.exi_exp_denot at hdenot
   have hwf : Exp.WfInHeap (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N)))
       (Memory.platform_of N).heap :=
@@ -229,12 +197,11 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
 
 /-! ## Immutability
 
-  A read-only budget forbids *writes* (`.access .epsilon`).  But the `ro` kind
-  also permits `.drop` capabilities (`HasKind.ro_drop`), and a drop deallocates a
-  cell — turning it dead and zeroing its bit — which `not_mutated` (tracking bit
-  *and* liveness) counts as a mutation.  So immutability genuinely needs the
-  budget to be **both** read-only **and** drop-free; that is the honest premise
-  below (a purely-reading program). -/
+  A read-only budget forbids writes (`.access .epsilon`). But the `ro` kind also
+  permits `.drop` capabilities (`HasKind.ro_drop`), and a drop deallocates a cell
+  (turning it dead and zeroing its bit), which `not_mutated` (tracking bit and
+  liveness) counts as a mutation. So immutability needs the budget to be both
+  read-only and drop-free. -/
 
 /-- A read-only capability set never covers a write (`.access .epsilon`):
     its caps are `.access .ro` (and `.epsilon ≰ .ro`) or `.drop` (incomparable). -/
@@ -338,14 +305,11 @@ theorem traceok_no_dealloc {C : CapabilitySet} {l : Nat}
       · exact hA hin
     · exact ih hA halloc hmem'
 
-/-- **Immutability adequacy.**  A semantically well-typed program whose budget is
-    read-only (`HasKind .ro`) *and* drop-free does not mutate any platform cell:
-    every reachable state agrees with the initial memory on all mutable cells
-    (bit and liveness).
-
-    Both premises are essential.  `ro` rules out writes; drop-freeness rules out
-    deallocations (which `ro` would otherwise permit, and which mutate liveness).
-    The semantic typing is what relates the run's trace to the budget. -/
+/-- Immutability adequacy: a semantically well-typed program whose budget is
+    read-only (`HasKind .ro`) and drop-free does not mutate any platform cell —
+    every reachable state agrees with the initial memory on all mutable cells (bit
+    and liveness). `ro` rules out writes; drop-freeness rules out deallocations
+    (which `ro` would otherwise permit, and which mutate liveness). -/
 theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     {C : CaptureSet (Sig.platform_of N)} {E : Ty .exi (Sig.platform_of N)}
     (ht : SemanticTyping C (Ctx.platform_of N) e E)
@@ -357,14 +321,12 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
         (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
       (Memory.platform_of N).not_mutated M1 := by
   intro t M1 e1 hred
-  -- The budget `R := C.denot ρ m`.
   have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N)
     env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
   unfold Ty.exi_exp_denot at hdenot
   have hwf : Exp.WfInHeap (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N)))
       (Memory.platform_of N).heap :=
     Exp.wf_subst hwfe (from_TypeEnv_wf_in_heap env_typing_of_platform)
-  -- The budget is read-only.
   have hro : CapabilitySet.HasKind
       (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)) .ro :=
     fundamental_haskind hkind (TypeEnv.platform_of N) (Memory.platform_of N)
@@ -375,9 +337,8 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
   have hbig := reduce_to_bigstep (seqreduce_trans hred hred2) hans
   have htok : TraceOk (t ++ trest)
       (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)) := (hdenot.2 _ _ _ hbig).1
-  -- Each platform cell is unchanged.
   intro l b ℓ hinit
-  -- `l` exists in the platform, so it is never allocated by the run.
+  -- `l` is pre-allocated in the platform, so it is never freshly allocated by the run.
   have hl_alloc : ¬ Trace.allocd (t ++ trest) l := by
     intro ha
     have hnone := BigStep.alloc_fresh hbig ha

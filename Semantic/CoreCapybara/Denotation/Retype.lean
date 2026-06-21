@@ -10,9 +10,8 @@ def interp_var (env : TypeEnv s) (x : Var .var s) : Nat :=
 
 /-! ### Peak machinery for transporting denotations along `Retype`
 
-To relate a denotation under an environment to the denotation of its
-substitution we track peak membership (`HasPeak`), which transports along
-environment rebindings. -/
+Peak membership (`HasPeak`) transports along environment rebindings, relating a
+denotation under an environment to the denotation of its substitution. -/
 
 /-- `compute_peaks` is the identity on peaks-only capture sets. -/
 theorem compute_peaks_peaksOnly_fixed {env : TypeEnv s} {P : CaptureSet s}
@@ -273,13 +272,6 @@ structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) (D :
     ∀ (C : BVar s1 .cvar),
       (env1.lookup_cvar C).1 = (σ.cvar C).subst (Subst.from_TypeEnv env2)
 
--- NOTE: the structure used to carry a `var_peaks` field (per-variable peak
--- correspondence between the stored peak sets). Under the killed-binding
--- model, stored peak sets are denotationally inert — denotations read the
--- environment only through `lookup_var.1`, `lookup_tvar`, and
--- `lookup_cvar` — so the field (and the peak-slack obligations it forced on
--- `sem_typ_app` and `sem_subtyp_arrow`) is gone.
-
 lemma weaken_interp_var {x : Var .var s} {ps : PeakSet s} :
   interp_var env x = interp_var (env.extend_var n ps) (x.rename Rename.succ) := by
   cases x <;> rfl
@@ -536,7 +528,7 @@ private theorem retype_satisfy_iff
         hsat.sep (C1.subst σ) m1 (C2.subst σ) m2 hdistinct'
 
 set_option maxHeartbeats 800000 in
--- The cpoly case requires more heartbeats due to accumulated elaboration state in the mutual block
+-- cpoly case accumulates elaboration state across the mutual block
 mutual
 
 def retype_val_denot
@@ -712,22 +704,17 @@ def retype_exi_val_denot
   | .exi T => by
     intro s e
     simp only [Ty.exi_val_denot, Ty.subst]
-    -- Both sides are match expressions on resolve s.heap e
     cases hresolve : resolve s.heap e
-    · -- resolve = none
-      simp
-    · -- resolve = some e'
-      rename_i e'
+    · simp
+    · rename_i e'
       cases e'
       case pack =>
         rename_i CS y
         simp only [List.empty_eq, and_congr_right_iff]
-        -- Goal: CS.WfInHeap s.heap → drop-free → (... ↔ ...)
         intro _hwf _hdf
         exact retype_val_denot
           (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot s) (a:=.can_drop)) T s (Exp.var y)
       all_goals {
-        -- resolve returned non-pack
         simp
       }
 

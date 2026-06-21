@@ -11,11 +11,11 @@ the consumed peaks of the scrutinee's budget have been retagged to `.killed`
 (`Ctx.kill_peaks`). This file provides the semantic counterpart
 (`TypeEnv.kill_peaks`) and the transport lemmas relating the two:
 
-- killing changes *only* the authority tag of a binding: all lookups except
+- killing changes only the authority tag of a binding: all lookups except
   `lookup_authority`/`lookup_cvar_auth` are invariant, hence so are
   substitutions, peak computations, and type denotations;
 - `EnvTyping` transports along simultaneous context/environment killing;
-- the environment separation invariant `EnvSepWf` is *antitone* under killing
+- the environment separation invariant `EnvSepWf` is antitone under killing
   (killing only removes demanded pairs). -/
 
 /-! ## Context-side lemmas -/
@@ -576,7 +576,7 @@ theorem TypeEnv.EnvSepWf.extend_lock {env : TypeEnv s}
     | there c2 =>
       exact h c1 c2 (fun heq => hne (congrArg BVar.there heq)) h1 h2
 
-/-- Extending with a *non-droppable* capture variable adds no demanded pairs. -/
+/-- Extending with a non-droppable capture variable adds no demanded pairs. -/
 theorem TypeEnv.EnvSepWf.extend_cvar_access_only {env : TypeEnv s}
     {cs : CaptureSet {}} {cap : CapabilitySet}
     (h : env.EnvSepWf) : (env.extend_cvar cs cap .access_only).EnvSepWf := by
@@ -616,7 +616,7 @@ theorem TypeEnv.kill_cvar_extend_cvar {env : TypeEnv s} {c : BVar s .cvar}
     (env.kill_cvar c).extend_cvar cs cap a =
       (env.extend_cvar cs cap a).kill_cvar (.there c) := rfl
 
-/-- Killing a *weakened* atom set in an extended environment kills the
+/-- Killing a weakened atom set in an extended environment kills the
 original atoms below the extension. -/
 theorem TypeEnv.kill_peaks_cs_extend_cvar {env : TypeEnv s} {K : CaptureSet s}
     {cs : CaptureSet {}} {cap : CapabilitySet} {a : Authority} :

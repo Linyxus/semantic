@@ -1032,11 +1032,10 @@ theorem CaptureSet.ground_rename_invariant {C : CaptureSet {}} :
     rw [ih1, ih2]
   | var m x =>
     cases x with
-    | bound bx => cases bx  -- No bound variables in empty signature
+    | bound bx => cases bx
     | free n =>
-      -- Free variables are unchanged by rename
       simp only [CaptureSet.rename, Var.rename]
-  | cvar m c => cases c  -- No capture variables in empty signature
+  | cvar m c => cases c
 
 theorem CaptureSet.ground_subst_invariant {C : CaptureSet {}} :
   C.subst σ = C := by
@@ -1092,7 +1091,6 @@ def CaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : Subst s1 s2}
     | free n =>
       cases h_var
 
--- Helper lemmas for renaming closedness (minimal versions needed here)
 private theorem Var.rename_closed_any {x : Var .var s1} {f : Rename s1 s2}
   (hc : x.IsClosed) : (x.rename f).IsClosed := by
   cases x with
@@ -1437,11 +1435,8 @@ theorem CaptureSet.subst_closed_inv {cs : CaptureSet s1} {σ : Subst s1 s2}
   | var m x =>
     cases x with
     | bound bx =>
-      -- For bound variables, .var (.bound bx) is always closed
       exact IsClosed.var_bound
     | free n =>
-      -- For free variables, (.var (.free n)).subst σ = .var (.free n)
-      -- But this can't be closed, contradicting hclosed
       simp only [CaptureSet.subst, Var.subst] at hclosed
       cases hclosed
 
