@@ -61,10 +61,9 @@ def SepCtx.subst : SepCtx s1 -> Subst s1 s2 -> SepCtx s2
 def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, s => (s.tvar x).core
-| .arrow T1 cs T2, s => .arrow (T1.subst s) (cs.subst s) (T2.subst s.lift)
+| .arrow T1 cs T2, s => .arrow (T1.subst s.lift) (cs.subst s) (T2.subst s.lift)
 | .poly T1 cs T2, s => .poly (T1.subst s) (cs.subst s) (T2.subst s.lift)
 | .cpoly cb cs T, s => .cpoly (cb.subst s) (cs.subst s) (T.subst s.lift)
-| .modal cs Ψ T, s => .modal (cs.subst s) (Ψ.subst s) (T.subst s)
 | .unit, _ => .unit
 | .cap cs, s => .cap (cs.subst s)
 | .bool, _ => .bool
@@ -92,7 +91,6 @@ theorem Ty.IsPureType.subst {T : Ty .capt s1} (h : T.IsPureType) (σ : Subst s1 
   | arrow _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | poly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cpoly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
-  | modal _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cap cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cell cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | reader cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
@@ -309,6 +307,12 @@ theorem CaptureBound.weaken_subst_comm_liftMany
   | bound cs =>
     simp only [CaptureBound.subst, CaptureBound.rename, CaptureSet.weaken_subst_comm_liftMany]
 
+/-- Arithmetic helper for the `arrow` termination goal, where the recursive argument
+  sits in the middle of the size sum. Stating it with a single variable `n` lets `omega`
+  discharge it; at the use site `exact` matches the two (definitionally equal but
+  syntactically distinct) `sizeOf` occurrences up to defeq. -/
+private theorem lt_add_mid {a b c n : Nat} (h : 0 < a) : n < a + n + b + c := by omega
+
 theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
     (T.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K) := by
@@ -320,15 +324,11 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     simp only [PureTy.rename] at h
     exact congrArg PureTy.core h
   | .arrow T1 cs T2 =>
-    have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
+    have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K,C) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x) (k0:=k0)
-    simp only [Ty.subst, Ty.rename, ih1, ihCS]
-    exact congrArg
-      (Ty.arrow
-        ((T1.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K))
-        ((cs.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K)))
-      ih2
+    simp only [Ty.subst, Ty.rename, ihCS]
+    congr 1
   | .poly T1 cs T2 =>
     have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -349,11 +349,6 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
         ((cb.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K))
         ((cs.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K)))
       ih
-  | .modal cs Ψ T =>
-    have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs := cs) (σ := σ) (K := K) (k0 := k0)
-    have ihΨ := SepCtx.weaken_subst_comm_liftMany (Ψ := Ψ) (σ := σ) (K := K) (k0 := k0)
-    have ih := Ty.weaken_subst_comm (T := T) (σ := σ) (K := K) (k0 := k0)
-    simp only [Ty.subst, Ty.rename, ihCS, ihΨ, ih]
   | .unit => rfl
   | .cap cs =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -377,6 +372,7 @@ decreasing_by
   all_goals first
     | decreasing_tactic
     | (simp_wf; refine Nat.lt_add_of_pos_left ?_; omega)
+    | (simp_wf; exact lt_add_mid (by omega))
 
 theorem Ty.weaken_subst_comm_base {T : Ty sort s1} {σ : Subst s1 s2} :
   (T.subst σ).rename (Rename.succ (k:=k)) = (T.rename Rename.succ).subst (σ.lift (k:=k)) :=
@@ -540,7 +536,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | tvar x => rfl
   | arrow T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, ih1, ih2, CaptureSet.subst_comp]
-    conv_rhs => rw [← Subst.comp_lift]
+    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
     rfl
   | poly T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, ih1, ih2, CaptureSet.subst_comp]
@@ -550,13 +546,6 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp only [Ty.subst, ih, CaptureBound.subst_comp, CaptureSet.subst_comp]
     conv_rhs => rw [← Subst.comp_lift]
     rfl
-  | modal cs Ψ T ih =>
-    have hΨ : (Ψ.subst σ1).subst σ2 = Ψ.subst (σ1.comp σ2) := by
-      induction Ψ with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, ihΨ, CaptureSet.subst_comp]
-    simp only [Ty.subst, CaptureSet.subst_comp, ih, hΨ]
   | unit => rfl
   | cap cs => simp only [Ty.subst, CaptureSet.subst_comp]
   | bool => rfl
@@ -690,9 +679,8 @@ theorem Ty.subst_id {T : Ty sort s} :
   | top => simp only [Ty.subst]
   | tvar x => simp only [Ty.subst, Subst.id, PureTy.tvar]
   | arrow T1 cs T2 ih1 ih2 =>
-    simp only [Ty.subst, ih1, CaptureSet.subst_id]
-    conv_lhs => rw [Subst.lift_id]
-    exact congrArg (Ty.arrow T1 cs) ih2
+    simp only [Ty.subst, CaptureSet.subst_id, Subst.lift_id]
+    congr 1
   | poly T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, ih1, CaptureSet.subst_id]
     conv_lhs => rw [Subst.lift_id]
@@ -701,13 +689,6 @@ theorem Ty.subst_id {T : Ty sort s} :
     simp only [Ty.subst, CaptureBound.subst_id, CaptureSet.subst_id]
     conv_lhs => rw [Subst.lift_id]
     exact congrArg (Ty.cpoly cb cs) ih
-  | modal cs Ψ T ih =>
-    have hΨ : Ψ.subst Subst.id = Ψ := by
-      induction Ψ with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, ihΨ, CaptureSet.subst_id]
-    simp only [Ty.subst, CaptureSet.subst_id, ih, hΨ]
   | unit => simp only [Ty.subst]
   | cap cs => simp only [Ty.subst, CaptureSet.subst_id]
   | bool => simp only [Ty.subst]
@@ -870,9 +851,10 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | top => rfl
   | tvar x => simp only [Ty.subst, Ty.rename, Rename.asSubst, PureTy.tvar]
   | arrow T1 cs T2 ih1 ih2 =>
-    simp only [Ty.subst, Ty.rename, ih1, CaptureSet.subst_asSubst]
-    rw [← Rename.asSubst_lift]
-    exact congrArg (Ty.arrow (T1.rename f) (cs.rename f)) ih2
+    have e1 := ih1 (f := f.lift)
+    have e2 := ih2 (f := f.lift)
+    simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ← Rename.asSubst_lift]
+    congr 1
   | poly T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, Ty.rename, ih1, CaptureSet.subst_asSubst]
     rw [← Rename.asSubst_lift]
@@ -881,13 +863,6 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
     simp only [Ty.subst, Ty.rename, CaptureBound.subst_asSubst, CaptureSet.subst_asSubst]
     rw [← Rename.asSubst_lift]
     exact congrArg (Ty.cpoly (cb.rename f) (cs.rename f)) ih
-  | modal cs Ψ T ih =>
-    have hΨ : Ψ.subst (f.asSubst) = Ψ.rename f := by
-      induction Ψ generalizing s2 with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, SepCtx.rename, ihΨ, CaptureSet.subst_asSubst]
-    simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ih, hΨ]
   | unit => simp only [Ty.subst, Ty.rename]
   | cap cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | bool => simp only [Ty.subst, Ty.rename]
@@ -1141,10 +1116,6 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
     cases hc with | cpoly hcb hcs hT =>
     exact IsClosed.cpoly (CaptureBound.rename_closed_any hcb)
       (CaptureSet.rename_closed_any hcs) (ih hT)
-  | modal cs Ψ T ih =>
-    cases hc with | modal hcs hΨ hT =>
-    exact IsClosed.modal (CaptureSet.rename_closed_any hcs)
-      (SepCtx.rename_closed_any hΨ) (ih hT)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1213,7 +1184,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   | arrow T1 cs T2 ih1 ih2 =>
     cases hc with | arrow h1 hcs h2 =>
     simp only [Ty.subst]
-    exact IsClosed.arrow (ih1 h1 hsubst)
+    exact IsClosed.arrow (ih1 h1 (Subst.lift_closed hsubst))
       (CaptureSet.is_closed_subst hcs hsubst) (ih2 h2 (Subst.lift_closed hsubst))
   | poly T1 cs T2 ih1 ih2 =>
     cases hc with | poly h1 hcs h2 =>
@@ -1225,12 +1196,6 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     simp only [Ty.subst]
     exact IsClosed.cpoly (CaptureBound.is_closed_subst hcb hsubst)
       (CaptureSet.is_closed_subst hcs hsubst) (ih hT (Subst.lift_closed hsubst))
-  | modal cs Ψ T ih =>
-    cases hc with | modal hcs hΨ hT =>
-    simp only [Ty.subst]
-    exact IsClosed.modal
-      (CaptureSet.is_closed_subst hcs hsubst)
-      (SepCtx.is_closed_subst hΨ hsubst) (ih hT hsubst)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1484,11 +1449,6 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     cases hclosed with | cpoly hcb hcs hT =>
     exact IsClosed.cpoly (CaptureBound.subst_closed_inv hcb)
       (CaptureSet.subst_closed_inv hcs) (ih hT)
-  | modal cs Ψ T ih =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | modal hcs hΨ hT =>
-    exact IsClosed.modal (CaptureSet.subst_closed_inv hcs)
-      (SepCtx.subst_closed_inv hΨ) (ih hT)
   | unit => exact IsClosed.unit
   | cap cs =>
     simp only [Ty.subst] at hclosed
