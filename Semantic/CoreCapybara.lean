@@ -16,6 +16,8 @@ import Semantic.CoreCapybara.Safety
 
 import Semantic.CoreCapybara.Semantics.Standardization
 
+import Semantic.CoreCapybara.Semantics.Confluence
+
 /-!
 # Semantic Type Soundness for CoreCapybara
 
@@ -41,6 +43,14 @@ establishes semantic type soundness of Capture Calculus.
 It proves the fundamental theorem: syntactic typing (which is defined in
 `Semantic.CoreCapybara.TypeSystem`) implies semantic typing.
 Then, it proves safety: well-typed programs are always progressive.
+
+For the parallel (`par`) fragment, `Semantic.CoreCapybara.Semantics.Standardization` proves
+standardization (every interleaving run to an answer matches a sequential one up to Mazurkiewicz
+trace-equivalence), and `Semantic.CoreCapybara.Semantics.Confluence` (on the nominal/equivariance
+layer `Semantic.CoreCapybara.Semantics.Equivariance`) proves confluence / Church–Rosser for
+arbitrary partial reductions: any two interleavings of a safe program reconverge up to a location
+permutation, `Trace.Equiv`, and reachability-equivalence of `par` capture annotations — the
+semantic content of data-race freedom.
 
 This is considered an intermediate step towards the "actual" Capybara.
 -/
