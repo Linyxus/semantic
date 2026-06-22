@@ -1,5 +1,6 @@
 import Semantic.CoreCapybara.Fundamental
 import Semantic.CoreCapybara.Semantics.Props
+import Semantic.CoreCapybara.Semantics.Standardization
 namespace CoreCapybara
 
 /-! The following defines _platforms_. -/
@@ -194,6 +195,49 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
     Exp.wf_subst hwfe (from_TypeEnv_wf_in_heap env_typing_of_platform)
   exact eval_implies_progressive
     (reduce_preserves_eval hdenot hwf hred)
+
+/-! ## Adequacy under the genuine interleaving schedule
+
+  `adequacy_platform` carries over from the sequential `SeqReduce` to the GENUINE
+  interleaving relation `Reduce` because progress is a consequence of `Safe` alone
+  (`safe_implies_progressive`), and `Safe` is preserved under genuine `Step`
+  (`Step.preserves_safe`).  No confluence or trace reordering is needed for progress. -/
+
+/-- `Safe` is preserved along a genuine interleaving reduction `Reduce`. -/
+theorem Reduce.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
+    (hred : Reduce t m1 e1 m2 e2) (hwf : e1.WfInHeap m1.heap) :
+    Safe m1 e1 → Safe m2 e2 := by
+  induction hred with
+  | refl => exact fun hs => hs
+  | step hstep _ ih =>
+    intro hs
+    exact ih (Step.preserves_wf hstep hwf) (Step.preserves_safe hstep hwf hs)
+
+/-- An expression is safe with the platform under the GENUINE interleaving schedule
+    `Reduce`: every interleaving-reachable state is progressive (an answer, or able to
+    take a step). -/
+def Exp.SafeWithPlatformReduce (e : Exp {}) (N : Nat) : Prop :=
+  ∀ t M1 e1,
+    Reduce t (Memory.platform_of N) e M1 e1 ->
+    IsProgressive M1 e1
+
+/-- **Adequacy on platform contexts for `Reduce`.**  A semantically well-typed closed
+    program is safe with the platform under the genuine interleaving schedule — every
+    state reachable by arbitrary interleaving is progressive.  Shares the denotational
+    input with the sequential `adequacy_platform`; progress follows from `Safe`,
+    preserved under genuine `Step`. -/
+theorem adequacy_platform_reduce {e : Exp (Sig.platform_of N)}
+    (ht : SemanticTyping C (Ctx.platform_of N) e E)
+    (hwfe : Exp.WfInHeap e (Heap.platform_of N)) :
+    (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))).SafeWithPlatformReduce N := by
+  intro t M1 e1 hred
+  have hdenot := ht (TypeEnv.platform_of N) (Memory.platform_of N)
+    env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
+  unfold Ty.exi_exp_denot at hdenot
+  have hwf : Exp.WfInHeap (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N)))
+      (Memory.platform_of N).heap :=
+    Exp.wf_subst hwfe (from_TypeEnv_wf_in_heap env_typing_of_platform)
+  exact safe_implies_progressive (Reduce.preserves_safe hred hwf hdenot.1)
 
 /-! ## Immutability
 
