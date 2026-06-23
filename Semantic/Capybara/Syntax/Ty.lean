@@ -17,7 +17,7 @@ inductive TySort : Type where
 
 /-- A capture bound, either unbound or bounded by a capture set. -/
 inductive CaptureBound : Sig -> Type where
-| unbound : CaptureBound s
+| unbound : Mutability -> CaptureBound s
 | bound : CaptureSet s -> CaptureBound s
 
 /-- Applies a renaming to a capture bound. -/
