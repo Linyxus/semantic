@@ -115,28 +115,29 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
-inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
-| disj_symm :
-  DisjCheck Γ C1 C2 ->
-  -------------------
-  DisjCheck Γ C2 C1
-| disj_empty {C : CaptureSet s} :
-  -------------------
-  DisjCheck Γ {} C
-| disj_union :
-  DisjCheck Γ C1 C3 ->
-  DisjCheck Γ C2 C3 ->
-  -------------------
-  DisjCheck Γ (C1 ∪ C2) C3
-| disj_peaks :
-  C1.IsClosed ->
-  DisjCheck Γ (C1.peaks Γ) C2 ->
-  --------------------
-  DisjCheck Γ C1 C2
-| disj_droppable {c1 c2 : BVar s .cvar} :
-  Γ.TwoDistinctDroppable c1 c2 ->
-  --------------------
-  DisjCheck Γ (.cvar a1 c1) (.cvar a2 c2)
+-- Obsolete: after refactoring SeqComp, no DisjCheck needed. SepCheck is enough.
+-- inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+-- | disj_symm :
+--   DisjCheck Γ C1 C2 ->
+--   -------------------
+--   DisjCheck Γ C2 C1
+-- | disj_empty {C : CaptureSet s} :
+--   -------------------
+--   DisjCheck Γ {} C
+-- | disj_union :
+--   DisjCheck Γ C1 C3 ->
+--   DisjCheck Γ C2 C3 ->
+--   -------------------
+--   DisjCheck Γ (C1 ∪ C2) C3
+-- | disj_peaks :
+--   C1.IsClosed ->
+--   DisjCheck Γ (C1.peaks Γ) C2 ->
+--   --------------------
+--   DisjCheck Γ C1 C2
+-- | disj_droppable {c1 c2 : BVar s .cvar} :
+--   Γ.TwoDistinctDroppable c1 c2 ->
+--   --------------------
+--   DisjCheck Γ (.cvar a1 c1) (.cvar a2 c2)
 
 inductive Satisfy : Ctx s -> SepCtx s -> Prop where
 | satisfy {Ψ : SepCtx s} :
@@ -219,10 +220,15 @@ inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   CaptureSet.AccessOnly Γ C1 ->
   ----------------------
   SeqComp Γ C1 C2
-| seq_drop :
-  DisjCheck Γ C1 C2 ->
+-- Obsolete: replaced by seq_sep
+-- | seq_drop :
+--   DisjCheck Γ C1 C2 ->
+--   ----------------------
+--   SeqComp Γ C1.applyDrop C2
+| seq_sep :
+  SepCheck Γ C1 C2 ->
   ----------------------
-  SeqComp Γ C1.applyDrop C2
+  SeqComp Γ C1 C2
 
 inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | var :
