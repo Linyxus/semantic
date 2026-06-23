@@ -59,11 +59,10 @@ inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
 | rw {C : CaptureSet s} :
   -------------------
   HasKind Γ C .epsilon
-| imm {C : CaptureSet s} :
-  Ctx.LookupLock Γ ℓ Ψ ->
-  SepCtx.Has Ψ C .ro ->
+| imm {c : BVar s .cvar} :
+  Ctx.LookupCVar Γ c a (.unbound .ro) ->
   -------------------
-  HasKind Γ C .ro
+  HasKind Γ (.cvar (.M .epsilon) c) .ro
 | ro {C : CaptureSet s} :
   -------------------
   HasKind Γ C.applyRO .ro
@@ -73,9 +72,14 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
   Subcapt Γ C1 C2 ->
   -------------------
   Subbound Γ (.bound C1) (.bound C2)
-| top :
+| unbound {m1 m2 : Mutability} :
+  m2 ≤ m1 ->
   -------------------
-  Subbound Γ B .unbound
+  Subbound Γ (.unbound m1) (.unbound m2)
+| bound_unbound {C : CaptureSet s} {m : Mutability} :
+  HasKind Γ C m ->
+  -------------------
+  Subbound Γ (.bound C) (.unbound m)
 
 inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sep_symm :
@@ -105,13 +109,8 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   CaptureSet.EquivP Γ C1' C1 ->
   --------------------
   SepCheck Γ C1' C2
-| sep_lock {C1 C2 : CaptureSet s} :
-  Ctx.LookupLock Γ ℓ Ψ ->
-  SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
-  --------------------
-  SepCheck Γ C1 C2
-| sep_droppable {c1 c2 : BVar s .cvar} :
-  Γ.TwoDistinctDroppable c1 c2 ->
+| sep_distinct {c1 c2 : BVar s .cvar} :
+  c1 ≠ c2 ->
   --------------------
   SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
@@ -138,12 +137,13 @@ inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   DisjCheck Γ (.cvar a1 c1) (.cvar a2 c2)
 
-inductive Satisfy : Ctx s -> SepCtx s -> Prop where
-| satisfy {Ψ : SepCtx s} :
-  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
-  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
-  -------------------------------------------
-  Satisfy Γ Ψ
+-- obsolete: superseded by direct kind/separation checks
+-- inductive Satisfy : Ctx s -> SepCtx s -> Prop where
+-- | satisfy {Ψ : SepCtx s} :
+--   (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
+--   (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
+--   -------------------------------------------
+--   Satisfy Γ Ψ
 
 inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | top {T : Ty .capt s} :
