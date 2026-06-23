@@ -22,13 +22,13 @@ inductive CaptureBound : Sig -> Type where
 
 /-- Applies a renaming to a capture bound. -/
 def CaptureBound.rename : CaptureBound s1 -> Rename s1 s2 -> CaptureBound s2
-| .unbound, _ => .unbound
+| .unbound m, _ => .unbound m
 | .bound cs, f => .bound (cs.rename f)
 
 /-- Renaming by the identity renaming leaves a capture bound unchanged. -/
 def CaptureBound.rename_id {cb : CaptureBound s} : cb.rename (Rename.id) = cb := by
   cases cb with
-  | unbound => rfl
+  | unbound m => rfl
   | bound cs => simp [CaptureBound.rename, CaptureSet.rename_id]
 
 /-- Renaming distributes over composition of renamings. -/
@@ -36,7 +36,7 @@ theorem CaptureBound.rename_comp
     {cb : CaptureBound s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (cb.rename f).rename g = cb.rename (f.comp g) := by
   cases cb with
-  | unbound => rfl
+  | unbound m => rfl
   | bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
 
 /-- A type in CC, indexed by its sort (capturing or existential). -/
@@ -167,7 +167,7 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 
 /-- A capture bound is closed if it contains no heap pointers. -/
 inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
-| unbound : CaptureBound.IsClosed .unbound
+| unbound : CaptureBound.IsClosed (.unbound m)
 | bound : CaptureSet.IsClosed cs -> CaptureBound.IsClosed (.bound cs)
 
 /-- A type is closed if it contains no heap pointers. -/
