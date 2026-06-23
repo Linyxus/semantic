@@ -9,7 +9,7 @@ namespace Capybara
 /-- An expression in CC. -/
 inductive Exp : Sig -> Type where
 | var : Var .var s -> Exp s
-| abs : Mutability -> CaptureSet s -> Ty .capt (s,C) -> Exp (s,x) -> Exp s
+| abs : CaptureSet s -> Ty .capt (s,C) -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | reader : Var .var s -> Exp s
@@ -35,7 +35,7 @@ inductive Exp : Sig -> Type where
 /-- Applies a renaming to all bound variables in an expression. -/
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
-| .abs m cs T e, f => .abs m (cs.rename f) (T.rename (f.lift)) (e.rename (f.lift))
+| .abs cs T e, f => .abs (cs.rename f) (T.rename (f.lift)) (e.rename (f.lift))
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
 | .reader x, f => .reader (x.rename f)
@@ -57,7 +57,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 
 /-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
-| abs : Exp.IsVal (.abs m cs T e)
+| abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
 | pack : Exp.IsVal (.pack cs x)
@@ -69,7 +69,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 /-- A simple value is a value that is not a pack. Therefore,
       a simple value always has a capturing type, not an existential type. -/
 inductive Exp.IsSimpleVal : Exp s -> Prop where
-| abs : Exp.IsSimpleVal (.abs m cs T e)
+| abs : Exp.IsSimpleVal (.abs cs T e)
 | tabs : Exp.IsSimpleVal (.tabs cs T e)
 | cabs : Exp.IsSimpleVal (.cabs cs m e)
 | unit : Exp.IsSimpleVal .unit
@@ -101,7 +101,7 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   induction e with
   | var x =>
     simp only [Exp.rename, Var.rename_id]
-  | abs m cs T e ih =>
+  | abs cs T e ih =>
     simp only [Exp.rename, CaptureSet.rename_id, Rename.lift_id]
     have hT : T.rename Rename.id = T := Ty.rename_id
     congr 1
@@ -155,9 +155,9 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   induction e generalizing s2 s3 with
   | var x =>
     simp only [Exp.rename, Var.rename_comp]
-  | abs m cs T e ih =>
+  | abs cs T e ih =>
     simpa only [Exp.rename, CaptureSet.rename_comp, Ty.rename_comp, Rename.lift_comp] using
-      congrArg (Exp.abs m (cs.rename (f.comp g)) (T.rename (f.lift.comp g.lift)))
+      congrArg (Exp.abs (cs.rename (f.comp g)) (T.rename (f.lift.comp g.lift)))
         (ih (f := f.lift) (g := g.lift))
   | tabs cs T e ih =>
     simpa only [Exp.rename, CaptureSet.rename_comp, PureTy.rename_comp, Rename.lift_comp] using
@@ -223,7 +223,7 @@ inductive Exp.IsAns : Exp {} -> Prop where
 inductive Exp.IsClosed : Exp s -> Prop where
 | var : Var.IsClosed x -> Exp.IsClosed (.var x)
 | abs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
-    Exp.IsClosed (.abs m cs T e)
+    Exp.IsClosed (.abs cs T e)
 | tabs : CaptureSet.IsClosed cs -> PureTy.IsClosed T -> Exp.IsClosed e ->
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
