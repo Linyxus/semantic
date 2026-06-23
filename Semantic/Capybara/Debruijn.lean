@@ -109,4 +109,11 @@ theorem Rename.lift_comp {f1 : Rename s1 s2} {f2 : Rename s2 s3} :
   intro k x
   cases x <;> rfl
 
+/-- Weakening that inserts an implicit capture variable just below the top
+    binder, mapping `s,,k` into `s,C,,k`. -/
+def Rename.implicit_cvar : Rename (s,,k) (s,C,,k) where
+  var := fun
+    | .here => .here
+    | .there y => .there (.there y)
+
 end Capybara
