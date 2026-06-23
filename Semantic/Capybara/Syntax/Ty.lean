@@ -44,7 +44,12 @@ inductive Ty : TySort -> Sig -> Type where
 -- capturing types
 | top : Ty .capt s
 | tvar : BVar s .tvar -> Ty .capt s
-| arrow : Ty .capt (s,C) -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
+| arrow : 
+  Mutability -> 
+  Ty .capt (s,C) -> 
+  CaptureSet s -> 
+  Ty .exi (s,x) -> 
+  Ty .capt s
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
