@@ -7,20 +7,16 @@ inductive Authority : Type where
 | can_drop : Authority
 -- This capability may only be accessed, not dropped
 | access_only : Authority
--- This capability is already dropped: it can neither be accessed nor dropped
-| killed : Authority
 
 inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : PureTy s -> Binding s .tvar
 | cvar : Authority -> CaptureBound s -> Binding s .cvar
-| lock : SepCtx s -> Binding s .lock
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
 | .tvar T, f => .tvar (T.rename f)
 | .cvar a cb, f => .cvar a (cb.rename f)
-| .lock Ψ, f => .lock (Ψ.rename f)
 
 inductive Ctx : Sig -> Type where
 | empty : Ctx {}
@@ -38,9 +34,6 @@ def Ctx.push_cvar : Ctx s -> Authority -> CaptureBound s -> Ctx (s,C)
 def Ctx.push_cvar_default : Ctx s -> CaptureBound s -> Ctx (s,C)
 | Γ, cb => Γ.push_cvar .can_drop cb
 
-def Ctx.push_lock : Ctx s -> SepCtx s -> Ctx (s,,.lock)
-| Γ, Ψ => Γ.push (.lock Ψ)
-
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar
 notation:65 Γ:65 ",C[" a:66 "]<:" cb:66 => Ctx.push_cvar Γ a cb
@@ -51,7 +44,6 @@ inductive Binding.IsClosed : Binding s k -> Prop where
 | var : T.IsClosed -> Binding.IsClosed (.var T)
 | tvar : T.IsClosed -> Binding.IsClosed (.tvar T)
 | cvar : cb.IsClosed -> Binding.IsClosed (.cvar a cb)
-| lock : Ψ.IsClosed -> Binding.IsClosed (.lock Ψ)
 
 /-- A context is closed if all bindings in it are closed. -/
 inductive Ctx.IsClosed : Ctx s -> Prop where
@@ -79,13 +71,6 @@ inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> Authority -> CaptureBound s 
   Ctx.LookupCVar Γ c a cb ->
   Ctx.LookupCVar (.push Γ b) (.there c) a (cb.rename Rename.succ)
 
-inductive Ctx.LookupLock : Ctx s -> BVar s .lock -> SepCtx s -> Prop
-| here :
-  Ctx.LookupLock (.push Γ (.lock Ψ)) .here (Ψ.rename Rename.succ)
-| there {Ψ : SepCtx s} {b : Binding s k} :
-  Ctx.LookupLock Γ ℓ Ψ ->
-  Ctx.LookupLock (.push Γ b) (.there ℓ) (Ψ.rename Rename.succ)
-
 def Ctx.lookup_tvar : Ctx s -> BVar s .tvar -> PureTy s
 | .push _ (.tvar S), .here => S.rename Rename.succ
 | .push Γ _, .there x => (Γ.lookup_tvar x).rename Rename.succ
@@ -109,10 +94,6 @@ def Ctx.TwoDistinctDroppable (Γ : Ctx s) (c1 c2 : BVar s .cvar) : Prop :=
   Γ.lookup_authority c2 = .can_drop ∧
   c1 ≠ c2
 
-def Ctx.lookup_lock : Ctx s -> BVar s .lock -> SepCtx s
-| .push _ (.lock Ψ), .here => Ψ.rename Rename.succ
-| .push Γ _, .there ℓ => (Γ.lookup_lock ℓ).rename Rename.succ
-
 def Ctx.lookup_tvar' : Ctx (s,,k) -> BVar (s,,k) .tvar -> PureTy s
 | .push _ (.tvar S), .here => S
 | .push Γ _, .there x => Γ.lookup_tvar x
@@ -124,10 +105,6 @@ def Ctx.lookup_var' : Ctx (s,,k) -> BVar (s,,k) .var -> Ty .capt s
 def Ctx.lookup_cvar' : Ctx (s,,k) -> BVar (s,,k) .cvar -> CaptureBound s
 | .push _ (.cvar _ cb), .here => cb
 | .push Γ _, .there c => Γ.lookup_cvar c
-
-def Ctx.lookup_lock' : Ctx (s,,k) -> BVar (s,,k) .lock -> SepCtx s
-| .push _ (.lock Ψ), .here => Ψ
-| .push Γ _, .there ℓ => Γ.lookup_lock ℓ
 
 /-- The functional lookup satisfies the inductive predicate. -/
 theorem Ctx.lookup_tvar_spec (Γ : Ctx s) (x : BVar s .tvar) :
@@ -186,22 +163,6 @@ theorem Ctx.LookupCVar.eq_authority {Γ : Ctx s} {c : BVar s .cvar}
   | here => rfl
   | there _ ih => simp only [Ctx.lookup_authority, ih]
 
-/-- The functional lookup satisfies the inductive predicate. -/
-theorem Ctx.lookup_lock_spec (Γ : Ctx s) (ℓ : BVar s .lock) :
-    Ctx.LookupLock Γ ℓ (Γ.lookup_lock ℓ) := by
-  match Γ, ℓ with
-  | .push _ (.lock _), .here => exact LookupLock.here
-  | .push Γ' _, .there ℓ' =>
-    simp only [lookup_lock]
-    exact LookupLock.there (lookup_lock_spec Γ' ℓ')
-
-/-- If the inductive predicate holds, the sepctx equals the functional lookup. -/
-theorem Ctx.LookupLock.eq_lookup {Γ : Ctx s} {ℓ : BVar s .lock} {Ψ : SepCtx s}
-    (h : Ctx.LookupLock Γ ℓ Ψ) : Ψ = Γ.lookup_lock ℓ := by
-  induction h with
-  | here => rfl
-  | there _ ih => simp only [Ctx.lookup_lock, ih]
-
 /-- The lookup equals the primed lookup renamed by succ. -/
 theorem Ctx.lookup_tvar_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) :
     Γ.lookup_tvar x = (Γ.lookup_tvar' x).rename Rename.succ := by
@@ -211,7 +172,6 @@ theorem Ctx.lookup_tvar_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .tvar) :
     | tvar S => cases x with | here => rfl | there x' => rfl
     | var T => cases x with | there x' => rfl
     | cvar _ cb => cases x with | there x' => rfl
-    | lock Ψ => cases x with | there x' => rfl
 
 /-- The lookup equals the primed lookup renamed by succ. -/
 theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
@@ -222,7 +182,6 @@ theorem Ctx.lookup_var_eq_rename (Γ : Ctx (s,,k)) (x : BVar (s,,k) .var) :
     | tvar S => cases x with | there x' => rfl
     | var T => cases x with | here => rfl | there x' => rfl
     | cvar _ cb => cases x with | there x' => rfl
-    | lock Ψ => cases x with | there x' => rfl
 
 /-- The lookup equals the primed lookup renamed by succ. -/
 theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
@@ -233,18 +192,6 @@ theorem Ctx.lookup_cvar_eq (Γ : Ctx (s,,k)) (c : BVar (s,,k) .cvar) :
     | tvar S => cases c with | there c' => rfl
     | var T => cases c with | there c' => rfl
     | cvar _ cb => cases c with | here => rfl | there c' => rfl
-    | lock Ψ => cases c with | there c' => rfl
-
-/-- The lookup equals the primed lookup renamed by succ. -/
-theorem Ctx.lookup_lock_eq_rename (Γ : Ctx (s,,k)) (ℓ : BVar (s,,k) .lock) :
-    Γ.lookup_lock ℓ = (Γ.lookup_lock' ℓ).rename Rename.succ := by
-  cases Γ with
-  | push Γ' b =>
-    cases b with
-    | tvar S => cases ℓ with | there ℓ' => rfl
-    | var T => cases ℓ with | there ℓ' => rfl
-    | cvar _ cb => cases ℓ with | there ℓ' => rfl
-    | lock Ψ => cases ℓ with | here => rfl | there ℓ' => rfl
 
 mutual
 /-- Helper: peak up a bound var in context. -/
@@ -319,34 +266,6 @@ def PeakSet.droppable (Γ : Ctx s) (P : PeakSet s) : Prop :=
 def CaptureSet.droppable (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   PeakSet.droppable Γ (C.peakset Γ)
 
-/-- A peak set is accessible in `Γ` when every capture variable occurring in it
-is not bound with `.killed` authority. -/
-def PeakSet.accessible (Γ : Ctx s) (P : PeakSet s) : Prop :=
-  ∀ (a : Access) (c : BVar s .cvar),
-    (CaptureSet.cvar a c) ⊆ P.cs → Γ.lookup_authority c ≠ .killed
-
-/-- A capture set is accessible in `Γ` when all of its peaks are accessible. -/
-def CaptureSet.accessible (Γ : Ctx s) (C : CaptureSet s) : Prop :=
-  PeakSet.accessible Γ (C.peakset Γ)
-
-/-- Sets the authority of the capture variable `c` to `.killed`, leaving the
-rest of the context unchanged. -/
-def Ctx.kill_cvar : Ctx s -> BVar s .cvar -> Ctx s
-| .push Γ (.cvar _ cb), .here => .push Γ (.cvar .killed cb)
-| .push Γ b, .there c => .push (Γ.kill_cvar c) b
-
-/-- Kills every capture variable occurring in the capture set, turning each into
-`.killed`. Helper for `Ctx.kill_peaks`. -/
-def Ctx.kill_peaks_cs : Ctx s -> CaptureSet s -> Ctx s
-| Γ, .empty => Γ
-| Γ, .union cs1 cs2 => (Γ.kill_peaks_cs cs1).kill_peaks_cs cs2
-| Γ, .cvar _ c => Γ.kill_cvar c
-| Γ, .var _ _ => Γ
-
-/-- Turns all peaks in the peak set to `.killed` in the resulting context. -/
-def Ctx.kill_peaks (Γ : Ctx s) (P : PeakSet s) : Ctx s :=
-  Γ.kill_peaks_cs P.cs
-
 /-- A capture set is access-only in `Γ` when none of its peaks is dropped. -/
 def CaptureSet.AccessOnly (Γ : Ctx s) (C : CaptureSet s) : Prop :=
   ∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ (C.peakset Γ).cs → False
@@ -406,16 +325,6 @@ theorem CaptureSet.peaks_rename_succ_eq {Γ : Ctx s} {b : Binding s k} {C : Capt
               CaptureSet.peaksVarBound
             ]
         | cvar _ cm =>
-          cases x with
-          | there x' =>
-            simp only [
-              CaptureSet.rename,
-              Var.rename,
-              Rename.succ,
-              CaptureSet.peaks,
-              CaptureSet.peaksVarBound
-            ]
-        | lock Ψ =>
           cases x with
           | there x' =>
             simp only [
