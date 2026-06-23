@@ -104,19 +104,17 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .reader x, s => .reader (x.subst s)
 | .alloc x, s => .alloc (x.subst s)
 | .drop x, s => .drop (x.subst s)
-| .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
 | .capp x cs, s => .capp (x.subst s) (cs.subst s)
 | .letin e1 e2, s => .letin (e1.subst s) (e2.subst s.lift)
-| .unpack e1 e2, s => .unpack (e1.subst s) (e2.subst s.lift.lift)
 | .unit, _ => .unit
 | .btrue, _ => .btrue
 | .bfalse, _ => .bfalse
 | .read x, s => .read (x.subst s)
 | .write x y, s => .write (x.subst s) (y.subst s)
 | .cond x e2 e3, s => .cond (x.subst s) (e2.subst s) (e3.subst s)
-| .par C1 C2 e1 e2, s => .par (C1.subst s) (C2.subst s) (e1.subst s) (e2.subst s)
+| .par e1 e2, s => .par (e1.subst s) (e2.subst s)
 
 /-- Substitution that opens a variable binder by replacing the innermost bound variable with `x`. -/
 def Subst.openVar (x : Var .var s) : Subst (s,x) s where
@@ -560,8 +558,6 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | reader x => simp only [Exp.subst, Var.subst_comp]
   | alloc x => simp only [Exp.subst, Var.subst_comp]
   | drop x => simp only [Exp.subst, Var.subst_comp]
-  | pack cs x =>
-    simp only [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp only [Exp.subst, Var.subst_comp]
   | tapp x T => simp only [Exp.subst, Var.subst_comp, PureTy.subst_comp]
   | capp x cs =>
@@ -570,10 +566,6 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp only [Exp.subst, ih1, ih2]
     conv_rhs => rw [← Subst.comp_lift]
     rfl
-  | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.subst, ih1, ih2]
-    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
-    rfl
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -581,8 +573,8 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | write x y => simp only [Exp.subst, Var.subst_comp]
   | cond x e2 e3 ih2 ih3 =>
     simp only [Exp.subst, Var.subst_comp, ih2, ih3]
-  | par C1 C2 e1 e2 ih1 ih2 =>
-    simp only [Exp.subst, CaptureSet.subst_comp, ih1, ih2]
+  | par e1 e2 ih1 ih2 =>
+    simp only [Exp.subst, ih1, ih2]
 
 /-- Substitution on separation contexts distributes over composition of substitutions. -/
 theorem SepCtx.subst_comp {K : SepCtx s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
@@ -689,8 +681,6 @@ theorem Exp.subst_id {e : Exp s} :
     simp only [Exp.subst, Var.subst_id]
   | drop x =>
     simp only [Exp.subst, Var.subst_id]
-  | pack cs x =>
-    simp only [Exp.subst, CaptureSet.subst_id, Var.subst_id]
   | app x y =>
     simp only [Exp.subst, Var.subst_id]
   | tapp x T =>
@@ -701,10 +691,6 @@ theorem Exp.subst_id {e : Exp s} :
     simp only [Exp.subst, ih1]
     conv_lhs => rw [Subst.lift_id]
     exact congrArg (Exp.letin e1) ih2
-  | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.subst, ih1]
-    conv_lhs => rw [Subst.lift_id, Subst.lift_id]
-    exact congrArg (Exp.unpack e1) ih2
   | unit =>
     rfl
   | btrue => rfl
@@ -715,8 +701,8 @@ theorem Exp.subst_id {e : Exp s} :
     simp only [Exp.subst, Var.subst_id]
   | cond x e2 e3 ih2 ih3 =>
     simp only [Exp.subst, Var.subst_id, ih2, ih3]
-  | par C1 C2 e1 e2 ih1 ih2 =>
-    simp only [Exp.subst, CaptureSet.subst_id, ih1, ih2]
+  | par e1 e2 ih1 ih2 =>
+    simp only [Exp.subst, ih1, ih2]
 
 /-- Substituting with the identity substitution leaves a separation context unchanged. -/
 theorem SepCtx.subst_id {K : SepCtx s} :
@@ -850,8 +836,6 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | drop x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
-  | pack cs x =>
-    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
   | app x y =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | tapp x T =>
@@ -862,10 +846,6 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp only [Exp.subst, Exp.rename, ih1]
     rw [← Rename.asSubst_lift]
     exact congrArg (Exp.letin (e1.rename f)) ih2
-  | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.subst, Exp.rename, ih1]
-    rw [← Rename.asSubst_lift, ← Rename.asSubst_lift]
-    exact congrArg (Exp.unpack (e1.rename f)) ih2
   | unit =>
     rfl
   | btrue =>
@@ -878,8 +858,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | cond x e2 e3 ih2 ih3 =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst, ih2, ih3]
-  | par C1 C2 e1 e2 ih1 ih2 =>
-    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, ih1, ih2]
+  | par e1 e2 ih1 ih2 =>
+    simp only [Exp.subst, Exp.rename, ih1, ih2]
 
 /-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem SepCtx.subst_asSubst {K : SepCtx s1} {f : Rename s1 s2} :
@@ -1181,12 +1161,6 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     cases hc with | drop hx =>
     simp only [Exp.subst]
     exact IsClosed.drop (Var.is_closed_subst hx hsubst)
-  | pack cs x =>
-    cases hc with | pack hcs hx =>
-    simp only [Exp.subst]
-    constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
-    · exact Var.is_closed_subst hx hsubst
   | app x y =>
     cases hc with | app hx hy =>
     simp only [Exp.subst]
@@ -1211,12 +1185,6 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     constructor
     · exact ih1 he1 hsubst
     · exact ih2 he2 (Subst.lift_closed hsubst)
-  | unpack e1 e2 ih1 ih2 =>
-    cases hc with | unpack he1 he2 =>
-    simp only [Exp.subst]
-    constructor
-    · exact ih1 he1 hsubst
-    · exact ih2 he2 (Subst.lift_closed (Subst.lift_closed hsubst))
   | unit =>
     exact IsClosed.unit
   | btrue =>
@@ -1235,11 +1203,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     cases hc with | cond hx h2 h3 =>
     simp only [Exp.subst]
     exact IsClosed.cond (Var.is_closed_subst hx hsubst) (ih2 h2 hsubst) (ih3 h3 hsubst)
-  | par C1 C2 e1 e2 ih1 ih2 =>
-    cases hc with | par hc1 hc2 h1 h2 =>
+  | par e1 e2 ih1 ih2 =>
+    cases hc with | par h1 h2 =>
     simp only [Exp.subst]
-    exact IsClosed.par (CaptureSet.is_closed_subst hc1 hsubst)
-      (CaptureSet.is_closed_subst hc2 hsubst) (ih1 h1 hsubst) (ih2 h2 hsubst)
+    exact IsClosed.par (ih1 h1 hsubst) (ih2 h2 hsubst)
 
 /-- The openVar substitution is closed if the variable is closed. -/
 theorem Subst.openVar_is_closed {z : Var .var s}
@@ -1404,10 +1371,6 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | drop hx =>
     exact IsClosed.drop (Var.subst_closed_inv hx)
-  | pack cs x =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | pack hcs hx =>
-    exact IsClosed.pack (CaptureSet.subst_closed_inv hcs) (Var.subst_closed_inv hx)
   | app x y =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | app hx hy =>
@@ -1424,10 +1387,6 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | letin he1 he2 =>
     exact IsClosed.letin (ih1 he1) (ih2 he2)
-  | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | unpack he1 he2 =>
-    exact IsClosed.unpack (ih1 he1) (ih2 he2)
   | unit => exact IsClosed.unit
   | btrue =>
     simp only [Exp.subst] at hclosed
@@ -1447,10 +1406,9 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | cond hx h2 h3 =>
     exact IsClosed.cond (Var.subst_closed_inv hx) (ih2 h2) (ih3 h3)
-  | par C1 C2 e1 e2 ih1 ih2 =>
+  | par e1 e2 ih1 ih2 =>
     simp only [Exp.subst] at hclosed
-    cases hclosed with | par hc1 hc2 h1 h2 =>
-    exact IsClosed.par (CaptureSet.subst_closed_inv hc1) (CaptureSet.subst_closed_inv hc2)
-      (ih1 h1) (ih2 h2)
+    cases hclosed with | par h1 h2 =>
+    exact IsClosed.par (ih1 h1) (ih2 h2)
 
 end Capybara

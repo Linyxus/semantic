@@ -42,26 +42,23 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .reader x, f => .reader (x.rename f)
 | .alloc x, f => .alloc (x.rename f)
 | .drop x, f => .drop (x.rename f)
-| .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
 | .capp x cs, f => .capp (x.rename f) (cs.rename f)
 | .letin e1 e2, f => .letin (e1.rename f) (e2.rename (f.lift))
-| .unpack e1 e2, f => .unpack (e1.rename f) (e2.rename (f.lift.lift))
 | .unit, _ => .unit
 | .btrue, _ => .btrue
 | .bfalse, _ => .bfalse
 | .read x, f => .read (x.rename f)
 | .write x y, f => .write (x.rename f) (y.rename f)
 | .cond x e2 e3, f => .cond (x.rename f) (e2.rename f) (e3.rename f)
-| .par C1 C2 e1 e2, f => .par (C1.rename f) (C2.rename f) (e1.rename f) (e2.rename f)
+| .par e1 e2, f => .par (e1.rename f) (e2.rename f)
 
 /-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
-| pack : Exp.IsVal (.pack cs x)
 | reader : Exp.IsVal (.reader x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
@@ -84,9 +81,6 @@ inductive Exp.IsSimpleAns : Exp s -> Prop where
   Exp.IsSimpleAns v
 | is_var :
   Exp.IsSimpleAns (.var x)
-
-inductive Exp.IsPack : Exp s -> Prop where
-| pack : Exp.IsPack (.pack cs x)
 
 /-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
@@ -118,8 +112,6 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     simp only [Exp.rename, Var.rename_id]
   | drop x =>
     simp only [Exp.rename, Var.rename_id]
-  | pack cs x =>
-    simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
   | app x y =>
     simp only [Exp.rename, Var.rename_id]
   | tapp x T =>
@@ -129,9 +121,6 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | letin e1 e2 ih1 ih2 =>
     simp only [Exp.rename, Rename.lift_id, ih1]
     exact congrArg (Exp.letin e1) ih2
-  | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.rename, Rename.lift_id, ih1]
-    exact congrArg (Exp.unpack e1) ih2
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -142,8 +131,8 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | cond x e2 e3 ih2 ih3 =>
     simp only [Exp.rename, Var.rename_id, ih2]
     exact congrArg (Exp.cond x e2) ih3
-  | par C1 C2 e1 e2 ih1 ih2 =>
-    simp only [Exp.rename, CaptureSet.rename_id, ih1, ih2]
+  | par e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, ih1, ih2]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem Var.rename_comp {x : Var k s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -179,8 +168,6 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simp only [Exp.rename, Var.rename_comp]
   | drop x =>
     simp only [Exp.rename, Var.rename_comp]
-  | pack cs x =>
-    simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
   | app x y =>
     simp only [Exp.rename, Var.rename_comp]
   | tapp x T =>
@@ -190,10 +177,6 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | letin e1 e2 ih1 ih2 =>
     simpa only [Exp.rename, Rename.lift_comp, ih1] using
       congrArg (Exp.letin (e1.rename (f.comp g))) (ih2 (f := f.lift) (g := g.lift))
-  | unpack e1 e2 ih1 ih2 =>
-    simpa only [Exp.rename, Rename.lift_comp, ih1] using
-      congrArg (Exp.unpack (e1.rename (f.comp g)))
-        (ih2 (f := f.lift.lift) (g := g.lift.lift))
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -204,8 +187,8 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | cond x e2 e3 ih2 ih3 =>
     simpa only [Exp.rename, Var.rename_comp, ih2] using
       congrArg (Exp.cond (x.rename (f.comp g)) (e2.rename (f.comp g))) (ih3 (f := f) (g := g))
-  | par C1 C2 e1 e2 ih1 ih2 =>
-    simp only [Exp.rename, CaptureSet.rename_comp, ih1, ih2]
+  | par e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, ih1, ih2]
 
 /-- Weakening commutes with renaming under a binder. -/
 theorem Var.weaken_rename_comm {x : Var k s1} {f : Rename s1 s2} :
@@ -232,19 +215,16 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
 | drop : Var.IsClosed x -> Exp.IsClosed (.drop x)
-| pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
 | letin : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.letin e1 e2)
-| unpack : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack e1 e2)
 | unit : Exp.IsClosed .unit
 | btrue : Exp.IsClosed .btrue
 | bfalse : Exp.IsClosed .bfalse
 | read : Var.IsClosed x -> Exp.IsClosed (.read x)
 | write : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.write x y)
 | cond : Var.IsClosed x -> Exp.IsClosed e2 -> Exp.IsClosed e3 -> Exp.IsClosed (.cond x e2 e3)
-| par : CaptureSet.IsClosed C1 -> CaptureSet.IsClosed C2 ->
-    Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.par C1 C2 e1 e2)
+| par : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.par e1 e2)
 
 end Capybara
