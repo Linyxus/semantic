@@ -9,7 +9,7 @@ namespace Capybara
 /-- An expression in CC. -/
 inductive Exp : Sig -> Type where
 | var : Var .var s -> Exp s
-| abs : CaptureSet s -> Ty .capt (s,C) -> Exp (s,x) -> Exp s
+| abs : CaptureSet s -> Ty (s,C) -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | reader : Var .var s -> Exp s

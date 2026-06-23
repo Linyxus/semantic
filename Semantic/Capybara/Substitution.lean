@@ -58,19 +58,16 @@ def SepCtx.subst : SepCtx s1 -> Subst s1 s2 -> SepCtx s2
 | .cons K C m, σ => .cons (K.subst σ) (C.subst σ) m
 
 /-- Applies a substitution to a type. -/
-def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
+def Ty.subst : Ty s1 -> Subst s1 s2 -> Ty s2
 | .top, _ => .top
 | .tvar x, s => (s.tvar x).core
-| .arrow T1 cs T2, s => .arrow (T1.subst s.lift) (cs.subst s) (T2.subst s.lift)
-| .poly T1 cs T2, s => .poly (T1.subst s) (cs.subst s) (T2.subst s.lift)
-| .cpoly cb cs T, s => .cpoly (cb.subst s) (cs.subst s) (T.subst s.lift)
+| .arrow T1 cs T2, s => .arrow (T1.subst s.lift) (cs.subst s) (T2.subst s.lift.lift)
+| .poly T1 cs T2, s => .poly (T1.subst s) (cs.subst s) (T2.subst s.lift.lift)
+| .cpoly cb cs T, s => .cpoly (cb.subst s) (cs.subst s) (T.subst s.lift.lift)
 | .unit, _ => .unit
 | .cap cs, s => .cap (cs.subst s)
 | .bool, _ => .bool
-| .cell cs, s => .cell (cs.subst s)
-| .reader cs, s => .reader (cs.subst s)
-| .exi T, s => .exi (T.subst s.lift)
-| .typ T, s => .typ (T.subst s)
+| .cell cs m, s => .cell (cs.subst s) m
 
 /-- Substitution preserves emptiness of capture sets. -/
 theorem CaptureSet.IsEmpty.subst {cs : CaptureSet s1} (h : cs.IsEmpty) (σ : Subst s1 s2) :
@@ -80,20 +77,19 @@ theorem CaptureSet.IsEmpty.subst {cs : CaptureSet s1} (h : cs.IsEmpty) (σ : Sub
   | union _ _ ih1 ih2 => exact IsEmpty.union ih1 ih2
 
 /-- Substitution preserves purity. -/
-theorem Ty.IsPureType.subst {T : Ty .capt s1} (h : T.IsPureType) (σ : Subst s1 s2) :
+theorem Ty.IsPureType.subst {T : Ty s1} (h : T.IsPureType) (σ : Subst s1 s2) :
     (T.subst σ).IsPureType := by
   unfold IsPureType at *
   cases T with
-  | top => exact CaptureSet.IsEmpty.empty
+  | top => simp only [Ty.subst, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
   | tvar x => simpa [Ty.subst, Ty.captureSet] using (σ.tvar x).p
-  | unit => exact CaptureSet.IsEmpty.empty
-  | bool => exact CaptureSet.IsEmpty.empty
+  | unit => simp only [Ty.subst, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
+  | bool => simp only [Ty.subst, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
   | arrow _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | poly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cpoly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cap cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
-  | cell cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
-  | reader cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
+  | cell cs m => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
 
 /-- Applies a substitution to a pure type. -/
 def PureTy.subst (T : PureTy s1) (σ : Subst s1 s2) : PureTy s2 :=
@@ -311,11 +307,11 @@ theorem CaptureBound.weaken_subst_comm_liftMany
   syntactically distinct) `sizeOf` occurrences up to defeq. -/
 private theorem lt_add_mid {a b c n : Nat} (h : 0 < a) : n < a + n + b + c := by omega
 
-theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
+theorem Ty.weaken_subst_comm {T : Ty (s1 ++ K)} {σ : Subst s1 s2} :
   (T.subst (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
     (T.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K) := by
   match T with
-  | .top => rfl
+  | .top => simp only [Ty.subst, Ty.rename]
   | .tvar X =>
     simp only [Ty.subst, Ty.rename]
     have h := TVar.weaken_subst_comm_liftMany (X:=X) (σ:=σ) (K:=K) (k0:=k0)
@@ -324,13 +320,13 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   | .arrow T1 cs T2 =>
     have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K,C) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x) (k0:=k0)
+    have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x,C) (k0:=k0)
     simp only [Ty.subst, Ty.rename, ihCS]
     congr 1
   | .poly T1 cs T2 =>
     have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X) (k0:=k0)
+    have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X,C) (k0:=k0)
     simp only [Ty.subst, Ty.rename, ih1, ihCS]
     exact congrArg
       (Ty.poly
@@ -340,31 +336,21 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
   | .cpoly cb cs T =>
     have ihCB := CaptureBound.weaken_subst_comm_liftMany (cb := cb) (σ := σ) (K := K) (k0 := k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
+    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C,C) (k0:=k0)
     simp only [Ty.subst, Ty.rename, ihCB, ihCS]
     exact congrArg
       (Ty.cpoly
         ((cb.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K))
         ((cs.rename (Rename.succ.liftMany K)).subst (σ.lift.liftMany K)))
       ih
-  | .unit => rfl
+  | .unit => simp only [Ty.subst, Ty.rename]
   | .cap cs =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
     simp only [Ty.subst, Ty.rename, ihCS]
-  | .bool => rfl
-  | .cell cs =>
+  | .bool => simp only [Ty.subst, Ty.rename]
+  | .cell cs m =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
     simp only [Ty.subst, Ty.rename, ihCS]
-  | .reader cs =>
-    have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    simp only [Ty.subst, Ty.rename, ihCS]
-  | .exi T =>
-    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
-    simp only [Ty.subst, Ty.rename]
-    exact congrArg Ty.exi ih
-  | .typ T =>
-    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
-    simp only [Ty.subst, Ty.rename, ih]
 termination_by sizeOf T
 decreasing_by
   all_goals first
@@ -372,7 +358,7 @@ decreasing_by
     | (simp_wf; refine Nat.lt_add_of_pos_left ?_; omega)
     | (simp_wf; exact lt_add_mid (by omega))
 
-theorem Ty.weaken_subst_comm_base {T : Ty sort s1} {σ : Subst s1 s2} :
+theorem Ty.weaken_subst_comm_base {T : Ty s1} {σ : Subst s1 s2} :
   (T.subst σ).rename (Rename.succ (k:=k)) = (T.rename Rename.succ).subst (σ.lift (k:=k)) :=
   Ty.weaken_subst_comm (K:=[])
 
@@ -527,34 +513,27 @@ theorem CaptureBound.subst_comp {cb : CaptureBound s1} {σ1 : Subst s1 s2} {σ2 
   | bound cs => simp only [CaptureBound.subst, CaptureSet.subst_comp]
 
 /-- Substitution on types distributes over composition of substitutions. -/
-theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+theorem Ty.subst_comp {T : Ty s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (T.subst σ1).subst σ2 = T.subst (σ1.comp σ2) := by
   induction T generalizing s2 s3 with
-  | top => rfl
-  | tvar x => rfl
+  | top => simp only [Ty.subst]
+  | tvar x => simp only [Ty.subst, Subst.comp, PureTy.subst]
   | arrow T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, ih1, ih2, CaptureSet.subst_comp]
-    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
+    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift, ← Subst.comp_lift]
     rfl
   | poly T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, ih1, ih2, CaptureSet.subst_comp]
-    conv_rhs => rw [← Subst.comp_lift]
+    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
     rfl
   | cpoly cb cs T ih =>
     simp only [Ty.subst, ih, CaptureBound.subst_comp, CaptureSet.subst_comp]
-    conv_rhs => rw [← Subst.comp_lift]
+    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
     rfl
-  | unit => rfl
+  | unit => simp only [Ty.subst]
   | cap cs => simp only [Ty.subst, CaptureSet.subst_comp]
-  | bool => rfl
-  | cell cs => simp only [Ty.subst, CaptureSet.subst_comp]
-  | reader cs => simp only [Ty.subst, CaptureSet.subst_comp]
-  | exi T ih =>
-    simp only [Ty.subst, ih]
-    conv_rhs => rw [← Subst.comp_lift]
-    rfl
-  | typ T ih =>
-    simp only [Ty.subst, ih]
+  | bool => simp only [Ty.subst]
+  | cell cs m => simp only [Ty.subst, CaptureSet.subst_comp]
 
 /-- Substitution on pure types distributes over composition of substitutions. -/
 theorem PureTy.subst_comp {T : PureTy s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
@@ -662,7 +641,7 @@ theorem CaptureBound.subst_id {cb : CaptureBound s} :
   | bound cs => simp only [CaptureBound.subst, CaptureSet.subst_id]
 
 /-- Substituting with the identity substitution leaves a type unchanged. -/
-theorem Ty.subst_id {T : Ty sort s} :
+theorem Ty.subst_id {T : Ty s} :
   T.subst Subst.id = T := by
   induction T with
   | top => simp only [Ty.subst]
@@ -671,24 +650,15 @@ theorem Ty.subst_id {T : Ty sort s} :
     simp only [Ty.subst, CaptureSet.subst_id, Subst.lift_id]
     congr 1
   | poly T1 cs T2 ih1 ih2 =>
-    simp only [Ty.subst, ih1, CaptureSet.subst_id]
-    conv_lhs => rw [Subst.lift_id]
+    simp only [Ty.subst, ih1, CaptureSet.subst_id, Subst.lift_id]
     exact congrArg (Ty.poly T1 cs) ih2
   | cpoly cb cs T ih =>
-    simp only [Ty.subst, CaptureBound.subst_id, CaptureSet.subst_id]
-    conv_lhs => rw [Subst.lift_id]
+    simp only [Ty.subst, CaptureBound.subst_id, CaptureSet.subst_id, Subst.lift_id]
     exact congrArg (Ty.cpoly cb cs) ih
   | unit => simp only [Ty.subst]
   | cap cs => simp only [Ty.subst, CaptureSet.subst_id]
   | bool => simp only [Ty.subst]
-  | cell cs => simp only [Ty.subst, CaptureSet.subst_id]
-  | reader cs => simp only [Ty.subst, CaptureSet.subst_id]
-  | exi T ih =>
-    simp only [Ty.subst]
-    conv_lhs => rw [Subst.lift_id]
-    exact congrArg Ty.exi ih
-  | typ T ih =>
-    simp only [Ty.subst, ih]
+  | cell cs m => simp only [Ty.subst, CaptureSet.subst_id]
 
 /-- Substituting with the identity substitution leaves a pure type unchanged. -/
 theorem PureTy.subst_id {T : PureTy s} :
@@ -825,35 +795,30 @@ theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :
   | bound cs => simp only [CaptureBound.subst, CaptureBound.rename, CaptureSet.subst_asSubst]
 
 /-- Substituting a substitution lifted from a renaming is the same as renaming. -/
-theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
+theorem Ty.subst_asSubst {T : Ty s1} {f : Rename s1 s2} :
   T.subst (f.asSubst) = T.rename f := by
   induction T generalizing s2 with
-  | top => rfl
+  | top => simp only [Ty.subst, Ty.rename]
   | tvar x => simp only [Ty.subst, Ty.rename, Rename.asSubst, PureTy.tvar]
   | arrow T1 cs T2 ih1 ih2 =>
     have e1 := ih1 (f := f.lift)
-    have e2 := ih2 (f := f.lift)
+    have e2 := ih2 (f := f.lift.lift)
     simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ← Rename.asSubst_lift]
     congr 1
   | poly T1 cs T2 ih1 ih2 =>
-    simp only [Ty.subst, Ty.rename, ih1, CaptureSet.subst_asSubst]
-    rw [← Rename.asSubst_lift]
-    exact congrArg (Ty.poly (T1.rename f) (cs.rename f)) ih2
+    have e1 := ih1 (f := f)
+    have e2 := ih2 (f := f.lift.lift)
+    simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ← Rename.asSubst_lift]
+    congr 1
   | cpoly cb cs T ih =>
-    simp only [Ty.subst, Ty.rename, CaptureBound.subst_asSubst, CaptureSet.subst_asSubst]
-    rw [← Rename.asSubst_lift]
-    exact congrArg (Ty.cpoly (cb.rename f) (cs.rename f)) ih
+    have e := ih (f := f.lift.lift)
+    simp only [Ty.subst, Ty.rename, CaptureBound.subst_asSubst, CaptureSet.subst_asSubst,
+      ← Rename.asSubst_lift]
+    congr 1
   | unit => simp only [Ty.subst, Ty.rename]
   | cap cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | bool => simp only [Ty.subst, Ty.rename]
-  | cell cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
-  | reader cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
-  | exi T ih =>
-    simp only [Ty.subst, Ty.rename]
-    rw [← Rename.asSubst_lift]
-    exact congrArg Ty.exi ih
-  | typ T ih =>
-    simp only [Ty.subst, Ty.rename, ih]
+  | cell cs m => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
 
 /-- Substituting a substitution lifted from a renaming is the same as renaming for pure types. -/
 theorem PureTy.subst_asSubst {T : PureTy s1} {f : Rename s1 s2} :
@@ -1071,7 +1036,7 @@ private theorem CaptureBound.rename_closed_any {cb : CaptureBound s1} {f : Renam
   | unbound => exact CaptureBound.IsClosed.unbound
   | bound hcs => exact CaptureBound.IsClosed.bound (CaptureSet.rename_closed_any hcs)
 
-private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
+private theorem Ty.rename_closed_any {T : Ty s1} {f : Rename s1 s2}
   (hc : T.IsClosed) : (T.rename f).IsClosed := by
   induction T generalizing s2 with
   | top => exact IsClosed.top
@@ -1093,18 +1058,9 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
     cases hc with | cap hcs =>
     exact IsClosed.cap (CaptureSet.rename_closed_any hcs)
   | bool => exact IsClosed.bool
-  | cell cs =>
+  | cell cs m =>
     cases hc with | cell hcs =>
     exact IsClosed.cell (CaptureSet.rename_closed_any hcs)
-  | reader cs =>
-    cases hc with | reader hcs =>
-    exact IsClosed.reader (CaptureSet.rename_closed_any hcs)
-  | typ T ih =>
-    cases hc with | typ hT =>
-    exact IsClosed.typ (ih hT)
-  | exi T ih =>
-    cases hc with | exi hT =>
-    exact IsClosed.exi (ih hT)
 
 /-- Lifting preserves closedness of substitutions. -/
 theorem Subst.lift_closed {σ : Subst s1 s2} (hσ : σ.IsClosed) :
@@ -1147,7 +1103,7 @@ def CaptureBound.is_closed_subst {cb : CaptureBound s1} {σ : Subst s1 s2}
     exact CaptureBound.IsClosed.bound (CaptureSet.is_closed_subst hcs hsubst)
 
 /-- Substitution preserves closedness for types. -/
-def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
+def Ty.is_closed_subst {T : Ty s1} {σ : Subst s1 s2}
   (hc : T.IsClosed) (hsubst : Subst.IsClosed σ) :
   (T.subst σ).IsClosed := by
   induction T generalizing s2 with
@@ -1157,39 +1113,30 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     cases hc with | arrow h1 hcs h2 =>
     simp only [Ty.subst]
     exact IsClosed.arrow (ih1 h1 (Subst.lift_closed hsubst))
-      (CaptureSet.is_closed_subst hcs hsubst) (ih2 h2 (Subst.lift_closed hsubst))
+      (CaptureSet.is_closed_subst hcs hsubst)
+      (ih2 h2 (Subst.lift_closed (Subst.lift_closed hsubst)))
   | poly T1 cs T2 ih1 ih2 =>
     cases hc with | poly h1 hcs h2 =>
     simp only [Ty.subst]
     exact IsClosed.poly (ih1 h1 hsubst)
-      (CaptureSet.is_closed_subst hcs hsubst) (ih2 h2 (Subst.lift_closed hsubst))
+      (CaptureSet.is_closed_subst hcs hsubst)
+      (ih2 h2 (Subst.lift_closed (Subst.lift_closed hsubst)))
   | cpoly cb cs T ih =>
     cases hc with | cpoly hcb hcs hT =>
     simp only [Ty.subst]
     exact IsClosed.cpoly (CaptureBound.is_closed_subst hcb hsubst)
-      (CaptureSet.is_closed_subst hcs hsubst) (ih hT (Subst.lift_closed hsubst))
+      (CaptureSet.is_closed_subst hcs hsubst)
+      (ih hT (Subst.lift_closed (Subst.lift_closed hsubst)))
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
     simp only [Ty.subst]
     exact IsClosed.cap (CaptureSet.is_closed_subst hcs hsubst)
   | bool => exact IsClosed.bool
-  | cell cs =>
+  | cell cs m =>
     cases hc with | cell hcs =>
     simp only [Ty.subst]
     exact IsClosed.cell (CaptureSet.is_closed_subst hcs hsubst)
-  | reader cs =>
-    cases hc with | reader hcs =>
-    simp only [Ty.subst]
-    exact IsClosed.reader (CaptureSet.is_closed_subst hcs hsubst)
-  | typ T ih =>
-    cases hc with | typ hT =>
-    simp only [Ty.subst]
-    exact IsClosed.typ (ih hT hsubst)
-  | exi T ih =>
-    cases hc with | exi hT =>
-    simp only [Ty.subst]
-    exact IsClosed.exi (ih hT (Subst.lift_closed hsubst))
 
 /-- Substitution preserves closedness for expressions. -/
 def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
@@ -1391,7 +1338,7 @@ theorem CaptureBound.subst_closed_inv {cb : CaptureBound s1} {σ : Subst s1 s2}
       exact CaptureBound.IsClosed.bound (CaptureSet.subst_closed_inv hcs)
 
 /-- If the result of substitution is closed, the original type was closed. -/
-theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
+theorem Ty.subst_closed_inv {T : Ty s1} {σ : Subst s1 s2}
   (hclosed : (T.subst σ).IsClosed) :
   T.IsClosed := by
   induction T generalizing s2 with
@@ -1418,22 +1365,10 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     cases hclosed with | cap hcs =>
     exact IsClosed.cap (CaptureSet.subst_closed_inv hcs)
   | bool => exact IsClosed.bool
-  | cell cs =>
+  | cell cs m =>
     simp only [Ty.subst] at hclosed
     cases hclosed with | cell hcs =>
     exact IsClosed.cell (CaptureSet.subst_closed_inv hcs)
-  | reader cs =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | reader hcs =>
-    exact IsClosed.reader (CaptureSet.subst_closed_inv hcs)
-  | exi T ih =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | exi hT =>
-    exact IsClosed.exi (ih hT)
-  | typ T ih =>
-    simp only [Ty.subst] at hclosed
-    cases hclosed with | typ hT =>
-    exact IsClosed.typ (ih hT)
 
 /-- If the result of substitution is closed, the original expression was closed. -/
 theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
