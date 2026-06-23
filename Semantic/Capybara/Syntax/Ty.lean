@@ -12,8 +12,9 @@ namespace Capybara
 inductive TySort : Type where
 /-- capturing types -/
 | capt : TySort
-/-- existential types -/
-| exi : TySort
+-- Existential types are dropped in the surface calculus
+-- /-- existential types -/
+-- | exi : TySort
 
 /-- A capture bound, either unbound or bounded by a capture set. -/
 inductive CaptureBound : Sig -> Type where
@@ -45,20 +46,30 @@ inductive Ty : TySort -> Sig -> Type where
 | top : Ty .capt s
 | tvar : BVar s .tvar -> Ty .capt s
 | arrow :
-  Ty .capt (s,C) ->
+  Ty .capt (s,C) ->  -- a capture parameter is implicitly bound
   CaptureSet s ->
-  Ty .exi (s,x) ->
+  Ty .capt (s,x,C) ->  -- an existential is implicitly bound
   Ty .capt s
-| poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
-| cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+| poly : 
+  Ty .capt s -> 
+  CaptureSet s -> 
+  Ty .capt (s,X,C) ->  -- similarly, an implicit existential
+  Ty .capt s
+| cpoly : 
+  CaptureBound s -> 
+  CaptureSet s -> 
+  Ty .capt (s,C,C) ->  -- ditto
+  Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
-| cell : CaptureSet s -> Ty .capt s
-| reader : CaptureSet s -> Ty .capt s
+| cell : CaptureSet s -> Mutability -> Ty .capt s
+-- Reader is obsolete, since cell additionally has `Mutability`
+-- | reader : CaptureSet s -> Ty .capt s
 | unit : Ty .capt s
 | bool : Ty .capt s
--- existential types
-| exi : Ty .capt (s,C) -> Ty .exi s
-| typ : Ty .capt s -> Ty .exi s
+-- Dropped from the surface calculus (Capybara)
+-- -- existential types
+-- | exi : Ty .capt (s,C) -> Ty .exi s
+-- | typ : Ty .capt s -> Ty .exi s
 
 /-- Applies a renaming to all bound variables in a type. -/
 def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
