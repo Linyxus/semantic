@@ -73,7 +73,7 @@ inductive Subbound : Ctx s -> CaptureBound s -> CaptureBound s -> Prop where
   -------------------
   Subbound Γ (.bound C1) (.bound C2)
 | unbound {m1 m2 : Mutability} :
-  m2 ≤ m1 ->
+  m1 ≤ m2 ->
   -------------------
   Subbound Γ (.unbound m1) (.unbound m2)
 | bound_unbound {C : CaptureSet s} {m : Mutability} :
