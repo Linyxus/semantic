@@ -4144,6 +4144,44 @@ theorem subset_right
   Noninterference cs1 cs2' :=
   ni_symm (subset_left (ni_symm hni) hsub)
 
+/-- At any shared location, two non-interfering sets agree that neither side is a
+`.drop`: the only `Noninterference` constructor admitting a shared location is
+`ni_ro`, where both modes are read-only. -/
+theorem no_drop_share
+  (hni : Noninterference C1 C2) :
+  ∀ mu1 mu2 l, hasmem mu1 l C1 → hasmem mu2 l C2 → mu1 ≠ .drop ∧ mu2 ≠ .drop := by
+  induction hni with
+  | ni_symm _ ih =>
+    intro mu1 mu2 l h1 h2
+    exact (ih mu2 mu1 l h2 h1).symm
+  | ni_empty =>
+    intro mu1 mu2 l h1 _
+    exact absurd h1 not_hasmem_empty
+  | ni_union _ _ ih1 ih2 =>
+    intro mu1 mu2 l h1 h2
+    rw [hasmem_union_iff] at h1
+    cases h1 with
+    | inl h => exact ih1 mu1 mu2 l h h2
+    | inr h => exact ih2 mu1 mu2 l h h2
+  | ni_ro =>
+    intro mu1 mu2 l h1 h2
+    rw [hasmem_cap_iff] at h1 h2
+    obtain ⟨rfl, _⟩ := h1
+    obtain ⟨rfl, _⟩ := h2
+    exact ⟨by nofun, by nofun⟩
+  | ni_disj hne =>
+    intro mu1 mu2 l h1 h2
+    rw [hasmem_cap_iff] at h1 h2
+    obtain ⟨_, rfl⟩ := h1
+    obtain ⟨_, rfl⟩ := h2
+    exact absurd rfl hne
+
+/-- `Noninterference` implies the (asymmetric) runtime sequential-composition
+obligation: nothing consumed (`.drop`) on the left is touched on the right. -/
+theorem seqComp (hni : Noninterference C1 C2) : CapabilitySet.SeqComp C1 C2 := by
+  intro mu l h1 h2
+  exact (no_drop_share hni .drop mu l h1 h2).1 rfl
+
 end CapabilitySet.Noninterference
 
 /-- Compute the reachability of a capture set in a given memory. -/

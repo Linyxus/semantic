@@ -3222,56 +3222,6 @@ theorem sem_typ_par
     pack_bound_of_ne_pack (fun _ _ h => nomatch h),
     witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
 
-/-- Semantic interpretation of `DisjCheck`: the two sets denote
-location-disjoint capability sets. Evidence is anchored at distinct droppable
-capture variables (`disj_droppable` via the `DropSepIn` invariant), and
-`disj_peaks` traces a denotation membership into the peaks' denotation. -/
-theorem fundamental_disjcheck
-  (hdisj : DisjCheck Γ C1 C2) :
-  SemDisjCheck Γ C1 C2 := by
-  induction hdisj with
-  | disj_symm _ ih =>
-    intro hΓ env H hts hdsep mu1 mu2 l h1 h2
-    exact ih hΓ env H hts hdsep mu2 mu1 l h2 h1
-  | disj_empty =>
-    intro _hΓ env H hts _hdsep mu1 mu2 l h1 _h2
-    exact CapabilitySet.not_hasmem_empty h1
-  | disj_union _ _ ih1 ih2 =>
-    intro hΓ env H hts hdsep mu1 mu2 l h1 h2
-    cases h1 with
-    | left h =>
-      exact ih1 hΓ env H hts hdsep mu1 mu2 l h h2
-    | right h =>
-      exact ih2 hΓ env H hts hdsep mu1 mu2 l h h2
-  | disj_peaks hclosed _ ih =>
-    intro hΓ env H hts hdsep mu1 mu2 l h1 h2
-    have hsub := denot_subset_compute_peaks_denot hts hΓ _ hclosed
-    rw [← compute_peaks_correct hts] at hsub
-    obtain ⟨mu1', h1'⟩ := hasmem_of_capabilitySet_subset hsub h1
-    exact ih hΓ env H hts hdsep mu1' mu2 l h1' h2
-  | disj_droppable hd =>
-    intro _hΓ env H hts hdsep
-    rename_i a1 a2 c1 c2
-    obtain ⟨ha1, ha2, hne⟩ := hd
-    have ha1' : env.lookup_cvar_auth c1 = .can_drop := by
-      rw [envtyping_lookup_cvar_auth hts c1]; exact ha1
-    have ha2' : env.lookup_cvar_auth c2 = .can_drop := by
-      rw [envtyping_lookup_cvar_auth hts c2]; exact ha2
-    intro mu1 mu2 l h1 h2
-    have hdenot1 :
-        (CaptureSet.cvar a1 c1).denot env H = ((env.lookup_cvar c1).2).applyAccess a1 := by
-      change ((env.lookup_cvar c1).1.applyAccess a1).ground_denot H = _
-      rw [captureSet_ground_denot_applyAccess_comm, ← typed_env_cvar_cap_eq hts c1]
-    have hdenot2 :
-        (CaptureSet.cvar a2 c2).denot env H = ((env.lookup_cvar c2).2).applyAccess a2 := by
-      change ((env.lookup_cvar c2).1.applyAccess a2).ground_denot H = _
-      rw [captureSet_ground_denot_applyAccess_comm, ← typed_env_cvar_cap_eq hts c2]
-    rw [hdenot1] at h1
-    rw [hdenot2] at h2
-    obtain ⟨mu1', h1'⟩ := hasmem_of_applyAccess h1
-    obtain ⟨mu2', h2'⟩ := hasmem_of_applyAccess h2
-    exact hdsep c1 c2 hne ha1' ha2' mu1' mu2' l h1' h2'
-
 /-- Bridge: the syntactic sequential-composition relation `SeqComp Γ C1 C2`
 transfers, under a well-typed environment satisfying the (budget-relativized)
 droppable-separation invariant, to the runtime capability level: no location
@@ -3282,8 +3232,8 @@ Per constructor:
 - `seq_union`: split the union membership, restricting the invariant.
 - `seq_access_only`: the (closed) access-only budget is drop-free, so there is
   no `.drop` member to begin with.
-- `seq_drop`: `DisjCheck` gives full location-disjointness of `Ca` and `C2`;
-  a consumed location of `Ca.applyDrop` is a location of `Ca`. -/
+- `seq_sep`: `SepCheck` denotes to `Noninterference`, whose only shared-location
+  case is read-only sharing; hence a `.drop` on the left never meets the right. -/
 theorem captureSet_seqcomp_denot
     {C1 C2 : CaptureSet s} {Γ : Ctx s} {env : TypeEnv s} {store : Memory}
     (hts : EnvTyping Γ env store)
@@ -3307,18 +3257,8 @@ theorem captureSet_seqcomp_denot
   | seq_access_only hclosed hao =>
     intro mu l h1 _h2
     exact accessonly_denot_drop_free hts hΓ hclosed hao l h1
-  | seq_drop hdisj =>
-    intro mu l h1 h2
-    rename_i Ca Cb
-    have heq : (Ca.applyDrop).denot env store = (Ca.denot env store).to_drop := by
-      have h := captureSet_denot_applyAccess_comm
-        (env := env) (C := Ca) (store := store) (a := .drop)
-      rw [CaptureSet.applyAccess_drop, CapabilitySet.applyAccess_drop] at h
-      exact h
-    rw [heq] at h1
-    obtain ⟨_, mu1, h1'⟩ := CapabilitySet.hasmem_to_drop_imp h1
-    have hdisj' := fundamental_disjcheck hdisj hΓ env store hts hdsep
-    exact hdisj' mu1 mu l h1' h2
+  | seq_sep hsep =>
+    exact (fundamental_sepcheck hsep hΓ env store hts hdsep).seqComp
 
 /-- Semantic typing for `letin`. -/
 theorem sem_typ_letin

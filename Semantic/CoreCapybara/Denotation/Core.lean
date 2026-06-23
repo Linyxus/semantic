@@ -2100,15 +2100,6 @@ def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
     env.EnvSepWf ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
-/-- Semantic strong separation check: the two sets denote *location-disjoint*
-capability sets. -/
-def SemDisjCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
-  Γ.IsClosed ->
-  ∀ env H,
-    EnvTyping Γ env H ->
-    env.EnvSepWf ->
-    CapabilitySet.disjoint (C1.denot env H) (C2.denot env H)
-
 /-- Semantic subtyping relation. Carries the environment-separation invariant
 `EnvSepWf`, which `modal_modal` needs to interpret lock-stored `sep_droppable`
 facts (via `fundamental_sepcheck_global`). The `exi` subtyping rule transports
