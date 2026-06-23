@@ -166,9 +166,9 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
 | arrow :
   Subtyp Γ T2 T1 ->
   Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ,x:T2) U1 U2 ->
+  Subtyp (Γ,C<:.unbound m2,x:T2) U1 U2 ->
   --------------------------
-  Subtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2)
+  Subtyp Γ (.arrow m1 T1 cs1 U1) (.arrow m2 T2 cs2 U2)
 | poly {S1 S2 : PureTy s} :
   Subtyp Γ S2.core S1.core ->
   Subcapt Γ cs1 cs2 ->

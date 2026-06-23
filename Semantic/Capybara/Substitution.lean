@@ -102,7 +102,7 @@ def PureTy.subst (T : PureTy s1) (σ : Subst s1 s2) : PureTy s2 :=
 /-- Applies a substitution to an expression. -/
 def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
-| .abs cs T e, s => .abs (cs.subst s) (T.subst s.lift) (e.subst s.lift)
+| .abs m cs T e, s => .abs m (cs.subst s) (T.subst s.lift) (e.subst s.lift)
 | .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
 | .reader x, s => .reader (x.subst s)
@@ -566,7 +566,7 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (e.subst σ1).subst σ2 = e.subst (σ1.comp σ2) := by
   induction e generalizing s2 s3 with
   | var x => simp only [Exp.subst, Var.subst_comp]
-  | abs cs T e ih_e =>
+  | abs m cs T e ih_e =>
     simp only [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e]
     conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
     rfl
@@ -701,7 +701,7 @@ theorem Exp.subst_id {e : Exp s} :
   induction e with
   | var x =>
     simp only [Exp.subst, Var.subst_id]
-  | abs cs T e ih =>
+  | abs m cs T e ih =>
     simp only [Exp.subst, CaptureSet.subst_id, Subst.lift_id]
     have hT : T.subst Subst.id = T := Ty.subst_id
     congr 1
@@ -866,7 +866,7 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   induction e generalizing s2 with
   | var x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
-  | abs cs T e ih =>
+  | abs m cs T e ih =>
     have hT := Ty.subst_asSubst (T := T) (f := f.lift)
     have he := ih (f := f.lift)
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, ← Rename.asSubst_lift]
@@ -1201,7 +1201,7 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst]
     constructor
     exact Var.is_closed_subst hx hsubst
-  | abs cs T e ih =>
+  | abs m cs T e ih =>
     cases hc with | abs hcs hT he =>
     simp only [Exp.subst]
     constructor
@@ -1444,7 +1444,7 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | var hx =>
     exact IsClosed.var (Var.subst_closed_inv hx)
-  | abs cs T e ih =>
+  | abs m cs T e ih =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | abs hcs hT he =>
     exact IsClosed.abs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
