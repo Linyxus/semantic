@@ -61,7 +61,7 @@ def SepCtx.subst : SepCtx s1 -> Subst s1 s2 -> SepCtx s2
 def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, s => (s.tvar x).core
-| .arrow T1 cs T2, s => .arrow (T1.subst s.lift) (cs.subst s) (T2.subst s.lift)
+| .arrow m T1 cs T2, s => .arrow m (T1.subst s.lift) (cs.subst s) (T2.subst s.lift)
 | .poly T1 cs T2, s => .poly (T1.subst s) (cs.subst s) (T2.subst s.lift)
 | .cpoly cb cs T, s => .cpoly (cb.subst s) (cs.subst s) (T.subst s.lift)
 | .unit, _ => .unit
@@ -88,7 +88,7 @@ theorem Ty.IsPureType.subst {T : Ty .capt s1} (h : T.IsPureType) (σ : Subst s1 
   | tvar x => simpa [Ty.subst, Ty.captureSet] using (σ.tvar x).p
   | unit => exact CaptureSet.IsEmpty.empty
   | bool => exact CaptureSet.IsEmpty.empty
-  | arrow _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
+  | arrow _ _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | poly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cpoly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cap cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
@@ -321,7 +321,7 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have h := TVar.weaken_subst_comm_liftMany (X:=X) (σ:=σ) (K:=K) (k0:=k0)
     simp only [PureTy.rename] at h
     exact congrArg PureTy.core h
-  | .arrow T1 cs T2 =>
+  | .arrow m T1 cs T2 =>
     have ih1 := Ty.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K,C) (k0:=k0)
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
     have ih2 := Ty.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x) (k0:=k0)
@@ -532,7 +532,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   induction T generalizing s2 s3 with
   | top => rfl
   | tvar x => rfl
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, ih1, ih2, CaptureSet.subst_comp]
     conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
     rfl
@@ -667,7 +667,7 @@ theorem Ty.subst_id {T : Ty sort s} :
   induction T with
   | top => simp only [Ty.subst]
   | tvar x => simp only [Ty.subst, Subst.id, PureTy.tvar]
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst, CaptureSet.subst_id, Subst.lift_id]
     congr 1
   | poly T1 cs T2 ih1 ih2 =>
@@ -830,7 +830,7 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   induction T generalizing s2 with
   | top => rfl
   | tvar x => simp only [Ty.subst, Ty.rename, Rename.asSubst, PureTy.tvar]
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     have e1 := ih1 (f := f.lift)
     have e2 := ih2 (f := f.lift)
     simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ← Rename.asSubst_lift]
@@ -1076,7 +1076,7 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   induction T generalizing s2 with
   | top => exact IsClosed.top
   | tvar => exact IsClosed.tvar
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     cases hc with | arrow h1 hcs h2 =>
     exact IsClosed.arrow (ih1 h1)
       (CaptureSet.rename_closed_any hcs) (ih2 h2)
@@ -1153,7 +1153,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
   induction T generalizing s2 with
   | top => exact IsClosed.top
   | tvar X => simp only [Ty.subst]; exact hsubst.tvar_closed X
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     cases hc with | arrow h1 hcs h2 =>
     simp only [Ty.subst]
     exact IsClosed.arrow (ih1 h1 (Subst.lift_closed hsubst))
@@ -1397,7 +1397,7 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
   induction T generalizing s2 with
   | top => exact IsClosed.top
   | tvar X => exact IsClosed.tvar
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     simp only [Ty.subst] at hclosed
     cases hclosed with | arrow h1 hcs h2 =>
     exact IsClosed.arrow (ih1 h1)

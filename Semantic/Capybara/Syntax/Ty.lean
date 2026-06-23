@@ -65,7 +65,7 @@ inductive Ty : TySort -> Sig -> Type where
 def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
-| .arrow T1 cs T2, f => .arrow (T1.rename (f.lift)) (cs.rename f) (T2.rename (f.lift))
+| .arrow m T1 cs T2, f => .arrow m (T1.rename (f.lift)) (cs.rename f) (T2.rename (f.lift))
 | .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
 | .unit, _ => .unit
@@ -82,7 +82,7 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   | top => rfl
   | tvar x =>
     simp only [Ty.rename, Rename.id]
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     simp only [Ty.rename, Rename.lift_id, CaptureSet.rename_id]
     congr 1
   | poly T1 cs T2 ih1 ih2 =>
@@ -113,7 +113,7 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | top => rfl
   | tvar x =>
     simp only [Ty.rename, Rename.comp]
-  | arrow T1 cs T2 ih1 ih2 =>
+  | arrow m T1 cs T2 ih1 ih2 =>
     simp only [Ty.rename, CaptureSet.rename_comp, Rename.lift_comp]
     congr 1
     · exact ih1 (f := f.lift) (g := g.lift)
@@ -149,7 +149,7 @@ theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
 def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .top => .empty
 | .tvar _ => .empty
-| .arrow _ cs _ => cs
+| .arrow _ _ cs _ => cs
 | .poly _ cs _ => cs
 | .cpoly _ cs _ => cs
 | .cap cs => cs
@@ -161,7 +161,7 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .top, _ => .top
 | .tvar x, _ => .tvar x
-| .arrow T1 _ T2, cs => .arrow T1 cs T2
+| .arrow m T1 _ T2, cs => .arrow m T1 cs T2
 | .poly T1 _ T2, cs => .poly T1 cs T2
 | .cpoly cb _ T, cs => .cpoly cb cs T
 | .cap _, cs => .cap cs
@@ -180,7 +180,7 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | top : Ty.IsClosed .top
 | tvar : Ty.IsClosed (.tvar x)
 | arrow : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
-    Ty.IsClosed (.arrow T1 cs T2)
+    Ty.IsClosed (.arrow m T1 cs T2)
 | poly : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
     Ty.IsClosed (.poly T1 cs T2)
 | cpoly :
