@@ -169,6 +169,63 @@ def CapySubst.unpack (C : CaptureSet s) (x : Var .var s) : CapySubst (s,C,x) s w
   tvar := fun
     | .there (.there X0) => CapyPureTy.tvar X0
 
+/-- Drops the innermost (capture-variable) binder from a capture set, lowering
+    it into the enclosing signature. Realised as the substitution that opens
+    that binder with the empty capture set, so references to it become `{}`. -/
+def CapyCaptureSet.dropCVar (cs : CaptureSet (s,C)) : CaptureSet s :=
+  CapyCaptureSet.subst cs (CapySubst.openCVar {})
+
+/-- Drops the innermost (type-variable) binder from a capture set. Capture sets
+    never mention type variables, so this is the substitution that reindexes the
+    remaining variables down one level. -/
+def CapyCaptureSet.dropTVar (cs : CaptureSet (s,X)) : CaptureSet s :=
+  CapyCaptureSet.subst cs (CapySubst.openTVar CapyPureTy.top)
+
+/-- Drops the innermost (term-variable) binder from a capture set. Substitution
+    cannot express this — a term-variable reference always substitutes to another
+    term variable, never to `{}` — so references to the dropped binder are
+    discarded directly. -/
+def CapyCaptureSet.dropVar : CaptureSet (s,x) -> CaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => (CapyCaptureSet.dropVar cs1) ∪ (CapyCaptureSet.dropVar cs2)
+| .var _ (.bound .here) => .empty
+| .var a (.bound (.there y)) => .var a (.bound y)
+| .var a (.free n) => .var a (.free n)
+| .cvar a (.there c) => .cvar a c
+
+/-- The *interfere set* of a capturing type: an over-approximation of the
+    capture set that values of the type may use, directly or indirectly.
+
+    For the three function forms it folds in the function's own capture set
+    `Cf`, the argument's capture set, and the interfere set of the result with
+    the type's bound variables stripped:
+    ```
+    interfere([c](x: S^C) ->Cf E) = Cf ∪ C ∪ interfere(E) - {c, x}
+    interfere([X] ->Cf E)         = Cf ∪ interfere(E)
+    interfere([c] ->Cf E)         = Cf ∪ interfere(E) - {c}
+    ```
+    Each codomain additionally binds an implicit existential capture parameter,
+    which is stripped too since it does not escape to the enclosing scope. -/
+def CapyTy.interfere_set (T : CapyTy .capt s) : CaptureSet s :=
+  match T with
+  | .top => .empty
+  | .tvar _ => .empty
+  | .unit => .empty
+  | .bool => .empty
+  | .cap cs => cs
+  | .cell cs _ => cs
+  -- [c](x: S^C) ->Cf E :  S under c (`,C`);  E under x and the existential (`,x,C`)
+  | .arrow S Cf E =>
+      Cf ∪ CapyCaptureSet.dropCVar S.captureSet
+         ∪ CapyCaptureSet.dropVar (CapyCaptureSet.dropCVar E.interfere_set)
+  -- [X] ->Cf E :  E under X and the existential (`,X,C`)
+  | .poly _ Cf E =>
+      Cf ∪ CapyCaptureSet.dropTVar (CapyCaptureSet.dropCVar E.interfere_set)
+  -- [c] ->Cf E :  E under c and the existential (`,C,C`)
+  | .cpoly _ Cf E =>
+      Cf ∪ CapyCaptureSet.dropCVar (CapyCaptureSet.dropCVar E.interfere_set)
+termination_by sizeOf T
+
 /-- Function extensionality for substitutions.
   Two substitutions are equal if they map all variables equally. -/
 theorem CapySubst.funext {σ1 σ2 : CapySubst s1 s2}
