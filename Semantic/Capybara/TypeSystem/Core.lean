@@ -218,27 +218,24 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
     Γ
     (.var (.bound x))
     (T.refineCaptureSet (.var (.M .epsilon) (.bound x)))
-| reader :
-  -- DESIGN(flagged): `Ty.reader` was dropped; a reader is modelled as a
-  -- read-only cell.  The read cell's stored mutability `m` is unconstrained.
+| readonly :
   Γ.IsClosed ->
-  Γ.LookupVar x (.cell C m) ->
+  Γ.LookupVar x (.cell C .epsilon) ->
   ---------------------------------
   HasType
     {}
     Γ
-    (.reader (.bound x))
+    (.var (.bound x))
     (.cell (.var (.M .ro) (.bound x)) .ro)
-| abs {T1 : Ty (s,C)} {T2 : Ty (s,x)} :
-  -- DESIGN(flagged): the domain `T1 : Ty (s,C)` carries the argument's implicit
-  -- capture param; the binding instantiates it via `Subst.openCVar {}` (should be
-  -- the argument's own capture).  The codomain existential `,C` is introduced by
-  -- weakening the body's type (`Rename.succ (k := .cvar)`) — the existential is
-  -- currently unused (placeholder for fresh-capture results).
-  (T1.subst (Subst.openCVar {})).IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,x:(T1.subst (Subst.openCVar {}))) e T2 ->
+| abs {T1 : Ty (s,C)} {T2 : Ty (s,x,C)} :
+  T1.IsClosed ->
+  HasType 
+    ((cs.rename Rename.succ).rename Rename.succ)
+    (Γ,C<:.unbound .epsilon,x:T1) 
+    (e.rename Rename.implicit_cvar) 
+    ((T2.subst (Subst.openCVar D)).rename Rename.implicit_cvar) ->
   ----------------------------
-  HasType {} Γ (.abs cs T1 e) (.arrow T1 cs (T2.rename (Rename.succ (k := .cvar))))
+  HasType {} Γ (.abs cs T1 e) (.arrow T1 cs T2)
 | tabs {S : PureTy s} {T : Ty (s,X)} :
   S.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
