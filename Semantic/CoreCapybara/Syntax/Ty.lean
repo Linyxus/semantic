@@ -49,8 +49,8 @@ inductive Ty : TySort -> Sig -> Type where
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
 | modal : CaptureSet s -> SepCtx s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
-| cell : CaptureSet s -> Ty .capt s
-| reader : CaptureSet s -> Ty .capt s
+| cell : CaptureSet s -> Ty .capt s -> Ty .capt s
+| reader : CaptureSet s -> Ty .capt s -> Ty .capt s
 | unit : Ty .capt s
 | bool : Ty .capt s
 -- existential types
