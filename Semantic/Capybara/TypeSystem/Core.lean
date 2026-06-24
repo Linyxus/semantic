@@ -235,12 +235,12 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
     (e.rename Rename.implicit_cvar) 
     ((T2.subst (Subst.openCVar D)).rename Rename.implicit_cvar) ->
   ----------------------------
-  HasType {} Γ (.abs cs T1 e) (.arrow T1 cs T2)
+  HasType {} Γ (.abs T1 e) (.arrow T1 cs T2)
 | tabs {S : PureTy s} {T : Ty (s,X,C)} :
   S.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,X<:S) e (T.subst (Subst.openCVar D)) ->
   ----------------------------
-  HasType {} Γ (.tabs cs S e) (.poly S.core cs T)
+  HasType {} Γ (.tabs S e) (.poly S.core cs T)
 | cabs {cb : CaptureBound s} {T : Ty (s,C,C)} :
   cb.IsClosed ->
   cb.IsValid Γ ->
@@ -250,7 +250,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
     e 
     (T.subst (Subst.openCVar D)) ->
   -----------------------------
-  HasType {} Γ (.cabs cs cb e) (.cpoly cb cs T)
+  HasType {} Γ (.cabs cb e) (.cpoly cb cs T)
 | app :
   -- DESIGN(flagged): the `accessible` (liveness) premise was dropped.  The
   -- argument's capture param is instantiated to `{y}`; the codomain existential
