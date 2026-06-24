@@ -9,7 +9,7 @@ inductive Authority : Type where
 | access_only : Authority
 
 inductive Binding : Sig -> Kind -> Type where
-| var : Ty s -> Binding s .var
+| var : Ty .capt s -> Binding s .var
 | tvar : PureTy s -> Binding s .tvar
 | cvar : Authority -> CaptureBound s -> Binding s .cvar
 
@@ -22,7 +22,7 @@ inductive Ctx : Sig -> Type where
 | empty : Ctx {}
 | push : Ctx s -> Binding s k -> Ctx (s,,k)
 
-def Ctx.push_var : Ctx s -> Ty s -> Ctx (s,x)
+def Ctx.push_var : Ctx s -> Ty .capt s -> Ctx (s,x)
 | Γ, T => Γ.push (.var T)
 
 def Ctx.push_tvar : Ctx s -> PureTy s -> Ctx (s,X)
@@ -57,10 +57,10 @@ inductive Ctx.LookupTVar : Ctx s -> BVar s .tvar -> PureTy s -> Prop
   Ctx.LookupTVar Γ X S ->
   Ctx.LookupTVar (.push Γ b) (.there X) (S.rename Rename.succ)
 
-inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty s -> Prop
+inductive Ctx.LookupVar : Ctx s -> BVar s .var -> Ty .capt s -> Prop
 | here :
   Ctx.LookupVar (.push Γ (.var T)) .here (T.rename Rename.succ)
-| there {T : Ty s} {b : Binding s k} :
+| there {T : Ty .capt s} {b : Binding s k} :
   Ctx.LookupVar Γ x T ->
   Ctx.LookupVar (.push Γ b) (.there x) (T.rename Rename.succ)
 
@@ -75,7 +75,7 @@ def Ctx.lookup_tvar : Ctx s -> BVar s .tvar -> PureTy s
 | .push _ (.tvar S), .here => S.rename Rename.succ
 | .push Γ _, .there x => (Γ.lookup_tvar x).rename Rename.succ
 
-def Ctx.lookup_var : Ctx s -> BVar s .var -> Ty s
+def Ctx.lookup_var : Ctx s -> BVar s .var -> Ty .capt s
 | .push _ (.var T), .here => T.rename Rename.succ
 | .push Γ _, .there x => (Γ.lookup_var x).rename Rename.succ
 
@@ -98,7 +98,7 @@ def Ctx.lookup_tvar' : Ctx (s,,k) -> BVar (s,,k) .tvar -> PureTy s
 | .push _ (.tvar S), .here => S
 | .push Γ _, .there x => Γ.lookup_tvar x
 
-def Ctx.lookup_var' : Ctx (s,,k) -> BVar (s,,k) .var -> Ty s
+def Ctx.lookup_var' : Ctx (s,,k) -> BVar (s,,k) .var -> Ty .capt s
 | .push _ (.var T), .here => T
 | .push Γ _, .there x => Γ.lookup_var x
 
@@ -132,7 +132,7 @@ theorem Ctx.lookup_var_spec (Γ : Ctx s) (x : BVar s .var) :
     exact LookupVar.there (lookup_var_spec Γ' x')
 
 /-- If the inductive predicate holds, the type equals the functional lookup. -/
-theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty s}
+theorem Ctx.LookupVar.eq_lookup {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
     (h : Ctx.LookupVar Γ x T) : T = Γ.lookup_var x := by
   induction h with
   | here => rfl

@@ -145,8 +145,8 @@ inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 --   -------------------------------------------
 --   Satisfy Γ Ψ
 
-inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
-| top {T : Ty s} :
+inductive Subtyp : Ctx s -> Ty .capt s -> Ty .capt s -> Prop where
+| top {T : Ty .capt s} :
   T.IsPureType ->
   -------------------
   Subtyp Γ T .top
@@ -166,8 +166,8 @@ inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
 | arrow :
   Subtyp (Γ,C<:.unbound .epsilon) T2 T1 ->
   Subcapt Γ cs1 cs2 ->
-  Subtyp 
-    (Γ,C<:.unbound .epsilon,x:T2,C<:.unbound .epsilon) 
+  Subtyp
+    (Γ,C<:.unbound .epsilon,x:T2,C<:.unbound .epsilon)
     (U1.rename Rename.implicit_cvar2) (U2.rename Rename.implicit_cvar2) ->
   --------------------------
   Subtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2)
@@ -206,9 +206,8 @@ inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   ----------------------
   SeqComp Γ C1.applyDrop C2
 
--- Types are no longer sort-indexed, so the old `.typ`/`.exi` result wrappers are
--- gone: a judgement now produces a plain `Ty s`.
-inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
+/-- Typing judgement. -/
+inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty sort s -> Prop where
 | var :
   Γ.IsClosed ->
   Γ.LookupVar x T ->
@@ -227,54 +226,55 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
     Γ
     (.var (.bound x))
     (.cell (.var (.M .ro) (.bound x)) .ro)
-| abs {T1 : Ty (s,C)} {T2 : Ty (s,x,C)} :
+| abs {T1 : Ty .capt (s,C)} {T2 : Ty .capt (s,x,C)} :
   T1.IsClosed ->
-  HasType 
+  HasType
     ((cs.rename Rename.succ).rename Rename.succ)
-    (Γ,C<:.unbound .epsilon,x:T1) 
-    (e.rename Rename.implicit_cvar) 
+    (Γ,C<:.unbound .epsilon,x:T1)
+    (e.rename Rename.implicit_cvar)
     ((T2.subst (Subst.openCVar D)).rename Rename.implicit_cvar) ->
   ----------------------------
   HasType {} Γ (.abs T1 e) (.arrow T1 cs T2)
-| tabs {S : PureTy s} {T : Ty (s,X,C)} :
+| tabs {S : PureTy s} {T : Ty .capt (s,X,C)} :
   S.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,X<:S) e (T.subst (Subst.openCVar D)) ->
   ----------------------------
   HasType {} Γ (.tabs S e) (.poly S.core cs T)
-| cabs {cb : CaptureBound s} {T : Ty (s,C,C)} :
+| cabs {cb : CaptureBound s} {T : Ty .capt (s,C,C)} :
   cb.IsClosed ->
   cb.IsValid Γ ->
-  HasType 
-    (cs.rename Rename.succ) 
-    (Γ,C<:cb) 
-    e 
+  HasType
+    (cs.rename Rename.succ)
+    (Γ,C<:cb)
+    e
     (T.subst (Subst.openCVar D)) ->
   -----------------------------
   HasType {} Γ (.cabs cb e) (.cpoly cb cs T)
 | app :
   -- DESIGN(flagged): the `accessible` (liveness) premise was dropped.  The
-  -- argument's capture param is instantiated to `{y}`; the codomain existential
-  -- `,C` is opened to `{}` (placeholder for the call's result capture).
+  -- argument's capture param is instantiated to `{y}`; the codomain's implicit
+  -- existential `,C` is kept abstract and returned as an explicit `.exi` type
+  -- (the substitution opens only the argument binder, lifted under the `,C`).
   HasType {} Γ (.var x) (.arrow T1 (.var (.M .epsilon) x) T2) ->
   HasType {} Γ (.var y) (T1.subst (Subst.openCVar (.var (.M .epsilon) y))) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.app x y)
-    (T2.subst ((Subst.openCVar {}).comp (Subst.openVar y)))
+    (.exi (T2.subst (Subst.openVar y).lift))
 | tapp {S : PureTy s} :
-  -- DESIGN(flagged): codomain existential `,C` opened to `{}` (placeholder).
+  -- The codomain's implicit existential `,C` is returned as an explicit `.exi`.
   S.IsClosed ->
   HasType {} Γ (.var x) (.poly S.core (.var (.M .epsilon) x) T) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.tapp x S)
-    (T.subst ((Subst.openCVar {}).comp (Subst.openTVar S)))
+    (.exi (T.subst (Subst.openTVar S).lift))
 | capp {D : CaptureSet s} :
-  -- DESIGN(flagged): codomain existential `,C` opened to `{}` (placeholder).
+  -- The codomain's implicit existential `,C` is returned as an explicit `.exi`.
   D.IsClosed ->
   CaptureBound.IsValid Γ (.bound D) ->
   HasType {} Γ (.var x) (.cpoly (.bound D) (.var (.M .epsilon) x) T) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.capp x D)
-    (T.subst ((Subst.openCVar {}).comp (Subst.openCVar D)))
+    (.exi (T.subst (Subst.openCVar D).lift))
 | letin :
   -- DESIGN(flagged): `kill_peaks` (liveness) dropped; the let-bound type is now a
   -- plain `Ty s`.
@@ -293,12 +293,11 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
   ----------------------------
   HasType {} Γ (.bfalse) .bool
 | alloc :
-  -- DESIGN(flagged): the existential result was dropped; `alloc` returns a cell
-  -- with a placeholder empty capture and read-write mutability.  Fresh-capability
-  -- handling needs the implicit-existential design.
+  -- `alloc` introduces a fresh capability: the result is the existential
+  -- `∃C. cell{C}` — a read-write cell capturing the freshly bound `C`.
   HasType {} Γ (.var x) .bool ->
   ----------------------------
-  HasType {} Γ (.alloc x) (.cell {} .epsilon)
+  HasType {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here) .epsilon))
 | drop :
   -- DESIGN(flagged): cell mutability := `.epsilon`.
   Γ.IsClosed ->
@@ -324,14 +323,12 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
   ----------------------------
   HasType (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
 | par :
-  -- `par` no longer carries capture sets.
   HasType C1 Γ e1 E1 ->
   HasType C2 Γ e2 E2 ->
   SepCheck Γ C1 C2 ->
   ----------------------------
   HasType (C1 ∪ C2) Γ (.par e1 e2) .unit
 | invoke :
-  -- DESIGN(flagged): `accessible` dropped.
   HasType {} Γ (.var x) (.cap (.var (.M .epsilon) x)) ->
   HasType {} Γ (.var y) .unit ->
   ------------------------------------------------

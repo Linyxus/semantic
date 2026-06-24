@@ -32,40 +32,44 @@ theorem CaptureBound.rename_comp
   | unbound m => rfl
   | bound cs => simp [CaptureBound.rename, CaptureSet.rename_comp]
 
-/-- A type in CC. Existential types were dropped from the surface calculus, so
-    the (previously sort-indexed) family now collapses to a single sort. -/
-inductive Ty : Sig -> Type where
+/-- Sort of a Capybara type. -/
+inductive TySort : Type where
+-- Capturing types
+| capt
+-- Existential types
+| exi
+
+/-- A type in CC, indexed by its sort (capturing or existential). -/
+inductive Ty : TySort -> Sig -> Type where
 -- capturing types
-| top : Ty s
-| tvar : BVar s .tvar -> Ty s
+| top : Ty .capt s
+| tvar : BVar s .tvar -> Ty .capt s
 | arrow :
-  Ty (s,C) ->  -- a capture parameter is implicitly bound
+  Ty .capt (s,C) ->  -- a capture parameter is implicitly bound
   CaptureSet s ->
-  Ty (s,x,C) ->  -- an existential is implicitly bound
-  Ty s
-| poly : 
-  Ty s -> 
-  CaptureSet s -> 
-  Ty (s,X,C) ->  -- similarly, an implicit existential
-  Ty s
-| cpoly : 
-  CaptureBound s -> 
-  CaptureSet s -> 
-  Ty (s,C,C) ->  -- ditto
-  Ty s
-| cap : CaptureSet s -> Ty s
-| cell : CaptureSet s -> Mutability -> Ty s
+  Ty .capt (s,x,C) ->  -- an existential is implicitly bound
+  Ty .capt s
+| poly :
+  Ty .capt s ->
+  CaptureSet s ->
+  Ty .capt (s,X,C) ->  -- similarly, an implicit existential
+  Ty .capt s
+| cpoly :
+  CaptureBound s ->
+  CaptureSet s ->
+  Ty .capt (s,C,C) ->  -- ditto
+  Ty .capt s
+| cap : CaptureSet s -> Ty .capt s
+| cell : CaptureSet s -> Mutability -> Ty .capt s
 -- Reader is obsolete, since cell additionally has `Mutability`
--- | reader : CaptureSet s -> Ty s
-| unit : Ty s
-| bool : Ty s
--- Dropped from the surface calculus (Capybara)
--- -- existential types
--- | exi : Ty (s,C) -> Ty .exi s
--- | typ : Ty s -> Ty .exi s
+| unit : Ty .capt s
+| bool : Ty .capt s
+-- existential types
+| exi : Ty .capt (s,C) -> Ty .exi s
+| typ : Ty .capt s -> Ty .exi s
 
 /-- Applies a renaming to all bound variables in a type. -/
-def Ty.rename : Ty s1 -> Rename s1 s2 -> Ty s2
+def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
 | .arrow T1 cs T2, f => .arrow (T1.rename (f.lift)) (cs.rename f) (T2.rename (f.lift.lift))
@@ -75,9 +79,11 @@ def Ty.rename : Ty s1 -> Rename s1 s2 -> Ty s2
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
 | .cell cs m, f => .cell (cs.rename f) m
+| .exi T, f => .exi (T.rename (f.lift))
+| .typ T, f => .typ (T.rename f)
 
 /-- Renaming by the identity renaming leaves a type unchanged. -/
-def Ty.rename_id {T : Ty s} : T.rename (Rename.id) = T := by
+def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   induction T with
   | top => simp only [Ty.rename]
   | tvar x => simp only [Ty.rename, Rename.id]
@@ -94,9 +100,15 @@ def Ty.rename_id {T : Ty s} : T.rename (Rename.id) = T := by
   | cell cs m => simp only [Ty.rename, CaptureSet.rename_id]
   | unit => simp only [Ty.rename]
   | bool => simp only [Ty.rename]
+  | exi T ih =>
+    simp only [Ty.rename, Rename.lift_id]
+    exact congrArg Ty.exi ih
+  | typ T ih =>
+    simp only [Ty.rename]
+    exact congrArg Ty.typ ih
 
 /-- Renaming distributes over composition of renamings. -/
-theorem Ty.rename_comp {T : Ty s1} {f : Rename s1 s2} {g : Rename s2 s3} :
+theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     (T.rename f).rename g = T.rename (f.comp g) := by
   induction T generalizing s2 s3 with
   | top => simp only [Ty.rename]
@@ -118,14 +130,19 @@ theorem Ty.rename_comp {T : Ty s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | cell cs m => simp only [Ty.rename, CaptureSet.rename_comp]
   | unit => simp only [Ty.rename]
   | bool => simp only [Ty.rename]
+  | exi T ih =>
+    simpa only [Ty.rename, Rename.lift_comp] using
+      congrArg Ty.exi (ih (f := f.lift) (g := g.lift))
+  | typ T ih =>
+    simpa only [Ty.rename] using congrArg Ty.typ (ih (f := f) (g := g))
 
 /-- Weakening commutes with renaming under a binder. -/
-theorem Ty.weaken_rename_comm {T : Ty s1} {f : Rename s1 s2} :
+theorem Ty.weaken_rename_comm {T : Ty sort s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
   simp [Ty.rename_comp, Rename.succ_lift_comm]
 
 /-- Extracts the capture set from a capturing type. -/
-def Ty.captureSet : Ty s -> CaptureSet s
+def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .top => .empty
 | .tvar _ => .empty
 | .arrow _ cs _ => cs
@@ -136,7 +153,7 @@ def Ty.captureSet : Ty s -> CaptureSet s
 | .unit => .empty
 | .bool => .empty
 
-def Ty.refineCaptureSet : Ty s -> CaptureSet s -> Ty s
+def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .top, _ => .top
 | .tvar x, _ => .tvar x
 | .arrow T1 _ T2, cs => .arrow T1 cs T2
@@ -153,7 +170,7 @@ inductive CaptureBound.IsClosed : CaptureBound s -> Prop where
 | bound : CaptureSet.IsClosed cs -> CaptureBound.IsClosed (.bound cs)
 
 /-- A type is closed if it contains no heap pointers. -/
-inductive Ty.IsClosed : Ty s -> Prop where
+inductive Ty.IsClosed : Ty sort s -> Prop where
 | top : Ty.IsClosed .top
 | tvar : Ty.IsClosed (.tvar x)
 | arrow : Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
@@ -167,18 +184,20 @@ inductive Ty.IsClosed : Ty s -> Prop where
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool
 | cell : CaptureSet.IsClosed cs -> Ty.IsClosed (.cell cs m)
+| exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
+| typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
 
 /-- The capture set of a renamed type equals the renamed capture set. -/
-theorem Ty.captureSet_rename {T : Ty s1} {f : Rename s1 s2} :
+theorem Ty.captureSet_rename {T : Ty .capt s1} {f : Rename s1 s2} :
     (T.rename f).captureSet = T.captureSet.rename f := by
   cases T <;> simp [Ty.rename, Ty.captureSet, CaptureSet.rename]
 
 /-- The predicate that a capturing type is pure. -/
-def Ty.IsPureType (T : Ty s) : Prop :=
+def Ty.IsPureType (T : Ty .capt s) : Prop :=
   T.captureSet.IsEmpty
 
 /-- Renaming preserves purity. -/
-theorem Ty.IsPureType.rename {T : Ty s1} (h : T.IsPureType) (f : Rename s1 s2) :
+theorem Ty.IsPureType.rename {T : Ty .capt s1} (h : T.IsPureType) (f : Rename s1 s2) :
     (T.rename f).IsPureType := by
   unfold IsPureType at *
   rw [Ty.captureSet_rename]
@@ -186,7 +205,7 @@ theorem Ty.IsPureType.rename {T : Ty s1} (h : T.IsPureType) (f : Rename s1 s2) :
 
 /-- A pure capturing type. -/
 structure PureTy (s : Sig) where
-  core : Ty s
+  core : Ty .capt s
   p : Ty.IsPureType core
 
 /-- Creates a pure type from a type variable. Type variables have empty capture sets. -/
