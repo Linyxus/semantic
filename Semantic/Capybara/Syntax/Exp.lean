@@ -31,9 +31,9 @@ inductive Exp : Sig -> Type where
 /-- Applies a renaming to all bound variables in an expression. -/
 def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .var x, f => .var (x.rename f)
-| .abs cs T e, f => .abs (cs.rename f) (T.rename (f.lift)) (e.rename (f.lift))
-| .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
-| .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
+| .abs T e, f => .abs (T.rename (f.lift)) (e.rename (f.lift))
+| .tabs T e, f => .tabs (T.rename f) (e.rename (f.lift))
+| .cabs cb e, f => .cabs (cb.rename f) (e.rename (f.lift))
 | .alloc x, f => .alloc (x.rename f)
 | .drop x, f => .drop (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
@@ -50,9 +50,9 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 
 /-- An expression is a value if it is an abstraction, pack, or unit. -/
 inductive Exp.IsVal : Exp s -> Prop where
-| abs : Exp.IsVal (.abs cs T e)
-| tabs : Exp.IsVal (.tabs cs T e)
-| cabs : Exp.IsVal (.cabs cs m e)
+| abs : Exp.IsVal (.abs T e)
+| tabs : Exp.IsVal (.tabs T e)
+| cabs : Exp.IsVal (.cabs m e)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
 | bfalse : Exp.IsVal .bfalse
@@ -60,9 +60,9 @@ inductive Exp.IsVal : Exp s -> Prop where
 /-- A simple value is a value that is not a pack. Therefore,
       a simple value always has a capturing type, not an existential type. -/
 inductive Exp.IsSimpleVal : Exp s -> Prop where
-| abs : Exp.IsSimpleVal (.abs cs T e)
-| tabs : Exp.IsSimpleVal (.tabs cs T e)
-| cabs : Exp.IsSimpleVal (.cabs cs m e)
+| abs : Exp.IsSimpleVal (.abs T e)
+| tabs : Exp.IsSimpleVal (.tabs T e)
+| cabs : Exp.IsSimpleVal (.cabs m e)
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
 | bfalse : Exp.IsSimpleVal .bfalse
@@ -88,16 +88,16 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   induction e with
   | var x =>
     simp only [Exp.rename, Var.rename_id]
-  | abs cs T e ih =>
-    simp only [Exp.rename, CaptureSet.rename_id, Rename.lift_id]
+  | abs T e ih =>
+    simp only [Exp.rename, Rename.lift_id]
     have hT : T.rename Rename.id = T := Ty.rename_id
     congr 1
-  | tabs cs T e ih =>
-    simp only [Exp.rename, CaptureSet.rename_id, PureTy.rename_id, Rename.lift_id]
-    exact congrArg (Exp.tabs cs T) ih
-  | cabs cs cb e ih =>
-    simp only [Exp.rename, CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
-    exact congrArg (Exp.cabs cs cb) ih
+  | tabs T e ih =>
+    simp only [Exp.rename, PureTy.rename_id, Rename.lift_id]
+    exact congrArg (Exp.tabs T) ih
+  | cabs cb e ih =>
+    simp only [Exp.rename, CaptureBound.rename_id, Rename.lift_id]
+    exact congrArg (Exp.cabs cb) ih
   | alloc x =>
     simp only [Exp.rename, Var.rename_id]
   | drop x =>
@@ -135,22 +135,21 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   induction e generalizing s2 s3 with
   | var x =>
     simp only [Exp.rename, Var.rename_comp]
-  | abs cs T e ih =>
-    simpa only [Exp.rename, CaptureSet.rename_comp, Ty.rename_comp, Rename.lift_comp] using
-      congrArg (Exp.abs (cs.rename (f.comp g)) (T.rename (f.lift.comp g.lift)))
+  | abs T e ih =>
+    simpa only [Exp.rename, Ty.rename_comp, Rename.lift_comp] using
+      congrArg (Exp.abs (T.rename (f.lift.comp g.lift)))
         (ih (f := f.lift) (g := g.lift))
-  | tabs cs T e ih =>
-    simpa only [Exp.rename, CaptureSet.rename_comp, PureTy.rename_comp, Rename.lift_comp] using
-      congrArg (Exp.tabs (cs.rename (f.comp g)) (T.rename (f.comp g)))
+  | tabs T e ih =>
+    simpa only [Exp.rename, PureTy.rename_comp, Rename.lift_comp] using
+      congrArg (Exp.tabs (T.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
-  | cabs cs cb e ih =>
+  | cabs cb e ih =>
     simpa only [
       Exp.rename,
-      CaptureSet.rename_comp,
       CaptureBound.rename_comp,
       Rename.lift_comp
     ] using
-      congrArg (Exp.cabs (cs.rename (f.comp g)) (cb.rename (f.comp g)))
+      congrArg (Exp.cabs (cb.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
   | alloc x =>
     simp only [Exp.rename, Var.rename_comp]
@@ -194,12 +193,12 @@ inductive Exp.IsAns : Exp {} -> Prop where
 /-- An expression is closed if it contains no heap pointers. -/
 inductive Exp.IsClosed : Exp s -> Prop where
 | var : Var.IsClosed x -> Exp.IsClosed (.var x)
-| abs : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
-    Exp.IsClosed (.abs cs T e)
-| tabs : CaptureSet.IsClosed cs -> PureTy.IsClosed T -> Exp.IsClosed e ->
-    Exp.IsClosed (.tabs cs T e)
-| cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
-    Exp.IsClosed (.cabs cs cb e)
+| abs : Ty.IsClosed T -> Exp.IsClosed e ->
+    Exp.IsClosed (.abs T e)
+| tabs : PureTy.IsClosed T -> Exp.IsClosed e ->
+    Exp.IsClosed (.tabs T e)
+| cabs : CaptureBound.IsClosed cb -> Exp.IsClosed e ->
+    Exp.IsClosed (.cabs cb e)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
 | drop : Var.IsClosed x -> Exp.IsClosed (.drop x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)

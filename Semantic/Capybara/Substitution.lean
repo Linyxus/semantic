@@ -98,9 +98,9 @@ def PureTy.subst (T : PureTy s1) (σ : Subst s1 s2) : PureTy s2 :=
 /-- Applies a substitution to an expression. -/
 def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .var x, s => .var (x.subst s)
-| .abs cs T e, s => .abs (cs.subst s) (T.subst s.lift) (e.subst s.lift)
-| .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
-| .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
+| .abs T e, s => .abs (T.subst s.lift) (e.subst s.lift)
+| .tabs T e, s => .tabs (T.subst s) (e.subst s.lift)
+| .cabs cb e, s => .cabs (cb.subst s) (e.subst s.lift)
 | .alloc x, s => .alloc (x.subst s)
 | .drop x, s => .drop (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
@@ -542,16 +542,16 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (e.subst σ1).subst σ2 = e.subst (σ1.comp σ2) := by
   induction e generalizing s2 s3 with
   | var x => simp only [Exp.subst, Var.subst_comp]
-  | abs cs T e ih_e =>
-    simp only [Exp.subst, CaptureSet.subst_comp, Ty.subst_comp, ih_e]
+  | abs T e ih_e =>
+    simp only [Exp.subst, Ty.subst_comp, ih_e]
     conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
     rfl
-  | tabs cs T e ih_e =>
-    simp only [Exp.subst, CaptureSet.subst_comp, PureTy.subst_comp, ih_e]
+  | tabs T e ih_e =>
+    simp only [Exp.subst, PureTy.subst_comp, ih_e]
     conv_rhs => rw [← Subst.comp_lift]
     rfl
-  | cabs cs cb e ih_e =>
-    simp only [Exp.subst, CaptureSet.subst_comp, CaptureBound.subst_comp, ih_e]
+  | cabs cb e ih_e =>
+    simp only [Exp.subst, CaptureBound.subst_comp, ih_e]
     conv_rhs => rw [← Subst.comp_lift]
     rfl
   | alloc x => simp only [Exp.subst, Var.subst_comp]
@@ -661,18 +661,18 @@ theorem Exp.subst_id {e : Exp s} :
   induction e with
   | var x =>
     simp only [Exp.subst, Var.subst_id]
-  | abs cs T e ih =>
-    simp only [Exp.subst, CaptureSet.subst_id, Subst.lift_id]
+  | abs T e ih =>
+    simp only [Exp.subst, Subst.lift_id]
     have hT : T.subst Subst.id = T := Ty.subst_id
     congr 1
-  | tabs cs T e ih =>
-    simp only [Exp.subst, CaptureSet.subst_id, PureTy.subst_id]
+  | tabs T e ih =>
+    simp only [Exp.subst, PureTy.subst_id]
     conv_lhs => rw [Subst.lift_id]
-    exact congrArg (Exp.tabs cs T) ih
-  | cabs cs cb e ih =>
-    simp only [Exp.subst, CaptureSet.subst_id, CaptureBound.subst_id]
+    exact congrArg (Exp.tabs T) ih
+  | cabs cb e ih =>
+    simp only [Exp.subst, CaptureBound.subst_id]
     conv_lhs => rw [Subst.lift_id]
-    exact congrArg (Exp.cabs cs cb) ih
+    exact congrArg (Exp.cabs cb) ih
   | alloc x =>
     simp only [Exp.subst, Var.subst_id]
   | drop x =>
@@ -813,19 +813,19 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
   induction e generalizing s2 with
   | var x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
-  | abs cs T e ih =>
+  | abs T e ih =>
     have hT := Ty.subst_asSubst (T := T) (f := f.lift)
     have he := ih (f := f.lift)
-    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, ← Rename.asSubst_lift]
+    simp only [Exp.subst, Exp.rename, ← Rename.asSubst_lift]
     congr 1
-  | tabs cs T e ih =>
-    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, PureTy.subst_asSubst]
+  | tabs T e ih =>
+    simp only [Exp.subst, Exp.rename, PureTy.subst_asSubst]
     rw [← Rename.asSubst_lift]
-    exact congrArg (Exp.tabs (cs.rename f) (T.rename f)) ih
-  | cabs cs cb e ih =>
-    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, CaptureBound.subst_asSubst]
+    exact congrArg (Exp.tabs (T.rename f)) ih
+  | cabs cb e ih =>
+    simp only [Exp.subst, Exp.rename, CaptureBound.subst_asSubst]
     rw [← Rename.asSubst_lift]
-    exact congrArg (Exp.cabs (cs.rename f) (cb.rename f)) ih
+    exact congrArg (Exp.cabs (cb.rename f)) ih
   | alloc x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | drop x =>
@@ -1122,25 +1122,22 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst]
     constructor
     exact Var.is_closed_subst hx hsubst
-  | abs cs T e ih =>
-    cases hc with | abs hcs hT he =>
+  | abs T e ih =>
+    cases hc with | abs hT he =>
     simp only [Exp.subst]
     constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
     · exact Ty.is_closed_subst hT (Subst.lift_closed hsubst)
     · exact ih he (Subst.lift_closed hsubst)
-  | tabs cs S e ih =>
-    cases hc with | tabs hcs hS he =>
+  | tabs S e ih =>
+    cases hc with | tabs hS he =>
     simp only [Exp.subst]
     constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
     · exact Ty.is_closed_subst hS hsubst
     · exact ih he (Subst.lift_closed hsubst)
-  | cabs cs cb e ih =>
-    cases hc with | cabs hcs hcb he =>
+  | cabs cb e ih =>
+    cases hc with | cabs hcb he =>
     simp only [Exp.subst]
     constructor
-    · exact CaptureSet.is_closed_subst hcs hsubst
     · exact CaptureBound.is_closed_subst hcb hsubst
     · exact ih he (Subst.lift_closed hsubst)
   | alloc x =>
@@ -1336,19 +1333,18 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | var hx =>
     exact IsClosed.var (Var.subst_closed_inv hx)
-  | abs cs T e ih =>
+  | abs T e ih =>
     simp only [Exp.subst] at hclosed
-    cases hclosed with | abs hcs hT he =>
-    exact IsClosed.abs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
-  | tabs cs T e ih =>
+    cases hclosed with | abs hT he =>
+    exact IsClosed.abs (Ty.subst_closed_inv hT) (ih he)
+  | tabs T e ih =>
     simp only [Exp.subst] at hclosed
-    cases hclosed with | tabs hcs hT he =>
-    exact IsClosed.tabs (CaptureSet.subst_closed_inv hcs) (Ty.subst_closed_inv hT) (ih he)
-  | cabs cs cb e ih =>
+    cases hclosed with | tabs hT he =>
+    exact IsClosed.tabs (Ty.subst_closed_inv hT) (ih he)
+  | cabs cb e ih =>
     simp only [Exp.subst] at hclosed
-    cases hclosed with | cabs hcs hcb he =>
-    exact IsClosed.cabs (CaptureSet.subst_closed_inv hcs)
-      (CaptureBound.subst_closed_inv hcb) (ih he)
+    cases hclosed with | cabs hcb he =>
+    exact IsClosed.cabs (CaptureBound.subst_closed_inv hcb) (ih he)
   | alloc x =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | alloc hx =>
