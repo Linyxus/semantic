@@ -32,7 +32,7 @@ def Ctx.push_cvar : Ctx s -> Authority -> CaptureBound s -> Ctx (s,C)
 | Γ, a, cb => Γ.push (.cvar a cb)
 
 def Ctx.push_cvar_default : Ctx s -> CaptureBound s -> Ctx (s,C)
-| Γ, cb => Γ.push_cvar .can_drop cb
+| Γ, cb => Γ.push_cvar .access_only cb
 
 infixl:65 ",x:" => Ctx.push_var
 infixl:65 ",X<:" => Ctx.push_tvar

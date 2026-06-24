@@ -145,8 +145,8 @@ inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 --   -------------------------------------------
 --   Satisfy Γ Ψ
 
-inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
-| top {T : Ty .capt s} :
+inductive Subtyp : Ctx s -> Ty s -> Ty s -> Prop where
+| top {T : Ty s} :
   T.IsPureType ->
   -------------------
   Subtyp Γ T .top
@@ -164,43 +164,25 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   -------------------
   Subtyp Γ (.tvar X) S.core
 | arrow :
-  Subtyp Γ T2 T1 ->
+  Subtyp (Γ,C<:.unbound .epsilon) T2 T1 ->
   Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ,C<:.unbound m2,x:T2) U1 U2 ->
+  Subtyp 
+    (Γ,C<:.unbound .epsilon,x:T2,C<:.unbound .epsilon) 
+    (U1.rename Rename.implicit_cvar2) (U2.rename Rename.implicit_cvar2) ->
   --------------------------
-  Subtyp Γ (.arrow m1 T1 cs1 U1) (.arrow m2 T2 cs2 U2)
+  Subtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2)
 | poly {S1 S2 : PureTy s} :
   Subtyp Γ S2.core S1.core ->
   Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ,X<:S2) T1 T2 ->
+  Subtyp (Γ,X<:S2,C<:.unbound .epsilon) T1 T2 ->
   --------------------------
   Subtyp Γ (.poly S1.core cs1 T1) (.poly S2.core cs2 T2)
 | cpoly :
   Subbound Γ cb2 cb1 ->
   Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ,C[.access_only]<:cb2) T1 T2 ->
+  Subtyp (Γ,C<:cb2,C<:.unbound .epsilon) T1 T2 ->
   ----------------------------------------
   Subtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
-| modal :
-  Subcapt Γ cs1 cs2 ->
-  Subtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ) ->
-  ----------------------------------------
-  Subtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2)
-| modal_modal :
-  Γ.IsClosed ->
-  Ψ1.IsClosed ->
-  Ψ2.IsClosed ->
-  Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
-  ----------------------------------
-  Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
-| exi :
-  Subtyp (Γ,C[.access_only]<:.unbound) T1 T2 ->
-  --------------------------
-  Subtyp Γ (.exi T1) (.exi T2)
-| typ :
-  Subtyp Γ T1 T2 ->
-  --------------------------
-  Subtyp Γ (.typ T1) (.typ T2)
 
 inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | seq_sc :
@@ -224,7 +206,9 @@ inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   ----------------------
   SeqComp Γ C1.applyDrop C2
 
-inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
+-- Types are no longer sort-indexed, so the old `.typ`/`.exi` result wrappers are
+-- gone: a judgement now produces a plain `Ty s`.
+inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty s -> Prop where
 | var :
   Γ.IsClosed ->
   Γ.LookupVar x T ->
@@ -233,137 +217,124 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     {}
     Γ
     (.var (.bound x))
-    (.typ (T.refineCaptureSet (.var (.M .epsilon) (.bound x))))
+    (T.refineCaptureSet (.var (.M .epsilon) (.bound x)))
 | reader :
+  -- DESIGN(flagged): `Ty.reader` was dropped; a reader is modelled as a
+  -- read-only cell.  The read cell's stored mutability `m` is unconstrained.
   Γ.IsClosed ->
-  Γ.LookupVar x (.cell C) ->
+  Γ.LookupVar x (.cell C m) ->
   ---------------------------------
   HasType
     {}
     Γ
     (.reader (.bound x))
-    (.typ (.reader (.var (.M .ro) (.bound x))))
-| abs {T1 : Ty .capt s} :
-  T1.IsClosed ->
-  HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
+    (.cell (.var (.M .ro) (.bound x)) .ro)
+| abs {T1 : Ty (s,C)} {T2 : Ty (s,x)} :
+  -- DESIGN(flagged): the domain `T1 : Ty (s,C)` carries the argument's implicit
+  -- capture param; the binding instantiates it via `Subst.openCVar {}` (should be
+  -- the argument's own capture).  The codomain existential `,C` is introduced by
+  -- weakening the body's type (`Rename.succ (k := .cvar)`) — the existential is
+  -- currently unused (placeholder for fresh-capture results).
+  (T1.subst (Subst.openCVar {})).IsClosed ->
+  HasType (cs.rename Rename.succ) (Γ,x:(T1.subst (Subst.openCVar {}))) e T2 ->
   ----------------------------
-  HasType {} Γ (.abs cs T1 e) (.typ (.arrow T1 cs T2))
-| tabs {S : PureTy s} :
+  HasType {} Γ (.abs cs T1 e) (.arrow T1 cs (T2.rename (Rename.succ (k := .cvar))))
+| tabs {S : PureTy s} {T : Ty (s,X)} :
   S.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
-  HasType {} Γ (.tabs cs S e) (.typ (.poly S.core cs T))
-| cabs {cb : CaptureBound s} :
+  HasType {} Γ (.tabs cs S e) (.poly S.core cs (T.rename (Rename.succ (k := .cvar))))
+| cabs {cb : CaptureBound s} {T : Ty (s,C)} :
   cb.IsClosed ->
   cb.IsValid Γ ->
   HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
-  HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
-| wrap :
-  Ψ.IsClosed ->
-  HasType
-    (cs.rename Rename.succ) (Γ.push_lock Ψ)
-    (e.rename Rename.succ) (E.rename Rename.succ) ->
-  HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
-| pack {C : CaptureSet s} :
-  C.IsClosed ->
-  C.AccessOnly Γ ->
-  C.droppable Γ ->
-  HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
-  ----------------------------
-  HasType (C ∪ C.applyAccess .drop) Γ (.pack C x) (.exi T)
+  HasType {} Γ (.cabs cs cb e) (.cpoly cb cs (T.rename (Rename.succ (k := .cvar))))
 | app :
-  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
-  HasType {} Γ (.var y) (.typ T1) ->
+  -- DESIGN(flagged): the `accessible` (liveness) premise was dropped.  The
+  -- argument's capture param is instantiated to `{y}`; the codomain existential
+  -- `,C` is opened to `{}` (placeholder for the call's result capture).
+  HasType {} Γ (.var x) (.arrow T1 (.var (.M .epsilon) x) T2) ->
+  HasType {} Γ (.var y) (T1.subst (Subst.openCVar (.var (.M .epsilon) y))) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
+  HasType (.var (.M .epsilon) x) Γ (.app x y)
+    (T2.subst ((Subst.openCVar {}).comp (Subst.openVar y)))
 | tapp {S : PureTy s} :
-  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
+  -- DESIGN(flagged): codomain existential `,C` opened to `{}` (placeholder).
   S.IsClosed ->
-  HasType {} Γ (.var x) (.typ (.poly S.core (.var (.M .epsilon) x) T)) ->
+  HasType {} Γ (.var x) (.poly S.core (.var (.M .epsilon) x) T) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.tapp x S) (T.subst (Subst.openTVar S))
-| capp {D : CaptureSet s} {I : CaptureSet s} :
-  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
+  HasType (.var (.M .epsilon) x) Γ (.tapp x S)
+    (T.subst ((Subst.openCVar {}).comp (Subst.openTVar S)))
+| capp {D : CaptureSet s} :
+  -- DESIGN(flagged): codomain existential `,C` opened to `{}` (placeholder).
   D.IsClosed ->
   CaptureBound.IsValid Γ (.bound D) ->
-  HasType {} Γ (.var x) (.typ (.cpoly (.bound D) (.var (.M .epsilon) x) T)) ->
+  HasType {} Γ (.var x) (.cpoly (.bound D) (.var (.M .epsilon) x) T) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.capp x D) (T.subst (Subst.openCVar D))
-| unwrap :
-  HasType {} Γ (.var x) (.typ (.modal (.var (.M .epsilon) x) Ψ E)) ->
-  Satisfy Γ Ψ ->
-  ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.unwrap x) E
+  HasType (.var (.M .epsilon) x) Γ (.capp x D)
+    (T.subst ((Subst.openCVar {}).comp (Subst.openCVar D)))
 | letin :
+  -- DESIGN(flagged): `kill_peaks` (liveness) dropped; the let-bound type is now a
+  -- plain `Ty s`.
   SeqComp Γ C1 C2 ->
-  HasType C1 Γ e1 (.typ T) ->
-  HasType (C2.rename Rename.succ) ((Γ.kill_peaks ((C1.peakset Γ).consumed)),x:T) e2
-    (U.rename Rename.succ) ->
+  HasType C1 Γ e1 T ->
+  HasType (C2.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
   HasType (C1 ∪ C2) Γ (.letin e1 e2) U
-| unpack :
-  SeqComp Γ C1 C2 ->
-  ((C1.peakset Γ).consumed).droppable Γ ->
-  HasType C1 Γ t (.exi T) ->
-  HasType
-    (((C2.rename Rename.succ).rename Rename.succ) ∪
-     (.cvar (.M .epsilon) (.there .here)) ∪
-     (.cvar .drop (.there .here)))
-    ((Γ.kill_peaks ((C1.peakset Γ).consumed)),C[.can_drop]<:.unbound,x:T)
-    u
-    ((U.rename Rename.succ).rename Rename.succ) ->
-  --------------------------------------------
-  HasType (C1 ∪ C2) Γ (.unpack t u) U
 | unit :
   ----------------------------
-  HasType {} Γ (.unit) (.typ .unit)
+  HasType {} Γ (.unit) .unit
 | btrue :
   ----------------------------
-  HasType {} Γ (.btrue) (.typ .bool)
+  HasType {} Γ (.btrue) .bool
 | bfalse :
   ----------------------------
-  HasType {} Γ (.bfalse) (.typ .bool)
+  HasType {} Γ (.bfalse) .bool
 | alloc :
-  HasType {} Γ (.var x) (.typ .bool) ->
+  -- DESIGN(flagged): the existential result was dropped; `alloc` returns a cell
+  -- with a placeholder empty capture and read-write mutability.  Fresh-capability
+  -- handling needs the implicit-existential design.
+  HasType {} Γ (.var x) .bool ->
   ----------------------------
-  HasType {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here)))
+  HasType {} Γ (.alloc x) (.cell {} .epsilon)
 | drop :
+  -- DESIGN(flagged): cell mutability := `.epsilon`.
   Γ.IsClosed ->
   (CaptureSet.var (.M .epsilon) x).droppable Γ ->
-  HasType {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x))) ->
+  HasType {} Γ (.var x) (.cell (.var (.M .epsilon) x) .epsilon) ->
   ----------------------------
-  HasType (.var .drop x) Γ (.drop x) (.typ .unit)
+  HasType (.var .drop x) Γ (.drop x) .unit
 | read :
-  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.reader C)) ->
+  -- DESIGN(flagged): `accessible` dropped; reads a read-only cell (was a reader).
+  HasType {} Γ (.var x) (.cell C .ro) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.read x) (.typ .bool)
+  HasType (.var (.M .epsilon) x) Γ (.read x) .bool
 | write :
-  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.cell Cx)) ->
-  HasType {} Γ (.var y) (.typ .bool) ->
+  -- DESIGN(flagged): `accessible` dropped; cell mutability := `.epsilon`.
+  HasType {} Γ (.var x) (.cell Cx .epsilon) ->
+  HasType {} Γ (.var y) .bool ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.write x y) (.typ .unit)
+  HasType (.var (.M .epsilon) x) Γ (.write x y) .unit
 | cond :
-  HasType C1 Γ (.var x) (.typ .bool) ->
+  HasType C1 Γ (.var x) .bool ->
   HasType C2 Γ e2 T ->
   HasType C3 Γ e3 T ->
   ----------------------------
   HasType (C1 ∪ C2 ∪ C3) Γ (.cond x e2 e3) T
 | par :
+  -- `par` no longer carries capture sets.
   HasType C1 Γ e1 E1 ->
   HasType C2 Γ e2 E2 ->
   SepCheck Γ C1 C2 ->
   ----------------------------
-  HasType (C1 ∪ C2) Γ (.par C1 C2 e1 e2) (.typ .unit)
+  HasType (C1 ∪ C2) Γ (.par e1 e2) .unit
 | invoke :
-  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.cap (.var (.M .epsilon) x))) ->
-  HasType {} Γ (.var y) (.typ .unit) ->
+  -- DESIGN(flagged): `accessible` dropped.
+  HasType {} Γ (.var x) (.cap (.var (.M .epsilon) x)) ->
+  HasType {} Γ (.var y) .unit ->
   ------------------------------------------------
-  HasType (.var (.M .epsilon) x) Γ (.app x y) (.typ .unit)
+  HasType (.var (.M .epsilon) x) Γ (.app x y) .unit
 | subtyp :
   HasType C1 Γ e E1 ->
   Subcapt Γ C1 C2 ->
