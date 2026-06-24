@@ -68,8 +68,8 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
-| .cell cs, f => .cell (cs.rename f)
-| .reader cs, f => .reader (cs.rename f)
+| .cell cs T, f => .cell (cs.rename f) (T.rename f)
+| .reader cs T, f => .reader (cs.rename f) (T.rename f)
 | .exi T, f => .exi (T.rename (f.lift))
 | .typ T, f => .typ (T.rename f)
 
@@ -93,10 +93,12 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
     exact congrArg (Ty.modal cs Ψ) ih
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_id]
-  | cell cs =>
+  | cell cs T ih =>
     simp only [Ty.rename, CaptureSet.rename_id]
-  | reader cs =>
+    exact congrArg (Ty.cell cs) ih
+  | reader cs T ih =>
     simp only [Ty.rename, CaptureSet.rename_id]
+    exact congrArg (Ty.reader cs) ih
   | unit => rfl
   | bool => rfl
   | exi T ih =>
@@ -131,10 +133,14 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
         (ih (f := f) (g := g))
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_comp]
-  | cell cs =>
-    simp only [Ty.rename, CaptureSet.rename_comp]
-  | reader cs =>
-    simp only [Ty.rename, CaptureSet.rename_comp]
+  | cell cs T ih =>
+    simpa only [Ty.rename, CaptureSet.rename_comp] using
+      congrArg (Ty.cell (cs.rename (f.comp g)))
+        (ih (f := f) (g := g))
+  | reader cs T ih =>
+    simpa only [Ty.rename, CaptureSet.rename_comp] using
+      congrArg (Ty.reader (cs.rename (f.comp g)))
+        (ih (f := f) (g := g))
   | unit => rfl
   | bool => rfl
   | exi T ih =>
@@ -157,8 +163,8 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .cpoly _ cs _ => cs
 | .modal cs _ _ => cs
 | .cap cs => cs
-| .cell cs => cs
-| .reader cs => cs
+| .cell cs _ => cs
+| .reader cs _ => cs
 | .unit => .empty
 | .bool => .empty
 
@@ -170,8 +176,8 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .cpoly cb _ T, cs => .cpoly cb cs T
 | .modal _ Ψ T, cs => .modal cs Ψ T
 | .cap _, cs => .cap cs
-| .cell _, cs => .cell cs
-| .reader _, cs => .reader cs
+| .cell _ T, cs => .cell cs T
+| .reader _ T, cs => .reader cs T
 | .unit, _ => .unit
 | .bool, _ => .bool
 
@@ -197,8 +203,8 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | unit : Ty.IsClosed .unit
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool
-| cell : CaptureSet.IsClosed cs -> Ty.IsClosed (.cell cs)
-| reader : CaptureSet.IsClosed cs -> Ty.IsClosed (.reader cs)
+| cell : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.cell cs T)
+| reader : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.reader cs T)
 | exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
 | typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
 

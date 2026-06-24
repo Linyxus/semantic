@@ -68,8 +68,8 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .unit, _ => .unit
 | .cap cs, s => .cap (cs.subst s)
 | .bool, _ => .bool
-| .cell cs, s => .cell (cs.subst s)
-| .reader cs, s => .reader (cs.subst s)
+| .cell cs T, s => .cell (cs.subst s) (T.subst s)
+| .reader cs T, s => .reader (cs.subst s) (T.subst s)
 | .exi T, s => .exi (T.subst s.lift)
 | .typ T, s => .typ (T.subst s)
 
@@ -94,8 +94,8 @@ theorem Ty.IsPureType.subst {T : Ty .capt s1} (h : T.IsPureType) (σ : Subst s1 
   | cpoly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | modal _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cap cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
-  | cell cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
-  | reader cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
+  | cell cs T => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
+  | reader cs T => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
 
 /-- Applies a substitution to a pure type. -/
 def PureTy.subst (T : PureTy s1) (σ : Subst s1 s2) : PureTy s2 :=
@@ -359,12 +359,14 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
     simp only [Ty.subst, Ty.rename, ihCS]
   | .bool => rfl
-  | .cell cs =>
+  | .cell cs T =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    simp only [Ty.subst, Ty.rename, ihCS]
-  | .reader cs =>
+    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
+    simp only [Ty.subst, Ty.rename, ihCS, ih]
+  | .reader cs T =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    simp only [Ty.subst, Ty.rename, ihCS]
+    have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K) (k0:=k0)
+    simp only [Ty.subst, Ty.rename, ihCS, ih]
   | .exi T =>
     have ih := Ty.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
     simp only [Ty.subst, Ty.rename]
@@ -560,8 +562,8 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | unit => rfl
   | cap cs => simp only [Ty.subst, CaptureSet.subst_comp]
   | bool => rfl
-  | cell cs => simp only [Ty.subst, CaptureSet.subst_comp]
-  | reader cs => simp only [Ty.subst, CaptureSet.subst_comp]
+  | cell cs T ih => simp only [Ty.subst, CaptureSet.subst_comp, ih]
+  | reader cs T ih => simp only [Ty.subst, CaptureSet.subst_comp, ih]
   | exi T ih =>
     simp only [Ty.subst, ih]
     conv_rhs => rw [← Subst.comp_lift]
@@ -711,8 +713,8 @@ theorem Ty.subst_id {T : Ty sort s} :
   | unit => simp only [Ty.subst]
   | cap cs => simp only [Ty.subst, CaptureSet.subst_id]
   | bool => simp only [Ty.subst]
-  | cell cs => simp only [Ty.subst, CaptureSet.subst_id]
-  | reader cs => simp only [Ty.subst, CaptureSet.subst_id]
+  | cell cs T ih => simp only [Ty.subst, CaptureSet.subst_id, ih]
+  | reader cs T ih => simp only [Ty.subst, CaptureSet.subst_id, ih]
   | exi T ih =>
     simp only [Ty.subst]
     conv_lhs => rw [Subst.lift_id]
@@ -891,8 +893,8 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   | unit => simp only [Ty.subst, Ty.rename]
   | cap cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | bool => simp only [Ty.subst, Ty.rename]
-  | cell cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
-  | reader cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
+  | cell cs T ih => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ih]
+  | reader cs T ih => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ih]
   | exi T ih =>
     simp only [Ty.subst, Ty.rename]
     rw [← Rename.asSubst_lift]
@@ -1150,12 +1152,12 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
     cases hc with | cap hcs =>
     exact IsClosed.cap (CaptureSet.rename_closed_any hcs)
   | bool => exact IsClosed.bool
-  | cell cs =>
-    cases hc with | cell hcs =>
-    exact IsClosed.cell (CaptureSet.rename_closed_any hcs)
-  | reader cs =>
-    cases hc with | reader hcs =>
-    exact IsClosed.reader (CaptureSet.rename_closed_any hcs)
+  | cell cs T ih =>
+    cases hc with | cell hcs hT =>
+    exact IsClosed.cell (CaptureSet.rename_closed_any hcs) (ih hT)
+  | reader cs T ih =>
+    cases hc with | reader hcs hT =>
+    exact IsClosed.reader (CaptureSet.rename_closed_any hcs) (ih hT)
   | typ T ih =>
     cases hc with | typ hT =>
     exact IsClosed.typ (ih hT)
@@ -1237,14 +1239,14 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     simp only [Ty.subst]
     exact IsClosed.cap (CaptureSet.is_closed_subst hcs hsubst)
   | bool => exact IsClosed.bool
-  | cell cs =>
-    cases hc with | cell hcs =>
+  | cell cs T ih =>
+    cases hc with | cell hcs hT =>
     simp only [Ty.subst]
-    exact IsClosed.cell (CaptureSet.is_closed_subst hcs hsubst)
-  | reader cs =>
-    cases hc with | reader hcs =>
+    exact IsClosed.cell (CaptureSet.is_closed_subst hcs hsubst) (ih hT hsubst)
+  | reader cs T ih =>
+    cases hc with | reader hcs hT =>
     simp only [Ty.subst]
-    exact IsClosed.reader (CaptureSet.is_closed_subst hcs hsubst)
+    exact IsClosed.reader (CaptureSet.is_closed_subst hcs hsubst) (ih hT hsubst)
   | typ T ih =>
     cases hc with | typ hT =>
     simp only [Ty.subst]
@@ -1495,14 +1497,14 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     cases hclosed with | cap hcs =>
     exact IsClosed.cap (CaptureSet.subst_closed_inv hcs)
   | bool => exact IsClosed.bool
-  | cell cs =>
+  | cell cs T ih =>
     simp only [Ty.subst] at hclosed
-    cases hclosed with | cell hcs =>
-    exact IsClosed.cell (CaptureSet.subst_closed_inv hcs)
-  | reader cs =>
+    cases hclosed with | cell hcs hT =>
+    exact IsClosed.cell (CaptureSet.subst_closed_inv hcs) (ih hT)
+  | reader cs T ih =>
     simp only [Ty.subst] at hclosed
-    cases hclosed with | reader hcs =>
-    exact IsClosed.reader (CaptureSet.subst_closed_inv hcs)
+    cases hclosed with | reader hcs hT =>
+    exact IsClosed.reader (CaptureSet.subst_closed_inv hcs) (ih hT)
   | exi T ih =>
     simp only [Ty.subst] at hclosed
     cases hclosed with | exi hT =>
