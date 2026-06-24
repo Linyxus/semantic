@@ -116,4 +116,12 @@ def Rename.implicit_cvar : Rename (s,,k) (s,C,,k) where
     | .here => .here
     | .there y => .there (.there y)
 
+/-- Weakening that inserts an implicit capture variable just below the two top
+    binders, mapping `s,,k1,,k2` into `s,C,,k1,,k2`. -/
+def Rename.implicit_cvar2 : Rename (s,,k1,,k2) (s,C,,k1,,k2) where
+  var := fun
+    | .here => .here
+    | .there .here => .there .here
+    | .there (.there y) => .there (.there (.there y))
+
 end Capybara
