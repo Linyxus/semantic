@@ -12,12 +12,10 @@ inductive Exp : Sig -> Type where
 | abs : CaptureSet s -> Ty (s,C) -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
-| reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
+| read : Var .var s -> Exp s
+| write : Var .var s -> Var .var s -> Exp s
 | drop : Var .var s -> Exp s
--- Dropped from the surface calculus
--- | pack : CaptureSet s -> Var .var s -> Exp s
--- | unpack : Exp s -> Exp ((s,C),x) -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
@@ -25,11 +23,8 @@ inductive Exp : Sig -> Type where
 | unit : Exp s
 | btrue : Exp s
 | bfalse : Exp s
-| read : Var .var s -> Exp s
-| write : Var .var s -> Var .var s -> Exp s
 | cond : Var .var s -> Exp s -> Exp s -> Exp s
 | par :
-  -- CaptureSet s -> CaptureSet s ->
   Exp s -> Exp s ->
   Exp s
 
