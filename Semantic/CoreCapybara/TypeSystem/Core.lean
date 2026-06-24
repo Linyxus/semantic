@@ -213,13 +213,13 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (.typ (T.refineCaptureSet (.var (.M .epsilon) (.bound x))))
 | reader :
   Γ.IsClosed ->
-  Γ.LookupVar x (.cell C) ->
+  Γ.LookupVar x (.cell C T) ->
   ---------------------------------
   HasType
     {}
     Γ
     (.reader (.bound x))
-    (.typ (.reader (.var (.M .ro) (.bound x))))
+    (.typ (.reader (.var (.M .ro) (.bound x)) T))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
@@ -303,24 +303,27 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.bfalse) (.typ .bool)
 | alloc :
-  HasType {} Γ (.var x) (.typ .bool) ->
+  HasType {} Γ (.var x) (.typ T) ->
   ----------------------------
-  HasType {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here)))
+  HasType 
+    {} Γ 
+    (.alloc x) 
+    (.exi (.cell (.cvar (.M .epsilon) .here) (T.rename Rename.succ)))
 | drop :
   Γ.IsClosed ->
   (CaptureSet.var (.M .epsilon) x).droppable Γ ->
-  HasType {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x))) ->
+  HasType {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x) T)) ->
   ----------------------------
   HasType (.var .drop x) Γ (.drop x) (.typ .unit)
 | read :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.reader C)) ->
+  HasType {} Γ (.var x) (.typ (.reader C T)) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.read x) (.typ .bool)
+  HasType (.var (.M .epsilon) x) Γ (.read x) (.typ T)
 | write :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.cell Cx)) ->
-  HasType {} Γ (.var y) (.typ .bool) ->
+  HasType {} Γ (.var x) (.typ (.cell Cx T)) ->
+  HasType {} Γ (.var y) (.typ T) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.write x y) (.typ .unit)
 | cond :
