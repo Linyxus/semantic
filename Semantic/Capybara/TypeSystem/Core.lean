@@ -229,7 +229,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty sort s -> Prop where
 | abs {T1 : Ty .capt (s,C)} {T2 : Ty .capt (s,x,C)} :
   T1.IsClosed ->
   HasType
-    ((cs.rename Rename.succ).rename Rename.succ ∪ (.var (.M .epsilon) x))
+    ((cs.rename Rename.succ).rename Rename.succ ∪ (.var (.M .epsilon) (.bound .here)))
     (Γ,C<:.unbound .epsilon,x:T1)
     (e.rename Rename.implicit_cvar)
     ((T2.subst (Subst.openCVar D)).rename Rename.implicit_cvar) ->
@@ -258,14 +258,14 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty sort s -> Prop where
     (.exi (T2.subst (Subst.openVar y).lift))
 | tapp {S : PureTy s} :
   S.IsClosed ->
-  HasType {} Γ (.var x) (.poly S.core (.var (.M .epsilon) x) T) ->
+  HasType (.var (.M .epsilon) x) Γ (.var x) (.poly S.core (.var (.M .epsilon) x) T) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.tapp x S)
     (.exi (T.subst (Subst.openTVar S).lift))
 | capp {D : CaptureSet s} :
   D.IsClosed ->
   CaptureBound.IsValid Γ (.bound D) ->
-  HasType {} Γ (.var x) (.cpoly (.bound D) (.var (.M .epsilon) x) T) ->
+  HasType (.var (.M .epsilon) x) Γ (.var x) (.cpoly (.bound D) (.var (.M .epsilon) x) T) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.capp x D)
     (.exi (T.subst (Subst.openCVar D).lift))
