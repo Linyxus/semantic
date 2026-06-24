@@ -34,7 +34,6 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .abs cs T e, f => .abs (cs.rename f) (T.rename (f.lift)) (e.rename (f.lift))
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
-| .reader x, f => .reader (x.rename f)
 | .alloc x, f => .alloc (x.rename f)
 | .drop x, f => .drop (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
@@ -54,7 +53,6 @@ inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
-| reader : Exp.IsVal (.reader x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
 | bfalse : Exp.IsVal .bfalse
@@ -68,7 +66,6 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
 | bfalse : Exp.IsSimpleVal .bfalse
-| reader : Exp.IsSimpleVal (.reader x)
 
 inductive Exp.IsSimpleAns : Exp s -> Prop where
 | is_simple_val :
@@ -101,8 +98,6 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | cabs cs cb e ih =>
     simp only [Exp.rename, CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
     exact congrArg (Exp.cabs cs cb) ih
-  | reader x =>
-    simp only [Exp.rename, Var.rename_id]
   | alloc x =>
     simp only [Exp.rename, Var.rename_id]
   | drop x =>
@@ -157,8 +152,6 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     ] using
       congrArg (Exp.cabs (cs.rename (f.comp g)) (cb.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
-  | reader x =>
-    simp only [Exp.rename, Var.rename_comp]
   | alloc x =>
     simp only [Exp.rename, Var.rename_comp]
   | drop x =>
@@ -207,7 +200,6 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
     Exp.IsClosed (.cabs cs cb e)
-| reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
 | drop : Var.IsClosed x -> Exp.IsClosed (.drop x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)

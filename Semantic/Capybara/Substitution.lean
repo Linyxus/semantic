@@ -101,7 +101,6 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .abs cs T e, s => .abs (cs.subst s) (T.subst s.lift) (e.subst s.lift)
 | .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
-| .reader x, s => .reader (x.subst s)
 | .alloc x, s => .alloc (x.subst s)
 | .drop x, s => .drop (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
@@ -555,7 +554,6 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp only [Exp.subst, CaptureSet.subst_comp, CaptureBound.subst_comp, ih_e]
     conv_rhs => rw [← Subst.comp_lift]
     rfl
-  | reader x => simp only [Exp.subst, Var.subst_comp]
   | alloc x => simp only [Exp.subst, Var.subst_comp]
   | drop x => simp only [Exp.subst, Var.subst_comp]
   | app x y => simp only [Exp.subst, Var.subst_comp]
@@ -675,8 +673,6 @@ theorem Exp.subst_id {e : Exp s} :
     simp only [Exp.subst, CaptureSet.subst_id, CaptureBound.subst_id]
     conv_lhs => rw [Subst.lift_id]
     exact congrArg (Exp.cabs cs cb) ih
-  | reader x =>
-    simp only [Exp.subst, Var.subst_id]
   | alloc x =>
     simp only [Exp.subst, Var.subst_id]
   | drop x =>
@@ -830,8 +826,6 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, CaptureBound.subst_asSubst]
     rw [← Rename.asSubst_lift]
     exact congrArg (Exp.cabs (cs.rename f) (cb.rename f)) ih
-  | reader x =>
-    simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | alloc x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | drop x =>
@@ -1149,10 +1143,6 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     · exact CaptureSet.is_closed_subst hcs hsubst
     · exact CaptureBound.is_closed_subst hcb hsubst
     · exact ih he (Subst.lift_closed hsubst)
-  | reader x =>
-    cases hc with | reader hx =>
-    simp only [Exp.subst]
-    exact IsClosed.reader (Var.is_closed_subst hx hsubst)
   | alloc x =>
     cases hc with | alloc hx =>
     simp only [Exp.subst]
@@ -1359,10 +1349,6 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     cases hclosed with | cabs hcs hcb he =>
     exact IsClosed.cabs (CaptureSet.subst_closed_inv hcs)
       (CaptureBound.subst_closed_inv hcb) (ih he)
-  | reader x =>
-    simp only [Exp.subst] at hclosed
-    cases hclosed with | reader hx =>
-    exact IsClosed.reader (Var.subst_closed_inv hx)
   | alloc x =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | alloc hx =>
