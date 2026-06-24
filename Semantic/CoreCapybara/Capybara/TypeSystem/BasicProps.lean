@@ -1,4 +1,4 @@
-import Semantic.Capybara.TypeSystem.Core
+import Semantic.CoreCapybara.Capybara.TypeSystem.Core
 
 /-!
 Basic properties of the type system.
@@ -9,11 +9,11 @@ This module contains fundamental properties about:
 - Typing judgments
 -/
 
-namespace Capybara
+namespace CoreCapybara
 
 -- Context lookup properties
 
-theorem Ctx.lookup_var_det {Γ : Ctx s} {x : BVar s .var} {T1 T2 : Ty .capt s} :
+theorem CapyCtx.lookup_var_det {Γ : CapyCtx s} {x : BVar s .var} {T1 T2 : CapyTy .capt s} :
     Γ.LookupVar x T1 -> Γ.LookupVar x T2 -> T1 = T2 := by
   intro h1 h2
   induction h1
@@ -26,7 +26,7 @@ theorem Ctx.lookup_var_det {Γ : Ctx s} {x : BVar s .var} {T1 T2 : Ty .capt s} :
       have eq := ih h2'
       rw [eq]
 
-theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
+theorem CapyCtx.lookup_tvar_det {Γ : CapyCtx s} {X : BVar s .tvar} {T1 T2 : CapyPureTy s} :
     Γ.LookupTVar X T1 -> Γ.LookupTVar X T2 -> T1 = T2 := by
   intro h1 h2
   induction h1
@@ -39,8 +39,8 @@ theorem Ctx.lookup_tvar_det {Γ : Ctx s} {X : BVar s .tvar} {T1 T2 : PureTy s} :
       have eq := ih h2'
       rw [eq]
 
-theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar}
-    {a1 a2 : Authority} {cb1 cb2 : CaptureBound s} :
+theorem CapyCtx.lookup_cvar_det {Γ : CapyCtx s} {c : BVar s .cvar}
+    {a1 a2 : CapyAuthority} {cb1 cb2 : CapyCaptureBound s} :
     Γ.LookupCVar c a1 cb1 -> Γ.LookupCVar c a2 cb2 -> cb1 = cb2 := by
   intro h1 h2
   induction h1 generalizing a2
@@ -55,9 +55,9 @@ theorem Ctx.lookup_cvar_det {Γ : Ctx s} {c : BVar s .cvar}
 
 -- Subsumption reflexivity
 
-theorem Subcapt.refl {Γ : Ctx s} {C : CaptureSet s} :
-    Subcapt Γ C C := by
-  exact Subcapt.sc_elem CaptureSet.Subset.refl
+theorem CapySubcapt.refl {Γ : CapyCtx s} {C : CaptureSet s} :
+    CapySubcapt Γ C C := by
+  exact CapySubcapt.sc_elem CaptureSet.Subset.refl
 
 /-- Renaming preserves closedness of capture sets. -/
 theorem CaptureSet.rename_closed {cs : CaptureSet s1} {f : Rename s1 s2} :
@@ -88,23 +88,23 @@ theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
       simp only [CaptureSet.rename, Var.rename] at h
       cases h
 
-theorem CaptureBound.rename_closed {cb : CaptureBound s1} {f : Rename s1 s2} :
+theorem CapyCaptureBound.rename_closed {cb : CapyCaptureBound s1} {f : Rename s1 s2} :
     cb.IsClosed -> (cb.rename f).IsClosed := by
   intro h
   cases h with
-  | unbound => exact CaptureBound.IsClosed.unbound
-  | bound hcs => exact CaptureBound.IsClosed.bound (CaptureSet.rename_closed hcs)
+  | unbound => exact CapyCaptureBound.IsClosed.unbound
+  | bound hcs => exact CapyCaptureBound.IsClosed.bound (CaptureSet.rename_closed hcs)
 
-theorem CaptureBound.rename_closed_inv {cb : CaptureBound s1} {f : Rename s1 s2} :
+theorem CapyCaptureBound.rename_closed_inv {cb : CapyCaptureBound s1} {f : Rename s1 s2} :
     (cb.rename f).IsClosed -> cb.IsClosed := by
   intro h
   cases cb with
-  | unbound => exact CaptureBound.IsClosed.unbound
+  | unbound => exact CapyCaptureBound.IsClosed.unbound
   | bound cs =>
-    simp only [CaptureBound.rename] at h
+    simp only [CapyCaptureBound.rename] at h
     cases h with
     | bound hcs =>
-      exact CaptureBound.IsClosed.bound (CaptureSet.rename_closed_inv hcs)
+      exact CapyCaptureBound.IsClosed.bound (CaptureSet.rename_closed_inv hcs)
 
 /-- Renaming preserves closedness of separation contexts. -/
 theorem SepCtx.rename_closed {Ψ : SepCtx s1} {f : Rename s1 s2} :
@@ -128,7 +128,7 @@ theorem SepCtx.rename_closed_inv {Ψ : SepCtx s1} {f : Rename s1 s2} :
       exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_inv hC)
 
 /-- Refining a closed type with a closed capture set yields a closed type. -/
-theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
+theorem CapyTy.refineCaptureSet_closed {T : CapyTy .capt s} {cs : CaptureSet s} :
     T.IsClosed -> cs.IsClosed -> (T.refineCaptureSet cs).IsClosed := by
   intro hT hcs
   cases hT with
@@ -144,7 +144,7 @@ theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
   | cell _ => exact IsClosed.cell hcs
   | reader _ => exact IsClosed.reader hcs
 
-theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
+theorem CapyTy.rename_closed {T : CapyTy sort s1} {f : Rename s1 s2} :
     T.IsClosed -> (T.rename f).IsClosed := by
   intro h
   induction T generalizing s2
@@ -160,7 +160,7 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
       (CaptureSet.rename_closed hcs) (ih2 h2)
   case cpoly cb cs T ihT =>
     cases h with | cpoly hcb hcs hT =>
-    exact IsClosed.cpoly (CaptureBound.rename_closed hcb)
+    exact IsClosed.cpoly (CapyCaptureBound.rename_closed hcb)
       (CaptureSet.rename_closed hcs) (ihT hT)
   case modal cs Ψ T ihT =>
     cases h with | modal hcs hΨ hT =>
@@ -185,97 +185,97 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
     exact IsClosed.exi (ih hT)
 
 /-- If a renamed type is closed, the original is also closed. -/
-theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
+theorem CapyTy.rename_closed_inv {T : CapyTy sort s1} {f : Rename s1 s2} :
     (T.rename f).IsClosed -> T.IsClosed := by
   intro h
   induction T generalizing s2
   case top => exact IsClosed.top
   case tvar => exact IsClosed.tvar
   case arrow T1 cs T2 ih1 ih2 =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h with | arrow h1 hcs h2 =>
     exact IsClosed.arrow (ih1 h1)
       (CaptureSet.rename_closed_inv hcs) (ih2 h2)
   case poly S cs T ih1 ih2 =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h with | poly h1 hcs h2 =>
     exact IsClosed.poly (ih1 h1)
       (CaptureSet.rename_closed_inv hcs) (ih2 h2)
   case cpoly cb cs T ihT =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h with | cpoly hcb hcs hT =>
-    exact IsClosed.cpoly (CaptureBound.rename_closed_inv hcb)
+    exact IsClosed.cpoly (CapyCaptureBound.rename_closed_inv hcb)
       (CaptureSet.rename_closed_inv hcs) (ihT hT)
   case modal cs Ψ T ihT =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed_inv hcs)
       (SepCtx.rename_closed_inv hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h; rename_i hcs
     exact IsClosed.cap (CaptureSet.rename_closed_inv hcs)
   case bool => exact IsClosed.bool
   case cell cs =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h; rename_i hcs
     exact IsClosed.cell (CaptureSet.rename_closed_inv hcs)
   case reader cs =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h; rename_i hcs
     exact IsClosed.reader (CaptureSet.rename_closed_inv hcs)
   case typ T ih =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h; rename_i hT
     exact IsClosed.typ (ih hT)
   case exi T ih =>
-    simp only [Ty.rename] at h
+    simp only [CapyTy.rename] at h
     cases h; rename_i hT
     exact IsClosed.exi (ih hT)
 
-theorem Exp.rename_closed_inv {e : Exp s1} {f : Rename s1 s2} :
+theorem CapyExp.rename_closed_inv {e : CapyExp s1} {f : Rename s1 s2} :
     (e.rename f).IsClosed -> e.IsClosed := by
   intro h
-  rw [← Exp.subst_asSubst] at h
-  exact Exp.subst_closed_inv h
+  rw [← CapyExp.subst_asSubst] at h
+  exact CapyExp.subst_closed_inv h
 
-theorem Ctx.lookup_var_gives_closed {Γ : Ctx s} {x : BVar s .var} {T : Ty .capt s}
+theorem CapyCtx.lookup_var_gives_closed {Γ : CapyCtx s} {x : BVar s .var} {T : CapyTy .capt s}
   (hΓ : Γ.IsClosed) (hlookup : Γ.LookupVar x T) :
   T.IsClosed := by
   induction hlookup with
   | here =>
     cases hΓ with | push hΓ_prev hb =>
     cases hb with | var hT =>
-    exact Ty.rename_closed hT
+    exact CapyTy.rename_closed hT
   | there _ ih =>
     cases hΓ with | push hΓ_prev _ =>
     have hT := ih hΓ_prev
-    exact Ty.rename_closed hT
+    exact CapyTy.rename_closed hT
 
 /-- A typed variable expression has a closed variable. -/
-theorem HasType.typed_var_closed
+theorem CapyHasType.typed_var_closed
   {x : Var Kind.var s}
-  (ht : HasType C Γ (Exp.var x) T) :
+  (ht : CapyHasType C Γ (CapyExp.var x) T) :
   x.IsClosed := by
-  generalize he : Exp.var x = e at ht
+  generalize he : CapyExp.var x = e at ht
   induction ht with
   | var => cases he; exact Var.IsClosed.bound
   | subtyp _ _ _ _ _ ih => exact ih he
   | _ => cases he
 
 /-- The capture set `{m x}` is closed when `x` is a typed variable. -/
-theorem HasType.typed_var_capture_closed
+theorem CapyHasType.typed_var_capture_closed
   {x : Var Kind.var s} {a : Access}
-  (ht : HasType C Γ (Exp.var x) T) :
+  (ht : CapyHasType C Γ (CapyExp.var x) T) :
   (CaptureSet.var a x).IsClosed := by
   have hx := typed_var_closed ht
   cases x with
   | bound => exact CaptureSet.IsClosed.var_bound
   | free => cases hx
 
-theorem HasType.use_set_is_closed
-  (ht : HasType C Γ e T) :
+theorem CapyHasType.use_set_is_closed
+  (ht : CapyHasType C Γ e T) :
   C.IsClosed := by
   induction ht with
   | var => exact CaptureSet.IsClosed.empty
@@ -286,10 +286,10 @@ theorem HasType.use_set_is_closed
   | wrap => exact CaptureSet.IsClosed.empty
   | pack hC _ _ _ =>
     exact CaptureSet.IsClosed.union hC (CaptureSet.applyAccess_isClosed hC)
-  | app _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
-  | tapp _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
-  | capp _ _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
-  | unwrap ht_x _ _ => exact HasType.typed_var_capture_closed ht_x
+  | app _ ht_x _ _ _ => exact CapyHasType.typed_var_capture_closed ht_x
+  | tapp _ _ ht_x _ => exact CapyHasType.typed_var_capture_closed ht_x
+  | capp _ _ _ ht_x _ => exact CapyHasType.typed_var_capture_closed ht_x
+  | unwrap ht_x _ _ => exact CapyHasType.typed_var_capture_closed ht_x
   | letin _ _ _ ih1 ih2 =>
     exact CaptureSet.IsClosed.union ih1 (CaptureSet.rename_closed_inv ih2)
   | unpack _ _ _ _ ih1 ih2 =>
@@ -303,17 +303,17 @@ theorem HasType.use_set_is_closed
   | btrue => exact CaptureSet.IsClosed.empty
   | bfalse => exact CaptureSet.IsClosed.empty
   | alloc => exact CaptureSet.IsClosed.empty
-  | drop _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
-  | read _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
-  | write _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
+  | drop _ _ ht_x _ => exact CapyHasType.typed_var_capture_closed ht_x
+  | read _ ht_x _ => exact CapyHasType.typed_var_capture_closed ht_x
+  | write _ ht_x _ _ _ => exact CapyHasType.typed_var_capture_closed ht_x
   | cond _ _ _ ih1 ih2 ih3 =>
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
   | par _ _ _ ih1 ih2 => exact CaptureSet.IsClosed.union ih1 ih2
-  | invoke _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
+  | invoke _ ht_x _ _ _ => exact CapyHasType.typed_var_capture_closed ht_x
   | subtyp _ _ _ hC _ _ => exact hC
 
-theorem HasType.exp_is_closed
-  (ht : HasType C Γ e T) :
+theorem CapyHasType.exp_is_closed
+  (ht : CapyHasType C Γ e T) :
   e.IsClosed := by
   induction ht <;>
     try
@@ -344,33 +344,33 @@ theorem HasType.exp_is_closed
       · exact ih3
   case par ht1 ht2 _ ih1 ih2 =>
     -- `C1`/`C2` are closed because they are the use-sets of the well-typed branches.
-    exact Exp.IsClosed.par (HasType.use_set_is_closed ht1)
-      (HasType.use_set_is_closed ht2) ih1 ih2
+    exact CapyExp.IsClosed.par (CapyHasType.use_set_is_closed ht1)
+      (CapyHasType.use_set_is_closed ht2) ih1 ih2
   case abs T1 ih =>
     rename_i T1_closed
     constructor
-    · exact CaptureSet.rename_closed_inv (HasType.use_set_is_closed T1)
+    · exact CaptureSet.rename_closed_inv (CapyHasType.use_set_is_closed T1)
     · exact T1_closed
     · exact ih
   case tabs S ih =>
     rename_i S_closed
     constructor
-    · have h_use := HasType.use_set_is_closed S
+    · have h_use := CapyHasType.use_set_is_closed S
       exact CaptureSet.rename_closed_inv h_use
     · exact S_closed
     · exact ih
   case cabs cb ih =>
     constructor
-    · have h_use := HasType.use_set_is_closed cb
+    · have h_use := CapyHasType.use_set_is_closed cb
       exact CaptureSet.rename_closed_inv h_use
     · assumption
     · exact ih
   case wrap hΨ_closed ht_body ih =>
     constructor
-    · have h_use := HasType.use_set_is_closed ht_body
+    · have h_use := CapyHasType.use_set_is_closed ht_body
       exact CaptureSet.rename_closed_inv h_use
     · exact hΨ_closed
-    · exact Exp.rename_closed_inv ih
+    · exact CapyExp.rename_closed_inv ih
   case pack C x T =>
     constructor
     · assumption
@@ -394,83 +394,83 @@ theorem HasType.exp_is_closed
   case unwrap _ _ ih_x =>
     cases ih_x with
     | var hx_closed =>
-      exact Exp.IsClosed.unwrap hx_closed
+      exact CapyExp.IsClosed.unwrap hx_closed
   case alloc ih_x =>
     cases ih_x with
     | var hx_closed =>
-      exact Exp.IsClosed.alloc hx_closed
+      exact CapyExp.IsClosed.alloc hx_closed
   case drop ih_x =>
     cases ih_x with
     | var hx_closed =>
-      exact Exp.IsClosed.drop hx_closed
+      exact CapyExp.IsClosed.drop hx_closed
   case invoke =>
     rename_i ih_x ih_y
     constructor
     · cases ih_x; assumption
     · cases ih_y; assumption
 
-theorem HasType.type_is_closed
-  (ht : HasType C Γ e E) :
+theorem CapyHasType.type_is_closed
+  (ht : CapyHasType C Γ e E) :
   E.IsClosed := by
   induction ht <;>
-    try (solve | assumption | constructor | grind only [Ty.IsClosed])
+    try (solve | assumption | constructor | grind only [CapyTy.IsClosed])
   case var hΓ_closed hlookup =>
     constructor
-    have hT_closed := Ctx.lookup_var_gives_closed hΓ_closed hlookup
-    exact Ty.refineCaptureSet_closed hT_closed CaptureSet.IsClosed.var_bound
+    have hT_closed := CapyCtx.lookup_var_gives_closed hΓ_closed hlookup
+    exact CapyTy.refineCaptureSet_closed hT_closed CaptureSet.IsClosed.var_bound
   case reader =>
     constructor
-    exact Ty.IsClosed.reader CaptureSet.IsClosed.var_bound
+    exact CapyTy.IsClosed.reader CaptureSet.IsClosed.var_bound
   case abs T1_closed ht_body ih =>
     constructor
-    have h_use := HasType.use_set_is_closed ht_body
-    exact Ty.IsClosed.arrow T1_closed
+    have h_use := CapyHasType.use_set_is_closed ht_body
+    exact CapyTy.IsClosed.arrow T1_closed
       (CaptureSet.rename_closed_inv h_use) ih
   case tabs S_closed ht_body ih =>
     constructor
-    have h_use := HasType.use_set_is_closed ht_body
-    exact Ty.IsClosed.poly S_closed
+    have h_use := CapyHasType.use_set_is_closed ht_body
+    exact CapyTy.IsClosed.poly S_closed
       (CaptureSet.rename_closed_inv h_use) ih
   case cabs ht_body ih =>
     constructor
-    have h_use := HasType.use_set_is_closed ht_body
+    have h_use := CapyHasType.use_set_is_closed ht_body
     rename_i hcb_closed _
-    exact Ty.IsClosed.cpoly hcb_closed
+    exact CapyTy.IsClosed.cpoly hcb_closed
       (CaptureSet.rename_closed_inv h_use) ih
   case wrap hΨ_closed ht_body ih =>
     constructor
-    have h_use := HasType.use_set_is_closed ht_body
-    exact Ty.IsClosed.modal
+    have h_use := CapyHasType.use_set_is_closed ht_body
+    exact CapyTy.IsClosed.modal
       (CaptureSet.rename_closed_inv h_use)
       hΨ_closed
-      (Ty.rename_closed_inv ih)
+      (CapyTy.rename_closed_inv ih)
   case pack hC ih =>
     constructor
     cases ih with | typ hT =>
-    exact Ty.subst_closed_inv hT
+    exact CapyTy.subst_closed_inv hT
   case app ht_x ht_y ih_x ih_y =>
     cases ih_x with | typ h =>
     cases h with | arrow _ _ hT2 =>
-    have hy_closed := HasType.exp_is_closed ht_y
+    have hy_closed := CapyHasType.exp_is_closed ht_y
     cases hy_closed with | var hy =>
-    exact Ty.is_closed_subst hT2 (Subst.openVar_is_closed hy)
+    exact CapyTy.is_closed_subst hT2 (CapySubst.openVar_is_closed hy)
   case tapp hS_closed ht_x ih =>
     cases ih with | typ h =>
     cases h with | poly _ _ hT =>
-    exact Ty.is_closed_subst hT (Subst.openTVar_is_closed hS_closed)
+    exact CapyTy.is_closed_subst hT (CapySubst.openTVar_is_closed hS_closed)
   case capp hD_closed _ _ ih =>
     cases ih with | typ h =>
     cases h with | cpoly _ _ hT =>
-    exact Ty.is_closed_subst hT (Subst.openCVar_is_closed hD_closed)
+    exact CapyTy.is_closed_subst hT (CapySubst.openCVar_is_closed hD_closed)
   case letin ih1 ih2 =>
-    exact Ty.rename_closed_inv ih2
+    exact CapyTy.rename_closed_inv ih2
   case unpack ih1 ih2 =>
-    exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
+    exact CapyTy.rename_closed_inv (CapyTy.rename_closed_inv ih2)
   case alloc =>
-    exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar)
+    exact CapyTy.IsClosed.exi (CapyTy.IsClosed.cell CaptureSet.IsClosed.cvar)
 -- More context lookup properties
 
-theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
+theorem CapyCtx.lookup_var_exists {Γ : CapyCtx s} {x : BVar s .var} :
   ∃ T, Γ.LookupVar x T := by
   cases x with
   | here =>
@@ -479,13 +479,13 @@ theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
       cases b with
       | var T₀ =>
         use T₀.rename Rename.succ
-        apply Ctx.LookupVar.here
+        apply CapyCtx.LookupVar.here
   | there x' =>
     cases Γ with
     | push Γ₀ b =>
       obtain ⟨T₀, h⟩ := lookup_var_exists (Γ := Γ₀) (x := x')
       use T₀.rename Rename.succ
-      apply Ctx.LookupVar.there
+      apply CapyCtx.LookupVar.there
       exact h
 
 /-! ## Syntactic subset infrastructure
@@ -566,49 +566,49 @@ theorem CaptureSet.cvar_subset_consumed_inv {a : Access} {c : BVar s .cvar}
   | var _ _ => exact absurd h CaptureSet.cvar_not_subset_empty
 
 /-- Raw-constructor version of `peaks_union`. -/
-theorem CaptureSet.peaks_union_raw (Γ : Ctx s) (cs1 cs2 : CaptureSet s) :
-    CaptureSet.peaks Γ (cs1.union cs2)
-      = (CaptureSet.peaks Γ cs1).union (CaptureSet.peaks Γ cs2) := by
-  conv_lhs => unfold CaptureSet.peaks
+theorem CapyCaptureSet.peaks_union_raw (Γ : CapyCtx s) (cs1 cs2 : CaptureSet s) :
+    CapyCaptureSet.peaks Γ (cs1.union cs2)
+      = (CapyCaptureSet.peaks Γ cs1).union (CapyCaptureSet.peaks Γ cs2) := by
+  conv_lhs => unfold CapyCaptureSet.peaks
   rfl
 
-theorem CaptureSet.peaks_empty (Γ : Ctx s) :
-    CaptureSet.peaks Γ (.empty : CaptureSet s) = .empty := by
-  unfold CaptureSet.peaks
+theorem CapyCaptureSet.peaks_empty (Γ : CapyCtx s) :
+    CapyCaptureSet.peaks Γ (.empty : CaptureSet s) = .empty := by
+  unfold CapyCaptureSet.peaks
   rfl
 
 /-- A `cvar` element of the peaks of a union is in one of the components'
 peaks. Stated through defeq so it applies to both `∪`- and `.union`-shaped
 goals. -/
-theorem CaptureSet.cvar_subset_peaks_union_inv {Γ : Ctx s} {a : Access}
+theorem CaptureSet.cvar_subset_peaks_union_inv {Γ : CapyCtx s} {a : Access}
     {c : BVar s .cvar} {A B : CaptureSet s}
     (h : (CaptureSet.cvar a c) ⊆ (A.union B).peaks Γ) :
     (CaptureSet.cvar a c) ⊆ A.peaks Γ ∨ (CaptureSet.cvar a c) ⊆ B.peaks Γ := by
-  rw [CaptureSet.peaks_union_raw] at h
+  rw [CapyCaptureSet.peaks_union_raw] at h
   exact CaptureSet.cvar_subset_union_inv h
 
-theorem CaptureSet.cvar_not_subset_peaks_empty {Γ : Ctx s} {a : Access}
+theorem CaptureSet.cvar_not_subset_peaks_empty {Γ : CapyCtx s} {a : Access}
     {c : BVar s .cvar}
     (h : (CaptureSet.cvar a c) ⊆ (CaptureSet.empty : CaptureSet s).peaks Γ) : False := by
-  rw [CaptureSet.peaks_empty] at h
+  rw [CapyCaptureSet.peaks_empty] at h
   exact CaptureSet.cvar_not_subset_empty h
 
 /-- `peaks` is monotone with respect to the syntactic subset relation. -/
-theorem CaptureSet.peaks_subset_monotone {Γ : Ctx s} {C1 C2 : CaptureSet s}
+theorem CapyCaptureSet.peaks_subset_monotone {Γ : CapyCtx s} {C1 C2 : CaptureSet s}
     (h : C1 ⊆ C2) : C1.peaks Γ ⊆ C2.peaks Γ := by
   induction h with
   | refl => exact .refl
   | empty =>
-    rw [CaptureSet.peaks_empty]
+    rw [CapyCaptureSet.peaks_empty]
     exact .empty
   | union_left _ _ ih1 ih2 =>
-    rw [CaptureSet.peaks_union_raw]
+    rw [CapyCaptureSet.peaks_union_raw]
     exact .union_left ih1 ih2
   | union_right_left _ ih =>
-    rw [CaptureSet.peaks_union_raw]
+    rw [CapyCaptureSet.peaks_union_raw]
     exact .union_right_left ih
   | union_right_right _ ih =>
-    rw [CaptureSet.peaks_union_raw]
+    rw [CapyCaptureSet.peaks_union_raw]
     exact .union_right_right ih
 
 /-- Inversion: a `cvar` element of `C.applyDrop` is at `.drop` access and stems
@@ -716,18 +716,18 @@ theorem CaptureSet.cvar_subset_applyMut_fwd {a : Access} {c : BVar s .cvar}
   | ro => exact ⟨a.applyRO, CaptureSet.cvar_subset_applyRO_fwd h⟩
 
 /-- A peaks-only capture set is a fixed point of `peaks`. -/
-theorem CaptureSet.PeaksOnly.peaks_fixed {Γ : Ctx s} {P : CaptureSet s}
+theorem CaptureSet.PeaksOnly.peaks_fixed {Γ : CapyCtx s} {P : CaptureSet s}
     (hP : P.PeaksOnly) : P.peaks Γ = P := by
   induction hP with
-  | empty => exact CaptureSet.peaks_empty Γ
+  | empty => exact CapyCaptureSet.peaks_empty Γ
   | union _ _ ih1 ih2 =>
     rename_i C1 C2 _ _
-    show CaptureSet.peaks Γ (C1.union C2) = _
-    rw [CaptureSet.peaks_union_raw, ih1, ih2]
-  | cvar => rw [CaptureSet.peaks]
+    show CapyCaptureSet.peaks Γ (C1.union C2) = _
+    rw [CapyCaptureSet.peaks_union_raw, ih1, ih2]
+  | cvar => rw [CapyCaptureSet.peaks]
 
 /-- `TwoDistinctDroppable` is symmetric. -/
-theorem Ctx.TwoDistinctDroppable.symm {Γ : Ctx s} {c1 c2 : BVar s .cvar}
+theorem CapyCtx.TwoDistinctDroppable.symm {Γ : CapyCtx s} {c1 c2 : BVar s .cvar}
     (h : Γ.TwoDistinctDroppable c1 c2) : Γ.TwoDistinctDroppable c2 c1 :=
   ⟨h.2.1, h.1, fun he => h.2.2 he.symm⟩
 
@@ -792,15 +792,15 @@ theorem CaptureSet.CoveredBy.cvar_drop_subset {A B : CaptureSet s}
   | union_right_right _ ih =>
     exact .union_right_right (ih h)
 
-/-! ## Droppable peak monotonicity along `Subcapt`
+/-! ## Droppable peak monotonicity along `CapySubcapt`
 
 A droppable capture variable's peak occurrence is preserved when a capture set
 is widened by subcapture: the only peak-eliminating rule is `sc_cvar`, which
 is restricted to `.access_only` capture variables. -/
 
-theorem Subcapt.droppable_peak_monotone {Γ : Ctx s} {C1 C2 : CaptureSet s}
+theorem CapySubcapt.droppable_peak_monotone {Γ : CapyCtx s} {C1 C2 : CaptureSet s}
     {c : BVar s .cvar} {a : Access}
-    (hsub : Subcapt Γ C1 C2)
+    (hsub : CapySubcapt Γ C1 C2)
     (hauth : Γ.lookup_authority c = .can_drop)
     (hpeak : (CaptureSet.cvar a c) ⊆ C1.peaks Γ) :
     ∃ a', (CaptureSet.cvar a' c) ⊆ C2.peaks Γ := by
@@ -809,9 +809,9 @@ theorem Subcapt.droppable_peak_monotone {Γ : Ctx s} {C1 C2 : CaptureSet s}
     obtain ⟨a', h'⟩ := ih1 hauth hpeak
     exact ih2 hauth h'
   | sc_elem hss =>
-    exact ⟨a, CaptureSet.Subset.trans hpeak (CaptureSet.peaks_subset_monotone hss)⟩
+    exact ⟨a, CaptureSet.Subset.trans hpeak (CapyCaptureSet.peaks_subset_monotone hss)⟩
   | sc_mode hle =>
-    rw [CaptureSet.peaks_applyMut_comm] at hpeak ⊢
+    rw [CapyCaptureSet.peaks_applyMut_comm] at hpeak ⊢
     obtain ⟨a0, hsub0⟩ := CaptureSet.cvar_subset_applyMut_inv hpeak
     exact CaptureSet.cvar_subset_applyMut_fwd _ hsub0
   | sc_union _ _ ih1 ih2 =>
@@ -820,44 +820,44 @@ theorem Subcapt.droppable_peak_monotone {Γ : Ctx s} {C1 C2 : CaptureSet s}
     | inr h => exact ih2 hauth h
   | sc_var hlookup =>
     rename_i x T
-    rw [CaptureSet.var_peaks hlookup] at hpeak
+    rw [CapyCaptureSet.var_peaks hlookup] at hpeak
     simp only [CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon] at hpeak
     exact ⟨a, hpeak⟩
   | sc_cvar hlookup =>
-    rw [CaptureSet.peaks] at hpeak
+    rw [CapyCaptureSet.peaks] at hpeak
     obtain ⟨_, hc⟩ := CaptureSet.cvar_subset_cvar_inv hpeak
     subst hc
     rw [← hlookup.eq_authority] at hauth
     cases hauth
   | sc_ro =>
-    rw [CaptureSet.peaks_applyRO_comm] at hpeak
+    rw [CapyCaptureSet.peaks_applyRO_comm] at hpeak
     obtain ⟨a0, _, hsub0⟩ := CaptureSet.cvar_subset_applyRO_inv hpeak
     exact ⟨a0, hsub0⟩
   | sc_ro_mono _ ih =>
-    rw [CaptureSet.peaks_applyRO_comm] at hpeak ⊢
+    rw [CapyCaptureSet.peaks_applyRO_comm] at hpeak ⊢
     obtain ⟨a0, _, hsub0⟩ := CaptureSet.cvar_subset_applyRO_inv hpeak
     obtain ⟨a', h'⟩ := ih hauth hsub0
     exact ⟨a'.applyRO, CaptureSet.cvar_subset_applyRO_fwd h'⟩
   | sc_drop_mono _ ih =>
     simp only [CaptureSet.applyAccess_drop] at hpeak ⊢
-    rw [CaptureSet.peaks_applyDrop_comm] at hpeak ⊢
+    rw [CapyCaptureSet.peaks_applyDrop_comm] at hpeak ⊢
     obtain ⟨_, a0, hsub0⟩ := CaptureSet.cvar_subset_applyDrop_inv hpeak
     obtain ⟨a', h'⟩ := ih hauth hsub0
     exact ⟨.drop, CaptureSet.cvar_subset_applyDrop_fwd h'⟩
 
 /-! ## Cross-peak lemmas for the separation judgments
 
-The key static soundness facts: whenever `DisjCheck`/`SeqComp` relate two
+The key static soundness facts: whenever `CapyDisjCheck`/`CapySeqComp` relate two
 capture sets, any pair of capture-variable peaks taken from the two sides (a
-`.drop`-mode peak on the left for `SeqComp`) is a pair of *distinct droppable*
+`.drop`-mode peak on the left for `CapySeqComp`) is a pair of *distinct droppable*
 capture variables. This anchors runtime disjointness obligations at the
 environment-separation invariant. -/
 
-/-- Any cross pair of peaks of a `DisjCheck`-related pair of sets is a
+/-- Any cross pair of peaks of a `CapyDisjCheck`-related pair of sets is a
 distinct droppable pair. -/
-theorem DisjCheck.cross_droppable {Γ : Ctx s} {A B : CaptureSet s}
+theorem CapyDisjCheck.cross_droppable {Γ : CapyCtx s} {A B : CaptureSet s}
     {c1 c2 : BVar s .cvar} {a1 a2 : Access}
-    (hdisj : DisjCheck Γ A B)
+    (hdisj : CapyDisjCheck Γ A B)
     (hpa : (CaptureSet.cvar a1 c1) ⊆ A.peaks Γ)
     (hpb : (CaptureSet.cvar a2 c2) ⊆ B.peaks Γ) :
     Γ.TwoDistinctDroppable c1 c2 := by
@@ -871,20 +871,20 @@ theorem DisjCheck.cross_droppable {Γ : Ctx s} {A B : CaptureSet s}
     | inr h => exact ih2 h hpb
   | disj_peaks _ _ ih =>
     rename_i Ca _ _
-    rw [(CaptureSet.peaks_peaksOnly _ Ca).peaks_fixed] at ih
+    rw [(CapyCaptureSet.peaks_peaksOnly _ Ca).peaks_fixed] at ih
     exact ih hpa hpb
   | disj_droppable hd =>
-    rw [CaptureSet.peaks] at hpa hpb
+    rw [CapyCaptureSet.peaks] at hpa hpb
     obtain ⟨_, hc1⟩ := CaptureSet.cvar_subset_cvar_inv hpa
     obtain ⟨_, hc2⟩ := CaptureSet.cvar_subset_cvar_inv hpb
     subst hc1; subst hc2
     exact hd
 
-/-- Any `.drop`-mode peak of the first component of a `SeqComp`-related pair,
+/-- Any `.drop`-mode peak of the first component of a `CapySeqComp`-related pair,
 paired with any peak of the second component, is a distinct droppable pair. -/
-theorem SeqComp.cross_droppable {Γ : Ctx s} {C1 C2 : CaptureSet s}
+theorem CapySeqComp.cross_droppable {Γ : CapyCtx s} {C1 C2 : CaptureSet s}
     {c1 c2 : BVar s .cvar} {a2 : Access}
-    (hseq : SeqComp Γ C1 C2)
+    (hseq : CapySeqComp Γ C1 C2)
     (hpa : (CaptureSet.cvar .drop c1) ⊆ C1.peaks Γ)
     (hpb : (CaptureSet.cvar a2 c2) ⊆ C2.peaks Γ) :
     Γ.TwoDistinctDroppable c1 c2 := by
@@ -899,8 +899,8 @@ theorem SeqComp.cross_droppable {Γ : Ctx s} {C1 C2 : CaptureSet s}
     | inr h => exact ih2 h hpb
   | seq_access_only _ hao => exact absurd hpa (hao c1)
   | seq_drop hdisj =>
-    rw [CaptureSet.peaks_applyDrop_comm] at hpa
+    rw [CapyCaptureSet.peaks_applyDrop_comm] at hpa
     obtain ⟨_, a0, hsub0⟩ := CaptureSet.cvar_subset_applyDrop_inv hpa
     exact hdisj.cross_droppable hsub0 hpb
 
-end Capybara
+end CoreCapybara
