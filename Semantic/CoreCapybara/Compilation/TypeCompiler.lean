@@ -10,6 +10,12 @@ def CaptureSet.compile : CaptureSet s1 -> SrcCtx s1 s2 -> CaptureSet s2
 | .var a (.bound x), ctx => (ctx.lookupVar x).applyAccess a
 | .var a (.free n), _ => .var a (.free n)
 
+/-- Compiles a source capture bound into the target.  The mutability annotation
+    on an `unbound` source bound has no target counterpart and is dropped. -/
+def CapyCaptureBound.compile : CapyCaptureBound s1 -> SrcCtx s1 s2 -> CaptureBound s2
+| .unbound _, _ => .unbound
+| .bound cs, ctx => .bound (CaptureSet.compile cs ctx)
+
 /-- Source and target type-sorts coincide; this maps between the two enums. -/
 def CapyTySort.compile : CapyTySort -> TySort
 | .capt => .capt
@@ -107,7 +113,18 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
     (CapyTy.compile S ctx)
     {}
     (.typ (.modal Cf Ψ (CapyTy.compile E ctxE)))
-| .cpoly _ _ _, _ => sorry
+| .cpoly cb cs E, ctx =>
+  -- `[c <: cb] ->cs E`  ↦  `[c <: ⟦cb⟧] -> [Ψ]cs E`: a Core `cpoly`, exactly like
+  -- `poly` but binding a capture variable `c` instead of a type variable.  The
+  -- body `E` is guarded by the same separation lock `[Ψ]` capturing `Cf = ⟦cs⟧`.
+  let ctxE : CompilerCtx (s1,C) (s2,C) := ctx.weakenTarget.consCVar cb .here
+  let Cf : CaptureSet (s2,C) := CaptureSet.compile cs ctx.srcCtx.weaken
+  let Ψ  : ModalCtx (s2,C)   :=
+    ⟨peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken, .empty⟩
+  .cpoly
+    (CapyCaptureBound.compile cb ctx.srcCtx)
+    {}
+    (.typ (.modal Cf Ψ (CapyTy.compile E ctxE)))
 | .exi T, ctx =>
   .exi (CapyTy.compile T (ctx.weakenTarget.consCVar (.unbound .epsilon) .here))
 
