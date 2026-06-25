@@ -3,15 +3,17 @@ import Semantic.CoreCapybara.Capybara
 open CoreCapybara
 namespace Compilation
 
+/-- Metadata of each binder in the source context. -/
 inductive SrcBinderInfo : Kind -> Sig -> Type where
-| var :
-  BVar s .var ->
-  CaptureSet s ->
-  SrcBinderInfo .var s
+| var : Option (BVar s .var) -> CaptureSet s -> SrcBinderInfo .var s
 | cvar : BVar s .cvar -> SrcBinderInfo .cvar s
 | tvar : BVar s .tvar -> SrcBinderInfo .tvar s
 
+/-- Metadata of each binder in the target context. -/
 inductive DstBinderInfo : Kind -> Type where
+| var : DstBinderInfo .var
+| cvar : DstBinderInfo .cvar
+| tvar : DstBinderInfo .tvar
 
 inductive SrcCtx : Sig -> Sig -> Type where
 | empty : SrcCtx {} s
@@ -31,8 +33,8 @@ inductive DstCtx : Sig -> Type where
 structure CompilerCtx (s1 s2 : Sig) where
   capyCtx : CapyCtx s1
   srcCtx : SrcCtx s1 s2
-  -- Commented out for now, since it is not needed yet
-  -- dstCtx : DstCtx s2
+  dstCtx : DstCtx s2
+  coreCtx : Ctx s2
 
 /-- Looks up the target capture variable that a source capture binder maps to. -/
 def SrcCtx.lookupCVar : SrcCtx s1 s2 -> BVar s1 .cvar -> BVar s2 .cvar
@@ -44,6 +46,13 @@ def SrcCtx.lookupVar : SrcCtx s1 s2 -> BVar s1 .var -> CaptureSet s2
 | .cons (.var _ cs) _, .here => cs
 | .cons _ rest, .there x => rest.lookupVar x
 
+/-- Looks up the (optional) target term-variable a source term variable maps to;
+    used by term compilation.  `none` marks a binder introduced only for its
+    capture image (see `SrcBinderInfo.var`). -/
+def SrcCtx.lookupVarBVar : SrcCtx s1 s2 -> BVar s1 .var -> Option (BVar s2 .var)
+| .cons (.var bv _) _, .here => bv
+| .cons _ rest, .there x => rest.lookupVarBVar x
+
 /-- Looks up the target type variable that a source type binder maps to. -/
 def SrcCtx.lookupTVar : SrcCtx s1 s2 -> BVar s1 .tvar -> BVar s2 .tvar
 | .cons (.tvar X) _, .here => X
@@ -51,7 +60,7 @@ def SrcCtx.lookupTVar : SrcCtx s1 s2 -> BVar s1 .tvar -> BVar s2 .tvar
 
 /-- Renames the target-sig references stored in a binder info. -/
 def SrcBinderInfo.rename : SrcBinderInfo k s2 -> Rename s2 s2' -> SrcBinderInfo k s2'
-| .var x cs, ρ => .var (ρ.var x) (cs.rename ρ)
+| .var bv cs, ρ => .var (bv.map ρ.var) (cs.rename ρ)
 | .cvar c, ρ => .cvar (ρ.var c)
 | .tvar X, ρ => .tvar (ρ.var X)
 
@@ -86,11 +95,12 @@ def CompilerCtx.consCVar
   ⟨ctx.capyCtx.push_cvar_default cb, .cons (.cvar c) ctx.srcCtx⟩
 
 /-- Extends a compiler context with a source term-variable binder `x : T`, mapped
-    to the target variable `x` standing for the target capture set `cs`. -/
+    to the (optional) target term-variable `bv` and standing for the target
+    capture set `cs` (typically `{cx}`, the re-abstracted capture variable). -/
 def CompilerCtx.consVar
-    (ctx : CompilerCtx s1 s2) (T : CapyTy .capt s1) (x : BVar s2 .var)
+    (ctx : CompilerCtx s1 s2) (T : CapyTy .capt s1) (bv : Option (BVar s2 .var))
     (cs : CaptureSet s2) :
     CompilerCtx (s1,x) s2 :=
-  ⟨ctx.capyCtx.push_var T, .cons (.var x cs) ctx.srcCtx⟩
+  ⟨ctx.capyCtx.push_var T, .cons (.var bv cs) ctx.srcCtx⟩
 
 end Compilation
