@@ -4,6 +4,12 @@ open CoreCapybara
 namespace Compilation
 
 inductive SrcBinderInfo : Kind -> Sig -> Type where
+| var :
+  BVar s .var ->
+  CaptureSet s ->
+  SrcBinderInfo .var s
+| cvar : BVar s .cvar -> SrcBinderInfo .cvar s
+| tvar : BVar s .tvar -> SrcBinderInfo .tvar s
 
 inductive DstBinderInfo : Kind -> Type where
 
