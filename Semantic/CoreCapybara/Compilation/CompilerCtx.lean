@@ -14,6 +14,7 @@ inductive DstBinderInfo : Kind -> Type where
 | var : DstBinderInfo .var
 | cvar : DstBinderInfo .cvar
 | tvar : DstBinderInfo .tvar
+| lock : DstBinderInfo .lock
 
 inductive SrcCtx : Sig -> Sig -> Type where
 | empty : SrcCtx {} s
@@ -74,33 +75,56 @@ def SrcCtx.rename : SrcCtx s1 s2 -> Rename s2 s2' -> SrcCtx s1 s2'
     introduced. -/
 def SrcCtx.weaken (ctx : SrcCtx s1 s2) : SrcCtx s1 (s2,,k) := ctx.rename Rename.succ
 
+/-- The target-binder metadata determined by a target Core binding. -/
+def DstBinderInfo.ofBinding : Binding s k -> DstBinderInfo k
+| .var _ => .var
+| .tvar _ => .tvar
+| .cvar _ _ => .cvar
+| .lock _ => .lock
+
+/-- A placeholder target binding of a given kind, used to grow the target Core
+    context (`coreCtx`) when the precise binding is not yet needed — the type
+    compiler never consults `coreCtx`.  Pass an explicit binding to
+    `CompilerCtx.weakenTarget` once term compilation requires accuracy. -/
+def placeholderBinding : (k : Kind) -> Binding s k
+| .var => .var .top
+| .tvar => .tvar .top
+| .cvar => .cvar .access_only .unbound
+| .lock => .lock ⟨.empty, .empty⟩
+
 /-- Weakens the *target* signature of a compiler context by one binder, without
-    introducing a source binder (the source typing context is unchanged). -/
-def CompilerCtx.weakenTarget (ctx : CompilerCtx s1 s2) : CompilerCtx s1 (s2,,k) :=
-  ⟨ctx.capyCtx, ctx.srcCtx.weaken⟩
+    introducing a source binder (the source typing context is unchanged).  The
+    target Core context and target-binder metadata grow by `b` (a placeholder by
+    default; supply the real binding when it matters). -/
+def CompilerCtx.weakenTarget
+    (ctx : CompilerCtx s1 s2) (b : Binding s2 k := placeholderBinding k) :
+    CompilerCtx s1 (s2,,k) :=
+  ⟨ctx.capyCtx, ctx.srcCtx.weaken, .cons (DstBinderInfo.ofBinding b) ctx.dstCtx,
+   ctx.coreCtx.push b⟩
 
 /-- Extends a compiler context with a source type-variable binder `X <: S`,
-    mapped to the target type variable `X`.  (The bound `S` is recorded in the
-    source typing context but never consulted by peak resolution.) -/
+    mapped to the target type variable `X`.  This adds a *source* binder only, so
+    the target context (`dstCtx`, `coreCtx`) is unchanged. -/
 def CompilerCtx.consTVar
     (ctx : CompilerCtx s1 s2) (S : CapyPureTy s1) (X : BVar s2 .tvar) :
     CompilerCtx (s1,X) s2 :=
-  ⟨ctx.capyCtx.push_tvar S, .cons (.tvar X) ctx.srcCtx⟩
+  ⟨ctx.capyCtx.push_tvar S, .cons (.tvar X) ctx.srcCtx, ctx.dstCtx, ctx.coreCtx⟩
 
 /-- Extends a compiler context with a source capture-variable binder `c <: cb`,
-    mapped to the target capture variable `c`. -/
+    mapped to the target capture variable `c` (source binder only). -/
 def CompilerCtx.consCVar
     (ctx : CompilerCtx s1 s2) (cb : CapyCaptureBound s1) (c : BVar s2 .cvar) :
     CompilerCtx (s1,C) s2 :=
-  ⟨ctx.capyCtx.push_cvar_default cb, .cons (.cvar c) ctx.srcCtx⟩
+  ⟨ctx.capyCtx.push_cvar_default cb, .cons (.cvar c) ctx.srcCtx, ctx.dstCtx, ctx.coreCtx⟩
 
 /-- Extends a compiler context with a source term-variable binder `x : T`, mapped
     to the (optional) target term-variable `bv` and standing for the target
-    capture set `cs` (typically `{cx}`, the re-abstracted capture variable). -/
+    capture set `cs` (typically `{cx}`, the re-abstracted capture variable).  This
+    adds a *source* binder only, so the target context is unchanged. -/
 def CompilerCtx.consVar
     (ctx : CompilerCtx s1 s2) (T : CapyTy .capt s1) (bv : Option (BVar s2 .var))
     (cs : CaptureSet s2) :
     CompilerCtx (s1,x) s2 :=
-  ⟨ctx.capyCtx.push_var T, .cons (.var bv cs) ctx.srcCtx⟩
+  ⟨ctx.capyCtx.push_var T, .cons (.var bv cs) ctx.srcCtx, ctx.dstCtx, ctx.coreCtx⟩
 
 end Compilation
