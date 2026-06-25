@@ -55,7 +55,7 @@ def CapyCaptureBound.subst : CapyCaptureBound s1 -> CapySubst s1 s2 -> CapyCaptu
 /-- Applies a substitution to all bound variables in a separation context. -/
 def CapySepCtx.subst : SepCtx s1 -> CapySubst s1 s2 -> SepCtx s2
 | .empty, _ => .empty
-| .cons K C m, σ => .cons ((CapySepCtx.subst K) σ) ((CapyCaptureSet.subst C) σ) m
+| .cons K C, σ => .cons ((CapySepCtx.subst K) σ) ((CapyCaptureSet.subst C) σ)
 
 /-- Applies a substitution to a type. -/
 def CapyTy.subst : CapyTy sort s1 -> CapySubst s1 s2 -> CapyTy sort s2
@@ -361,7 +361,7 @@ theorem CapySepCtx.weaken_subst_comm_liftMany {Ψ : SepCtx (s1 ++ K)} {σ : Capy
   CapySepCtx.subst (Ψ.rename (Rename.succ.liftMany K)) (σ.lift (k := k0).liftMany K) := by
   induction Ψ with
   | empty => rfl
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     simp only [CapySepCtx.subst, SepCtx.rename, ih, CapyCaptureSet.weaken_subst_comm_liftMany]
 
 theorem CapyCaptureBound.weaken_subst_comm_liftMany
@@ -479,7 +479,7 @@ theorem CapySepCtx.weaken_subst_comm_base {Ψ : SepCtx s1} {σ : CapySubst s1 s2
       = CapySepCtx.subst (Ψ.rename Rename.succ) (σ.lift) := by
   induction Ψ with
   | empty => rfl
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     simp only [CapySepCtx.subst, SepCtx.rename, ih, CapyCaptureSet.weaken_subst_comm_base]
 
 theorem CapyCaptureBound.weaken_subst_comm_base {cb : CapyCaptureBound s1} {σ : CapySubst s1 s2} :
@@ -676,7 +676,7 @@ theorem CapySepCtx.subst_comp {K : SepCtx s1} {σ1 : CapySubst s1 s2} {σ2 : Cap
   CapySepCtx.subst ((CapySepCtx.subst K) σ1) σ2 = (CapySepCtx.subst K) (σ1.comp σ2) := by
   induction K generalizing s2 s3 with
   | empty => rfl
-  | cons K C m ih =>
+  | cons K C ih =>
     simp only [CapySepCtx.subst, ih, CapyCaptureSet.subst_comp]
 
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
@@ -809,7 +809,7 @@ theorem CapySepCtx.subst_id {K : SepCtx s} :
   (CapySepCtx.subst K) CapySubst.id = K := by
   induction K with
   | empty => rfl
-  | cons K C m ih =>
+  | cons K C ih =>
     simp only [CapySepCtx.subst, ih, CapyCaptureSet.subst_id]
 
 /-- Converts a renaming to a substitution. -/
@@ -974,7 +974,7 @@ theorem CapySepCtx.subst_asSubst {K : SepCtx s1} {f : Rename s1 s2} :
   (CapySepCtx.subst K) ((CapyRename.asSubst f)) = K.rename f := by
   induction K generalizing s2 with
   | empty => rfl
-  | cons K C m ih =>
+  | cons K C ih =>
     simp only [CapySepCtx.subst, SepCtx.rename, ih, CapyCaptureSet.subst_asSubst]
 
 theorem CapySubst.weaken_openVar {z : Var .var s} :
@@ -1119,7 +1119,7 @@ private theorem SepCtx.rename_closed_any {Ψ : SepCtx s1} {f : Rename s1 s2}
   (hc : Ψ.IsClosed) : (Ψ.rename f).IsClosed := by
   induction Ψ with
   | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     cases hc with
     | cons hΨ hC =>
       exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_any hC)
@@ -1185,7 +1185,7 @@ def CapySepCtx.is_closed_subst {Ψ : SepCtx s1} {σ : CapySubst s1 s2}
   ((CapySepCtx.subst Ψ) σ).IsClosed := by
   induction Ψ generalizing s2 with
   | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     cases hc with
     | cons hΨ hC =>
       simp only [CapySepCtx.subst]
@@ -1408,7 +1408,7 @@ theorem CapySepCtx.subst_closed_inv {Ψ : SepCtx s1} {σ : CapySubst s1 s2}
   Ψ.IsClosed := by
   induction Ψ generalizing s2 with
   | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     simp only [CapySepCtx.subst] at hclosed
     cases hclosed with
     | cons hΨ hC =>
