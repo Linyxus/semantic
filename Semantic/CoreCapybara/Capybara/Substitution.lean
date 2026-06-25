@@ -193,7 +193,7 @@ def CapyCaptureSet.dropVar : CaptureSet (s,x) -> CaptureSet s
 | .var a (.free n) => .var a (.free n)
 | .cvar a (.there c) => .cvar a c
 
-/-- The *interfere set* of a capturing type: an over-approximation of the
+/-- The *interfere set* of a type: an over-approximation of the
     capture set that values of the type may use, directly or indirectly.
 
     For the three function forms it folds in the function's own capture set
@@ -203,8 +203,11 @@ def CapyCaptureSet.dropVar : CaptureSet (s,x) -> CaptureSet s
     interfere([c](x: S^C) ->Cf E) = Cf ∪ C ∪ interfere(E) - {c, x}
     interfere([X] ->Cf E)         = Cf ∪ interfere(E)
     interfere([c] ->Cf E)         = Cf ∪ interfere(E) - {c}
-    ``` -/
-def CapyTy.interfere_set (T : CapyTy .capt s) : CaptureSet s :=
+    ```
+    The function codomains are existential types: for `∃c. T` the bound capture
+    variable is stripped from the body's interfere set, and `typ T` forwards to
+    the underlying type. -/
+def CapyTy.interfere_set (T : CapyTy sort s) : CaptureSet s :=
   match T with
   | .top => .empty
   | .tvar _ => .empty
@@ -222,6 +225,9 @@ def CapyTy.interfere_set (T : CapyTy .capt s) : CaptureSet s :=
   -- [c] ->Cf E :  E under c (`,C`)
   | .cpoly _ Cf E =>
       Cf ∪ CapyCaptureSet.dropCVar E.interfere_set
+  -- ∃c. T :  T under c (`,C`)
+  | .exi T => CapyCaptureSet.dropCVar T.interfere_set
+  | .typ T => T.interfere_set
 termination_by sizeOf T
 
 /-- Function extensionality for substitutions.

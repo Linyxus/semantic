@@ -47,17 +47,17 @@ inductive CapyTy : CapyTySort -> Sig -> Type where
 | arrow :
   CapyTy .capt (s,C) ->  -- a capture parameter is implicitly bound
   CaptureSet s ->
-  CapyTy .capt (s,x) ->
+  CapyTy .exi (s,x) ->
   CapyTy .capt s
 | poly :
   CapyTy .capt s ->
   CaptureSet s ->
-  CapyTy .capt (s,X) ->
+  CapyTy .exi (s,X) ->
   CapyTy .capt s
 | cpoly :
   CapyCaptureBound s ->
   CaptureSet s ->
-  CapyTy .capt (s,C) ->
+  CapyTy .exi (s,C) ->
   CapyTy .capt s
 | cap : CaptureSet s -> CapyTy .capt s
 | cell : CaptureSet s -> Mutability -> CapyTy .capt s

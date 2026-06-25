@@ -145,7 +145,7 @@ inductive CapyDisjCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop wher
 --   -------------------------------------------
 --   Satisfy Γ Ψ
 
-inductive CapySubtyp : CapyCtx s -> CapyTy .capt s -> CapyTy .capt s -> Prop where
+inductive CapySubtyp : CapyCtx s -> CapyTy sort s -> CapyTy sort s -> Prop where
 | top {T : CapyTy .capt s} :
   T.IsPureType ->
   -------------------
@@ -183,6 +183,14 @@ inductive CapySubtyp : CapyCtx s -> CapyTy .capt s -> CapyTy .capt s -> Prop whe
   CapySubtyp (Γ,C<:cb2) T1 T2 ->
   ----------------------------------------
   CapySubtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
+| exi :
+  CapySubtyp (Γ,C<:.unbound .epsilon) T1 T2 ->
+  ----------------------------------------
+  CapySubtyp Γ (.exi T1) (.exi T2)
+| typ :
+  CapySubtyp Γ T1 T2 ->
+  ----------------------------------------
+  CapySubtyp Γ (.typ T1) (.typ T2)
 
 inductive CapySeqComp : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
 | seq_sc :
@@ -226,7 +234,7 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
     Γ
     (.var (.bound x))
     (.cell (.var (.M .ro) (.bound x)) .ro)
-| abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .capt (s,x)} :
+| abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .exi (s,x)} :
   T1.IsClosed ->
   CapyHasType
     ((cs.rename Rename.succ).rename Rename.succ ∪ (.var (.M .epsilon) (.bound .here)))
@@ -235,12 +243,12 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
     (T2.rename Rename.implicit_cvar) ->
   ----------------------------
   CapyHasType {} Γ (.abs T1 e) (.arrow T1 cs T2)
-| tabs {S : CapyPureTy s} {T : CapyTy .capt (s,X)} :
+| tabs {S : CapyPureTy s} {T : CapyTy .exi (s,X)} :
   S.IsClosed ->
   CapyHasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
   CapyHasType {} Γ (.tabs S e) (.poly S.core cs T)
-| cabs {cb : CapyCaptureBound s} {T : CapyTy .capt (s,C)} :
+| cabs {cb : CapyCaptureBound s} {T : CapyTy .exi (s,C)} :
   cb.IsClosed ->
   cb.IsValid Γ ->
   CapyHasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
