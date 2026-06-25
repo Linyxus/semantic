@@ -43,6 +43,31 @@ where
   | .cvar _ c => [c]
   | .var _ _ => []
 
+/-- The access modes at which a given capture variable is accessed in a peak
+    set. -/
+def accessedAt (P : PeakSet s) (c : BVar s .cvar) : List Access :=
+  go P.cs
+where
+  go : CaptureSet s -> List Access
+  | .empty => []
+  | .union c1 c2 => go c1 ++ go c2
+  | .cvar a c' => if c' = c then [a] else []
+  | .var _ _ => []
+
+/-- The capture set holding all access-mode occurrences of a single peak `c` in a
+    peak set, e.g. `{.ro c, .drop c}`. -/
+def peakItem (P : PeakSet s) (c : BVar s .cvar) : CaptureSet s :=
+  (accessedAt P c).foldr (fun a acc => (.cvar a c) ∪ acc) .empty
+
+/-- The separation context of a peak set: one item per distinct peak (capture
+    variable), each holding that peak's access-mode occurrences, compiled into the
+    target.  Distinct peaks become distinct items and are therefore required to be
+    pairwise separate; the several occurrences of one peak share a single item. -/
+def peakSepCtx (P : PeakSet s1) (ctx : SrcCtx s1 s2) : SepCtx s2 :=
+  (peakCvars P).foldl
+    (fun K c => .cons K (CaptureSet.compile (peakItem P c) ctx))
+    (.empty : SepCtx s2)
+
 /-- Compiles a source type into the target signature.  The `CompilerCtx` carries
     both the source typing context (`capyCtx`, used to resolve *surface* peaks)
     and the source→target map (`srcCtx`, used to compile capture sets and look up
@@ -72,15 +97,16 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
               sorry
               (.typ (.modal sorry sorry (CapyTy.compile E ctxE)))))))
 | .poly S cs E, ctx =>
-  -- `[X <: S] ->cs E`  ↦  `[X] -> [Ψ] E`: a Core `poly` whose body `E` is guarded
-  -- by a separation lock `[Ψ]` (a `modal`) capturing `Cf = ⟦cs⟧`.  The lock `Ψ`
-  -- is still to be built, step by step.
+  -- `[X <: S] ->cs E`  ↦  `[X] -> [Ψ]cs E`: a Core `poly` whose body `E` is guarded
+  -- by a separation lock `[Ψ]` (a `modal`) capturing `Cf = ⟦cs⟧`.
   let ctxE : CompilerCtx (s1,X) (s2,X) := ctx.weakenTarget.consTVar .top .here
   let Cf : CaptureSet (s2,X) := CaptureSet.compile cs ctx.srcCtx.weaken
+  let Ψ  : ModalCtx (s2,X)   :=
+    ⟨peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken, .empty⟩
   .poly
     (CapyTy.compile S ctx)
     {}
-    (.typ (.modal Cf sorry (CapyTy.compile E ctxE)))
+    (.typ (.modal Cf Ψ (CapyTy.compile E ctxE)))
 | .cpoly _ _ _, _ => sorry
 | .exi T, ctx =>
   .exi (CapyTy.compile T (ctx.weakenTarget.consCVar (.unbound .epsilon) .here))
