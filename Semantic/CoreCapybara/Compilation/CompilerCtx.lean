@@ -48,4 +48,20 @@ def SrcCtx.lookupTVar : SrcCtx s1 s2 -> BVar s1 .tvar -> BVar s2 .tvar
 | .cons (.tvar X) _, .here => X
 | .cons _ rest, .there X => rest.lookupTVar X
 
+/-- Renames the target-sig references stored in a binder info. -/
+def SrcBinderInfo.rename : SrcBinderInfo k s2 -> Rename s2 s2' -> SrcBinderInfo k s2'
+| .var x cs, ρ => .var (ρ.var x) (cs.rename ρ)
+| .cvar c, ρ => .cvar (ρ.var c)
+| .tvar X, ρ => .tvar (ρ.var X)
+
+/-- Renames the (fixed) target signature of a whole source context. -/
+def SrcCtx.rename : SrcCtx s1 s2 -> Rename s2 s2' -> SrcCtx s1 s2'
+| .empty, _ => .empty
+| .cons info rest, ρ => .cons (info.rename ρ) (rest.rename ρ)
+
+/-- Weakens the target signature of a source context by one binder, so the
+    existing source→target images stay valid after a fresh target binder is
+    introduced. -/
+def SrcCtx.weaken (ctx : SrcCtx s1 s2) : SrcCtx s1 (s2,,k) := ctx.rename Rename.succ
+
 end Compilation

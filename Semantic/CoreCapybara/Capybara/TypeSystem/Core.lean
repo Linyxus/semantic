@@ -111,8 +111,10 @@ inductive CapySepCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
   CapySepCheck Γ C1' C2
 | sep_distinct {c1 c2 : BVar s .cvar} :
   c1 ≠ c2 ->
+  CapyCtx.LookupCVar Γ c1 a1 (.unbound m1) ->
+  CapyCtx.LookupCVar Γ c1 a2 (.unbound m2) ->
   --------------------
-  CapySepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
+  CapySepCheck Γ (.cvar mu1 c1) (.cvar mu2 c2)
 
 inductive CapyDisjCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
 | disj_symm :
