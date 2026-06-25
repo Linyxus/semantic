@@ -214,8 +214,9 @@ inductive CapySeqComp : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
   ----------------------
   CapySeqComp Γ C1.applyDrop C2
 
-/-- Typing judgement. -/
-inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s -> Prop where
+/-- Typing judgement. Always assigns an existential-sorted type: capturing
+    types are lifted via `.typ`, genuine existentials use `.exi`. -/
+inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .exi s -> Prop where
 | var :
   Γ.IsClosed ->
   Γ.LookupVar x T ->
@@ -224,7 +225,7 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
     (.var (.M .epsilon) (.bound x))
     Γ
     (.var (.bound x))
-    (T.refineCaptureSet (.var (.M .epsilon) (.bound x)))
+    (.typ (T.refineCaptureSet (.var (.M .epsilon) (.bound x))))
 | readonly :
   Γ.IsClosed ->
   Γ.LookupVar x (.cell C .epsilon) ->
@@ -233,7 +234,7 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
     (.var (.M .ro) (.bound x))
     Γ
     (.var (.bound x))
-    (.cell (.var (.M .ro) (.bound x)) .ro)
+    (.typ (.cell (.var (.M .ro) (.bound x)) .ro))
 | abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .exi (s,x)} :
   T1.IsClosed ->
   CapyHasType
@@ -242,41 +243,45 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
     (e.rename Rename.implicit_cvar)
     (T2.rename Rename.implicit_cvar) ->
   ----------------------------
-  CapyHasType {} Γ (.abs T1 e) (.arrow T1 cs T2)
+  CapyHasType {} Γ (.abs T1 e) (.typ (.arrow T1 cs T2))
 | tabs {S : CapyPureTy s} {T : CapyTy .exi (s,X)} :
   S.IsClosed ->
   CapyHasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
-  CapyHasType {} Γ (.tabs S e) (.poly S.core cs T)
+  CapyHasType {} Γ (.tabs S e) (.typ (.poly S.core cs T))
 | cabs {cb : CapyCaptureBound s} {T : CapyTy .exi (s,C)} :
   cb.IsClosed ->
   cb.IsValid Γ ->
   CapyHasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
   -----------------------------
-  CapyHasType {} Γ (.cabs cb e) (.cpoly cb cs T)
+  CapyHasType {} Γ (.cabs cb e) (.typ (.cpoly cb cs T))
 | app :
-  CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.arrow T1 (.var (.M .epsilon) x) T2) ->
-  CapyHasType (.var (.M .epsilon) y) Γ (.var y) (T1.subst (CapySubst.openCVar D)) ->
+  CapyHasType (.var (.M .epsilon) x) Γ (.var x)
+    (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
+  CapyHasType (.var (.M .epsilon) y) Γ (.var y)
+    (.typ (T1.subst (CapySubst.openCVar D))) ->
   CapySepCheck Γ D (CapyTy.interfere_set (.arrow T1 (.var (.M .epsilon) x) T2)) ->
   ----------------------------
   CapyHasType (.var (.M .epsilon) x ∪ .var (.M .epsilon) y) Γ (.app x y)
     (T2.subst (CapySubst.openVar y))
 | tapp {S : CapyPureTy s} :
   S.IsClosed ->
-  CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.poly S.core (.var (.M .epsilon) x) T) ->
+  CapyHasType (.var (.M .epsilon) x) Γ (.var x)
+    (.typ (.poly S.core (.var (.M .epsilon) x) T)) ->
   ----------------------------
   CapyHasType (.var (.M .epsilon) x) Γ (.tapp x S)
     (T.subst (CapySubst.openTVar S))
 | capp {D : CaptureSet s} :
   D.IsClosed ->
   CapyCaptureBound.IsValid Γ (.bound D) ->
-  CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.cpoly (.bound D) (.var (.M .epsilon) x) T) ->
+  CapyHasType (.var (.M .epsilon) x) Γ (.var x)
+    (.typ (.cpoly (.bound D) (.var (.M .epsilon) x) T)) ->
   ----------------------------
   CapyHasType (.var (.M .epsilon) x) Γ (.capp x D)
     (T.subst (CapySubst.openCVar D))
 | letin :
   CapySeqComp Γ C1 C2 ->
-  CapyHasType C1 Γ e1 T ->
+  CapyHasType C1 Γ e1 (.typ T) ->
   CapyHasType (C2.rename Rename.succ) (Γ,x:T) e2 (U.rename Rename.succ) ->
   --------------------------------
   CapyHasType (C1 ∪ C2) Γ (.letin e1 e2) U
@@ -294,36 +299,36 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
   CapyHasType (C1 ∪ C2) Γ (.letin e1 e2) U
 | unit :
   ----------------------------
-  CapyHasType {} Γ (.unit) .unit
+  CapyHasType {} Γ (.unit) (.typ .unit)
 | btrue :
   ----------------------------
-  CapyHasType {} Γ (.btrue) .bool
+  CapyHasType {} Γ (.btrue) (.typ .bool)
 | bfalse :
   ----------------------------
-  CapyHasType {} Γ (.bfalse) .bool
+  CapyHasType {} Γ (.bfalse) (.typ .bool)
 | alloc :
   -- `alloc` introduces a fresh capability: the result is the existential
   -- `∃C. cell{C}` — a read-write cell capturing the freshly bound `C`.
-  CapyHasType {} Γ (.var x) .bool ->
+  CapyHasType {} Γ (.var x) (.typ .bool) ->
   ----------------------------
   CapyHasType {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here) .epsilon))
 | drop :
   Γ.IsClosed ->
   CapyCaptureSet.droppable Γ (CaptureSet.var (.M .epsilon) x) ->
-  CapyHasType Cx Γ (.var x) (.cell (.var (.M .epsilon) x) .epsilon) ->
+  CapyHasType Cx Γ (.var x) (.typ (.cell (.var (.M .epsilon) x) .epsilon)) ->
   ----------------------------
-  CapyHasType (.var .drop x) Γ (.drop x) .unit
+  CapyHasType (.var .drop x) Γ (.drop x) (.typ .unit)
 | read :
-  CapyHasType Cx Γ (.var x) (.cell Cx .ro) ->
+  CapyHasType Cx Γ (.var x) (.typ (.cell Cx .ro)) ->
   ----------------------------
-  CapyHasType Cx Γ (.read x) .bool
+  CapyHasType Cx Γ (.read x) (.typ .bool)
 | write :
-  CapyHasType Cx Γ (.var x) (.cell Cx .epsilon) ->
-  CapyHasType {} Γ (.var y) .bool ->
+  CapyHasType Cx Γ (.var x) (.typ (.cell Cx .epsilon)) ->
+  CapyHasType {} Γ (.var y) (.typ .bool) ->
   ----------------------------
-  CapyHasType Cx Γ (.write x y) .unit
+  CapyHasType Cx Γ (.write x y) (.typ .unit)
 | cond :
-  CapyHasType C1 Γ (.var x) .bool ->
+  CapyHasType C1 Γ (.var x) (.typ .bool) ->
   CapyHasType C2 Γ e2 T ->
   CapyHasType C3 Γ e3 T ->
   ----------------------------
@@ -333,12 +338,12 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
   CapyHasType C2 Γ e2 E2 ->
   CapySepCheck Γ C1 C2 ->
   ----------------------------
-  CapyHasType (C1 ∪ C2) Γ (.par e1 e2) .unit
+  CapyHasType (C1 ∪ C2) Γ (.par e1 e2) (.typ .unit)
 | invoke :
-  CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.cap (.var (.M .epsilon) x)) ->
-  CapyHasType {} Γ (.var y) .unit ->
+  CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.typ (.cap (.var (.M .epsilon) x))) ->
+  CapyHasType {} Γ (.var y) (.typ .unit) ->
   ------------------------------------------------
-  CapyHasType (.var (.M .epsilon) x) Γ (.app x y) .unit
+  CapyHasType (.var (.M .epsilon) x) Γ (.app x y) (.typ .unit)
 | subtyp :
   CapyHasType C1 Γ e E1 ->
   CapySubcapt Γ C1 C2 ->
