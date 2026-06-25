@@ -61,7 +61,7 @@ inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
   HasKind Γ C .epsilon
 | imm {C : CaptureSet s} :
   Ctx.LookupLock Γ ℓ Ψ ->
-  SepCtx.Has Ψ C .ro ->
+  MutabilityCtx.Has Ψ.mutability C .ro ->
   -------------------
   HasKind Γ C .ro
 | ro {C : CaptureSet s} :
@@ -107,7 +107,7 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   SepCheck Γ C1' C2
 | sep_lock {C1 C2 : CaptureSet s} :
   Ctx.LookupLock Γ ℓ Ψ ->
-  SepCtx.HasTwoDistinct Ψ C1 m1 C2 m2 ->
+  SepCtx.HasTwoDistinct Ψ.sep C1 C2 ->
   --------------------
   SepCheck Γ C1 C2
 | sep_droppable {c1 c2 : BVar s .cvar} :
@@ -115,10 +115,10 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
-inductive Satisfy : Ctx s -> SepCtx s -> Prop where
-| satisfy {Ψ : SepCtx s} :
-  (hkind : ∀ C m, Ψ.Has C m -> HasKind Γ C m) ->
-  (hsep : ∀ C1 m1 C2 m2, Ψ.HasTwoDistinct C1 m1 C2 m2 -> SepCheck Γ C1 C2) ->
+inductive Satisfy : Ctx s -> ModalCtx s -> Prop where
+| satisfy {Ψ : ModalCtx s} :
+  (hkind : ∀ C m, Ψ.mutability.Has C m -> HasKind Γ C m) ->
+  (hsep : ∀ C1 C2, Ψ.sep.HasTwoDistinct C1 C2 -> SepCheck Γ C1 C2) ->
   -------------------------------------------
   Satisfy Γ Ψ
 

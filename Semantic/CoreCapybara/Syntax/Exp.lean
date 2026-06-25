@@ -12,7 +12,7 @@ inductive Exp : Sig -> Type where
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
-| boxed : CaptureSet s -> SepCtx s -> Exp s -> Exp s
+| boxed : CaptureSet s -> ModalCtx s -> Exp s -> Exp s
 | reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
 | drop : Var .var s -> Exp s
@@ -117,7 +117,7 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     simp only [Exp.rename, CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
     exact congrArg (Exp.cabs cs cb) ih
   | boxed cs Ψ e ih =>
-    simp only [Exp.rename, CaptureSet.rename_id, SepCtx.rename_id]
+    simp only [Exp.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Exp.boxed cs Ψ) ih
   | reader x =>
     simp only [Exp.rename, Var.rename_id]
@@ -183,7 +183,7 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
       congrArg (Exp.cabs (cs.rename (f.comp g)) (cb.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
   | boxed cs Ψ e ih =>
-    simpa only [Exp.rename, CaptureSet.rename_comp, SepCtx.rename_comp] using
+    simpa only [Exp.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Exp.boxed (cs.rename (f.comp g)) (Ψ.rename (f.comp g))) (ih (f := f) (g := g))
   | reader x =>
     simp only [Exp.rename, Var.rename_comp]
@@ -243,7 +243,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
     Exp.IsClosed (.cabs cs cb e)
-| boxed : CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Exp.IsClosed e ->
+| boxed : CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Exp.IsClosed e ->
     Exp.IsClosed (.boxed cs Ψ e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)

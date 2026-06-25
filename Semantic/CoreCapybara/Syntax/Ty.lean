@@ -47,7 +47,7 @@ inductive Ty : TySort -> Sig -> Type where
 | arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
-| modal : CaptureSet s -> SepCtx s -> Ty .exi s -> Ty .capt s
+| modal : CaptureSet s -> ModalCtx s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
 | cell : CaptureSet s -> Ty .capt s
 | reader : CaptureSet s -> Ty .capt s
@@ -89,7 +89,7 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
     simp only [Ty.rename, Rename.lift_id, CaptureBound.rename_id, CaptureSet.rename_id]
     exact congrArg (Ty.cpoly cb cs) ih
   | modal cs Ψ T ih =>
-    simp only [Ty.rename, CaptureSet.rename_id, SepCtx.rename_id]
+    simp only [Ty.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Ty.modal cs Ψ) ih
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_id]
@@ -126,7 +126,7 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
       congrArg (Ty.cpoly (cb.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
   | modal cs Ψ T ih =>
-    simpa only [Ty.rename, CaptureSet.rename_comp, SepCtx.rename_comp] using
+    simpa only [Ty.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Ty.modal (cs.rename (f.comp g)) (Ψ.rename (f.comp g)))
         (ih (f := f) (g := g))
   | cap cs =>
@@ -192,7 +192,7 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
     CaptureBound.IsClosed cb -> CaptureSet.IsClosed cs -> Ty.IsClosed T ->
     Ty.IsClosed (.cpoly cb cs T)
 | modal :
-    CaptureSet.IsClosed cs -> SepCtx.IsClosed Ψ -> Ty.IsClosed T ->
+    CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Ty.IsClosed T ->
     Ty.IsClosed (.modal cs Ψ T)
 | unit : Ty.IsClosed .unit
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)

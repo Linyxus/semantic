@@ -121,11 +121,40 @@ theorem SepCtx.rename_closed_inv {Ψ : SepCtx s1} {f : Rename s1 s2} :
   intro h
   induction Ψ with
   | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     simp only [SepCtx.rename] at h
     cases h with
     | cons hΨ hC =>
       exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_inv hC)
+
+/-- Renaming preserves closedness of mutability contexts. -/
+theorem MutabilityCtx.rename_closed {Ψ : MutabilityCtx s1} {f : Rename s1 s2} :
+    Ψ.IsClosed -> (Ψ.rename f).IsClosed := by
+  intro h
+  induction h with
+  | empty => exact MutabilityCtx.IsClosed.empty
+  | cons hΨ hC ih =>
+    exact MutabilityCtx.IsClosed.cons ih (CaptureSet.rename_closed hC)
+
+theorem MutabilityCtx.rename_closed_inv {Ψ : MutabilityCtx s1} {f : Rename s1 s2} :
+    (Ψ.rename f).IsClosed -> Ψ.IsClosed := by
+  intro h
+  induction Ψ with
+  | empty => exact MutabilityCtx.IsClosed.empty
+  | cons Ψ C m ih =>
+    simp only [MutabilityCtx.rename] at h
+    cases h with
+    | cons hΨ hC =>
+      exact MutabilityCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_inv hC)
+
+/-- Renaming preserves closedness of modal contexts. -/
+theorem ModalCtx.rename_closed {Ψ : ModalCtx s1} {f : Rename s1 s2} :
+    Ψ.IsClosed -> (Ψ.rename f).IsClosed := fun h =>
+  ⟨SepCtx.rename_closed h.sep, MutabilityCtx.rename_closed h.mutability⟩
+
+theorem ModalCtx.rename_closed_inv {Ψ : ModalCtx s1} {f : Rename s1 s2} :
+    (Ψ.rename f).IsClosed -> Ψ.IsClosed := fun h =>
+  ⟨SepCtx.rename_closed_inv h.sep, MutabilityCtx.rename_closed_inv h.mutability⟩
 
 /-- Refining a closed type with a closed capture set yields a closed type. -/
 theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
@@ -165,7 +194,7 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
   case modal cs Ψ T ihT =>
     cases h with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed hcs)
-      (SepCtx.rename_closed hΨ) (ihT hT)
+      (ModalCtx.rename_closed hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
     cases h with | cap hcs =>
@@ -210,7 +239,7 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     simp only [Ty.rename] at h
     cases h with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed_inv hcs)
-      (SepCtx.rename_closed_inv hΨ) (ihT hT)
+      (ModalCtx.rename_closed_inv hΨ) (ihT hT)
   case unit => exact IsClosed.unit
   case cap cs =>
     simp only [Ty.rename] at h

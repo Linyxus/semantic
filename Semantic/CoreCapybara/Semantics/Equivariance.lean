@@ -44,7 +44,22 @@ def CaptureBound.renameLoc (π : Equiv.Perm Nat) : CaptureBound s → CaptureBou
 /-- Rename all free locations in a separation context. -/
 def SepCtx.renameLoc (π : Equiv.Perm Nat) : SepCtx s → SepCtx s
 | .empty => .empty
+| .cons K C => .cons (K.renameLoc π) (C.renameLoc π)
+
+/-- Rename all free locations in a mutability context. -/
+def MutabilityCtx.renameLoc (π : Equiv.Perm Nat) : MutabilityCtx s → MutabilityCtx s
+| .empty => .empty
 | .cons K C m => .cons (K.renameLoc π) (C.renameLoc π) m
+
+/-- Rename all free locations in a modal context, componentwise. -/
+def ModalCtx.renameLoc (π : Equiv.Perm Nat) (Ψ : ModalCtx s) : ModalCtx s :=
+  ⟨Ψ.sep.renameLoc π, Ψ.mutability.renameLoc π⟩
+
+@[simp] theorem ModalCtx.renameLoc_sep {π : Equiv.Perm Nat} {Ψ : ModalCtx s} :
+    (Ψ.renameLoc π).sep = Ψ.sep.renameLoc π := rfl
+
+@[simp] theorem ModalCtx.renameLoc_mutability {π : Equiv.Perm Nat} {Ψ : ModalCtx s} :
+    (Ψ.renameLoc π).mutability = Ψ.mutability.renameLoc π := rfl
 
 /-- Rename all free locations in a type. -/
 def Ty.renameLoc (π : Equiv.Perm Nat) : Ty sort s → Ty sort s
@@ -158,8 +173,24 @@ theorem SepCtx.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
     (K.rename f).renameLoc π = (K.renameLoc π).rename f := by
   induction K generalizing s2 with
   | empty => rfl
-  | cons K C m ih =>
+  | cons K C ih =>
     simp only [SepCtx.rename, SepCtx.renameLoc, ih, CaptureSet.renameLoc_rename]
+
+theorem MutabilityCtx.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
+    (f : Rename s1 s2) (K : MutabilityCtx s1) :
+    (K.rename f).renameLoc π = (K.renameLoc π).rename f := by
+  induction K generalizing s2 with
+  | empty => rfl
+  | cons K C m ih =>
+    simp only [MutabilityCtx.rename, MutabilityCtx.renameLoc, ih, CaptureSet.renameLoc_rename]
+
+theorem ModalCtx.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
+    (f : Rename s1 s2) (K : ModalCtx s1) :
+    (K.rename f).renameLoc π = (K.renameLoc π).rename f := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.rename, ModalCtx.renameLoc,
+      SepCtx.renameLoc_rename, MutabilityCtx.renameLoc_rename]
 
 theorem Ty.renameLoc_rename (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
     (f : Rename s1 s2) (T : Ty sort s1) :
@@ -178,7 +209,7 @@ theorem Ty.renameLoc_rename (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
       CaptureBound.renameLoc_rename, ih]
   | modal _ _ _ ih =>
     simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename,
-      SepCtx.renameLoc_rename, ih]
+      ModalCtx.renameLoc_rename, ih]
   | cap _ => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename]
   | cell _ => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename]
   | reader _ => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename]
@@ -203,7 +234,7 @@ theorem Exp.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
   | cabs _ _ _ ih => simp only [Exp.rename, Exp.renameLoc, CaptureSet.renameLoc_rename,
       CaptureBound.renameLoc_rename, ih]
   | boxed _ _ _ ih => simp only [Exp.rename, Exp.renameLoc, CaptureSet.renameLoc_rename,
-      SepCtx.renameLoc_rename, ih]
+      ModalCtx.renameLoc_rename, ih]
   | reader x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
   | alloc x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
   | drop x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
@@ -462,8 +493,24 @@ theorem SepCtx.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
     (K.subst σ).renameLoc π = (K.renameLoc π).subst (σ.renameLoc π) := by
   induction K with
   | empty => rfl
-  | cons K C m ih =>
+  | cons K C ih =>
     simp only [SepCtx.subst, SepCtx.renameLoc, ih, CaptureSet.subst_renameLoc]
+
+theorem MutabilityCtx.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
+    (K : MutabilityCtx s1) (σ : Subst s1 s2) :
+    (K.subst σ).renameLoc π = (K.renameLoc π).subst (σ.renameLoc π) := by
+  induction K with
+  | empty => rfl
+  | cons K C m ih =>
+    simp only [MutabilityCtx.subst, MutabilityCtx.renameLoc, ih, CaptureSet.subst_renameLoc]
+
+theorem ModalCtx.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
+    (K : ModalCtx s1) (σ : Subst s1 s2) :
+    (K.subst σ).renameLoc π = (K.renameLoc π).subst (σ.renameLoc π) := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.subst, ModalCtx.renameLoc,
+      SepCtx.subst_renameLoc, MutabilityCtx.subst_renameLoc]
 
 theorem Ty.subst_renameLoc (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
     (T : Ty sort s1) (σ : Subst s1 s2) :
@@ -487,7 +534,7 @@ theorem Ty.subst_renameLoc (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
     rfl
   | modal _ _ _ ih =>
     simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc,
-      SepCtx.subst_renameLoc, ih]
+      ModalCtx.subst_renameLoc, ih]
   | cap _ => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc]
   | cell _ => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc]
   | reader _ => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc]
@@ -522,7 +569,7 @@ theorem Exp.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
       CaptureBound.subst_renameLoc, ih, ← Subst.lift_renameLoc]
     rfl
   | boxed _ _ _ ih => simp only [Exp.subst, Exp.renameLoc, CaptureSet.subst_renameLoc,
-      SepCtx.subst_renameLoc, ih]
+      ModalCtx.subst_renameLoc, ih]
   | reader x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
   | alloc x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
   | drop x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
@@ -646,6 +693,16 @@ theorem SepCtx.WfInHeap.renameLoc {K : SepCtx s} {h : Heap} (hwf : K.WfInHeap h)
   induction hwf with
   | wf_empty => exact .wf_empty
   | wf_cons _ hC ih => exact .wf_cons ih (hC.renameLoc π)
+
+theorem MutabilityCtx.WfInHeap.renameLoc {K : MutabilityCtx s} {h : Heap} (hwf : K.WfInHeap h)
+    (π : Equiv.Perm Nat) : (K.renameLoc π).WfInHeap (h.renameLoc π) := by
+  induction hwf with
+  | wf_empty => exact .wf_empty
+  | wf_cons _ hC ih => exact .wf_cons ih (hC.renameLoc π)
+
+theorem ModalCtx.WfInHeap.renameLoc {K : ModalCtx s} {h : Heap} (hwf : K.WfInHeap h)
+    (π : Equiv.Perm Nat) : (K.renameLoc π).WfInHeap (h.renameLoc π) :=
+  ⟨hwf.sep.renameLoc π, hwf.mutability.renameLoc π⟩
 
 theorem Ty.WfInHeap.renameLoc {T : Ty sort s} {h : Heap} (hwf : T.WfInHeap h)
     (π : Equiv.Perm Nat) : (T.renameLoc π).WfInHeap (h.renameLoc π) := by
@@ -822,7 +879,17 @@ theorem CaptureBound.renameLoc_id {cb : CaptureBound s} :
 theorem SepCtx.renameLoc_id {K : SepCtx s} : K.renameLoc (Equiv.refl Nat) = K := by
   induction K with
   | empty => rfl
-  | cons K C m ih => simp only [SepCtx.renameLoc, ih, CaptureSet.renameLoc_id]
+  | cons K C ih => simp only [SepCtx.renameLoc, ih, CaptureSet.renameLoc_id]
+
+theorem MutabilityCtx.renameLoc_id {K : MutabilityCtx s} : K.renameLoc (Equiv.refl Nat) = K := by
+  induction K with
+  | empty => rfl
+  | cons K C m ih => simp only [MutabilityCtx.renameLoc, ih, CaptureSet.renameLoc_id]
+
+theorem ModalCtx.renameLoc_id {K : ModalCtx s} : K.renameLoc (Equiv.refl Nat) = K := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.renameLoc, SepCtx.renameLoc_id, MutabilityCtx.renameLoc_id]
 
 theorem Ty.renameLoc_id {T : Ty sort s} : T.renameLoc (Equiv.refl Nat) = T := by
   induction T with
@@ -835,7 +902,7 @@ theorem Ty.renameLoc_id {T : Ty sort s} : T.renameLoc (Equiv.refl Nat) = T := by
   | cpoly _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_id, CaptureBound.renameLoc_id, ih]
   | modal _ _ _ ih =>
-    simp only [Ty.renameLoc, CaptureSet.renameLoc_id, SepCtx.renameLoc_id, ih]
+    simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ModalCtx.renameLoc_id, ih]
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
   | cell _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
   | reader _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
@@ -855,7 +922,7 @@ theorem Exp.renameLoc_id {e : Exp s} : e.renameLoc (Equiv.refl Nat) = e := by
   | cabs _ _ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_id, CaptureBound.renameLoc_id, ih]
   | boxed _ _ _ ih =>
-    simp only [Exp.renameLoc, CaptureSet.renameLoc_id, SepCtx.renameLoc_id, ih]
+    simp only [Exp.renameLoc, CaptureSet.renameLoc_id, ModalCtx.renameLoc_id, ih]
   | reader x => simp only [Exp.renameLoc, Var.renameLoc_id]
   | alloc x => simp only [Exp.renameLoc, Var.renameLoc_id]
   | drop x => simp only [Exp.renameLoc, Var.renameLoc_id]
@@ -928,7 +995,19 @@ theorem SepCtx.renameLoc_comp {K : SepCtx s} {π ρ : Equiv.Perm Nat} :
     (K.renameLoc π).renameLoc ρ = K.renameLoc (π.trans ρ) := by
   induction K with
   | empty => rfl
-  | cons K C m ih => simp only [SepCtx.renameLoc, ih, CaptureSet.renameLoc_comp]
+  | cons K C ih => simp only [SepCtx.renameLoc, ih, CaptureSet.renameLoc_comp]
+
+theorem MutabilityCtx.renameLoc_comp {K : MutabilityCtx s} {π ρ : Equiv.Perm Nat} :
+    (K.renameLoc π).renameLoc ρ = K.renameLoc (π.trans ρ) := by
+  induction K with
+  | empty => rfl
+  | cons K C m ih => simp only [MutabilityCtx.renameLoc, ih, CaptureSet.renameLoc_comp]
+
+theorem ModalCtx.renameLoc_comp {K : ModalCtx s} {π ρ : Equiv.Perm Nat} :
+    (K.renameLoc π).renameLoc ρ = K.renameLoc (π.trans ρ) := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.renameLoc, SepCtx.renameLoc_comp, MutabilityCtx.renameLoc_comp]
 
 theorem Ty.renameLoc_comp {T : Ty sort s} {π ρ : Equiv.Perm Nat} :
     (T.renameLoc π).renameLoc ρ = T.renameLoc (π.trans ρ) := by
@@ -942,7 +1021,7 @@ theorem Ty.renameLoc_comp {T : Ty sort s} {π ρ : Equiv.Perm Nat} :
   | cpoly _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, CaptureBound.renameLoc_comp, ih]
   | modal _ _ _ ih =>
-    simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, SepCtx.renameLoc_comp, ih]
+    simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ModalCtx.renameLoc_comp, ih]
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
   | cell _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
   | reader _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
@@ -963,7 +1042,7 @@ theorem Exp.renameLoc_comp {e : Exp s} {π ρ : Equiv.Perm Nat} :
   | cabs _ _ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, CaptureBound.renameLoc_comp, ih]
   | boxed _ _ _ ih =>
-    simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, SepCtx.renameLoc_comp, ih]
+    simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, ModalCtx.renameLoc_comp, ih]
   | reader x => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | alloc x => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | drop x => simp only [Exp.renameLoc, Var.renameLoc_comp]

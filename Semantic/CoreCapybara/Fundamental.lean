@@ -1627,25 +1627,53 @@ theorem closed_captureset_subst_denot
 
 theorem SepCtx.Has.subst
     {K : SepCtx s1} {σ : Subst s1 s2}
-    (h : SepCtx.Has K C m) :
-    SepCtx.Has (K.subst σ) (C.subst σ) m := by
+    (h : SepCtx.Has K C) :
+    SepCtx.Has (K.subst σ) (C.subst σ) := by
   induction h with
   | here =>
-    change SepCtx.Has (.cons _ _ _) _ _
+    change SepCtx.Has (.cons _ _) _
     exact .here
   | there h ih =>
-    change SepCtx.Has (.cons _ _ _) _ _
+    change SepCtx.Has (.cons _ _) _
     exact .there ih
 
 theorem SepCtx.Has.subst_inv
     {K : SepCtx s1} {σ : Subst s1 s2}
-    (h : SepCtx.Has (K.subst σ) C m) :
-    ∃ C0, C = C0.subst σ ∧ SepCtx.Has K C0 m := by
+    (h : SepCtx.Has (K.subst σ) C) :
+    ∃ C0, C = C0.subst σ ∧ SepCtx.Has K C0 := by
+  induction K with
+  | empty =>
+    cases h
+  | cons K C0 ih =>
+    change SepCtx.Has (.cons (K.subst σ) (C0.subst σ)) C at h
+    cases h with
+    | here =>
+      exact ⟨C0, rfl, .here⟩
+    | there h' =>
+      obtain ⟨C1, hC1, hh⟩ := ih h'
+      exact ⟨C1, hC1, .there hh⟩
+
+theorem MutabilityCtx.Has.subst
+    {K : MutabilityCtx s1} {σ : Subst s1 s2}
+    (h : MutabilityCtx.Has K C m) :
+    MutabilityCtx.Has (K.subst σ) (C.subst σ) m := by
+  induction h with
+  | here =>
+    change MutabilityCtx.Has (.cons _ _ _) _ _
+    exact .here
+  | there h ih =>
+    change MutabilityCtx.Has (.cons _ _ _) _ _
+    exact .there ih
+
+theorem MutabilityCtx.Has.subst_inv
+    {K : MutabilityCtx s1} {σ : Subst s1 s2}
+    (h : MutabilityCtx.Has (K.subst σ) C m) :
+    ∃ C0, C = C0.subst σ ∧ MutabilityCtx.Has K C0 m := by
   induction K with
   | empty =>
     cases h
   | cons K C0 m0 ih =>
-    change SepCtx.Has (.cons (K.subst σ) (C0.subst σ) m0) C m at h
+    change MutabilityCtx.Has (.cons (K.subst σ) (C0.subst σ) m0) C m at h
     cases h with
     | here =>
       exact ⟨C0, rfl, .here⟩
@@ -1655,44 +1683,44 @@ theorem SepCtx.Has.subst_inv
 
 theorem SepCtx.HasTwoDistinct.subst
     {K : SepCtx s1} {σ : Subst s1 s2}
-    (h : SepCtx.HasTwoDistinct K C1 m1 C2 m2) :
-    SepCtx.HasTwoDistinct (K.subst σ) (C1.subst σ) m1 (C2.subst σ) m2 := by
+    (h : SepCtx.HasTwoDistinct K C1 C2) :
+    SepCtx.HasTwoDistinct (K.subst σ) (C1.subst σ) (C2.subst σ) := by
   induction h with
   | here_there hhas =>
-    change SepCtx.HasTwoDistinct (.cons _ _ _) _ _ _ _
+    change SepCtx.HasTwoDistinct (.cons _ _) _ _
     exact .here_there (hhas.subst)
   | there h ih =>
-    change SepCtx.HasTwoDistinct (.cons _ _ _) _ _ _ _
+    change SepCtx.HasTwoDistinct (.cons _ _) _ _
     exact .there ih
   | symm h ih =>
     exact .symm ih
 
 theorem SepCtx.HasTwoDistinct.subst_inv
     {K : SepCtx s1} {σ : Subst s1 s2}
-    (h : SepCtx.HasTwoDistinct (K.subst σ) C1 m1 C2 m2) :
+    (h : SepCtx.HasTwoDistinct (K.subst σ) C1 C2) :
     ∃ D1 D2,
       C1 = D1.subst σ ∧
       C2 = D2.subst σ ∧
-      SepCtx.HasTwoDistinct K D1 m1 D2 m2 := by
+      SepCtx.HasTwoDistinct K D1 D2 := by
   generalize he0 : K.subst σ = K0 at h
   induction h generalizing K with
   | here_there hhas =>
     cases K with
     | empty =>
       simp [SepCtx.subst] at he0
-    | cons K1 C0 m0 =>
+    | cons K1 C0 =>
       simp only [SepCtx.subst, SepCtx.cons.injEq] at he0
-      rcases he0 with ⟨hK, hC, hm⟩
-      subst hK hC hm
+      rcases he0 with ⟨hK, hC⟩
+      subst hK hC
       obtain ⟨D2, hD2, hh⟩ := SepCtx.Has.subst_inv hhas
       exact ⟨C0, D2, rfl, hD2, .here_there hh⟩
   | there a ih =>
     cases K with
     | empty => simp [SepCtx.subst] at he0
-    | cons K1 C0 m0 =>
+    | cons K1 C0 =>
       simp only [SepCtx.subst, SepCtx.cons.injEq] at he0
-      rcases he0 with ⟨hK, hC, hm⟩
-      subst hC hm
+      rcases he0 with ⟨hK, hC⟩
+      subst hC
       obtain ⟨D1, D2, hD1, hD2, hh⟩ := ih hK
       exact ⟨D1, D2, hD1, hD2, .there hh⟩
   | symm a ih =>
@@ -1700,42 +1728,65 @@ theorem SepCtx.HasTwoDistinct.subst_inv
     exact ⟨D1, D2, hD1, hD2, .symm hh⟩
 
 theorem TypeEnv.satisfy_subst_iff
-    {env : TypeEnv s} {Ψ : SepCtx s} {m : Memory} :
+    {env : TypeEnv s} {Ψ : ModalCtx s} {m : Memory} :
     env.Satisfy Ψ m ↔ TypeEnv.empty.Satisfy (Ψ.subst (Subst.from_TypeEnv env)) m := by
   constructor
   · intro hsat
     constructor
-    · intro C mode hhas
+    · intro C hhas
       obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.subst_inv hhas
       simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-        hsat.wf C0 mode hhas0
+        hsat.wf_sep C0 hhas0
     · intro C mode hhas
-      obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.subst_inv hhas
+      obtain ⟨C0, rfl, hhas0⟩ := MutabilityCtx.Has.subst_inv hhas
+      simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
+        hsat.wf_mut C0 mode hhas0
+    · intro C mode hhas
+      obtain ⟨C0, rfl, hhas0⟩ := MutabilityCtx.Has.subst_inv hhas
       simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
         hsat.kind C0 mode hhas0
-    · intro C1 m1 C2 m2 hdistinct
+    · intro C1 C2 hdistinct
       obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.subst_inv hdistinct
       simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-        hsat.sep D1 m1 D2 m2 hdistinct0
+        hsat.sep D1 D2 hdistinct0
   · intro hsat
     constructor
+    · intro C hhas
+      have hhas' := hhas.subst (σ := Subst.from_TypeEnv env)
+      simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
+        hsat.wf_sep (C.subst (Subst.from_TypeEnv env)) hhas'
     · intro C mode hhas
       have hhas' := hhas.subst (σ := Subst.from_TypeEnv env)
       simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-        hsat.wf (C.subst (Subst.from_TypeEnv env)) mode hhas'
+        hsat.wf_mut (C.subst (Subst.from_TypeEnv env)) mode hhas'
     · intro C mode hhas
       have hhas' := hhas.subst (σ := Subst.from_TypeEnv env)
       simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
         hsat.kind (C.subst (Subst.from_TypeEnv env)) mode hhas'
-    · intro C1 m1 C2 m2 hdistinct
+    · intro C1 C2 hdistinct
       have hdistinct' := hdistinct.subst (σ := Subst.from_TypeEnv env)
       simpa [CaptureSet.denot, Subst.from_TypeEnv_empty, CaptureSet.subst_id] using
-        hsat.sep (C1.subst (Subst.from_TypeEnv env)) m1
-          (C2.subst (Subst.from_TypeEnv env)) m2 hdistinct'
+        hsat.sep (C1.subst (Subst.from_TypeEnv env))
+          (C2.subst (Subst.from_TypeEnv env)) hdistinct'
 
 theorem SepCtx.WfInHeap.of_has
     {Ψ : SepCtx s} {H : Heap}
     (hwf : SepCtx.WfInHeap Ψ H)
+    (hhas : Ψ.Has C) :
+    CaptureSet.WfInHeap C H := by
+  induction hhas with
+  | here =>
+    cases hwf with
+    | wf_cons _ hwf_C =>
+      exact hwf_C
+  | there h ih =>
+    cases hwf with
+    | wf_cons hwf_Ψ _ =>
+      exact ih hwf_Ψ
+
+theorem MutabilityCtx.WfInHeap.of_has
+    {Ψ : MutabilityCtx s} {H : Heap}
+    (hwf : MutabilityCtx.WfInHeap Ψ H)
     (hhas : Ψ.Has C m) :
     CaptureSet.WfInHeap C H := by
   induction hhas with
@@ -1762,7 +1813,7 @@ theorem Subst.from_TypeEnv_lweaken {env : TypeEnv s} :
       TypeEnv.extend_lock, Rename.succ, TypeEnv.lookup_cvar]
 
 theorem TypeEnv.satisfy_lweaken_iff
-    {env : TypeEnv s} {Ψ : SepCtx s} {m : Memory} :
+    {env : TypeEnv s} {Ψ : ModalCtx s} {m : Memory} :
     (env.extend_lock).Satisfy (Ψ.rename Rename.succ) m ↔ env.Satisfy Ψ m := by
   have hsubst :
       (Ψ.rename Rename.succ).subst (Subst.from_TypeEnv (env.extend_lock)) =
@@ -1770,9 +1821,9 @@ theorem TypeEnv.satisfy_lweaken_iff
     calc
       (Ψ.rename Rename.succ).subst (Subst.from_TypeEnv (env.extend_lock))
         = (Ψ.subst Rename.succ.asSubst).subst (Subst.from_TypeEnv (env.extend_lock)) := by
-            rw [SepCtx.subst_asSubst]
+            rw [ModalCtx.subst_asSubst]
       _ = Ψ.subst (Rename.succ.asSubst.comp (Subst.from_TypeEnv (env.extend_lock))) := by
-            rw [SepCtx.subst_comp]
+            rw [ModalCtx.subst_comp]
       _ = Ψ.subst (Subst.from_TypeEnv env) := by
             rw [Subst.from_TypeEnv_lweaken]
   constructor
@@ -1789,7 +1840,7 @@ theorem TypeEnv.satisfy_lweaken_iff
 
 /-- Modal introduction as a semantic typing rule. -/
 theorem sem_typ_wrap
-  {cs : CaptureSet s} {Ψ : SepCtx s} {e : Exp s} {E : Ty .exi s}
+  {cs : CaptureSet s} {Ψ : ModalCtx s} {e : Exp s} {E : Ty .exi s}
   (hclosed_e : (Exp.boxed cs Ψ e).IsClosed)
   (ht : SemanticTyping (cs.rename Rename.succ) (Γ.push_lock Ψ)
     (e.rename Rename.succ) (E.rename Rename.succ)) :
@@ -1817,8 +1868,8 @@ theorem sem_typ_wrap
         · apply CaptureSet.wf_subst
           · exact CaptureSet.wf_of_closed hclosed_cs
           · exact from_TypeEnv_wf_in_heap hts
-        · apply SepCtx.wf_subst
-          · exact SepCtx.wf_of_closed hclosed_Ψ
+        · apply ModalCtx.wf_subst
+          · exact ModalCtx.wf_of_closed hclosed_Ψ
           · exact from_TypeEnv_wf_in_heap hts
         · intro m' hsub hsat
           exact (TypeEnv.satisfy_subst_iff (env := env) (Ψ := Ψ) (m := m')).mp hsat
@@ -1831,14 +1882,19 @@ theorem sem_typ_wrap
         · intro m' hsub hcompat hkind hsep
           have hsat_Ψ : env.Satisfy Ψ m' := by
             constructor
+            · intro C hhas
+              exact CaptureSet.wf_subst
+                (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ.sep) hhas)
+                (from_TypeEnv_wf_in_heap (env_typing_monotonic hts hsub))
             · intro C mode hhas
               exact CaptureSet.wf_subst
-                (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas)
+                (MutabilityCtx.WfInHeap.of_has
+                  (MutabilityCtx.wf_of_closed hclosed_Ψ.mutability) hhas)
                 (from_TypeEnv_wf_in_heap (env_typing_monotonic hts hsub))
             · intro C mode hhas
               exact hkind C mode hhas
-            · intro C1 m1 C2 m2 hdistinct
-              exact hsep C1 m1 C2 m2 hdistinct
+            · intro C1 C2 hdistinct
+              exact hsep C1 C2 hdistinct
           have henv_lock : EnvTyping (Γ.push_lock Ψ) (env.extend_lock) m' := by
             constructor
             · exact hsat_Ψ
@@ -2990,7 +3046,7 @@ theorem fundamental_sepcheck
       (ih hΓ env H hts hdsep) (fundamental_subcapt hsub env H hts)
   | sep_lock hlock hdistinct =>
     intro _hΓ env H henv _hdsep
-    exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
+    exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ hdistinct
   | sep_droppable hdistinct =>
     exact sem_sepcheck_droppable hdistinct
 
@@ -3030,7 +3086,7 @@ theorem fundamental_sepcheck_global
       (fundamental_subcapt hsub env H hts)
   | sep_lock hlock hdistinct =>
     intro env H henv _hdsep
-    exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ _ _ hdistinct
+    exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ hdistinct
   | sep_droppable hdistinct =>
     -- Two distinct droppable capture variables denote disjoint capabilities by
     -- the `EnvSepWf` invariant (as in `sem_sepcheck_droppable`).
@@ -3051,13 +3107,17 @@ theorem sem_satisfy_global
   cases hsatisfy with
   | satisfy hkind hsep =>
     constructor
-    · intro C mode hhas
-      exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas)
+    · intro C hhas
+      exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ.sep) hhas)
                                 (from_TypeEnv_wf_in_heap henv)
     · intro C mode hhas
+      exact CaptureSet.wf_subst
+        (MutabilityCtx.WfInHeap.of_has (MutabilityCtx.wf_of_closed hclosed_Ψ.mutability) hhas)
+        (from_TypeEnv_wf_in_heap henv)
+    · intro C mode hhas
       exact fundamental_haskind (hkind C mode hhas) env m henv
-    · intro C1 m1 C2 m2 hdistinct
-      exact fundamental_sepcheck_global (hsep C1 m1 C2 m2 hdistinct) hΓ env m henv hdsep
+    · intro C1 C2 hdistinct
+      exact fundamental_sepcheck_global (hsep C1 C2 hdistinct) hΓ env m henv hdsep
 
 theorem sem_satisfy
   (hclosed_Ψ : Ψ.IsClosed)
@@ -3071,13 +3131,17 @@ theorem sem_satisfy
   cases hsatisfy with
   | satisfy hkind hsep =>
     constructor
-    · intro C mode hhas
-      exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ) hhas)
+    · intro C hhas
+      exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hclosed_Ψ.sep) hhas)
                                 (from_TypeEnv_wf_in_heap henv)
     · intro C mode hhas
+      exact CaptureSet.wf_subst
+        (MutabilityCtx.WfInHeap.of_has (MutabilityCtx.wf_of_closed hclosed_Ψ.mutability) hhas)
+        (from_TypeEnv_wf_in_heap henv)
+    · intro C mode hhas
       exact fundamental_haskind (hkind C mode hhas) env m henv
-    · intro C1 m1 C2 m2 hdistinct
-      exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) hΓ env m henv hdsep
+    · intro C1 C2 hdistinct
+      exact fundamental_sepcheck (hsep C1 C2 hdistinct) hΓ env m henv hdsep
 
 theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
@@ -3940,10 +4004,10 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
             intro m3 hsub3 t v hpost
             exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2.1, hpost.2.2.2⟩
 
-lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi s}
+lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : ModalCtx s} {E1 E2 : Ty .exi s}
   (hcs : SemSubcapt Γ cs1 cs2)
   (hcs2_closed : CaptureSet.IsClosed cs2)
-  (hΨ_closed : SepCtx.IsClosed Ψ)
+  (hΨ_closed : ModalCtx.IsClosed Ψ)
   (hT : SemSubtyp (Γ.push_lock Ψ) (E1.rename Rename.succ) (E2.rename Rename.succ)) :
   SemSubtyp Γ (.modal cs1 Ψ E1) (.modal cs2 Ψ E2) := by
   unfold SemSubtyp
@@ -3978,13 +4042,19 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
         have htyping_m'' := env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
         have hsat_Ψ : env.Satisfy Ψ m'' := by
           constructor
+          · intro C hhas
+            exact CaptureSet.wf_subst
+              (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ_closed.sep) hhas)
+              (from_TypeEnv_wf_in_heap htyping_m'')
           · intro C mode hhas
-            exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ_closed) hhas)
-                                      (from_TypeEnv_wf_in_heap htyping_m'')
+            exact CaptureSet.wf_subst
+              (MutabilityCtx.WfInHeap.of_has
+                (MutabilityCtx.wf_of_closed hΨ_closed.mutability) hhas)
+              (from_TypeEnv_wf_in_heap htyping_m'')
           · intro C mode hhas
             exact hkind C mode hhas
-          · intro C1 m1 C2 m2 hdistinct
-            exact hsep C1 m1 C2 m2 hdistinct
+          · intro C1 C2 hdistinct
+            exact hsep C1 C2 hdistinct
         have htyping_lock : EnvTyping (Γ.push_lock Ψ) (env.extend_lock) m'' := by
           constructor
           · exact hsat_Ψ
@@ -4017,10 +4087,10 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
           (lweaken_exi_val_denot (env := env) (T := E2))).2 _ _ hpost.2.1,
           hpost.2.2.1, hpost.2.2.2⟩
 
-lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .exi s}
+lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty .exi s}
   (hΓ : Γ.IsClosed)
-  (hΨ1_closed : SepCtx.IsClosed Ψ1)
-  (hΨ2_closed : SepCtx.IsClosed Ψ2)
+  (hΨ1_closed : ModalCtx.IsClosed Ψ1)
+  (hΨ2_closed : ModalCtx.IsClosed Ψ2)
   (hsat : Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ)) :
   SemSubtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E) := by
   unfold SemSubtyp
@@ -4041,7 +4111,7 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
           constructor
           · exact hsat_Ψ2
           · exact htyping_m''
-        have hsat_ren := sem_satisfy_global (SepCtx.rename_closed hΨ1_closed)
+        have hsat_ren := sem_satisfy_global (ModalCtx.rename_closed hΨ1_closed)
           (Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hΨ2_closed)) hsat
           (env.extend_lock) m'' htyping_lock hdsep.extend_lock
         have hsat_Ψ1 := (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
@@ -4050,24 +4120,30 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : SepCtx s} {E : Ty .e
         have htyping_m'' := env_typing_monotonic htyping (Memory.subsumes_trans hsubm'' hsubsumes)
         have hsat_Ψ2 : env.Satisfy Ψ2 m'' := by
           constructor
+          · intro C hhas
+            exact CaptureSet.wf_subst
+              (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ2_closed.sep) hhas)
+              (from_TypeEnv_wf_in_heap htyping_m'')
           · intro C mode hhas
-            exact CaptureSet.wf_subst (SepCtx.WfInHeap.of_has (SepCtx.wf_of_closed hΨ2_closed) hhas)
-                                      (from_TypeEnv_wf_in_heap htyping_m'')
+            exact CaptureSet.wf_subst
+              (MutabilityCtx.WfInHeap.of_has
+                (MutabilityCtx.wf_of_closed hΨ2_closed.mutability) hhas)
+              (from_TypeEnv_wf_in_heap htyping_m'')
           · intro C mode hhas
             exact hkind C mode hhas
-          · intro C1 m1 C2 m2 hdistinct
-            exact hsep C1 m1 C2 m2 hdistinct
+          · intro C1 C2 hdistinct
+            exact hsep C1 C2 hdistinct
         have htyping_lock : EnvTyping (Γ.push_lock Ψ2) (env.extend_lock) m'' := by
           constructor
           · exact hsat_Ψ2
           · exact htyping_m''
-        have hsat_ren := sem_satisfy_global (SepCtx.rename_closed hΨ1_closed)
+        have hsat_ren := sem_satisfy_global (ModalCtx.rename_closed hΨ1_closed)
           (Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hΨ2_closed)) hsat
           (env.extend_lock) m'' htyping_lock hdsep.extend_lock
         have hsat_Ψ1 := (TypeEnv.satisfy_lweaken_iff (env := env) (Ψ := Ψ1) (m := m'')).mp hsat_ren
         exact hbody m'' hsubm'' hcompat
           (fun C mode hhas => hsat_Ψ1.kind C mode hhas)
-          (fun C1 m1 C2 m2 hdistinct => hsat_Ψ1.sep C1 m1 C2 m2 hdistinct)
+          (fun C1 C2 hdistinct => hsat_Ψ1.sep C1 C2 hdistinct)
 
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
@@ -4800,7 +4876,7 @@ theorem var_typing_extract_closed
   all_goals (cases hexpr)
 
 theorem sem_typ_unwrap
-  {x : BVar s .var} {Ψ : SepCtx s} {E : Ty .exi s}
+  {x : BVar s .var} {Ψ : ModalCtx s} {E : Ty .exi s}
   (hclosed_Ψ : Ψ.IsClosed)
   (hΓ : Γ.IsClosed)
   (hx : SemanticTyping {} Γ (Exp.var (.bound x))
@@ -4832,7 +4908,7 @@ theorem sem_typ_unwrap
           witness_live v m') := by
     have h := hbody store (Memory.subsumes_refl store) hcompat_body
       (fun C mode hhas => hsat_Ψ.kind C mode hhas)
-      (fun C1 m1 C2 m2 hdistinct => hsat_Ψ.sep C1 m1 C2 m2 hdistinct)
+      (fun C1 C2 hdistinct => hsat_Ψ.sep C1 C2 hdistinct)
     simp only [Ty.exi_exp_denot] at h
     refine eval_post_monotonic ?_ h
     intro t m v hpost
