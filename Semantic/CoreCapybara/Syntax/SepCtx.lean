@@ -8,8 +8,19 @@ inductive SepCtx : Sig -> Type where
 | cons :
   SepCtx s ->
   CaptureSet s ->
-  Mutability ->
   SepCtx s
+
+inductive MutabilityCtx : Sig -> Type where
+| empty : MutabilityCtx s
+| cons :
+  MutabilityCtx s ->
+  CaptureSet s ->
+  Mutability ->
+  MutabilityCtx s
+
+structure ModalCtx (s : Sig) : Type where
+  sep : SepCtx s
+  mutability : MutabilityCtx s
 
 /-- Membership in a separation context. -/
 inductive SepCtx.Has : SepCtx s -> CaptureSet s -> Mutability -> Prop where
