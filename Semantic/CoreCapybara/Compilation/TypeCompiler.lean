@@ -102,21 +102,32 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
 | .typ T, ctx => .typ (CapyTy.compile T ctx)
 | .tvar X, ctx => .tvar (ctx.srcCtx.lookupTVar X)
 | .arrow T cs E, ctx =>
-  -- `[c](x: S^C) ->cs E`  ↦  `[c][cx](x: S^{cx}) -> [Ψ]encode(cs ∪ {x}) E`,
-  -- where Ψ should be computed from the peaks of `cs ∪ {x}`
-  let ctxB : CompilerCtx (s1,C) (s2,C)     :=
+  -- `[c](x: S^C) ->cs E`  ↦  `[c][cx <: ⟦C⟧](x: S^{cx}) -> [Ψ]⟦cs ∪ {x}⟧ E`.
+  let ctxB : CompilerCtx (s1,C) (s2,C)       :=
     ctx.weakenTarget.consCVar (.unbound .epsilon) .here
-  let ctxD : CompilerCtx (s1,C) (s2,C,C)   :=
+  let ctxD : CompilerCtx (s1,C) (s2,C,C)     :=
     ctx.weakenTarget.weakenTarget.consCVar (.unbound .epsilon) (.there .here)
-  let ctxE : CompilerCtx (s1,x) (s2,C,C,x) :=
+  let ctxE : CompilerCtx (s1,x) (s2,C,C,x)   :=
     ctx.weakenTarget.weakenTarget.weakenTarget.consVar
       .top .here (.cvar (.M .epsilon) (.there .here))
-  .cpoly .unbound (CaptureSet.compile cs ctx.srcCtx)
-    (.typ (.cpoly (.bound (CaptureSet.compile T.captureSet ctxB.srcCtx)) sorry
+  let ctxLock : CompilerCtx (s1,C,x) (s2,C,C,x) :=
+    (ctx.weakenTarget.weakenTarget.weakenTarget.consCVar (.unbound .epsilon)
+      (.there (.there .here))).consVar T .here (.cvar (.M .epsilon) (.there .here))
+  -- the captured resources: the function capture `cs` (weakened past `c`, `x`)
+  -- together with the value parameter `{x}`.
+  let W : CaptureSet (s1,C,x) :=
+    (cs.rename Rename.succ).rename Rename.succ ∪ .var (.M .epsilon) (.bound .here)
+  let Ψ : ModalCtx (s2,C,C,x) :=
+    ⟨peakSepCtx (CapyCaptureSet.peakset ctxLock.capyCtx W) ctxLock.srcCtx, .empty⟩
+  .cpoly .unbound {}
+    (.typ (.cpoly (.bound (CaptureSet.compile T.captureSet ctxB.srcCtx)) {}
       (.typ (.arrow
               ((CapyTy.compile T ctxD).refineCaptureSet (.cvar (.M .epsilon) .here))
-              sorry
-              (.typ (.modal sorry sorry (CapyTy.compile E ctxE)))))))
+              {}
+              (.typ (.modal
+                      (CaptureSet.compile W ctxLock.srcCtx)
+                      Ψ
+                      (CapyTy.compile E ctxE)))))))
 | .poly S cs E, ctx =>
   -- `[X <: S] ->cs E`  ↦  `[X] -> [Ψ]cs E`: a Core `poly` whose body `E` is guarded
   -- by a separation lock `[Ψ]` (a `modal`) capturing `Cf = ⟦cs⟧`.
