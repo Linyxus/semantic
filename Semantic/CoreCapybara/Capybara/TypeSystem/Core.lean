@@ -253,6 +253,7 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
 | app :
   CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.arrow T1 (.var (.M .epsilon) x) T2) ->
   CapyHasType (.var (.M .epsilon) y) Γ (.var y) (T1.subst (CapySubst.openCVar D)) ->
+  CapySepCheck Γ D (CapyTy.interfere_set (.arrow T1 (.var (.M .epsilon) x) T2)) ->
   ----------------------------
   CapyHasType (.var (.M .epsilon) x ∪ .var (.M .epsilon) y) Γ (.app x y)
     (.exi (T2.subst (CapySubst.openVar y).lift))
