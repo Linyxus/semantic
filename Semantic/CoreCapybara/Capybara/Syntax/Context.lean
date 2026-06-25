@@ -34,10 +34,10 @@ def CapyCtx.push_cvar : CapyCtx s -> CapyAuthority -> CapyCaptureBound s -> Capy
 def CapyCtx.push_cvar_default : CapyCtx s -> CapyCaptureBound s -> CapyCtx (s,C)
 | Γ, cb => Γ.push_cvar .access_only cb
 
-infixl:65 ",x:" => CapyCtx.push_var
-infixl:65 ",X<:" => CapyCtx.push_tvar
-notation:65 Γ:65 ",C[" a:66 "]<:" cb:66 => CapyCtx.push_cvar Γ a cb
-infixl:65 ",C<:" => CapyCtx.push_cvar_default
+infixl:65 (name := capyPushVar) ",x:" => CapyCtx.push_var
+infixl:65 (name := capyPushTVar) ",X<:" => CapyCtx.push_tvar
+notation:65 (name := capyPushCVar) Γ:65 ",C[" a:66 "]<:" cb:66 => CapyCtx.push_cvar Γ a cb
+infixl:65 (name := capyPushCVarDefault) ",C<:" => CapyCtx.push_cvar_default
 
 /-- A binding is closed if the type it contains is closed. -/
 inductive CapyBinding.IsClosed : CapyBinding s k -> Prop where

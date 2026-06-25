@@ -357,6 +357,6 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .exi s 
   ----------------------------
   CapyHasType C2 Γ e E2
 
-notation:65 C " # " Γ " ⊢ " e " : " T => CapyHasType C Γ e T
+notation:65 (name := capyHasTypeNotation) C " # " Γ " ⊢ " e " : " T => CapyHasType C Γ e T
 
 end CoreCapybara
