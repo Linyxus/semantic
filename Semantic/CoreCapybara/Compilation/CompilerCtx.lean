@@ -1,4 +1,4 @@
-import Semantic.CoreCapybara
+import Semantic.CoreCapybara.TypeSystem
 import Semantic.CoreCapybara.Capybara
 open CoreCapybara
 namespace Compilation

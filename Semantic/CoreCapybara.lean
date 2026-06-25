@@ -18,6 +18,10 @@ import Semantic.CoreCapybara.Semantics.Standardization
 
 import Semantic.CoreCapybara.Semantics.Confluence
 
+import Semantic.CoreCapybara.Capybara
+
+import Semantic.CoreCapybara.Compilation
+
 /-!
 # Semantic Type Soundness for CoreCapybara
 
@@ -53,4 +57,8 @@ permutation, `Trace.Equiv`, and reachability-equivalence of `par` capture annota
 semantic content of data-race freedom.
 
 This is considered an intermediate step towards the "actual" Capybara.
+
+`Semantic.CoreCapybara.Capybara` defines the clean surface language System
+Capybara, and `Semantic.CoreCapybara.Compilation` develops the type-directed
+compiler translating Capybara into this core calculus.
 -/
