@@ -95,11 +95,15 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
 | .unit, _ => .unit
 | .bool, _ => .bool
 | .cap cs, ctx => .cap (CaptureSet.compile cs ctx.srcCtx)
-| .cell cs .epsilon, ctx => .cell (CaptureSet.compile cs ctx.srcCtx)
-| .cell cs .ro, ctx => .reader (CaptureSet.compile cs ctx.srcCtx)
+| .cell cs .epsilon, ctx =>
+  .cell (CaptureSet.compile cs ctx.srcCtx)
+| .cell cs .ro, ctx =>
+  .reader (CaptureSet.compile cs ctx.srcCtx)
 | .typ T, ctx => .typ (CapyTy.compile T ctx)
 | .tvar X, ctx => .tvar (ctx.srcCtx.lookupTVar X)
 | .arrow T cs E, ctx =>
+  -- `[c](x: S^C) ->cs E`  ↦  `[c][cx](x: S^{cx}) -> [Ψ]encode(cs ∪ {x}) E`,
+  -- where Ψ should be computed from the peaks of `cs ∪ {x}`
   let ctxB : CompilerCtx (s1,C) (s2,C)     :=
     ctx.weakenTarget.consCVar (.unbound .epsilon) .here
   let ctxD : CompilerCtx (s1,C) (s2,C,C)   :=
