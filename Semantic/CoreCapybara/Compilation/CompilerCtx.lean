@@ -16,7 +16,8 @@ inductive DstBinderInfo : Kind -> Type where
 inductive SrcCtx : Sig -> Sig -> Type where
 | empty : SrcCtx {} s
 | cons :
-  SrcBinderInfo k s1 ->
+  -- the binder info records the TARGET-sig (`s2`) image of this source binder
+  SrcBinderInfo k s2 ->
   SrcCtx s1 s2 ->
   SrcCtx (s1,,k) s2
 
@@ -31,5 +32,16 @@ structure CompilerCtx (s1 s2 : Sig) where
   capyCtx : CapyCtx s1
   srcCtx : SrcCtx s1 s2
   dstCtx : DstCtx s2
+
+/-- Looks up the target capture variable that a source capture binder maps to. -/
+def SrcCtx.lookupCVar : SrcCtx s1 s2 -> BVar s1 .cvar -> BVar s2 .cvar
+| .cons (.cvar c) _, .here => c
+| .cons _ rest, .there c => rest.lookupCVar c
+
+/-- Looks up the target capture set that a source term variable stands for. -/
+def SrcCtx.lookupVar : SrcCtx s1 s2 -> BVar s1 .var -> CaptureSet s2
+| .cons (.var _ cs) _, .here => cs
+| .cons _ rest, .there x => rest.lookupVar x
+
 
 end Compilation
