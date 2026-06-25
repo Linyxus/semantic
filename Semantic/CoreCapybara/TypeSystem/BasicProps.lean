@@ -141,8 +141,8 @@ theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
   | unit => exact IsClosed.unit
   | cap _ => exact IsClosed.cap hcs
   | bool => exact IsClosed.bool
-  | cell _ => exact IsClosed.cell hcs
-  | reader _ => exact IsClosed.reader hcs
+  | cell _ hT => exact IsClosed.cell hcs hT
+  | reader _ hT => exact IsClosed.reader hcs hT
 
 theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
     T.IsClosed -> (T.rename f).IsClosed := by
@@ -171,12 +171,12 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
     cases h with | cap hcs =>
     exact IsClosed.cap (CaptureSet.rename_closed hcs)
   case bool => exact IsClosed.bool
-  case cell cs =>
-    cases h with | cell hcs =>
-    exact IsClosed.cell (CaptureSet.rename_closed hcs)
-  case reader cs =>
-    cases h with | reader hcs =>
-    exact IsClosed.reader (CaptureSet.rename_closed hcs)
+  case cell cs T ihT =>
+    cases h with | cell hcs hT =>
+    exact IsClosed.cell (CaptureSet.rename_closed hcs) (ihT hT)
+  case reader cs T ihT =>
+    cases h with | reader hcs hT =>
+    exact IsClosed.reader (CaptureSet.rename_closed hcs) (ihT hT)
   case typ T ih =>
     cases h with | typ hT =>
     exact IsClosed.typ (ih hT)
@@ -217,14 +217,14 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     cases h; rename_i hcs
     exact IsClosed.cap (CaptureSet.rename_closed_inv hcs)
   case bool => exact IsClosed.bool
-  case cell cs =>
+  case cell cs T ihT =>
     simp only [Ty.rename] at h
-    cases h; rename_i hcs
-    exact IsClosed.cell (CaptureSet.rename_closed_inv hcs)
-  case reader cs =>
+    cases h with | cell hcs hT =>
+    exact IsClosed.cell (CaptureSet.rename_closed_inv hcs) (ihT hT)
+  case reader cs T ihT =>
     simp only [Ty.rename] at h
-    cases h; rename_i hcs
-    exact IsClosed.reader (CaptureSet.rename_closed_inv hcs)
+    cases h with | reader hcs hT =>
+    exact IsClosed.reader (CaptureSet.rename_closed_inv hcs) (ihT hT)
   case typ T ih =>
     simp only [Ty.rename] at h
     cases h; rename_i hT
@@ -418,9 +418,10 @@ theorem HasType.type_is_closed
     constructor
     have hT_closed := Ctx.lookup_var_gives_closed hΓ_closed hlookup
     exact Ty.refineCaptureSet_closed hT_closed CaptureSet.IsClosed.var_bound
-  case reader =>
+  case reader hΓ hlk =>
     constructor
-    exact Ty.IsClosed.reader CaptureSet.IsClosed.var_bound
+    cases Ctx.lookup_var_gives_closed hΓ hlk with | cell _ hT =>
+    exact Ty.IsClosed.reader CaptureSet.IsClosed.var_bound hT
   case abs T1_closed ht_body ih =>
     constructor
     have h_use := HasType.use_set_is_closed ht_body
@@ -466,8 +467,9 @@ theorem HasType.type_is_closed
     exact Ty.rename_closed_inv ih2
   case unpack ih1 ih2 =>
     exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
-  case alloc =>
-    exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar)
+  case alloc ih =>
+    cases ih with | typ hT =>
+    exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar (Ty.rename_closed hT))
 -- More context lookup properties
 
 theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :

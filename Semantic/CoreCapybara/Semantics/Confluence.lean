@@ -362,10 +362,8 @@ theorem Step.aeq_sim {t : Trace} {m m' : Memory} {e1 e1' e2 : Exp {}}
     | cond _ hae3 => exact ⟨_, Step.step_cond_var_false hlk, hae3⟩
   | step_read h1 h2 =>
     cases hae with | eq h => exact ⟨_, h ▸ Step.step_read h1 h2, Exp.AEq.refl _⟩
-  | step_write_true h1 h2 =>
-    cases hae with | eq h => exact ⟨_, h ▸ Step.step_write_true h1 h2, Exp.AEq.refl _⟩
-  | step_write_false h1 h2 =>
-    cases hae with | eq h => exact ⟨_, h ▸ Step.step_write_false h1 h2, Exp.AEq.refl _⟩
+  | step_write h1 h2 =>
+    cases hae with | eq h => exact ⟨_, h ▸ Step.step_write h1 h2, Exp.AEq.refl _⟩
   | step_alloc h1 h2 =>
     cases hae with | eq h => exact ⟨_, h ▸ Step.step_alloc h1 h2, Exp.AEq.refl _⟩
   | step_drop hx => cases hae with | eq h => exact ⟨_, h ▸ Step.step_drop hx, Exp.AEq.refl _⟩
@@ -762,8 +760,9 @@ theorem Ty.renameLoc_eq_of_wf {sort s} {T : Ty sort s} {h : Heap} (hwf : T.WfInH
   | wf_unit => rfl
   | wf_cap hcs => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix]
   | wf_bool => rfl
-  | wf_cell hcs => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix]
-  | wf_reader hcs => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix]
+  | wf_cell hcs _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix, ih hfix]
+  | wf_reader hcs _ ih =>
+    simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix, ih hfix]
   | wf_exi _ ih => simp only [Ty.renameLoc, ih hfix]
   | wf_typ _ ih => simp only [Ty.renameLoc, ih hfix]
 
@@ -841,8 +840,21 @@ theorem HeapVal.renameLoc_eq_of_wf {hv : HeapVal} {h : Heap}
   HeapVal.eq_of (Exp.renameLoc_eq_of_wf hwfv hfix)
     (CapabilitySet.renameLoc_eq_of_fix (fun mu l' hm => hfix l' (hreach mu l' hm)))
 
-/-- A swap of two fresh locations leaves a well-formed heap unchanged. -/
-theorem Heap.renameLoc_eq_of_fresh {h : Heap} (hwf : h.WfHeap) {l1 l2 : Nat}
+/-- A capability whose stored (live) location is fixed by `π` is itself fixed. -/
+theorem CapabilityInfo.renameLoc_eq_of_live_fix {info : CapabilityInfo} {π : Equiv.Perm Nat}
+    (hfix : ∀ n, info = .mcell n .live → π n = n) : info.renameLoc π = info := by
+  cases info with
+  | basic => rfl
+  | mcell n ℓ =>
+    cases ℓ with
+    | live => simp only [CapabilityInfo.renameLoc, hfix n rfl]
+    | dead => rfl
+
+/-- A swap of two fresh locations leaves a well-formed heap unchanged.  The content
+    closure (live mcells point at present value locations) is supplied as `hmcell`, so the
+    swap — which fixes every present location — also fixes mcell content pointers. -/
+theorem Heap.renameLoc_eq_of_fresh {h : Heap} (hwf : h.WfHeap)
+    (hmcell : ∀ l n, h l = some (.capability (.mcell n .live)) → h n ≠ none) {l1 l2 : Nat}
     (hf1 : h l1 = none) (hf2 : h l2 = none) :
     h.renameLoc (Equiv.swap l1 l2) = h := by
   have hA : ∀ k, h k ≠ none → Equiv.swap l1 l2 k = k := fun k hk =>
@@ -867,17 +879,27 @@ theorem Heap.renameLoc_eq_of_fresh {h : Heap} (hwf : h.WfHeap) {l1 l2 : Nat}
         simp only [Cell.renameLoc]
         rw [HeapVal.renameLoc_eq_of_wf (hwf.wf_val l' hv hc)
           (fun mu k hm => hwf.wf_reach_dom l' hv.unwrap hv.isVal hv.reachability hc mu k hm) hA]
-      | capability info => rfl
+      | capability info =>
+        simp only [Cell.renameLoc]
+        rw [CapabilityInfo.renameLoc_eq_of_live_fix
+          (fun n hn => hA n (hmcell l' n (by rw [hc, hn])))]
       | masked => rfl
     rw [hA l' (by rw [hc]; simp), hc]
     change some (Cell.renameLoc (Equiv.swap l1 l2) c) = some c
     rw [hcell]
 
+/-- A swap of two fresh locations leaves a memory's heap unchanged (content closure
+    supplied from the memory's `mcell_wf` invariant). -/
+theorem Memory.heap_renameLoc_eq_of_fresh {m : Memory} {l1 l2 : Nat}
+    (hf1 : m.heap l1 = none) (hf2 : m.heap l2 = none) :
+    m.heap.renameLoc (Equiv.swap l1 l2) = m.heap :=
+  Heap.renameLoc_eq_of_fresh m.wf (fun l n hl => m.mcell_wf l n hl) hf1 hf2
+
 /-- A swap of two fresh locations leaves a memory unchanged. -/
 theorem Memory.renameLoc_eq_of_fresh {m : Memory} {l1 l2 : Nat}
     (hf1 : m.heap l1 = none) (hf2 : m.heap l2 = none) :
     m.renameLoc (Equiv.swap l1 l2) = m :=
-  Memory.eq_of_heap (Heap.renameLoc_eq_of_fresh m.wf hf1 hf2)
+  Memory.eq_of_heap (Memory.heap_renameLoc_eq_of_fresh hf1 hf2)
 
 /-- An answer is a normal form for the genuine step relation too. -/
 theorem Step.not_isAns {t : Trace} {m m' : Memory} {a e' : Exp {}}
@@ -974,17 +996,13 @@ theorem Step.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat
     have hyc : _ ≠ c := fun h => hnt (Or.inl h.symm)
     exact ⟨mb, Step.step_read ((hag _ (Memory.val_ne_cap hci hlkx)) ▸ hlkx)
       ((hag _ hyc) ▸ hlky), hag, rfl⟩
-  | step_write_true hx hy =>
+  | step_write hx hy =>
     obtain ⟨ci, hci⟩ := hc
     have hxc : _ ≠ c := fun h => hnt (Or.inl h.symm)
-    refine ⟨mb.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hx⟩,
-      Step.step_write_true ((hag _ hxc) ▸ hx) ((hag _ (Memory.val_ne_cap hci hy)) ▸ hy),
-      Memory.update_mcell_lookup_agree hag, Memory.update_mcell_lookup_ne (Ne.symm hxc)⟩
-  | step_write_false hx hy =>
-    obtain ⟨ci, hci⟩ := hc
-    have hxc : _ ≠ c := fun h => hnt (Or.inl h.symm)
-    refine ⟨mb.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hx⟩,
-      Step.step_write_false ((hag _ hxc) ▸ hx) ((hag _ (Memory.val_ne_cap hci hy)) ▸ hy),
+    have hyb : mb.heap _ ≠ none := match hwf with
+      | .wf_write _ (.wf_free h) => Option.ne_none_iff_exists'.mpr ⟨_, h⟩
+    refine ⟨mb.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hx⟩ (fun _ => hyb),
+      Step.step_write ((hag _ hxc) ▸ hx) hyb,
       Memory.update_mcell_lookup_agree hag, Memory.update_mcell_lookup_ne (Ne.symm hxc)⟩
   | step_drop hx =>
     obtain ⟨ci, hci⟩ := hc
@@ -996,8 +1014,10 @@ theorem Step.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat
     obtain ⟨ci, hci⟩ := hc
     have hlc := Memory.fresh_ne_cap hfresh hci
     have hfreshb : mb.heap _ = none := (hag _ hlc).symm.trans hfresh
-    refine ⟨mb.extend_mcell _ _ hfreshb,
-      Step.step_alloc ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk) hfreshb,
+    have hxb : mb.heap _ ≠ none := match hwf with
+      | .wf_alloc (.wf_free h) => Option.ne_none_iff_exists'.mpr ⟨_, h⟩
+    refine ⟨mb.extend_mcell _ _ hfreshb hxb,
+      Step.step_alloc hxb hfreshb,
       Memory.extend_mcell_lookup_agree hag, ?_⟩
     simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
   | step_rename =>
@@ -1117,23 +1137,13 @@ theorem Step.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {
           rw [h] at hy1; rw [show mb.heap c = none from hcb] at hy1; cases hy1
         exact ⟨mb, Step.step_read hlkxb ((hag yy hyc) ▸ hlky), hag, hcb,
           by simp only [Trace.touched, or_false]; exact fun h => hyc h.symm⟩
-  | step_write_true hlkx hlky =>
+  | step_write hlkx hlky =>
     cases hwf with
     | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
       have hxc := Memory.present_ne_absent hxb hcb
-      have hyc := Memory.present_ne_absent hyb hcb
-      refine ⟨mb.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_true ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
-        Memory.update_mcell_lookup_agree hag, ?_,
-        by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
-      rw [Memory.update_mcell_lookup_ne (Ne.symm hxc)]; exact hcb
-  | step_write_false hlkx hlky =>
-    cases hwf with
-    | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
-      have hxc := Memory.present_ne_absent hxb hcb
-      have hyc := Memory.present_ne_absent hyb hcb
-      refine ⟨mb.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_false ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
+      have hyb' : mb.heap _ ≠ none := Option.ne_none_iff_exists'.mpr ⟨_, hyb⟩
+      refine ⟨mb.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hlkx⟩ (fun _ => hyb'),
+        Step.step_write ((hag _ hxc) ▸ hlkx) hyb',
         Memory.update_mcell_lookup_agree hag, ?_,
         by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
       rw [Memory.update_mcell_lookup_ne (Ne.symm hxc)]; exact hcb
@@ -1149,9 +1159,10 @@ theorem Step.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {
     have hlc := Memory.fresh_ne_present hfresh hc
     cases hwf with
     | wf_alloc hwfx => cases hwfx with | wf_free hx1 =>
-      have hxc := Memory.present_ne_absent hx1 hcb
       have hfreshb : mb.heap _ = none := (hag _ hlc).symm.trans hfresh
-      refine ⟨mb.extend_mcell _ _ hfreshb, Step.step_alloc ((hag _ hxc) ▸ hlk) hfreshb,
+      have hxb' : mb.heap _ ≠ none := Option.ne_none_iff_exists'.mpr ⟨_, hx1⟩
+      refine ⟨mb.extend_mcell _ _ hfreshb hxb',
+        Step.step_alloc hxb' hfreshb,
         Memory.extend_mcell_lookup_agree hag, ?_, by simp [Trace.touched]⟩
       simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
       exact hcb
@@ -1225,7 +1236,7 @@ theorem Step.untouched_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} {c 
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => rfl
-  | step_write_true hx _ | step_write_false hx _ =>
+  | step_write hx _ =>
     simp only [Trace.touched, or_false] at hnt
     exact Memory.update_mcell_lookup_ne hnt
   | step_drop hx =>
@@ -1303,22 +1314,14 @@ theorem Step.frame_add {m ma m' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat}
       | .wf_reader (.wf_free (n := yy) hy1) =>
         have hyc : yy ≠ c := Memory.present_ne_absent hy1 hc
         exact ⟨ma, Step.step_read hlkxa ((hag yy hyc) ▸ hlky), hag, rfl⟩
-  | step_write_true hlkx hlky =>
+  | step_write hlkx hlky =>
     cases hwf with
     | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
       have hxc := Memory.present_ne_absent hxb hc
       have hyc := Memory.present_ne_absent hyb hc
-      refine ⟨ma.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_true ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
-        Memory.update_mcell_lookup_agree hag, ?_⟩
-      exact Memory.update_mcell_lookup_ne (Ne.symm hxc)
-  | step_write_false hlkx hlky =>
-    cases hwf with
-    | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
-      have hxc := Memory.present_ne_absent hxb hc
-      have hyc := Memory.present_ne_absent hyb hc
-      refine ⟨ma.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_false ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
+      have hyb' := Memory.heap_ne_none_of_agree hag hyc (Memory.heap_ne_none_of_lookup hyb)
+      refine ⟨ma.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hlkx⟩ (fun _ => hyb'),
+        Step.step_write ((hag _ hxc) ▸ hlkx) hyb',
         Memory.update_mcell_lookup_agree hag, ?_⟩
       exact Memory.update_mcell_lookup_ne (Ne.symm hxc)
   | step_drop hlkx =>
@@ -1328,15 +1331,15 @@ theorem Step.frame_add {m ma m' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat}
       refine ⟨ma.drop_mcell _ ⟨_, (hag _ hxc) ▸ hlkx⟩, Step.step_drop ((hag _ hxc) ▸ hlkx),
         Memory.drop_mcell_lookup_agree hag, ?_⟩
       exact Memory.drop_mcell_lookup_ne (Ne.symm hxc)
-  | @step_alloc l m0 _ b _ _ hlk hfresh =>
-    have hlc : l ≠ c := fun h => by
-      subst h
-      rw [Memory.extend_mcell_lookup hfresh] at hc'; cases hc'
+  | step_alloc hlk hfresh =>
+    have hlc := Memory.present_ne_absent (Memory.extend_mcell_lookup hfresh hlk) hc'
     cases hwf with
     | wf_alloc hwfx => cases hwfx with | wf_free hx1 =>
       have hxc := Memory.present_ne_absent hx1 hc
       have hfresha : ma.heap _ = none := (hag _ hlc).symm.trans hfresh
-      refine ⟨ma.extend_mcell _ _ hfresha, Step.step_alloc ((hag _ hxc) ▸ hlk) hfresha,
+      have hxb' := Memory.heap_ne_none_of_agree hag hxc (Memory.heap_ne_none_of_lookup hx1)
+      refine ⟨ma.extend_mcell _ _ hfresha hxb',
+        Step.step_alloc hxb' hfresha,
         Memory.extend_mcell_lookup_agree hag, ?_⟩
       simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
   | step_rename =>
@@ -1409,24 +1412,18 @@ theorem Step.delta {t : Trace} {m m' : Memory} {e e' : Exp {}} (hstep : Step t m
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => exact Or.inl rfl
-  | step_write_true hx _ =>
-    refine Or.inr (Or.inl ⟨_, _, .mcell true .live, hx, ?_,
+  | step_write hx _ =>
+    refine Or.inr (Or.inl ⟨_, _, _, hx, Memory.update_mcell_lookup,
       ⟨.access .epsilon, Or.inl ⟨rfl, by simp, rfl⟩, by simp⟩,
       fun l hl => (Memory.update_mcell_lookup_ne hl).symm⟩)
-    simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
-  | step_write_false hx _ =>
-    refine Or.inr (Or.inl ⟨_, _, .mcell false .live, hx, ?_,
-      ⟨.access .epsilon, Or.inl ⟨rfl, by simp, rfl⟩, by simp⟩,
-      fun l hl => (Memory.update_mcell_lookup_ne hl).symm⟩)
-    simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
   | step_drop hx =>
-    refine Or.inr (Or.inl ⟨_, _, .mcell false .dead, hx, ?_,
+    refine Or.inr (Or.inl ⟨_, _, .mcell 0 .dead, hx, ?_,
       ⟨.drop, Or.inl ⟨rfl, by simp, rfl⟩, by simp⟩,
       fun l hl => (Memory.drop_mcell_lookup_ne hl).symm⟩)
     simp only [Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_true]
-  | @step_alloc l m0 _ b _ _ hlk hfresh =>
-    refine Or.inr (Or.inr ⟨l, hfresh, ?_, fun k hk => ?_⟩)
-    · rw [Memory.extend_mcell_lookup hfresh]; simp
+  | step_alloc hlk hfresh =>
+    refine Or.inr (Or.inr ⟨_, hfresh, ?_, fun k hk => ?_⟩)
+    · rw [Memory.extend_mcell_lookup hfresh hlk]; simp
     · simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hk]
   | @step_lift v m0 e0 l hv hwf hfresh =>
     refine Or.inr (Or.inr ⟨l, hfresh, ?_, fun k hk => ?_⟩)
@@ -1721,30 +1718,24 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       simp only [Cell.capability.injEq, CapabilityInfo.mcell.injEq, and_true] at hb
       subst hb
       exact Diamond.det rfl rfl rfl
-  | step_write_true hx hy =>
+  | step_write hx hy =>
     intro D ts2 mb eb hD hwf hsafe hst2
     cases hst2 with
-    | step_write_true hx2 hy2 => exact Diamond.det (Memory.eq_of_heap rfl) rfl rfl
-    | step_write_false hx2 hy2 => have := lookup_val_unwrap_eq hy hy2; simp at this
-  | step_write_false hx hy =>
+    | step_write hx2 hy2 => exact Diamond.det (Memory.eq_of_heap rfl) rfl rfl
+  | @step_alloc l m0 x hlk hfresh =>
     intro D ts2 mb eb hD hwf hsafe hst2
     cases hst2 with
-    | step_write_true hx2 hy2 => have := lookup_val_unwrap_eq hy hy2; simp at this
-    | step_write_false hx2 hy2 => exact Diamond.det (Memory.eq_of_heap rfl) rfl rfl
-  | @step_alloc l m0 _ b _ _ hlk hfresh =>
-    intro D ts2 mb eb hD hwf hsafe hst2
-    cases hst2 with
-    | @step_alloc l2 _ _ b2 _ _ hlk2 hfresh2 =>
-      have hb : b = b2 := by
-        have hu := lookup_val_unwrap_eq hlk hlk2
-        cases b <;> cases b2 <;> simp_all
-      subst hb
+    | @step_alloc l2 _ _ hlk2 hfresh2 =>
+      -- Both steps box the same content var `x` at fresh locations `l`, `l2`.  `x` is
+      -- present, so the swap of the two fresh locations fixes it.
+      have hxl : x ≠ l := Memory.present_ne_fresh hlk hfresh
+      have hxl2 : x ≠ l2 := Memory.present_ne_fresh hlk hfresh2
       refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_⟩
       · apply Memory.eq_of_heap
-        change m0.heap.extend_mcell l2 b
-          = (m0.heap.extend_mcell l b).renameLoc (Equiv.swap l l2)
-        rw [Heap.extend_mcell_renameLoc, Heap.renameLoc_eq_of_fresh m0.wf hfresh hfresh2,
-          Equiv.swap_apply_left]
+        change m0.heap.extend_mcell l2 x
+          = (m0.heap.extend_mcell l x).renameLoc (Equiv.swap l l2)
+        rw [Heap.extend_mcell_renameLoc, Memory.heap_renameLoc_eq_of_fresh hfresh hfresh2,
+          Equiv.swap_apply_left, Equiv.swap_apply_of_ne_of_ne hxl hxl2]
       · apply Exp.AEq.of_eq
         simp only [Exp.renameLoc, CaptureSet.renameLoc, Var.renameLoc, Equiv.swap_apply_left]
       · exact fun l' hl' => Equiv.swap_apply_of_ne_of_ne
@@ -2215,14 +2206,14 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
         change m0.heap.extend l2 ⟨v, hv2, compute_reachability m0.heap v hv2⟩
           = (m0.heap.extend l ⟨v, hv, compute_reachability m0.heap v hv⟩).renameLoc
               (Equiv.swap l l2)
-        rw [Heap.extend_renameLoc, Heap.renameLoc_eq_of_fresh m0.wf hfresh hfresh2,
+        rw [Heap.extend_renameLoc, Memory.heap_renameLoc_eq_of_fresh hfresh hfresh2,
           Equiv.swap_apply_left]
         congr 1
         apply HeapVal.eq_of
         · exact (Exp.renameLoc_eq_of_wf hwf_v hAfix).symm
         · change compute_reachability m0.heap v hv2
             = (compute_reachability m0.heap v hv).renameLoc (Equiv.swap l l2)
-          rw [← compute_reachability_renameLoc, Heap.renameLoc_eq_of_fresh m0.wf hfresh hfresh2]
+          rw [← compute_reachability_renameLoc, Memory.heap_renameLoc_eq_of_fresh hfresh hfresh2]
           simp only [Exp.renameLoc_eq_of_wf hwf_v hAfix]
       · apply Exp.AEq.of_eq
         rw [Exp.openVar_renameLoc, Exp.renameLoc_eq_of_wf hwf_e hAfix, Equiv.swap_apply_left]

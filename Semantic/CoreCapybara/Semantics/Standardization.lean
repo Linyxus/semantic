@@ -393,8 +393,7 @@ theorem SeqStep.toStep {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_cond_var_true h => exact fun _ _ => Step.step_cond_var_true h
   | step_cond_var_false h => exact fun _ _ => Step.step_cond_var_false h
   | step_read h1 h2 => exact fun _ _ => Step.step_read h1 h2
-  | step_write_true h1 h2 => exact fun _ _ => Step.step_write_true h1 h2
-  | step_write_false h1 h2 => exact fun _ _ => Step.step_write_false h1 h2
+  | step_write h1 h2 => exact fun _ _ => Step.step_write h1 h2
   | step_alloc h1 h2 => exact fun _ _ => Step.step_alloc h1 h2
   | step_drop h => exact fun _ _ => Step.step_drop h
   | step_ctx_letin hstep_a ih =>
@@ -471,7 +470,7 @@ theorem SeqStep.alloc_fresh {t : Trace} {m m' : Memory} {e e' : Exp {}} {l : Nat
   induction hstep with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_write_true _ _ | step_write_false _ _ | step_drop _
+  | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
     simp only [Trace.allocd] at hal
   | step_alloc _ hfresh =>
@@ -488,7 +487,7 @@ theorem SeqStep.untouched_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} 
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => rfl
-  | step_write_true hx _ | step_write_false hx _ =>
+  | step_write hx _ =>
     simp only [Trace.touched, or_false] at hnt
     exact Memory.update_mcell_lookup_ne hnt
   | step_drop hx =>
@@ -514,7 +513,7 @@ theorem SeqStep.unmutated_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} 
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => rfl
-  | step_write_true hx _ | step_write_false hx _ =>
+  | step_write hx _ =>
     refine Memory.update_mcell_lookup_ne (fun h => hw ?_)
     rw [h]; exact List.mem_singleton.mpr rfl
   | step_drop hx =>
@@ -537,9 +536,10 @@ theorem Memory.val_ne_cap {m : Memory} {c x : Nat} {ci w}
     x ≠ c := fun h => by subst h; rw [hval] at hcap; cases hcap
 
 /-- Two memories agreeing off `c` keep agreeing off `c` after an identical `update_mcell`. -/
-theorem Memory.update_mcell_lookup_agree {ma mb : Memory} {x c : Nat} {bb : Bool} {ℓ pa pb}
+theorem Memory.update_mcell_lookup_agree {ma mb : Memory} {x c : Nat} {bb : Nat} {ℓ pa pb qa qb}
     (hag : ∀ l, l ≠ c → ma.lookup l = mb.lookup l) :
-    ∀ l, l ≠ c → (ma.update_mcell x bb ℓ pa).lookup l = (mb.update_mcell x bb ℓ pb).lookup l := by
+    ∀ l, l ≠ c →
+      (ma.update_mcell x bb ℓ pa qa).lookup l = (mb.update_mcell x bb ℓ pb qb).lookup l := by
   intro l hlc
   by_cases hlx : l = x
   · subst hlx; simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
@@ -555,13 +555,13 @@ theorem Memory.drop_mcell_lookup_agree {ma mb : Memory} {x c : Nat} {pa pb}
   · rw [Memory.drop_mcell_lookup_ne hlx, Memory.drop_mcell_lookup_ne hlx]; exact hag l hlc
 
 /-- Two memories agreeing off `c` keep agreeing off `c` after an identical `extend_mcell`. -/
-theorem Memory.extend_mcell_lookup_agree {ma mb : Memory} {l c : Nat} {bb : Bool}
-    {pa : ma.heap l = none} {pb : mb.heap l = none}
+theorem Memory.extend_mcell_lookup_agree {ma mb : Memory} {l c : Nat} {bb : Nat}
+    {pa : ma.heap l = none} {pb : mb.heap l = none} {qa qb}
     (hag : ∀ k, k ≠ c → ma.lookup k = mb.lookup k) :
-    ∀ k, k ≠ c → (ma.extend_mcell l bb pa).lookup k = (mb.extend_mcell l bb pb).lookup k := by
+    ∀ k, k ≠ c → (ma.extend_mcell l bb pa qa).lookup k = (mb.extend_mcell l bb pb qb).lookup k := by
   intro k hkc
   by_cases hkl : k = l
-  · subst hkl; rw [Memory.extend_mcell_lookup pa, Memory.extend_mcell_lookup pb]
+  · subst hkl; rw [Memory.extend_mcell_lookup pa qa, Memory.extend_mcell_lookup pb qb]
   · simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hkl]; exact hag k hkc
 
 /-- A present location differs from an absent one. -/
@@ -638,17 +638,13 @@ theorem SeqStep.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : 
     have hyc : _ ≠ c := fun h => hnt (Or.inl h.symm)
     exact ⟨mb, SeqStep.step_read ((hag _ (Memory.val_ne_cap hci hlkx)) ▸ hlkx)
       ((hag _ hyc) ▸ hlky), hag, rfl⟩
-  | step_write_true hx hy =>
+  | step_write hx hy =>
     obtain ⟨ci, hci⟩ := hc
     have hxc : _ ≠ c := fun h => hnt (Or.inl h.symm)
-    refine ⟨mb.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hx⟩,
-      SeqStep.step_write_true ((hag _ hxc) ▸ hx) ((hag _ (Memory.val_ne_cap hci hy)) ▸ hy),
-      Memory.update_mcell_lookup_agree hag, Memory.update_mcell_lookup_ne (Ne.symm hxc)⟩
-  | step_write_false hx hy =>
-    obtain ⟨ci, hci⟩ := hc
-    have hxc : _ ≠ c := fun h => hnt (Or.inl h.symm)
-    refine ⟨mb.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hx⟩,
-      SeqStep.step_write_false ((hag _ hxc) ▸ hx) ((hag _ (Memory.val_ne_cap hci hy)) ▸ hy),
+    have hyb : mb.heap _ ≠ none := match hwf with
+      | .wf_write _ (.wf_free h) => Option.ne_none_iff_exists'.mpr ⟨_, h⟩
+    refine ⟨mb.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hx⟩ (fun _ => hyb),
+      SeqStep.step_write ((hag _ hxc) ▸ hx) hyb,
       Memory.update_mcell_lookup_agree hag, Memory.update_mcell_lookup_ne (Ne.symm hxc)⟩
   | step_drop hx =>
     obtain ⟨ci, hci⟩ := hc
@@ -660,8 +656,10 @@ theorem SeqStep.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : 
     obtain ⟨ci, hci⟩ := hc
     have hlc := Memory.fresh_ne_cap hfresh hci
     have hfreshb : mb.heap _ = none := (hag _ hlc).symm.trans hfresh
-    refine ⟨mb.extend_mcell _ _ hfreshb,
-      SeqStep.step_alloc ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk) hfreshb,
+    have hxb : mb.heap _ ≠ none := match hwf with
+      | .wf_alloc (.wf_free h) => Option.ne_none_iff_exists'.mpr ⟨_, h⟩
+    refine ⟨mb.extend_mcell _ _ hfreshb hxb,
+      SeqStep.step_alloc hxb hfreshb,
       Memory.extend_mcell_lookup_agree hag, ?_⟩
     simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
   | step_rename =>
@@ -770,23 +768,13 @@ theorem SeqStep.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace
           rw [h] at hy1; rw [show mb.heap c = none from hcb] at hy1; cases hy1
         exact ⟨mb, SeqStep.step_read hlkxb ((hag yy hyc) ▸ hlky), hag, hcb,
           by simp only [Trace.touched, or_false]; exact fun h => hyc h.symm⟩
-  | step_write_true hlkx hlky =>
+  | step_write hlkx hlky =>
     cases hwf with
     | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
       have hxc := Memory.present_ne_absent hxb hcb
-      have hyc := Memory.present_ne_absent hyb hcb
-      refine ⟨mb.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        SeqStep.step_write_true ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
-        Memory.update_mcell_lookup_agree hag, ?_,
-        by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
-      rw [Memory.update_mcell_lookup_ne (Ne.symm hxc)]; exact hcb
-  | step_write_false hlkx hlky =>
-    cases hwf with
-    | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
-      have hxc := Memory.present_ne_absent hxb hcb
-      have hyc := Memory.present_ne_absent hyb hcb
-      refine ⟨mb.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        SeqStep.step_write_false ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
+      have hyb' : mb.heap _ ≠ none := Option.ne_none_iff_exists'.mpr ⟨_, hyb⟩
+      refine ⟨mb.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hlkx⟩ (fun _ => hyb'),
+        SeqStep.step_write ((hag _ hxc) ▸ hlkx) hyb',
         Memory.update_mcell_lookup_agree hag, ?_,
         by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
       rw [Memory.update_mcell_lookup_ne (Ne.symm hxc)]; exact hcb
@@ -802,9 +790,10 @@ theorem SeqStep.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace
     have hlc := Memory.fresh_ne_present hfresh hc
     cases hwf with
     | wf_alloc hwfx => cases hwfx with | wf_free hx1 =>
-      have hxc := Memory.present_ne_absent hx1 hcb
       have hfreshb : mb.heap _ = none := (hag _ hlc).symm.trans hfresh
-      refine ⟨mb.extend_mcell _ _ hfreshb, SeqStep.step_alloc ((hag _ hxc) ▸ hlk) hfreshb,
+      have hxb' : mb.heap _ ≠ none := Option.ne_none_iff_exists'.mpr ⟨_, hx1⟩
+      refine ⟨mb.extend_mcell _ _ hfreshb hxb',
+        SeqStep.step_alloc hxb' hfreshb,
         Memory.extend_mcell_lookup_agree hag, ?_, by simp [Trace.touched]⟩
       simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
       exact hcb
@@ -890,86 +879,58 @@ theorem step_step_swap {ts s : Trace} {m1 m2 mb : Memory} {eR eR' eL eL1 : Exp {
     exact ⟨mb, hrun,
       Step.step_read (SeqStep.val_preserved hrun hlkx)
         (SeqStep.unmutated_preserved hrun (by rw [hlky]; simp) hw hd ▸ hlky)⟩
-  | step_write_true hx hy =>
-    rename_i x m0 y b0 hv R
-    have hyx : y ≠ x := fun h => by rw [h, hx] at hy; cases hy
-    have hcx : (m0.update_mcell x true .live ⟨_, hx⟩).lookup x =
-        some (Cell.capability (.mcell true .live)) := by
+  | step_write hx hy =>
+    rename_i x m0 y n0
+    have hcx : (m0.update_mcell x y .live ⟨n0, hx⟩ (fun _ => hy)).lookup x =
+        some (Cell.capability (.mcell y .live)) := by
       simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
     have hnal : ¬ Trace.allocd s x := fun ha => by
-      have := SeqStep.alloc_fresh hrun ha
-      rw [show (m0.update_mcell x true .live ⟨_, hx⟩).lookup x = _ from hcx] at this; cases this
+      have hh := SeqStep.alloc_fresh hrun ha
+      rw [show (m0.update_mcell x y .live ⟨n0, hx⟩ (fun _ => hy)).lookup x = _
+            from hcx] at hh
+      cases hh
     have hntsx : ¬ Trace.touched s x :=
       Trace.not_touched_of_noninterfere hsep (Or.inl ⟨rfl, by simp, rfl⟩) (by simp) hnal
     obtain ⟨mc, run, ag, cpres⟩ :=
       hrun.frame_off ⟨_, hcx⟩ ⟨_, hx⟩
         (fun l hl => Memory.update_mcell_lookup_ne hl) hntsx hwf1
-    have mcx : mc.lookup x = some (Cell.capability (.mcell b0 .live)) := cpres.trans hx
-    have mcy : mc.lookup y = some (Cell.val ⟨.btrue, hv, R⟩) :=
-      (ag y hyx).symm.trans
-        (SeqStep.val_preserved hrun (by rw [Memory.update_mcell_lookup_ne hyx]; exact hy))
-    have hmb : mc.update_mcell x true .live ⟨_, mcx⟩ = mb := by
+    have mcx : mc.lookup x = some (Cell.capability (.mcell n0 .live)) := cpres.trans hx
+    have mcy : mc.heap y ≠ none :=
+      fun h => hy (Heap.none_of_subsumes_none (step_memory_monotonic run) h)
+    have hmb : mc.update_mcell x y .live ⟨n0, mcx⟩ (fun _ => mcy) = mb := by
       apply Memory.ext_lookup; intro l
       by_cases hlx : l = x
       · subst hlx
-        rw [show (mc.update_mcell l true .live ⟨_, mcx⟩).lookup l
-                = some (Cell.capability (.mcell true .live)) from by
+        rw [show (mc.update_mcell l y .live ⟨n0, mcx⟩ (fun _ => mcy)).lookup l
+                = some (Cell.capability (.mcell y .live)) from by
               simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true],
             SeqStep.untouched_preserved hrun (by rw [hcx]; simp) hntsx, hcx]
       · rw [Memory.update_mcell_lookup_ne hlx, ag l hlx]
-    exact ⟨mc, run, hmb ▸ Step.step_write_true mcx mcy⟩
-  | step_write_false hx hy =>
-    rename_i x m0 y b0 hv R
-    have hyx : y ≠ x := fun h => by rw [h, hx] at hy; cases hy
-    have hcx : (m0.update_mcell x false .live ⟨_, hx⟩).lookup x =
-        some (Cell.capability (.mcell false .live)) := by
-      simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
-    have hnal : ¬ Trace.allocd s x := fun ha => by
-      have := SeqStep.alloc_fresh hrun ha
-      rw [show (m0.update_mcell x false .live ⟨_, hx⟩).lookup x = _ from hcx] at this; cases this
-    have hntsx : ¬ Trace.touched s x :=
-      Trace.not_touched_of_noninterfere hsep (Or.inl ⟨rfl, by simp, rfl⟩) (by simp) hnal
-    obtain ⟨mc, run, ag, cpres⟩ :=
-      hrun.frame_off ⟨_, hcx⟩ ⟨_, hx⟩
-        (fun l hl => Memory.update_mcell_lookup_ne hl) hntsx hwf1
-    have mcx : mc.lookup x = some (Cell.capability (.mcell b0 .live)) := cpres.trans hx
-    have mcy : mc.lookup y = some (Cell.val ⟨.bfalse, hv, R⟩) :=
-      (ag y hyx).symm.trans
-        (SeqStep.val_preserved hrun (by rw [Memory.update_mcell_lookup_ne hyx]; exact hy))
-    have hmb : mc.update_mcell x false .live ⟨_, mcx⟩ = mb := by
-      apply Memory.ext_lookup; intro l
-      by_cases hlx : l = x
-      · subst hlx
-        rw [show (mc.update_mcell l false .live ⟨_, mcx⟩).lookup l
-                = some (Cell.capability (.mcell false .live)) from by
-              simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true],
-            SeqStep.untouched_preserved hrun (by rw [hcx]; simp) hntsx, hcx]
-      · rw [Memory.update_mcell_lookup_ne hlx, ag l hlx]
-    exact ⟨mc, run, hmb ▸ Step.step_write_false mcx mcy⟩
+    exact ⟨mc, run, hmb ▸ Step.step_write mcx mcy⟩
   | step_alloc hlk hfresh =>
-    rename_i l m0 x b hv R
-    have hcl : (m0.extend_mcell l b hfresh).lookup l =
-        some (Cell.capability (.mcell b .live)) := Memory.extend_mcell_lookup hfresh
+    rename_i l m0 x
+    have hcl : (m0.extend_mcell l x hfresh hlk).lookup l =
+        some (Cell.capability (.mcell x .live)) := Memory.extend_mcell_lookup hfresh hlk
     obtain ⟨mc, run, ag, cpres, hnt⟩ :=
       hrun.frame_off_fresh ⟨_, hcl⟩ hfresh
         (fun k hk => by
           simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hk]) hwf1
-    have mcx : mc.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) :=
-      SeqStep.val_preserved run hlk
-    have hmb : mc.extend_mcell l b cpres = mb := by
+    have mcx : mc.heap x ≠ none :=
+      fun h => hlk (Heap.none_of_subsumes_none (step_memory_monotonic run) h)
+    have hmb : mc.extend_mcell l x cpres mcx = mb := by
       apply Memory.ext_lookup; intro k
       by_cases hkl : k = l
       · subst hkl
-        rw [Memory.extend_mcell_lookup cpres,
+        rw [Memory.extend_mcell_lookup cpres mcx,
             SeqStep.untouched_preserved hrun (by rw [hcl]; simp) hnt, hcl]
-      · rw [show (mc.extend_mcell l b cpres).lookup k = mc.lookup k from by
+      · rw [show (mc.extend_mcell l x cpres mcx).lookup k = mc.lookup k from by
               simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hkl],
             ag k hkl]
     exact ⟨mc, run, hmb ▸ Step.step_alloc mcx cpres⟩
   | step_drop hx =>
     rename_i x m0 b0
     have hcx : (m0.drop_mcell x ⟨_, hx⟩).lookup x =
-        some (Cell.capability (.mcell false .dead)) := by
+        some (Cell.capability (.mcell 0 .dead)) := by
       simp only [Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_true]
     have hnal : ¬ Trace.allocd s x := fun ha => by
       have := SeqStep.alloc_fresh hrun ha
@@ -985,7 +946,7 @@ theorem step_step_swap {ts s : Trace} {m1 m2 mb : Memory} {eR eR' eL eL1 : Exp {
       by_cases hlx : l = x
       · subst hlx
         rw [show (mc.drop_mcell l ⟨_, mcx⟩).lookup l
-                = some (Cell.capability (.mcell false .dead)) from by
+                = some (Cell.capability (.mcell 0 .dead)) from by
               simp only [Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_true],
             SeqStep.untouched_preserved hrun (by rw [hcx]; simp) hntsx, hcx]
       · rw [Memory.drop_mcell_lookup_ne hlx, ag l hlx]
@@ -1053,9 +1014,9 @@ theorem Step.subsumes {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_rename | step_unpack | step_par_join _ _ => exact Memory.subsumes_refl _
   | step_par_left _ _ _ ih => exact ih
   | step_par_right _ _ _ ih => exact ih
-  | step_write_true hx _ | step_write_false hx _ =>
-    exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩
-  | step_alloc _ hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh
+  | step_write hx hy =>
+    exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩ (fun _ => hy)
+  | step_alloc hx hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh hx
   | step_drop hx => exact Memory.drop_mcell_subsumes _ _ ⟨_, hx⟩
   | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih
   | step_lift hv hwf hfresh => exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
@@ -1342,7 +1303,7 @@ theorem Step.alloc_fresh {t : Trace} {m m' : Memory} {e e' : Exp {}} {l : Nat}
   induction h with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_write_true _ _ | step_write_false _ _ | step_drop _
+  | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
     simp only [Trace.allocd] at hal
   | step_alloc _ hfresh =>
@@ -1434,11 +1395,8 @@ theorem absorb : ∀ {n : Nat} {t1 t2 : Trace} {m0 m1 mf : Memory} {e e1 a : Exp
     | step_read h1 h2 =>
       exact ⟨_, SeqReduce.step (SeqStep.step_read h1 h2) hred.toSeqReduce,
         Trace.Equiv.refl _, fun l => Iff.rfl⟩
-    | step_write_true h1 h2 =>
-      exact ⟨_, SeqReduce.step (SeqStep.step_write_true h1 h2) hred.toSeqReduce,
-        Trace.Equiv.refl _, fun l => Iff.rfl⟩
-    | step_write_false h1 h2 =>
-      exact ⟨_, SeqReduce.step (SeqStep.step_write_false h1 h2) hred.toSeqReduce,
+    | step_write h1 h2 =>
+      exact ⟨_, SeqReduce.step (SeqStep.step_write h1 h2) hred.toSeqReduce,
         Trace.Equiv.refl _, fun l => Iff.rfl⟩
     | step_alloc h1 h2 =>
       exact ⟨_, SeqReduce.step (SeqStep.step_alloc h1 h2) hred.toSeqReduce,
@@ -1567,7 +1525,7 @@ theorem Step.allocd_present {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}} {l : N
   induction hstep with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_write_true _ _ | step_write_false _ _ | step_drop _
+  | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
     simp only [Trace.allocd] at hal
   | step_alloc _ hfresh =>
@@ -1591,8 +1549,7 @@ theorem Step.preserves_wf {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
   | step_cond_var_true hlk => exact step_preserves_wf (SeqStep.step_cond_var_true hlk) hwf
   | step_cond_var_false hlk => exact step_preserves_wf (SeqStep.step_cond_var_false hlk) hwf
   | step_read h1 h2 => exact step_preserves_wf (SeqStep.step_read h1 h2) hwf
-  | step_write_true h1 h2 => exact step_preserves_wf (SeqStep.step_write_true h1 h2) hwf
-  | step_write_false h1 h2 => exact step_preserves_wf (SeqStep.step_write_false h1 h2) hwf
+  | step_write h1 h2 => exact step_preserves_wf (SeqStep.step_write h1 h2) hwf
   | step_alloc h1 h2 => exact step_preserves_wf (SeqStep.step_alloc h1 h2) hwf
   | step_drop hx => exact step_preserves_wf (SeqStep.step_drop hx) hwf
   | step_rename => exact step_preserves_wf SeqStep.step_rename hwf
@@ -1640,11 +1597,11 @@ theorem Step.preserves_wf {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
 inductive BigStepN : Nat -> Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
 | bs_pack {n} {m : Memory} :
   BigStepN (n+1) m (.pack cs x) [] (.pack cs x) m
-| bs_alloc {n} {m : Memory} {x : Nat} {b : Bool} {hv R} {l : Nat} :
-  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+| bs_alloc {n} {m : Memory} {x : Nat} {l : Nat} :
+  (hx : m.heap x ≠ none) ->
   (hfresh : m.heap l = none) ->
   BigStepN (n+1) m (.alloc (.free x)) [.alloc l]
-    (.pack (.var (.M .epsilon) (.free l)) (.free l)) (m.extend_mcell l b hfresh)
+    (.pack (.var (.M .epsilon) (.free l)) (.free l)) (m.extend_mcell l x hfresh hx)
 | bs_val {n} {m : Memory} {v : Exp {}} :
   (hv : Exp.IsSimpleVal v) ->
   BigStepN (n+1) m v [] v m
@@ -1688,23 +1645,19 @@ inductive BigStepN : Nat -> Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Pro
   BigStepN n m e1 t1 (.pack cs x) m1 ->
   BigStepN n m1 (e2.subst (Subst.unpack cs x)) t2 v2 m2 ->
   BigStepN (n+1) m (.unpack e1 e2) (t1 ++ t2) v2 m2
-| bs_read {n} {m : Memory} {x : Nat} {b b' : Bool} :
+| bs_read {n} {m : Memory} {x y n0 : Nat} {hv R} :
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
-  m.lookup y = some (.capability (.mcell b .live)) ->
-  BigStepN (n+1) m (.read (.free x)) [.access .ro y] (if b' then .btrue else .bfalse) m
-| bs_write_true {n} {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
-  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
-  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell n0 .live)) ->
+  m.heap n0 ≠ none ->
+  BigStepN (n+1) m (.read (.free x)) [.access .ro y] (.var (.free n0)) m
+| bs_write {n} {m : Memory} {x y : Nat} {n0 : Nat} :
+  (hx : m.lookup x = some (.capability (.mcell n0 .live))) ->
+  (hy : m.heap y ≠ none) ->
   BigStepN (n+1) m (.write (.free x) (.free y)) [.access .epsilon x] .unit
-    (m.update_mcell x true .live ⟨b0, hx⟩)
-| bs_write_false {n} {m : Memory} {x y : Nat} {b0 : Bool} {hv R} :
-  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
-  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
-  BigStepN (n+1) m (.write (.free x) (.free y)) [.access .epsilon x] .unit
-    (m.update_mcell x false .live ⟨b0, hx⟩)
-| bs_drop {n} {m : Memory} {x : Nat} {b : Bool} :
-  (hx : m.lookup x = some (.capability (.mcell b .live))) ->
-  BigStepN (n+1) m (.drop (.free x)) [.dealloc x] .unit (m.drop_mcell x ⟨b, hx⟩)
+    (m.update_mcell x y .live ⟨n0, hx⟩ (fun _ => hy))
+| bs_drop {n} {m : Memory} {x : Nat} {n0 : Nat} :
+  (hx : m.lookup x = some (.capability (.mcell n0 .live))) ->
+  BigStepN (n+1) m (.drop (.free x)) [.dealloc x] .unit (m.drop_mcell x ⟨n0, hx⟩)
 | bs_cond_true {n} {m : Memory} {x : Var .var {}} :
   resolve m.heap (.var x) = some .btrue ->
   BigStepN n m e2 t v m' ->
@@ -1735,9 +1688,8 @@ theorem BigStepN.toBigStep {n : Nat} {m : Memory} {e : Exp {}} {t : Trace} {v : 
   | bs_letin_val _ hv hwf_v hfresh _ ih1 ih2 => exact BigStep.bs_letin_val ih1 hv hwf_v hfresh ih2
   | bs_letin_var _ _ ih1 ih2 => exact BigStep.bs_letin_var ih1 ih2
   | bs_unpack _ _ ih1 ih2 => exact BigStep.bs_unpack ih1 ih2
-  | bs_read h1 h2 => exact BigStep.bs_read h1 h2
-  | bs_write_true hx hy => exact BigStep.bs_write_true hx hy
-  | bs_write_false hx hy => exact BigStep.bs_write_false hx hy
+  | bs_read h1 h2 h3 => exact BigStep.bs_read h1 h2 h3
+  | bs_write hx hy => exact BigStep.bs_write hx hy
   | bs_drop hx => exact BigStep.bs_drop hx
   | bs_cond_true hres _ ih => exact BigStep.bs_cond_true hres ih
   | bs_cond_false hres _ ih => exact BigStep.bs_cond_false hres ih
@@ -1760,9 +1712,8 @@ theorem BigStepN.mono {n : Nat} {m : Memory} {e : Exp {}} {t : Trace} {v : Exp {
   | bs_letin_val _ hv hwf_v hfresh _ ih1 ih2 => exact BigStepN.bs_letin_val ih1 hv hwf_v hfresh ih2
   | bs_letin_var _ _ ih1 ih2 => exact BigStepN.bs_letin_var ih1 ih2
   | bs_unpack _ _ ih1 ih2 => exact BigStepN.bs_unpack ih1 ih2
-  | bs_read h1 h2 => exact BigStepN.bs_read h1 h2
-  | bs_write_true hx hy => exact BigStepN.bs_write_true hx hy
-  | bs_write_false hx hy => exact BigStepN.bs_write_false hx hy
+  | bs_read h1 h2 h3 => exact BigStepN.bs_read h1 h2 h3
+  | bs_write hx hy => exact BigStepN.bs_write hx hy
   | bs_drop hx => exact BigStepN.bs_drop hx
   | bs_cond_true hres _ ih => exact BigStepN.bs_cond_true hres ih
   | bs_cond_false hres _ ih => exact BigStepN.bs_cond_false hres ih
@@ -1801,9 +1752,8 @@ theorem BigStep.toBigStepN {m : Memory} {e : Exp {}} {t : Trace} {v : Exp {}} {m
     obtain ⟨n1, hn1⟩ := ih1; obtain ⟨n2, hn2⟩ := ih2
     exact ⟨max n1 n2 + 1, BigStepN.bs_unpack (hn1.le_mono (Nat.le_max_left ..))
       (hn2.le_mono (Nat.le_max_right ..))⟩
-  | bs_read h1 h2 => exact ⟨1, BigStepN.bs_read h1 h2⟩
-  | bs_write_true hx hy => exact ⟨1, BigStepN.bs_write_true hx hy⟩
-  | bs_write_false hx hy => exact ⟨1, BigStepN.bs_write_false hx hy⟩
+  | bs_read h1 h2 h3 => exact ⟨1, BigStepN.bs_read h1 h2 h3⟩
+  | bs_write hx hy => exact ⟨1, BigStepN.bs_write hx hy⟩
   | bs_drop hx => exact ⟨1, BigStepN.bs_drop hx⟩
   | bs_cond_true hres _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_cond_true hres hn⟩
   | bs_cond_false hres _ ih => obtain ⟨n, hn⟩ := ih; exact ⟨n+1, BigStepN.bs_cond_false hres hn⟩
@@ -1875,12 +1825,12 @@ theorem Step.allocd_mcell {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}} {l : Nat
   induction hstep with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_write_true _ _ | step_write_false _ _ | step_drop _
+  | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
     simp only [Trace.allocd] at hal
-  | step_alloc _ hfresh =>
+  | step_alloc hx hfresh =>
     simp only [Trace.allocd, or_false] at hal; subst hal
-    exact ⟨_, Memory.extend_mcell_lookup hfresh⟩
+    exact ⟨_, Memory.extend_mcell_lookup hfresh hx⟩
   | step_ctx_letin _ ih | step_ctx_unpack _ ih
   | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
 
@@ -1934,11 +1884,8 @@ theorem Step.head_expand_bigstepN :
     | step_read h1 h2 =>
       exact ⟨_, BigStep.head_expand (SeqStep.step_read h1 h2) hr.toBigStep,
         Trace.Equiv.refl _, fun _ => Iff.rfl⟩
-    | step_write_true h1 h2 =>
-      exact ⟨_, BigStep.head_expand (SeqStep.step_write_true h1 h2) hr.toBigStep,
-        Trace.Equiv.refl _, fun _ => Iff.rfl⟩
-    | step_write_false h1 h2 =>
-      exact ⟨_, BigStep.head_expand (SeqStep.step_write_false h1 h2) hr.toBigStep,
+    | step_write h1 h2 =>
+      exact ⟨_, BigStep.head_expand (SeqStep.step_write h1 h2) hr.toBigStep,
         Trace.Equiv.refl _, fun _ => Iff.rfl⟩
     | step_alloc h1 h2 =>
       exact ⟨_, BigStep.head_expand (SeqStep.step_alloc h1 h2) hr.toBigStep,
@@ -2103,7 +2050,7 @@ theorem Step.preserves_safe_par_left {t : Trace} {m1 m2 : Memory}
       rwa [List.append_nil] at this
     have hwf_a2' : Exp.WfInHeap eL' m2.heap := Step.preserves_wf hstep hwf_a
     have hcov_of_touch : ∀ {m'' : Memory} {s : Trace} {v : Exp {}} {mf : Memory} {l : Nat}
-        {bb : Bool}, m''.subsumes m2 → BigStep m'' eL' s v mf →
+        {bb : Nat}, m''.subsumes m2 → BigStep m'' eL' s v mf →
         m2.lookup l = some (.capability (.mcell bb .live)) → Trace.extTouches s l →
         ∃ cm, (Cb1 ∪ capsOf (Trace.allocList t)).covers cm l := by
       intro m'' s v mf l bb hsub'' hbs_a' hlive htouch
@@ -2278,8 +2225,7 @@ theorem Step.preserves_safe {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
   | step_cond_var_true hlk => exact step_preserves_safe (SeqStep.step_cond_var_true hlk) hwf hsafe
   | step_cond_var_false hlk => exact step_preserves_safe (SeqStep.step_cond_var_false hlk) hwf hsafe
   | step_read h1 h2 => exact step_preserves_safe (SeqStep.step_read h1 h2) hwf hsafe
-  | step_write_true h1 h2 => exact step_preserves_safe (SeqStep.step_write_true h1 h2) hwf hsafe
-  | step_write_false h1 h2 => exact step_preserves_safe (SeqStep.step_write_false h1 h2) hwf hsafe
+  | step_write h1 h2 => exact step_preserves_safe (SeqStep.step_write h1 h2) hwf hsafe
   | step_alloc h1 h2 => exact step_preserves_safe (SeqStep.step_alloc h1 h2) hwf hsafe
   | step_drop hx => exact step_preserves_safe (SeqStep.step_drop hx) hwf hsafe
   | step_rename => exact step_preserves_safe SeqStep.step_rename hwf hsafe

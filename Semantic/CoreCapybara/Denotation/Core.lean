@@ -1,11 +1,24 @@
 import Semantic.CoreCapybara.Semantics
 import Semantic.CoreCapybara.TypeSystem
+import Semantic.CoreCapybara.Denotation.KripkeModel
 import Semantic.Prelude
 
 namespace CoreCapybara
 
-/-- Denotation of types. -/
+open KripkeModel (StoreTyping WorldLe mcell_up)
+
+/-- Denotation of types, instantiated at a fixed Kripke world `(k, st)`.
+  A `Denot` is the world-applied face of an `IDenot`; the existing combinator
+  layer (monotonicity over `subsumes`, transparency, …) operates here, and stays
+  sound because `val_denot env T k st` is monotone over `subsumes` at fixed
+  `(k, st)` (cells reference content via `st`, never `m`). -/
 def Denot := Memory -> Exp {} -> Prop
+
+/-- An **indexed denotation**: a `Denot` parameterised by a step index `k` and a
+  store typing `st` (the Kripke world).  Type variables carry an `IDenot`, and
+  `val_denot`/`exi_val_denot` produce one.  The world-applied `d k st : Denot` is
+  what the combinator layer consumes. -/
+def IDenot := Nat -> StoreTyping -> Denot
 
 /-- Pre-denotation. It takes a capability to form a denotation. -/
 def PreDenot := CapabilitySet -> Denot
@@ -53,6 +66,12 @@ def Denot.implies_wf (d : Denot) : Prop :=
 /-- The denotation entails that the expression is a simple answer (value or variable). -/
 def Denot.implies_simple_ans (d : Denot) : Prop :=
   ∀ m e, d m e -> e.IsSimpleAns
+
+/-- Whether this denotation enforces purity of the value. -/
+def Denot.enforce_pure (d : Denot) : Prop :=
+  ∀ m e,
+    d m e ->
+    resolve_reachability m.heap e ⊆ .empty
 
 /-- The denotation is proper if it is monotonic, transparent,
   bool-independent, and implies heap well-formedness. -/
@@ -166,6 +185,63 @@ lemma Denot.imply_after_trans {d1 d2 d3 : Denot}
 lemma Denot.apply_imply_at {d1 d2 : Denot}
   (ht : d1 m e) (himp : d1.ImplyAt m d2) : d2 m e := himp e ht
 
+/-! ## Properties of indexed denotations (`IDenot`)
+
+An `IDenot` is a `Denot` parameterised by a Kripke world `(k, st)`.  Its properties lift
+the corresponding `Denot` properties across every world, plus the two genuinely
+world-relative ones: monotonicity along `WorldLe` and downward closure in the index.
+These are exactly the hypotheses the `poly`/type-variable cases of the value relation
+require of an instantiating denotation. -/
+
+/-- Subsumption-monotonicity at every fixed world. -/
+def IDenot.is_monotonic (d : IDenot) : Prop :=
+  ∀ k st, (d k st).is_monotonic
+
+/-- Monotonicity along the typed future relation `WorldLe`. -/
+def IDenot.worldle_monotonic (d : IDenot) : Prop :=
+  ∀ {k st1 st2 m1 m2 e}, WorldLe st2 m2 st1 m1 → d k st1 m1 e → d k st2 m2 e
+
+/-- Downward closure in the step index. -/
+def IDenot.is_downward_closed (d : IDenot) : Prop :=
+  ∀ {k st m e}, d (k + 1) st m e → d k st m e
+
+def IDenot.is_transparent (d : IDenot) : Prop :=
+  ∀ k st, (d k st).is_transparent
+
+def IDenot.is_bool_independent (d : IDenot) : Prop :=
+  ∀ k st, (d k st).is_bool_independent
+
+def IDenot.implies_wf (d : IDenot) : Prop :=
+  ∀ k st, (d k st).implies_wf
+
+def IDenot.implies_simple_ans (d : IDenot) : Prop :=
+  ∀ k st, (d k st).implies_simple_ans
+
+def IDenot.enforce_pure (d : IDenot) : Prop :=
+  ∀ k st, (d k st).enforce_pure
+
+/-- A proper indexed denotation: monotone (over `subsumes` at a fixed world),
+  transparent, bool-independent, and heap-well-formed.  (Worldle-monotonicity and
+  index-downward-closure, `IDenot.worldle_monotonic`/`is_downward_closed`, are separate
+  step-indexing properties consumed at the Fundamental type-application layer, not part
+  of `is_proper`.) -/
+def IDenot.is_proper (d : IDenot) : Prop :=
+  d.is_monotonic
+  ∧ d.is_transparent
+  ∧ d.is_bool_independent
+  ∧ d.implies_wf
+
+/-- `d1` implies `d2` at every future world above `(st, m)`, at index `k`. -/
+def IDenot.ImplyAfter (d1 : IDenot) (k : Nat) (st : StoreTyping) (m : Memory)
+    (d2 : IDenot) : Prop :=
+  ∀ st' m', WorldLe st' m' st m → ∀ e, d1 k st' m' e → d2 k st' m' e
+
+/-- `ImplyAfter` weakens its base world along `subsumes`. -/
+theorem IDenot.imply_after_subsumes {d1 d2 : IDenot} {k : Nat} {st : StoreTyping}
+    {m1 m2 : Memory} (himp : d1.ImplyAfter k st m1 d2) (hmem : m2.subsumes m1) :
+    d1.ImplyAfter k st m2 d2 :=
+  fun st' m' hwle e h => himp st' m' (WorldLe.trans ⟨hmem, fun _ _ hh => hh⟩ hwle) e h
+
 /-- Type information for each kind of variable bindings in type context. -/
 inductive TypeInfo : Sig -> Kind -> Type where
 /-- Type information for a variable is a store location plus a peak set. -/
@@ -173,9 +249,9 @@ inductive TypeInfo : Sig -> Kind -> Type where
   Nat ->
   PeakSet s ->
   TypeInfo s .var
-/-- Type information for a type variable is a denotation. -/
+/-- Type information for a type variable is an indexed denotation. -/
 | tvar :
-  Denot ->
+  IDenot ->
   TypeInfo s .tvar
 /-- Type information for a capture variable is its authority, a ground capture
 set, and a capability set. The authority mirrors the context binding's authority
@@ -199,7 +275,7 @@ inductive TypeEnv : Sig -> Type where
 def TypeEnv.extend_var (Γ : TypeEnv s) (x : Nat) (ps : PeakSet s) : TypeEnv (s,x) :=
   Γ.extend (.var x ps)
 
-def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : Denot) : TypeEnv (s,X) :=
+def TypeEnv.extend_tvar (Γ : TypeEnv s) (T : IDenot) : TypeEnv (s,X) :=
   Γ.extend (.tvar T)
 
 def TypeEnv.extend_cvar
@@ -217,7 +293,7 @@ def TypeEnv.lookup_var : (Γ : TypeEnv s) -> (x : BVar s .var) -> (Nat × PeakSe
   match Γ.lookup_var x with
   | (n, ps) => (n, ps.rename Rename.succ)
 
-def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> Denot
+def TypeEnv.lookup_tvar : (Γ : TypeEnv s) -> (x : BVar s .tvar) -> IDenot
 | .extend _ (.tvar T), .here => T
 | .extend Γ _, .there x => Γ.lookup_tvar x
 
@@ -393,12 +469,6 @@ def TypeEnv.HasSepDom (env : TypeEnv s) (dom : CaptureSet s) : Prop :=
       ((env.lookup_cvar c1).2.applyAccess m1)
       ((env.lookup_cvar c2).2.applyAccess m2)
 
-/-- Whether this denotation enforces purity of the value. -/
-def Denot.enforce_pure (d : Denot) : Prop :=
-  ∀ m e,
-    d m e ->
-    resolve_reachability m.heap e ⊆ .empty
-
 /-- `m'.preserves_liveness_full m` says: every mcell in `m` is still an mcell in
     `m'` with the same liveness component (the boolean component is unconstrained,
     so writes are allowed). The drop-frame condition without exceptions, as
@@ -429,11 +499,12 @@ theorem Memory.preserves_liveness_full_trans
     mcell: the freshness assumption guarantees `l` is not in the old heap, so
     only the new cell is added; old cells are unchanged. -/
 theorem Memory.preserves_liveness_full_extend_mcell
-    (m : Memory) (l : Nat) (b : Bool) (hfresh : m.heap l = none) :
-    (m.extend_mcell l b hfresh).preserves_liveness_full m := by
+    (m : Memory) (l : Nat) (n : Nat) (hfresh : m.heap l = none)
+    (hcontent : m.heap n ≠ none) :
+    (m.extend_mcell l n hfresh hcontent).preserves_liveness_full m := by
   intro l' b' ℓ' h
   refine ⟨b', ?_⟩
-  change (m.heap.extend_mcell l b) l' = some (.capability (.mcell b' ℓ'))
+  change (m.heap.extend_mcell l n) l' = some (.capability (.mcell b' ℓ'))
   unfold Heap.extend_mcell
   by_cases hl : l' = l
   · subst hl; rw [hfresh] at h; cases h
@@ -443,16 +514,17 @@ theorem Memory.preserves_liveness_full_extend_mcell
     not change any cell's liveness: the updated cell keeps `ℓ`, all others are
     unchanged. -/
 theorem Memory.preserves_liveness_full_update_mcell
-    (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
-    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ))) :
-    (m.update_mcell l b ℓ hexists).preserves_liveness_full m := by
+    (m : Memory) (l : Nat) (n : Nat) (ℓ : Liveness)
+    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ)))
+    (hcontent : ℓ = .live → m.heap n ≠ none) :
+    (m.update_mcell l n ℓ hexists hcontent).preserves_liveness_full m := by
   intro l' b' ℓ' h
   by_cases hl : l' = l
   · subst hl
     obtain ⟨b0, hb0⟩ := hexists
     rw [hb0] at h
     cases h
-    refine ⟨b, ?_⟩
+    refine ⟨n, ?_⟩
     change (m.heap.update_cell l' _) l' = _
     unfold Heap.update_cell; rw [if_pos rfl]
   · refine ⟨b', ?_⟩
@@ -518,153 +590,214 @@ theorem witness_live_of_ne_pack {m' : Memory} {v : Exp {}}
 
 mutual
 
-/-- Value denotation for capturing types. -/
-def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
-| _, .top => fun m e =>
-  e.IsSimpleAns ∧ e.WfInHeap m.heap ∧ resolve_reachability m.heap e ⊆ .empty
-| env, .tvar X => env.lookup_tvar X
-| _, .unit => fun m e =>
-  resolve m.heap e = some .unit
-| _, .bool => fun m e =>
-  resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
-| env, .cap cs => fun m e =>
-  e.WfInHeap m.heap ∧
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ label : Nat,
-    e = .var (.free label) ∧
-    m.lookup label = some (.capability .basic) ∧
-    (cs.denot env m).covers (.access .epsilon) label
-| env, .reader cs => fun m e =>
-  e.WfInHeap m.heap ∧
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ (label : Nat) (b0 : Bool) (ℓ0 : Liveness),
-    resolve m.heap e = some (.reader (.free label)) ∧
-    m.lookup label = some (.capability (.mcell b0 ℓ0)) ∧
-    (cs.denot env m).covers (.access .ro) label
-| env, .cell cs => fun m e =>
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ l b0 ℓ0,
-    e = .var (.free l) ∧
-    m.lookup l = some (.capability (.mcell b0 ℓ0)) ∧
-    (cs.denot env m).covers (.access .epsilon) l
-| env, .arrow T1 cs T2 => fun m e =>
-  e.WfInHeap m.heap ∧
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ cs' T0 t0,
-    resolve m.heap e = some (.abs cs' T0 t0) ∧
-    cs'.WfInHeap m.heap ∧
-    let R0 := expand_captures m.heap cs'
-    R0 ⊆ (cs.denot env m) ∧
-    (∀ (arg : Nat) (m' : Memory),
-      m'.subsumes m ->
-      m'.is_compatible R0 ->
-      Ty.val_denot env T1 m' (.var (.free arg)) ->
-      Ty.exi_exp_denot
-        (env.extend_var arg (compute_peakset env T1.captureSet))
-        T2
-        R0
-        m' (t0.subst (Subst.openVar (.free arg))))
-| env, .poly T1 cs T2 => fun m e =>
-  e.WfInHeap m.heap ∧
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ cs' S0 t0,
-    resolve m.heap e = some (.tabs cs' S0 t0) ∧
-    cs'.WfInHeap m.heap ∧
-    let R0 := expand_captures m.heap cs'
-    R0 ⊆ (cs.denot env m) ∧
-    (∀ (m' : Memory) (denot : Denot),
-      m'.subsumes m ->
-      m'.is_compatible R0 ->
-      denot.is_proper ->
-      denot.implies_simple_ans ->
-      denot.ImplyAfter m' (Ty.val_denot env T1) ->
-      denot.enforce_pure ->
-      Ty.exi_exp_denot
-        (env.extend_tvar denot)
-        T2
-        R0
-        m' (t0.subst (Subst.openTVar .top)))
-| env, .cpoly B cs T => fun m e =>
-  e.WfInHeap m.heap ∧
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ cs' B0 t0,
-    resolve m.heap e = some (.cabs cs' B0 t0) ∧
-    cs'.WfInHeap m.heap ∧
-    let R0 := expand_captures m.heap cs'
-    R0 ⊆ (cs.denot env m) ∧
-    (∀ (m' : Memory) (CS : CaptureSet {}),
-      CS.WfInHeap m'.heap ->
-      (CS.ground_denot m').drop_free ->
-      let A0 := CS.denot TypeEnv.empty
-      m'.subsumes m ->
-      m'.is_compatible R0 ->
-      ((A0 m').BoundedBy (B.denot env m')) ->
-      Ty.exi_exp_denot
-        (env.extend_cvar CS (cap := CS.ground_denot m'))
-        T
-        R0
-        m' (t0.subst (Subst.openCVar CS)))
-| env, .modal cs Ψ E => fun m e =>
-  e.WfInHeap m.heap ∧
-  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-  ∃ cs0 sepctx0 t0,
-    resolve m.heap e = some (.boxed cs0 sepctx0 t0) ∧
-    cs0.WfInHeap m.heap ∧
-    sepctx0.WfInHeap m.heap ∧
-    (∀ (m' : Memory),
-      m'.subsumes m ->
-      env.Satisfy Ψ m' ->
-      TypeEnv.empty.Satisfy sepctx0 m') ∧
-    let R0 := expand_captures m.heap cs0
-    R0 ⊆ (cs.denot env m) ∧
-    (∀ (m' : Memory),
-      m'.subsumes m ->
-      m'.is_compatible R0 ->
-     (∀ C mode,
-        Ψ.Has C mode ->
-        CapabilitySet.HasKind (C.denot env m') mode) ->
-     (∀ C1 m1 C2 m2,
-        Ψ.HasTwoDistinct C1 m1 C2 m2 ->
-        CapabilitySet.Noninterference (C1.denot env m') (C2.denot env m')) ->
-      Ty.exi_exp_denot env E R0 m' t0)
+/-- **Step-indexed value denotation** for capturing types.  `Ty.val_denot env T k st m e`
+  reads "`e` is a `T`-value, observed for `k` more steps, at the Kripke world `(st, m)`".
+  Base/capability/cell/reader cases are index-agnostic and consult the store typing `st`
+  for the cell's content type (never the runtime content — that is what keeps the cell
+  relation monotone over `subsumes` at a fixed world).  The function-like cases
+  (`arrow`/`poly`/`cpoly`/`modal`) quantify over a *strictly smaller* index `j < k` and
+  over future worlds `WorldLe st' m' st m` that are well-typed at `j` (inlined `MemTyped`
+  premise), so every recursive call decrements the index; the definition is well-founded
+  on `(k, sizeOf T)` lexicographically. -/
+def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
+    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+  match T with
+  | .top =>
+    e.IsSimpleAns ∧ e.WfInHeap m.heap ∧ resolve_reachability m.heap e ⊆ .empty
+  | .tvar X => env.lookup_tvar X k st m e
+  | .unit =>
+    resolve m.heap e = some .unit
+  | .bool =>
+    resolve m.heap e = some .btrue ∨ resolve m.heap e = some .bfalse
+  | .cap cs =>
+    e.WfInHeap m.heap ∧
+    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+    ∃ label : Nat,
+      e = .var (.free label) ∧
+      m.lookup label = some (.capability .basic) ∧
+      (cs.denot env m).covers (.access .epsilon) label
+  | .reader cs Tc =>
+    e.WfInHeap m.heap ∧
+    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+    ∃ (label : Nat) (n0 : Nat) (ℓ0 : Liveness) (R : Memory → Exp {} → Prop),
+      resolve m.heap e = some (.reader (.free label)) ∧
+      m.lookup label = some (.capability (.mcell n0 ℓ0)) ∧
+      (cs.denot env m).covers (.access .ro) label ∧
+      st label = some R ∧ (∀ m' e', R m' e' → Ty.val_denot env Tc k st m' e')
+  | .cell cs Tc =>
+    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+    ∃ l n0 ℓ0 R,
+      e = .var (.free l) ∧
+      m.lookup l = some (.capability (.mcell n0 ℓ0)) ∧
+      (cs.denot env m).covers (.access .epsilon) l ∧
+      st l = some R ∧ (∀ m' e', R m' e' → Ty.val_denot env Tc k st m' e')
+  | .arrow T1 cs T2 =>
+    e.WfInHeap m.heap ∧
+    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+    ∃ cs' T0 t0,
+      resolve m.heap e = some (.abs cs' T0 t0) ∧
+      cs'.WfInHeap m.heap ∧
+      let R0 := expand_captures m.heap cs'
+      R0 ⊆ (cs.denot env m) ∧
+      (∀ (st' : StoreTyping) (m' : Memory) (arg : Nat),
+        WorldLe st' m' st m →
+        (∀ l n R, st' l = some R →
+          m'.lookup l = some (.capability (.mcell n .live)) →
+          R m' (.var (.free n))) →
+        m'.is_compatible R0 →
+        Ty.val_denot env T1 k st' m' (.var (.free arg)) →
+        Eval m' (t0.subst (Subst.openVar (.free arg))) (fun t v m'' =>
+          TraceOk t R0 ∧
+          ∃ st'', WorldLe st'' m'' st' m' ∧
+            (∀ l n R, st'' l = some R →
+              m''.lookup l = some (.capability (.mcell n .live)) →
+              R m'' (.var (.free n))) ∧
+            Ty.exi_val_denot
+              (env.extend_var arg (compute_peakset env T1.captureSet)) T2 k st'' m'' v ∧
+            pack_bound R0 m' v m'' ∧ witness_live v m''))
+  | .poly T1 cs T2 =>
+    e.WfInHeap m.heap ∧
+    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+    ∃ cs' S0 t0,
+      resolve m.heap e = some (.tabs cs' S0 t0) ∧
+      cs'.WfInHeap m.heap ∧
+      let R0 := expand_captures m.heap cs'
+      R0 ⊆ (cs.denot env m) ∧
+      (∀ (st' : StoreTyping) (m' : Memory) (denot : IDenot),
+        WorldLe st' m' st m →
+        (∀ l n R, st' l = some R →
+          m'.lookup l = some (.capability (.mcell n .live)) →
+          R m' (.var (.free n))) →
+        m'.is_compatible R0 →
+        denot.is_proper →
+        denot.implies_simple_ans →
+        (∀ st'' m'', WorldLe st'' m'' st' m' → ∀ e',
+          denot k st'' m'' e' → Ty.val_denot env T1 k st'' m'' e') →
+        denot.enforce_pure →
+        Eval m' (t0.subst (Subst.openTVar .top)) (fun t v m'' =>
+          TraceOk t R0 ∧
+          ∃ st'', WorldLe st'' m'' st' m' ∧
+            (∀ l n R, st'' l = some R →
+              m''.lookup l = some (.capability (.mcell n .live)) →
+              R m'' (.var (.free n))) ∧
+            Ty.exi_val_denot (env.extend_tvar denot) T2 k st'' m'' v ∧
+            pack_bound R0 m' v m'' ∧ witness_live v m''))
+  | .cpoly B cs T =>
+    e.WfInHeap m.heap ∧
+    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+    ∃ cs' B0 t0,
+      resolve m.heap e = some (.cabs cs' B0 t0) ∧
+      cs'.WfInHeap m.heap ∧
+      let R0 := expand_captures m.heap cs'
+      R0 ⊆ (cs.denot env m) ∧
+      (∀ (st' : StoreTyping) (m' : Memory) (CS : CaptureSet {}),
+        CS.WfInHeap m'.heap →
+        (CS.ground_denot m').drop_free →
+        let A0 := CS.denot TypeEnv.empty
+        WorldLe st' m' st m →
+        (∀ l n R, st' l = some R →
+          m'.lookup l = some (.capability (.mcell n .live)) →
+          R m' (.var (.free n))) →
+        m'.is_compatible R0 →
+        ((A0 m').BoundedBy (B.denot env m')) →
+        Eval m' (t0.subst (Subst.openCVar CS)) (fun t v m'' =>
+          TraceOk t R0 ∧
+          ∃ st'', WorldLe st'' m'' st' m' ∧
+            (∀ l n R, st'' l = some R →
+              m''.lookup l = some (.capability (.mcell n .live)) →
+              R m'' (.var (.free n))) ∧
+            Ty.exi_val_denot (env.extend_cvar CS (cap := CS.ground_denot m')) T k st'' m'' v ∧
+            pack_bound R0 m' v m'' ∧ witness_live v m''))
+  | .modal cs Ψ E =>
+    e.WfInHeap m.heap ∧
+    (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+    ∃ cs0 sepctx0 t0,
+      resolve m.heap e = some (.boxed cs0 sepctx0 t0) ∧
+      cs0.WfInHeap m.heap ∧
+      sepctx0.WfInHeap m.heap ∧
+      (∀ (m' : Memory),
+        m'.subsumes m →
+        env.Satisfy Ψ m' →
+        TypeEnv.empty.Satisfy sepctx0 m') ∧
+      let R0 := expand_captures m.heap cs0
+      R0 ⊆ (cs.denot env m) ∧
+      (∀ (st' : StoreTyping) (m' : Memory),
+        WorldLe st' m' st m →
+        (∀ l n R, st' l = some R →
+          m'.lookup l = some (.capability (.mcell n .live)) →
+          R m' (.var (.free n))) →
+        m'.is_compatible R0 →
+       (∀ C mode,
+          Ψ.Has C mode →
+          CapabilitySet.HasKind (C.denot env m') mode) →
+       (∀ C1 m1 C2 m2,
+          Ψ.HasTwoDistinct C1 m1 C2 m2 →
+          CapabilitySet.Noninterference (C1.denot env m') (C2.denot env m')) →
+        Eval m' t0 (fun t v m'' =>
+          TraceOk t R0 ∧
+          ∃ st'', WorldLe st'' m'' st' m' ∧
+            (∀ l n R, st'' l = some R →
+              m''.lookup l = some (.capability (.mcell n .live)) →
+              R m'' (.var (.free n))) ∧
+            Ty.exi_val_denot env E k st'' m'' v ∧
+            pack_bound R0 m' v m'' ∧ witness_live v m''))
+termination_by sizeOf T
 
-/-- Value denotation for existential types. -/
-def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot
-| ρ, .typ T => Ty.val_denot ρ T
-| ρ, .exi T => fun m e =>
-  match resolve m.heap e with
-  | some (.pack CS x) =>
-    CS.WfInHeap m.heap ∧
-    (CS.ground_denot m).drop_free ∧
-    Ty.val_denot (ρ.extend_cvar CS (cap := CS.ground_denot m) (a := .can_drop)) T m (.var x)
-  | _ => False
-
-/-- Expression denotation for capturing types.
-    Takes an explicit capture set (the use set from the typing judgment). -/
-def Ty.exp_denot : TypeEnv s -> Ty .capt s -> PreDenot
-| ρ, T, R => fun m (e : Exp {}) =>
-  Eval m e ((Ty.val_denot ρ T).as_tpost R)
-
-/-- Expression denotation for existential types.
-    Takes an explicit capture set (the use set from the typing judgment).
-    The postcondition carries, besides the value denotation, the pack-witness
-    authority bound `pack_bound` relating any resulting pack value's witness to
-    the budget `R` and starting memory `m`. -/
-def Ty.exi_exp_denot : TypeEnv s -> Ty .exi s -> PreDenot
-| ρ, T, R => fun m (e : Exp {}) =>
-  Eval m e (fun t v m' =>
-    TraceOk t R ∧ Ty.exi_val_denot ρ T m' v ∧ pack_bound R m v m' ∧ witness_live v m')
+/-- Value denotation for existential types (step-indexed). -/
+def Ty.exi_val_denot (ρ : TypeEnv s) (E : Ty .exi s)
+    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+  match E with
+  | .typ T => Ty.val_denot ρ T k st m e
+  | .exi T =>
+    match resolve m.heap e with
+    | some (.pack CS x) =>
+      CS.WfInHeap m.heap ∧
+      (CS.ground_denot m).drop_free ∧
+      Ty.val_denot (ρ.extend_cvar CS (cap := CS.ground_denot m) (a := .can_drop)) T k st m (.var x)
+    | _ => False
+termination_by sizeOf E
 
 end
 
+/-- A memory is **well-typed** for store typing `st`: every live `st`-typed cell holds a
+  value satisfying the stored relation `R`.  The relation is *applied* directly (no
+  recursion through `val_denot`), which is what breaks the higher-order-store circularity
+  and is substitution-stable.  The index `k` is vestigial here (the stored relations are
+  already world-instantiated). -/
+def MemTyped (_k : Nat) (st : StoreTyping) (m : Memory) : Prop :=
+  ∀ l n R, st l = some R → m.lookup l = some (.capability (.mcell n .live)) →
+    R m (.var (.free n))
+
+/-- Expression denotation for capturing types (step-indexed).  Takes an explicit
+    capture set (the use set from the typing judgment).  Assumes the starting world is
+    well-typed (`MemTyped k st m`); the result world carries an *extended* store typing
+    `st'` (allocations grow it) that stays well-typed. -/
+def Ty.exp_denot (ρ : TypeEnv s) (T : Ty .capt s) (R : CapabilitySet)
+    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+  MemTyped k st m →
+  Eval m e (fun t v m' =>
+    TraceOk t R ∧
+    ∃ st', WorldLe st' m' st m ∧ MemTyped k st' m' ∧ Ty.val_denot ρ T k st' m' v)
+
+/-- Expression denotation for existential types (step-indexed).
+    The postcondition carries, besides the value denotation at an extended well-typed
+    world `st'`, the pack-witness authority bound `pack_bound` and `witness_live`. -/
+def Ty.exi_exp_denot (ρ : TypeEnv s) (E : Ty .exi s) (R : CapabilitySet)
+    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+  MemTyped k st m →
+  Eval m e (fun t v m' =>
+    TraceOk t R ∧
+    ∃ st', WorldLe st' m' st m ∧ MemTyped k st' m' ∧
+      Ty.exi_val_denot ρ E k st' m' v ∧ pack_bound R m v m' ∧ witness_live v m')
+
 @[simp]
 instance instCaptHasDenotation :
-  HasDenotation (Ty .capt s) (TypeEnv s) Denot where
+  HasDenotation (Ty .capt s) (TypeEnv s) IDenot where
   interp := Ty.val_denot
 
 @[simp]
 instance instExiHasDenotation :
-  HasDenotation (Ty .exi s) (TypeEnv s) Denot where
+  HasDenotation (Ty .exi s) (TypeEnv s) IDenot where
   interp := Ty.exi_val_denot
 
 @[simp]
@@ -677,35 +810,36 @@ instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
 
-def EnvTyping : Ctx s -> TypeEnv s -> Memory -> Prop
-| .empty, .empty, _ => True
-| .push Γ (.var T), .extend env (.var n ps), m =>
-  ⟦T⟧_[env] m (.var (.free n)) ∧
+def EnvTyping : Ctx s -> TypeEnv s -> Nat -> StoreTyping -> Memory -> Prop
+| .empty, .empty, _, _, _ => True
+| .push Γ (.var T), .extend env (.var n ps), k, st, m =>
+  ⟦T⟧_[env] k st m (.var (.free n)) ∧
   ps = T.captureSet.peakset Γ ∧
-  EnvTyping Γ env m
-| .push Γ (.tvar S), .extend env (.tvar denot), m =>
+  EnvTyping Γ env k st m
+| .push Γ (.tvar S), .extend env (.tvar denot), k, st, m =>
   denot.is_proper ∧
   denot.implies_wf ∧
   denot.implies_simple_ans ∧
-  denot.ImplyAfter m ⟦S.core⟧_[env] ∧
+  denot.ImplyAfter k st m ⟦S.core⟧_[env] ∧
   denot.enforce_pure ∧
-  EnvTyping Γ env m
-| .push Γ (.cvar a B), .extend env (.cvar a' cs cap), m =>
+  EnvTyping Γ env k st m
+| .push Γ (.cvar a B), .extend env (.cvar a' cs cap), k, st, m =>
   (cs.WfInHeap m.heap) ∧
   ((B.subst (Subst.from_TypeEnv env)).WfInHeap m.heap) ∧
   (cap.BoundedBy (B.denot env m)) ∧
   cap = cs.ground_denot m ∧
   cap.drop_free ∧
   a' = a ∧
-  EnvTyping Γ env m
-| .push Γ (.lock sepctx), .extend env .lock, m =>
+  EnvTyping Γ env k st m
+| .push Γ (.lock sepctx), .extend env .lock, k, st, m =>
   env.Satisfy sepctx m ∧
-  EnvTyping Γ env m
+  EnvTyping Γ env k st m
 
 /-- From `EnvTyping`, every capture variable's stored capability is drop-free,
 from the `cap.drop_free` conjunct of each cvar binding. -/
-theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
-    (hts : EnvTyping Γ env m) (c : BVar s .cvar) :
+theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
+    {k : Nat} {st : StoreTyping} {m : Memory}
+    (hts : EnvTyping Γ env k st m) (c : BVar s .cvar) :
     (env.lookup_cvar c).2.drop_free := by
   induction Γ with
   | empty => cases c
@@ -743,8 +877,9 @@ theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
 
 /-- From `EnvTyping`, the authority recorded in the environment for each
 capture variable matches the context binding's authority. -/
-theorem envtyping_lookup_cvar_auth {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
-    (hts : EnvTyping Γ env m) (c : BVar s .cvar) :
+theorem envtyping_lookup_cvar_auth {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
+    {k : Nat} {st : StoreTyping} {m : Memory}
+    (hts : EnvTyping Γ env k st m) (c : BVar s .cvar) :
     env.lookup_cvar_auth c = Γ.lookup_authority c := by
   induction Γ with
   | empty => cases c
@@ -782,7 +917,7 @@ theorem envtyping_lookup_cvar_auth {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m :
 
 /-- For bound variables, `CaptureSet.peaks` equals `compute_peaks`. -/
 theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
-    (h : EnvTyping Γ ρ mem) (x : BVar s .var) (m0 : Access) :
+    (h : EnvTyping Γ ρ k st mem) (x : BVar s .var) (m0 : Access) :
     CaptureSet.peaksVarBound Γ m0 x = (ρ.lookup_var x).2.cs.applyAccess m0 := by
   match s, Γ, ρ, x with
   | _, .push Γ' (.var T), .extend ρ' (.var n ps), .here =>
@@ -819,7 +954,7 @@ theorem peaks_var_bound_eq {s : Sig} {Γ : Ctx s} {ρ : TypeEnv s}
     exact CaptureSet.applyAccess_rename
 termination_by sizeOf x
 
-theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
+theorem compute_peaks_correct (h : EnvTyping Γ ρ k st m) :
   ∀ C, CaptureSet.peaks Γ C = compute_peaks ρ C := by
   intro C
   induction C
@@ -838,7 +973,7 @@ theorem compute_peaks_correct (h : EnvTyping Γ ρ m) :
       rw [CaptureSet.peaks]
       exact peaks_var_bound_eq h x m
 
-theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
+theorem compute_peakset_correct (h : EnvTyping Γ ρ k st m) :
   ∀ C, C.peakset Γ = compute_peakset ρ C := by
   intro C
   simp only [CaptureSet.peakset, compute_peakset]
@@ -855,11 +990,11 @@ theorem compute_peakset_correct (h : EnvTyping Γ ρ m) :
     *Pre*: every cell in `C.denot ρ m` must be live at the start.
     *Post*: in any reachable result memory `m'`, the result satisfies `E`. -/
 def SemanticTyping (C : CaptureSet s) (Γ : Ctx s) (e : Exp s) (E : Ty .exi s) : Prop :=
-  ∀ ρ m,
-    EnvTyping Γ ρ m ->
+  ∀ ρ k st m,
+    EnvTyping Γ ρ k st m ->
     ρ.EnvSepWf ->
     m.is_compatible (C.denot ρ m) ->
-    Ty.exi_exp_denot ρ E (C.denot ρ m) m (e.subst (Subst.from_TypeEnv ρ))
+    Ty.exi_exp_denot ρ E (C.denot ρ m) k st m (e.subst (Subst.from_TypeEnv ρ))
 
 notation:65 C " # " Γ " ⊨ " e " : " T => SemanticTyping {} C Γ e T
 
@@ -888,7 +1023,7 @@ theorem Exp.from_TypeEnv_weaken_open {s : Sig} {env : TypeEnv s} {n : Nat}
   rw [Exp.subst_comp]
   exact congrArg _ Subst.from_TypeEnv_weaken_open
 
-theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : Denot} :
+theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : IDenot} :
   (Subst.from_TypeEnv env).lift.comp (Subst.openTVar .top) =
     Subst.from_TypeEnv (env.extend_tvar d) := by
   apply Subst.funext
@@ -907,7 +1042,7 @@ theorem Subst.from_TypeEnv_weaken_open_tvar {env : TypeEnv s} {d : Denot} :
       exact CaptureSet.weaken_openTVar
 
 theorem Exp.from_TypeEnv_weaken_open_tvar
-  {s : Sig} {env : TypeEnv s} {d : Denot} {e : Exp (Sig.extend_tvar s)} :
+  {s : Sig} {env : TypeEnv s} {d : IDenot} {e : Exp (Sig.extend_tvar s)} :
   (e.subst (Subst.from_TypeEnv env).lift).subst (Subst.openTVar .top) =
     e.subst (Subst.from_TypeEnv (env.extend_tvar d)) := by
   rw [Exp.subst_comp]
@@ -1002,7 +1137,7 @@ def TypeEnv.is_implying_simple_ans (env : TypeEnv s) : Prop :=
 
 /-- An environment typing implies that all type variable denotations imply simple answer. -/
 theorem typed_env_is_implying_simple_ans
-  (ht : EnvTyping Γ env mem) :
+  (ht : EnvTyping Γ env k st mem) :
   env.is_implying_simple_ans := by
   induction Γ with
   | empty =>
@@ -1051,7 +1186,7 @@ theorem typed_env_is_implying_simple_ans
 
 /-- An environment typing implies that all type variable denotations imply well-formedness. -/
 theorem typed_env_is_implying_wf
-  (ht : EnvTyping Γ env mem) :
+  (ht : EnvTyping Γ env k st mem) :
   env.is_implying_wf := by
   induction Γ with
   | empty =>
@@ -1105,7 +1240,7 @@ def TypeEnv.is_enforcing_pure (env : TypeEnv s) : Prop :=
 
 /-- An environment typing implies that all type variable denotations enforce purity. -/
 theorem typed_env_enforces_pure
-  (ht : EnvTyping Γ env mem) :
+  (ht : EnvTyping Γ env k st mem) :
   env.is_enforcing_pure := by
   induction Γ with
   | empty =>
@@ -1159,8 +1294,8 @@ judgment to syntactic well-formedness: `EnvTyping` ensures each variable locatio
 exists in memory, so the substitution mapping variables to them is well-formed.
 -/
 theorem from_TypeEnv_wf_in_heap
-  {Γ : Ctx s} {ρ : TypeEnv s} {m : Memory}
-  (htyping : EnvTyping Γ ρ m) :
+  {Γ : Ctx s} {ρ : TypeEnv s} {k : Nat} {st : StoreTyping} {m : Memory}
+  (htyping : EnvTyping Γ ρ k st m) :
   (Subst.from_TypeEnv ρ).WfInHeap m.heap := by
   induction Γ with
   | empty =>
@@ -1180,12 +1315,12 @@ theorem from_TypeEnv_wf_in_heap
           unfold EnvTyping at htyping
           obtain ⟨htype, _, htyping'⟩ := htyping
           have hwf : Exp.WfInHeap (s := {}) (.var (.free n)) m.heap := by
-            change Ty.val_denot _ _ _ _ at htype
+            change Ty.val_denot _ _ _ _ _ _ at htype
             cases T with
             | top => unfold Ty.val_denot at htype; exact htype.2.1
             | tvar X =>
               unfold Ty.val_denot at htype
-              exact typed_env_is_implying_wf htyping' X m (.var (.free n)) htype
+              exact typed_env_is_implying_wf htyping' X k st m (.var (.free n)) htype
             | unit =>
               unfold Ty.val_denot at htype
               simp only [resolve] at htype
@@ -1202,7 +1337,7 @@ theorem from_TypeEnv_wf_in_heap
               }
             | cell cs =>
               unfold Ty.val_denot at htype
-              obtain ⟨_, l, _, _, hl, hlookup, _⟩ := htype
+              obtain ⟨_, l, _, _, _, hl, hlookup, _⟩ := htype
               cases hl
               exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free
                 (by simpa [Memory.lookup] using hlookup))
@@ -1295,6 +1430,32 @@ def Denot.Equiv (d1 d2 : Denot) : Prop :=
 instance Denot.instHasEquiv : HasEquiv Denot where
   Equiv := Denot.Equiv
 
+/-- Pointwise equivalence of indexed denotations (at every world `(k, st)`). -/
+def IDenot.Equiv (d1 d2 : IDenot) : Prop :=
+  ∀ k st m e,
+    (d1 k st m e) ↔ (d2 k st m e)
+
+instance IDenot.instHasEquiv : HasEquiv IDenot where
+  Equiv := IDenot.Equiv
+
+theorem IDenot.equiv_refl (d : IDenot) : d ≈ d := fun _ _ _ _ => Iff.rfl
+
+theorem IDenot.eq_to_equiv {d1 d2 : IDenot} (h : d1 = d2) : IDenot.Equiv d1 d2 := by
+  subst h; exact IDenot.equiv_refl d1
+
+theorem IDenot.equiv_symm {d1 d2 : IDenot} : d1 ≈ d2 -> d2 ≈ d1 :=
+  fun h k st m e => .symm (h k st m e)
+
+theorem IDenot.equiv_trans {d1 d2 d3 : IDenot} :
+    d1 ≈ d2 -> d2 ≈ d3 -> d1 ≈ d3 :=
+  fun h12 h23 k st m e => .trans (h12 k st m e) (h23 k st m e)
+
+theorem IDenot.equiv_ltr {d1 d2 : IDenot} {k st m e}
+  (heqv : d1 ≈ d2) (h1 : d1 k st m e) : d2 k st m e := (heqv k st m e).mp h1
+
+theorem IDenot.equiv_rtl {d1 d2 : IDenot} {k st m e}
+  (heqv : d1 ≈ d2) (h2 : d2 k st m e) : d1 k st m e := (heqv k st m e).mpr h2
+
 def Denot.equiv_refl (d : Denot) : d ≈ d := fun _ _ => Iff.rfl
 
 def Denot.equiv_symm (d1 d2 : Denot) : d1 ≈ d2 -> d2 ≈ d1 :=
@@ -1379,7 +1540,7 @@ def TypeEnv.is_bool_independent (env : TypeEnv s) : Prop :=
     (env.lookup_tvar X).is_bool_independent
 
 theorem typed_env_is_monotonic
-  (ht : EnvTyping Γ env mem) :
+  (ht : EnvTyping Γ env k st mem) :
   env.IsMonotonic := by
   induction Γ with
   | empty =>
@@ -1427,7 +1588,7 @@ theorem typed_env_is_monotonic
             | there x => exact (ih ht').tvar x
 
 theorem typed_env_is_transparent
-  (ht : EnvTyping Γ env mem) :
+  (ht : EnvTyping Γ env k st mem) :
   env.is_transparent := by
   induction Γ with
   | empty =>
@@ -1475,7 +1636,7 @@ theorem typed_env_is_transparent
           | there x => exact ih ht' x
 
 theorem typed_env_is_bool_independent
-  (ht : EnvTyping Γ env mem) :
+  (ht : EnvTyping Γ env k st mem) :
   env.is_bool_independent := by
   induction Γ with
   | empty =>
@@ -1525,7 +1686,8 @@ theorem typed_env_is_bool_independent
 theorem val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
   (T : Ty .capt s) :
-  (Ty.val_denot env T).is_transparent := by
+  IDenot.is_transparent (Ty.val_denot env T) := by
+  intro k st
   cases T with
   | top =>
     intro m x v hx ht
@@ -1537,8 +1699,9 @@ theorem val_denot_is_transparent {env : TypeEnv s}
     exact ⟨Exp.IsSimpleAns.is_var, Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hx_heap),
       by rw [heq]; exact ht.2.2⟩
   | tvar X =>
-    unfold Ty.val_denot
-    exact henv X
+    intro m x v hx ht
+    unfold Ty.val_denot at ht ⊢
+    exact henv X k st hx ht
   | unit =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
@@ -1574,7 +1737,7 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | cell cs =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨_, l, b0, ℓ0, heq, hlookup_and_mem⟩ := ht
+    obtain ⟨_, l, b0, ℓ0, R, heq, hlookup_and_mem⟩ := ht
     -- Vacuous: the witness is a variable, contradicting v.isVal.
     have hval := v.isVal
     rw [heq] at hval
@@ -1582,11 +1745,11 @@ theorem val_denot_is_transparent {env : TypeEnv s}
   | reader cs =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨_, hwf_cs, label, b0, ℓ0, hres, hlookup, hcov⟩ := ht
+    obtain ⟨_, hwf_cs, label, b0, ℓ0, R, hres, hlookup, hcov, hstR, himpl⟩ := ht
     have hx' : m.heap x = some (.val v) := by simpa [Memory.lookup] using hx
     rw [resolve_var_heap_trans hx']
     exact ⟨Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hx'), hwf_cs,
-      label, b0, ℓ0, hres, hlookup, hcov⟩
+      label, b0, ℓ0, R, hres, hlookup, hcov, hstR, himpl⟩
   | poly T1 cs T2 | cpoly _ cs _ =>
     intro m x v hx ht
     unfold Ty.val_denot at ht ⊢
@@ -1606,8 +1769,8 @@ theorem val_denot_is_transparent {env : TypeEnv s}
 theorem val_denot_is_bool_independent {env : TypeEnv s}
   (henv : env.is_bool_independent)
   (T : Ty .capt s) :
-  (Ty.val_denot env T).is_bool_independent := by
-  intro m
+  IDenot.is_bool_independent (Ty.val_denot env T) := by
+  intro k st m
   cases T with
   | top =>
     unfold Ty.val_denot
@@ -1618,7 +1781,7 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
         by simpa [resolve_reachability] using CapabilitySet.Subset.refl⟩
   | tvar X =>
     unfold Ty.val_denot
-    exact henv X
+    exact henv X k st
   | unit =>
     unfold Ty.val_denot
     simp [resolve]
@@ -1651,11 +1814,13 @@ theorem val_denot_is_bool_independent {env : TypeEnv s}
 theorem exi_val_denot_is_transparent {env : TypeEnv s}
   (henv : TypeEnv.is_transparent env)
   (T : Ty .exi s) :
-  (Ty.exi_val_denot env T).is_transparent := by
+  IDenot.is_transparent (Ty.exi_val_denot env T) := by
+  intro k st
   cases T with
   | typ T =>
-    unfold Ty.exi_val_denot
-    exact val_denot_is_transparent henv T
+    intro m x v hx ht
+    unfold Ty.exi_val_denot at ht ⊢
+    exact val_denot_is_transparent henv T k st hx ht
   | exi T =>
     intro m x v hx ht
     simp only [Ty.exi_val_denot] at ht ⊢
@@ -1816,7 +1981,8 @@ mutual
 def val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
   (T : Ty .capt s) :
-  (Ty.val_denot env T).is_monotonic := by
+  IDenot.is_monotonic (Ty.val_denot env T) := by
+  intro k st
   cases T with
   | top =>
     intro m1 m2 e hmem ht
@@ -1826,8 +1992,9 @@ def val_denot_is_monotonic {env : TypeEnv s}
     · rw [resolve_reachability_monotonic hmem e ht.2.1]
       exact ht.2.2
   | tvar X =>
-    unfold Ty.val_denot
-    exact henv.tvar X
+    intro m1 m2 e hmem ht
+    unfold Ty.val_denot at ht ⊢
+    exact henv.tvar X k st hmem ht
   | unit =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -1855,7 +2022,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
   | cell cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf_cs, l, b0, ℓ0, heq, hlookup, hcov⟩ := ht
+    obtain ⟨hwf_cs, l, b0, ℓ0, R, heq, hlookup, hcov, hstR, himpl⟩ := ht
     have hsub : m2.heap.subsumes m1.heap := hmem
     obtain ⟨c', hc', hsub_c⟩ := hsub l (Cell.capability (.mcell b0 ℓ0)) hlookup
     cases c' with
@@ -1865,14 +2032,18 @@ def val_denot_is_monotonic {env : TypeEnv s}
       cases info with
       | basic => simp [Cell.subsumes] at hsub_c
       | mcell b' ℓ' =>
-        -- Subsumption may bump the liveness forward (live → dead); both bool
-        -- and liveness slots are existentially bound in the denotation.
-        exact ⟨CaptureSet.wf_monotonic hmem hwf_cs, l, b', ℓ', heq, hc',
-          by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem]; exact hcov⟩
+        -- Subsumption may bump the liveness forward (live → dead); content
+        -- location and liveness slots are existentially bound; `st`-typing is fixed.
+        -- The store relation `R` and its implication `himpl` quantify over *all*
+        -- intermediate worlds `m'`, so they carry through unchanged (the store typing
+        -- `st` is fixed across the subsumption step).
+        exact ⟨CaptureSet.wf_monotonic hmem hwf_cs, l, b', ℓ', R, heq, hc',
+          by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem]; exact hcov,
+          hstR, himpl⟩
   | reader cs =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf_e, hwf_cs, label, b0, ℓ0, hres, hlookup, hcov⟩ := ht
+    obtain ⟨hwf_e, hwf_cs, label, b0, ℓ0, R, hres, hlookup, hcov, hstR, himpl⟩ := ht
     have hsub : m2.heap.subsumes m1.heap := hmem
     obtain ⟨c', hc', hsub_c⟩ := hsub label (Cell.capability (.mcell b0 ℓ0)) hlookup
     cases c' with
@@ -1883,8 +2054,9 @@ def val_denot_is_monotonic {env : TypeEnv s}
       | basic => simp [Cell.subsumes] at hsub_c
       | mcell b' ℓ' =>
         exact ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
-          label, b', ℓ', resolve_monotonic hmem hres, hc',
-          by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem]; exact hcov⟩
+          label, b', ℓ', R, resolve_monotonic hmem hres, hc',
+          by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem]; exact hcov,
+          hstR, himpl⟩
   | arrow T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -1894,9 +2066,9 @@ def val_denot_is_monotonic {env : TypeEnv s}
     refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', T0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun arg m' hs' hcompat harg => ?_⟩
+      fun st' m' arg hwle hmt hcompat harg => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
-    exact hfun arg m' (Memory.subsumes_trans hs' hmem) hcompat harg
+    exact hfun st' m' arg (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt hcompat harg
   | poly T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -1906,9 +2078,10 @@ def val_denot_is_monotonic {env : TypeEnv s}
     refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', S0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun m' denot msub hcompat hdenot_proper himply => ?_⟩
+      fun st' m' denot hwle hmt hcompat hdenot_proper hsa himply hpure => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
-    exact hfun m' denot (Memory.subsumes_trans msub hmem) hcompat hdenot_proper himply
+    exact hfun st' m' denot (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt hcompat
+      hdenot_proper hsa himply hpure
   | cpoly B cs T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -1918,9 +2091,10 @@ def val_denot_is_monotonic {env : TypeEnv s}
     refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', B0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun m' CS hwf_CS hdf msub hcompat hbounded => ?_⟩
+      fun st' m' CS hwf_CS hdf hwle hmt hcompat hbounded => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
-    exact hfun m' CS hwf_CS hdf (Memory.subsumes_trans msub hmem) hcompat hbounded
+    exact hfun st' m' CS hwf_CS hdf (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt
+      hcompat hbounded
   | modal cs Ψ T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -1933,18 +2107,20 @@ def val_denot_is_monotonic {env : TypeEnv s}
       SepCtx.wf_monotonic hmem hwf_sepctx,
       fun m' hsubm' hsat => hsat_impl m' (Memory.subsumes_trans hsubm' hmem) hsat,
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun m' hsubm' hcompat hkind hsep => by
+      fun st' m' hwle hmt hcompat hkind hsep => by
         rw [hcs'_eq] at hcompat ⊢
-        exact hbody m' (Memory.subsumes_trans hsubm' hmem) hcompat hkind hsep⟩
+        exact hbody st' m' (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt hcompat hkind hsep⟩
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
   (T : Ty .exi s) :
-  (Ty.exi_val_denot env T).is_monotonic := by
+  IDenot.is_monotonic (Ty.exi_val_denot env T) := by
+  intro k st
   cases T with
   | typ T =>
-    unfold Ty.exi_val_denot
-    exact val_denot_is_monotonic henv T
+    intro m1 m2 e hmem ht
+    unfold Ty.exi_val_denot at ht ⊢
+    exact val_denot_is_monotonic henv T k st hmem ht
   | exi T =>
     intro m1 m2 e hmem ht
     simp only [Ty.exi_val_denot] at ht ⊢
@@ -1966,7 +2142,7 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
           ⟨fun X => by cases X with | there X' => exact henv.tvar X'⟩
         exact ⟨CaptureSet.wf_monotonic hmem hwf_CS_m1,
           by rw [← hcap_eq]; exact hdf_m1,
-          by rw [← hcap_eq]; exact val_denot_is_monotonic henv' T hmem ht_body⟩
+          by rw [← hcap_eq]; exact val_denot_is_monotonic henv' T k st hmem ht_body⟩
       all_goals {
         rw [hresolve1] at ht
         cases ht
@@ -1975,59 +2151,22 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
 def exi_val_denot_is_bool_independent {env : TypeEnv s}
   (henv : TypeEnv.is_bool_independent env)
   (T : Ty .exi s) :
-  (Ty.exi_val_denot env T).is_bool_independent := by
+  IDenot.is_bool_independent (Ty.exi_val_denot env T) := by
+  intro k st
   cases T with
   | typ T =>
     intro m
-    simpa only [Ty.exi_val_denot] using val_denot_is_bool_independent henv T (m := m)
+    simpa only [Ty.exi_val_denot] using val_denot_is_bool_independent henv T k st (m := m)
   | exi T =>
     intro m
     unfold Ty.exi_val_denot
     exact ⟨False.elim, False.elim⟩
-
-/-- Expression denotation is monotonic with respect to memory subsumption.
-    The `is_compatible` premise is the budget-side liveness invariant for `R`:
-    capabilities in `R` whose realisations are mcells must be `.live` in `m2`. -/
-def exp_denot_is_monotonic {env : TypeEnv s}
-  (henv_mono : env.IsMonotonic)
-  (henv_bool : env.is_bool_independent)
-  (T : Ty .capt s) :
-  ∀ {R : CapabilitySet} {m1 m2 : Memory} {e : Exp {}},
-    Exp.WfInHeap e m1.heap ->
-    m2.subsumes m1 ->
-    m2.is_compatible R ->
-    (Ty.exp_denot env T R) m1 e ->
-    (Ty.exp_denot env T R) m2 e := by
-  intro R m1 m2 e hwf hmem hcompat ht
-  simp only [Ty.exp_denot] at ht ⊢
-  refine eval_monotonic
-    (Denot.as_tpost_is_monotonic (val_denot_is_monotonic henv_mono T))
-    (Denot.as_tpost_is_bool_independent (val_denot_is_bool_independent henv_bool T))
-    hmem ?_ hwf ht
-  -- `hok`: an externally-touched cell live in `m1` stays live in `m2`.  By
-  -- `TraceOk t R` (carried in the postcondition) such a cell is covered by `R`,
-  -- and `m2.is_compatible R` keeps `R`'s mcells live.
-  intro t v m _ hpost l b hlive htouch
-  obtain ⟨mode, hcov⟩ := TraceOk.covers_of_extTouches hpost.1 htouch
-  obtain ⟨mode', hmem_l, _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
-  obtain ⟨c, hl2, hsub_c⟩ := hmem _ _ hlive
-  cases c with
-  | val => cases hsub_c
-  | masked => cases hsub_c
-  | capability info =>
-    cases info with
-    | basic => cases hsub_c
-    | mcell b' ℓ' =>
-      have hℓ' : ℓ' = .live := hcompat mode' l b' ℓ' hmem_l hl2
-      subst hℓ'
-      exact ⟨b', hl2⟩
-
 end
 
 theorem env_typing_monotonic
-  (ht : EnvTyping Γ env mem1)
+  (ht : EnvTyping Γ env k st mem1)
   (hmem : mem2.subsumes mem1) :
-  EnvTyping Γ env mem2 := by
+  EnvTyping Γ env k st mem2 := by
   induction Γ with
   | empty =>
     cases env with
@@ -2041,7 +2180,7 @@ theorem env_typing_monotonic
         | var n ps =>
           unfold EnvTyping at ht ⊢
           obtain ⟨hval, hps, ht'⟩ := ht
-          exact ⟨val_denot_is_monotonic (typed_env_is_monotonic ht') T hmem hval,
+          exact ⟨val_denot_is_monotonic (typed_env_is_monotonic ht') T k st hmem hval,
             by simpa using hps, ih ht'⟩
       | tvar S =>
         cases info with
@@ -2049,7 +2188,7 @@ theorem env_typing_monotonic
           simp only [EnvTyping] at ht ⊢
           obtain ⟨hproper, himply_wf, himply_simple_ans, himply, hpure, ht'⟩ := ht
           exact ⟨hproper, himply_wf, himply_simple_ans,
-            Denot.imply_after_subsumes himply hmem, hpure, ih ht'⟩
+            IDenot.imply_after_subsumes himply hmem, hpure, ih ht'⟩
       | cvar _ B =>
         cases info with
         | cvar a cs cap =>
@@ -2071,21 +2210,21 @@ theorem env_typing_monotonic
 
 /-- Semantic subcapturing. -/
 def SemSubcapt (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
-  ∀ env m,
-    EnvTyping Γ env m ->
+  ∀ env k st m,
+    EnvTyping Γ env k st m ->
     C1.denot env m ⊆ C2.denot env m
 
 /-- Semantic capture kinding. -/
 def SemHasKind (Γ : Ctx s) (C : CaptureSet s) (mode : Mutability) : Prop :=
-  ∀ env m,
-    EnvTyping Γ env m ->
+  ∀ env k st m,
+    EnvTyping Γ env k st m ->
     CapabilitySet.HasKind (C.denot env m) mode
 
 set_option linter.unusedVariables false in
 /-- Semantic sub-bounding -/
 def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
-  ∀ env m,
-    EnvTyping Γ env m ->
+  ∀ env k st m,
+    EnvTyping Γ env k st m ->
     B1.denot env m ⊆ B2.denot env m
 
 /-- Semantic separation check. The `EnvSepWf` premise is needed by the
@@ -2095,8 +2234,8 @@ is an environment invariant, not derivable from `EnvTyping` alone. The
 tracing requires closed types). -/
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   Γ.IsClosed ->
-  ∀ env H,
-    EnvTyping Γ env H ->
+  ∀ env k st H,
+    EnvTyping Γ env k st H ->
     env.EnvSepWf ->
     CapabilitySet.Noninterference (C1.denot env H) (C2.denot env H)
 
@@ -2109,11 +2248,11 @@ inert (`val_denot_auth_irrel`), that binder is re-tagged `.access_only` so
 def SemSubtyp {k : TySort} (Γ : Ctx s) (T1 T2 : Ty k s) : Prop :=
   match k with
   | .capt =>
-    ∀ env H, EnvTyping Γ env H -> env.EnvSepWf ->
-      (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)
+    ∀ env ki st H, EnvTyping Γ env ki st H -> env.EnvSepWf ->
+      IDenot.ImplyAfter (Ty.val_denot env T1) ki st H (Ty.val_denot env T2)
   | .exi =>
-    ∀ env H, EnvTyping Γ env H -> env.EnvSepWf ->
-      (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)
+    ∀ env ki st H, EnvTyping Γ env ki st H -> env.EnvSepWf ->
+      IDenot.ImplyAfter (Ty.exi_val_denot env T1) ki st H (Ty.exi_val_denot env T2)
 
 /-- If resolve succeeds with a simple value, the expression is a simple answer.
     This works because resolve returns the expression itself for non-variables,
@@ -2195,15 +2334,15 @@ lemma wf_from_resolve_bfalse
 theorem val_denot_implies_wf {env : TypeEnv s}
   (hts : env.is_implying_wf)
   (T : Ty .capt s) :
-  (Ty.val_denot env T).implies_wf := by
-  intro m e hdenot
+  IDenot.implies_wf (Ty.val_denot env T) := by
+  intro k st m e hdenot
   cases T with
   | top =>
     unfold Ty.val_denot at hdenot
     exact hdenot.2.1
   | tvar X =>
     unfold Ty.val_denot at hdenot
-    exact hts X m e hdenot
+    exact hts X k st m e hdenot
   | bool =>
     unfold Ty.val_denot at hdenot
     cases hdenot with
@@ -2214,7 +2353,7 @@ theorem val_denot_implies_wf {env : TypeEnv s}
     exact wf_from_resolve_unit hdenot
   | cell cs =>
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, l, b0, _, heq, hlookup, _⟩ := hdenot
+    obtain ⟨_, l, b0, _, _, heq, hlookup, _⟩ := hdenot
     rw [heq]
     exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hlookup)
   | reader cs =>
@@ -2240,15 +2379,15 @@ theorem val_denot_implies_wf {env : TypeEnv s}
 theorem val_denot_implies_simple_ans {env : TypeEnv s}
   (hts : env.is_implying_simple_ans)
   (T : Ty .capt s) :
-  (Ty.val_denot env T).implies_simple_ans := by
-  intro m e hdenot
+  IDenot.implies_simple_ans (Ty.val_denot env T) := by
+  intro k st m e hdenot
   cases T with
   | top =>
     unfold Ty.val_denot at hdenot
     exact hdenot.1
   | tvar X =>
     unfold Ty.val_denot at hdenot
-    exact hts X m e hdenot
+    exact hts X k st m e hdenot
   | bool =>
     unfold Ty.val_denot at hdenot
     cases hdenot with
@@ -2259,12 +2398,12 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
     exact simple_ans_from_resolve hdenot Exp.IsSimpleVal.unit
   | cell cs =>
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, l, _, _, heq, _, _⟩ := hdenot
+    obtain ⟨_, l, _, _, _, heq, _, _⟩ := hdenot
     rw [heq]
     exact Exp.IsSimpleAns.is_var
   | reader cs =>
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, _, _, _, hres, _, _⟩ := hdenot
+    obtain ⟨_, _, _, _, _, _, hres, _⟩ := hdenot
     exact simple_ans_from_resolve hres Exp.IsSimpleVal.reader
   | cap cs =>
     unfold Ty.val_denot at hdenot
@@ -2290,32 +2429,32 @@ theorem val_denot_implies_simple_ans {env : TypeEnv s}
 
 /-- `val_denot` is proper: monotonic ∧ transparent ∧ bool_independent ∧ implies_wf. -/
 theorem val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
-  (hts : EnvTyping Γ env m) :
-  (Ty.val_denot env T).is_proper :=
+  (hts : EnvTyping Γ env k st m) :
+  IDenot.is_proper (Ty.val_denot env T) :=
   ⟨val_denot_is_monotonic (typed_env_is_monotonic hts) T,
    val_denot_is_transparent (typed_env_is_transparent hts) T,
    val_denot_is_bool_independent (typed_env_is_bool_independent hts) T,
    val_denot_implies_wf (typed_env_is_implying_wf hts) T⟩
 
-theorem val_denot_implyafter_lift {R : CapabilitySet}
-  (himp : (Ty.val_denot env T1).ImplyAfter H (Ty.val_denot env T2)) :
-  (Ty.exp_denot env T1 R).ImplyAfter H (Ty.exp_denot env T2 R) := by
-  intro m' hsub e heval
-  unfold Ty.exp_denot at heval ⊢
-  exact eval_post_monotonic_general
-    (Tpost.entails_after_subsumes (Denot.imply_after_to_t_entails_after himp) hsub) heval
+theorem val_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTyping} {H : Memory}
+  (himp : IDenot.ImplyAfter (Ty.val_denot env T1) ki st H (Ty.val_denot env T2)) :
+  IDenot.ImplyAfter (Ty.exp_denot env T1 R) ki st H (Ty.exp_denot env T2 R) := by
+  intro st' m' hwle e heval hmt
+  refine eval_post_monotonic_general ?_ (heval hmt)
+  intro m'' hsub'' t v hpost
+  obtain ⟨htr, st'', hwle'', hmt'', hval1⟩ := hpost
+  exact ⟨htr, st'', hwle'', hmt'', himp st'' m'' (WorldLe.trans hwle hwle'') v hval1⟩
 
 /-- Existential expression denotation implication lift. The `pack_bound`
 component of the postcondition is type-independent and carried through. -/
-theorem exi_denot_implyafter_lift {R : CapabilitySet}
-  (himp : (Ty.exi_val_denot env T1).ImplyAfter H (Ty.exi_val_denot env T2)) :
-  (Ty.exi_exp_denot env T1 R).ImplyAfter H (Ty.exi_exp_denot env T2 R) := by
-  intro m' hsub e heval
-  unfold Ty.exi_exp_denot at heval ⊢
-  refine eval_post_monotonic_general ?_ heval
+theorem exi_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTyping} {H : Memory}
+  (himp : IDenot.ImplyAfter (Ty.exi_val_denot env T1) ki st H (Ty.exi_val_denot env T2)) :
+  IDenot.ImplyAfter (Ty.exi_exp_denot env T1 R) ki st H (Ty.exi_exp_denot env T2 R) := by
+  intro st' m' hwle e heval hmt
+  refine eval_post_monotonic_general ?_ (heval hmt)
   intro m'' hsub'' t v hpost
-  exact ⟨hpost.1, himp m'' (Memory.subsumes_trans hsub'' hsub) v hpost.2.1,
-    hpost.2.2.1, hpost.2.2.2⟩
+  obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost
+  exact ⟨htr, st'', hwle'', hmt'', himp st'' m'' (WorldLe.trans hwle hwle'') v hval1, hpb, hwl⟩
 
 private theorem resolve_reachability_subset_of_resolve_aux
     {m : Memory} {e v : Exp {}}
@@ -2347,8 +2486,8 @@ private theorem resolve_reachability_subset_of_resolve_aux
 set_option maxHeartbeats 400000 in
 -- This is a large case analysis proof.
 theorem val_denot_enforces_captures {T : Ty .capt s}
-  (hts : EnvTyping Γ env m) :
-  ∀ e, (Ty.val_denot env T) m e ->
+  (hts : EnvTyping Γ env k st m) :
+  ∀ e, Ty.val_denot env T k st m e ->
     resolve_reachability m.heap e ⊆ (T.captureSet).denot env m := by
   intro e ht
   cases T with
@@ -2360,8 +2499,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     simp only [Ty.val_denot] at ht
     have hpure := typed_env_enforces_pure hts X
-    simp only [Denot.enforce_pure] at hpure
-    exact hpure m e ht
+    exact hpure k st m e ht
   | unit =>
     simp only [Ty.captureSet, CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     simp only [Ty.val_denot] at ht
@@ -2418,7 +2556,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
   | cell cs =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
-    obtain ⟨_, l, _, _, heq, hlookup, hcov⟩ := ht
+    obtain ⟨_, l, _, _, R, heq, hlookup, hcov, _, _⟩ := ht
     subst heq
     simp only [resolve_reachability, Memory.lookup] at hlookup ⊢
     simp only [reachability_of_loc, hlookup]
@@ -2426,7 +2564,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
   | reader cs =>
     simp only [Ty.captureSet]
     simp only [Ty.val_denot] at ht
-    obtain ⟨_, _, label, _, _, hres, hlookup, hcov⟩ := ht
+    obtain ⟨_, _, label, _, _, R, hres, hlookup, hcov, _, _⟩ := ht
     cases e with
     | reader x =>
       cases x with
@@ -2566,10 +2704,10 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
     | _ => simp [resolve] at hres
 
 theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
-  (hdenot : (Ty.val_denot env T) m (.var (x.subst (Subst.from_TypeEnv env))))
+  (hdenot : Ty.val_denot env T k st m (.var (x.subst (Subst.from_TypeEnv env))))
   (hpeaks : compute_peaks env T.captureSet = compute_peaks env (.var (.M .epsilon) x)) :
-  (Ty.val_denot env (T.refineCaptureSet (.var (.M .epsilon) x)))
-    m
+  Ty.val_denot env (T.refineCaptureSet (.var (.M .epsilon) x))
+    k st m
     (.var (x.subst (Subst.from_TypeEnv env))) := by
   cases T with
   | top =>
@@ -2767,9 +2905,9 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         | masked => simp [hcell] at hlookup
   | cell cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
-    obtain ⟨hwf_cs, label, b0, ℓ0, heq, hlookup, hcov⟩ := hdenot
+    obtain ⟨hwf_cs, label, b0, ℓ0, R, heq, hlookup, hcov, hstR, himpl⟩ := hdenot
     simp only [Exp.var.injEq] at heq
-    refine ⟨?_, label, b0, ℓ0, ?_, hlookup, ?_⟩
+    refine ⟨?_, label, b0, ℓ0, R, ?_, hlookup, ?_, hstR, himpl⟩
     · simp only [CaptureSet.subst]
       rw [heq]
       exact CaptureSet.WfInHeap.wf_var_free (by simpa only [Memory.lookup] using hlookup)
@@ -2788,8 +2926,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
         | masked => simp [hcell] at hlookup
   | reader cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
-    obtain ⟨hwf_e, hwf_cs, loc, label, ℓ0, hres, hlookup, hcov⟩ := hdenot
-    refine ⟨hwf_e, ?_, loc, label, ℓ0, hres, hlookup, ?_⟩
+    obtain ⟨hwf_e, hwf_cs, loc, label, ℓ0, R, hres, hlookup, hcov, hstR, himpl⟩ := hdenot
+    refine ⟨hwf_e, ?_, loc, label, ℓ0, R, hres, hlookup, ?_, hstR, himpl⟩
     · simp only [CaptureSet.subst]
       cases hwf_e with
       | wf_var hwf_var =>
@@ -2880,8 +3018,8 @@ private theorem resolve_reachability_subset_of_resolve
 theorem pure_ty_enforce_pure {T : Ty .capt s}
   (henv : env.is_enforcing_pure)
   (hpure : T.IsPureType) :
-  (Ty.val_denot env T).enforce_pure := by
-  intro m e hdenot
+  IDenot.enforce_pure (Ty.val_denot env T) := by
+  intro k st m e hdenot
   unfold Ty.IsPureType at hpure
   cases T
   case top =>
@@ -2889,7 +3027,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     exact hdenot.2.2
   case tvar X =>
     simp only [Ty.val_denot] at hdenot
-    exact henv X m e hdenot
+    exact henv X k st m e hdenot
   case unit =>
     simp only [Ty.val_denot] at hdenot
     exact CapabilitySet.Subset.trans
@@ -2920,12 +3058,12 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
   case cell cs =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, label, _, _, _, _, hcov⟩ := hdenot
+    obtain ⟨_, label, _, _, _, _, _, hcov, _, _⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case reader cs =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot
-    obtain ⟨_, _, label, _, _, _, _, hcov⟩ := hdenot
+    obtain ⟨_, _, label, _, _, _, _, _, hcov, _, _⟩ := hdenot
     exact absurd hcov (CapabilitySet.not_covers_of_isEmpty hpure.denot_empty)
   case arrow T1 cs T2 | poly T1 cs T2 | cpoly B cs T =>
     simp only [Ty.captureSet] at hpure

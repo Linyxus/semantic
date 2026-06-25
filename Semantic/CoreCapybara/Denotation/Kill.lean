@@ -4,6 +4,8 @@ import Semantic.CoreCapybara.Denotation.Retype
 
 namespace CoreCapybara
 
+open KripkeModel (StoreTyping WorldLe)
+
 /-! # Killing capture variables
 
 The `letin`/`unpack` typing rules type their continuations in a context where
@@ -331,9 +333,8 @@ def Retype.kill_cvar {env : TypeEnv s} (c : BVar s .cvar) :
     change (env.lookup_var x).1 = ((env.kill_cvar c).lookup_var x).1
     rw [TypeEnv.kill_cvar_lookup_var]
   tvar := fun X => by
-    apply Denot.eq_to_equiv
-    change env.lookup_tvar X = Ty.val_denot (env.kill_cvar c) (PureTy.tvar X).core
-    unfold PureTy.tvar Ty.val_denot
+    intro k st m e
+    simp only [Subst.id, PureTy.tvar, Ty.val_denot]
     rw [TypeEnv.kill_cvar_lookup_tvar]
   cvar := fun C => by
     change (env.lookup_cvar C).1 =
@@ -342,19 +343,19 @@ def Retype.kill_cvar {env : TypeEnv s} (c : BVar s .cvar) :
     rfl
 theorem kill_cvar_val_denot {env : TypeEnv s} {c : BVar s .cvar}
     (T : Ty .capt s) :
-    Ty.val_denot env T ≈ Ty.val_denot (env.kill_cvar c) T := by
+    IDenot.Equiv (Ty.val_denot env T) (Ty.val_denot (env.kill_cvar c) T) := by
   have h := retype_val_denot (Retype.kill_cvar (env := env) c) T
   rwa [Ty.subst_id] at h
 
 theorem kill_cvar_exi_val_denot {env : TypeEnv s} {c : BVar s .cvar}
     (T : Ty .exi s) :
-    Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.kill_cvar c) T := by
+    IDenot.Equiv (Ty.exi_val_denot env T) (Ty.exi_val_denot (env.kill_cvar c) T) := by
   have h := retype_exi_val_denot (Retype.kill_cvar (env := env) c) T
   rwa [Ty.subst_id] at h
 
 theorem kill_cvar_exi_exp_denot {env : TypeEnv s} {c : BVar s .cvar}
     (T : Ty .exi s) (R : CapabilitySet) :
-    Ty.exi_exp_denot env T R ≈ Ty.exi_exp_denot (env.kill_cvar c) T R := by
+    IDenot.Equiv (Ty.exi_exp_denot env T R) (Ty.exi_exp_denot (env.kill_cvar c) T R) := by
   have h := retype_exi_exp_denot (Retype.kill_cvar (env := env) c) T (R := R)
   rwa [Ty.subst_id] at h
 
@@ -379,8 +380,8 @@ theorem TypeEnv.Satisfy.kill_cvar {env : TypeEnv s} {c : BVar s .cvar}
     exact h.sep C1 m1 C2 m2 hh
 
 theorem EnvTyping.kill_cvar {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
-    (c : BVar s .cvar) (h : EnvTyping Γ env m) :
-    EnvTyping (Γ.kill_cvar c) (env.kill_cvar c) m := by
+    (c : BVar s .cvar) (h : EnvTyping Γ env k st m) :
+    EnvTyping (Γ.kill_cvar c) (env.kill_cvar c) k st m := by
   match Γ, env, c with
   | .push Γ (.cvar a B), .extend env (.cvar a' cs cap), .here =>
     simp only [EnvTyping] at h ⊢
@@ -390,14 +391,14 @@ theorem EnvTyping.kill_cvar {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory
     simp only [EnvTyping] at h ⊢
     obtain ⟨hd, hps, h'⟩ := h
     refine ⟨?_, ?_, EnvTyping.kill_cvar c h'⟩
-    · exact (kill_cvar_val_denot (c := c) T m (.var (.free n))).mp hd
+    · exact (kill_cvar_val_denot (c := c) T k st m (.var (.free n))).mp hd
     · rw [hps, CaptureSet.peakset_kill_cvar]
   | .push Γ (.tvar S), .extend env (.tvar d), .there c =>
     simp only [EnvTyping] at h ⊢
     obtain ⟨h1, h2, h3, h4, h5, h'⟩ := h
     refine ⟨h1, h2, h3, ?_, h5, EnvTyping.kill_cvar c h'⟩
-    intro m' hsub e hd
-    exact (kill_cvar_val_denot (c := c) S.core m' e).mp (h4 m' hsub e hd)
+    intro st' m' hsub e hd
+    exact (kill_cvar_val_denot (c := c) S.core k st' m' e).mp (h4 st' m' hsub e hd)
   | .push Γ (.cvar a B), .extend env (.cvar a' cs cap), .there c =>
     simp only [EnvTyping] at h ⊢
     obtain ⟨h1, h2, h3, h4, h5, h6, h'⟩ := h
@@ -499,52 +500,52 @@ theorem TypeEnv.kill_peaks_cs_killed {s : Sig} {env : TypeEnv s}
 
 theorem kill_peaks_cs_val_denot {env : TypeEnv s} {K : CaptureSet s}
     (T : Ty .capt s) :
-    Ty.val_denot env T ≈ Ty.val_denot (env.kill_peaks_cs K) T := by
+    IDenot.Equiv (Ty.val_denot env T) (Ty.val_denot (env.kill_peaks_cs K) T) := by
   induction K generalizing env with
-  | empty => exact Denot.equiv_refl _
+  | empty => exact IDenot.equiv_refl _
   | union cs1 cs2 ih1 ih2 =>
-    exact Denot.equiv_trans _ _ _ (ih1 (env := env))
+    exact IDenot.equiv_trans (ih1 (env := env))
       (ih2 (env := env.kill_peaks_cs cs1))
   | cvar a c => exact kill_cvar_val_denot T
-  | var a v => exact Denot.equiv_refl _
+  | var a v => exact IDenot.equiv_refl _
 
 theorem kill_peaks_cs_exi_val_denot {env : TypeEnv s} {K : CaptureSet s}
     (T : Ty .exi s) :
-    Ty.exi_val_denot env T ≈ Ty.exi_val_denot (env.kill_peaks_cs K) T := by
+    IDenot.Equiv (Ty.exi_val_denot env T) (Ty.exi_val_denot (env.kill_peaks_cs K) T) := by
   induction K generalizing env with
-  | empty => exact Denot.equiv_refl _
+  | empty => exact IDenot.equiv_refl _
   | union cs1 cs2 ih1 ih2 =>
-    exact Denot.equiv_trans _ _ _ (ih1 (env := env))
+    exact IDenot.equiv_trans (ih1 (env := env))
       (ih2 (env := env.kill_peaks_cs cs1))
   | cvar a c => exact kill_cvar_exi_val_denot T
-  | var a v => exact Denot.equiv_refl _
+  | var a v => exact IDenot.equiv_refl _
 
 theorem kill_peaks_cs_exi_exp_denot {env : TypeEnv s} {K : CaptureSet s}
     (T : Ty .exi s) (R : CapabilitySet) :
-    Ty.exi_exp_denot env T R ≈ Ty.exi_exp_denot (env.kill_peaks_cs K) T R := by
+    IDenot.Equiv (Ty.exi_exp_denot env T R) (Ty.exi_exp_denot (env.kill_peaks_cs K) T R) := by
   induction K generalizing env with
-  | empty => exact Denot.equiv_refl _
+  | empty => exact IDenot.equiv_refl _
   | union cs1 cs2 ih1 ih2 =>
-    exact Denot.equiv_trans _ _ _ (ih1 (env := env))
+    exact IDenot.equiv_trans (ih1 (env := env))
       (ih2 (env := env.kill_peaks_cs cs1))
   | cvar a c => exact kill_cvar_exi_exp_denot T R
-  | var a v => exact Denot.equiv_refl _
+  | var a v => exact IDenot.equiv_refl _
 
 theorem EnvTyping.kill_peaks_cs {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
-    {m : Memory} (K : CaptureSet s) (h : EnvTyping Γ env m) :
-    EnvTyping (Γ.kill_peaks_cs K) (env.kill_peaks_cs K) m := by
+    {k : Nat} {st : StoreTyping} {m : Memory} (K : CaptureSet s) (h : EnvTyping Γ env k st m) :
+    EnvTyping (Γ.kill_peaks_cs K) (env.kill_peaks_cs K) k st m := by
   induction K generalizing Γ env with
   | empty => exact h
   | union cs1 cs2 ih1 ih2 =>
     change EnvTyping ((Γ.kill_peaks_cs cs1).kill_peaks_cs cs2)
-      ((env.kill_peaks_cs cs1).kill_peaks_cs cs2) m
+      ((env.kill_peaks_cs cs1).kill_peaks_cs cs2) k st m
     exact ih2 (ih1 h)
   | cvar a c => exact EnvTyping.kill_cvar c h
   | var a v => exact h
 
 theorem EnvTyping.kill_peaks {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
-    {m : Memory} (P : PeakSet s) (h : EnvTyping Γ env m) :
-    EnvTyping (Γ.kill_peaks P) (env.kill_peaks P) m :=
+    {k : Nat} {st : StoreTyping} {m : Memory} (P : PeakSet s) (h : EnvTyping Γ env k st m) :
+    EnvTyping (Γ.kill_peaks P) (env.kill_peaks P) k st m :=
   EnvTyping.kill_peaks_cs P.cs h
 
 /-! ## The `EnvSepWf` kit -/
@@ -558,7 +559,7 @@ theorem TypeEnv.EnvSepWf.extend_var {env : TypeEnv s} {n : Nat} {ps : PeakSet s}
     | there c2 =>
       exact h c1 c2 (fun heq => hne (congrArg BVar.there heq)) h1 h2
 
-theorem TypeEnv.EnvSepWf.extend_tvar {env : TypeEnv s} {d : Denot}
+theorem TypeEnv.EnvSepWf.extend_tvar {env : TypeEnv s} {d : IDenot}
     (h : env.EnvSepWf) : (env.extend_tvar d).EnvSepWf := by
   intro c1 c2 hne h1 h2
   cases c1 with

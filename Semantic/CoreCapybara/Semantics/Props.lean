@@ -96,9 +96,9 @@ theorem step_memory_monotonic
     exact Memory.subsumes_refl _
   | step_par_left _ ih => exact ih
   | step_par_right _ _ ih => exact ih
-  | step_write_true hx _ | step_write_false hx _ =>
-    exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩
-  | step_alloc _ hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh
+  | step_write hx hy =>
+    exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩ (fun _ => hy)
+  | step_alloc hlk hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh hlk
   | step_drop hx => exact Memory.drop_mcell_subsumes _ _ ⟨_, hx⟩
   | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih
   | step_lift hv hwf hfresh => exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
@@ -226,17 +226,14 @@ theorem step_preserves_wf
     have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
     exact hwf_else
   | step_read hreader hcell =>
-    split
-    · exact Exp.WfInHeap.wf_btrue
-    · exact Exp.WfInHeap.wf_bfalse
-  | step_write_true _ _ =>
+    obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp (Memory.mcell_content_val hcell)
+    exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hv)
+  | step_write _ _ =>
     exact Exp.WfInHeap.wf_unit
-  | step_write_false _ _ =>
-    exact Exp.WfInHeap.wf_unit
-  | step_alloc _ hfresh =>
+  | step_alloc hlk hfresh =>
     exact Exp.WfInHeap.wf_pack
-      (CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh))
-      (Var.WfInHeap.wf_free (Memory.extend_mcell_lookup hfresh))
+      (CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh hlk))
+      (Var.WfInHeap.wf_free (Memory.extend_mcell_lookup hfresh hlk))
   | step_drop _ =>
     exact Exp.WfInHeap.wf_unit
   | step_ctx_letin hstep_e1 =>
@@ -464,10 +461,8 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
         | masked => simp [resolve, hcell] at hbfalse
   | read hlookup_reader hlookup_cell =>
     exact IsProgressive.step (SeqStep.step_read hlookup_reader hlookup_cell)
-  | write_true hx hy =>
-    exact IsProgressive.step (SeqStep.step_write_true hx hy)
-  | write_false hx hy =>
-    exact IsProgressive.step (SeqStep.step_write_false hx hy)
+  | write hx hy =>
+    exact IsProgressive.step (SeqStep.step_write hx hy)
   | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
     -- Sequential `par`: advance the left branch to an answer, then the right
     -- (`step_par_right` needs the left answer), then join. Some step always exists.
@@ -547,16 +542,13 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     exact BigStep.bs_cond_false (by simp only [resolve, hlk]) hbs
   | step_read hlkx hlky =>
     intro t' v m' hbs
-    obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq (by split <;> constructor) hbs
-    exact BigStep.bs_read hlkx hlky
-  | step_write_true hx hy =>
+    cases hbs with
+    | bs_var => simpa using BigStep.bs_read hlkx hlky (Memory.mcell_content_val hlky)
+    | bs_val hv => cases hv
+  | step_write hx hy =>
     intro t' v m' hbs
     obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq Exp.IsSimpleVal.unit hbs
-    exact BigStep.bs_write_true hx hy
-  | step_write_false hx hy =>
-    intro t' v m' hbs
-    obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq Exp.IsSimpleVal.unit hbs
-    exact BigStep.bs_write_false hx hy
+    exact BigStep.bs_write hx hy
   | step_alloc hlk hfresh =>
     intro t' v m' hbs
     cases hbs with
@@ -667,9 +659,8 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
       simp only [Memory.lookup] at hlk
       exact h_false (by simp only [resolve, hlk])
     | ans hans => cases hans with | is_val hv => cases hv
-  | step_read _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val (by split <;> constructor))
-  | step_write_true _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_write_false _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
+  | step_read _ _ => intro _ _; exact Safe.ans Exp.IsAns.is_var
+  | step_write _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
   | step_alloc _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.pack)
   | step_drop _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
   | step_ctx_letin hstep_inner ih =>
@@ -731,7 +722,7 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         rwa [List.append_nil] at this
       have hwf_a2' : Exp.WfInHeap a' m2.heap := step_preserves_wf hstep_a hwf_a
       have hcov_of_touch : ∀ {m'' : Memory} {s : Trace} {v : Exp {}} {mf : Memory} {l : Nat}
-          {bb : Bool}, m''.subsumes m2 -> BigStep m'' a' s v mf ->
+          {bb : Nat}, m''.subsumes m2 -> BigStep m'' a' s v mf ->
           m2.lookup l = some (.capability (.mcell bb .live)) -> Trace.extTouches s l ->
           ∃ cm, (C1 ∪ capsOf (Trace.allocList t)).covers cm l := by
         intro m'' s v mf l bb hsub'' hbs_a' hlive htouch
@@ -820,7 +811,7 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         exact hpres1 mu' l hm (step_allocd_fresh hstep_b (Trace.mem_allocList.mp hl))
       have hwf_b2' : Exp.WfInHeap b' m2.heap := step_preserves_wf hstep_b hwf_b
       have hcov_of_touch : ∀ {m'' : Memory} {s : Trace} {v : Exp {}} {mf : Memory} {l : Nat}
-          {bb : Bool}, m''.subsumes m2 -> BigStep m'' b' s v mf ->
+          {bb : Nat}, m''.subsumes m2 -> BigStep m'' b' s v mf ->
           m2.lookup l = some (.capability (.mcell bb .live)) -> Trace.extTouches s l ->
           ∃ cm, (C2 ∪ capsOf (Trace.allocList t)).covers cm l := by
         intro m'' s v mf l bb hsub'' hbs_b' hlive htouch
@@ -995,12 +986,9 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
       (SeqReduce.step SeqStep.step_unpack hred2), hans2⟩
   | read hlkx hlky =>
     exact ⟨_, _, _, SeqReduce.step (SeqStep.step_read hlkx hlky) SeqReduce.refl,
-      Exp.IsAns.is_val (by split <;> constructor)⟩
-  | write_true hx hy =>
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_write_true hx hy) SeqReduce.refl,
-      Exp.IsAns.is_val Exp.IsVal.unit⟩
-  | write_false hx hy =>
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_write_false hx hy) SeqReduce.refl,
+      Exp.IsAns.is_var⟩
+  | write hx hy =>
+    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_write hx hy) SeqReduce.refl,
       Exp.IsAns.is_val Exp.IsVal.unit⟩
   | drop hx =>
     exact ⟨_, _, _, SeqReduce.step (SeqStep.step_drop hx) SeqReduce.refl,
@@ -1081,7 +1069,7 @@ theorem step_immutable
     exact hinit
   | step_par_left _ ih => exact ih hwr hdr hinit
   | step_par_right _ _ ih => exact ih hwr hdr hinit
-  | step_write_true _ _ | step_write_false _ _ =>
+  | step_write _ _ =>
     exact absurd (List.mem_singleton.mpr rfl) (hwr _)
   | step_drop _ =>
     exact absurd (List.mem_singleton.mpr rfl) (hdr _)
@@ -1121,7 +1109,7 @@ theorem reduce_immutable
     other locations miss `l`; a write/drop at `l` itself is excluded by the
     hypotheses.  This is the per-cell refinement of `step_immutable`, needed when
     the trace *may* legitimately touch freshly allocated cells. -/
-theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {ℓ : Liveness}
+theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Nat} {ℓ : Liveness}
     (hstep : SeqStep t m1 e1 m2 e2) :
     TraceItem.access .epsilon l ∉ t -> TraceItem.dealloc l ∉ t ->
     m1.heap l = some (.capability (.mcell b ℓ)) ->
@@ -1133,7 +1121,7 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
     intro _ _ hinit; exact hinit
   | step_par_left _ ih => intro hwr hdr hinit; exact ih hwr hdr hinit
   | step_par_right _ _ ih => intro hwr hdr hinit; exact ih hwr hdr hinit
-  | step_write_true _ _ | step_write_false _ _ =>
+  | step_write _ _ =>
     intro hwr _ hinit
     simp only [Memory.update_mcell, Heap.update_cell]
     split
@@ -1162,7 +1150,7 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
 
 /-- **Per-location immutability (reduction).**  A whole reduction that never
     writes or drops the specific cell `l` leaves it unchanged. -/
-theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {ℓ : Liveness}
+theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Nat} {ℓ : Liveness}
     (hred : SeqReduce t m1 e1 m2 e2) :
     TraceItem.access .epsilon l ∉ t -> TraceItem.dealloc l ∉ t ->
     m1.heap l = some (.capability (.mcell b ℓ)) ->

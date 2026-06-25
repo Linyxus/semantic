@@ -10,82 +10,120 @@ def Sig.platform_of : Nat -> Sig
 | 0 => {}
 | n+1 => ((Sig.platform_of n),C),x
 
-/-- A platform context with `n` mutable boolean cells.  The capture variables are
+/-- A platform context with `n` mutable cells.  The capture variables are
   `.access_only` (the platform grants read/write access to its cells, matching the
-  `.access_only` default of `TypeEnv.extend_cvar`). -/
+  `.access_only` default of `TypeEnv.extend_cvar`).  Each cell stores a `bool`. -/
 def Ctx.platform_of : (n : Nat) -> Ctx (Sig.platform_of n)
 | 0 => .empty
-| n+1 => ((Ctx.platform_of n),C[.access_only]<:.unbound),x:(.cell (.cvar (.M .epsilon) .here))
+| n+1 => ((Ctx.platform_of n),C[.access_only]<:.unbound),x:(.cell (.cvar (.M .epsilon) .here) .bool)
 
-/-- A platform heap with `n` mutable boolean cells (initialized to false, live). -/
+/-- The shared content value held by every platform cell. -/
+def platformContent : HeapVal := ⟨.bfalse, Exp.IsSimpleVal.bfalse, {}⟩
+
+/-- A platform heap with `N` mutable cells.  Location `0` holds the shared content value
+  (`bfalse`); locations `1..N` are live mutable cells, each pointing at the content value
+  at `0`.  Generic cells store the *location* of their content, so the content-closure
+  invariant `mcell_wf` requires a real value cell — `0` serves all cells.  The content
+  location is fixed (never itself a cell), keeping subsumption uniform across sizes. -/
 def Heap.platform_of (N : Nat) : Heap :=
   fun i =>
-    if i < N then
-      .some (.capability (.mcell false .live))
-    else
-      .none
+    if i = 0 then .some (.val platformContent)
+    else if i ≤ N then .some (.capability (.mcell 0 .live))
+    else .none
 
 /-- Type environment for a platform with `N` mutable cells.
-  Maps each pair `(C, x)` to cell `i` at heap location `i`:
-  capture variable `C` maps to singleton ground capture set `{i}`,
-  term variable `x` maps to heap location `i`. -/
+  Maps each pair `(C, x)` to cell `i` at heap location `i+1` (location `0` is reserved
+  for the shared content value): capture variable `C` maps to the singleton ground
+  capture set `{i+1}`, term variable `x` maps to heap location `i+1`. -/
 def TypeEnv.platform_of : (N : Nat) -> TypeEnv (Sig.platform_of N)
 | 0 => .empty
 | N+1 =>
-  let cs : CaptureSet {} := .var (.M .epsilon) (.free N)
-  let cap := CapabilitySet.singleton .epsilon N
+  let cs : CaptureSet {} := .var (.M .epsilon) (.free (N+1))
+  let cap := CapabilitySet.singleton .epsilon (N+1)
   let env := (TypeEnv.platform_of N).extend_cvar cs (cap := cap)
-  env.extend_var N ⟨.cvar (.M .epsilon) .here, .cvar⟩
+  env.extend_var (N+1) ⟨.cvar (.M .epsilon) .here, .cvar⟩
 
-/-- The platform heap is well-formed: it contains only mutable cells, no values. -/
+/-- The only value cell in a platform heap is the shared content value at `0`. -/
+theorem Heap.platform_of_val {N l : Nat} {v : Exp {}} {hv R}
+    (h : Heap.platform_of N l = some (.val ⟨v, hv, R⟩)) : v = .bfalse ∧ R = {} := by
+  unfold Heap.platform_of at h
+  split at h
+  · injection h with hc
+    injection hc with hcv
+    refine ⟨?_, ?_⟩
+    · have := congrArg HeapVal.unwrap hcv; simpa [platformContent] using this.symm
+    · have := congrArg HeapVal.reachability hcv; simpa [platformContent] using this.symm
+  · split at h <;> cases h
+
+/-- The platform heap is well-formed. -/
 theorem Heap.platform_of_wf (N : Nat) : (Heap.platform_of N).WfHeap := by
   constructor
   · intro l hv hlookup
-    unfold Heap.platform_of at hlookup
-    split at hlookup <;> cases hlookup
+    obtain ⟨_, _, R⟩ := hv
+    obtain ⟨hveq, _⟩ := Heap.platform_of_val hlookup
+    subst hveq; exact Exp.WfInHeap.wf_bfalse
   · intro l v hv R hlookup
-    unfold Heap.platform_of at hlookup
-    split at hlookup <;> cases hlookup
+    obtain ⟨hveq, hReq⟩ := Heap.platform_of_val hlookup
+    subst hveq; subst hReq; rfl
   · intro l v hv R hlookup
-    unfold Heap.platform_of at hlookup
-    split at hlookup <;> cases hlookup
+    obtain ⟨_, hReq⟩ := Heap.platform_of_val hlookup
+    subst hReq
+    intro mu l' hmem
+    exact absurd hmem CapabilitySet.not_hasmem_empty
 
-/-- The platform heap has finite domain {0, 1, ..., N-1}. -/
+/-- The platform heap has finite domain {0, 1, ..., N}. -/
 theorem Heap.platform_of_has_fin_dom (N : Nat) :
-  (Heap.platform_of N).HasFinDom (Finset.range N) := by
+  (Heap.platform_of N).HasFinDom (Finset.range (N + 1)) := by
   intro l
   unfold Heap.platform_of
   constructor
   · intro h
     split at h
-    case isTrue hlt =>
-      simp [Finset.mem_range, hlt]
-    case isFalse =>
-      contradiction
+    · rename_i hl0; subst hl0; simp
+    · split at h
+      · rename_i hl0 hlN; simp only [Finset.mem_range]; omega
+      · contradiction
   · intro h
-    simp [Finset.mem_range] at h
+    simp only [Finset.mem_range] at h
     split
-    case isTrue => simp
-    case isFalse hf => omega
+    · simp
+    · split
+      · simp
+      · rename_i hl0 hlN; omega
 
-/-- Platform memory with `N` mutable boolean cells. -/
+/-- Platform memory with `N` mutable cells. -/
 def Memory.platform_of (N : Nat) : Memory where
   heap := Heap.platform_of N
   wf := Heap.platform_of_wf N
-  findom := ⟨Finset.range N, Heap.platform_of_has_fin_dom N⟩
+  findom := ⟨Finset.range (N + 1), Heap.platform_of_has_fin_dom N⟩
+  mcell_wf := by
+    intro l n hlookup
+    unfold Heap.platform_of at hlookup ⊢
+    split at hlookup
+    · cases hlookup
+    · split at hlookup
+      · injection hlookup with h
+        injection h with hci
+        injection hci with hn _
+        subst hn; simp
+      · cases hlookup
 
 /-- Platform memory M subsumes platform memory N when M ≥ N. -/
 theorem platform_memory_subsumes {N M : Nat} (hNM : N ≤ M) :
   (Memory.platform_of M).subsumes (Memory.platform_of N) := by
   intro l v hlookup
-  unfold Memory.platform_of Heap.platform_of at hlookup ⊢
-  simp only [Option.ite_none_right_eq_some, Option.some.injEq] at hlookup
-  obtain ⟨hl, hv⟩ := hlookup
-  exists .capability (.mcell false .live)
-  simp only [ite_eq_left_iff, not_lt, reduceCtorEq, imp_false, not_le]
-  constructor
-  · omega
-  · rw [← hv]; simp only [Cell.subsumes]; exact Liveness.Le.refl
+  simp only [Memory.platform_of, Heap.platform_of] at hlookup ⊢
+  split at hlookup
+  · rename_i hl0; subst hl0
+    injection hlookup with hv; subst hv
+    exact ⟨_, by simp, Cell.subsumes_refl _⟩
+  · split at hlookup
+    · rename_i hl0 hlN
+      injection hlookup with hv; subst hv
+      refine ⟨.capability (.mcell 0 .live), ?_, ?_⟩
+      · simp only [if_neg hl0, if_pos (by omega : l ≤ M)]
+      · exact Liveness.Le.refl
+    · cases hlookup
 
 /-- EnvTyping for platform is monotonic: platform N types in platform M memory when M ≥ N. -/
 theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
@@ -100,14 +138,15 @@ theorem env_typing_platform_monotonic {Γ : Ctx s} {env : TypeEnv s} {N M : Nat}
 theorem platform_is_compatible {N : Nat} (C : CapabilitySet) :
     (Memory.platform_of N).is_compatible C := by
   intro mu l b ℓ _ hheap
-  unfold Memory.platform_of Heap.platform_of at hheap
-  simp only at hheap
+  simp only [Memory.platform_of, Heap.platform_of] at hheap
   split at hheap
-  · injection hheap with hc
-    injection hc with hcell
-    injection hcell with _ hℓ
-    exact hℓ.symm
-  · exact absurd hheap (by simp)
+  · cases hheap
+  · split at hheap
+    · injection hheap with hc
+      injection hc with hcell
+      injection hcell with _ hℓ
+      exact hℓ.symm
+    · cases hheap
 
 /-- The platform environment is separation-well-formed: all its capture variables
   carry `.access_only` authority, so the `EnvSepWf` obligation (only `.can_drop`
@@ -134,30 +173,30 @@ theorem env_typing_of_platform {N : Nat} :
     unfold Ctx.platform_of TypeEnv.platform_of EnvTyping
     simp only [List.empty_eq]
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
-    · change Ty.val_denot _ (.cell _) _ _
+    · change Ty.val_denot _ (.cell _ _) _ _
       unfold Ty.val_denot
-      refine ⟨?_, N, false, .live, rfl, ?_, ?_⟩
+      refine ⟨?_, N + 1, 0, .live, rfl, ?_, ?_⟩
       · simp only [List.empty_eq]
         apply CaptureSet.WfInHeap.wf_var_free
-        change (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
+        change (Heap.platform_of (N + 1)) (N + 1) = some (.capability (.mcell 0 .live))
         unfold Heap.platform_of
         simp
-      · change (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
+      · change (Heap.platform_of (N + 1)) (N + 1) = some (.capability (.mcell 0 .live))
         unfold Heap.platform_of
         simp
       · simp only [CaptureSet.denot, CaptureSet.subst, Subst.from_TypeEnv,
           CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
-        change ((CaptureSet.var (.M .epsilon) (.free N)).ground_denot
-          (Memory.platform_of (N + 1))).covers (.access .epsilon) N
-        have hg : (CaptureSet.var (.M .epsilon) (.free N)).ground_denot
-            (Memory.platform_of (N + 1)) = CapabilitySet.singleton .epsilon N := by
+        change ((CaptureSet.var (.M .epsilon) (.free (N + 1))).ground_denot
+          (Memory.platform_of (N + 1))).covers (.access .epsilon) (N + 1)
+        have hg : (CaptureSet.var (.M .epsilon) (.free (N + 1))).ground_denot
+            (Memory.platform_of (N + 1)) = CapabilitySet.singleton .epsilon (N + 1) := by
           simp [CaptureSet.ground_denot, reachability_of_loc, Memory.platform_of,
             Heap.platform_of, CapabilitySet.singleton]
         rw [hg]
         exact CapabilitySet.covers.here CapMode.Le.refl
     · simp only [Ty.captureSet, CaptureSet.peakset, CaptureSet.peaks]
     · apply CaptureSet.WfInHeap.wf_var_free
-      change (Heap.platform_of (N + 1)) N = some (.capability (.mcell false .live))
+      change (Heap.platform_of (N + 1)) (N + 1) = some (.capability (.mcell 0 .live))
       unfold Heap.platform_of
       simp
     · exact CaptureBound.WfInHeap.wf_unbound

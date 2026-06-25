@@ -1207,7 +1207,7 @@ end Liveness
 /-- Underlying info of a capability. -/
 inductive CapabilityInfo : Type where
 | basic : CapabilityInfo
-| mcell : Bool -> Liveness -> CapabilityInfo
+| mcell : Nat -> Liveness -> CapabilityInfo
 
 /-- A heap cell. -/
 inductive Cell : Type where
@@ -1228,15 +1228,15 @@ def Heap.extend_cap (h : Heap) (l : Nat) : Heap :=
   fun l' => if l' = l then some (.capability .basic) else h l'
 
 /-- Heap extension with a fresh mutable cell capability.  Fresh cells start `.live`. -/
-def Heap.extend_mcell (h : Heap) (l : Nat) (b : Bool) : Heap :=
-  fun l' => if l' = l then some (.capability (.mcell b .live)) else h l'
+def Heap.extend_mcell (h : Heap) (l : Nat) (n : Nat) : Heap :=
+  fun l' => if l' = l then some (.capability (.mcell n .live)) else h l'
 
 /-- Update a cell in the heap with a new cell value. -/
 def Heap.update_cell (h : Heap) (l : Nat) (c : Cell) : Heap :=
   fun l' => if l' = l then some c else h l'
 
 /-- Auxiliary relation: one cell subsumes another.
-    For mutable cells, the boolean value is irrelevant and liveness is allowed
+    For mutable cells, the stored location is irrelevant and liveness is allowed
     to advance forward in time (live → dead) but never to be resurrected
     (dead ↛ live).  Subsumption is the "memory in the future" relation. -/
 def Cell.subsumes : Cell -> Cell -> Prop
@@ -1326,17 +1326,17 @@ def Heap.subsumes_trans {h1 h2 h3 : Heap}
 /-- Updating an mcell with another mcell creates a heap that subsumes the original.
     Liveness is preserved by the update. -/
 theorem Heap.update_mcell_subsumes (h : Heap) (l : Nat) (ℓ : Liveness)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool) :
-  (h.update_cell l (.capability (.mcell b ℓ))).subsumes h := by
+  (hexists : ∃ n0, h l = some (.capability (.mcell n0 ℓ))) (n : Nat) :
+  (h.update_cell l (.capability (.mcell n ℓ))).subsumes h := by
   intro l' v hlookup
   unfold Heap.update_cell
   split
   case isTrue heq =>
     subst heq
-    obtain ⟨b0, hb0⟩ := hexists
-    rw [hb0] at hlookup
+    obtain ⟨n0, hn0⟩ := hexists
+    rw [hn0] at hlookup
     cases hlookup
-    exact ⟨.capability (.mcell b ℓ), rfl, Liveness.Le.refl⟩
+    exact ⟨.capability (.mcell n ℓ), rfl, Liveness.Le.refl⟩
   case isFalse hneq =>
     exact ⟨v, hlookup, Cell.subsumes_refl v⟩
 
@@ -1430,10 +1430,12 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap .bool H
 | wf_cell :
   CaptureSet.WfInHeap cs H ->
-  Ty.WfInHeap (.cell cs) H
+  Ty.WfInHeap T H ->
+  Ty.WfInHeap (.cell cs T) H
 | wf_reader :
   CaptureSet.WfInHeap cs H ->
-  Ty.WfInHeap (.reader cs) H
+  Ty.WfInHeap T H ->
+  Ty.WfInHeap (.reader cs T) H
 -- Existential types
 | wf_exi :
   Ty.WfInHeap T H ->
@@ -1583,8 +1585,8 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
     exact Ty.WfInHeap.wf_modal (CaptureSet.wf_of_closed hcs)
       (SepCtx.wf_of_closed hΨ) ih
   | cap hcs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_of_closed hcs)
-  | cell hcs => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_of_closed hcs)
-  | reader hcs => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_of_closed hcs)
+  | cell hcs _ ih => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_of_closed hcs) ih
+  | reader hcs _ ih => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_of_closed hcs) ih
   | exi _ ih => exact Ty.WfInHeap.wf_exi ih
   | typ _ ih => exact Ty.WfInHeap.wf_typ ih
 
@@ -1699,8 +1701,10 @@ theorem Ty.wf_monotonic
       (CaptureSet.wf_monotonic hsub hwf_cs)
       (SepCtx.wf_monotonic hsub hwf_Ψ) (ih_T hsub)
   | wf_cap hwf_cs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_monotonic hsub hwf_cs)
-  | wf_cell hwf_cs => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_monotonic hsub hwf_cs)
-  | wf_reader hwf_cs => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_monotonic hsub hwf_cs)
+  | wf_cell hwf_cs _ ih_T =>
+    exact Ty.WfInHeap.wf_cell (CaptureSet.wf_monotonic hsub hwf_cs) (ih_T hsub)
+  | wf_reader hwf_cs _ ih_T =>
+    exact Ty.WfInHeap.wf_reader (CaptureSet.wf_monotonic hsub hwf_cs) (ih_T hsub)
   | wf_exi _ ih => exact Ty.WfInHeap.wf_exi (ih hsub)
   | wf_typ _ ih => exact Ty.WfInHeap.wf_typ (ih hsub)
 
@@ -1887,8 +1891,10 @@ theorem Ty.wf_dom_subsumes {h1 h2 : Heap}
     exact .wf_modal (CaptureSet.wf_dom_subsumes hsub hwf_cs)
                     (SepCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_T hsub)
   | wf_cap hwf_cs => exact .wf_cap (CaptureSet.wf_dom_subsumes hsub hwf_cs)
-  | wf_cell hwf_cs => exact .wf_cell (CaptureSet.wf_dom_subsumes hsub hwf_cs)
-  | wf_reader hwf_cs => exact .wf_reader (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+  | wf_cell hwf_cs _ ih_T =>
+    exact .wf_cell (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_T hsub)
+  | wf_reader hwf_cs _ ih_T =>
+    exact .wf_reader (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_T hsub)
   | wf_exi _ ih => exact .wf_exi (ih hsub)
   | wf_typ _ ih => exact .wf_typ (ih hsub)
 
@@ -2194,20 +2200,20 @@ theorem compute_reachability_monotonic
 
 /-- Updating an mcell preserves reachability_of_loc for all locations. -/
 theorem reachability_of_loc_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool) (l' : Nat) :
-  reachability_of_loc (h.update_cell l (.capability (.mcell b ℓ))) l' =
+  (hexists : ∃ n0, h l = some (.capability (.mcell n0 ℓ))) (n : Nat) (l' : Nat) :
+  reachability_of_loc (h.update_cell l (.capability (.mcell n ℓ))) l' =
   reachability_of_loc h l' := by
   unfold reachability_of_loc Heap.update_cell
   by_cases heq : l' = l
   · subst heq
-    obtain ⟨b0, hb0⟩ := hexists
-    simp only [hb0, if_true]
+    obtain ⟨n0, hn0⟩ := hexists
+    simp only [hn0, if_true]
   · simp only [heq, if_false]
 
 /-- Updating an mcell preserves expand_captures. -/
 theorem expand_captures_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool) (cs : CaptureSet {}) :
-  expand_captures (h.update_cell l (.capability (.mcell b ℓ))) cs =
+  (hexists : ∃ n0, h l = some (.capability (.mcell n0 ℓ))) (n : Nat) (cs : CaptureSet {}) :
+  expand_captures (h.update_cell l (.capability (.mcell n ℓ))) cs =
   expand_captures h cs := by
   induction cs with
   | empty => rfl
@@ -2217,26 +2223,26 @@ theorem expand_captures_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
     | free loc =>
       simpa only [expand_captures] using
         congrArg (CapabilitySet.applyAccess m)
-          (reachability_of_loc_update_mcell h l ℓ hexists b loc)
+          (reachability_of_loc_update_mcell h l ℓ hexists n loc)
   | union cs1 cs2 ih1 ih2 =>
     simp only [expand_captures, ih1, ih2]
   | cvar m c => cases c
 
 /-- Updating an mcell preserves compute_reachability. -/
 theorem compute_reachability_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
-  (hexists : ∃ b0, h l = some (.capability (.mcell b0 ℓ))) (b : Bool)
+  (hexists : ∃ n0, h l = some (.capability (.mcell n0 ℓ))) (n : Nat)
   (v : Exp {}) (hv : v.IsSimpleVal) :
-  compute_reachability (h.update_cell l (.capability (.mcell b ℓ))) v hv =
+  compute_reachability (h.update_cell l (.capability (.mcell n ℓ))) v hv =
   compute_reachability h v hv := by
   cases hv with
   | abs =>
-    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists n _
   | tabs =>
-    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists n _
   | cabs =>
-    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists n _
   | boxed =>
-    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists n _
   | reader =>
     rename_i x
     cases x with
@@ -2249,7 +2255,7 @@ theorem compute_reachability_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
     other locations are untouched. -/
 theorem reachability_of_loc_drop_mcell (h : Heap) (l : Nat)
   (hexists : ∃ b0, h l = some (.capability (.mcell b0 .live))) (l' : Nat) :
-  reachability_of_loc (h.update_cell l (.capability (.mcell false .dead))) l' =
+  reachability_of_loc (h.update_cell l (.capability (.mcell 0 .dead))) l' =
   reachability_of_loc h l' := by
   unfold reachability_of_loc Heap.update_cell
   by_cases heq : l' = l
@@ -2261,7 +2267,7 @@ theorem reachability_of_loc_drop_mcell (h : Heap) (l : Nat)
 /-- Dropping a live mcell preserves `expand_captures`. -/
 theorem expand_captures_drop_mcell (h : Heap) (l : Nat)
   (hexists : ∃ b0, h l = some (.capability (.mcell b0 .live))) (cs : CaptureSet {}) :
-  expand_captures (h.update_cell l (.capability (.mcell false .dead))) cs =
+  expand_captures (h.update_cell l (.capability (.mcell 0 .dead))) cs =
   expand_captures h cs := by
   induction cs with
   | empty => rfl
@@ -2280,7 +2286,7 @@ theorem expand_captures_drop_mcell (h : Heap) (l : Nat)
 theorem compute_reachability_drop_mcell (h : Heap) (l : Nat)
   (hexists : ∃ b0, h l = some (.capability (.mcell b0 .live)))
   (v : Exp {}) (hv : v.IsSimpleVal) :
-  compute_reachability (h.update_cell l (.capability (.mcell false .dead))) v hv =
+  compute_reachability (h.update_cell l (.capability (.mcell 0 .dead))) v hv =
   compute_reachability h v hv := by
   cases hv with
   | abs =>
@@ -2580,12 +2586,12 @@ theorem Ty.wf_rename
       (Ty.WfInHeap.wf_cap (CaptureSet.wf_rename hwf_cs))
   | wf_bool =>
     simpa only [Ty.rename] using (Ty.WfInHeap.wf_bool)
-  | wf_cell hwf_cs =>
+  | wf_cell hwf_cs _ ih_T =>
     simpa only [Ty.rename] using
-      (Ty.WfInHeap.wf_cell (CaptureSet.wf_rename hwf_cs))
-  | wf_reader hwf_cs =>
+      (Ty.WfInHeap.wf_cell (CaptureSet.wf_rename hwf_cs) ih_T)
+  | wf_reader hwf_cs _ ih_T =>
     simpa only [Ty.rename] using
-      (Ty.WfInHeap.wf_reader (CaptureSet.wf_rename hwf_cs))
+      (Ty.WfInHeap.wf_reader (CaptureSet.wf_rename hwf_cs) ih_T)
   | wf_exi _ ih =>
     simpa only [Ty.rename] using (Ty.WfInHeap.wf_exi ih)
   | wf_typ _ ih =>
@@ -2873,12 +2879,12 @@ theorem Ty.wf_subst
       (Ty.WfInHeap.wf_cap (CaptureSet.wf_subst hwf_cs hwf_σ))
   | wf_bool =>
     simpa only [Ty.subst] using (Ty.WfInHeap.wf_bool)
-  | wf_cell hwf_cs =>
+  | wf_cell hwf_cs _ ih_T =>
     simpa only [Ty.subst] using
-      (Ty.WfInHeap.wf_cell (CaptureSet.wf_subst hwf_cs hwf_σ))
-  | wf_reader hwf_cs =>
+      (Ty.WfInHeap.wf_cell (CaptureSet.wf_subst hwf_cs hwf_σ) (ih_T hwf_σ))
+  | wf_reader hwf_cs _ ih_T =>
     simpa only [Ty.subst] using
-      (Ty.WfInHeap.wf_reader (CaptureSet.wf_subst hwf_cs hwf_σ))
+      (Ty.WfInHeap.wf_reader (CaptureSet.wf_subst hwf_cs hwf_σ) (ih_T hwf_σ))
   | wf_exi _ ih =>
     simpa only [Ty.subst] using
       (Ty.WfInHeap.wf_exi (ih (Subst.wf_lift hwf_σ)))
@@ -3132,6 +3138,18 @@ structure Memory where
   heap : Heap
   wf : heap.WfHeap
   findom : ∃ dom, heap.HasFinDom dom
+  /-- **Content-closure for mutable cells.**  Every *live* mutable cell stores the heap
+    location of a *present* cell.  This is the operational content-validity invariant for
+    generic (reference-valued) cells: it holds because `alloc`/`write` only ever store
+    locations of *present* cells (the env binds every variable — of any type — to a present
+    location), and it is what makes a faithful `read` return a well-formed reference
+    (`mcell_content_val`).  It also gives the confluence frame lemmas the disequality
+    "an mcell's content differs from any cell absent in the smaller heap".
+
+    NB the content is *present* (a value or another capability), not necessarily a value:
+    a generic cell may store a reference-valued (`cell`/`reader`) content. -/
+  mcell_wf : ∀ l n, heap l = some (.capability (.mcell n .live)) →
+    heap n ≠ none
 
 namespace Memory
 
@@ -3140,10 +3158,37 @@ def empty : Memory where
   heap := ∅
   wf := Heap.wf_empty
   findom := ⟨∅, Heap.empty_has_fin_dom⟩
+  mcell_wf := by intro l n hlk; cases hlk
+
+/-- A value location differs from any location holding a capability cell. -/
+theorem val_ne_cap_loc {H : Heap} {n l : Nat} {w c}
+    (hn : H n = some (.val w)) (hl : H l = some (.capability c)) : n ≠ l := by
+  rintro rfl; rw [hn] at hl; cases hl
+
+/-- A present value location differs from a fresh (absent) location. -/
+theorem val_present_ne_fresh {H : Heap} {n l : Nat} {w}
+    (hn : H n = some (.val w)) (hl : H l = none) : n ≠ l := by
+  rintro rfl; rw [hn] at hl; cases hl
+
+/-- Any present location differs from a fresh (absent) location. -/
+theorem present_ne_fresh {H : Heap} {n l : Nat}
+    (hn : H n ≠ none) (hl : H l = none) : n ≠ l := fun h => hn (h ▸ hl)
 
 /-- Lookup a value in memory. -/
 def lookup (m : Memory) (l : Nat) : Option Cell :=
   m.heap l
+
+/-- A successful lookup witnesses content presence. -/
+theorem heap_ne_none_of_lookup {m : Memory} {n : Nat} {c : Cell}
+    (h : m.lookup n = some c) : m.heap n ≠ none := by
+  simp only [Memory.lookup] at h; rw [h]; exact Option.some_ne_none c
+
+/-- Content presence transfers across memories that agree off a cell `c`. -/
+theorem heap_ne_none_of_agree {m ma : Memory} {c y : Nat}
+    (hag : ∀ l, l ≠ c → m.lookup l = ma.lookup l) (hyc : y ≠ c)
+    (hy : m.heap y ≠ none) : ma.heap y ≠ none := by
+  intro hn; apply hy
+  change m.lookup y = none; rw [hag y hyc]; exact hn
 
 /-- Extend memory with a new value.
     Requires proof that the value is well-formed and the location is fresh. -/
@@ -3156,6 +3201,14 @@ def extend (m : Memory) (l : Nat) (v : HeapVal)
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
+  mcell_wf := by
+    intro l' n' hlk
+    have hl'l : l' ≠ l := by rintro rfl; simp [Heap.extend] at hlk
+    rw [show (m.heap.extend l v) l' = m.heap l' from by simp [Heap.extend, hl'l]] at hlk
+    have hpres := m.mcell_wf l' n' hlk
+    rw [show (m.heap.extend l v) n' = m.heap n' from by
+      simp [Heap.extend, present_ne_fresh hpres hfresh]]
+    exact hpres
 
 /-- Heap extension with capability subsumes original heap. -/
 theorem Heap.extend_cap_subsumes {H : Heap} {l : Nat}
@@ -3209,11 +3262,19 @@ def extend_cap (m : Memory) (l : Nat)
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_cap_has_fin_dom hdom hfresh⟩
+  mcell_wf := by
+    intro l' n' hlk
+    have hl'l : l' ≠ l := by rintro rfl; simp [Heap.extend_cap] at hlk
+    rw [show (m.heap.extend_cap l) l' = m.heap l' from by simp [Heap.extend_cap, hl'l]] at hlk
+    have hpres := m.mcell_wf l' n' hlk
+    rw [show (m.heap.extend_cap l) n' = m.heap n' from by
+      simp [Heap.extend_cap, present_ne_fresh hpres hfresh]]
+    exact hpres
 
 /-- Heap extension with mcell subsumes original heap. -/
-theorem Heap.extend_mcell_subsumes {H : Heap} {l : Nat} {b : Bool}
+theorem Heap.extend_mcell_subsumes {H : Heap} {l : Nat} {n : Nat}
   (hfresh : H l = none) :
-  (H.extend_mcell l b).subsumes H := by
+  (H.extend_mcell l n).subsumes H := by
   intro l' v' hlookup
   unfold Heap.extend_mcell
   split
@@ -3225,9 +3286,9 @@ theorem Heap.extend_mcell_subsumes {H : Heap} {l : Nat} {b : Bool}
     exists v'
     exact ⟨hlookup, Cell.subsumes_refl v'⟩
 
-theorem Heap.extend_mcell_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat} {b : Bool}
+theorem Heap.extend_mcell_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat} {n : Nat}
   (hdom : H.HasFinDom dom) (hfresh : H l = none) :
-  (H.extend_mcell l b).HasFinDom (dom ∪ {l}) := by
+  (H.extend_mcell l n).HasFinDom (dom ∪ {l}) := by
   intro l'
   unfold Heap.extend_mcell
   split
@@ -3247,10 +3308,13 @@ theorem Heap.extend_mcell_has_fin_dom {H : Heap} {dom : Finset Nat} {l : Nat} {b
       · exact (hdom l').mpr h
       · contradiction
 
-/-- Extend memory with a fresh mutable cell capability. -/
-def extend_mcell (m : Memory) (l : Nat) (b : Bool)
-  (hfresh : m.heap l = none) : Memory where
-  heap := m.heap.extend_mcell l b
+/-- Extend memory with a fresh mutable cell capability storing location `n`.
+    The fresh cell is live, so its content `n` must already hold a value
+    (`hcontent`) to preserve the content-closure invariant `mcell_wf`. -/
+def extend_mcell (m : Memory) (l : Nat) (n : Nat)
+  (hfresh : m.heap l = none)
+  (hcontent : m.heap n ≠ none) : Memory where
+  heap := m.heap.extend_mcell l n
   wf := by
     constructor
     · intro l' hv' hlookup
@@ -3285,6 +3349,22 @@ def extend_mcell (m : Memory) (l : Nat) (b : Bool)
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_mcell_has_fin_dom hdom hfresh⟩
+  mcell_wf := by
+    intro l' n' hlk
+    by_cases hl'l : l' = l
+    · simp only [Heap.extend_mcell] at hlk
+      rw [if_pos hl'l] at hlk
+      injection hlk with h; injection h with h2; injection h2 with hn _
+      subst hn
+      rw [show (m.heap.extend_mcell l n) n = m.heap n from by
+        simp only [Heap.extend_mcell, if_neg (present_ne_fresh hcontent hfresh)]]
+      exact hcontent
+    · rw [show (m.heap.extend_mcell l n) l' = m.heap l' from by
+        simp [Heap.extend_mcell, hl'l]] at hlk
+      have hpres := m.mcell_wf l' n' hlk
+      rw [show (m.heap.extend_mcell l n) n' = m.heap n' from by
+        simp only [Heap.extend_mcell, if_neg (present_ne_fresh hpres hfresh)]]
+      exact hpres
 
 /-- Extend memory with a value that's well-formed in the current heap.
     This is often more convenient than `extend` in practice. -/
@@ -3297,13 +3377,33 @@ def extend_val (m : Memory) (l : Nat) (v : HeapVal)
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom ∪ {l}, Heap.extend_has_fin_dom hdom hfresh⟩
+  mcell_wf := by
+    intro l' n' hlk
+    have hl'l : l' ≠ l := by rintro rfl; simp [Heap.extend] at hlk
+    rw [show (m.heap.extend l v) l' = m.heap l' from by simp [Heap.extend, hl'l]] at hlk
+    have hpres := m.mcell_wf l' n' hlk
+    rw [show (m.heap.extend l v) n' = m.heap n' from by
+      simp [Heap.extend, present_ne_fresh hpres hfresh]]
+    exact hpres
 
-/-- Update a mutable cell in memory with a new boolean value.
+/-- After updating the cell at `l`, location `k` is present whenever it is the updated
+    location or was already present. -/
+theorem Heap.update_cell_present {H : Heap} {l : Nat} {c : Cell} {k : Nat}
+    (h : k = l ∨ H k ≠ none) : (H.update_cell l c) k ≠ none := by
+  unfold Heap.update_cell
+  rcases h with h | h
+  · rw [if_pos h]; exact fun hc => by cases hc
+  · split
+    · exact fun hc => by cases hc
+    · exact h
+
+/-- Update a mutable cell in memory with a new stored heap location.
     Requires proof that the location contains a mutable cell with liveness `ℓ`.
     The update preserves the cell's liveness. -/
-def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
-  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ))) : Memory where
-  heap := m.heap.update_cell l (.capability (.mcell b ℓ))
+def update_mcell (m : Memory) (l : Nat) (n : Nat) (ℓ : Liveness)
+  (hexists : ∃ n0, m.heap l = some (.capability (.mcell n0 ℓ)))
+  (hcontent : ℓ = .live → m.heap n ≠ none) : Memory where
+  heap := m.heap.update_cell l (.capability (.mcell n ℓ))
   wf := by
     constructor
     · intro l' hv' hlookup
@@ -3313,8 +3413,8 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
         cases hlookup
       case isFalse hneq =>
         have hwf_orig : hv'.unwrap.WfInHeap m.heap := m.wf.wf_val l' hv' hlookup
-        have hsub : (m.heap.update_cell l (.capability (.mcell b ℓ))).subsumes m.heap :=
-          Heap.update_mcell_subsumes m.heap l ℓ hexists b
+        have hsub : (m.heap.update_cell l (.capability (.mcell n ℓ))).subsumes m.heap :=
+          Heap.update_mcell_subsumes m.heap l ℓ hexists n
         exact Exp.wf_monotonic hsub hwf_orig
     · intro l' v' hv' R' hlookup
       unfold Heap.update_cell at hlookup
@@ -3325,7 +3425,7 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
         have hreach_orig : R' = compute_reachability m.heap v' hv' :=
           m.wf.wf_reach l' v' hv' R' hlookup
         rw [hreach_orig]
-        exact (compute_reachability_update_mcell m.heap l ℓ hexists b v' hv').symm
+        exact (compute_reachability_update_mcell m.heap l ℓ hexists n v' hv').symm
     · intro l' v' hv' R' hlookup mu l'' hmem
       have hold : m.heap l'' ≠ none := by
         unfold Heap.update_cell at hlookup
@@ -3359,6 +3459,21 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
       split
       case isTrue => simp
       case isFalse => exact (hdom l').mpr hin_dom
+  mcell_wf := by
+    intro l' n' hlk
+    refine Heap.update_cell_present ?_
+    by_cases hn'l : n' = l
+    · exact Or.inl hn'l
+    · refine Or.inr ?_
+      by_cases hl'l : l' = l
+      · simp only [Heap.update_cell] at hlk
+        rw [if_pos hl'l] at hlk
+        injection hlk with h; injection h with h2; injection h2 with hn hℓ
+        subst hℓ
+        rw [← hn]; exact hcontent rfl
+      · rw [show (m.heap.update_cell l (.capability (.mcell n ℓ))) l' = m.heap l' from by
+          simp [Heap.update_cell, hl'l]] at hlk
+        exact m.mcell_wf l' n' hlk
 
 /-- Mark a live mutable cell as dead.  This is the operational counterpart of
     the `drop` form: the cell remains in the heap (so locations referring to
@@ -3370,10 +3485,10 @@ def update_mcell (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
     destructive transition. -/
 def drop_mcell (m : Memory) (l : Nat)
   (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) : Memory where
-  heap := m.heap.update_cell l (.capability (.mcell false .dead))
+  heap := m.heap.update_cell l (.capability (.mcell 0 .dead))
   wf := by
     have hdom_sub :
-        (m.heap.update_cell l (.capability (.mcell false .dead))).dom_subsumes m.heap := by
+        (m.heap.update_cell l (.capability (.mcell 0 .dead))).dom_subsumes m.heap := by
       intro l' v hlookup
       unfold Heap.update_cell
       by_cases hl : l' = l
@@ -3428,6 +3543,14 @@ def drop_mcell (m : Memory) (l : Nat)
       split
       case isTrue => simp
       case isFalse => exact (hdom l').mpr hin_dom
+  mcell_wf := by
+    intro l' n' hlk
+    by_cases hl'l : l' = l
+    · subst hl'l
+      simp [Heap.update_cell] at hlk
+    · rw [show (m.heap.update_cell l (.capability (.mcell 0 .dead))) l' = m.heap l' from by
+        simp [Heap.update_cell, hl'l]] at hlk
+      exact Heap.update_cell_present (Or.inr (m.mcell_wf l' n' hlk))
 
 /-- Memory subsumption: m1 subsumes m2 if m1's heap subsumes m2's heap. -/
 def subsumes (m1 m2 : Memory) : Prop :=
@@ -3445,19 +3568,22 @@ theorem subsumes_trans {m1 m2 m3 : Memory}
   Heap.subsumes_trans h12 h23
 
 /-- Updating a mutable cell creates a memory that subsumes the original. -/
-theorem update_mcell_subsumes (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
-  (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ))) :
-  (m.update_mcell l b ℓ hexists).subsumes m := by
-  change (m.heap.update_cell l (.capability (.mcell b ℓ))).subsumes m.heap
-  exact Heap.update_mcell_subsumes m.heap l ℓ hexists b
+theorem update_mcell_subsumes (m : Memory) (l : Nat) (n : Nat) (ℓ : Liveness)
+  (hexists : ∃ n0, m.heap l = some (.capability (.mcell n0 ℓ)))
+  (hcontent : ℓ = .live → m.heap n ≠ none) :
+  (m.update_mcell l n ℓ hexists hcontent).subsumes m := by
+  change (m.heap.update_cell l (.capability (.mcell n ℓ))).subsumes m.heap
+  exact Heap.update_mcell_subsumes m.heap l ℓ hexists n
 
 /-- Extending two subsuming memories with the same mcell at the same location
 preserves subsumption. -/
-theorem extend_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
+theorem extend_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (n : Nat)
   (hfresh1 : m1.heap l = none) (hfresh2 : m2.heap l = none)
+  (hcontent1 : m1.heap n ≠ none)
+  (hcontent2 : m2.heap n ≠ none)
   (hsub : m2.subsumes m1) :
-  (m2.extend_mcell l b hfresh2).subsumes (m1.extend_mcell l b hfresh1) := by
-  change (m2.heap.extend_mcell l b).subsumes (m1.heap.extend_mcell l b)
+  (m2.extend_mcell l n hfresh2 hcontent2).subsumes (m1.extend_mcell l n hfresh1 hcontent1) := by
+  change (m2.heap.extend_mcell l n).subsumes (m1.heap.extend_mcell l n)
   intro l' v hlookup
   unfold Heap.extend_mcell at hlookup ⊢
   by_cases hneq : l' = l
@@ -3472,14 +3598,17 @@ theorem extend_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
 /-- Updating mcells in subsuming memories preserves subsumption.  Both memories
     must carry the same liveness for the cell, which is automatic for any pair
     related by `subsumes`. -/
-theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
+theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (n : Nat)
   (ℓ : Liveness)
-  (hexists1 : ∃ b0, m1.heap l = some (.capability (.mcell b0 ℓ)))
-  (hexists2 : ∃ b0, m2.heap l = some (.capability (.mcell b0 ℓ)))
+  (hexists1 : ∃ n0, m1.heap l = some (.capability (.mcell n0 ℓ)))
+  (hexists2 : ∃ n0, m2.heap l = some (.capability (.mcell n0 ℓ)))
+  (hcontent1 : ℓ = .live → m1.heap n ≠ none)
+  (hcontent2 : ℓ = .live → m2.heap n ≠ none)
   (hsub : m2.subsumes m1) :
-  (m2.update_mcell l b ℓ hexists2).subsumes (m1.update_mcell l b ℓ hexists1) := by
-  change (m2.heap.update_cell l (.capability (.mcell b ℓ))).subsumes
-    (m1.heap.update_cell l (.capability (.mcell b ℓ)))
+  (m2.update_mcell l n ℓ hexists2 hcontent2).subsumes
+    (m1.update_mcell l n ℓ hexists1 hcontent1) := by
+  change (m2.heap.update_cell l (.capability (.mcell n ℓ))).subsumes
+    (m1.heap.update_cell l (.capability (.mcell n ℓ)))
   unfold Heap.subsumes
   intro l' v hlookup
   unfold Heap.update_cell at hlookup ⊢
@@ -3487,7 +3616,7 @@ theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
   · subst hneq
     rw [if_pos rfl] at hlookup
     cases hlookup
-    refine ⟨.capability (.mcell b ℓ), ?_, ?_⟩
+    refine ⟨.capability (.mcell n ℓ), ?_, ?_⟩
     · rw [if_pos rfl]
     · simp only [Cell.subsumes]; exact Liveness.Le.refl
   · rw [if_neg hneq] at hlookup
@@ -3499,7 +3628,7 @@ theorem update_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat) (b : Bool)
 theorem drop_mcell_subsumes (m : Memory) (l : Nat)
   (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) :
   (m.drop_mcell l hexists).subsumes m := by
-  change (m.heap.update_cell l (.capability (.mcell false .dead))).subsumes m.heap
+  change (m.heap.update_cell l (.capability (.mcell 0 .dead))).subsumes m.heap
   intro l' v hlookup
   unfold Heap.update_cell
   by_cases hneq : l' = l
@@ -3507,14 +3636,14 @@ theorem drop_mcell_subsumes (m : Memory) (l : Nat)
     obtain ⟨b0, hb0⟩ := hexists
     rw [hb0] at hlookup
     cases hlookup
-    refine ⟨.capability (.mcell false .dead), ?_, ?_⟩
+    refine ⟨.capability (.mcell 0 .dead), ?_, ?_⟩
     · rw [if_pos rfl]
     · simp only [Cell.subsumes]; exact Liveness.Le.live_dead
   · refine ⟨v, ?_, Cell.subsumes_refl v⟩
     rw [if_neg hneq]; exact hlookup
 
 /-- Dropping mcells in subsuming memories preserves subsumption.  The cell at
-    `l` becomes `(.mcell false .dead)` in both heaps (so they agree exactly
+    `l` becomes `(.mcell 0 .dead)` in both heaps (so they agree exactly
     there); other cells are unchanged and the subsumption hypothesis carries
     them across. -/
 theorem drop_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat)
@@ -3522,8 +3651,8 @@ theorem drop_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat)
   (hexists2 : ∃ b0, m2.heap l = some (.capability (.mcell b0 .live)))
   (hsub : m2.subsumes m1) :
   (m2.drop_mcell l hexists2).subsumes (m1.drop_mcell l hexists1) := by
-  change (m2.heap.update_cell l (.capability (.mcell false .dead))).subsumes
-    (m1.heap.update_cell l (.capability (.mcell false .dead)))
+  change (m2.heap.update_cell l (.capability (.mcell 0 .dead))).subsumes
+    (m1.heap.update_cell l (.capability (.mcell 0 .dead)))
   unfold Heap.subsumes
   intro l' v hlookup
   unfold Heap.update_cell at hlookup ⊢
@@ -3531,7 +3660,7 @@ theorem drop_mcell_subsumes_compat {m1 m2 : Memory} (l : Nat)
   · subst hneq
     rw [if_pos rfl] at hlookup
     cases hlookup
-    refine ⟨.capability (.mcell false .dead), ?_, ?_⟩
+    refine ⟨.capability (.mcell 0 .dead), ?_, ?_⟩
     · rw [if_pos rfl]
     · simp only [Cell.subsumes]; exact Liveness.Le.refl
   · rw [if_neg hneq] at hlookup
@@ -3572,15 +3701,17 @@ theorem extend_cap_subsumes (m : Memory) (l : Nat)
   exact Heap.extend_cap_subsumes hfresh
 
 /-- Mutable cell extension subsumes the original memory. -/
-theorem extend_mcell_subsumes (m : Memory) (l : Nat) (b : Bool)
-  (hfresh : m.heap l = none) :
-  (m.extend_mcell l b hfresh).subsumes m := by
-  change (m.heap.extend_mcell l b).subsumes m.heap
+theorem extend_mcell_subsumes (m : Memory) (l : Nat) (n : Nat)
+  (hfresh : m.heap l = none)
+  (hcontent : m.heap n ≠ none) :
+  (m.extend_mcell l n hfresh hcontent).subsumes m := by
+  change (m.heap.extend_mcell l n).subsumes m.heap
   exact Heap.extend_mcell_subsumes hfresh
 
-theorem extend_mcell_lookup {m : Memory} {l : Nat} {b : Bool}
-  (hfresh : m.heap l = none) :
-  (m.extend_mcell l b hfresh).lookup l = some (.capability (.mcell b .live)) := by
+theorem extend_mcell_lookup {m : Memory} {l : Nat} {n : Nat}
+  (hfresh : m.heap l = none)
+  (hcontent : m.heap n ≠ none) :
+  (m.extend_mcell l n hfresh hcontent).lookup l = some (.capability (.mcell n .live)) := by
   simp only [lookup, extend_mcell, Heap.extend_mcell, if_true]
 
 /-- Well-formedness is preserved under memory subsumption. -/
@@ -3671,12 +3802,13 @@ theorem is_compatible_extend_val (m : Memory) (l : Nat) (v : HeapVal)
 
 /-- `is_compatible` is preserved by extending memory with a fresh *live* mutable
     cell: the new cell is live, so it cannot violate the liveness condition. -/
-theorem is_compatible_extend_mcell (m : Memory) (l : Nat) (b : Bool)
-    (hfresh : m.heap l = none) {C : CapabilitySet}
+theorem is_compatible_extend_mcell (m : Memory) (l : Nat) (n : Nat)
+    (hfresh : m.heap l = none)
+    (hcontent : m.heap n ≠ none) {C : CapabilitySet}
     (hcompat : m.is_compatible C) :
-    (m.extend_mcell l b hfresh).is_compatible C := by
+    (m.extend_mcell l n hfresh hcontent).is_compatible C := by
   intro mu l' b' ℓ hmem hheap
-  change (m.heap.extend_mcell l b) l' = some (.capability (.mcell b' ℓ)) at hheap
+  change (m.heap.extend_mcell l n) l' = some (.capability (.mcell b' ℓ)) at hheap
   unfold Heap.extend_mcell at hheap
   split at hheap
   · injection hheap with hc; injection hc with hmc; injection hmc with _ hℓ; exact hℓ.symm
@@ -3684,12 +3816,13 @@ theorem is_compatible_extend_mcell (m : Memory) (l : Nat) (b : Bool)
 
 /-- `is_compatible` is preserved by updating a mutable cell to a *live* value:
     the cell stays live, so the liveness condition is maintained. -/
-theorem is_compatible_update_mcell (m : Memory) (l : Nat) (b : Bool)
-    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live))) {C : CapabilitySet}
+theorem is_compatible_update_mcell (m : Memory) (l : Nat) (n : Nat)
+    (hexists : ∃ n0, m.heap l = some (.capability (.mcell n0 .live)))
+    (hcontent : m.heap n ≠ none) {C : CapabilitySet}
     (hcompat : m.is_compatible C) :
-    (m.update_mcell l b .live hexists).is_compatible C := by
+    (m.update_mcell l n .live hexists (fun _ => hcontent)).is_compatible C := by
   intro mu l' b' ℓ hmem hheap
-  change (m.heap.update_cell l (.capability (.mcell b .live))) l' = some (.capability (.mcell b' ℓ))
+  change (m.heap.update_cell l (.capability (.mcell n .live))) l' = some (.capability (.mcell b' ℓ))
     at hheap
   unfold Heap.update_cell at hheap
   split at hheap
@@ -3705,7 +3838,7 @@ theorem is_compatible_drop_mcell (m : Memory) (l : Nat)
     (hcompat : m.is_compatible C) :
     (m.drop_mcell l hexists).is_compatible C := by
   intro mu l' b' ℓ hmem hheap
-  change (m.heap.update_cell l (.capability (.mcell false .dead))) l'
+  change (m.heap.update_cell l (.capability (.mcell 0 .dead))) l'
     = some (.capability (.mcell b' ℓ)) at hheap
   unfold Heap.update_cell at hheap
   split at hheap
@@ -3950,9 +4083,10 @@ theorem Memory.extend_drops_authorized
 /-- Extending memory with a fresh mutable cell (starting `.live`) introduces
     no live-to-dead transitions, so any `C` authorizes it. -/
 theorem Memory.extend_mcell_drops_authorized
-    (m : Memory) (l : Nat) (b : Bool) (hfresh : m.heap l = none)
+    (m : Memory) (l : Nat) (n : Nat) (hfresh : m.heap l = none)
+    (hcontent : m.heap n ≠ none)
     (C : CapabilitySet) :
-    m.drops_authorized (m.extend_mcell l b hfresh) C := by
+    m.drops_authorized (m.extend_mcell l n hfresh hcontent) C := by
   intro l' b1 b2 hlive hdead
   unfold Memory.extend_mcell Heap.extend_mcell at hdead
   simp only at hdead
@@ -3983,10 +4117,11 @@ theorem Memory.extend_cap_drops_authorized
 /-- Updating a mutable cell preserves its liveness, so any `C` authorizes
     the resulting transition. -/
 theorem Memory.update_mcell_drops_authorized
-    (m : Memory) (l : Nat) (b : Bool) (ℓ : Liveness)
-    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ)))
+    (m : Memory) (l : Nat) (n : Nat) (ℓ : Liveness)
+    (hexists : ∃ n0, m.heap l = some (.capability (.mcell n0 ℓ)))
+    (hcontent : ℓ = .live → m.heap n ≠ none)
     (C : CapabilitySet) :
-    m.drops_authorized (m.update_mcell l b ℓ hexists) C := by
+    m.drops_authorized (m.update_mcell l n ℓ hexists hcontent) C := by
   intro l' b1 b2 hlive hdead
   unfold Memory.update_mcell Heap.update_cell at hdead
   simp only at hdead

@@ -57,8 +57,8 @@ def Ty.renameLoc (π : Equiv.Perm Nat) : Ty sort s → Ty sort s
 | .unit => .unit
 | .cap cs => .cap (cs.renameLoc π)
 | .bool => .bool
-| .cell cs => .cell (cs.renameLoc π)
-| .reader cs => .reader (cs.renameLoc π)
+| .cell cs T => .cell (cs.renameLoc π) (T.renameLoc π)
+| .reader cs T => .reader (cs.renameLoc π) (T.renameLoc π)
 | .exi T => .exi (T.renameLoc π)
 | .typ T => .typ (T.renameLoc π)
 
@@ -180,8 +180,8 @@ theorem Ty.renameLoc_rename (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
     simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename,
       SepCtx.renameLoc_rename, ih]
   | cap _ => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename]
-  | cell _ => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename]
-  | reader _ => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename]
+  | cell _ _ ih => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename, ih]
+  | reader _ _ ih => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename, ih]
   | exi _ ih => simp only [Ty.rename, Ty.renameLoc, ih]
   | typ _ ih => simp only [Ty.rename, Ty.renameLoc, ih]
 
@@ -270,11 +270,33 @@ def HeapVal.renameLoc (π : Equiv.Perm Nat) (hv : HeapVal) : HeapVal where
   isVal := hv.isVal.renameLoc π
   reachability := hv.reachability.renameLoc π
 
-/-- Rename a heap cell.  Capability cells carry no location (the location is the
-    heap key), so only the stored value is rewritten. -/
+/-- Rename the location stored inside a capability.  A `basic` capability holds no
+    location.  A *live* `mcell` stores the location `n` of its current content value,
+    which must be renamed equivariantly along `π`.  A *dead* `mcell`'s stored location is
+    a meaningless dummy (the content-closure invariant only constrains live cells), so it
+    is left untouched — this keeps the canonical dead cell `mcell 0 .dead` equivariant. -/
+def CapabilityInfo.renameLoc (π : Equiv.Perm Nat) : CapabilityInfo → CapabilityInfo
+| .basic => .basic
+| .mcell n .live => .mcell (π n) .live
+| .mcell n .dead => .mcell n .dead
+
+@[simp] theorem CapabilityInfo.renameLoc_id {ci : CapabilityInfo} :
+    ci.renameLoc (Equiv.refl Nat) = ci := by
+  cases ci with
+  | basic => rfl
+  | mcell n ℓ => cases ℓ <;> simp [CapabilityInfo.renameLoc, Equiv.refl_apply]
+
+theorem CapabilityInfo.renameLoc_comp {ci : CapabilityInfo} {π ρ : Equiv.Perm Nat} :
+    (ci.renameLoc π).renameLoc ρ = ci.renameLoc (π.trans ρ) := by
+  cases ci with
+  | basic => rfl
+  | mcell n ℓ => cases ℓ <;> simp [CapabilityInfo.renameLoc, Equiv.trans_apply]
+
+/-- Rename a heap cell.  A value cell's contents are rewritten; a capability cell has its
+    stored location (for live mcells) renamed along `π`. -/
 def Cell.renameLoc (π : Equiv.Perm Nat) : Cell → Cell
 | .val hv => .val (hv.renameLoc π)
-| .capability info => .capability info
+| .capability info => .capability (info.renameLoc π)
 | .masked => .masked
 
 /-- Rename a heap: the cell at `l` moves to `π l`, with its contents rewritten.
@@ -489,8 +511,8 @@ theorem Ty.subst_renameLoc (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
     simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc,
       SepCtx.subst_renameLoc, ih]
   | cap _ => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc]
-  | cell _ => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc]
-  | reader _ => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc]
+  | cell _ _ ih => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc, ih]
+  | reader _ _ ih => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc, ih]
   | exi _ ih =>
     simp only [Ty.subst, Ty.renameLoc, ih, ← Subst.lift_renameLoc]
     rfl
@@ -659,8 +681,8 @@ theorem Ty.WfInHeap.renameLoc {T : Ty sort s} {h : Heap} (hwf : T.WfInHeap h)
   | wf_cpoly hcb hcs _ ih => exact .wf_cpoly (hcb.renameLoc π) (hcs.renameLoc π) ih
   | wf_modal hcs hΨ _ ih => exact .wf_modal (hcs.renameLoc π) (hΨ.renameLoc π) ih
   | wf_cap hcs => exact .wf_cap (hcs.renameLoc π)
-  | wf_cell hcs => exact .wf_cell (hcs.renameLoc π)
-  | wf_reader hcs => exact .wf_reader (hcs.renameLoc π)
+  | wf_cell hcs _ ih => exact .wf_cell (hcs.renameLoc π) ih
+  | wf_reader hcs _ ih => exact .wf_reader (hcs.renameLoc π) ih
   | wf_exi _ ih => exact .wf_exi ih
   | wf_typ _ ih => exact .wf_typ ih
 
@@ -767,16 +789,45 @@ def Memory.renameLoc (π : Equiv.Perm Nat) (m : Memory) : Memory where
   findom :=
     let ⟨dom, hdom⟩ := m.findom
     ⟨dom.image π, hdom.renameLoc π⟩
+  mcell_wf := by
+    -- Renaming carries the content-closure invariant: a live mcell at `l` storing the
+    -- renamed location `n = π n0` had content at `n0`, which is moved to `n` by `renameLoc`.
+    intro l n hl
+    simp only [Heap.renameLoc] at hl ⊢
+    cases hc : m.heap (π.symm l) with
+    | none => rw [hc] at hl; simp at hl
+    | some c =>
+      rw [hc] at hl
+      simp only [Option.map_some] at hl
+      have hce : Cell.renameLoc π c = .capability (.mcell n .live) := Option.some.inj hl
+      cases c with
+      | val hv => simp [Cell.renameLoc] at hce
+      | masked => simp [Cell.renameLoc] at hce
+      | capability ci =>
+        cases ci with
+        | basic => simp [Cell.renameLoc, CapabilityInfo.renameLoc] at hce
+        | mcell n0 ℓ =>
+          cases ℓ with
+          | dead => simp [Cell.renameLoc, CapabilityInfo.renameLoc] at hce
+          | live =>
+            have hn : π n0 = n := by
+              simp only [Cell.renameLoc, CapabilityInfo.renameLoc, Cell.capability.injEq,
+                CapabilityInfo.mcell.injEq] at hce
+              exact hce.1
+            have hpres := m.mcell_wf (π.symm l) n0 hc
+            rw [← hn, Equiv.symm_apply_apply]
+            obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp hpres
+            rw [hv]; simp
 
 /-- Memory lookup commutes with renaming (along `π`). -/
 theorem Memory.lookup_renameLoc (π : Equiv.Perm Nat) (m : Memory) (l : Nat) :
     (m.renameLoc π).lookup (π l) = (m.lookup l).map (Cell.renameLoc π) :=
   Heap.lookup_renameLoc π m.heap l
 
-/-- A renamed capability cell is looked up at the renamed location. -/
+/-- A renamed capability cell is looked up at the renamed location (info renamed). -/
 theorem Memory.lookup_cap_renameLoc {m : Memory} {l : Nat} {ci : CapabilityInfo}
     (h : m.lookup l = some (.capability ci)) (π : Equiv.Perm Nat) :
-    (m.renameLoc π).lookup (π l) = some (.capability ci) := by
+    (m.renameLoc π).lookup (π l) = some (.capability (ci.renameLoc π)) := by
   rw [Memory.lookup_renameLoc, h]; rfl
 
 /-- A renamed value cell is looked up at the renamed location (value renamed). -/
@@ -837,8 +888,8 @@ theorem Ty.renameLoc_id {T : Ty sort s} : T.renameLoc (Equiv.refl Nat) = T := by
   | modal _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_id, SepCtx.renameLoc_id, ih]
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
-  | cell _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
-  | reader _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
+  | cell _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ih]
+  | reader _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ih]
   | exi _ ih => simp only [Ty.renameLoc, ih]
   | typ _ ih => simp only [Ty.renameLoc, ih]
 
@@ -886,7 +937,7 @@ theorem HeapVal.renameLoc_id {hv : HeapVal} : hv.renameLoc (Equiv.refl Nat) = hv
 theorem Cell.renameLoc_id {c : Cell} : c.renameLoc (Equiv.refl Nat) = c := by
   cases c with
   | val hv => simp only [Cell.renameLoc, HeapVal.renameLoc_id]
-  | capability ci => rfl
+  | capability ci => simp only [Cell.renameLoc, CapabilityInfo.renameLoc_id]
   | masked => rfl
 
 theorem Heap.renameLoc_id {h : Heap} : h.renameLoc (Equiv.refl Nat) = h := by
@@ -944,8 +995,8 @@ theorem Ty.renameLoc_comp {T : Ty sort s} {π ρ : Equiv.Perm Nat} :
   | modal _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, SepCtx.renameLoc_comp, ih]
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
-  | cell _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
-  | reader _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
+  | cell _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ih]
+  | reader _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ih]
   | exi _ ih => simp only [Ty.renameLoc, ih]
   | typ _ ih => simp only [Ty.renameLoc, ih]
 
@@ -998,7 +1049,7 @@ theorem Cell.renameLoc_comp {c : Cell} {π ρ : Equiv.Perm Nat} :
     (c.renameLoc π).renameLoc ρ = c.renameLoc (π.trans ρ) := by
   cases c with
   | val hv => simp only [Cell.renameLoc, HeapVal.renameLoc_comp]
-  | capability ci => rfl
+  | capability ci => simp only [Cell.renameLoc, CapabilityInfo.renameLoc_comp]
   | masked => rfl
 
 theorem Heap.renameLoc_comp {h : Heap} {π ρ : Equiv.Perm Nat} :
@@ -1063,9 +1114,10 @@ theorem Memory.fresh_renameLoc {m : Memory} {l : Nat} (hfresh : m.heap l = none)
     (π : Equiv.Perm Nat) : (m.renameLoc π).heap (π l) = none :=
   Heap.fresh_renameLoc hfresh π
 
-/-- `extend_mcell` commutes with heap renaming. -/
-theorem Heap.extend_mcell_renameLoc (π : Equiv.Perm Nat) (h : Heap) (l : Nat) (b : Bool) :
-    (h.extend_mcell l b).renameLoc π = (h.renameLoc π).extend_mcell (π l) b := by
+/-- `extend_mcell` commutes with heap renaming.  The stored content location `n`
+    is renamed along `π` (the new cell points at the renamed value location). -/
+theorem Heap.extend_mcell_renameLoc (π : Equiv.Perm Nat) (h : Heap) (l : Nat) (n : Nat) :
+    (h.extend_mcell l n).renameLoc π = (h.renameLoc π).extend_mcell (π l) (π n) := by
   funext l'
   simp only [Heap.renameLoc, Heap.extend_mcell]
   by_cases hl : l' = π l
@@ -1075,11 +1127,11 @@ theorem Heap.extend_mcell_renameLoc (π : Equiv.Perm Nat) (h : Heap) (l : Nat) (
   · rw [if_neg hl]
     rw [if_neg (fun hc : π.symm l' = l => hl (by rw [← hc, Equiv.apply_symm_apply]))]
 
-/-- `update_cell` with a capability cell commutes with heap renaming. -/
+/-- `update_cell` with a capability cell commutes with heap renaming (info renamed). -/
 theorem Heap.update_cell_cap_renameLoc (π : Equiv.Perm Nat) (h : Heap) (l : Nat)
     (ci : CapabilityInfo) :
     (h.update_cell l (.capability ci)).renameLoc π
-      = (h.renameLoc π).update_cell (π l) (.capability ci) := by
+      = (h.renameLoc π).update_cell (π l) (.capability (ci.renameLoc π)) := by
   funext l'
   simp only [Heap.renameLoc, Heap.update_cell]
   by_cases hl : l' = π l
@@ -1101,30 +1153,42 @@ theorem Heap.extend_renameLoc (π : Equiv.Perm Nat) (h : Heap) (l : Nat) (v : He
   · rw [if_neg hl]
     rw [if_neg (fun hc : π.symm l' = l => hl (by rw [← hc, Equiv.apply_symm_apply]))]
 
-/-- `extend_mcell` commutes with memory renaming. -/
-theorem Memory.extend_mcell_renameLoc (π : Equiv.Perm Nat) (m : Memory) (l : Nat) (b : Bool)
-    (hfresh : m.heap l = none) :
-    (m.extend_mcell l b hfresh).renameLoc π
-      = (m.renameLoc π).extend_mcell (π l) b (Memory.fresh_renameLoc hfresh π) := by
-  apply Memory.eq_of_heap
-  exact Heap.extend_mcell_renameLoc π m.heap l b
+/-- A renamed memory still holds content at the renamed content location. -/
+theorem Memory.heap_ne_none_renameLoc {m : Memory} {n : Nat}
+    (h : m.heap n ≠ none) (π : Equiv.Perm Nat) :
+    (m.renameLoc π).heap (π n) ≠ none := by
+  obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp h
+  change (m.heap.renameLoc π) (π n) ≠ none
+  rw [Heap.lookup_renameLoc, hv]; simp
 
-/-- `update_mcell` commutes with memory renaming. -/
-theorem Memory.update_mcell_renameLoc (π : Equiv.Perm Nat) (m : Memory) (l : Nat) (b : Bool)
-    (ℓ : Liveness) (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 ℓ)))
-    (hexists' : ∃ b0, (m.renameLoc π).heap (π l) = some (.capability (.mcell b0 ℓ))) :
-    (m.update_mcell l b ℓ hexists).renameLoc π
-      = (m.renameLoc π).update_mcell (π l) b ℓ hexists' := by
+/-- `extend_mcell` commutes with memory renaming (content location renamed). -/
+theorem Memory.extend_mcell_renameLoc (π : Equiv.Perm Nat) (m : Memory) (l : Nat) (n : Nat)
+    (hfresh : m.heap l = none) (hcontent : m.heap n ≠ none) :
+    (m.extend_mcell l n hfresh hcontent).renameLoc π
+      = (m.renameLoc π).extend_mcell (π l) (π n) (Memory.fresh_renameLoc hfresh π)
+          (Memory.heap_ne_none_renameLoc hcontent π) := by
   apply Memory.eq_of_heap
-  exact Heap.update_cell_cap_renameLoc π m.heap l (.mcell b ℓ)
+  exact Heap.extend_mcell_renameLoc π m.heap l n
 
-/-- `drop_mcell` commutes with memory renaming. -/
+/-- `update_mcell` (live) commutes with memory renaming (content location renamed). -/
+theorem Memory.update_mcell_renameLoc (π : Equiv.Perm Nat) (m : Memory) (l : Nat) (n : Nat)
+    (hexists : ∃ n0, m.heap l = some (.capability (.mcell n0 .live)))
+    (hcontent : Liveness.live = .live → m.heap n ≠ none)
+    (hexists' : ∃ n0, (m.renameLoc π).heap (π l) = some (.capability (.mcell n0 .live))) :
+    (m.update_mcell l n .live hexists hcontent).renameLoc π
+      = (m.renameLoc π).update_mcell (π l) (π n) .live hexists'
+          (fun _ => Memory.heap_ne_none_renameLoc (hcontent rfl) π) := by
+  apply Memory.eq_of_heap
+  exact Heap.update_cell_cap_renameLoc π m.heap l (.mcell n .live)
+
+/-- `drop_mcell` commutes with memory renaming.  The dead cell's dummy location `0`
+    is left fixed by `Cell.renameLoc`, so the canonical dead cell stays canonical. -/
 theorem Memory.drop_mcell_renameLoc (π : Equiv.Perm Nat) (m : Memory) (l : Nat)
-    (hexists : ∃ b0, m.heap l = some (.capability (.mcell b0 .live)))
-    (hexists' : ∃ b0, (m.renameLoc π).heap (π l) = some (.capability (.mcell b0 .live))) :
+    (hexists : ∃ n0, m.heap l = some (.capability (.mcell n0 .live)))
+    (hexists' : ∃ n0, (m.renameLoc π).heap (π l) = some (.capability (.mcell n0 .live))) :
     (m.drop_mcell l hexists).renameLoc π = (m.renameLoc π).drop_mcell (π l) hexists' := by
   apply Memory.eq_of_heap
-  exact Heap.update_cell_cap_renameLoc π m.heap l (.mcell false .dead)
+  exact Heap.update_cell_cap_renameLoc π m.heap l (.mcell 0 .dead)
 
 /-- The reachability set used by `step_lift` transports through `π`. -/
 theorem compute_reachability_heap_renameLoc (π : Equiv.Perm Nat) (m : Memory)
@@ -1334,28 +1398,29 @@ theorem Step.renameLoc {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_cond_var_false hlk =>
     exact Step.step_cond_var_false (by rw [Memory.lookup_renameLoc, hlk]; rfl)
   | step_read hlk1 hlk2 =>
-    simp only [Exp.renameLoc, apply_ite (Exp.renameLoc π)]
-    exact Step.step_read (by rw [Memory.lookup_renameLoc, hlk1]; rfl)
-      (by rw [Memory.lookup_renameLoc, hlk2]; rfl)
-  | step_write_true hx hy =>
+    have hlk1' := Memory.lookup_val_renameLoc hlk1 π
+    have hlk2' := Memory.lookup_cap_renameLoc hlk2 π
+    simp only [HeapVal.renameLoc, Exp.renameLoc, CapabilityInfo.renameLoc] at hlk1' hlk2'
+    simp only [Exp.renameLoc]
+    exact Step.step_read hlk1' hlk2'
+  | step_write hx hy =>
     have hx' := Memory.lookup_cap_renameLoc hx π
-    have hy' := Memory.lookup_val_renameLoc hy π
+    have hy' := Memory.heap_ne_none_renameLoc hy π
+    simp only [CapabilityInfo.renameLoc] at hx'
     rw [Memory.update_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact Step.step_write_true (hx := hx') hy'
-  | step_write_false hx hy =>
-    have hx' := Memory.lookup_cap_renameLoc hx π
-    have hy' := Memory.lookup_val_renameLoc hy π
-    rw [Memory.update_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact Step.step_write_false (hx := hx') hy'
+    simp only [Exp.renameLoc]
+    exact Step.step_write hx' hy'
   | step_alloc hlk hfresh =>
-    have hlk' := Memory.lookup_val_renameLoc hlk π
-    simp only [HeapVal.renameLoc, apply_ite (Exp.renameLoc π), Exp.renameLoc] at hlk'
+    have hlk' := Memory.heap_ne_none_renameLoc hlk π
     rw [Memory.extend_mcell_renameLoc]
+    simp only [Exp.renameLoc]
     exact Step.step_alloc hlk' (Memory.fresh_renameLoc hfresh π)
   | step_drop hx =>
     have hx' := Memory.lookup_cap_renameLoc hx π
+    simp only [CapabilityInfo.renameLoc] at hx'
     rw [Memory.drop_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact Step.step_drop (hx := hx')
+    simp only [Exp.renameLoc]
+    exact Step.step_drop hx'
   | step_ctx_letin _ ih => exact Step.step_ctx_letin ih
   | step_ctx_unpack _ ih => exact Step.step_ctx_unpack ih
   | @step_par_left t m e1 m' e1' e2 C1 C2 _ ht hni ih =>
@@ -1426,28 +1491,29 @@ theorem SeqStep.renameLoc {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_cond_var_false hlk =>
     exact SeqStep.step_cond_var_false (by rw [Memory.lookup_renameLoc, hlk]; rfl)
   | step_read hlk1 hlk2 =>
-    simp only [Exp.renameLoc, apply_ite (Exp.renameLoc π)]
-    exact SeqStep.step_read (by rw [Memory.lookup_renameLoc, hlk1]; rfl)
-      (by rw [Memory.lookup_renameLoc, hlk2]; rfl)
-  | step_write_true hx hy =>
+    have hlk1' := Memory.lookup_val_renameLoc hlk1 π
+    have hlk2' := Memory.lookup_cap_renameLoc hlk2 π
+    simp only [HeapVal.renameLoc, Exp.renameLoc, CapabilityInfo.renameLoc] at hlk1' hlk2'
+    simp only [Exp.renameLoc]
+    exact SeqStep.step_read hlk1' hlk2'
+  | step_write hx hy =>
     have hx' := Memory.lookup_cap_renameLoc hx π
-    have hy' := Memory.lookup_val_renameLoc hy π
+    have hy' := Memory.heap_ne_none_renameLoc hy π
+    simp only [CapabilityInfo.renameLoc] at hx'
     rw [Memory.update_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact SeqStep.step_write_true (hx := hx') hy'
-  | step_write_false hx hy =>
-    have hx' := Memory.lookup_cap_renameLoc hx π
-    have hy' := Memory.lookup_val_renameLoc hy π
-    rw [Memory.update_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact SeqStep.step_write_false (hx := hx') hy'
+    simp only [Exp.renameLoc]
+    exact SeqStep.step_write hx' hy'
   | step_alloc hlk hfresh =>
-    have hlk' := Memory.lookup_val_renameLoc hlk π
-    simp only [HeapVal.renameLoc, apply_ite (Exp.renameLoc π), Exp.renameLoc] at hlk'
+    have hlk' := Memory.heap_ne_none_renameLoc hlk π
     rw [Memory.extend_mcell_renameLoc]
+    simp only [Exp.renameLoc]
     exact SeqStep.step_alloc hlk' (Memory.fresh_renameLoc hfresh π)
   | step_drop hx =>
     have hx' := Memory.lookup_cap_renameLoc hx π
+    simp only [CapabilityInfo.renameLoc] at hx'
     rw [Memory.drop_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact SeqStep.step_drop (hx := hx')
+    simp only [Exp.renameLoc]
+    exact SeqStep.step_drop hx'
   | step_ctx_letin _ ih => exact SeqStep.step_ctx_letin ih
   | step_ctx_unpack _ ih => exact SeqStep.step_ctx_unpack ih
   | step_par_left _ ih =>
@@ -1489,9 +1555,9 @@ theorem BigStep.renameLoc {t : Trace} {m m' : Memory} {e v : Exp {}}
   induction hbs with
   | bs_pack => exact BigStep.bs_pack
   | bs_alloc hlk hfresh =>
-    have hlk' := Memory.lookup_val_renameLoc hlk π
-    simp only [HeapVal.renameLoc, apply_ite (Exp.renameLoc π), Exp.renameLoc] at hlk'
+    have hlk' := Memory.heap_ne_none_renameLoc hlk π
     rw [Memory.extend_mcell_renameLoc]
+    simp only [Exp.renameLoc]
     exact BigStep.bs_alloc hlk' (Memory.fresh_renameLoc hfresh π)
   | bs_val hv => exact BigStep.bs_val (hv.renameLoc π)
   | bs_var => exact BigStep.bs_var
@@ -1524,24 +1590,26 @@ theorem BigStep.renameLoc {t : Trace} {m m' : Memory} {e v : Exp {}}
     rw [Trace.renameLoc_append]
     rw [Exp.subst_renameLoc, Subst.unpack_renameLoc] at ih2
     exact BigStep.bs_unpack ih1 ih2
-  | bs_read hlk1 hlk2 =>
-    simp only [Exp.renameLoc, apply_ite (Exp.renameLoc π)]
-    exact BigStep.bs_read (by rw [Memory.lookup_renameLoc, hlk1]; rfl)
-      (by rw [Memory.lookup_renameLoc, hlk2]; rfl)
-  | bs_write_true hx hy =>
+  | bs_read hlk1 hlk2 hlk3 =>
+    have hlk1' := Memory.lookup_val_renameLoc hlk1 π
+    have hlk2' := Memory.lookup_cap_renameLoc hlk2 π
+    have hlk3' := Memory.heap_ne_none_renameLoc hlk3 π
+    simp only [HeapVal.renameLoc, Exp.renameLoc, CapabilityInfo.renameLoc] at hlk1' hlk2'
+    simp only [Exp.renameLoc]
+    exact BigStep.bs_read hlk1' hlk2' hlk3'
+  | bs_write hx hy =>
     have hx' := Memory.lookup_cap_renameLoc hx π
-    have hy' := Memory.lookup_val_renameLoc hy π
+    have hy' := Memory.heap_ne_none_renameLoc hy π
+    simp only [CapabilityInfo.renameLoc] at hx'
     rw [Memory.update_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact BigStep.bs_write_true (hx := hx') hy'
-  | bs_write_false hx hy =>
-    have hx' := Memory.lookup_cap_renameLoc hx π
-    have hy' := Memory.lookup_val_renameLoc hy π
-    rw [Memory.update_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact BigStep.bs_write_false (hx := hx') hy'
+    simp only [Exp.renameLoc]
+    exact BigStep.bs_write hx' hy'
   | bs_drop hx =>
     have hx' := Memory.lookup_cap_renameLoc hx π
+    simp only [CapabilityInfo.renameLoc] at hx'
     rw [Memory.drop_mcell_renameLoc (hexists' := ⟨_, hx'⟩)]
-    exact BigStep.bs_drop (hx := hx')
+    simp only [Exp.renameLoc]
+    exact BigStep.bs_drop hx'
   | bs_cond_true hres _ ih =>
     refine BigStep.bs_cond_true ?_ ih
     rename_i mm xx _
