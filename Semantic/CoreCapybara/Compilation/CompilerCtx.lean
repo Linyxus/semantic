@@ -31,7 +31,8 @@ inductive DstCtx : Sig -> Type where
 structure CompilerCtx (s1 s2 : Sig) where
   capyCtx : CapyCtx s1
   srcCtx : SrcCtx s1 s2
-  dstCtx : DstCtx s2
+  -- Commented out for now, since it is not needed yet
+  -- dstCtx : DstCtx s2
 
 /-- Looks up the target capture variable that a source capture binder maps to. -/
 def SrcCtx.lookupCVar : SrcCtx s1 s2 -> BVar s1 .cvar -> BVar s2 .cvar
@@ -63,5 +64,33 @@ def SrcCtx.rename : SrcCtx s1 s2 -> Rename s2 s2' -> SrcCtx s1 s2'
     existing source→target images stay valid after a fresh target binder is
     introduced. -/
 def SrcCtx.weaken (ctx : SrcCtx s1 s2) : SrcCtx s1 (s2,,k) := ctx.rename Rename.succ
+
+/-- Weakens the *target* signature of a compiler context by one binder, without
+    introducing a source binder (the source typing context is unchanged). -/
+def CompilerCtx.weakenTarget (ctx : CompilerCtx s1 s2) : CompilerCtx s1 (s2,,k) :=
+  ⟨ctx.capyCtx, ctx.srcCtx.weaken⟩
+
+/-- Extends a compiler context with a source type-variable binder `X <: S`,
+    mapped to the target type variable `X`.  (The bound `S` is recorded in the
+    source typing context but never consulted by peak resolution.) -/
+def CompilerCtx.consTVar
+    (ctx : CompilerCtx s1 s2) (S : CapyPureTy s1) (X : BVar s2 .tvar) :
+    CompilerCtx (s1,X) s2 :=
+  ⟨ctx.capyCtx.push_tvar S, .cons (.tvar X) ctx.srcCtx⟩
+
+/-- Extends a compiler context with a source capture-variable binder `c <: cb`,
+    mapped to the target capture variable `c`. -/
+def CompilerCtx.consCVar
+    (ctx : CompilerCtx s1 s2) (cb : CapyCaptureBound s1) (c : BVar s2 .cvar) :
+    CompilerCtx (s1,C) s2 :=
+  ⟨ctx.capyCtx.push_cvar_default cb, .cons (.cvar c) ctx.srcCtx⟩
+
+/-- Extends a compiler context with a source term-variable binder `x : T`, mapped
+    to the target variable `x` standing for the target capture set `cs`. -/
+def CompilerCtx.consVar
+    (ctx : CompilerCtx s1 s2) (T : CapyTy .capt s1) (x : BVar s2 .var)
+    (cs : CaptureSet s2) :
+    CompilerCtx (s1,x) s2 :=
+  ⟨ctx.capyCtx.push_var T, .cons (.var x cs) ctx.srcCtx⟩
 
 end Compilation
