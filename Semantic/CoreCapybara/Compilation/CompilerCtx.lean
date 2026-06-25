@@ -43,5 +43,9 @@ def SrcCtx.lookupVar : SrcCtx s1 s2 -> BVar s1 .var -> CaptureSet s2
 | .cons (.var _ cs) _, .here => cs
 | .cons _ rest, .there x => rest.lookupVar x
 
+/-- Looks up the target type variable that a source type binder maps to. -/
+def SrcCtx.lookupTVar : SrcCtx s1 s2 -> BVar s1 .tvar -> BVar s2 .tvar
+| .cons (.tvar X) _, .here => X
+| .cons _ rest, .there X => rest.lookupTVar X
 
 end Compilation
