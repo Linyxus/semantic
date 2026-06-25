@@ -85,6 +85,31 @@ def peakSepCtx (P : PeakSet s1) (ctx : SrcCtx s1 s2) : SepCtx s2 :=
     (fun K c => .cons K (CaptureSet.compile (peakItem P c) ctx))
     (.empty : SepCtx s2)
 
+/-- A structural size on source types that ignores capture sets and bound
+    variables.  Renaming and capture-set refinement preserve it, which justifies
+    the well-founded recursion of `CapyTy.compile` over a *refined, lifted* domain
+    type (which is not a syntactic subterm). -/
+def tySize : CapyTy sort s -> Nat
+| .top => 1
+| .tvar _ => 1
+| .cap _ => 1
+| .cell _ _ => 1
+| .unit => 1
+| .bool => 1
+| .arrow T _ E => 1 + tySize T + tySize E
+| .poly S _ E => 1 + tySize S + tySize E
+| .cpoly _ _ E => 1 + tySize E
+| .exi T => 1 + tySize T
+| .typ T => 1 + tySize T
+
+@[simp] theorem tySize_rename {T : CapyTy sort s1} {f : Rename s1 s2} :
+    tySize (T.rename f) = tySize T := by
+  induction T generalizing s2 <;> simp_all [CapyTy.rename, tySize]
+
+@[simp] theorem tySize_refineCaptureSet {T : CapyTy .capt s} {cs : CaptureSet s} :
+    tySize (T.refineCaptureSet cs) = tySize T := by
+  cases T <;> simp [CapyTy.refineCaptureSet, tySize]
+
 /-- Compiles a source type into the target signature.  The `CompilerCtx` carries
     both the source typing context (`capyCtx`, used to resolve *surface* peaks)
     and the source→target map (`srcCtx`, used to compile capture sets and look up
@@ -105,14 +130,19 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
   -- `[c](x: S^C) ->cs E`  ↦  `[c][cx <: ⟦C⟧](x: S^{cx}) -> [Ψ]⟦cs ∪ {x}⟧ E`.
   let ctxB : CompilerCtx (s1,C) (s2,C)       :=
     ctx.weakenTarget.consCVar (.unbound .epsilon) .here
-  let ctxD : CompilerCtx (s1,C) (s2,C,C)     :=
-    ctx.weakenTarget.weakenTarget.consCVar (.unbound .epsilon) (.there .here)
+  -- the domain: binds `c` then `x`, mapping the value parameter `x` to its
+  -- re-abstracted capture `{cx}`.  We refine the source domain `S^C` to its
+  -- self-capture `S^{x}` and compile *that* (so `x ↦ cx` flows through), rather
+  -- than compiling `S^C` and overwriting the result's capture set.
+  let ctxDomain : CompilerCtx (s1,C,x) (s2,C,C) :=
+    (ctx.weakenTarget.weakenTarget.consCVar (.unbound .epsilon) (.there .here)).consVar
+      T none (.cvar (.M .epsilon) .here)
   let ctxE : CompilerCtx (s1,x) (s2,C,C,x)   :=
     ctx.weakenTarget.weakenTarget.weakenTarget.consVar
-      .top .here (.cvar (.M .epsilon) (.there .here))
+      .top (some .here) (.cvar (.M .epsilon) (.there .here))
   let ctxLock : CompilerCtx (s1,C,x) (s2,C,C,x) :=
     (ctx.weakenTarget.weakenTarget.weakenTarget.consCVar (.unbound .epsilon)
-      (.there (.there .here))).consVar T .here (.cvar (.M .epsilon) (.there .here))
+      (.there (.there .here))).consVar T (some .here) (.cvar (.M .epsilon) (.there .here))
   -- the captured resources: the function capture `cs` (weakened past `c`, `x`)
   -- together with the value parameter `{x}`.
   let W : CaptureSet (s1,C,x) :=
@@ -122,7 +152,9 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
   .cpoly .unbound {}
     (.typ (.cpoly (.bound (CaptureSet.compile T.captureSet ctxB.srcCtx)) {}
       (.typ (.arrow
-              ((CapyTy.compile T ctxD).refineCaptureSet (.cvar (.M .epsilon) .here))
+              (CapyTy.compile
+                ((T.rename Rename.succ).refineCaptureSet (.var (.M .epsilon) (.bound .here)))
+                ctxDomain)
               {}
               (.typ (.modal
                       (CaptureSet.compile W ctxLock.srcCtx)
@@ -156,5 +188,7 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
     (.typ (.modal Cf Ψ (CapyTy.compile E ctxE)))
 | .exi T, ctx =>
   .exi (CapyTy.compile T (ctx.weakenTarget.consCVar (.unbound .epsilon) .here))
+termination_by t _ => tySize t
+decreasing_by all_goals (simp only [tySize, tySize_rename, tySize_refineCaptureSet]; omega)
 
 end Compilation
