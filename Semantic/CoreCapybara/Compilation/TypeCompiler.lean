@@ -11,10 +11,21 @@ def CaptureSet.compile : CaptureSet s1 -> SrcCtx s1 s2 -> CaptureSet s2
 | .var a (.free n), _ => .var a (.free n)
 
 /-- Compiles a source capture bound into the target.  The mutability annotation
-    on an `unbound` source bound has no target counterpart and is dropped. -/
+    on an `unbound` source bound has no counterpart in Core's nullary `.unbound`,
+    so it is dropped here and recovered separately in the lock of a compiled
+    capture-polymorphic function (see `CapyCaptureBound.mutabilityCtx`). -/
 def CapyCaptureBound.compile : CapyCaptureBound s1 -> SrcCtx s1 s2 -> CaptureBound s2
 | .unbound _, _ => .unbound
 | .bound cs, ctx => .bound (CaptureSet.compile cs ctx)
+
+/-- The mutability obligation a capture bound imposes on its bound variable `c`.
+    An `unbound m` bound fixes `c`'s mutability to `m` explicitly (so we record
+    `{c}` at kind `m`); a `.bound` bound constrains `c` only through its capture
+    set and imposes no direct mutability. -/
+def CapyCaptureBound.mutabilityCtx :
+    CapyCaptureBound s1 -> BVar s2 .cvar -> MutabilityCtx s2
+| .unbound m, c => .cons .empty (.cvar (.M .epsilon) c) m
+| .bound _, _ => .empty
 
 /-- Source and target type-sorts coincide; this maps between the two enums. -/
 def CapyTySort.compile : CapyTySort -> TySort
@@ -116,11 +127,14 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
 | .cpoly cb cs E, ctx =>
   -- `[c <: cb] ->cs E`  ↦  `[c <: ⟦cb⟧] -> [Ψ]cs E`: a Core `cpoly`, exactly like
   -- `poly` but binding a capture variable `c` instead of a type variable.  The
-  -- body `E` is guarded by the same separation lock `[Ψ]` capturing `Cf = ⟦cs⟧`.
+  -- body `E` is guarded by a separation lock `[Ψ]` capturing `Cf = ⟦cs⟧`; besides
+  -- the separation of `cs`'s peaks, `Ψ.mutability` re-records the mutability that
+  -- `cb` fixes on the introduced parameter `c`.
   let ctxE : CompilerCtx (s1,C) (s2,C) := ctx.weakenTarget.consCVar cb .here
   let Cf : CaptureSet (s2,C) := CaptureSet.compile cs ctx.srcCtx.weaken
   let Ψ  : ModalCtx (s2,C)   :=
-    ⟨peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken, .empty⟩
+    ⟨ peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken,
+      CapyCaptureBound.mutabilityCtx cb .here ⟩
   .cpoly
     (CapyCaptureBound.compile cb ctx.srcCtx)
     {}
