@@ -47,17 +47,17 @@ inductive CapyTy : CapyTySort -> Sig -> Type where
 | arrow :
   CapyTy .capt (s,C) ->  -- a capture parameter is implicitly bound
   CaptureSet s ->
-  CapyTy .capt (s,x,C) ->  -- an existential is implicitly bound
+  CapyTy .capt (s,x) ->
   CapyTy .capt s
 | poly :
   CapyTy .capt s ->
   CaptureSet s ->
-  CapyTy .capt (s,X,C) ->  -- similarly, an implicit existential
+  CapyTy .capt (s,X) ->
   CapyTy .capt s
 | cpoly :
   CapyCaptureBound s ->
   CaptureSet s ->
-  CapyTy .capt (s,C,C) ->  -- ditto
+  CapyTy .capt (s,C) ->
   CapyTy .capt s
 | cap : CaptureSet s -> CapyTy .capt s
 | cell : CaptureSet s -> Mutability -> CapyTy .capt s
@@ -72,9 +72,9 @@ inductive CapyTy : CapyTySort -> Sig -> Type where
 def CapyTy.rename : CapyTy sort s1 -> Rename s1 s2 -> CapyTy sort s2
 | .top, _ => .top
 | .tvar x, f => .tvar (f.var x)
-| .arrow T1 cs T2, f => .arrow (T1.rename (f.lift)) (cs.rename f) (T2.rename (f.lift.lift))
-| .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift.lift))
-| .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift.lift))
+| .arrow T1 cs T2, f => .arrow (T1.rename (f.lift)) (cs.rename f) (T2.rename (f.lift))
+| .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
+| .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
@@ -117,17 +117,17 @@ theorem CapyTy.rename_comp {T : CapyTy sort s1} {f : Rename s1 s2} {g : Rename s
     simp only [CapyTy.rename, CaptureSet.rename_comp, Rename.lift_comp]
     congr 1
     · exact ih1 (f := f.lift) (g := g.lift)
-    · exact ih2 (f := f.lift.lift) (g := g.lift.lift)
+    · exact ih2 (f := f.lift) (g := g.lift)
   | poly T1 cs T2 ih1 ih2 =>
     simpa only [CapyTy.rename, CaptureSet.rename_comp, Rename.lift_comp, ih1] using
       congrArg (CapyTy.poly (T1.rename (f.comp g)) (cs.rename (f.comp g)))
-        (ih2 (f := f.lift.lift) (g := g.lift.lift))
+        (ih2 (f := f.lift) (g := g.lift))
   | cpoly cb cs T ih =>
     simpa only [
       CapyTy.rename, CapyCaptureBound.rename_comp, CaptureSet.rename_comp, Rename.lift_comp
     ] using
       congrArg (CapyTy.cpoly (cb.rename (f.comp g)) (cs.rename (f.comp g)))
-        (ih (f := f.lift.lift) (g := g.lift.lift))
+        (ih (f := f.lift) (g := g.lift))
   | cap cs => simp only [CapyTy.rename, CaptureSet.rename_comp]
   | cell cs m => simp only [CapyTy.rename, CaptureSet.rename_comp]
   | unit => simp only [CapyTy.rename]

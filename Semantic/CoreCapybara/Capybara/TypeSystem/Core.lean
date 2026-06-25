@@ -167,20 +167,20 @@ inductive CapySubtyp : CapyCtx s -> CapyTy .capt s -> CapyTy .capt s -> Prop whe
   CapySubtyp (Γ,C<:.unbound .epsilon) T2 T1 ->
   CapySubcapt Γ cs1 cs2 ->
   CapySubtyp
-    (Γ,C<:.unbound .epsilon,x:T2,C<:.unbound .epsilon)
-    (U1.rename Rename.implicit_cvar2) (U2.rename Rename.implicit_cvar2) ->
+    (Γ,C<:.unbound .epsilon,x:T2)
+    (U1.rename Rename.implicit_cvar) (U2.rename Rename.implicit_cvar) ->
   --------------------------
   CapySubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2)
 | poly {S1 S2 : CapyPureTy s} :
   CapySubtyp Γ S2.core S1.core ->
   CapySubcapt Γ cs1 cs2 ->
-  CapySubtyp (Γ,X<:S2,C<:.unbound .epsilon) T1 T2 ->
+  CapySubtyp (Γ,X<:S2) T1 T2 ->
   --------------------------
   CapySubtyp Γ (.poly S1.core cs1 T1) (.poly S2.core cs2 T2)
 | cpoly :
   CapySubbound Γ cb2 cb1 ->
   CapySubcapt Γ cs1 cs2 ->
-  CapySubtyp (Γ,C<:cb2,C<:.unbound .epsilon) T1 T2 ->
+  CapySubtyp (Γ,C<:cb2) T1 T2 ->
   ----------------------------------------
   CapySubtyp Γ (.cpoly cb1 cs1 T1) (.cpoly cb2 cs2 T2)
 
@@ -226,28 +226,24 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
     Γ
     (.var (.bound x))
     (.cell (.var (.M .ro) (.bound x)) .ro)
-| abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .capt (s,x,C)} :
+| abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .capt (s,x)} :
   T1.IsClosed ->
   CapyHasType
     ((cs.rename Rename.succ).rename Rename.succ ∪ (.var (.M .epsilon) (.bound .here)))
     (Γ,C<:.unbound .epsilon,x:T1)
     (e.rename Rename.implicit_cvar)
-    ((T2.subst (CapySubst.openCVar D)).rename Rename.implicit_cvar) ->
+    (T2.rename Rename.implicit_cvar) ->
   ----------------------------
   CapyHasType {} Γ (.abs T1 e) (.arrow T1 cs T2)
-| tabs {S : CapyPureTy s} {T : CapyTy .capt (s,X,C)} :
+| tabs {S : CapyPureTy s} {T : CapyTy .capt (s,X)} :
   S.IsClosed ->
-  CapyHasType (cs.rename Rename.succ) (Γ,X<:S) e (T.subst (CapySubst.openCVar D)) ->
+  CapyHasType (cs.rename Rename.succ) (Γ,X<:S) e T ->
   ----------------------------
   CapyHasType {} Γ (.tabs S e) (.poly S.core cs T)
-| cabs {cb : CapyCaptureBound s} {T : CapyTy .capt (s,C,C)} :
+| cabs {cb : CapyCaptureBound s} {T : CapyTy .capt (s,C)} :
   cb.IsClosed ->
   cb.IsValid Γ ->
-  CapyHasType
-    (cs.rename Rename.succ)
-    (Γ,C<:cb)
-    e
-    (T.subst (CapySubst.openCVar D)) ->
+  CapyHasType (cs.rename Rename.succ) (Γ,C<:cb) e T ->
   -----------------------------
   CapyHasType {} Γ (.cabs cb e) (.cpoly cb cs T)
 | app :
@@ -256,20 +252,20 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy sort s 
   CapySepCheck Γ D (CapyTy.interfere_set (.arrow T1 (.var (.M .epsilon) x) T2)) ->
   ----------------------------
   CapyHasType (.var (.M .epsilon) x ∪ .var (.M .epsilon) y) Γ (.app x y)
-    (.exi (T2.subst (CapySubst.openVar y).lift))
+    (T2.subst (CapySubst.openVar y))
 | tapp {S : CapyPureTy s} :
   S.IsClosed ->
   CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.poly S.core (.var (.M .epsilon) x) T) ->
   ----------------------------
   CapyHasType (.var (.M .epsilon) x) Γ (.tapp x S)
-    (.exi (T.subst (CapySubst.openTVar S).lift))
+    (T.subst (CapySubst.openTVar S))
 | capp {D : CaptureSet s} :
   D.IsClosed ->
   CapyCaptureBound.IsValid Γ (.bound D) ->
   CapyHasType (.var (.M .epsilon) x) Γ (.var x) (.cpoly (.bound D) (.var (.M .epsilon) x) T) ->
   ----------------------------
   CapyHasType (.var (.M .epsilon) x) Γ (.capp x D)
-    (.exi (T.subst (CapySubst.openCVar D).lift))
+    (T.subst (CapySubst.openCVar D))
 | letin :
   CapySeqComp Γ C1 C2 ->
   CapyHasType C1 Γ e1 T ->

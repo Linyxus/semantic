@@ -62,9 +62,9 @@ def CapyTy.subst : CapyTy sort s1 -> CapySubst s1 s2 -> CapyTy sort s2
 | .top, _ => .top
 | .tvar x, s => (s.tvar x).core
 | .arrow T1 cs T2, s =>
-    .arrow (T1.subst s.lift) ((CapyCaptureSet.subst cs) s) (T2.subst s.lift.lift)
-| .poly T1 cs T2, s => .poly (T1.subst s) ((CapyCaptureSet.subst cs) s) (T2.subst s.lift.lift)
-| .cpoly cb cs T, s => .cpoly (cb.subst s) ((CapyCaptureSet.subst cs) s) (T.subst s.lift.lift)
+    .arrow (T1.subst s.lift) ((CapyCaptureSet.subst cs) s) (T2.subst s.lift)
+| .poly T1 cs T2, s => .poly (T1.subst s) ((CapyCaptureSet.subst cs) s) (T2.subst s.lift)
+| .cpoly cb cs T, s => .cpoly (cb.subst s) ((CapyCaptureSet.subst cs) s) (T.subst s.lift)
 | .unit, _ => .unit
 | .cap cs, s => .cap ((CapyCaptureSet.subst cs) s)
 | .bool, _ => .bool
@@ -203,9 +203,7 @@ def CapyCaptureSet.dropVar : CaptureSet (s,x) -> CaptureSet s
     interfere([c](x: S^C) ->Cf E) = Cf ∪ C ∪ interfere(E) - {c, x}
     interfere([X] ->Cf E)         = Cf ∪ interfere(E)
     interfere([c] ->Cf E)         = Cf ∪ interfere(E) - {c}
-    ```
-    Each codomain additionally binds an implicit existential capture parameter,
-    which is stripped too since it does not escape to the enclosing scope. -/
+    ``` -/
 def CapyTy.interfere_set (T : CapyTy .capt s) : CaptureSet s :=
   match T with
   | .top => .empty
@@ -214,16 +212,16 @@ def CapyTy.interfere_set (T : CapyTy .capt s) : CaptureSet s :=
   | .bool => .empty
   | .cap cs => cs
   | .cell cs _ => cs
-  -- [c](x: S^C) ->Cf E :  S under c (`,C`);  E under x and the existential (`,x,C`)
+  -- [c](x: S^C) ->Cf E :  S under c (`,C`);  E under x (`,x`)
   | .arrow S Cf E =>
       Cf ∪ CapyCaptureSet.dropCVar S.captureSet
-         ∪ CapyCaptureSet.dropVar (CapyCaptureSet.dropCVar E.interfere_set)
-  -- [X] ->Cf E :  E under X and the existential (`,X,C`)
+         ∪ CapyCaptureSet.dropVar E.interfere_set
+  -- [X] ->Cf E :  E under X (`,X`)
   | .poly _ Cf E =>
-      Cf ∪ CapyCaptureSet.dropTVar (CapyCaptureSet.dropCVar E.interfere_set)
-  -- [c] ->Cf E :  E under c and the existential (`,C,C`)
+      Cf ∪ CapyCaptureSet.dropTVar E.interfere_set
+  -- [c] ->Cf E :  E under c (`,C`)
   | .cpoly _ Cf E =>
-      Cf ∪ CapyCaptureSet.dropCVar (CapyCaptureSet.dropCVar E.interfere_set)
+      Cf ∪ CapyCaptureSet.dropCVar E.interfere_set
 termination_by sizeOf T
 
 /-- Function extensionality for substitutions.
@@ -389,13 +387,13 @@ theorem CapyTy.weaken_subst_comm {T : CapyTy sort (s1 ++ K)} {σ : CapySubst s1 
   | .arrow T1 cs T2 =>
     have ih1 := CapyTy.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K,C) (k0:=k0)
     have ihCS := CapyCaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    have ih2 := CapyTy.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x,C) (k0:=k0)
+    have ih2 := CapyTy.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,x) (k0:=k0)
     simp only [CapyTy.subst, CapyTy.rename, ihCS]
     congr 1
   | .poly T1 cs T2 =>
     have ih1 := CapyTy.weaken_subst_comm (T:=T1) (σ:=σ) (K:=K) (k0:=k0)
     have ihCS := CapyCaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    have ih2 := CapyTy.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X,C) (k0:=k0)
+    have ih2 := CapyTy.weaken_subst_comm (T:=T2) (σ:=σ) (K:=K,X) (k0:=k0)
     simp only [CapyTy.subst, CapyTy.rename, ih1, ihCS]
     exact congrArg
       (CapyTy.poly
@@ -406,7 +404,7 @@ theorem CapyTy.weaken_subst_comm {T : CapyTy sort (s1 ++ K)} {σ : CapySubst s1 
     have ihCB :=
       CapyCaptureBound.weaken_subst_comm_liftMany (cb := cb) (σ := σ) (K := K) (k0 := k0)
     have ihCS := CapyCaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
-    have ih := CapyTy.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C,C) (k0:=k0)
+    have ih := CapyTy.weaken_subst_comm (T:=T) (σ:=σ) (K:=K,C) (k0:=k0)
     simp only [CapyTy.subst, CapyTy.rename, ihCB, ihCS]
     exact congrArg
       (CapyTy.cpoly
@@ -604,15 +602,15 @@ theorem CapyTy.subst_comp {T : CapyTy sort s1} {σ1 : CapySubst s1 s2} {σ2 : Ca
   | tvar x => simp only [CapyTy.subst, CapySubst.comp, CapyPureTy.subst]
   | arrow T1 cs T2 ih1 ih2 =>
     simp only [CapyTy.subst, ih1, ih2, CapyCaptureSet.subst_comp]
-    conv_rhs => rw [← CapySubst.comp_lift, ← CapySubst.comp_lift, ← CapySubst.comp_lift]
+    conv_rhs => rw [← CapySubst.comp_lift, ← CapySubst.comp_lift]
     rfl
   | poly T1 cs T2 ih1 ih2 =>
     simp only [CapyTy.subst, ih1, ih2, CapyCaptureSet.subst_comp]
-    conv_rhs => rw [← CapySubst.comp_lift, ← CapySubst.comp_lift]
+    conv_rhs => rw [← CapySubst.comp_lift]
     rfl
   | cpoly cb cs T ih =>
     simp only [CapyTy.subst, ih, CapyCaptureBound.subst_comp, CapyCaptureSet.subst_comp]
-    conv_rhs => rw [← CapySubst.comp_lift, ← CapySubst.comp_lift]
+    conv_rhs => rw [← CapySubst.comp_lift]
     rfl
   | unit => simp only [CapyTy.subst]
   | cap cs => simp only [CapyTy.subst, CapyCaptureSet.subst_comp]
@@ -885,18 +883,18 @@ theorem CapyTy.subst_asSubst {T : CapyTy sort s1} {f : Rename s1 s2} :
   | tvar x => simp only [CapyTy.subst, CapyTy.rename, CapyRename.asSubst, CapyPureTy.tvar]
   | arrow T1 cs T2 ih1 ih2 =>
     have e1 := ih1 (f := f.lift)
-    have e2 := ih2 (f := f.lift.lift)
+    have e2 := ih2 (f := f.lift)
     simp only [CapyTy.subst, CapyTy.rename, CapyCaptureSet.subst_asSubst,
       ← CapyRename.asSubst_lift]
     congr 1
   | poly T1 cs T2 ih1 ih2 =>
     have e1 := ih1 (f := f)
-    have e2 := ih2 (f := f.lift.lift)
+    have e2 := ih2 (f := f.lift)
     simp only [CapyTy.subst, CapyTy.rename, CapyCaptureSet.subst_asSubst,
       ← CapyRename.asSubst_lift]
     congr 1
   | cpoly cb cs T ih =>
-    have e := ih (f := f.lift.lift)
+    have e := ih (f := f.lift)
     simp only [CapyTy.subst, CapyTy.rename, CapyCaptureBound.subst_asSubst,
       CapyCaptureSet.subst_asSubst,
       ← CapyRename.asSubst_lift]
@@ -1210,19 +1208,19 @@ def CapyTy.is_closed_subst {T : CapyTy sort s1} {σ : CapySubst s1 s2}
     simp only [CapyTy.subst]
     exact IsClosed.arrow (ih1 h1 (CapySubst.lift_closed hsubst))
       (CapyCaptureSet.is_closed_subst hcs hsubst)
-      (ih2 h2 (CapySubst.lift_closed (CapySubst.lift_closed hsubst)))
+      (ih2 h2 (CapySubst.lift_closed hsubst))
   | poly T1 cs T2 ih1 ih2 =>
     cases hc with | poly h1 hcs h2 =>
     simp only [CapyTy.subst]
     exact IsClosed.poly (ih1 h1 hsubst)
       (CapyCaptureSet.is_closed_subst hcs hsubst)
-      (ih2 h2 (CapySubst.lift_closed (CapySubst.lift_closed hsubst)))
+      (ih2 h2 (CapySubst.lift_closed hsubst))
   | cpoly cb cs T ih =>
     cases hc with | cpoly hcb hcs hT =>
     simp only [CapyTy.subst]
     exact IsClosed.cpoly (CapyCaptureBound.is_closed_subst hcb hsubst)
       (CapyCaptureSet.is_closed_subst hcs hsubst)
-      (ih hT (CapySubst.lift_closed (CapySubst.lift_closed hsubst)))
+      (ih hT (CapySubst.lift_closed hsubst))
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
