@@ -215,34 +215,42 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
       hcsclosed (Ty.IsClosed.typ (Ty.IsClosed.reader hcsclosed))
   case fresh =>
     intro s2 ctx hΓ hcoh
-    -- **DESIGN GAP RESOLVED — `fresh` ↦ `let v = ⟦premise⟧ in pack ⟦D⟧ v`.**
+    -- **`fresh` ↦ `letin ⟦premise⟧ (pack (⟦D⟧.rename succ) (.bound .here))`.**
     --
-    -- The earlier obstruction ("`pack` needs a *syntactic variable* typed at `{}`,
-    -- but the IH delivers an opaque `∃ e'` at `⟦C⟧`, and a read-only-cell var
-    -- compiles to a non-variable `.reader`") is dissolved by an MNF **let-binding**:
-    -- the compiler may emit target glue, so `fresh` compiles to
-    --   `letin ⟦premise⟧ (pack (⟦D⟧.rename succ) (.bound .here))`.
-    -- The let-bound `v` is a genuine variable (handles the opaque/`.reader` witness),
-    -- re-derived at capture `{}` by the target `var` rule (handles the `{}` demand),
-    -- and `pack`'s body type lines up with `v`'s via the now-proven capture-opening
-    -- commutation (`CaptureSet.compile_subst_openCVar`) lifted to types, plus
-    -- `Subtyp.self_refine` for the var rule's refinement.  This is NOT a design gap.
-    --
-    -- The opening does NOT commute as a syntactic equality at the function lock, but
-    -- it commutes up to **subtyping**, which is all `pack` needs:
+    -- An MNF let-binding re-derives the IH witness at a genuine variable typed `{}`,
+    -- which `pack` consumes.  `pack`'s body must line up with the let-bound `v`'s
+    -- type, which needs the type-level opening commutation up to **subtyping**:
     --     `⟦T[D/c]⟧  <:  ⟦T⟧[⟦D⟧/c]`.
-    -- A compiled function lock is `peakSepCtx (peakset Γ W) …`, one separation item
-    -- per distinct peak cvar.  Opening `c ↦ D` makes the let-bound `v`'s type
-    -- `⟦T[D/c]⟧` re-group by `D`'s peaks (more items ⇒ demands `D`'s peaks pairwise
-    -- separate), whereas `pack`'s required body `⟦T⟧[⟦D⟧/c]` keeps `c`'s single item
-    -- (merged ⇒ demands nothing).  A lock is *contravariant* in its demand, so the
-    -- more-demanding (separated) modal is a SUBTYPE of the less-demanding (merged)
-    -- one — `Subtyp.modal_modal` requires `Satisfy (Γ.push_lock Ψmerged) Ψsep`, i.e.
-    -- proving `D`'s peaks pairwise-separate in `Γ`, which is EXACTLY what the rule's
-    -- `droppable Γ D` premise delivers (distinct droppable peaks ⇒ `sep_droppable`).
-    -- So `v` subsumes to `pack`'s argument type.  Foundations PROVEN
-    -- (`compile_subst_openCVar`, (★) `compile_peaks`); the remaining work is the
-    -- type-level subtyping lift of these + the `letin` glue.  [[project_capybara_translation]]
+    -- A compiled function lock is `peakSepCtx (peakset Γ W) …` (one item per distinct
+    -- peak cvar).  Source-substitute-then-compile (`⟦T[D/c]⟧`) re-groups `c` into
+    -- `D`'s peaks (SEPARATED lock `Ψsep`); compile-then-target-substitute
+    -- (`⟦T⟧[⟦D⟧/c]`) keeps `c`'s single item, now holding `⟦D⟧` (MERGED lock
+    -- `Ψmerged`).  Per the trusted `Subtyp.modal_modal`, `Ψsep <: Ψmerged` reduces to
+    -- `Satisfy (Γ.push_lock Ψmerged) Ψsep`: discharge every `HasTwoDistinct` pair of
+    -- `Ψsep`.  Three kinds of pair:
+    --   • within-`D` (peak_i ⊥ peak_j):  ✓ `sep_droppable` from `droppable Γ D`.
+    --   • other-other (cs-peak ⊥ cs-peak): ✓ `sep_lock` (both are items of `Ψmerged`).
+    --   • CROSS (D-peak_i ⊥ cs-peak f):   ✓ `SepCheck.sep_mono` (below).
+    --
+    -- **The cross pair — resolved by `SepCheck.sep_mono`.**  We have `⟦D⟧ ⊥ f` from
+    -- `Ψmerged` (via `sep_lock`, where `⟦D⟧ = peak_1 ∪ … ∪ peak_n` is a SINGLE merged
+    -- lock item) and need `peak_i ⊥ f` with `peak_i ⊆ ⟦D⟧` and `f` an arbitrary
+    -- (possibly NON-droppable) capability.  This is LEFT-DOWNWARD-MONOTONICITY of
+    -- `SepCheck`: `SepCheck Γ A B → Subcapt Γ A' A → SepCheck Γ A' B`.  It is NOT
+    -- admissible from the other constructors (induction on the `⟦D⟧ ⊥ f` derivation
+    -- blocks at `sep_lock`: `peak_i ⊊ ⟦D⟧` is not itself a lock item), so it was
+    -- ADDED as the primitive `SepCheck.sep_mono` (Core.lean), discharged in
+    -- `fundamental_sepcheck`/`_global` via `Noninterference.subset_left` — sound
+    -- because `SemSepCheck = Noninterference` is downward-closed (`peak_i.denot ⊆
+    -- ⟦D⟧.denot` by `fundamental_subcapt`).  Convenience wrapper: `SepCheck.left_mono`.
+    --
+    -- With the lock `Satisfy` now fully dischargeable, NO design gap remains.  The
+    -- rest is mechanical assembly: the type-level subtyping lift `⟦T[D/c]⟧ <:
+    -- ⟦T⟧[⟦D⟧/c]` (leaves = `compile_subst_openCVar` equality → refl; locks =
+    -- `modal_modal` + the `Satisfy` above), the `letin`/`pack` term wiring, the
+    -- capture arithmetic, and the `pack` droppability/access-only side-conditions.
+    -- Foundations PROVEN: `SubstCompat`, (★)`compile_peaks`, `sep_mono`.
+    -- [[project_capybara_translation]]
     sorry
   -- Remaining cases (abs, tabs, cabs, app, tapp, capp,
   -- letin, letin_unpack, alloc, drop, read, write, cond, par, invoke, subtyp)
