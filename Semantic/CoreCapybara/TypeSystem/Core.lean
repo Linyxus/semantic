@@ -178,6 +178,26 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subtyp Γ T1 T2 ->
   --------------------------
   Subtyp Γ (.typ T1) (.typ T2)
+| cell {cs1 cs2 : CaptureSet s} :
+  Subcapt Γ cs1 cs2 ->
+  --------------------------
+  Subtyp Γ (.cell cs1) (.cell cs2)
+| reader {cs1 cs2 : CaptureSet s} :
+  Subcapt Γ cs1 cs2 ->
+  --------------------------
+  Subtyp Γ (.reader cs1) (.reader cs2)
+| cap {cs1 cs2 : CaptureSet s} :
+  Subcapt Γ cs1 cs2 ->
+  --------------------------
+  Subtyp Γ (.cap cs1) (.cap cs2)
+-- Capture-covariance for `poly` with a *fixed* bound and body.  Unlike the full
+-- `poly` rule, this varies only the captured set, so it needs no purity on the
+-- bound `S` (the bound does not change, hence no contravariant bound demand).
+-- Sound because the captured set is an over-approximation of what the value holds.
+| poly_cap {S : Ty .capt s} {T : Ty .exi (s,X)} {cs1 cs2 : CaptureSet s} :
+  Subcapt Γ cs1 cs2 ->
+  --------------------------
+  Subtyp Γ (.poly S cs1 T) (.poly S cs2 T)
 
 inductive SeqComp : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | seq_sc :

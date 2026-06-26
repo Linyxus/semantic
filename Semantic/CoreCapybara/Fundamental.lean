@@ -4004,6 +4004,32 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
             intro m3 hsub3 t v hpost
             exact ⟨hpost.1, himply_entails m3 hsub3 v hpost.2.1, hpost.2.2.1, hpost.2.2.2⟩
 
+/-- Capture-covariance for `poly` with a *fixed* bound `S` and body `T`.  The
+    poly value denotation refers to the captured set only in its well-formedness
+    field and the `R0 ⊆ ⟦cs⟧` bound; the function-body obligation depends on the
+    bound and body alone.  So widening `cs1` to `cs2` keeps the body field verbatim
+    and only relaxes those two capture facts (via `hcs`).  This needs no purity on
+    `S` — exactly why it discharges the var rule's poly refinement without the
+    `PureTy` the full `sem_subtyp_poly` demands. -/
+lemma sem_subtyp_poly_cap {S : Ty .capt s} {cs1 cs2 : CaptureSet s} {T : Ty .exi (s,X)}
+  (hcs : SemSubcapt Γ cs1 cs2)
+  (hcs2_closed : CaptureSet.IsClosed cs2)
+  : SemSubtyp Γ (.poly S cs1 T) (.poly S cs2 T) := by
+  unfold SemSubtyp
+  intro env H htyping hdsep
+  unfold Denot.ImplyAfter
+  intro m' hsubsumes e h_poly
+  simp only [Ty.val_denot] at h_poly ⊢
+  obtain ⟨hwf, _hcs1_wf, cs', S0, t0, hresolve, hcs'_wf, hR0_subset_cs1, hbody⟩ := h_poly
+  refine ⟨hwf, ?_, cs', S0, t0, hresolve, hcs'_wf, ?_, hbody⟩
+  · have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap :=
+      CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed) (from_TypeEnv_wf_in_heap htyping)
+    exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
+  · have hcs_sem := hcs env m' (env_typing_monotonic htyping hsubsumes)
+    calc expand_captures m'.heap cs'
+      _ ⊆ cs1.denot env m' := hR0_subset_cs1
+      _ ⊆ cs2.denot env m' := hcs_sem
+
 lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : ModalCtx s} {E1 E2 : Ty .exi s}
   (hcs : SemSubcapt Γ cs1 cs2)
   (hcs2_closed : CaptureSet.IsClosed cs2)
@@ -4145,6 +4171,61 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty 
           (fun C mode hhas => hsat_Ψ1.kind C mode hhas)
           (fun C1 C2 hdistinct => hsat_Ψ1.sep C1 C2 hdistinct)
 
+/-- A mutable-cell type is covariant in its capture set: the denotation only
+    constrains the location's capability via `covers`, which is monotone in the
+    capture set, so widening the capture weakens the constraint. -/
+lemma sem_subtyp_cell {cs1 cs2 : CaptureSet s}
+  (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
+  SemSubtyp Γ (.cell cs1) (.cell cs2) := by
+  unfold SemSubtyp
+  intro env H htyping _hdsep
+  unfold Denot.ImplyAfter
+  intro m' hsubsumes e hdenot
+  simp only [Ty.val_denot] at hdenot ⊢
+  obtain ⟨_hcs1_wf, l, b0, ℓ0, he, hlook, hcov1⟩ := hdenot
+  refine ⟨?_, l, b0, ℓ0, he, hlook, ?_⟩
+  · have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap :=
+      CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed) (from_TypeEnv_wf_in_heap htyping)
+    exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
+  · have hsub_denot := hcs env m' (env_typing_monotonic htyping hsubsumes)
+    exact CapabilitySet.covers_mono hsub_denot hcov1
+
+/-- A reader type is covariant in its capture set (same `covers`-monotonicity
+    argument as `cell`). -/
+lemma sem_subtyp_reader {cs1 cs2 : CaptureSet s}
+  (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
+  SemSubtyp Γ (.reader cs1) (.reader cs2) := by
+  unfold SemSubtyp
+  intro env H htyping _hdsep
+  unfold Denot.ImplyAfter
+  intro m' hsubsumes e hdenot
+  simp only [Ty.val_denot] at hdenot ⊢
+  obtain ⟨hwf_e, _hcs1_wf, label, b0, ℓ0, hres, hlook, hcov1⟩ := hdenot
+  refine ⟨hwf_e, ?_, label, b0, ℓ0, hres, hlook, ?_⟩
+  · have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap :=
+      CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed) (from_TypeEnv_wf_in_heap htyping)
+    exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
+  · have hsub_denot := hcs env m' (env_typing_monotonic htyping hsubsumes)
+    exact CapabilitySet.covers_mono hsub_denot hcov1
+
+/-- A capability type is covariant in its capture set (same `covers`-monotonicity
+    argument as `cell`). -/
+lemma sem_subtyp_cap {cs1 cs2 : CaptureSet s}
+  (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
+  SemSubtyp Γ (.cap cs1) (.cap cs2) := by
+  unfold SemSubtyp
+  intro env H htyping _hdsep
+  unfold Denot.ImplyAfter
+  intro m' hsubsumes e hdenot
+  simp only [Ty.val_denot] at hdenot ⊢
+  obtain ⟨hwf_e, _hcs1_wf, label, he, hlook, hcov1⟩ := hdenot
+  refine ⟨hwf_e, ?_, label, he, hlook, ?_⟩
+  · have hwf_cs2_at_H : (cs2.subst (Subst.from_TypeEnv env)).WfInHeap H.heap :=
+      CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed) (from_TypeEnv_wf_in_heap htyping)
+    exact CaptureSet.wf_monotonic hsubsumes hwf_cs2_at_H
+  · have hsub_denot := hcs env m' (env_typing_monotonic htyping hsubsumes)
+    exact CapabilitySet.covers_mono hsub_denot hcov1
+
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
   (hsub : Subtyp Γ T1 T2) :
@@ -4205,6 +4286,22 @@ theorem fundamental_subtyp
     cases hT1 with | typ hT1_body_closed =>
     cases hT2 with | typ hT2_body_closed =>
     exact sem_subtyp_typ (ih_body hT1_body_closed hT2_body_closed)
+  case cell hsub_cs =>
+    cases hT1 with | cell _ =>
+    cases hT2 with | cell hcs2_closed =>
+    exact sem_subtyp_cell (fundamental_subcapt hsub_cs) hcs2_closed
+  case reader hsub_cs =>
+    cases hT1 with | reader _ =>
+    cases hT2 with | reader hcs2_closed =>
+    exact sem_subtyp_reader (fundamental_subcapt hsub_cs) hcs2_closed
+  case cap hsub_cs =>
+    cases hT1 with | cap _ =>
+    cases hT2 with | cap hcs2_closed =>
+    exact sem_subtyp_cap (fundamental_subcapt hsub_cs) hcs2_closed
+  case poly_cap hsub_cs =>
+    cases hT1 with | poly _ _ _ =>
+    cases hT2 with | poly _ hcs2_closed _ =>
+    exact sem_subtyp_poly_cap (fundamental_subcapt hsub_cs) hcs2_closed
 
 
 theorem sem_typ_subtyp
