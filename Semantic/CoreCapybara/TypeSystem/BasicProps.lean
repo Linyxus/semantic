@@ -874,4 +874,13 @@ theorem Subcapt.droppable_peak_monotone {Γ : Ctx s} {C1 C2 : CaptureSet s}
     obtain ⟨a', h'⟩ := ih hauth hsub0
     exact ⟨.drop, CaptureSet.cvar_subset_applyDrop_fwd h'⟩
 
+/-- **Left-monotonicity of `SepCheck` along `Subcapt`** — separation is preserved
+    when the left side shrinks to a subcapture.  This is now the primitive
+    `SepCheck.sep_mono` rule (it is NOT admissible from the other constructors: the
+    peak-reducing `Subcapt` steps reduce to extracting separation of a sub-part of
+    a `sep_lock` item, which a lock cannot witness).  Kept as a named lemma. -/
+theorem SepCheck.left_mono
+  (hsep : SepCheck Γ C1 C2) (hsub : Subcapt Γ C1' C1) :
+  SepCheck Γ C1' C2 := SepCheck.sep_mono hsep hsub
+
 end CoreCapybara

@@ -105,6 +105,15 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   CaptureSet.EquivP Γ C1' C1 ->
   --------------------
   SepCheck Γ C1' C2
+| sep_mono {C1 C2 C1' : CaptureSet s} :
+  -- Left-monotonicity: separation is preserved when the left side shrinks to a
+  -- subcapture.  Sound (`SemSepCheck` = `Noninterference`, downward-closed); it
+  -- closes the `fresh`-compilation cross pairs that `sep_sc` (peak-equivalence
+  -- only) cannot.  Generalizes `sep_sc` by dropping its `EquivP` premise.
+  SepCheck Γ C1 C2 ->
+  Subcapt Γ C1' C1 ->
+  --------------------
+  SepCheck Γ C1' C2
 | sep_lock {C1 C2 : CaptureSet s} :
   Ctx.LookupLock Γ ℓ Ψ ->
   SepCtx.HasTwoDistinct Ψ.sep C1 C2 ->

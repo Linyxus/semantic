@@ -3044,6 +3044,12 @@ theorem fundamental_sepcheck
     intro hΓ env H hts hdsep
     exact CapabilitySet.Noninterference.subset_left
       (ih hΓ env H hts hdsep) (fundamental_subcapt hsub env H hts)
+  | sep_mono _ hsub ih =>
+    -- Same as `sep_sc`: `Noninterference` is downward-closed in its left argument
+    -- (the unused `EquivP` of `sep_sc` was never needed).
+    intro hΓ env H hts hdsep
+    exact CapabilitySet.Noninterference.subset_left
+      (ih hΓ env H hts hdsep) (fundamental_subcapt hsub env H hts)
   | sep_lock hlock hdistinct =>
     intro _hΓ env H henv _hdsep
     exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ hdistinct
@@ -3081,6 +3087,10 @@ theorem fundamental_sepcheck_global
       (accessonly_denot_drop_free hts hΓ hcl1 hao1)
       (accessonly_denot_drop_free hts hΓ hcl2 hao2)
   | sep_sc _ hsub _ ih =>
+    intro env H hts hdsep
+    exact CapabilitySet.Noninterference.subset_left (ih env H hts hdsep)
+      (fundamental_subcapt hsub env H hts)
+  | sep_mono _ hsub ih =>
     intro env H hts hdsep
     exact CapabilitySet.Noninterference.subset_left (ih env H hts hdsep)
       (fundamental_subcapt hsub env H hts)
