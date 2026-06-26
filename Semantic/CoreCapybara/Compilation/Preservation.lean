@@ -1,4 +1,5 @@
 import Semantic.CoreCapybara.Compilation.Coherence
+import Semantic.CoreCapybara.Compilation.SubstLemmas
 open CoreCapybara
 namespace Compilation
 
@@ -214,26 +215,34 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
       hcsclosed (Ty.IsClosed.typ (Ty.IsClosed.reader hcsclosed))
   case fresh =>
     intro s2 ctx hΓ hcoh
-    -- **GENUINE DESIGN GAP — existential introduction (`fresh` ↦ `pack`).**
+    -- **DESIGN GAP RESOLVED — `fresh` ↦ `let v = ⟦premise⟧ in pack ⟦D⟧ v`.**
     --
-    -- Source `fresh` retypes a *variable* `.var x` at an existential `.exi T`,
-    -- with no term-former.  Its only target counterpart is `pack`, which (a) emits
-    -- a packing term `.pack ⟦D⟧ bv`, (b) requires the witnessed variable typed at
-    -- the *empty* capture `{}`, and (c) requires its argument to be a syntactic
-    -- *variable*.  The induction hypothesis only delivers the opaque existence
-    -- statement `∃ e', HasType ⟦C⟧ Γ e' ⟦T[D/c]⟧` — and against every one of (a–c):
-    --   • (b) the inner judgement is at capture `⟦C⟧`, not `{}`, and capture can
-    --     only be *widened* by subsumption, never narrowed back to `{}`;
-    --   • (c) the witness `e'` is opaque — `pack` needs it to be a variable, which
-    --     `∃ e'` does not expose;
-    --   • worse, a source variable of read-only-cell type compiles (via the
-    --     `readonly` rule) to a `.reader bv` term, which is *not* a variable and so
-    --     can never be the argument of `pack` at all.
-    -- Bridging additionally needs capture-substitution commutation
-    -- (`⟦T[D/c]⟧ = ⟦T⟧[⟦D⟧/c]`).  Closing this requires a human design decision:
-    -- strengthen the preservation statement to expose the compiled witness (and
-    -- reconcile the source's uniform `.var` with the target's `.var`/`.reader`
-    -- split), beyond the existence formulation.  See [[project_capybara_translation]].
+    -- The earlier obstruction ("`pack` needs a *syntactic variable* typed at `{}`,
+    -- but the IH delivers an opaque `∃ e'` at `⟦C⟧`, and a read-only-cell var
+    -- compiles to a non-variable `.reader`") is dissolved by an MNF **let-binding**:
+    -- the compiler may emit target glue, so `fresh` compiles to
+    --   `letin ⟦premise⟧ (pack (⟦D⟧.rename succ) (.bound .here))`.
+    -- The let-bound `v` is a genuine variable (handles the opaque/`.reader` witness),
+    -- re-derived at capture `{}` by the target `var` rule (handles the `{}` demand),
+    -- and `pack`'s body type lines up with `v`'s via the now-proven capture-opening
+    -- commutation (`CaptureSet.compile_subst_openCVar`) lifted to types, plus
+    -- `Subtyp.self_refine` for the var rule's refinement.  This is NOT a design gap.
+    --
+    -- The opening does NOT commute as a syntactic equality at the function lock, but
+    -- it commutes up to **subtyping**, which is all `pack` needs:
+    --     `⟦T[D/c]⟧  <:  ⟦T⟧[⟦D⟧/c]`.
+    -- A compiled function lock is `peakSepCtx (peakset Γ W) …`, one separation item
+    -- per distinct peak cvar.  Opening `c ↦ D` makes the let-bound `v`'s type
+    -- `⟦T[D/c]⟧` re-group by `D`'s peaks (more items ⇒ demands `D`'s peaks pairwise
+    -- separate), whereas `pack`'s required body `⟦T⟧[⟦D⟧/c]` keeps `c`'s single item
+    -- (merged ⇒ demands nothing).  A lock is *contravariant* in its demand, so the
+    -- more-demanding (separated) modal is a SUBTYPE of the less-demanding (merged)
+    -- one — `Subtyp.modal_modal` requires `Satisfy (Γ.push_lock Ψmerged) Ψsep`, i.e.
+    -- proving `D`'s peaks pairwise-separate in `Γ`, which is EXACTLY what the rule's
+    -- `droppable Γ D` premise delivers (distinct droppable peaks ⇒ `sep_droppable`).
+    -- So `v` subsumes to `pack`'s argument type.  Foundations PROVEN
+    -- (`compile_subst_openCVar`, (★) `compile_peaks`); the remaining work is the
+    -- type-level subtyping lift of these + the `letin` glue.  [[project_capybara_translation]]
     sorry
   -- Remaining cases (abs, tabs, cabs, app, tapp, capp,
   -- letin, letin_unpack, alloc, drop, read, write, cond, par, invoke, subtyp)

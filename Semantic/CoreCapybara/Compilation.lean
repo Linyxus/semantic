@@ -3,6 +3,7 @@ import Semantic.CoreCapybara.Compilation.TypeCompiler
 import Semantic.CoreCapybara.Compilation.CompileLemmas
 import Semantic.CoreCapybara.Compilation.ClosedLemmas
 import Semantic.CoreCapybara.Compilation.Coherence
+import Semantic.CoreCapybara.Compilation.SubstLemmas
 import Semantic.CoreCapybara.Compilation.Preservation
 
 /-!
