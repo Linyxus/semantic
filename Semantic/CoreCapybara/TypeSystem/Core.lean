@@ -190,10 +190,6 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Subcapt Γ cs1 cs2 ->
   --------------------------
   Subtyp Γ (.cap cs1) (.cap cs2)
--- Capture-covariance for `poly` with a *fixed* bound and body.  Unlike the full
--- `poly` rule, this varies only the captured set, so it needs no purity on the
--- bound `S` (the bound does not change, hence no contravariant bound demand).
--- Sound because the captured set is an over-approximation of what the value holds.
 | poly_cap {S : Ty .capt s} {T : Ty .exi (s,X)} {cs1 cs2 : CaptureSet s} :
   Subcapt Γ cs1 cs2 ->
   --------------------------

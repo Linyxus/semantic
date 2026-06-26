@@ -52,6 +52,96 @@ theorem CaptureSet.compile_rename {cs : CaptureSet s1} {ctx : SrcCtx s1 s2}
         CaptureSet.applyAccess_rename]
     | free n => rfl
 
+/-- Source-side weakening peels against a `cons`: compiling `cs` weakened by a
+    fresh *source* binder, through a context that begins with the matching binder
+    info, is the same as compiling `cs` through the tail.  (The new binder is
+    never referenced by `cs.rename succ`.) -/
+theorem CaptureSet.compile_rename_succ_cons {cs : CaptureSet s1} {rest : SrcCtx s1 s2}
+    {info : SrcBinderInfo k s2} :
+    CaptureSet.compile (cs.rename (Rename.succ (k := k))) (.cons info rest)
+      = CaptureSet.compile cs rest := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.rename, CaptureSet.compile, ih1, ih2]
+  | cvar a c =>
+    simp only [CaptureSet.rename, Rename.succ, CaptureSet.compile, SrcCtx.lookupCVar]
+  | var a x =>
+    cases x with
+    | bound x =>
+      simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.compile, SrcCtx.lookupVar]
+    | free n => rfl
+
+/-- The compiled *modal-lock capture field* `W = ⟦cs⟧ ∪ {param}` of an arrow
+    type is insensitive to whether the latent capture is presented as the
+    self-singleton `{xv}` or the declared image `cs`, provided the two agree
+    through the underlying tail context (`h`).  The two source weakenings of the
+    field peel against the lock's `var`/`cvar` `cons`es (`compile_rename_succ_cons`
+    ×2), and the shared `{param}` summand is definitionally equal on both sides.
+    Stated with the `cons` tail/infos abstract so the peel fires cleanly; the
+    arrow case of `CapyTy.compile_refine_self` discharges it by `exact` (which
+    unifies the concrete builder-unfolded context up to defeq). -/
+theorem CaptureSet.compile_lock_field_congr {s1 s2 : Sig} {xv : BVar s1 .var}
+    {cs : CaptureSet s1} {tail : SrcCtx s1 s2}
+    {i1 : SrcBinderInfo .var s2} {i2 : SrcBinderInfo .cvar s2}
+    (h : CaptureSet.compile (.var (.M .epsilon) (.bound xv)) tail
+        = CaptureSet.compile cs tail) :
+    CaptureSet.compile
+        (((CaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+          ∪ .var (.M .epsilon) (.bound .here)) (.cons i1 (.cons i2 tail))
+      = CaptureSet.compile
+        ((cs.rename Rename.succ).rename Rename.succ ∪ .var (.M .epsilon) (.bound .here))
+        (.cons i1 (.cons i2 tail)) := by
+  simp only [CaptureSet.compile, CaptureSet.compile_rename_succ_cons]
+  -- `congr 1` splits off the shared `{param}` summand and discharges the residual
+  -- `⟦{xv}⟧ = ⟦cs⟧` (through `tail`) with `h` from context.
+  congr 1
+
+/-- Compiling a variable's singleton capture and resolving a variable's peaks to
+    its declared type's peaks agree: `peaksVarBound Γ ε x = peaks Γ T.captureSet`
+    when `x : T`.  This is exactly why the var rule's self-capture refinement keeps
+    the compiled lock's separation context (`Ψ`) faithful. -/
+theorem CapyCaptureSet.peaksVarBound_eq_captureSet {s : Sig} {Γ : CapyCtx s}
+    {x : BVar s .var} {T : CapyTy .capt s} (h : Γ.LookupVar x T) :
+    CapyCaptureSet.peaksVarBound Γ (.M .epsilon) x
+      = CapyCaptureSet.peaks Γ T.captureSet := by
+  induction h with
+  | here =>
+    simp only [CapyCaptureSet.peaksVarBound, CapyTy.captureSet_rename,
+      CapyCaptureSet.peaks_rename_succ_eq, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+  | there _ ih =>
+    simp only [CapyCaptureSet.peaksVarBound, CapyTy.captureSet_rename,
+      CapyCaptureSet.peaks_rename_succ_eq, ih]
+
+/-- Two peak sets with equal underlying capture sets are equal (the `PeaksOnly`
+    proof is irrelevant). -/
+theorem CapyCaptureSet.peakset_congr {s : Sig} {Γ : CapyCtx s} {C1 C2 : CaptureSet s}
+    (h : CapyCaptureSet.peaks Γ C1 = CapyCaptureSet.peaks Γ C2) :
+    CapyCaptureSet.peakset Γ C1 = CapyCaptureSet.peakset Γ C2 := by
+  unfold CapyCaptureSet.peakset
+  congr 1
+
+/-- The `peaks`-image of the arrow lock's capture field `⟦cs⟧ ∪ {param}` is, like
+    its `compile`-image (`compile_lock_field_congr`), insensitive to presenting the
+    latent capture as `{xv}` versus `cs`, given they agree in the underlying
+    context `Γ` (`h`).  The two source weakenings peel via `peaks_rename_succ_eq`
+    ×2 and `peaks_union` distributes the shared `{param}` summand off; `congr` then
+    discharges the residual with `h`.  Stated with the two pushed binders abstract
+    so the peel fires cleanly. -/
+theorem CapyCaptureSet.peaks_lock_field_congr {s1 : Sig} {xv : BVar s1 .var}
+    {cs : CaptureSet s1} {Γ : CapyCtx s1}
+    {bcv : CapyBinding s1 .cvar} {bv : CapyBinding (s1,,Kind.cvar) .var}
+    (h : CapyCaptureSet.peaks Γ (.var (.M .epsilon) (.bound xv))
+        = CapyCaptureSet.peaks Γ cs) :
+    CapyCaptureSet.peaks ((Γ.push bcv).push bv)
+        (((CaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+          ∪ .var (.M .epsilon) (.bound .here))
+      = CapyCaptureSet.peaks ((Γ.push bcv).push bv)
+        ((cs.rename Rename.succ).rename Rename.succ ∪ .var (.M .epsilon) (.bound .here)) := by
+  simp only [CapyCaptureSet.peaks_union, CapyCaptureSet.peaks_rename_succ_eq]
+  -- `repeat' congr 1` peels the two `rename succ`s and the shared `{param}` summand,
+  -- discharging the residual `peaks Γ {xv} = peaks Γ cs` with `h` from context.
+  repeat' congr 1
+
 /-- `CapyCaptureBound.compile` commutes with target renaming of the source
     context. -/
 theorem CapyCaptureBound.compile_rename {cb : CapyCaptureBound s1}

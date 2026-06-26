@@ -1,4 +1,4 @@
-import Semantic.CoreCapybara.Compilation.CompileLemmas
+import Semantic.CoreCapybara.Compilation.ClosedLemmas
 open CoreCapybara
 namespace Compilation
 
@@ -62,12 +62,17 @@ def CapyBinding.compile : CapyBinding s1 k -> CompilerCtx s1 s2 -> Binding s2 k
     the shifts the lookup judgements apply. -/
 structure CompilerCtx.Coherent (ctx : CompilerCtx s1 s2) : Prop where
   closed : ctx.coreCtx.IsClosed
+  srcClosed : ctx.srcCtx.VarsClosed
   varLookup : ∀ {x : BVar s1 .var} {T : CapyTy .capt s1},
     ctx.capyCtx.LookupVar x T →
     ∃ bv, ctx.srcCtx.lookupVarBVar x = some bv ∧
-          -- in a term-compilation context, a source variable stands for its own
-          -- target variable's capture `{bv}`
-          ctx.srcCtx.lookupVar x = .var (.M .epsilon) (.bound bv) ∧
+          -- A source variable's capture IMAGE is its declared type's compiled
+          -- capture set `⟦T.captureSet⟧` — the function's *latent requirement* —
+          -- NOT the singleton `{bv}`.  This keeps the compiled lock faithful, so
+          -- the var rule's self-capture refinement vanishes under compilation
+          -- (see `Subtyp.self_refine`).  The target variable `bv` is used only for
+          -- the compiled *expression* `.var bv`.
+          ctx.srcCtx.lookupVar x = CaptureSet.compile T.captureSet ctx.srcCtx ∧
           ctx.coreCtx.LookupVar bv (CapyTy.compile T ctx)
 
 end Compilation
