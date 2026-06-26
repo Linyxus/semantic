@@ -1,6 +1,7 @@
 import Semantic.CoreCapybara.Compilation.CompilerCtx
 import Semantic.CoreCapybara.Compilation.TypeCompiler
 import Semantic.CoreCapybara.Compilation.CompileLemmas
+import Semantic.CoreCapybara.Compilation.Coherence
 
 /-!
 # Typed Compilation: Capybara → CoreCapybara
