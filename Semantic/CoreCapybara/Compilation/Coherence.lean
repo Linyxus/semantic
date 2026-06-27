@@ -74,5 +74,18 @@ structure CompilerCtx.Coherent (ctx : CompilerCtx s1 s2) : Prop where
           -- the compiled *expression* `.var bv`.
           ctx.srcCtx.lookupVar x = CaptureSet.compile T.captureSet ctx.srcCtx ∧
           ctx.coreCtx.LookupVar bv (CapyTy.compile T ctx)
+  -- Capture-variable lookup coherence: a source cvar's image is bound in `coreCtx`
+  -- at the compiled authority + capture bound.  Needed by `Subtyp.tvar`/`cpoly`
+  -- compilation, droppability transport (`compile_droppable`), and the lock
+  -- separation machinery (`sep_droppable` from a source `droppable`).
+  cvarLookup : ∀ {c : BVar s1 .cvar} {a : CapyAuthority} {cb : CapyCaptureBound s1},
+    ctx.capyCtx.LookupCVar c a cb →
+    ctx.coreCtx.LookupCVar (ctx.srcCtx.lookupCVar c)
+      (CapyAuthority.compile a) (CapyCaptureBound.compile cb ctx.srcCtx)
+  -- Type-variable lookup coherence: a source tvar's image is bound at the compiled
+  -- pure type.  Needed by `Subtyp.tvar` compilation.
+  tvarLookup : ∀ {X : BVar s1 .tvar} {S : CapyPureTy s1},
+    ctx.capyCtx.LookupTVar X S →
+    ctx.coreCtx.LookupTVar (ctx.srcCtx.lookupTVar X) (CapyPureTy.compile S ctx)
 
 end Compilation

@@ -35,6 +35,18 @@ theorem SrcCtx.lookupVar_rename {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'}
     | here => cases info; rfl
     | there x => simp only [SrcCtx.rename, SrcCtx.lookupVar]; exact ih
 
+/-- Looking up the (optional) target term-variable image in a target-renamed
+    source context renames the image. -/
+theorem SrcCtx.lookupVarBVar_rename {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'}
+    {x : BVar s1 .var} :
+    (ctx.rename ρ).lookupVarBVar x = (ctx.lookupVarBVar x).map ρ.var := by
+  induction ctx generalizing s2' with
+  | empty => nomatch x
+  | cons info rest ih =>
+    cases x with
+    | here => cases info; rfl
+    | there x => simp only [SrcCtx.rename, SrcCtx.lookupVarBVar]; exact ih
+
 /-- `CaptureSet.compile` commutes with target renaming of the source context. -/
 theorem CaptureSet.compile_rename {cs : CaptureSet s1} {ctx : SrcCtx s1 s2}
     {ρ : Rename s2 s2'} :
