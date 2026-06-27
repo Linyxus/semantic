@@ -216,11 +216,30 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
       hcsclosed (Ty.IsClosed.typ (Ty.IsClosed.reader hcsclosed))
   case fresh =>
     intro s2 ctx hΓ hcoh
-    -- **`fresh` ↦ `letin ⟦premise⟧ (pack (⟦D⟧.rename succ) (.bound .here))`.**
+    -- **`fresh` ↦ `letin ⟦premise⟧ (pack (⟦D⟧.rename succ) (.bound .here))`,
+    --   with the premise witness bound at effect `C1 = {}`.**
     --
-    -- An MNF let-binding re-derives the IH witness at a genuine variable typed `{}`,
-    -- which `pack` consumes.  `pack`'s body must line up with the let-bound `v`'s
-    -- type, which needs the type-level opening commutation up to **subtyping**:
+    -- An MNF let-binding rebinds the compiled premise (a *value*) to a genuine
+    -- variable `.bound .here` typed `{}`, which `pack` consumes.  The `letin` is
+    -- REQUIRED: a source `.var x` compiles to `.var bv` (via `var`) OR to `.reader bv`
+    -- (via `readonly`), and `pack` only accepts a `.var` argument — so the let must
+    -- rebind either value to a fresh `.var here`.
+    --
+    -- **Bind the premise at `C1 = {}` (the SECONDARY-FINDING fix).**  Both `.var bv`
+    -- and `.reader bv` are values the target types at effect `{}` (the `var`/`reader`
+    -- rules conclude `{}`); `Cprem` enters only via source subsumption, so the witness
+    -- is ALWAYS obtainable at `C1 = {}` (lemma `compile_var_typ_empty`).  Binding at
+    -- `{}` makes the `letin`'s continuation context CLEAN — `({}.peakset).consumed = ∅`
+    -- ⇒ `kill_peaks` is a no-op ⇒ `Γ2 = (⟦Γ⟧, x:⟦T[D/c]⟧)` with NO killed cvars — and
+    -- makes `seq` trivial (`seq_access_only` on `{}`).  The final `letin` effect
+    -- `{} ∪ (⟦D⟧ ∪ ⟦D⟧.applyDrop)` is subsumed up to `⟦C ∪ D ∪ D.applyDrop⟧`.
+    --   (WHY `{}` and not `Cc`: if `C1 = Cc`, `kill_peaks` kills `Cc`'s drop-mode peak
+    --    cvars; a spurious `.cvar .drop k` injected into `Cprem` by `sc_elem`
+    --    subsumption with `k ∈ peaks(D)` would then be `.killed` in `Γ2`, breaking
+    --    `pack`'s `drp` and the lock `Satisfy`.  Binding at `{}` removes the kill.)
+    --
+    -- `pack`'s body must line up with the let-bound `here`'s type, which needs the
+    -- type-level opening commutation up to **subtyping**:
     --     `⟦T[D/c]⟧  <:  ⟦T⟧[⟦D⟧/c]`.
     -- A compiled function lock is `peakSepCtx (peakset Γ W) …` (one item per distinct
     -- peak cvar).  Source-substitute-then-compile (`⟦T[D/c]⟧`) re-groups `c` into
@@ -252,6 +271,13 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
     -- capture arithmetic, and the `pack` droppability/access-only side-conditions.
     -- Foundations PROVEN: `SubstCompat`, (★)`compile_peaks`, `sep_mono`.
     -- [[project_capybara_translation]]
+    --
+    -- ⚠️ NOTE (skeleton below is PRE-FIX): the `have key` still binds the premise at
+    -- `C1 := Cc` (`hePrem` at effect `Cc`), the FLAWED choice.  On resume this is to
+    -- be revised to `C1 := {}` per the fix above — emit `compile_var_typ_empty` to
+    -- get the premise witness at `{}`, set `C1 := {}` (⇒ clean `Γ2`, trivial `seq`),
+    -- then subsume the final effect up to `⟦C ∪ D ∪ D.applyDrop⟧`.  Kept as-is for now
+    -- (build paused); `seq`/`ao`/`drp`/`var` remain `sorry`.
     rename_i s0 Cprem Γ0 xv Dpack Tbody hprem hDcl hDvalid hdrop ih
     obtain ⟨ePrem, hePrem⟩ := ih ctx hΓ hcoh
     simp only [CapyTy.compile] at hePrem ⊢
