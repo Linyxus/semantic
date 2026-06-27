@@ -62,6 +62,7 @@ def CapyBinding.compile : CapyBinding s1 k -> CompilerCtx s1 s2 -> Binding s2 k
     the shifts the lookup judgements apply. -/
 structure CompilerCtx.Coherent (ctx : CompilerCtx s1 s2) : Prop where
   closed : ctx.coreCtx.IsClosed
+  capyClosed : ctx.capyCtx.IsClosed
   srcClosed : ctx.srcCtx.VarsClosed
   varLookup : ∀ {x : BVar s1 .var} {T : CapyTy .capt s1},
     ctx.capyCtx.LookupVar x T →

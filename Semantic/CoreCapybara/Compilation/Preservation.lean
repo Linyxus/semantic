@@ -216,120 +216,41 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
       hcsclosed (Ty.IsClosed.typ (Ty.IsClosed.reader hcsclosed))
   case fresh =>
     intro s2 ctx hΓ hcoh
-    -- **`fresh` ↦ `letin ⟦premise⟧ (pack (⟦D⟧.rename succ) (.bound .here))`,
-    --   with the premise witness bound at effect `C1 = {}`.**
-    --
-    -- An MNF let-binding rebinds the compiled premise (a *value*) to a genuine
-    -- variable `.bound .here` typed `{}`, which `pack` consumes.  The `letin` is
-    -- REQUIRED: a source `.var x` compiles to `.var bv` (via `var`) OR to `.reader bv`
-    -- (via `readonly`), and `pack` only accepts a `.var` argument — so the let must
-    -- rebind either value to a fresh `.var here`.
-    --
-    -- **Bind the premise at `C1 = {}` (the SECONDARY-FINDING fix).**  Both `.var bv`
-    -- and `.reader bv` are values the target types at effect `{}` (the `var`/`reader`
-    -- rules conclude `{}`); `Cprem` enters only via source subsumption, so the witness
-    -- is ALWAYS obtainable at `C1 = {}` (lemma `compile_var_typ_empty`).  Binding at
-    -- `{}` makes the `letin`'s continuation context CLEAN — `({}.peakset).consumed = ∅`
-    -- ⇒ `kill_peaks` is a no-op ⇒ `Γ2 = (⟦Γ⟧, x:⟦T[D/c]⟧)` with NO killed cvars — and
-    -- makes `seq` trivial (`seq_access_only` on `{}`).  The final `letin` effect
-    -- `{} ∪ (⟦D⟧ ∪ ⟦D⟧.applyDrop)` is subsumed up to `⟦C ∪ D ∪ D.applyDrop⟧`.
-    --   (WHY `{}` and not `Cc`: if `C1 = Cc`, `kill_peaks` kills `Cc`'s drop-mode peak
-    --    cvars; a spurious `.cvar .drop k` injected into `Cprem` by `sc_elem`
-    --    subsumption with `k ∈ peaks(D)` would then be `.killed` in `Γ2`, breaking
-    --    `pack`'s `drp` and the lock `Satisfy`.  Binding at `{}` removes the kill.)
-    --
-    -- `pack`'s body must line up with the let-bound `here`'s type, which needs the
-    -- type-level opening commutation up to **subtyping**:
-    --     `⟦T[D/c]⟧  <:  ⟦T⟧[⟦D⟧/c]`.
-    -- A compiled function lock is `peakSepCtx (peakset Γ W) …` (one item per distinct
-    -- peak cvar).  Source-substitute-then-compile (`⟦T[D/c]⟧`) re-groups `c` into
-    -- `D`'s peaks (SEPARATED lock `Ψsep`); compile-then-target-substitute
-    -- (`⟦T⟧[⟦D⟧/c]`) keeps `c`'s single item, now holding `⟦D⟧` (MERGED lock
-    -- `Ψmerged`).  Per the trusted `Subtyp.modal_modal`, `Ψsep <: Ψmerged` reduces to
-    -- `Satisfy (Γ.push_lock Ψmerged) Ψsep`: discharge every `HasTwoDistinct` pair of
-    -- `Ψsep`.  Three kinds of pair:
-    --   • within-`D` (peak_i ⊥ peak_j):  ✓ `sep_droppable` from `droppable Γ D`.
-    --   • other-other (cs-peak ⊥ cs-peak): ✓ `sep_lock` (both are items of `Ψmerged`).
-    --   • CROSS (D-peak_i ⊥ cs-peak f):   ✓ `SepCheck.sep_mono` (below).
-    --
-    -- **The cross pair — resolved by `SepCheck.sep_mono`.**  We have `⟦D⟧ ⊥ f` from
-    -- `Ψmerged` (via `sep_lock`, where `⟦D⟧ = peak_1 ∪ … ∪ peak_n` is a SINGLE merged
-    -- lock item) and need `peak_i ⊥ f` with `peak_i ⊆ ⟦D⟧` and `f` an arbitrary
-    -- (possibly NON-droppable) capability.  This is LEFT-DOWNWARD-MONOTONICITY of
-    -- `SepCheck`: `SepCheck Γ A B → Subcapt Γ A' A → SepCheck Γ A' B`.  It is NOT
-    -- admissible from the other constructors (induction on the `⟦D⟧ ⊥ f` derivation
-    -- blocks at `sep_lock`: `peak_i ⊊ ⟦D⟧` is not itself a lock item), so it was
-    -- ADDED as the primitive `SepCheck.sep_mono` (Core.lean), discharged in
-    -- `fundamental_sepcheck`/`_global` via `Noninterference.subset_left` — sound
-    -- because `SemSepCheck = Noninterference` is downward-closed (`peak_i.denot ⊆
-    -- ⟦D⟧.denot` by `fundamental_subcapt`).  Convenience wrapper: `SepCheck.left_mono`.
-    --
-    -- With the lock `Satisfy` now fully dischargeable, NO design gap remains.  The
-    -- rest is mechanical assembly: the type-level subtyping lift `⟦T[D/c]⟧ <:
-    -- ⟦T⟧[⟦D⟧/c]` (leaves = `compile_subst_openCVar` equality → refl; locks =
-    -- `modal_modal` + the `Satisfy` above), the `letin`/`pack` term wiring, the
-    -- capture arithmetic, and the `pack` droppability/access-only side-conditions.
-    -- Foundations PROVEN: `SubstCompat`, (★)`compile_peaks`, `sep_mono`.
+    rename_i s0 Γ0 Df xv Tbody hDcl hao hlook hdrop
+    -- The refactored `fresh` rule reads `x` straight from the context
+    -- (`Γ.LookupVar x (T[D/c])`) and re-packs it.  The subject `.var (.bound x)`
+    -- compiles to the target variable `bv`, so we emit `.pack ⟦D⟧ bv` DIRECTLY —
+    -- no `letin`, since `bv` is already a genuine `.var` that `pack` accepts.  With
+    -- `C` dropped from the conclusion, compilation is EXACT: `pack`'s native capture
+    -- `⟦D⟧ ∪ ⟦D⟧.applyAccess .drop` IS the goal capture `⟦D ∪ D.applyDrop⟧` (modulo
+    -- `applyAccess .drop ≡ applyDrop`), so no subsumption is needed.
     -- [[project_capybara_translation]]
-    --
-    -- ⚠️ NOTE (skeleton below is PRE-FIX): the `have key` still binds the premise at
-    -- `C1 := Cc` (`hePrem` at effect `Cc`), the FLAWED choice.  On resume this is to
-    -- be revised to `C1 := {}` per the fix above — emit `compile_var_typ_empty` to
-    -- get the premise witness at `{}`, set `C1 := {}` (⇒ clean `Γ2`, trivial `seq`),
-    -- then subsume the final effect up to `⟦C ∪ D ∪ D.applyDrop⟧`.  Kept as-is for now
-    -- (build paused); `seq`/`ao`/`drp`/`var` remain `sorry`.
-    rename_i s0 Cprem Γ0 xv Dpack Tbody hprem hDcl hDvalid hdrop ih
-    obtain ⟨ePrem, hePrem⟩ := ih ctx hΓ hcoh
-    simp only [CapyTy.compile] at hePrem ⊢
-    refine ⟨.letin ePrem (.pack ((CaptureSet.compile Dpack ctx.srcCtx).rename Rename.succ)
-      (.bound .here)), ?_⟩
-    -- abbreviations
-    set Cc := CaptureSet.compile Cprem ctx.srcCtx with hCc
-    set Dc := CaptureSet.compile Dpack ctx.srcCtx with hDc
-    set exiCtx := ctx.weakenTarget.consCVar (CapyCaptureBound.unbound .epsilon) BVar.here with hexi
-    -- the `letin` at the right-nested capture; coerced to the goal capture afterwards.
-    have key : HasType (Cc ∪ (Dc ∪ Dc.applyDrop)) ctx.coreCtx
-        (ePrem.letin (Exp.pack (Dc.rename Rename.succ) (Var.bound BVar.here)))
-        (Ty.exi (CapyTy.compile Tbody exiCtx)) := by
-      refine HasType.letin (C1 := Cc) (C2 := Dc ∪ Dc.applyDrop)
-        (T := CapyTy.compile (Tbody.subst (CapySubst.openCVar Dpack)) ctx)
-        (U := Ty.exi (CapyTy.compile Tbody exiCtx)) ?seq hePrem ?e2
-      case seq => sorry
-      case e2 =>
-        -- normalize the pack capture `(Dc ∪ Dc.applyDrop).rename succ`
-        simp only [CaptureSet.rename, CaptureSet.applyDrop_rename]
-        refine HasType.pack ?cl ?ao ?drp ?var
-        case cl =>
-          -- `⟦D⟧.rename succ` closed: `D.IsClosed` (new `fresh` premise) compiled + renamed.
-          exact CaptureSet.rename_isClosed
-            (CaptureSet.compile_isClosed hDcl hcoh.srcClosed)
-        case ao => sorry
-        case drp => sorry
-        case var =>
-          -- the let-bound `x` (typed `⟦T[D/c]⟧.rename succ`) subsumes to `pack`'s
-          -- required body `(⟦T⟧_exiCtx.rename succ.lift).subst (openCVar (Dc.rename succ))`.
-          -- = (★★) renamed: `⟦T[D/c]⟧ <: ⟦T⟧_exiCtx[⟦D⟧/c]`, via `var`+`self_refine`+
-          -- `compile_openCVar_subtyp` (the type-level commutation; locks via `sep_mono`).
-          sorry
-    -- coerce: reassoc the (left-nested) goal capture to `key`'s (right-nested);
-    -- the goal type already matches `key`'s (both `.exi (compile Tbody exiCtx)`).
-    refine HasType.subtyp key ?_ Subtyp.refl ?_ ?_
-    · -- Subcapt (Cc ∪ (Dc ∪ Dc.applyDrop)) ⟦Cprem ∪ Dpack ∪ Dpack.applyDrop⟧
-      simp only [CaptureSet.compile, CaptureSet.compile_applyDrop, ← hCc, ← hDc]
-      exact Subcapt.sc_union
-        (Subcapt.sc_elem (.union_right_left (.union_right_left .refl)))
-        (Subcapt.sc_union
-          (Subcapt.sc_elem (.union_right_left (.union_right_right .refl)))
-          (Subcapt.sc_elem (.union_right_right .refl)))
-    · -- goal capture closed: from `key`'s regularity + reassoc
-      have hk := key.use_set_is_closed
-      simp only [CaptureSet.compile, CaptureSet.compile_applyDrop, ← hCc, ← hDc]
-      cases hk with
-      | union hCcCl hrest =>
-        cases hrest with
-        | union hDcCl hDcdCl => exact .union (.union hCcCl hDcCl) hDcdCl
-    · -- goal type closed: identical to `key`'s type
-      exact key.type_is_closed
+    obtain ⟨bv, _, _, hcorelk⟩ := hcoh.varLookup (hΓ ▸ hlook)
+    -- the `.exi`-compiler's extended body context
+    set exiCtx := ctx.weakenTarget.consCVar (CapyCaptureBound.unbound .epsilon) BVar.here
+      with hexi
+    refine ⟨.pack (CaptureSet.compile Df ctx.srcCtx) (.bound bv), ?_⟩
+    -- `⟦.exi T⟧` is definitionally `.exi ⟦T⟧_exiCtx`; distribute `⟦D ∪ D.applyDrop⟧`.
+    have hty : CapyTy.compile (CapyTy.exi Tbody) ctx = Ty.exi (CapyTy.compile Tbody exiCtx) := by
+      simp only [CapyTy.compile, ← hexi]
+    rw [hty]
+    simp only [CaptureSet.compile, CaptureSet.compile_applyDrop]
+    refine HasType.pack ?cl ?ao ?drp ?var
+    case cl => exact CaptureSet.compile_isClosed hDcl hcoh.srcClosed
+    case ao =>
+      -- `⟦D⟧.AccessOnly ⟦Γ⟧` from source `AccessOnly Γ D` (`hao`), via the
+      -- compile-preserves-AccessOnly transport (Workstream A).
+      exact CaptureSet.compile_accessOnly hcoh hDcl (hΓ ▸ hao)
+    case drp =>
+      -- `⟦D⟧.droppable ⟦Γ⟧` from source `droppable Γ D` (`hdrop`), via the
+      -- compile-preserves-droppable transport (Workstream A).
+      exact CaptureSet.compile_droppable hcoh hDcl (hΓ ▸ hdrop)
+    case var =>
+      -- `HasType.var` types `bv` at `{}` and `⟦T[D/c]⟧^{bv}`; `pack` wants it at
+      -- `(⟦T⟧_exiCtx).subst (openCVar ⟦D⟧)`.  Bridge = self-refinement vanishing
+      -- (`compile_refine_self`/`self_refine`) ∘ the type-level openCVar commutation
+      -- up to subtyping `⟦T[D/c]⟧ <: ⟦T⟧_exiCtx[⟦D⟧/c]` (the K1/★★ kernel).
+      sorry
   -- Remaining cases (abs, tabs, cabs, app, tapp, capp,
   -- letin, letin_unpack, alloc, drop, read, write, cond, par, invoke, subtyp)
   -- are WIP: discharged incrementally.

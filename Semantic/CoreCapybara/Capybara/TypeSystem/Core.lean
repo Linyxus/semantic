@@ -243,7 +243,7 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .exi s 
   Γ.LookupVar x (T.subst (CapySubst.openCVar D)) ->
   CapyCaptureSet.droppable Γ D ->
   --------------------------------
-  CapyHasType (C ∪ D ∪ D.applyDrop) Γ (.var (.bound x)) (.exi T)
+  CapyHasType (D ∪ D.applyDrop) Γ (.var (.bound x)) (.exi T)
 | abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .exi (s,x)} :
   T1.IsClosed ->
   CapyHasType
