@@ -2,7 +2,9 @@ import Semantic.CoreCapybara.Compilation.CompilerCtx
 import Semantic.CoreCapybara.Compilation.TypeCompiler
 import Semantic.CoreCapybara.Compilation.CompileLemmas
 import Semantic.CoreCapybara.Compilation.ClosedLemmas
+import Semantic.CoreCapybara.Compilation.ContextMorphism
 import Semantic.CoreCapybara.Compilation.Coherence
+import Semantic.CoreCapybara.Compilation.CoherenceMorphism
 import Semantic.CoreCapybara.Compilation.SubstLemmas
 import Semantic.CoreCapybara.Compilation.OpenCVarSubtyp
 import Semantic.CoreCapybara.Compilation.Preservation
