@@ -1,4 +1,5 @@
 import Semantic.CoreCapybara.Compilation.Coherence
+import Semantic.CoreCapybara.Compilation.CoherenceMorphism
 import Semantic.CoreCapybara.Compilation.SubstLemmas
 open CoreCapybara
 namespace Compilation
@@ -105,19 +106,29 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
     exact Subtyp.typ (ih ctx hΓ hcoh)
   | exi _ ih =>
     intro s2 ctx hΓ hcoh
-    -- K2: needs `consCVar` coherence preservation to feed `ih` the extended ctx.
-    sorry
+    simp only [CapyTy.compile]
+    refine Subtyp.exi (ih (ctx.weakenTarget.consCVar (.unbound .epsilon) .here) ?_ ?_)
+    · simp only [CompilerCtx.consCVar_capyCtx, CompilerCtx.weakenTarget_capyCtx, hΓ]
+    · exact (hcoh.weakenTarget (b := placeholderBinding .cvar)
+        (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound)).consCVar
+        CapyCaptureBound.IsClosed.unbound Ctx.LookupCVar.here
+  -- K1: function-lock subtyping kernel.  The assembly (`Subtyp.poly`/`cpoly` for the
+  -- bound + `Subtyp.typ` + `trans` through `.modal cs2 Ψ1 E2`, with `Subtyp.modal` for
+  -- the `cs`/body change) reduces each case to ONE `Subtyp.modal_modal` premise:
+  --   `Satisfy (Γt.push_lock Ψ2) (Ψ1.rename succ)`
+  -- whose `hsep` demands two distinct peaks of `cs1` separate under `cs2`'s lock.  This
+  -- is a VERIFIED GAP (2026-06-28): underivable from `CapySubcapt Γ cs1 cs2` alone,
+  -- because `sc_cvar` eliminates `access_only` peaks (`peaks` not monotone), so the
+  -- separation must be threaded as source separation well-formedness.  Blocked on an
+  -- architectural decision — see `notes/fresh-roadmap.md` ("VERIFIED GAP").
   | arrow _ _ _ ih1 ih3 =>
     intro s2 ctx hΓ hcoh
-    -- K1: function-lock subtyping kernel.
     sorry
   | poly _ _ _ ih1 ih3 =>
     intro s2 ctx hΓ hcoh
-    -- K1: function-lock subtyping kernel.
     sorry
   | cpoly _ _ _ ih3 =>
     intro s2 ctx hΓ hcoh
-    -- K1: function-lock subtyping kernel.
     sorry
 
 /-!
