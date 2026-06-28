@@ -1,6 +1,7 @@
 import Semantic.CoreCapybara.Compilation.Coherence
 import Semantic.CoreCapybara.Compilation.CoherenceMorphism
 import Semantic.CoreCapybara.Compilation.SubstLemmas
+import Semantic.CoreCapybara.Compilation.LockKernel
 open CoreCapybara
 namespace Compilation
 
@@ -83,52 +84,85 @@ theorem CapySubcapt.compile {s1 : Sig} {Γ : CapyCtx s1} {C1 C2 : CaptureSet s1}
 theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
     {A B : CapyTy sort s1} (h : CapySubtyp Γ A B) :
     ∀ {s2 : Sig} (ctx : CompilerCtx s1 s2), ctx.capyCtx = Γ → ctx.Coherent →
+    A.IsClosed → B.IsClosed →
     Subtyp ctx.coreCtx (CapyTy.compile A ctx) (CapyTy.compile B ctx) := by
   induction h with
   | top hpure =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
     simp only [CapyTy.compile]
     exact Subtyp.top (CapyTy.compile_isPure hpure)
   | refl =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
     exact Subtyp.refl
   | trans hT2 _ _ ih1 ih2 =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
     exact Subtyp.trans (CapyTy.compile_isClosed _ _ hT2 hcoh.srcClosed)
-      (ih1 ctx hΓ hcoh) (ih2 ctx hΓ hcoh)
+      (ih1 ctx hΓ hcoh hA hT2) (ih2 ctx hΓ hcoh hT2 hB)
   | tvar hlk =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
     simp only [CapyTy.compile]
     exact Subtyp.tvar (hcoh.tvarLookup (hΓ ▸ hlk))
   | typ _ ih =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
+    cases hA with | typ hA1 => cases hB with | typ hB1 =>
     simp only [CapyTy.compile]
-    exact Subtyp.typ (ih ctx hΓ hcoh)
+    exact Subtyp.typ (ih ctx hΓ hcoh hA1 hB1)
   | exi _ ih =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
+    cases hA with | exi hA1 => cases hB with | exi hB1 =>
     simp only [CapyTy.compile]
-    refine Subtyp.exi (ih (ctx.weakenTarget.consCVar (.unbound .epsilon) .here) ?_ ?_)
+    refine Subtyp.exi (ih (ctx.weakenTarget.consCVar (.unbound .epsilon) .here) ?_ ?_ ?_ ?_)
     · simp only [CompilerCtx.consCVar_capyCtx, CompilerCtx.weakenTarget_capyCtx, hΓ]
     · exact (hcoh.weakenTarget (b := placeholderBinding .cvar)
         (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound)).consCVar
         CapyCaptureBound.IsClosed.unbound Ctx.LookupCVar.here
+    · exact hA1
+    · exact hB1
   -- K1: function-lock subtyping kernel.  The assembly (`Subtyp.poly`/`cpoly` for the
   -- bound + `Subtyp.typ` + `trans` through `.modal cs2 Ψ1 E2`, with `Subtyp.modal` for
   -- the `cs`/body change) reduces each case to ONE `Subtyp.modal_modal` premise:
   --   `Satisfy (Γt.push_lock Ψ2) (Ψ1.rename succ)`
-  -- whose `hsep` demands two distinct peaks of `cs1` separate under `cs2`'s lock.  This
-  -- is a VERIFIED GAP (2026-06-28): underivable from `CapySubcapt Γ cs1 cs2` alone,
-  -- because `sc_cvar` eliminates `access_only` peaks (`peaks` not monotone), so the
-  -- separation must be threaded as source separation well-formedness.  Blocked on an
-  -- architectural decision — see `notes/fresh-roadmap.md` ("VERIFIED GAP").
+  -- whose `hsep` demands every two distinct peaks of `cs1` separate under `cs2`'s lock.
+  --
+  -- ★★ FUNDAMENTAL GAP (verified 2026-06-28) — needs a human design decision. ★★
+  --
+  -- This is UNDERIVABLE, and not merely "infrastructure not yet built".  Concrete
+  -- counterexample (all pieces source-derivable):
+  --   Γ = …, d:[*]<:_, c₁:[access_only]<:.bound {d}, c₂:[access_only]<:.bound {d}
+  --   cs1 = {c₁,c₂},  cs2 = {d}.
+  --   `CapySubcapt Γ {c₁,c₂} {d}` holds  (sc_cvar c₁, sc_cvar c₂, sc_union).
+  --   ⇒ `CapySubtyp Γ (.cpoly cb1 {c₁,c₂} T1) (.cpoly cb2 {d} T2)` is derivable.
+  -- Compiled locks:  Ψ1 = peakSepCtx{c₁,c₂}  (TWO items ⟦c₁⟧,⟦c₂⟧ — must separate);
+  --                  Ψ2 = peakSepCtx{d}      (ONE item ⟦d⟧).
+  -- The `modal_modal` premise becomes  `SepCheck (Γt.push_lock Ψ2) ⟦c₁⟧ ⟦c₂⟧`, with
+  -- NO applicable rule:  sep_lock — c₁,c₂ are not two distinct items of Ψ2 (only d);
+  --   sep_droppable — c₁,c₂ are `access_only`, not `can_drop`;  sep_mono — {c₁},{c₂}<:{d}
+  --   collapses both sides to d⊥d (false);  sep_ro — bodies captured at `.epsilon`, not ro.
+  --
+  -- ROOT CAUSE.  The compiler stamps the lock Ψ1 = peakSepCtx(peaks cs1) onto every
+  -- function type, INJECTING the assumption "all of cs1's peaks pairwise separate"
+  -- (target `wrap` PUSHES Ψ1 for the body; `unwrap` discharges it).  But the SOURCE
+  -- never establishes this: `abs`/`tabs`/`cabs` (Capybara/TypeSystem/Core.lean:247-266)
+  -- do NOT sep-check captures — source separation is a USE-site check (`app`:272,
+  -- `par`:348).  So there is NO source well-formedness to thread (the earlier
+  -- "thread source separation" plan is unworkable — the invariant does not exist),
+  -- and `sc_cvar` legitimately merges two distinct cs1-peaks into one cs2-bound,
+  -- destroying the separation Ψ1 demands.
+  --
+  -- FIX is a DESIGN choice (human): (a) weaken the compiled function-type lock so it
+  -- only records separations stable under subcapturing; or (b) add capture sep-checking
+  -- to source `abs`/`tabs`/`cabs` so Ψ1 is justified and threadable; or (c) change the
+  -- modal-lock subtyping discipline.  `fresh` does NOT hit this — it routes through B2c
+  -- (`compile_subst_subtyp`), whose split peaks come from a DROPPABLE `D`, separated by
+  -- `sep_droppable`.  See `notes/fresh-roadmap.md` ("FUNDAMENTAL GAP").
   | arrow _ _ _ ih1 ih3 =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
     sorry
   | poly _ _ _ ih1 ih3 =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
     sorry
   | cpoly _ _ _ ih3 =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hA hB
     sorry
 
 /-!

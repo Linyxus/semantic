@@ -311,6 +311,22 @@ theorem CapyTy.compile_subst_cell {s1 s1' s2 s2' : Sig} {cs : CaptureSet s1} {m 
   cases m <;>
     simp only [CapyTy.subst, CapyTy.compile, Ty.subst, CaptureSet.compile_subst h hcs]
 
+/-- **Capture-bound compilation commutes with a compatible substitution.**  Mirrors
+    `compile_subst_cap`/`cell` at the bound level: `unbound` is trivial, `bound` reduces
+    to the capture-set `compile_subst`.  Needed by the lock-kernel `cpoly`/`arrow` cases
+    (the `Subbound` premise relates the two compiled bounds). -/
+theorem CapyCaptureBound.compile_subst {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'}
+    {scOrig : SrcCtx s1 s2} {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
+    (h : SubstCompat scSub scOrig σ σt) {cb : CapyCaptureBound s1} (hcb : cb.IsClosed) :
+    CapyCaptureBound.compile (cb.subst σ) scSub
+      = (CapyCaptureBound.compile cb scOrig).subst σt := by
+  cases cb with
+  | unbound m => simp only [CapyCaptureBound.subst, CapyCaptureBound.compile, CaptureBound.subst]
+  | bound cs =>
+    cases hcb with | bound hcs =>
+    simp only [CapyCaptureBound.subst, CapyCaptureBound.compile, CaptureBound.subst,
+      CaptureSet.compile_subst h hcs]
+
 /-! ### Structure of the compiled separation lock `peakSepCtx`
 
 Toward the lock `Satisfy` sub-proof of the type-level commutation: an item of the
