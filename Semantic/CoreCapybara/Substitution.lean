@@ -80,6 +80,7 @@ def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
 | .poly T1 cs T2, s => .poly (T1.subst s) (cs.subst s) (T2.subst s.lift)
 | .cpoly cb cs T, s => .cpoly (cb.subst s) (cs.subst s) (T.subst s.lift)
 | .modal cs Ψ T, s => .modal (cs.subst s) (Ψ.subst s) (T.subst s)
+| .consumer T cs E, s => .consumer (T.subst s) (cs.subst s) (E.subst s)
 | .unit, _ => .unit
 | .cap cs, s => .cap (cs.subst s)
 | .bool, _ => .bool
@@ -108,6 +109,7 @@ theorem Ty.IsPureType.subst {T : Ty .capt s1} (h : T.IsPureType) (σ : Subst s1 
   | poly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cpoly _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | modal _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
+  | consumer _ _ _ => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cap cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | cell cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
   | reader cs => simp only [Ty.subst, Ty.captureSet] at *; exact h.subst σ
@@ -123,6 +125,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .tabs cs T e, s => .tabs (cs.subst s) (T.subst s) (e.subst s.lift)
 | .cabs cs cb e, s => .cabs (cs.subst s) (cb.subst s) (e.subst s.lift)
 | .boxed cs Ψ e, s => .boxed (cs.subst s) (Ψ.subst s) (e.subst s)
+| .consumer T cs e, s => .consumer (T.subst s) (cs.subst s) (e.subst s.lift.lift)
 | .reader x, s => .reader (x.subst s)
 | .alloc x, s => .alloc (x.subst s)
 | .drop x, s => .drop (x.subst s)
@@ -385,6 +388,11 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
     have ihΨ := ModalCtx.weaken_subst_comm_liftMany (Ψ := Ψ) (σ := σ) (K := K) (k0 := k0)
     have ih := Ty.weaken_subst_comm (T := T) (σ := σ) (K := K) (k0 := k0)
     simp only [Ty.subst, Ty.rename, ihCS, ihΨ, ih]
+  | .consumer T cs E =>
+    have ihT := Ty.weaken_subst_comm (T := T) (σ := σ) (K := K) (k0 := k0)
+    have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs := cs) (σ := σ) (K := K) (k0 := k0)
+    have ihE := Ty.weaken_subst_comm (T := E) (σ := σ) (K := K) (k0 := k0)
+    simp only [Ty.subst, Ty.rename, ihT, ihCS, ihE]
   | .unit => rfl
   | .cap cs =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs:=cs) (σ:=σ) (K:=K) (k0:=k0)
@@ -618,6 +626,8 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     rfl
   | modal cs Ψ T ih =>
     simp only [Ty.subst, CaptureSet.subst_comp, ih, ModalCtx.subst_comp]
+  | consumer T cs E ihT ihE =>
+    simp only [Ty.subst, CaptureSet.subst_comp, ihT, ihE]
   | unit => rfl
   | cap cs => simp only [Ty.subst, CaptureSet.subst_comp]
   | bool => rfl
@@ -654,6 +664,10 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     rfl
   | boxed cs Ψ e ih_e =>
     simp only [Exp.subst, CaptureSet.subst_comp, ModalCtx.subst_comp, ih_e]
+  | consumer T cs e ih_e =>
+    simp only [Exp.subst, Ty.subst_comp, CaptureSet.subst_comp, ih_e]
+    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
+    rfl
   | reader x => simp only [Exp.subst, Var.subst_comp]
   | alloc x => simp only [Exp.subst, Var.subst_comp]
   | drop x => simp only [Exp.subst, Var.subst_comp]
@@ -772,6 +786,8 @@ theorem Ty.subst_id {T : Ty sort s} :
     exact congrArg (Ty.cpoly cb cs) ih
   | modal cs Ψ T ih =>
     simp only [Ty.subst, CaptureSet.subst_id, ih, ModalCtx.subst_id]
+  | consumer T cs E ihT ihE =>
+    simp only [Ty.subst, CaptureSet.subst_id, ihT, ihE]
   | unit => simp only [Ty.subst]
   | cap cs => simp only [Ty.subst, CaptureSet.subst_id]
   | bool => simp only [Ty.subst]
@@ -809,6 +825,10 @@ theorem Exp.subst_id {e : Exp s} :
     exact congrArg (Exp.cabs cs cb) ih
   | boxed cs Ψ e ih =>
     simp only [Exp.subst, CaptureSet.subst_id, ModalCtx.subst_id, ih]
+  | consumer T cs e ih =>
+    simp only [Exp.subst, Ty.subst_id, CaptureSet.subst_id]
+    conv_lhs => rw [Subst.lift_id, Subst.lift_id]
+    exact congrArg (Exp.consumer T cs) ih
   | reader x =>
     simp only [Exp.subst, Var.subst_id]
   | alloc x =>
@@ -955,6 +975,8 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
     exact congrArg (Ty.cpoly (cb.rename f) (cs.rename f)) ih
   | modal cs Ψ T ih =>
     simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ih, ModalCtx.subst_asSubst]
+  | consumer T cs E ihT ihE =>
+    simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ihT, ihE]
   | unit => simp only [Ty.subst, Ty.rename]
   | cap cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | bool => simp only [Ty.subst, Ty.rename]
@@ -992,6 +1014,10 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     exact congrArg (Exp.cabs (cs.rename f) (cb.rename f)) ih
   | boxed cs Ψ e ih =>
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, ModalCtx.subst_asSubst, ih]
+  | consumer T cs e ih =>
+    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Ty.subst_asSubst]
+    rw [← Rename.asSubst_lift, ← Rename.asSubst_lift]
+    exact congrArg (Exp.consumer (T.rename f) (cs.rename f)) ih
   | reader x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | alloc x =>
@@ -1212,6 +1238,9 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
     cases hc with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed_any hcs)
       (ModalCtx.rename_closed_any hΨ) (ih hT)
+  | consumer T cs E ihT ihE =>
+    cases hc with | consumer hT hcs hE =>
+    exact IsClosed.consumer (ihT hT) (CaptureSet.rename_closed_any hcs) (ihE hE)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1316,6 +1345,11 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     exact IsClosed.modal
       (CaptureSet.is_closed_subst hcs hsubst)
       (ModalCtx.is_closed_subst hΨ hsubst) (ih hT hsubst)
+  | consumer T cs E ihT ihE =>
+    cases hc with | consumer hT hcs hE =>
+    simp only [Ty.subst]
+    exact IsClosed.consumer (ihT hT hsubst)
+      (CaptureSet.is_closed_subst hcs hsubst) (ihE hE hsubst)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1375,6 +1409,12 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst]
     exact IsClosed.boxed (CaptureSet.is_closed_subst hcs hsubst)
       (ModalCtx.is_closed_subst hΨ hsubst) (ih he hsubst)
+  | consumer T cs e ih =>
+    cases hc with | consumer hT hcs he =>
+    simp only [Exp.subst]
+    exact IsClosed.consumer (Ty.is_closed_subst hT hsubst)
+      (CaptureSet.is_closed_subst hcs hsubst)
+      (ih he (Subst.lift_closed (Subst.lift_closed hsubst)))
   | reader x =>
     cases hc with | reader hx =>
     simp only [Exp.subst]
@@ -1590,6 +1630,10 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     cases hclosed with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.subst_closed_inv hcs)
       (ModalCtx.subst_closed_inv hΨ) (ih hT)
+  | consumer T cs E ihT ihE =>
+    simp only [Ty.subst] at hclosed
+    cases hclosed with | consumer hT hcs hE =>
+    exact IsClosed.consumer (ihT hT) (CaptureSet.subst_closed_inv hcs) (ihE hE)
   | unit => exact IsClosed.unit
   | cap cs =>
     simp only [Ty.subst] at hclosed
@@ -1639,6 +1683,10 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | boxed hcs hΨ he =>
     exact IsClosed.boxed (CaptureSet.subst_closed_inv hcs) (ModalCtx.subst_closed_inv hΨ) (ih he)
+  | consumer T cs e ih =>
+    simp only [Exp.subst] at hclosed
+    cases hclosed with | consumer hT hcs he =>
+    exact IsClosed.consumer (Ty.subst_closed_inv hT) (CaptureSet.subst_closed_inv hcs) (ih he)
   | reader x =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | reader hx =>

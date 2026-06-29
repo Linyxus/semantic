@@ -13,6 +13,7 @@ inductive Exp : Sig -> Type where
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | boxed : CaptureSet s -> ModalCtx s -> Exp s -> Exp s
+| consumer : Ty .exi s -> CaptureSet s -> Exp (s,x,C) -> Exp s
 | reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
 | drop : Var .var s -> Exp s
@@ -41,6 +42,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
 | .boxed cs Ψ e, f => .boxed (cs.rename f) (Ψ.rename f) (e.rename f)
+| .consumer T cs e, f => .consumer (T.rename f) (cs.rename f) (e.rename (f.lift.lift))
 | .reader x, f => .reader (x.rename f)
 | .alloc x, f => .alloc (x.rename f)
 | .drop x, f => .drop (x.rename f)
@@ -119,6 +121,9 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | boxed cs Ψ e ih =>
     simp only [Exp.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Exp.boxed cs Ψ) ih
+  | consumer T cs e ih =>
+    simp only [Exp.rename, Ty.rename_id, CaptureSet.rename_id, Rename.lift_id]
+    exact congrArg (Exp.consumer T cs) ih
   | reader x =>
     simp only [Exp.rename, Var.rename_id]
   | alloc x =>
@@ -185,6 +190,10 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | boxed cs Ψ e ih =>
     simpa only [Exp.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Exp.boxed (cs.rename (f.comp g)) (Ψ.rename (f.comp g))) (ih (f := f) (g := g))
+  | consumer T cs e ih =>
+    simpa only [Exp.rename, Ty.rename_comp, CaptureSet.rename_comp, Rename.lift_comp] using
+      congrArg (Exp.consumer (T.rename (f.comp g)) (cs.rename (f.comp g)))
+        (ih (f := f.lift.lift) (g := g.lift.lift))
   | reader x =>
     simp only [Exp.rename, Var.rename_comp]
   | alloc x =>
@@ -245,6 +254,8 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.cabs cs cb e)
 | boxed : CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Exp.IsClosed e ->
     Exp.IsClosed (.boxed cs Ψ e)
+| consumer : Ty.IsClosed T -> CaptureSet.IsClosed cs -> Exp.IsClosed e ->
+    Exp.IsClosed (.consumer T cs e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
 | drop : Var.IsClosed x -> Exp.IsClosed (.drop x)

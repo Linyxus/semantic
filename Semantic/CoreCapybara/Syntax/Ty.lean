@@ -48,6 +48,8 @@ inductive Ty : TySort -> Sig -> Type where
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
 | modal : CaptureSet s -> ModalCtx s -> Ty .exi s -> Ty .capt s
+/-- A consume function: (x: ∃c. T) ->cs E -/
+| consumer : Ty .exi s -> CaptureSet s -> Ty .exi s -> Ty .capt s
 | cap : CaptureSet s -> Ty .capt s
 | cell : CaptureSet s -> Ty .capt s
 | reader : CaptureSet s -> Ty .capt s
@@ -65,6 +67,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
 | .modal cs Ψ T, f => .modal (cs.rename f) (Ψ.rename f) (T.rename f)
+| .consumer T cs E, f => .consumer (T.rename f) (cs.rename f) (E.rename f)
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
@@ -91,6 +94,8 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   | modal cs Ψ T ih =>
     simp only [Ty.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Ty.modal cs Ψ) ih
+  | consumer T cs E ihT ihE =>
+    simp only [Ty.rename, CaptureSet.rename_id, ihT, ihE]
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_id]
   | cell cs =>
@@ -129,6 +134,8 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simpa only [Ty.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Ty.modal (cs.rename (f.comp g)) (Ψ.rename (f.comp g)))
         (ih (f := f) (g := g))
+  | consumer T cs E ihT ihE =>
+    simp only [Ty.rename, CaptureSet.rename_comp, ihT, ihE]
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_comp]
   | cell cs =>
@@ -156,6 +163,7 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .poly _ cs _ => cs
 | .cpoly _ cs _ => cs
 | .modal cs _ _ => cs
+| .consumer _ cs _ => cs
 | .cap cs => cs
 | .cell cs => cs
 | .reader cs => cs
@@ -169,6 +177,7 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .poly T1 _ T2, cs => .poly T1 cs T2
 | .cpoly cb _ T, cs => .cpoly cb cs T
 | .modal _ Ψ T, cs => .modal cs Ψ T
+| .consumer T _ E, cs => .consumer T cs E
 | .cap _, cs => .cap cs
 | .cell _, cs => .cell cs
 | .reader _, cs => .reader cs
@@ -194,6 +203,9 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | modal :
     CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Ty.IsClosed T ->
     Ty.IsClosed (.modal cs Ψ T)
+| consumer :
+    Ty.IsClosed T -> CaptureSet.IsClosed cs -> Ty.IsClosed E ->
+    Ty.IsClosed (.consumer T cs E)
 | unit : Ty.IsClosed .unit
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool
