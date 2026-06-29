@@ -182,8 +182,18 @@ theorem CapyCaptureSet.compile_peaksOnly {cs : CapyCaptureSet s1} {sc : SrcCtx s
   | empty => exact CaptureSet.PeaksOnly.empty
   | union _ _ ih1 ih2 => exact CaptureSet.PeaksOnly.union ih1 ih2
   | cvar => exact CaptureSet.PeaksOnly.cvar
-  -- `pseudo_peak` compiles to `∅` (placeholder), which is `PeaksOnly`.
-  | pseudo_peak => simp only [CapyCaptureSet.compile]; exact CaptureSet.PeaksOnly.empty
+  -- ★ STEP-2 GAP (lock-vs-resource duality).  With `openCVar` now freezing, a
+  -- `pseudo_peak C` is LIVE and compiles transparently to `⟦C⟧`.  This lemma claims
+  -- `cs.PeaksOnly → (compile cs).PeaksOnly`, but `PeaksOnly.pseudo_peak` is
+  -- UNCONDITIONAL (gives no `C.PeaksOnly`, hence no ih here), while `⟦C⟧` is NOT
+  -- `PeaksOnly` for general `C` (e.g. `C = var x`).  So the statement is now FALSE
+  -- for `pseudo_peak`.  Resolving it is the Step-2 lock-machinery refactor: either
+  -- (i) make `peakCvars`/`peakItem` key the lock by PEAK (cvar ⊔ pseudo_peak) and
+  -- restate this lemma over pseudo_peak-free sets (its only real callers — `Df` in
+  -- `fresh`), or (ii) make source `Subset` transparent into `pseudo_peak` and reprove
+  -- by structural recursion.  Used only by `compile_accessOnly`/`compile_droppable`,
+  -- both applied to pseudo_peak-free captures.
+  | pseudo_peak => sorry
 
 /-- Target peak-resolution fixes a `PeaksOnly` set (nothing left to resolve). -/
 theorem CaptureSet.peaks_of_peaksOnly {Γ : Ctx s} {cs : CaptureSet s}
@@ -235,11 +245,16 @@ theorem CapyCaptureSet.compile_cvar_subset_inv {s1 s2 : Sig} {cs : CapyCaptureSe
     | union_right_right h2 =>
       obtain ⟨c, hc, hsub⟩ := ih2 h2
       exact ⟨c, hc, CapyCaptureSet.Subset.union_right_right hsub⟩
-  -- `pseudo_peak` compiles to `∅` (placeholder): a `.cvar` atom of `∅` is vacuous.
+  -- ★ STEP-2 GAP (same lock-vs-resource duality as `compile_peaksOnly`).  A target
+  -- cvar atom of `⟦pseudo_peak C⟧ = ⟦C⟧` traces into `C`, but the conclusion wants
+  -- `cvar a c ⊆ pseudo_peak C`, which OPAQUE source `Subset` cannot witness (no
+  -- `cvar ⊆ pseudo_peak` rule).  Needs the Step-2 decision: transparent `Subset`
+  -- into `pseudo_peak` (+ structural reproof), or restriction to pseudo_peak-free
+  -- inputs.  Only caller chain: `compile_accessOnly`/`compile_droppable` on `Df`.
   | pseudo_peak =>
     intro a c' h
     simp only [CapyCaptureSet.compile] at h
-    cases h
+    sorry
 theorem CapyCaptureSet.compile_accessOnly {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     (hcoh : ctx.Coherent) {D : CapyCaptureSet s1} (hD : D.IsClosed)
     (h : CapyCaptureSet.AccessOnly ctx.capyCtx D) :

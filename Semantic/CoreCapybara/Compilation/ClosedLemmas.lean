@@ -60,9 +60,9 @@ theorem CapyCaptureSet.compile_isClosed {cs : CapyCaptureSet s1} {ctx : SrcCtx s
     | var_bound =>
       simp only [CapyCaptureSet.compile]
       exact CaptureSet.applyAccess_isClosed (hctx _)
-  | pseudo_peak _ _ =>
+  | pseudo_peak _ ih =>
     simp only [CapyCaptureSet.compile]
-    exact CaptureSet.IsClosed.empty
+    cases hc with | pseudo_peak h => exact ih h
 
 /-- Compiling a closed source capture bound in a closed-valued map yields a closed
     target capture bound. -/

@@ -39,8 +39,8 @@ theorem CapyCaptureSet.compile_applyMut {cs : CapyCaptureSet s1} {sc : SrcCtx s1
           CaptureSet.applyAccess_applyRO]
       | free n =>
         simp only [CapyCaptureSet.applyRO_var, CaptureSet.applyRO_var, CapyCaptureSet.compile]
-    | pseudo_peak _ _ =>
-      simp only [CapyCaptureSet.applyRO, CapyCaptureSet.compile, CaptureSet.applyRO]
+    | pseudo_peak _ ih =>
+      simp only [CapyCaptureSet.applyRO, CapyCaptureSet.compile, ih]
 
 /-- Compilation distributes over `applyDrop`. -/
 theorem CapyCaptureSet.compile_applyDrop {cs : CapyCaptureSet s1} {sc : SrcCtx s1 s2} :
@@ -56,8 +56,8 @@ theorem CapyCaptureSet.compile_applyDrop {cs : CapyCaptureSet s1} {sc : SrcCtx s
       simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.compile, CaptureSet.applyAccess_drop,
         CaptureSet.applyAccess_applyDrop]
     | free n => simp only [CapyCaptureSet.applyDrop, CaptureSet.applyDrop, CapyCaptureSet.compile]
-  | pseudo_peak _ _ =>
-    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.compile, CaptureSet.applyDrop]
+  | pseudo_peak _ ih =>
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.compile, ih]
 
 /-- Compilation distributes over `applyAccess`. -/
 theorem CapyCaptureSet.compile_applyAccess {cs : CapyCaptureSet s1} {sc : SrcCtx s1 s2}
@@ -108,8 +108,8 @@ theorem CapyCaptureSet.compile_subst_openCVar {s1 s2 : Sig}
     | free n =>
       simp only [CapyCaptureSet.subst, CapyVar.subst, CapyCaptureSet.compile, CaptureSet.subst,
         Var.subst, Subst.openCVar]
-  | pseudo_peak _ _ =>
-    simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, CaptureSet.subst]
+  | pseudo_peak _ ih =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, ih]
 
 /-- The access mode on a compiled variable atom factors out. -/
 theorem CapyCaptureSet.compile_var_access {y : Var .var s1} {sc : SrcCtx s1 s2} {m : Access} :
@@ -163,8 +163,9 @@ theorem CapyCaptureSet.compile_subst {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s
       simp only [CapyCaptureSet.subst, CapyVar.subst, CapyCaptureSet.compile_var_access, h.var,
         CapyCaptureSet.compile, CaptureSet.applyAccess_subst]
     | free n => nomatch hcs
-  | pseudo_peak _ _ =>
-    simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, CaptureSet.subst]
+  | pseudo_peak _ ih =>
+    cases hcs with | pseudo_peak h =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, ih h]
 
 /-- The base substitution-compatibility: opening a fresh cvar.  `scOrig` carries the
     cvar binder (mapped to target `.here`); `σ`/`σt` open it with `T`/`⟦T⟧`. -/
@@ -175,7 +176,7 @@ theorem SubstCompat.openCVar {s1 s2 : Sig} {sc : SrcCtx s1 s2} {T : CapyCaptureS
     intro c
     cases c with
     | here =>
-      simp only [CapySubst.openCVar, SrcCtx.lookupCVar, Subst.openCVar]
+      simp only [CapySubst.openCVar, CapyCaptureSet.compile, SrcCtx.lookupCVar, Subst.openCVar]
     | there c0 =>
       simp only [CapySubst.openCVar, CapyCaptureSet.compile, SrcCtx.lookupCVar,
         SrcCtx.lookupCVar_rename, Rename.succ, Subst.openCVar]

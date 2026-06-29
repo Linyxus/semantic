@@ -9,13 +9,13 @@ def CapyCaptureSet.compile : CapyCaptureSet s1 -> SrcCtx s1 s2 -> CaptureSet s2
 | .cvar a c, ctx => .cvar a (ctx.lookupCVar c)
 | .var a (.bound x), ctx => (ctx.lookupVar x).applyAccess a
 | .var a (.free n), _ => .var a (.free n)
--- PLACEHOLDER: a pseudo-peak is currently *invisible* to compilation (it compiles
--- to `∅` and contributes no target atoms).  The target `CaptureSet` has no
--- `pseudo_peak`; making the separation lock treat a `pseudo_peak` as a single
--- frozen item (the actual B2c-collapsing step) is the next phase.  Nothing
--- produces a `pseudo_peak` yet (substitution does not introduce one), so this arm
--- is currently dead code — it exists only to keep the match total.
-| .pseudo_peak _, _ => .empty
+-- In ORDINARY (non-lock) capture positions a `pseudo_peak C` is just its content:
+-- it compiles transparently to `⟦C⟧`.  (The freeze is only observed by the lock
+-- machinery — `peakCvars`/`peakItem`/`peakSepCtx` — which keeps a `pseudo_peak` as a
+-- single grouped item; see the `peakCvars`/`accessedAt` arms below.)  Transparency
+-- here is what makes the compile bridge `⟦cs[openCVar D]⟧ = ⟦cs⟧[openCVar ⟦D⟧]` hold
+-- now that `openCVar` introduces `pseudo_peak`s live.
+| .pseudo_peak C, ctx => CapyCaptureSet.compile C ctx
 
 /-- Compiles a source capture bound into the target.  The mutability annotation
     on an `unbound` source bound has no counterpart in Core's nullary `.unbound`,

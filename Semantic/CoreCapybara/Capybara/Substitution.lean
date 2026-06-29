@@ -151,7 +151,7 @@ def CapySubst.openCVar (C : CapyCaptureSet s) : CapySubst (s,C) s where
   tvar := fun
     | .there x => CapyPureTy.tvar x
   cvar := fun
-    | .here => C
+    | .here => .pseudo_peak C
     | .there x => .cvar (.M .epsilon) x
 
 /-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
@@ -1338,7 +1338,7 @@ theorem CapySubst.openCVar_is_closed {C : CapyCaptureSet s}
     | there X => exact CapyTy.IsClosed.tvar
   cvar_closed := fun c => by
     cases c with
-    | here => exact hC
+    | here => exact CapyCaptureSet.IsClosed.pseudo_peak hC
     | there c => exact CapyCaptureSet.IsClosed.cvar
 
 /-- If the result of substitution is closed, the original variable was closed. -/

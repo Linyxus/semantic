@@ -370,7 +370,7 @@ theorem CapyCaptureSet.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1
         hvar x, CaptureSet.applyAccess_rename]
     | free n =>
       simp only [CapyCaptureSet.rename, CaptureSet.rename, Var.rename, CapyCaptureSet.compile]
-  | pseudo_peak _ _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.compile, CaptureSet.rename]
+  | pseudo_peak _ ih => simp only [CapyCaptureSet.rename, CapyCaptureSet.compile, ih]
 
 theorem CapyCaptureBound.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
     {sctx2 : SrcCtx s1' t2} {fs : Rename s1 s1'} {ft : Rename t1 t2}
