@@ -461,6 +461,50 @@ theorem CapyCaptureSet.compile_peaks {Γ : CapyCtx s} {sc : SrcCtx s s2}
 termination_by (sizeOf Γ, sizeOf cs)
 end
 
+/- **(★, resource view)** Like `compile_peaks`, but for `resourcePeaks`, which
+   RESOLVES frozen peaks.  Since `compile` is transparent on `pseudo_peak`
+   (`⟦pseudo_peak C⟧ = ⟦C⟧`), resolving the content leaves the compiled image
+   unchanged, so `⟦resourcePeaks Γ cs⟧ = ⟦cs⟧` exactly as for `peaks`. -/
+mutual
+theorem CapyCaptureSet.compile_resourcePeaksVarBound {Γ : CapyCtx s} {sc : SrcCtx s s2}
+    (hΓ : Γ.IsClosed) (h : SrcAligned Γ sc) {m : Access} {x : BVar s .var} :
+    CapyCaptureSet.compile (CapyCaptureSet.resourcePeaksVarBound Γ m x) sc
+      = (sc.lookupVar x).applyAccess m := by
+  match Γ, x, sc, hΓ with
+  | .push Γ' (.var T), .here, .cons info sc', .push hΓ' (.var hT) =>
+    rw [CapyCaptureSet.resourcePeaksVarBound, CapyCaptureSet.compile_applyAccess,
+      CapyCaptureSet.compile_rename_succ_cons,
+      CapyCaptureSet.compile_resourcePeaks hΓ' (h.peel) (CapyTy.IsClosed.captureSet hT)]
+    have hx := h CapyCtx.LookupVar.here
+    simp only [CapyTy.captureSet_rename,
+      CapyCaptureSet.compile_rename_succ_cons] at hx ⊢
+    rw [hx]
+  | .push Γ' b, .there x', .cons info sc', .push hΓ' _ =>
+    rw [CapyCaptureSet.resourcePeaksVarBound, CapyCaptureSet.compile_rename_succ_cons,
+      CapyCaptureSet.compile_resourcePeaksVarBound hΓ' (h.peel)]
+    simp only [SrcCtx.lookupVar]
+termination_by (sizeOf Γ, sizeOf x + 1)
+
+theorem CapyCaptureSet.compile_resourcePeaks {Γ : CapyCtx s} {sc : SrcCtx s s2}
+    (hΓ : Γ.IsClosed) (h : SrcAligned Γ sc) {cs : CapyCaptureSet s} (hcs : cs.IsClosed) :
+    CapyCaptureSet.compile (CapyCaptureSet.resourcePeaks Γ cs) sc
+      = CapyCaptureSet.compile cs sc := by
+  match cs, hcs with
+  | .empty, _ => simp only [CapyCaptureSet.resourcePeaks]
+  | .union cs1 cs2, .union hcs1 hcs2 =>
+    simp only [CapyCaptureSet.resourcePeaks, CapyCaptureSet.compile,
+      CapyCaptureSet.compile_resourcePeaks hΓ h hcs1,
+      CapyCaptureSet.compile_resourcePeaks hΓ h hcs2]
+  | .cvar a c, _ => simp only [CapyCaptureSet.resourcePeaks]
+  | .pseudo_peak C, .pseudo_peak hC =>
+    rw [CapyCaptureSet.resourcePeaks, CapyCaptureSet.compile_resourcePeaks hΓ h hC]
+    simp only [CapyCaptureSet.compile]
+  | .var a (.bound x), _ =>
+    rw [CapyCaptureSet.resourcePeaks, CapyCaptureSet.compile_resourcePeaksVarBound hΓ h]
+    simp only [CapyCaptureSet.compile]
+termination_by (sizeOf Γ, sizeOf cs)
+end
+
 /-! ### Type-level commutation (next layer) — and a subtlety it exposes
 
 The `fresh` case needs the *type*-level analogue,

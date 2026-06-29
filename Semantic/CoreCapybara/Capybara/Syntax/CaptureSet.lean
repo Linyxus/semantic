@@ -361,6 +361,50 @@ inductive CapyCaptureSet.PeaksOnly : CapyCaptureSet s -> Prop where
   ---------------------
   PeaksOnly (.pseudo_peak C)
 
+/-- A capture set contains no `pseudo_peak`.  Frozen peaks are a substitution
+    artifact (never surface syntax); the LOCK bridge lemmas (`compile_peaksOnly`,
+    the `peakItem`/`peakCvars` machinery) and the resolving `resourcePeaks` all
+    operate on `NoPseudoPeak` sets, where the `pseudo_peak` case is unreachable. -/
+inductive CapyCaptureSet.NoPseudoPeak : CapyCaptureSet s -> Prop where
+| empty :
+  NoPseudoPeak .empty
+| union {C1 C2 : CapyCaptureSet s} :
+  NoPseudoPeak C1 -> NoPseudoPeak C2 -> NoPseudoPeak (C1.union C2)
+| cvar {m : Access} {c : BVar s .cvar} :
+  NoPseudoPeak (.cvar m c)
+| var {m : Access} {x : Var .var s} :
+  NoPseudoPeak (.var m x)
+
+/-- `NoPseudoPeak` is preserved under renaming. -/
+theorem CapyCaptureSet.NoPseudoPeak.rename {cs : CapyCaptureSet s} (h : cs.NoPseudoPeak)
+    (ρ : Rename s s') : (cs.rename ρ).NoPseudoPeak := by
+  induction h with
+  | empty => exact NoPseudoPeak.empty
+  | union _ _ ih1 ih2 => exact NoPseudoPeak.union ih1 ih2
+  | cvar => exact NoPseudoPeak.cvar
+  | var => exact NoPseudoPeak.var
+
+/-- `NoPseudoPeak` is preserved under `applyAccess` (it never introduces a frozen peak). -/
+theorem CapyCaptureSet.NoPseudoPeak.applyAccess {cs : CapyCaptureSet s} (h : cs.NoPseudoPeak)
+    {a : Access} : (cs.applyAccess a).NoPseudoPeak := by
+  induction h with
+  | empty =>
+    cases a with
+    | M m => cases m <;> exact NoPseudoPeak.empty
+    | drop => exact NoPseudoPeak.empty
+  | union _ _ ih1 ih2 =>
+    cases a with
+    | M m => cases m <;> exact NoPseudoPeak.union ih1 ih2
+    | drop => exact NoPseudoPeak.union ih1 ih2
+  | cvar =>
+    cases a with
+    | M m => cases m <;> exact NoPseudoPeak.cvar
+    | drop => exact NoPseudoPeak.cvar
+  | var =>
+    cases a with
+    | M m => cases m <;> exact NoPseudoPeak.var
+    | drop => exact NoPseudoPeak.var
+
 structure CapyPeakSet (s : Sig) where
   cs : CapyCaptureSet s
   h : cs.PeaksOnly

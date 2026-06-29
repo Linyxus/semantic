@@ -727,6 +727,17 @@ theorem peakItem_peaksOnly {s : Sig} {P : CapyPeakSet s} {c : BVar s .cvar} :
     simp only [List.foldr_cons]
     exact CapyCaptureSet.PeaksOnly.union CapyCaptureSet.PeaksOnly.cvar ih
 
+/-- A peak item is `NoPseudoPeak` (it is built purely from `.cvar` atoms). -/
+theorem peakItem_noPseudoPeak {s : Sig} {P : CapyPeakSet s} {c : BVar s .cvar} :
+    (peakItem P c).NoPseudoPeak := by
+  simp only [peakItem]
+  generalize accessedAt P c = l
+  induction l with
+  | nil => exact CapyCaptureSet.NoPseudoPeak.empty
+  | cons a as ih =>
+    simp only [List.foldr_cons]
+    exact CapyCaptureSet.NoPseudoPeak.union CapyCaptureSet.NoPseudoPeak.cvar ih
+
 /-- An access mode recorded in `accessedAt.go c cs` witnesses a `.cvar`-occurrence
     of `c` in `cs`. -/
 theorem accessedAt_go_subset {s : Sig} {c : BVar s .cvar} {a : Access} (cs : CapyCaptureSet s)
@@ -1217,8 +1228,9 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                       (CapyCaptureSet.subst cs σ)) d2)
                     ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ)) := by
               intro d1 d2 hne hd1 hd2
-              refine SepCheck.of_cvar_atoms (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly)
-                (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly) ?_
+              refine SepCheck.of_cvar_atoms
+                (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly peakItem_noPseudoPeak)
+                (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly peakItem_noPseudoPeak) ?_
               intro a1 Y1 a2 Y2 hY1 hY2
               obtain ⟨Y1', Z1, m1, hY1eq, hlk1, hmZ1, happ1⟩ := traceAtom d1 Y1 a1 hY1
               obtain ⟨Y2', Z2, m2, hY2eq, hlk2, hmZ2, happ2⟩ := traceAtom d2 Y2 a2 hY2

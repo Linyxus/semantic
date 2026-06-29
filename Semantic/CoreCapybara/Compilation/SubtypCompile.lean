@@ -175,25 +175,22 @@ source hypothesis per peak cvar (compilation preserves the access mode, and the
 `cvarLookup` coherence field preserves authority).
 -/
 
-/-- Compilation preserves `PeaksOnly` (a `.cvar` atom compiles to a `.cvar`). -/
+/-- Compilation preserves `PeaksOnly` for `NoPseudoPeak` sets (a `.cvar` atom
+    compiles to a `.cvar`).  The `NoPseudoPeak` hypothesis excludes the `pseudo_peak`
+    case, which would be false (a frozen `pseudo_peak (var x)` is `PeaksOnly` but
+    compiles transparently to a non-peak `⟦var x⟧`).  All real callers feed either a
+    `peakItem` (cvar-only) or a `resourcePeaks` result — both `NoPseudoPeak`. -/
 theorem CapyCaptureSet.compile_peaksOnly {cs : CapyCaptureSet s1} {sc : SrcCtx s1 s2}
-    (h : cs.PeaksOnly) : (CapyCaptureSet.compile cs sc).PeaksOnly := by
-  induction h with
+    (h : cs.PeaksOnly) (hnp : cs.NoPseudoPeak) : (CapyCaptureSet.compile cs sc).PeaksOnly := by
+  induction hnp with
   | empty => exact CaptureSet.PeaksOnly.empty
-  | union _ _ ih1 ih2 => exact CaptureSet.PeaksOnly.union ih1 ih2
+  | union _ _ ih1 ih2 =>
+    cases h with
+    | union h1 h2 => exact CaptureSet.PeaksOnly.union (ih1 h1) (ih2 h2)
   | cvar => exact CaptureSet.PeaksOnly.cvar
-  -- ★ STEP-2 GAP (lock-vs-resource duality).  With `openCVar` now freezing, a
-  -- `pseudo_peak C` is LIVE and compiles transparently to `⟦C⟧`.  This lemma claims
-  -- `cs.PeaksOnly → (compile cs).PeaksOnly`, but `PeaksOnly.pseudo_peak` is
-  -- UNCONDITIONAL (gives no `C.PeaksOnly`, hence no ih here), while `⟦C⟧` is NOT
-  -- `PeaksOnly` for general `C` (e.g. `C = var x`).  So the statement is now FALSE
-  -- for `pseudo_peak`.  Resolving it is the Step-2 lock-machinery refactor: either
-  -- (i) make `peakCvars`/`peakItem` key the lock by PEAK (cvar ⊔ pseudo_peak) and
-  -- restate this lemma over pseudo_peak-free sets (its only real callers — `Df` in
-  -- `fresh`), or (ii) make source `Subset` transparent into `pseudo_peak` and reprove
-  -- by structural recursion.  Used only by `compile_accessOnly`/`compile_droppable`,
-  -- both applied to pseudo_peak-free captures.
-  | pseudo_peak => sorry
+  -- `var` cannot occur under `PeaksOnly` (`h`); `pseudo_peak` cannot occur under
+  -- `NoPseudoPeak` (the induction has no such case).
+  | var => nomatch h
 
 /-- Target peak-resolution fixes a `PeaksOnly` set (nothing left to resolve). -/
 theorem CaptureSet.peaks_of_peaksOnly {Γ : Ctx s} {cs : CaptureSet s}
@@ -203,23 +200,31 @@ theorem CaptureSet.peaks_of_peaksOnly {Γ : Ctx s} {cs : CaptureSet s}
   | union _ _ ih1 ih2 => simp only [CaptureSet.peaks, ih1, ih2]; rfl
   | cvar => simp only [CaptureSet.peaks]
 
-/-- **(A1) Target peaks of a compiled set = compiled source peaks.**  `⟦C⟧ =
-    ⟦peaks Γ C⟧` by (★) `compile_peaks`; the latter is `PeaksOnly`, hence fixed by
-    the target `peaks`.  Needs `C` closed (for (★)) and the `Coherent` invariant. -/
-theorem CapyCaptureSet.compile_peaks_target {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
+/-- **(A1, resource view) Target peaks of a compiled set = compiled source
+    `resourcePeaks`.**  `⟦C⟧ = ⟦resourcePeaks Γ C⟧` by (★) `compile_resourcePeaks`;
+    the latter is `PeaksOnly` AND `NoPseudoPeak`, hence fixed by the target `peaks`.
+    Using `resourcePeaks` (not `peaks`) is what makes `compile_peaksOnly` apply: a
+    frozen peak is resolved into its content, so no `pseudo_peak` survives. -/
+theorem CapyCaptureSet.compile_resourcePeaks_target {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     (hcoh : ctx.Coherent) {C : CapyCaptureSet s1} (hC : C.IsClosed) :
     CaptureSet.peaks ctx.coreCtx (CapyCaptureSet.compile C ctx.srcCtx)
-      = CapyCaptureSet.compile (CapyCaptureSet.peaks ctx.capyCtx C) ctx.srcCtx := by
+      = CapyCaptureSet.compile (CapyCaptureSet.resourcePeaks ctx.capyCtx C) ctx.srcCtx := by
   have hAligned : SrcAligned ctx.capyCtx ctx.srcCtx := by
     intro x T hlook
     obtain ⟨_, _, hB, _⟩ := hcoh.varLookup hlook
     exact hB
-  rw [← CapyCaptureSet.compile_peaks hcoh.capyClosed hAligned hC]
+  rw [← CapyCaptureSet.compile_resourcePeaks hcoh.capyClosed hAligned hC]
   exact CaptureSet.peaks_of_peaksOnly
-    (CapyCaptureSet.compile_peaksOnly (CapyCaptureSet.peaks_peaksOnly ctx.capyCtx C))
+    (CapyCaptureSet.compile_peaksOnly (CapyCaptureSet.resourcePeaks_peaksOnly ctx.capyCtx C)
+      (CapyCaptureSet.resourcePeaks_noPseudoPeak ctx.capyCtx C))
 
-/-- **(A2) A target cvar atom of a compiled `PeaksOnly` set comes from a source
-    cvar** (with the same access mode, mapped by `lookupCVar`). -/
+/-- **(A2, LOCK view) A target cvar atom of a compiled `PeaksOnly` set comes from a
+    source cvar** (with the same access mode, mapped by `lookupCVar`).  This is the
+    LOCK-side tracer used by the B2c separation dispatch (`OpenCVarSubtyp` `1187`/
+    `1249`), where the input `peaks Γ cs` CAN contain frozen peaks.  The `pseudo_peak`
+    case is the documented Step-2 lock gap: a target cvar inside `⟦pseudo_peak C⟧`
+    is NOT a separate lock peak, so it has no source-cvar witness via opaque `Subset`.
+    The RESOURCE callers use the sorry-free `compile_cvar_subset_inv_resource` instead. -/
 theorem CapyCaptureSet.compile_cvar_subset_inv {s1 s2 : Sig} {cs : CapyCaptureSet s1}
     (hpo : cs.PeaksOnly) {sc : SrcCtx s1 s2} :
     ∀ {a : Access} {c' : BVar s2 .cvar},
@@ -245,37 +250,72 @@ theorem CapyCaptureSet.compile_cvar_subset_inv {s1 s2 : Sig} {cs : CapyCaptureSe
     | union_right_right h2 =>
       obtain ⟨c, hc, hsub⟩ := ih2 h2
       exact ⟨c, hc, CapyCaptureSet.Subset.union_right_right hsub⟩
-  -- ★ STEP-2 GAP (same lock-vs-resource duality as `compile_peaksOnly`).  A target
-  -- cvar atom of `⟦pseudo_peak C⟧ = ⟦C⟧` traces into `C`, but the conclusion wants
-  -- `cvar a c ⊆ pseudo_peak C`, which OPAQUE source `Subset` cannot witness (no
-  -- `cvar ⊆ pseudo_peak` rule).  Needs the Step-2 decision: transparent `Subset`
-  -- into `pseudo_peak` (+ structural reproof), or restriction to pseudo_peak-free
-  -- inputs.  Only caller chain: `compile_accessOnly`/`compile_droppable` on `Df`.
+  -- ★ STEP-2 LOCK GAP.  A target cvar of `⟦pseudo_peak C⟧ = ⟦C⟧` is a cvar of the
+  -- frozen peak's CONTENT, not a separate lock peak — so it has no source-cvar
+  -- witness `cvar a c ⊆ pseudo_peak C` under opaque `Subset`.  Closing this is the
+  -- Step-2 lock half: make `peakSepCtx`/`peakCvars` key the lock by PEAK (cvar ⊔
+  -- pseudo_peak) so a frozen peak is one item, and trace target cvars accordingly.
+  -- (The RESOURCE view is already decoupled: `compile_cvar_subset_inv_resource`.)
   | pseudo_peak =>
     intro a c' h
     simp only [CapyCaptureSet.compile] at h
     sorry
+/-- **(A2, resource view)** Like `compile_cvar_subset_inv`, but for a `NoPseudoPeak`
+    set, where it is SORRY-FREE: a target cvar atom of `⟦cs⟧` traces to a source cvar
+    of `cs`.  The frozen-peak case (the Step-2 lock gap that keeps
+    `compile_cvar_subset_inv` open) cannot arise here. -/
+theorem CapyCaptureSet.compile_cvar_subset_inv_resource {s1 s2 : Sig}
+    {cs : CapyCaptureSet s1} (hpo : cs.PeaksOnly) (hnp : cs.NoPseudoPeak)
+    {sc : SrcCtx s1 s2} :
+    ∀ {a : Access} {c' : BVar s2 .cvar},
+      CaptureSet.Subset (.cvar a c') (CapyCaptureSet.compile cs sc) →
+      ∃ c, sc.lookupCVar c = c' ∧ CapyCaptureSet.Subset (.cvar a c) cs := by
+  induction hnp with
+  | empty =>
+    intro a c' h; simp only [CapyCaptureSet.compile] at h; cases h
+  | cvar =>
+    intro a c' h; simp only [CapyCaptureSet.compile] at h; cases h
+    exact ⟨_, rfl, CapyCaptureSet.Subset.refl⟩
+  | union _ _ ih1 ih2 =>
+    cases hpo with
+    | union hpo1 hpo2 =>
+      intro a c' h
+      simp only [CapyCaptureSet.compile] at h
+      cases h with
+      | union_right_left h1 =>
+        obtain ⟨c, hc, hsub⟩ := ih1 hpo1 h1
+        exact ⟨c, hc, CapyCaptureSet.Subset.union_right_left hsub⟩
+      | union_right_right h2 =>
+        obtain ⟨c, hc, hsub⟩ := ih2 hpo2 h2
+        exact ⟨c, hc, CapyCaptureSet.Subset.union_right_right hsub⟩
+  | var => nomatch hpo
+
+/-- **(A3) Compilation preserves `AccessOnly`** (RESOURCE view: via `resourcePeaks`,
+    so a frozen peak's content drops are seen).  Sorry-free. -/
 theorem CapyCaptureSet.compile_accessOnly {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     (hcoh : ctx.Coherent) {D : CapyCaptureSet s1} (hD : D.IsClosed)
     (h : CapyCaptureSet.AccessOnly ctx.capyCtx D) :
     CaptureSet.AccessOnly ctx.coreCtx (CapyCaptureSet.compile D ctx.srcCtx) := by
   intro c' hmem
   simp only [CaptureSet.peakset] at hmem
-  rw [CapyCaptureSet.compile_peaks_target hcoh hD] at hmem
-  obtain ⟨c, _, hsub⟩ := CapyCaptureSet.compile_cvar_subset_inv
-    (CapyCaptureSet.peaks_peaksOnly ctx.capyCtx D) hmem
+  rw [CapyCaptureSet.compile_resourcePeaks_target hcoh hD] at hmem
+  obtain ⟨c, _, hsub⟩ := CapyCaptureSet.compile_cvar_subset_inv_resource
+    (CapyCaptureSet.resourcePeaks_peaksOnly ctx.capyCtx D)
+    (CapyCaptureSet.resourcePeaks_noPseudoPeak ctx.capyCtx D) hmem
   exact h c hsub
 
-/-- **(A4) Compilation preserves `droppable`** (authority via `cvarLookup`). -/
+/-- **(A4) Compilation preserves `droppable`** (authority via `cvarLookup`; RESOURCE
+    view via `resourcePeaks`).  Sorry-free. -/
 theorem CapyCaptureSet.compile_droppable {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     (hcoh : ctx.Coherent) {D : CapyCaptureSet s1} (hD : D.IsClosed)
     (h : CapyCaptureSet.droppable ctx.capyCtx D) :
     CaptureSet.droppable ctx.coreCtx (CapyCaptureSet.compile D ctx.srcCtx) := by
   intro a c' hmem
   simp only [CaptureSet.peakset] at hmem
-  rw [CapyCaptureSet.compile_peaks_target hcoh hD] at hmem
-  obtain ⟨c, hc, hsub⟩ := CapyCaptureSet.compile_cvar_subset_inv
-    (CapyCaptureSet.peaks_peaksOnly ctx.capyCtx D) hmem
+  rw [CapyCaptureSet.compile_resourcePeaks_target hcoh hD] at hmem
+  obtain ⟨c, hc, hsub⟩ := CapyCaptureSet.compile_cvar_subset_inv_resource
+    (CapyCaptureSet.resourcePeaks_peaksOnly ctx.capyCtx D)
+    (CapyCaptureSet.resourcePeaks_noPseudoPeak ctx.capyCtx D) hmem
   have hauth : ctx.capyCtx.lookup_authority c = .can_drop := h a c hsub
   have hspec := ctx.capyCtx.lookup_cvar_spec c
   rw [hauth] at hspec

@@ -258,6 +258,100 @@ theorem CapyCaptureSet.peaks_peaksOnly (Γ : CapyCtx s) (cs : CapyCaptureSet s) 
 termination_by (sizeOf Γ, sizeOf cs)
 end
 
+mutual
+/-- Helper: resolve a bound var, recursing through frozen peaks. -/
+def CapyCaptureSet.resourcePeaksVarBound :
+    (Γ : CapyCtx s) → (a : Access) → BVar s .var → CapyCaptureSet s
+| .push Γ (.var T), m, .here =>
+    (CapyCaptureSet.resourcePeaks Γ T.captureSet).rename Rename.succ |> .applyAccess m
+| .push Γ _, m, .there x =>
+    (resourcePeaksVarBound Γ m x).rename Rename.succ
+termination_by Γ _ x => (sizeOf Γ, sizeOf x + 1)
+
+/-- The RESOURCE view of peak-resolution: like `peaks`, but a `pseudo_peak` is
+    RESOLVED into its content rather than halting.  The result is `NoPseudoPeak`, so
+    the actual resources a frozen peak carries (its content's drops / authority) are
+    seen by `AccessOnly`/`droppable`.  The LOCK view keeps using `peaks` (frozen). -/
+def CapyCaptureSet.resourcePeaks : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s
+| _, .empty => .empty
+| Γ, .union cs1 cs2 => (resourcePeaks Γ cs1) ∪ (resourcePeaks Γ cs2)
+| _, .cvar m c => .cvar m c
+| _, .var _ (.free _) => {}
+| Γ, .var m (.bound x) => resourcePeaksVarBound Γ m x
+| Γ, .pseudo_peak C => resourcePeaks Γ C
+termination_by Γ cs => (sizeOf Γ, sizeOf cs)
+end
+
+mutual
+theorem CapyCaptureSet.resourcePeaksVarBound_noPseudoPeak
+    (Γ : CapyCtx s) (m : Access) (x : BVar s .var) :
+    (resourcePeaksVarBound Γ m x).NoPseudoPeak := by
+  match Γ, x with
+  | .push Γ (.var T), .here =>
+    rw [CapyCaptureSet.resourcePeaksVarBound]
+    exact ((CapyCaptureSet.resourcePeaks_noPseudoPeak Γ T.captureSet).rename
+      Rename.succ).applyAccess
+  | .push Γ _, .there x =>
+    rw [CapyCaptureSet.resourcePeaksVarBound]
+    exact (CapyCaptureSet.resourcePeaksVarBound_noPseudoPeak Γ m x).rename Rename.succ
+termination_by (sizeOf Γ, sizeOf x + 1)
+
+theorem CapyCaptureSet.resourcePeaks_noPseudoPeak (Γ : CapyCtx s) (cs : CapyCaptureSet s) :
+    (resourcePeaks Γ cs).NoPseudoPeak := by
+  match Γ, cs with
+  | _, .empty => rw [CapyCaptureSet.resourcePeaks]; exact CapyCaptureSet.NoPseudoPeak.empty
+  | Γ, .union cs1 cs2 =>
+    rw [CapyCaptureSet.resourcePeaks]
+    exact CapyCaptureSet.NoPseudoPeak.union
+      (CapyCaptureSet.resourcePeaks_noPseudoPeak Γ cs1)
+      (CapyCaptureSet.resourcePeaks_noPseudoPeak Γ cs2)
+  | _, .cvar m c => rw [CapyCaptureSet.resourcePeaks]; exact CapyCaptureSet.NoPseudoPeak.cvar
+  | _, .var _ (.free _) =>
+    rw [CapyCaptureSet.resourcePeaks]; exact CapyCaptureSet.NoPseudoPeak.empty
+  | Γ, .var m (.bound x) =>
+    rw [CapyCaptureSet.resourcePeaks]
+    exact CapyCaptureSet.resourcePeaksVarBound_noPseudoPeak Γ m x
+  | Γ, .pseudo_peak C =>
+    rw [CapyCaptureSet.resourcePeaks]
+    exact CapyCaptureSet.resourcePeaks_noPseudoPeak Γ C
+termination_by (sizeOf Γ, sizeOf cs)
+end
+
+mutual
+theorem CapyCaptureSet.resourcePeaksVarBound_peaksOnly
+    (Γ : CapyCtx s) (m : Access) (x : BVar s .var) :
+    (resourcePeaksVarBound Γ m x).PeaksOnly := by
+  match Γ, x with
+  | .push Γ (.var T), .here =>
+    rw [CapyCaptureSet.resourcePeaksVarBound]
+    exact (CapyCaptureSet.resourcePeaks_peaksOnly Γ T.captureSet).rename Rename.succ
+      |>.applyAccess m
+  | .push Γ _, .there x =>
+    rw [CapyCaptureSet.resourcePeaksVarBound]
+    exact (CapyCaptureSet.resourcePeaksVarBound_peaksOnly Γ m x).rename Rename.succ
+termination_by (sizeOf Γ, sizeOf x + 1)
+
+theorem CapyCaptureSet.resourcePeaks_peaksOnly (Γ : CapyCtx s) (cs : CapyCaptureSet s) :
+    (resourcePeaks Γ cs).PeaksOnly := by
+  match Γ, cs with
+  | _, .empty => rw [CapyCaptureSet.resourcePeaks]; exact CapyCaptureSet.PeaksOnly.empty
+  | Γ, .union cs1 cs2 =>
+    rw [CapyCaptureSet.resourcePeaks]
+    exact CapyCaptureSet.PeaksOnly.union
+      (CapyCaptureSet.resourcePeaks_peaksOnly Γ cs1)
+      (CapyCaptureSet.resourcePeaks_peaksOnly Γ cs2)
+  | _, .cvar m c => rw [CapyCaptureSet.resourcePeaks]; exact CapyCaptureSet.PeaksOnly.cvar
+  | _, .var _ (.free _) =>
+    rw [CapyCaptureSet.resourcePeaks]; exact CapyCaptureSet.PeaksOnly.empty
+  | Γ, .var m (.bound x) =>
+    rw [CapyCaptureSet.resourcePeaks]
+    exact CapyCaptureSet.resourcePeaksVarBound_peaksOnly Γ m x
+  | Γ, .pseudo_peak C =>
+    rw [CapyCaptureSet.resourcePeaks]
+    exact CapyCaptureSet.resourcePeaks_peaksOnly Γ C
+termination_by (sizeOf Γ, sizeOf cs)
+end
+
 def CapyCaptureSet.peakset (Γ : CapyCtx s) (cs : CapyCaptureSet s) : CapyPeakSet s :=
   ⟨peaks Γ cs, CapyCaptureSet.peaks_peaksOnly Γ cs⟩
 
@@ -272,13 +366,19 @@ def CapyPeakSet.droppable (Γ : CapyCtx s) (P : CapyPeakSet s) : Prop :=
   ∀ (a : Access) (c : BVar s .cvar),
     (CapyCaptureSet.cvar a c) ⊆ P.cs → Γ.lookup_authority c = .can_drop
 
-/-- A capture set is droppable in `Γ` when all of its peaks are droppable. -/
+/-- A capture set is droppable in `Γ` when all of its peaks are droppable.  The
+    RESOURCE view (`resourcePeaks`) is used so a frozen peak's content authority is
+    seen — a `pseudo_peak` is resolved into its content, not treated opaquely. -/
 def CapyCaptureSet.droppable (Γ : CapyCtx s) (C : CapyCaptureSet s) : Prop :=
-  CapyPeakSet.droppable Γ (CapyCaptureSet.peakset Γ C)
+  ∀ (a : Access) (c : BVar s .cvar),
+    (CapyCaptureSet.cvar a c) ⊆ CapyCaptureSet.resourcePeaks Γ C →
+    Γ.lookup_authority c = .can_drop
 
-/-- A capture set is access-only in `Γ` when none of its peaks is dropped. -/
+/-- A capture set is access-only in `Γ` when none of its peaks is dropped (RESOURCE
+    view: a frozen peak's content drops are seen via `resourcePeaks`). -/
 def CapyCaptureSet.AccessOnly (Γ : CapyCtx s) (C : CapyCaptureSet s) : Prop :=
-  ∀ (c : BVar s .cvar), (CapyCaptureSet.cvar .drop c) ⊆ (CapyCaptureSet.peakset Γ C).cs → False
+  ∀ (c : BVar s .cvar),
+    (CapyCaptureSet.cvar .drop c) ⊆ CapyCaptureSet.resourcePeaks Γ C → False
 
 /-- A capture bound is valid in `Γ` when concrete bounds are access-only. -/
 def CapyCaptureBound.IsValid (Γ : CapyCtx s) : CapyCaptureBound s -> Prop
