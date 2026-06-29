@@ -18,7 +18,7 @@ inductive CapyExp : Sig -> Type where
 | drop : Var .var s -> CapyExp s
 | app : Var .var s -> Var .var s -> CapyExp s
 | tapp : Var .var s -> CapyPureTy s -> CapyExp s
-| capp : Var .var s -> CaptureSet s -> CapyExp s
+| capp : Var .var s -> CapyCaptureSet s -> CapyExp s
 | letin : CapyExp s -> CapyExp (s,x) -> CapyExp s
 | unit : CapyExp s
 | btrue : CapyExp s
@@ -107,7 +107,7 @@ def CapyExp.rename_id {e : CapyExp s} : e.rename (Rename.id) = e := by
   | tapp x T =>
     simp only [CapyExp.rename, CapyVar.rename_id, CapyPureTy.rename_id]
   | capp x cs =>
-    simp only [CapyExp.rename, CapyVar.rename_id, CaptureSet.rename_id]
+    simp only [CapyExp.rename, CapyVar.rename_id, CapyCaptureSet.rename_id]
   | letin e1 e2 ih1 ih2 =>
     simp only [CapyExp.rename, Rename.lift_id, ih1]
     exact congrArg (CapyExp.letin e1) ih2
@@ -160,7 +160,7 @@ theorem CapyExp.rename_comp {e : CapyExp s1} {f : Rename s1 s2} {g : Rename s2 s
   | tapp x T =>
     simp only [CapyExp.rename, CapyVar.rename_comp, CapyPureTy.rename_comp]
   | capp x cs =>
-    simp only [CapyExp.rename, CapyVar.rename_comp, CaptureSet.rename_comp]
+    simp only [CapyExp.rename, CapyVar.rename_comp, CapyCaptureSet.rename_comp]
   | letin e1 e2 ih1 ih2 =>
     simpa only [CapyExp.rename, Rename.lift_comp, ih1] using
       congrArg (CapyExp.letin (e1.rename (f.comp g))) (ih2 (f := f.lift) (g := g.lift))
@@ -203,7 +203,7 @@ inductive CapyExp.IsClosed : CapyExp s -> Prop where
 | drop : Var.IsClosed x -> CapyExp.IsClosed (.drop x)
 | app : Var.IsClosed x -> Var.IsClosed y -> CapyExp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> CapyPureTy.IsClosed T -> CapyExp.IsClosed (.tapp x T)
-| capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> CapyExp.IsClosed (.capp x cs)
+| capp : Var.IsClosed x -> CapyCaptureSet.IsClosed cs -> CapyExp.IsClosed (.capp x cs)
 | letin : CapyExp.IsClosed e1 -> CapyExp.IsClosed e2 -> CapyExp.IsClosed (.letin e1 e2)
 | unit : CapyExp.IsClosed .unit
 | btrue : CapyExp.IsClosed .btrue

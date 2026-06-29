@@ -66,8 +66,9 @@ type identically.  This bridges the compiler's placeholder body-context bounds
     binder (a var binder reads only its declared type's captures, which agree). -/
 theorem CapyCaptureSet.peaks_push_cong {s : Sig} {Γ1 Γ2 : CapyCtx s} {k : Kind}
     (b : CapyBinding s k)
-    (h : ∀ W₀ : CaptureSet s, CapyCaptureSet.peaks Γ1 W₀ = CapyCaptureSet.peaks Γ2 W₀) :
-    ∀ W : CaptureSet (s,,k),
+    (h : ∀ W₀ : CapyCaptureSet s,
+      CapyCaptureSet.peaks Γ1 W₀ = CapyCaptureSet.peaks Γ2 W₀) :
+    ∀ W : CapyCaptureSet (s,,k),
       CapyCaptureSet.peaks (Γ1.push b) W = CapyCaptureSet.peaks (Γ2.push b) W := by
   intro W
   induction W with
@@ -94,7 +95,7 @@ theorem CapyCaptureSet.peaks_push_cong {s : Sig} {Γ1 Γ2 : CapyCtx s} {k : Kind
 /-- `peaks` ignores a pushed *tvar* bound (it adds no term-variable binding). -/
 theorem CapyCaptureSet.peaks_push_tvar_irrel {s : Sig} {Γ : CapyCtx s}
     {S1 S2 : CapyPureTy s} :
-    ∀ W : CaptureSet (s,X),
+    ∀ W : CapyCaptureSet (s,X),
       CapyCaptureSet.peaks (Γ.push_tvar S1) W = CapyCaptureSet.peaks (Γ.push_tvar S2) W := by
   intro W
   induction W with
@@ -115,7 +116,7 @@ theorem CapyCaptureSet.peaks_push_tvar_irrel {s : Sig} {Γ : CapyCtx s}
 /-- `peaks` ignores a pushed *cvar* authority/bound (it adds no term-variable binding). -/
 theorem CapyCaptureSet.peaks_push_cvar_irrel {s : Sig} {Γ : CapyCtx s}
     {a1 a2 : CapyAuthority} {cb1 cb2 : CapyCaptureBound s} :
-    ∀ W : CaptureSet (s,C),
+    ∀ W : CapyCaptureSet (s,C),
       CapyCaptureSet.peaks (Γ.push_cvar a1 cb1) W
         = CapyCaptureSet.peaks (Γ.push_cvar a2 cb2) W := by
   intro W
@@ -137,7 +138,8 @@ theorem CapyCaptureSet.peaks_push_cvar_irrel {s : Sig} {Γ : CapyCtx s}
 /-- Two compiler contexts agree for `compile`: equal `srcCtx`, pointwise-equal `peaks`. -/
 def CompilerCtx.CompileCong {s1 s2 : Sig} (ctx1 ctx2 : CompilerCtx s1 s2) : Prop :=
   ctx1.srcCtx = ctx2.srcCtx ∧
-  ∀ W : CaptureSet s1, CapyCaptureSet.peaks ctx1.capyCtx W = CapyCaptureSet.peaks ctx2.capyCtx W
+  ∀ W : CapyCaptureSet s1,
+    CapyCaptureSet.peaks ctx1.capyCtx W = CapyCaptureSet.peaks ctx2.capyCtx W
 
 theorem CompilerCtx.CompileCong.weakenTarget {s1 s2 : Sig} {k : Kind}
     {ctx1 ctx2 : CompilerCtx s1 s2} (h : ctx1.CompileCong ctx2)
@@ -172,7 +174,7 @@ theorem CompilerCtx.CompileCong.consTVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx 
      exact CapyCaptureSet.peaks_push_cong (.tvar S) h.2 W⟩
 
 /-- A compiled lock's `peakSepCtx` depends on the context only through `peaks`. -/
-theorem CapyCaptureSet.peakset_eq {s : Sig} {Γ1 Γ2 : CapyCtx s} {W : CaptureSet s}
+theorem CapyCaptureSet.peakset_eq {s : Sig} {Γ1 Γ2 : CapyCtx s} {W : CapyCaptureSet s}
     (h : CapyCaptureSet.peaks Γ1 W = CapyCaptureSet.peaks Γ2 W) :
     CapyCaptureSet.peakset Γ1 W = CapyCaptureSet.peakset Γ2 W := by
   simp only [CapyCaptureSet.peakset, h]

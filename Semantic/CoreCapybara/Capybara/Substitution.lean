@@ -6,7 +6,7 @@ namespace CoreCapybara
 structure CapySubst (s1 s2 : Sig) where
   var : BVar s1 .var -> Var .var s2
   tvar : BVar s1 .tvar -> CapyPureTy s2
-  cvar : BVar s1 .cvar -> CaptureSet s2
+  cvar : BVar s1 .cvar -> CapyCaptureSet s2
 
 /-- Lifts a substitution under a binder. The newly bound variable maps to itself. -/
 def CapySubst.lift (s : CapySubst s1 s2) : CapySubst (s1,,k) (s2,,k) where
@@ -41,7 +41,7 @@ def CapyVar.subst : Var .var s1 -> CapySubst s1 s2 -> Var .var s2
 | .free n, _ => .free n
 
 /-- Applies a substitution to all bound variables in a capture set. -/
-def CapyCaptureSet.subst : CaptureSet s1 -> CapySubst s1 s2 -> CaptureSet s2
+def CapyCaptureSet.subst : CapyCaptureSet s1 -> CapySubst s1 s2 -> CapyCaptureSet s2
 | .empty, _ => .empty
 | .union cs1 cs2, σ => .union ((CapyCaptureSet.subst cs1) σ) ((CapyCaptureSet.subst cs2) σ)
 | .var m x, σ => .var m ((CapyVar.subst x) σ)
@@ -51,11 +51,6 @@ def CapyCaptureSet.subst : CaptureSet s1 -> CapySubst s1 s2 -> CaptureSet s2
 def CapyCaptureBound.subst : CapyCaptureBound s1 -> CapySubst s1 s2 -> CapyCaptureBound s2
 | .unbound m, _ => .unbound m
 | .bound cs, σ => .bound ((CapyCaptureSet.subst cs) σ)
-
-/-- Applies a substitution to all bound variables in a separation context. -/
-def CapySepCtx.subst : SepCtx s1 -> CapySubst s1 s2 -> SepCtx s2
-| .empty, _ => .empty
-| .cons K C, σ => .cons ((CapySepCtx.subst K) σ) ((CapyCaptureSet.subst C) σ)
 
 /-- Applies a substitution to a type. -/
 def CapyTy.subst : CapyTy sort s1 -> CapySubst s1 s2 -> CapyTy sort s2
@@ -73,21 +68,21 @@ def CapyTy.subst : CapyTy sort s1 -> CapySubst s1 s2 -> CapyTy sort s2
 | .typ T, s => .typ (T.subst s)
 
 /-- Substitution preserves emptiness of capture sets. -/
-theorem CapyCaptureSet.IsEmpty.subst {cs : CaptureSet s1} (h : cs.IsEmpty) (σ : CapySubst s1 s2) :
-    ((CapyCaptureSet.subst cs) σ).IsEmpty := by
+theorem CapyCaptureSet.IsEmpty.subst {cs : CapyCaptureSet s1} (h : cs.IsEmpty)
+    (σ : CapySubst s1 s2) : ((CapyCaptureSet.subst cs) σ).IsEmpty := by
   induction h with
-  | empty => exact CaptureSet.IsEmpty.empty
-  | union _ _ ih1 ih2 => exact CaptureSet.IsEmpty.union ih1 ih2
+  | empty => exact CapyCaptureSet.IsEmpty.empty
+  | union _ _ ih1 ih2 => exact CapyCaptureSet.IsEmpty.union ih1 ih2
 
 /-- Substitution preserves purity. -/
 theorem CapyTy.IsPureType.subst {T : CapyTy .capt s1} (h : T.IsPureType) (σ : CapySubst s1 s2) :
     (T.subst σ).IsPureType := by
   unfold IsPureType at *
   cases T with
-  | top => simp only [CapyTy.subst, CapyTy.captureSet]; exact CaptureSet.IsEmpty.empty
+  | top => simp only [CapyTy.subst, CapyTy.captureSet]; exact CapyCaptureSet.IsEmpty.empty
   | tvar x => simpa [CapyTy.subst, CapyTy.captureSet] using (σ.tvar x).p
-  | unit => simp only [CapyTy.subst, CapyTy.captureSet]; exact CaptureSet.IsEmpty.empty
-  | bool => simp only [CapyTy.subst, CapyTy.captureSet]; exact CaptureSet.IsEmpty.empty
+  | unit => simp only [CapyTy.subst, CapyTy.captureSet]; exact CapyCaptureSet.IsEmpty.empty
+  | bool => simp only [CapyTy.subst, CapyTy.captureSet]; exact CapyCaptureSet.IsEmpty.empty
   | arrow _ _ _ =>
     simp only [CapyTy.subst, CapyTy.captureSet] at *
     exact CapyCaptureSet.IsEmpty.subst h σ
@@ -149,7 +144,7 @@ def CapySubst.openTVar (U : CapyPureTy s) : CapySubst (s,X) s where
     | .there x => .cvar (.M .epsilon) x
 
 /-- Opens a capture variable binder, substituting `C` for the innermost bound. -/
-def CapySubst.openCVar (C : CaptureSet s) : CapySubst (s,C) s where
+def CapySubst.openCVar (C : CapyCaptureSet s) : CapySubst (s,C) s where
   var := fun
     | .there x => .bound x
   tvar := fun
@@ -159,7 +154,7 @@ def CapySubst.openCVar (C : CaptureSet s) : CapySubst (s,C) s where
     | .there x => .cvar (.M .epsilon) x
 
 /-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
-def CapySubst.unpack (C : CaptureSet s) (x : Var .var s) : CapySubst (s,C,x) s where
+def CapySubst.unpack (C : CapyCaptureSet s) (x : Var .var s) : CapySubst (s,C,x) s where
   var := fun
     | .here => x
     | .there (.there x0) => .bound x0
@@ -172,20 +167,20 @@ def CapySubst.unpack (C : CaptureSet s) (x : Var .var s) : CapySubst (s,C,x) s w
 /-- Drops the innermost (capture-variable) binder from a capture set, lowering
     it into the enclosing signature. Realised as the substitution that opens
     that binder with the empty capture set, so references to it become `{}`. -/
-def CapyCaptureSet.dropCVar (cs : CaptureSet (s,C)) : CaptureSet s :=
+def CapyCaptureSet.dropCVar (cs : CapyCaptureSet (s,C)) : CapyCaptureSet s :=
   CapyCaptureSet.subst cs (CapySubst.openCVar {})
 
 /-- Drops the innermost (type-variable) binder from a capture set. Capture sets
     never mention type variables, so this is the substitution that reindexes the
     remaining variables down one level. -/
-def CapyCaptureSet.dropTVar (cs : CaptureSet (s,X)) : CaptureSet s :=
+def CapyCaptureSet.dropTVar (cs : CapyCaptureSet (s,X)) : CapyCaptureSet s :=
   CapyCaptureSet.subst cs (CapySubst.openTVar CapyPureTy.top)
 
 /-- Drops the innermost (term-variable) binder from a capture set. Substitution
     cannot express this — a term-variable reference always substitutes to another
     term variable, never to `{}` — so references to the dropped binder are
     discarded directly. -/
-def CapyCaptureSet.dropVar : CaptureSet (s,x) -> CaptureSet s
+def CapyCaptureSet.dropVar : CapyCaptureSet (s,x) -> CapyCaptureSet s
 | .empty => .empty
 | .union cs1 cs2 => (CapyCaptureSet.dropVar cs1) ∪ (CapyCaptureSet.dropVar cs2)
 | .var _ (.bound .here) => .empty
@@ -207,7 +202,7 @@ def CapyCaptureSet.dropVar : CaptureSet (s,x) -> CaptureSet s
     The function codomains are existential types: for `∃c. T` the bound capture
     variable is stripped from the body's interfere set, and `typ T` forwards to
     the underlying type. -/
-def CapyTy.interfere_set (T : CapyTy sort s) : CaptureSet s :=
+def CapyTy.interfere_set (T : CapyTy sort s) : CapyCaptureSet s :=
   match T with
   | .top => .empty
   | .tvar _ => .empty
@@ -275,9 +270,9 @@ theorem CapyRename.lift_there_cvar_eq {f : Rename s1 s2} {C : BVar s1 .cvar} :
   (f.lift (k:=k)).var (.there C) = (f.var C).there := by
   rfl
 
-theorem CapyCaptureSet.weaken_rename_comm {cs : CaptureSet s1} {f : Rename s1 s2} :
+theorem CapyCaptureSet.weaken_rename_comm {cs : CapyCaptureSet s1} {f : Rename s1 s2} :
   (cs.rename Rename.succ).rename (f.lift (k:=k0)) = (cs.rename f).rename (Rename.succ) := by
-  simp only [CaptureSet.rename_comp, Rename.succ_lift_comm]
+  simp only [CapyCaptureSet.rename_comp, Rename.succ_lift_comm]
 
 theorem CapyPureTy.weaken_rename_comm {T : CapyPureTy s1} {f : Rename s1 s2} :
   (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
@@ -341,28 +336,20 @@ theorem CapyCVar.weaken_subst_comm_liftMany {C : BVar (s1 ++ K) .cvar} {σ : Cap
       exact CapyCaptureSet.weaken_rename_comm
 
 theorem CapyCaptureSet.weaken_subst_comm_liftMany
-    {cs : CaptureSet (s1 ++ K)} {σ : CapySubst s1 s2} :
+    {cs : CapyCaptureSet (s1 ++ K)} {σ : CapySubst s1 s2} :
   ((CapyCaptureSet.subst cs) (σ.liftMany K)).rename ((Rename.succ (k:=k0)).liftMany K) =
   CapyCaptureSet.subst (cs.rename (Rename.succ.liftMany K)) (σ.lift (k:=k0).liftMany K) := by
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename, ih1, ih2]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih1, ih2]
   | var m x =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename]
-    exact congrArg (CaptureSet.var m) CapyVar.weaken_subst_comm_liftMany
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename]
+    exact congrArg (CapyCaptureSet.var m) CapyVar.weaken_subst_comm_liftMany
   | cvar m C =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename]
-    rw [CaptureSet.applyAccess_rename]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename]
+    rw [CapyCaptureSet.applyAccess_rename]
     rw [CapyCVar.weaken_subst_comm_liftMany]
-
-theorem CapySepCtx.weaken_subst_comm_liftMany {Ψ : SepCtx (s1 ++ K)} {σ : CapySubst s1 s2} :
-  ((CapySepCtx.subst Ψ) (σ.liftMany K)).rename ((Rename.succ (k := k0)).liftMany K) =
-  CapySepCtx.subst (Ψ.rename (Rename.succ.liftMany K)) (σ.lift (k := k0).liftMany K) := by
-  induction Ψ with
-  | empty => rfl
-  | cons Ψ C ih =>
-    simp only [CapySepCtx.subst, SepCtx.rename, ih, CapyCaptureSet.weaken_subst_comm_liftMany]
 
 theorem CapyCaptureBound.weaken_subst_comm_liftMany
     {cb : CapyCaptureBound (s1 ++ K)} {σ : CapySubst s1 s2} :
@@ -459,28 +446,20 @@ theorem CapyCVar.weaken_subst_comm_base {C : BVar s1 .cvar} {σ : CapySubst s1 s
   (σ.lift (k:=k)).cvar ((Rename.succ (k:=k)).var C) := by
   cases C <;> rfl
 
-theorem CapyCaptureSet.weaken_subst_comm_base {cs : CaptureSet s1} {σ : CapySubst s1 s2} :
+theorem CapyCaptureSet.weaken_subst_comm_base {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2} :
   ((CapyCaptureSet.subst cs) σ).rename (Rename.succ (k:=k))
       = CapyCaptureSet.subst (cs.rename Rename.succ) (σ.lift) := by
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename, ih1, ih2]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih1, ih2]
   | var m x =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename]
-    exact congrArg (CaptureSet.var m) CapyVar.weaken_subst_comm_base
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename]
+    exact congrArg (CapyCaptureSet.var m) CapyVar.weaken_subst_comm_base
   | cvar m C =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename]
-    rw [CaptureSet.applyAccess_rename]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename]
+    rw [CapyCaptureSet.applyAccess_rename]
     rw [CapyCVar.weaken_subst_comm_base]
-
-theorem CapySepCtx.weaken_subst_comm_base {Ψ : SepCtx s1} {σ : CapySubst s1 s2} :
-  ((CapySepCtx.subst Ψ) σ).rename (Rename.succ (k := k))
-      = CapySepCtx.subst (Ψ.rename Rename.succ) (σ.lift) := by
-  induction Ψ with
-  | empty => rfl
-  | cons Ψ C ih =>
-    simp only [CapySepCtx.subst, SepCtx.rename, ih, CapyCaptureSet.weaken_subst_comm_base]
 
 theorem CapyCaptureBound.weaken_subst_comm_base {cb : CapyCaptureBound s1} {σ : CapySubst s1 s2} :
   (cb.subst σ).rename (Rename.succ (k := k)) = (cb.rename Rename.succ).subst (σ.lift) := by
@@ -517,9 +496,10 @@ theorem CapySubst.comp_lift {σ1 : CapySubst s1 s2} {σ2 : CapySubst s2 s3} {k :
     cases C with
     | here =>
       change
-        CapyCaptureSet.subst (CaptureSet.cvar (.M .epsilon) (BVar.here : BVar (s2,,.cvar) .cvar))
+        CapyCaptureSet.subst
+            (CapyCaptureSet.cvar (.M .epsilon) (BVar.here : BVar (s2,,.cvar) .cvar))
             (σ2.lift (k := .cvar)) =
-          CaptureSet.cvar (.M .epsilon) (BVar.here : BVar (s3,,.cvar) .cvar)
+          CapyCaptureSet.cvar (.M .epsilon) (BVar.here : BVar (s3,,.cvar) .cvar)
       rfl
     | there C0 =>
       simp only [CapySubst.comp, CapySubst.lift]
@@ -544,43 +524,45 @@ theorem CapyVar.subst_comp {x : Var .var s1} {σ1 : CapySubst s1 s2} {σ2 : Capy
   | free n => rfl
 
 /-- applyRO distributes over substitution. -/
-theorem CapyCaptureSet.applyRO_subst {cs : CaptureSet s1} {σ : CapySubst s1 s2} :
+theorem CapyCaptureSet.applyRO_subst {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2} :
     (CapyCaptureSet.subst cs.applyRO) σ = ((CapyCaptureSet.subst cs) σ).applyRO := by
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    simp only [CaptureSet.applyRO, CapyCaptureSet.subst, ih1, ih2]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.subst, ih1, ih2]
   | var _ x =>
-    simp only [CaptureSet.applyRO, CapyCaptureSet.subst]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.subst]
   | cvar _ x =>
-    simp only [CaptureSet.applyRO, CapyCaptureSet.subst, CaptureSet.applyAccess_applyRO]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.subst, CapyCaptureSet.applyAccess_applyRO]
 
 /-- applyMut distributes over substitution. -/
-theorem CapyCaptureSet.applyMut_subst {cs : CaptureSet s1} {σ : CapySubst s1 s2} {m : Mutability} :
+theorem CapyCaptureSet.applyMut_subst {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2}
+    {m : Mutability} :
     CapyCaptureSet.subst (cs.applyMut m) σ = ((CapyCaptureSet.subst cs) σ).applyMut m := by
-  cases m <;> simp only [CaptureSet.applyMut_epsilon, CaptureSet.applyMut_ro, applyRO_subst]
+  cases m <;> simp only [CapyCaptureSet.applyMut_epsilon, CapyCaptureSet.applyMut_ro, applyRO_subst]
 
 /-- applyDrop distributes over substitution. -/
-theorem CapyCaptureSet.applyDrop_subst {cs : CaptureSet s1} {σ : CapySubst s1 s2} :
+theorem CapyCaptureSet.applyDrop_subst {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2} :
     (CapyCaptureSet.subst cs.applyDrop) σ = ((CapyCaptureSet.subst cs) σ).applyDrop := by
   induction cs with
   | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.applyDrop, CapyCaptureSet.subst, ih1, ih2]
-  | var _ x => simp only [CaptureSet.applyDrop, CapyCaptureSet.subst]
+  | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.subst, ih1, ih2]
+  | var _ x => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.subst]
   | cvar _ x =>
-    simp only [CaptureSet.applyDrop, CapyCaptureSet.subst, CaptureSet.applyAccess_drop,
-               CaptureSet.applyAccess_applyDrop]
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.subst, CapyCaptureSet.applyAccess_drop,
+               CapyCaptureSet.applyAccess_applyDrop]
 
 /-- applyAccess distributes over substitution. -/
-theorem CapyCaptureSet.applyAccess_subst {cs : CaptureSet s1} {σ : CapySubst s1 s2} {a : Access} :
+theorem CapyCaptureSet.applyAccess_subst {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2}
+    {a : Access} :
     CapyCaptureSet.subst (cs.applyAccess a) σ = ((CapyCaptureSet.subst cs) σ).applyAccess a := by
   cases a with
-  | M m => simp only [CaptureSet.applyAccess_M, applyMut_subst]
-  | drop => simp only [CaptureSet.applyAccess_drop, applyDrop_subst]
+  | M m => simp only [CapyCaptureSet.applyAccess_M, applyMut_subst]
+  | drop => simp only [CapyCaptureSet.applyAccess_drop, applyDrop_subst]
 
 /-- Substitution on capture sets distributes over composition of substitutions. -/
 theorem CapyCaptureSet.subst_comp
-    {cs : CaptureSet s1} {σ1 : CapySubst s1 s2} {σ2 : CapySubst s2 s3} :
+    {cs : CapyCaptureSet s1} {σ1 : CapySubst s1 s2} {σ2 : CapySubst s2 s3} :
   CapyCaptureSet.subst ((CapyCaptureSet.subst cs) σ1) σ2
       = (CapyCaptureSet.subst cs) (σ1.comp σ2) := by
   induction cs with
@@ -589,7 +571,7 @@ theorem CapyCaptureSet.subst_comp
     simp only [CapyCaptureSet.subst, ih1, ih2]
   | var m x =>
     simp only [CapyCaptureSet.subst]
-    exact congrArg (CaptureSet.var m) CapyVar.subst_comp
+    exact congrArg (CapyCaptureSet.var m) CapyVar.subst_comp
   | cvar m C =>
     simp only [CapyCaptureSet.subst, CapySubst.comp, CapyCaptureSet.applyAccess_subst]
 
@@ -671,14 +653,6 @@ theorem CapyExp.subst_comp {e : CapyExp s1} {σ1 : CapySubst s1 s2} {σ2 : CapyS
   | par e1 e2 ih1 ih2 =>
     simp only [CapyExp.subst, ih1, ih2]
 
-/-- Substitution on separation contexts distributes over composition of substitutions. -/
-theorem CapySepCtx.subst_comp {K : SepCtx s1} {σ1 : CapySubst s1 s2} {σ2 : CapySubst s2 s3} :
-  CapySepCtx.subst ((CapySepCtx.subst K) σ1) σ2 = (CapySepCtx.subst K) (σ1.comp σ2) := by
-  induction K generalizing s2 s3 with
-  | empty => rfl
-  | cons K C ih =>
-    simp only [CapySepCtx.subst, ih, CapyCaptureSet.subst_comp]
-
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem CapyVar.subst_id {x : Var .var s} :
   (CapyVar.subst x) CapySubst.id = x := by
@@ -687,7 +661,7 @@ theorem CapyVar.subst_id {x : Var .var s} :
   | free n => rfl
 
 /-- Substituting with the identity substitution leaves a capture set unchanged. -/
-theorem CapyCaptureSet.subst_id {cs : CaptureSet s} :
+theorem CapyCaptureSet.subst_id {cs : CapyCaptureSet s} :
   (CapyCaptureSet.subst cs) CapySubst.id = cs := by
   induction cs with
   | empty => rfl
@@ -701,15 +675,15 @@ theorem CapyCaptureSet.subst_id {cs : CaptureSet s} :
       cases m <;> simp only [
         CapyCaptureSet.subst,
         CapySubst.id,
-        CaptureSet.applyAccess_M,
+        CapyCaptureSet.applyAccess_M,
         Access.applyRO,
-        CaptureSet.applyRO_cvar,
-        CaptureSet.applyMut_epsilon,
-        CaptureSet.applyMut_ro
+        CapyCaptureSet.applyRO_cvar,
+        CapyCaptureSet.applyMut_epsilon,
+        CapyCaptureSet.applyMut_ro
       ]
     | drop =>
-      simp only [CapyCaptureSet.subst, CapySubst.id, CaptureSet.applyAccess_drop,
-        CaptureSet.applyDrop]
+      simp only [CapyCaptureSet.subst, CapySubst.id, CapyCaptureSet.applyAccess_drop,
+        CapyCaptureSet.applyDrop]
 
 /-- Lifting the identity substitution yields the identity. -/
 theorem CapySubst.lift_id :
@@ -804,14 +778,6 @@ theorem CapyExp.subst_id {e : CapyExp s} :
   | par e1 e2 ih1 ih2 =>
     simp only [CapyExp.subst, ih1, ih2]
 
-/-- Substituting with the identity substitution leaves a separation context unchanged. -/
-theorem CapySepCtx.subst_id {K : SepCtx s} :
-  (CapySepCtx.subst K) CapySubst.id = K := by
-  induction K with
-  | empty => rfl
-  | cons K C ih =>
-    simp only [CapySepCtx.subst, ih, CapyCaptureSet.subst_id]
-
 /-- Converts a renaming to a substitution. -/
 def CapyRename.asSubst (f : Rename s1 s2) : CapySubst s1 s2 where
   var := fun x => .bound (f.var x)
@@ -844,34 +810,34 @@ theorem CapyVar.subst_asSubst {x : Var .var s1} {f : Rename s1 s2} :
   | free n => rfl
 
 /-- Substituting a substitution lifted from a renaming is the same as renaming. -/
-theorem CapyCaptureSet.subst_asSubst {cs : CaptureSet s1} {f : Rename s1 s2} :
+theorem CapyCaptureSet.subst_asSubst {cs : CapyCaptureSet s1} {f : Rename s1 s2} :
   (CapyCaptureSet.subst cs) ((CapyRename.asSubst f)) = cs.rename f := by
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename, ih1, ih2]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih1, ih2]
   | var m x =>
-    simp only [CapyCaptureSet.subst, CaptureSet.rename, CapyVar.subst_asSubst]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, CapyVar.subst_asSubst]
   | cvar m C =>
     cases m with
     | M m =>
       cases m <;> simp only [
         CapyCaptureSet.subst,
-        CaptureSet.rename,
+        CapyCaptureSet.rename,
         CapyRename.asSubst,
-        CaptureSet.applyAccess_M,
+        CapyCaptureSet.applyAccess_M,
         Access.applyRO,
-        CaptureSet.applyRO_cvar,
-        CaptureSet.applyMut_epsilon,
-        CaptureSet.applyMut_ro
+        CapyCaptureSet.applyRO_cvar,
+        CapyCaptureSet.applyMut_epsilon,
+        CapyCaptureSet.applyMut_ro
       ]
     | drop =>
       simp only [
         CapyCaptureSet.subst,
-        CaptureSet.rename,
+        CapyCaptureSet.rename,
         CapyRename.asSubst,
-        CaptureSet.applyAccess_drop,
-        CaptureSet.applyDrop
+        CapyCaptureSet.applyAccess_drop,
+        CapyCaptureSet.applyDrop
       ]
 
 theorem CapyCaptureBound.subst_asSubst {cb : CapyCaptureBound s1} {f : Rename s1 s2} :
@@ -969,14 +935,6 @@ theorem CapyExp.subst_asSubst {e : CapyExp s1} {f : Rename s1 s2} :
   | par e1 e2 ih1 ih2 =>
     simp only [CapyExp.subst, CapyExp.rename, ih1, ih2]
 
-/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
-theorem CapySepCtx.subst_asSubst {K : SepCtx s1} {f : Rename s1 s2} :
-  (CapySepCtx.subst K) ((CapyRename.asSubst f)) = K.rename f := by
-  induction K generalizing s2 with
-  | empty => rfl
-  | cons K C ih =>
-    simp only [CapySepCtx.subst, SepCtx.rename, ih, CapyCaptureSet.subst_asSubst]
-
 theorem CapySubst.weaken_openVar {z : Var .var s} :
   (CapyRename.asSubst Rename.succ).comp (CapySubst.openVar z) = CapySubst.id := by
   apply CapySubst.funext
@@ -991,14 +949,14 @@ theorem CapySubst.weaken_openTVar {U : CapyPureTy s} :
   · intro X; rfl
   · intro C; rfl
 
-theorem CapySubst.weaken_openCVar {C : CaptureSet s} :
+theorem CapySubst.weaken_openCVar {C : CapyCaptureSet s} :
   (CapyRename.asSubst Rename.succ).comp (CapySubst.openCVar C) = CapySubst.id := by
   apply CapySubst.funext
   · intro x; rfl
   · intro X; rfl
   · intro C; rfl
 
-theorem CapyCaptureSet.weaken_openVar {C : CaptureSet (s)} {z : Var .var s} :
+theorem CapyCaptureSet.weaken_openVar {C : CapyCaptureSet (s)} {z : Var .var s} :
   CapyCaptureSet.subst (C.rename Rename.succ) (CapySubst.openVar z) = C := by
   calc CapyCaptureSet.subst (C.rename Rename.succ) (CapySubst.openVar z)
       = CapyCaptureSet.subst ((CapyCaptureSet.subst C) (CapyRename.asSubst Rename.succ))
@@ -1008,7 +966,7 @@ theorem CapyCaptureSet.weaken_openVar {C : CaptureSet (s)} {z : Var .var s} :
     _ = (CapyCaptureSet.subst C) CapySubst.id := by rw [CapySubst.weaken_openVar]
     _ = C := by rw [CapyCaptureSet.subst_id]
 
-theorem CapyCaptureSet.weaken_openTVar {C : CaptureSet (s)} {U : CapyPureTy s} :
+theorem CapyCaptureSet.weaken_openTVar {C : CapyCaptureSet (s)} {U : CapyPureTy s} :
   CapyCaptureSet.subst (C.rename Rename.succ) (CapySubst.openTVar U) = C := by
   calc CapyCaptureSet.subst (C.rename Rename.succ) (CapySubst.openTVar U)
       = CapyCaptureSet.subst ((CapyCaptureSet.subst C) (CapyRename.asSubst Rename.succ))
@@ -1018,7 +976,7 @@ theorem CapyCaptureSet.weaken_openTVar {C : CaptureSet (s)} {U : CapyPureTy s} :
     _ = (CapyCaptureSet.subst C) CapySubst.id := by rw [CapySubst.weaken_openTVar]
     _ = C := by rw [CapyCaptureSet.subst_id]
 
-theorem CapyCaptureSet.weaken_openCVar {C : CaptureSet (s)} {C' : CaptureSet s} :
+theorem CapyCaptureSet.weaken_openCVar {C : CapyCaptureSet (s)} {C' : CapyCaptureSet s} :
   CapyCaptureSet.subst (C.rename Rename.succ) (CapySubst.openCVar C') = C := by
   calc CapyCaptureSet.subst (C.rename Rename.succ) (CapySubst.openCVar C')
       = CapyCaptureSet.subst ((CapyCaptureSet.subst C) (CapyRename.asSubst Rename.succ))
@@ -1029,21 +987,21 @@ theorem CapyCaptureSet.weaken_openCVar {C : CaptureSet (s)} {C' : CaptureSet s} 
     _ = (CapyCaptureSet.subst C) CapySubst.id := by rw [CapySubst.weaken_openCVar]
     _ = C := by rw [CapyCaptureSet.subst_id]
 
-theorem CapyCaptureSet.ground_rename_invariant {C : CaptureSet {}} :
+theorem CapyCaptureSet.ground_rename_invariant {C : CapyCaptureSet {}} :
   C.rename f = C := by
   induction C with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    simp only [CaptureSet.rename]
+    simp only [CapyCaptureSet.rename]
     rw [ih1, ih2]
   | var m x =>
     cases x with
     | bound bx => cases bx
     | free n =>
-      simp only [CaptureSet.rename, Var.rename]
+      simp only [CapyCaptureSet.rename, Var.rename]
   | cvar m c => cases c
 
-theorem CapyCaptureSet.ground_subst_invariant {C : CaptureSet {}} :
+theorem CapyCaptureSet.ground_subst_invariant {C : CapyCaptureSet {}} :
   (CapyCaptureSet.subst C) σ = C := by
   induction C with
   | empty => rfl
@@ -1072,19 +1030,19 @@ def CapyVar.is_closed_subst {x : Var .var s1} {σ : CapySubst s1 s2}
   | free n => cases hc
 
 /-- Substitution preserves closedness for capture sets. -/
-def CapyCaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : CapySubst s1 s2}
+def CapyCaptureSet.is_closed_subst {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2}
   (hc : cs.IsClosed) (hsubst : CapySubst.IsClosed σ) :
   ((CapyCaptureSet.subst cs) σ).IsClosed := by
   induction cs with
   | empty =>
-    exact CaptureSet.IsClosed.empty
+    exact CapyCaptureSet.IsClosed.empty
   | union cs1 cs2 ih1 ih2 =>
     cases hc with | union h1 h2 =>
     simp only [CapyCaptureSet.subst]
-    exact CaptureSet.IsClosed.union (ih1 h1) (ih2 h2)
+    exact CapyCaptureSet.IsClosed.union (ih1 h1) (ih2 h2)
   | cvar m C =>
     simp only [CapyCaptureSet.subst]
-    exact CaptureSet.applyAccess_isClosed (hsubst.cvar_closed C)
+    exact CapyCaptureSet.applyAccess_isClosed (hsubst.cvar_closed C)
   | var m x =>
     cases hc with | var_bound =>
     rename_i bx
@@ -1093,7 +1051,7 @@ def CapyCaptureSet.is_closed_subst {cs : CaptureSet s1} {σ : CapySubst s1 s2}
     have h_var : v.IsClosed := h_eq ▸ hsubst.var_closed bx
     cases v with
     | bound y =>
-      exact CaptureSet.IsClosed.var_bound
+      exact CapyCaptureSet.IsClosed.var_bound
     | free n =>
       cases h_var
 
@@ -1103,32 +1061,23 @@ private theorem Var.rename_closed_any {x : Var .var s1} {f : Rename s1 s2}
   | bound _ => exact IsClosed.bound
   | free _ => cases hc
 
-private theorem CaptureSet.rename_closed_any {cs : CaptureSet s1} {f : Rename s1 s2}
+private theorem CapyCaptureSet.rename_closed_any {cs : CapyCaptureSet s1} {f : Rename s1 s2}
   (hc : cs.IsClosed) : (cs.rename f).IsClosed := by
   induction cs with
-  | empty => exact CaptureSet.IsClosed.empty
+  | empty => exact CapyCaptureSet.IsClosed.empty
   | union cs1 cs2 ih1 ih2 =>
     cases hc with | union h1 h2 =>
-    exact CaptureSet.IsClosed.union (ih1 h1) (ih2 h2)
-  | cvar => exact CaptureSet.IsClosed.cvar
+    exact CapyCaptureSet.IsClosed.union (ih1 h1) (ih2 h2)
+  | cvar => exact CapyCaptureSet.IsClosed.cvar
   | var x =>
     cases hc with | var_bound =>
-    exact CaptureSet.IsClosed.var_bound
-
-private theorem SepCtx.rename_closed_any {Ψ : SepCtx s1} {f : Rename s1 s2}
-  (hc : Ψ.IsClosed) : (Ψ.rename f).IsClosed := by
-  induction Ψ with
-  | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C ih =>
-    cases hc with
-    | cons hΨ hC =>
-      exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_any hC)
+    exact CapyCaptureSet.IsClosed.var_bound
 
 private theorem CapyCaptureBound.rename_closed_any {cb : CapyCaptureBound s1} {f : Rename s1 s2}
   (hc : cb.IsClosed) : (cb.rename f).IsClosed := by
   cases hc with
   | unbound => exact CapyCaptureBound.IsClosed.unbound
-  | bound hcs => exact CapyCaptureBound.IsClosed.bound (CaptureSet.rename_closed_any hcs)
+  | bound hcs => exact CapyCaptureBound.IsClosed.bound (CapyCaptureSet.rename_closed_any hcs)
 
 private theorem CapyTy.rename_closed_any {T : CapyTy sort s1} {f : Rename s1 s2}
   (hc : T.IsClosed) : (T.rename f).IsClosed := by
@@ -1138,23 +1087,23 @@ private theorem CapyTy.rename_closed_any {T : CapyTy sort s1} {f : Rename s1 s2}
   | arrow T1 cs T2 ih1 ih2 =>
     cases hc with | arrow h1 hcs h2 =>
     exact IsClosed.arrow (ih1 h1)
-      (CaptureSet.rename_closed_any hcs) (ih2 h2)
+      (CapyCaptureSet.rename_closed_any hcs) (ih2 h2)
   | poly T1 cs T2 ih1 ih2 =>
     cases hc with | poly h1 hcs h2 =>
     exact IsClosed.poly (ih1 h1)
-      (CaptureSet.rename_closed_any hcs) (ih2 h2)
+      (CapyCaptureSet.rename_closed_any hcs) (ih2 h2)
   | cpoly cb cs T ih =>
     cases hc with | cpoly hcb hcs hT =>
     exact IsClosed.cpoly (CapyCaptureBound.rename_closed_any hcb)
-      (CaptureSet.rename_closed_any hcs) (ih hT)
+      (CapyCaptureSet.rename_closed_any hcs) (ih hT)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
-    exact IsClosed.cap (CaptureSet.rename_closed_any hcs)
+    exact IsClosed.cap (CapyCaptureSet.rename_closed_any hcs)
   | bool => exact IsClosed.bool
   | cell cs m =>
     cases hc with | cell hcs =>
-    exact IsClosed.cell (CaptureSet.rename_closed_any hcs)
+    exact IsClosed.cell (CapyCaptureSet.rename_closed_any hcs)
   | exi T ih =>
     cases hc with | exi hT =>
     exact IsClosed.exi (ih hT)
@@ -1176,20 +1125,10 @@ theorem CapySubst.lift_closed {σ : CapySubst s1 s2} (hσ : σ.IsClosed) :
     | there X => simp only [CapySubst.lift]; exact CapyTy.rename_closed_any (hσ.tvar_closed X)
   · intro C
     cases C with
-    | here => exact CaptureSet.IsClosed.cvar
-    | there C => simp only [CapySubst.lift]; exact CaptureSet.rename_closed_any (hσ.cvar_closed C)
-
-/-- Substitution preserves closedness for types. -/
-def CapySepCtx.is_closed_subst {Ψ : SepCtx s1} {σ : CapySubst s1 s2}
-  (hc : Ψ.IsClosed) (hsubst : CapySubst.IsClosed σ) :
-  ((CapySepCtx.subst Ψ) σ).IsClosed := by
-  induction Ψ generalizing s2 with
-  | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C ih =>
-    cases hc with
-    | cons hΨ hC =>
-      simp only [CapySepCtx.subst]
-      exact SepCtx.IsClosed.cons (ih hΨ hsubst) (CapyCaptureSet.is_closed_subst hC hsubst)
+    | here => exact CapyCaptureSet.IsClosed.cvar
+    | there C =>
+      simp only [CapySubst.lift]
+      exact CapyCaptureSet.rename_closed_any (hσ.cvar_closed C)
 
 def CapyCaptureBound.is_closed_subst {cb : CapyCaptureBound s1} {σ : CapySubst s1 s2}
   (hc : cb.IsClosed) (hsubst : CapySubst.IsClosed σ) :
@@ -1342,7 +1281,7 @@ theorem CapySubst.openVar_is_closed {z : Var .var s}
     | there X => exact CapyTy.IsClosed.tvar
   cvar_closed := fun C => by
     cases C with
-    | there C => exact CaptureSet.IsClosed.cvar
+    | there C => exact CapyCaptureSet.IsClosed.cvar
 
 /-- The openTVar substitution is closed if the type is closed. -/
 theorem CapySubst.openTVar_is_closed {U : CapyPureTy s}
@@ -1357,10 +1296,10 @@ theorem CapySubst.openTVar_is_closed {U : CapyPureTy s}
     | there X => exact CapyTy.IsClosed.tvar
   cvar_closed := fun C => by
     cases C with
-    | there C => exact CaptureSet.IsClosed.cvar
+    | there C => exact CapyCaptureSet.IsClosed.cvar
 
 /-- The openCVar substitution is closed if the capture set is closed. -/
-theorem CapySubst.openCVar_is_closed {C : CaptureSet s}
+theorem CapySubst.openCVar_is_closed {C : CapyCaptureSet s}
   (hC : C.IsClosed) :
   (CapySubst.openCVar C).IsClosed where
   var_closed := fun x => by
@@ -1372,7 +1311,7 @@ theorem CapySubst.openCVar_is_closed {C : CaptureSet s}
   cvar_closed := fun c => by
     cases c with
     | here => exact hC
-    | there c => exact CaptureSet.IsClosed.cvar
+    | there c => exact CapyCaptureSet.IsClosed.cvar
 
 /-- If the result of substitution is closed, the original variable was closed. -/
 theorem CapyVar.subst_closed_inv {x : Var .var s1} {σ : CapySubst s1 s2}
@@ -1385,34 +1324,23 @@ theorem CapyVar.subst_closed_inv {x : Var .var s1} {σ : CapySubst s1 s2}
     cases hclosed
 
 /-- If the result of substitution is closed, the original capture set was closed. -/
-theorem CapyCaptureSet.subst_closed_inv {cs : CaptureSet s1} {σ : CapySubst s1 s2}
+theorem CapyCaptureSet.subst_closed_inv {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2}
   (hclosed : ((CapyCaptureSet.subst cs) σ).IsClosed) :
   cs.IsClosed := by
   induction cs with
-  | empty => exact CaptureSet.IsClosed.empty
+  | empty => exact CapyCaptureSet.IsClosed.empty
   | union cs1 cs2 ih1 ih2 =>
     simp only [CapyCaptureSet.subst] at hclosed
     cases hclosed with | union h1 h2 =>
-    exact CaptureSet.IsClosed.union (ih1 h1) (ih2 h2)
-  | cvar m C => exact CaptureSet.IsClosed.cvar
+    exact CapyCaptureSet.IsClosed.union (ih1 h1) (ih2 h2)
+  | cvar m C => exact CapyCaptureSet.IsClosed.cvar
   | var m x =>
     cases x with
     | bound bx =>
-      exact CaptureSet.IsClosed.var_bound
+      exact CapyCaptureSet.IsClosed.var_bound
     | free n =>
       simp only [CapyCaptureSet.subst, CapyVar.subst] at hclosed
       cases hclosed
-
-theorem CapySepCtx.subst_closed_inv {Ψ : SepCtx s1} {σ : CapySubst s1 s2}
-  (hclosed : ((CapySepCtx.subst Ψ) σ).IsClosed) :
-  Ψ.IsClosed := by
-  induction Ψ generalizing s2 with
-  | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C ih =>
-    simp only [CapySepCtx.subst] at hclosed
-    cases hclosed with
-    | cons hΨ hC =>
-      exact SepCtx.IsClosed.cons (ih hΨ) (CapyCaptureSet.subst_closed_inv hC)
 
 theorem CapyCaptureBound.subst_closed_inv {cb : CapyCaptureBound s1} {σ : CapySubst s1 s2}
   (hclosed : (cb.subst σ).IsClosed) :

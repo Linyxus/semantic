@@ -5,7 +5,7 @@ namespace Compilation
 /-!
 # Infrastructure for term compilation
 
-Foundational lemmas about how the compilation functions (`CaptureSet.compile`,
+Foundational lemmas about how the compilation functions (`CapyCaptureSet.compile`,
 `CapyCaptureBound.compile`, `CapyTy.compile`) interact with *target* renaming.
 These underpin the context-coherence invariant and the lookup-transport lemmas
 used by the term-compilation preservation theorem.
@@ -47,20 +47,20 @@ theorem SrcCtx.lookupVarBVar_rename {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'}
     | here => cases info; rfl
     | there x => simp only [SrcCtx.rename, SrcCtx.lookupVarBVar]; exact ih
 
-/-- `CaptureSet.compile` commutes with target renaming of the source context. -/
-theorem CaptureSet.compile_rename {cs : CaptureSet s1} {ctx : SrcCtx s1 s2}
+/-- `CapyCaptureSet.compile` commutes with target renaming of the source context. -/
+theorem CapyCaptureSet.compile_rename {cs : CapyCaptureSet s1} {ctx : SrcCtx s1 s2}
     {ρ : Rename s2 s2'} :
-    CaptureSet.compile cs (ctx.rename ρ) = (CaptureSet.compile cs ctx).rename ρ := by
+    CapyCaptureSet.compile cs (ctx.rename ρ) = (CapyCaptureSet.compile cs ctx).rename ρ := by
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
-    simp only [CaptureSet.compile, CaptureSet.rename, ih1, ih2]
+    simp only [CapyCaptureSet.compile, CaptureSet.rename, ih1, ih2]
   | cvar a c =>
-    simp only [CaptureSet.compile, CaptureSet.rename, SrcCtx.lookupCVar_rename]
+    simp only [CapyCaptureSet.compile, CaptureSet.rename, SrcCtx.lookupCVar_rename]
   | var a x =>
     cases x with
     | bound x =>
-      simp only [CaptureSet.compile, SrcCtx.lookupVar_rename,
+      simp only [CapyCaptureSet.compile, SrcCtx.lookupVar_rename,
         CaptureSet.applyAccess_rename]
     | free n => rfl
 
@@ -68,19 +68,20 @@ theorem CaptureSet.compile_rename {cs : CaptureSet s1} {ctx : SrcCtx s1 s2}
     fresh *source* binder, through a context that begins with the matching binder
     info, is the same as compiling `cs` through the tail.  (The new binder is
     never referenced by `cs.rename succ`.) -/
-theorem CaptureSet.compile_rename_succ_cons {cs : CaptureSet s1} {rest : SrcCtx s1 s2}
+theorem CapyCaptureSet.compile_rename_succ_cons {cs : CapyCaptureSet s1} {rest : SrcCtx s1 s2}
     {info : SrcBinderInfo k s2} :
-    CaptureSet.compile (cs.rename (Rename.succ (k := k))) (.cons info rest)
-      = CaptureSet.compile cs rest := by
+    CapyCaptureSet.compile (cs.rename (Rename.succ (k := k))) (.cons info rest)
+      = CapyCaptureSet.compile cs rest := by
   induction cs with
   | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.rename, CaptureSet.compile, ih1, ih2]
+  | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.rename, CapyCaptureSet.compile, ih1, ih2]
   | cvar a c =>
-    simp only [CaptureSet.rename, Rename.succ, CaptureSet.compile, SrcCtx.lookupCVar]
+    simp only [CapyCaptureSet.rename, Rename.succ, CapyCaptureSet.compile, SrcCtx.lookupCVar]
   | var a x =>
     cases x with
     | bound x =>
-      simp only [CaptureSet.rename, Var.rename, Rename.succ, CaptureSet.compile, SrcCtx.lookupVar]
+      simp only [CapyCaptureSet.rename, Var.rename, Rename.succ, CapyCaptureSet.compile,
+        SrcCtx.lookupVar]
     | free n => rfl
 
 /-- The compiled *modal-lock capture field* `W = ⟦cs⟧ ∪ {param}` of an arrow
@@ -92,18 +93,18 @@ theorem CaptureSet.compile_rename_succ_cons {cs : CaptureSet s1} {rest : SrcCtx 
     Stated with the `cons` tail/infos abstract so the peel fires cleanly; the
     arrow case of `CapyTy.compile_refine_self` discharges it by `exact` (which
     unifies the concrete builder-unfolded context up to defeq). -/
-theorem CaptureSet.compile_lock_field_congr {s1 s2 : Sig} {xv : BVar s1 .var}
-    {cs : CaptureSet s1} {tail : SrcCtx s1 s2}
+theorem CapyCaptureSet.compile_lock_field_congr {s1 s2 : Sig} {xv : BVar s1 .var}
+    {cs : CapyCaptureSet s1} {tail : SrcCtx s1 s2}
     {i1 : SrcBinderInfo .var s2} {i2 : SrcBinderInfo .cvar s2}
-    (h : CaptureSet.compile (.var (.M .epsilon) (.bound xv)) tail
-        = CaptureSet.compile cs tail) :
-    CaptureSet.compile
-        (((CaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+    (h : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv)) tail
+        = CapyCaptureSet.compile cs tail) :
+    CapyCaptureSet.compile
+        (((CapyCaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
           ∪ .var (.M .epsilon) (.bound .here)) (.cons i1 (.cons i2 tail))
-      = CaptureSet.compile
+      = CapyCaptureSet.compile
         ((cs.rename Rename.succ).rename Rename.succ ∪ .var (.M .epsilon) (.bound .here))
         (.cons i1 (.cons i2 tail)) := by
-  simp only [CaptureSet.compile, CaptureSet.compile_rename_succ_cons]
+  simp only [CapyCaptureSet.compile, CapyCaptureSet.compile_rename_succ_cons]
   -- `congr 1` splits off the shared `{param}` summand and discharges the residual
   -- `⟦{xv}⟧ = ⟦cs⟧` (through `tail`) with `h` from context.
   congr 1
@@ -119,14 +120,15 @@ theorem CapyCaptureSet.peaksVarBound_eq_captureSet {s : Sig} {Γ : CapyCtx s}
   induction h with
   | here =>
     simp only [CapyCaptureSet.peaksVarBound, CapyTy.captureSet_rename,
-      CapyCaptureSet.peaks_rename_succ_eq, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+      CapyCaptureSet.peaks_rename_succ_eq, CapyCaptureSet.applyAccess_M,
+      CapyCaptureSet.applyMut_epsilon]
   | there _ ih =>
     simp only [CapyCaptureSet.peaksVarBound, CapyTy.captureSet_rename,
       CapyCaptureSet.peaks_rename_succ_eq, ih]
 
 /-- Two peak sets with equal underlying capture sets are equal (the `PeaksOnly`
     proof is irrelevant). -/
-theorem CapyCaptureSet.peakset_congr {s : Sig} {Γ : CapyCtx s} {C1 C2 : CaptureSet s}
+theorem CapyCaptureSet.peakset_congr {s : Sig} {Γ : CapyCtx s} {C1 C2 : CapyCaptureSet s}
     (h : CapyCaptureSet.peaks Γ C1 = CapyCaptureSet.peaks Γ C2) :
     CapyCaptureSet.peakset Γ C1 = CapyCaptureSet.peakset Γ C2 := by
   unfold CapyCaptureSet.peakset
@@ -140,12 +142,12 @@ theorem CapyCaptureSet.peakset_congr {s : Sig} {Γ : CapyCtx s} {C1 C2 : Capture
     discharges the residual with `h`.  Stated with the two pushed binders abstract
     so the peel fires cleanly. -/
 theorem CapyCaptureSet.peaks_lock_field_congr {s1 : Sig} {xv : BVar s1 .var}
-    {cs : CaptureSet s1} {Γ : CapyCtx s1}
+    {cs : CapyCaptureSet s1} {Γ : CapyCtx s1}
     {bcv : CapyBinding s1 .cvar} {bv : CapyBinding (s1,,Kind.cvar) .var}
     (h : CapyCaptureSet.peaks Γ (.var (.M .epsilon) (.bound xv))
         = CapyCaptureSet.peaks Γ cs) :
     CapyCaptureSet.peaks ((Γ.push bcv).push bv)
-        (((CaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+        (((CapyCaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
           ∪ .var (.M .epsilon) (.bound .here))
       = CapyCaptureSet.peaks ((Γ.push bcv).push bv)
         ((cs.rename Rename.succ).rename Rename.succ ∪ .var (.M .epsilon) (.bound .here)) := by
@@ -163,7 +165,7 @@ theorem CapyCaptureBound.compile_rename {cb : CapyCaptureBound s1}
   cases cb with
   | unbound m => rfl
   | bound cs =>
-    simp only [CapyCaptureBound.compile, CaptureBound.rename, CaptureSet.compile_rename]
+    simp only [CapyCaptureBound.compile, CaptureBound.rename, CapyCaptureSet.compile_rename]
 
 /-- Looking up a type variable in a target-renamed source context renames the
     looked-up image. -/
@@ -180,21 +182,21 @@ theorem SrcCtx.lookupTVar_rename {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'}
 /-- Foldl/rename fusion underlying `peakSepCtx_rename`: renaming the result of the
     `peakSepCtx` fold equals folding with the renamed source context, starting
     from the renamed accumulator. -/
-private theorem peakSepCtx_foldl_rename {P : PeakSet s1} {ctx : SrcCtx s1 s2}
+private theorem peakSepCtx_foldl_rename {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2}
     {ρ : Rename s2 s2'} :
     ∀ (l : List (BVar s1 .cvar)) (acc : SepCtx s2),
-    (l.foldl (fun K c => .cons K (CaptureSet.compile (peakItem P c) ctx)) acc).rename ρ
-      = l.foldl (fun K c => .cons K (CaptureSet.compile (peakItem P c) (ctx.rename ρ)))
+    (l.foldl (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) ctx)) acc).rename ρ
+      = l.foldl (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) (ctx.rename ρ)))
           (acc.rename ρ)
   | [], acc => rfl
   | c :: cs, acc => by
     simp only [List.foldl_cons]
     rw [peakSepCtx_foldl_rename cs]
-    simp only [SepCtx.rename, CaptureSet.compile_rename]
+    simp only [SepCtx.rename, CapyCaptureSet.compile_rename]
 
 /-- The peak-separation context commutes with target renaming of the source
     context (the peak set itself lives in the source signature and is unchanged). -/
-theorem peakSepCtx_rename {P : PeakSet s1} {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'} :
+theorem peakSepCtx_rename {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'} :
     peakSepCtx P (ctx.rename ρ) = (peakSepCtx P ctx).rename ρ := by
   simp only [peakSepCtx]
   rw [peakSepCtx_foldl_rename]
@@ -311,7 +313,7 @@ theorem CapyCaptureBound.mutabilityCtx_rename_here {cb : CapyCaptureBound s1}
 /-- `CapyTy.compile` commutes with target renaming: compiling a type in a
     compiler context whose source→target map is the `ρ`-renaming of another's
     (and which agrees on the source typing context) yields the `ρ`-renamed
-    compilation.  This is the type-level analogue of `CaptureSet.compile_rename`,
+    compilation.  This is the type-level analogue of `CapyCaptureSet.compile_rename`,
     and the device that lets compilation be threaded through context extensions.
     Proved by functional induction on `CapyTy.compile`; the recursive
     (arrow/poly/cpoly/exi) cases use `CompilerCtx.RenamesTo` to transport the
@@ -326,9 +328,12 @@ theorem CapyTy.compile_rename {sort : CapyTySort} {s1 s2 : Sig}
   case case1 => intro _ _ _ _ _; simp only [CapyTy.compile, Ty.rename]
   case case2 => intro _ _ _ _ _; simp only [CapyTy.compile, Ty.rename]
   case case3 => intro _ _ _ _ _; simp only [CapyTy.compile, Ty.rename]
-  case case4 => intro _ _ _ _ h; simp only [CapyTy.compile, Ty.rename, h, CaptureSet.compile_rename]
-  case case5 => intro _ _ _ _ h; simp only [CapyTy.compile, Ty.rename, h, CaptureSet.compile_rename]
-  case case6 => intro _ _ _ _ h; simp only [CapyTy.compile, Ty.rename, h, CaptureSet.compile_rename]
+  case case4 =>
+    intro _ _ _ _ h; simp only [CapyTy.compile, Ty.rename, h, CapyCaptureSet.compile_rename]
+  case case5 =>
+    intro _ _ _ _ h; simp only [CapyTy.compile, Ty.rename, h, CapyCaptureSet.compile_rename]
+  case case6 =>
+    intro _ _ _ _ h; simp only [CapyTy.compile, Ty.rename, h, CapyCaptureSet.compile_rename]
   case case7 =>
     intro s2' ctx' ρ hcapy hsrc; rename_i ih
     simp only [CapyTy.compile, Ty.rename]; exact congrArg Ty.typ (ih ctx' ρ hcapy hsrc)
@@ -363,14 +368,14 @@ theorem CapyTy.compile_rename {sort : CapyTySort} {s1 s2 : Sig}
     congr 1
     · congr 1
       rw [hB.src]
-      exact CaptureSet.compile_rename
+      exact CapyCaptureSet.compile_rename
     · congr 1
       congr 1
       · exact ihDom _ _ hDom.capy hDom.src
       · congr 1
         congr 1
         · rw [hLock.src]
-          exact CaptureSet.compile_rename
+          exact CapyCaptureSet.compile_rename
         · simp only [ModalCtx.rename, MutabilityCtx.rename, hLock.capy]
           congr 1
           rw [hLock.src]
@@ -388,7 +393,7 @@ theorem CapyTy.compile_rename {sort : CapyTySort} {s1 s2 : Sig}
     · congr 1
       congr 1
       · rw [SrcCtx.weaken, SrcCtx.weaken, hsrc, SrcCtx.rename_succ_comm]
-        exact CaptureSet.compile_rename
+        exact CapyCaptureSet.compile_rename
       · simp only [ModalCtx.rename, MutabilityCtx.rename, hcapy]
         congr 1
         rw [SrcCtx.weaken, SrcCtx.weaken, hsrc, SrcCtx.rename_succ_comm]
@@ -406,7 +411,7 @@ theorem CapyTy.compile_rename {sort : CapyTySort} {s1 s2 : Sig}
     · congr 1
       congr 1
       · rw [SrcCtx.weaken, SrcCtx.weaken, hsrc, SrcCtx.rename_succ_comm]
-        exact CaptureSet.compile_rename
+        exact CapyCaptureSet.compile_rename
       · simp only [ModalCtx.rename, hcapy]
         congr 1
         · rw [SrcCtx.weaken, SrcCtx.weaken, hsrc, SrcCtx.rename_succ_comm]

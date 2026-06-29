@@ -1,5 +1,6 @@
 import Semantic.CoreCapybara.Debruijn
 import Semantic.CoreCapybara.Syntax.CaptureSet
+import Semantic.CoreCapybara.Capybara.Syntax.CaptureSet
 import Semantic.CoreCapybara.Syntax.SepCtx
 
 /-!
@@ -11,7 +12,7 @@ namespace CoreCapybara
 /-- A capture bound, either unbound or bounded by a capture set. -/
 inductive CapyCaptureBound : Sig -> Type where
 | unbound : Mutability -> CapyCaptureBound s
-| bound : CaptureSet s -> CapyCaptureBound s
+| bound : CapyCaptureSet s -> CapyCaptureBound s
 
 /-- Applies a renaming to a capture bound. -/
 def CapyCaptureBound.rename : CapyCaptureBound s1 -> Rename s1 s2 -> CapyCaptureBound s2
@@ -22,7 +23,7 @@ def CapyCaptureBound.rename : CapyCaptureBound s1 -> Rename s1 s2 -> CapyCapture
 def CapyCaptureBound.rename_id {cb : CapyCaptureBound s} : cb.rename (Rename.id) = cb := by
   cases cb with
   | unbound m => rfl
-  | bound cs => simp [CapyCaptureBound.rename, CaptureSet.rename_id]
+  | bound cs => simp [CapyCaptureBound.rename, CapyCaptureSet.rename_id]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem CapyCaptureBound.rename_comp
@@ -30,7 +31,7 @@ theorem CapyCaptureBound.rename_comp
     (cb.rename f).rename g = cb.rename (f.comp g) := by
   cases cb with
   | unbound m => rfl
-  | bound cs => simp [CapyCaptureBound.rename, CaptureSet.rename_comp]
+  | bound cs => simp [CapyCaptureBound.rename, CapyCaptureSet.rename_comp]
 
 /-- Sort of a Capybara type. -/
 inductive CapyTySort : Type where
@@ -46,21 +47,21 @@ inductive CapyTy : CapyTySort -> Sig -> Type where
 | tvar : BVar s .tvar -> CapyTy .capt s
 | arrow :
   CapyTy .capt (s,C) ->  -- a capture parameter is implicitly bound
-  CaptureSet s ->
+  CapyCaptureSet s ->
   CapyTy .exi (s,x) ->
   CapyTy .capt s
 | poly :
   CapyTy .capt s ->
-  CaptureSet s ->
+  CapyCaptureSet s ->
   CapyTy .exi (s,X) ->
   CapyTy .capt s
 | cpoly :
   CapyCaptureBound s ->
-  CaptureSet s ->
+  CapyCaptureSet s ->
   CapyTy .exi (s,C) ->
   CapyTy .capt s
-| cap : CaptureSet s -> CapyTy .capt s
-| cell : CaptureSet s -> Mutability -> CapyTy .capt s
+| cap : CapyCaptureSet s -> CapyTy .capt s
+| cell : CapyCaptureSet s -> Mutability -> CapyTy .capt s
 -- Reader is obsolete, since cell additionally has `Mutability`
 | unit : CapyTy .capt s
 | bool : CapyTy .capt s
@@ -88,16 +89,16 @@ def CapyTy.rename_id {T : CapyTy sort s} : T.rename (Rename.id) = T := by
   | top => simp only [CapyTy.rename]
   | tvar x => simp only [CapyTy.rename, Rename.id]
   | arrow T1 cs T2 ih1 ih2 =>
-    simp only [CapyTy.rename, Rename.lift_id, CaptureSet.rename_id]
+    simp only [CapyTy.rename, Rename.lift_id, CapyCaptureSet.rename_id]
     congr 1
   | poly T1 cs T2 ih1 ih2 =>
-    simp only [CapyTy.rename, Rename.lift_id, CaptureSet.rename_id, ih1]
+    simp only [CapyTy.rename, Rename.lift_id, CapyCaptureSet.rename_id, ih1]
     exact congrArg (CapyTy.poly T1 cs) ih2
   | cpoly cb cs T ih =>
-    simp only [CapyTy.rename, Rename.lift_id, CapyCaptureBound.rename_id, CaptureSet.rename_id]
+    simp only [CapyTy.rename, Rename.lift_id, CapyCaptureBound.rename_id, CapyCaptureSet.rename_id]
     exact congrArg (CapyTy.cpoly cb cs) ih
-  | cap cs => simp only [CapyTy.rename, CaptureSet.rename_id]
-  | cell cs m => simp only [CapyTy.rename, CaptureSet.rename_id]
+  | cap cs => simp only [CapyTy.rename, CapyCaptureSet.rename_id]
+  | cell cs m => simp only [CapyTy.rename, CapyCaptureSet.rename_id]
   | unit => simp only [CapyTy.rename]
   | bool => simp only [CapyTy.rename]
   | exi T ih =>
@@ -114,22 +115,22 @@ theorem CapyTy.rename_comp {T : CapyTy sort s1} {f : Rename s1 s2} {g : Rename s
   | top => simp only [CapyTy.rename]
   | tvar x => simp only [CapyTy.rename, Rename.comp]
   | arrow T1 cs T2 ih1 ih2 =>
-    simp only [CapyTy.rename, CaptureSet.rename_comp, Rename.lift_comp]
+    simp only [CapyTy.rename, CapyCaptureSet.rename_comp, Rename.lift_comp]
     congr 1
     · exact ih1 (f := f.lift) (g := g.lift)
     · exact ih2 (f := f.lift) (g := g.lift)
   | poly T1 cs T2 ih1 ih2 =>
-    simpa only [CapyTy.rename, CaptureSet.rename_comp, Rename.lift_comp, ih1] using
+    simpa only [CapyTy.rename, CapyCaptureSet.rename_comp, Rename.lift_comp, ih1] using
       congrArg (CapyTy.poly (T1.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih2 (f := f.lift) (g := g.lift))
   | cpoly cb cs T ih =>
     simpa only [
-      CapyTy.rename, CapyCaptureBound.rename_comp, CaptureSet.rename_comp, Rename.lift_comp
+      CapyTy.rename, CapyCaptureBound.rename_comp, CapyCaptureSet.rename_comp, Rename.lift_comp
     ] using
       congrArg (CapyTy.cpoly (cb.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
-  | cap cs => simp only [CapyTy.rename, CaptureSet.rename_comp]
-  | cell cs m => simp only [CapyTy.rename, CaptureSet.rename_comp]
+  | cap cs => simp only [CapyTy.rename, CapyCaptureSet.rename_comp]
+  | cell cs m => simp only [CapyTy.rename, CapyCaptureSet.rename_comp]
   | unit => simp only [CapyTy.rename]
   | bool => simp only [CapyTy.rename]
   | exi T ih =>
@@ -144,7 +145,7 @@ theorem CapyTy.weaken_rename_comm {T : CapyTy sort s1} {f : Rename s1 s2} :
   simp [CapyTy.rename_comp, Rename.succ_lift_comm]
 
 /-- Extracts the capture set from a capturing type. -/
-def CapyTy.captureSet : CapyTy .capt s -> CaptureSet s
+def CapyTy.captureSet : CapyTy .capt s -> CapyCaptureSet s
 | .top => .empty
 | .tvar _ => .empty
 | .arrow _ cs _ => cs
@@ -155,7 +156,7 @@ def CapyTy.captureSet : CapyTy .capt s -> CaptureSet s
 | .unit => .empty
 | .bool => .empty
 
-def CapyTy.refineCaptureSet : CapyTy .capt s -> CaptureSet s -> CapyTy .capt s
+def CapyTy.refineCaptureSet : CapyTy .capt s -> CapyCaptureSet s -> CapyTy .capt s
 | .top, _ => .top
 | .tvar x, _ => .tvar x
 | .arrow T1 _ T2, cs => .arrow T1 cs T2
@@ -169,30 +170,30 @@ def CapyTy.refineCaptureSet : CapyTy .capt s -> CaptureSet s -> CapyTy .capt s
 /-- A capture bound is closed if it contains no heap pointers. -/
 inductive CapyCaptureBound.IsClosed : CapyCaptureBound s -> Prop where
 | unbound : CapyCaptureBound.IsClosed (.unbound m)
-| bound : CaptureSet.IsClosed cs -> CapyCaptureBound.IsClosed (.bound cs)
+| bound : CapyCaptureSet.IsClosed cs -> CapyCaptureBound.IsClosed (.bound cs)
 
 /-- A type is closed if it contains no heap pointers. -/
 inductive CapyTy.IsClosed : CapyTy sort s -> Prop where
 | top : CapyTy.IsClosed .top
 | tvar : CapyTy.IsClosed (.tvar x)
-| arrow : CapyTy.IsClosed T1 -> CaptureSet.IsClosed cs -> CapyTy.IsClosed T2 ->
+| arrow : CapyTy.IsClosed T1 -> CapyCaptureSet.IsClosed cs -> CapyTy.IsClosed T2 ->
     CapyTy.IsClosed (.arrow T1 cs T2)
-| poly : CapyTy.IsClosed T1 -> CaptureSet.IsClosed cs -> CapyTy.IsClosed T2 ->
+| poly : CapyTy.IsClosed T1 -> CapyCaptureSet.IsClosed cs -> CapyTy.IsClosed T2 ->
     CapyTy.IsClosed (.poly T1 cs T2)
 | cpoly :
-    CapyCaptureBound.IsClosed cb -> CaptureSet.IsClosed cs -> CapyTy.IsClosed T ->
+    CapyCaptureBound.IsClosed cb -> CapyCaptureSet.IsClosed cs -> CapyTy.IsClosed T ->
     CapyTy.IsClosed (.cpoly cb cs T)
 | unit : CapyTy.IsClosed .unit
-| cap : CaptureSet.IsClosed cs -> CapyTy.IsClosed (.cap cs)
+| cap : CapyCaptureSet.IsClosed cs -> CapyTy.IsClosed (.cap cs)
 | bool : CapyTy.IsClosed .bool
-| cell : CaptureSet.IsClosed cs -> CapyTy.IsClosed (.cell cs m)
+| cell : CapyCaptureSet.IsClosed cs -> CapyTy.IsClosed (.cell cs m)
 | exi : CapyTy.IsClosed T -> CapyTy.IsClosed (.exi T)
 | typ : CapyTy.IsClosed T -> CapyTy.IsClosed (.typ T)
 
 /-- The capture set of a renamed type equals the renamed capture set. -/
 theorem CapyTy.captureSet_rename {T : CapyTy .capt s1} {f : Rename s1 s2} :
     (T.rename f).captureSet = T.captureSet.rename f := by
-  cases T <;> simp [CapyTy.rename, CapyTy.captureSet, CaptureSet.rename]
+  cases T <;> simp [CapyTy.rename, CapyTy.captureSet, CapyCaptureSet.rename]
 
 /-- The predicate that a capturing type is pure. -/
 def CapyTy.IsPureType (T : CapyTy .capt s) : Prop :=
@@ -212,19 +213,19 @@ structure CapyPureTy (s : Sig) where
 
 /-- Creates a pure type from a type variable. Type variables have empty capture sets. -/
 def CapyPureTy.tvar (x : BVar s .tvar) : CapyPureTy s :=
-  ⟨.tvar x, CaptureSet.IsEmpty.empty⟩
+  ⟨.tvar x, CapyCaptureSet.IsEmpty.empty⟩
 
 /-- Top type is pure. -/
 def CapyPureTy.top : CapyPureTy s :=
-  ⟨.top, CaptureSet.IsEmpty.empty⟩
+  ⟨.top, CapyCaptureSet.IsEmpty.empty⟩
 
 /-- Unit type is pure. -/
 def CapyPureTy.unit : CapyPureTy s :=
-  ⟨.unit, CaptureSet.IsEmpty.empty⟩
+  ⟨.unit, CapyCaptureSet.IsEmpty.empty⟩
 
 /-- Bool type is pure. -/
 def CapyPureTy.bool : CapyPureTy s :=
-  ⟨.bool, CaptureSet.IsEmpty.empty⟩
+  ⟨.bool, CapyCaptureSet.IsEmpty.empty⟩
 
 /-- Renames a pure type. -/
 def CapyPureTy.rename (T : CapyPureTy s1) (f : Rename s1 s2) : CapyPureTy s2 :=

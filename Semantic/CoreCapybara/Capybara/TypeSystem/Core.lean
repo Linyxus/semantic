@@ -3,17 +3,17 @@ import Semantic.CoreCapybara.Capybara.Substitution
 
 namespace CoreCapybara
 
-inductive CapySubcapt : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
+inductive CapySubcapt : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Prop where
 | sc_trans :
   CapySubcapt Γ C1 C2 ->
   CapySubcapt Γ C2 C3 ->
   -------------------
   CapySubcapt Γ C1 C3
 | sc_elem :
-  CaptureSet.Subset C1 C2 ->
+  CapyCaptureSet.Subset C1 C2 ->
   -------------------
   CapySubcapt Γ C1 C2
-| sc_mode {C : CaptureSet s} :
+| sc_mode {C : CapyCaptureSet s} :
   m1 ≤ m2 ->
   -------------------
   CapySubcapt Γ (C.applyMut m1) (C.applyMut m2)
@@ -42,28 +42,28 @@ inductive CapySubcapt : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
   ----------------------------------
   CapySubcapt Γ (C1.applyAccess .drop) (C2.applyAccess .drop)
 
-inductive CapyHasKind : CapyCtx s -> CaptureSet s -> Mutability -> Prop where
+inductive CapyHasKind : CapyCtx s -> CapyCaptureSet s -> Mutability -> Prop where
 | empty {m : Mutability} :
   -------------------
   CapyHasKind Γ {} m
-| union {C1 C2 : CaptureSet s} :
+| union {C1 C2 : CapyCaptureSet s} :
   CapyHasKind Γ C1 m ->
   CapyHasKind Γ C2 m ->
   -------------------
   CapyHasKind Γ (C1 ∪ C2) m
-| sc {C1 C2 : CaptureSet s} :
+| sc {C1 C2 : CapyCaptureSet s} :
   CapySubcapt Γ C1 C2 ->
   CapyHasKind Γ C2 m ->
   -------------------
   CapyHasKind Γ C1 m
-| rw {C : CaptureSet s} :
+| rw {C : CapyCaptureSet s} :
   -------------------
   CapyHasKind Γ C .epsilon
 | imm {c : BVar s .cvar} :
   CapyCtx.LookupCVar Γ c a (.unbound .ro) ->
   -------------------
   CapyHasKind Γ (.cvar (.M .epsilon) c) .ro
-| ro {C : CaptureSet s} :
+| ro {C : CapyCaptureSet s} :
   -------------------
   CapyHasKind Γ C.applyRO .ro
 
@@ -76,12 +76,12 @@ inductive CapySubbound : CapyCtx s -> CapyCaptureBound s -> CapyCaptureBound s -
   m1 ≤ m2 ->
   -------------------
   CapySubbound Γ (.unbound m1) (.unbound m2)
-| bound_unbound {C : CaptureSet s} {m : Mutability} :
+| bound_unbound {C : CapyCaptureSet s} {m : Mutability} :
   CapyHasKind Γ C m ->
   -------------------
   CapySubbound Γ (.bound C) (.unbound m)
 
-inductive CapySepCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
+inductive CapySepCheck : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Prop where
 | sep_symm :
   CapySepCheck Γ C1 C2 ->
   -------------------
@@ -91,7 +91,7 @@ inductive CapySepCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
   CapySepCheck Γ C2 C3 ->
   -------------------
   CapySepCheck Γ (C1 ∪ C2) C3
-| sep_empty {C : CaptureSet s} :
+| sep_empty {C : CapyCaptureSet s} :
   -------------------
   CapySepCheck Γ {} C
 | sep_ro :
@@ -103,7 +103,7 @@ inductive CapySepCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
   CapyHasKind Γ C2 .ro ->
   -------------------
   CapySepCheck Γ C1 C2
-| sep_sc {C1 C2 C1' : CaptureSet s} :
+| sep_sc {C1 C2 C1' : CapyCaptureSet s} :
   CapySepCheck Γ C1 C2 ->
   CapySubcapt Γ C1' C1 ->
   CapyCaptureSet.EquivP Γ C1' C1 ->
@@ -116,12 +116,12 @@ inductive CapySepCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   CapySepCheck Γ (.cvar mu1 c1) (.cvar mu2 c2)
 
-inductive CapyDisjCheck : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
+inductive CapyDisjCheck : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Prop where
 | disj_symm :
   CapyDisjCheck Γ C1 C2 ->
   -------------------
   CapyDisjCheck Γ C2 C1
-| disj_empty {C : CaptureSet s} :
+| disj_empty {C : CapyCaptureSet s} :
   -------------------
   CapyDisjCheck Γ {} C
 | disj_union :
@@ -194,7 +194,7 @@ inductive CapySubtyp : CapyCtx s -> CapyTy sort s -> CapyTy sort s -> Prop where
   ----------------------------------------
   CapySubtyp Γ (.typ T1) (.typ T2)
 
-inductive CapySeqComp : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
+inductive CapySeqComp : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Prop where
 | seq_sc :
   CapySubcapt Γ C1 C1' ->
   CapyCaptureSet.EquivP Γ C1 C1' ->
@@ -218,7 +218,7 @@ inductive CapySeqComp : CapyCtx s -> CaptureSet s -> CaptureSet s -> Prop where
 
 /-- Typing judgement. Always assigns an existential-sorted type: capturing
     types are lifted via `.typ`, genuine existentials use `.exi`. -/
-inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .exi s -> Prop where
+inductive CapyHasType : CapyCaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .exi s -> Prop where
 | var :
   Γ.IsClosed ->
   Γ.LookupVar x T ->
@@ -280,7 +280,7 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .exi s 
   ----------------------------
   CapyHasType (.var (.M .epsilon) x) Γ (.tapp x S)
     (T.subst (CapySubst.openTVar S))
-| capp {D : CaptureSet s} :
+| capp {D : CapyCaptureSet s} :
   D.IsClosed ->
   CapyCaptureBound.IsValid Γ (.bound D) ->
   CapyHasType (.var (.M .epsilon) x) Γ (.var x)
@@ -323,7 +323,7 @@ inductive CapyHasType : CaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .exi s 
   CapyHasType {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here) .epsilon))
 | drop :
   Γ.IsClosed ->
-  CapyCaptureSet.droppable Γ (CaptureSet.var (.M .epsilon) x) ->
+  CapyCaptureSet.droppable Γ (CapyCaptureSet.var (.M .epsilon) x) ->
   CapyHasType Cx Γ (.var x) (.typ (.cell (.var (.M .epsilon) x) .epsilon)) ->
   ----------------------------
   CapyHasType (.var .drop x) Γ (.drop x) (.typ .unit)

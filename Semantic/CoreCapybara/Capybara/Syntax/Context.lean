@@ -196,7 +196,7 @@ theorem CapyCtx.lookup_cvar_eq (Γ : CapyCtx (s,,k)) (c : BVar (s,,k) .cvar) :
 
 mutual
 /-- Helper: peak up a bound var in context. -/
-def CapyCaptureSet.peaksVarBound : (Γ : CapyCtx s) → (a : Access) → BVar s .var → CaptureSet s
+def CapyCaptureSet.peaksVarBound : (Γ : CapyCtx s) → (a : Access) → BVar s .var → CapyCaptureSet s
 | .push Γ (.var T), m, .here =>
     (CapyCaptureSet.peaks Γ T.captureSet).rename Rename.succ |> .applyAccess m
 | .push Γ _, m, .there x =>
@@ -204,7 +204,7 @@ def CapyCaptureSet.peaksVarBound : (Γ : CapyCtx s) → (a : Access) → BVar s 
 termination_by Γ _ x => (sizeOf Γ, sizeOf x + 1)
 
 /-- Recursively expand variable references until reaching capture variables (peaks). -/
-def CapyCaptureSet.peaks : CapyCtx s -> CaptureSet s -> CaptureSet s
+def CapyCaptureSet.peaks : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s
 | _, .empty => .empty
 | Γ, .union cs1 cs2 => (peaks Γ cs1) ∪ (peaks Γ cs2)
 | _, .cvar m c => .cvar m c
@@ -214,10 +214,10 @@ termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 end
 
 @[simp]
-theorem CapyCaptureSet.peaks_union (Γ : CapyCtx s) (cs1 cs2 : CaptureSet s) :
+theorem CapyCaptureSet.peaks_union (Γ : CapyCtx s) (cs1 cs2 : CapyCaptureSet s) :
     CapyCaptureSet.peaks Γ (cs1 ∪ cs2)
       = CapyCaptureSet.peaks Γ cs1 ∪ CapyCaptureSet.peaks Γ cs2 := by
-  change CapyCaptureSet.peaks Γ (CaptureSet.union cs1 cs2) =
+  change CapyCaptureSet.peaks Γ (CapyCaptureSet.union cs1 cs2) =
       CapyCaptureSet.peaks Γ cs1 ∪ CapyCaptureSet.peaks Γ cs2
   conv_lhs => unfold CapyCaptureSet.peaks
 
@@ -235,43 +235,43 @@ theorem CapyCaptureSet.peaksVarBound_peaksOnly (Γ : CapyCtx s) (m : Access) (x 
 termination_by (sizeOf Γ, sizeOf x + 1)
 
 /-- The peaks function always returns a PeaksOnly capture set. -/
-theorem CapyCaptureSet.peaks_peaksOnly (Γ : CapyCtx s) (cs : CaptureSet s) :
+theorem CapyCaptureSet.peaks_peaksOnly (Γ : CapyCtx s) (cs : CapyCaptureSet s) :
     (peaks Γ cs).PeaksOnly := by
   match Γ, cs with
-  | _, .empty => rw [CapyCaptureSet.peaks]; exact CaptureSet.PeaksOnly.empty
+  | _, .empty => rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.PeaksOnly.empty
   | Γ, .union cs1 cs2 =>
     rw [CapyCaptureSet.peaks]
-    exact CaptureSet.PeaksOnly.union
+    exact CapyCaptureSet.PeaksOnly.union
       (CapyCaptureSet.peaks_peaksOnly Γ cs1) (CapyCaptureSet.peaks_peaksOnly Γ cs2)
-  | _, .cvar m c => rw [CapyCaptureSet.peaks]; exact CaptureSet.PeaksOnly.cvar
-  | _, .var _ (.free _) => rw [CapyCaptureSet.peaks]; exact CaptureSet.PeaksOnly.empty
+  | _, .cvar m c => rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.PeaksOnly.cvar
+  | _, .var _ (.free _) => rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.PeaksOnly.empty
   | Γ, .var m (.bound x) =>
     rw [CapyCaptureSet.peaks]
     exact CapyCaptureSet.peaksVarBound_peaksOnly Γ m x
 termination_by (sizeOf Γ, sizeOf cs)
 end
 
-def CapyCaptureSet.peakset (Γ : CapyCtx s) (cs : CaptureSet s) : PeakSet s :=
+def CapyCaptureSet.peakset (Γ : CapyCtx s) (cs : CapyCaptureSet s) : CapyPeakSet s :=
   ⟨peaks Γ cs, CapyCaptureSet.peaks_peaksOnly Γ cs⟩
 
 /-- The consumed peaks of a capture set in context `Γ`: resolve the capture set
 to its peaks, then keep those held at `.drop` access mode. -/
-def CapyCaptureSet.consumed_peaks (Γ : CapyCtx s) (cs : CaptureSet s) : CaptureSet s :=
+def CapyCaptureSet.consumed_peaks (Γ : CapyCtx s) (cs : CapyCaptureSet s) : CapyCaptureSet s :=
   (CapyCaptureSet.peakset Γ cs).consumed.cs
 
 /-- A peak set is droppable in `Γ` when every capture variable occurring in it
 is bound with `can_drop` authority. -/
-def CapyPeakSet.droppable (Γ : CapyCtx s) (P : PeakSet s) : Prop :=
+def CapyPeakSet.droppable (Γ : CapyCtx s) (P : CapyPeakSet s) : Prop :=
   ∀ (a : Access) (c : BVar s .cvar),
-    (CaptureSet.cvar a c) ⊆ P.cs → Γ.lookup_authority c = .can_drop
+    (CapyCaptureSet.cvar a c) ⊆ P.cs → Γ.lookup_authority c = .can_drop
 
 /-- A capture set is droppable in `Γ` when all of its peaks are droppable. -/
-def CapyCaptureSet.droppable (Γ : CapyCtx s) (C : CaptureSet s) : Prop :=
+def CapyCaptureSet.droppable (Γ : CapyCtx s) (C : CapyCaptureSet s) : Prop :=
   CapyPeakSet.droppable Γ (CapyCaptureSet.peakset Γ C)
 
 /-- A capture set is access-only in `Γ` when none of its peaks is dropped. -/
-def CapyCaptureSet.AccessOnly (Γ : CapyCtx s) (C : CaptureSet s) : Prop :=
-  ∀ (c : BVar s .cvar), (CaptureSet.cvar .drop c) ⊆ (CapyCaptureSet.peakset Γ C).cs → False
+def CapyCaptureSet.AccessOnly (Γ : CapyCtx s) (C : CapyCaptureSet s) : Prop :=
+  ∀ (c : BVar s .cvar), (CapyCaptureSet.cvar .drop c) ⊆ (CapyCaptureSet.peakset Γ C).cs → False
 
 /-- A capture bound is valid in `Γ` when concrete bounds are access-only. -/
 def CapyCaptureBound.IsValid (Γ : CapyCtx s) : CapyCaptureBound s -> Prop
@@ -279,22 +279,22 @@ def CapyCaptureBound.IsValid (Γ : CapyCtx s) : CapyCaptureBound s -> Prop
 | .bound C => CapyCaptureSet.AccessOnly Γ C
 
 theorem CapyCaptureSet.peaks_rename_succ_eq
-    {Γ : CapyCtx s} {b : CapyBinding s k} {C : CaptureSet s} :
+    {Γ : CapyCtx s} {b : CapyBinding s k} {C : CapyCaptureSet s} :
   CapyCaptureSet.peaks (Γ.push b) (C.rename Rename.succ)
     = (CapyCaptureSet.peaks Γ C).rename Rename.succ := by
   induction C generalizing k with
   | empty =>
-    simp only [CaptureSet.rename, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
   | union C1 C2 ih1 ih2 =>
-    simp only [CaptureSet.rename, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
     rw [ih1, ih2]
     rfl
   | cvar m c =>
-    simp only [CaptureSet.rename, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
   | var m v =>
     cases v with
     | free _ =>
-      simp only [CaptureSet.rename, Var.rename, CapyCaptureSet.peaks]
+      simp only [CapyCaptureSet.rename, Var.rename, CapyCaptureSet.peaks]
       rfl
     | bound x =>
       cases Γ with
@@ -305,7 +305,7 @@ theorem CapyCaptureSet.peaks_rename_succ_eq
           cases x with
           | here =>
             simp only [
-              CaptureSet.rename,
+              CapyCaptureSet.rename,
               Var.rename,
               Rename.succ,
               CapyCaptureSet.peaks,
@@ -313,7 +313,7 @@ theorem CapyCaptureSet.peaks_rename_succ_eq
             ]
           | there x' =>
             simp only [
-              CaptureSet.rename,
+              CapyCaptureSet.rename,
               Var.rename,
               Rename.succ,
               CapyCaptureSet.peaks,
@@ -323,7 +323,7 @@ theorem CapyCaptureSet.peaks_rename_succ_eq
           cases x with
           | there x' =>
             simp only [
-              CaptureSet.rename,
+              CapyCaptureSet.rename,
               Var.rename,
               Rename.succ,
               CapyCaptureSet.peaks,
@@ -333,74 +333,74 @@ theorem CapyCaptureSet.peaks_rename_succ_eq
           cases x with
           | there x' =>
             simp only [
-              CaptureSet.rename,
+              CapyCaptureSet.rename,
               Var.rename,
               Rename.succ,
               CapyCaptureSet.peaks,
               CapyCaptureSet.peaksVarBound
             ]
 
-theorem CapyCaptureSet.peaks_applyRO_comm (Γ : CapyCtx s) (C : CaptureSet s) :
+theorem CapyCaptureSet.peaks_applyRO_comm (Γ : CapyCtx s) (C : CapyCaptureSet s) :
   CapyCaptureSet.peaks Γ (C.applyRO) = (CapyCaptureSet.peaks Γ C).applyRO := by
   match Γ, C with
-  | _, .empty => simp only [CaptureSet.applyRO, CapyCaptureSet.peaks]
+  | _, .empty => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
   | Γ, .union C1 C2 =>
-    simp only [CaptureSet.applyRO, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
     rw [peaks_applyRO_comm Γ C1, peaks_applyRO_comm Γ C2]
     rfl
-  | _, .cvar _ _ => simp only [CaptureSet.applyRO, CapyCaptureSet.peaks]
+  | _, .cvar _ _ => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
   | _, .var _ (.free _) =>
-    simp only [CaptureSet.applyRO, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
     rfl
   | .push Γ' (.var T), .var m (.bound .here) =>
-    simp only [CaptureSet.applyRO, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound,
-      CaptureSet.applyAccess_applyRO]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound,
+      CapyCaptureSet.applyAccess_applyRO]
   | .push Γ' _, .var m (.bound (.there x')) =>
-    simp only [CaptureSet.applyRO, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
     have ih := peaks_applyRO_comm Γ' (.var m (.bound x'))
-    simp only [CaptureSet.applyRO, CapyCaptureSet.peaks] at ih
-    rw [ih, CaptureSet.applyRO_rename]
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks] at ih
+    rw [ih, CapyCaptureSet.applyRO_rename]
 termination_by (sizeOf Γ, sizeOf C)
 
-theorem CapyCaptureSet.peaks_applyMut_comm {Γ : CapyCtx s} {C : CaptureSet s} {m : Mutability} :
+theorem CapyCaptureSet.peaks_applyMut_comm {Γ : CapyCtx s} {C : CapyCaptureSet s} {m : Mutability} :
   CapyCaptureSet.peaks Γ (C.applyMut m) = (CapyCaptureSet.peaks Γ C).applyMut m := by
   cases m with
-  | epsilon => simp only [CaptureSet.applyMut_epsilon]
+  | epsilon => simp only [CapyCaptureSet.applyMut_epsilon]
   | ro =>
-    simp only [CaptureSet.applyMut_ro]
+    simp only [CapyCaptureSet.applyMut_ro]
     exact peaks_applyRO_comm Γ C
 
-theorem CapyCaptureSet.peaks_applyDrop_comm (Γ : CapyCtx s) (C : CaptureSet s) :
+theorem CapyCaptureSet.peaks_applyDrop_comm (Γ : CapyCtx s) (C : CapyCaptureSet s) :
   CapyCaptureSet.peaks Γ (C.applyDrop) = (CapyCaptureSet.peaks Γ C).applyDrop := by
   match Γ, C with
-  | _, .empty => simp only [CaptureSet.applyDrop, CapyCaptureSet.peaks]
+  | _, .empty => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
   | Γ, .union C1 C2 =>
-    simp only [CaptureSet.applyDrop, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
     rw [peaks_applyDrop_comm Γ C1, peaks_applyDrop_comm Γ C2]
     rfl
-  | _, .cvar _ _ => simp only [CaptureSet.applyDrop, CapyCaptureSet.peaks]
+  | _, .cvar _ _ => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
   | _, .var _ (.free _) =>
-    simp only [CaptureSet.applyDrop, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
     rfl
   | .push Γ' (.var T), .var m (.bound .here) =>
-    simp only [CaptureSet.applyDrop, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound,
-      CaptureSet.applyAccess_drop, CaptureSet.applyAccess_applyDrop]
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound,
+      CapyCaptureSet.applyAccess_drop, CapyCaptureSet.applyAccess_applyDrop]
   | .push Γ' _, .var m (.bound (.there x')) =>
-    simp only [CaptureSet.applyDrop, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
     have ih := peaks_applyDrop_comm Γ' (.var m (.bound x'))
-    simp only [CaptureSet.applyDrop, CapyCaptureSet.peaks] at ih
-    rw [ih, CaptureSet.applyDrop_rename]
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks] at ih
+    rw [ih, CapyCaptureSet.applyDrop_rename]
 termination_by (sizeOf Γ, sizeOf C)
 
-theorem CapyCaptureSet.peaks_applyAccess_comm {Γ : CapyCtx s} {C : CaptureSet s} {a : Access} :
+theorem CapyCaptureSet.peaks_applyAccess_comm {Γ : CapyCtx s} {C : CapyCaptureSet s} {a : Access} :
   CapyCaptureSet.peaks Γ (C.applyAccess a) = (CapyCaptureSet.peaks Γ C).applyAccess a := by
   cases a with
-  | M m => simp only [CaptureSet.applyAccess_M]; exact peaks_applyMut_comm
-  | drop => simp only [CaptureSet.applyAccess_drop]; exact peaks_applyDrop_comm Γ C
+  | M m => simp only [CapyCaptureSet.applyAccess_M]; exact peaks_applyMut_comm
+  | drop => simp only [CapyCaptureSet.applyAccess_drop]; exact peaks_applyDrop_comm Γ C
 
 theorem CapyCaptureSet.var_peaks {Γ : CapyCtx s}
   (hb : Γ.LookupVar x T) :
-  (CapyCaptureSet.peaks Γ (CaptureSet.var m (.bound x)))
+  (CapyCaptureSet.peaks Γ (CapyCaptureSet.var m (.bound x)))
     = CapyCaptureSet.peaks Γ (T.captureSet.applyAccess m) := by
   induction hb with
   | here =>
@@ -409,16 +409,16 @@ theorem CapyCaptureSet.var_peaks {Γ : CapyCtx s}
   | there hb' ih =>
     conv_lhs => unfold peaks peaksVarBound
     simp only [CapyTy.captureSet_rename]
-    rw [show peaks _ (CaptureSet.var m (.bound _)) = peaksVarBound _ m _ from by
+    rw [show peaks _ (CapyCaptureSet.var m (.bound _)) = peaksVarBound _ m _ from by
           unfold peaks; rfl] at ih
-    rw [ih, ← CaptureSet.applyAccess_rename, ← peaks_rename_succ_eq]
+    rw [ih, ← CapyCaptureSet.applyAccess_rename, ← peaks_rename_succ_eq]
 
 /-- Peak-level subsetting -/
-def CapyCaptureSet.SubP (Γ : CapyCtx s) (cs1 cs2 : CaptureSet s) : Prop :=
+def CapyCaptureSet.SubP (Γ : CapyCtx s) (cs1 cs2 : CapyCaptureSet s) : Prop :=
   (CapyCaptureSet.peaks Γ cs1).CoveredBy (CapyCaptureSet.peaks Γ cs2)
 
 /-- Peak-level equivalence -/
-def CapyCaptureSet.EquivP (Γ : CapyCtx s) (cs1 cs2 : CaptureSet s) : Prop :=
+def CapyCaptureSet.EquivP (Γ : CapyCtx s) (cs1 cs2 : CapyCaptureSet s) : Prop :=
   CapyCaptureSet.SubP Γ cs1 cs2 ∧ CapyCaptureSet.SubP Γ cs2 cs1
 
 end CoreCapybara

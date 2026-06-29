@@ -18,44 +18,55 @@ starting at the capture-set level.
 
 /-- Compilation distributes over `applyMut` (it only relabels atom access modes,
     which `compile` carries through). -/
-theorem CaptureSet.compile_applyMut {cs : CaptureSet s1} {sc : SrcCtx s1 s2}
+theorem CapyCaptureSet.compile_applyMut {cs : CapyCaptureSet s1} {sc : SrcCtx s1 s2}
     {m : Mutability} :
-    CaptureSet.compile (cs.applyMut m) sc = (CaptureSet.compile cs sc).applyMut m := by
+    CapyCaptureSet.compile (cs.applyMut m) sc = (CapyCaptureSet.compile cs sc).applyMut m := by
   cases m with
-  | epsilon => simp only [CaptureSet.applyMut_epsilon]
+  | epsilon => simp only [CapyCaptureSet.applyMut_epsilon, CaptureSet.applyMut_epsilon]
   | ro =>
-    simp only [CaptureSet.applyMut_ro]
+    simp only [CapyCaptureSet.applyMut_ro, CaptureSet.applyMut_ro]
     induction cs with
-    | empty => simp only [CaptureSet.applyRO, CaptureSet.compile]
+    | empty => simp only [CapyCaptureSet.applyRO, CaptureSet.applyRO, CapyCaptureSet.compile]
     | union cs1 cs2 ih1 ih2 =>
-      simp only [CaptureSet.applyRO_union, CaptureSet.compile, ih1, ih2]
-    | cvar a c => simp only [CaptureSet.applyRO_cvar, CaptureSet.compile]
+      simp only [CapyCaptureSet.applyRO_union, CaptureSet.applyRO_union, CapyCaptureSet.compile,
+        ih1, ih2]
+    | cvar a c =>
+      simp only [CapyCaptureSet.applyRO_cvar, CaptureSet.applyRO_cvar, CapyCaptureSet.compile]
     | var a x =>
       cases x with
       | bound x =>
-        simp only [CaptureSet.applyRO_var, CaptureSet.compile, CaptureSet.applyAccess_applyRO]
-      | free n => simp only [CaptureSet.applyRO_var, CaptureSet.compile]
+        simp only [CapyCaptureSet.applyRO_var, CapyCaptureSet.compile,
+          CaptureSet.applyAccess_applyRO]
+      | free n =>
+        simp only [CapyCaptureSet.applyRO_var, CaptureSet.applyRO_var, CapyCaptureSet.compile]
 
 /-- Compilation distributes over `applyDrop`. -/
-theorem CaptureSet.compile_applyDrop {cs : CaptureSet s1} {sc : SrcCtx s1 s2} :
-    CaptureSet.compile cs.applyDrop sc = (CaptureSet.compile cs sc).applyDrop := by
+theorem CapyCaptureSet.compile_applyDrop {cs : CapyCaptureSet s1} {sc : SrcCtx s1 s2} :
+    CapyCaptureSet.compile cs.applyDrop sc = (CapyCaptureSet.compile cs sc).applyDrop := by
   induction cs with
-  | empty => simp only [CaptureSet.applyDrop, CaptureSet.compile]
-  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.applyDrop, CaptureSet.compile, ih1, ih2]
-  | cvar a c => simp only [CaptureSet.applyDrop, CaptureSet.compile]
+  | empty => simp only [CapyCaptureSet.applyDrop, CaptureSet.applyDrop, CapyCaptureSet.compile]
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [CapyCaptureSet.applyDrop, CaptureSet.applyDrop, CapyCaptureSet.compile, ih1, ih2]
+  | cvar a c => simp only [CapyCaptureSet.applyDrop, CaptureSet.applyDrop, CapyCaptureSet.compile]
   | var a x =>
     cases x with
     | bound x =>
-      simp only [CaptureSet.applyDrop, CaptureSet.compile, CaptureSet.applyAccess_drop,
+      simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.compile, CaptureSet.applyAccess_drop,
         CaptureSet.applyAccess_applyDrop]
-    | free n => simp only [CaptureSet.applyDrop, CaptureSet.compile]
+    | free n => simp only [CapyCaptureSet.applyDrop, CaptureSet.applyDrop, CapyCaptureSet.compile]
 
 /-- Compilation distributes over `applyAccess`. -/
-theorem CaptureSet.compile_applyAccess {cs : CaptureSet s1} {sc : SrcCtx s1 s2} {a : Access} :
-    CaptureSet.compile (cs.applyAccess a) sc = (CaptureSet.compile cs sc).applyAccess a := by
+theorem CapyCaptureSet.compile_applyAccess {cs : CapyCaptureSet s1} {sc : SrcCtx s1 s2}
+    {a : Access} :
+    CapyCaptureSet.compile (cs.applyAccess a) sc
+      = (CapyCaptureSet.compile cs sc).applyAccess a := by
   cases a with
-  | M m => simp only [CaptureSet.applyAccess_M, CaptureSet.compile_applyMut]
-  | drop => simp only [CaptureSet.applyAccess_drop, CaptureSet.compile_applyDrop]
+  | M m =>
+    simp only [CapyCaptureSet.applyAccess_M, CaptureSet.applyAccess_M,
+      CapyCaptureSet.compile_applyMut]
+  | drop =>
+    simp only [CapyCaptureSet.applyAccess_drop, CaptureSet.applyAccess_drop,
+      CapyCaptureSet.compile_applyDrop]
 
 /-- **Capture-set compilation commutes with capture-variable opening.**  For a
     capture set `cs` under a fresh source cvar binder, compiling its source-opening
@@ -64,107 +75,107 @@ theorem CaptureSet.compile_applyAccess {cs : CaptureSet s1} {sc : SrcCtx s1 s2} 
     type-level commutation `CapyTy.compile_openCVar`.  The cvar-`.here` atom maps to
     `D`/`⟦D⟧` on both sides; every other atom is weakened past the binder, so
     `weaken_openCVar` cancels the introduced shift. -/
-theorem CaptureSet.compile_subst_openCVar {s1 s2 : Sig}
-    {cs : CaptureSet (s1,,Kind.cvar)} {sc : SrcCtx s1 s2} {D : CaptureSet s1} :
-    CaptureSet.compile (CapyCaptureSet.subst cs (CapySubst.openCVar D)) sc
-      = (CaptureSet.compile cs (.cons (.cvar .here) (sc.rename Rename.succ))).subst
-          (Subst.openCVar (CaptureSet.compile D sc)) := by
+theorem CapyCaptureSet.compile_subst_openCVar {s1 s2 : Sig}
+    {cs : CapyCaptureSet (s1,,Kind.cvar)} {sc : SrcCtx s1 s2} {D : CapyCaptureSet s1} :
+    CapyCaptureSet.compile (CapyCaptureSet.subst cs (CapySubst.openCVar D)) sc
+      = (CapyCaptureSet.compile cs (.cons (.cvar .here) (sc.rename Rename.succ))).subst
+          (Subst.openCVar (CapyCaptureSet.compile D sc)) := by
   induction cs with
-  | empty => simp only [CapyCaptureSet.subst, CaptureSet.compile, CaptureSet.subst]
+  | empty => simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, CaptureSet.subst]
   | union cs1 cs2 ih1 ih2 =>
-    simp only [CapyCaptureSet.subst, CaptureSet.compile, CaptureSet.subst, ih1, ih2]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, CaptureSet.subst, ih1, ih2]
   | cvar a c =>
     cases c with
     | here =>
-      simp only [CapyCaptureSet.subst, CapySubst.openCVar, CaptureSet.compile_applyAccess,
-        CaptureSet.compile, SrcCtx.lookupCVar, CaptureSet.subst, Subst.openCVar]
+      simp only [CapyCaptureSet.subst, CapySubst.openCVar, CapyCaptureSet.compile_applyAccess,
+        CapyCaptureSet.compile, SrcCtx.lookupCVar, CaptureSet.subst, Subst.openCVar]
     | there c0 =>
-      simp only [CapyCaptureSet.subst, CapySubst.openCVar, CaptureSet.compile_applyAccess,
-        CaptureSet.compile, SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ,
+      simp only [CapyCaptureSet.subst, CapySubst.openCVar, CapyCaptureSet.compile_applyAccess,
+        CapyCaptureSet.compile, SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ,
         CaptureSet.subst, Subst.openCVar]
   | var a x =>
     cases x with
     | bound x =>
       cases x with
       | there x0 =>
-        simp only [CapyCaptureSet.subst, CapyVar.subst, CapySubst.openCVar, CaptureSet.compile,
+        simp only [CapyCaptureSet.subst, CapyVar.subst, CapySubst.openCVar, CapyCaptureSet.compile,
           SrcCtx.lookupVar, SrcCtx.lookupVar_rename, CaptureSet.applyAccess_subst,
           CaptureSet.weaken_openCVar]
     | free n =>
-      simp only [CapyCaptureSet.subst, CapyVar.subst, CaptureSet.compile, CaptureSet.subst,
+      simp only [CapyCaptureSet.subst, CapyVar.subst, CapyCaptureSet.compile, CaptureSet.subst,
         Var.subst, Subst.openCVar]
 
 /-- The access mode on a compiled variable atom factors out. -/
-theorem CaptureSet.compile_var_access {y : Var .var s1} {sc : SrcCtx s1 s2} {m : Access} :
-    CaptureSet.compile (.var m y) sc
-      = (CaptureSet.compile (.var (.M .epsilon) y) sc).applyAccess m := by
+theorem CapyCaptureSet.compile_var_access {y : Var .var s1} {sc : SrcCtx s1 s2} {m : Access} :
+    CapyCaptureSet.compile (.var m y) sc
+      = (CapyCaptureSet.compile (.var (.M .epsilon) y) sc).applyAccess m := by
   cases y with
   | bound x =>
-    simp only [CaptureSet.compile, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+    simp only [CapyCaptureSet.compile, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
   | free n =>
     cases m with
     | M m' =>
       cases m' with
       | epsilon =>
-        simp only [CaptureSet.compile, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+        simp only [CapyCaptureSet.compile, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
       | ro =>
-        simp only [CaptureSet.compile, CaptureSet.applyAccess_M, CaptureSet.applyMut_ro,
+        simp only [CapyCaptureSet.compile, CaptureSet.applyAccess_M, CaptureSet.applyMut_ro,
           CaptureSet.applyRO_var, Access.applyRO]
     | drop =>
-      simp only [CaptureSet.compile, CaptureSet.applyAccess_drop, CaptureSet.applyDrop]
+      simp only [CapyCaptureSet.compile, CaptureSet.applyAccess_drop, CaptureSet.applyDrop]
 
 /-- **Substitution-compatibility** of a source→target map `scSub`, a "base" map
     `scOrig`, a source substitution `σ`, and a target substitution `σt`: each source
     capture/term variable's `σ`-image compiles (through `scSub`) to its `scOrig`-image
     `σt`-substituted.  This is exactly the per-atom data that makes
-    `CaptureSet.compile` commute with `σ` (below). -/
+    `CapyCaptureSet.compile` commute with `σ` (below). -/
 structure SubstCompat {s1 s1' s2 s2' : Sig} (scSub : SrcCtx s1' s2')
     (scOrig : SrcCtx s1 s2) (σ : CapySubst s1 s1') (σt : Subst s2 s2') : Prop where
-  cvar : ∀ c, CaptureSet.compile (σ.cvar c) scSub = σt.cvar (scOrig.lookupCVar c)
-  var : ∀ x, CaptureSet.compile (.var (.M .epsilon) (σ.var x)) scSub
+  cvar : ∀ c, CapyCaptureSet.compile (σ.cvar c) scSub = σt.cvar (scOrig.lookupCVar c)
+  var : ∀ x, CapyCaptureSet.compile (.var (.M .epsilon) (σ.var x)) scSub
       = (scOrig.lookupVar x).subst σt
 
 /-- **Capture-set compilation commutes with a compatible substitution.**  The
     generalization of `compile_subst_openCVar` to any `SubstCompat` data — needed
     because the type-level recursion meets `openCVar` *lifted* under binders. -/
-theorem CaptureSet.compile_subst {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'}
+theorem CapyCaptureSet.compile_subst {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'}
     {scOrig : SrcCtx s1 s2} {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
-    (h : SubstCompat scSub scOrig σ σt) {cs : CaptureSet s1} (hcs : cs.IsClosed) :
-    CaptureSet.compile (CapyCaptureSet.subst cs σ) scSub
-      = (CaptureSet.compile cs scOrig).subst σt := by
+    (h : SubstCompat scSub scOrig σ σt) {cs : CapyCaptureSet s1} (hcs : cs.IsClosed) :
+    CapyCaptureSet.compile (CapyCaptureSet.subst cs σ) scSub
+      = (CapyCaptureSet.compile cs scOrig).subst σt := by
   induction cs with
-  | empty => simp only [CapyCaptureSet.subst, CaptureSet.compile, CaptureSet.subst]
+  | empty => simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, CaptureSet.subst]
   | union cs1 cs2 ih1 ih2 =>
     cases hcs with | union hcs1 hcs2 =>
-    simp only [CapyCaptureSet.subst, CaptureSet.compile, CaptureSet.subst, ih1 hcs1, ih2 hcs2]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.compile, CaptureSet.subst, ih1 hcs1, ih2 hcs2]
   | cvar m c =>
-    simp only [CapyCaptureSet.subst, CaptureSet.compile_applyAccess, h.cvar, CaptureSet.compile,
-      CaptureSet.subst]
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.compile_applyAccess, h.cvar,
+      CapyCaptureSet.compile, CaptureSet.subst]
   | var m x =>
     cases x with
     | bound x =>
-      simp only [CapyCaptureSet.subst, CapyVar.subst, CaptureSet.compile_var_access, h.var,
-        CaptureSet.compile, CaptureSet.applyAccess_subst]
+      simp only [CapyCaptureSet.subst, CapyVar.subst, CapyCaptureSet.compile_var_access, h.var,
+        CapyCaptureSet.compile, CaptureSet.applyAccess_subst]
     | free n => nomatch hcs
 
 /-- The base substitution-compatibility: opening a fresh cvar.  `scOrig` carries the
     cvar binder (mapped to target `.here`); `σ`/`σt` open it with `T`/`⟦T⟧`. -/
-theorem SubstCompat.openCVar {s1 s2 : Sig} {sc : SrcCtx s1 s2} {T : CaptureSet s1} :
+theorem SubstCompat.openCVar {s1 s2 : Sig} {sc : SrcCtx s1 s2} {T : CapyCaptureSet s1} :
     SubstCompat sc (.cons (.cvar .here) (sc.rename Rename.succ))
-      (CapySubst.openCVar T) (Subst.openCVar (CaptureSet.compile T sc)) where
+      (CapySubst.openCVar T) (Subst.openCVar (CapyCaptureSet.compile T sc)) where
   cvar := by
     intro c
     cases c with
     | here =>
       simp only [CapySubst.openCVar, SrcCtx.lookupCVar, Subst.openCVar]
     | there c0 =>
-      simp only [CapySubst.openCVar, CaptureSet.compile, SrcCtx.lookupCVar,
+      simp only [CapySubst.openCVar, CapyCaptureSet.compile, SrcCtx.lookupCVar,
         SrcCtx.lookupCVar_rename, Rename.succ, Subst.openCVar]
   var := by
     intro x
     cases x with
     | there x0 =>
-      simp only [CapySubst.openCVar, CaptureSet.compile, CaptureSet.applyAccess_M,
+      simp only [CapySubst.openCVar, CapyCaptureSet.compile, CaptureSet.applyAccess_M,
         CaptureSet.applyMut_epsilon, SrcCtx.lookupVar, SrcCtx.lookupVar_rename,
         CaptureSet.weaken_openCVar]
 
@@ -176,11 +187,11 @@ theorem SubstCompat.weakenTarget {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'}
     SubstCompat (scSub.rename Rename.succ) (scOrig.rename Rename.succ) σ (σt.lift (k := k)) where
   cvar := by
     intro c
-    simp only [CaptureSet.compile_rename, h.cvar, SrcCtx.lookupCVar_rename, Rename.succ,
+    simp only [CapyCaptureSet.compile_rename, h.cvar, SrcCtx.lookupCVar_rename, Rename.succ,
       Subst.lift_there_cvar_eq]
   var := by
     intro x
-    simp only [CaptureSet.compile_rename, h.var, SrcCtx.lookupVar_rename]
+    simp only [CapyCaptureSet.compile_rename, h.var, SrcCtx.lookupVar_rename]
     exact CaptureSet.weaken_subst_comm_liftMany (K := [])
 
 /-- `SubstCompat` is preserved by the compiler's `weakenTarget.consCVar … .here`
@@ -194,13 +205,14 @@ theorem SubstCompat.weakenConsCVar {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'
     intro c
     cases c with
     | here =>
-      have h1 : (σ.lift (k := Kind.cvar)).cvar .here = CaptureSet.cvar (.M .epsilon) .here := rfl
+      have h1 : (σ.lift (k := Kind.cvar)).cvar .here
+          = CapyCaptureSet.cvar (.M .epsilon) .here := rfl
       have h2 : (σt.lift (k := Kind.cvar)).cvar .here = CaptureSet.cvar (.M .epsilon) .here := rfl
-      simp only [h1, CaptureSet.compile, SrcCtx.lookupCVar, h2]
+      simp only [h1, CapyCaptureSet.compile, SrcCtx.lookupCVar, h2]
     | there c0 =>
       have hY : (CapySubst.lift σ (k := Kind.cvar)).cvar (.there c0)
           = (σ.cvar c0).rename Rename.succ := CapySubst.lift_there_cvar_eq
-      rw [hY, CaptureSet.compile_rename_succ_cons, CaptureSet.compile_rename, h.cvar]
+      rw [hY, CapyCaptureSet.compile_rename_succ_cons, CapyCaptureSet.compile_rename, h.cvar]
       simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ, Subst.lift_there_cvar_eq]
   var := by
     intro x
@@ -208,9 +220,9 @@ theorem SubstCompat.weakenConsCVar {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'
     | there x0 =>
       have hY : (CapySubst.lift σ (k := Kind.cvar)).var (.there x0)
           = (σ.var x0).rename Rename.succ := CapySubst.lift_there_var_eq
-      rw [hY, show (CaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
-            = (CaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
-        CaptureSet.compile_rename_succ_cons, CaptureSet.compile_rename, h.var]
+      rw [hY, show (CapyCaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
+            = (CapyCaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
+        CapyCaptureSet.compile_rename_succ_cons, CapyCaptureSet.compile_rename, h.var]
       simp only [SrcCtx.lookupVar, SrcCtx.lookupVar_rename]
       exact CaptureSet.weaken_subst_comm_liftMany (K := [])
 
@@ -225,19 +237,20 @@ theorem SubstCompat.consCVar {s1 s1' s2 s2' : Sig} {sc : SrcCtx s1' s2'}
     intro cc
     cases cc with
     | here =>
-      have h1 : (σ.lift (k := Kind.cvar)).cvar .here = CaptureSet.cvar (.M .epsilon) .here := rfl
-      simp only [h1, CaptureSet.compile, SrcCtx.lookupCVar, hc]
+      have h1 : (σ.lift (k := Kind.cvar)).cvar .here
+          = CapyCaptureSet.cvar (.M .epsilon) .here := rfl
+      simp only [h1, CapyCaptureSet.compile, SrcCtx.lookupCVar, hc]
     | there c0 =>
-      rw [CapySubst.lift_there_cvar_eq, CaptureSet.compile_rename_succ_cons, h.cvar]
+      rw [CapySubst.lift_there_cvar_eq, CapyCaptureSet.compile_rename_succ_cons, h.cvar]
       simp only [SrcCtx.lookupCVar]
   var := by
     intro x
     cases x with
     | there x0 =>
       rw [CapySubst.lift_there_var_eq,
-        show (CaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
-          = (CaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
-        CaptureSet.compile_rename_succ_cons, h.var]
+        show (CapyCaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
+          = (CapyCaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
+        CapyCaptureSet.compile_rename_succ_cons, h.var]
       simp only [SrcCtx.lookupVar]
 
 /-- `SubstCompat` preserved by a source value binder, with capture images `csS`
@@ -252,20 +265,20 @@ theorem SubstCompat.consVar {s1 s1' s2 s2' : Sig} {sc : SrcCtx s1' s2'}
     intro cc
     cases cc with
     | there c0 =>
-      rw [CapySubst.lift_there_cvar_eq, CaptureSet.compile_rename_succ_cons, h.cvar]
+      rw [CapySubst.lift_there_cvar_eq, CapyCaptureSet.compile_rename_succ_cons, h.cvar]
       simp only [SrcCtx.lookupCVar]
   var := by
     intro x
     cases x with
     | here =>
       have h1 : (σ.lift (k := Kind.var)).var .here = Var.bound .here := rfl
-      simp only [h1, CaptureSet.compile, SrcCtx.lookupVar, CaptureSet.applyAccess_M,
+      simp only [h1, CapyCaptureSet.compile, SrcCtx.lookupVar, CaptureSet.applyAccess_M,
         CaptureSet.applyMut_epsilon, hinv]
     | there x0 =>
       rw [CapySubst.lift_there_var_eq,
-        show (CaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
-          = (CaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
-        CaptureSet.compile_rename_succ_cons, h.var]
+        show (CapyCaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
+          = (CapyCaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
+        CapyCaptureSet.compile_rename_succ_cons, h.var]
       simp only [SrcCtx.lookupVar]
 
 /-- `SubstCompat` preserved by a source type binder (the compiler's `consTVar`). -/
@@ -278,38 +291,38 @@ theorem SubstCompat.consTVar {s1 s1' s2 s2' : Sig} {sc : SrcCtx s1' s2'}
     intro cc
     cases cc with
     | there c0 =>
-      rw [CapySubst.lift_there_cvar_eq, CaptureSet.compile_rename_succ_cons, h.cvar]
+      rw [CapySubst.lift_there_cvar_eq, CapyCaptureSet.compile_rename_succ_cons, h.cvar]
       simp only [SrcCtx.lookupCVar]
   var := by
     intro x
     cases x with
     | there x0 =>
       rw [CapySubst.lift_there_var_eq,
-        show (CaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
-          = (CaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
-        CaptureSet.compile_rename_succ_cons, h.var]
+        show (CapyCaptureSet.var (.M .epsilon) ((σ.var x0).rename Rename.succ))
+          = (CapyCaptureSet.var (.M .epsilon) (σ.var x0)).rename Rename.succ from rfl,
+        CapyCaptureSet.compile_rename_succ_cons, h.var]
       simp only [SrcCtx.lookupVar]
 
 /-- The leaf cases of the type-level commutation are an *equality* (the lock cases
     are where subtyping enters).  This proves the equality for the non-recursive,
     lock-free formers `cap`/`cell` (and the trivial `top`/`unit`/`bool`), via the
     capture-level `compile_subst`. -/
-theorem CapyTy.compile_subst_cap {s1 s1' s2 s2' : Sig} {cs : CaptureSet s1}
+theorem CapyTy.compile_subst_cap {s1 s1' s2 s2' : Sig} {cs : CapyCaptureSet s1}
     {ctxSub : CompilerCtx s1' s2'} {ctxOrig : CompilerCtx s1 s2}
     {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
     (h : SubstCompat ctxSub.srcCtx ctxOrig.srcCtx σ σt) (hcs : cs.IsClosed) :
     CapyTy.compile ((CapyTy.cap cs).subst σ) ctxSub
       = (CapyTy.compile (CapyTy.cap cs) ctxOrig).subst σt := by
-  simp only [CapyTy.subst, CapyTy.compile, Ty.subst, CaptureSet.compile_subst h hcs]
+  simp only [CapyTy.subst, CapyTy.compile, Ty.subst, CapyCaptureSet.compile_subst h hcs]
 
-theorem CapyTy.compile_subst_cell {s1 s1' s2 s2' : Sig} {cs : CaptureSet s1} {m : Mutability}
+theorem CapyTy.compile_subst_cell {s1 s1' s2 s2' : Sig} {cs : CapyCaptureSet s1} {m : Mutability}
     {ctxSub : CompilerCtx s1' s2'} {ctxOrig : CompilerCtx s1 s2}
     {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
     (h : SubstCompat ctxSub.srcCtx ctxOrig.srcCtx σ σt) (hcs : cs.IsClosed) :
     CapyTy.compile ((CapyTy.cell cs m).subst σ) ctxSub
       = (CapyTy.compile (CapyTy.cell cs m) ctxOrig).subst σt := by
   cases m <;>
-    simp only [CapyTy.subst, CapyTy.compile, Ty.subst, CaptureSet.compile_subst h hcs]
+    simp only [CapyTy.subst, CapyTy.compile, Ty.subst, CapyCaptureSet.compile_subst h hcs]
 
 /-- **Capture-bound compilation commutes with a compatible substitution.**  Mirrors
     `compile_subst_cap`/`cell` at the bound level: `unbound` is trivial, `bound` reduces
@@ -325,7 +338,7 @@ theorem CapyCaptureBound.compile_subst {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1'
   | bound cs =>
     cases hcb with | bound hcs =>
     simp only [CapyCaptureBound.subst, CapyCaptureBound.compile, CaptureBound.subst,
-      CaptureSet.compile_subst h hcs]
+      CapyCaptureSet.compile_subst h hcs]
 
 /-! ### Structure of the compiled separation lock `peakSepCtx`
 
@@ -350,9 +363,9 @@ theorem SepCtx.Has_foldl_cons {α : Type} {s2 : Sig} {g : α → CaptureSet s2}
 
 /-- Every separation item of a compiled lock is the compiled `peakItem` of some
     distinct peak cvar. -/
-theorem peakSepCtx_Has {s1 s2 : Sig} {P : PeakSet s1} {sc : SrcCtx s1 s2}
+theorem peakSepCtx_Has {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
     {C : CaptureSet s2} (h : SepCtx.Has (peakSepCtx P sc) C) :
-    ∃ c ∈ peakCvars P, C = CaptureSet.compile (peakItem P c) sc := by
+    ∃ c ∈ peakCvars P, C = CapyCaptureSet.compile (peakItem P c) sc := by
   simp only [peakSepCtx] at h
   rcases SepCtx.Has_foldl_cons _ _ h with hl | hempty
   · exact hl
@@ -368,10 +381,10 @@ theorem SepCtx.HasTwoDistinct.has_both {s : Sig} {K : SepCtx s} {C1 C2 : Capture
 
 /-- Both members of a `HasTwoDistinct` pair of a compiled lock are compiled
     `peakItem`s of peak cvars. -/
-theorem peakSepCtx_HasTwoDistinct {s1 s2 : Sig} {P : PeakSet s1} {sc : SrcCtx s1 s2}
+theorem peakSepCtx_HasTwoDistinct {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
     {C1 C2 : CaptureSet s2} (h : SepCtx.HasTwoDistinct (peakSepCtx P sc) C1 C2) :
-    (∃ c1 ∈ peakCvars P, C1 = CaptureSet.compile (peakItem P c1) sc) ∧
-    (∃ c2 ∈ peakCvars P, C2 = CaptureSet.compile (peakItem P c2) sc) := by
+    (∃ c1 ∈ peakCvars P, C1 = CapyCaptureSet.compile (peakItem P c1) sc) ∧
+    (∃ c2 ∈ peakCvars P, C2 = CapyCaptureSet.compile (peakItem P c2) sc) := by
   obtain ⟨h1, h2⟩ := SepCtx.HasTwoDistinct.has_both h
   exact ⟨peakSepCtx_Has h1, peakSepCtx_Has h2⟩
 
@@ -386,7 +399,7 @@ through a binder (the new image is the tail's compiled captureSet, recovered wit
     image is the compilation of its declared type's capture set. -/
 def SrcAligned (Γ : CapyCtx s) (sc : SrcCtx s s2) : Prop :=
   ∀ {x : BVar s .var} {T : CapyTy .capt s},
-    Γ.LookupVar x T → sc.lookupVar x = CaptureSet.compile T.captureSet sc
+    Γ.LookupVar x T → sc.lookupVar x = CapyCaptureSet.compile T.captureSet sc
 
 /-- Alignment peels through one binder. -/
 theorem SrcAligned.peel {Γ' : CapyCtx s} {b : CapyBinding s k}
@@ -395,7 +408,7 @@ theorem SrcAligned.peel {Γ' : CapyCtx s} {b : CapyBinding s k}
   intro x' T' hlook
   have hx := h (CapyCtx.LookupVar.there hlook)
   simp only [SrcCtx.lookupVar, CapyTy.captureSet_rename,
-    CaptureSet.compile_rename_succ_cons] at hx
+    CapyCaptureSet.compile_rename_succ_cons] at hx
   exact hx
 
 /-! **(★) compilation factors through peak-resolution.**  Under alignment (and
@@ -404,37 +417,37 @@ theorem SrcAligned.peel {Γ' : CapyCtx s} {b : CapyBinding s k}
     `peaks`.  Mutual with the variable-bound version; the recursion mirrors
     `peaks`/`peaksVarBound` (decreasing on the context). -/
 mutual
-theorem CaptureSet.compile_peaksVarBound {Γ : CapyCtx s} {sc : SrcCtx s s2}
+theorem CapyCaptureSet.compile_peaksVarBound {Γ : CapyCtx s} {sc : SrcCtx s s2}
     (hΓ : Γ.IsClosed) (h : SrcAligned Γ sc) {m : Access} {x : BVar s .var} :
-    CaptureSet.compile (CapyCaptureSet.peaksVarBound Γ m x) sc
+    CapyCaptureSet.compile (CapyCaptureSet.peaksVarBound Γ m x) sc
       = (sc.lookupVar x).applyAccess m := by
   match Γ, x, sc, hΓ with
   | .push Γ' (.var T), .here, .cons info sc', .push hΓ' (.var hT) =>
-    rw [CapyCaptureSet.peaksVarBound, CaptureSet.compile_applyAccess,
-      CaptureSet.compile_rename_succ_cons,
-      CaptureSet.compile_peaks hΓ' (h.peel) (CapyTy.IsClosed.captureSet hT)]
+    rw [CapyCaptureSet.peaksVarBound, CapyCaptureSet.compile_applyAccess,
+      CapyCaptureSet.compile_rename_succ_cons,
+      CapyCaptureSet.compile_peaks hΓ' (h.peel) (CapyTy.IsClosed.captureSet hT)]
     have hx := h CapyCtx.LookupVar.here
     simp only [CapyTy.captureSet_rename,
-      CaptureSet.compile_rename_succ_cons] at hx ⊢
+      CapyCaptureSet.compile_rename_succ_cons] at hx ⊢
     rw [hx]
   | .push Γ' b, .there x', .cons info sc', .push hΓ' _ =>
-    rw [CapyCaptureSet.peaksVarBound, CaptureSet.compile_rename_succ_cons,
-      CaptureSet.compile_peaksVarBound hΓ' (h.peel)]
+    rw [CapyCaptureSet.peaksVarBound, CapyCaptureSet.compile_rename_succ_cons,
+      CapyCaptureSet.compile_peaksVarBound hΓ' (h.peel)]
     simp only [SrcCtx.lookupVar]
 termination_by (sizeOf Γ, sizeOf x + 1)
 
-theorem CaptureSet.compile_peaks {Γ : CapyCtx s} {sc : SrcCtx s s2}
-    (hΓ : Γ.IsClosed) (h : SrcAligned Γ sc) {cs : CaptureSet s} (hcs : cs.IsClosed) :
-    CaptureSet.compile (CapyCaptureSet.peaks Γ cs) sc = CaptureSet.compile cs sc := by
+theorem CapyCaptureSet.compile_peaks {Γ : CapyCtx s} {sc : SrcCtx s s2}
+    (hΓ : Γ.IsClosed) (h : SrcAligned Γ sc) {cs : CapyCaptureSet s} (hcs : cs.IsClosed) :
+    CapyCaptureSet.compile (CapyCaptureSet.peaks Γ cs) sc = CapyCaptureSet.compile cs sc := by
   match cs, hcs with
   | .empty, _ => simp only [CapyCaptureSet.peaks]
   | .union cs1 cs2, .union hcs1 hcs2 =>
-    simp only [CapyCaptureSet.peaks, CaptureSet.compile,
-      CaptureSet.compile_peaks hΓ h hcs1, CaptureSet.compile_peaks hΓ h hcs2]
+    simp only [CapyCaptureSet.peaks, CapyCaptureSet.compile,
+      CapyCaptureSet.compile_peaks hΓ h hcs1, CapyCaptureSet.compile_peaks hΓ h hcs2]
   | .cvar a c, _ => simp only [CapyCaptureSet.peaks]
   | .var a (.bound x), _ =>
-    rw [CapyCaptureSet.peaks, CaptureSet.compile_peaksVarBound hΓ h]
-    simp only [CaptureSet.compile]
+    rw [CapyCaptureSet.peaks, CapyCaptureSet.compile_peaksVarBound hΓ h]
+    simp only [CapyCaptureSet.compile]
 termination_by (sizeOf Γ, sizeOf cs)
 end
 
@@ -446,7 +459,7 @@ The `fresh` case needs the *type*-level analogue,
 
 with `exiCtx ctx := ctx.weakenTarget.consCVar (.unbound .epsilon) .here` (the
 `.exi`-compiler's extended context).  Its structural cases (`cap`/`cell`/`typ`/…)
-reduce directly to `CaptureSet.compile_subst_openCVar` above.
+reduce directly to `CapyCaptureSet.compile_subst_openCVar` above.
 
 The `arrow`/`poly`/`cpoly` cases are where the story gets interesting.  A compiled
 function carries a separation lock `Ψ = peakSepCtx (peakset Γ W) …`, and `peakset`
@@ -456,7 +469,7 @@ type's capture, `peaksVarBound`).  Two layers result:
 1. The peak-content agrees only if compilation is invariant under peak-resolution,
    `⟦cs⟧ = ⟦peaks Γ cs⟧` (★).  This is NOT a type-compiler identity — it holds via
    alignment (`SrcAligned`, the `Coherent` field) + `peaksVarBound_eq_captureSet`.
-   It is now PROVEN: `CaptureSet.compile_peaks` above (mutual, closedness-guarded).
+   It is now PROVEN: `CapyCaptureSet.compile_peaks` above (mutual, closedness-guarded).
 
 2. The lock's *grouping* does not commute as an equality, but it commutes up to
    SUBTYPING — which is all `fresh` needs.  `peakSepCtx` emits one item per distinct

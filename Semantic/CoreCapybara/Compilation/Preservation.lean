@@ -59,14 +59,14 @@ theorem Subtyp.self_refine {s : Sig} {Γ : Ctx s} {bv : BVar s .var} {T' : Ty .c
     — the design gap is resolved — left as a scoped TODO. -/
 theorem CapyTy.compile_refine_self {s1 s2 : Sig} {T : CapyTy .capt s1}
     {ctx : CompilerCtx s1 s2} {xv : BVar s1 .var}
-    (hsrc : ctx.srcCtx.lookupVar xv = CaptureSet.compile T.captureSet ctx.srcCtx)
+    (hsrc : ctx.srcCtx.lookupVar xv = CapyCaptureSet.compile T.captureSet ctx.srcCtx)
     (hcapy : ctx.capyCtx.LookupVar xv T) :
     CapyTy.compile (T.refineCaptureSet (.var (.M .epsilon) (.bound xv))) ctx
       = CapyTy.compile T ctx := by
   -- the var's capture image `⟦{xv}⟧` is its declared latent `⟦T.captureSet⟧`
-  have hxv : CaptureSet.compile (.var (.M .epsilon) (.bound xv)) ctx.srcCtx
-      = CaptureSet.compile T.captureSet ctx.srcCtx := by
-    simp only [CaptureSet.compile, hsrc, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+  have hxv : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv)) ctx.srcCtx
+      = CapyCaptureSet.compile T.captureSet ctx.srcCtx := by
+    simp only [CapyCaptureSet.compile, hsrc, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
   -- `peaks {xv} = peaks T.captureSet` (faithful separation context)
   have hpk : CapyCaptureSet.peakset ctx.capyCtx (.var (.M .epsilon) (.bound xv))
       = CapyCaptureSet.peakset ctx.capyCtx T.captureSet := by
@@ -85,22 +85,22 @@ theorem CapyTy.compile_refine_self {s1 s2 : Sig} {T : CapyTy .capt s1}
     cases m <;> simp only [CapyTy.refineCaptureSet, CapyTy.compile, hxv]
   | poly S cs E =>
     simp only [CapyTy.captureSet] at hxv hpk
-    have hCf : CaptureSet.compile (.var (.M .epsilon) (.bound xv))
+    have hCf : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv))
           (SrcCtx.weaken (k := Kind.tvar) ctx.srcCtx)
-        = CaptureSet.compile cs (SrcCtx.weaken (k := Kind.tvar) ctx.srcCtx) := by
+        = CapyCaptureSet.compile cs (SrcCtx.weaken (k := Kind.tvar) ctx.srcCtx) := by
       unfold SrcCtx.weaken
-      rw [CaptureSet.compile_rename, CaptureSet.compile_rename, hxv]
+      rw [CapyCaptureSet.compile_rename, CapyCaptureSet.compile_rename, hxv]
     -- only the modal lock `W` and (via `hpk`) the separation `Ψ` differ; `congr`
     -- discharges the residual lock equality with `hCf` from context.
     simp only [CapyTy.refineCaptureSet, CapyTy.compile, hpk]
     repeat' congr 1
   | cpoly cb cs E =>
     simp only [CapyTy.captureSet] at hxv hpk
-    have hCf : CaptureSet.compile (.var (.M .epsilon) (.bound xv))
+    have hCf : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv))
           (SrcCtx.weaken (k := Kind.cvar) ctx.srcCtx)
-        = CaptureSet.compile cs (SrcCtx.weaken (k := Kind.cvar) ctx.srcCtx) := by
+        = CapyCaptureSet.compile cs (SrcCtx.weaken (k := Kind.cvar) ctx.srcCtx) := by
       unfold SrcCtx.weaken
-      rw [CaptureSet.compile_rename, CaptureSet.compile_rename, hxv]
+      rw [CapyCaptureSet.compile_rename, CapyCaptureSet.compile_rename, hxv]
     -- only the modal lock `W` and (via `hpk`) the separation `Ψ` differ; `congr`
     -- discharges the residual lock equality with `hCf` from context.
     simp only [CapyTy.refineCaptureSet, CapyTy.compile, hpk]
@@ -115,23 +115,23 @@ theorem CapyTy.compile_refine_self {s1 s2 : Sig} {T : CapyTy .capt s1}
     -- weakenings of the lock field peel through the lock's `var`/`cvar` `cons`es
     -- via `compile_lock_field_congr`; its hypothesis is `hxv` transported under
     -- the three target weakenings (`compile_rename` ×3).
-    have hCfW : CaptureSet.compile
-          (((CaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+    have hCfW : CapyCaptureSet.compile
+          (((CapyCaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
             ∪ .var (.M .epsilon) (.bound .here)) ctxL.srcCtx
-        = CaptureSet.compile ((cs.rename Rename.succ).rename Rename.succ
+        = CapyCaptureSet.compile ((cs.rename Rename.succ).rename Rename.succ
             ∪ .var (.M .epsilon) (.bound .here)) ctxL.srcCtx := by
       rw [hctxL]
       simp only [CompilerCtx.consVar_srcCtx, CompilerCtx.consCVar_srcCtx,
         CompilerCtx.weakenTarget_srcCtx]
-      apply CaptureSet.compile_lock_field_congr
-      simp only [CaptureSet.compile_rename, hxv]
+      apply CapyCaptureSet.compile_lock_field_congr
+      simp only [CapyCaptureSet.compile_rename, hxv]
     -- the lock's separation context `Ψ` agrees between `{xv}` and `cs`.  Mirror of
     -- `hCfW` for `peaks`: project the underlying `peaks` equality off `hpk`, then
     -- peel the two `peaks`-weakenings via `peaks_lock_field_congr`.
     have hpk' : CapyCaptureSet.peaks ctx.capyCtx (.var (.M .epsilon) (.bound xv))
-        = CapyCaptureSet.peaks ctx.capyCtx cs := congrArg PeakSet.cs hpk
+        = CapyCaptureSet.peaks ctx.capyCtx cs := congrArg CapyPeakSet.cs hpk
     have hpkW : CapyCaptureSet.peakset ctxL.capyCtx
-          (((CaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+          (((CapyCaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
             ∪ .var (.M .epsilon) (.bound .here))
         = CapyCaptureSet.peakset ctxL.capyCtx ((cs.rename Rename.succ).rename Rename.succ
             ∪ .var (.M .epsilon) (.bound .here)) := by
@@ -147,26 +147,26 @@ theorem CapyTy.compile_refine_self {s1 s2 : Sig} {T : CapyTy .capt s1}
     coherent compiler context whose source typing context matches the
     derivation's, compiles to a well-typed target term at the compiled capture
     set, context, and type. -/
-theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
+theorem CapyHasType.compile {s1 : Sig} {Cs : CapyCaptureSet s1} {Γ : CapyCtx s1}
     {e : CapyExp s1} {E : CapyTy .exi s1} (hty : CapyHasType Cs Γ e E) :
     ∀ {s2 : Sig} (ctx : CompilerCtx s1 s2), ctx.capyCtx = Γ → ctx.Coherent →
-    ∃ e' : Exp s2, HasType (CaptureSet.compile Cs ctx.srcCtx) ctx.coreCtx e'
+    ∃ e' : Exp s2, HasType (CapyCaptureSet.compile Cs ctx.srcCtx) ctx.coreCtx e'
       (CapyTy.compile E ctx) := by
   induction hty
   case unit =>
     intro s2 ctx hΓ hcoh
     refine ⟨.unit, ?_⟩
-    simp only [CaptureSet.compile, CapyTy.compile]
+    simp only [CapyCaptureSet.compile, CapyTy.compile]
     exact HasType.unit
   case btrue =>
     intro s2 ctx hΓ hcoh
     refine ⟨.btrue, ?_⟩
-    simp only [CaptureSet.compile, CapyTy.compile]
+    simp only [CapyCaptureSet.compile, CapyTy.compile]
     exact HasType.btrue
   case bfalse =>
     intro s2 ctx hΓ hcoh
     refine ⟨.bfalse, ?_⟩
-    simp only [CaptureSet.compile, CapyTy.compile]
+    simp only [CapyCaptureSet.compile, CapyTy.compile]
     exact HasType.bfalse
   case var =>
     intro s2 ctx hΓ hcoh
@@ -178,16 +178,17 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
         (.typ ((CapyTy.compile Tv ctx).refineCaptureSet (.var (.M .epsilon) (.bound bv)))) :=
       HasType.var hcoh.closed hcorelk
     -- the var's compiled capture is its declared latent `⟦Tv.captureSet⟧`
-    have hcs : CaptureSet.compile (.var (.M .epsilon) (.bound xv)) ctx.srcCtx
-        = CaptureSet.compile Tv.captureSet ctx.srcCtx := by
-      simp only [CaptureSet.compile, hsrcvar, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+    have hcs : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv)) ctx.srcCtx
+        = CapyCaptureSet.compile Tv.captureSet ctx.srcCtx := by
+      simp only [CapyCaptureSet.compile, hsrcvar, CaptureSet.applyAccess_M,
+        CaptureSet.applyMut_epsilon]
     rw [hcs]
     -- the refinement vanishes: `⟦E⟧ = .typ ⟦Tv⟧`
     simp only [CapyTy.compile]
     rw [CapyTy.compile_refine_self hsrcvar (hΓ ▸ hlook)]
     exact HasType.subtyp hbase (Subcapt.sc_elem CaptureSet.Subset.empty)
       (Subtyp.typ (Subtyp.self_refine hcorelk))
-      (CaptureSet.compile_isClosed (CapyTy.IsClosed.captureSet hTvclosed) hcoh.srcClosed)
+      (CapyCaptureSet.compile_isClosed (CapyTy.IsClosed.captureSet hTvclosed) hcoh.srcClosed)
       (Ty.IsClosed.typ (CapyTy.compile_isClosed _ _ hTvclosed hcoh.srcClosed))
   case readonly =>
     intro s2 ctx hΓ hcoh
@@ -201,14 +202,14 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
       cases h with | cell h => exact h
     have hbase : HasType {} ctx.coreCtx (.reader (.bound bv))
         (.typ (.reader (.var (.M .ro) (.bound bv)))) := HasType.reader hcoh.closed hcorelk
-    have hcsclosed : (CaptureSet.compile Cc ctx.srcCtx).applyRO.IsClosed :=
-      CaptureSet.applyRO_isClosed (CaptureSet.compile_isClosed hCcclosed hcoh.srcClosed)
+    have hcsclosed : (CapyCaptureSet.compile Cc ctx.srcCtx).applyRO.IsClosed :=
+      CaptureSet.applyRO_isClosed (CapyCaptureSet.compile_isClosed hCcclosed hcoh.srcClosed)
     -- the readonly view's compiled capture is `(⟦Cc⟧).applyRO`
-    have hcs : CaptureSet.compile (.var (.M .ro) (.bound xv)) ctx.srcCtx
-        = (CaptureSet.compile Cc ctx.srcCtx).applyRO := by
-      simp only [CaptureSet.compile, hsrcvar, CaptureSet.applyAccess_M, CaptureSet.applyMut_ro]
+    have hcs : CapyCaptureSet.compile (.var (.M .ro) (.bound xv)) ctx.srcCtx
+        = (CapyCaptureSet.compile Cc ctx.srcCtx).applyRO := by
+      simp only [CapyCaptureSet.compile, hsrcvar, CaptureSet.applyAccess_M, CaptureSet.applyMut_ro]
     have hEtype : CapyTy.compile (CapyTy.cell (.var (.M .ro) (.bound xv)) .ro).typ ctx
-        = .typ (.reader ((CaptureSet.compile Cc ctx.srcCtx).applyRO)) := by
+        = .typ (.reader ((CapyCaptureSet.compile Cc ctx.srcCtx).applyRO)) := by
       simp only [CapyTy.compile, hcs]
     rw [hcs, hEtype]
     refine HasType.subtyp hbase (Subcapt.sc_elem CaptureSet.Subset.empty)
@@ -229,22 +230,22 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CaptureSet s1} {Γ : CapyCtx s1}
     -- the `.exi`-compiler's extended body context
     set exiCtx := ctx.weakenTarget.consCVar (CapyCaptureBound.unbound .epsilon) BVar.here
       with hexi
-    refine ⟨.pack (CaptureSet.compile Df ctx.srcCtx) (.bound bv), ?_⟩
+    refine ⟨.pack (CapyCaptureSet.compile Df ctx.srcCtx) (.bound bv), ?_⟩
     -- `⟦.exi T⟧` is definitionally `.exi ⟦T⟧_exiCtx`; distribute `⟦D ∪ D.applyDrop⟧`.
     have hty : CapyTy.compile (CapyTy.exi Tbody) ctx = Ty.exi (CapyTy.compile Tbody exiCtx) := by
       simp only [CapyTy.compile, ← hexi]
     rw [hty]
-    simp only [CaptureSet.compile, CaptureSet.compile_applyDrop]
+    simp only [CapyCaptureSet.compile, CapyCaptureSet.compile_applyDrop]
     refine HasType.pack ?cl ?ao ?drp ?var
-    case cl => exact CaptureSet.compile_isClosed hDcl hcoh.srcClosed
+    case cl => exact CapyCaptureSet.compile_isClosed hDcl hcoh.srcClosed
     case ao =>
       -- `⟦D⟧.AccessOnly ⟦Γ⟧` from source `AccessOnly Γ D` (`hao`), via the
       -- compile-preserves-AccessOnly transport (Workstream A).
-      exact CaptureSet.compile_accessOnly hcoh hDcl (hΓ ▸ hao)
+      exact CapyCaptureSet.compile_accessOnly hcoh hDcl (hΓ ▸ hao)
     case drp =>
       -- `⟦D⟧.droppable ⟦Γ⟧` from source `droppable Γ D` (`hdrop`), via the
       -- compile-preserves-droppable transport (Workstream A).
-      exact CaptureSet.compile_droppable hcoh hDcl (hΓ ▸ hdrop)
+      exact CapyCaptureSet.compile_droppable hcoh hDcl (hΓ ▸ hdrop)
     case var =>
       -- `HasType.var` types `bv` at `{}` and `⟦T[D/c]⟧^{bv}`; `pack` wants it at
       -- `(⟦T⟧_exiCtx).subst (openCVar ⟦D⟧)`.  Bridge = self-refinement vanishing

@@ -3,9 +3,9 @@ open CoreCapybara
 namespace Compilation
 
 /-- Compiles a source capture set into the target -/
-def CaptureSet.compile : CaptureSet s1 -> SrcCtx s1 s2 -> CaptureSet s2
+def CapyCaptureSet.compile : CapyCaptureSet s1 -> SrcCtx s1 s2 -> CaptureSet s2
 | .empty, _ => .empty
-| .union cs1 cs2, ctx => .union (CaptureSet.compile cs1 ctx) (CaptureSet.compile cs2 ctx)
+| .union cs1 cs2, ctx => .union (CapyCaptureSet.compile cs1 ctx) (CapyCaptureSet.compile cs2 ctx)
 | .cvar a c, ctx => .cvar a (ctx.lookupCVar c)
 | .var a (.bound x), ctx => (ctx.lookupVar x).applyAccess a
 | .var a (.free n), _ => .var a (.free n)
@@ -16,7 +16,7 @@ def CaptureSet.compile : CaptureSet s1 -> SrcCtx s1 s2 -> CaptureSet s2
     capture-polymorphic function (see `CapyCaptureBound.mutabilityCtx`). -/
 def CapyCaptureBound.compile : CapyCaptureBound s1 -> SrcCtx s1 s2 -> CaptureBound s2
 | .unbound _, _ => .unbound
-| .bound cs, ctx => .bound (CaptureSet.compile cs ctx)
+| .bound cs, ctx => .bound (CapyCaptureSet.compile cs ctx)
 
 /-- The mutability obligation a capture bound imposes on its bound variable `c`.
     An `unbound m` bound fixes `c`'s mutability to `m` explicitly (so we record
@@ -51,10 +51,10 @@ def dedup [DecidableEq α] : List α -> List α
 
 /-- The de-duplicated capture variables of a peak set, with access modes
     discarded. -/
-def peakCvars (P : PeakSet s) : List (BVar s .cvar) :=
+def peakCvars (P : CapyPeakSet s) : List (BVar s .cvar) :=
   dedup (go P.cs)
 where
-  go : CaptureSet s -> List (BVar s .cvar)
+  go : CapyCaptureSet s -> List (BVar s .cvar)
   | .empty => []
   | .union c1 c2 => go c1 ++ go c2
   | .cvar _ c => [c]
@@ -62,10 +62,10 @@ where
 
 /-- The access modes at which a given capture variable is accessed in a peak
     set. -/
-def accessedAt (P : PeakSet s) (c : BVar s .cvar) : List Access :=
+def accessedAt (P : CapyPeakSet s) (c : BVar s .cvar) : List Access :=
   go P.cs
 where
-  go : CaptureSet s -> List Access
+  go : CapyCaptureSet s -> List Access
   | .empty => []
   | .union c1 c2 => go c1 ++ go c2
   | .cvar a c' => if c' = c then [a] else []
@@ -73,16 +73,16 @@ where
 
 /-- The capture set holding all access-mode occurrences of a single peak `c` in a
     peak set, e.g. `{.ro c, .drop c}`. -/
-def peakItem (P : PeakSet s) (c : BVar s .cvar) : CaptureSet s :=
+def peakItem (P : CapyPeakSet s) (c : BVar s .cvar) : CapyCaptureSet s :=
   (accessedAt P c).foldr (fun a acc => (.cvar a c) ∪ acc) .empty
 
 /-- The separation context of a peak set: one item per distinct peak (capture
     variable), each holding that peak's access-mode occurrences, compiled into the
     target.  Distinct peaks become distinct items and are therefore required to be
     pairwise separate; the several occurrences of one peak share a single item. -/
-def peakSepCtx (P : PeakSet s1) (ctx : SrcCtx s1 s2) : SepCtx s2 :=
+def peakSepCtx (P : CapyPeakSet s1) (ctx : SrcCtx s1 s2) : SepCtx s2 :=
   (peakCvars P).foldl
-    (fun K c => .cons K (CaptureSet.compile (peakItem P c) ctx))
+    (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) ctx))
     (.empty : SepCtx s2)
 
 /-- A structural size on source types that ignores capture sets and bound
@@ -106,7 +106,7 @@ def tySize : CapyTy sort s -> Nat
     tySize (T.rename f) = tySize T := by
   induction T generalizing s2 <;> simp_all [CapyTy.rename, tySize]
 
-@[simp] theorem tySize_refineCaptureSet {T : CapyTy .capt s} {cs : CaptureSet s} :
+@[simp] theorem tySize_refineCaptureSet {T : CapyTy .capt s} {cs : CapyCaptureSet s} :
     tySize (T.refineCaptureSet cs) = tySize T := by
   cases T <;> simp [CapyTy.refineCaptureSet, tySize]
 
@@ -119,11 +119,11 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
 | .top, _ => .top
 | .unit, _ => .unit
 | .bool, _ => .bool
-| .cap cs, ctx => .cap (CaptureSet.compile cs ctx.srcCtx)
+| .cap cs, ctx => .cap (CapyCaptureSet.compile cs ctx.srcCtx)
 | .cell cs .epsilon, ctx =>
-  .cell (CaptureSet.compile cs ctx.srcCtx)
+  .cell (CapyCaptureSet.compile cs ctx.srcCtx)
 | .cell cs .ro, ctx =>
-  .reader (CaptureSet.compile cs ctx.srcCtx)
+  .reader (CapyCaptureSet.compile cs ctx.srcCtx)
 | .typ T, ctx => .typ (CapyTy.compile T ctx)
 | .tvar X, ctx => .tvar (ctx.srcCtx.lookupTVar X)
 | .arrow T cs E, ctx =>
@@ -145,26 +145,26 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
       (.there (.there .here))).consVar T (some .here) (.cvar (.M .epsilon) (.there .here))
   -- the captured resources: the function capture `cs` (weakened past `c`, `x`)
   -- together with the value parameter `{x}`.
-  let W : CaptureSet (s1,C,x) :=
+  let W : CapyCaptureSet (s1,C,x) :=
     (cs.rename Rename.succ).rename Rename.succ ∪ .var (.M .epsilon) (.bound .here)
   let Ψ : ModalCtx (s2,C,C,x) :=
     ⟨peakSepCtx (CapyCaptureSet.peakset ctxLock.capyCtx W) ctxLock.srcCtx, .empty⟩
   .cpoly .unbound {}
-    (.typ (.cpoly (.bound (CaptureSet.compile T.captureSet ctxB.srcCtx)) {}
+    (.typ (.cpoly (.bound (CapyCaptureSet.compile T.captureSet ctxB.srcCtx)) {}
       (.typ (.arrow
               (CapyTy.compile
                 ((T.rename Rename.succ).refineCaptureSet (.var (.M .epsilon) (.bound .here)))
                 ctxDomain)
               {}
               (.typ (.modal
-                      (CaptureSet.compile W ctxLock.srcCtx)
+                      (CapyCaptureSet.compile W ctxLock.srcCtx)
                       Ψ
                       (CapyTy.compile E ctxE)))))))
 | .poly S cs E, ctx =>
   -- `[X <: S] ->cs E`  ↦  `[X] -> [Ψ]cs E`: a Core `poly` whose body `E` is guarded
   -- by a separation lock `[Ψ]` (a `modal`) capturing `Cf = ⟦cs⟧`.
   let ctxE : CompilerCtx (s1,X) (s2,X) := ctx.weakenTarget.consTVar .top .here
-  let Cf : CaptureSet (s2,X) := CaptureSet.compile cs ctx.srcCtx.weaken
+  let Cf : CaptureSet (s2,X) := CapyCaptureSet.compile cs ctx.srcCtx.weaken
   let Ψ  : ModalCtx (s2,X)   :=
     ⟨peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken, .empty⟩
   .poly
@@ -178,7 +178,7 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
   -- the separation of `cs`'s peaks, `Ψ.mutability` re-records the mutability that
   -- `cb` fixes on the introduced parameter `c`.
   let ctxE : CompilerCtx (s1,C) (s2,C) := ctx.weakenTarget.consCVar cb .here
-  let Cf : CaptureSet (s2,C) := CaptureSet.compile cs ctx.srcCtx.weaken
+  let Cf : CaptureSet (s2,C) := CapyCaptureSet.compile cs ctx.srcCtx.weaken
   let Ψ  : ModalCtx (s2,C)   :=
     ⟨ peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken,
       CapyCaptureBound.mutabilityCtx cb .here ⟩

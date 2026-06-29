@@ -12,8 +12,8 @@ lookup-transport lemmas that the term-compilation preservation theorem needs.
 -/
 
 /-- Compilation of capture sets preserves emptiness. -/
-theorem CaptureSet.compile_isEmpty {cs : CaptureSet s1} (h : cs.IsEmpty)
-    {ctx : SrcCtx s1 s2} : (CaptureSet.compile cs ctx).IsEmpty := by
+theorem CapyCaptureSet.compile_isEmpty {cs : CapyCaptureSet s1} (h : cs.IsEmpty)
+    {ctx : SrcCtx s1 s2} : (CapyCaptureSet.compile cs ctx).IsEmpty := by
   induction h with
   | empty => exact CaptureSet.IsEmpty.empty
   | union _ _ ih1 ih2 => exact CaptureSet.IsEmpty.union ih1 ih2
@@ -29,9 +29,9 @@ theorem CapyTy.compile_isPure {T : CapyTy .capt s1} (h : T.IsPureType)
   | tvar => simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
   | unit => simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
   | bool => simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
-  | cap cs => simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.compile_isEmpty h
+  | cap cs => simp only [CapyTy.compile, Ty.captureSet]; exact CapyCaptureSet.compile_isEmpty h
   | cell cs m =>
-    cases m <;> (simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.compile_isEmpty h)
+    cases m <;> (simp only [CapyTy.compile, Ty.captureSet]; exact CapyCaptureSet.compile_isEmpty h)
   | arrow => simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
   | poly => simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
   | cpoly => simp only [CapyTy.compile, Ty.captureSet]; exact CaptureSet.IsEmpty.empty
@@ -73,7 +73,7 @@ structure CompilerCtx.Coherent (ctx : CompilerCtx s1 s2) : Prop where
           -- the var rule's self-capture refinement vanishes under compilation
           -- (see `Subtyp.self_refine`).  The target variable `bv` is used only for
           -- the compiled *expression* `.var bv`.
-          ctx.srcCtx.lookupVar x = CaptureSet.compile T.captureSet ctx.srcCtx ∧
+          ctx.srcCtx.lookupVar x = CapyCaptureSet.compile T.captureSet ctx.srcCtx ∧
           ctx.coreCtx.LookupVar bv (CapyTy.compile T ctx)
   -- Capture-variable lookup coherence: a source cvar's image is bound in `coreCtx`
   -- at the compiled authority + capture bound.  Needed by `Subtyp.tvar`/`cpoly`

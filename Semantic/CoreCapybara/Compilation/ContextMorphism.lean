@@ -88,7 +88,7 @@ theorem ModalCtx.weaken_rename_comm {Ψ : ModalCtx s1} {f : Rename s1 s2} :
   rw [ModalCtx.rename_comp, Rename.succ_lift_comm, ← ModalCtx.rename_comp]
 
 /-- Capture-set refinement commutes with renaming. -/
-theorem CapyTy.refineCaptureSet_rename {T : CapyTy .capt s1} {cs : CaptureSet s1}
+theorem CapyTy.refineCaptureSet_rename {T : CapyTy .capt s1} {cs : CapyCaptureSet s1}
     {f : Rename s1 s2} :
     (T.refineCaptureSet cs).rename f = (T.rename f).refineCaptureSet (cs.rename f) := by
   cases T <;> simp only [CapyTy.refineCaptureSet, CapyTy.rename]
@@ -182,49 +182,49 @@ theorem Ctx.RenamesTo.push {s1 s2 : Sig} {k : Kind} {Γ1 : Ctx s1} {Γ2 : Ctx s2
     the transported lookup so no structural knowledge of `Γ2` is needed. -/
 theorem CapyCaptureSet.peaks_renamesTo {s1 s2 : Sig}
     {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2} {f : Rename s1 s2}
-    (h : Γ1.RenamesTo Γ2 f) (W : CaptureSet s1) :
+    (h : Γ1.RenamesTo Γ2 f) (W : CapyCaptureSet s1) :
     CapyCaptureSet.peaks Γ2 (W.rename f) = (CapyCaptureSet.peaks Γ1 W).rename f := by
   match Γ1, W, h with
-  | _, .empty, _ => simp only [CaptureSet.rename, CapyCaptureSet.peaks]
+  | _, .empty, _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
   | _, .union W1 W2, h =>
-    simp only [CaptureSet.rename, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
     rw [peaks_renamesTo h W1, peaks_renamesTo h W2]
     rfl
-  | _, .cvar m c, _ => simp only [CaptureSet.rename, CapyCaptureSet.peaks]
+  | _, .cvar m c, _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
   | _, .var m (.free n), _ =>
-    simp only [CaptureSet.rename, Var.rename, CapyCaptureSet.peaks]
+    simp only [CapyCaptureSet.rename, Var.rename, CapyCaptureSet.peaks]
     rfl
   | .push Γ1' (.var T0), .var m (.bound .here), h =>
     have hl2 := h.var (CapyCtx.LookupVar.here (Γ := Γ1') (T := T0))
     have key := CapyCaptureSet.peaks_renamesTo (h.unpush) (T0.captureSet.applyAccess m)
-    simp only [CaptureSet.rename, Var.rename]
+    simp only [CapyCaptureSet.rename, Var.rename]
     rw [CapyCaptureSet.var_peaks hl2]
-    simp only [CapyTy.captureSet_rename, CaptureSet.rename_comp,
-      ← CaptureSet.applyAccess_rename]
+    simp only [CapyTy.captureSet_rename, CapyCaptureSet.rename_comp,
+      ← CapyCaptureSet.applyAccess_rename]
     rw [key]
     simp only [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound,
-      CapyCaptureSet.peaks_applyAccess_comm, CaptureSet.applyAccess_rename,
-      CaptureSet.rename_comp]
+      CapyCaptureSet.peaks_applyAccess_comm, CapyCaptureSet.applyAccess_rename,
+      CapyCaptureSet.rename_comp]
   | .push Γ1' b, .var m (.bound (.there x')), h =>
-    have key := CapyCaptureSet.peaks_renamesTo (h.unpush) (CaptureSet.var m (.bound x'))
-    simp only [CaptureSet.rename, Var.rename, Rename.comp, Rename.succ,
-      CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound, CaptureSet.rename_comp] at key ⊢
+    have key := CapyCaptureSet.peaks_renamesTo (h.unpush) (CapyCaptureSet.var m (.bound x'))
+    simp only [CapyCaptureSet.rename, Var.rename, Rename.comp, Rename.succ,
+      CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound, CapyCaptureSet.rename_comp] at key ⊢
     exact key
   termination_by (sizeOf Γ1, sizeOf W)
 
 /-- Source peak-resolution commutes with a context renaming.  Thin wrapper over
     `CapyCaptureSet.peaks_renamesTo` with the capture set implicit. -/
 theorem CapyCtx.RenamesTo.peaks {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
-    {f : Rename s1 s2} (h : Γ1.RenamesTo Γ2 f) {W : CaptureSet s1} :
+    {f : Rename s1 s2} (h : Γ1.RenamesTo Γ2 f) {W : CapyCaptureSet s1} :
     CapyCaptureSet.peaks Γ2 (W.rename f) = (CapyCaptureSet.peaks Γ1 W).rename f :=
   CapyCaptureSet.peaks_renamesTo h W
 
 /-- The whole *peak set* (peaks + its `PeaksOnly` witness) commutes with a context
     renaming; the witness is proof-irrelevant, so this is just `RenamesTo.peaks`. -/
 theorem CapyCtx.RenamesTo.peakset {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
-    {f : Rename s1 s2} (h : Γ1.RenamesTo Γ2 f) (W : CaptureSet s1) :
+    {f : Rename s1 s2} (h : Γ1.RenamesTo Γ2 f) (W : CapyCaptureSet s1) :
     CapyCaptureSet.peakset Γ2 (W.rename f) = (CapyCaptureSet.peakset Γ1 W).rename f := by
-  simp only [CapyCaptureSet.peakset, PeakSet.rename, h.peaks]
+  simp only [CapyCaptureSet.peakset, CapyPeakSet.rename, h.peaks]
 
 end CoreCapybara
 
@@ -350,22 +350,25 @@ theorem CompilerCtx.MapsTo.consVar {s1 s1' s2 s2' : Sig}
 These read only the `srcCtx` field equations (`cvar`/`var`), so they are stated on
 those directly (reusable inside the lock's `peakSepCtx` below). -/
 
-theorem CaptureSet.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
+theorem CapyCaptureSet.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
     {sctx2 : SrcCtx s1' t2} {fs : Rename s1 s1'} {ft : Rename t1 t2}
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
-    (cs : CaptureSet s1) :
-    CaptureSet.compile (cs.rename fs) sctx2 = (CaptureSet.compile cs sctx1).rename ft := by
+    (cs : CapyCaptureSet s1) :
+    CapyCaptureSet.compile (cs.rename fs) sctx2 = (CapyCaptureSet.compile cs sctx1).rename ft := by
   induction cs with
   | empty => rfl
-  | union cs1 cs2 ih1 ih2 => simp only [CaptureSet.rename, CaptureSet.compile, ih1, ih2]
-  | cvar a c => simp only [CaptureSet.rename, CaptureSet.compile, hcvar c]
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [CapyCaptureSet.rename, CaptureSet.rename, CapyCaptureSet.compile, ih1, ih2]
+  | cvar a c =>
+    simp only [CapyCaptureSet.rename, CaptureSet.rename, CapyCaptureSet.compile, hcvar c]
   | var a x =>
     cases x with
     | bound x =>
-      simp only [CaptureSet.rename, Var.rename, CaptureSet.compile, hvar x,
-        CaptureSet.applyAccess_rename]
-    | free n => simp only [CaptureSet.rename, Var.rename, CaptureSet.compile]
+      simp only [CapyCaptureSet.rename, Var.rename, CapyCaptureSet.compile,
+        hvar x, CaptureSet.applyAccess_rename]
+    | free n =>
+      simp only [CapyCaptureSet.rename, CaptureSet.rename, Var.rename, CapyCaptureSet.compile]
 
 theorem CapyCaptureBound.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
     {sctx2 : SrcCtx s1' t2} {fs : Rename s1 s1'} {ft : Rename t1 t2}
@@ -378,7 +381,7 @@ theorem CapyCaptureBound.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 
   | unbound m => rfl
   | bound cs =>
     simp only [CapyCaptureBound.rename, CapyCaptureBound.compile, CaptureBound.rename,
-      CaptureSet.compile_mapsTo hcvar hvar cs]
+      CapyCaptureSet.compile_mapsTo hcvar hvar cs]
 
 /-- The lock's mutability field commutes with the morphism.  `mutabilityCtx` reads
     only the bound's *constructor* and mutability tag (not its capture set), so it is
@@ -407,42 +410,43 @@ private theorem dedup_map_injective {α β : Type _} [DecidableEq α] [Decidable
       simp only [List.mem_map, hf.eq_iff, exists_eq_right]
     simp only [List.map_cons, dedup, ih, apply_ite (List.map f), List.map_cons, hcond]
 
-theorem peakCvars.go_rename {s1 s2 : Sig} {fs : Rename s1 s2} (cs : CaptureSet s1) :
+theorem peakCvars.go_rename {s1 s2 : Sig} {fs : Rename s1 s2} (cs : CapyCaptureSet s1) :
     peakCvars.go (cs.rename fs) = (peakCvars.go cs).map fs.var := by
   induction cs with
   | empty => rfl
-  | union c1 c2 ih1 ih2 => simp only [CaptureSet.rename, peakCvars.go, List.map_append, ih1, ih2]
-  | cvar a c => simp only [CaptureSet.rename, peakCvars.go, List.map_cons, List.map_nil]
-  | var a x => cases x <;> simp only [CaptureSet.rename, Var.rename, peakCvars.go, List.map_nil]
+  | union c1 c2 ih1 ih2 =>
+    simp only [CapyCaptureSet.rename, peakCvars.go, List.map_append, ih1, ih2]
+  | cvar a c => simp only [CapyCaptureSet.rename, peakCvars.go, List.map_cons, List.map_nil]
+  | var a x => cases x <;> simp only [CapyCaptureSet.rename, Var.rename, peakCvars.go, List.map_nil]
 
 theorem peakCvars_rename {s1 s2 : Sig} {fs : Rename s1 s2}
-    (hfs : Function.Injective (fs.var (k := .cvar))) (P : PeakSet s1) :
+    (hfs : Function.Injective (fs.var (k := .cvar))) (P : CapyPeakSet s1) :
     peakCvars (P.rename fs) = (peakCvars P).map fs.var := by
-  simp only [peakCvars, PeakSet.rename, peakCvars.go_rename]
+  simp only [peakCvars, CapyPeakSet.rename, peakCvars.go_rename]
   exact dedup_map_injective hfs _
 
 theorem accessedAt.go_rename {s1 s2 : Sig} {fs : Rename s1 s2}
-    (hfs : Function.Injective (fs.var (k := .cvar))) {c : BVar s1 .cvar} (cs : CaptureSet s1) :
+    (hfs : Function.Injective (fs.var (k := .cvar))) {c : BVar s1 .cvar} (cs : CapyCaptureSet s1) :
     accessedAt.go (fs.var c) (cs.rename fs) = accessedAt.go c cs := by
   induction cs with
   | empty => rfl
-  | union c1 c2 ih1 ih2 => simp only [CaptureSet.rename, accessedAt.go, ih1, ih2]
-  | cvar a c' => simp only [CaptureSet.rename, accessedAt.go, hfs.eq_iff]
-  | var a x => cases x <;> simp only [CaptureSet.rename, Var.rename, accessedAt.go]
+  | union c1 c2 ih1 ih2 => simp only [CapyCaptureSet.rename, accessedAt.go, ih1, ih2]
+  | cvar a c' => simp only [CapyCaptureSet.rename, accessedAt.go, hfs.eq_iff]
+  | var a x => cases x <;> simp only [CapyCaptureSet.rename, Var.rename, accessedAt.go]
 
 theorem accessedAt_rename {s1 s2 : Sig} {fs : Rename s1 s2}
-    (hfs : Function.Injective (fs.var (k := .cvar))) (P : PeakSet s1) (c : BVar s1 .cvar) :
+    (hfs : Function.Injective (fs.var (k := .cvar))) (P : CapyPeakSet s1) (c : BVar s1 .cvar) :
     accessedAt (P.rename fs) (fs.var c) = accessedAt P c := by
-  simp only [accessedAt, PeakSet.rename, accessedAt.go_rename hfs]
+  simp only [accessedAt, CapyPeakSet.rename, accessedAt.go_rename hfs]
 
 theorem peakItem_rename {s1 s2 : Sig} {fs : Rename s1 s2}
-    (hfs : Function.Injective (fs.var (k := .cvar))) (P : PeakSet s1) (c : BVar s1 .cvar) :
+    (hfs : Function.Injective (fs.var (k := .cvar))) (P : CapyPeakSet s1) (c : BVar s1 .cvar) :
     peakItem (P.rename fs) (fs.var c) = (peakItem P c).rename fs := by
   simp only [peakItem, accessedAt_rename hfs]
   generalize accessedAt P c = l
   induction l with
   | nil => rfl
-  | cons a as ih => simp only [List.foldr_cons, CaptureSet.rename, ih]; rfl
+  | cons a as ih => simp only [List.foldr_cons, CapyCaptureSet.rename, ih]; rfl
 
 /-- The `peakSepCtx` fold fuses with `SepCtx.rename` through the injective source
     renaming and the `srcCtx` morphism (`peakItem_rename` + `compile_mapsTo`). -/
@@ -451,11 +455,12 @@ theorem peakSepCtx_foldl_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
     (hfs : Function.Injective (fs.var (k := .cvar)))
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
-    (P : PeakSet s1) :
+    (P : CapyPeakSet s1) :
     ∀ (l : List (BVar s1 .cvar)) (acc1 : SepCtx t1) (acc2 : SepCtx t2), acc2 = acc1.rename ft →
       (l.map fs.var).foldl
-          (fun K c => .cons K (CaptureSet.compile (peakItem (P.rename fs) c) sctx2)) acc2
-        = ((l.foldl (fun K c => .cons K (CaptureSet.compile (peakItem P c) sctx1)) acc1).rename ft)
+          (fun K c => .cons K (CapyCaptureSet.compile (peakItem (P.rename fs) c) sctx2)) acc2
+        = ((l.foldl (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) sctx1))
+            acc1).rename ft)
   | [], _, _, hacc => by simpa using hacc
   | c :: cs, acc1, acc2, hacc => by
     simp only [List.map_cons, List.foldl_cons]
@@ -463,14 +468,14 @@ theorem peakSepCtx_foldl_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
     simp only [SepCtx.rename, hacc]
     congr 1
     rw [peakItem_rename hfs]
-    exact CaptureSet.compile_mapsTo hcvar hvar (peakItem P c)
+    exact CapyCaptureSet.compile_mapsTo hcvar hvar (peakItem P c)
 
 theorem peakSepCtx_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1} {sctx2 : SrcCtx s1' t2}
     {fs : Rename s1 s1'} {ft : Rename t1 t2}
     (hfs : Function.Injective (fs.var (k := .cvar)))
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
-    (P : PeakSet s1) :
+    (P : CapyPeakSet s1) :
     peakSepCtx (P.rename fs) sctx2 = (peakSepCtx P sctx1).rename ft := by
   simp only [peakSepCtx, peakCvars_rename hfs]
   exact peakSepCtx_foldl_mapsTo hfs hcvar hvar P (peakCvars P) .empty .empty rfl
@@ -487,7 +492,7 @@ theorem peakSepCtx_peakset_mapsTo {s1 s1' t1 t2 : Sig}
     (hfs : Function.Injective (fs.var (k := .cvar)))
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
-    (W : CaptureSet s1) :
+    (W : CapyCaptureSet s1) :
     peakSepCtx (CapyCaptureSet.peakset Γ2 (W.rename fs)) sctx2
       = (peakSepCtx (CapyCaptureSet.peakset Γ1 W) sctx1).rename ft := by
   rw [hcapy.peakset]
@@ -510,13 +515,16 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
   case case3 => intro _ _ _ _ _ _ _; simp only [CapyTy.rename, CapyTy.compile, Ty.rename]
   case case4 =>
     intro _ _ _ _ _ _ hm
-    simp only [CapyTy.rename, CapyTy.compile, Ty.rename, CaptureSet.compile_mapsTo hm.cvar hm.var]
+    simp only [CapyTy.rename, CapyTy.compile, Ty.rename,
+      CapyCaptureSet.compile_mapsTo hm.cvar hm.var]
   case case5 =>
     intro _ _ _ _ _ _ hm
-    simp only [CapyTy.rename, CapyTy.compile, Ty.rename, CaptureSet.compile_mapsTo hm.cvar hm.var]
+    simp only [CapyTy.rename, CapyTy.compile, Ty.rename,
+      CapyCaptureSet.compile_mapsTo hm.cvar hm.var]
   case case6 =>
     intro _ _ _ _ _ _ hm
-    simp only [CapyTy.rename, CapyTy.compile, Ty.rename, CaptureSet.compile_mapsTo hm.cvar hm.var]
+    simp only [CapyTy.rename, CapyTy.compile, Ty.rename,
+      CapyCaptureSet.compile_mapsTo hm.cvar hm.var]
   case case7 =>
     rename_i ih; intro s1' s2' ctx2 fs ft hinj hm
     simp only [CapyTy.rename, CapyTy.compile, Ty.rename]
@@ -540,20 +548,20 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
         (b := placeholderBinding .cvar)).weakenTarget (b := placeholderBinding .var)).consVar
         (T := .top) (bv := some .here) (cs := .cvar (.M .epsilon) (.there .here))
     have hW : (((csv.rename fs).rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))
-          ∪ CaptureSet.var (.M .epsilon) (.bound .here) : CaptureSet (s1',C,x))
+          ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here) : CapyCaptureSet (s1',C,x))
         = ((((csv.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var)))
-          ∪ CaptureSet.var (.M .epsilon) (.bound .here)).rename fs.lift.lift) := by
-      simp only [CaptureSet.rename, Var.rename]
-      rw [CaptureSet.weaken_rename_comm, CaptureSet.weaken_rename_comm]
+          ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here)).rename fs.lift.lift) := by
+      simp only [CapyCaptureSet.rename, Var.rename]
+      rw [CapyCaptureSet.weaken_rename_comm, CapyCaptureSet.weaken_rename_comm]
       rfl
     have hcore : (Tdom.rename fs.lift).rename (Rename.succ (k := .var))
         = (Tdom.rename (Rename.succ (k := .var))).rename fs.lift.lift :=
       CapyTy.weaken_rename_comm.symm
     have hAdom : (((Tdom.rename fs.lift : CapyTy .capt (s1',C)).rename
           (Rename.succ (k := .var))).refineCaptureSet
-          (CaptureSet.var (.M .epsilon) (.bound .here)) : CapyTy .capt (s1',C,x))
+          (CapyCaptureSet.var (.M .epsilon) (.bound .here)) : CapyTy .capt (s1',C,x))
         = (((Tdom.rename (Rename.succ (k := .var))).refineCaptureSet
-          (CaptureSet.var (.M .epsilon) (.bound .here))).rename fs.lift.lift) := by
+          (CapyCaptureSet.var (.M .epsilon) (.bound .here))).rename fs.lift.lift) := by
       rw [CapyTy.refineCaptureSet_rename, ← hcore]
       rfl
     simp (config := { zetaDelta := true }) only [CapyTy.rename, CapyTy.compile, Ty.rename]
@@ -563,13 +571,13 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
     congr 1
     · congr 1
       rw [CapyTy.captureSet_rename]
-      exact CaptureSet.compile_mapsTo hmB.cvar hmB.var _
+      exact CapyCaptureSet.compile_mapsTo hmB.cvar hmB.var _
     · congr 1
       congr 1
       · exact ihDom hinj.lift.lift hmDom
       · congr 1
         congr 1
-        · exact CaptureSet.compile_mapsTo hmLock.cvar hmLock.var _
+        · exact CapyCaptureSet.compile_mapsTo hmLock.cvar hmLock.var _
         · simp only [ModalCtx.rename, MutabilityCtx.rename]
           congr 1
           exact peakSepCtx_peakset_mapsTo hmLock.capy (hinj.lift.lift .cvar)
@@ -582,7 +590,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
     · exact ihS hinj hm
     · congr 1
       congr 1
-      · exact CaptureSet.compile_mapsTo hm.weakenTarget.cvar hm.weakenTarget.var _
+      · exact CapyCaptureSet.compile_mapsTo hm.weakenTarget.cvar hm.weakenTarget.var _
       · simp only [ModalCtx.rename, MutabilityCtx.rename]
         congr 1
         rw [hm.capy.peakset]
@@ -595,7 +603,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
     · exact CapyCaptureBound.compile_mapsTo hm.cvar hm.var _
     · congr 1
       congr 1
-      · exact CaptureSet.compile_mapsTo hm.weakenTarget.cvar hm.weakenTarget.var _
+      · exact CapyCaptureSet.compile_mapsTo hm.weakenTarget.cvar hm.weakenTarget.var _
       · simp only [ModalCtx.rename]
         congr 1
         · rw [hm.capy.peakset]
