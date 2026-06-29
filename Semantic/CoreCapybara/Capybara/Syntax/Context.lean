@@ -210,6 +210,10 @@ def CapyCaptureSet.peaks : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s
 | _, .cvar m c => .cvar m c
 | _, .var _ (.free _) => {}
 | Γ, .var m (.bound x) => peaksVarBound Γ m x
+-- A pseudo-peak HALTS the computation: it is already a single frozen peak, so we
+-- return it verbatim without recursing into its content.  This is what makes
+-- `peaks` commute with capture substitution.
+| _, .pseudo_peak C => .pseudo_peak C
 termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 end
 
@@ -248,6 +252,9 @@ theorem CapyCaptureSet.peaks_peaksOnly (Γ : CapyCtx s) (cs : CapyCaptureSet s) 
   | Γ, .var m (.bound x) =>
     rw [CapyCaptureSet.peaks]
     exact CapyCaptureSet.peaksVarBound_peaksOnly Γ m x
+  | _, .pseudo_peak C =>
+    rw [CapyCaptureSet.peaks]
+    exact CapyCaptureSet.PeaksOnly.pseudo_peak
 termination_by (sizeOf Γ, sizeOf cs)
 end
 
@@ -290,6 +297,8 @@ theorem CapyCaptureSet.peaks_rename_succ_eq
     rw [ih1, ih2]
     rfl
   | cvar m c =>
+    simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
+  | pseudo_peak C0 ih =>
     simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
   | var m v =>
     cases v with
@@ -349,6 +358,7 @@ theorem CapyCaptureSet.peaks_applyRO_comm (Γ : CapyCtx s) (C : CapyCaptureSet s
     rw [peaks_applyRO_comm Γ C1, peaks_applyRO_comm Γ C2]
     rfl
   | _, .cvar _ _ => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
+  | _, .pseudo_peak C0 => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
   | _, .var _ (.free _) =>
     simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
     rfl
@@ -379,6 +389,7 @@ theorem CapyCaptureSet.peaks_applyDrop_comm (Γ : CapyCtx s) (C : CapyCaptureSet
     rw [peaks_applyDrop_comm Γ C1, peaks_applyDrop_comm Γ C2]
     rfl
   | _, .cvar _ _ => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
+  | _, .pseudo_peak C0 => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
   | _, .var _ (.free _) =>
     simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
     rfl

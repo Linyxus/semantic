@@ -186,6 +186,7 @@ theorem CapyCaptureSet.peaks_renamesTo {s1 s2 : Sig}
     CapyCaptureSet.peaks Γ2 (W.rename f) = (CapyCaptureSet.peaks Γ1 W).rename f := by
   match Γ1, W, h with
   | _, .empty, _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
+  | _, .pseudo_peak W0, _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
   | _, .union W1 W2, h =>
     simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
     rw [peaks_renamesTo h W1, peaks_renamesTo h W2]
@@ -369,6 +370,7 @@ theorem CapyCaptureSet.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1
         hvar x, CaptureSet.applyAccess_rename]
     | free n =>
       simp only [CapyCaptureSet.rename, CaptureSet.rename, Var.rename, CapyCaptureSet.compile]
+  | pseudo_peak _ _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.compile, CaptureSet.rename]
 
 theorem CapyCaptureBound.compile_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
     {sctx2 : SrcCtx s1' t2} {fs : Rename s1 s1'} {ft : Rename t1 t2}
@@ -418,6 +420,7 @@ theorem peakCvars.go_rename {s1 s2 : Sig} {fs : Rename s1 s2} (cs : CapyCaptureS
     simp only [CapyCaptureSet.rename, peakCvars.go, List.map_append, ih1, ih2]
   | cvar a c => simp only [CapyCaptureSet.rename, peakCvars.go, List.map_cons, List.map_nil]
   | var a x => cases x <;> simp only [CapyCaptureSet.rename, Var.rename, peakCvars.go, List.map_nil]
+  | pseudo_peak _ _ => simp only [CapyCaptureSet.rename, peakCvars.go, List.map_nil]
 
 theorem peakCvars_rename {s1 s2 : Sig} {fs : Rename s1 s2}
     (hfs : Function.Injective (fs.var (k := .cvar))) (P : CapyPeakSet s1) :
@@ -433,6 +436,7 @@ theorem accessedAt.go_rename {s1 s2 : Sig} {fs : Rename s1 s2}
   | union c1 c2 ih1 ih2 => simp only [CapyCaptureSet.rename, accessedAt.go, ih1, ih2]
   | cvar a c' => simp only [CapyCaptureSet.rename, accessedAt.go, hfs.eq_iff]
   | var a x => cases x <;> simp only [CapyCaptureSet.rename, Var.rename, accessedAt.go]
+  | pseudo_peak _ _ => simp only [CapyCaptureSet.rename, accessedAt.go]
 
 theorem accessedAt_rename {s1 s2 : Sig} {fs : Rename s1 s2}
     (hfs : Function.Injective (fs.var (k := .cvar))) (P : CapyPeakSet s1) (c : BVar s1 .cvar) :

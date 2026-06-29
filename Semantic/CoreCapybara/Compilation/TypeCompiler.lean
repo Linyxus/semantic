@@ -9,6 +9,13 @@ def CapyCaptureSet.compile : CapyCaptureSet s1 -> SrcCtx s1 s2 -> CaptureSet s2
 | .cvar a c, ctx => .cvar a (ctx.lookupCVar c)
 | .var a (.bound x), ctx => (ctx.lookupVar x).applyAccess a
 | .var a (.free n), _ => .var a (.free n)
+-- PLACEHOLDER: a pseudo-peak is currently *invisible* to compilation (it compiles
+-- to `∅` and contributes no target atoms).  The target `CaptureSet` has no
+-- `pseudo_peak`; making the separation lock treat a `pseudo_peak` as a single
+-- frozen item (the actual B2c-collapsing step) is the next phase.  Nothing
+-- produces a `pseudo_peak` yet (substitution does not introduce one), so this arm
+-- is currently dead code — it exists only to keep the match total.
+| .pseudo_peak _, _ => .empty
 
 /-- Compiles a source capture bound into the target.  The mutability annotation
     on an `unbound` source bound has no counterpart in Core's nullary `.unbound`,
@@ -59,6 +66,9 @@ where
   | .union c1 c2 => go c1 ++ go c2
   | .cvar _ c => [c]
   | .var _ _ => []
+  -- PLACEHOLDER (see `CapyCaptureSet.compile`): a pseudo-peak is invisible to the
+  -- lock machinery for now (contributes no peak cvars).
+  | .pseudo_peak _ => []
 
 /-- The access modes at which a given capture variable is accessed in a peak
     set. -/
@@ -70,6 +80,9 @@ where
   | .union c1 c2 => go c1 ++ go c2
   | .cvar a c' => if c' = c then [a] else []
   | .var _ _ => []
+  -- PLACEHOLDER (see `CapyCaptureSet.compile`): a pseudo-peak is invisible to the
+  -- lock machinery for now (records no access modes).
+  | .pseudo_peak _ => []
 
 /-- The capture set holding all access-mode occurrences of a single peak `c` in a
     peak set, e.g. `{.ro c, .drop c}`. -/

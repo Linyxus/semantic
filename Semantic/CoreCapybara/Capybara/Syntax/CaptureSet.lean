@@ -20,6 +20,14 @@ inductive CapyCaptureSet : Sig -> Type where
 | union : CapyCaptureSet s -> CapyCaptureSet s -> CapyCaptureSet s
 | var : Access -> Var .var s -> CapyCaptureSet s
 | cvar : Access -> BVar s .cvar -> CapyCaptureSet s
+/-- A **pseudo-peak**: a capture set that `peaks` HALTS at (treating it as a single
+    frozen peak instead of recursing into its content).  It is a source-only
+    construct — the target `CaptureSet` has no counterpart — introduced so that
+    `peaks` commutes with capture substitution: substituting a capture variable
+    `c ↦ D` produces one frozen `pseudo_peak D` rather than expanding `D`'s atoms
+    into the surrounding peak set (which is what merged/un-merged the lock items
+    differently and blocked B2c). -/
+| pseudo_peak : CapyCaptureSet s -> CapyCaptureSet s
 
 /-- Provides `{}` notation for the empty capture set. -/
 @[simp]
@@ -39,6 +47,7 @@ def CapyCaptureSet.rename : CapyCaptureSet s1 -> Rename s1 s2 -> CapyCaptureSet 
 | .union cs1 cs2, ρ => .union (cs1.rename ρ) (cs2.rename ρ)
 | .var m x, ρ => .var m (x.rename ρ)
 | .cvar m x, ρ => .cvar m (ρ.var x)
+| .pseudo_peak C, ρ => .pseudo_peak (C.rename ρ)
 
 /-- Renaming by the identity renaming leaves a capture set unchanged. -/
 theorem CapyCaptureSet.rename_id {cs : CapyCaptureSet s} :
@@ -48,6 +57,7 @@ theorem CapyCaptureSet.rename_id {cs : CapyCaptureSet s} :
   case union ih1 ih2 => simp [CapyCaptureSet.rename, ih1, ih2]
   case var m x => cases x <;> rfl
   case cvar m x => simp [CapyCaptureSet.rename, Rename.id]
+  case pseudo_peak C ih => simp [CapyCaptureSet.rename, ih]
 
 /-- Renaming distributes over composition of renamings. -/
 theorem CapyCaptureSet.rename_comp {cs : CapyCaptureSet s1} {f : Rename s1 s2} {g : Rename s2 s3} :
@@ -60,6 +70,7 @@ theorem CapyCaptureSet.rename_comp {cs : CapyCaptureSet s1} {f : Rename s1 s2} {
     · simp [CapyCaptureSet.rename, Var.rename]; rfl
     · simp [CapyCaptureSet.rename, Var.rename]
   case cvar m x => simp [CapyCaptureSet.rename, Rename.comp]
+  case pseudo_peak C ih => simp [CapyCaptureSet.rename, ih]
 
 /-- Applies read-only mutability to all elements in a capture set. -/
 def CapyCaptureSet.applyRO : CapyCaptureSet s -> CapyCaptureSet s
@@ -67,6 +78,7 @@ def CapyCaptureSet.applyRO : CapyCaptureSet s -> CapyCaptureSet s
 | .union cs1 cs2 => .union (cs1.applyRO) (cs2.applyRO)
 | .var a x => .var a.applyRO x
 | .cvar a x => .cvar a.applyRO x
+| .pseudo_peak C => .pseudo_peak C.applyRO
 
 /-- Applies a mutability to all elements in a capture set.
   This is used to preserve mutability during substitution. -/
@@ -97,6 +109,7 @@ theorem CapyCaptureSet.applyRO_applyRO {cs : CapyCaptureSet s} :
   | union cs1 cs2 ih1 ih2 => simp only [ih1, ih2, CapyCaptureSet.applyRO_union]
   | var a x => simp only [CapyCaptureSet.applyRO, Access.applyRO_idempotent]
   | cvar a x => simp only [CapyCaptureSet.applyRO, Access.applyRO_idempotent]
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyRO, ih]
 
 /-- Applying applyMut after applyRO simplifies. -/
 @[simp]
@@ -121,6 +134,7 @@ theorem CapyCaptureSet.applyRO_rename {cs : CapyCaptureSet s1} {f : Rename s1 s2
     simp only [CapyCaptureSet.applyRO_union, CapyCaptureSet.rename, ih1, ih2]
   | var a x => simp only [CapyCaptureSet.rename, CapyCaptureSet.applyRO]
   | cvar a x => simp only [CapyCaptureSet.rename, CapyCaptureSet.applyRO]
+  | pseudo_peak C ih => simp only [CapyCaptureSet.rename, CapyCaptureSet.applyRO, ih]
 
 /-- applyMut distributes over rename. -/
 theorem CapyCaptureSet.applyMut_rename {cs : CapyCaptureSet s1} {f : Rename s1 s2}
@@ -135,6 +149,7 @@ def CapyCaptureSet.applyDrop : CapyCaptureSet s -> CapyCaptureSet s
 | .union cs1 cs2 => .union (cs1.applyDrop) (cs2.applyDrop)
 | .var _ x => .var .drop x
 | .cvar _ x => .cvar .drop x
+| .pseudo_peak C => .pseudo_peak C.applyDrop
 
 /-- Applies an access mode to all elements: a mutability acts via `applyMut`,
     while `drop` sets every element to `drop` mode via `applyDrop`. -/
@@ -158,6 +173,7 @@ def CapyCaptureSet.consumed : CapyCaptureSet s -> CapyCaptureSet s
 | .cvar .drop c => .cvar .drop c
 | .cvar (.M _) _ => .empty
 | .var _ _ => .empty
+| .pseudo_peak C => .pseudo_peak C.consumed
 
 /-- applyDrop distributes over rename. -/
 theorem CapyCaptureSet.applyDrop_rename {cs : CapyCaptureSet s1} {f : Rename s1 s2} :
@@ -167,6 +183,7 @@ theorem CapyCaptureSet.applyDrop_rename {cs : CapyCaptureSet s1} {f : Rename s1 
   | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.rename, ih1, ih2]
   | var _ x => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.rename]
   | cvar _ x => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.rename]
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.rename, ih]
 
 /-- applyAccess distributes over rename. -/
 theorem CapyCaptureSet.applyAccess_rename {cs : CapyCaptureSet s1} {f : Rename s1 s2} {a : Access} :
@@ -183,6 +200,7 @@ theorem CapyCaptureSet.applyAccess_rename {cs : CapyCaptureSet s1} {f : Rename s
   | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.applyRO, ih1, ih2]
   | var _ x => rfl
   | cvar _ x => rfl
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.applyRO, ih]
 
 /-- applyRO commutes with applyAccess by reading off the read-only image of the mode. -/
 theorem CapyCaptureSet.applyAccess_applyRO {cs : CapyCaptureSet s} {a : Access} :
@@ -204,6 +222,7 @@ theorem CapyCaptureSet.applyAccess_applyRO {cs : CapyCaptureSet s} {a : Access} 
   | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.applyDrop, ih1, ih2]
   | var _ x => rfl
   | cvar _ x => rfl
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.applyDrop, ih]
 
 /-- applyDrop is idempotent. -/
 @[simp] theorem CapyCaptureSet.applyDrop_applyDrop {cs : CapyCaptureSet s} :
@@ -213,6 +232,7 @@ theorem CapyCaptureSet.applyAccess_applyRO {cs : CapyCaptureSet s} {a : Access} 
   | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.applyDrop, ih1, ih2]
   | var _ x => rfl
   | cvar _ x => rfl
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyDrop, ih]
 
 /-- applyDrop absorbs a preceding applyAccess (it overwrites every mode). -/
 @[simp] theorem CapyCaptureSet.applyAccess_applyDrop {cs : CapyCaptureSet s} {a : Access} :
@@ -258,6 +278,7 @@ inductive CapyCaptureSet.IsClosed : CapyCaptureSet s -> Prop where
     CapyCaptureSet.IsClosed (cs1.union cs2)
 | cvar : CapyCaptureSet.IsClosed (.cvar m x)
 | var_bound : CapyCaptureSet.IsClosed (.var m (.bound x))
+| pseudo_peak : CapyCaptureSet.IsClosed C -> CapyCaptureSet.IsClosed (.pseudo_peak C)
 
 /-- applyRO preserves closedness. -/
 theorem CapyCaptureSet.applyRO_isClosed {cs : CapyCaptureSet s}
@@ -272,6 +293,9 @@ theorem CapyCaptureSet.applyRO_isClosed {cs : CapyCaptureSet s}
     exact IsClosed.var_bound
   | cvar m' c =>
     exact IsClosed.cvar
+  | pseudo_peak C ih =>
+    cases hc with | pseudo_peak h =>
+    exact IsClosed.pseudo_peak (ih h)
 
 /-- applyMut preserves closedness. -/
 theorem CapyCaptureSet.applyMut_isClosed {cs : CapyCaptureSet s} {m : Mutability}
@@ -290,6 +314,7 @@ theorem CapyCaptureSet.applyDrop_isClosed {cs : CapyCaptureSet s}
   | var m' x =>
     cases hc with | var_bound => exact IsClosed.var_bound
   | cvar m' c => exact IsClosed.cvar
+  | pseudo_peak C ih => cases hc with | pseudo_peak h => exact IsClosed.pseudo_peak (ih h)
 
 /-- applyAccess preserves closedness. -/
 theorem CapyCaptureSet.applyAccess_isClosed {cs : CapyCaptureSet s} {a : Access}
@@ -314,6 +339,10 @@ theorem CapyCaptureSet.rename_isClosed {cs : CapyCaptureSet s1} {f : Rename s1 s
   | cvar m' c =>
     simp only [CapyCaptureSet.rename]
     exact IsClosed.cvar
+  | pseudo_peak C ih =>
+    cases hc with | pseudo_peak h =>
+    simp only [CapyCaptureSet.rename]
+    exact IsClosed.pseudo_peak (ih h)
 
 /-- Whether a capture set contains only peaks (capture variables). -/
 inductive CapyCaptureSet.PeaksOnly : CapyCaptureSet s -> Prop where
@@ -328,6 +357,9 @@ inductive CapyCaptureSet.PeaksOnly : CapyCaptureSet s -> Prop where
 | cvar {m : Access} {c : BVar s .cvar} :
   ---------------------
   PeaksOnly (.cvar m c)
+| pseudo_peak {C : CapyCaptureSet s} :
+  ---------------------
+  PeaksOnly (.pseudo_peak C)
 
 structure CapyPeakSet (s : Sig) where
   cs : CapyCaptureSet s
@@ -340,15 +372,11 @@ theorem CapyCaptureSet.PeaksOnly.rename {cs : CapyCaptureSet s} (h : cs.PeaksOnl
   | empty => exact PeaksOnly.empty
   | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
   | cvar => exact PeaksOnly.cvar
+  | pseudo_peak => exact PeaksOnly.pseudo_peak
 
-/-- A peaks-only capture set is closed: it consists of bound capture
-    variables only. -/
-theorem CapyCaptureSet.PeaksOnly.isClosed {cs : CapyCaptureSet s} (h : cs.PeaksOnly) :
-    cs.IsClosed := by
-  induction h with
-  | empty => exact IsClosed.empty
-  | union _ _ ih1 ih2 => exact IsClosed.union ih1 ih2
-  | cvar => exact IsClosed.cvar
+-- NOTE: `PeaksOnly → IsClosed` no longer holds: `pseudo_peak C` is `PeaksOnly`
+-- unconditionally (a frozen peak is a peak) but is closed only when `C` is.  The
+-- old `CapyCaptureSet.PeaksOnly.isClosed` theorem (unused) is therefore dropped.
 
 /-- PeaksOnly is preserved under applyRO. -/
 theorem CapyCaptureSet.PeaksOnly.applyRO {cs : CapyCaptureSet s} (h : cs.PeaksOnly) :
@@ -357,6 +385,7 @@ theorem CapyCaptureSet.PeaksOnly.applyRO {cs : CapyCaptureSet s} (h : cs.PeaksOn
   | empty => exact PeaksOnly.empty
   | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
   | cvar => exact PeaksOnly.cvar
+  | pseudo_peak => exact PeaksOnly.pseudo_peak
 
 /-- PeaksOnly is preserved under applyMut. -/
 theorem CapyCaptureSet.PeaksOnly.applyMut {cs : CapyCaptureSet s} (h : cs.PeaksOnly)
@@ -372,6 +401,7 @@ theorem CapyCaptureSet.PeaksOnly.applyDrop {cs : CapyCaptureSet s} (h : cs.Peaks
   | empty => exact PeaksOnly.empty
   | union _ _ ih1 ih2 => exact PeaksOnly.union ih1 ih2
   | cvar => exact PeaksOnly.cvar
+  | pseudo_peak => exact PeaksOnly.pseudo_peak
 
 /-- PeaksOnly is preserved under applyAccess. -/
 theorem CapyCaptureSet.PeaksOnly.applyAccess {cs : CapyCaptureSet s} (h : cs.PeaksOnly)
@@ -394,6 +424,7 @@ theorem CapyCaptureSet.PeaksOnly.consumed {cs : CapyCaptureSet s} (h : cs.PeaksO
     cases m with
     | M _ => exact PeaksOnly.empty
     | drop => exact PeaksOnly.cvar
+  | pseudo_peak => exact PeaksOnly.pseudo_peak
 
 /-- The consumed (`.drop`-mode) peaks of a peak set. -/
 def CapyPeakSet.consumed (P : CapyPeakSet s) : CapyPeakSet s :=
@@ -511,6 +542,9 @@ private theorem union_coveredby_left_aux {AB A B C : CapyCaptureSet s}
       | cvar m c =>
         simp only [CapyCaptureSet.applyRO] at he
         contradiction
+      | pseudo_peak D =>
+        simp only [CapyCaptureSet.applyRO] at he
+        contradiction
   | empty =>
     contradiction
   | union_left h1 _ _ _ =>
@@ -563,6 +597,9 @@ private theorem union_coveredby_right_aux {AB A B C : CapyCaptureSet s}
         simp only [CapyCaptureSet.applyRO] at he
         contradiction
       | cvar m c =>
+        simp only [CapyCaptureSet.applyRO] at he
+        contradiction
+      | pseudo_peak D =>
         simp only [CapyCaptureSet.applyRO] at he
         contradiction
   | empty =>
@@ -656,6 +693,7 @@ private theorem cvar_subset_applyRO {a : Access} {c : BVar s .cvar} {D : CapyCap
     cases hsub
     simp only [CapyCaptureSet.applyRO]
     exact .refl
+  | pseudo_peak D ih => cases hsub
 
 /-- A cvar inside `D.applyRO` comes from an original cvar in `D`, with its mode the
     read-only image of that original mode. -/
@@ -681,6 +719,9 @@ private theorem cvar_subset_of_applyRO {a : Access} {c : BVar s .cvar} {D : Capy
     simp only [CapyCaptureSet.applyRO] at hsub
     cases hsub
     exact ⟨m', .refl, rfl⟩
+  | pseudo_peak D ih =>
+    simp only [CapyCaptureSet.applyRO] at hsub
+    cases hsub
 
 /-- If a cvar is a subset of C1 and C1 is covered by C2, then the cvar (possibly with
     a weaker access mode) is a subset of C2. -/

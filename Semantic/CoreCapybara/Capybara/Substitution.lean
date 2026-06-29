@@ -46,6 +46,7 @@ def CapyCaptureSet.subst : CapyCaptureSet s1 -> CapySubst s1 s2 -> CapyCaptureSe
 | .union cs1 cs2, σ => .union ((CapyCaptureSet.subst cs1) σ) ((CapyCaptureSet.subst cs2) σ)
 | .var m x, σ => .var m ((CapyVar.subst x) σ)
 | .cvar m x, σ => (σ.cvar x).applyAccess m
+| .pseudo_peak C, σ => .pseudo_peak ((CapyCaptureSet.subst C) σ)
 
 /-- Applies a substitution to a capture bound. -/
 def CapyCaptureBound.subst : CapyCaptureBound s1 -> CapySubst s1 s2 -> CapyCaptureBound s2
@@ -187,6 +188,7 @@ def CapyCaptureSet.dropVar : CapyCaptureSet (s,x) -> CapyCaptureSet s
 | .var a (.bound (.there y)) => .var a (.bound y)
 | .var a (.free n) => .var a (.free n)
 | .cvar a (.there c) => .cvar a c
+| .pseudo_peak C => .pseudo_peak (CapyCaptureSet.dropVar C)
 
 /-- The *interfere set* of a type: an over-approximation of the
     capture set that values of the type may use, directly or indirectly.
@@ -343,6 +345,8 @@ theorem CapyCaptureSet.weaken_subst_comm_liftMany
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih1, ih2]
+  | pseudo_peak C ih =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih]
   | var m x =>
     simp only [CapyCaptureSet.subst, CapyCaptureSet.rename]
     exact congrArg (CapyCaptureSet.var m) CapyVar.weaken_subst_comm_liftMany
@@ -453,6 +457,8 @@ theorem CapyCaptureSet.weaken_subst_comm_base {cs : CapyCaptureSet s1} {σ : Cap
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih1, ih2]
+  | pseudo_peak C ih =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih]
   | var m x =>
     simp only [CapyCaptureSet.subst, CapyCaptureSet.rename]
     exact congrArg (CapyCaptureSet.var m) CapyVar.weaken_subst_comm_base
@@ -530,6 +536,8 @@ theorem CapyCaptureSet.applyRO_subst {cs : CapyCaptureSet s1} {σ : CapySubst s1
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [CapyCaptureSet.applyRO, CapyCaptureSet.subst, ih1, ih2]
+  | pseudo_peak C ih =>
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.subst, ih]
   | var _ x =>
     simp only [CapyCaptureSet.applyRO, CapyCaptureSet.subst]
   | cvar _ x =>
@@ -547,6 +555,7 @@ theorem CapyCaptureSet.applyDrop_subst {cs : CapyCaptureSet s1} {σ : CapySubst 
   induction cs with
   | empty => rfl
   | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.subst, ih1, ih2]
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.subst, ih]
   | var _ x => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.subst]
   | cvar _ x =>
     simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.subst, CapyCaptureSet.applyAccess_drop,
@@ -569,6 +578,8 @@ theorem CapyCaptureSet.subst_comp
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [CapyCaptureSet.subst, ih1, ih2]
+  | pseudo_peak C ih =>
+    simp only [CapyCaptureSet.subst, ih]
   | var m x =>
     simp only [CapyCaptureSet.subst]
     exact congrArg (CapyCaptureSet.var m) CapyVar.subst_comp
@@ -667,6 +678,8 @@ theorem CapyCaptureSet.subst_id {cs : CapyCaptureSet s} :
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [CapyCaptureSet.subst, ih1, ih2]
+  | pseudo_peak C ih =>
+    simp only [CapyCaptureSet.subst, ih]
   | var m x =>
     simp only [CapyCaptureSet.subst, CapyVar.subst_id]
   | cvar m C =>
@@ -816,6 +829,8 @@ theorem CapyCaptureSet.subst_asSubst {cs : CapyCaptureSet s1} {f : Rename s1 s2}
   | empty => rfl
   | union cs1 cs2 ih1 ih2 =>
     simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih1, ih2]
+  | pseudo_peak C ih =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, ih]
   | var m x =>
     simp only [CapyCaptureSet.subst, CapyCaptureSet.rename, CapyVar.subst_asSubst]
   | cvar m C =>
@@ -1000,6 +1015,9 @@ theorem CapyCaptureSet.ground_rename_invariant {C : CapyCaptureSet {}} :
     | free n =>
       simp only [CapyCaptureSet.rename, Var.rename]
   | cvar m c => cases c
+  | pseudo_peak C0 ih =>
+    simp only [CapyCaptureSet.rename]
+    rw [ih]
 
 theorem CapyCaptureSet.ground_subst_invariant {C : CapyCaptureSet {}} :
   (CapyCaptureSet.subst C) σ = C := by
@@ -1013,6 +1031,9 @@ theorem CapyCaptureSet.ground_subst_invariant {C : CapyCaptureSet {}} :
     | bound bx => cases bx
     | free n => simp only [CapyCaptureSet.subst, CapyVar.subst]
   | cvar m c => cases c
+  | pseudo_peak C0 ih =>
+    simp only [CapyCaptureSet.subst]
+    rw [ih]
 
 /-- A substitution is closed if all its images are closed. -/
 structure CapySubst.IsClosed (σ : CapySubst s1 s2) : Prop where
@@ -1043,6 +1064,10 @@ def CapyCaptureSet.is_closed_subst {cs : CapyCaptureSet s1} {σ : CapySubst s1 s
   | cvar m C =>
     simp only [CapyCaptureSet.subst]
     exact CapyCaptureSet.applyAccess_isClosed (hsubst.cvar_closed C)
+  | pseudo_peak C ih =>
+    cases hc with | pseudo_peak h =>
+    simp only [CapyCaptureSet.subst]
+    exact CapyCaptureSet.IsClosed.pseudo_peak (ih h)
   | var m x =>
     cases hc with | var_bound =>
     rename_i bx
@@ -1072,6 +1097,9 @@ private theorem CapyCaptureSet.rename_closed_any {cs : CapyCaptureSet s1} {f : R
   | var x =>
     cases hc with | var_bound =>
     exact CapyCaptureSet.IsClosed.var_bound
+  | pseudo_peak C ih =>
+    cases hc with | pseudo_peak h =>
+    exact CapyCaptureSet.IsClosed.pseudo_peak (ih h)
 
 private theorem CapyCaptureBound.rename_closed_any {cb : CapyCaptureBound s1} {f : Rename s1 s2}
   (hc : cb.IsClosed) : (cb.rename f).IsClosed := by
@@ -1341,6 +1369,10 @@ theorem CapyCaptureSet.subst_closed_inv {cs : CapyCaptureSet s1} {σ : CapySubst
     | free n =>
       simp only [CapyCaptureSet.subst, CapyVar.subst] at hclosed
       cases hclosed
+  | pseudo_peak C ih =>
+    simp only [CapyCaptureSet.subst] at hclosed
+    cases hclosed with | pseudo_peak h =>
+    exact CapyCaptureSet.IsClosed.pseudo_peak (ih h)
 
 theorem CapyCaptureBound.subst_closed_inv {cb : CapyCaptureBound s1} {σ : CapySubst s1 s2}
   (hclosed : (cb.subst σ).IsClosed) :

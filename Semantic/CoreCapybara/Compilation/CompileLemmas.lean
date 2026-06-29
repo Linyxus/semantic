@@ -63,6 +63,7 @@ theorem CapyCaptureSet.compile_rename {cs : CapyCaptureSet s1} {ctx : SrcCtx s1 
       simp only [CapyCaptureSet.compile, SrcCtx.lookupVar_rename,
         CaptureSet.applyAccess_rename]
     | free n => rfl
+  | pseudo_peak _ _ => simp only [CapyCaptureSet.compile, CaptureSet.rename]
 
 /-- Source-side weakening peels against a `cons`: compiling `cs` weakened by a
     fresh *source* binder, through a context that begins with the matching binder
@@ -83,6 +84,7 @@ theorem CapyCaptureSet.compile_rename_succ_cons {cs : CapyCaptureSet s1} {rest :
       simp only [CapyCaptureSet.rename, Var.rename, Rename.succ, CapyCaptureSet.compile,
         SrcCtx.lookupVar]
     | free n => rfl
+  | pseudo_peak _ _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.compile]
 
 /-- The compiled *modal-lock capture field* `W = ⟦cs⟧ ∪ {param}` of an arrow
     type is insensitive to whether the latent capture is presented as the

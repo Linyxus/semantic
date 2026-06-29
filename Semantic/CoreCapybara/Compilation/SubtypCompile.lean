@@ -182,6 +182,8 @@ theorem CapyCaptureSet.compile_peaksOnly {cs : CapyCaptureSet s1} {sc : SrcCtx s
   | empty => exact CaptureSet.PeaksOnly.empty
   | union _ _ ih1 ih2 => exact CaptureSet.PeaksOnly.union ih1 ih2
   | cvar => exact CaptureSet.PeaksOnly.cvar
+  -- `pseudo_peak` compiles to `∅` (placeholder), which is `PeaksOnly`.
+  | pseudo_peak => simp only [CapyCaptureSet.compile]; exact CaptureSet.PeaksOnly.empty
 
 /-- Target peak-resolution fixes a `PeaksOnly` set (nothing left to resolve). -/
 theorem CaptureSet.peaks_of_peaksOnly {Γ : Ctx s} {cs : CaptureSet s}
@@ -233,8 +235,11 @@ theorem CapyCaptureSet.compile_cvar_subset_inv {s1 s2 : Sig} {cs : CapyCaptureSe
     | union_right_right h2 =>
       obtain ⟨c, hc, hsub⟩ := ih2 h2
       exact ⟨c, hc, CapyCaptureSet.Subset.union_right_right hsub⟩
-
-/-- **(A3) Compilation preserves `AccessOnly`.** -/
+  -- `pseudo_peak` compiles to `∅` (placeholder): a `.cvar` atom of `∅` is vacuous.
+  | pseudo_peak =>
+    intro a c' h
+    simp only [CapyCaptureSet.compile] at h
+    cases h
 theorem CapyCaptureSet.compile_accessOnly {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     (hcoh : ctx.Coherent) {D : CapyCaptureSet s1} (hD : D.IsClosed)
     (h : CapyCaptureSet.AccessOnly ctx.capyCtx D) :

@@ -147,6 +147,8 @@ theorem CapyCaptureSet.peaks_subst_mem {s1 s2 : Sig} {Γ : CapyCtx s2}
   | var m x =>
     simp only [CapyCaptureSet.subst] at h
     exact Or.inr ⟨x, m, h⟩
+  -- `subst`/`peaks` keep the pseudo-peak frozen; a `.cvar` atom cannot be `⊆` it.
+  | pseudo_peak _ _ => simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at h; cases h
 
 /-! ### Pure bounds
 
@@ -742,6 +744,7 @@ theorem accessedAt_go_subset {s : Sig} {c : BVar s .cvar} {a : Access} (cs : Cap
     · rename_i hcc; subst hcc; simp only [List.mem_singleton] at h; subst h; exact .refl
     · simp only [List.not_mem_nil] at h
   | var a' x => simp only [accessedAt.go] at h; cases h
+  | pseudo_peak _ _ => simp only [accessedAt.go] at h; cases h
 
 /-- Conversely, a `.cvar`-occurrence of `c` in `cs` records its mode in
     `accessedAt.go c cs`. -/
@@ -758,6 +761,7 @@ theorem accessedAt_go_mem {s : Sig} {c : BVar s .cvar} {a : Access} (cs : CapyCa
     cases h
     simp [accessedAt.go]
   | var a' x => cases h
+  | pseudo_peak _ _ => cases h
 
 /-- Every atom of a peak item is at the indexed cvar, and witnesses an occurrence
     in `P.cs`. -/
@@ -823,6 +827,7 @@ theorem cvar_subset_peakCvars_go {s : Sig} {c : BVar s .cvar} {a : Access} (cs :
     | union_right_right h2 => exact Or.inr (ih2 h2)
   | cvar a' c' => cases h; simp [peakCvars.go]
   | var a' x => cases h
+  | pseudo_peak _ _ => cases h
 
 /-- A `.cvar`-occurrence of `c` puts `c` among the (deduplicated) peak cvars. -/
 theorem cvar_mem_peakCvars {s : Sig} {P : CapyPeakSet s} {c : BVar s .cvar} {a : Access}
