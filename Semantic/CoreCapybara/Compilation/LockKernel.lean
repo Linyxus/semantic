@@ -75,7 +75,7 @@ theorem CapyCaptureSet.peaks_push_cong {s : Sig} {Γ1 Γ2 : CapyCtx s} {k : Kind
   | empty => simp only [CapyCaptureSet.peaks]
   | union W1 W2 ih1 ih2 => simp only [CapyCaptureSet.peaks]; rw [ih1, ih2]
   | cvar m c => simp only [CapyCaptureSet.peaks]
-  | pseudo_peak _ _ => simp only [CapyCaptureSet.peaks]
+  | pseudo_peak _ ih => simp only [CapyCaptureSet.peaks]; rw [ih]
   | var m x =>
     cases x with
     | free n => simp only [CapyCaptureSet.peaks]
@@ -103,7 +103,7 @@ theorem CapyCaptureSet.peaks_push_tvar_irrel {s : Sig} {Γ : CapyCtx s}
   | empty => simp only [CapyCaptureSet.peaks]
   | union W1 W2 ih1 ih2 => simp only [CapyCaptureSet.peaks]; rw [ih1, ih2]
   | cvar m c => simp only [CapyCaptureSet.peaks]
-  | pseudo_peak _ _ => simp only [CapyCaptureSet.peaks]
+  | pseudo_peak _ ih => simp only [CapyCaptureSet.peaks]; rw [ih]
   | var m x =>
     cases x with
     | free n => simp only [CapyCaptureSet.peaks]
@@ -126,7 +126,7 @@ theorem CapyCaptureSet.peaks_push_cvar_irrel {s : Sig} {Γ : CapyCtx s}
   | empty => simp only [CapyCaptureSet.peaks]
   | union W1 W2 ih1 ih2 => simp only [CapyCaptureSet.peaks]; rw [ih1, ih2]
   | cvar m c => simp only [CapyCaptureSet.peaks]
-  | pseudo_peak _ _ => simp only [CapyCaptureSet.peaks]
+  | pseudo_peak _ ih => simp only [CapyCaptureSet.peaks]; rw [ih]
   | var m x =>
     cases x with
     | free n => simp only [CapyCaptureSet.peaks]

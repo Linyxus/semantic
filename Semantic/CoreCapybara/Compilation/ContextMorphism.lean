@@ -186,7 +186,9 @@ theorem CapyCaptureSet.peaks_renamesTo {s1 s2 : Sig}
     CapyCaptureSet.peaks Γ2 (W.rename f) = (CapyCaptureSet.peaks Γ1 W).rename f := by
   match Γ1, W, h with
   | _, .empty, _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
-  | _, .pseudo_peak W0, _ => simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
+  | _, .pseudo_peak W0, h =>
+    simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
+    rw [peaks_renamesTo h W0]
   | _, .union W1 W2, h =>
     simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
     rw [peaks_renamesTo h W1, peaks_renamesTo h W2]
@@ -452,37 +454,134 @@ theorem peakItem_rename {s1 s2 : Sig} {fs : Rename s1 s2}
   | nil => rfl
   | cons a as ih => simp only [List.foldr_cons, CapyCaptureSet.rename, ih]; rfl
 
-/-- The `peakSepCtx` fold fuses with `SepCtx.rename` through the injective source
-    renaming and the `srcCtx` morphism (`peakItem_rename` + `compile_mapsTo`). -/
-theorem peakSepCtx_foldl_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1}
-    {sctx2 : SrcCtx s1' t2} {fs : Rename s1 s1'} {ft : Rename t1 t2}
-    (hfs : Function.Injective (fs.var (k := .cvar)))
-    (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
-    (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
+/-! ### Pseudo-track naturality under a source morphism
+
+The frozen-peak track of `peakSepCtx` (`peakPseudos`/`pseudoItem`/`Peak.pseudo`)
+must commute with an injective source renaming exactly as the cvar track does.  The
+extra ingredient is that renaming is *injective* on capture sets, so dedup of the
+mode-erased bases and the `pseudoItem` base filter both commute with it. -/
+
+/-- Renaming a `Var` by an injective renaming is injective. -/
+theorem Var.rename_inj {s1 s2 : Sig} {fs : Rename s1 s2} (hinj : fs.Injective)
+    {x y : Var k s1} (h : x.rename fs = y.rename fs) : x = y := by
+  cases x with
+  | bound bv => cases y with
+    | bound bv' => simp only [Var.rename, Var.bound.injEq] at h; rw [hinj _ h]
+    | free n => simp [Var.rename] at h
+  | free n => cases y with
+    | bound bv' => simp [Var.rename] at h
+    | free n' => simp only [Var.rename, Var.free.injEq] at h; rw [h]
+
+/-- Renaming a capture set by an injective renaming is injective (the device that
+    makes the frozen-peak base dedup natural under a source morphism). -/
+theorem CapyCaptureSet.rename_inj {s1 s2 : Sig} {fs : Rename s1 s2} (hinj : fs.Injective)
+    {X Y : CapyCaptureSet s1} (h : X.rename fs = Y.rename fs) : X = Y := by
+  induction X generalizing Y with
+  | empty => cases Y with
+    | empty => rfl
+    | _ => simp [CapyCaptureSet.rename] at h
+  | union X1 X2 ih1 ih2 => cases Y with
+    | union Y1 Y2 =>
+      simp only [CapyCaptureSet.rename, CapyCaptureSet.union.injEq] at h
+      rw [ih1 h.1, ih2 h.2]
+    | _ => simp [CapyCaptureSet.rename] at h
+  | var a x => cases Y with
+    | var a' y =>
+      simp only [CapyCaptureSet.rename, CapyCaptureSet.var.injEq] at h
+      obtain ⟨rfl, hx⟩ := h; rw [Var.rename_inj hinj hx]
+    | _ => simp [CapyCaptureSet.rename] at h
+  | cvar a c => cases Y with
+    | cvar a' c' =>
+      simp only [CapyCaptureSet.rename, CapyCaptureSet.cvar.injEq] at h
+      obtain ⟨rfl, hc⟩ := h; rw [hinj _ hc]
+    | _ => simp [CapyCaptureSet.rename] at h
+  | pseudo_peak C ih => cases Y with
+    | pseudo_peak C' =>
+      simp only [CapyCaptureSet.rename, CapyCaptureSet.pseudo_peak.injEq] at h
+      rw [ih h]
+    | _ => simp [CapyCaptureSet.rename] at h
+
+theorem peakPseudos.go_rename {s1 s2 : Sig} {fs : Rename s1 s2} (cs : CapyCaptureSet s1) :
+    peakPseudos.go (cs.rename fs) = (peakPseudos.go cs).map (·.rename fs) := by
+  induction cs with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 =>
+    simp only [CapyCaptureSet.rename, peakPseudos.go, List.map_append, ih1, ih2]
+  | cvar a c => rfl
+  | var a x => cases x <;> rfl
+  | pseudo_peak C _ =>
+    simp only [CapyCaptureSet.rename, peakPseudos.go, List.map_cons, List.map_nil,
+      CapyCaptureSet.modeErase_rename]
+
+theorem peakPseudos_rename {s1 s2 : Sig} {fs : Rename s1 s2} (hfs : fs.Injective)
     (P : CapyPeakSet s1) :
-    ∀ (l : List (BVar s1 .cvar)) (acc1 : SepCtx t1) (acc2 : SepCtx t2), acc2 = acc1.rename ft →
-      (l.map fs.var).foldl
-          (fun K c => .cons K (CapyCaptureSet.compile (peakItem (P.rename fs) c) sctx2)) acc2
-        = ((l.foldl (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) sctx1))
-            acc1).rename ft)
+    peakPseudos (P.rename fs) = (peakPseudos P).map (·.rename fs) := by
+  simp only [peakPseudos, CapyPeakSet.rename, peakPseudos.go_rename]
+  exact dedup_map_injective (fun _ _ => CapyCaptureSet.rename_inj hfs) _
+
+theorem pseudoItem.go_rename {s1 s2 : Sig} {fs : Rename s1 s2} (hfs : fs.Injective)
+    {D : CapyCaptureSet s1} (cs : CapyCaptureSet s1) :
+    pseudoItem.go (D.rename fs) (cs.rename fs) = (pseudoItem.go D cs).rename fs := by
+  induction cs with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 => simp only [CapyCaptureSet.rename, pseudoItem.go, ih1, ih2]; rfl
+  | cvar a c => rfl
+  | var a x => cases x <;> rfl
+  | pseudo_peak C _ =>
+    simp only [CapyCaptureSet.rename, pseudoItem.go, CapyCaptureSet.modeErase_rename]
+    by_cases hc : C.modeErase = D
+    · rw [if_pos hc, if_pos (by rw [hc])]; rfl
+    · rw [if_neg hc, if_neg (fun he => hc (CapyCaptureSet.rename_inj hfs he))]; rfl
+
+theorem pseudoItem_rename {s1 s2 : Sig} {fs : Rename s1 s2} (hfs : fs.Injective)
+    (P : CapyPeakSet s1) (D : CapyCaptureSet s1) :
+    pseudoItem (P.rename fs) (D.rename fs) = (pseudoItem P D).rename fs := by
+  simp only [pseudoItem, CapyPeakSet.rename, pseudoItem.go_rename hfs]
+
+/-- A peak's lock item is natural under an injective source renaming. -/
+theorem peakKeyItem_rename {s1 s2 : Sig} {fs : Rename s1 s2} (hfs : fs.Injective)
+    (P : CapyPeakSet s1) (p : Peak s1) :
+    peakKeyItem (P.rename fs) (p.rename fs) = (peakKeyItem P p).rename fs := by
+  cases p with
+  | cvar c => exact peakItem_rename (hfs .cvar) P c
+  | pseudo D => exact pseudoItem_rename hfs P D
+
+/-- The peak list is natural under an injective source renaming. -/
+theorem peakList_rename {s1 s2 : Sig} {fs : Rename s1 s2} (hfs : fs.Injective)
+    (P : CapyPeakSet s1) :
+    peakList (P.rename fs) = (peakList P).map (·.rename fs) := by
+  simp only [peakList, peakCvars_rename (hfs .cvar), peakPseudos_rename hfs, List.map_append,
+    List.map_map]
+  rfl
+
+/-- The `peakSepCtx` fold fuses with `SepCtx.rename` through the renamed peak list
+    and the `srcCtx` morphism (`peakKeyItem_rename` + `compile_mapsTo`). -/
+theorem peakSepCtx_foldl_mapsTo {α α' : Type} {s1 s1' t1 t2 : Sig}
+    {mapα : α → α'} {item1 : α → CapyCaptureSet s1} {item2 : α' → CapyCaptureSet s1'}
+    {sctx1 : SrcCtx s1 t1} {sctx2 : SrcCtx s1' t2} {ft : Rename t1 t2}
+    (hitem : ∀ a, CapyCaptureSet.compile (item2 (mapα a)) sctx2
+                  = (CapyCaptureSet.compile (item1 a) sctx1).rename ft) :
+    ∀ (l : List α) (acc1 : SepCtx t1) (acc2 : SepCtx t2), acc2 = acc1.rename ft →
+      (l.map mapα).foldl (fun K c => .cons K (CapyCaptureSet.compile (item2 c) sctx2)) acc2
+        = ((l.foldl (fun K c => .cons K (CapyCaptureSet.compile (item1 c) sctx1)) acc1).rename ft)
   | [], _, _, hacc => by simpa using hacc
   | c :: cs, acc1, acc2, hacc => by
     simp only [List.map_cons, List.foldl_cons]
-    apply peakSepCtx_foldl_mapsTo hfs hcvar hvar P cs
-    simp only [SepCtx.rename, hacc]
-    congr 1
-    rw [peakItem_rename hfs]
-    exact CapyCaptureSet.compile_mapsTo hcvar hvar (peakItem P c)
+    apply peakSepCtx_foldl_mapsTo hitem cs
+    simp only [SepCtx.rename, hacc, hitem]
 
 theorem peakSepCtx_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1} {sctx2 : SrcCtx s1' t2}
     {fs : Rename s1 s1'} {ft : Rename t1 t2}
-    (hfs : Function.Injective (fs.var (k := .cvar)))
+    (hfs : fs.Injective)
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
     (P : CapyPeakSet s1) :
     peakSepCtx (P.rename fs) sctx2 = (peakSepCtx P sctx1).rename ft := by
-  simp only [peakSepCtx, peakCvars_rename hfs]
-  exact peakSepCtx_foldl_mapsTo hfs hcvar hvar P (peakCvars P) .empty .empty rfl
+  simp only [peakSepCtx, peakList_rename hfs]
+  refine peakSepCtx_foldl_mapsTo (mapα := (·.rename fs)) (fun p => ?_)
+    (peakList P) .empty .empty rfl
+  rw [peakKeyItem_rename hfs]
+  exact CapyCaptureSet.compile_mapsTo hcvar hvar (peakKeyItem P p)
 
 /-- The whole *lock separation context* `peakSepCtx (peaks Γ W) sctx` commutes with a
     context morphism: the peaks naturality (`hcapy.peakset`) feeds the peak-set into
@@ -493,7 +592,7 @@ theorem peakSepCtx_peakset_mapsTo {s1 s1' t1 t2 : Sig}
     {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s1'} {sctx1 : SrcCtx s1 t1} {sctx2 : SrcCtx s1' t2}
     {fs : Rename s1 s1'} {ft : Rename t1 t2}
     (hcapy : Γ1.RenamesTo Γ2 fs)
-    (hfs : Function.Injective (fs.var (k := .cvar)))
+    (hfs : fs.Injective)
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
     (W : CapyCaptureSet s1) :
@@ -584,7 +683,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
         · exact CapyCaptureSet.compile_mapsTo hmLock.cvar hmLock.var _
         · simp only [ModalCtx.rename, MutabilityCtx.rename]
           congr 1
-          exact peakSepCtx_peakset_mapsTo hmLock.capy (hinj.lift.lift .cvar)
+          exact peakSepCtx_peakset_mapsTo hmLock.capy hinj.lift.lift
             hmLock.cvar hmLock.var _
         · exact ihE hinj.lift hmE
   case case10 =>
@@ -598,7 +697,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
       · simp only [ModalCtx.rename, MutabilityCtx.rename]
         congr 1
         rw [hm.capy.peakset]
-        exact peakSepCtx_mapsTo (hinj .cvar) hm.weakenTarget.cvar hm.weakenTarget.var _
+        exact peakSepCtx_mapsTo hinj hm.weakenTarget.cvar hm.weakenTarget.var _
       · exact ihE hinj.lift (hm.weakenTarget.consTVar (S := .top) (X := .here))
   case case11 =>
     rename_i ih; intro s1' s2' ctx2 fs ft hinj hm
@@ -611,7 +710,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
       · simp only [ModalCtx.rename]
         congr 1
         · rw [hm.capy.peakset]
-          exact peakSepCtx_mapsTo (hinj .cvar) hm.weakenTarget.cvar hm.weakenTarget.var _
+          exact peakSepCtx_mapsTo hinj hm.weakenTarget.cvar hm.weakenTarget.var _
         · exact CapyCaptureBound.mutabilityCtx_mapsTo
       · exact ih hinj.lift (hm.weakenTarget.consCVar (c := .here))
   case case12 =>

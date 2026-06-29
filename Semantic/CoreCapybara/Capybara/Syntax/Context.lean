@@ -210,10 +210,13 @@ def CapyCaptureSet.peaks : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s
 | _, .cvar m c => .cvar m c
 | _, .var _ (.free _) => {}
 | Γ, .var m (.bound x) => peaksVarBound Γ m x
--- A pseudo-peak HALTS the computation: it is already a single frozen peak, so we
--- return it verbatim without recursing into its content.  This is what makes
--- `peaks` commute with capture substitution.
-| _, .pseudo_peak C => .pseudo_peak C
+-- A pseudo-peak HALTS the peak-grouping: it stays a single frozen peak (one lock
+-- item) rather than expanding its atoms into the surrounding peak set — this is
+-- what makes `peaks` commute with capture substitution.  We DO resolve its content
+-- (`peaks Γ C`), turning term-var atoms into cvars so the frozen-peak's lock item is
+-- `PeaksOnly` (matching the cvar-resolved origin lock); resolution stays *inside* the
+-- frozen wrapper, so it never merges the frozen peak with a surrounding bare peak.
+| Γ, .pseudo_peak C => .pseudo_peak (peaks Γ C)
 termination_by Γ cs => (sizeOf Γ, sizeOf cs)
 end
 
@@ -255,6 +258,40 @@ theorem CapyCaptureSet.peaks_peaksOnly (Γ : CapyCtx s) (cs : CapyCaptureSet s) 
   | _, .pseudo_peak C =>
     rw [CapyCaptureSet.peaks]
     exact CapyCaptureSet.PeaksOnly.pseudo_peak
+termination_by (sizeOf Γ, sizeOf cs)
+end
+
+mutual
+/-- `peaksVarBound` always returns a closed capture set (it resolves every variable
+    to context cvars / frozen peaks, never reintroducing a heap pointer). -/
+theorem CapyCaptureSet.peaksVarBound_isClosed (Γ : CapyCtx s) (m : Access) (x : BVar s .var) :
+    (peaksVarBound Γ m x).IsClosed := by
+  match Γ, x with
+  | .push Γ (.var T), .here =>
+    rw [CapyCaptureSet.peaksVarBound]
+    exact CapyCaptureSet.applyAccess_isClosed
+      (CapyCaptureSet.rename_isClosed (CapyCaptureSet.peaks_isClosed Γ T.captureSet))
+  | .push Γ _, .there x =>
+    rw [CapyCaptureSet.peaksVarBound]
+    exact CapyCaptureSet.rename_isClosed (CapyCaptureSet.peaksVarBound_isClosed Γ m x)
+termination_by (sizeOf Γ, sizeOf x + 1)
+
+/-- `peaks` always returns a closed capture set: free heap pointers (`var (.free _)`)
+    are resolved to `{}`, and every other atom is a cvar or frozen peak.  Hence a
+    `peakset`'s underlying capture set is always closed (no `IsClosed` hypothesis). -/
+theorem CapyCaptureSet.peaks_isClosed (Γ : CapyCtx s) (cs : CapyCaptureSet s) :
+    (peaks Γ cs).IsClosed := by
+  match Γ, cs with
+  | _, .empty => rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.IsClosed.empty
+  | Γ, .union cs1 cs2 =>
+    rw [CapyCaptureSet.peaks]
+    exact CapyCaptureSet.IsClosed.union (peaks_isClosed Γ cs1) (peaks_isClosed Γ cs2)
+  | _, .cvar m c => rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.IsClosed.cvar
+  | _, .var _ (.free _) => rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.IsClosed.empty
+  | Γ, .var m (.bound x) => rw [CapyCaptureSet.peaks]; exact peaksVarBound_isClosed Γ m x
+  | Γ, .pseudo_peak C =>
+    rw [CapyCaptureSet.peaks]
+    exact CapyCaptureSet.IsClosed.pseudo_peak (peaks_isClosed Γ C)
 termination_by (sizeOf Γ, sizeOf cs)
 end
 
@@ -400,6 +437,7 @@ theorem CapyCaptureSet.peaks_rename_succ_eq
     simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
   | pseudo_peak C0 ih =>
     simp only [CapyCaptureSet.rename, CapyCaptureSet.peaks]
+    rw [ih]
   | var m v =>
     cases v with
     | free _ =>
@@ -458,7 +496,9 @@ theorem CapyCaptureSet.peaks_applyRO_comm (Γ : CapyCtx s) (C : CapyCaptureSet s
     rw [peaks_applyRO_comm Γ C1, peaks_applyRO_comm Γ C2]
     rfl
   | _, .cvar _ _ => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
-  | _, .pseudo_peak C0 => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
+  | Γ, .pseudo_peak C0 =>
+    simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
+    rw [peaks_applyRO_comm Γ C0]
   | _, .var _ (.free _) =>
     simp only [CapyCaptureSet.applyRO, CapyCaptureSet.peaks]
     rfl
@@ -489,7 +529,9 @@ theorem CapyCaptureSet.peaks_applyDrop_comm (Γ : CapyCtx s) (C : CapyCaptureSet
     rw [peaks_applyDrop_comm Γ C1, peaks_applyDrop_comm Γ C2]
     rfl
   | _, .cvar _ _ => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
-  | _, .pseudo_peak C0 => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
+  | Γ, .pseudo_peak C0 =>
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
+    rw [peaks_applyDrop_comm Γ C0]
   | _, .var _ (.free _) =>
     simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.peaks]
     rfl

@@ -405,6 +405,71 @@ theorem CapyCaptureSet.NoPseudoPeak.applyAccess {cs : CapyCaptureSet s} (h : cs.
     | M m => cases m <;> exact NoPseudoPeak.var
     | drop => exact NoPseudoPeak.var
 
+/-- Erases all access modes (sets every atom to `.M .epsilon`), giving the
+    mode-independent *identity* of a capture set.  Two frozen-peak items that
+    differ only by the access mode folded in during substitution
+    (`pseudo_peak (D.applyAccess aᵢ)`) share a `modeErase`d base, so the lock can
+    group them as a single peak (avoiding a spurious `⟦D⟧ ⊥ ⟦D⟧` self-separation). -/
+def CapyCaptureSet.modeErase : CapyCaptureSet s -> CapyCaptureSet s
+| .empty => .empty
+| .union c1 c2 => .union c1.modeErase c2.modeErase
+| .var _ x => .var (.M .epsilon) x
+| .cvar _ c => .cvar (.M .epsilon) c
+| .pseudo_peak C => .pseudo_peak C.modeErase
+
+/-- `modeErase` absorbs a preceding `applyRO` (both only touch access modes). -/
+@[simp] theorem CapyCaptureSet.modeErase_applyRO {cs : CapyCaptureSet s} :
+    cs.applyRO.modeErase = cs.modeErase := by
+  induction cs with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 =>
+    simp only [CapyCaptureSet.applyRO_union, CapyCaptureSet.modeErase, ih1, ih2]
+  | var a x => rfl
+  | cvar a x => rfl
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyRO, CapyCaptureSet.modeErase, ih]
+
+/-- `modeErase` absorbs a preceding `applyDrop`. -/
+@[simp] theorem CapyCaptureSet.modeErase_applyDrop {cs : CapyCaptureSet s} :
+    cs.applyDrop.modeErase = cs.modeErase := by
+  induction cs with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 =>
+    simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.modeErase, ih1, ih2]
+  | var a x => rfl
+  | cvar a x => rfl
+  | pseudo_peak C ih => simp only [CapyCaptureSet.applyDrop, CapyCaptureSet.modeErase, ih]
+
+/-- `modeErase` absorbs a preceding `applyAccess` — the grouping key is
+    mode-independent. -/
+@[simp] theorem CapyCaptureSet.modeErase_applyAccess {cs : CapyCaptureSet s} {a : Access} :
+    (cs.applyAccess a).modeErase = cs.modeErase := by
+  cases a with
+  | M m => cases m with
+    | epsilon => rfl
+    | ro => simp only [CapyCaptureSet.applyAccess_M, CapyCaptureSet.applyMut_ro,
+        CapyCaptureSet.modeErase_applyRO]
+  | drop => simp only [CapyCaptureSet.applyAccess_drop, CapyCaptureSet.modeErase_applyDrop]
+
+/-- `modeErase` is idempotent. -/
+@[simp] theorem CapyCaptureSet.modeErase_idem {cs : CapyCaptureSet s} :
+    cs.modeErase.modeErase = cs.modeErase := by
+  induction cs with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 => simp only [CapyCaptureSet.modeErase, ih1, ih2]
+  | var a x => rfl
+  | cvar a x => rfl
+  | pseudo_peak C ih => simp only [CapyCaptureSet.modeErase, ih]
+
+/-- `modeErase` commutes with renaming. -/
+theorem CapyCaptureSet.modeErase_rename {cs : CapyCaptureSet s1} {ρ : Rename s1 s2} :
+    (cs.rename ρ).modeErase = cs.modeErase.rename ρ := by
+  induction cs generalizing s2 with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 => simp only [CapyCaptureSet.rename, CapyCaptureSet.modeErase, ih1, ih2]
+  | var a x => rfl
+  | cvar a x => rfl
+  | pseudo_peak C ih => simp only [CapyCaptureSet.rename, CapyCaptureSet.modeErase, ih]
+
 structure CapyPeakSet (s : Sig) where
   cs : CapyCaptureSet s
   h : cs.PeaksOnly

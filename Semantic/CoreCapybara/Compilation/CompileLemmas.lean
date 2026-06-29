@@ -184,11 +184,11 @@ theorem SrcCtx.lookupTVar_rename {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'}
 /-- Foldl/rename fusion underlying `peakSepCtx_rename`: renaming the result of the
     `peakSepCtx` fold equals folding with the renamed source context, starting
     from the renamed accumulator. -/
-private theorem peakSepCtx_foldl_rename {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2}
-    {ρ : Rename s2 s2'} :
-    ∀ (l : List (BVar s1 .cvar)) (acc : SepCtx s2),
-    (l.foldl (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) ctx)) acc).rename ρ
-      = l.foldl (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) (ctx.rename ρ)))
+private theorem peakSepCtx_foldl_rename {α : Type} {item : α → CapyCaptureSet s1}
+    {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'} :
+    ∀ (l : List α) (acc : SepCtx s2),
+    (l.foldl (fun K c => .cons K (CapyCaptureSet.compile (item c) ctx)) acc).rename ρ
+      = l.foldl (fun K c => .cons K (CapyCaptureSet.compile (item c) (ctx.rename ρ)))
           (acc.rename ρ)
   | [], acc => rfl
   | c :: cs, acc => by
@@ -201,7 +201,7 @@ private theorem peakSepCtx_foldl_rename {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2
 theorem peakSepCtx_rename {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'} :
     peakSepCtx P (ctx.rename ρ) = (peakSepCtx P ctx).rename ρ := by
   simp only [peakSepCtx]
-  rw [peakSepCtx_foldl_rename]
+  rw [peakSepCtx_foldl_rename (item := peakKeyItem P)]
   rfl
 
 /-! ### Renaming of source-context maps commutes with composition. -/

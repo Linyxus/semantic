@@ -374,7 +374,7 @@ theorem SepCtx.Has_foldl_cons {α : Type} {s2 : Sig} {g : α → CaptureSet s2}
     distinct peak cvar. -/
 theorem peakSepCtx_Has {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
     {C : CaptureSet s2} (h : SepCtx.Has (peakSepCtx P sc) C) :
-    ∃ c ∈ peakCvars P, C = CapyCaptureSet.compile (peakItem P c) sc := by
+    ∃ p ∈ peakList P, C = CapyCaptureSet.compile (peakKeyItem P p) sc := by
   simp only [peakSepCtx] at h
   rcases SepCtx.Has_foldl_cons _ _ h with hl | hempty
   · exact hl
@@ -389,11 +389,11 @@ theorem SepCtx.HasTwoDistinct.has_both {s : Sig} {K : SepCtx s} {C1 C2 : Capture
   | symm _ ih => exact ⟨ih.2, ih.1⟩
 
 /-- Both members of a `HasTwoDistinct` pair of a compiled lock are compiled
-    `peakItem`s of peak cvars. -/
+    `peakKeyItem`s of peaks. -/
 theorem peakSepCtx_HasTwoDistinct {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
     {C1 C2 : CaptureSet s2} (h : SepCtx.HasTwoDistinct (peakSepCtx P sc) C1 C2) :
-    (∃ c1 ∈ peakCvars P, C1 = CapyCaptureSet.compile (peakItem P c1) sc) ∧
-    (∃ c2 ∈ peakCvars P, C2 = CapyCaptureSet.compile (peakItem P c2) sc) := by
+    (∃ p1 ∈ peakList P, C1 = CapyCaptureSet.compile (peakKeyItem P p1) sc) ∧
+    (∃ p2 ∈ peakList P, C2 = CapyCaptureSet.compile (peakKeyItem P p2) sc) := by
   obtain ⟨h1, h2⟩ := SepCtx.HasTwoDistinct.has_both h
   exact ⟨peakSepCtx_Has h1, peakSepCtx_Has h2⟩
 
@@ -454,7 +454,8 @@ theorem CapyCaptureSet.compile_peaks {Γ : CapyCtx s} {sc : SrcCtx s s2}
     simp only [CapyCaptureSet.peaks, CapyCaptureSet.compile,
       CapyCaptureSet.compile_peaks hΓ h hcs1, CapyCaptureSet.compile_peaks hΓ h hcs2]
   | .cvar a c, _ => simp only [CapyCaptureSet.peaks]
-  | .pseudo_peak C, _ => simp only [CapyCaptureSet.peaks]
+  | .pseudo_peak C, .pseudo_peak hC =>
+    simp only [CapyCaptureSet.peaks, CapyCaptureSet.compile, CapyCaptureSet.compile_peaks hΓ h hC]
   | .var a (.bound x), _ =>
     rw [CapyCaptureSet.peaks, CapyCaptureSet.compile_peaksVarBound hΓ h]
     simp only [CapyCaptureSet.compile]

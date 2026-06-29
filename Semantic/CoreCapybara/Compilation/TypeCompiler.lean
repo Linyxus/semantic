@@ -51,6 +51,11 @@ def BVar.decEq : (x y : BVar s k) -> Decidable (x = y)
 
 instance : DecidableEq (BVar s k) := BVar.decEq
 
+deriving instance DecidableEq for Mutability
+deriving instance DecidableEq for Access
+deriving instance DecidableEq for Var
+deriving instance DecidableEq for CapyCaptureSet
+
 /-- De-duplicates a list (keeping the first occurrence of each element). -/
 def dedup [DecidableEq α] : List α -> List α
 | [] => []
@@ -89,13 +94,68 @@ where
 def peakItem (P : CapyPeakSet s) (c : BVar s .cvar) : CapyCaptureSet s :=
   (accessedAt P c).foldr (fun a acc => (.cvar a c) ∪ acc) .empty
 
-/-- The separation context of a peak set: one item per distinct peak (capture
-    variable), each holding that peak's access-mode occurrences, compiled into the
-    target.  Distinct peaks become distinct items and are therefore required to be
-    pairwise separate; the several occurrences of one peak share a single item. -/
+/-- The de-duplicated mode-erased *bases* of the frozen peaks in a peak set.  A
+    `pseudo_peak C` contributes its base `C.modeErase`; two frozen-peak occurrences
+    that differ only by a substitution-folded access mode share a base, so they
+    group into a single lock item (cf. `peakCvars` for ordinary peaks). -/
+def peakPseudos (P : CapyPeakSet s) : List (CapyCaptureSet s) :=
+  dedup (go P.cs)
+where
+  go : CapyCaptureSet s -> List (CapyCaptureSet s)
+  | .empty => []
+  | .union c1 c2 => go c1 ++ go c2
+  | .cvar _ _ => []
+  | .var _ _ => []
+  | .pseudo_peak C => [C.modeErase]
+
+/-- The capture set holding all frozen-peak occurrences sharing a mode-erased base
+    `D` in a peak set: their union, kept as `pseudo_peak` atoms (so `compile`
+    transparency unfolds each to its content `⟦C⟧`). -/
+def pseudoItem (P : CapyPeakSet s) (D : CapyCaptureSet s) : CapyCaptureSet s :=
+  go P.cs
+where
+  go : CapyCaptureSet s -> CapyCaptureSet s
+  | .empty => .empty
+  | .union c1 c2 => (go c1) ∪ (go c2)
+  | .cvar _ _ => .empty
+  | .var _ _ => .empty
+  | .pseudo_peak C => if C.modeErase = D then .pseudo_peak C else .empty
+
+/-- A **peak** of a peak set: either an ordinary capture variable (`cvar`) or a
+    frozen `pseudo_peak` base (`pseudo`).  These are the keys of the compiled lock:
+    one separation item per distinct peak. -/
+inductive Peak (s : Sig) where
+| cvar : BVar s .cvar → Peak s
+| pseudo : CapyCaptureSet s → Peak s
+deriving DecidableEq
+
+/-- Renames a peak through a source renaming (cvar peaks via `fs.var`, frozen-peak
+    bases via capture-set renaming). -/
+def Peak.rename : Peak s1 → Rename s1 s2 → Peak s2
+| .cvar c, fs => .cvar (fs.var c)
+| .pseudo D, fs => .pseudo (D.rename fs)
+
+/-- The source capture set a peak contributes to the lock: `peakItem` for a cvar
+    peak (its access-mode occurrences), `pseudoItem` for a frozen-peak base (its
+    occurrences sharing that mode-erased base). -/
+def peakKeyItem (P : CapyPeakSet s) : Peak s → CapyCaptureSet s
+| .cvar c => peakItem P c
+| .pseudo D => pseudoItem P D
+
+/-- The distinct peaks of a peak set: the cvar peaks first, then the frozen-peak
+    bases.  Keeping a frozen peak as its own peak — distinct from any cvar peak — is
+    exactly what stops capture substitution from merging two distinct origin peaks
+    (the B2c lock-stability device). -/
+def peakList (P : CapyPeakSet s) : List (Peak s) :=
+  (peakCvars P).map Peak.cvar ++ (peakPseudos P).map Peak.pseudo
+
+/-- The separation context of a peak set: one item per distinct peak, compiled into
+    the target.  Distinct peaks become distinct items and are therefore required to
+    be pairwise separate; the several access-mode occurrences of one peak share a
+    single item. -/
 def peakSepCtx (P : CapyPeakSet s1) (ctx : SrcCtx s1 s2) : SepCtx s2 :=
-  (peakCvars P).foldl
-    (fun K c => .cons K (CapyCaptureSet.compile (peakItem P c) ctx))
+  (peakList P).foldl
+    (fun K p => .cons K (CapyCaptureSet.compile (peakKeyItem P p) ctx))
     (.empty : SepCtx s2)
 
 /-- A structural size on source types that ignores capture sets and bound

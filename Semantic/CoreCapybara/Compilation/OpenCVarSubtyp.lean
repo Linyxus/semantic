@@ -400,15 +400,16 @@ theorem SepCtx.HasTwoDistinct.foldl {α : Type} {s : Sig} {g : α → CaptureSet
       · exact (SepCtx.HasTwoDistinct.foldl_acc L' haL' SepCtx.Has.here).symm
       · exact ih haL' hbL' hab
 
-/-- **Converse of `peakSepCtx_HasTwoDistinct`.**  Two distinct peak cvars give
-    `HasTwoDistinct` compiled `peakItem`s — the `sep_lock` premise for cross pairs. -/
+/-- **Converse of `peakSepCtx_HasTwoDistinct`.**  Two distinct peaks give
+    `HasTwoDistinct` compiled `peakKeyItem`s — the `sep_lock` premise for cross pairs. -/
 theorem peakSepCtx_HasTwoDistinct_of {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
-    {c1 c2 : BVar s1 .cvar} (hc1 : c1 ∈ peakCvars P) (hc2 : c2 ∈ peakCvars P) (hne : c1 ≠ c2) :
+    {p1 p2 : Peak s1} (hc1 : p1 ∈ peakList P) (hc2 : p2 ∈ peakList P) (hne : p1 ≠ p2) :
     SepCtx.HasTwoDistinct (peakSepCtx P sc)
-      (CapyCaptureSet.compile (peakItem P c1) sc) (CapyCaptureSet.compile (peakItem P c2) sc) := by
+      (CapyCaptureSet.compile (peakKeyItem P p1) sc)
+      (CapyCaptureSet.compile (peakKeyItem P p2) sc) := by
   simp only [peakSepCtx]
   exact SepCtx.HasTwoDistinct.foldl
-    (g := fun c => CapyCaptureSet.compile (peakItem P c) sc) (peakCvars P) hc1 hc2 hne
+    (g := fun p => CapyCaptureSet.compile (peakKeyItem P p) sc) (peakList P) hc1 hc2 hne
 
 /-- `SepCtx.subst` distributes over a `foldl`-built context (push the subst inside). -/
 theorem SepCtx.subst_foldl {α : Type} {s1 s2 : Sig} {g : α → CaptureSet s1} {σt : Subst s1 s2}
@@ -424,25 +425,25 @@ theorem SepCtx.subst_foldl {α : Type} {s1 s2 : Sig} {g : α → CaptureSet s1} 
 theorem peakSepCtx_subst {s1 s2 s2' : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
     {σt : Subst s2 s2'} :
     (peakSepCtx P sc).subst σt
-      = (peakCvars P).foldl
-          (fun K c => SepCtx.cons K ((CapyCaptureSet.compile (peakItem P c) sc).subst σt))
+      = (peakList P).foldl
+          (fun K p => SepCtx.cons K ((CapyCaptureSet.compile (peakKeyItem P p) sc).subst σt))
           SepCtx.empty := by
   simp only [peakSepCtx]
   rw [SepCtx.subst_foldl]
   rfl
 
-/-- **Converse for the substituted lock `Ψ_R`.**  Distinct peak cvars give
+/-- **Converse for the substituted lock `Ψ_R`.**  Distinct peaks give
     `HasTwoDistinct` *substituted* items — the `sep_lock` premise against the
     in-context merged lock. -/
 theorem peakSepCtx_subst_HasTwoDistinct_of {s1 s2 s2' : Sig} {P : CapyPeakSet s1}
-    {sc : SrcCtx s1 s2} {σt : Subst s2 s2'} {c1 c2 : BVar s1 .cvar}
-    (hc1 : c1 ∈ peakCvars P) (hc2 : c2 ∈ peakCvars P) (hne : c1 ≠ c2) :
+    {sc : SrcCtx s1 s2} {σt : Subst s2 s2'} {p1 p2 : Peak s1}
+    (hc1 : p1 ∈ peakList P) (hc2 : p2 ∈ peakList P) (hne : p1 ≠ p2) :
     SepCtx.HasTwoDistinct ((peakSepCtx P sc).subst σt)
-      ((CapyCaptureSet.compile (peakItem P c1) sc).subst σt)
-      ((CapyCaptureSet.compile (peakItem P c2) sc).subst σt) := by
+      ((CapyCaptureSet.compile (peakKeyItem P p1) sc).subst σt)
+      ((CapyCaptureSet.compile (peakKeyItem P p2) sc).subst σt) := by
   rw [peakSepCtx_subst]
   exact SepCtx.HasTwoDistinct.foldl
-    (g := fun c => (CapyCaptureSet.compile (peakItem P c) sc).subst σt) (peakCvars P) hc1 hc2 hne
+    (g := fun p => (CapyCaptureSet.compile (peakKeyItem P p) sc).subst σt) (peakList P) hc1 hc2 hne
 
 /-! ### Capture-variable injectivity of a source→target map
 
@@ -526,6 +527,46 @@ theorem dedup_nodup {α : Type} [DecidableEq α] (l : List α) : (dedup l).Nodup
 theorem peakCvars_nodup {s : Sig} (P : CapyPeakSet s) : (peakCvars P).Nodup :=
   dedup_nodup _
 
+/-- `peakPseudos` is `Nodup`. -/
+theorem peakPseudos_nodup {s : Sig} (P : CapyPeakSet s) : (peakPseudos P).Nodup :=
+  dedup_nodup _
+
+/-- `peakList` is `Nodup`: each track is `Nodup` (dedup'd, mapped by an injective
+    constructor) and the two tracks are disjoint (cvar peaks vs pseudo peaks). -/
+theorem peakList_nodup {s : Sig} (P : CapyPeakSet s) : (peakList P).Nodup := by
+  refine List.nodup_append.mpr ⟨(peakCvars_nodup P).map (fun _ _ h => Peak.cvar.inj h),
+    (peakPseudos_nodup P).map (fun _ _ h => Peak.pseudo.inj h), ?_⟩
+  intro p hpc
+  obtain ⟨c, _, hc⟩ := List.mem_map.mp hpc
+  subst hc
+  simp [List.mem_map]
+
+/-- A cvar peak in `peakList` comes from `peakCvars`. -/
+theorem mem_peakCvars_of_cvar_mem {s : Sig} {P : CapyPeakSet s} {d : BVar s .cvar}
+    (h : Peak.cvar d ∈ peakList P) : d ∈ peakCvars P := by
+  simp only [peakList, List.mem_append, List.mem_map] at h
+  rcases h with ⟨d', hd', he⟩ | ⟨D, _, he⟩
+  · exact Peak.cvar.inj he ▸ hd'
+  · exact absurd he (by simp)
+
+/-- A pseudo peak in `peakList` comes from `peakPseudos`. -/
+theorem mem_peakPseudos_of_pseudo_mem {s : Sig} {P : CapyPeakSet s} {D : CapyCaptureSet s}
+    (h : Peak.pseudo D ∈ peakList P) : D ∈ peakPseudos P := by
+  simp only [peakList, List.mem_append, List.mem_map] at h
+  rcases h with ⟨d', _, he⟩ | ⟨D', hD', he⟩
+  · exact absurd he (by simp)
+  · exact Peak.pseudo.inj he ▸ hD'
+
+/-- A `peakCvars` member is a cvar peak of `peakList`. -/
+theorem cvar_mem_peakList {s : Sig} {P : CapyPeakSet s} {d : BVar s .cvar}
+    (h : d ∈ peakCvars P) : Peak.cvar d ∈ peakList P :=
+  List.mem_append_left _ (List.mem_map_of_mem h)
+
+/-- A `peakPseudos` member is a pseudo peak of `peakList`. -/
+theorem pseudo_mem_peakList {s : Sig} {P : CapyPeakSet s} {D : CapyCaptureSet s}
+    (h : D ∈ peakPseudos P) : Peak.pseudo D ∈ peakList P :=
+  List.mem_append_right _ (List.mem_map_of_mem h)
+
 /-- A member of a `g`-fold over `L` (from `.empty`) is the `g`-image of some `c ∈ L`. -/
 theorem SepCtx.Has.foldl_empty_inv {α : Type} {s : Sig} {g : α → CaptureSet s} (L : List α) :
     ∀ {acc : SepCtx s} {C : CaptureSet s},
@@ -597,13 +638,13 @@ theorem SepCtx.HasTwoDistinct.foldl_nodup {α : Type} {s : Sig} {g : α → Capt
     dispatch), via the `Nodup`ness of `peakCvars`. -/
 theorem peakSepCtx_HasTwoDistinct_ne {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
     {C1 C2 : CaptureSet s2} (h : SepCtx.HasTwoDistinct (peakSepCtx P sc) C1 C2) :
-    ∃ c1 ∈ peakCvars P, ∃ c2 ∈ peakCvars P, c1 ≠ c2 ∧
-      ((C1 = CapyCaptureSet.compile (peakItem P c1) sc ∧
-          C2 = CapyCaptureSet.compile (peakItem P c2) sc) ∨
-       (C1 = CapyCaptureSet.compile (peakItem P c2) sc ∧
-          C2 = CapyCaptureSet.compile (peakItem P c1) sc)) :=
-  SepCtx.HasTwoDistinct.foldl_nodup (g := fun c => CapyCaptureSet.compile (peakItem P c) sc) h
-    (peakCvars P) (peakCvars_nodup P) rfl
+    ∃ p1 ∈ peakList P, ∃ p2 ∈ peakList P, p1 ≠ p2 ∧
+      ((C1 = CapyCaptureSet.compile (peakKeyItem P p1) sc ∧
+          C2 = CapyCaptureSet.compile (peakKeyItem P p2) sc) ∨
+       (C1 = CapyCaptureSet.compile (peakKeyItem P p2) sc ∧
+          C2 = CapyCaptureSet.compile (peakKeyItem P p1) sc)) :=
+  SepCtx.HasTwoDistinct.foldl_nodup (g := fun p => CapyCaptureSet.compile (peakKeyItem P p) sc) h
+    (peakList P) (peakList_nodup P) rfl
 
 /-! ### Target-level atom-tracing (the `hsep` dispatch's plumbing)
 
@@ -1054,7 +1095,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
         · exact Ty.IsClosed.modal
             (CaptureSet.is_closed_subst (CapyCaptureSet.compile_isClosed hcsCl hvcOrig.weaken)
               (Subst.lift_closed hscl))
-            ⟨peakSepCtx_isClosed hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
             (Ty.is_closed_subst
               (CapyTy.compile_isClosed E (ctxOrig.weakenTarget.consCVar cb BVar.here) hECl
                 hvcOrig.weaken.consCVar)
@@ -1111,7 +1153,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
               (Ctx.IsClosed.push hcoreSub (Binding.IsClosed.cvar
                 (CaptureBound.is_closed_subst
                   (CapyCaptureBound.compile_isClosed hcb hvcOrig) hscl)))
-              (Binding.IsClosed.lock ⟨peakSepCtx_isClosed hvcSub.weaken,
+              (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
+                (CapyCaptureSet.peaks_isClosed _ _) hvcSub.weaken,
                 CapyCaptureBound.mutabilityCtx_isClosed⟩))
             (CapySubst.lift_closed hscS)
             (SrcCtx.CVarInjective.rename
@@ -1128,9 +1171,11 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
           · rw [heq2]; exact Ty.weaken_subst_comm_base
         · exact Ctx.IsClosed.push hcoreSub (Binding.IsClosed.cvar
             (CaptureBound.is_closed_subst (CapyCaptureBound.compile_isClosed hcb hvcOrig) hscl))
-        · exact ⟨peakSepCtx_isClosed hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+        · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
         · exact ModalCtx.is_closed_subst
-            ⟨peakSepCtx_isClosed hvcOrig.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcOrig.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
             (Subst.lift_closed hscl)
         case sat =>
           apply Satisfy.satisfy
@@ -1208,8 +1253,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
               rw [hcompc, hpcs, hE1] at hmono
               obtain ⟨Z, m, hmZ, happ⟩ := CaptureSet.subst_cvar_subset_inv hmono
               exact ⟨Y', Z, m, hYeq, hlke, hmZ, happ⟩
-            -- The key separation claim for two distinct sub-peaks.
-            have key : ∀ (d1 d2 : BVar s1' Kind.cvar), d1 ≠ d2 →
+            -- The key separation claim for two distinct CVAR sub-peaks.
+            have keyCC : ∀ (d1 d2 : BVar s1' Kind.cvar), d1 ≠ d2 →
                 d1 ∈ peakCvars (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
                 d2 ∈ peakCvars (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
                 SepCheck
@@ -1267,10 +1312,12 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                 have hd2pc : d2' ∈ peakCvars (CapyCaptureSet.peakset ctxOrig.capyCtx cs) :=
                   cvar_mem_peakCvars hd2mem
                 have hd12ne : d1' ≠ d2' := fun he => hZ (by rw [← hd1lk, ← hd2lk, he])
-                -- the lock's two items separate (substituted + lock-shifted)
+                -- the lock's two items separate (substituted + lock-shifted); the cvar
+                -- peaks `d1' d2'` are presented as `Peak.cvar` peaks of `peakList`.
                 have htd := (peakSepCtx_subst_HasTwoDistinct_of
                   (sc := ctxOrig.srcCtx.weaken (k := Kind.cvar))
-                  (σt := σt.lift (k := Kind.cvar)) hd1pc hd2pc hd12ne).rename
+                  (σt := σt.lift (k := Kind.cvar)) (cvar_mem_peakList hd1pc)
+                  (cvar_mem_peakList hd2pc) (fun h => hd12ne (Peak.cvar.inj h))).rename
                   (f := Rename.succ (k := Kind.lock))
                 -- shrink each lock item down to the atom (inner subcapture, then weaken to lock)
                 have mkSub : ∀ (a : Access) (Y' : BVar (s2',C) Kind.cvar)
@@ -1308,10 +1355,48 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                         (SepCheck.sep_lock (ℓ := BVar.here) Ctx.LookupLock.here htd)
                         (Subcapt.weaken (mkSub a1 Y1' Z1 m1 d1' happ1 hd1mem hd1lk) _)))
                     (Subcapt.weaken (mkSub a2 Y2' Z2 m2 d2' happ2 hd2mem hd2lk) _))
-            -- Discharge the goal from `key` (either ordering of the `HasTwoDistinct` pair).
+            -- Peak-level dispatch: cvar–cvar via `keyCC`; the pseudo cases need the
+            -- sub↔origin peak correspondence under `openCVar` (see `sorry`s).
+            have key' : ∀ (p1 p2 : Peak s1'), p1 ≠ p2 →
+                p1 ∈ peakList (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
+                p2 ∈ peakList (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
+                SepCheck
+                  ((ctxSub.coreCtx,C[Authority.access_only]<:(CapyCaptureBound.compile cb
+                      ctxOrig.srcCtx).subst σt).push_lock
+                    (({ sep := peakSepCtx (CapyCaptureSet.peakset ctxOrig.capyCtx cs)
+                          (ctxOrig.srcCtx.weaken (k := Kind.cvar)),
+                        mutability := CapyCaptureBound.mutabilityCtx cb BVar.here } :
+                      ModalCtx (s2,C)).subst σt.lift))
+                  (CapyCaptureSet.compile
+                    (peakKeyItem (CapyCaptureSet.peakset ctxSub.capyCtx
+                      (CapyCaptureSet.subst cs σ)) p1)
+                    ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ))
+                  (CapyCaptureSet.compile
+                    (peakKeyItem (CapyCaptureSet.peakset ctxSub.capyCtx
+                      (CapyCaptureSet.subst cs σ)) p2)
+                    ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ)) := by
+              intro p1 p2 hne hp1 hp2
+              -- A frozen sub-peak `pseudo D` traces (its content ⊆ `peaks(cs[σ])` =
+              -- `peaks(cs)[σt]`) back to the ORIGIN cvar `c₀` that `σ` froze
+              -- (`σ.cvar c₀ = pseudo_peak …`).  Closing the three pseudo cases needs that
+              -- per-frozen-peak cross-context correspondence (the analogue of `traceAtom`
+              -- for frozen peaks) — the remaining forward gap; the cvar–cvar case is done.
+              cases p1 with
+              | cvar d1 =>
+                cases p2 with
+                | cvar d2 =>
+                  have h1 := mem_peakCvars_of_cvar_mem hp1
+                  have h2 := mem_peakCvars_of_cvar_mem hp2
+                  exact keyCC d1 d2 (fun h => hne (congrArg Peak.cvar h)) h1 h2
+                | pseudo D2 => sorry
+              | pseudo D1 =>
+                cases p2 with
+                | cvar d2 => sorry
+                | pseudo D2 => sorry
+            -- Discharge the goal (either ordering of the `HasTwoDistinct` pair).
             rcases hCdisj with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-            · exact key c1 c2 hcne hc1 hc2
-            · exact key c2 c1 (Ne.symm hcne) hc2 hc1
+            · exact key' c1 c2 hcne hc1 hc2
+            · exact key' c2 c1 (Ne.symm hcne) hc2 hc1
     · -- backward: ⟦cpoly cb cs E⟧[σt] <: ⟦(cpoly cb cs E)[σ]⟧.  Structural mirror of the
       -- forward; the capture bound is again an EQUALITY (`Subbound.refl`, no contravariance),
       -- so the ONLY non-mechanical obligation is the `modal_modal` lock-change Satisfy — and
@@ -1333,7 +1418,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
         · exact Ty.IsClosed.modal
             (CaptureSet.is_closed_subst (CapyCaptureSet.compile_isClosed hcsCl hvcOrig.weaken)
               (Subst.lift_closed hscl))
-            ⟨peakSepCtx_isClosed hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
             (Ty.is_closed_subst
               (CapyTy.compile_isClosed E (ctxOrig.weakenTarget.consCVar cb BVar.here) hECl
                 hvcOrig.weaken.consCVar)
@@ -1342,9 +1428,11 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
         · exact Ctx.IsClosed.push hcoreSub (Binding.IsClosed.cvar
             (CaptureBound.is_closed_subst (CapyCaptureBound.compile_isClosed hcb hvcOrig) hscl))
         · exact ModalCtx.is_closed_subst
-            ⟨peakSepCtx_isClosed hvcOrig.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcOrig.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
             (Subst.lift_closed hscl)
-        · exact ⟨peakSepCtx_isClosed hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+        · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
         -- (2) ★ THE GAP ★  `Satisfy (push_lock Ψ_L) (Ψ_R.rename succ)`: the un-substituted lock
         -- `Ψ_R` (one separation per ORIGIN peak of `cs`) must hold in the context whose lock is
         -- `Ψ_L` (one per SUB-peak of `cs[σ]`).  When `σ` MERGES two distinct origin peaks
@@ -1394,7 +1482,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
               (Ctx.IsClosed.push hcoreSub (Binding.IsClosed.cvar
                 (CaptureBound.is_closed_subst
                   (CapyCaptureBound.compile_isClosed hcb hvcOrig) hscl)))
-              (Binding.IsClosed.lock ⟨peakSepCtx_isClosed hvcSub.weaken,
+              (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
+                (CapyCaptureSet.peaks_isClosed _ _) hvcSub.weaken,
                 CapyCaptureBound.mutabilityCtx_isClosed⟩))
             (CapySubst.lift_closed hscS)
             (SrcCtx.CVarInjective.rename
