@@ -81,6 +81,15 @@ inductive CapySubbound : CapyCtx s -> CapyCaptureBound s -> CapyCaptureBound s -
   -------------------
   CapySubbound Γ (.bound C) (.unbound m)
 
+inductive CapyIsPeak : CapyCtx s -> CapyCaptureSet s -> Prop where
+| peak_peak :
+  CapyCtx.LookupCVar Γ c a (.unbound m) ->
+  --------------------------------
+  CapyIsPeak Γ (.cvar mu c)
+| peak_pseudo :
+  --------------------------------
+  CapyIsPeak Γ (.pseudo_peak C)
+
 inductive CapySepCheck : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Prop where
 | sep_symm :
   CapySepCheck Γ C1 C2 ->
@@ -109,12 +118,11 @@ inductive CapySepCheck : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Pr
   CapyCaptureSet.EquivP Γ C1' C1 ->
   --------------------
   CapySepCheck Γ C1' C2
-| sep_distinct {c1 c2 : BVar s .cvar} :
-  c1 ≠ c2 ->
-  CapyCtx.LookupCVar Γ c1 a1 (.unbound m1) ->
-  CapyCtx.LookupCVar Γ c1 a2 (.unbound m2) ->
+| sep_distinct :
+  C1 ≠ C2 ->
+  CapyIsPeak Γ C1 -> CapyIsPeak Γ C2 ->
   --------------------
-  CapySepCheck Γ (.cvar mu1 c1) (.cvar mu2 c2)
+  CapySepCheck Γ (C1.applyAccess mu1) (C2.applyAccess mu2)
 
 inductive CapyDisjCheck : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Prop where
 | disj_symm :
