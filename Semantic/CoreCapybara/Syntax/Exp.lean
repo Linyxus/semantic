@@ -67,6 +67,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
 | boxed : Exp.IsVal (.boxed cs Ψ e)
+| consumer : Exp.IsVal (.consumer T cs e)
 | pack : Exp.IsVal (.pack cs x)
 | reader : Exp.IsVal (.reader x)
 | unit : Exp.IsVal .unit
@@ -80,6 +81,7 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | tabs : Exp.IsSimpleVal (.tabs cs T e)
 | cabs : Exp.IsSimpleVal (.cabs cs m e)
 | boxed : Exp.IsSimpleVal (.boxed cs Ψ e)
+| consumer : Exp.IsSimpleVal (.consumer T cs e)
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
 | bfalse : Exp.IsSimpleVal .bfalse
