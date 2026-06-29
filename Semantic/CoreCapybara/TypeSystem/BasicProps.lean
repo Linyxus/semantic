@@ -313,7 +313,7 @@ theorem HasType.use_set_is_closed
   | tabs => exact CaptureSet.IsClosed.empty
   | cabs => exact CaptureSet.IsClosed.empty
   | wrap => exact CaptureSet.IsClosed.empty
-  | pack hC _ _ _ =>
+  | pack hC _ _ =>
     exact CaptureSet.IsClosed.union hC (CaptureSet.applyAccess_isClosed hC)
   | app _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
   | tapp _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
@@ -332,7 +332,7 @@ theorem HasType.use_set_is_closed
   | btrue => exact CaptureSet.IsClosed.empty
   | bfalse => exact CaptureSet.IsClosed.empty
   | alloc => exact CaptureSet.IsClosed.empty
-  | drop _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
+  | drop _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
   | read _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
   | write _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
   | cond _ _ _ ih1 ih2 ih3 =>

@@ -4979,7 +4979,7 @@ theorem fundamental
         (ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hclosed_Ψ))
           (HasType.exp_is_closed ht_body))
   case pack ih =>
-    rename_i _hC_closed hvalid_cs _hdroppable hx_syn
+    rename_i _hC_closed hvalid_cs hx_syn
     cases hclosed_e with
     | pack hcs_closed hx_closed =>
       cases hx_closed
@@ -5052,7 +5052,7 @@ theorem fundamental
       exact sem_typ_alloc
         (hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound))
   case drop =>
-    rename_i hΓ_closed _hdroppable hx_syn hx_ih
+    rename_i hΓ_closed hx_syn hx_ih
     cases hclosed_e with
     | drop hx_closed =>
       cases hx_closed
