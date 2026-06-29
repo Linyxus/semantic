@@ -19,6 +19,7 @@ inductive Exp : Sig -> Type where
 | drop : Var .var s -> Exp s
 | pack : CaptureSet s -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
+| consumer_app : Var .var s -> Exp s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
 | unwrap : Var .var s -> Exp s
@@ -48,6 +49,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .drop x, f => .drop (x.rename f)
 | .pack cs x, f => .pack (cs.rename f) (x.rename f)
 | .app x y, f => .app (x.rename f) (y.rename f)
+| .consumer_app x e, f => .consumer_app (x.rename f) (e.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
 | .capp x cs, f => .capp (x.rename f) (cs.rename f)
 | .unwrap x, f => .unwrap (x.rename f)
@@ -136,6 +138,8 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
   | app x y =>
     simp only [Exp.rename, Var.rename_id]
+  | consumer_app x e ih =>
+    simp only [Exp.rename, Var.rename_id, ih]
   | tapp x T =>
     simp only [Exp.rename, Var.rename_id, PureTy.rename_id]
   | capp x cs =>
@@ -206,6 +210,8 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
   | app x y =>
     simp only [Exp.rename, Var.rename_comp]
+  | consumer_app x e ih =>
+    simp only [Exp.rename, Var.rename_comp, ih]
   | tapp x T =>
     simp only [Exp.rename, Var.rename_comp, PureTy.rename_comp]
   | capp x cs =>
@@ -263,6 +269,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | drop : Var.IsClosed x -> Exp.IsClosed (.drop x)
 | pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
+| consumer_app : Var.IsClosed x -> Exp.IsClosed e -> Exp.IsClosed (.consumer_app x e)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
 | unwrap : Var.IsClosed x -> Exp.IsClosed (.unwrap x)

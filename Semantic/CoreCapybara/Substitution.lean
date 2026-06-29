@@ -131,6 +131,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .drop x, s => .drop (x.subst s)
 | .pack cs x, s => .pack (cs.subst s) (x.subst s)
 | .app x y, s => .app (x.subst s) (y.subst s)
+| .consumer_app x e, s => .consumer_app (x.subst s) (e.subst s)
 | .tapp x T, s => .tapp (x.subst s) (T.subst s)
 | .capp x cs, s => .capp (x.subst s) (cs.subst s)
 | .unwrap x, s => .unwrap (x.subst s)
@@ -674,6 +675,7 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   | pack cs x =>
     simp only [Exp.subst, CaptureSet.subst_comp, Var.subst_comp]
   | app x y => simp only [Exp.subst, Var.subst_comp]
+  | consumer_app x e ih => simp only [Exp.subst, Var.subst_comp, ih]
   | tapp x T => simp only [Exp.subst, Var.subst_comp, PureTy.subst_comp]
   | capp x cs =>
     simp only [Exp.subst, Var.subst_comp, CaptureSet.subst_comp]
@@ -839,6 +841,8 @@ theorem Exp.subst_id {e : Exp s} :
     simp only [Exp.subst, CaptureSet.subst_id, Var.subst_id]
   | app x y =>
     simp only [Exp.subst, Var.subst_id]
+  | consumer_app x e ih =>
+    simp only [Exp.subst, Var.subst_id, ih]
   | tapp x T =>
     simp only [Exp.subst, Var.subst_id, PureTy.subst_id]
   | capp x cs =>
@@ -1028,6 +1032,8 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, Var.subst_asSubst]
   | app x y =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
+  | consumer_app x e ih =>
+    simp only [Exp.subst, Exp.rename, Var.subst_asSubst, ih]
   | tapp x T =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst, PureTy.subst_asSubst]
   | capp x cs =>
@@ -1439,6 +1445,10 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     constructor
     · exact Var.is_closed_subst hx hsubst
     · exact Var.is_closed_subst hy hsubst
+  | consumer_app x e ih =>
+    cases hc with | consumer_app hx he =>
+    simp only [Exp.subst]
+    exact IsClosed.consumer_app (Var.is_closed_subst hx hsubst) (ih he hsubst)
   | tapp x T =>
     cases hc with | tapp hx hT =>
     simp only [Exp.subst]
@@ -1707,6 +1717,10 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | app hx hy =>
     exact IsClosed.app (Var.subst_closed_inv hx) (Var.subst_closed_inv hy)
+  | consumer_app x e ih =>
+    simp only [Exp.subst] at hclosed
+    cases hclosed with | consumer_app hx he =>
+    exact IsClosed.consumer_app (Var.subst_closed_inv hx) (ih he)
   | tapp x T =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | tapp hx hT =>
