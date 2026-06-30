@@ -52,6 +52,13 @@ theorem seqreduce_ctx_unpack
   | refl => exact SeqReduce.refl
   | step h _ ih => exact SeqReduce.step (SeqStep.step_ctx_unpack h) ih
 
+theorem seqreduce_ctx_consumer_app {x : Var .var {}}
+  (hred : SeqReduce C m e1 m' e1') :
+  SeqReduce C m (.consumer_app x e1) m' (.consumer_app x e1') := by
+  induction hred with
+  | refl => exact SeqReduce.refl
+  | step h _ ih => exact SeqReduce.step (SeqStep.step_ctx_consumer_app h) ih
+
 theorem seqreduce_par_left {C : Trace} {m m' : Memory}
   {Cs1 Cs2 : CaptureSet {}} {e1 e1' e2 : Exp {}}
   (hred : SeqReduce C m e1 m' e1') :
@@ -92,7 +99,7 @@ theorem step_memory_monotonic
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
+  | step_rename | step_unpack | step_par_join _ _ | step_consumer_apply _ =>
     exact Memory.subsumes_refl _
   | step_par_left _ ih => exact ih
   | step_par_right _ _ ih => exact ih
@@ -100,7 +107,7 @@ theorem step_memory_monotonic
     exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩
   | step_alloc _ hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh
   | step_drop hx => exact Memory.drop_mcell_subsumes _ _ ⟨_, hx⟩
-  | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih | step_ctx_consumer_app _ ih => exact ih
   | step_lift hv hwf hfresh => exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
 
 /-- Helper: Reduction preserves memory subsumption. -/
@@ -282,6 +289,20 @@ theorem step_preserves_wf
     | wf_pack hwf_cs hwf_x =>
       have hwf_subst := Subst.wf_unpack hwf_cs hwf_x
       exact Exp.wf_subst hwf_body hwf_subst
+  | step_ctx_consumer_app hstep_e =>
+    cases hwf with
+    | wf_consumer_app hwf_x hwf_e =>
+      have hwf_e'' := step_preserves_wf hstep_e hwf_e
+      have hsub := step_memory_monotonic hstep_e
+      exact Exp.WfInHeap.wf_consumer_app (Var.wf_monotonic hsub hwf_x) hwf_e''
+  | step_consumer_apply hlookup =>
+    cases hwf with
+    | wf_consumer_app _ hwf_pack =>
+      cases hwf_pack with
+      | wf_pack hwf_D hwf_w =>
+        cases Memory.wf_lookup hlookup with
+        | wf_consumer _ _ hwf_body =>
+          exact Exp.wf_subst hwf_body (Subst.wf_unpack hwf_D hwf_w)
   -- Congruence preserves WF: stepped branch via the structural recursive call,
   -- untouched branch via monotonicity; WF is structural so par needs no separation.
   | step_par_left hsub_step =>
@@ -429,6 +450,14 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
       exact IsProgressive.step SeqStep.step_unpack
     | step hstep =>
       exact IsProgressive.step (SeqStep.step_ctx_unpack hstep)
+  | consumer_app hlk _ h_ans _ ih_e1 _ =>
+    cases ih_e1 with
+    | done hans =>
+      obtain ⟨hpack, hwf⟩ := h_ans _ _ _ (BigStep.of_isAns hans)
+      obtain ⟨cs, n, rfl⟩ := Exp.isPack_cases hpack
+      exact IsProgressive.step (SeqStep.step_consumer_apply hlk)
+    | step hstep =>
+      exact IsProgressive.step (SeqStep.step_ctx_consumer_app hstep)
   | @cond e2 e3 m x hres _ _ _ _ =>
     obtain ⟨fx, rfl⟩ := Var.free_cases x
     cases hres with
@@ -599,6 +628,15 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     | bs_val hv => cases hv
   | step_rename => intro t' v m' hbs; exact BigStep.bs_letin_var BigStep.bs_var hbs
   | step_unpack => intro t' v m' hbs; exact BigStep.bs_unpack BigStep.bs_pack hbs
+  | step_consumer_apply hlk =>
+    intro t' v m' hbs
+    exact BigStep.bs_consumer_apply BigStep.bs_pack hlk hbs
+  | step_ctx_consumer_app _ ih =>
+    intro t' v m' hbs
+    cases hbs with
+    | bs_consumer_apply hrun hlk hrun2 =>
+      rw [← List.append_assoc]; exact BigStep.bs_consumer_apply (ih hrun) hlk hrun2
+    | bs_val hv => cases hv
   | step_lift hv hwf hfresh =>
     intro t' v' m' hbs
     exact BigStep.bs_letin_val (BigStep.bs_val hv) hv hwf hfresh hbs
@@ -695,6 +733,28 @@ theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
         exact h_ans _ _ _ (BigStep.head_expand hstep_inner hbs)
       · intro t1 m1' x cs hbs
         exact h_val (BigStep.head_expand hstep_inner hbs)
+    | ans hans => cases hans with | is_val hv => cases hv
+  | step_ctx_consumer_app hstep_inner ih =>
+    intro hwf hsafe
+    have hwf1 := Exp.wf_inv_consumer_app hwf
+    cases hsafe with
+    | consumer_app hlk hse h_ans h_val =>
+      obtain ⟨_, hlk2, hsubx⟩ := (step_memory_monotonic hstep_inner) _ _ hlk
+      simp only [Cell.subsumes] at hsubx; subst hsubx
+      refine Safe.consumer_app hlk2 (ih hwf1 hse) ?_ ?_
+      · intro t1 v m1' hbs
+        exact h_ans _ _ _ (BigStep.head_expand hstep_inner hbs)
+      · intro t1 m1' w D hbs
+        exact h_val (BigStep.head_expand hstep_inner hbs)
+    | ans hans => cases hans with | is_val hv => cases hv
+  | step_consumer_apply hlk =>
+    intro _ hsafe
+    cases hsafe with
+    | consumer_app hlk2 hse h_ans h_val =>
+      have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+      simp only at heq
+      cases heq
+      exact h_val BigStep.bs_pack
     | ans hans => cases hans with | is_val hv => cases hv
   | @step_par_left t m1 a m2 a' Cs1 Cs2 b hstep_a ih =>
     intro hwf hsafe
@@ -993,6 +1053,15 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
     obtain ⟨t2, m2, a2, hred2, hans2⟩ := ih_val hbs1
     exact ⟨_, _, _, seqreduce_trans (seqreduce_ctx_unpack hred1)
       (SeqReduce.step SeqStep.step_unpack hred2), hans2⟩
+  | consumer_app hlk _ h_ans _ ih1 ih_val =>
+    obtain ⟨t1, m1, a1, hred1, hans1⟩ := ih1
+    have hbs1 := reduce_to_bigstep hred1 hans1
+    obtain ⟨hpack, hwf⟩ := h_ans _ _ _ hbs1
+    obtain ⟨cs, n, rfl⟩ := Exp.isPack_cases hpack
+    obtain ⟨t2, m2, a2, hred2, hans2⟩ := ih_val hbs1
+    exact ⟨_, _, _, seqreduce_trans (seqreduce_ctx_consumer_app hred1)
+      (SeqReduce.step (SeqStep.step_consumer_apply (BigStep.val_preserved hbs1 hlk)) hred2),
+      hans2⟩
   | read hlkx hlky =>
     exact ⟨_, _, _, SeqReduce.step (SeqStep.step_read hlkx hlky) SeqReduce.refl,
       Exp.IsAns.is_val (by split <;> constructor)⟩
@@ -1077,7 +1146,7 @@ theorem step_immutable
   induction hstep with
   | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
+  | step_rename | step_unpack | step_par_join _ _ | step_consumer_apply _ =>
     exact hinit
   | step_par_left _ ih => exact ih hwr hdr hinit
   | step_par_right _ _ ih => exact ih hwr hdr hinit
@@ -1096,7 +1165,8 @@ theorem step_immutable
     split
     · rename_i heq; rw [heq, hfresh] at hinit; cases hinit
     · exact hinit
-  | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih hwr hdr hinit
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih | step_ctx_consumer_app _ ih =>
+    exact ih hwr hdr hinit
 
 /-- A whole reduction whose (accumulated) trace contains no write or deallocation
     event does not mutate memory. -/
@@ -1129,7 +1199,7 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
   induction hstep with
   | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
-  | step_rename | step_unpack | step_par_join _ _ =>
+  | step_rename | step_unpack | step_par_join _ _ | step_consumer_apply _ =>
     intro _ _ hinit; exact hinit
   | step_par_left _ ih => intro hwr hdr hinit; exact ih hwr hdr hinit
   | step_par_right _ _ ih => intro hwr hdr hinit; exact ih hwr hdr hinit
@@ -1157,7 +1227,7 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
     split
     · rename_i heq; rw [heq, hfresh] at hinit; cases hinit
     · exact hinit
-  | step_ctx_letin _ ih | step_ctx_unpack _ ih =>
+  | step_ctx_letin _ ih | step_ctx_unpack _ ih | step_ctx_consumer_app _ ih =>
     intro hwr hdr hinit; exact ih hwr hdr hinit
 
 /-- **Per-location immutability (reduction).**  A whole reduction that never

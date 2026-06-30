@@ -211,6 +211,7 @@ theorem Ty.captureSet_isClosed {T : Ty .capt s}
   case poly => cases h with | poly _ hcs _ => exact hcs
   case cpoly => cases h with | cpoly _ hcs _ => exact hcs
   case modal => cases h with | modal hcs _ _ => exact hcs
+  case consumer => cases h with | consumer _ hcs _ => exact hcs
   case cap => cases h with | cap hcs => exact hcs
   case cell => cases h with | cell hcs => exact hcs
   case reader => cases h with | reader hcs => exact hcs

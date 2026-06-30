@@ -258,6 +258,7 @@ theorem TypeEnv.HasPeak.ty_captureSet_subst {T : Ty .capt s1} {σ : Subst s1 s2}
   | cap cs => exact Iff.rfl
   | cell cs => exact Iff.rfl
   | reader cs => exact Iff.rfl
+  | consumer Targ cs E => exact Iff.rfl
 
 structure Retype (env1 : TypeEnv s1) (σ : Subst s1 s2) (env2 : TypeEnv s2) (D : PeakSet s1) where
   var :
@@ -724,6 +725,25 @@ def retype_val_denot
             retype_captureset_denot (ρ := ρ) (C := D2)] using
               hsep D1 D2 hdistinct0
         exact (ih m' _).mpr (hbody m' hsub hcompat hkind' hsep')
+  | .consumer Targ cs E => by
+    have ihA := retype_exi_val_denot ρ Targ
+    intro m e
+    simp only [Ty.val_denot, Ty.subst]
+    rw [← retype_resolved_capture_set ρ]
+    rw [← retype_captureset_denot ρ cs]
+    constructor
+    · intro ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, hd⟩
+      refine ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro D w m' hsub harg hseqcomp hcompat
+      have harg' := (ihA m' (.pack D w)).mpr harg
+      specialize hd D w m' hsub harg' hseqcomp hcompat
+      exact (retype_exi_exp_denot ρ E _ m' _).mp hd
+    · intro ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, hd⟩
+      refine ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro D w m' hsub harg hseqcomp hcompat
+      have harg' := (ihA m' (.pack D w)).mp harg
+      specialize hd D w m' hsub harg' hseqcomp hcompat
+      exact (retype_exi_exp_denot ρ E _ m' _).mpr hd
 
 def retype_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}

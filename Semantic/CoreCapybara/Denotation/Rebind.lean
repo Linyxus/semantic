@@ -456,6 +456,25 @@ def rebind_val_denot
             rebind_captureset_denot (ρ := ρ) (C := D2)] using
               hsep D1 D2 hdistinct0
         exact (ih m' _).mpr (hbody m' hsub hcompat hkind' hsep')
+  | .consumer Targ cs E => by
+    have ihA := rebind_exi_val_denot ρ Targ
+    intro m e
+    simp only [Ty.val_denot, Ty.rename]
+    rw [← rebind_resolved_capture_set ρ]
+    rw [← rebind_captureset_denot ρ cs]
+    constructor
+    · intro ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, hd⟩
+      refine ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro D w m' hsub harg hseqcomp hcompat
+      have harg' := (ihA m' (.pack D w)).mpr harg
+      specialize hd D w m' hsub harg' hseqcomp hcompat
+      exact (rebind_exi_exp_denot ρ E _ m' _).mp hd
+    · intro ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, hd⟩
+      refine ⟨hwf_e, hwf_cs, T0, cs', t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro D w m' hsub harg hseqcomp hcompat
+      have harg' := (ihA m' (.pack D w)).mp harg
+      specialize hd D w m' hsub harg' hseqcomp hcompat
+      exact (rebind_exi_exp_denot ρ E _ m' _).mpr hd
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

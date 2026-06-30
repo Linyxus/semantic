@@ -274,6 +274,17 @@ inductive Safe : Memory -> Exp {} -> Prop where
   (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : CaptureSet {}},
     BigStep m e1 t1 (.pack cs x) m1 -> Safe m1 (e2.subst (Subst.unpack cs x))) ->
   Safe m (.unpack e1 e2)
+| consumer_app {m : Memory} {x : Nat} {e : Exp {}}
+    {Targ : Ty .exi {}} {cs : CaptureSet {}} {body : Exp ({},C,x)} {hv R} :
+  -- The consumer closure sits at `x` (a value cell, hence preserved by the argument run).
+  m.lookup x = some (.val ⟨.consumer Targ cs body, hv, R⟩) ->
+  -- The argument is safe and runs to an existential package …
+  Safe m e ->
+  (h_ans : ∀ t1 v m1, BigStep m e t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap) ->
+  -- … after which the consumer body, with the witness opened into it, is safe.
+  (h_val : ∀ {t1 : Trace} {m1} {w : Var .var {}} {D : CaptureSet {}},
+    BigStep m e t1 (.pack D w) m1 -> Safe m1 (body.subst (Subst.unpack D w))) ->
+  Safe m (.consumer_app (.free x) e)
 | read {m : Memory} {x : Nat} {b : Bool} :
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
   m.lookup y = some (.capability (.mcell b .live)) ->
@@ -525,6 +536,15 @@ theorem Safe.has_answer {m : Memory} {e : Exp {}} (h : Safe m e) :
     | pack =>
       obtain ⟨t2, v2, m2, hbs2⟩ := ih_val hbs1
       exact ⟨_, _, _, BigStep.bs_unpack hbs1 hbs2⟩
+  | consumer_app hlk _ h_ans _ ih1 ih_val =>
+    obtain ⟨t1, v, m1, hbs1⟩ := ih1
+    obtain ⟨hpack, hwf1⟩ := h_ans _ _ _ hbs1
+    cases hpack with
+    | pack =>
+      obtain ⟨t2, v2, m2, hbs2⟩ := ih_val hbs1
+      obtain ⟨_, hlk1, hsubx⟩ := hbs1.subsumes _ _ hlk
+      simp only [Cell.subsumes] at hsubx; subst hsubx
+      exact ⟨_, _, _, BigStep.bs_consumer_apply hbs1 hlk1 hbs2⟩
   | read hlk1 hlk2 => exact ⟨_, _, _, BigStep.bs_read (b' := true) hlk1 hlk2⟩
   | write_true hx hy => exact ⟨_, _, _, BigStep.bs_write_true hx hy⟩
   | write_false hx hy => exact ⟨_, _, _, BigStep.bs_write_false hx hy⟩
@@ -3505,6 +3525,14 @@ theorem Safe.has_answer_avoiding {m : Memory} {e : Exp {}} (h : Safe m e) (S : F
     | pack =>
       obtain ⟨t2, v2, m2, hbs2, hadd2⟩ := ih_val hbs1
       exact ⟨_, _, _, BigStep.bs_unpack hbs1 hbs2, added_avoid_trans hadd1 hadd2⟩
+  | consumer_app hlk _ h_ans _ ih1 ih_val =>
+    obtain ⟨t1, v, m1, hbs1, hadd1⟩ := ih1
+    obtain ⟨hpack, hwf1⟩ := h_ans _ _ _ hbs1
+    cases hpack with
+    | pack =>
+      obtain ⟨t2, v2, m2, hbs2, hadd2⟩ := ih_val hbs1
+      exact ⟨_, _, _, BigStep.bs_consumer_apply hbs1 (BigStep.val_preserved hbs1 hlk) hbs2,
+        added_avoid_trans hadd1 hadd2⟩
   | read hlk1 hlk2 =>
     exact ⟨_, _, _, BigStep.bs_read (b' := true) hlk1 hlk2, fun c hc' hc => absurd hc hc'⟩
   | write_true hx hy =>
@@ -4277,6 +4305,49 @@ theorem Safe.lift {m1 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe m1 e)
           obtain ⟨b2, hm2_live⟩ :=
             hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
           exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
+  | consumer_app hlk _ h_ans h_val ih1 ih_val =>
+    clear m1
+    rename_i msrc _ earg _ _ _ _ _ _
+    obtain ⟨_, hx2, hsubx⟩ := hsub _ _ hlk
+    simp only [Cell.subsumes] at hsubx
+    subst hsubx
+    have hwf_e := Exp.wf_inv_consumer_app hwf
+    have hok_e1 : ∀ t v m, m.subsumes msrc -> BigStep msrc earg t v m ->
+        Memory.SubsumeOk msrc t m2 := by
+      intro t v m _ hbs1
+      obtain ⟨hpk, hwf_v⟩ := h_ans _ _ _ hbs1
+      cases hpk with
+      | pack =>
+        obtain ⟨t2, v2, mf, hbs2⟩ := (h_val hbs1).has_answer
+        have hfull := BigStep.bs_consumer_apply hbs1 (BigStep.val_preserved hbs1 hlk) hbs2
+        exact (hok _ _ _ hfull.subsumes (hpres _ _ _ hfull)).mono_append
+    refine Safe.consumer_app hx2
+      (ih1 (Q := fun t v m => BigStep msrc earg t v m) hsub (fun _ _ _ h => h) hok_e1 hwf_e)
+      ?_ ?_
+    · intro t1 v m1' hbs_m2
+      obtain ⟨m_sim, hbs_m1, _, _⟩ := hbs_m2.simulate_down hsub hwf_e
+      exact ⟨(h_ans _ _ _ hbs_m1).1, BigStep.wf_answer hbs_m2 (Exp.wf_monotonic hsub hwf_e)⟩
+    · intro t1 m1' w D hbs_m2
+      obtain ⟨m_sim, hbs_m1, hsub_sim, hlive⟩ := hbs_m2.simulate_down hsub hwf_e
+      refine ih_val hbs_m1 hsub_sim (fun _ _ _ h => h) ?_
+        (Exp.wf_subst
+          (Exp.wf_monotonic (BigStep.subsumes hbs_m1)
+            (match Memory.wf_lookup hlk with | .wf_consumer _ _ hbody => hbody))
+          (match BigStep.wf_answer hbs_m1 hwf_e with
+            | Exp.WfInHeap.wf_pack hcs hx => Subst.wf_unpack hcs hx))
+      intro t2 vc mc _ hbs_cont l bl hlk_l htouch
+      by_cases hal : Trace.allocd t1 l
+      · exact (hlive l (Or.inr hal)).mp ⟨bl, hlk_l⟩
+      · rcases hm1 : msrc.lookup l with _ | c
+        · exact absurd (BigStep.live_appears_allocd hbs_m1 hm1 hlk_l) hal
+        · obtain ⟨b1, hm1_live⟩ := Memory.mcell_lookup_down hbs_m1.subsumes hm1 hlk_l
+          have htouchF : Trace.extTouches (t1 ++ t2) l :=
+            Trace.extTouchesFrom_append_right hal (by simp) htouch
+          have hfull := BigStep.bs_consumer_apply hbs_m1
+            (BigStep.val_preserved hbs_m1 hlk) hbs_cont
+          obtain ⟨b2, hm2_live⟩ :=
+            hok _ _ _ hfull.subsumes (hpres _ _ _ hfull) l b1 hm1_live htouchF
+          exact (hlive l (Or.inl (iff_of_true ⟨b1, hm1_live⟩ ⟨b2, hm2_live⟩))).mp ⟨bl, hlk_l⟩
 
 /-- Memory-subsumption monotonicity of `Eval`.  `hok` carries the trace-footprint
   liveness: for every `Q`-result whose memory subsumes the source `m1`, the cells
@@ -4757,6 +4828,47 @@ theorem Eval.eval_unpack {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : 
         exact (h_val (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1)
           (BigStep.appears_allocd_of_cap hrun_e1) hx hcs hq1).2
           _ _ _ hrun_e2
+    | bs_val hv => cases hv
+
+/-- **Consumer application.**  Evaluate the existential argument `e` to a package,
+    look up the consumer closure at `x` (preserved across the run as a value cell),
+    and run its body with the witness opened in.  The structure mirrors
+    `Eval.eval_unpack` (the existential elimination) plus the closure lookup of
+    `Eval.eval_apply`. -/
+theorem Eval.eval_consumer_app {m : Memory} {x : Nat} {e : Exp {}}
+    {Targ : Ty .exi {}} {cs : CaptureSet {}} {body : Exp ({},C,x)} {hv R} {Q Q1 : Tpost}
+    (hlk : m.lookup x = some (.val ⟨.consumer Targ cs body, hv, R⟩))
+    (he : Eval m e Q1)
+    (h_nonstuck : ∀ {t1 : Trace} {m1 : Memory} {v : Exp {}},
+      Q1 t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap)
+    (h_val : ∀ {t1 : Trace} {m1} {w : Var .var {}} {D : CaptureSet {}}, m1.subsumes m ->
+      Memory.FrameLive m t1 m1 ->
+      (∀ {l c}, m.lookup l = none ->
+        m1.lookup l = some (.capability c) -> Trace.allocd t1 l) ->
+      (hwf_w : w.WfInHeap m1.heap) -> (hwf_D : D.WfInHeap m1.heap) -> Q1 t1 (.pack D w) m1 ->
+      Eval m1 (body.subst (Subst.unpack D w)) (fun t2 => Q (t1 ++ t2))) :
+    Eval m (.consumer_app (.free x) e) Q := by
+  refine ⟨?_, ?_⟩
+  · refine Safe.consumer_app hlk he.1
+      (fun t1 v m1 hrun => h_nonstuck (he.2 t1 v m1 hrun)) ?_
+    · intro t1 m1 w D hrun
+      have hq1 := he.2 t1 (.pack D w) m1 hrun
+      cases (h_nonstuck hq1).2 with
+      | wf_pack hcs hx =>
+        exact (h_val (BigStep.subsumes hrun) (BigStep.frameLive hrun)
+          (BigStep.appears_allocd_of_cap hrun) hx hcs hq1).1
+  · intro t v m' hbs
+    cases hbs with
+    | bs_consumer_apply hrun_e hlk2 hrun_body =>
+      have hq1 := he.2 _ _ _ hrun_e
+      have heq := congrArg HeapVal.unwrap
+        (Memory.lookup_val_eq (BigStep.val_preserved hrun_e hlk) hlk2)
+      simp only at heq
+      cases heq
+      cases (h_nonstuck hq1).2 with
+      | wf_pack hcs hx =>
+        exact (h_val (BigStep.subsumes hrun_e) (BigStep.frameLive hrun_e)
+          (BigStep.appears_allocd_of_cap hrun_e) hx hcs hq1).2 _ _ _ hrun_body
     | bs_val hv => cases hv
 
 /-- Coverage in `C.to_drop` forces the mode to be `.drop`: `to_drop` rewrites
