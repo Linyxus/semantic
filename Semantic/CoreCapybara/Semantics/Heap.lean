@@ -1177,6 +1177,7 @@ theorem Exp.IsSimpleVal.to_IsVal {e : Exp s} (h : e.IsSimpleVal) : e.IsVal :=
   | .tabs _ _ _, .tabs => .tabs
   | .cabs _ _ _, .cabs => .cabs
   | .boxed _ _ _, .boxed => .boxed
+  | .consumer _ _ _, .consumer => .consumer
   | .reader _, .reader => .reader
   | .unit, .unit => .unit
   | .btrue, .btrue => .btrue
@@ -1433,6 +1434,11 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   ModalCtx.WfInHeap Ψ H ->
   Ty.WfInHeap T H ->
   Ty.WfInHeap (.modal cs Ψ T) H
+| wf_consumer :
+  Ty.WfInHeap T H ->
+  CaptureSet.WfInHeap cs H ->
+  Ty.WfInHeap E H ->
+  Ty.WfInHeap (.consumer T cs E) H
 | wf_unit :
   Ty.WfInHeap .unit H
 | wf_cap :
@@ -1481,6 +1487,11 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   ModalCtx.WfInHeap Ψ H ->
   Exp.WfInHeap e H ->
   Exp.WfInHeap (.boxed cs Ψ e) H
+| wf_consumer :
+  Ty.WfInHeap T H ->
+  CaptureSet.WfInHeap cs H ->
+  Exp.WfInHeap e H ->
+  Exp.WfInHeap (.consumer T cs e) H
 | wf_reader :
   Var.WfInHeap x H ->
   Exp.WfInHeap (.reader x) H
@@ -1498,6 +1509,10 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Var.WfInHeap x H ->
   Var.WfInHeap y H ->
   Exp.WfInHeap (.app x y) H
+| wf_consumer_app :
+  Var.WfInHeap x H ->
+  Exp.WfInHeap e H ->
+  Exp.WfInHeap (.consumer_app x e) H
 | wf_tapp :
   Var.WfInHeap x H ->
   PureTy.WfInHeap T H ->
@@ -1606,6 +1621,8 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
   | modal hcs hΨ _ ih =>
     exact Ty.WfInHeap.wf_modal (CaptureSet.wf_of_closed hcs)
       (ModalCtx.wf_of_closed hΨ) ih
+  | consumer _ hcs _ ihT ihE =>
+    exact Ty.WfInHeap.wf_consumer ihT (CaptureSet.wf_of_closed hcs) ihE
   | cap hcs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_of_closed hcs)
   | cell hcs => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_of_closed hcs)
   | reader hcs => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_of_closed hcs)
@@ -1635,10 +1652,14 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
       (CaptureSet.wf_of_closed hcs) (CaptureBound.wf_of_closed hcb) ih
   | boxed hcs hΨ _ ih =>
     exact Exp.WfInHeap.wf_boxed (CaptureSet.wf_of_closed hcs) (ModalCtx.wf_of_closed hΨ) ih
+  | consumer hT hcs _ ih =>
+    exact Exp.WfInHeap.wf_consumer (Ty.wf_of_closed hT) (CaptureSet.wf_of_closed hcs) ih
   | pack hcs hx =>
     exact Exp.WfInHeap.wf_pack (CaptureSet.wf_of_closed hcs) (Var.wf_of_closed hx)
   | app hx hy =>
     exact Exp.WfInHeap.wf_app (Var.wf_of_closed hx) (Var.wf_of_closed hy)
+  | consumer_app hx _ ih =>
+    exact Exp.WfInHeap.wf_consumer_app (Var.wf_of_closed hx) ih
   | tapp hx hT =>
     exact Exp.WfInHeap.wf_tapp (Var.wf_of_closed hx) (Ty.wf_of_closed hT)
   | capp hx hcs =>
@@ -1739,6 +1760,9 @@ theorem Ty.wf_monotonic
     exact Ty.WfInHeap.wf_modal
       (CaptureSet.wf_monotonic hsub hwf_cs)
       (ModalCtx.wf_monotonic hsub hwf_Ψ) (ih_T hsub)
+  | wf_consumer _ hwf_cs _ ih_T ih_E =>
+    exact Ty.WfInHeap.wf_consumer
+      (ih_T hsub) (CaptureSet.wf_monotonic hsub hwf_cs) (ih_E hsub)
   | wf_cap hwf_cs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_monotonic hsub hwf_cs)
   | wf_cell hwf_cs => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_monotonic hsub hwf_cs)
   | wf_reader hwf_cs => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_monotonic hsub hwf_cs)
@@ -1772,11 +1796,16 @@ theorem Exp.wf_monotonic
   | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
     exact Exp.WfInHeap.wf_boxed
       (CaptureSet.wf_monotonic hsub hwf_cs) (ModalCtx.wf_monotonic hsub hwf_Ψ) (ih_e hsub)
+  | wf_consumer hwf_T hwf_cs _ ih_e =>
+    exact Exp.WfInHeap.wf_consumer
+      (Ty.wf_monotonic hsub hwf_T) (CaptureSet.wf_monotonic hsub hwf_cs) (ih_e hsub)
   | wf_pack hwf_cs hwf_x =>
     exact Exp.WfInHeap.wf_pack
       (CaptureSet.wf_monotonic hsub hwf_cs) (Var.wf_monotonic hsub hwf_x)
   | wf_app hwf_x hwf_y =>
     exact Exp.WfInHeap.wf_app (Var.wf_monotonic hsub hwf_x) (Var.wf_monotonic hsub hwf_y)
+  | wf_consumer_app hwf_x _ ih_e =>
+    exact Exp.WfInHeap.wf_consumer_app (Var.wf_monotonic hsub hwf_x) (ih_e hsub)
   | wf_tapp hwf_x hwf_T =>
     exact Exp.WfInHeap.wf_tapp (Var.wf_monotonic hsub hwf_x) (Ty.wf_monotonic hsub hwf_T)
   | wf_capp hwf_x hwf_cs =>
@@ -1939,6 +1968,9 @@ theorem Ty.wf_dom_subsumes {h1 h2 : Heap}
   | wf_modal hwf_cs hwf_Ψ _ ih_T =>
     exact .wf_modal (CaptureSet.wf_dom_subsumes hsub hwf_cs)
                     (ModalCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_T hsub)
+  | wf_consumer _ hwf_cs _ ih_T ih_E =>
+    exact .wf_consumer (ih_T hsub)
+                       (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_E hsub)
   | wf_cap hwf_cs => exact .wf_cap (CaptureSet.wf_dom_subsumes hsub hwf_cs)
   | wf_cell hwf_cs => exact .wf_cell (CaptureSet.wf_dom_subsumes hsub hwf_cs)
   | wf_reader hwf_cs => exact .wf_reader (CaptureSet.wf_dom_subsumes hsub hwf_cs)
@@ -1961,6 +1993,9 @@ theorem Exp.wf_dom_subsumes {h1 h2 : Heap}
   | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
     exact .wf_boxed (CaptureSet.wf_dom_subsumes hsub hwf_cs)
                     (ModalCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_e hsub)
+  | wf_consumer hwf_T hwf_cs _ ih_e =>
+    exact .wf_consumer (Ty.wf_dom_subsumes hsub hwf_T)
+                       (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_e hsub)
   | wf_reader hwf_x => exact .wf_reader (Var.wf_dom_subsumes hsub hwf_x)
   | wf_alloc hwf_x => exact .wf_alloc (Var.wf_dom_subsumes hsub hwf_x)
   | wf_drop hwf_x => exact .wf_drop (Var.wf_dom_subsumes hsub hwf_x)
@@ -1969,6 +2004,8 @@ theorem Exp.wf_dom_subsumes {h1 h2 : Heap}
                    (Var.wf_dom_subsumes hsub hwf_x)
   | wf_app hwf_x hwf_y =>
     exact .wf_app (Var.wf_dom_subsumes hsub hwf_x) (Var.wf_dom_subsumes hsub hwf_y)
+  | wf_consumer_app hwf_x _ ih_e =>
+    exact .wf_consumer_app (Var.wf_dom_subsumes hsub hwf_x) (ih_e hsub)
   | wf_tapp hwf_x hwf_T =>
     exact .wf_tapp (Var.wf_dom_subsumes hsub hwf_x) (Ty.wf_dom_subsumes hsub hwf_T)
   | wf_capp hwf_x hwf_cs =>
@@ -2021,6 +2058,7 @@ def compute_reachability
   | .tabs cs _ _ => expand_captures h cs
   | .cabs cs _ _ => expand_captures h cs
   | .boxed cs _ _ => expand_captures h cs
+  | .consumer _ cs _ => expand_captures h cs
   | .reader (.free loc) => .cap (.access .ro) loc
   | .unit => {}
   | .btrue => {}
@@ -2041,6 +2079,7 @@ def resolve_reachability (H : Heap) (e : Exp {}) : CapabilitySet :=
   | .tabs cs _ _ => expand_captures H cs
   | .cabs cs _ _ => expand_captures H cs
   | .boxed cs _ _ => expand_captures H cs
+  | .consumer _ cs _ => expand_captures H cs
   | .reader (.free x) => .singleton .ro x
   | _ => {}
 
@@ -2179,6 +2218,9 @@ theorem resolve_reachability_monotonic
   | wf_boxed hwf_cs _ _ =>
     change expand_captures H2 _ = expand_captures H1 _
     exact expand_captures_monotonic hsub _ hwf_cs
+  | wf_consumer _ hwf_cs _ =>
+    change expand_captures H2 _ = expand_captures H1 _
+    exact expand_captures_monotonic hsub _ hwf_cs
   | wf_reader hwf_x =>
     cases hwf_x with
     | wf_bound =>
@@ -2191,6 +2233,7 @@ theorem resolve_reachability_monotonic
   | wf_drop _ => rfl
   | wf_pack _ _ => rfl
   | wf_app _ _ => rfl
+  | wf_consumer_app _ _ => rfl
   | wf_tapp _ _ => rfl
   | wf_capp _ _ => rfl
   | wf_unwrap _ => rfl
@@ -2232,6 +2275,11 @@ theorem compute_reachability_monotonic
     change expand_captures h2 _ = expand_captures h1 _
     cases hwf with
     | wf_boxed hwf_cs _ _ =>
+      exact expand_captures_monotonic hsub _ hwf_cs
+  | consumer =>
+    change expand_captures h2 _ = expand_captures h1 _
+    cases hwf with
+    | wf_consumer _ hwf_cs _ =>
       exact expand_captures_monotonic hsub _ hwf_cs
   | reader =>
     rename_i x
@@ -2290,6 +2338,8 @@ theorem compute_reachability_update_mcell (h : Heap) (l : Nat) (ℓ : Liveness)
     simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
   | boxed =>
     simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
+  | consumer =>
+    simpa only [compute_reachability] using expand_captures_update_mcell h l ℓ hexists b _
   | reader =>
     rename_i x
     cases x with
@@ -2343,6 +2393,8 @@ theorem compute_reachability_drop_mcell (h : Heap) (l : Nat)
   | cabs =>
     simpa only [compute_reachability] using expand_captures_drop_mcell h l hexists _
   | boxed =>
+    simpa only [compute_reachability] using expand_captures_drop_mcell h l hexists _
+  | consumer =>
     simpa only [compute_reachability] using expand_captures_drop_mcell h l hexists _
   | reader =>
     rename_i x
@@ -2454,6 +2506,7 @@ theorem compute_reachability_dom {H : Heap}
   | tabs cs _ _ => exact expand_captures_dom hdom h
   | cabs cs _ _ => exact expand_captures_dom hdom h
   | boxed cs _ _ => exact expand_captures_dom hdom h
+  | consumer _ cs _ => exact expand_captures_dom hdom h
   | reader x =>
     cases x with
     | bound bx => cases bx
@@ -2647,6 +2700,12 @@ theorem Ty.wf_rename
         (CaptureSet.wf_rename hwf_cs)
         (ModalCtx.wf_rename hwf_Ψ)
         ih_T)
+  | wf_consumer _ hwf_cs _ ih_T ih_E =>
+    simpa only [Ty.rename] using
+      (Ty.WfInHeap.wf_consumer
+        ih_T
+        (CaptureSet.wf_rename hwf_cs)
+        ih_E)
   | wf_unit =>
     simpa only [Ty.rename] using (Ty.WfInHeap.wf_unit)
   | wf_cap hwf_cs =>
@@ -2700,6 +2759,12 @@ theorem Exp.wf_rename
         (CaptureSet.wf_rename hwf_cs)
         (ModalCtx.wf_rename hwf_Ψ)
         ih_e)
+  | wf_consumer hwf_T hwf_cs _ ih_e =>
+    simpa only [Exp.rename] using
+      (Exp.WfInHeap.wf_consumer
+        (Ty.wf_rename hwf_T)
+        (CaptureSet.wf_rename hwf_cs)
+        ih_e)
   | wf_reader hwf_x =>
     simpa only [Exp.rename] using (Exp.WfInHeap.wf_reader (Var.wf_rename hwf_x))
   | wf_alloc hwf_x =>
@@ -2712,6 +2777,9 @@ theorem Exp.wf_rename
   | wf_app hwf_x hwf_y =>
     simpa only [Exp.rename] using
       (Exp.WfInHeap.wf_app (Var.wf_rename hwf_x) (Var.wf_rename hwf_y))
+  | wf_consumer_app hwf_x _ ih_e =>
+    simpa only [Exp.rename] using
+      (Exp.WfInHeap.wf_consumer_app (Var.wf_rename hwf_x) ih_e)
   | wf_tapp hwf_x hwf_T =>
     simpa only [Exp.rename] using
       (Exp.WfInHeap.wf_tapp
@@ -2963,6 +3031,12 @@ theorem Ty.wf_subst
         (CaptureSet.wf_subst hwf_cs hwf_σ)
         (ModalCtx.wf_subst hwf_Ψ hwf_σ)
         (ih_T hwf_σ))
+  | wf_consumer _ hwf_cs _ ih_T ih_E =>
+    simpa only [Ty.subst] using
+      (Ty.WfInHeap.wf_consumer
+        (ih_T hwf_σ)
+        (CaptureSet.wf_subst hwf_cs hwf_σ)
+        (ih_E hwf_σ))
   | wf_unit =>
     simpa only [Ty.subst] using (Ty.WfInHeap.wf_unit)
   | wf_cap hwf_cs =>
@@ -3018,6 +3092,12 @@ theorem Exp.wf_subst
         (CaptureSet.wf_subst hwf_cs hwf_σ)
         (ModalCtx.wf_subst hwf_Ψ hwf_σ)
         (ih_e hwf_σ))
+  | wf_consumer hwf_T hwf_cs _ ih_e =>
+    simpa only [Exp.subst] using
+      (Exp.WfInHeap.wf_consumer
+        (Ty.wf_subst hwf_T hwf_σ)
+        (CaptureSet.wf_subst hwf_cs hwf_σ)
+        (ih_e (Subst.wf_lift (Subst.wf_lift hwf_σ))))
   | wf_reader hwf_x =>
     simpa only [Exp.subst] using (Exp.WfInHeap.wf_reader (Var.wf_subst hwf_x hwf_σ))
   | wf_alloc hwf_x =>
@@ -3032,6 +3112,9 @@ theorem Exp.wf_subst
   | wf_app hwf_x hwf_y =>
     simpa only [Exp.subst] using
       (Exp.WfInHeap.wf_app (Var.wf_subst hwf_x hwf_σ) (Var.wf_subst hwf_y hwf_σ))
+  | wf_consumer_app hwf_x _ ih_e =>
+    simpa only [Exp.subst] using
+      (Exp.WfInHeap.wf_consumer_app (Var.wf_subst hwf_x hwf_σ) (ih_e hwf_σ))
   | wf_tapp hwf_x hwf_T =>
     simpa only [Exp.subst] using
       (Exp.WfInHeap.wf_tapp
