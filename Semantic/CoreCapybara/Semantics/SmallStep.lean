@@ -113,6 +113,13 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
     (e.subst (Subst.openVar (.free l)))
 | step_unpack :
   Step [] m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
+| step_ctx_consumer_app :
+  Step t m e m' e' ->
+  Step t m (.consumer_app x e) m' (.consumer_app x e')
+| step_consumer_apply :
+  m.lookup x = some (.val ⟨.consumer T cs body, hv, R⟩) ->
+  Step [] m (.consumer_app (.free x) (.pack D (.free w))) m
+    (body.subst (Subst.unpack D (.free w)))
 
 /-- Multi-step reduction relation: reflexive-transitive closure of `Step`,
   accumulating the traces of the individual steps in order.
@@ -220,6 +227,14 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
     (e.subst (Subst.openVar (.free l)))
 | step_unpack :
   SeqStep [] m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
+-- Consumer application: see `Step.step_ctx_consumer_app`/`step_consumer_apply`.
+| step_ctx_consumer_app :
+  SeqStep t m e m' e' ->
+  SeqStep t m (.consumer_app x e) m' (.consumer_app x e')
+| step_consumer_apply :
+  m.lookup x = some (.val ⟨.consumer T cs body, hv, R⟩) ->
+  SeqStep [] m (.consumer_app (.free x) (.pack D (.free w))) m
+    (body.subst (Subst.unpack D (.free w)))
 
 /-- Multi-step sequential reduction: reflexive-transitive closure of `SeqStep`. -/
 inductive SeqReduce : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
