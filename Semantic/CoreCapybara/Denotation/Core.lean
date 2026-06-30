@@ -630,6 +630,20 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
         Ψ.sep.HasTwoDistinct C1 C2 ->
         CapabilitySet.Noninterference (C1.denot env m') (C2.denot env m')) ->
       Ty.exi_exp_denot env E R0 m' t0)
+| env, .consumer Targ cs E => fun m e =>
+  e.WfInHeap m.heap ∧
+  (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
+  ∃ T0 cs' t0,
+    resolve m.heap e = some (.consumer T0 cs' t0) ∧
+    cs'.WfInHeap m.heap ∧
+    let R0 := expand_captures m.heap cs'
+    R0 ⊆ (cs.denot env m) ∧
+    (∀ (D : CaptureSet {}) (w : Var .var {}) (m' : Memory),
+      m'.subsumes m ->
+      Ty.exi_val_denot env Targ m' (.pack D w) ->
+      let Rbody := R0 ∪ D.ground_denot m' ∪ (D.ground_denot m').to_drop
+      m'.is_compatible Rbody ->
+      Ty.exi_exp_denot env E Rbody m' (t0.subst (Subst.unpack D w)))
 
 /-- Value denotation for existential types. -/
 def Ty.exi_val_denot : TypeEnv s -> Ty .exi s -> Denot

@@ -167,6 +167,7 @@ theorem Ty.refineCaptureSet_closed {T : Ty .capt s} {cs : CaptureSet s} :
   | poly h1 _ h2 => exact IsClosed.poly h1 hcs h2
   | cpoly hcb _ hT' => exact IsClosed.cpoly hcb hcs hT'
   | modal _ hΨ hT' => exact IsClosed.modal hcs hΨ hT'
+  | consumer hT' _ hE => exact IsClosed.consumer hT' hcs hE
   | unit => exact IsClosed.unit
   | cap _ => exact IsClosed.cap hcs
   | bool => exact IsClosed.bool
@@ -195,6 +196,9 @@ theorem Ty.rename_closed {T : Ty sort s1} {f : Rename s1 s2} :
     cases h with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed hcs)
       (ModalCtx.rename_closed hΨ) (ihT hT)
+  case consumer T cs E ihT ihE =>
+    cases h with | consumer hT hcs hE =>
+    exact IsClosed.consumer (ihT hT) (CaptureSet.rename_closed hcs) (ihE hE)
   case unit => exact IsClosed.unit
   case cap cs =>
     cases h with | cap hcs =>
@@ -240,6 +244,10 @@ theorem Ty.rename_closed_inv {T : Ty sort s1} {f : Rename s1 s2} :
     cases h with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed_inv hcs)
       (ModalCtx.rename_closed_inv hΨ) (ihT hT)
+  case consumer T cs E ihT ihE =>
+    simp only [Ty.rename] at h
+    cases h with | consumer hT hcs hE =>
+    exact IsClosed.consumer (ihT hT) (CaptureSet.rename_closed_inv hcs) (ihE hE)
   case unit => exact IsClosed.unit
   case cap cs =>
     simp only [Ty.rename] at h
@@ -339,6 +347,9 @@ theorem HasType.use_set_is_closed
     exact CaptureSet.IsClosed.union (CaptureSet.IsClosed.union ih1 ih2) ih3
   | par _ _ _ ih1 ih2 => exact CaptureSet.IsClosed.union ih1 ih2
   | invoke _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
+  | consumer _ _ => exact CaptureSet.IsClosed.empty
+  | consumer_app _ _ ht_x _ _ ih_arg =>
+    exact CaptureSet.IsClosed.union ih_arg (HasType.typed_var_capture_closed ht_x)
   | subtyp _ _ _ hC _ _ => exact hC
 
 theorem HasType.exp_is_closed
@@ -437,6 +448,18 @@ theorem HasType.exp_is_closed
     constructor
     · cases ih_x; assumption
     · cases ih_y; assumption
+  case consumer hT_exi ht_body ih =>
+    refine Exp.IsClosed.consumer hT_exi ?_ ih
+    -- `cs` is closed because the renamed `cs` is part of the body's (closed) use-set
+    have h_use := HasType.use_set_is_closed ht_body
+    cases h_use with
+    | union hleft _ =>
+      cases hleft with
+      | union hcs_ren _ =>
+        exact CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv hcs_ren)
+  case consumer_app ih_x ih_e =>
+    cases ih_x with
+    | var hx_closed => exact Exp.IsClosed.consumer_app hx_closed ih_e
 
 theorem HasType.type_is_closed
   (ht : HasType C Γ e E) :
@@ -497,6 +520,16 @@ theorem HasType.type_is_closed
     exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
   case alloc =>
     exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar)
+  case consumer hT_exi ht_body ih =>
+    constructor
+    refine Ty.IsClosed.consumer hT_exi ?_ (Ty.rename_closed_inv (Ty.rename_closed_inv ih))
+    -- `cs` is closed because the renamed `cs` is part of the body's (closed) use-set
+    have h_use := HasType.use_set_is_closed ht_body
+    cases h_use with
+    | union hleft _ =>
+      cases hleft with
+      | union hcs_ren _ =>
+        exact CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv hcs_ren)
 -- More context lookup properties
 
 theorem Ctx.lookup_var_exists {Γ : Ctx s} {x : BVar s .var} :
