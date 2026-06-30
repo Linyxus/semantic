@@ -244,12 +244,6 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
 | consumer {T : Ty .capt (s,C)} {E : Ty .exi s} {cs : CaptureSet s} :
   (Ty.exi T).IsClosed ->
-  -- The body opens the existential argument `∃c.T`: the witness capture `C`
-  -- (`.can_drop`, since a consumer takes ownership of and may drop the argument)
-  -- and the content `x : T`, in the natural opening order `(s,C,x)`.
-  -- The body's budget is the consumer's own captures `cs` together with the
-  -- authority to access (`.epsilon`) and to drop the local witness `c`
-  -- (de Bruijn `.there .here` in `(s,C,x)`), mirroring `unpack`.
   HasType
     (((cs.rename Rename.succ).rename Rename.succ) ∪
      (.cvar (.M .epsilon) (.there .here)) ∪
