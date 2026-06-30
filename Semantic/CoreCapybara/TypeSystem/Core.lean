@@ -242,6 +242,23 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (cs.rename Rename.succ) (Γ.push_lock Ψ)
     (e.rename Rename.succ) (E.rename Rename.succ) ->
   HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
+| consumer {T : Ty .capt (s,C)} {E : Ty .exi s} {cs : CaptureSet s} :
+  (Ty.exi T).IsClosed ->
+  -- The body opens the existential argument `∃c.T`: the witness capture `C`
+  -- (`.can_drop`, since a consumer takes ownership of and may drop the argument)
+  -- and the content `x : T`, in the natural opening order `(s,C,x)`.
+  -- The body's budget is the consumer's own captures `cs` together with the
+  -- authority to access (`.epsilon`) and to drop the local witness `c`
+  -- (de Bruijn `.there .here` in `(s,C,x)`), mirroring `unpack`.
+  HasType
+    (((cs.rename Rename.succ).rename Rename.succ) ∪
+     (.cvar (.M .epsilon) (.there .here)) ∪
+     (.cvar .drop (.there .here)))
+    (Γ,C[.can_drop]<:.unbound,x:T)
+    e
+    ((E.rename Rename.succ).rename Rename.succ) ->
+  ----------------------------
+  HasType {} Γ (.consumer (Ty.exi T) cs e) (.typ (.consumer (Ty.exi T) cs E))
 | pack {C : CaptureSet s} :
   C.IsClosed ->
   C.AccessOnly Γ ->
@@ -255,6 +272,13 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.var y) (.typ T1) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
+| consumer_app {T : Ty .capt (s,C)} {E : Ty .exi s} {Carg : CaptureSet s} :
+  SeqComp Γ Carg (.var (.M .epsilon) x) ->
+  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
+  HasType {} Γ (.var x) (.typ (.consumer (Ty.exi T) (.var (.M .epsilon) x) E)) ->
+  HasType Carg Γ e (Ty.exi T) ->
+  ----------------------------
+  HasType (Carg ∪ (.var (.M .epsilon) x)) Γ (.consumer_app x e) E
 | tapp {S : PureTy s} :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
   S.IsClosed ->

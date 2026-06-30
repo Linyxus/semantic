@@ -13,7 +13,7 @@ inductive Exp : Sig -> Type where
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
 | boxed : CaptureSet s -> ModalCtx s -> Exp s -> Exp s
-| consumer : Ty .exi s -> CaptureSet s -> Exp (s,x,C) -> Exp s
+| consumer : Ty .exi s -> CaptureSet s -> Exp (s,C,x) -> Exp s
 | reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
 | drop : Var .var s -> Exp s
