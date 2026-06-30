@@ -641,7 +641,8 @@ def Ty.val_denot : TypeEnv s -> Ty .capt s -> Denot
     (∀ (D : CaptureSet {}) (w : Var .var {}) (m' : Memory),
       m'.subsumes m ->
       Ty.exi_val_denot env Targ m' (.pack D w) ->
-      (D.ground_denot m').SeqComp R0 ->
+      (∀ (c' : BVar s .cvar), env.lookup_cvar_auth c' = .can_drop ->
+        CapabilitySet.disjoint (D.ground_denot m') (env.lookup_cvar c').2) ->
       let Rbody := R0 ∪ D.ground_denot m' ∪ (D.ground_denot m').to_drop
       m'.is_compatible Rbody ->
       Ty.exi_exp_denot env E Rbody m' (t0.subst (Subst.unpack D w)))
@@ -1974,9 +1975,9 @@ def val_denot_is_monotonic {env : TypeEnv s}
     refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       T0, cs', t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun D w m' hs' harg hseqcomp hcompat => ?_⟩
-    rw [hcs'_eq] at hcompat hseqcomp ⊢
-    exact hfun D w m' (Memory.subsumes_trans hs' hmem) harg hseqcomp hcompat
+      fun D w m' hs' harg hdisj hcompat => ?_⟩
+    rw [hcs'_eq] at hcompat ⊢
+    exact hfun D w m' (Memory.subsumes_trans hs' hmem) harg hdisj hcompat
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
@@ -2859,8 +2860,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
-    · intro D w m' hsub harg hseqcomp hcompat
-      exact hbody D w m' hsub harg hseqcomp hcompat
+    · intro D w m' hsub harg hdisj hcompat
+      exact hbody D w m' hsub harg hdisj hcompat
   | cap cs =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
     obtain ⟨hwf_e, hwf_cs, label, heq, hlookup, hcov⟩ := hdenot
