@@ -1840,6 +1840,15 @@ theorem Exp.wf_inv_unpack
   cases hwf with
   | wf_unpack hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
 
+/-- Inversion for consumer application: if `consumer_app x e` is well-formed,
+    then the argument `e` is well-formed. -/
+theorem Exp.wf_inv_consumer_app
+  {x : Var .var s} {e : Exp s} {H : Heap}
+  (hwf : Exp.WfInHeap (.consumer_app x e) H) :
+  Exp.WfInHeap e H := by
+  cases hwf with
+  | wf_consumer_app _ hwf_e => exact hwf_e
+
 /-- Inversion for parallel composition: if `par e1 e2` is well-formed, so are both. -/
 theorem Exp.wf_inv_par
   {C1 C2 : CaptureSet s} {e1 e2 : Exp s} {H : Heap}
