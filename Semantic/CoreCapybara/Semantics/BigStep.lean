@@ -125,6 +125,11 @@ inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
   BigStep m e1 t1 (.pack cs x) m1 ->
   BigStep m1 (e2.subst (Subst.unpack cs x)) t2 v2 m2 ->
   BigStep m (.unpack e1 e2) (t1 ++ t2) v2 m2
+| bs_consumer_apply {m m1 m2 : Memory} {x : Nat} {D : CaptureSet {}} {w : Var .var {}} :
+  BigStep m e t1 (.pack D w) m1 ->
+  m1.lookup x = some (.val ⟨.consumer T cs body, hv, R⟩) ->
+  BigStep m1 (body.subst (Subst.unpack D w)) t2 v2 m2 ->
+  BigStep m (.consumer_app (.free x) e) (t1 ++ t2) v2 m2
 | bs_read {m : Memory} {x : Nat} {b b' : Bool} :
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
   m.lookup y = some (.capability (.mcell b .live)) ->
