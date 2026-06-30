@@ -270,6 +270,13 @@ inductive CapyCaptureSet.Subset : CapyCaptureSet s -> CapyCaptureSet s -> Prop w
 instance CapyCaptureSet.instHasSubset : HasSubset (CapyCaptureSet s) where
   Subset := CapyCaptureSet.Subset
 
+/-- A frozen peak is a subset of another frozen peak only when their contents are
+    equal (no `Subset` rule descends under `pseudo_peak`, so only `refl` applies). -/
+theorem CapyCaptureSet.pseudo_subset_pseudo_eq {C D : CapyCaptureSet s}
+    (h : CapyCaptureSet.pseudo_peak C ⊆ CapyCaptureSet.pseudo_peak D) : C = D := by
+  cases h
+  rfl
+
 
 /-- A capture set is closed if it contains no heap pointers. -/
 inductive CapyCaptureSet.IsClosed : CapyCaptureSet s -> Prop where
@@ -404,6 +411,21 @@ theorem CapyCaptureSet.NoPseudoPeak.applyAccess {cs : CapyCaptureSet s} (h : cs.
     cases a with
     | M m => cases m <;> exact NoPseudoPeak.var
     | drop => exact NoPseudoPeak.var
+
+/-- A `NoPseudoPeak` capture set contains no frozen peak, so no `pseudo_peak` is a
+    subset of it. -/
+theorem CapyCaptureSet.NoPseudoPeak.not_pseudo_subset {cs : CapyCaptureSet s}
+    (h : cs.NoPseudoPeak) {C : CapyCaptureSet s} :
+    ¬ (CapyCaptureSet.pseudo_peak C ⊆ cs) := by
+  induction h with
+  | empty => intro hsub; cases hsub
+  | cvar => intro hsub; cases hsub
+  | var => intro hsub; cases hsub
+  | union _ _ ih1 ih2 =>
+    intro hsub
+    cases hsub with
+    | union_right_left h => exact ih1 h
+    | union_right_right h => exact ih2 h
 
 /-- Erases all access modes (sets every atom to `.M .epsilon`), giving the
     mode-independent *identity* of a capture set.  Two frozen-peak items that

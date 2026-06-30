@@ -195,6 +195,41 @@ theorem CapyTy.captureSet_rename {T : CapyTy .capt s1} {f : Rename s1 s2} :
     (T.rename f).captureSet = T.captureSet.rename f := by
   cases T <;> simp [CapyTy.rename, CapyTy.captureSet, CapyCaptureSet.rename]
 
+/-- A capture bound is pseudo-peak free when its bounding set is. -/
+def CapyCaptureBound.NoPseudoPeak : CapyCaptureBound s → Prop
+| .unbound _ => True
+| .bound cs => cs.NoPseudoPeak
+
+/-- A type is *pseudo-peak free* when every capture set it mentions is.  Source types
+    never contain a `pseudo_peak` (it is a compiler `openCVar` artifact), so this is a
+    structural invariant of any type fed to the compiler before opening. -/
+def CapyTy.NoPseudoPeak : CapyTy sort s → Prop
+| .top => True
+| .tvar _ => True
+| .arrow T1 cs T2 => T1.NoPseudoPeak ∧ cs.NoPseudoPeak ∧ T2.NoPseudoPeak
+| .poly T1 cs T2 => T1.NoPseudoPeak ∧ cs.NoPseudoPeak ∧ T2.NoPseudoPeak
+| .cpoly cb cs T => cb.NoPseudoPeak ∧ cs.NoPseudoPeak ∧ T.NoPseudoPeak
+| .cap cs => cs.NoPseudoPeak
+| .cell cs _ => cs.NoPseudoPeak
+| .unit => True
+| .bool => True
+| .exi T => T.NoPseudoPeak
+| .typ T => T.NoPseudoPeak
+
+/-- A pseudo-peak-free capturing type has a pseudo-peak-free capture set. -/
+theorem CapyTy.NoPseudoPeak.captureSet {T : CapyTy .capt s} (h : T.NoPseudoPeak) :
+    T.captureSet.NoPseudoPeak := by
+  cases T with
+  | arrow T1 cs T2 => exact h.2.1
+  | poly T1 cs T2 => exact h.2.1
+  | cpoly cb cs T => exact h.2.1
+  | cap cs => exact h
+  | cell cs m => exact h
+  | top => exact CapyCaptureSet.NoPseudoPeak.empty
+  | tvar x => exact CapyCaptureSet.NoPseudoPeak.empty
+  | unit => exact CapyCaptureSet.NoPseudoPeak.empty
+  | bool => exact CapyCaptureSet.NoPseudoPeak.empty
+
 /-- The predicate that a capturing type is pure. -/
 def CapyTy.IsPureType (T : CapyTy .capt s) : Prop :=
   T.captureSet.IsEmpty

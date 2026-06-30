@@ -295,6 +295,57 @@ theorem CapyCaptureSet.peaks_isClosed (Γ : CapyCtx s) (cs : CapyCaptureSet s) :
 termination_by (sizeOf Γ, sizeOf cs)
 end
 
+/-- A type-binding context is *pseudo-peak free* when every term-variable binding's
+    type carries a `NoPseudoPeak` capture set.  A `pseudo_peak` is a compiler artifact
+    (the `openCVar` freeze); a *source* context never contains one, so its `peaks`
+    resolution never reconstructs a frozen peak. -/
+def CapyCtx.NoPseudoPeak : CapyCtx s → Prop
+| .empty => True
+| .push Γ (.var T) => Γ.NoPseudoPeak ∧ T.captureSet.NoPseudoPeak
+| .push Γ (.tvar _) => Γ.NoPseudoPeak
+| .push Γ (.cvar _ _) => Γ.NoPseudoPeak
+
+/-- The tail of a pseudo-peak-free context is pseudo-peak free. -/
+theorem CapyCtx.NoPseudoPeak.tail {Γ : CapyCtx s} {b : CapyBinding s k}
+    (h : (Γ.push b).NoPseudoPeak) : Γ.NoPseudoPeak := by
+  cases b with
+  | var T => exact h.1
+  | tvar S => exact h
+  | cvar a cb => exact h
+
+mutual
+/-- Resolving a bound var through a pseudo-peak-free context yields a pseudo-peak-free
+    capture set (no `pseudo_peak` is reconstructed). -/
+theorem CapyCaptureSet.peaksVarBound_noPseudoPeak {Γ : CapyCtx s}
+    (hΓ : Γ.NoPseudoPeak) (m : Access) (x : BVar s .var) :
+    (CapyCaptureSet.peaksVarBound Γ m x).NoPseudoPeak := by
+  match Γ, x, hΓ with
+  | .push Γ (.var T), .here, hΓ =>
+    rw [CapyCaptureSet.peaksVarBound]
+    exact ((CapyCaptureSet.peaks_noPseudoPeak hΓ.1 hΓ.2).rename Rename.succ).applyAccess
+  | .push Γ b, .there x, hΓ =>
+    rw [CapyCaptureSet.peaksVarBound]
+    exact (CapyCaptureSet.peaksVarBound_noPseudoPeak hΓ.tail m x).rename Rename.succ
+termination_by (sizeOf Γ, sizeOf x + 1)
+
+/-- `peaks` resolution of a pseudo-peak-free capture set through a pseudo-peak-free
+    context is pseudo-peak free.  The frozen-peak case is ruled out by `hcs`. -/
+theorem CapyCaptureSet.peaks_noPseudoPeak {Γ : CapyCtx s} {cs : CapyCaptureSet s}
+    (hΓ : Γ.NoPseudoPeak) (hcs : cs.NoPseudoPeak) :
+    (CapyCaptureSet.peaks Γ cs).NoPseudoPeak := by
+  match cs, hcs with
+  | .empty, _ => rw [CapyCaptureSet.peaks]; exact NoPseudoPeak.empty
+  | .union cs1 cs2, .union h1 h2 =>
+    rw [CapyCaptureSet.peaks]
+    exact NoPseudoPeak.union
+      (CapyCaptureSet.peaks_noPseudoPeak hΓ h1) (CapyCaptureSet.peaks_noPseudoPeak hΓ h2)
+  | .cvar m c, _ => rw [CapyCaptureSet.peaks]; exact NoPseudoPeak.cvar
+  | .var _ (.free _), _ => rw [CapyCaptureSet.peaks]; exact NoPseudoPeak.empty
+  | .var m (.bound x), _ =>
+    rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.peaksVarBound_noPseudoPeak hΓ m x
+termination_by (sizeOf Γ, sizeOf cs)
+end
+
 mutual
 /-- Helper: resolve a bound var, recursing through frozen peaks. -/
 def CapyCaptureSet.resourcePeaksVarBound :

@@ -123,6 +123,27 @@ theorem TgtPairDroppable.liftLock {s2 s2' : Sig} {Γt : Ctx s2'} {σt : Subst s2
     · simp only [Ctx.lookup_authority]; exact ha_d1
     · simp only [Ctx.lookup_authority]; exact ha_d2
 
+/-- `TgtPairDroppable` preserved by a target binder + a VAR lift (the arrow-body
+    builder).  The lifted cvar var is always `.there` (the binder is a var), so
+    only the shift case arises — identical to `.liftLock`. -/
+theorem TgtPairDroppable.liftVar {s2 s2' : Sig} {Γt : Ctx s2'} {σt : Subst s2 s2'}
+    {b : Binding s2' .var} (h : TgtPairDroppable Γt σt) :
+    TgtPairDroppable (Γt.push b) (σt.lift (k := Kind.var)) := by
+  intro Y a1 a2 c1 c2 hne hmem1 hmem2
+  cases Y with
+  | there Y0 =>
+    have hYeq : (σt.lift (k := Kind.var)).cvar (.there Y0)
+        = (σt.cvar Y0).rename Rename.succ := Subst.lift_there_cvar_eq
+    rw [hYeq, CaptureSet.peaks_rename_succ_eq] at hmem1 hmem2
+    obtain ⟨d1, hd1, hsub1⟩ := CaptureSet.cvar_subset_rename_succ hmem1
+    obtain ⟨d2, hd2, hsub2⟩ := CaptureSet.cvar_subset_rename_succ hmem2
+    subst hd1; subst hd2
+    have hne0 : d1 ≠ d2 := fun heq => hne (by rw [heq])
+    obtain ⟨ha_d1, ha_d2, _⟩ := h Y0 a1 a2 d1 d2 hne0 hsub1 hsub2
+    refine ⟨?_, ?_, hne⟩
+    · simp only [Ctx.lookup_authority]; exact ha_d1
+    · simp only [Ctx.lookup_authority]; exact ha_d2
+
 /-- **Peaks-after-substitution decomposition.**  A peak cvar of `cs.subst σ`
     traces back to a peak of an atom-image of `cs`: either `(σ.cvar c0).applyAccess m`
     for a cvar-atom `.cvar m c0` of `cs`, or `.var m (σ.var x)` for a var-atom.
@@ -150,6 +171,73 @@ theorem CapyCaptureSet.peaks_subst_mem {s1 s2 : Sig} {Γ : CapyCtx s2}
   -- `subst`/`peaks` keep the pseudo-peak frozen; a `.cvar` atom cannot be `⊆` it.
   | pseudo_peak _ _ => simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at h; cases h
 
+/-- **Frozen-peak-after-substitution decomposition.**  A *frozen* peak of
+    `cs.subst σ` traces back to a frozen peak of a cvar-atom image `(σ.cvar c0).applyAccess m`
+    of `cs`.  Origin (`cs`) and context (`Γ`) are pseudo-peak free, so the only
+    `pseudo_peak` introduced is by `σ` at a cvar atom — the keystone for routing a
+    sub *frozen* peak back to the origin cvar that `σ` froze. -/
+theorem CapyCaptureSet.peaks_subst_pseudo_mem {s1 s2 : Sig} {Γ : CapyCtx s2}
+    {σ : CapySubst s1 s2} (hΓ : Γ.NoPseudoPeak) {C' : CapyCaptureSet s2} :
+    ∀ {cs : CapyCaptureSet s1}, cs.NoPseudoPeak →
+      (CapyCaptureSet.pseudo_peak C' ⊆ CapyCaptureSet.peaks Γ (CapyCaptureSet.subst cs σ)) →
+      ∃ (c0 : BVar s1 .cvar) (m : Access),
+        (CapyCaptureSet.pseudo_peak C') ⊆
+          CapyCaptureSet.peaks Γ ((σ.cvar c0).applyAccess m) := by
+  intro cs
+  induction cs with
+  | empty => intro _ h; simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at h; cases h
+  | union cs1 cs2 ih1 ih2 =>
+    intro hcs h
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at h
+    cases hcs with
+    | union hcs1 hcs2 =>
+      cases h with
+      | union_right_left h1 => exact ih1 hcs1 h1
+      | union_right_right h2 => exact ih2 hcs2 h2
+  | cvar m c0 => intro _ h; simp only [CapyCaptureSet.subst] at h; exact ⟨c0, m, h⟩
+  | var m x =>
+    intro _ h
+    simp only [CapyCaptureSet.subst] at h
+    exact absurd h
+      (CapyCaptureSet.peaks_noPseudoPeak hΓ CapyCaptureSet.NoPseudoPeak.var).not_pseudo_subset
+  | pseudo_peak C0 _ => intro hcs _; cases hcs
+
+/-- Strengthening of `peaks_subst_pseudo_mem` that also exposes the *origin cvar
+    occurrence* `{m c0} ⊆ cs` whose `σ`-image carries the frozen peak.  (Needed by the
+    reverse frozen-item containment to place the content into `c0`'s origin lock item.) -/
+theorem CapyCaptureSet.peaks_subst_pseudo_mem' {s1 s2 : Sig} {Γ : CapyCtx s2}
+    {σ : CapySubst s1 s2} (hΓ : Γ.NoPseudoPeak) {C' : CapyCaptureSet s2} :
+    ∀ {cs : CapyCaptureSet s1}, cs.NoPseudoPeak →
+      (CapyCaptureSet.pseudo_peak C' ⊆ CapyCaptureSet.peaks Γ (CapyCaptureSet.subst cs σ)) →
+      ∃ (c0 : BVar s1 .cvar) (m : Access),
+        (CapyCaptureSet.cvar m c0) ⊆ cs ∧
+        (CapyCaptureSet.pseudo_peak C') ⊆
+          CapyCaptureSet.peaks Γ ((σ.cvar c0).applyAccess m) := by
+  intro cs
+  induction cs with
+  | empty => intro _ h; simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at h; cases h
+  | union cs1 cs2 ih1 ih2 =>
+    intro hcs h
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at h
+    cases hcs with
+    | union hcs1 hcs2 =>
+      cases h with
+      | union_right_left h1 =>
+        obtain ⟨c0, m, hocc, hp⟩ := ih1 hcs1 h1
+        exact ⟨c0, m, CapyCaptureSet.Subset.union_right_left hocc, hp⟩
+      | union_right_right h2 =>
+        obtain ⟨c0, m, hocc, hp⟩ := ih2 hcs2 h2
+        exact ⟨c0, m, CapyCaptureSet.Subset.union_right_right hocc, hp⟩
+  | cvar m c0 =>
+    intro _ h; simp only [CapyCaptureSet.subst] at h
+    exact ⟨c0, m, CapyCaptureSet.Subset.refl, h⟩
+  | var m x =>
+    intro _ h
+    simp only [CapyCaptureSet.subst] at h
+    exact absurd h
+      (CapyCaptureSet.peaks_noPseudoPeak hΓ CapyCaptureSet.NoPseudoPeak.var).not_pseudo_subset
+  | pseudo_peak C0 _ => intro hcs _; cases hcs
+
 /-! ### Pure bounds
 
 `Subtyp.poly`/`tabs` retype a polymorphic bound only when it is a *shape* (pure)
@@ -169,6 +257,54 @@ def CapyTy.PureBounds : CapyTy sort s → Prop
   | .cpoly _ _ E => CapyTy.PureBounds E
   | .exi T => CapyTy.PureBounds T
   | .typ T => CapyTy.PureBounds T
+
+/-- `PureBounds` is preserved by renaming (it constrains only type-bound positions, which
+    rename structurally). -/
+theorem CapyTy.PureBounds.rename {sort : CapyTySort} {s1 : Sig} {T : CapyTy sort s1} :
+    ∀ {s2 : Sig} (ρ : Rename s1 s2), CapyTy.PureBounds T → CapyTy.PureBounds (T.rename ρ) := by
+  induction T with
+  | arrow T1 cs E ih1 ih2 => intro _ ρ h; exact ⟨ih1 ρ.lift h.1, ih2 ρ.lift h.2⟩
+  | poly S cs E ihS ihE => intro _ ρ h; exact ⟨h.1.rename ρ, ihS ρ h.2.1, ihE ρ.lift h.2.2⟩
+  | cpoly cb cs E ihE => intro _ ρ h; exact ihE ρ.lift h
+  | exi T ih => intro _ ρ h; exact ih ρ.lift h
+  | typ T ih => intro _ ρ h; exact ih ρ h
+  | top | tvar _ | unit | bool | cap _ | cell _ _ => intro _ _ _; exact trivial
+
+/-- `PureBounds` is preserved by `refineCaptureSet` (it overwrites only the latent capture,
+    not the type-bound positions). -/
+theorem CapyTy.PureBounds.refineCaptureSet {s : Sig} {T : CapyTy .capt s}
+    {cs : CapyCaptureSet s} (h : CapyTy.PureBounds T) :
+    CapyTy.PureBounds (T.refineCaptureSet cs) := by
+  cases T <;> exact h
+
+/-- `CapyTy.NoPseudoPeak` is preserved by renaming. -/
+theorem CapyTy.NoPseudoPeak.rename {sort : CapyTySort} {s1 : Sig} {T : CapyTy sort s1} :
+    ∀ {s2 : Sig} (ρ : Rename s1 s2), T.NoPseudoPeak → (T.rename ρ).NoPseudoPeak := by
+  induction T with
+  | arrow T1 cs E ih1 ih2 => intro _ ρ h; exact ⟨ih1 ρ.lift h.1, h.2.1.rename ρ, ih2 ρ.lift h.2.2⟩
+  | poly S cs E ihS ihE => intro _ ρ h; exact ⟨ihS ρ h.1, h.2.1.rename ρ, ihE ρ.lift h.2.2⟩
+  | cpoly cb cs E ihE =>
+    intro _ ρ h; cases cb with
+    | unbound m => exact ⟨True.intro, h.2.1.rename ρ, ihE ρ.lift h.2.2⟩
+    | bound csb => exact ⟨h.1.rename ρ, h.2.1.rename ρ, ihE ρ.lift h.2.2⟩
+  | cap cs => intro _ ρ h; exact h.rename ρ
+  | cell cs m => intro _ ρ h; exact h.rename ρ
+  | exi T ih => intro _ ρ h; exact ih ρ.lift h
+  | typ T ih => intro _ ρ h; exact ih ρ h
+  | top | tvar _ | unit | bool => intro _ _ _; exact True.intro
+
+/-- `CapyTy.NoPseudoPeak` is preserved by `refineCaptureSet` (the new latent capture must be
+    pseudo-peak-free). -/
+theorem CapyTy.NoPseudoPeak.refineCaptureSet {s : Sig} {T : CapyTy .capt s}
+    {cs : CapyCaptureSet s} (h : T.NoPseudoPeak) (hcs : cs.NoPseudoPeak) :
+    (T.refineCaptureSet cs).NoPseudoPeak := by
+  cases T with
+  | arrow T1 cs0 E => exact ⟨h.1, hcs, h.2.2⟩
+  | poly S cs0 E => exact ⟨h.1, hcs, h.2.2⟩
+  | cpoly cb cs0 E => exact ⟨h.1, hcs, h.2.2⟩
+  | cap cs0 => exact hcs
+  | cell cs0 m => exact hcs
+  | top | tvar _ | unit | bool => exact True.intro
 
 /-! ### Type-variable compatibility (the `tvar` leaf)
 
@@ -277,6 +413,37 @@ theorem SubstTvarCompat.weakenTarget {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s
   refine ⟨Z, hZ, ?_⟩
   simp only [SrcCtx.lookupTVar_rename, Rename.succ, Subst.lift_there_tvar_eq, hlk]; rfl
 
+/-- `SubstTvarCompat` preserved by a source *term*-variable binder (`consVar`): the binder
+    adds no target tvar, so every source tvar is `.there` and the target map is unchanged. -/
+theorem SubstTvarCompat.consVar {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'}
+    {scOrig : SrcCtx s1 s2} {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
+    {bvS : Option (BVar s2' .var)} {bvO : Option (BVar s2 .var)}
+    {csS : CaptureSet s2'} {csO : CaptureSet s2}
+    (h : SubstTvarCompat scSub scOrig σ σt) :
+    SubstTvarCompat (.cons (.var bvS csS) scSub) (.cons (.var bvO csO) scOrig) σ.lift σt := by
+  intro X
+  cases X with
+  | there X0 =>
+    obtain ⟨Z0, hZ, hlk⟩ := h X0
+    refine ⟨.there Z0, ?_, ?_⟩
+    · rw [CapySubst.lift_there_tvar_eq, hZ]; rfl
+    · simp only [SrcCtx.lookupTVar]; exact hlk
+
+/-- `SubstTvarCompat` preserved by a source *capture*-variable binder (`consCVar`, any target
+    cvar): the binder adds no target tvar, so every source tvar is `.there`. -/
+theorem SubstTvarCompat.consCVar {s1 s1' s2 s2' : Sig} {scSub : SrcCtx s1' s2'}
+    {scOrig : SrcCtx s1 s2} {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
+    {cS : BVar s2' .cvar} {cO : BVar s2 .cvar}
+    (h : SubstTvarCompat scSub scOrig σ σt) :
+    SubstTvarCompat (.cons (.cvar cS) scSub) (.cons (.cvar cO) scOrig) σ.lift σt := by
+  intro X
+  cases X with
+  | there X0 =>
+    obtain ⟨Z0, hZ, hlk⟩ := h X0
+    refine ⟨.there Z0, ?_, ?_⟩
+    · rw [CapySubst.lift_there_tvar_eq, hZ]; rfl
+    · simp only [SrcCtx.lookupTVar]; exact hlk
+
 /-- Alignment is preserved by a fresh *target* binder (`SrcCtx.weaken = rename succ`):
     both the looked-up image and the compiled capture set rename by `succ`. -/
 theorem SrcAligned.weakenTarget {s s2 : Sig} {Γ : CapyCtx s} {sc : SrcCtx s s2} {k : Kind}
@@ -312,6 +479,21 @@ theorem SrcAligned.consTVar {s s2 : Sig} {Γ : CapyCtx s} {sc : SrcCtx s s2}
   simp only [CapyCtx.push_tvar] at hlook
   cases hlook with
   | there hlook0 => exact (h hlook0).trans CapyCaptureSet.compile_captureSet_weaken.symm
+
+/-- Alignment is preserved by a fresh source term binder whose capture image is the
+    binder's own declared latent capture `⟦T.captureSet⟧` (the *aligned* surrogate of
+    the `arrow` compiler's `ctxLock`/`ctxDomain`, which instead store the self-capture
+    `{cx}`). -/
+theorem SrcAligned.consVar {s s2 : Sig} {Γ : CapyCtx s} {sc : SrcCtx s s2}
+    {T : CapyTy .capt s} {bv : Option (BVar s2 .var)}
+    (h : SrcAligned Γ sc) :
+    SrcAligned (Γ.push_var T)
+      (.cons (.var bv (CapyCaptureSet.compile T.captureSet sc)) sc) := by
+  intro x U hlook
+  cases hlook with
+  | here => exact CapyCaptureSet.compile_captureSet_weaken.symm
+  | there hlook0 =>
+    exact (h hlook0).trans CapyCaptureSet.compile_captureSet_weaken.symm
 
 /-- **(★-keystone) Compiled peaks commute with a compatible substitution.**  Combines
     (★) `compile_peaks` (compilation factors through peak-resolution, under alignment)
@@ -445,6 +627,15 @@ theorem peakSepCtx_subst_HasTwoDistinct_of {s1 s2 s2' : Sig} {P : CapyPeakSet s1
   exact SepCtx.HasTwoDistinct.foldl
     (g := fun p => (CapyCaptureSet.compile (peakKeyItem P p) sc).subst σt) (peakList P) hc1 hc2 hne
 
+/-- `SepCtx.rename` distributes over a `foldl`-built context (push the rename inside). -/
+theorem SepCtx.rename_foldl {α : Type} {s1 s2 : Sig} {g : α → CaptureSet s1} {ρ : Rename s1 s2}
+    (L : List α) :
+    ∀ {acc : SepCtx s1}, (L.foldl (fun K c => SepCtx.cons K (g c)) acc).rename ρ
+      = L.foldl (fun K c => SepCtx.cons K ((g c).rename ρ)) (acc.rename ρ) := by
+  induction L with
+  | nil => intro acc; rfl
+  | cons c L' ih => intro acc; exact ih
+
 /-! ### Capture-variable injectivity of a source→target map
 
 The compiled function-lock separation discipline (`sep_droppable`) requires that
@@ -504,6 +695,31 @@ theorem SrcCtx.CVarInjective.consVar {s1 s2 : Sig} {sc : SrcCtx s1 s2}
   | there c1' =>
     cases c2 with
     | there c2' => simp only [SrcCtx.lookupCVar] at he; exact congrArg BVar.there (h he)
+
+/-- Injectivity for a fresh source cvar mapped to the *second-newest* target cvar
+    `.there .here` over a doubly-`succ`-renamed context (the `arrow`-domain `[c]` binder, which
+    sits below the freshly-bound `[cx]`). -/
+theorem SrcCtx.CVarInjective.consCVarThereHere {s1 s2 : Sig} {sc : SrcCtx s1 s2}
+    (h : sc.CVarInjective) :
+    (SrcCtx.cons (.cvar (BVar.there BVar.here))
+      ((sc.rename (Rename.succ (k := Kind.cvar))).rename
+        (Rename.succ (k := Kind.cvar)))).CVarInjective := by
+  intro c1 c2 he
+  cases c1 with
+  | here =>
+    cases c2 with
+    | here => rfl
+    | there c2' =>
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ] at he
+      exact absurd he (by simp)
+  | there c1' =>
+    cases c2 with
+    | here =>
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ] at he
+      exact absurd he (by simp)
+    | there c2' =>
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ] at he
+      exact congrArg BVar.there (h (BVar.there.inj (BVar.there.inj he)))
 
 /-! ### Inversion: distinct `HasTwoDistinct` items of a `peakSepCtx` are distinct peaks
 
@@ -645,6 +861,22 @@ theorem peakSepCtx_HasTwoDistinct_ne {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : Sr
           C2 = CapyCaptureSet.compile (peakKeyItem P p1) sc)) :=
   SepCtx.HasTwoDistinct.foldl_nodup (g := fun p => CapyCaptureSet.compile (peakKeyItem P p) sc) h
     (peakList P) (peakList_nodup P) rfl
+
+/-- **Inversion for the substituted + lock-renamed lock `Ψ_R`** (the backward `satB`
+    direction): two `HasTwoDistinct` items of `((peakSepCtx P sc).subst σt).rename ρ` come
+    from two *distinct* peaks of `P`.  No item-injectivity needed — `peakList` is `Nodup`. -/
+theorem peakSepCtx_subst_rename_HasTwoDistinct_ne {s1 s2 s2' s2'' : Sig} {P : CapyPeakSet s1}
+    {sc : SrcCtx s1 s2} {σt : Subst s2 s2'} {ρ : Rename s2' s2''} {C1 C2 : CaptureSet s2''}
+    (h : SepCtx.HasTwoDistinct (((peakSepCtx P sc).subst σt).rename ρ) C1 C2) :
+    ∃ p1 ∈ peakList P, ∃ p2 ∈ peakList P, p1 ≠ p2 ∧
+      ((C1 = ((CapyCaptureSet.compile (peakKeyItem P p1) sc).subst σt).rename ρ ∧
+          C2 = ((CapyCaptureSet.compile (peakKeyItem P p2) sc).subst σt).rename ρ) ∨
+       (C1 = ((CapyCaptureSet.compile (peakKeyItem P p2) sc).subst σt).rename ρ ∧
+          C2 = ((CapyCaptureSet.compile (peakKeyItem P p1) sc).subst σt).rename ρ)) := by
+  rw [peakSepCtx_subst, SepCtx.rename_foldl] at h
+  exact SepCtx.HasTwoDistinct.foldl_nodup
+    (g := fun p => ((CapyCaptureSet.compile (peakKeyItem P p) sc).subst σt).rename ρ) h
+    (peakList P) (peakList_nodup P) (by simp only [SepCtx.rename])
 
 /-! ### Target-level atom-tracing (the `hsep` dispatch's plumbing)
 
@@ -867,6 +1099,42 @@ theorem mem_dedup {α : Type} [DecidableEq α] {a : α} {l : List α} (h : a ∈
       · exact hd
       · exact List.mem_cons_of_mem _ hd
 
+/-- The local `dedup` only contains original members. -/
+theorem mem_dedup_inv {α : Type} [DecidableEq α] {a : α} {l : List α} (h : a ∈ dedup l) :
+    a ∈ l := by
+  induction l with
+  | nil => exact h
+  | cons b bs ih =>
+    simp only [dedup] at h
+    split at h
+    · exact List.mem_cons_of_mem _ (ih h)
+    · rcases List.mem_cons.mp h with rfl | hm
+      · exact List.mem_cons_self
+      · exact List.mem_cons_of_mem _ (ih hm)
+
+/-- A member of `peakCvars.go cs` has a `.cvar`-occurrence in `cs`. -/
+theorem peakCvars_go_occ {s : Sig} {c : BVar s .cvar} :
+    ∀ {cs : CapyCaptureSet s}, c ∈ peakCvars.go cs → ∃ a, (CapyCaptureSet.cvar a c) ⊆ cs := by
+  intro cs
+  induction cs with
+  | empty => intro h; simp only [peakCvars.go, List.not_mem_nil] at h
+  | union cs1 cs2 ih1 ih2 =>
+    intro h
+    simp only [peakCvars.go, List.mem_append] at h
+    rcases h with h1 | h2
+    · obtain ⟨a, ha⟩ := ih1 h1; exact ⟨a, CapyCaptureSet.Subset.union_right_left ha⟩
+    · obtain ⟨a, ha⟩ := ih2 h2; exact ⟨a, CapyCaptureSet.Subset.union_right_right ha⟩
+  | cvar a' c' =>
+    intro h; simp only [peakCvars.go, List.mem_singleton] at h
+    subst h; exact ⟨a', CapyCaptureSet.Subset.refl⟩
+  | var a' x => intro h; simp only [peakCvars.go, List.not_mem_nil] at h
+  | pseudo_peak _ _ => intro h; simp only [peakCvars.go, List.not_mem_nil] at h
+
+/-- A peak cvar has an access-mode occurrence in the peak set. -/
+theorem peakCvars_occ {s : Sig} {P : CapyPeakSet s} {c : BVar s .cvar}
+    (h : c ∈ peakCvars P) : ∃ a, (CapyCaptureSet.cvar a c) ⊆ P.cs :=
+  peakCvars_go_occ (mem_dedup_inv (by simpa only [peakCvars] using h))
+
 /-- A `.cvar`-occurrence of `c` records `c` in `peakCvars.go cs`. -/
 theorem cvar_subset_peakCvars_go {s : Sig} {c : BVar s .cvar} {a : Access} (cs : CapyCaptureSet s)
     (h : (CapyCaptureSet.cvar a c) ⊆ cs) : c ∈ peakCvars.go cs := by
@@ -886,6 +1154,299 @@ theorem cvar_mem_peakCvars {s : Sig} {P : CapyPeakSet s} {c : BVar s .cvar} {a :
     (h : (CapyCaptureSet.cvar a c) ⊆ P.cs) : c ∈ peakCvars P := by
   simp only [peakCvars]
   exact mem_dedup (cvar_subset_peakCvars_go P.cs h)
+
+/-- A `pseudo_peak C` occurrence records its mode-erased base in `peakPseudos.go`. -/
+theorem pseudo_subset_peakPseudos_go {s : Sig} {C : CapyCaptureSet s} (cs : CapyCaptureSet s)
+    (h : (CapyCaptureSet.pseudo_peak C) ⊆ cs) : C.modeErase ∈ peakPseudos.go cs := by
+  induction cs with
+  | empty => cases h
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [peakPseudos.go, List.mem_append]
+    cases h with
+    | union_right_left h1 => exact Or.inl (ih1 h1)
+    | union_right_right h2 => exact Or.inr (ih2 h2)
+  | cvar a c => cases h
+  | var a x => cases h
+  | pseudo_peak C' ih => cases h; simp [peakPseudos.go]
+
+/-- A `pseudo_peak C` occurrence puts its mode-erased base among the peak pseudos. -/
+theorem pseudoBase_mem_peakPseudos {s : Sig} {P : CapyPeakSet s} {C : CapyCaptureSet s}
+    (h : (CapyCaptureSet.pseudo_peak C) ⊆ P.cs) : C.modeErase ∈ peakPseudos P :=
+  mem_dedup (pseudo_subset_peakPseudos_go P.cs h)
+
+/-- A member of `peakPseudos.go cs` has a `pseudo_peak`-occurrence in `cs` whose
+    mode-erased base it is. -/
+theorem peakPseudos_go_occ {s : Sig} {D : CapyCaptureSet s} :
+    ∀ {cs : CapyCaptureSet s}, D ∈ peakPseudos.go cs →
+      ∃ C, (CapyCaptureSet.pseudo_peak C) ⊆ cs ∧ C.modeErase = D := by
+  intro cs
+  induction cs with
+  | empty => intro h; simp only [peakPseudos.go, List.not_mem_nil] at h
+  | union cs1 cs2 ih1 ih2 =>
+    intro h
+    simp only [peakPseudos.go, List.mem_append] at h
+    rcases h with h1 | h2
+    · obtain ⟨C, hC, hCm⟩ := ih1 h1; exact ⟨C, CapyCaptureSet.Subset.union_right_left hC, hCm⟩
+    · obtain ⟨C, hC, hCm⟩ := ih2 h2; exact ⟨C, CapyCaptureSet.Subset.union_right_right hC, hCm⟩
+  | cvar a c => intro h; simp only [peakPseudos.go, List.not_mem_nil] at h
+  | var a x => intro h; simp only [peakPseudos.go, List.not_mem_nil] at h
+  | pseudo_peak C _ =>
+    intro h; simp only [peakPseudos.go, List.mem_singleton] at h
+    exact ⟨C, CapyCaptureSet.Subset.refl, h.symm⟩
+
+/-- A peak pseudo base has a `pseudo_peak`-occurrence in the peak set. -/
+theorem peakPseudos_occ {s : Sig} {P : CapyPeakSet s} {D : CapyCaptureSet s}
+    (h : D ∈ peakPseudos P) : ∃ C, (CapyCaptureSet.pseudo_peak C) ⊆ P.cs ∧ C.modeErase = D :=
+  peakPseudos_go_occ (mem_dedup_inv (by simpa only [peakPseudos] using h))
+
+/-- A pseudo-peak-free capture set collects no frozen bases. -/
+theorem peakPseudos_go_nil_of_noPseudoPeak {s : Sig} {cs : CapyCaptureSet s}
+    (h : cs.NoPseudoPeak) : peakPseudos.go cs = [] := by
+  induction h with
+  | empty => rfl
+  | cvar => rfl
+  | var => rfl
+  | union _ _ ih1 ih2 => simp only [peakPseudos.go, ih1, ih2, List.append_nil]
+
+/-- A peak set whose underlying capture set is pseudo-peak-free has no frozen peaks in its
+    `peakList` — so every peak it lists is a `cvar`. -/
+theorem pseudo_not_mem_peakList_of_noPseudoPeak {s : Sig} {P : CapyPeakSet s}
+    {D : CapyCaptureSet s} (hnp : P.cs.NoPseudoPeak)
+    (h : Peak.pseudo D ∈ peakList P) : False := by
+  have hD := mem_peakPseudos_of_pseudo_mem h
+  simp only [peakPseudos] at hD
+  rw [peakPseudos_go_nil_of_noPseudoPeak hnp] at hD
+  simp [dedup] at hD
+
+/-- A `pseudo_peak C` occurrence belongs to the pseudo item of its mode-erased base. -/
+theorem pseudo_subset_pseudoItem_go {s : Sig} {C D : CapyCaptureSet s} (hD : C.modeErase = D)
+    (cs : CapyCaptureSet s) (h : (CapyCaptureSet.pseudo_peak C) ⊆ cs) :
+    (CapyCaptureSet.pseudo_peak C) ⊆ pseudoItem.go D cs := by
+  induction cs with
+  | empty => cases h
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [pseudoItem.go]
+    cases h with
+    | union_right_left h1 => exact .union_right_left (ih1 h1)
+    | union_right_right h2 => exact .union_right_right (ih2 h2)
+  | cvar a c => cases h
+  | var a x => cases h
+  | pseudo_peak C' ih =>
+    cases h
+    simp only [pseudoItem.go]
+    rw [if_pos hD]
+    exact CapyCaptureSet.Subset.refl
+
+/-- A `pseudo_peak C` occurrence in `P.cs` belongs to the pseudo item of its base. -/
+theorem pseudo_subset_pseudoItem {s : Sig} {P : CapyPeakSet s} {C : CapyCaptureSet s}
+    (h : (CapyCaptureSet.pseudo_peak C) ⊆ P.cs) :
+    (CapyCaptureSet.pseudo_peak C) ⊆ pseudoItem P (C.modeErase) := by
+  simp only [pseudoItem]
+  exact pseudo_subset_pseudoItem_go rfl P.cs h
+
+/-- **The PEAK TRACER (sorry-free).**  A target cvar atom of the compiled peak set
+    `⟦P.cs⟧` belongs to the compiled item of SOME peak `p ∈ peakList P` (a cvar peak
+    when the atom is a source cvar, a frozen peak when it sits inside a frozen
+    content).  This is the lock-side source tracer that finally handles frozen peaks —
+    built on the local `compile_atom_source`. -/
+theorem compile_atom_peak {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
+    {m : Access} {Z : BVar s2 .cvar}
+    (h : (CaptureSet.cvar m Z) ⊆ CapyCaptureSet.compile P.cs sc) :
+    ∃ p ∈ peakList P, (CaptureSet.cvar m Z) ⊆ CapyCaptureSet.compile (peakKeyItem P p) sc := by
+  rcases CapyCaptureSet.compile_atom_source P.h h with ⟨c, hlk, hsub⟩ | ⟨C, hCsub, hZsub⟩
+  · refine ⟨Peak.cvar c, cvar_mem_peakList (cvar_mem_peakCvars hsub), ?_⟩
+    have h2 := CapyCaptureSet.compile_subset (sc := sc) (cvar_subset_peakItem hsub)
+    have heq : CapyCaptureSet.compile (CapyCaptureSet.cvar m c) sc = CaptureSet.cvar m Z := by
+      simp only [CapyCaptureSet.compile, hlk]
+    rw [heq] at h2
+    exact h2
+  · refine ⟨Peak.pseudo C.modeErase, pseudo_mem_peakList (pseudoBase_mem_peakPseudos hCsub), ?_⟩
+    have h2 := CapyCaptureSet.compile_subset (sc := sc) (pseudo_subset_pseudoItem hCsub)
+    simp only [CapyCaptureSet.compile] at h2
+    exact CaptureSet.Subset.trans hZsub h2
+
+/-- A cvar peak item sits inside the peak set (each occurrence is in `P.cs`). -/
+theorem peakItem_subset {s : Sig} {P : CapyPeakSet s} {c : BVar s .cvar} :
+    peakItem P c ⊆ P.cs := by
+  simp only [peakItem]
+  have key : ∀ (l : List Access), (∀ a ∈ l, (CapyCaptureSet.cvar a c) ⊆ P.cs) →
+      l.foldr (fun a acc => CapyCaptureSet.cvar a c ∪ acc) .empty ⊆ P.cs := by
+    intro l
+    induction l with
+    | nil => intro _; exact CapyCaptureSet.Subset.empty
+    | cons a' l' ih =>
+      intro hl
+      exact CapyCaptureSet.Subset.union_left (hl a' List.mem_cons_self)
+        (ih (fun a ha => hl a (List.mem_cons_of_mem _ ha)))
+  exact key _ (fun a ha => accessedAt_go_subset _ (by simpa only [accessedAt] using ha))
+
+/-- A pseudo item sits inside the peak set. -/
+theorem pseudoItem_go_subset {s : Sig} {D : CapyCaptureSet s} (cs : CapyCaptureSet s) :
+    pseudoItem.go D cs ⊆ cs := by
+  induction cs with
+  | empty => exact CapyCaptureSet.Subset.refl
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [pseudoItem.go]
+    exact CapyCaptureSet.Subset.union_left
+      (CapyCaptureSet.Subset.union_right_left ih1)
+      (CapyCaptureSet.Subset.union_right_right ih2)
+  | cvar a c => exact CapyCaptureSet.Subset.empty
+  | var a x => exact CapyCaptureSet.Subset.empty
+  | pseudo_peak C ih =>
+    simp only [pseudoItem.go]
+    split
+    · exact CapyCaptureSet.Subset.refl
+    · exact CapyCaptureSet.Subset.empty
+
+theorem pseudoItem_subset {s : Sig} {P : CapyPeakSet s} {D : CapyCaptureSet s} :
+    pseudoItem P D ⊆ P.cs := pseudoItem_go_subset P.cs
+
+/-- Every peak's item sits inside the peak set. -/
+theorem peakKeyItem_subset {s : Sig} {P : CapyPeakSet s} (p : Peak s) :
+    peakKeyItem P p ⊆ P.cs := by
+  cases p with
+  | cvar c => exact peakItem_subset
+  | pseudo D => exact pseudoItem_subset
+
+/-! ### `PeakSubstIso`: the non-merging per-peak correspondence
+
+`compile_subst_subtyp` is only TRUE for substitutions that do not *merge* two
+distinct origin peaks into one sub-peak (the backward lock-change Satisfy is false
+under merging, and the forward pseudo cases would collide).  `openCVar` — the only
+real caller — is non-merging: it sends the opened cvar to a frozen `pseudo_peak`
+(a fresh, distinct separation item) and every other cvar to itself.  We capture
+exactly this as an *injective* map `toPeak` sending each origin cvar to the single
+sub-peak (cvar or frozen) that `σ` substitutes for it. -/
+
+/-- The single-atom capture set a peak stands for: a cvar peak is the `ε`-mode cvar
+    atom (the identity image), a frozen peak is its `pseudo_peak`. -/
+def Peak.asCaptureSet : Peak s → CapyCaptureSet s
+| .cvar c => CapyCaptureSet.cvar (.M .epsilon) c
+| .pseudo C => CapyCaptureSet.pseudo_peak C
+
+theorem Peak.asCaptureSet_rename {s1 s2 : Sig} (p : Peak s1) (f : Rename s1 s2) :
+    p.asCaptureSet.rename f = (p.rename f).asCaptureSet := by
+  cases p with
+  | cvar c => rfl
+  | pseudo C => rfl
+
+theorem Peak.rename_inj {s1 s2 : Sig} {f : Rename s1 s2} (hinj : f.Injective) :
+    Function.Injective (fun p : Peak s1 => p.rename f) := by
+  intro p1 p2 h
+  cases p1 with
+  | cvar c1 =>
+    cases p2 with
+    | cvar c2 =>
+      simp only [Peak.rename, Peak.cvar.injEq] at h
+      exact congrArg Peak.cvar (hinj .cvar h)
+    | pseudo C2 => simp only [Peak.rename] at h; exact absurd h (by simp)
+  | pseudo C1 =>
+    cases p2 with
+    | cvar c2 => simp only [Peak.rename] at h; exact absurd h (by simp)
+    | pseudo C2 =>
+      simp only [Peak.rename, Peak.pseudo.injEq] at h
+      exact congrArg Peak.pseudo (CapyCaptureSet.rename_inj hinj h)
+
+/-- A renamed peak is frozen only if the original was. -/
+theorem Peak.rename_eq_pseudo_inv {s1 s2 : Sig} {p : Peak s1} {f : Rename s1 s2}
+    {D : CapyCaptureSet s2} (h : p.rename f = Peak.pseudo D) : ∃ D0, p = Peak.pseudo D0 := by
+  cases p with
+  | cvar c => simp only [Peak.rename] at h; exact absurd h (by simp)
+  | pseudo C0 => exact ⟨C0, rfl⟩
+
+/-- The induced peak correspondence of a non-merging substitution.  `uniqueFrozen`
+    records that at most one origin cvar is frozen (`openCVar` freezes only the opened
+    binder; `.lift` shifts that single frozen source) — it makes the pseudo–pseudo peak
+    pairs vacuous. -/
+structure PeakSubstIso {s1 s2 : Sig} (σ : CapySubst s1 s2) where
+  toPeak : BVar s1 .cvar → Peak s2
+  image : ∀ c, σ.cvar c = (toPeak c).asCaptureSet
+  inj : Function.Injective toPeak
+  uniqueFrozen : ∀ {c1 c2 : BVar s1 .cvar} {D1 D2 : CapyCaptureSet s2},
+    toPeak c1 = Peak.pseudo D1 → toPeak c2 = Peak.pseudo D2 → c1 = c2
+
+/-- The lifted peak map: the new head cvar (present only for a cvar binder) maps to
+    itself; everything else shifts through `succ`.  A standalone `def` so its equation
+    lemmas reduce by `rfl`. -/
+def liftToPeak {s1 s2 : Sig} : {k : Kind} → (g : BVar s1 .cvar → Peak s2) →
+    BVar (s1,,k) .cvar → Peak (s2,,k)
+| .cvar, _, .here => Peak.cvar .here
+| _, g, .there x => (g x).rename Rename.succ
+
+/-- The `openCVar` peak map: the opened cvar becomes the frozen base, the rest are
+    identity cvars. -/
+def openCVarToPeak {s : Sig} (C : CapyCaptureSet s) : BVar (s,C) .cvar → Peak s
+| .here => Peak.pseudo C
+| .there x => Peak.cvar x
+
+/-- Lifting under any binder preserves the correspondence. -/
+def PeakSubstIso.lift {s1 s2 : Sig} {σ : CapySubst s1 s2} (h : PeakSubstIso σ) (k : Kind) :
+    PeakSubstIso (σ.lift (k := k)) where
+  toPeak := liftToPeak h.toPeak
+  image := by
+    intro c
+    cases c with
+    | here => simp only [liftToPeak, Peak.asCaptureSet]; rfl
+    | there x =>
+      rw [CapySubst.lift_there_cvar_eq, h.image x, Peak.asCaptureSet_rename]
+      simp only [liftToPeak]
+  inj := by
+    intro c1 c2 h12
+    cases c1 with
+    | here =>
+      cases c2 with
+      | here => rfl
+      | there x2 =>
+        simp only [liftToPeak] at h12
+        cases hp : h.toPeak x2 <;> rw [hp] at h12 <;> simp [Peak.rename, Rename.succ] at h12
+    | there x1 =>
+      cases c2 with
+      | here =>
+        simp only [liftToPeak] at h12
+        cases hp : h.toPeak x1 <;> rw [hp] at h12 <;> simp [Peak.rename, Rename.succ] at h12
+      | there x2 =>
+        simp only [liftToPeak] at h12
+        exact congrArg BVar.there (h.inj (Peak.rename_inj Rename.injective_succ h12))
+  uniqueFrozen := by
+    intro c1 c2 D1 D2 h1 h2
+    cases c1 with
+    | here => simp only [liftToPeak] at h1; exact absurd h1 (by simp)
+    | there x1 =>
+      cases c2 with
+      | here => simp only [liftToPeak] at h2; exact absurd h2 (by simp)
+      | there x2 =>
+        simp only [liftToPeak] at h1 h2
+        obtain ⟨D1', hx1⟩ := Peak.rename_eq_pseudo_inv h1
+        obtain ⟨D2', hx2⟩ := Peak.rename_eq_pseudo_inv h2
+        exact congrArg BVar.there (h.uniqueFrozen hx1 hx2)
+
+/-- `openCVar` is non-merging: the opened cvar becomes the frozen `pseudo_peak C`,
+    every other cvar maps to itself. -/
+def PeakSubstIso.openCVar {s : Sig} (C : CapyCaptureSet s) :
+    PeakSubstIso (CapySubst.openCVar C) where
+  toPeak := openCVarToPeak C
+  image := by intro c; cases c with | here => rfl | there x => rfl
+  inj := by
+    intro c1 c2 h12
+    cases c1 with
+    | here =>
+      cases c2 with
+      | here => rfl
+      | there x2 => exact absurd h12 (by simp [openCVarToPeak])
+    | there x1 =>
+      cases c2 with
+      | here => exact absurd h12 (by simp [openCVarToPeak])
+      | there x2 =>
+        simp only [openCVarToPeak, Peak.cvar.injEq] at h12
+        exact congrArg BVar.there h12
+  uniqueFrozen := by
+    intro c1 c2 D1 D2 h1 h2
+    cases c1 with
+    | here =>
+      cases c2 with
+      | here => rfl
+      | there x2 => simp only [openCVarToPeak] at h2; exact absurd h2 (by simp)
+    | there x1 => simp only [openCVarToPeak] at h1; exact absurd h1 (by simp)
 
 /-- `TwoDistinctDroppable` transports through a fresh binder (`succ`-shift). -/
 theorem Ctx.TwoDistinctDroppable.push {s : Sig} {Γ : Ctx s} {c1 c2 : BVar s .cvar} {k : Kind}
@@ -959,6 +1520,2176 @@ theorem CapyCaptureBound.mutabilityCtx_subst_here {s1 s1' s2 s2' : Sig}
   | unbound m => rfl
   | bound cs => rfl
 
+/-- **Per-atom cvar containment (the canonical-correspondence linchpin).**  An
+    access-mode occurrence `a` of an origin cvar peak `d` whose `σ`-image is the
+    *identity* cvar `e` (`σ.cvar d = {ε e}`) lands, after `σt`-substitution, inside
+    `e`'s sub-peak item — PROVIDED the cvar-peak image does not collide with a frozen
+    content (`hncol`, the cpoly separation precondition).  Proof: compile + the peaks
+    keystone push `cvar a Z ⊆ ⟦peaks(orig)⟧` to `cvar a W ⊆ ⟦peaks(sub)⟧`; the peak
+    tracer `compile_atom_source` then either recovers the source cvar `e` (by
+    `hinj`) — done — or places the atom in a frozen content, which `hncol` forbids. -/
+theorem peakItem_subst_atom {s1 s2 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (haO : SrcAligned Γorig scOrig) (haS : SrcAligned Γsub scSub)
+    (hcompat : SubstCompat scSub scOrig σ σt)
+    (hcs : cs.IsClosed) (hsub : (cs.subst σ).IsClosed)
+    (hinj : scSub.CVarInjective)
+    {a : Access} {d : BVar s1 .cvar} {e : BVar s1' .cvar}
+    (hde : σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e)
+    (hncol : ∀ (C' : CapyCaptureSet s1'),
+       (CapyCaptureSet.pseudo_peak C') ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ) →
+       ¬ (CaptureSet.cvar a (scSub.lookupCVar e) ⊆ CapyCaptureSet.compile C' scSub))
+    (ha : (CapyCaptureSet.cvar a d) ⊆ CapyCaptureSet.peaks Γorig cs) :
+    ((CaptureSet.cvar a (scOrig.lookupCVar d)).subst σt) ⊆
+      CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) e) scSub := by
+  -- the substituted atom is exactly `{a W}` (W = ⟦e⟧) — applying access `a` to the
+  -- full-access image `{ε W}` re-imposes `a`.
+  have hatomeq : (CaptureSet.cvar a (scOrig.lookupCVar d)).subst σt
+      = CaptureSet.cvar a (scSub.lookupCVar e) := by
+    have hZW : σt.cvar (scOrig.lookupCVar d)
+        = CaptureSet.cvar (.M .epsilon) (scSub.lookupCVar e) := by
+      rw [← hcompat.cvar d, hde]; rfl
+    simp only [CaptureSet.subst, hZW]
+    cases a with
+    | M m => cases m <;> rfl
+    | drop => rfl
+  rw [hatomeq]
+  -- (1) the atom compiles into the origin peaks.
+  have h1 : (CaptureSet.cvar a (scOrig.lookupCVar d))
+      ⊆ CapyCaptureSet.compile (CapyCaptureSet.peaks Γorig cs) scOrig :=
+    CapyCaptureSet.compile_subset (sc := scOrig) ha
+  -- (2) the keystone lands it in the sub peaks.
+  have hkey := CapyCaptureSet.compile_peaks_subst hΓO hΓS haO haS hcompat hcs hsub
+  have h2 : (CaptureSet.cvar a (scSub.lookupCVar e))
+      ⊆ CapyCaptureSet.compile (CapyCaptureSet.peaks Γsub (cs.subst σ)) scSub := by
+    rw [hkey, ← hatomeq]
+    exact CaptureSet.Subset.subst h1
+  -- (3) trace the atom to its source: either source cvar `e` (done) or a frozen content
+  -- (forbidden by `hncol`).
+  rcases CapyCaptureSet.compile_atom_source (CapyCaptureSet.peaks_peaksOnly Γsub (cs.subst σ)) h2
+    with ⟨f, hf, hfsub⟩ | ⟨C', hC'sub, hC'atom⟩
+  · have hfe : f = e := hinj hf
+    subst hfe
+    have h3 := CapyCaptureSet.compile_subset (sc := scSub)
+      (cvar_subset_peakItem (P := CapyCaptureSet.peakset Γsub (cs.subst σ)) hfsub)
+    simpa only [CapyCaptureSet.compile] using h3
+  · exact absurd hC'atom (hncol C' hC'sub)
+
+/-- **The full cvar-peak containment** (union of `peakItem_subst_atom` over the
+    access-mode occurrences): an identity-image origin cvar peak `d` (`σ.cvar d = {ε e}`)
+    has its whole compiled item, `σt`-substituted, inside `e`'s sub-peak item — under
+    the same non-collision precondition `hncol`. -/
+theorem peakItem_subst_subset {s1 s2 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (haO : SrcAligned Γorig scOrig) (haS : SrcAligned Γsub scSub)
+    (hcompat : SubstCompat scSub scOrig σ σt)
+    (hcs : cs.IsClosed) (hsub : (cs.subst σ).IsClosed)
+    (hinj : scSub.CVarInjective)
+    {d : BVar s1 .cvar} {e : BVar s1' .cvar}
+    (hde : σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e)
+    (hncol : ∀ (a : Access) (C' : CapyCaptureSet s1'),
+       (CapyCaptureSet.pseudo_peak C') ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ) →
+       ¬ (CaptureSet.cvar a (scSub.lookupCVar e) ⊆ CapyCaptureSet.compile C' scSub)) :
+    (CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γorig cs) d) scOrig).subst σt ⊆
+      CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) e) scSub := by
+  have key : ∀ (L : List Access),
+      (∀ b ∈ L, (CapyCaptureSet.cvar b d) ⊆ CapyCaptureSet.peaks Γorig cs) →
+      (CapyCaptureSet.compile
+          (L.foldr (fun b acc => CapyCaptureSet.cvar b d ∪ acc) .empty) scOrig).subst σt ⊆
+        CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) e) scSub := by
+    intro L
+    induction L with
+    | nil =>
+      intro _
+      simp only [List.foldr_nil, CapyCaptureSet.compile, CaptureSet.subst]
+      exact CaptureSet.Subset.empty
+    | cons b L' ih =>
+      intro hL
+      rw [List.foldr_cons]
+      simp only [CapyCaptureSet.compile]
+      refine CaptureSet.Subset.union_left ?_
+        (ih (fun b' hb' => hL b' (List.mem_cons_of_mem _ hb')))
+      exact peakItem_subst_atom hΓO hΓS haO haS hcompat hcs hsub hinj hde (hncol b)
+        (hL b List.mem_cons_self)
+  exact key (accessedAt (CapyCaptureSet.peakset Γorig cs) d)
+    (fun b hb => accessedAt_go_subset _ (by simpa only [accessedAt] using hb))
+
+/-- **Per-atom cvar→FROZEN containment.**  When `σ` FREEZES the origin cvar peak `d`
+    (`σ.cvar d = pseudo_peak D`), each occurrence lands, after `σt`, inside the sub
+    *frozen* item keyed by `(peaks Γsub D).modeErase`.  The membership premise `hmem`
+    (the `D`-frozen peak is among the sub peaks) is the structural fact discharged at
+    the use site; no non-collision needed (frozen items match by their mode-erased
+    base, and `modeErase` absorbs the folded access). -/
+theorem peakItem_subst_atom_pseudo {s1 s2 s1' s2' : Sig}
+    {Γsub : CapyCtx s1'} {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓS : Γsub.IsClosed) (haS : SrcAligned Γsub scSub)
+    (hcompat : SubstCompat scSub scOrig σ σt)
+    {a : Access} {d : BVar s1 .cvar} {D : CapyCaptureSet s1'} (hDcl : D.IsClosed)
+    (hdD : σ.cvar d = CapyCaptureSet.pseudo_peak D)
+    (hmem : (CapyCaptureSet.pseudo_peak ((CapyCaptureSet.peaks Γsub D).applyAccess a))
+       ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ)) :
+    ((CaptureSet.cvar a (scOrig.lookupCVar d)).subst σt) ⊆
+      CapyCaptureSet.compile (pseudoItem (CapyCaptureSet.peakset Γsub (cs.subst σ))
+        ((CapyCaptureSet.peaks Γsub D).modeErase)) scSub := by
+  have hZD : σt.cvar (scOrig.lookupCVar d) = CapyCaptureSet.compile D scSub := by
+    rw [← hcompat.cvar d, hdD]; rfl
+  have hatomeq : (CaptureSet.cvar a (scOrig.lookupCVar d)).subst σt
+      = (CapyCaptureSet.compile D scSub).applyAccess a := by
+    simp only [CaptureSet.subst, hZD]
+  rw [hatomeq]
+  have hsub1 : (CapyCaptureSet.pseudo_peak ((CapyCaptureSet.peaks Γsub D).applyAccess a))
+      ⊆ pseudoItem (CapyCaptureSet.peakset Γsub (cs.subst σ))
+          ((CapyCaptureSet.peaks Γsub D).modeErase) := by
+    have h0 := pseudo_subset_pseudoItem (P := CapyCaptureSet.peakset Γsub (cs.subst σ))
+      (C := (CapyCaptureSet.peaks Γsub D).applyAccess a) hmem
+    rwa [CapyCaptureSet.modeErase_applyAccess] at h0
+  have h2 := CapyCaptureSet.compile_subset (sc := scSub) hsub1
+  have heq : CapyCaptureSet.compile
+        (CapyCaptureSet.pseudo_peak ((CapyCaptureSet.peaks Γsub D).applyAccess a)) scSub
+      = (CapyCaptureSet.compile D scSub).applyAccess a := by
+    simp only [CapyCaptureSet.compile, CapyCaptureSet.compile_applyAccess,
+      CapyCaptureSet.compile_peaks hΓS haS hDcl]
+  rw [← heq]; exact h2
+
+/-- **The full cvar→FROZEN containment** (union over the occurrences). -/
+theorem peakItem_subst_subset_pseudo {s1 s2 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓS : Γsub.IsClosed) (haS : SrcAligned Γsub scSub)
+    (hcompat : SubstCompat scSub scOrig σ σt)
+    {d : BVar s1 .cvar} {D : CapyCaptureSet s1'} (hDcl : D.IsClosed)
+    (hdD : σ.cvar d = CapyCaptureSet.pseudo_peak D)
+    (hmem : ∀ a, (CapyCaptureSet.cvar a d) ⊆ CapyCaptureSet.peaks Γorig cs →
+       (CapyCaptureSet.pseudo_peak ((CapyCaptureSet.peaks Γsub D).applyAccess a))
+       ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ)) :
+    (CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γorig cs) d) scOrig).subst σt ⊆
+      CapyCaptureSet.compile (pseudoItem (CapyCaptureSet.peakset Γsub (cs.subst σ))
+        ((CapyCaptureSet.peaks Γsub D).modeErase)) scSub := by
+  have key : ∀ (L : List Access),
+      (∀ b ∈ L, (CapyCaptureSet.cvar b d) ⊆ CapyCaptureSet.peaks Γorig cs) →
+      (CapyCaptureSet.compile
+          (L.foldr (fun b acc => CapyCaptureSet.cvar b d ∪ acc) .empty) scOrig).subst σt ⊆
+        CapyCaptureSet.compile (pseudoItem (CapyCaptureSet.peakset Γsub (cs.subst σ))
+          ((CapyCaptureSet.peaks Γsub D).modeErase)) scSub := by
+    intro L
+    induction L with
+    | nil =>
+      intro _
+      simp only [List.foldr_nil, CapyCaptureSet.compile, CaptureSet.subst]
+      exact CaptureSet.Subset.empty
+    | cons b L' ih =>
+      intro hL
+      rw [List.foldr_cons]
+      simp only [CapyCaptureSet.compile]
+      exact CaptureSet.Subset.union_left
+        (peakItem_subst_atom_pseudo hΓS haS hcompat hDcl hdD
+          (hmem b (hL b List.mem_cons_self)))
+        (ih (fun b' hb' => hL b' (List.mem_cons_of_mem _ hb')))
+  exact key (accessedAt (CapyCaptureSet.peakset Γorig cs) d)
+    (fun b hb => accessedAt_go_subset _ (by simpa only [accessedAt] using hb))
+
+/-- **The non-collision separation precondition.**  An *identity-image* cvar `e`
+    (`σ.cvar d = {ε e}`) never appears inside a *frozen content* `(peaks Γsub D).applyAccess m`
+    of a frozen source `c0` (`σ.cvar c0 = pseudo_peak D`).  This is the cpoly's source-level
+    separation fact (the opened capture is separate from the surrounding peaks) — it is
+    `cs`-independent, so it lifts cleanly under the recursion.  Without it the transparent
+    frozen lock would demand `⟦e⟧ ⊥ ⟦e⟧`. -/
+def NoCollision {s1 s1' s2' : Sig} (σ : CapySubst s1 s1')
+    (scSub : SrcCtx s1' s2') (Γsub : CapyCtx s1') : Prop :=
+  ∀ (d c0 : BVar s1 .cvar) (e : BVar s1' .cvar) (D : CapyCaptureSet s1') (a m : Access),
+    σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e →
+    σ.cvar c0 = CapyCaptureSet.pseudo_peak D →
+    ¬ (CaptureSet.cvar a (scSub.lookupCVar e)
+        ⊆ CapyCaptureSet.compile ((CapyCaptureSet.peaks Γsub D).applyAccess m) scSub)
+
+/-- `NoCollision` survives a fresh *target* binder (`scSub` renamed by `succ`): both the
+    looked-up image and the frozen content's compile shift by `succ`, and the subset is
+    reflected by the injective `succ`. -/
+theorem NoCollision.weakenTarget {s1 s1' s2' : Sig} {σ : CapySubst s1 s1'}
+    {scSub : SrcCtx s1' s2'} {Γsub : CapyCtx s1'} (h : NoCollision σ scSub Γsub) {k : Kind} :
+    NoCollision σ (scSub.rename (Rename.succ (k := k))) Γsub := by
+  intro d c0 e D a m hde hc0 hsub
+  rw [SrcCtx.lookupCVar_rename, CapyCaptureSet.compile_rename] at hsub
+  obtain ⟨c0', hc0eq, hsub'⟩ := CaptureSet.cvar_subset_rename_succ hsub
+  apply h d c0 e D a m hde hc0
+  have heq : scSub.lookupCVar e = c0' := by
+    have h2 := hc0eq
+    simp only [Rename.succ] at h2
+    exact BVar.there.inj h2
+  rw [heq]; exact hsub'
+
+/-- `NoCollision` survives the cpoly/exi body extension (a fresh source cvar binder
+    mapped to the fresh target cvar `.here`, `σ` lifted, `Γsub` extended by a cvar binder).
+    The fresh `.here` image cannot sit inside a `succ`-shifted frozen content
+    (`peaks_rename_succ_eq` + `cvar_subset_rename_succ`); deeper variables reduce to the
+    base `NoCollision`. -/
+theorem NoCollision.weakenConsCVar {s1 s1' s2' : Sig} {σ : CapySubst s1 s1'}
+    {scSub : SrcCtx s1' s2'} {Γsub : CapyCtx s1'} (h : NoCollision σ scSub Γsub)
+    {cb : CapyCaptureBound s1'} :
+    NoCollision (σ.lift (k := Kind.cvar))
+      (SrcCtx.cons (.cvar BVar.here) (scSub.rename Rename.succ))
+      (Γsub.push_cvar_default cb) := by
+  intro d' c0' e' D' a m hde' hc0' hsub'
+  cases c0' with
+  | here =>
+    rw [show (σ.lift (k := Kind.cvar)).cvar BVar.here
+        = CapyCaptureSet.cvar (.M .epsilon) BVar.here from rfl] at hc0'
+    simp at hc0'
+  | there c0 =>
+    rw [CapySubst.lift_there_cvar_eq] at hc0'
+    obtain ⟨D0, hD0, hD'eq⟩ : ∃ D0, σ.cvar c0 = CapyCaptureSet.pseudo_peak D0
+        ∧ D' = D0.rename Rename.succ := by
+      cases hX : σ.cvar c0 with
+      | pseudo_peak D0 =>
+        rw [hX] at hc0'; simp only [CapyCaptureSet.rename] at hc0'
+        exact ⟨D0, rfl, (CapyCaptureSet.pseudo_peak.inj hc0').symm⟩
+      | empty => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | union _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | cvar _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | var _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+    subst hD'eq
+    simp only [CapyCtx.push_cvar_default, CapyCtx.push_cvar] at hsub'
+    rw [CapyCaptureSet.peaks_rename_succ_eq,
+      ← CapyCaptureSet.applyAccess_rename, CapyCaptureSet.compile_rename_succ_cons,
+      CapyCaptureSet.compile_rename] at hsub'
+    cases d' with
+    | here =>
+      rw [show (σ.lift (k := Kind.cvar)).cvar BVar.here
+          = CapyCaptureSet.cvar (.M .epsilon) BVar.here from rfl] at hde'
+      simp only [CapyCaptureSet.cvar.injEq] at hde'
+      obtain ⟨_, he'⟩ := hde'
+      subst he'
+      simp only [SrcCtx.lookupCVar] at hsub'
+      obtain ⟨c0'', hc0''eq, _⟩ := CaptureSet.cvar_subset_rename_succ hsub'
+      simp at hc0''eq
+    | there d =>
+      rw [CapySubst.lift_there_cvar_eq] at hde'
+      obtain ⟨e0, hde0, he'eq⟩ : ∃ e0, σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e0
+          ∧ e' = BVar.there e0 := by
+        cases hY : σ.cvar d with
+        | cvar m0 c0v =>
+          rw [hY] at hde'
+          simp only [CapyCaptureSet.rename, Rename.succ, CapyCaptureSet.cvar.injEq] at hde'
+          obtain ⟨hm, hc⟩ := hde'
+          subst hm; exact ⟨c0v, rfl, hc.symm⟩
+        | empty => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | union _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | pseudo_peak _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | var _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+      subst he'eq
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename] at hsub'
+      obtain ⟨c0'', hc0''eq, hsub''⟩ := CaptureSet.cvar_subset_rename_succ hsub'
+      apply h d c0 e0 D0 a m hde0 hD0
+      have heq : scSub.lookupCVar e0 = c0'' := by
+        have h2 := hc0''eq; simp only [Rename.succ] at h2; exact BVar.there.inj h2
+      rw [heq]; exact hsub''
+
+/-- `NoCollision` survives a fresh source TYPE-variable binder (`poly`-body builder).
+    A tvar binder adds no source cvar, so all cvars stay `.there`; mirror of
+    `weakenConsCVar` without the `here` cases. -/
+theorem NoCollision.weakenConsTVar {s1 s1' s2' : Sig} {σ : CapySubst s1 s1'}
+    {scSub : SrcCtx s1' s2'} {Γsub : CapyCtx s1'} (h : NoCollision σ scSub Γsub)
+    {S : CapyPureTy s1'} :
+    NoCollision (σ.lift (k := Kind.tvar))
+      (SrcCtx.cons (.tvar BVar.here) (scSub.rename Rename.succ))
+      (Γsub.push_tvar S) := by
+  intro d' c0' e' D' a m hde' hc0' hsub'
+  cases c0' with
+  | there c0 =>
+    rw [CapySubst.lift_there_cvar_eq] at hc0'
+    obtain ⟨D0, hD0, hD'eq⟩ : ∃ D0, σ.cvar c0 = CapyCaptureSet.pseudo_peak D0
+        ∧ D' = D0.rename Rename.succ := by
+      cases hX : σ.cvar c0 with
+      | pseudo_peak D0 =>
+        rw [hX] at hc0'; simp only [CapyCaptureSet.rename] at hc0'
+        exact ⟨D0, rfl, (CapyCaptureSet.pseudo_peak.inj hc0').symm⟩
+      | empty => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | union _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | cvar _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | var _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+    subst hD'eq
+    simp only [CapyCtx.push_tvar] at hsub'
+    rw [CapyCaptureSet.peaks_rename_succ_eq,
+      ← CapyCaptureSet.applyAccess_rename, CapyCaptureSet.compile_rename_succ_cons,
+      CapyCaptureSet.compile_rename] at hsub'
+    cases d' with
+    | there d =>
+      rw [CapySubst.lift_there_cvar_eq] at hde'
+      obtain ⟨e0, hde0, he'eq⟩ : ∃ e0, σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e0
+          ∧ e' = BVar.there e0 := by
+        cases hY : σ.cvar d with
+        | cvar m0 c0v =>
+          rw [hY] at hde'
+          simp only [CapyCaptureSet.rename, Rename.succ, CapyCaptureSet.cvar.injEq] at hde'
+          obtain ⟨hm, hc⟩ := hde'
+          subst hm; exact ⟨c0v, rfl, hc.symm⟩
+        | empty => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | union _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | pseudo_peak _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | var _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+      subst he'eq
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename] at hsub'
+      obtain ⟨c0'', hc0''eq, hsub''⟩ := CaptureSet.cvar_subset_rename_succ hsub'
+      apply h d c0 e0 D0 a m hde0 hD0
+      have heq : scSub.lookupCVar e0 = c0'' := by
+        have h2 := hc0''eq; simp only [Rename.succ] at h2; exact BVar.there.inj h2
+      rw [heq]; exact hsub''
+
+/-- `NoCollision` survives a fresh source TERM-variable binder (`arrow`-lock builder).
+    A var binder adds no source cvar, so all cvars stay `.there`; mirror of
+    `weakenConsTVar` (the var's stored capture image is irrelevant — `NoCollision` reads
+    `srcCtx` only through `lookupCVar`). -/
+theorem NoCollision.consVar {s1 s1' s2' : Sig} {σ : CapySubst s1 s1'}
+    {scSub : SrcCtx s1' s2'} {Γsub : CapyCtx s1'} (h : NoCollision σ scSub Γsub)
+    {T : CapyTy .capt s1'} {bv : Option (BVar (s2',,Kind.var) .var)}
+    {cs0 : CaptureSet (s2',,Kind.var)} :
+    NoCollision (σ.lift (k := Kind.var))
+      (SrcCtx.cons (.var bv cs0) (scSub.rename Rename.succ))
+      (Γsub.push_var T) := by
+  intro d' c0' e' D' a m hde' hc0' hsub'
+  cases c0' with
+  | there c0 =>
+    rw [CapySubst.lift_there_cvar_eq] at hc0'
+    obtain ⟨D0, hD0, hD'eq⟩ : ∃ D0, σ.cvar c0 = CapyCaptureSet.pseudo_peak D0
+        ∧ D' = D0.rename Rename.succ := by
+      cases hX : σ.cvar c0 with
+      | pseudo_peak D0 =>
+        rw [hX] at hc0'; simp only [CapyCaptureSet.rename] at hc0'
+        exact ⟨D0, rfl, (CapyCaptureSet.pseudo_peak.inj hc0').symm⟩
+      | empty => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | union _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | cvar _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | var _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+    subst hD'eq
+    simp only [CapyCtx.push_var] at hsub'
+    rw [CapyCaptureSet.peaks_rename_succ_eq,
+      ← CapyCaptureSet.applyAccess_rename, CapyCaptureSet.compile_rename_succ_cons,
+      CapyCaptureSet.compile_rename] at hsub'
+    cases d' with
+    | there d =>
+      rw [CapySubst.lift_there_cvar_eq] at hde'
+      obtain ⟨e0, hde0, he'eq⟩ : ∃ e0, σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e0
+          ∧ e' = BVar.there e0 := by
+        cases hY : σ.cvar d with
+        | cvar m0 c0v =>
+          rw [hY] at hde'
+          simp only [CapyCaptureSet.rename, Rename.succ, CapyCaptureSet.cvar.injEq] at hde'
+          obtain ⟨hm, hc⟩ := hde'
+          subst hm; exact ⟨c0v, rfl, hc.symm⟩
+        | empty => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | union _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | pseudo_peak _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | var _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+      subst he'eq
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename] at hsub'
+      obtain ⟨c0'', hc0''eq, hsub''⟩ := CaptureSet.cvar_subset_rename_succ hsub'
+      apply h d c0 e0 D0 a m hde0 hD0
+      have heq : scSub.lookupCVar e0 = c0'' := by
+        have h2 := hc0''eq; simp only [Rename.succ] at h2; exact BVar.there.inj h2
+      rw [heq]; exact hsub''
+
+/-- `NoCollision` survives a bare source TERM-variable binder that adds *no* target binder
+    (the `arrow`-domain value parameter `x ↦ none`).  Unlike `NoCollision.consVar`, the target
+    signature is unchanged, so the compiled frozen content cancels purely against the source
+    `succ`-rename (no target `lookupCVar_rename`). -/
+theorem NoCollision.consVarNoRename {s1 s1' s2' : Sig} {σ : CapySubst s1 s1'}
+    {scSub : SrcCtx s1' s2'} {Γsub : CapyCtx s1'} (h : NoCollision σ scSub Γsub)
+    {T : CapyTy .capt s1'} {bv : Option (BVar s2' .var)} {cs0 : CaptureSet s2'} :
+    NoCollision (σ.lift (k := Kind.var))
+      (SrcCtx.cons (.var bv cs0) scSub) (Γsub.push_var T) := by
+  intro d' c0' e' D' a m hde' hc0' hsub'
+  cases c0' with
+  | there c0 =>
+    rw [CapySubst.lift_there_cvar_eq] at hc0'
+    obtain ⟨D0, hD0, hD'eq⟩ : ∃ D0, σ.cvar c0 = CapyCaptureSet.pseudo_peak D0
+        ∧ D' = D0.rename Rename.succ := by
+      cases hX : σ.cvar c0 with
+      | pseudo_peak D0 =>
+        rw [hX] at hc0'; simp only [CapyCaptureSet.rename] at hc0'
+        exact ⟨D0, rfl, (CapyCaptureSet.pseudo_peak.inj hc0').symm⟩
+      | empty => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | union _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | cvar _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+      | var _ _ => rw [hX] at hc0'; simp [CapyCaptureSet.rename] at hc0'
+    subst hD'eq
+    simp only [CapyCtx.push_var] at hsub'
+    rw [CapyCaptureSet.peaks_rename_succ_eq, ← CapyCaptureSet.applyAccess_rename,
+      CapyCaptureSet.compile_rename_succ_cons] at hsub'
+    cases d' with
+    | there d =>
+      rw [CapySubst.lift_there_cvar_eq] at hde'
+      obtain ⟨e0, hde0, he'eq⟩ : ∃ e0, σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e0
+          ∧ e' = BVar.there e0 := by
+        cases hY : σ.cvar d with
+        | cvar m0 c0v =>
+          rw [hY] at hde'
+          simp only [CapyCaptureSet.rename, Rename.succ, CapyCaptureSet.cvar.injEq] at hde'
+          obtain ⟨hm, hc⟩ := hde'
+          subst hm; exact ⟨c0v, rfl, hc.symm⟩
+        | empty => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | union _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | pseudo_peak _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+        | var _ _ => rw [hY] at hde'; simp [CapyCaptureSet.rename] at hde'
+      subst he'eq
+      simp only [SrcCtx.lookupCVar] at hsub'
+      exact h d c0 e0 D0 a m hde0 hD0 hsub'
+
+/-- The actual sub-peak an origin cvar peak `d` maps to under a non-merging `σ`: its
+    identity-image cvar, or the resolved + mode-erased frozen base. -/
+def subPeakOf {s1 s1' : Sig} {σ : CapySubst s1 s1'} (hiso : PeakSubstIso σ)
+    (Γsub : CapyCtx s1') (d : BVar s1 .cvar) : Peak s1' :=
+  match hiso.toPeak d with
+  | .cvar e => Peak.cvar e
+  | .pseudo D => Peak.pseudo ((CapyCaptureSet.peaks Γsub D).modeErase)
+
+/-- Distinct origin peaks map to distinct sub-peaks (`inj` for cvar images,
+    `uniqueFrozen` for frozen images, kind-clash for mixed). -/
+theorem subPeakOf_inj {s1 s1' : Sig} {σ : CapySubst s1 s1'} (hiso : PeakSubstIso σ)
+    {Γsub : CapyCtx s1'} {d1 d2 : BVar s1 .cvar}
+    (he : subPeakOf hiso Γsub d1 = subPeakOf hiso Γsub d2) : d1 = d2 := by
+  cases h1 : hiso.toPeak d1 with
+  | cvar e1 =>
+    cases h2 : hiso.toPeak d2 with
+    | cvar e2 =>
+      simp only [subPeakOf, h1, h2, Peak.cvar.injEq] at he
+      exact hiso.inj (by rw [h1, h2, he])
+    | pseudo D2 => simp only [subPeakOf, h1, h2] at he; exact absurd he (by simp)
+  | pseudo D1 =>
+    cases h2 : hiso.toPeak d2 with
+    | cvar e2 => simp only [subPeakOf, h1, h2] at he; exact absurd he (by simp)
+    | pseudo D2 => exact hiso.uniqueFrozen h1 h2
+
+/-! ### Source-level context-substitution morphism (`CapyCtx.SubstsTo`)
+
+The substitution analogue of `CapyCtx.RenamesTo`: `Γ2` is the `σ`-substitution of `Γ1`.
+Its sole operational consequence we need is that source peak-resolution sends a frozen
+origin source to its resolved frozen image in the substituted peaks (`peaks_subst_frozen`),
+which discharges `frozen_sub_peak_present` outright. -/
+
+end Compilation
+namespace CoreCapybara
+
+/-- Drop the head binder slot of a lifted-capable substitution.  `σ.tail.cvar c = σ.cvar
+    (.there c)` etc. — the restriction of `σ` to the tail of an extended source signature. -/
+def CapySubst.tail {s1 s2 : Sig} {k : Kind} (σ : CapySubst (s1,,k) s2) : CapySubst s1 s2 where
+  var := fun x => σ.var (.there x)
+  tvar := fun X => σ.tvar (.there X)
+  cvar := fun c => σ.cvar (.there c)
+
+/-- Renaming by `succ` then substituting by `σ` equals substituting by the tail of `σ`. -/
+theorem CapyCaptureSet.rename_succ_subst {s1 s2 : Sig} {k : Kind}
+    {W : CapyCaptureSet s1} {σ : CapySubst (s1,,k) s2} :
+    (W.rename Rename.succ).subst σ = W.subst σ.tail := by
+  induction W with
+  | empty => rfl
+  | union W1 W2 ih1 ih2 => simp only [CapyCaptureSet.rename, CapyCaptureSet.subst, ih1, ih2]
+  | pseudo_peak W0 ih => simp only [CapyCaptureSet.rename, CapyCaptureSet.subst, ih]
+  | var m x => cases x <;> rfl
+  | cvar m c => rfl
+
+/-- `captureSet` commutes with substitution when the substitution keeps type variables
+    as type variables (`SubstTvarCompat`): both sides are then `.empty` at the `tvar`
+    leaf, and a direct projection elsewhere. -/
+theorem CapyTy.captureSet_subst {s1 s2 : Sig} {T : CapyTy .capt s1} {σ : CapySubst s1 s2}
+    (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y) :
+    (T.subst σ).captureSet = T.captureSet.subst σ := by
+  cases T with
+  | tvar X =>
+    obtain ⟨Y, hY⟩ := htv X
+    simp only [CapyTy.subst, hY, CapyPureTy.tvar, CapyTy.captureSet, CapyCaptureSet.subst]
+  | top => rfl
+  | unit => rfl
+  | bool => rfl
+  | arrow T1 cs T2 => rfl
+  | poly T1 cs T2 => rfl
+  | cpoly cb cs T => rfl
+  | cap cs => rfl
+  | cell cs m => rfl
+
+/-- `refineCaptureSet` commutes with substitution when `σ` keeps type variables as type
+    variables (so the `tvar` head — which substitution may turn into a compound — still has
+    `refineCaptureSet` as the identity on both sides). -/
+theorem CapyTy.refineCaptureSet_subst {s1 s2 : Sig} {T : CapyTy .capt s1}
+    {cs : CapyCaptureSet s1} {σ : CapySubst s1 s2}
+    (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y) :
+    (T.refineCaptureSet cs).subst σ = (T.subst σ).refineCaptureSet (cs.subst σ) := by
+  cases T with
+  | tvar X =>
+    obtain ⟨Y, hY⟩ := htv X
+    simp only [CapyTy.refineCaptureSet, CapyTy.subst, hY, CapyPureTy.tvar, CapyTy.refineCaptureSet]
+  | top | unit | bool => rfl
+  | cap cs0 | cell cs0 m => rfl
+  | arrow T1 cs0 T2 | poly T1 cs0 T2 | cpoly T1 cs0 T2 => rfl
+
+/-- **`Γ2` is the `σ`-substitution of the source typing context `Γ1`.**  A morphism
+    `Γ1 ⟶ Γ2`: every term-variable lookup transports to a *bound* lookup whose bound's
+    capture set is the `σ`-substitution of the original's (`σ` keeps term variables
+    bound — true for capture-openings).  Only this `var` clause is needed: peak-resolution
+    only consults the *capture sets* of term-var bounds. -/
+structure CapyCtx.SubstsTo {s1 s2 : Sig}
+    (Γ1 : CapyCtx s1) (Γ2 : CapyCtx s2) (σ : CapySubst s1 s2) : Prop where
+  var : ∀ {x : BVar s1 .var} {T : CapyTy .capt s1},
+    Γ1.LookupVar x T → ∃ (x' : BVar s2 .var) (T' : CapyTy .capt s2),
+      σ.var x = .bound x' ∧ Γ2.LookupVar x' T' ∧ T'.captureSet = T.captureSet.subst σ
+
+/-- A morphism out of an extended source context restricts to one out of the tail,
+    `σ`-tail-precomposed.  (Mirror of `CapyCtx.RenamesTo.unpush`.) -/
+theorem CapyCtx.SubstsTo.unpush {s1 s2 : Sig} {k : Kind} {Γ1 : CapyCtx s1}
+    {b : CapyBinding s1 k} {Γ2 : CapyCtx s2} {σ : CapySubst (s1,,k) s2}
+    (h : (Γ1.push b).SubstsTo Γ2 σ) : Γ1.SubstsTo Γ2 σ.tail where
+  var {x} {T} hl := by
+    obtain ⟨x', T', hx', hlk, hcs⟩ := h.var (CapyCtx.LookupVar.there (b := b) hl)
+    refine ⟨x', T', hx', hlk, ?_⟩
+    rw [hcs, CapyTy.captureSet_rename, CapyCaptureSet.rename_succ_subst]
+
+/-- A substitution morphism extends through a `cvar` binder, lifting `σ`.
+    (Mirror of `CapyCtx.RenamesTo.push` for the `cvar` case.) -/
+theorem CapyCtx.SubstsTo.consCVar {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
+    {σ : CapySubst s1 s2} (h : Γ1.SubstsTo Γ2 σ)
+    {a : CapyAuthority} {cb : CapyCaptureBound s1} :
+    (Γ1.push_cvar a cb).SubstsTo (Γ2.push_cvar a (cb.subst σ)) (σ.lift (k := Kind.cvar)) where
+  var {x} {T} hl := by
+    cases hl with
+    | there hl0 =>
+      rename_i x0 T0
+      obtain ⟨x', T', hx', hlk, hcs⟩ := h.var hl0
+      refine ⟨BVar.there x', T'.rename Rename.succ, ?_, ?_, ?_⟩
+      · rw [CapySubst.lift_there_var_eq, hx']; rfl
+      · exact CapyCtx.LookupVar.there hlk
+      · calc (T'.rename Rename.succ).captureSet
+            = T'.captureSet.rename Rename.succ := CapyTy.captureSet_rename
+          _ = (T0.captureSet.subst σ).rename Rename.succ := by rw [hcs]
+          _ = (T0.captureSet.rename Rename.succ).subst σ.lift :=
+              CapyCaptureSet.weaken_subst_comm_base
+          _ = (T0.rename Rename.succ).captureSet.subst σ.lift := by
+              rw [CapyTy.captureSet_rename]
+
+/-- A substitution morphism extends through a `tvar` binder, lifting `σ`.
+    (Mirror of `consCVar` for the `tvar` case — a tvar binder adds no term variable, so
+    only the `there` lookups transport.) -/
+theorem CapyCtx.SubstsTo.consTVar {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
+    {σ : CapySubst s1 s2} (h : Γ1.SubstsTo Γ2 σ) {S1 : CapyPureTy s1} {S2 : CapyPureTy s2} :
+    (Γ1.push_tvar S1).SubstsTo (Γ2.push_tvar S2) (σ.lift (k := Kind.tvar)) where
+  var {x} {T} hl := by
+    cases hl with
+    | there hl0 =>
+      rename_i x0 T0
+      obtain ⟨x', T', hx', hlk, hcs⟩ := h.var hl0
+      refine ⟨BVar.there x', T'.rename Rename.succ, ?_, ?_, ?_⟩
+      · rw [CapySubst.lift_there_var_eq, hx']; rfl
+      · exact CapyCtx.LookupVar.there hlk
+      · calc (T'.rename Rename.succ).captureSet
+            = T'.captureSet.rename Rename.succ := CapyTy.captureSet_rename
+          _ = (T0.captureSet.subst σ).rename Rename.succ := by rw [hcs]
+          _ = (T0.captureSet.rename Rename.succ).subst σ.lift :=
+              CapyCaptureSet.weaken_subst_comm_base
+          _ = (T0.rename Rename.succ).captureSet.subst σ.lift := by
+              rw [CapyTy.captureSet_rename]
+
+/-- A substitution morphism extends through a *term*-variable binder, lifting `σ`.  The freshly
+    bound `x : T` maps to `x : T[σ]`; deeper lookups transport via `h`. -/
+theorem CapyCtx.SubstsTo.consVar {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
+    {σ : CapySubst s1 s2} (h : Γ1.SubstsTo Γ2 σ) {T : CapyTy .capt s1}
+    (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y) :
+    (Γ1.push_var T).SubstsTo (Γ2.push_var (T.subst σ)) (σ.lift (k := Kind.var)) where
+  var {x} {U} hl := by
+    cases hl with
+    | here =>
+      refine ⟨BVar.here, (T.subst σ).rename Rename.succ, rfl, CapyCtx.LookupVar.here, ?_⟩
+      calc ((T.subst σ).rename Rename.succ).captureSet
+          = (T.subst σ).captureSet.rename Rename.succ := CapyTy.captureSet_rename
+        _ = (T.captureSet.subst σ).rename Rename.succ := by rw [CapyTy.captureSet_subst htv]
+        _ = (T.captureSet.rename Rename.succ).subst σ.lift :=
+            CapyCaptureSet.weaken_subst_comm_base
+        _ = (T.rename Rename.succ).captureSet.subst σ.lift := by rw [CapyTy.captureSet_rename]
+    | there hl0 =>
+      rename_i x0 T0
+      obtain ⟨x', T', hx', hlk, hcs⟩ := h.var hl0
+      refine ⟨BVar.there x', T'.rename Rename.succ, ?_, ?_, ?_⟩
+      · rw [CapySubst.lift_there_var_eq, hx']; rfl
+      · exact CapyCtx.LookupVar.there hlk
+      · calc (T'.rename Rename.succ).captureSet
+            = T'.captureSet.rename Rename.succ := CapyTy.captureSet_rename
+          _ = (T0.captureSet.subst σ).rename Rename.succ := by rw [hcs]
+          _ = (T0.captureSet.rename Rename.succ).subst σ.lift :=
+              CapyCaptureSet.weaken_subst_comm_base
+          _ = (T0.rename Rename.succ).captureSet.subst σ.lift := by
+              rw [CapyTy.captureSet_rename]
+
+/-- `applyAccess` distributes over the frozen wrapper. -/
+theorem CapyCaptureSet.applyAccess_pseudo_peak {s : Sig} {C : CapyCaptureSet s} {m : Access} :
+    (CapyCaptureSet.pseudo_peak C).applyAccess m
+      = CapyCaptureSet.pseudo_peak (C.applyAccess m) := by
+  cases m with
+  | M mm => cases mm <;> rfl
+  | drop => rfl
+
+/-- A target cvar atom of a `succ`-renamed source capture set comes from a `there`-cvar
+    of the original. -/
+theorem CapyCaptureSet.cvar_subset_rename_succ {s : Sig} {k : Kind} {a : Access}
+    {c : BVar (s,,k) .cvar} {C : CapyCaptureSet s}
+    (h : (CapyCaptureSet.cvar a c) ⊆ C.rename Rename.succ) :
+    ∃ c', c = BVar.there c' ∧ (CapyCaptureSet.cvar a c') ⊆ C := by
+  induction C with
+  | empty => simp only [CapyCaptureSet.rename] at h; cases h
+  | union C1 C2 ih1 ih2 =>
+    simp only [CapyCaptureSet.rename] at h
+    cases h with
+    | union_right_left h1 =>
+      obtain ⟨c', hc', hsub⟩ := ih1 h1
+      exact ⟨c', hc', CapyCaptureSet.Subset.union_right_left hsub⟩
+    | union_right_right h2 =>
+      obtain ⟨c', hc', hsub⟩ := ih2 h2
+      exact ⟨c', hc', CapyCaptureSet.Subset.union_right_right hsub⟩
+  | cvar a0 c0 =>
+    simp only [CapyCaptureSet.rename] at h
+    cases h
+    exact ⟨c0, by simp only [Rename.succ], CapyCaptureSet.Subset.refl⟩
+  | var a0 x0 => simp only [CapyCaptureSet.rename] at h; cases h
+  | pseudo_peak C0 _ => simp only [CapyCaptureSet.rename] at h; cases h
+
+/-- **Source-level frozen-peak presence (the discharge of `frozen_sub_peak_present`).**
+    Given a substitution morphism `Γ1 ⟶ Γ2` (`SubstsTo`, with the `tvar` images staying
+    type variables), a frozen origin source `d` (`σ.cvar d = pseudo_peak D`) occurring at
+    access `a` in `peaks Γ1 W` has its `Γ2`-resolved, access-folded frozen image present
+    in `peaks Γ2 (W[σ])`.  By well-founded recursion peeling `Γ1` (mirror of
+    `peaks_renamesTo`); the var-resolution case absorbs the bound's `applyAccess`/`rename`
+    into the recursion argument so the access `a` is preserved verbatim. -/
+theorem CapyCaptureSet.peaks_subst_frozen {s1 s2 : Sig}
+    {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2} {σ : CapySubst s1 s2}
+    (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y) (h : Γ1.SubstsTo Γ2 σ)
+    {d : BVar s1 .cvar} {D : CapyCaptureSet s2} (hdD : σ.cvar d = CapyCaptureSet.pseudo_peak D)
+    (W : CapyCaptureSet s1) {a : Access}
+    (hsub : (CapyCaptureSet.cvar a d) ⊆ CapyCaptureSet.peaks Γ1 W) :
+    (CapyCaptureSet.pseudo_peak ((CapyCaptureSet.peaks Γ2 D).applyAccess a))
+      ⊆ CapyCaptureSet.peaks Γ2 (W.subst σ) := by
+  match Γ1, W, h, hsub with
+  | _, .empty, _, hsub => simp only [CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .pseudo_peak W0, _, hsub => simp only [CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .var m (.free n), _, hsub => simp only [CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .union W1 W2, h, hsub =>
+    simp only [CapyCaptureSet.peaks] at hsub
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks]
+    cases hsub with
+    | union_right_left h1 =>
+      exact CapyCaptureSet.Subset.union_right_left
+        (CapyCaptureSet.peaks_subst_frozen htv h hdD W1 h1)
+    | union_right_right h2 =>
+      exact CapyCaptureSet.Subset.union_right_right
+        (CapyCaptureSet.peaks_subst_frozen htv h hdD W2 h2)
+  | _, .cvar m c, _, hsub =>
+    simp only [CapyCaptureSet.peaks] at hsub
+    cases hsub
+    simp only [CapyCaptureSet.subst, hdD, CapyCaptureSet.applyAccess_pseudo_peak,
+      CapyCaptureSet.peaks, CapyCaptureSet.peaks_applyAccess_comm]
+    exact CapyCaptureSet.Subset.refl
+  | .push Γ1' (.var T0), .var m (.bound .here), h, hsub =>
+    have hpeq : CapyCaptureSet.peaks (Γ1'.push (.var T0)) (.var m (.bound .here))
+        = (CapyCaptureSet.peaks Γ1' (T0.captureSet.applyAccess m)).rename Rename.succ := by
+      simp only [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+      rw [← CapyCaptureSet.applyAccess_rename, ← CapyCaptureSet.peaks_applyAccess_comm]
+    rw [hpeq] at hsub
+    obtain ⟨d', hdeq, hsub'⟩ := CapyCaptureSet.cvar_subset_rename_succ hsub
+    subst hdeq
+    have hdD' : (σ.tail).cvar d' = CapyCaptureSet.pseudo_peak D := hdD
+    have htv' : ∀ X, ∃ Y, (σ.tail).tvar X = CapyPureTy.tvar Y := fun X => htv (.there X)
+    have hrec := CapyCaptureSet.peaks_subst_frozen htv' h.unpush hdD'
+      (T0.captureSet.applyAccess m) hsub'
+    obtain ⟨x', T', hx', hlk, hcseq⟩ := h.var (CapyCtx.LookupVar.here (Γ := Γ1') (T := T0))
+    have hrhs : CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound .here)).subst σ)
+        = CapyCaptureSet.peaks Γ2 ((T0.captureSet.applyAccess m).subst σ.tail) := by
+      simp only [CapyCaptureSet.subst, CapyVar.subst, hx']
+      rw [CapyCaptureSet.var_peaks hlk, hcseq, CapyTy.captureSet_rename,
+        CapyCaptureSet.rename_succ_subst, ← CapyCaptureSet.applyAccess_subst]
+    rw [hrhs]; exact hrec
+  | .push Γ1' b, .var m (.bound (.there x')), h, hsub =>
+    have hpeq : CapyCaptureSet.peaks (Γ1'.push b) (.var m (.bound (.there x')))
+        = (CapyCaptureSet.peaks Γ1' (.var m (.bound x'))).rename Rename.succ := by
+      simp only [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+    rw [hpeq] at hsub
+    obtain ⟨d', hdeq, hsub'⟩ := CapyCaptureSet.cvar_subset_rename_succ hsub
+    subst hdeq
+    have hdD' : (σ.tail).cvar d' = CapyCaptureSet.pseudo_peak D := hdD
+    have htv' : ∀ X, ∃ Y, (σ.tail).tvar X = CapyPureTy.tvar Y := fun X => htv (.there X)
+    have hrec := CapyCaptureSet.peaks_subst_frozen htv' h.unpush hdD'
+      (CapyCaptureSet.var m (.bound x')) hsub'
+    have hrhs : CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound (.there x'))).subst σ)
+        = CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound x')).subst σ.tail) := rfl
+    rw [hrhs]; exact hrec
+  termination_by (sizeOf Γ1, sizeOf W)
+
+/-- Capture-set subset is preserved by renaming. -/
+theorem CapyCaptureSet.Subset.rename {s1 s2 : Sig} {C1 C2 : CapyCaptureSet s1} {f : Rename s1 s2}
+    (h : C1.Subset C2) : (C1.rename f).Subset (C2.rename f) := by
+  induction h with
+  | refl => exact CapyCaptureSet.Subset.refl
+  | empty => exact CapyCaptureSet.Subset.empty
+  | union_left _ _ ih1 ih2 => exact CapyCaptureSet.Subset.union_left ih1 ih2
+  | union_right_left _ ih => exact CapyCaptureSet.Subset.union_right_left ih
+  | union_right_right _ ih => exact CapyCaptureSet.Subset.union_right_right ih
+
+/-- A cvar atom contained in a single cvar atom equals it (mode and resource). -/
+theorem CapyCaptureSet.cvar_subset_cvar_inv {s : Sig} {a a' : Access} {c c' : BVar s .cvar}
+    (h : (CapyCaptureSet.cvar a c) ⊆ (CapyCaptureSet.cvar a' c')) : a = a' ∧ c = c' := by
+  cases h; exact ⟨rfl, rfl⟩
+
+/-- A cvar atom contained in `{m0 c0}` access-folded has the same resource `c0`. -/
+theorem CapyCaptureSet.cvar_subset_cvar_applyAccess {s : Sig} {a mm m0 : Access}
+    {d1 c0 : BVar s .cvar}
+    (h : (CapyCaptureSet.cvar a d1) ⊆ (CapyCaptureSet.cvar m0 c0).applyAccess mm) : d1 = c0 := by
+  cases mm with
+  | M mu =>
+    cases mu with
+    | epsilon =>
+      simp only [CapyCaptureSet.applyAccess_M, CapyCaptureSet.applyMut] at h
+      exact (CapyCaptureSet.cvar_subset_cvar_inv h).2
+    | ro =>
+      simp only [CapyCaptureSet.applyAccess_M, CapyCaptureSet.applyMut, CapyCaptureSet.applyRO] at h
+      exact (CapyCaptureSet.cvar_subset_cvar_inv h).2
+  | drop =>
+    simp only [CapyCaptureSet.applyAccess_drop, CapyCaptureSet.applyDrop] at h
+    exact (CapyCaptureSet.cvar_subset_cvar_inv h).2
+
+/-- **Source-level cvar reverse-trace through `SubstsTo`.**  A cvar atom `{a d1}` of the
+    substituted, peaks-resolved set traces back to an origin cvar `c01` (with an occurrence
+    `{m c01} ⊆ peaks Γ1 W`) whose `σ`-image, access-folded, carries it.  The structural dual
+    of `peaks_subst_frozen`: var-bound atoms recurse through the context morphism `h.var`.
+    No peak-iso needed here — the image identification (`σ.cvar c01 = {ε d1}`) is read off at
+    the use site. -/
+theorem CapyCaptureSet.peaks_subst_cvar {s1 s2 : Sig}
+    {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2} {σ : CapySubst s1 s2}
+    (h : Γ1.SubstsTo Γ2 σ) (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    {d1 : BVar s2 .cvar} {a : Access}
+    (W : CapyCaptureSet s1)
+    (hsub : (CapyCaptureSet.cvar a d1) ⊆ CapyCaptureSet.peaks Γ2 (W.subst σ)) :
+    ∃ (c01 : BVar s1 .cvar) (m : Access),
+      (CapyCaptureSet.cvar m c01) ⊆ CapyCaptureSet.peaks Γ1 W ∧
+      (CapyCaptureSet.cvar a d1)
+        ⊆ CapyCaptureSet.peaks Γ2 ((σ.cvar c01).applyAccess m) := by
+  match Γ1, W, h, hsub with
+  | _, .empty, _, hsub =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .pseudo_peak W0, _, hsub =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .var m (.free n), _, hsub =>
+    simp only [CapyCaptureSet.subst, CapyVar.subst, CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .union W1 W2, h, hsub =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at hsub
+    cases hsub with
+    | union_right_left h1 =>
+      obtain ⟨c01, m, hocc, hatom⟩ := CapyCaptureSet.peaks_subst_cvar h htv W1 h1
+      exact ⟨c01, m, by
+        simp only [CapyCaptureSet.peaks]; exact CapyCaptureSet.Subset.union_right_left hocc, hatom⟩
+    | union_right_right h2 =>
+      obtain ⟨c01, m, hocc, hatom⟩ := CapyCaptureSet.peaks_subst_cvar h htv W2 h2
+      exact ⟨c01, m, by
+        simp only [CapyCaptureSet.peaks]
+        exact CapyCaptureSet.Subset.union_right_right hocc, hatom⟩
+  | _, .cvar m c, _, hsub =>
+    refine ⟨c, m, by simp only [CapyCaptureSet.peaks]; exact CapyCaptureSet.Subset.refl, ?_⟩
+    simpa only [CapyCaptureSet.subst] using hsub
+  | .push Γ1' (.var T0), .var m (.bound .here), h, hsub =>
+    have hrhs : CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound .here)).subst σ)
+        = CapyCaptureSet.peaks Γ2 ((T0.captureSet.applyAccess m).subst σ.tail) := by
+      obtain ⟨x', T', hx', hlk, hcseq⟩ := h.var (CapyCtx.LookupVar.here (Γ := Γ1') (T := T0))
+      simp only [CapyCaptureSet.subst, CapyVar.subst, hx']
+      rw [CapyCaptureSet.var_peaks hlk, hcseq, CapyTy.captureSet_rename,
+        CapyCaptureSet.rename_succ_subst, ← CapyCaptureSet.applyAccess_subst]
+    rw [hrhs] at hsub
+    have htv' : ∀ X, ∃ Y, (σ.tail).tvar X = CapyPureTy.tvar Y := fun X => htv (.there X)
+    obtain ⟨c01', m', hocc', hatom'⟩ :=
+      CapyCaptureSet.peaks_subst_cvar h.unpush htv' (T0.captureSet.applyAccess m) hsub
+    have hpeq : CapyCaptureSet.peaks (Γ1'.push (.var T0)) (.var m (.bound .here))
+        = (CapyCaptureSet.peaks Γ1' (T0.captureSet.applyAccess m)).rename Rename.succ := by
+      simp only [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+      rw [← CapyCaptureSet.applyAccess_rename, ← CapyCaptureSet.peaks_applyAccess_comm]
+    refine ⟨BVar.there c01', m', ?_, hatom'⟩
+    rw [hpeq]
+    change (CapyCaptureSet.cvar m' c01').rename Rename.succ ⊆ _
+    exact CapyCaptureSet.Subset.rename hocc'
+  | .push Γ1' b, .var m (.bound (.there x')), h, hsub =>
+    have hpeq2 : CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound (.there x'))).subst σ)
+        = CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound x')).subst σ.tail) := rfl
+    rw [hpeq2] at hsub
+    have htv' : ∀ X, ∃ Y, (σ.tail).tvar X = CapyPureTy.tvar Y := fun X => htv (.there X)
+    obtain ⟨c01', m', hocc', hatom'⟩ :=
+      CapyCaptureSet.peaks_subst_cvar h.unpush htv' (CapyCaptureSet.var m (.bound x')) hsub
+    have hpeq : CapyCaptureSet.peaks (Γ1'.push b) (.var m (.bound (.there x')))
+        = (CapyCaptureSet.peaks Γ1' (.var m (.bound x'))).rename Rename.succ := by
+      simp only [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+    refine ⟨BVar.there c01', m', ?_, hatom'⟩
+    rw [hpeq]
+    change (CapyCaptureSet.cvar m' c01').rename Rename.succ ⊆ _
+    exact CapyCaptureSet.Subset.rename hocc'
+  termination_by (sizeOf Γ1, sizeOf W)
+
+/-- **Source-level frozen-peak reverse-trace through `SubstsTo`.**  The pseudo-peak dual of
+    `peaks_subst_cvar`: a *frozen* peak `pseudo_peak C'` of the substituted, peaks-resolved set
+    `peaks Γ2 (W[σ])` traces back to an origin cvar `c01` (occurring in `peaks Γ1 W`) that `σ`
+    froze — routed through the context morphism `h` and the *origin* pseudo-freeness `hΓ1`,
+    NOT through any pseudo-freeness of the *sub* context `Γ2`.  This is the device that makes
+    the sub-context `NoPseudoPeak` premise (`hsubPure`) unnecessary: frozen-peak attribution
+    goes via the genuinely pseudo-free origin (`hΓ1`) + `h`, even when `σ` freezes captured
+    cvars so that `Γ2`'s var bounds carry frozen peaks. -/
+theorem CapyCaptureSet.peaks_subst_pseudo_cvar {s1 s2 : Sig}
+    {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2} {σ : CapySubst s1 s2}
+    (h : Γ1.SubstsTo Γ2 σ) (hΓ1 : Γ1.NoPseudoPeak) {C' : CapyCaptureSet s2}
+    (W : CapyCaptureSet s1) (hW : W.NoPseudoPeak)
+    (hsub : (CapyCaptureSet.pseudo_peak C') ⊆ CapyCaptureSet.peaks Γ2 (W.subst σ)) :
+    ∃ (c01 : BVar s1 .cvar) (m : Access),
+      (CapyCaptureSet.cvar m c01) ⊆ CapyCaptureSet.peaks Γ1 W ∧
+      (CapyCaptureSet.pseudo_peak C')
+        ⊆ CapyCaptureSet.peaks Γ2 ((σ.cvar c01).applyAccess m) := by
+  match Γ1, W, h, hΓ1, hW, hsub with
+  | _, .empty, _, _, _, hsub =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .pseudo_peak W0, _, _, hW, _ => nomatch hW
+  | _, .var m (.free n), _, _, _, hsub =>
+    simp only [CapyCaptureSet.subst, CapyVar.subst, CapyCaptureSet.peaks] at hsub; cases hsub
+  | _, .union W1 W2, h, hΓ1, hW, hsub =>
+    simp only [CapyCaptureSet.subst, CapyCaptureSet.peaks] at hsub
+    cases hW with
+    | union hW1 hW2 =>
+      cases hsub with
+      | union_right_left h1 =>
+        obtain ⟨c01, m, hocc, hatom⟩ :=
+          CapyCaptureSet.peaks_subst_pseudo_cvar h hΓ1 W1 hW1 h1
+        exact ⟨c01, m, by
+          simp only [CapyCaptureSet.peaks]
+          exact CapyCaptureSet.Subset.union_right_left hocc, hatom⟩
+      | union_right_right h2 =>
+        obtain ⟨c01, m, hocc, hatom⟩ :=
+          CapyCaptureSet.peaks_subst_pseudo_cvar h hΓ1 W2 hW2 h2
+        exact ⟨c01, m, by
+          simp only [CapyCaptureSet.peaks]
+          exact CapyCaptureSet.Subset.union_right_right hocc, hatom⟩
+  | _, .cvar m c, _, _, _, hsub =>
+    refine ⟨c, m, by simp only [CapyCaptureSet.peaks]; exact CapyCaptureSet.Subset.refl, ?_⟩
+    simpa only [CapyCaptureSet.subst] using hsub
+  | .push Γ1' (.var T0), .var m (.bound .here), h, hΓ1, _, hsub =>
+    have hrhs : CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound .here)).subst σ)
+        = CapyCaptureSet.peaks Γ2 ((T0.captureSet.applyAccess m).subst σ.tail) := by
+      obtain ⟨x', T', hx', hlk, hcseq⟩ := h.var (CapyCtx.LookupVar.here (Γ := Γ1') (T := T0))
+      simp only [CapyCaptureSet.subst, CapyVar.subst, hx']
+      rw [CapyCaptureSet.var_peaks hlk, hcseq, CapyTy.captureSet_rename,
+        CapyCaptureSet.rename_succ_subst, ← CapyCaptureSet.applyAccess_subst]
+    rw [hrhs] at hsub
+    obtain ⟨c01', m', hocc', hatom'⟩ :=
+      CapyCaptureSet.peaks_subst_pseudo_cvar h.unpush hΓ1.1
+        (T0.captureSet.applyAccess m) hΓ1.2.applyAccess hsub
+    have hpeq : CapyCaptureSet.peaks (Γ1'.push (.var T0)) (.var m (.bound .here))
+        = (CapyCaptureSet.peaks Γ1' (T0.captureSet.applyAccess m)).rename Rename.succ := by
+      simp only [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+      rw [← CapyCaptureSet.applyAccess_rename, ← CapyCaptureSet.peaks_applyAccess_comm]
+    refine ⟨BVar.there c01', m', ?_, hatom'⟩
+    rw [hpeq]
+    change (CapyCaptureSet.cvar m' c01').rename Rename.succ ⊆ _
+    exact CapyCaptureSet.Subset.rename hocc'
+  | .push Γ1' b, .var m (.bound (.there x')), h, hΓ1, _, hsub =>
+    have hpeq2 : CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound (.there x'))).subst σ)
+        = CapyCaptureSet.peaks Γ2 ((CapyCaptureSet.var m (.bound x')).subst σ.tail) := rfl
+    rw [hpeq2] at hsub
+    obtain ⟨c01', m', hocc', hatom'⟩ :=
+      CapyCaptureSet.peaks_subst_pseudo_cvar h.unpush hΓ1.tail
+        (CapyCaptureSet.var m (.bound x')) CapyCaptureSet.NoPseudoPeak.var hsub
+    have hpeq : CapyCaptureSet.peaks (Γ1'.push b) (.var m (.bound (.there x')))
+        = (CapyCaptureSet.peaks Γ1' (.var m (.bound x'))).rename Rename.succ := by
+      simp only [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound]
+    refine ⟨BVar.there c01', m', ?_, hatom'⟩
+    rw [hpeq]
+    change (CapyCaptureSet.cvar m' c01').rename Rename.succ ⊆ _
+    exact CapyCaptureSet.Subset.rename hocc'
+  termination_by (sizeOf Γ1, sizeOf W)
+
+/-- `peaks` of a cvar atom (access-folded) carries no frozen peak — independent of the
+    context, since `peaks` never resolves a cvar atom through `Γ`.  The `hsubPure`-free
+    discharge of the identity-image contradiction in the frozen reverse-trace lemmas. -/
+theorem CapyCaptureSet.peaks_cvar_applyAccess_noPseudoPeak {s : Sig} {Γ : CapyCtx s}
+    {a m : Access} {c : BVar s .cvar} :
+    (CapyCaptureSet.peaks Γ ((CapyCaptureSet.cvar a c).applyAccess m)).NoPseudoPeak := by
+  rw [CapyCaptureSet.peaks_applyAccess_comm]
+  simp only [CapyCaptureSet.peaks]
+  exact CapyCaptureSet.NoPseudoPeak.cvar.applyAccess
+
+end CoreCapybara
+namespace Compilation
+
+/-- **A sub frozen-peak comes from a frozen source cvar.**  Under a non-merging
+    `PeakSubstIso` σ with pseudo-free origin `cs` and a substitution morphism `Γorig ⟶ Γsub`,
+    every frozen sub-peak `pseudo_peak C'` of `peaks Γsub (cs.subst σ)` is exactly the
+    resolved, access-folded content `(peaks Γsub D).applyAccess m` of some origin cvar `c0`
+    that σ freezes (`σ.cvar c0 = pseudo_peak D`).  Routed through the genuinely pseudo-free
+    *origin* (`horig`) + the morphism (`hsubsto`) via `peaks_subst_pseudo_cvar`, so it holds
+    even when σ freezes captured cvars (making `Γsub`'s var bounds carry frozen peaks). -/
+theorem pseudo_sub_peak_frozen_source {s1 s1' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {σ : CapySubst s1 s1'} {cs : CapyCaptureSet s1}
+    {C' : CapyCaptureSet s1'}
+    (hiso : PeakSubstIso σ) (hsubsto : Γorig.SubstsTo Γsub σ) (horig : Γorig.NoPseudoPeak)
+    (hcs : cs.NoPseudoPeak)
+    (h : (CapyCaptureSet.pseudo_peak C') ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ)) :
+    ∃ (c0 : BVar s1 .cvar) (D : CapyCaptureSet s1') (m : Access),
+      σ.cvar c0 = CapyCaptureSet.pseudo_peak D ∧
+      C' = (CapyCaptureSet.peaks Γsub D).applyAccess m := by
+  obtain ⟨c0, m, _, hsub⟩ := CapyCaptureSet.peaks_subst_pseudo_cvar hsubsto horig cs hcs h
+  have himg := hiso.image c0
+  cases hp : hiso.toPeak c0 with
+  | cvar e =>
+    rw [hp] at himg
+    simp only [Peak.asCaptureSet] at himg
+    rw [himg] at hsub
+    exact absurd hsub CapyCaptureSet.peaks_cvar_applyAccess_noPseudoPeak.not_pseudo_subset
+  | pseudo D =>
+    rw [hp] at himg
+    simp only [Peak.asCaptureSet] at himg
+    refine ⟨c0, D, m, himg, ?_⟩
+    rw [himg] at hsub
+    have happ : (CapyCaptureSet.pseudo_peak D).applyAccess m
+        = CapyCaptureSet.pseudo_peak (D.applyAccess m) := by
+      cases m with
+      | M mm => cases mm <;> rfl
+      | drop => rfl
+    rw [happ] at hsub
+    simp only [CapyCaptureSet.peaks] at hsub
+    rw [CapyCaptureSet.pseudo_subset_pseudo_eq hsub, CapyCaptureSet.peaks_applyAccess_comm]
+
+/-- `NoCollision` discharges the `hncol` premise of `peakItem_subst_subset`: a frozen sub
+    content is routed (`pseudo_sub_peak_frozen_source`) to a frozen source `c0`, then
+    `NoCollision` rules out the identity image `⟦e⟧` sitting inside it. -/
+theorem NoCollision.hncol {s1 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {cs : CapyCaptureSet s1}
+    (hiso : PeakSubstIso σ) (hsubsto : Γorig.SubstsTo Γsub σ) (horig : Γorig.NoPseudoPeak)
+    (hcs : cs.NoPseudoPeak)
+    (hnc : NoCollision σ scSub Γsub)
+    {d : BVar s1 .cvar} {e : BVar s1' .cvar}
+    (hde : σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e) :
+    ∀ (a : Access) (C' : CapyCaptureSet s1'),
+      (CapyCaptureSet.pseudo_peak C') ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ) →
+      ¬ (CaptureSet.cvar a (scSub.lookupCVar e) ⊆ CapyCaptureSet.compile C' scSub) := by
+  intro a C' hC'
+  obtain ⟨c0, D, m, hc0, hC'eq⟩ := pseudo_sub_peak_frozen_source hiso hsubsto horig hcs hC'
+  rw [hC'eq]
+  exact hnc d c0 e D a m hde hc0
+
+/-- **(★ Source-level frozen-peak presence — now DISCHARGED via `peaks_subst_frozen`.)**
+    When `σ` FREEZES an origin cvar peak `d` (`σ.cvar d = pseudo_peak D`) that occurs at
+    access `a` in the origin peaks `peaks Γorig cs`, its access-folded, `Γsub`-resolved
+    frozen image `pseudo_peak ((peaks Γsub D).applyAccess a)` is present among the sub
+    peaks `peaks Γsub (cs[σ])`.
+
+    A frozen peak is erased by `compile` (`⟦pseudo_peak C⟧ = ⟦C⟧`), so the compiled
+    keystone `compile_peaks_subst` cannot witness the frozen *wrapper's* presence — only
+    its content's atoms.  The genuine device is the SOURCE-level context-substitution
+    morphism `Γorig.SubstsTo Γsub σ` (the substitution analogue of `CapyCtx.RenamesTo`),
+    threaded through `peaks_subst_frozen`; the `tvar`-as-`tvar` premise is exactly what
+    the already-carried `SubstTvarCompat` supplies. -/
+theorem frozen_sub_peak_present {s1 s1' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {σ : CapySubst s1 s1'}
+    (hsubsto : Γorig.SubstsTo Γsub σ) (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    {cs : CapyCaptureSet s1} {d : BVar s1 .cvar} {D : CapyCaptureSet s1'}
+    (hdD : σ.cvar d = CapyCaptureSet.pseudo_peak D) :
+    ∀ (a : Access), (CapyCaptureSet.cvar a d) ⊆ CapyCaptureSet.peaks Γorig cs →
+      (CapyCaptureSet.pseudo_peak ((CapyCaptureSet.peaks Γsub D).applyAccess a))
+        ⊆ CapyCaptureSet.peaks Γsub (CapyCaptureSet.subst cs σ) :=
+  fun _ ha => CapyCaptureSet.peaks_subst_frozen htv hsubsto hdD cs ha
+
+/-- **Identity-image sub-peak membership (sorry-free).**  When `σ` maps an origin cvar
+    peak `d` to an identity-image cvar (`σ.cvar d = {ε e}`) that occurs in the origin
+    peaks, `e` is a peak cvar of the sub peaks.  Provable from the compiled keystone
+    `compile_peaks_subst` + cvar inversion (the frozen-content branch is ruled out by
+    `NoCollision`, since `⟦e⟧` is an identity image). -/
+theorem identity_sub_peak_mem {s1 s2 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (haO : SrcAligned Γorig scOrig) (haS : SrcAligned Γsub scSub)
+    (hcompat : SubstCompat scSub scOrig σ σt)
+    (hcs : cs.IsClosed) (hsub : (cs.subst σ).IsClosed) (hinj : scSub.CVarInjective)
+    (hiso : PeakSubstIso σ) (hsubsto : Γorig.SubstsTo Γsub σ) (hΓOnp : Γorig.NoPseudoPeak)
+    (hcsnp : cs.NoPseudoPeak)
+    (hnc : NoCollision σ scSub Γsub)
+    {d : BVar s1 .cvar} {e : BVar s1' .cvar} {a0 : Access}
+    (hde : σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e)
+    (hd : (CapyCaptureSet.cvar a0 d) ⊆ CapyCaptureSet.peaks Γorig cs) :
+    e ∈ peakCvars (CapyCaptureSet.peakset Γsub (cs.subst σ)) := by
+  have hatomeq : (CaptureSet.cvar a0 (scOrig.lookupCVar d)).subst σt
+      = CaptureSet.cvar a0 (scSub.lookupCVar e) := by
+    have hZW : σt.cvar (scOrig.lookupCVar d)
+        = CaptureSet.cvar (.M .epsilon) (scSub.lookupCVar e) := by
+      rw [← hcompat.cvar d, hde]; rfl
+    simp only [CaptureSet.subst, hZW]
+    cases a0 with
+    | M m => cases m <;> rfl
+    | drop => rfl
+  have h1 : (CaptureSet.cvar a0 (scOrig.lookupCVar d))
+      ⊆ CapyCaptureSet.compile (CapyCaptureSet.peaks Γorig cs) scOrig :=
+    CapyCaptureSet.compile_subset (sc := scOrig) hd
+  have h2 : (CaptureSet.cvar a0 (scSub.lookupCVar e))
+      ⊆ CapyCaptureSet.compile (CapyCaptureSet.peaks Γsub (cs.subst σ)) scSub := by
+    rw [CapyCaptureSet.compile_peaks_subst hΓO hΓS haO haS hcompat hcs hsub, ← hatomeq]
+    exact CaptureSet.Subset.subst h1
+  rcases CapyCaptureSet.compile_atom_source (CapyCaptureSet.peaks_peaksOnly Γsub (cs.subst σ)) h2
+    with ⟨f, hf, hfsub⟩ | ⟨C', hC'sub, hC'atom⟩
+  · have hfe : f = e := hinj hf
+    subst hfe
+    exact cvar_mem_peakCvars hfsub
+  · exact absurd hC'atom (NoCollision.hncol hiso hsubsto hΓOnp hcsnp hnc hde a0 C' hC'sub)
+
+/-- **Reverse cvar-item containment (sorry-free).**  Dual of `peakItem_subst_subset`: the
+    SUB cvar item for an identity image `e` (σ.cvar d = {ε e}) is contained in the
+    σt-substituted ORIGIN cvar item for `d`.  Every occurrence of `e` in `peaks(cs[σ])`
+    traces back (keystone + cvar inversion) to a unique origin cvar `c0`; `c0 = d` because
+    a `cvar`-image fixes the target resource (`hinj`+`hiso.inj`) and a frozen image is ruled
+    out by `NoCollision` (the frozen peak lands in `peaks(cs[σ])` via `peaks_subst_frozen`,
+    yet cannot carry the identity resource `⟦e⟧`). -/
+theorem peakItem_subst_supset {s1 s2 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (haO : SrcAligned Γorig scOrig) (haS : SrcAligned Γsub scSub)
+    (hcompat : SubstCompat scSub scOrig σ σt)
+    (hcs : cs.IsClosed) (hsubcl : (cs.subst σ).IsClosed)
+    (hΓOnp : Γorig.NoPseudoPeak) (hcsnp : cs.NoPseudoPeak)
+    (hinj : scSub.CVarInjective)
+    (hiso : PeakSubstIso σ)
+    (hscS : CapySubst.IsClosed σ)
+    (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    (hsubsto : Γorig.SubstsTo Γsub σ)
+    (hnc : NoCollision σ scSub Γsub)
+    {d : BVar s1 .cvar} {e : BVar s1' .cvar}
+    (hde : σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e) :
+    CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) e) scSub ⊆
+      (CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γorig cs) d) scOrig).subst σt := by
+  have hkey : CapyCaptureSet.compile (CapyCaptureSet.peaks Γsub (cs.subst σ)) scSub
+      = (CapyCaptureSet.compile (CapyCaptureSet.peaks Γorig cs) scOrig).subst σt :=
+    CapyCaptureSet.compile_peaks_subst hΓO hΓS haO haS hcompat hcs hsubcl
+  -- Per-atom: a `b`-occurrence of `e` lands inside the σt-image of `d`'s origin item.
+  have atom : ∀ (b : Access),
+      (CapyCaptureSet.cvar b e) ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ) →
+      (CaptureSet.cvar b (scSub.lookupCVar e)) ⊆ ((CapyCaptureSet.compile
+        (peakItem (CapyCaptureSet.peakset Γorig cs) d) scOrig).subst σt) := by
+    intro b hb
+    have hcomp : (CaptureSet.cvar b (scSub.lookupCVar e))
+        ⊆ CapyCaptureSet.compile (CapyCaptureSet.peaks Γsub (cs.subst σ)) scSub := by
+      have h0 := CapyCaptureSet.compile_subset (sc := scSub) hb
+      simpa only [CapyCaptureSet.compile] using h0
+    rw [hkey] at hcomp
+    obtain ⟨Z, m, hmZ, happ⟩ := CaptureSet.subst_cvar_subset_inv hcomp
+    obtain ⟨c0, hc0Z, hc0cs⟩ := CapyCaptureSet.compile_cvar_subset_inv_resource
+      (CapyCaptureSet.peaks_peaksOnly Γorig cs)
+      (CapyCaptureSet.peaks_noPseudoPeak hΓOnp hcsnp) hmZ
+    subst hc0Z
+    -- `happc` is `happ` re-expressed through the source image `σ.cvar c0`.
+    have happc := happ
+    rw [← hcompat.cvar c0] at happc
+    -- Identify the origin cvar `c0` with `d`.
+    have hc0d : c0 = d := by
+      cases htc : hiso.toPeak c0 with
+      | cvar f =>
+        have himg := hiso.image c0
+        rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+        rw [himg] at happc
+        simp only [CapyCaptureSet.compile] at happc
+        obtain ⟨a', ha'⟩ := CaptureSet.cvar_subset_applyAccess_inv happc
+        have hef : e = f := hinj (CaptureSet.cvar_subset_cvar_inv ha').2
+        have htd : hiso.toPeak d = Peak.cvar e := by
+          have himgd := hiso.image d
+          rw [hde] at himgd
+          cases htcd : hiso.toPeak d with
+          | cvar g =>
+            rw [htcd] at himgd
+            simp only [Peak.asCaptureSet, CapyCaptureSet.cvar.injEq] at himgd
+            exact congrArg Peak.cvar himgd.2.symm
+          | pseudo D'' => rw [htcd] at himgd; simp [Peak.asCaptureSet] at himgd
+        exact hiso.inj (by rw [htc, htd, hef])
+      | pseudo C0 =>
+        exfalso
+        have himg := hiso.image c0
+        rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+        have hC0cl : C0.IsClosed := by
+          have h0 := hscS.cvar_closed c0; rw [himg] at h0
+          cases h0 with | pseudo_peak h => exact h
+        have hfroz : (CapyCaptureSet.pseudo_peak ((CapyCaptureSet.peaks Γsub C0).applyAccess m))
+            ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ) :=
+          CapyCaptureSet.peaks_subst_frozen htv hsubsto himg cs hc0cs
+        have hatom2 : (CaptureSet.cvar b (scSub.lookupCVar e))
+            ⊆ CapyCaptureSet.compile ((CapyCaptureSet.peaks Γsub C0).applyAccess m) scSub := by
+          rw [CapyCaptureSet.compile_applyAccess, CapyCaptureSet.compile_peaks hΓS haS hC0cl]
+          rw [himg] at happc
+          simpa only [CapyCaptureSet.compile] using happc
+        exact NoCollision.hncol hiso hsubsto hΓOnp hcsnp hnc hde b _ hfroz hatom2
+    rw [hc0d] at hc0cs happ
+    have hmem : (CapyCaptureSet.cvar m d) ⊆ peakItem (CapyCaptureSet.peakset Γorig cs) d :=
+      cvar_subset_peakItem hc0cs
+    have hcm : (CaptureSet.cvar m (scOrig.lookupCVar d))
+        ⊆ CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γorig cs) d) scOrig := by
+      have h0 := CapyCaptureSet.compile_subset (sc := scOrig) hmem
+      simpa only [CapyCaptureSet.compile] using h0
+    have hsm := CaptureSet.Subset.subst (σ := σt) hcm
+    refine CaptureSet.Subset.trans ?_ hsm
+    simpa only [CaptureSet.subst] using happ
+  -- Fold the atom lemma over the access-mode occurrences of `e`.
+  have key : ∀ (L : List Access),
+      (∀ b ∈ L, (CapyCaptureSet.cvar b e) ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ)) →
+      CapyCaptureSet.compile (L.foldr (fun b acc => CapyCaptureSet.cvar b e ∪ acc) .empty) scSub ⊆
+        ((CapyCaptureSet.compile
+          (peakItem (CapyCaptureSet.peakset Γorig cs) d) scOrig).subst σt) := by
+    intro L
+    induction L with
+    | nil =>
+      intro _
+      simp only [List.foldr_nil, CapyCaptureSet.compile]
+      exact CaptureSet.Subset.empty
+    | cons b L' ih =>
+      intro hL
+      rw [List.foldr_cons]
+      simp only [CapyCaptureSet.compile]
+      exact CaptureSet.Subset.union_left (atom b (hL b List.mem_cons_self))
+        (ih (fun b' hb' => hL b' (List.mem_cons_of_mem _ hb')))
+  exact key (accessedAt (CapyCaptureSet.peakset Γsub (cs.subst σ)) e)
+    (fun b hb => accessedAt_go_subset _ (by simpa only [accessedAt] using hb))
+
+/-- A cvar atom of `cs` is preserved by `peaks` (which keeps cvar atoms verbatim). -/
+theorem CapyCaptureSet.cvar_subset_peaks_self {s : Sig} {Γ : CapyCtx s} {m : Access}
+    {c : BVar s .cvar} {cs : CapyCaptureSet s} (h : (CapyCaptureSet.cvar m c) ⊆ cs) :
+    (CapyCaptureSet.cvar m c) ⊆ CapyCaptureSet.peaks Γ cs := by
+  induction cs with
+  | empty => cases h
+  | union cs1 cs2 ih1 ih2 =>
+    simp only [CapyCaptureSet.peaks]
+    cases h with
+    | union_right_left h1 => exact CapyCaptureSet.Subset.union_right_left (ih1 h1)
+    | union_right_right h2 => exact CapyCaptureSet.Subset.union_right_right (ih2 h2)
+  | cvar m' c' => cases h; simp only [CapyCaptureSet.peaks]; exact CapyCaptureSet.Subset.refl
+  | var m' x => cases h
+  | pseudo_peak C _ => cases h
+
+/-- **Reverse FROZEN-item containment (sorry-free).**  Dual of `peakItem_subst_atom_pseudo`
+    (union form): the SUB frozen item keyed by `(peaks Γsub D02).modeErase` is contained in
+    the σt-substituted ORIGIN cvar item for `c02` (the unique cvar `σ` freezes,
+    `σ.cvar c02 = pseudo_peak D02`).  Every frozen sub-peak traces back (via
+    `peaks_subst_pseudo_mem'`) to a frozen origin cvar; `uniqueFrozen` forces it to be
+    `c02`, so its compiled content `⟦D02⟧[a]` is exactly the `σt`-image of `c02`'s item. -/
+theorem pseudoItem_subst_supset {s1 s2 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓS : Γsub.IsClosed) (haS : SrcAligned Γsub scSub)
+    (hcompat : SubstCompat scSub scOrig σ σt)
+    (hcsnp : cs.NoPseudoPeak) (hsubsto : Γorig.SubstsTo Γsub σ) (hΓOnp : Γorig.NoPseudoPeak)
+    (hiso : PeakSubstIso σ) (hscS : CapySubst.IsClosed σ)
+    {c02 : BVar s1 .cvar} {D02 : CapyCaptureSet s1'}
+    (hc02 : σ.cvar c02 = CapyCaptureSet.pseudo_peak D02) :
+    CapyCaptureSet.compile (pseudoItem (CapyCaptureSet.peakset Γsub (cs.subst σ))
+        ((CapyCaptureSet.peaks Γsub D02).modeErase)) scSub ⊆
+      ((CapyCaptureSet.compile
+        (peakItem (CapyCaptureSet.peakset Γorig cs) c02) scOrig).subst σt) := by
+  have hD02cl : D02.IsClosed := by
+    have h0 := hscS.cvar_closed c02; rw [hc02] at h0
+    cases h0 with | pseudo_peak h => exact h
+  have ht02 : hiso.toPeak c02 = Peak.pseudo D02 := by
+    have h2 := hiso.image c02; rw [hc02] at h2
+    cases ht : hiso.toPeak c02 with
+    | cvar g => rw [ht] at h2; simp [Peak.asCaptureSet] at h2
+    | pseudo D' =>
+      rw [ht] at h2
+      simp only [Peak.asCaptureSet, CapyCaptureSet.pseudo_peak.injEq] at h2
+      exact congrArg Peak.pseudo h2.symm
+  -- Each frozen sub-peak's compiled content lands in `c02`'s σt-substituted origin item.
+  have atom : ∀ C'', (CapyCaptureSet.pseudo_peak C'') ⊆ CapyCaptureSet.peaks Γsub (cs.subst σ) →
+      CapyCaptureSet.compile C'' scSub ⊆
+        ((CapyCaptureSet.compile
+          (peakItem (CapyCaptureSet.peakset Γorig cs) c02) scOrig).subst σt) := by
+    intro C'' hsub
+    obtain ⟨c0, m, hocc, hp⟩ :=
+      CapyCaptureSet.peaks_subst_pseudo_cvar hsubsto hΓOnp cs hcsnp hsub
+    have himg := hiso.image c0
+    cases htc : hiso.toPeak c0 with
+    | cvar f =>
+      exfalso
+      rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+      rw [himg] at hp
+      exact absurd hp CapyCaptureSet.peaks_cvar_applyAccess_noPseudoPeak.not_pseudo_subset
+    | pseudo D0' =>
+      rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+      have hc0eq : c0 = c02 := hiso.uniqueFrozen htc ht02
+      subst c0
+      have hD : D0' = D02 :=
+        CapyCaptureSet.pseudo_peak.inj (himg.symm.trans hc02)
+      subst D0'
+      rw [hc02, CapyCaptureSet.applyAccess_pseudo_peak, CapyCaptureSet.peaks] at hp
+      have hC'' : C'' = (CapyCaptureSet.peaks Γsub D02).applyAccess m := by
+        rw [CapyCaptureSet.pseudo_subset_pseudo_eq hp, CapyCaptureSet.peaks_applyAccess_comm]
+      subst hC''
+      have hmem : (CapyCaptureSet.cvar m c02) ⊆ peakItem (CapyCaptureSet.peakset Γorig cs) c02 :=
+        cvar_subset_peakItem hocc
+      have hcm : (CaptureSet.cvar m (scOrig.lookupCVar c02))
+          ⊆ CapyCaptureSet.compile (peakItem (CapyCaptureSet.peakset Γorig cs) c02) scOrig := by
+        have h0 := CapyCaptureSet.compile_subset (sc := scOrig) hmem
+        simpa only [CapyCaptureSet.compile] using h0
+      have hsm := CaptureSet.Subset.subst (σ := σt) hcm
+      refine CaptureSet.Subset.trans ?_ hsm
+      rw [CapyCaptureSet.compile_applyAccess, CapyCaptureSet.compile_peaks hΓS haS hD02cl]
+      simp only [CaptureSet.subst, ← hcompat.cvar c02, hc02, CapyCaptureSet.compile]
+      exact CaptureSet.Subset.refl
+  -- Fold the atom over the frozen-peak occurrences collected by `pseudoItem.go`.
+  have key : ∀ (S : CapyCaptureSet s1'),
+      (∀ C, (CapyCaptureSet.pseudo_peak C) ⊆ S →
+        CapyCaptureSet.compile C scSub ⊆
+          ((CapyCaptureSet.compile
+            (peakItem (CapyCaptureSet.peakset Γorig cs) c02) scOrig).subst σt)) →
+      CapyCaptureSet.compile (pseudoItem.go ((CapyCaptureSet.peaks Γsub D02).modeErase) S) scSub ⊆
+        ((CapyCaptureSet.compile
+          (peakItem (CapyCaptureSet.peakset Γorig cs) c02) scOrig).subst σt) := by
+    intro S
+    induction S with
+    | empty =>
+      intro _; simp only [pseudoItem.go, CapyCaptureSet.compile]; exact CaptureSet.Subset.empty
+    | union S1 S2 ih1 ih2 =>
+      intro hS
+      simp only [pseudoItem.go, CapyCaptureSet.compile]
+      exact CaptureSet.Subset.union_left
+        (ih1 (fun C h => hS C (CapyCaptureSet.Subset.union_right_left h)))
+        (ih2 (fun C h => hS C (CapyCaptureSet.Subset.union_right_right h)))
+    | cvar m' c' =>
+      intro _; simp only [pseudoItem.go, CapyCaptureSet.compile]; exact CaptureSet.Subset.empty
+    | var m' x =>
+      intro _; simp only [pseudoItem.go, CapyCaptureSet.compile]; exact CaptureSet.Subset.empty
+    | pseudo_peak C _ =>
+      intro hS
+      simp only [pseudoItem.go]
+      split
+      · simp only [CapyCaptureSet.compile]; exact hS C CapyCaptureSet.Subset.refl
+      · simp only [CapyCaptureSet.compile]; exact CaptureSet.Subset.empty
+  simpa only [pseudoItem] using key (CapyCaptureSet.peaks Γsub (cs.subst σ)) atom
+
+/-- **Sub cvar peak ⟶ origin identity image (sorry-free).**  A cvar peak `d1` of the
+    substituted set is the identity `σ`-image of a unique origin cvar peak `c01`.  The atom
+    reverse-traces (`peaks_subst_cvar`) to `c01`; `hiso` then reads off `σ.cvar c01 = {ε d1}`
+    (the frozen alternative is impossible — a bare cvar cannot sit in a `pseudo_peak`). -/
+theorem sub_cvar_peak_origin {s1 s1' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {σ : CapySubst s1 s1'}
+    (hiso : PeakSubstIso σ) (hsubsto : Γorig.SubstsTo Γsub σ)
+    (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    {cs : CapyCaptureSet s1} {d1 : BVar s1' .cvar}
+    (hmem : d1 ∈ peakCvars (CapyCaptureSet.peakset Γsub (cs.subst σ))) :
+    ∃ (c01 : BVar s1 .cvar),
+      σ.cvar c01 = CapyCaptureSet.cvar (.M .epsilon) d1 ∧
+      c01 ∈ peakCvars (CapyCaptureSet.peakset Γorig cs) := by
+  obtain ⟨a1, hocc⟩ := peakCvars_occ hmem
+  obtain ⟨c01, m, hocc01, hatom⟩ := CapyCaptureSet.peaks_subst_cvar hsubsto htv cs hocc
+  have himg := hiso.image c01
+  cases htc : hiso.toPeak c01 with
+  | cvar f =>
+    rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+    rw [himg, CapyCaptureSet.peaks_applyAccess_comm] at hatom
+    simp only [CapyCaptureSet.peaks] at hatom
+    have hd1f : d1 = f := CapyCaptureSet.cvar_subset_cvar_applyAccess hatom
+    refine ⟨c01, ?_, cvar_mem_peakCvars hocc01⟩
+    rw [himg, hd1f]
+  | pseudo D =>
+    exfalso
+    rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+    rw [himg, CapyCaptureSet.applyAccess_pseudo_peak, CapyCaptureSet.peaks] at hatom
+    cases hatom
+
+/-- **Sub frozen peak ⟶ origin frozen cvar (sorry-free).**  A frozen peak `D2` of the
+    substituted set comes from a frozen origin cvar peak `c02` (`σ.cvar c02 = pseudo_peak D02`,
+    `D2 = ⌊peaks D02⌋`).  Routes the occurrence through `peaks_subst_pseudo_mem'`; `hiso`
+    identifies the image (the cvar-image alternative is impossible — a `pseudo_peak` cannot
+    sit in a resolved cvar atom). -/
+theorem sub_pseudo_peak_origin {s1 s1' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'} {σ : CapySubst s1 s1'}
+    (hiso : PeakSubstIso σ) (hsubsto : Γorig.SubstsTo Γsub σ) (horig : Γorig.NoPseudoPeak)
+    {cs : CapyCaptureSet s1} (hcsnp : cs.NoPseudoPeak)
+    {D2 : CapyCaptureSet s1'}
+    (hmem : D2 ∈ peakPseudos (CapyCaptureSet.peakset Γsub (cs.subst σ))) :
+    ∃ (c02 : BVar s1 .cvar) (D02 : CapyCaptureSet s1'),
+      σ.cvar c02 = CapyCaptureSet.pseudo_peak D02 ∧
+      D2 = (CapyCaptureSet.peaks Γsub D02).modeErase ∧
+      c02 ∈ peakCvars (CapyCaptureSet.peakset Γorig cs) := by
+  obtain ⟨C', hC'sub, hC'm⟩ := peakPseudos_occ hmem
+  obtain ⟨c0, m, hocc, hp⟩ :=
+    CapyCaptureSet.peaks_subst_pseudo_cvar hsubsto horig cs hcsnp hC'sub
+  have himg := hiso.image c0
+  cases htc : hiso.toPeak c0 with
+  | cvar f =>
+    exfalso
+    rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+    rw [himg] at hp
+    exact absurd hp CapyCaptureSet.peaks_cvar_applyAccess_noPseudoPeak.not_pseudo_subset
+  | pseudo D0 =>
+    rw [htc] at himg; simp only [Peak.asCaptureSet] at himg
+    refine ⟨c0, D0, himg, ?_, cvar_mem_peakCvars hocc⟩
+    rw [← hC'm]
+    rw [himg, CapyCaptureSet.applyAccess_pseudo_peak, CapyCaptureSet.peaks] at hp
+    have hC' : C' = (CapyCaptureSet.peaks Γsub D0).applyAccess m := by
+      rw [CapyCaptureSet.pseudo_subset_pseudo_eq hp, CapyCaptureSet.peaks_applyAccess_comm]
+    rw [hC', CapyCaptureSet.modeErase_applyAccess]
+
+/-! ### `srcCtx`-realignment for re-abstracted locks (the `arrow` device)
+
+The `arrow` compiler binds the value parameter `x` to its self-capture `{cx}`
+(`lookupVar x = {cx}`), which makes `SrcAligned` FAIL for `ctxLock`/`ctxDomain`
+(alignment would demand `{cx} = ⟦T.captureSet⟧`).  But the compiled lock reads the
+`srcCtx` only through `lookupCVar`: `peaks Γ W` resolves every bound var into the
+context (`peaksVarBound`), so its output has NO bound-var atom, and `compile` of a
+bound-var-free set never consults `lookupVar`.  Hence the lock is invariant under
+changing the `x`-entry's capture image — we may realign it to `⟦T.captureSet⟧` and
+reuse the SrcAligned-based dispatch. -/
+
+end Compilation
+namespace CoreCapybara
+
+/-- A capture set with no *bound* term-variable atom anywhere (incl. inside frozen
+    wrappers).  `compile` of such a set never consults `lookupVar`, only `lookupCVar`. -/
+def CapyCaptureSet.NoBoundVar {s : Sig} : CapyCaptureSet s → Prop
+| .empty => True
+| .union c1 c2 => NoBoundVar c1 ∧ NoBoundVar c2
+| .cvar _ _ => True
+| .var _ (.bound _) => False
+| .var _ (.free _) => True
+| .pseudo_peak C => NoBoundVar C
+
+theorem CapyCaptureSet.NoBoundVar.applyRO {s : Sig} {cs : CapyCaptureSet s}
+    (h : cs.NoBoundVar) : cs.applyRO.NoBoundVar := by
+  induction cs with
+  | empty => exact True.intro
+  | union c1 c2 ih1 ih2 => exact ⟨ih1 h.1, ih2 h.2⟩
+  | cvar a c => exact True.intro
+  | var a x => cases x with
+    | bound x' => exact h.elim
+    | free n => exact True.intro
+  | pseudo_peak C ih => exact ih h
+
+theorem CapyCaptureSet.NoBoundVar.applyDrop {s : Sig} {cs : CapyCaptureSet s}
+    (h : cs.NoBoundVar) : cs.applyDrop.NoBoundVar := by
+  induction cs with
+  | empty => exact True.intro
+  | union c1 c2 ih1 ih2 => exact ⟨ih1 h.1, ih2 h.2⟩
+  | cvar a c => exact True.intro
+  | var a x => cases x with
+    | bound x' => exact h.elim
+    | free n => exact True.intro
+  | pseudo_peak C ih => exact ih h
+
+theorem CapyCaptureSet.NoBoundVar.applyAccess {s : Sig} {cs : CapyCaptureSet s} {a : Access}
+    (h : cs.NoBoundVar) : (cs.applyAccess a).NoBoundVar := by
+  cases a with
+  | M m => cases m with
+    | epsilon => exact h
+    | ro => exact h.applyRO
+  | drop => exact h.applyDrop
+
+theorem CapyCaptureSet.NoBoundVar.rename {s1 s2 : Sig} {cs : CapyCaptureSet s1} {f : Rename s1 s2}
+    (h : cs.NoBoundVar) : (cs.rename f).NoBoundVar := by
+  induction cs with
+  | empty => exact True.intro
+  | union c1 c2 ih1 ih2 => exact ⟨ih1 h.1, ih2 h.2⟩
+  | cvar a c => exact True.intro
+  | var a x => cases x with
+    | bound x' => exact h.elim
+    | free n => exact True.intro
+  | pseudo_peak C ih => exact ih h
+
+mutual
+theorem CapyCaptureSet.peaksVarBound_noBoundVar {s : Sig} (Γ : CapyCtx s) (m : Access)
+    (x : BVar s .var) : (CapyCaptureSet.peaksVarBound Γ m x).NoBoundVar := by
+  match Γ, x with
+  | .push Γ' (.var T), .here =>
+    rw [CapyCaptureSet.peaksVarBound]
+    exact ((CapyCaptureSet.peaks_noBoundVar Γ' T.captureSet).rename).applyAccess
+  | .push Γ' b, .there x' =>
+    rw [CapyCaptureSet.peaksVarBound]
+    exact (CapyCaptureSet.peaksVarBound_noBoundVar Γ' m x').rename
+termination_by (sizeOf Γ, sizeOf x + 1)
+
+theorem CapyCaptureSet.peaks_noBoundVar {s : Sig} (Γ : CapyCtx s) (cs : CapyCaptureSet s) :
+    (CapyCaptureSet.peaks Γ cs).NoBoundVar := by
+  match cs with
+  | .empty => rw [CapyCaptureSet.peaks]; exact True.intro
+  | .union c1 c2 =>
+    rw [CapyCaptureSet.peaks]
+    exact ⟨CapyCaptureSet.peaks_noBoundVar Γ c1, CapyCaptureSet.peaks_noBoundVar Γ c2⟩
+  | .cvar m c => rw [CapyCaptureSet.peaks]; exact True.intro
+  | .var m (.free n) => rw [CapyCaptureSet.peaks]; exact True.intro
+  | .var m (.bound x) =>
+    rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.peaksVarBound_noBoundVar Γ m x
+  | .pseudo_peak C =>
+    rw [CapyCaptureSet.peaks]; exact CapyCaptureSet.peaks_noBoundVar Γ C
+termination_by (sizeOf Γ, sizeOf cs)
+end
+
+end CoreCapybara
+namespace Compilation
+
+/-- **`compile` is `lookupVar`-insensitive on bound-var-free sets.**  Two source
+    contexts agreeing on every `lookupCVar` compile such a set identically. -/
+theorem CapyCaptureSet.compile_eq_of_lookupCVar {s1 s2 : Sig} {cs : CapyCaptureSet s1}
+    {sc1 sc2 : SrcCtx s1 s2} (h : cs.NoBoundVar)
+    (hcv : ∀ (c : BVar s1 .cvar), sc1.lookupCVar c = sc2.lookupCVar c) :
+    CapyCaptureSet.compile cs sc1 = CapyCaptureSet.compile cs sc2 := by
+  induction cs with
+  | empty => rfl
+  | union c1 c2 ih1 ih2 =>
+    simp only [CapyCaptureSet.compile, ih1 h.1, ih2 h.2]
+  | cvar a c => simp only [CapyCaptureSet.compile, hcv c]
+  | var a x => cases x with
+    | bound x' => exact h.elim
+    | free n => simp only [CapyCaptureSet.compile]
+  | pseudo_peak C ih => simp only [CapyCaptureSet.compile, ih h]
+
+/-- The compiled key item of any peak is bound-var-free: `cvar` peaks build pure
+    `cvar` unions; `pseudo` peaks freeze a (bound-var-free) base from `P.cs`. -/
+theorem peakKeyItem_noBoundVar {s : Sig} {P : CapyPeakSet s} (hP : P.cs.NoBoundVar)
+    (p : Peak s) : (peakKeyItem P p).NoBoundVar := by
+  cases p with
+  | cvar c =>
+    simp only [peakKeyItem, peakItem]
+    induction (accessedAt P c) with
+    | nil => exact True.intro
+    | cons a as ih => exact ⟨True.intro, ih⟩
+  | pseudo D =>
+    simp only [peakKeyItem, pseudoItem]
+    have aux : ∀ (cs : CapyCaptureSet s),
+        cs.NoBoundVar → (pseudoItem.go D cs).NoBoundVar := by
+      intro cs
+      induction cs with
+      | empty => intro _; exact True.intro
+      | union c1 c2 ih1 ih2 =>
+        intro hcs; simp only [pseudoItem.go]; exact ⟨ih1 hcs.1, ih2 hcs.2⟩
+      | cvar a c => intro _; exact True.intro
+      | var a x => intro _; exact True.intro
+      | pseudo_peak C ih =>
+        intro hcs; simp only [pseudoItem.go]
+        split
+        · exact hcs
+        · exact True.intro
+    exact aux P.cs hP
+
+/-- **The compiled lock is `lookupVar`-insensitive.**  `peakSepCtx (peakset Γ W)`
+    reads `srcCtx` only through `lookupCVar` (its items are bound-var-free), so two
+    contexts agreeing on `lookupCVar` build the same separation context. -/
+theorem peakSepCtx_eq_of_lookupCVar {s1 s2 : Sig} {P : CapyPeakSet s1}
+    {sc1 sc2 : SrcCtx s1 s2} (hP : P.cs.NoBoundVar)
+    (hcv : ∀ (c : BVar s1 .cvar), sc1.lookupCVar c = sc2.lookupCVar c) :
+    peakSepCtx P sc1 = peakSepCtx P sc2 := by
+  simp only [peakSepCtx]
+  generalize (SepCtx.empty : SepCtx s2) = acc
+  induction peakList P generalizing acc with
+  | nil => rfl
+  | cons p ps ih =>
+    simp only [List.foldl]
+    rw [CapyCaptureSet.compile_eq_of_lookupCVar (peakKeyItem_noBoundVar hP p) hcv]
+    exact ih _
+
+/-! ### `realign`: the always-available aligned surrogate
+
+`realign Γ sc` rewrites each term-binder's capture image in `sc` to its declared latent
+`⟦T.captureSet⟧` (keeping `cvar`/`tvar` images), producing an *aligned* source context that
+agrees with `sc` on every `lookupCVar`/`lookupTVar`.  Compiled LOCKS (bound-var-free) are
+insensitive to the difference, so the SrcAligned-based dispatch can run at `realign Γ sc`
+and transport back — this is what lets `compile_subst_subtyp` drop its `SrcAligned` premise
+and so recurse through the `arrow`'s re-abstracted (`x ↦ {cx}`) domain/lock/body contexts. -/
+def SrcCtx.realign : {s1 : Sig} → CapyCtx s1 → SrcCtx s1 s2 → SrcCtx s1 s2
+  | _, .empty, .empty => .empty
+  | _, .push Γ' (.var T), .cons (.var bv _) sc' =>
+      .cons (.var bv (CapyCaptureSet.compile T.captureSet (SrcCtx.realign Γ' sc')))
+        (SrcCtx.realign Γ' sc')
+  | _, .push Γ' (.cvar _ _), .cons info sc' => .cons info (SrcCtx.realign Γ' sc')
+  | _, .push Γ' (.tvar _), .cons info sc' => .cons info (SrcCtx.realign Γ' sc')
+
+@[simp] theorem SrcCtx.realign_lookupCVar {s1 s2 : Sig} (Γ : CapyCtx s1) (sc : SrcCtx s1 s2)
+    (c : BVar s1 .cvar) : (SrcCtx.realign Γ sc).lookupCVar c = sc.lookupCVar c := by
+  match Γ, sc, c with
+  | .push Γ' (.var _), .cons (.var _ _) sc', .there c' =>
+      simp only [SrcCtx.realign, SrcCtx.lookupCVar]; exact SrcCtx.realign_lookupCVar Γ' sc' c'
+  | .push Γ' (.cvar _ _), .cons (.cvar _) sc', .here =>
+      simp only [SrcCtx.realign, SrcCtx.lookupCVar]
+  | .push Γ' (.cvar _ _), .cons (.cvar _) sc', .there c' =>
+      simp only [SrcCtx.realign, SrcCtx.lookupCVar]; exact SrcCtx.realign_lookupCVar Γ' sc' c'
+  | .push Γ' (.tvar _), .cons (.tvar _) sc', .there c' =>
+      simp only [SrcCtx.realign, SrcCtx.lookupCVar]; exact SrcCtx.realign_lookupCVar Γ' sc' c'
+
+@[simp] theorem SrcCtx.realign_lookupTVar {s1 s2 : Sig} (Γ : CapyCtx s1) (sc : SrcCtx s1 s2)
+    (X : BVar s1 .tvar) : (SrcCtx.realign Γ sc).lookupTVar X = sc.lookupTVar X := by
+  match Γ, sc, X with
+  | .push Γ' (.var _), .cons (.var _ _) sc', .there X' =>
+      simp only [SrcCtx.realign, SrcCtx.lookupTVar]; exact SrcCtx.realign_lookupTVar Γ' sc' X'
+  | .push Γ' (.cvar _ _), .cons (.cvar _) sc', .there X' =>
+      simp only [SrcCtx.realign, SrcCtx.lookupTVar]; exact SrcCtx.realign_lookupTVar Γ' sc' X'
+  | .push Γ' (.tvar _), .cons (.tvar _) sc', .here =>
+      simp only [SrcCtx.realign, SrcCtx.lookupTVar]
+  | .push Γ' (.tvar _), .cons (.tvar _) sc', .there X' =>
+      simp only [SrcCtx.realign, SrcCtx.lookupTVar]; exact SrcCtx.realign_lookupTVar Γ' sc' X'
+
+/-- `realign` always yields a `SrcAligned` context. -/
+theorem SrcCtx.realign_aligned {s1 s2 : Sig} (Γ : CapyCtx s1) (sc : SrcCtx s1 s2) :
+    SrcAligned Γ (SrcCtx.realign Γ sc) := by
+  intro x U hlook
+  induction hlook generalizing s2 with
+  | here =>
+    cases sc with
+    | cons info sc' =>
+      cases info with
+      | var bv cs =>
+        simp only [SrcCtx.realign, SrcCtx.lookupVar]
+        exact CapyCaptureSet.compile_captureSet_weaken.symm
+  | there hlook0 ih =>
+    cases sc with
+    | cons info sc' =>
+      rename_i b
+      cases b with
+      | var T1 =>
+        cases info with
+        | var bv cs =>
+          simp only [SrcCtx.realign, SrcCtx.lookupVar]
+          exact (ih sc').trans CapyCaptureSet.compile_captureSet_weaken.symm
+      | cvar a cb =>
+        cases info with
+        | cvar c =>
+          simp only [SrcCtx.realign, SrcCtx.lookupVar]
+          exact (ih sc').trans CapyCaptureSet.compile_captureSet_weaken.symm
+      | tvar S =>
+        cases info with
+        | tvar X =>
+          simp only [SrcCtx.realign, SrcCtx.lookupVar]
+          exact (ih sc').trans CapyCaptureSet.compile_captureSet_weaken.symm
+
+/-- On an already-`SrcAligned` context, `realign` is the identity (var images already
+    equal `⟦T.captureSet⟧`).  Lets the base call sites supply the real `srcCtx`. -/
+theorem SrcCtx.realign_eq_self {s1 s2 : Sig} (Γ : CapyCtx s1) (sc : SrcCtx s1 s2)
+    (h : SrcAligned Γ sc) : SrcCtx.realign Γ sc = sc := by
+  match Γ, sc with
+  | .empty, .empty => rfl
+  | .push Γ' (.var T), .cons (.var bv cs) sc' =>
+      have hrest : SrcCtx.realign Γ' sc' = sc' := SrcCtx.realign_eq_self Γ' sc' h.peel
+      have hh := h (CapyCtx.LookupVar.here (Γ := Γ') (T := T))
+      simp only [SrcCtx.lookupVar] at hh
+      have hcs : cs = CapyCaptureSet.compile T.captureSet sc' :=
+        hh.trans CapyCaptureSet.compile_captureSet_weaken
+      simp only [SrcCtx.realign, hrest, hcs]
+  | .push Γ' (.cvar a cb), .cons (.cvar c) sc' =>
+      have hrest : SrcCtx.realign Γ' sc' = sc' := SrcCtx.realign_eq_self Γ' sc' h.peel
+      simp only [SrcCtx.realign, hrest]
+  | .push Γ' (.tvar S), .cons (.tvar X) sc' =>
+      have hrest : SrcCtx.realign Γ' sc' = sc' := SrcCtx.realign_eq_self Γ' sc' h.peel
+      simp only [SrcCtx.realign, hrest]
+
+/-- `realign` commutes with a target renaming (it only rewrites capture *images*, which
+    rename pointwise).  Lets the surrogate `SubstCompat` thread through `weakenTarget`. -/
+theorem SrcCtx.realign_rename {s1 s2 s2' : Sig} (Γ : CapyCtx s1) (sc : SrcCtx s1 s2)
+    (ρ : Rename s2 s2') :
+    SrcCtx.realign Γ (sc.rename ρ) = (SrcCtx.realign Γ sc).rename ρ := by
+  match Γ, sc with
+  | .empty, .empty => rfl
+  | .push Γ' (.var T), .cons (.var bv cs) sc' =>
+      simp only [SrcCtx.rename, SrcBinderInfo.rename, SrcCtx.realign]
+      rw [SrcCtx.realign_rename Γ' sc' ρ, CapyCaptureSet.compile_rename]
+  | .push Γ' (.cvar a cb), .cons (.cvar c) sc' =>
+      simp only [SrcCtx.rename, SrcBinderInfo.rename, SrcCtx.realign,
+        SrcCtx.realign_rename Γ' sc' ρ]
+  | .push Γ' (.tvar S), .cons (.tvar X) sc' =>
+      simp only [SrcCtx.rename, SrcBinderInfo.rename, SrcCtx.realign,
+        SrcCtx.realign_rename Γ' sc' ρ]
+
+/-- **`compile_peaks_subst` without the `SrcAligned` premise.**  Both peak-sets are
+    bound-var-free, so compiling them is `lookupVar`-insensitive: transport to the
+    aligned `realign` surrogate, apply the SrcAligned-based keystone there (its only
+    substitution input is `SubstCompat` *at* `realign`), and transport back. -/
+theorem CapyCaptureSet.compile_peaks_subst' {s1 s2 s1' s2' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'}
+    {scOrig : SrcCtx s1 s2} {scSub : SrcCtx s1' s2'}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {cs : CapyCaptureSet s1}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (hcompatAl : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σt)
+    (hcs : cs.IsClosed) (hsub : (cs.subst σ).IsClosed) :
+    CapyCaptureSet.compile (CapyCaptureSet.peaks Γsub (cs.subst σ)) scSub
+      = (CapyCaptureSet.compile (CapyCaptureSet.peaks Γorig cs) scOrig).subst σt := by
+  rw [CapyCaptureSet.compile_eq_of_lookupCVar (CapyCaptureSet.peaks_noBoundVar Γsub (cs.subst σ))
+        (fun c => (SrcCtx.realign_lookupCVar Γsub scSub c).symm),
+      CapyCaptureSet.compile_peaks_subst hΓO hΓS (SrcCtx.realign_aligned Γorig scOrig)
+        (SrcCtx.realign_aligned Γsub scSub) hcompatAl hcs hsub,
+      CapyCaptureSet.compile_eq_of_lookupCVar (CapyCaptureSet.peaks_noBoundVar Γorig cs)
+        (fun c => SrcCtx.realign_lookupCVar Γorig scOrig c)]
+
+/-- The `realign` surrogate-`SubstCompat` threads through a fresh *target* binder
+    (`weakenTarget`): `realign` commutes with the `succ`-rename (`realign_rename`), so this
+    reduces to the ordinary `SubstCompat.weakenTarget`. -/
+theorem SubstCompat.realign_weakenTarget {s1 s2 s1' s2' : Sig}
+    {Γsub : CapyCtx s1'} {Γorig : CapyCtx s1} {scSub : SrcCtx s1' s2'} {scOrig : SrcCtx s1 s2}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
+    (h : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σt) :
+    SubstCompat (SrcCtx.realign Γsub (scSub.rename Rename.succ))
+      (SrcCtx.realign Γorig (scOrig.rename Rename.succ)) σ (σt.lift (k := k)) := by
+  rw [SrcCtx.realign_rename, SrcCtx.realign_rename]
+  exact SubstCompat.weakenTarget h
+
+/-- The `realign` surrogate-`SubstCompat` threads through the compiler's
+    `weakenTarget.consCVar … .here` (recursing under a source capture binder): `realign` of the
+    `push_cvar_default`/`.cons (.cvar .here)` shape unfolds (the cvar bound is irrelevant to
+    `realign`) and `realign_rename` matches `SubstCompat.weakenConsCVar`. -/
+theorem SubstCompat.realign_weakenConsCVar {s1 s2 s1' s2' : Sig}
+    {Γsub : CapyCtx s1'} {Γorig : CapyCtx s1} {scSub : SrcCtx s1' s2'} {scOrig : SrcCtx s1 s2}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
+    {cbS : CapyCaptureBound s1'} {cbO : CapyCaptureBound s1}
+    (h : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σt) :
+    SubstCompat
+      (SrcCtx.realign (Γsub.push_cvar_default cbS)
+        (.cons (.cvar BVar.here) (scSub.rename Rename.succ)))
+      (SrcCtx.realign (Γorig.push_cvar_default cbO)
+        (.cons (.cvar BVar.here) (scOrig.rename Rename.succ)))
+      σ.lift (σt.lift (k := Kind.cvar)) := by
+  have e1 : SrcCtx.realign (Γsub.push_cvar_default cbS)
+        (.cons (.cvar BVar.here) (scSub.rename Rename.succ))
+      = .cons (.cvar BVar.here) (SrcCtx.realign Γsub (scSub.rename Rename.succ)) := rfl
+  have e2 : SrcCtx.realign (Γorig.push_cvar_default cbO)
+        (.cons (.cvar BVar.here) (scOrig.rename Rename.succ))
+      = .cons (.cvar BVar.here) (SrcCtx.realign Γorig (scOrig.rename Rename.succ)) := rfl
+  rw [e1, e2, SrcCtx.realign_rename, SrcCtx.realign_rename]
+  exact SubstCompat.weakenConsCVar h
+
+/-- The `realign` surrogate-`SubstCompat` threads through the compiler's
+    `weakenTarget.consTVar … .here` (the `poly`-body builder). -/
+theorem SubstCompat.realign_weakenConsTVar {s1 s2 s1' s2' : Sig}
+    {Γsub : CapyCtx s1'} {Γorig : CapyCtx s1} {scSub : SrcCtx s1' s2'} {scOrig : SrcCtx s1 s2}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
+    {SS : CapyPureTy s1'} {SO : CapyPureTy s1}
+    (h : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σt) :
+    SubstCompat
+      (SrcCtx.realign (Γsub.push_tvar SS)
+        (.cons (.tvar BVar.here) (scSub.rename Rename.succ)))
+      (SrcCtx.realign (Γorig.push_tvar SO)
+        (.cons (.tvar BVar.here) (scOrig.rename Rename.succ)))
+      σ.lift (σt.lift (k := Kind.tvar)) := by
+  have e1 : SrcCtx.realign (Γsub.push_tvar SS)
+        (.cons (.tvar BVar.here) (scSub.rename Rename.succ))
+      = .cons (.tvar BVar.here) (SrcCtx.realign Γsub (scSub.rename Rename.succ)) := rfl
+  have e2 : SrcCtx.realign (Γorig.push_tvar SO)
+        (.cons (.tvar BVar.here) (scOrig.rename Rename.succ))
+      = .cons (.tvar BVar.here) (SrcCtx.realign Γorig (scOrig.rename Rename.succ)) := rfl
+  rw [e1, e2, SrcCtx.realign_rename, SrcCtx.realign_rename]
+  exact SubstCompat.weakenConsTVar h
+
+/-- The `realign` surrogate-`SubstCompat` threads through a source capture binder mapped to an
+    arbitrary target cvar (`consCVar`).  `realign` keeps the cvar image, so it reduces to the
+    plain `SubstCompat.consCVar`. -/
+theorem SubstCompat.realign_consCVar {s1 s2 s1' s2' : Sig}
+    {Γsub : CapyCtx s1'} {Γorig : CapyCtx s1} {scSub : SrcCtx s1' s2'} {scOrig : SrcCtx s1 s2}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'}
+    {cS : BVar s2' .cvar} {cO : BVar s2 .cvar}
+    {cbS : CapyCaptureBound s1'} {cbO : CapyCaptureBound s1}
+    (h : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σt)
+    (hc : σt.cvar cO = CaptureSet.cvar (.M .epsilon) cS) :
+    SubstCompat
+      (SrcCtx.realign (Γsub.push_cvar_default cbS) (.cons (.cvar cS) scSub))
+      (SrcCtx.realign (Γorig.push_cvar_default cbO) (.cons (.cvar cO) scOrig))
+      σ.lift σt := by
+  have e1 : SrcCtx.realign (Γsub.push_cvar_default cbS) (.cons (.cvar cS) scSub)
+      = .cons (.cvar cS) (SrcCtx.realign Γsub scSub) := rfl
+  have e2 : SrcCtx.realign (Γorig.push_cvar_default cbO) (.cons (.cvar cO) scOrig)
+      = .cons (.cvar cO) (SrcCtx.realign Γorig scOrig) := rfl
+  rw [e1, e2]
+  exact SubstCompat.consCVar h hc
+
+/-- The `realign` surrogate-`SubstCompat` threads through a source term binder (`consVar`).
+    `realign` rewrites *both* var images to the declared latent `⟦T.captureSet⟧`, so the
+    `consVar` invariant `csO.subst σt = csS` is exactly `compile_subst` on `To.captureSet`. -/
+theorem SubstCompat.realign_consVar {s1 s2 s1' s2' : Sig}
+    {Γsub : CapyCtx s1'} {Γorig : CapyCtx s1} {scSub : SrcCtx s1' s2'} {scOrig : SrcCtx s1 s2}
+    {σ : CapySubst s1 s1'} {σt : Subst s2 s2'} {To : CapyTy .capt s1}
+    {bvS : Option (BVar s2' .var)} {bvO : Option (BVar s2 .var)}
+    {csS : CaptureSet s2'} {csO : CaptureSet s2}
+    (h : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σt)
+    (htv : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y) (hTo : To.IsClosed) :
+    SubstCompat
+      (SrcCtx.realign (Γsub.push_var (To.subst σ)) (.cons (.var bvS csS) scSub))
+      (SrcCtx.realign (Γorig.push_var To) (.cons (.var bvO csO) scOrig))
+      σ.lift σt := by
+  have e1 : SrcCtx.realign (Γsub.push_var (To.subst σ)) (.cons (.var bvS csS) scSub)
+      = .cons (.var bvS
+          (CapyCaptureSet.compile (To.subst σ).captureSet (SrcCtx.realign Γsub scSub)))
+          (SrcCtx.realign Γsub scSub) := rfl
+  have e2 : SrcCtx.realign (Γorig.push_var To) (.cons (.var bvO csO) scOrig)
+      = .cons (.var bvO (CapyCaptureSet.compile To.captureSet (SrcCtx.realign Γorig scOrig)))
+          (SrcCtx.realign Γorig scOrig) := rfl
+  rw [e1, e2]
+  refine SubstCompat.consVar h ?_
+  rw [show (To.subst σ).captureSet = (To.captureSet).subst σ from CapyTy.captureSet_subst htv]
+  exact (CapyCaptureSet.compile_subst h (CapyTy.IsClosed.captureSet hTo)).symm
+
+/-- `CVarInjective` survives `realign` — it only constrains `lookupCVar`, which `realign`
+    preserves. -/
+theorem SrcCtx.CVarInjective.realign {s1 s2 : Sig} {Γ : CapyCtx s1} {sc : SrcCtx s1 s2}
+    (h : sc.CVarInjective) : (SrcCtx.realign Γ sc).CVarInjective := by
+  intro c1 c2 he
+  rw [SrcCtx.realign_lookupCVar, SrcCtx.realign_lookupCVar] at he
+  exact h he
+
+/-- `NoCollision` survives `realign` — it constrains only `scSub.lookupCVar` and the compile of
+    a (bound-var-free) peak set, both `realign`-invariant. -/
+theorem NoCollision.realign {s1 s1' s2' : Sig} {σ : CapySubst s1 s1'}
+    {scSub : SrcCtx s1' s2'} {Γsub : CapyCtx s1'}
+    (h : NoCollision σ scSub Γsub) : NoCollision σ (SrcCtx.realign Γsub scSub) Γsub := by
+  intro d c0 e D a m hde hc0
+  have hnb : ((CapyCaptureSet.peaks Γsub D).applyAccess m).NoBoundVar :=
+    (CapyCaptureSet.peaks_noBoundVar Γsub D).applyAccess
+  rw [SrcCtx.realign_lookupCVar,
+      CapyCaptureSet.compile_eq_of_lookupCVar hnb
+        (fun c => SrcCtx.realign_lookupCVar Γsub scSub c)]
+  exact h d c0 e D a m hde hc0
+
+/-- **Forward lock-`Satisfy` separation half (extracted, generic over the binder).**
+    The separation dispatch of `cpoly`/`poly`/`arrow`'s `modal_modal` codomain in the
+    FORWARD direction (`⟦T[σ]⟧ <: ⟦T⟧[σt]`): from `HasTwoDistinct` of two SUB peaks of
+    `cs[σ]`, derive a `SepCheck` in the context whose pushed lock is the SUBSTITUTED ORIGIN
+    lock `Ψ_R[σt]`.  Distinct sub-cvars trace (via `traceAtom`) to lock items separated by
+    `sep_lock`; a `σ`-merge of two origin peaks is separated by `hdropW`; the cvar–frozen and
+    frozen–frozen cases route through the reverse containments / `uniqueFrozen`.  Generic over
+    the binder-extended target sigs `s2w/s2w'`, so it serves the `cvar` (cpoly), `tvar` (poly),
+    and nested (arrow) binders uniformly. -/
+theorem compile_peakSepCtx_sep_forward {s1 s2w s1' s2w' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'}
+    {scOrig : SrcCtx s1 s2w} {scSub : SrcCtx s1' s2w'}
+    {σ : CapySubst s1 s1'} {σtW : Subst s2w s2w'}
+    {cs : CapyCaptureSet s1} {coreCtxW : Ctx s2w'} {ΨmutR : MutabilityCtx s2w}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (haOrigW : SrcAligned Γorig scOrig) (haSubW : SrcAligned Γsub scSub)
+    (hcompatW : SubstCompat scSub scOrig σ σtW)
+    (hcsCl : cs.IsClosed) (hsubcl : (cs.subst σ).IsClosed)
+    (hΓOnp : Γorig.NoPseudoPeak) (hcsnp : cs.NoPseudoPeak)
+    (hinjW : scSub.CVarInjective)
+    (hiso : PeakSubstIso σ)
+    (hscS : CapySubst.IsClosed σ)
+    (htv' : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    (hsubsto : Γorig.SubstsTo Γsub σ)
+    (hncW : NoCollision σ scSub Γsub)
+    (hdropW : TgtPairDroppable coreCtxW σtW) :
+    ∀ (C1 C2 : CaptureSet (s2w',,Kind.lock)),
+      (peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ))
+        (scSub.rename Rename.succ)).HasTwoDistinct C1 C2 →
+      SepCheck
+        (coreCtxW.push_lock
+          (({ sep := peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig,
+              mutability := ΨmutR } : ModalCtx s2w).subst σtW))
+        C1 C2 := by
+  intro C1 C2 hdist
+  obtain ⟨c1, hc1, c2, hc2, hcne, hCdisj⟩ := peakSepCtx_HasTwoDistinct_ne hdist
+  -- E1: the whole compiled peak-set commutes with `σtW`.
+  have hE1 :
+      CapyCaptureSet.compile (CapyCaptureSet.peaks Γsub (cs.subst σ)) scSub
+        = (CapyCaptureSet.compile (CapyCaptureSet.peaks Γorig cs) scOrig).subst σtW :=
+    CapyCaptureSet.compile_peaks_subst hΓO hΓS haOrigW haSubW hcompatW hcsCl hsubcl
+  -- Per-atom tracing: an atom of a compiled sub-peak-item factors back through `σtW` to an
+  -- atom of the compiled orig peak-set, recording the target image.
+  have traceAtom : ∀ (d : BVar s1' Kind.cvar)
+      (Y : BVar (s2w',,Kind.lock) Kind.cvar) (a : Access),
+      (CaptureSet.cvar a Y) ⊆ CapyCaptureSet.compile
+        (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) d)
+        (scSub.rename Rename.succ) →
+      ∃ (Y' : BVar s2w' Kind.cvar) (Z : BVar s2w Kind.cvar) (m : Access),
+        Y = BVar.there Y' ∧ scSub.lookupCVar d = Y' ∧
+        (CaptureSet.cvar m Z) ⊆ CapyCaptureSet.compile
+          (CapyCaptureSet.peaks Γorig cs) scOrig ∧
+        (CaptureSet.cvar a Y') ⊆ (σtW.cvar Z).applyAccess m := by
+    intro d Y a hsub
+    rw [CapyCaptureSet.compile_rename] at hsub
+    obtain ⟨Y', hYeq, hsub'⟩ := CaptureSet.cvar_subset_rename_succ hsub
+    obtain ⟨e, hlke, hsube⟩ :=
+      CapyCaptureSet.compile_cvar_subset_inv_resource peakItem_peaksOnly
+        peakItem_noPseudoPeak hsub'
+    obtain ⟨hed, hsubP⟩ := peakItem_atom hsube
+    subst hed
+    have hmono := CapyCaptureSet.compile_subset (sc := scSub) hsubP
+    have hcompc : CapyCaptureSet.compile (CapyCaptureSet.cvar a e) scSub = CaptureSet.cvar a Y' :=
+      congrArg (CaptureSet.cvar a) hlke
+    have hpcs : (CapyCaptureSet.peakset Γsub (cs.subst σ)).cs
+        = CapyCaptureSet.peaks Γsub (cs.subst σ) := rfl
+    rw [hcompc, hpcs, hE1] at hmono
+    obtain ⟨Z, m, hmZ, happ⟩ := CaptureSet.subst_cvar_subset_inv hmono
+    exact ⟨Y', Z, m, hYeq, hlke, hmZ, happ⟩
+  -- The key separation claim for two distinct CVAR sub-peaks.
+  have keyCC : ∀ (d1 d2 : BVar s1' Kind.cvar), d1 ≠ d2 →
+      d1 ∈ peakCvars (CapyCaptureSet.peakset Γsub (cs.subst σ)) →
+      d2 ∈ peakCvars (CapyCaptureSet.peakset Γsub (cs.subst σ)) →
+      SepCheck
+        (coreCtxW.push_lock
+          (({ sep := peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig,
+              mutability := ΨmutR } : ModalCtx s2w).subst σtW))
+        (CapyCaptureSet.compile
+          (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) d1)
+          (scSub.rename Rename.succ))
+        (CapyCaptureSet.compile
+          (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) d2)
+          (scSub.rename Rename.succ)) := by
+    intro d1 d2 hne hd1 hd2
+    refine SepCheck.of_cvar_atoms
+      (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly peakItem_noPseudoPeak)
+      (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly peakItem_noPseudoPeak) ?_
+    intro a1 Y1 a2 Y2 hY1 hY2
+    obtain ⟨Y1', Z1, m1, hY1eq, hlk1, hmZ1, happ1⟩ := traceAtom d1 Y1 a1 hY1
+    obtain ⟨Y2', Z2, m2, hY2eq, hlk2, hmZ2, happ2⟩ := traceAtom d2 Y2 a2 hY2
+    have hYne : Y1 ≠ Y2 := by
+      subst hY1eq; subst hY2eq
+      intro he
+      exact hne (hinjW (by rw [hlk1, hlk2]; exact BVar.there.inj he))
+    by_cases hZ : Z1 = Z2
+    · -- SPLIT: both atoms come from the same `σtW`-image `Z`; `hdropW` separates.
+      subst hZ
+      obtain ⟨a1', hmem1⟩ := CaptureSet.cvar_subset_applyAccess_inv happ1
+      obtain ⟨a2', hmem2⟩ := CaptureSet.cvar_subset_applyAccess_inv happ2
+      have hY'ne : Y1' ≠ Y2' := by
+        intro he; exact hYne (by rw [hY1eq, hY2eq, he])
+      have hdd := hdropW Z1 a1' a2' Y1' Y2' hY'ne
+        (CaptureSet.cvar_subset_peaks hmem1) (CaptureSet.cvar_subset_peaks hmem2)
+      subst hY1eq; subst hY2eq
+      exact SepCheck.sep_droppable (Ctx.TwoDistinctDroppable.push hdd (Binding.lock
+        (({ sep := peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig,
+            mutability := ΨmutR } : ModalCtx s2w).subst σtW)))
+    · -- DISTINCT ORIGIN: trace to distinct lock items separated by the pushed `Ψ_R[σtW]`.
+      obtain ⟨d1', hd1lk, hd1mem⟩ := CapyCaptureSet.compile_cvar_subset_inv_resource
+        (CapyCaptureSet.peaks_peaksOnly Γorig cs)
+        (CapyCaptureSet.peaks_noPseudoPeak hΓOnp hcsnp) hmZ1
+      obtain ⟨d2', hd2lk, hd2mem⟩ := CapyCaptureSet.compile_cvar_subset_inv_resource
+        (CapyCaptureSet.peaks_peaksOnly Γorig cs)
+        (CapyCaptureSet.peaks_noPseudoPeak hΓOnp hcsnp) hmZ2
+      have hd1pc : d1' ∈ peakCvars (CapyCaptureSet.peakset Γorig cs) := cvar_mem_peakCvars hd1mem
+      have hd2pc : d2' ∈ peakCvars (CapyCaptureSet.peakset Γorig cs) := cvar_mem_peakCvars hd2mem
+      have hd12ne : d1' ≠ d2' := fun he => hZ (by rw [← hd1lk, ← hd2lk, he])
+      have htd := (peakSepCtx_subst_HasTwoDistinct_of
+        (sc := scOrig) (σt := σtW) (cvar_mem_peakList hd1pc)
+        (cvar_mem_peakList hd2pc) (fun h => hd12ne (Peak.cvar.inj h))).rename
+        (f := Rename.succ (k := Kind.lock))
+      have mkSub : ∀ (a : Access) (Y' : BVar s2w' Kind.cvar)
+          (Z : BVar s2w Kind.cvar) (m : Access) (d' : BVar _ Kind.cvar),
+          (CaptureSet.cvar a Y') ⊆ (σtW.cvar Z).applyAccess m →
+          (CapyCaptureSet.cvar m d') ⊆ CapyCaptureSet.peaks Γorig cs →
+          scOrig.lookupCVar d' = Z →
+          Subcapt coreCtxW
+            (CaptureSet.cvar a Y')
+            ((CapyCaptureSet.compile
+              (peakItem (CapyCaptureSet.peakset Γorig cs) d') scOrig).subst σtW) := by
+        intro a Y' Z m d' happ hmem hdlk
+        refine Subcapt.sc_trans (Subcapt.sc_elem happ) (Subcapt.sc_elem ?_)
+        have h1 : (CapyCaptureSet.cvar m d') ⊆ peakItem (CapyCaptureSet.peakset Γorig cs) d' :=
+          cvar_subset_peakItem hmem
+        have h2 := CapyCaptureSet.compile_subset (sc := scOrig) h1
+        have h3 := CaptureSet.Subset.subst (σ := σtW) h2
+        have heqc : CapyCaptureSet.compile (CapyCaptureSet.cvar m d') scOrig
+            = CaptureSet.cvar m Z :=
+          congrArg (CaptureSet.cvar m) hdlk
+        rw [heqc] at h3
+        exact h3
+      subst hY1eq; subst hY2eq
+      exact SepCheck.sep_symm
+        (SepCheck.sep_mono
+          (SepCheck.sep_symm
+            (SepCheck.sep_mono
+              (SepCheck.sep_lock (ℓ := BVar.here) Ctx.LookupLock.here htd)
+              (Subcapt.weaken (mkSub a1 Y1' Z1 m1 d1' happ1 hd1mem hd1lk) _)))
+          (Subcapt.weaken (mkSub a2 Y2' Z2 m2 d2' happ2 hd2mem hd2lk) _))
+  -- the CVAR–FROZEN key: distinct origin cvar peaks separate; shrink via reverse containments.
+  have keyCP : ∀ (d1 : BVar s1' Kind.cvar) (D2 : CapyCaptureSet s1'),
+      d1 ∈ peakCvars (CapyCaptureSet.peakset Γsub (cs.subst σ)) →
+      D2 ∈ peakPseudos (CapyCaptureSet.peakset Γsub (cs.subst σ)) →
+      SepCheck
+        (coreCtxW.push_lock
+          (({ sep := peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig,
+              mutability := ΨmutR } : ModalCtx s2w).subst σtW))
+        (CapyCaptureSet.compile
+          (peakItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) d1)
+          (scSub.rename Rename.succ))
+        (CapyCaptureSet.compile
+          (pseudoItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) D2)
+          (scSub.rename Rename.succ)) := by
+    intro d1 D2 hd1m hD2m
+    obtain ⟨c01, hc01, hc01pc⟩ := sub_cvar_peak_origin hiso hsubsto htv' hd1m
+    obtain ⟨c02, D02, hc02, hD2eq, hc02pc⟩ :=
+      sub_pseudo_peak_origin hiso hsubsto hΓOnp hcsnp hD2m
+    have hne01 : c01 ≠ c02 := by
+      intro he; rw [he, hc02] at hc01; simp at hc01
+    have htd := (peakSepCtx_subst_HasTwoDistinct_of
+      (sc := scOrig) (σt := σtW) (cvar_mem_peakList hc01pc)
+      (cvar_mem_peakList hc02pc) (fun h => hne01 (Peak.cvar.inj h))).rename
+      (f := Rename.succ (k := Kind.lock))
+    refine SepCheck.sep_symm (SepCheck.sep_mono (SepCheck.sep_symm (SepCheck.sep_mono
+      (SepCheck.sep_lock (ℓ := BVar.here) Ctx.LookupLock.here htd) ?_)) ?_)
+    · apply Subcapt.sc_elem
+      rw [CapyCaptureSet.compile_rename]
+      exact CaptureSet.Subset.rename (f := Rename.succ)
+        (peakItem_subst_supset hΓO hΓS haOrigW haSubW hcompatW hcsCl hsubcl hΓOnp hcsnp hinjW
+          hiso hscS htv' hsubsto hncW hc01)
+    · apply Subcapt.sc_elem
+      rw [hD2eq, CapyCaptureSet.compile_rename]
+      exact CaptureSet.Subset.rename (f := Rename.succ)
+        (pseudoItem_subst_supset hΓS haSubW hcompatW hcsnp hsubsto hΓOnp hiso hscS hc02)
+  -- Peak-level dispatch: cvar–cvar via `keyCC`; mixed via `keyCP` (+ `sep_symm`);
+  -- pseudo–pseudo is vacuous (`uniqueFrozen`).
+  have key' : ∀ (p1 p2 : Peak s1'), p1 ≠ p2 →
+      p1 ∈ peakList (CapyCaptureSet.peakset Γsub (cs.subst σ)) →
+      p2 ∈ peakList (CapyCaptureSet.peakset Γsub (cs.subst σ)) →
+      SepCheck
+        (coreCtxW.push_lock
+          (({ sep := peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig,
+              mutability := ΨmutR } : ModalCtx s2w).subst σtW))
+        (CapyCaptureSet.compile
+          (peakKeyItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) p1)
+          (scSub.rename Rename.succ))
+        (CapyCaptureSet.compile
+          (peakKeyItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) p2)
+          (scSub.rename Rename.succ)) := by
+    intro p1 p2 hne hp1 hp2
+    cases p1 with
+    | cvar d1 =>
+      cases p2 with
+      | cvar d2 =>
+        have h1 := mem_peakCvars_of_cvar_mem hp1
+        have h2 := mem_peakCvars_of_cvar_mem hp2
+        exact keyCC d1 d2 (fun h => hne (congrArg Peak.cvar h)) h1 h2
+      | pseudo D2 =>
+        exact keyCP d1 D2 (mem_peakCvars_of_cvar_mem hp1)
+          (mem_peakPseudos_of_pseudo_mem hp2)
+    | pseudo D1 =>
+      cases p2 with
+      | cvar d2 =>
+        exact SepCheck.sep_symm (keyCP d2 D1 (mem_peakCvars_of_cvar_mem hp2)
+          (mem_peakPseudos_of_pseudo_mem hp1))
+      | pseudo D2 =>
+        -- VACUOUS: distinct frozen SUB peaks trace to frozen ORIGIN sources forced equal.
+        exfalso
+        obtain ⟨C1', hC1, hC1m⟩ := peakPseudos_occ (mem_peakPseudos_of_pseudo_mem hp1)
+        obtain ⟨C2', hC2, hC2m⟩ := peakPseudos_occ (mem_peakPseudos_of_pseudo_mem hp2)
+        obtain ⟨c01, D01, m1, hc01, hC1eq⟩ :=
+          pseudo_sub_peak_frozen_source hiso hsubsto hΓOnp hcsnp hC1
+        obtain ⟨c02, D02, m2, hc02, hC2eq⟩ :=
+          pseudo_sub_peak_frozen_source hiso hsubsto hΓOnp hcsnp hC2
+        have ht1 : hiso.toPeak c01 = Peak.pseudo D01 := by
+          have him := hiso.image c01; rw [hc01] at him
+          cases htc : hiso.toPeak c01 with
+          | cvar e => rw [htc] at him; simp [Peak.asCaptureSet] at him
+          | pseudo D'' =>
+            rw [htc] at him
+            simp only [Peak.asCaptureSet, CapyCaptureSet.pseudo_peak.injEq] at him
+            rw [him]
+        have ht2 : hiso.toPeak c02 = Peak.pseudo D02 := by
+          have him := hiso.image c02; rw [hc02] at him
+          cases htc : hiso.toPeak c02 with
+          | cvar e => rw [htc] at him; simp [Peak.asCaptureSet] at him
+          | pseudo D'' =>
+            rw [htc] at him
+            simp only [Peak.asCaptureSet, CapyCaptureSet.pseudo_peak.injEq] at him
+            rw [him]
+        have hc12 : c01 = c02 := hiso.uniqueFrozen ht1 ht2
+        subst hc12
+        have hD : D01 = D02 := by
+          rw [hc01] at hc02; exact CapyCaptureSet.pseudo_peak.inj hc02
+        apply hne
+        have e1 : D1 = (CapyCaptureSet.peaks Γsub D01).modeErase := by
+          rw [← hC1m, hC1eq, CapyCaptureSet.modeErase_applyAccess]
+        have e2 : D2 = (CapyCaptureSet.peaks Γsub D02).modeErase := by
+          rw [← hC2m, hC2eq, CapyCaptureSet.modeErase_applyAccess]
+        rw [e1, e2, hD]
+  -- Discharge the goal (either ordering of the `HasTwoDistinct` pair).
+  rcases hCdisj with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+  · exact key' c1 c2 hcne hc1 hc2
+  · exact key' c2 c1 (Ne.symm hcne) hc2 hc1
+
+/-- **Forward dispatch without the `SrcAligned` premise** (the `realign` surrogate route).  Run
+    the SrcAligned-based forward dispatch at the always-aligned `realign Γ sc`, then transport the
+    compiled locks back to the real `sc` (peaks are bound-var-free, so the lock is
+    `lookupCVar`-insensitive).  `CVarInjective`/`NoCollision` carry over by `*.realign`. -/
+theorem compile_peakSepCtx_sep_forward_realign {s1 s2w s1' s2w' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'}
+    {scOrig : SrcCtx s1 s2w} {scSub : SrcCtx s1' s2w'}
+    {σ : CapySubst s1 s1'} {σtW : Subst s2w s2w'}
+    {cs : CapyCaptureSet s1} {coreCtxW : Ctx s2w'} {ΨmutR : MutabilityCtx s2w}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (hcompatAlW : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σtW)
+    (hcsCl : cs.IsClosed) (hsubcl : (cs.subst σ).IsClosed)
+    (hΓOnp : Γorig.NoPseudoPeak) (hcsnp : cs.NoPseudoPeak)
+    (hinjW : scSub.CVarInjective)
+    (hiso : PeakSubstIso σ)
+    (hscS : CapySubst.IsClosed σ)
+    (htv' : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    (hsubsto : Γorig.SubstsTo Γsub σ)
+    (hncW : NoCollision σ scSub Γsub)
+    (hdropW : TgtPairDroppable coreCtxW σtW) :
+    ∀ (C1 C2 : CaptureSet (s2w',,Kind.lock)),
+      (peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ))
+        (scSub.rename Rename.succ)).HasTwoDistinct C1 C2 →
+      SepCheck
+        (coreCtxW.push_lock
+          (({ sep := peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig,
+              mutability := ΨmutR } : ModalCtx s2w).subst σtW))
+        C1 C2 := by
+  have hInEq : peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ))
+        ((SrcCtx.realign Γsub scSub).rename (Rename.succ (k := Kind.lock)))
+      = peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ))
+        (scSub.rename (Rename.succ (k := Kind.lock))) :=
+    peakSepCtx_eq_of_lookupCVar (CapyCaptureSet.peaks_noBoundVar Γsub (cs.subst σ)) (fun c => by
+      rw [SrcCtx.lookupCVar_rename, SrcCtx.lookupCVar_rename, SrcCtx.realign_lookupCVar])
+  have hOutEq : peakSepCtx (CapyCaptureSet.peakset Γorig cs) (SrcCtx.realign Γorig scOrig)
+      = peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig :=
+    peakSepCtx_eq_of_lookupCVar (CapyCaptureSet.peaks_noBoundVar Γorig cs)
+      (fun c => SrcCtx.realign_lookupCVar Γorig scOrig c)
+  intro C1 C2 hdist
+  rw [← hInEq] at hdist
+  rw [← hOutEq]
+  exact compile_peakSepCtx_sep_forward (scOrig := SrcCtx.realign Γorig scOrig)
+    (scSub := SrcCtx.realign Γsub scSub) hΓO hΓS
+    (SrcCtx.realign_aligned Γorig scOrig) (SrcCtx.realign_aligned Γsub scSub) hcompatAlW
+    hcsCl hsubcl hΓOnp hcsnp hinjW.realign hiso hscS htv' hsubsto hncW.realign hdropW
+    C1 C2 hdist
+
+/-- **Backward lock-`Satisfy` separation half (extracted, generic over the binder).**
+    The separation dispatch of `cpoly`/`poly`/`arrow`'s `modal_modal` codomain in the
+    BACKWARD direction (`⟦T⟧[σt] <: ⟦T[σ]⟧`): from `HasTwoDistinct` of two SUBSTITUTED ORIGIN
+    items, derive a `SepCheck` in the context whose pushed lock is the SUB lock `Ψ_L`.  The
+    origin peaks are all cvars (origin is pseudo-free); each maps via `subPeakOf` to a distinct
+    SUB peak (`traceItem`: identity images → `identity_sub_peak_mem`/`peakItem_subst_subset`,
+    frozen images → `frozen_sub_peak_present`/`peakItem_subst_subset_pseudo`), and the two
+    distinct sub-peaks separate by `sep_lock` shrinking each origin item into its sub item. -/
+theorem compile_peakSepCtx_sep_backward {s1 s2w s1' s2w' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'}
+    {scOrig : SrcCtx s1 s2w} {scSub : SrcCtx s1' s2w'}
+    {σ : CapySubst s1 s1'} {σtW : Subst s2w s2w'}
+    {cs : CapyCaptureSet s1} {coreCtxW : Ctx s2w'} {ΨmutSub : MutabilityCtx s2w'}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (haOrigW : SrcAligned Γorig scOrig) (haSubW : SrcAligned Γsub scSub)
+    (hcompatW : SubstCompat scSub scOrig σ σtW)
+    (hcsCl : cs.IsClosed) (hsubcl : (cs.subst σ).IsClosed)
+    (hΓOnp : Γorig.NoPseudoPeak) (hcsnp : cs.NoPseudoPeak)
+    (hinjW : scSub.CVarInjective)
+    (hiso : PeakSubstIso σ)
+    (hscS : CapySubst.IsClosed σ)
+    (htv' : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    (hsubsto : Γorig.SubstsTo Γsub σ)
+    (hncW : NoCollision σ scSub Γsub) :
+    ∀ (C1 C2 : CaptureSet (s2w',,Kind.lock)),
+      (((peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig).subst σtW).rename
+        Rename.succ).HasTwoDistinct C1 C2 →
+      SepCheck
+        (coreCtxW.push_lock
+          ({ sep := peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ)) scSub,
+             mutability := ΨmutSub } : ModalCtx s2w'))
+        C1 C2 := by
+  intro C1 C2 hdist
+  obtain ⟨p1, hp1, p2, hp2, hpne, hPdisj⟩ := peakSepCtx_subst_rename_HasTwoDistinct_ne hdist
+  -- Per ORIGIN cvar peak `d`: its sub-peak `subPeakOf d` is a peak of the sub peaks, and the
+  -- substituted compiled origin item sits inside the compiled sub item.
+  have traceItem : ∀ (d : BVar _ Kind.cvar),
+      d ∈ peakCvars (CapyCaptureSet.peakset Γorig cs) →
+      subPeakOf hiso Γsub d ∈ peakList (CapyCaptureSet.peakset Γsub (cs.subst σ)) ∧
+        ((CapyCaptureSet.compile
+            (peakItem (CapyCaptureSet.peakset Γorig cs) d) scOrig).subst σtW) ⊆
+          CapyCaptureSet.compile
+            (peakKeyItem (CapyCaptureSet.peakset Γsub (cs.subst σ)) (subPeakOf hiso Γsub d))
+            scSub := by
+    intro d hd
+    obtain ⟨a0, hocc⟩ := peakCvars_occ hd
+    cases htp : hiso.toPeak d with
+    | cvar e =>
+      have hde : σ.cvar d = CapyCaptureSet.cvar (.M .epsilon) e := by
+        rw [hiso.image d, htp]; rfl
+      have hmem := identity_sub_peak_mem hΓO hΓS haOrigW haSubW hcompatW hcsCl hsubcl hinjW
+        hiso hsubsto hΓOnp hcsnp hncW hde hocc
+      have hcont := peakItem_subst_subset hΓO hΓS haOrigW haSubW hcompatW hcsCl hsubcl hinjW hde
+        (NoCollision.hncol hiso hsubsto hΓOnp hcsnp hncW hde)
+      refine ⟨?_, ?_⟩
+      · simp only [subPeakOf, htp]; exact cvar_mem_peakList hmem
+      · simp only [subPeakOf, htp, peakKeyItem]; exact hcont
+    | pseudo D =>
+      have hdD : σ.cvar d = CapyCaptureSet.pseudo_peak D := by
+        rw [hiso.image d, htp]; rfl
+      have hDcl : D.IsClosed := by
+        have hcl := hscS.cvar_closed d; rw [hdD] at hcl
+        cases hcl with | pseudo_peak hD => exact hD
+      have hmem := frozen_sub_peak_present (cs := cs) hsubsto htv' hdD
+      have hcont := peakItem_subst_subset_pseudo
+        (Γorig := Γorig) (scOrig := scOrig) hΓS haSubW hcompatW hDcl hdD hmem
+      refine ⟨?_, ?_⟩
+      · simp only [subPeakOf, htp]
+        apply pseudo_mem_peakList
+        have h0 := pseudoBase_mem_peakPseudos
+          (P := CapyCaptureSet.peakset Γsub (cs.subst σ)) (hmem a0 hocc)
+        rwa [CapyCaptureSet.modeErase_applyAccess] at h0
+      · simp only [subPeakOf, htp, peakKeyItem]; exact hcont
+  -- Dispatch: origin peaks are all cvars; separate the two distinct sub-peaks in `Ψ_L`.
+  have hnpOcs : (CapyCaptureSet.peakset Γorig cs).cs.NoPseudoPeak :=
+    CapyCaptureSet.peaks_noPseudoPeak hΓOnp hcsnp
+  cases p1 with
+  | pseudo D1 => exact absurd hp1 (pseudo_not_mem_peakList_of_noPseudoPeak hnpOcs)
+  | cvar d1 =>
+    cases p2 with
+    | pseudo D2 => exact absurd hp2 (pseudo_not_mem_peakList_of_noPseudoPeak hnpOcs)
+    | cvar d2 =>
+      have hd1 := mem_peakCvars_of_cvar_mem hp1
+      have hd2 := mem_peakCvars_of_cvar_mem hp2
+      have hne : d1 ≠ d2 := fun h => hpne (congrArg Peak.cvar h)
+      obtain ⟨mem1, cont1⟩ := traceItem d1 hd1
+      obtain ⟨mem2, cont2⟩ := traceItem d2 hd2
+      have hne' : subPeakOf hiso Γsub d1 ≠ subPeakOf hiso Γsub d2 :=
+        fun h => hne (subPeakOf_inj hiso h)
+      have htd := (peakSepCtx_HasTwoDistinct_of (sc := scSub) mem1 mem2 hne').rename
+        (f := Rename.succ (k := Kind.lock))
+      have htd' := (peakSepCtx_HasTwoDistinct_of (sc := scSub) mem2 mem1 (Ne.symm hne')).rename
+        (f := Rename.succ (k := Kind.lock))
+      simp only [peakKeyItem] at hPdisj
+      rcases hPdisj with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
+      · exact SepCheck.sep_symm (SepCheck.sep_mono (SepCheck.sep_symm (SepCheck.sep_mono
+          (SepCheck.sep_lock (ℓ := BVar.here) Ctx.LookupLock.here htd)
+          (Subcapt.weaken (Subcapt.sc_elem cont1) _)))
+          (Subcapt.weaken (Subcapt.sc_elem cont2) _))
+      · exact SepCheck.sep_symm (SepCheck.sep_mono (SepCheck.sep_symm (SepCheck.sep_mono
+          (SepCheck.sep_lock (ℓ := BVar.here) Ctx.LookupLock.here htd')
+          (Subcapt.weaken (Subcapt.sc_elem cont2) _)))
+          (Subcapt.weaken (Subcapt.sc_elem cont1) _))
+
+/-- **Backward dispatch without the `SrcAligned` premise** (the `realign` surrogate route). -/
+theorem compile_peakSepCtx_sep_backward_realign {s1 s2w s1' s2w' : Sig}
+    {Γorig : CapyCtx s1} {Γsub : CapyCtx s1'}
+    {scOrig : SrcCtx s1 s2w} {scSub : SrcCtx s1' s2w'}
+    {σ : CapySubst s1 s1'} {σtW : Subst s2w s2w'}
+    {cs : CapyCaptureSet s1} {coreCtxW : Ctx s2w'} {ΨmutSub : MutabilityCtx s2w'}
+    (hΓO : Γorig.IsClosed) (hΓS : Γsub.IsClosed)
+    (hcompatAlW : SubstCompat (SrcCtx.realign Γsub scSub) (SrcCtx.realign Γorig scOrig) σ σtW)
+    (hcsCl : cs.IsClosed) (hsubcl : (cs.subst σ).IsClosed)
+    (hΓOnp : Γorig.NoPseudoPeak) (hcsnp : cs.NoPseudoPeak)
+    (hinjW : scSub.CVarInjective)
+    (hiso : PeakSubstIso σ)
+    (hscS : CapySubst.IsClosed σ)
+    (htv' : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y)
+    (hsubsto : Γorig.SubstsTo Γsub σ)
+    (hncW : NoCollision σ scSub Γsub) :
+    ∀ (C1 C2 : CaptureSet (s2w',,Kind.lock)),
+      (((peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig).subst σtW).rename
+        Rename.succ).HasTwoDistinct C1 C2 →
+      SepCheck
+        (coreCtxW.push_lock
+          ({ sep := peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ)) scSub,
+             mutability := ΨmutSub } : ModalCtx s2w'))
+        C1 C2 := by
+  have hInEq : peakSepCtx (CapyCaptureSet.peakset Γorig cs) (SrcCtx.realign Γorig scOrig)
+      = peakSepCtx (CapyCaptureSet.peakset Γorig cs) scOrig :=
+    peakSepCtx_eq_of_lookupCVar (CapyCaptureSet.peaks_noBoundVar Γorig cs)
+      (fun c => SrcCtx.realign_lookupCVar Γorig scOrig c)
+  have hOutEq : peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ)) (SrcCtx.realign Γsub scSub)
+      = peakSepCtx (CapyCaptureSet.peakset Γsub (cs.subst σ)) scSub :=
+    peakSepCtx_eq_of_lookupCVar (CapyCaptureSet.peaks_noBoundVar Γsub (cs.subst σ))
+      (fun c => SrcCtx.realign_lookupCVar Γsub scSub c)
+  intro C1 C2 hdist
+  rw [← hInEq] at hdist
+  rw [← hOutEq]
+  exact compile_peakSepCtx_sep_backward (scOrig := SrcCtx.realign Γorig scOrig)
+    (scSub := SrcCtx.realign Γsub scSub) hΓO hΓS
+    (SrcCtx.realign_aligned Γorig scOrig) (SrcCtx.realign_aligned Γsub scSub) hcompatAlW
+    hcsCl hsubcl hΓOnp hcsnp hinjW.realign hiso hscS htv' hsubsto hncW.realign
+    C1 C2 hdist
+
 /-- **Type-level capture-opening commutes up to subtyping, both directions.**
     Stated `∀`-after-`T` (over the substitution data + contexts) so the recursive
     cases re-instantiate at lifted substitutions / extended contexts. -/
@@ -968,100 +3699,1153 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
       SubstCompat ctxSub.srcCtx ctxOrig.srcCtx σ σt →
       SubstTvarCompat ctxSub.srcCtx ctxOrig.srcCtx σ σt → T.IsClosed → CapyTy.PureBounds T →
       TgtPairDroppable ctxSub.coreCtx σt →
-      SrcAligned ctxSub.capyCtx ctxSub.srcCtx → SrcAligned ctxOrig.capyCtx ctxOrig.srcCtx →
+      SubstCompat (SrcCtx.realign ctxSub.capyCtx ctxSub.srcCtx)
+        (SrcCtx.realign ctxOrig.capyCtx ctxOrig.srcCtx) σ σt →
       ctxSub.capyCtx.IsClosed → ctxOrig.capyCtx.IsClosed →
       Subst.IsClosed σt →
       ctxSub.srcCtx.VarsClosed → ctxOrig.srcCtx.VarsClosed →
       ctxSub.coreCtx.IsClosed →
       CapySubst.IsClosed σ →
       ctxSub.srcCtx.CVarInjective →
+      PeakSubstIso σ →
+      ctxOrig.capyCtx.NoPseudoPeak →
+      T.NoPseudoPeak →
+      NoCollision σ ctxSub.srcCtx ctxSub.capyCtx →
+      ctxOrig.capyCtx.SubstsTo ctxSub.capyCtx σ →
       Subtyp ctxSub.coreCtx (CapyTy.compile (T.subst σ) ctxSub)
         ((CapyTy.compile T ctxOrig).subst σt) ∧
       Subtyp ctxSub.coreCtx ((CapyTy.compile T ctxOrig).subst σt)
         (CapyTy.compile (T.subst σ) ctxSub) := by
-  induction T with
-  | top =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  match T with
+  | .top =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
     exact ⟨Subtyp.refl, Subtyp.refl⟩
-  | unit =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .unit =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
     exact ⟨Subtyp.refl, Subtyp.refl⟩
-  | bool =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .bool =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
     exact ⟨Subtyp.refl, Subtyp.refl⟩
-  | cap cs =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .cap cs =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     cases hcl with | cap hcs =>
     rw [CapyTy.compile_subst_cap hcompat hcs]
     exact ⟨Subtyp.refl, Subtyp.refl⟩
-  | cell cs m =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .cell cs m =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     cases hcl with | cell hcs =>
     rw [CapyTy.compile_subst_cell hcompat hcs]
     exact ⟨Subtyp.refl, Subtyp.refl⟩
-  | typ T1 ih =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .typ T1 =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     cases hcl with | typ hcl1 =>
     simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
-    obtain ⟨hle, hge⟩ := ih hcompat htvar hcl1 hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+    obtain ⟨hle, hge⟩ := CapyTy.compile_subst_subtyp T1 hcompat htvar hcl1 hpb hdrop hcompatAl
+      hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     exact ⟨Subtyp.typ hle, Subtyp.typ hge⟩
-  | exi T1 ih =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .exi T1 =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     cases hcl with | exi hcl1 =>
     simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
-    obtain ⟨hle, hge⟩ := ih (ctxOrig := ctxOrig.weakenTarget.consCVar (.unbound .epsilon) .here)
+    obtain ⟨hle, hge⟩ := CapyTy.compile_subst_subtyp T1
+      (ctxOrig := ctxOrig.weakenTarget.consCVar (.unbound .epsilon) .here)
       (ctxSub := ctxSub.weakenTarget.consCVar (.unbound .epsilon) .here)
       (SubstCompat.weakenConsCVar hcompat) (SubstTvarCompat.weakenConsCVar htvar) hcl1 hpb
       (TgtPairDroppable.lift hdrop)
-      (SrcAligned.consCVar haSub.weakenTarget) (SrcAligned.consCVar haOrig.weakenTarget)
+      (SubstCompat.realign_weakenConsCVar hcompatAl)
       (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
       (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
       (Subst.lift_closed hscl) hvcSub.weaken.consCVar hvcOrig.weaken.consCVar
       (Ctx.IsClosed.push hcoreSub (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
-      (CapySubst.lift_closed hscS) (SrcCtx.CVarInjective.consCVarHere hinj)
+      (CapySubst.lift_closed hscS) (SrcCtx.CVarInjective.consCVarHere hinj) (hiso.lift Kind.cvar)
+      horig hTnp hnc.weakenConsCVar hsubsto.consCVar
     exact ⟨Subtyp.exi hle, Subtyp.exi hge⟩
-  | tvar X =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .tvar X =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     obtain ⟨Z, hZ, hlk⟩ := htvar X
     simp only [CapyTy.subst, hZ, CapyPureTy.tvar, CapyTy.compile, Ty.subst, hlk, PureTy.tvar]
     exact ⟨Subtyp.refl, Subtyp.refl⟩
-  | arrow T1 cs E ihT1 ihE =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
-    -- ★ BLOCKED BY THE SAME GAP AS `cpoly` `satB`.  An arrow compiles to a `cpoly`/`cpoly`/
-    -- `arrow`/`modal` nest; relating two such nests by `Subtyp` reaches `Subtyp.arrow`, whose
-    -- DOMAIN premise is CONTRAVARIANT: the *forward* arrow obligation needs `ihT1.2` (the
-    -- BACKWARD direction of the domain type).  That backward direction is exactly the
-    -- merging-unstable lock subtyping documented at `cpoly`'s `satB` — so neither direction of
-    -- `arrow` is dischargeable until the K1 lock-design decision is made.  (The structural
-    -- scaffold mirrors `cpoly`: `Subtyp.cpoly`×2 / `Subtyp.arrow` / `Subtyp.modal` with the
-    -- codomain `modal_modal` Satisfy being the load-bearing obligation.)
-    sorry
-  | poly S cs E ihS ihE =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
-    -- ★ BLOCKED BY THE SAME GAP AS `cpoly` `satB`.  Unlike `cpoly` (whose capture bound is an
-    -- EQUALITY, `Subbound.refl`, so no contravariance), `poly`'s type bound `S` is genuinely
-    -- CONTRAVARIANT: `Subtyp.poly` needs `Subtyp Γ S2.core S1.core`, i.e. `ihS.2` (the BACKWARD
-    -- direction of `S`).  That backward direction is the merging-unstable lock subtyping
-    -- (`cpoly`'s `satB`).  The forward Satisfy here is provable (a mirror of `cpoly` forward's
-    -- hsep dispatch), but the case as a whole is gated on the K1 lock-design decision.
-    sorry
-  | cpoly cb cs E ihE =>
-    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop haSub haOrig hclSub hclOrig
-      hscl hvcSub hvcOrig hcoreSub hscS hinj
+  | .arrow T1 cs E =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
+    -- ★ REMAINING — large MECHANICAL assembly, NO design gap (the K1/merging-lock blocker is
+    -- gone; the dispatch machinery `compile_peakSepCtx_sep_forward`/`_backward` + the `cpoly`/
+    -- `poly` cases prove there is no obstruction).  `arrow T cs E` compiles to a
+    -- `cpoly .unbound {} (typ (cpoly (bound ⟦T.captureSet⟧) {} (typ (arrow ⟦Tdom⟧ {}
+    --   (typ (modal ⟦W⟧ Ψ ⟦E⟧))))))` nest with `Tdom = (T.rename succ).refineCaptureSet {x}`,
+    -- `W = (cs.rename succ).rename succ ∪ {param}`.  Forward = `Subtyp.cpoly Subbound.refl` (outer)
+    -- / inner `Subtyp.cpoly (Subbound.capset (heq ▸ Subcapt.refl))` with `heq` via
+    -- `captureSet_subst hlifttv` + `compile_subst (SubstCompat.weakenConsCVar hcompat)` / then
+    -- `Subtyp.arrow ?dom {} ?body`.  `?dom` (contravariant) is now a RECURSIVE SELF-CALL
+    -- `(CapyTy.compile_subst_subtyp Tdom …).2` — REACHABLE because `tySize Tdom = tySize T <
+    -- tySize (arrow …)` under the well-founded recursion (this whole proof was converted from
+    -- `induction T` to `match T` + `termination_by tySize T` specifically to unlock this).  The
+    -- naturality `Tdom.subst σ.lift.lift = ((T.subst σ.lift).rename succ).refineCaptureSet {x}`
+    -- holds via `CapyTy.refineCaptureSet_subst hlift2tv` + `weaken_subst_comm_base`.  `?body` is
+    -- the `W`-based modal lock, discharged by the SAME extracted dispatch at `cs := W`.  Backward
+    -- mirrors.  The ONLY thing still to BUILD is a handful of context-premise lemmas for the
+    -- `arrow`-domain shape `consVar ∘ consCVar(.there .here) ∘ weakenTarget²` — mirrors of the
+    -- existing cvar/tvar builders: `SubstTvarCompat.consVar`/`.consCVar`, `SrcAligned.consVar`,
+    -- `NoCollision.consVar`/`.consCVar`, `CapyCtx.SubstsTo.consVar`.  All other premises compose
+    -- from `SubstCompat.consVar`/`.consCVar` (general, already exist) + `weakenTarget`.
+    cases hcl with | arrow hT1Cl hcsCl hECl =>
+    obtain ⟨hpbT1, hpbE⟩ := hpb
+    obtain ⟨hT1np, hcsnp, hEnp⟩ := hTnp
+    simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
+    refine ⟨?_, ?_⟩
+    · -- forward: ⟦(arrow T1 cs E)[σ]⟧ <: ⟦arrow T1 cs E⟧[σt]
+      refine Subtyp.cpoly Subbound.refl ?_ (Subtyp.typ ?_)
+      · simp only [CaptureSet.subst]; exact Subcapt.refl
+      · refine Subtyp.cpoly (Subbound.capset ?_) ?_ (Subtyp.typ ?_)
+        · -- inner bound: ⟦T1.cap⟧[σt.lift] <: ⟦(T1[σ.lift]).cap⟧  (an equality)
+          have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+            fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+          have hlifttv : ∀ X, ∃ Y, (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+            intro X
+            cases X with
+            | there X0 =>
+              obtain ⟨Y0, hY0⟩ := htv0 X0
+              exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY0]; rfl⟩
+          have heq : CapyCaptureSet.compile (T1.subst σ.lift).captureSet
+                (ctxSub.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                  BVar.here).srcCtx
+              = (CapyCaptureSet.compile T1.captureSet
+                  (ctxOrig.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                    BVar.here).srcCtx).subst (σt.lift (k := Kind.cvar)) := by
+            rw [show (T1.subst σ.lift).captureSet = (T1.captureSet).subst σ.lift from
+              CapyTy.captureSet_subst hlifttv]
+            exact CapyCaptureSet.compile_subst (SubstCompat.weakenConsCVar hcompat)
+              (CapyTy.IsClosed.captureSet hT1Cl)
+          exact heq ▸ Subcapt.refl
+        · simp only [CaptureSet.subst]; exact Subcapt.refl
+        · refine Subtyp.arrow ?_ ?_ (Subtyp.typ ?_)
+          · -- contravariant DOMAIN: the `.2` (backward) of a recursion on
+            -- `Tdom = (T1.rename succ).refineCaptureSet {x}` at the re-abstracted `ctxDomain`,
+            -- modulo naturality `Tdom.subst σ.lift.lift = ((T1.subst σ.lift).rename succ)
+            -- .refineCaptureSet {x}` (`refineCaptureSet_subst` + `weaken_subst_comm_base`).
+            -- ★ The former NoPseudoPeak blocker is GONE: the sub-side `hsubPure` premise was
+            -- removed from `compile_subst_subtyp` (frozen-peak attribution now routes through the
+            -- pseudo-free ORIGIN via `peaks_subst_pseudo_cvar`), so the recursion's only
+            -- pseudo-freeness obligation is `ctxOrig_domain.capyCtx.NoPseudoPeak` — SATISFIABLE,
+            -- `= ⟨horig (cvar push adds nothing), hT1np⟩` for the value-param var push.  What
+            -- remains is the cpoly-style explicit-coreCtx CompilerCtx assembly + premise threading
+            -- through the `consVar ∘ consCVar(.there .here) ∘ weakenTarget²` domain builders (all
+            -- of which exist).  Purely mechanical.  See memory `project_capybara_arrow_resolution`.
+            have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+              fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+            have hlift1tv : ∀ X, ∃ Y,
+                (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+              intro X
+              cases X with
+              | there X0 =>
+                obtain ⟨Y, hY⟩ := htv0 X0
+                exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+            have hlift2tv : ∀ X, ∃ Y,
+                ((σ.lift (k := Kind.cvar)).lift (k := Kind.var)).tvar X = CapyPureTy.tvar Y := by
+              intro X
+              cases X with
+              | there X0 =>
+                cases X0 with
+                | there X1 =>
+                  obtain ⟨Y, hY⟩ := htv0 X1
+                  exact ⟨_, by
+                    rw [CapySubst.lift_there_tvar_eq, CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+            have ha : (T1.rename Rename.succ).subst
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = (T1.subst σ.lift).rename Rename.succ :=
+              CapyTy.weaken_subst_comm_base.symm
+            have hnat : ((T1.rename Rename.succ).refineCaptureSet
+                  (CapyCaptureSet.var (.M .epsilon) (.bound .here))).subst
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = ((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                  (CapyCaptureSet.var (.M .epsilon) (.bound .here)) := by
+              have hrcs := CapyTy.refineCaptureSet_subst (T := T1.rename Rename.succ)
+                (cs := CapyCaptureSet.var (.M .epsilon) (.bound .here))
+                (σ := (σ.lift (k := Kind.cvar)).lift (k := Kind.var)) hlift2tv
+              rw [hrcs, ha]
+              rfl
+            set rDsub :=
+              (ctxSub.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there BVar.here)).consVar (T1.subst σ.lift) none
+                  (CaptureSet.cvar (.M .epsilon) BVar.here) with hrDsub
+            set ctxDsub : CompilerCtx _ _ := ⟨rDsub.capyCtx, rDsub.srcCtx, rDsub.dstCtx,
+                Ctx.push_cvar
+                  (Ctx.push_cvar ctxSub.coreCtx Authority.access_only
+                    (CaptureBound.unbound.subst σt))
+                  Authority.access_only
+                  ((CaptureBound.bound (CapyCaptureSet.compile T1.captureSet
+                    (ctxOrig.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                      BVar.here).srcCtx)).subst (σt.lift (k := Kind.cvar)))⟩ with hctxDsub
+            have hrec := (CapyTy.compile_subst_subtyp
+              ((T1.rename Rename.succ).refineCaptureSet
+                (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+              (ctxSub := ctxDsub)
+              (ctxOrig := (ctxOrig.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there BVar.here)).consVar T1 none
+                  (CaptureSet.cvar (.M .epsilon) BVar.here))
+              (σ := (σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+              (σt := (σt.lift (k := Kind.cvar)).lift (k := Kind.cvar))
+              (((hcompat.weakenTarget.weakenTarget).consCVar rfl).consVar rfl)
+              ((htvar.weakenTarget.weakenTarget).consCVar).consVar
+              (CapyTy.IsClosed.refineCaptureSet (CapyTy.IsClosed.rename hT1Cl Rename.succ)
+                CapyCaptureSet.IsClosed.var_bound)
+              (CapyTy.PureBounds.refineCaptureSet (CapyTy.PureBounds.rename Rename.succ hpbT1))
+              (TgtPairDroppable.lift (TgtPairDroppable.lift hdrop))
+              ((hcompatAl.realign_weakenConsCVar.realign_weakenTarget).realign_consVar
+                hlift1tv hT1Cl)
+              (CapyCtx.IsClosed.push
+                (CapyCtx.IsClosed.push hclSub
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                (CapyBinding.IsClosed.var
+                  (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS))))
+              (CapyCtx.IsClosed.push
+                (CapyCtx.IsClosed.push hclOrig
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                (CapyBinding.IsClosed.var hT1Cl))
+              (Subst.lift_closed (Subst.lift_closed hscl))
+              (((hvcSub.weaken).weaken).consCVar.consVar CaptureSet.IsClosed.cvar)
+              (((hvcOrig.weaken).weaken).consCVar.consVar CaptureSet.IsClosed.cvar)
+              (Ctx.IsClosed.push
+                (Ctx.IsClosed.push hcoreSub
+                  (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+                (Binding.IsClosed.cvar
+                  (CaptureBound.IsClosed.bound
+                    (CaptureSet.is_closed_subst
+                      (CapyCaptureSet.compile_isClosed (CapyTy.IsClosed.captureSet hT1Cl)
+                        hvcOrig.weaken.consCVar)
+                      (Subst.lift_closed hscl)))))
+              (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+              (SrcCtx.CVarInjective.consVar (SrcCtx.CVarInjective.consCVarThereHere hinj))
+              ((hiso.lift Kind.cvar).lift Kind.var)
+              ⟨horig, hT1np.captureSet⟩
+              (CapyTy.NoPseudoPeak.refineCaptureSet (CapyTy.NoPseudoPeak.rename Rename.succ hT1np)
+                CapyCaptureSet.NoPseudoPeak.var)
+              hnc.weakenConsCVar.weakenTarget.consVarNoRename
+              ((hsubsto.consCVar).consVar hlift1tv)).2
+            have hbridge : CapyTy.compile
+                  (((T1.rename Rename.succ).refineCaptureSet
+                      (CapyCaptureSet.var (.M .epsilon) (.bound .here))).subst
+                    ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))) ctxDsub
+                = CapyTy.compile
+                  (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                    (CapyCaptureSet.var (.M .epsilon) (.bound .here))) rDsub :=
+              (CapyTy.compile_eq_of _ ctxDsub rDsub ⟨rfl, fun _ => rfl⟩).trans
+                (congrArg (fun Z => CapyTy.compile Z rDsub) hnat)
+            exact hbridge ▸ hrec
+          · simp only [CaptureSet.subst]; exact Subcapt.refl
+          · -- modal BODY (W-lock): mirrors the `cpoly` `case body`/`sat` at `ctxLock`/`ctxE` with
+            -- `cs := W`.  No design gap (NoPseudoPeak blocker gone); mechanical.
+            -- The source W capture (over the domain sig `(s1,C,x)`).
+            set Wsrc : CapyCaptureSet (s1,C,x) :=
+              (cs.rename Rename.succ).rename Rename.succ
+                ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here) with hWsrc
+            -- the `cs`-part subst/rename commutation (applied twice).
+            have hcomm : ((cs.rename Rename.succ).rename Rename.succ).subst
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = ((cs.subst σ).rename Rename.succ).rename Rename.succ := by
+              have e1 : (cs.rename Rename.succ).subst (σ.lift (k := Kind.cvar))
+                  = (cs.subst σ).rename Rename.succ :=
+                (CapyCaptureSet.weaken_subst_comm_base (cs := cs) (σ := σ) (k := Kind.cvar)).symm
+              have e2 : ((cs.rename Rename.succ).rename Rename.succ).subst
+                    ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                  = ((cs.rename Rename.succ).subst (σ.lift (k := Kind.cvar))).rename Rename.succ :=
+                (CapyCaptureSet.weaken_subst_comm_base (cs := cs.rename Rename.succ)
+                  (σ := σ.lift (k := Kind.cvar)) (k := Kind.var)).symm
+              rw [e2, e1]
+            -- naturality: `Wsrc[σ_lock]` is the goal's distributed sub-W.
+            have hWnat : Wsrc.subst ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = ((cs.subst σ).rename Rename.succ).rename Rename.succ
+                  ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here) := by
+              rw [hWsrc]; simp only [CapyCaptureSet.subst]; congr 1
+            -- the lock-level compiler contexts (sub / orig).
+            set ctxLockSub :=
+              (ctxSub.weakenTarget.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there (BVar.there BVar.here))).consVar (T1.subst σ.lift) (some BVar.here)
+                (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))
+              with hctxLockSub
+            set ctxLockOrig :=
+              (ctxOrig.weakenTarget.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there (BVar.there BVar.here))).consVar T1 (some BVar.here)
+                (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))
+              with hctxLockOrig
+            set ctxESub : CompilerCtx (s1',,Kind.var) (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
+              ctxSub.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
+                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxESub
+            set ctxEOrig : CompilerCtx (s1,,Kind.var) (s2,,Kind.cvar,,Kind.cvar,,Kind.var) :=
+              ctxOrig.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
+                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxEOrig
+            have hcLock : (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
+                  (k := Kind.var)).cvar (BVar.there (BVar.there BVar.here))
+                = CaptureSet.cvar (.M .epsilon) (BVar.there (BVar.there BVar.here)) := rfl
+            have hinvLock : (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)).subst
+                  (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var))
+                = CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here) := rfl
+            have hcompatLock :=
+              (((hcompat.weakenTarget (k := Kind.cvar)).weakenTarget (k := Kind.cvar)).weakenTarget
+                  (k := Kind.var)).consCVar hcLock |>.consVar
+                (bvS := some BVar.here) (bvO := some BVar.here) hinvLock
+            have hWcl : Wsrc.IsClosed := by
+              rw [hWsrc]
+              exact CapyCaptureSet.IsClosed.union
+                (CapyCaptureSet.rename_isClosed (CapyCaptureSet.rename_isClosed hcsCl))
+                CapyCaptureSet.IsClosed.var_bound
+            have hWf : CapyCaptureSet.compile
+                  (((cs.subst σ).rename Rename.succ).rename Rename.succ
+                    ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here)) ctxLockSub.srcCtx
+                = (CapyCaptureSet.compile Wsrc ctxLockOrig.srcCtx).subst
+                  (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var)) := by
+              rw [← hWnat]
+              exact CapyCaptureSet.compile_subst hcompatLock hWcl
+            have hvcLockSub : ctxLockSub.srcCtx.VarsClosed :=
+              ((hvcSub.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
+            have hvcLockOrig : ctxLockOrig.srcCtx.VarsClosed :=
+              ((hvcOrig.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
+            have hvcEOrig : ctxEOrig.srcCtx.VarsClosed :=
+              (hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar
+            have hσt3 : Subst.IsClosed
+                (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var)) :=
+              Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))
+            refine Subtyp.trans ?_ (Subtyp.modal (hWf ▸ Subcapt.refl) ?body)
+              (Subtyp.modal_modal ?_ ?_ ?_ ?sat)
+            · exact Ty.IsClosed.modal
+                (CaptureSet.is_closed_subst
+                  (CapyCaptureSet.compile_isClosed hWcl hvcLockOrig) hσt3)
+                ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
+                  MutabilityCtx.IsClosed.empty⟩
+                (Ty.is_closed_subst
+                  (CapyTy.compile_isClosed E ctxEOrig hECl hvcEOrig)
+                  hσt3)
+            case body =>
+              have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+                fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+              set ΨL : ModalCtx (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
+                { sep := peakSepCtx (CapyCaptureSet.peakset ctxLockSub.capyCtx
+                           (((cs.subst σ).rename Rename.succ).rename Rename.succ
+                             ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                         ctxLockSub.srcCtx,
+                  mutability := MutabilityCtx.empty } with hΨL
+              have hGbcl : ((ctxSub.coreCtx.push_cvar Authority.access_only
+                    (CaptureBound.unbound.subst σt)).push_cvar Authority.access_only
+                    ((CaptureBound.bound (CapyCaptureSet.compile T1.captureSet
+                      (ctxOrig.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                        BVar.here).srcCtx)).subst (σt.lift (k := Kind.cvar)))).push_var
+                    ((CapyTy.compile ((T1.rename Rename.succ).refineCaptureSet
+                        (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                      ((ctxOrig.weakenTarget.weakenTarget.consCVar
+                          (CapyCaptureBound.unbound Mutability.epsilon)
+                          (BVar.there BVar.here)).consVar T1 none
+                        (CaptureSet.cvar (.M .epsilon) BVar.here))).subst
+                      ((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar))) |>.IsClosed :=
+                Ctx.IsClosed.push
+                  (Ctx.IsClosed.push
+                    (Ctx.IsClosed.push hcoreSub
+                      (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+                    (Binding.IsClosed.cvar
+                      (CaptureBound.IsClosed.bound
+                        (CaptureSet.is_closed_subst
+                          (CapyCaptureSet.compile_isClosed (CapyTy.IsClosed.captureSet hT1Cl)
+                            hvcOrig.weaken.consCVar)
+                          (Subst.lift_closed hscl)))))
+                  (Binding.IsClosed.var
+                    (Ty.is_closed_subst
+                      (CapyTy.compile_isClosed
+                        ((T1.rename Rename.succ).refineCaptureSet
+                          (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                        ((ctxOrig.weakenTarget.weakenTarget.consCVar
+                            (CapyCaptureBound.unbound Mutability.epsilon)
+                            (BVar.there BVar.here)).consVar T1 none
+                          (CaptureSet.cvar (.M .epsilon) BVar.here))
+                        (CapyTy.IsClosed.refineCaptureSet
+                          (CapyTy.IsClosed.rename hT1Cl Rename.succ)
+                          CapyCaptureSet.IsClosed.var_bound)
+                        ((hvcOrig.weaken.weaken.consCVar).consVar CaptureSet.IsClosed.cvar))
+                      (Subst.lift_closed (Subst.lift_closed hscl))))
+              set ctxSub'' : CompilerCtx (s1',,Kind.var)
+                  ((s2',,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
+                ⟨ctxESub.capyCtx, ctxESub.srcCtx.rename Rename.succ,
+                 (ctxESub.weakenTarget (Binding.lock ΨL)).dstCtx,
+                 ((ctxSub.coreCtx.push_cvar Authority.access_only
+                      (CaptureBound.unbound.subst σt)).push_cvar Authority.access_only
+                      ((CaptureBound.bound (CapyCaptureSet.compile T1.captureSet
+                        (ctxOrig.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                          BVar.here).srcCtx)).subst (σt.lift (k := Kind.cvar)))).push_var
+                      ((CapyTy.compile ((T1.rename Rename.succ).refineCaptureSet
+                          (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                        ((ctxOrig.weakenTarget.weakenTarget.consCVar
+                            (CapyCaptureBound.unbound Mutability.epsilon)
+                            (BVar.there BVar.here)).consVar T1 none
+                          (CaptureSet.cvar (.M .epsilon) BVar.here))).subst
+                        ((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)))
+                      |>.push_lock ΨL⟩ with hctxSub''
+              set ctxOrig'' : CompilerCtx (s1,,Kind.var)
+                  ((s2,,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
+                ⟨ctxEOrig.capyCtx, ctxEOrig.srcCtx.rename Rename.succ,
+                 (ctxEOrig.weakenTarget
+                   (Binding.lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _))).dstCtx,
+                 ctxEOrig.coreCtx.push_lock
+                   (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩ with hctxOrig''
+              have hle := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'')
+                (ctxOrig := ctxOrig'') (σ := σ.lift)
+                (σt := (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
+                  (k := Kind.var)).lift (k := Kind.lock))
+                (((hcompat.weakenTarget.weakenTarget.weakenTarget).consVar hinvLock).weakenTarget)
+                (((htvar.weakenTarget.weakenTarget.weakenTarget).consVar).weakenTarget)
+                hECl hpbE
+                (TgtPairDroppable.liftLock (TgtPairDroppable.liftVar
+                  (TgtPairDroppable.lift (TgtPairDroppable.lift hdrop))))
+                ((((hcompatAl.realign_weakenTarget).realign_weakenTarget).realign_weakenTarget
+                    ).realign_consVar htv0 CapyTy.IsClosed.top).realign_weakenTarget
+                (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
+                (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
+                (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))))
+                (((hvcSub.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
+                (((hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
+                (Ctx.IsClosed.push hGbcl
+                  (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
+                    (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
+                    MutabilityCtx.IsClosed.empty⟩))
+                (CapySubst.lift_closed hscS)
+                (SrcCtx.CVarInjective.rename
+                  (SrcCtx.CVarInjective.consVar
+                    (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
+                      (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
+                      Rename.injective_succ) Rename.injective_succ)) Rename.injective_succ)
+                (hiso.lift Kind.var) ⟨horig, CapyCaptureSet.NoPseudoPeak.empty⟩ hEnp
+                (hnc.weakenTarget.weakenTarget.consVar.weakenTarget)
+                (hsubsto.consVar htv0)).1
+              have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
+                  = (CapyTy.compile (E.subst σ.lift) ctxESub).rename Rename.succ :=
+                CapyTy.compile_rename (E.subst σ.lift) ctxESub ctxSub'' Rename.succ rfl rfl
+              have heq2 : CapyTy.compile E ctxOrig''
+                  = (CapyTy.compile E ctxEOrig).rename Rename.succ :=
+                CapyTy.compile_rename E ctxEOrig ctxOrig'' Rename.succ rfl rfl
+              convert hle using 2
+              · exact heq1.symm
+              · rw [heq2]; exact Ty.weaken_subst_comm_base
+            · exact Ctx.IsClosed.push
+                (Ctx.IsClosed.push
+                  (Ctx.IsClosed.push hcoreSub
+                    (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+                  (Binding.IsClosed.cvar
+                    (CaptureBound.IsClosed.bound
+                      (CaptureSet.is_closed_subst
+                        (CapyCaptureSet.compile_isClosed (CapyTy.IsClosed.captureSet hT1Cl)
+                          hvcOrig.weaken.consCVar)
+                        (Subst.lift_closed hscl)))))
+                (Binding.IsClosed.var
+                  (Ty.is_closed_subst
+                    (CapyTy.compile_isClosed
+                      ((T1.rename Rename.succ).refineCaptureSet
+                        (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                      ((ctxOrig.weakenTarget.weakenTarget.consCVar
+                          (CapyCaptureBound.unbound Mutability.epsilon)
+                          (BVar.there BVar.here)).consVar T1 none
+                        (CaptureSet.cvar (.M .epsilon) BVar.here))
+                      (CapyTy.IsClosed.refineCaptureSet
+                        (CapyTy.IsClosed.rename hT1Cl Rename.succ)
+                        CapyCaptureSet.IsClosed.var_bound)
+                      ((hvcOrig.weaken.weaken.consCVar).consVar CaptureSet.IsClosed.cvar))
+                    (Subst.lift_closed (Subst.lift_closed hscl))))
+            · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
+                MutabilityCtx.IsClosed.empty⟩
+            · exact ModalCtx.is_closed_subst
+                ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockOrig,
+                  MutabilityCtx.IsClosed.empty⟩ hσt3
+            case sat =>
+              have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+                fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+              have hlift1tv : ∀ X, ∃ Y,
+                  (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+                intro X
+                cases X with
+                | there X0 =>
+                  obtain ⟨Y, hY⟩ := htv0 X0
+                  exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+              have hlift2tv : ∀ X, ∃ Y,
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var)).tvar X = CapyPureTy.tvar Y := by
+                intro X
+                cases X with
+                | there X0 =>
+                  obtain ⟨Y, hY⟩ := hlift1tv X0
+                  exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+              have hclOrigW : ctxLockOrig.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclOrig
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var hT1Cl)
+              have hclSubW : ctxLockSub.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclSub
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var
+                    (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)))
+              have hWsubcl :
+                  (Wsrc.subst ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))).IsClosed :=
+                CapyCaptureSet.is_closed_subst hWcl
+                  (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+              have hWnp : Wsrc.NoPseudoPeak :=
+                CapyCaptureSet.NoPseudoPeak.union
+                  ((hcsnp.rename Rename.succ).rename Rename.succ)
+                  CapyCaptureSet.NoPseudoPeak.var
+              have hinjW : ctxLockSub.srcCtx.CVarInjective :=
+                SrcCtx.CVarInjective.consVar
+                  (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
+                    (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)
+                    Rename.injective_succ)
+              apply Satisfy.satisfy
+              · intro C m hmem
+                simp only [ModalCtx.rename] at hmem
+                simp only [MutabilityCtx.rename] at hmem
+                cases hmem
+              · intro C1 C2 hdist
+                simp only [ModalCtx.rename] at hdist
+                rw [← peakSepCtx_rename] at hdist
+                have hdist2 : (peakSepCtx (CapyCaptureSet.peakset ctxLockSub.capyCtx
+                      (Wsrc.subst ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))))
+                    (ctxLockSub.srcCtx.rename Rename.succ)).HasTwoDistinct C1 C2 :=
+                  hWnat ▸ hdist
+                exact compile_peakSepCtx_sep_forward_realign hclOrigW hclSubW
+                  ((hcompatAl.realign_weakenTarget.realign_weakenTarget.realign_weakenTarget
+                      ).realign_consCVar hcLock |>.realign_consVar hlift1tv hT1Cl)
+                  hWcl hWsubcl ⟨horig, hT1np.captureSet⟩ hWnp hinjW
+                  ((hiso.lift Kind.cvar).lift Kind.var)
+                  (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+                  hlift2tv
+                  ((hsubsto.consCVar).consVar hlift1tv)
+                  (hnc.weakenConsCVar.weakenTarget.weakenTarget.consVarNoRename)
+                  ((hdrop.lift.lift).liftVar) C1 C2 hdist2
+    · -- backward: ⟦arrow T1 cs E⟧[σt] <: ⟦(arrow T1 cs E)[σ]⟧.  Structural mirror of forward.
+      refine Subtyp.cpoly Subbound.refl ?_ (Subtyp.typ ?_)
+      · simp only [CaptureSet.subst]; exact Subcapt.refl
+      · refine Subtyp.cpoly (Subbound.capset ?_) ?_ (Subtyp.typ ?_)
+        · -- inner bound (reversed): ⟦(T1[σ.lift]).cap⟧ <: ⟦T1.cap⟧[σt.lift]
+          have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+            fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+          have hlifttv : ∀ X, ∃ Y, (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+            intro X
+            cases X with
+            | there X0 =>
+              obtain ⟨Y0, hY0⟩ := htv0 X0
+              exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY0]; rfl⟩
+          have heq : CapyCaptureSet.compile (T1.subst σ.lift).captureSet
+                (ctxSub.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                  BVar.here).srcCtx
+              = (CapyCaptureSet.compile T1.captureSet
+                  (ctxOrig.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                    BVar.here).srcCtx).subst (σt.lift (k := Kind.cvar)) := by
+            rw [show (T1.subst σ.lift).captureSet = (T1.captureSet).subst σ.lift from
+              CapyTy.captureSet_subst hlifttv]
+            exact CapyCaptureSet.compile_subst (SubstCompat.weakenConsCVar hcompat)
+              (CapyTy.IsClosed.captureSet hT1Cl)
+          exact heq ▸ Subcapt.refl
+        · simp only [CaptureSet.subst]; exact Subcapt.refl
+        · refine Subtyp.arrow ?_ ?_ (Subtyp.typ ?_)
+          · -- contravariant DOMAIN: the `.1` (forward) of the `Tdom` recursion.
+            have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+              fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+            have hlift1tv : ∀ X, ∃ Y,
+                (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+              intro X
+              cases X with
+              | there X0 =>
+                obtain ⟨Y, hY⟩ := htv0 X0
+                exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+            have hlift2tv : ∀ X, ∃ Y,
+                ((σ.lift (k := Kind.cvar)).lift (k := Kind.var)).tvar X = CapyPureTy.tvar Y := by
+              intro X
+              cases X with
+              | there X0 =>
+                cases X0 with
+                | there X1 =>
+                  obtain ⟨Y, hY⟩ := htv0 X1
+                  exact ⟨_, by
+                    rw [CapySubst.lift_there_tvar_eq, CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+            have ha : (T1.rename Rename.succ).subst
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = (T1.subst σ.lift).rename Rename.succ :=
+              CapyTy.weaken_subst_comm_base.symm
+            have hnat : ((T1.rename Rename.succ).refineCaptureSet
+                  (CapyCaptureSet.var (.M .epsilon) (.bound .here))).subst
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = ((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                  (CapyCaptureSet.var (.M .epsilon) (.bound .here)) := by
+              have hrcs := CapyTy.refineCaptureSet_subst (T := T1.rename Rename.succ)
+                (cs := CapyCaptureSet.var (.M .epsilon) (.bound .here))
+                (σ := (σ.lift (k := Kind.cvar)).lift (k := Kind.var)) hlift2tv
+              rw [hrcs, ha]
+              rfl
+            set rDsub :=
+              (ctxSub.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there BVar.here)).consVar (T1.subst σ.lift) none
+                  (CaptureSet.cvar (.M .epsilon) BVar.here) with hrDsub
+            set ctxDsub : CompilerCtx _ _ := ⟨rDsub.capyCtx, rDsub.srcCtx, rDsub.dstCtx,
+                Ctx.push_cvar
+                  (Ctx.push_cvar ctxSub.coreCtx Authority.access_only
+                    CaptureBound.unbound)
+                  Authority.access_only
+                  (CaptureBound.bound (CapyCaptureSet.compile (T1.subst σ.lift).captureSet
+                    (ctxSub.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                      BVar.here).srcCtx))⟩ with hctxDsub
+            have hrec := (CapyTy.compile_subst_subtyp
+              ((T1.rename Rename.succ).refineCaptureSet
+                (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+              (ctxSub := ctxDsub)
+              (ctxOrig := (ctxOrig.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there BVar.here)).consVar T1 none
+                  (CaptureSet.cvar (.M .epsilon) BVar.here))
+              (σ := (σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+              (σt := (σt.lift (k := Kind.cvar)).lift (k := Kind.cvar))
+              (((hcompat.weakenTarget.weakenTarget).consCVar rfl).consVar rfl)
+              ((htvar.weakenTarget.weakenTarget).consCVar).consVar
+              (CapyTy.IsClosed.refineCaptureSet (CapyTy.IsClosed.rename hT1Cl Rename.succ)
+                CapyCaptureSet.IsClosed.var_bound)
+              (CapyTy.PureBounds.refineCaptureSet (CapyTy.PureBounds.rename Rename.succ hpbT1))
+              (TgtPairDroppable.lift (TgtPairDroppable.lift hdrop))
+              ((hcompatAl.realign_weakenConsCVar.realign_weakenTarget).realign_consVar
+                hlift1tv hT1Cl)
+              (CapyCtx.IsClosed.push
+                (CapyCtx.IsClosed.push hclSub
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                (CapyBinding.IsClosed.var
+                  (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS))))
+              (CapyCtx.IsClosed.push
+                (CapyCtx.IsClosed.push hclOrig
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                (CapyBinding.IsClosed.var hT1Cl))
+              (Subst.lift_closed (Subst.lift_closed hscl))
+              (((hvcSub.weaken).weaken).consCVar.consVar CaptureSet.IsClosed.cvar)
+              (((hvcOrig.weaken).weaken).consCVar.consVar CaptureSet.IsClosed.cvar)
+              (Ctx.IsClosed.push
+                (Ctx.IsClosed.push hcoreSub
+                  (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+                (Binding.IsClosed.cvar
+                  (CaptureBound.IsClosed.bound
+                    (CapyCaptureSet.compile_isClosed
+                      (CapyTy.IsClosed.captureSet
+                        (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)))
+                      hvcSub.weaken.consCVar))))
+              (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+              (SrcCtx.CVarInjective.consVar (SrcCtx.CVarInjective.consCVarThereHere hinj))
+              ((hiso.lift Kind.cvar).lift Kind.var)
+              ⟨horig, hT1np.captureSet⟩
+              (CapyTy.NoPseudoPeak.refineCaptureSet (CapyTy.NoPseudoPeak.rename Rename.succ hT1np)
+                CapyCaptureSet.NoPseudoPeak.var)
+              hnc.weakenConsCVar.weakenTarget.consVarNoRename
+              ((hsubsto.consCVar).consVar hlift1tv)).1
+            have hbridge : CapyTy.compile
+                  (((T1.rename Rename.succ).refineCaptureSet
+                      (CapyCaptureSet.var (.M .epsilon) (.bound .here))).subst
+                    ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))) ctxDsub
+                = CapyTy.compile
+                  (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                    (CapyCaptureSet.var (.M .epsilon) (.bound .here))) rDsub :=
+              (CapyTy.compile_eq_of _ ctxDsub rDsub ⟨rfl, fun _ => rfl⟩).trans
+                (congrArg (fun Z => CapyTy.compile Z rDsub) hnat)
+            exact hbridge ▸ hrec
+          · simp only [CaptureSet.subst]; exact Subcapt.refl
+          · -- backward modal BODY (W-lock).
+            set Wsrc : CapyCaptureSet (s1,C,x) :=
+              (cs.rename Rename.succ).rename Rename.succ
+                ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here) with hWsrc
+            have hcomm : ((cs.rename Rename.succ).rename Rename.succ).subst
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = ((cs.subst σ).rename Rename.succ).rename Rename.succ := by
+              have e1 : (cs.rename Rename.succ).subst (σ.lift (k := Kind.cvar))
+                  = (cs.subst σ).rename Rename.succ :=
+                (CapyCaptureSet.weaken_subst_comm_base (cs := cs) (σ := σ) (k := Kind.cvar)).symm
+              have e2 : ((cs.rename Rename.succ).rename Rename.succ).subst
+                    ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                  = ((cs.rename Rename.succ).subst (σ.lift (k := Kind.cvar))).rename Rename.succ :=
+                (CapyCaptureSet.weaken_subst_comm_base (cs := cs.rename Rename.succ)
+                  (σ := σ.lift (k := Kind.cvar)) (k := Kind.var)).symm
+              rw [e2, e1]
+            have hWnat : Wsrc.subst ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))
+                = ((cs.subst σ).rename Rename.succ).rename Rename.succ
+                  ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here) := by
+              rw [hWsrc]; simp only [CapyCaptureSet.subst]; congr 1
+            set ctxLockSub :=
+              (ctxSub.weakenTarget.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there (BVar.there BVar.here))).consVar (T1.subst σ.lift) (some BVar.here)
+                (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))
+              with hctxLockSub
+            set ctxLockOrig :=
+              (ctxOrig.weakenTarget.weakenTarget.weakenTarget.consCVar
+                  (CapyCaptureBound.unbound Mutability.epsilon)
+                  (BVar.there (BVar.there BVar.here))).consVar T1 (some BVar.here)
+                (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))
+              with hctxLockOrig
+            set ctxESub : CompilerCtx (s1',,Kind.var) (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
+              ctxSub.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
+                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxESub
+            set ctxEOrig : CompilerCtx (s1,,Kind.var) (s2,,Kind.cvar,,Kind.cvar,,Kind.var) :=
+              ctxOrig.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
+                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxEOrig
+            have hcLock : (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
+                  (k := Kind.var)).cvar (BVar.there (BVar.there BVar.here))
+                = CaptureSet.cvar (.M .epsilon) (BVar.there (BVar.there BVar.here)) := rfl
+            have hinvLock : (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)).subst
+                  (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var))
+                = CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here) := rfl
+            have hcompatLock :=
+              (((hcompat.weakenTarget (k := Kind.cvar)).weakenTarget (k := Kind.cvar)).weakenTarget
+                  (k := Kind.var)).consCVar hcLock |>.consVar
+                (bvS := some BVar.here) (bvO := some BVar.here) hinvLock
+            have hWcl : Wsrc.IsClosed := by
+              rw [hWsrc]
+              exact CapyCaptureSet.IsClosed.union
+                (CapyCaptureSet.rename_isClosed (CapyCaptureSet.rename_isClosed hcsCl))
+                CapyCaptureSet.IsClosed.var_bound
+            have hWf : CapyCaptureSet.compile
+                  (((cs.subst σ).rename Rename.succ).rename Rename.succ
+                    ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here)) ctxLockSub.srcCtx
+                = (CapyCaptureSet.compile Wsrc ctxLockOrig.srcCtx).subst
+                  (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var)) := by
+              rw [← hWnat]
+              exact CapyCaptureSet.compile_subst hcompatLock hWcl
+            have hvcLockSub : ctxLockSub.srcCtx.VarsClosed :=
+              ((hvcSub.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
+            have hvcLockOrig : ctxLockOrig.srcCtx.VarsClosed :=
+              ((hvcOrig.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
+            have hvcEOrig : ctxEOrig.srcCtx.VarsClosed :=
+              (hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar
+            have hσt3 : Subst.IsClosed
+                (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var)) :=
+              Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))
+            refine Subtyp.trans ?_ (Subtyp.modal_modal ?_ ?_ ?_ ?satB)
+              (Subtyp.modal (hWf ▸ Subcapt.refl) ?bodyB)
+            · exact Ty.IsClosed.modal
+                (CaptureSet.is_closed_subst
+                  (CapyCaptureSet.compile_isClosed hWcl hvcLockOrig) hσt3)
+                ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
+                  MutabilityCtx.IsClosed.empty⟩
+                (Ty.is_closed_subst
+                  (CapyTy.compile_isClosed E ctxEOrig hECl hvcEOrig)
+                  hσt3)
+            · exact Ctx.IsClosed.push
+                (Ctx.IsClosed.push
+                  (Ctx.IsClosed.push hcoreSub
+                    (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+                  (Binding.IsClosed.cvar
+                    (CaptureBound.IsClosed.bound
+                      (CapyCaptureSet.compile_isClosed
+                        (CapyTy.IsClosed.captureSet
+                          (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)))
+                        hvcSub.weaken.consCVar))))
+                (Binding.IsClosed.var
+                  (CapyTy.compile_isClosed
+                    (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                      (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                    ((ctxSub.weakenTarget.weakenTarget.consCVar
+                        (CapyCaptureBound.unbound Mutability.epsilon)
+                        (BVar.there BVar.here)).consVar (T1.subst σ.lift) none
+                      (CaptureSet.cvar (.M .epsilon) BVar.here))
+                    (CapyTy.IsClosed.refineCaptureSet
+                      (CapyTy.IsClosed.rename
+                        (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)) Rename.succ)
+                      CapyCaptureSet.IsClosed.var_bound)
+                    ((hvcSub.weaken.weaken.consCVar).consVar CaptureSet.IsClosed.cvar)))
+            · exact ModalCtx.is_closed_subst
+                ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockOrig,
+                  MutabilityCtx.IsClosed.empty⟩ hσt3
+            · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
+                MutabilityCtx.IsClosed.empty⟩
+            case satB =>
+              have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+                fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+              have hlift1tv : ∀ X, ∃ Y,
+                  (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+                intro X
+                cases X with
+                | there X0 =>
+                  obtain ⟨Y, hY⟩ := htv0 X0
+                  exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+              have hlift2tv : ∀ X, ∃ Y,
+                  ((σ.lift (k := Kind.cvar)).lift (k := Kind.var)).tvar X = CapyPureTy.tvar Y := by
+                intro X
+                cases X with
+                | there X0 =>
+                  obtain ⟨Y, hY⟩ := hlift1tv X0
+                  exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+              have hclOrigW : ctxLockOrig.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclOrig
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var hT1Cl)
+              have hclSubW : ctxLockSub.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclSub
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var
+                    (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)))
+              have hWsubcl :
+                  (Wsrc.subst ((σ.lift (k := Kind.cvar)).lift (k := Kind.var))).IsClosed :=
+                CapyCaptureSet.is_closed_subst hWcl
+                  (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+              have hWnp : Wsrc.NoPseudoPeak :=
+                CapyCaptureSet.NoPseudoPeak.union
+                  ((hcsnp.rename Rename.succ).rename Rename.succ)
+                  CapyCaptureSet.NoPseudoPeak.var
+              have hinjW : ctxLockSub.srcCtx.CVarInjective :=
+                SrcCtx.CVarInjective.consVar
+                  (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
+                    (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)
+                    Rename.injective_succ)
+              apply Satisfy.satisfy
+              · intro C m hmem
+                simp only [ModalCtx.rename, ModalCtx.subst] at hmem
+                simp only [MutabilityCtx.subst, MutabilityCtx.rename] at hmem
+                cases hmem
+              · intro C1 C2 hdist
+                simp only [ModalCtx.rename, ModalCtx.subst] at hdist
+                exact hWnat ▸ compile_peakSepCtx_sep_backward_realign hclOrigW hclSubW
+                  ((hcompatAl.realign_weakenTarget.realign_weakenTarget.realign_weakenTarget
+                      ).realign_consCVar hcLock |>.realign_consVar hlift1tv hT1Cl)
+                  hWcl hWsubcl ⟨horig, hT1np.captureSet⟩ hWnp hinjW
+                  ((hiso.lift Kind.cvar).lift Kind.var)
+                  (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+                  hlift2tv
+                  ((hsubsto.consCVar).consVar hlift1tv)
+                  (hnc.weakenConsCVar.weakenTarget.weakenTarget.consVarNoRename)
+                  C1 C2 hdist
+            case bodyB =>
+              have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
+                fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+              set ΨL : ModalCtx (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
+                { sep := peakSepCtx (CapyCaptureSet.peakset ctxLockSub.capyCtx
+                           (((cs.subst σ).rename Rename.succ).rename Rename.succ
+                             ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                         ctxLockSub.srcCtx,
+                  mutability := MutabilityCtx.empty } with hΨL
+              have hGbcl : ((ctxSub.coreCtx.push_cvar Authority.access_only
+                    CaptureBound.unbound).push_cvar Authority.access_only
+                    (CaptureBound.bound (CapyCaptureSet.compile (T1.subst σ.lift).captureSet
+                      (ctxSub.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                        BVar.here).srcCtx))).push_var
+                    (CapyTy.compile (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                        (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                      ((ctxSub.weakenTarget.weakenTarget.consCVar
+                          (CapyCaptureBound.unbound Mutability.epsilon)
+                          (BVar.there BVar.here)).consVar (T1.subst σ.lift) none
+                        (CaptureSet.cvar (.M .epsilon) BVar.here))) |>.IsClosed :=
+                Ctx.IsClosed.push
+                  (Ctx.IsClosed.push
+                    (Ctx.IsClosed.push hcoreSub
+                      (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+                    (Binding.IsClosed.cvar
+                      (CaptureBound.IsClosed.bound
+                        (CapyCaptureSet.compile_isClosed
+                          (CapyTy.IsClosed.captureSet
+                            (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)))
+                          hvcSub.weaken.consCVar))))
+                  (Binding.IsClosed.var
+                    (CapyTy.compile_isClosed
+                      (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                        (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                      ((ctxSub.weakenTarget.weakenTarget.consCVar
+                          (CapyCaptureBound.unbound Mutability.epsilon)
+                          (BVar.there BVar.here)).consVar (T1.subst σ.lift) none
+                        (CaptureSet.cvar (.M .epsilon) BVar.here))
+                      (CapyTy.IsClosed.refineCaptureSet
+                        (CapyTy.IsClosed.rename
+                          (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)) Rename.succ)
+                        CapyCaptureSet.IsClosed.var_bound)
+                      ((hvcSub.weaken.weaken.consCVar).consVar CaptureSet.IsClosed.cvar)))
+              set ctxSub'' : CompilerCtx (s1',,Kind.var)
+                  ((s2',,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
+                ⟨ctxESub.capyCtx, ctxESub.srcCtx.rename Rename.succ,
+                 (ctxESub.weakenTarget (Binding.lock ΨL)).dstCtx,
+                 ((ctxSub.coreCtx.push_cvar Authority.access_only
+                      CaptureBound.unbound).push_cvar Authority.access_only
+                      (CaptureBound.bound (CapyCaptureSet.compile (T1.subst σ.lift).captureSet
+                        (ctxSub.weakenTarget.consCVar (CapyCaptureBound.unbound Mutability.epsilon)
+                          BVar.here).srcCtx))).push_var
+                      (CapyTy.compile (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
+                          (CapyCaptureSet.var (.M .epsilon) (.bound .here)))
+                        ((ctxSub.weakenTarget.weakenTarget.consCVar
+                            (CapyCaptureBound.unbound Mutability.epsilon)
+                            (BVar.there BVar.here)).consVar (T1.subst σ.lift) none
+                          (CaptureSet.cvar (.M .epsilon) BVar.here)))
+                      |>.push_lock ΨL⟩ with hctxSub''
+              set ctxOrig'' : CompilerCtx (s1,,Kind.var)
+                  ((s2,,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
+                ⟨ctxEOrig.capyCtx, ctxEOrig.srcCtx.rename Rename.succ,
+                 (ctxEOrig.weakenTarget
+                   (Binding.lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _))).dstCtx,
+                 ctxEOrig.coreCtx.push_lock
+                   (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩ with hctxOrig''
+              have hge := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'')
+                (ctxOrig := ctxOrig'') (σ := σ.lift)
+                (σt := (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
+                  (k := Kind.var)).lift (k := Kind.lock))
+                (((hcompat.weakenTarget.weakenTarget.weakenTarget).consVar hinvLock).weakenTarget)
+                (((htvar.weakenTarget.weakenTarget.weakenTarget).consVar).weakenTarget)
+                hECl hpbE
+                (TgtPairDroppable.liftLock (TgtPairDroppable.liftVar
+                  (TgtPairDroppable.lift (TgtPairDroppable.lift hdrop))))
+                ((((hcompatAl.realign_weakenTarget).realign_weakenTarget).realign_weakenTarget
+                    ).realign_consVar htv0 CapyTy.IsClosed.top).realign_weakenTarget
+                (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
+                (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
+                (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))))
+                (((hvcSub.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
+                (((hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
+                (Ctx.IsClosed.push hGbcl
+                  (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
+                    (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
+                    MutabilityCtx.IsClosed.empty⟩))
+                (CapySubst.lift_closed hscS)
+                (SrcCtx.CVarInjective.rename
+                  (SrcCtx.CVarInjective.consVar
+                    (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
+                      (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
+                      Rename.injective_succ) Rename.injective_succ)) Rename.injective_succ)
+                (hiso.lift Kind.var) ⟨horig, CapyCaptureSet.NoPseudoPeak.empty⟩ hEnp
+                (hnc.weakenTarget.weakenTarget.consVar.weakenTarget)
+                (hsubsto.consVar htv0)).2
+              have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
+                  = (CapyTy.compile (E.subst σ.lift) ctxESub).rename Rename.succ :=
+                CapyTy.compile_rename (E.subst σ.lift) ctxESub ctxSub'' Rename.succ rfl rfl
+              have heq2 : CapyTy.compile E ctxOrig''
+                  = (CapyTy.compile E ctxEOrig).rename Rename.succ :=
+                CapyTy.compile_rename E ctxEOrig ctxOrig'' Rename.succ rfl rfl
+              convert hge using 2
+              · rw [heq2]; exact Ty.weaken_subst_comm_base
+              · exact heq1.symm
+  | .poly S cs E =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
+    cases hcl with | poly hSCl hcsCl hECl =>
+    obtain ⟨hSiPure, hpbS, hpbE⟩ := hpb
+    obtain ⟨hSnp, hcsnp, hEnp⟩ := hTnp
+    simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
+    refine ⟨?_, ?_⟩
+    · -- forward: ⟦(poly S cs E)[σ]⟧ <: ⟦poly S cs E⟧[σt]
+      have hS2p : Ty.IsPureType ((CapyTy.compile S ctxOrig).subst σt) :=
+        Ty.IsPureType.subst (CapyTy.compile_isPure hSiPure) σt
+      have hS2cl : Ty.IsClosed ((CapyTy.compile S ctxOrig).subst σt) :=
+        Ty.is_closed_subst (CapyTy.compile_isClosed S ctxOrig hSCl hvcOrig) hscl
+      refine Subtyp.poly
+        (S1 := ⟨CapyTy.compile (S.subst σ) ctxSub, CapyTy.compile_isPure (hSiPure.subst σ)⟩)
+        (S2 := ⟨(CapyTy.compile S ctxOrig).subst σt, hS2p⟩)
+        ((CapyTy.compile_subst_subtyp S hcompat htvar hSCl hpbS hdrop hcompatAl hclSub hclOrig
+            hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hSnp hnc hsubsto).2)
+        ?_ (Subtyp.typ ?_)
+      · simp only [CaptureSet.subst]; exact Subcapt.refl
+      · have hCf :
+            CapyCaptureSet.compile (CapyCaptureSet.subst cs σ)
+                  (ctxSub.srcCtx.weaken (k := .tvar)) =
+              (CapyCaptureSet.compile cs (ctxOrig.srcCtx.weaken (k := .tvar))).subst
+                (σt.lift (k := .tvar)) :=
+          CapyCaptureSet.compile_subst (SubstCompat.weakenTarget hcompat) hcsCl
+        refine Subtyp.trans ?_ (Subtyp.modal (hCf ▸ Subcapt.refl) ?body)
+          (Subtyp.modal_modal ?_ ?_ ?_ ?sat)
+        · exact Ty.IsClosed.modal
+            (CaptureSet.is_closed_subst (CapyCaptureSet.compile_isClosed hcsCl hvcOrig.weaken)
+              (Subst.lift_closed hscl))
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, MutabilityCtx.IsClosed.empty⟩
+            (Ty.is_closed_subst
+              (CapyTy.compile_isClosed E (ctxOrig.weakenTarget.consTVar CapyPureTy.top BVar.here)
+                hECl hvcOrig.weaken.consTVar)
+              (Subst.lift_closed hscl))
+        case body =>
+          set ΨL : ModalCtx (s2',,Kind.tvar) :=
+            { sep := peakSepCtx (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ))
+                       ctxSub.srcCtx.weaken,
+              mutability := MutabilityCtx.empty } with hΨL
+          set csub' := ctxSub.weakenTarget.consTVar CapyPureTy.top (BVar.here) with hcsub'
+          set corig' := ctxOrig.weakenTarget.consTVar CapyPureTy.top (BVar.here) with hcorig'
+          set S2bnd : PureTy s2' := ⟨(CapyTy.compile S ctxOrig).subst σt, hS2p⟩ with hS2bnd
+          set ctxSub'' : CompilerCtx (s1',X) ((s2',,Kind.tvar),,Kind.lock) :=
+            ⟨csub'.capyCtx, csub'.srcCtx.rename Rename.succ,
+             (csub'.weakenTarget (Binding.lock ΨL)).dstCtx,
+             (ctxSub.coreCtx,X<:S2bnd).push_lock ΨL⟩ with hctxSub''
+          set ctxOrig'' : CompilerCtx _ ((s2,,Kind.tvar),,Kind.lock) :=
+            ⟨corig'.capyCtx, corig'.srcCtx.rename Rename.succ,
+             (corig'.weakenTarget
+               (Binding.lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _))).dstCtx,
+             corig'.coreCtx.push_lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩
+            with hctxOrig''
+          have hle := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'') (ctxOrig := ctxOrig'')
+            (σ := σ.lift)
+            (σt := σt.lift.lift)
+            ((SubstCompat.weakenConsTVar hcompat).weakenTarget)
+            ((SubstTvarCompat.weakenConsTVar htvar).weakenTarget)
+            hECl hpbE
+            (TgtPairDroppable.liftLock (b := Binding.lock ΨL)
+              (TgtPairDroppable.liftTVar (b := Binding.tvar
+                (⟨(CapyTy.compile S ctxOrig).subst σt, hS2p⟩ : PureTy s2')) hdrop))
+            (SubstCompat.realign_weakenConsTVar hcompatAl).realign_weakenTarget
+            (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.tvar CapyTy.IsClosed.top))
+            (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.tvar CapyTy.IsClosed.top))
+            (Subst.lift_closed (Subst.lift_closed hscl))
+            hvcSub.weaken.consTVar.weaken hvcOrig.weaken.consTVar.weaken
+            (Ctx.IsClosed.push
+              (Ctx.IsClosed.push hcoreSub (Binding.IsClosed.tvar hS2cl))
+              (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
+                (CapyCaptureSet.peaks_isClosed _ _) hvcSub.weaken,
+                MutabilityCtx.IsClosed.empty⟩))
+            (CapySubst.lift_closed hscS)
+            (SrcCtx.CVarInjective.rename
+              (SrcCtx.CVarInjective.consTVar
+                (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)) Rename.injective_succ)
+            (hiso.lift Kind.tvar) horig hEnp hnc.weakenConsTVar.weakenTarget
+            hsubsto.consTVar).1
+          have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
+              = (CapyTy.compile (E.subst σ.lift) csub').rename Rename.succ :=
+            CapyTy.compile_rename (E.subst σ.lift) csub' ctxSub'' Rename.succ rfl rfl
+          have heq2 : CapyTy.compile E ctxOrig''
+              = (CapyTy.compile E corig').rename Rename.succ :=
+            CapyTy.compile_rename E corig' ctxOrig'' Rename.succ rfl rfl
+          convert hle using 2
+          · exact heq1.symm
+          · rw [heq2]; exact Ty.weaken_subst_comm_base
+        · exact Ctx.IsClosed.push hcoreSub (Binding.IsClosed.tvar hS2cl)
+        · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, MutabilityCtx.IsClosed.empty⟩
+        · exact ModalCtx.is_closed_subst
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcOrig.weaken, MutabilityCtx.IsClosed.empty⟩
+            (Subst.lift_closed hscl)
+        case sat =>
+          apply Satisfy.satisfy
+          · intro C m hmem
+            simp only [ModalCtx.rename] at hmem
+            simp only [MutabilityCtx.rename] at hmem
+            cases hmem
+          · intro C1 C2 hdist
+            simp only [ModalCtx.rename] at hdist
+            rw [← peakSepCtx_rename] at hdist
+            exact compile_peakSepCtx_sep_forward_realign hclOrig hclSub
+              (SubstCompat.realign_weakenTarget (k := Kind.tvar) hcompatAl) hcsCl
+              (CapyCaptureSet.is_closed_subst hcsCl hscS) horig hcsnp
+              (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
+              hiso hscS (fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩)
+              hsubsto hnc.weakenTarget
+              (hdrop.liftTVar (b := Binding.tvar
+                (⟨(CapyTy.compile S ctxOrig).subst σt, hS2p⟩ : PureTy s2'))) C1 C2 hdist
+    · -- backward: ⟦poly S cs E⟧[σt] <: ⟦(poly S cs E)[σ]⟧
+      have hS2p : Ty.IsPureType ((CapyTy.compile S ctxOrig).subst σt) :=
+        Ty.IsPureType.subst (CapyTy.compile_isPure hSiPure) σt
+      have hSsubcl : (S.subst σ).IsClosed := CapyTy.is_closed_subst hSCl hscS
+      have hS1cl : Ty.IsClosed (CapyTy.compile (S.subst σ) ctxSub) :=
+        CapyTy.compile_isClosed (S.subst σ) ctxSub hSsubcl hvcSub
+      refine Subtyp.poly
+        (S1 := ⟨(CapyTy.compile S ctxOrig).subst σt, hS2p⟩)
+        (S2 := ⟨CapyTy.compile (S.subst σ) ctxSub, CapyTy.compile_isPure (hSiPure.subst σ)⟩)
+        ((CapyTy.compile_subst_subtyp S hcompat htvar hSCl hpbS hdrop hcompatAl hclSub hclOrig
+            hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hSnp hnc hsubsto).1)
+        ?_ (Subtyp.typ ?_)
+      · simp only [CaptureSet.subst]; exact Subcapt.refl
+      · have hCf :
+            CapyCaptureSet.compile (CapyCaptureSet.subst cs σ)
+                  (ctxSub.srcCtx.weaken (k := .tvar)) =
+              (CapyCaptureSet.compile cs (ctxOrig.srcCtx.weaken (k := .tvar))).subst
+                (σt.lift (k := .tvar)) :=
+          CapyCaptureSet.compile_subst (SubstCompat.weakenTarget hcompat) hcsCl
+        refine Subtyp.trans ?_
+          (Subtyp.modal_modal ?_ ?_ ?_ ?satB)
+          (Subtyp.modal (hCf ▸ Subcapt.refl) ?bodyB)
+        · exact Ty.IsClosed.modal
+            (CaptureSet.is_closed_subst (CapyCaptureSet.compile_isClosed hcsCl hvcOrig.weaken)
+              (Subst.lift_closed hscl))
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, MutabilityCtx.IsClosed.empty⟩
+            (Ty.is_closed_subst
+              (CapyTy.compile_isClosed E (ctxOrig.weakenTarget.consTVar CapyPureTy.top BVar.here)
+                hECl hvcOrig.weaken.consTVar)
+              (Subst.lift_closed hscl))
+        · exact Ctx.IsClosed.push hcoreSub (Binding.IsClosed.tvar hS1cl)
+        · exact ModalCtx.is_closed_subst
+            ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcOrig.weaken, MutabilityCtx.IsClosed.empty⟩
+            (Subst.lift_closed hscl)
+        · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+              hvcSub.weaken, MutabilityCtx.IsClosed.empty⟩
+        case satB =>
+          apply Satisfy.satisfy
+          · intro C m hmem
+            simp only [ModalCtx.rename, ModalCtx.subst, MutabilityCtx.subst,
+              MutabilityCtx.rename] at hmem
+            cases hmem
+          · intro C1 C2 hdist
+            simp only [ModalCtx.rename, ModalCtx.subst] at hdist
+            exact compile_peakSepCtx_sep_backward_realign hclOrig hclSub
+              (SubstCompat.realign_weakenTarget (k := Kind.tvar) hcompatAl) hcsCl
+              (CapyCaptureSet.is_closed_subst hcsCl hscS) horig hcsnp
+              (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
+              hiso hscS (fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩)
+              hsubsto hnc.weakenTarget C1 C2 hdist
+        case bodyB =>
+          set ΨL : ModalCtx (s2',,Kind.tvar) :=
+            { sep := peakSepCtx (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ))
+                       ctxSub.srcCtx.weaken,
+              mutability := MutabilityCtx.empty } with hΨL
+          set csub' := ctxSub.weakenTarget.consTVar CapyPureTy.top (BVar.here) with hcsub'
+          set corig' := ctxOrig.weakenTarget.consTVar CapyPureTy.top (BVar.here) with hcorig'
+          set S2bnd : PureTy s2' :=
+            ⟨CapyTy.compile (S.subst σ) ctxSub, CapyTy.compile_isPure (hSiPure.subst σ)⟩ with hS2bnd
+          set ctxSub'' : CompilerCtx (s1',X) ((s2',,Kind.tvar),,Kind.lock) :=
+            ⟨csub'.capyCtx, csub'.srcCtx.rename Rename.succ,
+             (csub'.weakenTarget (Binding.lock ΨL)).dstCtx,
+             (ctxSub.coreCtx,X<:S2bnd).push_lock ΨL⟩ with hctxSub''
+          set ctxOrig'' : CompilerCtx _ ((s2,,Kind.tvar),,Kind.lock) :=
+            ⟨corig'.capyCtx, corig'.srcCtx.rename Rename.succ,
+             (corig'.weakenTarget
+               (Binding.lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _))).dstCtx,
+             corig'.coreCtx.push_lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩
+            with hctxOrig''
+          have hge := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'') (ctxOrig := ctxOrig'')
+            (σ := σ.lift)
+            (σt := σt.lift.lift)
+            ((SubstCompat.weakenConsTVar hcompat).weakenTarget)
+            ((SubstTvarCompat.weakenConsTVar htvar).weakenTarget)
+            hECl hpbE
+            (TgtPairDroppable.liftLock (b := Binding.lock ΨL)
+              (TgtPairDroppable.liftTVar (b := Binding.tvar S2bnd) hdrop))
+            (SubstCompat.realign_weakenConsTVar hcompatAl).realign_weakenTarget
+            (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.tvar CapyTy.IsClosed.top))
+            (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.tvar CapyTy.IsClosed.top))
+            (Subst.lift_closed (Subst.lift_closed hscl))
+            hvcSub.weaken.consTVar.weaken hvcOrig.weaken.consTVar.weaken
+            (Ctx.IsClosed.push
+              (Ctx.IsClosed.push hcoreSub (Binding.IsClosed.tvar hS1cl))
+              (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
+                (CapyCaptureSet.peaks_isClosed _ _) hvcSub.weaken,
+                MutabilityCtx.IsClosed.empty⟩))
+            (CapySubst.lift_closed hscS)
+            (SrcCtx.CVarInjective.rename
+              (SrcCtx.CVarInjective.consTVar
+                (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)) Rename.injective_succ)
+            (hiso.lift Kind.tvar) horig hEnp hnc.weakenConsTVar.weakenTarget
+            hsubsto.consTVar).2
+          have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
+              = (CapyTy.compile (E.subst σ.lift) csub').rename Rename.succ :=
+            CapyTy.compile_rename (E.subst σ.lift) csub' ctxSub'' Rename.succ rfl rfl
+          have heq2 : CapyTy.compile E ctxOrig''
+              = (CapyTy.compile E corig').rename Rename.succ :=
+            CapyTy.compile_rename E corig' ctxOrig'' Rename.succ rfl rfl
+          convert hge using 2
+          · rw [heq2]; exact Ty.weaken_subst_comm_base
+          · exact heq1.symm
+  | .cpoly cb cs E =>
+    intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
+      hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto
     cases hcl with | cpoly hcb hcsCl hECl =>
     simp only [CapyTy.subst, CapyTy.compile, Ty.subst]
     rw [CapyCaptureBound.compile_subst hcompat hcb]
@@ -1134,7 +4918,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                (Binding.lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _))).dstCtx,
              corig'.coreCtx.push_lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩
             with hctxOrig''
-          have hle := (ihE (ctxSub := ctxSub'') (ctxOrig := ctxOrig'') (σ := σ.lift)
+          have hle := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'') (ctxOrig := ctxOrig'')
+            (σ := σ.lift)
             (σt := σt.lift.lift)
             ((SubstCompat.weakenConsCVar hcompat).weakenTarget)
             ((SubstTvarCompat.weakenConsCVar htvar).weakenTarget)
@@ -1142,8 +4927,7 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
             (TgtPairDroppable.liftLock (b := Binding.lock ΨL)
               (TgtPairDroppable.lift (b := Binding.cvar Authority.access_only
                 ((CapyCaptureBound.compile cb ctxOrig.srcCtx).subst σt)) hdrop))
-            (SrcAligned.weakenTarget (SrcAligned.consCVar (SrcAligned.weakenTarget haSub)))
-            (SrcAligned.weakenTarget (SrcAligned.consCVar (SrcAligned.weakenTarget haOrig)))
+            (SubstCompat.realign_weakenConsCVar hcompatAl).realign_weakenTarget
             (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.cvar
               (CapyCaptureBound.is_closed_subst hcb hscS)))
             (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.cvar hcb))
@@ -1158,7 +4942,9 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                 CapyCaptureBound.mutabilityCtx_isClosed⟩))
             (CapySubst.lift_closed hscS)
             (SrcCtx.CVarInjective.rename
-              (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)).1
+              (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)
+            (hiso.lift Kind.cvar) horig hTnp.2.2 hnc.weakenConsCVar.weakenTarget
+            hsubsto.consCVar).1
           -- Bridge the two compiled bodies to the goal forms.
           have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
               = (CapyTy.compile (E.subst σ.lift) csub').rename Rename.succ :=
@@ -1207,196 +4993,14 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
             intro C1 C2 hdist
             simp only [ModalCtx.rename] at hdist
             rw [← peakSepCtx_rename] at hdist
-            obtain ⟨c1, hc1, c2, hc2, hcne, hCdisj⟩ := peakSepCtx_HasTwoDistinct_ne hdist
-            -- E1: the whole compiled peak-set commutes with `σt.lift` (inner level).
-            have hE1 :
-                CapyCaptureSet.compile
-                    (CapyCaptureSet.peaks ctxSub.capyCtx (CapyCaptureSet.subst cs σ))
-                    (ctxSub.srcCtx.weaken (k := Kind.cvar))
-                  = (CapyCaptureSet.compile (CapyCaptureSet.peaks ctxOrig.capyCtx cs)
-                      (ctxOrig.srcCtx.weaken (k := Kind.cvar))).subst (σt.lift (k := Kind.cvar)) :=
-              CapyCaptureSet.compile_peaks_subst hclOrig hclSub
-                (SrcAligned.weakenTarget (k := Kind.cvar) haOrig)
-                (SrcAligned.weakenTarget (k := Kind.cvar) haSub)
-                (SubstCompat.weakenTarget (k := Kind.cvar) hcompat) hcsCl
-                (CapyCaptureSet.is_closed_subst hcsCl hscS)
-            -- `scSub_w` is cvar-injective (the base map shifted once for the `C`-binder).
-            have hinjW : (ctxSub.srcCtx.weaken (k := Kind.cvar)).CVarInjective :=
-              SrcCtx.CVarInjective.rename hinj Rename.injective_succ
-            -- Per-atom tracing: an atom of a compiled sub-peak-item factors back through
-            -- `σt.lift` to an atom of the compiled orig peak-set, recording the target image.
-            have traceAtom : ∀ (d : BVar s1' Kind.cvar)
-                (Y : BVar ((s2',C),,Kind.lock) Kind.cvar) (a : Access),
-                (CaptureSet.cvar a Y) ⊆ CapyCaptureSet.compile
-                  (peakItem (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) d)
-                  ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ) →
-                ∃ (Y' : BVar (s2',C) Kind.cvar) (Z : BVar (s2,C) Kind.cvar) (m : Access),
-                  Y = BVar.there Y' ∧ (ctxSub.srcCtx.weaken (k := Kind.cvar)).lookupCVar d = Y' ∧
-                  (CaptureSet.cvar m Z) ⊆ CapyCaptureSet.compile
-                    (CapyCaptureSet.peaks ctxOrig.capyCtx cs)
-                    (ctxOrig.srcCtx.weaken (k := Kind.cvar)) ∧
-                  (CaptureSet.cvar a Y') ⊆ ((σt.lift (k := Kind.cvar)).cvar Z).applyAccess m := by
-              intro d Y a hsub
-              rw [CapyCaptureSet.compile_rename] at hsub
-              obtain ⟨Y', hYeq, hsub'⟩ := CaptureSet.cvar_subset_rename_succ hsub
-              obtain ⟨e, hlke, hsube⟩ :=
-                CapyCaptureSet.compile_cvar_subset_inv peakItem_peaksOnly hsub'
-              obtain ⟨hed, hsubP⟩ := peakItem_atom hsube
-              subst hed
-              have hmono :=
-                CapyCaptureSet.compile_subset (sc := ctxSub.srcCtx.weaken (k := Kind.cvar)) hsubP
-              have hcompc : CapyCaptureSet.compile (CapyCaptureSet.cvar a e)
-                  (ctxSub.srcCtx.weaken (k := Kind.cvar)) = CaptureSet.cvar a Y' :=
-                congrArg (CaptureSet.cvar a) hlke
-              have hpcs : (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)).cs
-                  = CapyCaptureSet.peaks ctxSub.capyCtx (CapyCaptureSet.subst cs σ) := rfl
-              rw [hcompc, hpcs, hE1] at hmono
-              obtain ⟨Z, m, hmZ, happ⟩ := CaptureSet.subst_cvar_subset_inv hmono
-              exact ⟨Y', Z, m, hYeq, hlke, hmZ, happ⟩
-            -- The key separation claim for two distinct CVAR sub-peaks.
-            have keyCC : ∀ (d1 d2 : BVar s1' Kind.cvar), d1 ≠ d2 →
-                d1 ∈ peakCvars (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
-                d2 ∈ peakCvars (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
-                SepCheck
-                  ((ctxSub.coreCtx,C[Authority.access_only]<:(CapyCaptureBound.compile cb
-                      ctxOrig.srcCtx).subst σt).push_lock
-                    (({ sep := peakSepCtx (CapyCaptureSet.peakset ctxOrig.capyCtx cs)
-                          (ctxOrig.srcCtx.weaken (k := Kind.cvar)),
-                        mutability := CapyCaptureBound.mutabilityCtx cb BVar.here } :
-                      ModalCtx (s2,C)).subst σt.lift))
-                  (CapyCaptureSet.compile
-                    (peakItem (CapyCaptureSet.peakset ctxSub.capyCtx
-                      (CapyCaptureSet.subst cs σ)) d1)
-                    ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ))
-                  (CapyCaptureSet.compile
-                    (peakItem (CapyCaptureSet.peakset ctxSub.capyCtx
-                      (CapyCaptureSet.subst cs σ)) d2)
-                    ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ)) := by
-              intro d1 d2 hne hd1 hd2
-              refine SepCheck.of_cvar_atoms
-                (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly peakItem_noPseudoPeak)
-                (CapyCaptureSet.compile_peaksOnly peakItem_peaksOnly peakItem_noPseudoPeak) ?_
-              intro a1 Y1 a2 Y2 hY1 hY2
-              obtain ⟨Y1', Z1, m1, hY1eq, hlk1, hmZ1, happ1⟩ := traceAtom d1 Y1 a1 hY1
-              obtain ⟨Y2', Z2, m2, hY2eq, hlk2, hmZ2, happ2⟩ := traceAtom d2 Y2 a2 hY2
-              -- Y1 ≠ Y2 always: distinct sub-peaks map to distinct target cvars (injectivity).
-              have hYne : Y1 ≠ Y2 := by
-                subst hY1eq; subst hY2eq
-                intro he
-                exact hne (hinjW (by rw [hlk1, hlk2]; exact BVar.there.inj he))
-              by_cases hZ : Z1 = Z2
-              · -- SPLIT: both atoms come from the same `σt.lift`-image `Z`; `hdrop` separates.
-                subst hZ
-                obtain ⟨a1', hmem1⟩ := CaptureSet.cvar_subset_applyAccess_inv happ1
-                obtain ⟨a2', hmem2⟩ := CaptureSet.cvar_subset_applyAccess_inv happ2
-                have hY'ne : Y1' ≠ Y2' := by
-                  intro he; exact hYne (by rw [hY1eq, hY2eq, he])
-                have hdd := (hdrop.lift (b := Binding.cvar Authority.access_only
-                    ((CapyCaptureBound.compile cb ctxOrig.srcCtx).subst σt)))
-                    Z1 a1' a2' Y1' Y2' hY'ne
-                    (CaptureSet.cvar_subset_peaks hmem1) (CaptureSet.cvar_subset_peaks hmem2)
-                subst hY1eq; subst hY2eq
-                exact SepCheck.sep_droppable (Ctx.TwoDistinctDroppable.push hdd (Binding.lock
-                  (({ sep := peakSepCtx (CapyCaptureSet.peakset ctxOrig.capyCtx cs)
-                        (ctxOrig.srcCtx.weaken (k := Kind.cvar)),
-                      mutability := CapyCaptureBound.mutabilityCtx cb BVar.here } :
-                    ModalCtx (s2,C)).subst σt.lift)))
-              · -- DISTINCT ORIGIN: the two atoms trace to distinct lock items, which the
-                -- pushed `Ψ_R` separates (`sep_lock`); shrink to the atoms via `sep_mono`.
-                obtain ⟨d1', hd1lk, hd1mem⟩ := CapyCaptureSet.compile_cvar_subset_inv
-                  (CapyCaptureSet.peaks_peaksOnly ctxOrig.capyCtx cs) hmZ1
-                obtain ⟨d2', hd2lk, hd2mem⟩ := CapyCaptureSet.compile_cvar_subset_inv
-                  (CapyCaptureSet.peaks_peaksOnly ctxOrig.capyCtx cs) hmZ2
-                have hd1pc : d1' ∈ peakCvars (CapyCaptureSet.peakset ctxOrig.capyCtx cs) :=
-                  cvar_mem_peakCvars hd1mem
-                have hd2pc : d2' ∈ peakCvars (CapyCaptureSet.peakset ctxOrig.capyCtx cs) :=
-                  cvar_mem_peakCvars hd2mem
-                have hd12ne : d1' ≠ d2' := fun he => hZ (by rw [← hd1lk, ← hd2lk, he])
-                -- the lock's two items separate (substituted + lock-shifted); the cvar
-                -- peaks `d1' d2'` are presented as `Peak.cvar` peaks of `peakList`.
-                have htd := (peakSepCtx_subst_HasTwoDistinct_of
-                  (sc := ctxOrig.srcCtx.weaken (k := Kind.cvar))
-                  (σt := σt.lift (k := Kind.cvar)) (cvar_mem_peakList hd1pc)
-                  (cvar_mem_peakList hd2pc) (fun h => hd12ne (Peak.cvar.inj h))).rename
-                  (f := Rename.succ (k := Kind.lock))
-                -- shrink each lock item down to the atom (inner subcapture, then weaken to lock)
-                have mkSub : ∀ (a : Access) (Y' : BVar (s2',C) Kind.cvar)
-                    (Z : BVar (s2,C) Kind.cvar) (m : Access) (d' : BVar _ Kind.cvar),
-                    (CaptureSet.cvar a Y') ⊆ ((σt.lift (k := Kind.cvar)).cvar Z).applyAccess m →
-                    (CapyCaptureSet.cvar m d') ⊆ CapyCaptureSet.peaks ctxOrig.capyCtx cs →
-                    (ctxOrig.srcCtx.weaken (k := Kind.cvar)).lookupCVar d' = Z →
-                    Subcapt (ctxSub.coreCtx,C[Authority.access_only]<:(CapyCaptureBound.compile cb
-                        ctxOrig.srcCtx).subst σt)
-                      (CaptureSet.cvar a Y')
-                      ((CapyCaptureSet.compile
-                        (peakItem (CapyCaptureSet.peakset ctxOrig.capyCtx cs) d')
-                        (ctxOrig.srcCtx.weaken (k := Kind.cvar))).subst σt.lift) := by
-                  intro a Y' Z m d' happ hmem hdlk
-                  refine Subcapt.sc_trans (Subcapt.sc_elem happ) (Subcapt.sc_elem ?_)
-                  have h1 : (CapyCaptureSet.cvar m d') ⊆
-                      peakItem (CapyCaptureSet.peakset ctxOrig.capyCtx cs) d' :=
-                    cvar_subset_peakItem hmem
-                  have h2 := CapyCaptureSet.compile_subset
-                    (sc := ctxOrig.srcCtx.weaken (k := Kind.cvar)) h1
-                  have h3 := CaptureSet.Subset.subst (σ := σt.lift) h2
-                  have heqc : CapyCaptureSet.compile (CapyCaptureSet.cvar m d')
-                      (ctxOrig.srcCtx.weaken (k := Kind.cvar)) = CaptureSet.cvar m Z :=
-                    congrArg (CaptureSet.cvar m) hdlk
-                  rw [heqc] at h3
-                  exact h3
-                subst hY1eq; subst hY2eq
-                -- Assemble as one `exact`: the goal context `Γ0` flows through every
-                -- `sep_symm`/`sep_mono` down to `sep_lock`, pinning the looked-up lock `Ψ`
-                -- and the `.weaken` bindings (`_`) automatically.
-                exact SepCheck.sep_symm
-                  (SepCheck.sep_mono
-                    (SepCheck.sep_symm
-                      (SepCheck.sep_mono
-                        (SepCheck.sep_lock (ℓ := BVar.here) Ctx.LookupLock.here htd)
-                        (Subcapt.weaken (mkSub a1 Y1' Z1 m1 d1' happ1 hd1mem hd1lk) _)))
-                    (Subcapt.weaken (mkSub a2 Y2' Z2 m2 d2' happ2 hd2mem hd2lk) _))
-            -- Peak-level dispatch: cvar–cvar via `keyCC`; the pseudo cases need the
-            -- sub↔origin peak correspondence under `openCVar` (see `sorry`s).
-            have key' : ∀ (p1 p2 : Peak s1'), p1 ≠ p2 →
-                p1 ∈ peakList (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
-                p2 ∈ peakList (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ)) →
-                SepCheck
-                  ((ctxSub.coreCtx,C[Authority.access_only]<:(CapyCaptureBound.compile cb
-                      ctxOrig.srcCtx).subst σt).push_lock
-                    (({ sep := peakSepCtx (CapyCaptureSet.peakset ctxOrig.capyCtx cs)
-                          (ctxOrig.srcCtx.weaken (k := Kind.cvar)),
-                        mutability := CapyCaptureBound.mutabilityCtx cb BVar.here } :
-                      ModalCtx (s2,C)).subst σt.lift))
-                  (CapyCaptureSet.compile
-                    (peakKeyItem (CapyCaptureSet.peakset ctxSub.capyCtx
-                      (CapyCaptureSet.subst cs σ)) p1)
-                    ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ))
-                  (CapyCaptureSet.compile
-                    (peakKeyItem (CapyCaptureSet.peakset ctxSub.capyCtx
-                      (CapyCaptureSet.subst cs σ)) p2)
-                    ((ctxSub.srcCtx.weaken (k := Kind.cvar)).rename Rename.succ)) := by
-              intro p1 p2 hne hp1 hp2
-              -- A frozen sub-peak `pseudo D` traces (its content ⊆ `peaks(cs[σ])` =
-              -- `peaks(cs)[σt]`) back to the ORIGIN cvar `c₀` that `σ` froze
-              -- (`σ.cvar c₀ = pseudo_peak …`).  Closing the three pseudo cases needs that
-              -- per-frozen-peak cross-context correspondence (the analogue of `traceAtom`
-              -- for frozen peaks) — the remaining forward gap; the cvar–cvar case is done.
-              cases p1 with
-              | cvar d1 =>
-                cases p2 with
-                | cvar d2 =>
-                  have h1 := mem_peakCvars_of_cvar_mem hp1
-                  have h2 := mem_peakCvars_of_cvar_mem hp2
-                  exact keyCC d1 d2 (fun h => hne (congrArg Peak.cvar h)) h1 h2
-                | pseudo D2 => sorry
-              | pseudo D1 =>
-                cases p2 with
-                | cvar d2 => sorry
-                | pseudo D2 => sorry
-            -- Discharge the goal (either ordering of the `HasTwoDistinct` pair).
-            rcases hCdisj with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩
-            · exact key' c1 c2 hcne hc1 hc2
-            · exact key' c2 c1 (Ne.symm hcne) hc2 hc1
+            exact compile_peakSepCtx_sep_forward_realign hclOrig hclSub
+              (SubstCompat.realign_weakenTarget (k := Kind.cvar) hcompatAl) hcsCl
+              (CapyCaptureSet.is_closed_subst hcsCl hscS) horig hTnp.2.1
+              (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
+              hiso hscS (fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩)
+              hsubsto hnc.weakenTarget
+              (hdrop.lift (b := Binding.cvar Authority.access_only
+                ((CapyCaptureBound.compile cb ctxOrig.srcCtx).subst σt))) C1 C2 hdist
     · -- backward: ⟦cpoly cb cs E⟧[σt] <: ⟦(cpoly cb cs E)[σ]⟧.  Structural mirror of the
       -- forward; the capture bound is again an EQUALITY (`Subbound.refl`, no contravariance),
       -- so the ONLY non-mechanical obligation is the `modal_modal` lock-change Satisfy — and
@@ -1443,7 +5047,30 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
         -- instability under substitution-merging: the forward dispatch went weak→strong lock
         -- (provable), this backward one goes strong→weak.  Needs the HUMAN lock-design decision
         -- (subtyp-roadmap.md K1); independent of the `var`/`fresh` USE (which needs only `.1`).
-        case satB => sorry
+        case satB =>
+          apply Satisfy.satisfy
+          · -- hkind (mutability), mirror of the forward `sat` but `Ψ_R` is substituted.
+            intro C m hmem
+            simp only [ModalCtx.rename, ModalCtx.subst] at hmem
+            cases cb with
+            | bound cs0 =>
+              simp only [CapyCaptureBound.mutabilityCtx, MutabilityCtx.subst,
+                MutabilityCtx.rename] at hmem
+              cases hmem
+            | unbound m0 =>
+              cases m with
+              | epsilon => exact HasKind.rw
+              | ro => exact HasKind.imm Ctx.LookupLock.here hmem
+          · -- hsep: invert the substituted + lock-renamed origin lock to ORIGIN peaks
+            -- (all cvars, since origin is pseudo-free), then separate them in `Ψ_L`.
+            intro C1 C2 hdist
+            simp only [ModalCtx.rename, ModalCtx.subst] at hdist
+            exact compile_peakSepCtx_sep_backward_realign hclOrig hclSub
+              (SubstCompat.realign_weakenTarget (k := Kind.cvar) hcompatAl) hcsCl
+              (CapyCaptureSet.is_closed_subst hcsCl hscS) horig hTnp.2.1
+              (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
+              hiso hscS (fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩)
+              hsubsto hnc.weakenTarget C1 C2 hdist
         case bodyB =>
           set ΨL : ModalCtx (s2',,Kind.cvar) :=
             { sep := peakSepCtx (CapyCaptureSet.peakset ctxSub.capyCtx (CapyCaptureSet.subst cs σ))
@@ -1463,7 +5090,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
              corig'.coreCtx.push_lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩
             with hctxOrig''
           -- backward body: the SECOND conjunct of `ihE` (`.2`).
-          have hge := (ihE (ctxSub := ctxSub'') (ctxOrig := ctxOrig'') (σ := σ.lift)
+          have hge := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'') (ctxOrig := ctxOrig'')
+            (σ := σ.lift)
             (σt := σt.lift.lift)
             ((SubstCompat.weakenConsCVar hcompat).weakenTarget)
             ((SubstTvarCompat.weakenConsCVar htvar).weakenTarget)
@@ -1471,8 +5099,7 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
             (TgtPairDroppable.liftLock (b := Binding.lock ΨL)
               (TgtPairDroppable.lift (b := Binding.cvar Authority.access_only
                 ((CapyCaptureBound.compile cb ctxOrig.srcCtx).subst σt)) hdrop))
-            (SrcAligned.weakenTarget (SrcAligned.consCVar (SrcAligned.weakenTarget haSub)))
-            (SrcAligned.weakenTarget (SrcAligned.consCVar (SrcAligned.weakenTarget haOrig)))
+            (SubstCompat.realign_weakenConsCVar hcompatAl).realign_weakenTarget
             (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.cvar
               (CapyCaptureBound.is_closed_subst hcb hscS)))
             (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.cvar hcb))
@@ -1487,7 +5114,9 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                 CapyCaptureBound.mutabilityCtx_isClosed⟩))
             (CapySubst.lift_closed hscS)
             (SrcCtx.CVarInjective.rename
-              (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)).2
+              (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)
+            (hiso.lift Kind.cvar) horig hTnp.2.2 hnc.weakenConsCVar.weakenTarget
+            hsubsto.consCVar).2
           have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
               = (CapyTy.compile (E.subst σ.lift) csub').rename Rename.succ :=
             CapyTy.compile_rename (E.subst σ.lift) csub' ctxSub'' Rename.succ rfl rfl
@@ -1497,5 +5126,10 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
           convert hge using 2
           · rw [heq2]; exact Ty.weaken_subst_comm_base
           · exact heq1.symm
+termination_by tySize T
+decreasing_by
+  all_goals first
+    | (simp only [tySize]; omega)
+    | (simp only [tySize, tySize_rename, tySize_refineCaptureSet]; omega)
 
 end Compilation
