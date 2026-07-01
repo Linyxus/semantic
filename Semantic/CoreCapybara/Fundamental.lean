@@ -81,11 +81,12 @@ mutable store.
 It is consumed ONLY by `sem_typ_par` (re-running a branch's semantic typing at an
 *arbitrary* subsuming-compatible `m'` — the interleaving), whose `Eval.eval_par` interface
 demands branch safety at such `m'`.  The frozen store typing (`Denotation/Core.lean`, plain
-`MonRel` relations, vestigial index) cannot supply it; the fix is the **step-indexed / OFE
-world** (`Denotation/StepIndexedProto.lean`, in progress) whose relations are re-evaluated at
-the current world and whose `Safe` is world-indexed (branch safety only at *well-typed*
-future worlds, which `sem_typ_par` can then discharge).  Same root as `sem_typ_write`.  This
-sorry stands as the minimal witness of that gap. -/
+`MonRel` relations, vestigial index) cannot supply it; the fix is the **step-indexed
+world** (`Denotation/StepIndexedFlat.lean`, Phase 1 — flat store typing whose cell relation is
+a biconditional below the index, stable by non-expansiveness `val_denot_nonexpansive`) with a
+world-indexed `Safe` (branch safety only at *well-typed* future worlds, which `sem_typ_par` can
+then discharge).  Same root as `sem_typ_write`.  This sorry stands as the minimal witness of
+that gap. -/
 theorem memTyped_subsumes {k : Nat} {st : StoreTyping} {m1 m2 : Memory}
     (hmt : MemTyped k st m1) (hsub : m2.subsumes m1) : MemTyped k st m2 := by
   sorry
@@ -1370,8 +1371,10 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
                     (closed_capture_denot_monotonic hCf_closed hts hsub)]
               rw [Subst.from_TypeEnv_extend_cvar_cap_irrelevant
                 (cap := .empty) (cap' := CS.ground_denot m')]
-              simp only [Ty.exi_exp_denot] at htyped ⊢
-              exact htyped hmt_body
+              -- `rw` leaves the `extend_cvar` authority as a metavariable (a second
+              -- `Authority` goal); focusing the main goal resolves it by unification.
+              · simp only [Ty.exi_exp_denot] at htyped ⊢
+                exact htyped hmt_body
 
 theorem sem_typ_pack
   {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
@@ -2657,9 +2660,10 @@ theorem sem_typ_write
   -- can drop the fresh entry and falsify a content cell at `l'`).  So `alloc` needs forward
   -- only while `write` needs backward — irreconcilable in this structural (non-step-indexed)
   -- model; closing it requires a recursively-defined / step-indexed store-typing world.
-  -- SAME ROOT as `memTyped_subsumes`/`sem_typ_par`; the resolution (an OFE / step-indexed
-  -- world whose stored relations are re-evaluated at the current world) is prototyped in
-  -- `Denotation/StepIndexedProto.lean`.  This sorry is the minimal witness of that gap.
+  -- SAME ROOT as `memTyped_subsumes`/`sem_typ_par`; the resolution (a flat step-indexed store
+  -- world whose cell relation is a biconditional below the index — `write` reads off its
+  -- BACKWARD direction via `write_reestablishes`) is built and validated in
+  -- `Denotation/StepIndexedFlat.lean`.  This sorry is the minimal witness of that gap.
   have hyR : R.1 (store.update_mcell (env.lookup_var x).1 (env.lookup_var y).1 .live
       ⟨b0, hlk_cell'⟩ (fun _ => hly)) (.var (.free (env.lookup_var y).1)) := by
     sorry

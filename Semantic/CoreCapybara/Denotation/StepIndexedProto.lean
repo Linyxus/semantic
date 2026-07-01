@@ -3,6 +3,21 @@ import Semantic.CoreCapybara.Semantics.Heap
 /-!
 # Prototype: world-parametrized step-indexed store typing (Ahmed/Iris style)
 
+## SUPERSEDED (Phase 1) — see `Denotation/StepIndexedFlat.lean`
+
+Validating the keystone here surfaced a genuine obstruction: the dependent `World : Nat → Type`
+family below needs a *content-fabricating* `extend : World n → World (n+1)`, whose canonical
+padding at the bottom level would have to be simultaneously `True` (to satisfy a cell's
+agreement clause) and structural (to match e.g. `unit`) — impossible.  So the naive coherence
+`val_denot T (n+1) (extend w) ↔ val_denot T n w` is FALSE at the index boundary; `restrict`
+of a stored relation intrinsically needs `extend` to lift its argument, so downward-closure
+for nested cells cannot be proved with this shape.
+
+The corrected model keeps the world **flat** and stratifies with an index *truncation*
+(`approx`) instead of a dependent tower — no `extend`, no boundary.  It is built, with the
+keystone (non-expansiveness) and both read/write soundness proven `sorryAx`-free, in
+`Denotation/StepIndexedFlat.lean`.  This file is kept only as the record of the dead end.
+
 Scratch file, imported by nothing.  Goal: validate that a store typing whose stored
 relations are **world-parametrized** (carry the store typing they will be evaluated against,
 stratified by the step index to break the circularity) supports BOTH read and write of

@@ -1,7 +1,26 @@
 import Semantic.CoreCapybara.Semantics.Heap
+import Semantic.CoreCapybara.Denotation.StepIndexedFlat
 
 /-!
 # Step-indexed Kripke worlds for a higher-order mutable store
+
+## PROMOTED MODEL (Phase 1): see `Denotation/StepIndexedFlat.lean`
+
+The `MonRel`/`StoreTyping`/`kdenot` construction below stores a *frozen* relation per cell
+and exposes the cell agreement only as a one-way implication (`R → val Tc`).  That is enough
+for `read`/`alloc` but NOT for `write`, which needs the backward direction — see the
+`sem_typ_write` gap in `Fundamental.lean`.  Validating the keystone (Phase 1) revealed that
+the dependent `World : Nat → Type` family with a content-fabricating `extend`
+(`StepIndexedProto.lean`) cannot satisfy coherence at the index boundary.
+
+The corrected, promoted store model is the **flat, truncation-based** one in
+`Denotation/StepIndexedFlat.lean`: the cell agreement is a genuine biconditional below the
+index (`∀ j < k, R j ↔ val_denot Tc j Ψ`), the keystone is **non-expansiveness**
+(`val_denot_nonexpansive`: `val_denot T k` depends only on the world's `k`-approximation),
+and BOTH `read_typed` (forward) and `write_reestablishes` (backward — the direction the
+frozen model lacked) are proven, on the real `Ty`, for the `unit`/`cell`/**cell-of-arrow**
+toy, `sorryAx`-free.  The frozen construction below is retained transitionally until Phase 2
+ports `Denotation/Core.lean` onto the flat model.
 
 ## The problem
 
