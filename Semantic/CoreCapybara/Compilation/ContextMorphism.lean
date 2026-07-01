@@ -229,6 +229,35 @@ theorem CapyCtx.RenamesTo.peakset {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCt
     CapyCaptureSet.peakset Γ2 (W.rename f) = (CapyCaptureSet.peakset Γ1 W).rename f := by
   simp only [CapyCaptureSet.peakset, CapyPeakSet.rename, h.peaks]
 
+/-- Renaming a capture bound is `.unbound m` only if the original was — `.bound`
+    stays `.bound`, and `.unbound` renames to the *same* `m` unconditionally. -/
+theorem CapyCaptureBound.rename_eq_unbound_iff {s1 s2 : Sig} {X : CapyCaptureBound s1}
+    {f : Rename s1 s2} {m : Mutability} :
+    X.rename f = .unbound m ↔ X = .unbound m := by
+  cases X with
+  | unbound m' =>
+    simp only [CapyCaptureBound.rename, CapyCaptureBound.unbound.injEq]
+  | bound cs =>
+    constructor
+    · intro h; simp only [CapyCaptureBound.rename] at h; cases h
+    · intro h; cases h
+
+/-- A cvar's stability transports **exactly** (iff, not merely one direction) along a
+    context renaming: `RenamesTo`'s `LookupCVar` correspondence is functional, so
+    `Γ2`'s authority/bound at `f.var c` are *determined* by `Γ1`'s at `c`. This is
+    what lets the stability filter in `peakSepCtx` commute with `CapyTy.compile`'s
+    renaming-naturality theorem. -/
+theorem CapyCtx.IsStableCVar.renamesTo_iff {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
+    {f : Rename s1 s2} (h : Γ1.RenamesTo Γ2 f) {c : BVar s1 .cvar} :
+    Γ2.IsStableCVar (f.var c) ↔ Γ1.IsStableCVar c := by
+  have hlk2 := h.cvar (CapyCtx.lookup_cvar_spec Γ1 c)
+  unfold CapyCtx.IsStableCVar
+  rw [hlk2.authority, hlk2.bound]
+  refine or_congr_right ?_
+  constructor
+  · rintro ⟨m, hm⟩; exact ⟨m, CapyCaptureBound.rename_eq_unbound_iff.mp hm⟩
+  · rintro ⟨m, hm⟩; exact ⟨m, CapyCaptureBound.rename_eq_unbound_iff.mpr hm⟩
+
 end CoreCapybara
 
 open CoreCapybara
@@ -570,16 +599,47 @@ theorem peakSepCtx_foldl_mapsTo {α α' : Type} {s1 s1' t1 t2 : Sig}
     apply peakSepCtx_foldl_mapsTo hitem cs
     simp only [SepCtx.rename, hacc, hitem]
 
-theorem peakSepCtx_mapsTo {s1 s1' t1 t2 : Sig} {sctx1 : SrcCtx s1 t1} {sctx2 : SrcCtx s1' t2}
+/-- A cvar/pseudo peak's stability transports exactly along a context renaming
+    (mirrors `CapyCtx.IsStableCVar.renamesTo_iff`; pseudo-peaks are unconditionally
+    stable on both sides). -/
+theorem Peak.IsStable.renamesTo_iff {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
+    {f : Rename s1 s2} (h : Γ1.RenamesTo Γ2 f) {p : Peak s1} :
+    Peak.IsStable Γ2 (p.rename f) ↔ Peak.IsStable Γ1 p := by
+  cases p with
+  | cvar c => exact CapyCtx.IsStableCVar.renamesTo_iff h
+  | pseudo _ => exact Iff.rfl
+
+/-- Filtering by stability commutes with mapping a peak list along a context
+    renaming (the stability-iff lets the filter be computed on either side). -/
+theorem Peak.filter_stable_map {s1 s1' : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s1'}
+    {fs : Rename s1 s1'} (h : Γ1.RenamesTo Γ2 fs) :
+    ∀ (l : List (Peak s1)),
+      (l.map (·.rename fs)).filter (fun p => decide (Peak.IsStable Γ2 p))
+        = (l.filter (fun p => decide (Peak.IsStable Γ1 p))).map (·.rename fs)
+  | [] => rfl
+  | p :: ps => by
+    simp only [List.map_cons, List.filter_cons]
+    by_cases hp : Peak.IsStable Γ1 p
+    · rw [if_pos (decide_eq_true_iff.mpr hp),
+        if_pos (decide_eq_true_iff.mpr ((Peak.IsStable.renamesTo_iff h).mpr hp))]
+      simp only [List.map_cons, Peak.filter_stable_map h ps]
+    · rw [if_neg (fun hc => hp (decide_eq_true_iff.mp hc)),
+        if_neg (fun hc => hp ((Peak.IsStable.renamesTo_iff h).mp (decide_eq_true_iff.mp hc)))]
+      exact Peak.filter_stable_map h ps
+
+theorem peakSepCtx_mapsTo {s1 s1' t1 t2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s1'}
+    {sctx1 : SrcCtx s1 t1} {sctx2 : SrcCtx s1' t2}
     {fs : Rename s1 s1'} {ft : Rename t1 t2}
+    (hcapy : Γ1.RenamesTo Γ2 fs)
     (hfs : fs.Injective)
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
     (P : CapyPeakSet s1) :
-    peakSepCtx (P.rename fs) sctx2 = (peakSepCtx P sctx1).rename ft := by
-  simp only [peakSepCtx, peakList_rename hfs]
+    peakSepCtx Γ2 (P.rename fs) sctx2 = (peakSepCtx Γ1 P sctx1).rename ft := by
+  simp only [peakSepCtx]
+  rw [peakList_rename hfs, Peak.filter_stable_map hcapy]
   refine peakSepCtx_foldl_mapsTo (mapα := (·.rename fs)) (fun p => ?_)
-    (peakList P) .empty .empty rfl
+    ((peakList P).filter (fun p => decide (Peak.IsStable Γ1 p))) .empty .empty rfl
   rw [peakKeyItem_rename hfs]
   exact CapyCaptureSet.compile_mapsTo hcvar hvar (peakKeyItem P p)
 
@@ -596,10 +656,10 @@ theorem peakSepCtx_peakset_mapsTo {s1 s1' t1 t2 : Sig}
     (hcvar : ∀ c, sctx2.lookupCVar (fs.var c) = ft.var (sctx1.lookupCVar c))
     (hvar : ∀ x, sctx2.lookupVar (fs.var x) = (sctx1.lookupVar x).rename ft)
     (W : CapyCaptureSet s1) :
-    peakSepCtx (CapyCaptureSet.peakset Γ2 (W.rename fs)) sctx2
-      = (peakSepCtx (CapyCaptureSet.peakset Γ1 W) sctx1).rename ft := by
+    peakSepCtx Γ2 (CapyCaptureSet.peakset Γ2 (W.rename fs)) sctx2
+      = (peakSepCtx Γ1 (CapyCaptureSet.peakset Γ1 W) sctx1).rename ft := by
   rw [hcapy.peakset]
-  exact peakSepCtx_mapsTo hfs hcvar hvar _
+  exact peakSepCtx_mapsTo hcapy hfs hcvar hvar _
 
 /-! ### The renaming theorem
 
@@ -697,7 +757,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
       · simp only [ModalCtx.rename, MutabilityCtx.rename]
         congr 1
         rw [hm.capy.peakset]
-        exact peakSepCtx_mapsTo hinj hm.weakenTarget.cvar hm.weakenTarget.var _
+        exact peakSepCtx_mapsTo hm.capy hinj hm.weakenTarget.cvar hm.weakenTarget.var _
       · exact ihE hinj.lift (hm.weakenTarget.consTVar (S := .top) (X := .here))
   case case11 =>
     rename_i ih; intro s1' s2' ctx2 fs ft hinj hm
@@ -710,7 +770,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
       · simp only [ModalCtx.rename]
         congr 1
         · rw [hm.capy.peakset]
-          exact peakSepCtx_mapsTo hinj hm.weakenTarget.cvar hm.weakenTarget.var _
+          exact peakSepCtx_mapsTo hm.capy hinj hm.weakenTarget.cvar hm.weakenTarget.var _
         · exact CapyCaptureBound.mutabilityCtx_mapsTo
       · exact ih hinj.lift (hm.weakenTarget.consCVar (c := .here))
   case case12 =>

@@ -95,6 +95,30 @@ def CapyCtx.TwoDistinctDroppable (Γ : CapyCtx s) (c1 c2 : BVar s .cvar) : Prop 
   Γ.lookup_authority c2 = .can_drop ∧
   c1 ≠ c2
 
+/-- A capture variable is **stable** in `Γ` when `CapySubcapt` can never dissolve
+    it into a different capture set: either it is `can_drop` (excluded from
+    `sc_cvar`'s `.access_only` requirement), or its own bound is `.unbound`
+    (leaving `sc_cvar` no `.bound C` to dissolve it into). The only remaining
+    case — `.access_only` AND `.bound` — is exactly what `sc_cvar` can merge away,
+    so it is excluded. Stability is what makes a peak's separation claim survive
+    subcapturing (see `peaks_subcapt_stable_subset`). -/
+def CapyCtx.IsStableCVar (Γ : CapyCtx s) (c : BVar s .cvar) : Prop :=
+  Γ.lookup_authority c = .can_drop ∨ ∃ m, Γ.lookup_cvar c = .unbound m
+
+instance CapyCtx.IsStableCVar.decidable (Γ : CapyCtx s) (c : BVar s .cvar) :
+    Decidable (Γ.IsStableCVar c) := by
+  unfold CapyCtx.IsStableCVar
+  cases Γ.lookup_authority c with
+  | can_drop => exact isTrue (Or.inl rfl)
+  | access_only =>
+    cases Γ.lookup_cvar c with
+    | unbound m => exact isTrue (Or.inr ⟨m, rfl⟩)
+    | bound C =>
+      apply isFalse
+      rintro (h | ⟨m, hm⟩)
+      · cases h
+      · cases hm
+
 def CapyCtx.lookup_tvar' : CapyCtx (s,,k) -> BVar (s,,k) .tvar -> CapyPureTy s
 | .push _ (.tvar S), .here => S
 | .push Γ _, .there x => Γ.lookup_tvar x

@@ -123,8 +123,8 @@ private theorem peakSepCtx_foldl_isClosed {α : Type} {item : α → CapyCapture
 /-- The peak-separation context of a peak set is closed when the source→target map
     is closed-valued and the peak set itself is closed.  (Each cvar item / pseudo
     item compiles a closed source capture set.) -/
-theorem peakSepCtx_isClosed {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2}
-    (hcs : P.cs.IsClosed) (hctx : ctx.VarsClosed) : (peakSepCtx P ctx).IsClosed := by
+theorem peakSepCtx_isClosed {Γ : CapyCtx s1} {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2}
+    (hcs : P.cs.IsClosed) (hctx : ctx.VarsClosed) : (peakSepCtx Γ P ctx).IsClosed := by
   simp only [peakSepCtx]
   exact peakSepCtx_foldl_isClosed hctx (peakKeyItem_isClosed hcs) _ _ SepCtx.IsClosed.empty
 
@@ -281,7 +281,8 @@ theorem CapyTy.compile_isClosed {sort : CapyTySort} {s1 s2 : Sig}
                       (CapyCaptureSet.rename_isClosed (CapyCaptureSet.rename_isClosed hcs))
                       CapyCaptureSet.IsClosed.var_bound)
                     hLock)
-                  ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hLock,
+                  ⟨peakSepCtx_isClosed (Γ := ctxLock.capyCtx)
+                      (CapyCaptureSet.peaks_isClosed _ _) hLock,
                     MutabilityCtx.IsClosed.empty⟩
                   (ih1 hEcl hctxE)))))))
   case case10 =>
@@ -294,7 +295,8 @@ theorem CapyTy.compile_isClosed {sort : CapyTySort} {s1 s2 : Sig}
       (Ty.IsClosed.typ
         (Ty.IsClosed.modal
           (CapyCaptureSet.compile_isClosed hcs hctx.weaken)
-          ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hctx.weaken,
+          ⟨peakSepCtx_isClosed (Γ := ctx0.capyCtx) (CapyCaptureSet.peaks_isClosed _ _)
+              hctx.weaken,
             MutabilityCtx.IsClosed.empty⟩
           (ihE hE (CompilerCtx.consTVar_VarsClosed (CompilerCtx.weakenTarget_VarsClosed hctx)))))
   case case11 =>
@@ -307,7 +309,8 @@ theorem CapyTy.compile_isClosed {sort : CapyTySort} {s1 s2 : Sig}
       (Ty.IsClosed.typ
         (Ty.IsClosed.modal
           (CapyCaptureSet.compile_isClosed hcs hctx.weaken)
-          ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hctx.weaken,
+          ⟨peakSepCtx_isClosed (Γ := ctx0.capyCtx) (CapyCaptureSet.peaks_isClosed _ _)
+              hctx.weaken,
             CapyCaptureBound.mutabilityCtx_isClosed⟩
           (ih hE (CompilerCtx.consCVar_VarsClosed (CompilerCtx.weakenTarget_VarsClosed hctx)))))
   case case12 =>

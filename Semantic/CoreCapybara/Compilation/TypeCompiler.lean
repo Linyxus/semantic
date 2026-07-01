@@ -149,12 +149,28 @@ def peakKeyItem (P : CapyPeakSet s) : Peak s → CapyCaptureSet s
 def peakList (P : CapyPeakSet s) : List (Peak s) :=
   (peakCvars P).map Peak.cvar ++ (peakPseudos P).map Peak.pseudo
 
-/-- The separation context of a peak set: one item per distinct peak, compiled into
-    the target.  Distinct peaks become distinct items and are therefore required to
-    be pairwise separate; the several access-mode occurrences of one peak share a
-    single item. -/
-def peakSepCtx (P : CapyPeakSet s1) (ctx : SrcCtx s1 s2) : SepCtx s2 :=
-  (peakList P).foldl
+/-- A peak is **stable** in `Γ` when `CapySubcapt` can never dissolve it: a `cvar`
+    peak is stable iff its cvar is (`CapyCtx.IsStableCVar`); a `pseudo` (frozen)
+    peak is always stable, since `CapySubcapt` has no rule descending into a
+    `pseudo_peak`.  Only stability-restricted separation claims survive capture-set
+    subtyping — see `CapyCtx.peaks_subcapt_stable_subset`. -/
+def Peak.IsStable (Γ : CapyCtx s) : Peak s → Prop
+| .cvar c => Γ.IsStableCVar c
+| .pseudo _ => True
+
+instance Peak.IsStable.decidable (Γ : CapyCtx s) (p : Peak s) : Decidable (Peak.IsStable Γ p) :=
+  match p with
+  | .cvar c => CapyCtx.IsStableCVar.decidable Γ c
+  | .pseudo _ => isTrue trivial
+
+/-- The separation context of a peak set: one item per distinct **stable** peak,
+    compiled into the target.  Distinct stable peaks become distinct items and are
+    therefore required to be pairwise separate; unstable peaks (`.access_only` cvars
+    with a `.bound` — the ones `CapySubcapt.sc_cvar` can dissolve into a different
+    capture set) are dropped, since their separation would not survive capture-set
+    subtyping (`CapySubtyp.compile`'s arrow/poly/cpoly cases). -/
+def peakSepCtx (Γ : CapyCtx s1) (P : CapyPeakSet s1) (ctx : SrcCtx s1 s2) : SepCtx s2 :=
+  ((peakList P).filter (fun p => decide (Peak.IsStable Γ p))).foldl
     (fun K p => .cons K (CapyCaptureSet.compile (peakKeyItem P p) ctx))
     (.empty : SepCtx s2)
 
@@ -221,7 +237,7 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
   let W : CapyCaptureSet (s1,C,x) :=
     (cs.rename Rename.succ).rename Rename.succ ∪ .var (.M .epsilon) (.bound .here)
   let Ψ : ModalCtx (s2,C,C,x) :=
-    ⟨peakSepCtx (CapyCaptureSet.peakset ctxLock.capyCtx W) ctxLock.srcCtx, .empty⟩
+    ⟨peakSepCtx ctxLock.capyCtx (CapyCaptureSet.peakset ctxLock.capyCtx W) ctxLock.srcCtx, .empty⟩
   .cpoly .unbound {}
     (.typ (.cpoly (.bound (CapyCaptureSet.compile T.captureSet ctxB.srcCtx)) {}
       (.typ (.arrow
@@ -239,7 +255,7 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
   let ctxE : CompilerCtx (s1,X) (s2,X) := ctx.weakenTarget.consTVar .top .here
   let Cf : CaptureSet (s2,X) := CapyCaptureSet.compile cs ctx.srcCtx.weaken
   let Ψ  : ModalCtx (s2,X)   :=
-    ⟨peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken, .empty⟩
+    ⟨peakSepCtx ctx.capyCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken, .empty⟩
   .poly
     (CapyTy.compile S ctx)
     {}
@@ -253,7 +269,7 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
   let ctxE : CompilerCtx (s1,C) (s2,C) := ctx.weakenTarget.consCVar cb .here
   let Cf : CaptureSet (s2,C) := CapyCaptureSet.compile cs ctx.srcCtx.weaken
   let Ψ  : ModalCtx (s2,C)   :=
-    ⟨ peakSepCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken,
+    ⟨ peakSepCtx ctx.capyCtx (CapyCaptureSet.peakset ctx.capyCtx cs) ctx.srcCtx.weaken,
       CapyCaptureBound.mutabilityCtx cb .here ⟩
   .cpoly
     (CapyCaptureBound.compile cb ctx.srcCtx)

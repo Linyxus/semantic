@@ -1,4 +1,5 @@
 import Semantic.CoreCapybara.Compilation.SubstLemmas
+import Semantic.CoreCapybara.Compilation.ContextMorphism
 open CoreCapybara
 namespace Compilation
 
@@ -138,18 +139,62 @@ theorem CapyCaptureSet.peaks_push_cvar_irrel {s : Sig} {Γ : CapyCtx s}
         conv_rhs => rw [CapyCaptureSet.peaksVarBound.eq_def]
         rfl
 
-/-- Two compiler contexts agree for `compile`: equal `srcCtx`, pointwise-equal `peaks`. -/
+/-- Two compiler contexts agree for `compile`: equal `srcCtx`, pointwise-equal `peaks`,
+    and pointwise-agreeing cvar stability (the last is what the peak-separation lock's
+    stability filter additionally reads from `capyCtx`, beyond bare `peaks`-behavior). -/
 def CompilerCtx.CompileCong {s1 s2 : Sig} (ctx1 ctx2 : CompilerCtx s1 s2) : Prop :=
   ctx1.srcCtx = ctx2.srcCtx ∧
-  ∀ W : CapyCaptureSet s1,
-    CapyCaptureSet.peaks ctx1.capyCtx W = CapyCaptureSet.peaks ctx2.capyCtx W
+  (∀ W : CapyCaptureSet s1,
+    CapyCaptureSet.peaks ctx1.capyCtx W = CapyCaptureSet.peaks ctx2.capyCtx W) ∧
+  (∀ c : BVar s1 .cvar, ctx1.capyCtx.IsStableCVar c ↔ ctx2.capyCtx.IsStableCVar c)
+
+/-- Pushing the *same* binding onto both sides of a `CompileCong` context preserves
+    cvar-stability agreement: a `.there`-cvar defers to the tail (the pushed binding
+    doesn't affect it, by `hstab`), and a fresh `.here` cvar (only reachable through
+    `consCVar`, at kind `.cvar`) computes identically on both sides since the *same*
+    `b` was pushed on both. -/
+theorem CapyCtx.IsStableCVar.push_cong {s : Sig} {Γ1 Γ2 : CapyCtx s} {k : Kind}
+    (b : CapyBinding s k) (hstab : ∀ c : BVar s .cvar, Γ1.IsStableCVar c ↔ Γ2.IsStableCVar c) :
+    ∀ c : BVar (s,,k) .cvar, (Γ1.push b).IsStableCVar c ↔ (Γ2.push b).IsStableCVar c := by
+  intro c
+  cases k with
+  | cvar =>
+    cases b with
+    | cvar a cb =>
+      cases c with
+      | here =>
+        unfold CapyCtx.IsStableCVar CapyCtx.lookup_authority CapyCtx.lookup_cvar
+        exact Iff.rfl
+      | there c' =>
+        unfold CapyCtx.IsStableCVar CapyCtx.lookup_authority CapyCtx.lookup_cvar
+        simp only [CapyCaptureBound.rename_eq_unbound_iff]
+        exact hstab c'
+  | var =>
+    cases c with
+    | there c' =>
+      unfold CapyCtx.IsStableCVar CapyCtx.lookup_authority CapyCtx.lookup_cvar
+      simp only [CapyCaptureBound.rename_eq_unbound_iff]
+      exact hstab c'
+  | tvar =>
+    cases c with
+    | there c' =>
+      unfold CapyCtx.IsStableCVar CapyCtx.lookup_authority CapyCtx.lookup_cvar
+      simp only [CapyCaptureBound.rename_eq_unbound_iff]
+      exact hstab c'
+  | lock =>
+    cases c with
+    | there c' =>
+      unfold CapyCtx.IsStableCVar CapyCtx.lookup_authority CapyCtx.lookup_cvar
+      simp only [CapyCaptureBound.rename_eq_unbound_iff]
+      exact hstab c'
 
 theorem CompilerCtx.CompileCong.weakenTarget {s1 s2 : Sig} {k : Kind}
     {ctx1 ctx2 : CompilerCtx s1 s2} (h : ctx1.CompileCong ctx2)
     (b1 : Binding s2 k := placeholderBinding k) (b2 : Binding s2 k := placeholderBinding k) :
     (ctx1.weakenTarget b1).CompileCong (ctx2.weakenTarget b2) :=
   ⟨by simp only [CompilerCtx.weakenTarget_srcCtx, h.1],
-   fun W => by simp only [CompilerCtx.weakenTarget_capyCtx]; exact h.2 W⟩
+   fun W => by simp only [CompilerCtx.weakenTarget_capyCtx]; exact h.2.1 W,
+   fun c => by simp only [CompilerCtx.weakenTarget_capyCtx]; exact h.2.2 c⟩
 
 theorem CompilerCtx.CompileCong.consCVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s1 s2}
     (h : ctx1.CompileCong ctx2) (cb : CapyCaptureBound s1) (c : BVar s2 .cvar) :
@@ -157,7 +202,10 @@ theorem CompilerCtx.CompileCong.consCVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx 
   ⟨by simp only [CompilerCtx.consCVar_srcCtx, h.1],
    fun W => by
      simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default, CapyCtx.push_cvar]
-     exact CapyCaptureSet.peaks_push_cong (.cvar .access_only cb) h.2 W⟩
+     exact CapyCaptureSet.peaks_push_cong (.cvar .access_only cb) h.2.1 W,
+   fun c0 => by
+     simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default]
+     exact CapyCtx.IsStableCVar.push_cong (.cvar .access_only cb) h.2.2 c0⟩
 
 theorem CompilerCtx.CompileCong.consVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s1 s2}
     (h : ctx1.CompileCong ctx2) (T : CapyTy .capt s1) (bv : Option (BVar s2 .var))
@@ -166,7 +214,10 @@ theorem CompilerCtx.CompileCong.consVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s
   ⟨by simp only [CompilerCtx.consVar_srcCtx, h.1],
    fun W => by
      simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var]
-     exact CapyCaptureSet.peaks_push_cong (.var T) h.2 W⟩
+     exact CapyCaptureSet.peaks_push_cong (.var T) h.2.1 W,
+   fun c => by
+     simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var]
+     exact CapyCtx.IsStableCVar.push_cong (.var T) h.2.2 c⟩
 
 theorem CompilerCtx.CompileCong.consTVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s1 s2}
     (h : ctx1.CompileCong ctx2) (S : CapyPureTy s1) (X : BVar s2 .tvar) :
@@ -174,13 +225,71 @@ theorem CompilerCtx.CompileCong.consTVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx 
   ⟨by simp only [CompilerCtx.consTVar_srcCtx, h.1],
    fun W => by
      simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar]
-     exact CapyCaptureSet.peaks_push_cong (.tvar S) h.2 W⟩
+     exact CapyCaptureSet.peaks_push_cong (.tvar S) h.2.1 W,
+   fun c => by
+     simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar]
+     exact CapyCtx.IsStableCVar.push_cong (.tvar S) h.2.2 c⟩
 
-/-- A compiled lock's `peakSepCtx` depends on the context only through `peaks`. -/
+/-- Pushing a `tvar` binder is `CompileCong`-irrelevant to its OWN declared bound: the
+    same base context extended with two different tvar bounds `S1`/`S2` compiles
+    identically (a tvar push adds no cvar slot, and `peaks`/`IsStableCVar` never
+    inspect a tvar's bound — `CapyCaptureSet.peaks_push_tvar_irrel`). Needed to bridge
+    a `CapySubtyp.poly`-derived tvar push (the REAL declared bound `S`) against
+    `CapyTy.compile`'s own placeholder-bound tvar push (`.top`, `TypeCompiler.lean`'s
+    `.poly` case), which compile identically. -/
+theorem CompilerCtx.CompileCong.consTVar_boundIrrel {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
+    (S1 S2 : CapyPureTy s1) (X : BVar s2 .tvar) :
+    (ctx.consTVar S1 X).CompileCong (ctx.consTVar S2 X) :=
+  ⟨by simp only [CompilerCtx.consTVar_srcCtx],
+   fun W => by
+     simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar]
+     exact CapyCaptureSet.peaks_push_tvar_irrel W,
+   fun c => by
+     simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar]
+     cases c with
+     | there c' =>
+       unfold CapyCtx.IsStableCVar CapyCtx.lookup_authority CapyCtx.lookup_cvar
+       exact Iff.rfl⟩
+
+/-- A compiled lock's `peakSepCtx` depends on the context only through `peaks` +
+    cvar-stability agreement. -/
 theorem CapyCaptureSet.peakset_eq {s : Sig} {Γ1 Γ2 : CapyCtx s} {W : CapyCaptureSet s}
     (h : CapyCaptureSet.peaks Γ1 W = CapyCaptureSet.peaks Γ2 W) :
     CapyCaptureSet.peakset Γ1 W = CapyCaptureSet.peakset Γ2 W := by
   simp only [CapyCaptureSet.peakset, h]
+
+/-- `peakSepCtx` at a *fixed* peak set `P` depends on the context only through
+    cvar-stability agreement (the filter predicate). -/
+theorem peakSepCtx_eq_of_cong {s1 s2 : Sig} {Γ1 Γ2 : CapyCtx s1} {P : CapyPeakSet s1}
+    {sc : SrcCtx s1 s2} (hstab : ∀ c, Γ1.IsStableCVar c ↔ Γ2.IsStableCVar c) :
+    peakSepCtx Γ1 P sc = peakSepCtx Γ2 P sc := by
+  have hfilt : (peakList P).filter (fun p => decide (Peak.IsStable Γ1 p))
+      = (peakList P).filter (fun p => decide (Peak.IsStable Γ2 p)) := by
+    induction (peakList P) with
+    | nil => rfl
+    | cons p ps ih =>
+      simp only [List.filter_cons]
+      have hp : Peak.IsStable Γ1 p ↔ Peak.IsStable Γ2 p := by
+        cases p with
+        | cvar c => exact hstab c
+        | pseudo _ => exact Iff.rfl
+      by_cases h : Peak.IsStable Γ1 p
+      · rw [if_pos (decide_eq_true_iff.mpr h), if_pos (decide_eq_true_iff.mpr (hp.mp h)), ih]
+      · rw [if_neg (fun hc => h (decide_eq_true_iff.mp hc)),
+          if_neg (fun hc => h (hp.mpr (decide_eq_true_iff.mp hc))), ih]
+  simp only [peakSepCtx, hfilt]
+
+/-- The actual `peakSepCtx (peakset Γ W)` pattern that `CapyTy.compile` uses: both
+    the underlying peak set (via `peaks`-agreement) and the stability filter (via
+    `IsStableCVar`-agreement) need to line up between `Γ1`/`Γ2`. -/
+theorem peakSepCtx_peakset_eq_of_cong {s1 s2 : Sig} {Γ1 Γ2 : CapyCtx s1} {W : CapyCaptureSet s1}
+    {sc : SrcCtx s1 s2}
+    (hpeaks : CapyCaptureSet.peaks Γ1 W = CapyCaptureSet.peaks Γ2 W)
+    (hstab : ∀ c, Γ1.IsStableCVar c ↔ Γ2.IsStableCVar c) :
+    peakSepCtx Γ1 (CapyCaptureSet.peakset Γ1 W) sc
+      = peakSepCtx Γ2 (CapyCaptureSet.peakset Γ2 W) sc := by
+  rw [CapyCaptureSet.peakset_eq hpeaks]
+  exact peakSepCtx_eq_of_cong hstab
 
 /-- **`compile` bound-insensitivity.**  `compile` reads `capyCtx` only through `peaks`
     and `srcCtx`; two `CompileCong` contexts compile every type identically.  (Recursion
@@ -226,7 +335,7 @@ theorem CapyTy.compile_eq_of {sort : CapyTySort} {s1 s2 : Sig}
       · congr 1
         congr 1
         · exact congrArg _ hLock.1
-        · rw [hLock.1, CapyCaptureSet.peakset_eq (hLock.2 _)]
+        · rw [hLock.1, peakSepCtx_peakset_eq_of_cong (hLock.2.1 _) hLock.2.2]
         · exact ihE _ hE
   | case10 =>
     rename_i ihS ihE; intro ctx2 h
@@ -234,13 +343,13 @@ theorem CapyTy.compile_eq_of {sort : CapyTySort} {s1 s2 : Sig}
     rw [ihS ctx2 h,
       ihE (ctx2.weakenTarget.consTVar CapyPureTy.top BVar.here)
         (h.weakenTarget.consTVar CapyPureTy.top BVar.here),
-      h.1, CapyCaptureSet.peakset_eq (h.2 _)]
+      h.1, peakSepCtx_peakset_eq_of_cong (h.2.1 _) h.2.2]
   | case11 =>
     rename_i ihE; intro ctx2 h
     simp (config := { zetaDelta := true }) only [CapyTy.compile]
     rw [ihE (ctx2.weakenTarget.consCVar _ BVar.here)
         (h.weakenTarget.consCVar _ BVar.here),
-      h.1, CapyCaptureSet.peakset_eq (h.2 _)]
+      h.1, peakSepCtx_peakset_eq_of_cong (h.2.1 _) h.2.2]
   | case12 =>
     rename_i ih; intro ctx2 h
     simp only [CapyTy.compile]

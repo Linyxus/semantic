@@ -372,12 +372,12 @@ theorem SepCtx.Has_foldl_cons {α : Type} {s2 : Sig} {g : α → CaptureSet s2}
 
 /-- Every separation item of a compiled lock is the compiled `peakItem` of some
     distinct peak cvar. -/
-theorem peakSepCtx_Has {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
-    {C : CaptureSet s2} (h : SepCtx.Has (peakSepCtx P sc) C) :
+theorem peakSepCtx_Has {s1 s2 : Sig} {Γ : CapyCtx s1} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
+    {C : CaptureSet s2} (h : SepCtx.Has (peakSepCtx Γ P sc) C) :
     ∃ p ∈ peakList P, C = CapyCaptureSet.compile (peakKeyItem P p) sc := by
   simp only [peakSepCtx] at h
-  rcases SepCtx.Has_foldl_cons _ _ h with hl | hempty
-  · exact hl
+  rcases SepCtx.Has_foldl_cons _ _ h with ⟨p, hp, hC⟩ | hempty
+  · exact ⟨p, List.mem_of_mem_filter hp, hC⟩
   · cases hempty
 
 /-- `HasTwoDistinct` entails `Has` on both components (public re-proof). -/
@@ -390,8 +390,9 @@ theorem SepCtx.HasTwoDistinct.has_both {s : Sig} {K : SepCtx s} {C1 C2 : Capture
 
 /-- Both members of a `HasTwoDistinct` pair of a compiled lock are compiled
     `peakKeyItem`s of peaks. -/
-theorem peakSepCtx_HasTwoDistinct {s1 s2 : Sig} {P : CapyPeakSet s1} {sc : SrcCtx s1 s2}
-    {C1 C2 : CaptureSet s2} (h : SepCtx.HasTwoDistinct (peakSepCtx P sc) C1 C2) :
+theorem peakSepCtx_HasTwoDistinct {s1 s2 : Sig} {Γ : CapyCtx s1} {P : CapyPeakSet s1}
+    {sc : SrcCtx s1 s2}
+    {C1 C2 : CaptureSet s2} (h : SepCtx.HasTwoDistinct (peakSepCtx Γ P sc) C1 C2) :
     (∃ p1 ∈ peakList P, C1 = CapyCaptureSet.compile (peakKeyItem P p1) sc) ∧
     (∃ p2 ∈ peakList P, C2 = CapyCaptureSet.compile (peakKeyItem P p2) sc) := by
   obtain ⟨h1, h2⟩ := SepCtx.HasTwoDistinct.has_both h

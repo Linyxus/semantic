@@ -198,8 +198,9 @@ private theorem peakSepCtx_foldl_rename {α : Type} {item : α → CapyCaptureSe
 
 /-- The peak-separation context commutes with target renaming of the source
     context (the peak set itself lives in the source signature and is unchanged). -/
-theorem peakSepCtx_rename {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2} {ρ : Rename s2 s2'} :
-    peakSepCtx P (ctx.rename ρ) = (peakSepCtx P ctx).rename ρ := by
+theorem peakSepCtx_rename {Γ : CapyCtx s1} {P : CapyPeakSet s1} {ctx : SrcCtx s1 s2}
+    {ρ : Rename s2 s2'} :
+    peakSepCtx Γ P (ctx.rename ρ) = (peakSepCtx Γ P ctx).rename ρ := by
   simp only [peakSepCtx]
   rw [peakSepCtx_foldl_rename (item := peakKeyItem P)]
   rfl
