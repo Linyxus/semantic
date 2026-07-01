@@ -1,11 +1,24 @@
 import Semantic.CoreCapybara.Semantics
 import Semantic.CoreCapybara.TypeSystem
 import Semantic.CoreCapybara.Denotation.KripkeModel
+import Semantic.CoreCapybara.Denotation.StepIndexedWorldParam
 import Semantic.Prelude
 
 namespace CoreCapybara
 
-open KripkeModel (StoreTyping WorldLe mcell_up MonRel)
+open KripkeModel (mcell_up)
+open CoreCapybara.WP (WorldLe)
+
+/-- **Store typing at index `k`** — the Ahmed world-parametrized step-indexed store
+  (`Denotation/StepIndexedWorldParam.lean`).  Replaces the frozen `KripkeModel.StoreTyping`
+  (`Nat → Option MonRel`, one-way): a `StoreTyping k` maps each location to an optional
+  step-indexed relation `SemRel k` — a family over ALL lower worlds — so the cell agreement
+  can be a genuine biconditional (both `read` and `write`) yet stay `WorldLe`-monotone. -/
+abbrev StoreTyping (k : Nat) : Type := WP.World k
+
+/-- A **step-indexed value relation** stored at a cell: `SemRel k = (j : Fin k) → World j →
+  Memory → Exp {} → Prop` (a family over all lower worlds).  Replaces the frozen `MonRel`. -/
+abbrev MonRel (k : Nat) : Type := WP.SemRel k
 
 /-- Denotation of types, instantiated at a fixed Kripke world `(k, st)`.
   A `Denot` is the world-applied face of an `IDenot`; the existing combinator
@@ -15,10 +28,41 @@ open KripkeModel (StoreTyping WorldLe mcell_up MonRel)
 def Denot := Memory -> Exp {} -> Prop
 
 /-- An **indexed denotation**: a `Denot` parameterised by a step index `k` and a
-  store typing `st` (the Kripke world).  Type variables carry an `IDenot`, and
+  store typing `st : StoreTyping k` (the Kripke world).  Now DEPENDENT — the store's type
+  is coupled to the index (`World k`).  Type variables carry an `IDenot`, and
   `val_denot`/`exi_val_denot` produce one.  The world-applied `d k st : Denot` is
   what the combinator layer consumes. -/
-def IDenot := Nat -> StoreTyping -> Denot
+def IDenot := (k : Nat) -> StoreTyping k -> Denot
+
+/-- **Step measure of a trace**: the number of *index-consuming* events — namely reads
+  (`.access .ro`).  Dereferencing a cell consults the store invariant at a strictly lower
+  index (`MemTyped k` exposes content only at `i < k`), so each read costs one step.  The
+  step-counted expression relation concludes `val_denot` at `k − t.readCount`. -/
+def Trace.readCount (t : Trace) : Nat :=
+  t.countP (fun item => match item with | .access .ro _ => true | _ => false)
+
+@[simp] theorem Trace.readCount_nil : Trace.readCount [] = 0 := rfl
+
+/-- `readCount` reductions on the single-event traces the value-elimination rules produce, so
+`simp` collapses `k - t.readCount` to the right index (`k`, or `k-1` for a read). -/
+@[simp] theorem Trace.readCount_alloc (l : Nat) (t : Trace) :
+    Trace.readCount (.alloc l :: t) = Trace.readCount t := by
+  simp only [Trace.readCount, List.countP_cons]; rfl
+@[simp] theorem Trace.readCount_dealloc (l : Nat) (t : Trace) :
+    Trace.readCount (.dealloc l :: t) = Trace.readCount t := by
+  simp only [Trace.readCount, List.countP_cons]; rfl
+@[simp] theorem Trace.readCount_access_epsilon (l : Nat) (t : Trace) :
+    Trace.readCount (.access .epsilon l :: t) = Trace.readCount t := by
+  simp only [Trace.readCount, List.countP_cons]; rfl
+@[simp] theorem Trace.readCount_access_ro (l : Nat) (t : Trace) :
+    Trace.readCount (.access .ro l :: t) = Trace.readCount t + 1 := by
+  simp only [Trace.readCount, List.countP_cons]; rfl
+
+/-- Reads compose additively across trace concatenation — this is what threads the index
+  decrement through `Eval` composition (`sem_typ_letin`, application, …). -/
+@[simp] theorem Trace.readCount_append (t1 t2 : Trace) :
+    (t1 ++ t2).readCount = t1.readCount + t2.readCount := by
+  simp only [Trace.readCount, List.countP_append]
 
 /-- Pre-denotation. It takes a capability to form a denotation. -/
 def PreDenot := CapabilitySet -> Denot
@@ -201,9 +245,12 @@ def IDenot.is_monotonic (d : IDenot) : Prop :=
 def IDenot.worldle_monotonic (d : IDenot) : Prop :=
   ∀ {k st1 st2 m1 m2 e}, WorldLe st2 m2 st1 m1 → d k st1 m1 e → d k st2 m2 e
 
-/-- Downward closure in the step index. -/
+/-- Downward closure in the step index.  With the world-parametrized store the lower-index
+  face lives at the *truncated* world `st.trunc` (the store's type is coupled to the index).
+  Stated for an arbitrary drop `j ≤ k` (not just the single step `k+1 → k`), which is the form
+  consumed when descending an environment through truncation (`env_typing_worldle_down`). -/
 def IDenot.is_downward_closed (d : IDenot) : Prop :=
-  ∀ {k st m e}, d (k + 1) st m e → d k st m e
+  ∀ {j k : Nat} (hjk : j ≤ k) {st : StoreTyping k} {m e}, d k st m e → d j (st.trunc hjk) m e
 
 def IDenot.is_transparent (d : IDenot) : Prop :=
   ∀ k st, (d k st).is_transparent
@@ -221,27 +268,45 @@ def IDenot.enforce_pure (d : IDenot) : Prop :=
   ∀ k st, (d k st).enforce_pure
 
 /-- A proper indexed denotation: monotone (over `subsumes` at a fixed world),
-  transparent, bool-independent, and heap-well-formed.  (Worldle-monotonicity and
-  index-downward-closure, `IDenot.worldle_monotonic`/`is_downward_closed`, are separate
-  step-indexing properties consumed at the Fundamental type-application layer, not part
-  of `is_proper`.) -/
+  transparent, bool-independent, heap-well-formed, `WorldLe`-monotone, and
+  index-downward-closed.  Index-downward-closure is bundled here (rather than kept as a
+  separate side property) because descending an environment through world truncation
+  (`env_typing_worldle_down`) needs *every* stored `tvar` denotation to be downward-closed,
+  exactly as it needs them monotone. -/
 def IDenot.is_proper (d : IDenot) : Prop :=
   d.is_monotonic
   ∧ d.is_transparent
   ∧ d.is_bool_independent
   ∧ d.implies_wf
   ∧ d.worldle_monotonic
+  ∧ d.is_downward_closed
 
-/-- `d1` implies `d2` at every future world above `(st, m)`, at index `k`. -/
-def IDenot.ImplyAfter (d1 : IDenot) (k : Nat) (st : StoreTyping) (m : Memory)
+/-- `d1` implies `d2` at every future world above `(st, m)`, **index-uniformly**: the
+implication holds not only at the base index `k` but at every lower index `j ≤ k`, comparing
+against the base world truncated to that level (`st.trunc hjk`).  Index-uniformity is what
+lets subtyping survive the step-count decrement (the `Eval` postcondition lands at
+`k - t.readCount`, a strictly lower index than the caller's `k`) and lets `ImplyAfter`
+descend through world truncation (`ImplyAfter.trunc`). -/
+def IDenot.ImplyAfter (d1 : IDenot) (k : Nat) (st : StoreTyping k) (m : Memory)
     (d2 : IDenot) : Prop :=
-  ∀ st' m', WorldLe st' m' st m → ∀ e, d1 k st' m' e → d2 k st' m' e
+  ∀ (j : Nat) (hjk : j ≤ k) (st' : StoreTyping j) m',
+    WorldLe st' m' (st.trunc hjk) m → ∀ e, d1 j st' m' e → d2 j st' m' e
 
 /-- `ImplyAfter` weakens its base world along `subsumes`. -/
-theorem IDenot.imply_after_subsumes {d1 d2 : IDenot} {k : Nat} {st : StoreTyping}
+theorem IDenot.imply_after_subsumes {d1 d2 : IDenot} {k : Nat} {st : StoreTyping k}
     {m1 m2 : Memory} (himp : d1.ImplyAfter k st m1 d2) (hmem : m2.subsumes m1) :
     d1.ImplyAfter k st m2 d2 :=
-  fun st' m' hwle e h => himp st' m' (WorldLe.trans ⟨hmem, fun _ _ hh => hh⟩ hwle) e h
+  fun j hjk st' m' hwle e h => himp j hjk st' m' (WorldLe.trans ⟨hmem, fun _ _ hh => hh⟩ hwle) e h
+
+/-- `ImplyAfter` descends through world truncation: an implication holding above `(st, m)` at
+base index `k` also holds above the truncated base `(st.trunc hjk, m)` at any lower index `j`.
+Pure restriction of the index range — no proof obligation beyond `Nat.le_trans`. -/
+theorem IDenot.ImplyAfter.trunc {d1 d2 : IDenot} {j k : Nat} (hjk : j ≤ k)
+    {st : StoreTyping k} {m : Memory} (himp : d1.ImplyAfter k st m d2) :
+    d1.ImplyAfter j (st.trunc hjk) m d2 :=
+  fun i hij st' m' hwle e h =>
+    himp i (Nat.le_trans hij hjk) st' m'
+      (by rw [WP.World.trunc_trunc] at hwle; exact hwle) e h
 
 /-- Type information for each kind of variable bindings in type context. -/
 inductive TypeInfo : Sig -> Kind -> Type where
@@ -592,18 +657,58 @@ theorem witness_live_of_ne_pack {m' : Memory} {v : Exp {}}
 /-- **Store consistency**: every store-typed location is an allocated mutable cell (live or
 dead) in `m`.  This is the world-well-formedness fact that makes a *heap*-fresh location
 also *store-typing*-fresh — exactly what `alloc` needs to extend the store typing. -/
-def StoreConsistent (st : StoreTyping) (m : Memory) : Prop :=
-  ∀ l R, st l = some R → ∃ n ℓ, m.lookup l = some (.capability (.mcell n ℓ))
+def StoreConsistent {k : Nat} (st : StoreTyping k) (m : Memory) : Prop :=
+  ∀ l R, st.lookup l = some R → ∃ n ℓ, m.lookup l = some (.capability (.mcell n ℓ))
 
-/-- A memory is **well-typed** for store typing `st`: store-consistent, AND every live
-`st`-typed cell holds a value satisfying its stored (monotone) relation `R`.  The relation
-is *applied* directly (no recursion through `val_denot`), which breaks the higher-order-store
-circularity and is substitution-stable.  Defined BEFORE the `val_denot` block so the
-function-like cases can quantify over `MemTyped` future worlds. -/
-def MemTyped (_k : Nat) (st : StoreTyping) (m : Memory) : Prop :=
+/-- A memory is **well-typed** for store typing `st : StoreTyping k`: store-consistent, AND
+every live `st`-typed cell holds a value satisfying its stored step-indexed relation `R` at
+EVERY lower level `i < k` (at the truncated world `st.trunc`).  `R` is *applied* directly (no
+recursion through `val_denot`), breaking the higher-order-store circularity.  Because `R` is
+`Fin k`-indexed, the content is exposed only at `i < k` — this is what makes a `read` consume
+one index.  Defined BEFORE the `val_denot` block so the function-like cases can quantify over
+`MemTyped` future worlds. -/
+def MemTyped (k : Nat) (st : StoreTyping k) (m : Memory) : Prop :=
   StoreConsistent st m ∧
-  ∀ l n R, st l = some R → m.lookup l = some (.capability (.mcell n .live)) →
-    R.1 m (.var (.free n))
+  -- every stored relation is **growth-stable** (the world-param analog of the old `MonRel.2`
+  -- bundling): stable under `WorldLe` at each lower level.  This is what lets `alloc`/`write`/
+  -- `drop` transport an *unchanged* cell's good-value across the world step.
+  (∀ l (R : MonRel k), st.lookup l = some R →
+    ∀ (i : Fin k) (w1 w2 : StoreTyping i.val) (m1 m2 : Memory),
+      WorldLe w2 m2 w1 m1 → ∀ e, R i w1 m1 e → R i w2 m2 e) ∧
+  ∀ l n (R : MonRel k), st.lookup l = some R → m.lookup l = some (.capability (.mcell n .live)) →
+    ∀ (i : Fin k), R i (st.trunc (Nat.le_of_lt i.isLt)) m (.var (.free n))
+
+/-- **`MemTyped` descends through world truncation.**  A memory well-typed at index `k` is
+well-typed at every lower index `j ≤ k` against the truncated world.  Each `Fin j` obligation
+re-embeds into `Fin k`; the doubly-truncated good-value world collapses via `trunc_trunc`.
+Consumed by the value-elimination rules (`read`/`write`) whose result world lives at a lower
+index. -/
+theorem MemTyped_trunc {j k : Nat} (hjk : j ≤ k) {st : StoreTyping k} {m : Memory}
+    (h : MemTyped k st m) : MemTyped j (st.trunc hjk) m := by
+  obtain ⟨hcons, hstable, hgood⟩ := h
+  refine ⟨?_, ?_, ?_⟩
+  · intro l R' hl
+    rw [WP.World.trunc_lookup] at hl
+    cases hlk : st.lookup l with
+    | none => rw [hlk] at hl; cases hl
+    | some R0 => exact hcons l R0 hlk
+  · intro l R' hl i w1 w2 m1 m2 hw e hR'
+    rw [WP.World.trunc_lookup] at hl
+    cases hlk : st.lookup l with
+    | none => rw [hlk] at hl; cases hl
+    | some R0 =>
+      rw [hlk, Option.map_some] at hl
+      injection hl with hl; subst hl
+      exact hstable l R0 hlk ⟨i.val, Nat.lt_of_lt_of_le i.isLt hjk⟩ w1 w2 m1 m2 hw e hR'
+  · intro l n R' hl hlkm i
+    rw [WP.World.trunc_lookup] at hl
+    cases hlk : st.lookup l with
+    | none => rw [hlk] at hl; cases hl
+    | some R0 =>
+      rw [hlk, Option.map_some] at hl
+      injection hl with hl; subst hl
+      rw [WP.World.trunc_trunc]
+      exact hgood l n R0 hlk hlkm ⟨i.val, Nat.lt_of_lt_of_le i.isLt hjk⟩
 
 mutual
 
@@ -617,7 +722,7 @@ mutual
   premise), so every recursive call decrements the index; the definition is well-founded
   on `(k, sizeOf T)` lexicographically. -/
 def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
-    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+    (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   match T with
   | .top =>
     e.IsSimpleAns ∧ e.WfInHeap m.heap ∧ resolve_reachability m.heap e ⊆ .empty
@@ -636,18 +741,22 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
   | .reader cs Tc =>
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
-    ∃ (label : Nat) (n0 : Nat) (ℓ0 : Liveness) (R : MonRel),
+    ∃ (label : Nat) (n0 : Nat) (ℓ0 : Liveness) (R : MonRel k),
       resolve m.heap e = some (.reader (.free label)) ∧
       m.lookup label = some (.capability (.mcell n0 ℓ0)) ∧
       (cs.denot env m).covers (.access .ro) label ∧
-      st label = some R ∧ (∀ m' e', R.1 m' e' → Ty.val_denot env Tc k st m' e')
+      st.lookup label = some R ∧
+      (∀ (j : Fin k) (w' : StoreTyping j.val) (m' : Memory) (e' : Exp {}),
+        R j w' m' e' ↔ Ty.val_denot env Tc j.val w' m' e')
   | .cell cs Tc =>
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
     ∃ l n0 ℓ0 R,
       e = .var (.free l) ∧
       m.lookup l = some (.capability (.mcell n0 ℓ0)) ∧
       (cs.denot env m).covers (.access .epsilon) l ∧
-      st l = some R ∧ (∀ m' e', R.1 m' e' → Ty.val_denot env Tc k st m' e')
+      st.lookup l = some R ∧
+      (∀ (j : Fin k) (w' : StoreTyping j.val) (m' : Memory) (e' : Exp {}),
+        R j w' m' e' ↔ Ty.val_denot env Tc j.val w' m' e')
   | .arrow T1 cs T2 =>
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -656,17 +765,19 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
       cs'.WfInHeap m.heap ∧
       let R0 := expand_captures m.heap cs'
       R0 ⊆ (cs.denot env m) ∧
-      (∀ (st' : StoreTyping) (m' : Memory) (arg : Nat),
-        WorldLe st' m' st m →
-        MemTyped k st' m' →
+      (∀ (j : Nat) (hjk : j ≤ k) (st' : StoreTyping j) (m' : Memory) (arg : Nat),
+        WorldLe st' m' (st.trunc hjk) m →
+        MemTyped j st' m' →
         m'.is_compatible R0 →
-        Ty.val_denot env T1 k st' m' (.var (.free arg)) →
+        Ty.val_denot env T1 j st' m' (.var (.free arg)) →
         Eval m' (t0.subst (Subst.openVar (.free arg))) (fun t v m'' =>
           TraceOk t R0 ∧
-          ∃ st'', WorldLe st'' m'' st' m' ∧
-            MemTyped k st'' m'' ∧
+          ∃ (st'' : StoreTyping (j - t.readCount)),
+            WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
+            MemTyped (j - t.readCount) st'' m'' ∧
             Ty.exi_val_denot
-              (env.extend_var arg (compute_peakset env T1.captureSet)) T2 k st'' m'' v ∧
+              (env.extend_var arg (compute_peakset env T1.captureSet)) T2
+              (j - t.readCount) st'' m'' v ∧
             pack_bound R0 m' v m'' ∧ witness_live v m''))
   | .poly T1 cs T2 =>
     e.WfInHeap m.heap ∧
@@ -676,20 +787,24 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
       cs'.WfInHeap m.heap ∧
       let R0 := expand_captures m.heap cs'
       R0 ⊆ (cs.denot env m) ∧
-      (∀ (st' : StoreTyping) (m' : Memory) (denot : IDenot),
-        WorldLe st' m' st m →
-        MemTyped k st' m' →
+      (∀ (j : Nat) (hjk : j ≤ k) (st' : StoreTyping j) (m' : Memory) (denot : IDenot),
+        WorldLe st' m' (st.trunc hjk) m →
+        MemTyped j st' m' →
         m'.is_compatible R0 →
         denot.is_proper →
         denot.implies_simple_ans →
-        (∀ st'' m'', WorldLe st'' m'' st' m' → ∀ e',
-          denot k st'' m'' e' → Ty.val_denot env T1 k st'' m'' e') →
+        -- **index-uniform** implication (`ImplyAfter`), so that the poly body can reconstruct the
+        -- `tvar` binding's `EnvTyping` obligation (which stores `ImplyAfter`) at `j` verbatim.
+        -- `Ty.val_denot env T1` is passed partially applied; its `sizeOf T1 < sizeOf (poly ..)`
+        -- still discharges `termination_by sizeOf T`.
+        IDenot.ImplyAfter denot j st' m' (Ty.val_denot env T1) →
         denot.enforce_pure →
         Eval m' (t0.subst (Subst.openTVar .top)) (fun t v m'' =>
           TraceOk t R0 ∧
-          ∃ st'', WorldLe st'' m'' st' m' ∧
-            MemTyped k st'' m'' ∧
-            Ty.exi_val_denot (env.extend_tvar denot) T2 k st'' m'' v ∧
+          ∃ (st'' : StoreTyping (j - t.readCount)),
+            WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
+            MemTyped (j - t.readCount) st'' m'' ∧
+            Ty.exi_val_denot (env.extend_tvar denot) T2 (j - t.readCount) st'' m'' v ∧
             pack_bound R0 m' v m'' ∧ witness_live v m''))
   | .cpoly B cs T =>
     e.WfInHeap m.heap ∧
@@ -699,19 +814,21 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
       cs'.WfInHeap m.heap ∧
       let R0 := expand_captures m.heap cs'
       R0 ⊆ (cs.denot env m) ∧
-      (∀ (st' : StoreTyping) (m' : Memory) (CS : CaptureSet {}),
+      (∀ (j : Nat) (hjk : j ≤ k) (st' : StoreTyping j) (m' : Memory) (CS : CaptureSet {}),
         CS.WfInHeap m'.heap →
         (CS.ground_denot m').drop_free →
         let A0 := CS.denot TypeEnv.empty
-        WorldLe st' m' st m →
-        MemTyped k st' m' →
+        WorldLe st' m' (st.trunc hjk) m →
+        MemTyped j st' m' →
         m'.is_compatible R0 →
         ((A0 m').BoundedBy (B.denot env m')) →
         Eval m' (t0.subst (Subst.openCVar CS)) (fun t v m'' =>
           TraceOk t R0 ∧
-          ∃ st'', WorldLe st'' m'' st' m' ∧
-            MemTyped k st'' m'' ∧
-            Ty.exi_val_denot (env.extend_cvar CS (cap := CS.ground_denot m')) T k st'' m'' v ∧
+          ∃ (st'' : StoreTyping (j - t.readCount)),
+            WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
+            MemTyped (j - t.readCount) st'' m'' ∧
+            Ty.exi_val_denot (env.extend_cvar CS (cap := CS.ground_denot m')) T
+              (j - t.readCount) st'' m'' v ∧
             pack_bound R0 m' v m'' ∧ witness_live v m''))
   | .modal cs Ψ E =>
     e.WfInHeap m.heap ∧
@@ -726,9 +843,9 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
         TypeEnv.empty.Satisfy sepctx0 m') ∧
       let R0 := expand_captures m.heap cs0
       R0 ⊆ (cs.denot env m) ∧
-      (∀ (st' : StoreTyping) (m' : Memory),
-        WorldLe st' m' st m →
-        MemTyped k st' m' →
+      (∀ (j : Nat) (hjk : j ≤ k) (st' : StoreTyping j) (m' : Memory),
+        WorldLe st' m' (st.trunc hjk) m →
+        MemTyped j st' m' →
         m'.is_compatible R0 →
        (∀ C mode,
           Ψ.Has C mode →
@@ -738,15 +855,16 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
           CapabilitySet.Noninterference (C1.denot env m') (C2.denot env m')) →
         Eval m' t0 (fun t v m'' =>
           TraceOk t R0 ∧
-          ∃ st'', WorldLe st'' m'' st' m' ∧
-            MemTyped k st'' m'' ∧
-            Ty.exi_val_denot env E k st'' m'' v ∧
+          ∃ (st'' : StoreTyping (j - t.readCount)),
+            WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
+            MemTyped (j - t.readCount) st'' m'' ∧
+            Ty.exi_val_denot env E (j - t.readCount) st'' m'' v ∧
             pack_bound R0 m' v m'' ∧ witness_live v m''))
 termination_by sizeOf T
 
 /-- Value denotation for existential types (step-indexed). -/
 def Ty.exi_val_denot (ρ : TypeEnv s) (E : Ty .exi s)
-    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+    (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   match E with
   | .typ T => Ty.val_denot ρ T k st m e
   | .exi T =>
@@ -760,92 +878,160 @@ termination_by sizeOf E
 
 end
 
-/-- Expression denotation for capturing types (step-indexed).  Takes an explicit
+/-- Expression denotation for capturing types (**step-counted**).  Takes an explicit
     capture set (the use set from the typing judgment).  Assumes the starting world is
-    well-typed (`MemTyped k st m`); the result world carries an *extended* store typing
-    `st'` (allocations grow it) that stays well-typed. -/
+    well-typed (`MemTyped k st m`); the result is a `T`-value at the **decremented** index
+    `k − t.readCount` (each read in the trace `t` consumes one index — see `Trace.readCount`),
+    at an extended well-typed store typing `st'` truncated to that index. -/
 def Ty.exp_denot (ρ : TypeEnv s) (T : Ty .capt s) (R : CapabilitySet)
-    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+    (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   MemTyped k st m →
   Eval m e (fun t v m' =>
     TraceOk t R ∧
-    ∃ st', WorldLe st' m' st m ∧ MemTyped k st' m' ∧ Ty.val_denot ρ T k st' m' v)
+    ∃ (st' : StoreTyping (k - t.readCount)),
+      WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) m ∧
+      MemTyped (k - t.readCount) st' m' ∧
+      Ty.val_denot ρ T (k - t.readCount) st' m' v)
 
-/-- Expression denotation for existential types (step-indexed).
-    The postcondition carries, besides the value denotation at an extended well-typed
-    world `st'`, the pack-witness authority bound `pack_bound` and `witness_live`. -/
+/-- Expression denotation for existential types (**step-counted**).
+    Besides the value denotation at the decremented index `k − t.readCount` and extended
+    well-typed world `st'`, the postcondition carries the pack-witness bound `pack_bound`
+    and `witness_live` (both index-independent). -/
 def Ty.exi_exp_denot (ρ : TypeEnv s) (E : Ty .exi s) (R : CapabilitySet)
-    (k : Nat) (st : StoreTyping) (m : Memory) (e : Exp {}) : Prop :=
+    (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   MemTyped k st m →
   Eval m e (fun t v m' =>
     TraceOk t R ∧
-    ∃ st', WorldLe st' m' st m ∧ MemTyped k st' m' ∧
-      Ty.exi_val_denot ρ E k st' m' v ∧ pack_bound R m v m' ∧ witness_live v m')
+    ∃ (st' : StoreTyping (k - t.readCount)),
+      WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) m ∧
+      MemTyped (k - t.readCount) st' m' ∧
+      Ty.exi_val_denot ρ E (k - t.readCount) st' m' v ∧ pack_bound R m v m' ∧ witness_live v m')
 
 /-- **Alloc preserves `MemTyped` and steps up `WorldLe`** — the heap-fresh location `l` is
 store-typing-fresh by consistency, so no separate freshness hypothesis is needed.  The fresh
 cell stores the (monotone) content relation `R`; consistency and good-value are both
 preserved (old cells stay, the new cell is a live mcell holding an `R`-good value). -/
-theorem WT_alloc {k : Nat} {st : StoreTyping} {m : Memory} {c : Nat}
-    {R : MonRel} {l : Nat} (hfresh : m.heap l = none) (hcontent : m.heap c ≠ none)
+theorem WT_alloc {k : Nat} {st : StoreTyping k} {m : Memory} {c : Nat}
+    {R : MonRel k} {l : Nat} (hfresh : m.heap l = none) (hcontent : m.heap c ≠ none)
     (hwt : MemTyped k st m)
-    (hRext : R.1 (m.extend_mcell l c hfresh hcontent) (.var (.free c))) :
+    (hRstable : ∀ (i : Fin k) (w1 w2 : StoreTyping i.val) (m1 m2 : Memory),
+      WorldLe w2 m2 w1 m1 → ∀ e, R i w1 m1 e → R i w2 m2 e)
+    (hRext : ∀ (i : Fin k),
+      R i ((st.set l R).trunc (Nat.le_of_lt i.isLt)) (m.extend_mcell l c hfresh hcontent)
+        (.var (.free c))) :
     WorldLe (st.set l R) (m.extend_mcell l c hfresh hcontent) st m ∧
       MemTyped k (st.set l R) (m.extend_mcell l c hfresh hcontent) := by
-  obtain ⟨hcons, hmt⟩ := hwt
-  have hstfresh : st l = none := by
-    rcases hopt : st l with _ | R0
+  obtain ⟨hcons, hstable, hgood⟩ := hwt
+  have hsub : (m.extend_mcell l c hfresh hcontent).subsumes m :=
+    Memory.extend_mcell_subsumes m l c hfresh hcontent
+  have hstfresh : st.lookup l = none := by
+    rcases hopt : st.lookup l with _ | R0
     · rfl
     · obtain ⟨n, ℓ, hlk⟩ := hcons l R0 hopt
       rw [show m.lookup l = m.heap l from rfl] at hlk
       rw [hfresh] at hlk; cases hlk
-  obtain ⟨hwle, hmt'⟩ := KripkeModel.alloc_world (k := k) hfresh hstfresh hcontent hmt hRext
-  refine ⟨hwle, ?_, hmt'⟩
-  intro l' R' hst'
-  unfold KripkeModel.StoreTyping.set at hst'
-  by_cases hl' : l' = l
-  · subst hl'; exact ⟨c, .live, Memory.extend_mcell_lookup hfresh hcontent⟩
-  · rw [if_neg hl'] at hst'
-    obtain ⟨n, ℓ, hlk⟩ := hcons l' R' hst'
-    refine ⟨n, ℓ, ?_⟩
-    rw [show (m.extend_mcell l c hfresh hcontent).lookup l' = m.lookup l' from by
-      simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hl']]
-    exact hlk
+  have hwle : WorldLe (st.set l R) (m.extend_mcell l c hfresh hcontent) st m := by
+    refine ⟨hsub, ?_⟩
+    intro l' R' h
+    rw [WP.World.set_lookup]
+    by_cases hl' : l' = l
+    · subst hl'; rw [hstfresh] at h; cases h
+    · rw [if_neg hl']; exact h
+  refine ⟨hwle, ?_, ?_, ?_⟩
+  · -- StoreConsistent
+    intro l' R' hst'
+    rw [WP.World.set_lookup] at hst'
+    by_cases hl' : l' = l
+    · subst hl'; exact ⟨c, .live, Memory.extend_mcell_lookup hfresh hcontent⟩
+    · rw [if_neg hl'] at hst'
+      obtain ⟨n, ℓ, hlk⟩ := hcons l' R' hst'
+      refine ⟨n, ℓ, ?_⟩
+      rw [show (m.extend_mcell l c hfresh hcontent).lookup l' = m.lookup l' from by
+        simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hl']]
+      exact hlk
+  · -- growth-stability of the extended store's stored relations
+    intro l' R' hst'
+    rw [WP.World.set_lookup] at hst'
+    by_cases hl' : l' = l
+    · subst l'; rw [if_pos rfl] at hst'; obtain rfl := Option.some.inj hst'; exact hRstable
+    · rw [if_neg hl'] at hst'; exact hstable l' R' hst'
+  · -- good-value at every lower level
+    intro l' n R' hst' hlk' i
+    rw [WP.World.set_lookup] at hst'
+    by_cases hl' : l' = l
+    · subst l'
+      rw [if_pos rfl] at hst'
+      obtain rfl := Option.some.inj hst'
+      have hcn : c = n := by
+        have hlc := Memory.extend_mcell_lookup (m := m) (l := l) (n := c) hfresh hcontent
+        have hinj := Option.some.inj (hlc.symm.trans hlk')
+        exact (CapabilityInfo.mcell.inj (Cell.capability.inj hinj)).1
+      subst hcn
+      exact hRext i
+    · rw [if_neg hl'] at hst'
+      -- old cell `l' ≠ l` unchanged; transport its good-value via growth-stability.
+      have hlk_old : m.lookup l' = some (.capability (.mcell n .live)) := by
+        rw [← hlk']
+        simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hl']
+      have hgv := hgood l' n R' hst' hlk_old i
+      exact hstable l' R' hst' i _ _ _ _ (WP.WorldLe.trunc (Nat.le_of_lt i.isLt) hwle) _ hgv
 
 /-- **Write preserves `MemTyped`** (store typing fixed; memory updated type-preservingly). -/
-theorem WT_write {k : Nat} {st : StoreTyping} {m : Memory} {l : Nat}
-    {R : MonRel} {y n0 : Nat}
+theorem WT_write {k : Nat} {st : StoreTyping k} {m : Memory} {l : Nat}
+    {R : MonRel k} {y n0 : Nat}
     (hexists : m.lookup l = some (.capability (.mcell n0 .live)))
     (hcontent : Liveness.live = .live → m.heap y ≠ none)
-    (hst : st l = some R) (hwt : MemTyped k st m)
-    (hyR : R.1 (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) (.var (.free y))) :
+    (hst : st.lookup l = some R) (hwt : MemTyped k st m)
+    (hyR : ∀ (i : Fin k),
+      R i (st.trunc (Nat.le_of_lt i.isLt)) (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent)
+        (.var (.free y))) :
     WorldLe st (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) st m ∧
       MemTyped k st (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) := by
-  obtain ⟨hcons, hmt⟩ := hwt
-  obtain ⟨hwle, hmt'⟩ := KripkeModel.write_world (k := k) hexists hcontent hst hmt hyR
-  refine ⟨hwle, ?_, hmt'⟩
-  intro l' R' hst'
-  obtain ⟨n, ℓ, hlk⟩ := hcons l' R' hst'
-  by_cases hl' : l' = l
-  · subst hl'
-    exact ⟨y, .live, by simp [Memory.lookup, Memory.update_mcell, Heap.update_cell]⟩
-  · refine ⟨n, ℓ, ?_⟩
-    rw [show (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent).lookup l' = m.lookup l' from by
-      simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_neg hl']]
-    exact hlk
+  obtain ⟨hcons, hstable, hgood⟩ := hwt
+  have hsub : (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent).subsumes m :=
+    Memory.update_mcell_subsumes m l y .live ⟨n0, hexists⟩ hcontent
+  refine ⟨⟨hsub, fun _ _ h => h⟩, ?_, hstable, ?_⟩
+  · intro l' R' hst'
+    obtain ⟨n, ℓ, hlk⟩ := hcons l' R' hst'
+    by_cases hl' : l' = l
+    · subst hl'
+      exact ⟨y, .live, by simp [Memory.lookup, Memory.update_mcell, Heap.update_cell]⟩
+    · refine ⟨n, ℓ, ?_⟩
+      rw [show (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent).lookup l' = m.lookup l' from by
+        simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_neg hl']]
+      exact hlk
+  · intro l' n R' hst' hlk' i
+    by_cases hl' : l' = l
+    · subst l'
+      rw [hst] at hst'
+      obtain rfl := Option.some.inj hst'
+      have hyn : y = n := by
+        have hlu : (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent).lookup l
+            = some (.capability (.mcell y .live)) := by
+          simp [Memory.lookup, Memory.update_mcell, Heap.update_cell]
+        have hinj := Option.some.inj (hlu.symm.trans hlk')
+        exact (CapabilityInfo.mcell.inj (Cell.capability.inj hinj)).1
+      subst hyn
+      exact hyR i
+    · -- old cell `l ≠ l'` unchanged; transport its good-value across the update via stability.
+      have hlk_old : m.lookup l' = some (.capability (.mcell n .live)) := by
+        rw [← hlk']
+        simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_neg hl']
+      have hgv := hgood l' n R' hst' hlk_old i
+      exact hstable l' R' hst' i _ _ _ _
+        (WP.WorldLe.trunc (Nat.le_of_lt i.isLt) ⟨hsub, fun _ _ h => h⟩) _ hgv
 
 /-- **Drop preserves `MemTyped`**: the dropped cell becomes a dead mcell (still an mcell, so
-consistency holds; its good-value obligation is vacuous), other live cells transport via
-`R.2`. -/
-theorem WT_drop {k : Nat} {st : StoreTyping} {m : Memory} {l : Nat}
+consistency holds; its good-value obligation is vacuous), other live cells transport. -/
+theorem WT_drop {k : Nat} {st : StoreTyping k} {m : Memory} {l : Nat}
     (hexists : ∃ b, m.heap l = some (.capability (.mcell b .live)))
     (hwt : MemTyped k st m) :
     WorldLe st (m.drop_mcell l hexists) st m ∧ MemTyped k st (m.drop_mcell l hexists) := by
-  obtain ⟨hcons, hgood⟩ := hwt
+  obtain ⟨hcons, hstable, hgood⟩ := hwt
   have hsub : (m.drop_mcell l hexists).subsumes m := Memory.drop_mcell_subsumes m l hexists
   have hdrop_l : (m.drop_mcell l hexists).lookup l = some (.capability (.mcell 0 .dead)) := by
     simp [Memory.lookup, Memory.drop_mcell, Heap.update_cell]
-  refine ⟨⟨hsub, fun _ _ h => h⟩, ?_, ?_⟩
+  refine ⟨⟨hsub, fun _ _ h => h⟩, ?_, hstable, ?_⟩
   · intro l' R' hst'
     obtain ⟨n, ℓ, hlk⟩ := hcons l' R' hst'
     by_cases hl' : l' = l
@@ -854,7 +1040,7 @@ theorem WT_drop {k : Nat} {st : StoreTyping} {m : Memory} {l : Nat}
       rw [show (m.drop_mcell l hexists).lookup l' = m.lookup l' from by
         simp only [Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_neg hl']]
       exact hlk
-  · intro l' n R' hst' hlk'
+  · intro l' n R' hst' hlk' i
     by_cases hl' : l' = l
     · subst hl'
       rw [hdrop_l] at hlk'
@@ -863,7 +1049,10 @@ theorem WT_drop {k : Nat} {st : StoreTyping} {m : Memory} {l : Nat}
     · have hlk_old : m.lookup l' = some (.capability (.mcell n .live)) := by
         rw [← hlk']
         simp only [Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_neg hl']
-      exact R'.2 m _ hsub _ (hgood l' n R' hst' hlk_old)
+      -- old cell unchanged; transport good-value across the drop via growth-stability.
+      have hgv := hgood l' n R' hst' hlk_old i
+      exact hstable l' R' hst' i _ _ _ _
+        (WP.WorldLe.trunc (Nat.le_of_lt i.isLt) ⟨hsub, fun _ _ h => h⟩) _ hgv
 
 @[simp]
 instance instCaptHasDenotation :
@@ -885,7 +1074,7 @@ instance instCaptureBoundHasDenotation :
   HasDenotation (CaptureBound s) (TypeEnv s) CapBoundDenot where
   interp := CaptureBound.denot
 
-def EnvTyping : Ctx s -> TypeEnv s -> Nat -> StoreTyping -> Memory -> Prop
+def EnvTyping : Ctx s -> TypeEnv s -> (k : Nat) -> StoreTyping k -> Memory -> Prop
 | .empty, .empty, _, _, _ => True
 | .push Γ (.var T), .extend env (.var n ps), k, st, m =>
   ⟦T⟧_[env] k st m (.var (.free n)) ∧
@@ -913,7 +1102,7 @@ def EnvTyping : Ctx s -> TypeEnv s -> Nat -> StoreTyping -> Memory -> Prop
 /-- From `EnvTyping`, every capture variable's stored capability is drop-free,
 from the `cap.drop_free` conjunct of each cvar binding. -/
 theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
-    {k : Nat} {st : StoreTyping} {m : Memory}
+    {k : Nat} {st : StoreTyping k} {m : Memory}
     (hts : EnvTyping Γ env k st m) (c : BVar s .cvar) :
     (env.lookup_cvar c).2.drop_free := by
   induction Γ with
@@ -953,7 +1142,7 @@ theorem envtyping_lookup_cvar_drop_free {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
 /-- From `EnvTyping`, the authority recorded in the environment for each
 capture variable matches the context binding's authority. -/
 theorem envtyping_lookup_cvar_auth {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
-    {k : Nat} {st : StoreTyping} {m : Memory}
+    {k : Nat} {st : StoreTyping k} {m : Memory}
     (hts : EnvTyping Γ env k st m) (c : BVar s .cvar) :
     env.lookup_cvar_auth c = Γ.lookup_authority c := by
   induction Γ with
@@ -1369,7 +1558,7 @@ judgment to syntactic well-formedness: `EnvTyping` ensures each variable locatio
 exists in memory, so the substitution mapping variables to them is well-formed.
 -/
 theorem from_TypeEnv_wf_in_heap
-  {Γ : Ctx s} {ρ : TypeEnv s} {k : Nat} {st : StoreTyping} {m : Memory}
+  {Γ : Ctx s} {ρ : TypeEnv s} {k : Nat} {st : StoreTyping k} {m : Memory}
   (htyping : EnvTyping Γ ρ k st m) :
   (Subst.from_TypeEnv ρ).WfInHeap m.heap := by
   induction Γ with
@@ -1616,6 +1805,10 @@ def TypeEnv.is_bool_independent (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
     (env.lookup_tvar X).is_bool_independent
 
+def TypeEnv.is_downward_closed (env : TypeEnv s) : Prop :=
+  ∀ (X : BVar s .tvar),
+    (env.lookup_tvar X).is_downward_closed
+
 theorem typed_env_is_monotonic
   (ht : EnvTyping Γ env k st mem) :
   env.IsMonotonic := by
@@ -1644,7 +1837,7 @@ theorem typed_env_is_monotonic
                    | here => exact hproper.1
                    | there x => exact (ih ht').tvar x,
                  fun x => by cases x with
-                   | here => exact hproper.2.2.2.2
+                   | here => exact hproper.2.2.2.2.1
                    | there x => exact (ih ht').tvar_worldle x⟩
       | cvar _ B =>
         cases info with
@@ -1706,6 +1899,50 @@ theorem typed_env_is_transparent
           simp only [EnvTyping] at ht
           obtain ⟨_, ht'⟩ := ht
           unfold TypeEnv.is_transparent
+          intro x; cases x with
+          | there x => exact ih ht' x
+
+/-- Every `tvar` binding's stored denotation is index-downward-closed (the new sixth conjunct
+of `is_proper`).  Consumed by `val_denot_down_trunc` / `env_typing_worldle_down`. -/
+theorem typed_env_is_downward_closed
+  (ht : EnvTyping Γ env k st mem) :
+  env.is_downward_closed := by
+  unfold TypeEnv.is_downward_closed
+  induction Γ with
+  | empty =>
+    cases env with
+    | empty => intro x; cases x
+  | push Γ k ih =>
+    cases env with
+    | extend env' info =>
+      cases k with
+      | var T =>
+        cases info with
+        | var n ps =>
+          simp only [EnvTyping] at ht
+          obtain ⟨_, _, ht'⟩ := ht
+          intro x; cases x with
+          | there x => exact ih ht' x
+      | tvar S =>
+        cases info with
+        | tvar d =>
+          simp only [EnvTyping] at ht
+          obtain ⟨hproper, _, _, _, _, ht'⟩ := ht
+          intro x; cases x with
+          | here => exact hproper.2.2.2.2.2
+          | there x => exact ih ht' x
+      | cvar _ B =>
+        cases info with
+        | cvar a cs cap =>
+          simp only [EnvTyping] at ht
+          obtain ⟨_, _, _, _, _, _, ht'⟩ := ht
+          intro x; cases x with
+          | there x => exact ih ht' x
+      | lock Ψ =>
+        cases info with
+        | lock =>
+          simp only [EnvTyping] at ht
+          obtain ⟨_, ht'⟩ := ht
           intro x; cases x with
           | there x => exact ih ht' x
 
@@ -2140,9 +2377,11 @@ def val_denot_is_monotonic {env : TypeEnv s}
     refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', T0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun st' m' arg hwle hmt hcompat harg => ?_⟩
+      fun j hjk st' m' arg hwle hmt hcompat harg => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
-    exact hfun st' m' arg (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt hcompat harg
+    exact hfun j hjk st' m' arg
+      (WorldLe.trans (WP.WorldLe.trunc hjk ⟨hmem, fun _ _ h => h⟩) hwle)
+      hmt hcompat harg
   | poly T1 cs T2 =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -2152,10 +2391,11 @@ def val_denot_is_monotonic {env : TypeEnv s}
     refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', S0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun st' m' denot hwle hmt hcompat hdenot_proper hsa himply hpure => ?_⟩
+      fun j hjk st' m' denot hwle hmt hcompat hdenot_proper hsa himply hpure => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
-    exact hfun st' m' denot (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt hcompat
-      hdenot_proper hsa himply hpure
+    exact hfun j hjk st' m' denot
+      (WorldLe.trans (WP.WorldLe.trunc hjk ⟨hmem, fun _ _ h => h⟩) hwle)
+      hmt hcompat hdenot_proper hsa himply hpure
   | cpoly B cs T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -2165,9 +2405,10 @@ def val_denot_is_monotonic {env : TypeEnv s}
     refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', B0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun st' m' CS hwf_CS hdf hwle hmt hcompat hbounded => ?_⟩
+      fun j hjk st' m' CS hwf_CS hdf hwle hmt hcompat hbounded => ?_⟩
     rw [hcs'_eq] at hcompat ⊢
-    exact hfun st' m' CS hwf_CS hdf (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt
+    exact hfun j hjk st' m' CS hwf_CS hdf
+      (WorldLe.trans (WP.WorldLe.trunc hjk ⟨hmem, fun _ _ h => h⟩) hwle) hmt
       hcompat hbounded
   | modal cs Ψ T =>
     intro m1 m2 e hmem ht
@@ -2181,9 +2422,11 @@ def val_denot_is_monotonic {env : TypeEnv s}
       SepCtx.wf_monotonic hmem hwf_sepctx,
       fun m' hsubm' hsat => hsat_impl m' (Memory.subsumes_trans hsubm' hmem) hsat,
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-      fun st' m' hwle hmt hcompat hkind hsep => by
+      fun j hjk st' m' hwle hmt hcompat hkind hsep => by
         rw [hcs'_eq] at hcompat ⊢
-        exact hbody st' m' (WorldLe.trans ⟨hmem, fun _ _ h => h⟩ hwle) hmt hcompat hkind hsep⟩
+        exact hbody j hjk st' m'
+          (WorldLe.trans (WP.WorldLe.trunc hjk ⟨hmem, fun _ _ h => h⟩) hwle)
+          hmt hcompat hkind hsep⟩
 
 /-- **WorldLe-monotonicity of the value denotation.**  The value relation transports along
 the *typed* future relation `WorldLe` (memory grows AND the store typing grows).  Unlike
@@ -2193,7 +2436,7 @@ content implication's conclusion across the store-typing growth, so they recurse
 `st1 → st2`); the function-like cases are monotone *for free* by transitivity of `WorldLe`;
 the `tvar` case is the env's `tvar_worldle` field. -/
 def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
-    (T : Ty .capt s) {k : Nat} {st1 st2 : StoreTyping} {m1 m2 : Memory}
+    (T : Ty .capt s) {k : Nat} {st1 st2 : StoreTyping k} {m1 m2 : Memory}
     (hwle : WorldLe st2 m2 st1 m1) (e : Exp {})
     (ht : Ty.val_denot env T k st1 m1 e) : Ty.val_denot env T k st2 m2 e :=
   match T with
@@ -2237,9 +2480,9 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
         | mcell b' ℓ' =>
           exact ⟨CaptureSet.wf_monotonic hwle.1 hwf_cs, l, b', ℓ', R, heq, hc',
             by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hwle.1]; exact hcov,
-            hwle.2 l R hstR,
-            fun m' e' hR =>
-              val_denot_worldle_mono henv Tc ⟨Memory.subsumes_refl m', hwle.2⟩ e' (himpl m' e' hR)⟩
+            -- store-typing persistence; the biconditional agreement carries over VERBATIM
+            -- (it never mentions the ambient world → growth-stable).
+            hwle.2 l R hstR, himpl⟩
   | .reader cs Tc => by
       unfold Ty.val_denot at ht ⊢
       obtain ⟨hwf_e, hwf_cs, label, b0, ℓ0, R, hres, hlookup, hcov, hstR, himpl⟩ := ht
@@ -2255,9 +2498,7 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
           exact ⟨Exp.wf_monotonic hwle.1 hwf_e, CaptureSet.wf_monotonic hwle.1 hwf_cs,
             label, b', ℓ', R, resolve_monotonic hwle.1 hres, hc',
             by rw [← capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hwle.1]; exact hcov,
-            hwle.2 label R hstR,
-            fun m' e' hR =>
-              val_denot_worldle_mono henv Tc ⟨Memory.subsumes_refl m', hwle.2⟩ e' (himpl m' e' hR)⟩
+            hwle.2 label R hstR, himpl⟩
   | .arrow T1 cs T2 => by
       unfold Ty.val_denot at ht ⊢
       obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -2266,9 +2507,10 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
       refine ⟨Exp.wf_monotonic hwle.1 hwf_e, CaptureSet.wf_monotonic hwle.1 hwf_cs,
         cs', T0, t0, resolve_monotonic hwle.1 hr, CaptureSet.wf_monotonic hwle.1 hwf_cs',
         by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-        fun st' m' arg hwle' hmt hcompat harg => ?_⟩
+        fun j hjk st' m' arg hwle' hmt hcompat harg => ?_⟩
       rw [hcs'_eq] at hcompat ⊢
-      exact hfun st' m' arg (WorldLe.trans hwle hwle') hmt hcompat harg
+      exact hfun j hjk st' m' arg
+        (WorldLe.trans (WP.WorldLe.trunc hjk hwle) hwle') hmt hcompat harg
   | .poly T1 cs T2 => by
       unfold Ty.val_denot at ht ⊢
       obtain ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
@@ -2277,9 +2519,10 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
       refine ⟨Exp.wf_monotonic hwle.1 hwf_e, CaptureSet.wf_monotonic hwle.1 hwf_cs,
         cs', S0, t0, resolve_monotonic hwle.1 hr, CaptureSet.wf_monotonic hwle.1 hwf_cs',
         by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-        fun st' m' denot hwle' hmt hcompat hdenot_proper hsa himply hpure => ?_⟩
+        fun j hjk st' m' denot hwle' hmt hcompat hdenot_proper hsa himply hpure => ?_⟩
       rw [hcs'_eq] at hcompat ⊢
-      exact hfun st' m' denot (WorldLe.trans hwle hwle') hmt hcompat
+      exact hfun j hjk st' m' denot
+        (WorldLe.trans (WP.WorldLe.trunc hjk hwle) hwle') hmt hcompat
         hdenot_proper hsa himply hpure
   | .cpoly B cs T => by
       unfold Ty.val_denot at ht ⊢
@@ -2289,9 +2532,10 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
       refine ⟨Exp.wf_monotonic hwle.1 hwf_e, CaptureSet.wf_monotonic hwle.1 hwf_cs,
         cs', B0, t0, resolve_monotonic hwle.1 hr, CaptureSet.wf_monotonic hwle.1 hwf_cs',
         by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-        fun st' m' CS hwf_CS hdf hwle' hmt hcompat hbounded => ?_⟩
+        fun j hjk st' m' CS hwf_CS hdf hwle' hmt hcompat hbounded => ?_⟩
       rw [hcs'_eq] at hcompat ⊢
-      exact hfun st' m' CS hwf_CS hdf (WorldLe.trans hwle hwle') hmt hcompat hbounded
+      exact hfun j hjk st' m' CS hwf_CS hdf
+        (WorldLe.trans (WP.WorldLe.trunc hjk hwle) hwle') hmt hcompat hbounded
   | .modal cs Ψ T => by
       unfold Ty.val_denot at ht ⊢
       obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs',
@@ -2303,16 +2547,113 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
         SepCtx.wf_monotonic hwle.1 hwf_sepctx,
         fun m' hsubm' hsat => hsat_impl m' (Memory.subsumes_trans hsubm' hwle.1) hsat,
         by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
-        fun st' m' hwle' hmt hcompat hkind hsep => by
+        fun j hjk st' m' hwle' hmt hcompat hkind hsep => by
           rw [hcs'_eq] at hcompat ⊢
-          exact hbody st' m' (WorldLe.trans hwle hwle') hmt hcompat hkind hsep⟩
-termination_by sizeOf T
-decreasing_by all_goals (simp_wf; try omega)
+          exact hbody j hjk st' m'
+            (WorldLe.trans (WP.WorldLe.trunc hjk hwle) hwle') hmt hcompat
+            hkind hsep⟩
 
 /-- Property-shaped wrapper: the value denotation is `WorldLe`-monotone. -/
 def val_denot_worldle_monotonic {env : TypeEnv s} (henv : env.IsMonotonic)
     (T : Ty .capt s) : IDenot.worldle_monotonic (Ty.val_denot env T) :=
   fun hwle ht => val_denot_worldle_mono henv T hwle _ ht
+
+/-- **Index-downward-closure of the value denotation.**  A `T`-value observed for `k` steps at
+`(st, m)` is a `T`-value observed for `j ≤ k` steps at the truncated world `(st.trunc hjk, m)`.
+Base/capability cases are index-agnostic (`id`); the `tvar` case is the environment's
+downward-closure; `cell`/`reader` carry the biconditional verbatim onto the truncated stored
+relation (`trunc_lookup`); the function cases re-embed the future index `i : Fin j` into
+`Fin k` and reconcile the doubly-truncated base world via `trunc_trunc`.  No recursion on the
+type — every case is discharged locally, exactly as `val_denot_worldle_mono`. -/
+def val_denot_down_trunc {env : TypeEnv s}
+    (henv_dc : ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_downward_closed)
+    (T : Ty .capt s) {k j : Nat} (hjk : j ≤ k) {st : StoreTyping k} {m : Memory} (e : Exp {})
+    (ht : Ty.val_denot env T k st m e) : Ty.val_denot env T j (st.trunc hjk) m e :=
+  match T with
+  | .top => by unfold Ty.val_denot at ht ⊢; exact ht
+  | .tvar X => by unfold Ty.val_denot at ht ⊢; exact henv_dc X hjk ht
+  | .unit => by unfold Ty.val_denot at ht ⊢; exact ht
+  | .bool => by unfold Ty.val_denot at ht ⊢; exact ht
+  | .cap cs => by unfold Ty.val_denot at ht ⊢; exact ht
+  | .cell cs Tc => by
+      unfold Ty.val_denot at ht ⊢
+      obtain ⟨hwf_cs, l, n0, ℓ0, R, he, hlk, hcov, hstR, hbicond⟩ := ht
+      refine ⟨hwf_cs, l, n0, ℓ0, _, he, hlk, hcov,
+        by rw [WP.World.trunc_lookup, hstR]; rfl, ?_⟩
+      intro i w' m' e'
+      exact hbicond ⟨i.val, Nat.lt_of_lt_of_le i.isLt hjk⟩ w' m' e'
+  | .reader cs Tc => by
+      unfold Ty.val_denot at ht ⊢
+      obtain ⟨hwf_e, hwf_cs, label, n0, ℓ0, R, hres, hlk, hcov, hstR, hbicond⟩ := ht
+      refine ⟨hwf_e, hwf_cs, label, n0, ℓ0, _, hres, hlk, hcov,
+        by rw [WP.World.trunc_lookup, hstR]; rfl, ?_⟩
+      intro i w' m' e'
+      exact hbicond ⟨i.val, Nat.lt_of_lt_of_le i.isLt hjk⟩ w' m' e'
+  | .arrow T1 cs T2 => by
+      unfold Ty.val_denot at ht ⊢
+      obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
+      refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro i hij st' m' arg hwle' hmt hcompat harg
+      rw [WP.World.trunc_trunc] at hwle'
+      exact hfun i (Nat.le_trans hij hjk) st' m' arg hwle' hmt hcompat harg
+  | .poly T1 cs T2 => by
+      unfold Ty.val_denot at ht ⊢
+      obtain ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
+      refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro i hij st' m' denot hwle' hmt hcompat hproper hsa himply hpure
+      rw [WP.World.trunc_trunc] at hwle'
+      exact hfun i (Nat.le_trans hij hjk) st' m' denot hwle' hmt hcompat
+        hproper hsa himply hpure
+  | .cpoly B cs T => by
+      unfold Ty.val_denot at ht ⊢
+      obtain ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hfun⟩ := ht
+      refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub,
+        fun i hij st' m' CS hwf_CS hdf hwle' hmt hcompat hbounded => ?_⟩
+      rw [WP.World.trunc_trunc] at hwle'
+      exact hfun i (Nat.le_trans hij hjk) st' m' CS hwf_CS hdf hwle' hmt hcompat
+        hbounded
+  | .modal cs Ψ T => by
+      unfold Ty.val_denot at ht ⊢
+      obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs', hwf_sepctx, hsat_impl,
+              hR0_sub, hbody⟩ := ht
+      refine ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs', hwf_sepctx, hsat_impl, hR0_sub, ?_⟩
+      intro i hij st' m' hwle' hmt hcompat hkind hsep
+      rw [WP.World.trunc_trunc] at hwle'
+      exact hbody i (Nat.le_trans hij hjk) st' m' hwle' hmt hcompat hkind hsep
+
+/-- Property-shaped wrapper: the value denotation is index-downward-closed. -/
+def val_denot_is_downward_closed {env : TypeEnv s}
+    (henv_dc : ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_downward_closed)
+    (T : Ty .capt s) : IDenot.is_downward_closed (Ty.val_denot env T) := by
+  intro j k hjk st m e ht
+  exact val_denot_down_trunc henv_dc T hjk e ht
+
+/-- **Downward closure through truncation for existential values.**  Mirrors
+`val_denot_down_trunc`: the `.typ` case is direct; the `.exi` case descends the packed body
+under the (cvar-extended, hence tvar-unchanged) environment, while the `WfInHeap`/`drop_free`
+witnesses are index-independent. -/
+def exi_val_denot_down_trunc {env : TypeEnv s}
+    (henv_dc : ∀ (X : BVar s .tvar), (env.lookup_tvar X).is_downward_closed)
+    (E : Ty .exi s) {k j : Nat} (hjk : j ≤ k) {st : StoreTyping k} {m : Memory} (e : Exp {})
+    (ht : Ty.exi_val_denot env E k st m e) : Ty.exi_val_denot env E j (st.trunc hjk) m e := by
+  cases E with
+  | typ T =>
+    simp only [Ty.exi_val_denot] at ht ⊢
+    exact val_denot_down_trunc henv_dc T hjk e ht
+  | exi T =>
+    simp only [Ty.exi_val_denot] at ht ⊢
+    cases hresolve : resolve m.heap e with
+    | none => rw [hresolve] at ht; exact ht.elim
+    | some e' =>
+      cases e'
+      case pack CS y =>
+        rw [hresolve] at ht
+        obtain ⟨hwf, hdf, hbody⟩ := ht
+        refine ⟨hwf, hdf, val_denot_down_trunc ?_ T hjk (.var y) hbody⟩
+        intro X
+        cases X with
+        | there X' => exact henv_dc X'
+      all_goals (rw [hresolve] at ht; exact ht.elim)
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
@@ -2639,27 +2980,42 @@ theorem val_denot_is_proper {env : TypeEnv s} {T : Ty .capt s}
    val_denot_is_transparent (typed_env_is_transparent hts) T,
    val_denot_is_bool_independent (typed_env_is_bool_independent hts) T,
    val_denot_implies_wf (typed_env_is_implying_wf hts) T,
-   val_denot_worldle_monotonic (typed_env_is_monotonic hts) T⟩
+   val_denot_worldle_monotonic (typed_env_is_monotonic hts) T,
+   val_denot_is_downward_closed (typed_env_is_downward_closed hts) T⟩
 
-theorem val_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTyping} {H : Memory}
+theorem val_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTyping ki} {H : Memory}
   (himp : IDenot.ImplyAfter (Ty.val_denot env T1) ki st H (Ty.val_denot env T2)) :
   IDenot.ImplyAfter (Ty.exp_denot env T1 R) ki st H (Ty.exp_denot env T2 R) := by
-  intro st' m' hwle e heval hmt
+  intro j hjk st' m' hwle e heval hmt
   refine eval_post_monotonic_general ?_ (heval hmt)
   intro m'' hsub'' t v hpost
   obtain ⟨htr, st'', hwle'', hmt'', hval1⟩ := hpost
-  exact ⟨htr, st'', hwle'', hmt'', himp st'' m'' (WorldLe.trans hwle hwle'') v hval1⟩
+  refine ⟨htr, st'', hwle'', hmt'', ?_⟩
+  -- The step-counted result lives at `j - t.readCount ≤ j ≤ ki`; index-uniform `ImplyAfter`
+  -- applies there, comparing against `st` truncated to that level (via `trunc_trunc`).
+  have hidx : j - t.readCount ≤ ki := Nat.le_trans (Nat.sub_le j t.readCount) hjk
+  have h12 : WorldLe (st'.trunc (Nat.sub_le j t.readCount)) m'
+      (st.trunc hidx) H := by
+    have := WP.WorldLe.trunc (Nat.sub_le j t.readCount) hwle
+    rwa [WP.World.trunc_trunc] at this
+  exact himp (j - t.readCount) hidx st'' m'' (WorldLe.trans h12 hwle'') v hval1
 
 /-- Existential expression denotation implication lift. The `pack_bound`
 component of the postcondition is type-independent and carried through. -/
-theorem exi_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTyping} {H : Memory}
+theorem exi_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTyping ki} {H : Memory}
   (himp : IDenot.ImplyAfter (Ty.exi_val_denot env T1) ki st H (Ty.exi_val_denot env T2)) :
   IDenot.ImplyAfter (Ty.exi_exp_denot env T1 R) ki st H (Ty.exi_exp_denot env T2 R) := by
-  intro st' m' hwle e heval hmt
+  intro j hjk st' m' hwle e heval hmt
   refine eval_post_monotonic_general ?_ (heval hmt)
   intro m'' hsub'' t v hpost
   obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost
-  exact ⟨htr, st'', hwle'', hmt'', himp st'' m'' (WorldLe.trans hwle hwle'') v hval1, hpb, hwl⟩
+  refine ⟨htr, st'', hwle'', hmt'', ?_, hpb, hwl⟩
+  have hidx : j - t.readCount ≤ ki := Nat.le_trans (Nat.sub_le j t.readCount) hjk
+  have h12 : WorldLe (st'.trunc (Nat.sub_le j t.readCount)) m'
+      (st.trunc hidx) H := by
+    have := WP.WorldLe.trunc (Nat.sub_le j t.readCount) hwle
+    rwa [WP.World.trunc_trunc] at this
+  exact himp (j - t.readCount) hidx st'' m'' (WorldLe.trans h12 hwle'') v hval1
 
 private theorem resolve_reachability_subset_of_resolve_aux
     {m : Memory} {e v : Exp {}}

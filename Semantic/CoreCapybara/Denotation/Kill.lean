@@ -4,7 +4,7 @@ import Semantic.CoreCapybara.Denotation.Retype
 
 namespace CoreCapybara
 
-open KripkeModel (StoreTyping WorldLe)
+open CoreCapybara.WP (WorldLe)
 
 /-! # Killing capture variables
 
@@ -397,8 +397,8 @@ theorem EnvTyping.kill_cvar {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory
     simp only [EnvTyping] at h ⊢
     obtain ⟨h1, h2, h3, h4, h5, h'⟩ := h
     refine ⟨h1, h2, h3, ?_, h5, EnvTyping.kill_cvar c h'⟩
-    intro st' m' hsub e hd
-    exact (kill_cvar_val_denot (c := c) S.core k st' m' e).mp (h4 st' m' hsub e hd)
+    intro j hjk st' m' hsub e hd
+    exact (kill_cvar_val_denot (c := c) S.core j st' m' e).mp (h4 j hjk st' m' hsub e hd)
   | .push Γ (.cvar a B), .extend env (.cvar a' cs cap), .there c =>
     simp only [EnvTyping] at h ⊢
     obtain ⟨h1, h2, h3, h4, h5, h6, h'⟩ := h
@@ -532,7 +532,7 @@ theorem kill_peaks_cs_exi_exp_denot {env : TypeEnv s} {K : CaptureSet s}
   | var a v => exact IDenot.equiv_refl _
 
 theorem EnvTyping.kill_peaks_cs {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
-    {k : Nat} {st : StoreTyping} {m : Memory} (K : CaptureSet s) (h : EnvTyping Γ env k st m) :
+    {k : Nat} {st : StoreTyping k} {m : Memory} (K : CaptureSet s) (h : EnvTyping Γ env k st m) :
     EnvTyping (Γ.kill_peaks_cs K) (env.kill_peaks_cs K) k st m := by
   induction K generalizing Γ env with
   | empty => exact h
@@ -544,7 +544,7 @@ theorem EnvTyping.kill_peaks_cs {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
   | var a v => exact h
 
 theorem EnvTyping.kill_peaks {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
-    {k : Nat} {st : StoreTyping} {m : Memory} (P : PeakSet s) (h : EnvTyping Γ env k st m) :
+    {k : Nat} {st : StoreTyping k} {m : Memory} (P : PeakSet s) (h : EnvTyping Γ env k st m) :
     EnvTyping (Γ.kill_peaks P) (env.kill_peaks P) k st m :=
   EnvTyping.kill_peaks_cs P.cs h
 

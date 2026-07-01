@@ -1,7 +1,7 @@
 import Semantic.CoreCapybara.Denotation.Core
 namespace CoreCapybara
 
-open KripkeModel (StoreTyping WorldLe)
+open CoreCapybara.WP (WorldLe)
 
 structure Rebind (env1 : TypeEnv s1) (f : Rename s1 s2) (env2 : TypeEnv s2) : Prop where
   var :
@@ -337,28 +337,28 @@ def rebind_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro st' m' arg hwle hmt hcompat harg
+      intro j hjk st' m' arg hwle hmt hcompat harg
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
       have ih2 := rebind_exi_val_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2
-      have harg' := (ih1 k st' m' (.var (.free arg))).mpr harg
-      have hd' := hd st' m' arg hwle hmt hcompat harg'
+      have harg' := (ih1 j st' m' (.var (.free arg))).mpr harg
+      have hd' := hd j hjk st' m' arg hwle hmt hcompat harg'
       refine eval_post_monotonic_general ?_ hd'
       intro m'' hsub'' t v hpost
       obtain ⟨htr, st'', hwle'', hmt'', hval, hpb, hwl⟩ := hpost
-      exact ⟨htr, st'', hwle'', hmt'', (ih2 k st'' m'' v).mp hval, hpb, hwl⟩
+      exact ⟨htr, st'', hwle'', hmt'', (ih2 (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro st' m' arg hwle hmt hcompat harg
+      intro j hjk st' m' arg hwle hmt hcompat harg
       let ps1 := compute_peakset env1 T1.captureSet
       let ps2 := compute_peakset env2 (T1.rename f).captureSet
       have ih2 := rebind_exi_val_denot (ρ.liftVar (x:=arg) ps1 ps2 hps) T2
-      have harg' := (ih1 k st' m' (.var (.free arg))).mp harg
-      have hd' := hd st' m' arg hwle hmt hcompat harg'
+      have harg' := (ih1 j st' m' (.var (.free arg))).mp harg
+      have hd' := hd j hjk st' m' arg hwle hmt hcompat harg'
       refine eval_post_monotonic_general ?_ hd'
       intro m'' hsub'' t v hpost
       obtain ⟨htr, st'', hwle'', hmt'', hval, hpb, hwl⟩ := hpost
-      exact ⟨htr, st'', hwle'', hmt'', (ih2 k st'' m'' v).mpr hval, hpb, hwl⟩
+      exact ⟨htr, st'', hwle'', hmt'', (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
   | .poly T1 cs T2 => by
     have ih1 := rebind_val_denot ρ T1
     intro k st m e
@@ -368,30 +368,28 @@ def rebind_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro st' m' denot hwle hmt hcompat hproper himply_simple_ans himply hpure
+      intro j hjk st' m' denot hwle hmt hcompat hproper himply_simple_ans himply hpure
       have ih2 := rebind_exi_val_denot (ρ.liftTVar (d:=denot)) T2
-      have himply' : ∀ st'' m'', WorldLe st'' m'' st' m' → ∀ e',
-          denot k st'' m'' e' → Ty.val_denot env1 T1 k st'' m'' e' := by
-        intro st'' m'' hwle'' e' hdenot
-        exact (ih1 k st'' m'' e').mpr (himply st'' m'' hwle'' e' hdenot)
-      have hd' := hd st' m' denot hwle hmt hcompat hproper himply_simple_ans himply' hpure
+      have himply' : denot.ImplyAfter j st' m' (Ty.val_denot env1 T1) := by
+        intro i hij st'' m'' hwle'' e' hdenot
+        exact (ih1 i st'' m'' e').mpr (himply i hij st'' m'' hwle'' e' hdenot)
+      have hd' := hd j hjk st' m' denot hwle hmt hcompat hproper himply_simple_ans himply' hpure
       refine eval_post_monotonic_general ?_ hd'
       intro m'' hsub'' t v hpost
       obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
-      exact ⟨htr, st'', hwle3, hmt3, (ih2 k st'' m'' v).mp hval, hpb, hwl⟩
+      exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro st' m' denot hwle hmt hcompat hproper himply_simple_ans himply hpure
+      intro j hjk st' m' denot hwle hmt hcompat hproper himply_simple_ans himply hpure
       have ih2 := rebind_exi_val_denot (ρ.liftTVar (d:=denot)) T2
-      have himply' : ∀ st'' m'', WorldLe st'' m'' st' m' → ∀ e',
-          denot k st'' m'' e' → Ty.val_denot env2 (T1.rename f) k st'' m'' e' := by
-        intro st'' m'' hwle'' e' hdenot
-        exact (ih1 k st'' m'' e').mp (himply st'' m'' hwle'' e' hdenot)
-      have hd' := hd st' m' denot hwle hmt hcompat hproper himply_simple_ans himply' hpure
+      have himply' : denot.ImplyAfter j st' m' (Ty.val_denot env2 (T1.rename f)) := by
+        intro i hij st'' m'' hwle'' e' hdenot
+        exact (ih1 i st'' m'' e').mp (himply i hij st'' m'' hwle'' e' hdenot)
+      have hd' := hd j hjk st' m' denot hwle hmt hcompat hproper himply_simple_ans himply' hpure
       refine eval_post_monotonic_general ?_ hd'
       intro m'' hsub'' t v hpost
       obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
-      exact ⟨htr, st'', hwle3, hmt3, (ih2 k st'' m'' v).mpr hval, hpb, hwl⟩
+      exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
   | .cpoly B cs T => by
     have hB := rebind_capturebound_denot ρ B
     intro k st m e
@@ -402,22 +400,22 @@ def rebind_val_denot
     constructor
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
+      intro j hjk st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
       have ih2 := rebind_exi_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T
-      have hd' := hd st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
+      have hd' := hd j hjk st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
       refine eval_post_monotonic_general ?_ hd'
       intro m'' hsub'' t v hpost
       obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
-      exact ⟨htr, st'', hwle3, hmt3, (ih2 k st'' m'' v).mp hval, hpb, hwl⟩
+      exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
-      intro st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
+      intro j hjk st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
       have ih2 := rebind_exi_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T
-      have hd' := hd st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
+      have hd' := hd j hjk st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
       refine eval_post_monotonic_general ?_ hd'
       intro m'' hsub'' t v hpost
       obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
-      exact ⟨htr, st'', hwle3, hmt3, (ih2 k st'' m'' v).mpr hval, hpb, hwl⟩
+      exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
   | .modal cs Ψ T => by
     intro k st m e
     simp only [Ty.val_denot, Ty.rename]
@@ -429,7 +427,7 @@ def rebind_val_denot
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
       · intro m' hsub hsat'
         exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mpr hsat')
-      · intro st' m' hwle hmt hcompat hkind hsep
+      · intro j hjk st' m' hwle hmt hcompat hkind hsep
         have ih := rebind_exi_val_denot ρ T
         have hkind' :
             ∀ (C : CaptureSet s1) (mode : Mutability),
@@ -445,17 +443,17 @@ def rebind_val_denot
           simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
             rebind_captureset_denot (ρ := ρ) (C := C2)] using
               hsep (C1.rename f) m1 (C2.rename f) m2 (hdistinct.rename)
-        have hd' := hbody st' m' hwle hmt hcompat hkind' hsep'
+        have hd' := hbody j hjk st' m' hwle hmt hcompat hkind' hsep'
         refine eval_post_monotonic_general ?_ hd'
         intro m'' hsub'' t v hpost
         obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
-        exact ⟨htr, st'', hwle3, hmt3, (ih k st'' m'' v).mp hval, hpb, hwl⟩
+        exact ⟨htr, st'', hwle3, hmt3, (ih (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
         hsat, hR0_sub, hbody⟩
       refine ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0, ?_, hR0_sub, ?_⟩
       · intro m' hsub hsat'
         exact hsat m' hsub ((rebind_satisfy_iff ρ Ψ m').mp hsat')
-      · intro st' m' hwle hmt hcompat hkind hsep
+      · intro j hjk st' m' hwle hmt hcompat hkind hsep
         have ih := rebind_exi_val_denot ρ T
         have hkind' :
             ∀ (C : CaptureSet s2) (mode : Mutability),
@@ -473,11 +471,11 @@ def rebind_val_denot
           simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
             rebind_captureset_denot (ρ := ρ) (C := D2)] using
               hsep D1 m1 D2 m2 hdistinct0
-        have hd' := hbody st' m' hwle hmt hcompat hkind' hsep'
+        have hd' := hbody j hjk st' m' hwle hmt hcompat hkind' hsep'
         refine eval_post_monotonic_general ?_ hd'
         intro m'' hsub'' t v hpost
         obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
-        exact ⟨htr, st'', hwle3, hmt3, (ih k st'' m'' v).mpr hval, hpb, hwl⟩
+        exact ⟨htr, st'', hwle3, hmt3, (ih (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -518,12 +516,12 @@ def rebind_exi_exp_denot
     refine eval_post_monotonic_general ?_ (h hmt)
     intro mm hsub t v hpost
     obtain ⟨htr, st', hwle, hmt', hval, hpb, hwl⟩ := hpost
-    exact ⟨htr, st', hwle, hmt', (ih k st' mm v).mp hval, hpb, hwl⟩
+    exact ⟨htr, st', hwle, hmt', (ih (k - t.readCount) st' mm v).mp hval, hpb, hwl⟩
   · intro h hmt
     refine eval_post_monotonic_general ?_ (h hmt)
     intro mm hsub t v hpost
     obtain ⟨htr, st', hwle, hmt', hval, hpb, hwl⟩ := hpost
-    exact ⟨htr, st', hwle, hmt', (ih k st' mm v).mpr hval, hpb, hwl⟩
+    exact ⟨htr, st', hwle, hmt', (ih (k - t.readCount) st' mm v).mpr hval, hpb, hwl⟩
 
 end
 
