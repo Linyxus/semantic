@@ -343,7 +343,26 @@ inductive Safe : Nat -> Memory -> Exp {} -> Prop where
   (resolve m.heap (.var x) = some .btrue -> Safe k m e2) ->
   (resolve m.heap (.var x) = some .bfalse -> Safe k m e3) ->
   Safe k m (.cond x e2 e3)
-| par {k : Nat} {m : Memory} {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}} :
+| par {k : Nat} {m : Memory} {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}}
+  -- **Rely–guarantee parallel composition (Phase 6).**  `W j m'` is an abstract *rely*:
+  -- "`m'` is an admissible scheduler memory observable for `j` reads" (the semantic
+  -- instantiation packs a well-typed future world at budget `j`).  The separation
+  -- content — budget bounds and robust branch safety — is demanded only at
+  -- rely-memories with a live budget, NEVER at arbitrary subsuming memories (the old
+  -- `simulate_down` shape, which is FALSE for a higher-order store).  All fields are
+  -- budget-relative, matching the read-budget-indexed `Safe` discipline.
+  (W : Nat -> Memory -> Prop) :
+  (hW : W k m) ->
+  -- the rely is downward-closed in the budget…
+  (hWdown : ∀ {j j' : Nat} {m' : Memory}, j' ≤ j -> W j m' -> W j' m') ->
+  -- …and *re-established* (the guarantee) by any within-budget branch run from a
+  -- budget-compatible rely-memory, at the residual budget.
+  (hWpres1 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+    W j m' -> m'.is_compatible C1 -> BigStep m' e1 t v m'' -> t.readCount < j ->
+    W (j - t.readCount) m'') ->
+  (hWpres2 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+    W j m' -> m'.is_compatible C2 -> BigStep m' e2 t v m'' -> t.readCount < j ->
+    W (j - t.readCount) m'') ->
   -- Each branch independently safe at the current memory: the separation content
   -- needed to schedule the right branch before the left has finished.
   Safe k m e1 ->
@@ -352,17 +371,18 @@ inductive Safe : Nat -> Memory -> Exp {} -> Prop where
   -- at the residual budget.
   (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1},
     BigStep m e1 t1 v1 m1 -> Safe (k - t1.readCount) m1 e2) ->
-  -- Robust budget bounds: every run of a branch from any `m' ⊒ m` has its trace bounded
-  -- by that branch's budget `Cᵢ`. `Cᵢ` is growable (left abstract here), absorbing a
-  -- branch's own fresh allocations into the reduct's budget via `capsOf`.
-  (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-    m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' -> TraceOk t C1) ->
-  (hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-    m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' -> TraceOk t C2) ->
-  -- Robust branch safety: each branch is safe from any `m' ⊒ m` compatible with its
-  -- budget. Memory-monotone, so `Safe.lift` preserves it.
-  (hrs1 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C1 -> Safe k m' e1) ->
-  (hrs2 : ∀ {m' : Memory}, m'.subsumes m -> m'.is_compatible C2 -> Safe k m' e2) ->
+  -- Budget bounds: every within-budget run of a branch from a compatible rely-memory
+  -- has its trace bounded by that branch's budget `Cᵢ`.
+  (hb1 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+    W j m' -> m'.is_compatible C1 -> BigStep m' e1 t v m'' -> t.readCount < j ->
+    TraceOk t C1) ->
+  (hb2 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+    W j m' -> m'.is_compatible C2 -> BigStep m' e2 t v m'' -> t.readCount < j ->
+    TraceOk t C2) ->
+  -- Robust branch safety: each branch is safe (for the rely's budget) from any
+  -- compatible rely-memory.
+  (hrs1 : ∀ {j : Nat} {m' : Memory}, W j m' -> m'.is_compatible C1 -> Safe j m' e1) ->
+  (hrs2 : ∀ {j : Nat} {m' : Memory}, W j m' -> m'.is_compatible C2 -> Safe j m' e2) ->
   -- Budget presence: each branch's budget references only cells present in `m`.
   (hpres1 : ∀ mu l, C1.hasmem mu l -> m.heap l ≠ none) ->
   (hpres2 : ∀ mu l, C2.hasmem mu l -> m.heap l ≠ none) ->
@@ -1104,49 +1124,12 @@ theorem Memory.mcell_content_val {m : Memory} {y n : Nat}
     m.lookup n ≠ none :=
   m.mcell_wf y n h
 
-/-- **FUNDAMENTAL GAP (operational monotonicity).**  Downward simulation: an `m2`-run replays
-  from a smaller `m1 ⊑ m2` with the SAME trace.  This is FALSE for a faithful reference-valued
-  `read` (the cell stores a different location in `m1` vs `m2`, so the replayed value/trace
-  diverge — see the `Denotation/KripkeModel.lean` first-principles note: no `subsumes`
-  redefinition rescues it, because the type-erased memory cannot preserve cell types).  The
-  sound replacement is a WORLD-INDEXED `Safe`/monotonicity from the step-indexed (OFE) store
-  world (`Denotation/StepIndexedProto.lean`, in progress) — branch behaviour is required only
-  at *well-typed* future worlds, not arbitrary subsuming memories.  Same root as
-  `Fundamental.memTyped_subsumes`/`sem_typ_par`/`sem_typ_write`.  This operational adapter is
-  a minimal sorry localizing that one gap, kept only because the `par` trace-bound proof (and
-  `Props`/`Standardization`) still consume it pending the world-indexed rewrite. -/
-theorem BigStep.simulate_down {m2 : Memory} {e : Exp {}} {t : Trace} {v : Exp {}}
-    {m2' : Memory} (hbs : BigStep m2 e t v m2') :
-    ∀ {m1 : Memory}, m2.subsumes m1 -> Exp.WfInHeap e m1.heap ->
-      ∃ m1', BigStep m1 e t v m1' ∧ m2'.subsumes m1' ∧
-        ∀ l, ((m1.IsLive l ↔ m2.IsLive l) ∨ Trace.allocd t l) ->
-          (m1'.IsLive l ↔ m2'.IsLive l) := by
-  sorry
-
-/-- **FUNDAMENTAL GAP (operational monotonicity).**  Safety lifts upward along subsumption.
-  Same root as `simulate_down`: the `letin`/`par` cases replay the continuation through the
-  (false-for-faithful-`read`) downward simulation.  Sound replacement = semantic store-typing
-  monotonicity (Stage B); kept as a minimal sorry localizing the monotonicity gap, consumed by
-  the `Props`/`Standardization` adequacy proofs. -/
-theorem Safe.lift {k : Nat} {m1 m2 : Memory} {e : Exp {}} {Q : Tpost} (hsafe : Safe k m1 e)
-    (hsub : m2.subsumes m1)
-    (hpres : ∀ t v m', BigStep m1 e t v m' -> Q t v m')
-    (hok : ∀ t v m, m.subsumes m1 -> Q t v m -> Memory.SubsumeOk m1 t m2)
-    (hwf : Exp.WfInHeap e m1.heap) : Safe k m2 e := by
-  sorry
-
-/-- **FUNDAMENTAL GAP (operational monotonicity).**  Branch-safety transports across a separated
-  transition (the `Safe.lift` specialization the par-standardization uses).  Same gap as
-  `Safe.lift`/`simulate_down`; minimal sorry, consumed by `Props`/`Standardization`. -/
-theorem Safe.frame_lift {k : Nat} {ma ma' : Memory} {e : Exp {}} {B : CapabilitySet}
-    (hse : Safe k ma e) (hsub : ma'.subsumes ma) (hwf : Exp.WfInHeap e ma.heap)
-    (hbnd : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
-      m'.subsumes ma → Exp.WfInHeap e m'.heap → BigStep m' e s v m'' → TraceOk s B)
-    (hlive : ∀ l b, (∃ mu, B.hasmem mu l) →
-      ma.lookup l = some (.capability (.mcell b .live)) →
-      ∃ b', ma'.lookup l = some (.capability (.mcell b' .live))) :
-    Safe k ma' e := by
-  sorry
+/- NOTE (Phase 7): the three FALSE operational-monotonicity adapters
+  (`BigStep.simulate_down`, `Safe.lift`, `Safe.frame_lift`) were QUARANTINED to
+  `Semantics/OperationalMonotonicityAssumptions.lean` — they are no longer consumed by
+  anything on `Fundamental.lean`'s import path (the Phase-6 rely–guarantee `Safe.par`
+  eliminated the last use), and keeping them here would taint the whole path with
+  `sorryAx`.  Only the stale `Props`/`Standardization` adequacy proofs still want them. -/
 
 /-- A location allocated within a `BigStep`'s trace was absent from the initial
   memory (allocation is always fresh). -/
@@ -3732,25 +3715,35 @@ theorem Eval.eval_cond {m : Memory} {x : Var .var {}} {e2 e3 : Exp {}} {Q : Tpos
   | bs_cond_false hres_f hbody => exact (h_false hres_f).2 _ _ _ hbody
   | bs_val hv => cases hv
 
-/-- `par`: genuine interleaving.  The robust budget bounds (`hb1`/`hb2`), budget
-  non-interference (`hni`), and robust right-branch safety (`hrs2`) are the
-  separation content carried in `Safe.par`.  The trace postcondition runs on the
-  sequential `bs_par` realization (`e1` to an answer, then `e2` from that
-  answer-memory via `h2`); the result is always `.unit`. -/
+/-- `par`: genuine interleaving.  The rely–guarantee fields (`W`/`hWdown`/`hWpres`),
+  budget bounds (`hb1`/`hb2`), budget non-interference (`hni`), and robust
+  branch safety (`hrs1`/`hrs2`) are the separation content carried in `Safe.par` —
+  all relative to the abstract rely `W` and the read budget.  The trace
+  postcondition runs on the sequential `bs_par` realization (`e1` to an answer,
+  then `e2` from that answer-memory via `h2`); the result is always `.unit`. -/
 theorem Eval.eval_par {k : Nat} {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     {Cs1 Cs2 : CaptureSet {}}
+    (W : Nat -> Memory -> Prop)
+    (hW : W k m)
+    (hWdown : ∀ {j j' : Nat} {m' : Memory}, j' ≤ j -> W j m' -> W j' m')
+    (hWpres1 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+      W j m' -> m'.is_compatible (Cs1.reachability m) -> BigStep m' e1 t v m'' ->
+      t.readCount < j -> W (j - t.readCount) m'')
+    (hWpres2 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+      W j m' -> m'.is_compatible (Cs2.reachability m) -> BigStep m' e2 t v m'' ->
+      t.readCount < j -> W (j - t.readCount) m'')
     (he1 : Eval k m e1 Q1)
     (hse2 : Safe k m e2)
-    (hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-      m'.subsumes m -> Exp.WfInHeap e1 m'.heap -> BigStep m' e1 t v m'' ->
-      TraceOk t (Cs1.reachability m))
-    (hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-      m'.subsumes m -> Exp.WfInHeap e2 m'.heap -> BigStep m' e2 t v m'' ->
-      TraceOk t (Cs2.reachability m))
-    (hrs1 : ∀ {m' : Memory},
-      m'.subsumes m -> m'.is_compatible (Cs1.reachability m) -> Safe k m' e1)
-    (hrs2 : ∀ {m' : Memory},
-      m'.subsumes m -> m'.is_compatible (Cs2.reachability m) -> Safe k m' e2)
+    (hb1 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+      W j m' -> m'.is_compatible (Cs1.reachability m) -> BigStep m' e1 t v m'' ->
+      t.readCount < j -> TraceOk t (Cs1.reachability m))
+    (hb2 : ∀ {j : Nat} {m' : Memory} {t : Trace} {v : Exp {}} {m''},
+      W j m' -> m'.is_compatible (Cs2.reachability m) -> BigStep m' e2 t v m'' ->
+      t.readCount < j -> TraceOk t (Cs2.reachability m))
+    (hrs1 : ∀ {j : Nat} {m' : Memory},
+      W j m' -> m'.is_compatible (Cs1.reachability m) -> Safe j m' e1)
+    (hrs2 : ∀ {j : Nat} {m' : Memory},
+      W j m' -> m'.is_compatible (Cs2.reachability m) -> Safe j m' e2)
     (hni : CapabilitySet.Noninterference (Cs1.reachability m) (Cs2.reachability m))
     (hQ_over : ∀ t v m', k ≤ t.readCount -> Q t v m')
     (h2 : ∀ {t1 : Trace} {v1 : Exp {}} {m1 : Memory}, t1.readCount < k ->
@@ -3759,7 +3752,7 @@ theorem Eval.eval_par {k : Nat} {m : Memory} {e1 e2 : Exp {}} {Q Q1 : Tpost}
     Eval k m (.par Cs1 Cs2 e1 e2) Q := by
   -- Instantiate the abstract carrier budget to the annotation's reachability; presence is
   -- exactly `reachability_dom`.
-  refine ⟨Safe.par he1.1 hse2 ?_ hb1 hb2 hrs1 hrs2
+  refine ⟨Safe.par W hW hWdown hWpres1 hWpres2 he1.1 hse2 ?_ hb1 hb2 hrs1 hrs2
     (fun _ _ h => CaptureSet.reachability_dom h)
     (fun _ _ h => CaptureSet.reachability_dom h)
     ⟨CapabilitySet.Subset.refl, CapabilitySet.Subset.refl⟩

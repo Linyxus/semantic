@@ -74,29 +74,12 @@ theorem env_typing_worldle_down {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
   env_typing_worldle_trunc (Nat.le_refl k) hts
     (by rw [WP.World.trunc_self]; exact hwle)
 
-/-- **GENUINE DESIGN GAP — this statement is FALSE for the frozen store typing; it is the
-`par` half of the higher-order-store obstruction, and its honest resolution is the
-step-indexed (OFE) world.**
-
-`MemTyped k st m` says every live `st`-typed cell holds a value satisfying its stored
-relation `R`.  This lemma claims `MemTyped` is preserved under bare `m2.subsumes m1`.  It is
-**not true**: `Cell.subsumes` for mcells orders only *liveness* (`ℓ2 ≤ ℓ1`) and leaves the
-content `n` free, so a non-type-preserving `write` is `subsumes`-compatible while destroying
-`MemTyped`.  Operational subsumption-monotonicity is genuinely false for a higher-order
-mutable store.
-
-It is consumed ONLY by `sem_typ_par` (re-running a branch's semantic typing at an
-*arbitrary* subsuming-compatible `m'` — the interleaving), whose `Eval.eval_par` interface
-demands branch safety at such `m'`.  The frozen store typing (`Denotation/Core.lean`, plain
-`MonRel` relations, vestigial index) cannot supply it; the fix is the **step-indexed
-world** (`Denotation/StepIndexedFlat.lean`, Phase 1 — flat store typing whose cell relation is
-a biconditional below the index, stable by non-expansiveness `val_denot_nonexpansive`) with a
-world-indexed `Safe` (branch safety only at *well-typed* future worlds, which `sem_typ_par` can
-then discharge).  Same root as `sem_typ_write`.  This sorry stands as the minimal witness of
-that gap. -/
-theorem memTyped_subsumes {k : Nat} {st : StoreTyping k} {m1 m2 : Memory}
-    (hmt : MemTyped k st m1) (hsub : m2.subsumes m1) : MemTyped k st m2 := by
-  sorry
+/- NOTE (Phase 6): the FALSE `memTyped_subsumes` (operational subsumption-monotonicity —
+`Cell.subsumes` for mcells orders only liveness, so a non-type-preserving `write` is
+`subsumes`-compatible while destroying `MemTyped`) was DELETED.  Its only consumer was
+`sem_typ_par`, which now discharges the rely–guarantee `Safe.par` at *well-typed future
+worlds* (e2 runs at e1's post-world, `letin`-style; robust fields re-run the branch's
+semantic typing at the rely-world) — no operational transport of well-typedness remains. -/
 
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env k st store)
@@ -3395,32 +3378,14 @@ theorem sem_satisfy
     · intro C1 m1 C2 m2 hdistinct
       exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) hΓ env k st m henv hdsep
 
-/-- **Phase-6 gap (index-free trace bound).**  The budget-guarded semantic postcondition
-bounds a branch's trace only for runs WITHIN budget (`t.readCount < k`); `Safe.par`'s
-robust budget fields (`hb1`/`hb2`) need the bound for ALL runs.  The bound itself is
-genuinely index-free — capture soundness consumes no step index — so the honest fix is a
-separate index-free trace-bound fundamental theorem (a simple induction that never
-touches the store's `Fin k` levels), or the Phase-6 `Safe.par` redesign, which demands
-branch behaviour only at well-typed future worlds.  Until then this sorry (together with
-`simulate_down`/`memTyped_subsumes`) localizes the par gap. -/
-theorem sem_trace_bound {C : CaptureSet s} {Γ : Ctx s} {e : Exp s} {E : Ty .exi s}
-    (ht : SemanticTyping C Γ e E) {env : TypeEnv s} {k : Nat} {st : StoreTyping k}
-    {store : Memory}
-    (hts : EnvTyping Γ env k st store) (hdsep : env.EnvSepWf)
-    (hcompat : store.is_compatible (C.denot env store)) (hmt : MemTyped k st store)
-    {t : Trace} {v : Exp {}} {m' : Memory}
-    (hbs : BigStep store (e.subst (Subst.from_TypeEnv env)) t v m') :
-    TraceOk t (C.denot env store) := by
-  sorry
-
 theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
   {e1 e2 : Exp s} {E1 E2 : Ty .exi s}
   (hΓ : Γ.IsClosed)
   (_hclosed_C1 : C1.IsClosed)
   (_hclosed_C2 : C2.IsClosed)
-  (hclosed_e1 : e1.IsClosed)
-  (hclosed_e2 : e2.IsClosed)
+  (_hclosed_e1 : e1.IsClosed)
+  (_hclosed_e2 : e2.IsClosed)
   (ht1 : SemanticTyping C1 Γ e1 E1)
   (ht2 : SemanticTyping C2 Γ e2 E2)
   (hsep : SemSepCheck Γ C1 C2) :
@@ -3478,77 +3443,118 @@ theorem sem_typ_par
     have h := ht2 env k st store hts hdsep (Memory.is_compatible_union_right hcompat')
     simp only [Ty.exi_exp_denot] at h
     exact h hmt
-  -- Budget bounds for `Safe.par`: a `BigStep` run of a branch from any
-  -- `m' ⊒ store` replays from `store` with the same trace (`simulate_down`),
-  -- where the branch's denotation bounds it by `C1`/`C2`.
-  have hwf_e1s : Exp.WfInHeap (e1.subst (Subst.from_TypeEnv env)) store.heap :=
-    Exp.wf_subst (Exp.wf_of_closed hclosed_e1) (from_TypeEnv_wf_in_heap hts)
-  have hwf_e2s : Exp.WfInHeap (e2.subst (Subst.from_TypeEnv env)) store.heap :=
-    Exp.wf_subst (Exp.wf_of_closed hclosed_e2) (from_TypeEnv_wf_in_heap hts)
-  have hb1 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-      m'.subsumes store → Exp.WfInHeap (e1.subst (Subst.from_TypeEnv env)) m'.heap →
-      BigStep m' (e1.subst (Subst.from_TypeEnv env)) t v m'' →
-      TraceOk t (C1.denot env store) := by
-    intro m' t v m'' hsub' _ hbs
-    obtain ⟨ms, hbs_s, _, _⟩ := hbs.simulate_down hsub' hwf_e1s
-    rcases Nat.lt_or_ge t.readCount k with hbud | hover
-    · exact ((he1.2 _ _ _ hbs_s) hbud).1
-    · exact sem_trace_bound ht1 hts hdsep (Memory.is_compatible_union_left hcompat')
-        hmt hbs_s
-  have hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
-      m'.subsumes store → Exp.WfInHeap (e2.subst (Subst.from_TypeEnv env)) m'.heap →
-      BigStep m' (e2.subst (Subst.from_TypeEnv env)) t v m'' →
-      TraceOk t (C2.denot env store) := by
-    intro m' t v m'' hsub' _ hbs
-    obtain ⟨ms, hbs_s, _, _⟩ := hbs.simulate_down hsub' hwf_e2s
-    rcases Nat.lt_or_ge t.readCount k with hbud | hover
-    · exact ((he2_store.2 _ _ _ hbs_s) hbud).1
-    · exact sem_trace_bound ht2 hts hdsep (Memory.is_compatible_union_right hcompat')
-        hmt hbs_s
-  -- Right-branch safety: `e2` is safe from any `m' ⊒ store` in which `C2` is
-  -- compatible — re-run `e2`'s semantic typing at `m'` (`env_typing` lifts
-  -- monotonically; `C2`'s denotation is stable as it is closed).
-  have hrs2 : ∀ {m' : Memory}, m'.subsumes store →
-      m'.is_compatible (C2.denot env store) →
-      Safe k m' (e2.subst (Subst.from_TypeEnv env)) := by
-    intro m' hsub' hcompat'
-    have hC2_eq : C2.denot env store = C2.denot env m' :=
-      closed_capture_denot_monotonic _hclosed_C2 hts hsub'
-    have h := ht2 env k st m' (env_typing_monotonic hts hsub') hdsep (hC2_eq ▸ hcompat')
-    simp only [Ty.exi_exp_denot] at h
-    exact (h (memTyped_subsumes hmt hsub')).1
-  -- Left-branch safety (mirror of `hrs2`): `e1` is safe from any `m' ⊒ store`
-  -- in which `C1` is compatible.
-  have hrs1 : ∀ {m' : Memory}, m'.subsumes store →
-      m'.is_compatible (C1.denot env store) →
-      Safe k m' (e1.subst (Subst.from_TypeEnv env)) := by
-    intro m' hsub' hcompat'
-    have hC1_eq : C1.denot env store = C1.denot env m' :=
-      closed_capture_denot_monotonic _hclosed_C1 hts hsub'
-    have h := ht1 env k st m' (env_typing_monotonic hts hsub') hdsep (hC1_eq ▸ hcompat')
-    simp only [Ty.exi_exp_denot] at h
-    exact (h (memTyped_subsumes hmt hsub')).1
   -- Bridge the denotational budgets to the operational reachability budgets that
   -- `eval_par` expects (they are pointwise equal on ground capture sets).
   have hrC1 : C1.denot env store = (C1.subst (Subst.from_TypeEnv env)).reachability store :=
     CaptureSet.ground_denot_eq_reachability _ _
   have hrC2 : C2.denot env store = (C2.subst (Subst.from_TypeEnv env)).reachability store :=
     CaptureSet.ground_denot_eq_reachability _ _
-  rw [hrC1] at hb1 hrs1
-  rw [hrC2] at hb2 hrs2
+  -- **The rely** (Phase 6): a well-typed future world of `(st, store)` at budget `j`.
+  -- Every separation field of `Safe.par` is discharged by re-running the branch's
+  -- SEMANTIC typing at that world — never by operational replay from an arbitrary
+  -- subsuming memory (`simulate_down`/`memTyped_subsumes` are gone).
+  -- Shared engine: a branch's `Eval` at any rely-world with a compatible budget.
+  have hbranch1 : ∀ (j : Nat) (st' : StoreTyping j) (m' : Memory) (hjk : j ≤ k),
+      WorldLe st' m' (st.trunc hjk) store → MemTyped j st' m' →
+      m'.is_compatible ((C1.subst (Subst.from_TypeEnv env)).reachability store) →
+      Eval j m' (e1.subst (Subst.from_TypeEnv env))
+        (fun t v m'' => t.readCount < j →
+          TraceOk t (C1.denot env m') ∧
+          ∃ (st'' : StoreTyping (j - t.readCount)),
+            WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
+            MemTyped (j - t.readCount) st'' m'' ∧
+            Ty.exi_val_denot env E1 (j - t.readCount) st'' m'' v ∧
+            pack_bound (C1.denot env m') m' v m'' ∧ witness_live v m'') := by
+    intro j st' m' hjk hwle' hmt' hcompat1'
+    have hts' : EnvTyping Γ env j st' m' := env_typing_worldle_trunc hjk hts hwle'
+    have hC1_eq : C1.denot env store = C1.denot env m' :=
+      closed_capture_denot_monotonic _hclosed_C1 hts hwle'.1
+    have h := ht1 env j st' m' hts' hdsep (by rw [← hC1_eq, hrC1]; exact hcompat1')
+    simp only [Ty.exi_exp_denot] at h
+    exact h hmt'
+  have hbranch2 : ∀ (j : Nat) (st' : StoreTyping j) (m' : Memory) (hjk : j ≤ k),
+      WorldLe st' m' (st.trunc hjk) store → MemTyped j st' m' →
+      m'.is_compatible ((C2.subst (Subst.from_TypeEnv env)).reachability store) →
+      Eval j m' (e2.subst (Subst.from_TypeEnv env))
+        (fun t v m'' => t.readCount < j →
+          TraceOk t (C2.denot env m') ∧
+          ∃ (st'' : StoreTyping (j - t.readCount)),
+            WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
+            MemTyped (j - t.readCount) st'' m'' ∧
+            Ty.exi_val_denot env E2 (j - t.readCount) st'' m'' v ∧
+            pack_bound (C2.denot env m') m' v m'' ∧ witness_live v m'') := by
+    intro j st' m' hjk hwle' hmt' hcompat2'
+    have hts' : EnvTyping Γ env j st' m' := env_typing_worldle_trunc hjk hts hwle'
+    have hC2_eq : C2.denot env store = C2.denot env m' :=
+      closed_capture_denot_monotonic _hclosed_C2 hts hwle'.1
+    have h := ht2 env j st' m' hts' hdsep (by rw [← hC2_eq, hrC2]; exact hcompat2')
+    simp only [Ty.exi_exp_denot] at h
+    exact h hmt'
   have hni' : CapabilitySet.Noninterference
       ((C1.subst (Subst.from_TypeEnv env)).reachability store)
       ((C2.subst (Subst.from_TypeEnv env)).reachability store) := by
     rw [← hrC1, ← hrC2]; exact hni
-  refine Eval.eval_par he1 he2_store.1 hb1 hb2 hrs1 hrs2 hni'
-    (fun t v m' hover hguard => absurd hguard (Nat.not_lt.mpr hover)) ?_
+  refine Eval.eval_par
+    (W := fun j m' => ∃ (hjk : j ≤ k) (st' : StoreTyping j),
+      WorldLe st' m' (st.trunc hjk) store ∧ MemTyped j st' m')
+    ⟨Nat.le_refl k, st, WorldLe.refl_trunc_self _ st store, hmt⟩
+    ?hWdown ?hWpres1 ?hWpres2 he1 he2_store.1 ?hb1 ?hb2 ?hrs1 ?hrs2 hni'
+    (fun t v m' hover hguard => absurd hguard (Nat.not_lt.mpr hover)) ?hcont
+  case hWdown =>
+    intro j j' m' hj' hW'
+    obtain ⟨hjk, st', hwle', hmt'⟩ := hW'
+    refine ⟨Nat.le_trans hj' hjk, st'.trunc hj', ?_, MemTyped_trunc hj' hmt'⟩
+    have h := WP.WorldLe.trunc hj' hwle'
+    rwa [WP.World.trunc_trunc] at h
+  case hWpres1 =>
+    intro j m' t v m'' hW' hcompat1' hbs hbud
+    obtain ⟨hjk, st', hwle', hmt'⟩ := hW'
+    obtain ⟨_, st'', hwle'', hmt'', _, _, _⟩ :=
+      (hbranch1 j st' m' hjk hwle' hmt' hcompat1').2 t v m'' hbs hbud
+    refine ⟨Nat.le_trans (Nat.sub_le j t.readCount) hjk, st'', ?_, hmt''⟩
+    have hdesc := WP.WorldLe.trunc (Nat.sub_le j t.readCount) hwle'
+    rw [WP.World.trunc_trunc] at hdesc
+    exact WorldLe.trans hdesc hwle''
+  case hWpres2 =>
+    intro j m' t v m'' hW' hcompat2' hbs hbud
+    obtain ⟨hjk, st', hwle', hmt'⟩ := hW'
+    obtain ⟨_, st'', hwle'', hmt'', _, _, _⟩ :=
+      (hbranch2 j st' m' hjk hwle' hmt' hcompat2').2 t v m'' hbs hbud
+    refine ⟨Nat.le_trans (Nat.sub_le j t.readCount) hjk, st'', ?_, hmt''⟩
+    have hdesc := WP.WorldLe.trunc (Nat.sub_le j t.readCount) hwle'
+    rw [WP.World.trunc_trunc] at hdesc
+    exact WorldLe.trans hdesc hwle''
+  case hb1 =>
+    intro j m' t v m'' hW' hcompat1' hbs hbud
+    obtain ⟨hjk, st', hwle', hmt'⟩ := hW'
+    obtain ⟨hok, _⟩ := (hbranch1 j st' m' hjk hwle' hmt' hcompat1').2 t v m'' hbs hbud
+    have hC1_eq : C1.denot env store = C1.denot env m' :=
+      closed_capture_denot_monotonic _hclosed_C1 hts hwle'.1
+    have hok' : TraceOk t (C1.denot env store) := hC1_eq.symm ▸ hok
+    exact hrC1 ▸ hok'
+  case hb2 =>
+    intro j m' t v m'' hW' hcompat2' hbs hbud
+    obtain ⟨hjk, st', hwle', hmt'⟩ := hW'
+    obtain ⟨hok, _⟩ := (hbranch2 j st' m' hjk hwle' hmt' hcompat2').2 t v m'' hbs hbud
+    have hC2_eq : C2.denot env store = C2.denot env m' :=
+      closed_capture_denot_monotonic _hclosed_C2 hts hwle'.1
+    have hok' : TraceOk t (C2.denot env store) := hC2_eq.symm ▸ hok
+    exact hrC2 ▸ hok'
+  case hrs1 =>
+    intro j m' hW' hcompat1'
+    obtain ⟨hjk, st', hwle', hmt'⟩ := hW'
+    exact (hbranch1 j st' m' hjk hwle' hmt' hcompat1').1
+  case hrs2 =>
+    intro j m' hW' hcompat2'
+    obtain ⟨hjk, st', hwle', hmt'⟩ := hW'
+    exact (hbranch2 j st' m' hjk hwle' hmt' hcompat2').1
   -- Given `e1`'s answer at `m1` (WITHIN budget — overflow is internalized by
   -- `eval_par`), run `e2` from `m1` at the residual budget `k − t1.readCount`.
   -- `par` returns `.unit`, so the only separation content needed is framing `C2`'s
   -- compatibility across `e1`'s run (`t1`) so that `e2` may start from `m1` — the
   -- left/right branch values are discarded, so no value framing is required.
   intro t1 v1 m1 hbud1 hsub_m1 hframe hQ1
-  obtain ⟨hok1, _, _, _⟩ := hQ1 hbud1
+  obtain ⟨hok1, st1, hwle1, hmt1, _, _, _⟩ := hQ1 hbud1
   -- (A) Frame `C2`'s compatibility across `e1`'s run (`t1` never drops a `C2`-cell,
   -- by non-interference) so that `e2` may run from `m1`.
   have hnodrop_C2_t1 : ∀ mu l, (C2.denot env store).hasmem mu l → ¬ Trace.extDrops t1 l := by
@@ -3564,15 +3570,15 @@ theorem sem_typ_par
   -- `C2`'s denotation is stable under the memory growth (it is closed).
   have hC2_eq : C2.denot env store = C2.denot env m1 :=
     closed_capture_denot_monotonic _hclosed_C2 hts hsub_m1
-  -- `e2`'s soundness at `C2`, run from `m1` at the RESIDUAL budget `k − t1.readCount`
-  -- (the world is `st` truncated to that level; the base-memory move `store → m1` is the
-  -- `memTyped_subsumes` gap, as before).
+  -- `e2`'s soundness at `C2`, run from `m1` at the RESIDUAL budget `k − t1.readCount`,
+  -- at `e1`'s POST-WORLD `st1` (delivered by `e1`'s budget-guarded postcondition) — the
+  -- `letin`-style composition; no operational transport of well-typedness is needed.
   have he2 := by
-    have h := ht2 env (k - t1.readCount) (st.trunc (Nat.sub_le k t1.readCount)) m1
-      (env_typing_worldle_trunc (Nat.sub_le k t1.readCount) hts ⟨hsub_m1, fun _ _ h => h⟩)
+    have h := ht2 env (k - t1.readCount) st1 m1
+      (env_typing_worldle_trunc (Nat.sub_le k t1.readCount) hts hwle1)
       hdsep (hC2_eq ▸ hcompat_m1_C2)
     simp only [Ty.exi_exp_denot] at h
-    exact h (MemTyped_trunc (Nat.sub_le k t1.readCount) (memTyped_subsumes hmt hsub_m1))
+    exact h hmt1
   -- Certify `Q` for the `.unit` result at the joined memory `m2` — only WITHIN the
   -- composite budget (`(t1 ++ t2).readCount < k`).  The trace is `t1 ++ t2`
   -- (union-lifted from both branches); the value is unit, so its
@@ -3591,12 +3597,15 @@ theorem sem_typ_par
     by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
     pack_bound_of_ne_pack (fun _ _ h => nomatch h),
     witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
-  -- Descend `e2`'s post-`WorldLe` (base `m1`) to the compound truncation level and re-anchor
-  -- its base memory to `store` (`m1 ⊒ store` via `hsub_m1`; the store-typing agreement is
-  -- memory-independent).
-  have hwle'' := WP.WorldLe.trunc hjk hwle'
-  rw [WP.World.trunc_trunc, WP.World.trunc_trunc] at hwle''
-  exact WorldLe.trans ⟨hsub_m1, fun _ _ h => h⟩ hwle''
+  -- Compose `e1`'s world-step (`hwle1`, descended to the `e2` level) with `e2`'s
+  -- (`hwle'`), then descend once more to the compound level — the `letin_cont` pattern.
+  have h2le : k - t1.readCount - t2.readCount ≤ k - t1.readCount := Nat.sub_le _ _
+  have hwle1_desc := WP.WorldLe.trunc h2le hwle1
+  rw [WP.World.trunc_trunc] at hwle1_desc
+  have hwle_comp := WorldLe.trans hwle1_desc hwle'
+  have hwle_fin := WP.WorldLe.trunc hjk hwle_comp
+  rw [WP.World.trunc_trunc] at hwle_fin
+  exact hwle_fin
 
 /-- Bridge: the syntactic sequential-composition relation `SeqComp Γ C1 C2`
 transfers, under a well-typed environment satisfying the (budget-relativized)
@@ -3640,8 +3649,10 @@ theorem captureSet_seqcomp_denot
 never an mcell, so the store typing (which only tracks mcells) is untouched: consistency
 holds because every tracked location stays the same mcell it was, and each live tracked
 cell's good-value obligation transports along `extend_val_subsumes` via the stored
-relation's own monotonicity (`R.2`).  Unlike `memTyped_subsumes`, this is a *local* growth
-(only the fresh, untracked location changes), so no global relation-monotonicity is needed. -/
+relation's own monotonicity (`R.2`).  Unlike bare subsumption-monotonicity of `MemTyped`
+(which is FALSE for a higher-order store — see the Phase-6 note at the top of this file),
+this is a *local* growth (only the fresh, untracked location changes), so no global
+relation-monotonicity is needed. -/
 theorem WT_extend_val {k : Nat} {st : StoreTyping k} {m : Memory} {l : Nat} {w : HeapVal}
     (hwf_v : Exp.WfInHeap w.unwrap m.heap)
     (hreach : w.reachability = compute_reachability m.heap w.unwrap w.isVal)
@@ -3674,7 +3685,7 @@ theorem WT_extend_val {k : Nat} {st : StoreTyping k} {m : Memory} {l : Nat} {w :
 /-- A `_hpred`/`_hbool`-free variant of `Eval.eval_letin`: those two hypotheses are
 vestigial (unused) in `eval_letin`'s proof, but for the semantic-typing `Q1`
 (the `exi_exp_denot` postcondition) they are *false* — `Q1` carries `MemTyped` (not
-monotone without the `memTyped_subsumes` gap) and `witness_live` (anti-monotone).  This
+subsumption-monotone for a higher-order store) and `witness_live` (anti-monotone).  This
 copy drops them; the operational composition is identical. -/
 theorem Eval.eval_letin' {k : Nat} {m : Memory} {e1 : Exp {}} {e2 : Exp ({},x)} {Q Q1 : Tpost}
     (he1 : Eval k m e1 Q1)
