@@ -68,7 +68,7 @@ theorem CapySubtyp.captureSet_subcapt' {s : Sig} {Γ : CapyCtx s} {sort : CapyTy
     intro hsort
     simp only [CapyTy.captureSet]
     exact CapySubcapt.sc_elem CapyCaptureSet.Subset.empty
-  | arrow _ hcs _ _ _ =>
+  | arrow hcs _ _ =>
     intro hsort
     simp only [CapyTy.captureSet]
     exact hcs
@@ -87,6 +87,51 @@ theorem CapySubtyp.captureSet_subcapt {s : Sig} {Γ : CapyCtx s} {Ta Tb : CapyTy
     (h : CapySubtyp Γ Ta Tb) :
     CapySubcapt Γ Ta.captureSet Tb.captureSet :=
   CapySubtyp.captureSet_subcapt' h rfl
+
+/-- **`CapySubcapt` transports along a source context renaming.**  Same shape as
+    `CapyCtx.IsStableCVar.renamesTo_iff`: `RenamesTo`'s lookup-correspondence
+    realigns each of `sc_var`/`sc_cvar`'s context lookups, and the rest is
+    structural (`rename` commutes with `union`/`applyMut`/`applyRO`/`applyAccess`).
+    Needed to weaken `arrow`'s function-capture premise `hcs : CapySubcapt Γ0 cs1
+    cs2` past the two extra binders (self-cvar, domain-cvar) the codomain modal
+    lock sits under. -/
+theorem CapyCaptureSet.Subset.rename {s1 s2 : Sig} {C1 C2 : CapyCaptureSet s1}
+    {f : Rename s1 s2} (h : CapyCaptureSet.Subset C1 C2) :
+    CapyCaptureSet.Subset (C1.rename f) (C2.rename f) := by
+  induction h with
+  | refl => exact CapyCaptureSet.Subset.refl
+  | empty => exact CapyCaptureSet.Subset.empty
+  | union_left _ _ ih1 ih2 => exact CapyCaptureSet.Subset.union_left ih1 ih2
+  | union_right_left _ ih => exact CapyCaptureSet.Subset.union_right_left ih
+  | union_right_right _ ih => exact CapyCaptureSet.Subset.union_right_right ih
+
+theorem CapySubcapt.renamesTo {s1 s2 : Sig} {Γ1 : CapyCtx s1} {Γ2 : CapyCtx s2}
+    {f : Rename s1 s2} (hf : Γ1.RenamesTo Γ2 f) {C1 C2 : CapyCaptureSet s1}
+    (h : CapySubcapt Γ1 C1 C2) : CapySubcapt Γ2 (C1.rename f) (C2.rename f) := by
+  induction h with
+  | sc_trans _ _ ih1 ih2 => exact CapySubcapt.sc_trans (ih1 hf) (ih2 hf)
+  | sc_elem hsub => exact CapySubcapt.sc_elem (CapyCaptureSet.Subset.rename hsub)
+  | sc_mode hle =>
+    simp only [CapyCaptureSet.applyMut_rename]
+    exact CapySubcapt.sc_mode hle
+  | sc_union _ _ ih1 ih2 =>
+    simp only [CapyCaptureSet.rename]
+    exact CapySubcapt.sc_union (ih1 hf) (ih2 hf)
+  | sc_var hlk =>
+    simp only [CapyCaptureSet.rename, Var.rename, ← CapyTy.captureSet_rename]
+    exact CapySubcapt.sc_var (hf.var hlk)
+  | sc_cvar hlk =>
+    simp only [CapyCaptureSet.rename]
+    exact CapySubcapt.sc_cvar (hf.cvar hlk)
+  | sc_ro =>
+    rw [CapyCaptureSet.applyRO_rename]
+    exact CapySubcapt.sc_ro
+  | sc_ro_mono _ ih =>
+    rw [CapyCaptureSet.applyRO_rename, CapyCaptureSet.applyRO_rename]
+    exact CapySubcapt.sc_ro_mono (ih hf)
+  | sc_drop_mono _ ih =>
+    rw [CapyCaptureSet.applyAccess_rename, CapyCaptureSet.applyAccess_rename]
+    exact CapySubcapt.sc_drop_mono (ih hf)
 
 /-- **Subcapturing compiles to subcapturing.**  Source and target `Subcapt` share
     the same constructor structure, so this is a clean structural induction (the
@@ -404,12 +449,12 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
   -- (`CapyCtx.peaks_subcapt_stable_witness`, `Capybara/TypeSystem/Core.lean`).  The
   -- `modal_modal` `hsep` obligation is now discharged by `compile_peakSepCtx_subcapt_sep`
   -- (above), built from `peakItem_subcapt_stable`.
-  | arrow hs hcs hu ih1 ih3 =>
+  | arrow hcs hu ih3 =>
     intro s2 ctx hΓ hcoh hA hB
-    cases hA with | arrow hT1cl hcs1cl hU1cl =>
-    cases hB with | arrow hT2cl hcs2cl hU2cl =>
+    cases hA with | arrow hTcl hcs1cl hU1cl =>
+    cases hB with | arrow hTcl2 hcs2cl hU2cl =>
     simp only [CapyTy.compile]
-    rename_i Γ0 T1 T2 cs1 cs2 U1 U2
+    rename_i Γ0 cs1 cs2 U1 U2 T
     -- OUTER cpoly: the hand-written self-cvar `c` (`TypeCompiler.lean`'s `.arrow`
     -- clause) is bound `.unbound` unconditionally on BOTH sides, so `Subbound.top`
     -- discharges it trivially (no cb1-vs-cb2 divergence risk, unlike `cpoly`'s own
@@ -432,30 +477,67 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
     have hΓB : ((ctx.weakenTarget (Binding.cvar Authority.access_only CaptureBound.unbound)
         ).consCVar (.unbound .epsilon) BVar.here).capyCtx = Γ0,C<:.unbound .epsilon := by
       simp only [CompilerCtx.consCVar_capyCtx, CompilerCtx.weakenTarget_capyCtx, hΓ]
-    -- MIDDLE cpoly: the domain re-abstraction cvar `cx`, bound to `⟦T.captureSet⟧`
-    -- — the ARROW's OWN domain type's top-level capture set.  Contravariant,
-    -- discharged via the NEW `CapySubtyp.captureSet_subcapt` helper (above) applied
-    -- to `hs` (the domain-contravariance premise).
-    refine Subtyp.cpoly ?_ Subcapt.refl (Subtyp.typ ?_)
-    · exact Subbound.capset (CapySubcapt.compile (CapySubtyp.captureSet_subcapt hs)
-        ((ctx.weakenTarget (Binding.cvar Authority.access_only CaptureBound.unbound)
-          ).consCVar (.unbound .epsilon) BVar.here) hΓB hcohB)
-    -- GAP: the domain premise (`Subtyp.arrow`'s own contravariant domain, over the
-    -- SELF-CAPTURE-REFINED `T.refineCaptureSet {x}`) and the codomain/lock kernel
-    -- (`W`/`Ψ`/`E`, the modal lock over the captured resources `cs ∪ {x}`) remain.
-    -- The domain premise needs "`CapySubtyp Γ Ta Tb → CapySubtyp Γ
-    -- (Ta.refineCaptureSet cs) (Tb.refineCaptureSet cs)`" — genuinely FALSE in
-    -- general (`Subtyp.top`'s `IsPureType` side condition blocks it whenever `cs` is
-    -- nonempty and `Tb = .top`), so a real proof needs to case on `hs`'s own
-    -- top-level shape (mirroring the target's capture-covariant constructors,
-    -- `Subtyp.arrow`/`poly`/`cpoly`/`cap`/`cell`, one at a time) rather than a
-    -- single generic bridge.  The lock kernel itself mirrors `poly`/`cpoly`'s
-    -- `Subtyp.trans` + `Subtyp.modal` + `Subtyp.modal_modal` +
-    -- `compile_peakSepCtx_subcapt_sep` pattern (already-proven reusable machinery),
-    -- but threading it here needs an extra `x`-var-binder layer — see
-    -- `CapyTy.compile_subst_subtyp`'s `.arrow` case (`OpenCVarSubtyp.lean`) for the
-    -- substitution-based precedent of the same shape.  Out of scope for this
-    -- session's pairwise-separation fix (`compile_peakSepCtx_subcapt_sep`, above).
+    -- MIDDLE cpoly: the domain re-abstraction cvar `cx`, bound to `⟦T.captureSet⟧`.
+    -- The domain `T` is now the SAME type on both sides (2026-07-01 invariance
+    -- override, see `CapySubtyp.arrow`), so this bound is LITERALLY identical on
+    -- both sides — `Subbound.capset Subcapt.refl`, no `captureSet_subcapt` needed.
+    refine Subtyp.cpoly (Subbound.capset Subcapt.refl) Subcapt.refl (Subtyp.typ ?_)
+    -- The domain arrow's own domain slot (`CapyTy.compile ((T.rename succ).refineCaptureSet
+    -- {x}) ctxDomain`) is now IDENTICAL on both sides (same `T`, same `ctxDomain`), so
+    -- `Subtyp.arrow`'s own domain premise is `Subtyp.refl`.  Only the codomain modal
+    -- kernel (`W`/`Ψ`/`E`, keyed on `cs1 ∪ {x}` vs `cs2 ∪ {x}` and `U1` vs `U2`) remains.
+    refine Subtyp.arrow Subtyp.refl Subcapt.refl (Subtyp.typ ?_)
+    -- GAP: only the codomain modal lock kernel (`W`/`Ψ`/`E`, keyed on `cs1 ∪ {x}` vs
+    -- `cs2 ∪ {x}` and `U1` vs `U2`) remains — structurally the SAME `Subtyp.trans` +
+    -- `Subtyp.modal` + `Subtyp.modal_modal` + `compile_peakSepCtx_subcapt_sep` kernel
+    -- already proven for `poly`/`cpoly` (`Cf`/`Ψ.sep` compile identically via
+    -- `ctxLock`, no bound-irrelevance issue: `ctxLock`'s CAPYCTX already carries the
+    -- REAL `T` for the param var, and `weakenTarget`'s `srcCtx` field never depends on
+    -- which binding value is pushed — only `coreCtx` does, and `compile` never reads
+    -- `coreCtx` — so `Cf`/`Ψ` need no `CompileCong` bridge at all here, UNLIKE `poly`).
+    -- The one NEW piece: `ih3`'s conclusion is stated over `U1.rename
+    -- Rename.implicit_cvar`/`U2.rename Rename.implicit_cvar` (inserting the unused
+    -- self-cvar slot `C`, since `hu` — `CapySubtyp.arrow`'s body premise — is typed at
+    -- `Γ0,Cε,x:T`, one level deeper in SOURCE signature than `ctxE`'s own `(s1,x)`,
+    -- which has NO `C` slot at all — E's own compile-context skips the self-cvar
+    -- entirely).  Bridging needs `CapyTy.compile_mapsTo` (`ContextMorphism.lean`) —
+    -- `compile (T.rename fs) ctx2 = (compile T ctx1).rename ft` for an injective
+    -- SOURCE rename `fs` (here `Rename.implicit_cvar`) and a `ctx1.MapsTo ctx2 fs ft`
+    -- witness — to relate `compile (U ctx1 : level (s1,x))` to `compile (U.rename
+    -- implicit_cvar) ctx''` at the REAL `(s1,C,x)`-level context `ih3` needs.
+    -- Constructing that `MapsTo` witness (relating `ctxE`'s C-free context to the
+    -- REAL `Γ0,Cε,x:T`-matching one) turns out to hit a DEEPER, structural blocker,
+    -- confirmed by unfolding both `ih3`'s premises and `CompilerCtx.Coherent`:
+    --
+    -- `ih3` (and every route to `hCfSub`/`Satisfy` via `CapySubcapt.compile`/
+    -- `CapyHasKind.compile`) demands `ctx.Coherent` on whatever context it is fed.
+    -- `CompilerCtx.Coherent.varLookup` is UNIVERSALLY quantified over every var in
+    -- `capyCtx`, including `x` itself: it demands `ctx.srcCtx.lookupVar x =
+    -- CapyCaptureSet.compile T.captureSet ctx.srcCtx` — the *faithful* image.  But
+    -- `ctxLock`/`ctxDomain` (`TypeCompiler.lean`'s `.arrow` clause) deliberately give
+    -- `x` a DIFFERENT image — the re-abstracted domain cvar `{cx}` (`.cvar (.M
+    -- .epsilon) (.there .here)`) — "so `x ↦ cx` flows through" the compiled lock.
+    -- `ctxLock` is therefore PROVABLY NOT `CompilerCtx.Coherent` (the `varLookup`
+    -- obligation at `x`'s own slot is false in general), so `ih3` cannot be invoked
+    -- there, and `CapySubcapt.compile`/`CapyHasKind.compile` cannot be used to build
+    -- `hCfSub`/`Satisfy` there either — this blocks not just the `body` (E1-vs-E2)
+    -- goal but the "outer lock" `Subtyp.modal`/`modal_modal` assembly too.
+    --
+    -- This exact non-alignment is ALREADY known and named in this codebase:
+    -- `SrcAligned.consVar` (`OpenCVarSubtyp.lean`) documents its own faithful-image
+    -- requirement as "the *aligned* surrogate of the `arrow` compiler's
+    -- `ctxLock`/`ctxDomain`, which instead store the self-capture `{cx}`", and a
+    -- later comment there states plainly this "makes `SrcAligned` FAIL for
+    -- `ctxLock`/`ctxDomain`".  The apparatus that DOES cope with it —
+    -- `SrcCtx.realign`, `NoPseudoPeak`, `CVarInjective`, `PeakSubstIso`/
+    -- `StablePreserving`, `compile_peakSepCtx_sep_backward(_realign)` — lives in
+    -- `CapyTy.compile_subst_subtyp` (`OpenCVarSubtyp.lean`, ~4000 lines), which
+    -- solves the ANALOGOUS problem for substitution-invariance (`compile (T.subst σ)
+    -- ctxSub = (compile T ctxOrig).subst σt`).  Adapting that apparatus from
+    -- "one type under a substitution" to "two `CapySubtyp`-related types `U1`/`U2`
+    -- sharing one non-aligned `ctxLock`/`ctxE`" is substantial, genuinely new proof
+    -- engineering — out of scope for this session.  See memory
+    -- `project_capybara_arrow_resolution` for the pointer.
     sorry
   | poly hs hcs ht ih1 ih3 =>
     intro s2 ctx hΓ hcoh hA hB

@@ -173,14 +173,13 @@ inductive CapySubtyp : CapyCtx s -> CapyTy sort s -> CapyTy sort s -> Prop where
   CapyCtx.LookupTVar Γ X S ->
   -------------------
   CapySubtyp Γ (.tvar X) S.core
-| arrow :
-  CapySubtyp (Γ,C<:.unbound .epsilon) T2 T1 ->
+| arrow {T : CapyTy .capt (s,C)} :
   CapySubcapt Γ cs1 cs2 ->
   CapySubtyp
-    (Γ,C<:.unbound .epsilon,x:T2)
+    (Γ,C<:.unbound .epsilon,x:T)
     (U1.rename Rename.implicit_cvar) (U2.rename Rename.implicit_cvar) ->
   --------------------------
-  CapySubtyp Γ (.arrow T1 cs1 U1) (.arrow T2 cs2 U2)
+  CapySubtyp Γ (.arrow T cs1 U1) (.arrow T cs2 U2)
 | poly {S1 S2 : CapyPureTy s} :
   CapySubtyp Γ S2.core S1.core ->
   CapySubcapt Γ cs1 cs2 ->
