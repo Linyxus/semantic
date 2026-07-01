@@ -34,36 +34,6 @@ def Denot := Memory -> Exp {} -> Prop
   what the combinator layer consumes. -/
 def IDenot := (k : Nat) -> StoreTyping k -> Denot
 
-/-- **Step measure of a trace**: the number of *index-consuming* events — namely reads
-  (`.access .ro`).  Dereferencing a cell consults the store invariant at a strictly lower
-  index (`MemTyped k` exposes content only at `i < k`), so each read costs one step.  The
-  step-counted expression relation concludes `val_denot` at `k − t.readCount`. -/
-def Trace.readCount (t : Trace) : Nat :=
-  t.countP (fun item => match item with | .access .ro _ => true | _ => false)
-
-@[simp] theorem Trace.readCount_nil : Trace.readCount [] = 0 := rfl
-
-/-- `readCount` reductions on the single-event traces the value-elimination rules produce, so
-`simp` collapses `k - t.readCount` to the right index (`k`, or `k-1` for a read). -/
-@[simp] theorem Trace.readCount_alloc (l : Nat) (t : Trace) :
-    Trace.readCount (.alloc l :: t) = Trace.readCount t := by
-  simp only [Trace.readCount, List.countP_cons]; rfl
-@[simp] theorem Trace.readCount_dealloc (l : Nat) (t : Trace) :
-    Trace.readCount (.dealloc l :: t) = Trace.readCount t := by
-  simp only [Trace.readCount, List.countP_cons]; rfl
-@[simp] theorem Trace.readCount_access_epsilon (l : Nat) (t : Trace) :
-    Trace.readCount (.access .epsilon l :: t) = Trace.readCount t := by
-  simp only [Trace.readCount, List.countP_cons]; rfl
-@[simp] theorem Trace.readCount_access_ro (l : Nat) (t : Trace) :
-    Trace.readCount (.access .ro l :: t) = Trace.readCount t + 1 := by
-  simp only [Trace.readCount, List.countP_cons]; rfl
-
-/-- Reads compose additively across trace concatenation — this is what threads the index
-  decrement through `Eval` composition (`sem_typ_letin`, application, …). -/
-@[simp] theorem Trace.readCount_append (t1 t2 : Trace) :
-    (t1 ++ t2).readCount = t1.readCount + t2.readCount := by
-  simp only [Trace.readCount, List.countP_append]
-
 /-- Pre-denotation. It takes a capability to form a denotation. -/
 def PreDenot := CapabilitySet -> Denot
 
@@ -770,7 +740,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
         MemTyped j st' m' →
         m'.is_compatible R0 →
         Ty.val_denot env T1 j st' m' (.var (.free arg)) →
-        Eval m' (t0.subst (Subst.openVar (.free arg))) (fun t v m'' =>
+        Eval j m' (t0.subst (Subst.openVar (.free arg))) (fun t v m'' =>
+          t.readCount < j →
           TraceOk t R0 ∧
           ∃ (st'' : StoreTyping (j - t.readCount)),
             WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
@@ -799,7 +770,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
         -- still discharges `termination_by sizeOf T`.
         IDenot.ImplyAfter denot j st' m' (Ty.val_denot env T1) →
         denot.enforce_pure →
-        Eval m' (t0.subst (Subst.openTVar .top)) (fun t v m'' =>
+        Eval j m' (t0.subst (Subst.openTVar .top)) (fun t v m'' =>
+          t.readCount < j →
           TraceOk t R0 ∧
           ∃ (st'' : StoreTyping (j - t.readCount)),
             WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
@@ -822,7 +794,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
         MemTyped j st' m' →
         m'.is_compatible R0 →
         ((A0 m').BoundedBy (B.denot env m')) →
-        Eval m' (t0.subst (Subst.openCVar CS)) (fun t v m'' =>
+        Eval j m' (t0.subst (Subst.openCVar CS)) (fun t v m'' =>
+          t.readCount < j →
           TraceOk t R0 ∧
           ∃ (st'' : StoreTyping (j - t.readCount)),
             WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
@@ -853,7 +826,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
        (∀ C1 m1 C2 m2,
           Ψ.HasTwoDistinct C1 m1 C2 m2 →
           CapabilitySet.Noninterference (C1.denot env m') (C2.denot env m')) →
-        Eval m' t0 (fun t v m'' =>
+        Eval j m' t0 (fun t v m'' =>
+          t.readCount < j →
           TraceOk t R0 ∧
           ∃ (st'' : StoreTyping (j - t.readCount)),
             WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
@@ -878,29 +852,35 @@ termination_by sizeOf E
 
 end
 
-/-- Expression denotation for capturing types (**step-counted**).  Takes an explicit
-    capture set (the use set from the typing judgment).  Assumes the starting world is
-    well-typed (`MemTyped k st m`); the result is a `T`-value at the **decremented** index
-    `k − t.readCount` (each read in the trace `t` consumes one index — see `Trace.readCount`),
-    at an extended well-typed store typing `st'` truncated to that index. -/
+/-- Expression denotation for capturing types (**step-counted, budget-guarded**).  Takes an
+    explicit capture set (the use set from the typing judgment).  Assumes the starting world
+    is well-typed (`MemTyped k st m`); asserts safety for `k` reads (`Eval k`), and — for
+    every run **within budget** (`t.readCount < k`, so the result index is ≥ 1) — a `T`-value
+    at the **decremented** index `k − t.readCount` (each read in the trace `t` consumes one
+    index — see `Trace.readCount`), at an extended well-typed store typing `st'` truncated to
+    that index.  Overflow runs owe nothing: the store speaks about content only at levels
+    `< k`, so a run that exhausts the budget is beyond this world's observation depth (the
+    ▷-style bottom — see the Phase 2c design finding in `roadmaps/generic-refs.md`). -/
 def Ty.exp_denot (ρ : TypeEnv s) (T : Ty .capt s) (R : CapabilitySet)
     (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   MemTyped k st m →
-  Eval m e (fun t v m' =>
+  Eval k m e (fun t v m' =>
+    t.readCount < k →
     TraceOk t R ∧
     ∃ (st' : StoreTyping (k - t.readCount)),
       WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) m ∧
       MemTyped (k - t.readCount) st' m' ∧
       Ty.val_denot ρ T (k - t.readCount) st' m' v)
 
-/-- Expression denotation for existential types (**step-counted**).
+/-- Expression denotation for existential types (**step-counted, budget-guarded**).
     Besides the value denotation at the decremented index `k − t.readCount` and extended
-    well-typed world `st'`, the postcondition carries the pack-witness bound `pack_bound`
-    and `witness_live` (both index-independent). -/
+    well-typed world `st'`, the (budget-guarded) postcondition carries the pack-witness
+    bound `pack_bound` and `witness_live`. -/
 def Ty.exi_exp_denot (ρ : TypeEnv s) (E : Ty .exi s) (R : CapabilitySet)
     (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   MemTyped k st m →
-  Eval m e (fun t v m' =>
+  Eval k m e (fun t v m' =>
+    t.readCount < k →
     TraceOk t R ∧
     ∃ (st' : StoreTyping (k - t.readCount)),
       WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) m ∧
@@ -2988,8 +2968,8 @@ theorem val_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTypi
   IDenot.ImplyAfter (Ty.exp_denot env T1 R) ki st H (Ty.exp_denot env T2 R) := by
   intro j hjk st' m' hwle e heval hmt
   refine eval_post_monotonic_general ?_ (heval hmt)
-  intro m'' hsub'' t v hpost
-  obtain ⟨htr, st'', hwle'', hmt'', hval1⟩ := hpost
+  intro m'' hsub'' t v hpost hguard
+  obtain ⟨htr, st'', hwle'', hmt'', hval1⟩ := hpost hguard
   refine ⟨htr, st'', hwle'', hmt'', ?_⟩
   -- The step-counted result lives at `j - t.readCount ≤ j ≤ ki`; index-uniform `ImplyAfter`
   -- applies there, comparing against `st` truncated to that level (via `trunc_trunc`).
@@ -3007,8 +2987,8 @@ theorem exi_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTypi
   IDenot.ImplyAfter (Ty.exi_exp_denot env T1 R) ki st H (Ty.exi_exp_denot env T2 R) := by
   intro j hjk st' m' hwle e heval hmt
   refine eval_post_monotonic_general ?_ (heval hmt)
-  intro m'' hsub'' t v hpost
-  obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost
+  intro m'' hsub'' t v hpost hguard
+  obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost hguard
   refine ⟨htr, st'', hwle'', hmt'', ?_, hpb, hwl⟩
   have hidx : j - t.readCount ≤ ki := Nat.le_trans (Nat.sub_le j t.readCount) hjk
   have h12 : WorldLe (st'.trunc (Nat.sub_le j t.readCount)) m'

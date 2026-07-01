@@ -344,8 +344,8 @@ def rebind_val_denot
       have harg' := (ih1 j st' m' (.var (.free arg))).mpr harg
       have hd' := hd j hjk st' m' arg hwle hmt hcompat harg'
       refine eval_post_monotonic_general ?_ hd'
-      intro m'' hsub'' t v hpost
-      obtain ⟨htr, st'', hwle'', hmt'', hval, hpb, hwl⟩ := hpost
+      intro m'' hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle'', hmt'', hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle'', hmt'', (ih2 (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
@@ -356,8 +356,8 @@ def rebind_val_denot
       have harg' := (ih1 j st' m' (.var (.free arg))).mp harg
       have hd' := hd j hjk st' m' arg hwle hmt hcompat harg'
       refine eval_post_monotonic_general ?_ hd'
-      intro m'' hsub'' t v hpost
-      obtain ⟨htr, st'', hwle'', hmt'', hval, hpb, hwl⟩ := hpost
+      intro m'' hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle'', hmt'', hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle'', hmt'', (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
   | .poly T1 cs T2 => by
     have ih1 := rebind_val_denot ρ T1
@@ -375,8 +375,8 @@ def rebind_val_denot
         exact (ih1 i st'' m'' e').mpr (himply i hij st'' m'' hwle'' e' hdenot)
       have hd' := hd j hjk st' m' denot hwle hmt hcompat hproper himply_simple_ans himply' hpure
       refine eval_post_monotonic_general ?_ hd'
-      intro m'' hsub'' t v hpost
-      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
+      intro m'' hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · intro ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', S0, t0, hr, hwf_cs', hR0_sub, ?_⟩
@@ -387,8 +387,8 @@ def rebind_val_denot
         exact (ih1 i st'' m'' e').mp (himply i hij st'' m'' hwle'' e' hdenot)
       have hd' := hd j hjk st' m' denot hwle hmt hcompat hproper himply_simple_ans himply' hpure
       refine eval_post_monotonic_general ?_ hd'
-      intro m'' hsub'' t v hpost
-      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
+      intro m'' hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
   | .cpoly B cs T => by
     have hB := rebind_capturebound_denot ρ B
@@ -404,8 +404,8 @@ def rebind_val_denot
       have ih2 := rebind_exi_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T
       have hd' := hd j hjk st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
       refine eval_post_monotonic_general ?_ hd'
-      intro m'' hsub'' t v hpost
-      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
+      intro m'' hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · intro ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, hd⟩
       refine ⟨hwf_e, hwf_cs, cs', B0, t0, hr, hwf_cs', hR0_sub, ?_⟩
@@ -413,8 +413,8 @@ def rebind_val_denot
       have ih2 := rebind_exi_val_denot (ρ.liftCVar CS (cap := CS.ground_denot m')) T
       have hd' := hd j hjk st' m' CS hwf_CS hdf hwle hmt hcompat hsub_bound
       refine eval_post_monotonic_general ?_ hd'
-      intro m'' hsub'' t v hpost
-      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
+      intro m'' hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
   | .modal cs Ψ T => by
     intro k st m e
@@ -445,8 +445,8 @@ def rebind_val_denot
               hsep (C1.rename f) m1 (C2.rename f) m2 (hdistinct.rename)
         have hd' := hbody j hjk st' m' hwle hmt hcompat hkind' hsep'
         refine eval_post_monotonic_general ?_ hd'
-        intro m'' hsub'' t v hpost
-        obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
+        intro m'' hsub'' t v hpost hguard
+        obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
         exact ⟨htr, st'', hwle3, hmt3, (ih (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
     · rintro ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hres, hwf_cs0, hwf_sepctx0,
         hsat, hR0_sub, hbody⟩
@@ -473,8 +473,8 @@ def rebind_val_denot
               hsep D1 m1 D2 m2 hdistinct0
         have hd' := hbody j hjk st' m' hwle hmt hcompat hkind' hsep'
         refine eval_post_monotonic_general ?_ hd'
-        intro m'' hsub'' t v hpost
-        obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost
+        intro m'' hsub'' t v hpost hguard
+        obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
         exact ⟨htr, st'', hwle3, hmt3, (ih (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
 
 def rebind_exi_val_denot
@@ -514,13 +514,13 @@ def rebind_exi_exp_denot
   constructor
   · intro h hmt
     refine eval_post_monotonic_general ?_ (h hmt)
-    intro mm hsub t v hpost
-    obtain ⟨htr, st', hwle, hmt', hval, hpb, hwl⟩ := hpost
+    intro mm hsub t v hpost hguard
+    obtain ⟨htr, st', hwle, hmt', hval, hpb, hwl⟩ := hpost hguard
     exact ⟨htr, st', hwle, hmt', (ih (k - t.readCount) st' mm v).mp hval, hpb, hwl⟩
   · intro h hmt
     refine eval_post_monotonic_general ?_ (h hmt)
-    intro mm hsub t v hpost
-    obtain ⟨htr, st', hwle, hmt', hval, hpb, hwl⟩ := hpost
+    intro mm hsub t v hpost hguard
+    obtain ⟨htr, st', hwle, hmt', hval, hpb, hwl⟩ := hpost hguard
     exact ⟨htr, st', hwle, hmt', (ih (k - t.readCount) st' mm v).mpr hval, hpb, hwl⟩
 
 end

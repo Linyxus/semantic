@@ -170,6 +170,7 @@ theorem sem_typ_var
   simp only [Ty.exi_exp_denot]
   intro hmt
   apply Eval.eval_var
+  intro _hguard
   simp only [Ty.exi_val_denot]
   refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st m, hmt, ?_,
     pack_bound_of_ne_pack (fun _ _ h => nomatch h),
@@ -1148,7 +1149,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   intro hmt
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
       pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
     witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1221,7 +1223,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
   intro hmt
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
       pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
     witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1295,7 +1298,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
   intro hmt
   apply Eval.eval_val
   · simp only [Exp.subst]; constructor
-  · refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
       pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
     witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -1412,7 +1416,8 @@ theorem sem_typ_pack
          Exp.var (x.subst (Subst.from_TypeEnv env)) := by
     cases x <;> simp only [Exp.subst, Var.subst]
   rw [hvar] at hx
-  obtain ⟨_, st1, hwle1, hmt1, hval1, _⟩ := Eval.var_inv (hx hmt)
+  intro hguard
+  obtain ⟨_, st1, hwle1, hmt1, hval1, _⟩ := Eval.var_inv (hx hmt) hguard
   refine ⟨TraceOk.nil, st1, hwle1, hmt1, ?_, ?_, ?_⟩
   · simp only [Ty.exi_val_denot]
     constructor
@@ -1774,12 +1779,13 @@ theorem var_subst_is_free {x : BVar s .var} :
   rfl
 
 theorem var_exp_denot_inv {A : CapabilitySet} {k : Nat} {st : StoreTyping k}
+  (hk : 0 < k)
   (hmt : MemTyped k st store)
   (hv : Ty.exi_exp_denot env T A k st store (.var x)) :
   ∃ st', WorldLe st' store st store ∧ MemTyped k st' store
     ∧ Ty.exi_val_denot env T k st' store (.var x) := by
   simp only [Ty.exi_exp_denot, List.empty_eq] at hv
-  obtain ⟨_htrace, st', hwle, hmt', hval, _⟩ := Eval.var_inv (hv hmt)
+  obtain ⟨_htrace, st', hwle, hmt', hval, _⟩ := Eval.var_inv (hv hmt) hk
   -- a variable evaluates with the empty trace (`readCount = 0`), so the step-counted result
   -- world stays at index `k` and `st.trunc (le_refl) = st`.
   simp only [Trace.readCount_nil, Nat.sub_zero, WP.World.trunc_self] at hwle hmt' hval ⊢
@@ -1986,7 +1992,8 @@ theorem sem_typ_wrap
   intro hmt
   apply Eval.eval_val
   · constructor
-  · refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
       pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
     witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.val_denot]
@@ -2072,8 +2079,8 @@ theorem sem_typ_wrap
           rw [hauthority] at htyped
           simp only [Ty.exi_exp_denot, List.empty_eq] at htyped ⊢
           refine eval_post_monotonic ?_ (htyped hmt_body)
-          intro t m v hpost
-          obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hpost
+          intro t m v hpost hguard
+          obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hpost hguard
           exact ⟨htr, st'', hwle'', hmt'',
             IDenot.equiv_rtl (lweaken_exi_val_denot (env := env) (T := E)) hval'',
             hpb, hwl⟩
@@ -2093,13 +2100,16 @@ theorem sem_typ_app
   -- so the result index `k - t.readCount` matches the goal.  Observe the function value at
   -- world `(stx, store)`, re-run the argument at that world (via `env_typing_worldle_down`),
   -- fire the body at `j := k`, then bridge the result type with `open_arg_exi_val_denot`.
+  -- At budget `0` nothing is owed (`Eval.exhausted`); positivity feeds the var inversions.
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have hxd := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
-  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hmt hxd
+  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hkpos hmt hxd
   simp only [Ty.exi_val_denot] at hxval
   obtain ⟨fx, hfx, cs', T0, e0, hval0, Rcell, hlk, hR0_sub, hbody⟩ := abs_val_denot_inv hxval
   have htsx := env_typing_worldle_down hts hwlex
   have hyd := semtyp_to_exi_exp_denot hy htsx hdsep (Memory.is_compatible_empty store)
-  obtain ⟨sty, hwley, hmty, hyval⟩ := var_exp_denot_inv hmtx hyd
+  obtain ⟨sty, hwley, hmty, hyval⟩ := var_exp_denot_inv hkpos hmtx hyd
   simp only [Ty.exi_val_denot] at hyval
   have hfxeq : fx = (env.lookup_var x).1 := by cases hfx; rfl
   subst hfxeq
@@ -2114,8 +2124,8 @@ theorem sem_typ_app
   rw [hgoal_expr]
   apply Eval.eval_apply hlk
   refine eval_post_monotonic ?_ hrec0
-  intro t m'' v hp
-  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp
+  intro t m'' v hp hguard
+  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp hguard
   refine ⟨TraceOk.mono hR0_sub htr, st'',
     WorldLe.trans (WP.WorldLe.trunc (Nat.sub_le k t.readCount)
       (WorldLe.trans hwlex hwley)) hwle'', hmt'', ?_,
@@ -2136,8 +2146,10 @@ theorem sem_typ_tapp
   -- Step-counted design: the `poly` body fires at the FULL index `k` (`j := k`).  Observe the
   -- type-function value at world `(stx, store)`, instantiate its body with
   -- `denot := val_denot env S.core`, then bridge the result type with `open_targ_exi_val_denot`.
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have hxd := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
-  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hmt hxd
+  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hkpos hmt hxd
   simp only [Ty.exi_val_denot] at hxval
   obtain ⟨fx, hfx, cs', S0, e0, hval0, Rcell, hlk, hR0_sub, hbody⟩ := tabs_val_denot_inv hxval
   have hfxeq : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -2157,8 +2169,8 @@ theorem sem_typ_tapp
   rw [hgoal_expr]
   apply Eval.eval_tapply hlk
   refine eval_post_monotonic ?_ hrec0
-  intro t m'' v hp
-  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp
+  intro t m'' v hp hguard
+  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp hguard
   refine ⟨TraceOk.mono hR0_sub htr, st'',
     WorldLe.trans (WP.WorldLe.trunc (Nat.sub_le k t.readCount) hwlex) hwle'', hmt'', ?_,
     pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpb, hwl⟩
@@ -2181,8 +2193,10 @@ theorem sem_typ_capp
   -- Step-counted design: the `cpoly` body fires at the FULL index `k` (`j := k`).  Observe the
   -- capture-function value at world `(stx, store)`, instantiate its body with the ground
   -- capture `CS := D.subst (from_TypeEnv env)`, then bridge with `open_carg_exi_val_denot`.
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have hxd := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
-  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hmt hxd
+  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hkpos hmt hxd
   simp only [Ty.exi_val_denot] at hxval
   obtain ⟨fx, hfx, cs', B0, e0, hval0, Rcell, hlk, hR0_sub, hbody⟩ := cabs_val_denot_inv hxval
   have hfxeq : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -2210,8 +2224,8 @@ theorem sem_typ_capp
   rw [hgoal_expr]
   apply Eval.eval_capply hlk
   refine eval_post_monotonic ?_ hrec0
-  intro t m'' v hp
-  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp
+  intro t m'' v hp hguard
+  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp hguard
   refine ⟨TraceOk.mono hR0_sub htr, st'',
     WorldLe.trans (WP.WorldLe.trunc (Nat.sub_le k t.readCount) hwlex) hwle'', hmt'', ?_,
     pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpb, hwl⟩
@@ -2230,16 +2244,18 @@ theorem sem_typ_invoke
   simp only [Ty.exi_exp_denot, Exp.subst, Subst.from_TypeEnv, Var.subst,
     CaptureSet.denot, List.empty_eq]
   intro hmt
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have h1 := semtyp_to_exi_exp_denot hx hts hdsep
     (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
-  obtain ⟨st1, _, _, h1'⟩ := var_exp_denot_inv hmt h1
+  obtain ⟨st1, _, _, h1'⟩ := var_exp_denot_inv hkpos hmt h1
   simp only [Ty.exi_val_denot] at h1'
   have ⟨fx, hfx, hlk_cap, hmem_cap⟩ := cap_val_denot_inv h1'
   have h2 := semtyp_to_exi_exp_denot hy hts hdsep
     (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h2
-  obtain ⟨st2, _, _, h2'⟩ := var_exp_denot_inv hmt h2
+  obtain ⟨st2, _, _, h2'⟩ := var_exp_denot_inv hkpos hmt h2
   simp only [Ty.exi_val_denot] at h2'
   have ⟨fy, hfy, hval_unit, R, hlk_unit⟩ := unit_val_denot_inv h2'
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -2250,6 +2266,7 @@ theorem sem_typ_invoke
     (CaptureSet.denot env (.var (.M .epsilon) (.bound x)) store).covers
       (.access .epsilon) (env.lookup_var x).1 := hmem_cap
   apply Eval.eval_invoke hlk_cap hlk_unit
+  intro _hguard
   exact ⟨TraceOk.access hcov, st, WorldLe.refl_trunc_self _ st store, hmt,
     by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
     pack_bound_of_ne_pack (fun _ _ h => nomatch h),
@@ -2262,7 +2279,8 @@ theorem sem_typ_unit :
   intro hmt
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.unit
-  · exact ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt,
+  · intro _hguard
+    exact ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt,
       by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
       pack_bound_of_ne_pack (fun _ _ h => nomatch h),
     witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
@@ -2274,7 +2292,8 @@ theorem sem_typ_btrue :
   intro hmt
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.btrue
-  · refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
       pack_bound_of_ne_pack (fun _ _ h => nomatch h),
     witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
@@ -2287,7 +2306,8 @@ theorem sem_typ_bfalse :
   intro hmt
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.bfalse
-  · refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
       pack_bound_of_ne_pack (fun _ _ h => nomatch h),
     witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
@@ -2315,11 +2335,13 @@ theorem sem_typ_cond
     apply CapabilitySet.Subset.union_right_right
   have hcompat_C1 : store.is_compatible (C1.denot env store) :=
     Memory.is_compatible_subset hsubC1 hcompat
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have hguard_base := semtyp_to_exi_exp_denot ht1 hts hdsep hcompat_C1
   simp only [Ty.exi_exp_denot] at hguard_base
   have hQ1_at_store : ∃ st_g,
       Ty.val_denot env .bool k st_g store (.var (x.subst (Subst.from_TypeEnv env))) := by
-    obtain ⟨_, st_g, _, _, h1, _⟩ := Eval.var_inv (hguard_base hmt)
+    obtain ⟨_, st_g, _, _, h1, _⟩ := Eval.var_inv (hguard_base hmt) hkpos
     exact ⟨st_g, by simpa [Ty.exi_val_denot] using h1⟩
   obtain ⟨st_g, hQ1_at_store⟩ := hQ1_at_store
   simp only [Ty.val_denot] at hQ1_at_store
@@ -2336,16 +2358,16 @@ theorem sem_typ_cond
     have h2 := ht2 env k st store hts hdsep hcompat_C2
     simp only [Ty.exi_exp_denot] at h2
     refine eval_post_monotonic ?_ (h2 hmt)
-    intro t m v hpost
-    obtain ⟨htr, st', hwle', hmt', hval', hpb, hwl⟩ := hpost
+    intro t m v hpost hguard
+    obtain ⟨htr, st', hwle', hmt', hval', hpb, hwl⟩ := hpost hguard
     exact ⟨TraceOk.mono hsubC2 htr, st', hwle', hmt', hval',
       pack_bound_mono hsubC2 (Memory.subsumes_refl store) hpb, hwl⟩
   · intro _hres_false
     have h3 := ht3 env k st store hts hdsep hcompat_C3
     simp only [Ty.exi_exp_denot] at h3
     refine eval_post_monotonic ?_ (h3 hmt)
-    intro t m v hpost
-    obtain ⟨htr, st', hwle', hmt', hval', hpb, hwl⟩ := hpost
+    intro t m v hpost hguard
+    obtain ⟨htr, st', hwle', hmt', hval', hpb, hwl⟩ := hpost hguard
     exact ⟨TraceOk.mono hsubC3 htr, st', hwle', hmt', hval',
       pack_bound_mono hsubC3 (Memory.subsumes_refl store) hpb, hwl⟩
 
@@ -2359,7 +2381,8 @@ theorem sem_typ_reader
   intro hmt
   apply Eval.eval_val
   · exact Exp.IsSimpleVal.reader
-  · refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
       pack_bound_of_ne_pack (fun _ _ h => nomatch h),
     witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
@@ -2396,8 +2419,10 @@ theorem sem_typ_alloc
   -- `x`'s location is present in the store (it satisfies `val_denot T`).  Retain `hmt1`
   -- (`MemTyped k st1 store`) so the fresh cell's stored relation, which lives at `st1`,
   -- lines up with the world the cell op operates at.
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
-  obtain ⟨st1, hwle1, hmt1, hval1⟩ := var_exp_denot_inv hmt h1
+  obtain ⟨st1, hwle1, hmt1, hval1⟩ := var_exp_denot_inv hkpos hmt h1
   simp only [Ty.exi_val_denot] at hval1
   have hwf := val_denot_implies_wf (typed_env_is_implying_wf hts) T k st1 store
     (.var (.free (env.lookup_var x).1)) hval1
@@ -2406,7 +2431,7 @@ theorem sem_typ_alloc
     | wf_var hv => cases hv with | wf_free hh => exact Option.ne_none_iff_exists'.mpr ⟨_, hh⟩
   -- Reduce the alloc to its (faithful-cell) postcondition.
   apply Eval.eval_alloc (hlk := hlk)
-  intro l' hfresh
+  intro l' hfresh _hguard
   -- The fresh cell `l'` stores the content relation `R := val_denot env T k st1` (monotone
   -- by `val_denot_is_monotonic`), and the result world is `st1.set l' R`.  `WT_alloc`
   -- discharges `WorldLe (st1.set l' R) ext st1 store` and `MemTyped k (st1.set l' R) ext`.
@@ -2523,7 +2548,9 @@ theorem sem_typ_drop {x : BVar s .var}
   have h1 := semtyp_to_exi_exp_denot hx hts hdsep
     (Memory.is_compatible_empty store)
   simp only [List.empty_eq] at h1
-  obtain ⟨st1, _, _, h1'⟩ := var_exp_denot_inv hmt h1
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
+  obtain ⟨st1, _, _, h1'⟩ := var_exp_denot_inv hkpos hmt h1
   simp only [Ty.exi_val_denot] at h1'
   have ⟨fx, b0, ℓ0, hfx, hlk_cell, hmem_cell⟩ := cell_val_denot_inv h1'
   have : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -2561,6 +2588,7 @@ theorem sem_typ_drop {x : BVar s .var}
     (WT_drop ⟨b0, hlk_cell'⟩ hmt).2
   -- the dealloc trace has no `.access .ro`, so the step-counted result index stays at `k`
   -- (`st.trunc (le_refl) = st`).
+  intro _hguard
   refine ⟨TraceOk.dealloc ?_, ?ex⟩
   case ex =>
     rw [show st.trunc (Nat.sub_le k
@@ -2590,11 +2618,16 @@ theorem sem_typ_read
   intro env k st store hts hdsep hcompat
   simp only [Ty.exi_exp_denot, Exp.subst, Subst.from_TypeEnv, Var.subst, List.empty_eq]
   intro hmt
+  -- **Budget 0: nothing is owed** (`Eval.exhausted`).  This is where the former
+  -- step-index-0 gap of the read rule is discharged honestly: the budget-indexed `Safe`
+  -- is trivial at 0 and the `μ(t) < 0` guard is vacuous (Phase 2c design finding).
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   -- `x` is a reader; recover its underlying cell `y`, content `b0`, store relation `Rst`,
   -- and the content-type implication.  Retain `hmt1` so `read_typed`/`himpl` live at `st1`.
   have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
   simp only [Ty.exi_exp_denot, List.empty_eq] at h1
-  obtain ⟨_, st1, hwle1, hmt1, hval1, _, _⟩ := Eval.var_inv (h1 hmt)
+  obtain ⟨_, st1, hwle1, hmt1, hval1, _, _⟩ := Eval.var_inv (h1 hmt) hkpos
   simp only [Ty.exi_val_denot] at hval1
   obtain ⟨fx, y, b0, ℓ0, hval, Rcell, Rst, hfx, hlk_fx, hlk_y, _hcov, hstl, himpl⟩ :=
     reader_val_denot_inv_store hval1
@@ -2631,27 +2664,20 @@ theorem sem_typ_read
   -- STEP DROP: the read event `.access .ro y` consumes one index, so the result index is `k − 1`.
   -- `MemTyped k` (`hmt1`) exposes the cell content at every `i < k`; the reader biconditional
   -- `himpl` turns the stored relation into `val_denot env T` there.  At the result index
-  -- `k − 1 < k` (for `k ≥ 1`) this is exactly what the step-counted postcondition demands.
-  rcases Nat.eq_zero_or_pos k with hk0 | hkpos
-  · -- **Step-index-0 base case (genuine gap).**  When `k = 0`, the read consumes the last
-    -- available step and the result lands at index `0`.  `MemTyped 0`'s content obligation is
-    -- vacuous (`Fin 0`), and the reader's content biconditional is likewise empty, so nothing
-    -- forces `val_denot env T 0`.  Soundness here needs the value relation to be *trivial* at
-    -- index `0` (the "▷ later" modality of a step-indexed model) — a localized design decision
-    -- not yet taken.  This is the ONLY remaining gap in the step-counted `read`.
-    subst hk0
-    sorry
-  · have hpred : k - 1 < k := Nat.sub_lt hkpos Nat.one_pos
-    -- the read event `.access .ro y` has `readCount 1`, so the result index is `k − 1`
-    -- (`k - readCount [.access .ro y]` is definitionally `k - 1`).
-    refine ⟨TraceOk.access hcov_y, st1.trunc (Nat.sub_le k 1),
-      WP.WorldLe.trunc (Nat.sub_le k 1) hwle1, MemTyped_trunc (Nat.sub_le k 1) hmt1, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-      witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
-    simp only [Ty.exi_val_denot]
-    -- content at the result index `k − 1`, extracted from `MemTyped`/`himpl` at `⟨k-1, _⟩ : Fin k`.
-    exact (himpl ⟨k - 1, hpred⟩ (st1.trunc (Nat.le_of_lt hpred)) store (.var (.free b0))).mp
-      (hmt1.2.2 y b0 Rst hstl hlk_y' ⟨k - 1, hpred⟩)
+  -- `k − 1 < k` this is exactly what the step-counted postcondition demands (delivery is only
+  -- owed within budget, `μ(t) = 1 < k`).
+  intro _hguard
+  have hpred : k - 1 < k := Nat.sub_lt hkpos Nat.one_pos
+  -- the read event `.access .ro y` has `readCount 1`, so the result index is `k − 1`
+  -- (`k - readCount [.access .ro y]` is definitionally `k - 1`).
+  refine ⟨TraceOk.access hcov_y, st1.trunc (Nat.sub_le k 1),
+    WP.WorldLe.trunc (Nat.sub_le k 1) hwle1, MemTyped_trunc (Nat.sub_le k 1) hmt1, ?_,
+    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+  simp only [Ty.exi_val_denot]
+  -- content at the result index `k − 1`, extracted from `MemTyped`/`himpl` at `⟨k-1, _⟩ : Fin k`.
+  exact (himpl ⟨k - 1, hpred⟩ (st1.trunc (Nat.le_of_lt hpred)) store (.var (.free b0))).mp
+    (hmt1.2.2 y b0 Rst hstl hlk_y' ⟨k - 1, hpred⟩)
 
 theorem sem_typ_write
   {x y : BVar s .var}
@@ -2666,8 +2692,10 @@ theorem sem_typ_write
   -- `x` is a live cell; recover its location, content cell, store relation `R`, and the
   -- content-type implication `himpl`.  Retain `hmt1` so `R`/`himpl` (at `st1`) line up with
   -- `WT_write` (which writes into the cell typed by `R`).
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have h1 := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
-  obtain ⟨st1, hwle1, hmt1, hval1⟩ := var_exp_denot_inv hmt h1
+  obtain ⟨st1, hwle1, hmt1, hval1⟩ := var_exp_denot_inv hkpos hmt h1
   simp only [Ty.exi_val_denot] at hval1
   obtain ⟨fx, b0, ℓ0, R, hfx, hlk_cell, _hmem_cell, hstl, himpl⟩ :=
     cell_val_denot_inv_store hval1
@@ -2679,7 +2707,7 @@ theorem sem_typ_write
   -- rather than reconciling two incomparable futures of `st`.
   have htsx1 : EnvTyping Γ env k st1 store := env_typing_worldle_down hts hwle1
   have h2 := semtyp_to_exi_exp_denot hy htsx1 hdsep (Memory.is_compatible_empty store)
-  obtain ⟨st2, hwle2, hmt2, hval2⟩ := var_exp_denot_inv hmt1 h2
+  obtain ⟨st2, hwle2, hmt2, hval2⟩ := var_exp_denot_inv hkpos hmt1 h2
   simp only [Ty.exi_val_denot] at hval2
   -- the cell (typed `R` at `st1`) is still typed `R` at the grown world `st2 ⊒ st1`.
   have hstl2 : st2.lookup (env.lookup_var x).1 = some R := hwle2.2 _ R hstl
@@ -2734,6 +2762,7 @@ theorem sem_typ_write
       ⟨hsub_upd, fun _ _ h => h⟩ hdown
   obtain ⟨hwle_w, hmt_w⟩ := WT_write hlk_cell' (fun _ => hly) hstl2 hmt2 hyR
   -- result world `st2` at the same index `k` (the write's `.access ε` event has `readCount 0`).
+  intro _hguard
   refine ⟨TraceOk.access hcov, ?_⟩
   rw [show st.trunc (Nat.sub_le k
       (Trace.readCount [TraceItem.access Mutability.epsilon (env.lookup_var x).1])) = st from
@@ -3366,6 +3395,24 @@ theorem sem_satisfy
     · intro C1 m1 C2 m2 hdistinct
       exact fundamental_sepcheck (hsep C1 m1 C2 m2 hdistinct) hΓ env k st m henv hdsep
 
+/-- **Phase-6 gap (index-free trace bound).**  The budget-guarded semantic postcondition
+bounds a branch's trace only for runs WITHIN budget (`t.readCount < k`); `Safe.par`'s
+robust budget fields (`hb1`/`hb2`) need the bound for ALL runs.  The bound itself is
+genuinely index-free — capture soundness consumes no step index — so the honest fix is a
+separate index-free trace-bound fundamental theorem (a simple induction that never
+touches the store's `Fin k` levels), or the Phase-6 `Safe.par` redesign, which demands
+branch behaviour only at well-typed future worlds.  Until then this sorry (together with
+`simulate_down`/`memTyped_subsumes`) localizes the par gap. -/
+theorem sem_trace_bound {C : CaptureSet s} {Γ : Ctx s} {e : Exp s} {E : Ty .exi s}
+    (ht : SemanticTyping C Γ e E) {env : TypeEnv s} {k : Nat} {st : StoreTyping k}
+    {store : Memory}
+    (hts : EnvTyping Γ env k st store) (hdsep : env.EnvSepWf)
+    (hcompat : store.is_compatible (C.denot env store)) (hmt : MemTyped k st store)
+    {t : Trace} {v : Exp {}} {m' : Memory}
+    (hbs : BigStep store (e.subst (Subst.from_TypeEnv env)) t v m') :
+    TraceOk t (C.denot env store) := by
+  sorry
+
 theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
   {e1 e2 : Exp s} {E1 E2 : Ty .exi s}
@@ -3382,10 +3429,11 @@ theorem sem_typ_par
   simp only [Ty.exi_exp_denot, Exp.subst, List.empty_eq]
   intro hmt
   suffices hpar :
-      Eval store
+      Eval k store
         (.par (C1.subst (Subst.from_TypeEnv env)) (C2.subst (Subst.from_TypeEnv env))
           (e1.subst (Subst.from_TypeEnv env)) (e2.subst (Subst.from_TypeEnv env)))
-        (fun t v m' => TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
+        (fun t v m' => t.readCount < k →
+          TraceOk t (CaptureSet.denot env (C1 ∪ C2) store) ∧
           ∃ (st' : StoreTyping (k - t.readCount)),
             WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) store ∧
             MemTyped (k - t.readCount) st' m' ∧
@@ -3406,8 +3454,9 @@ theorem sem_typ_par
     intro mu l hmem
     simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
     exact CaptureSet.reachability_dom hmem
-  have he1 : Eval store (e1.subst (Subst.from_TypeEnv env))
-      (fun t v m' => TraceOk t (C1.denot env store) ∧
+  have he1 : Eval k store (e1.subst (Subst.from_TypeEnv env))
+      (fun t v m' => t.readCount < k →
+        TraceOk t (C1.denot env store) ∧
         ∃ (st' : StoreTyping (k - t.readCount)),
           WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) store ∧
           MemTyped (k - t.readCount) st' m' ∧
@@ -3418,8 +3467,9 @@ theorem sem_typ_par
     exact h hmt
   -- `e2`'s soundness run from `store`, used only to bound its trace by `C2` when
   -- discharging the separation premise of `eval_par`.
-  have he2_store : Eval store (e2.subst (Subst.from_TypeEnv env))
-      (fun t v m' => TraceOk t (C2.denot env store) ∧
+  have he2_store : Eval k store (e2.subst (Subst.from_TypeEnv env))
+      (fun t v m' => t.readCount < k →
+        TraceOk t (C2.denot env store) ∧
         ∃ (st' : StoreTyping (k - t.readCount)),
           WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) store ∧
           MemTyped (k - t.readCount) st' m' ∧
@@ -3441,20 +3491,26 @@ theorem sem_typ_par
       TraceOk t (C1.denot env store) := by
     intro m' t v m'' hsub' _ hbs
     obtain ⟨ms, hbs_s, _, _⟩ := hbs.simulate_down hsub' hwf_e1s
-    exact (he1.2 _ _ _ hbs_s).1
+    rcases Nat.lt_or_ge t.readCount k with hbud | hover
+    · exact ((he1.2 _ _ _ hbs_s) hbud).1
+    · exact sem_trace_bound ht1 hts hdsep (Memory.is_compatible_union_left hcompat')
+        hmt hbs_s
   have hb2 : ∀ {m' : Memory} {t : Trace} {v : Exp {}} {m''},
       m'.subsumes store → Exp.WfInHeap (e2.subst (Subst.from_TypeEnv env)) m'.heap →
       BigStep m' (e2.subst (Subst.from_TypeEnv env)) t v m'' →
       TraceOk t (C2.denot env store) := by
     intro m' t v m'' hsub' _ hbs
     obtain ⟨ms, hbs_s, _, _⟩ := hbs.simulate_down hsub' hwf_e2s
-    exact (he2_store.2 _ _ _ hbs_s).1
+    rcases Nat.lt_or_ge t.readCount k with hbud | hover
+    · exact ((he2_store.2 _ _ _ hbs_s) hbud).1
+    · exact sem_trace_bound ht2 hts hdsep (Memory.is_compatible_union_right hcompat')
+        hmt hbs_s
   -- Right-branch safety: `e2` is safe from any `m' ⊒ store` in which `C2` is
   -- compatible — re-run `e2`'s semantic typing at `m'` (`env_typing` lifts
   -- monotonically; `C2`'s denotation is stable as it is closed).
   have hrs2 : ∀ {m' : Memory}, m'.subsumes store →
       m'.is_compatible (C2.denot env store) →
-      Safe m' (e2.subst (Subst.from_TypeEnv env)) := by
+      Safe k m' (e2.subst (Subst.from_TypeEnv env)) := by
     intro m' hsub' hcompat'
     have hC2_eq : C2.denot env store = C2.denot env m' :=
       closed_capture_denot_monotonic _hclosed_C2 hts hsub'
@@ -3465,7 +3521,7 @@ theorem sem_typ_par
   -- in which `C1` is compatible.
   have hrs1 : ∀ {m' : Memory}, m'.subsumes store →
       m'.is_compatible (C1.denot env store) →
-      Safe m' (e1.subst (Subst.from_TypeEnv env)) := by
+      Safe k m' (e1.subst (Subst.from_TypeEnv env)) := by
     intro m' hsub' hcompat'
     have hC1_eq : C1.denot env store = C1.denot env m' :=
       closed_capture_denot_monotonic _hclosed_C1 hts hsub'
@@ -3484,13 +3540,15 @@ theorem sem_typ_par
       ((C1.subst (Subst.from_TypeEnv env)).reachability store)
       ((C2.subst (Subst.from_TypeEnv env)).reachability store) := by
     rw [← hrC1, ← hrC2]; exact hni
-  refine Eval.eval_par he1 he2_store.1 hb1 hb2 hrs1 hrs2 hni' ?_
-  -- Given `e1`'s answer at `m1`, run `e2` from `m1`.  `par` returns `.unit`, so
-  -- the only separation content needed is framing `C2`'s compatibility across
-  -- `e1`'s run (`t1`) so that `e2` may start from `m1` — the left/right branch
-  -- values are discarded, so no value framing is required.
-  intro t1 v1 m1 hsub_m1 hframe hQ1
-  obtain ⟨hok1, _, _, _⟩ := hQ1
+  refine Eval.eval_par he1 he2_store.1 hb1 hb2 hrs1 hrs2 hni'
+    (fun t v m' hover hguard => absurd hguard (Nat.not_lt.mpr hover)) ?_
+  -- Given `e1`'s answer at `m1` (WITHIN budget — overflow is internalized by
+  -- `eval_par`), run `e2` from `m1` at the residual budget `k − t1.readCount`.
+  -- `par` returns `.unit`, so the only separation content needed is framing `C2`'s
+  -- compatibility across `e1`'s run (`t1`) so that `e2` may start from `m1` — the
+  -- left/right branch values are discarded, so no value framing is required.
+  intro t1 v1 m1 hbud1 hsub_m1 hframe hQ1
+  obtain ⟨hok1, _, _, _⟩ := hQ1 hbud1
   -- (A) Frame `C2`'s compatibility across `e1`'s run (`t1` never drops a `C2`-cell,
   -- by non-interference) so that `e2` may run from `m1`.
   have hnodrop_C2_t1 : ∀ mu l, (C2.denot env store).hasmem mu l → ¬ Trace.extDrops t1 l := by
@@ -3506,28 +3564,28 @@ theorem sem_typ_par
   -- `C2`'s denotation is stable under the memory growth (it is closed).
   have hC2_eq : C2.denot env store = C2.denot env m1 :=
     closed_capture_denot_monotonic _hclosed_C2 hts hsub_m1
-  -- `e2`'s soundness at `C2`, run from `m1`.
-  have he2 : Eval m1 (e2.subst (Subst.from_TypeEnv env))
-      (fun t v m' => TraceOk t (C2.denot env m1) ∧
-        ∃ (st' : StoreTyping (k - t.readCount)),
-          WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) m1 ∧
-          MemTyped (k - t.readCount) st' m' ∧
-          Ty.exi_val_denot env E2 (k - t.readCount) st' m' v ∧
-        pack_bound (C2.denot env m1) m1 v m' ∧ witness_live v m') := by
-    have h := ht2 env k st m1 (env_typing_monotonic hts hsub_m1) hdsep (hC2_eq ▸ hcompat_m1_C2)
+  -- `e2`'s soundness at `C2`, run from `m1` at the RESIDUAL budget `k − t1.readCount`
+  -- (the world is `st` truncated to that level; the base-memory move `store → m1` is the
+  -- `memTyped_subsumes` gap, as before).
+  have he2 := by
+    have h := ht2 env (k - t1.readCount) (st.trunc (Nat.sub_le k t1.readCount)) m1
+      (env_typing_worldle_trunc (Nat.sub_le k t1.readCount) hts ⟨hsub_m1, fun _ _ h => h⟩)
+      hdsep (hC2_eq ▸ hcompat_m1_C2)
     simp only [Ty.exi_exp_denot] at h
-    exact h (memTyped_subsumes hmt hsub_m1)
-  -- Certify `Q` for the `.unit` result at the joined memory `m2`.  The trace is
-  -- `t1 ++ t2` (union-lifted from both branches); the value is unit, so its
-  -- `exi_val_denot`/`pack_bound`/`witness_live` are immediate.  The store typing at the
-  -- decremented index `k − (t1 ++ t2).readCount` is `e2`'s post-world truncated by the
-  -- extra reads `t1` performed (`readCount_append` splits the compound decrement).
+    exact h (MemTyped_trunc (Nat.sub_le k t1.readCount) (memTyped_subsumes hmt hsub_m1))
+  -- Certify `Q` for the `.unit` result at the joined memory `m2` — only WITHIN the
+  -- composite budget (`(t1 ++ t2).readCount < k`).  The trace is `t1 ++ t2`
+  -- (union-lifted from both branches); the value is unit, so its
+  -- `exi_val_denot`/`pack_bound`/`witness_live` are immediate.  The result index bridges
+  -- by `readCount_append` + `Nat.sub_sub`: `(k − μt1) − μt2 = k − μ(t1++t2)`.
   refine ⟨he2.1, ?_⟩
-  intro t2 v2 m2 hbs2
-  obtain ⟨hok2, st', hwle', hmt', _hval', _, _⟩ := he2.2 t2 v2 m2 hbs2
+  intro t2 v2 m2 hbs2 hguard
+  have hbud2 : t2.readCount < k - t1.readCount := by
+    rw [Trace.readCount_append] at hguard; omega
+  obtain ⟨hok2, st', hwle', hmt', _hval', _, _⟩ := he2.2 t2 v2 m2 hbs2 hbud2
   have hok2' : TraceOk t2 (C2.denot env store) := hC2_eq.symm ▸ hok2
-  have hjk : k - (t1 ++ t2).readCount ≤ k - t2.readCount := by
-    rw [Trace.readCount_append]; exact Nat.sub_le_sub_left (Nat.le_add_left _ _) k
+  have hjk : k - (t1 ++ t2).readCount ≤ k - t1.readCount - t2.readCount :=
+    Nat.le_of_eq (by rw [Trace.readCount_append, Nat.sub_sub])
   refine ⟨TraceOk.append (TraceOk.mono hsubC1 hok1) (TraceOk.mono hsubC2 hok2'),
     st'.trunc hjk, ?_, MemTyped_trunc hjk hmt',
     by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
@@ -3537,7 +3595,7 @@ theorem sem_typ_par
   -- its base memory to `store` (`m1 ⊒ store` via `hsub_m1`; the store-typing agreement is
   -- memory-independent).
   have hwle'' := WP.WorldLe.trunc hjk hwle'
-  rw [WP.World.trunc_trunc] at hwle''
+  rw [WP.World.trunc_trunc, WP.World.trunc_trunc] at hwle''
   exact WorldLe.trans ⟨hsub_m1, fun _ _ h => h⟩ hwle''
 
 /-- Bridge: the syntactic sequential-composition relation `SeqComp Γ C1 C2`
@@ -3618,39 +3676,55 @@ vestigial (unused) in `eval_letin`'s proof, but for the semantic-typing `Q1`
 (the `exi_exp_denot` postcondition) they are *false* — `Q1` carries `MemTyped` (not
 monotone without the `memTyped_subsumes` gap) and `witness_live` (anti-monotone).  This
 copy drops them; the operational composition is identical. -/
-theorem Eval.eval_letin' {m : Memory} {e1 : Exp {}} {e2 : Exp ({},x)} {Q Q1 : Tpost}
-    (he1 : Eval m e1 Q1)
-    (h_nonstuck : ∀ {t1 : Trace} {m1 : Memory} {v : Exp {}},
+theorem Eval.eval_letin' {k : Nat} {m : Memory} {e1 : Exp {}} {e2 : Exp ({},x)} {Q Q1 : Tpost}
+    (he1 : Eval k m e1 Q1)
+    (hQ_over : ∀ t v m', k ≤ t.readCount -> Q t v m')
+    (h_nonstuck : ∀ {t1 : Trace} {m1 : Memory} {v : Exp {}}, t1.readCount < k ->
       Q1 t1 v m1 -> v.IsSimpleAns ∧ Exp.WfInHeap v m1.heap)
-    (h_val : ∀ {t1 : Trace} {m1} {v : Exp {}}, m1.subsumes m -> Memory.FrameLive m t1 m1 ->
+    (h_val : ∀ {t1 : Trace} {m1} {v : Exp {}}, t1.readCount < k ->
+      m1.subsumes m -> Memory.FrameLive m t1 m1 ->
       (hv : Exp.IsSimpleVal v) -> (hwf_v : Exp.WfInHeap v m1.heap) -> Q1 t1 v m1 ->
       ∀ l' (hfresh : m1.lookup l' = none),
-        Eval (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh)
+        Eval (k - t1.readCount)
+          (m1.extend_val l' ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf_v rfl hfresh)
           (e2.subst (Subst.openVar (.free l'))) (fun t2 => Q (t1 ++ t2)))
-    (h_var : ∀ {t1 : Trace} {m1} {x : Var .var {}}, m1.subsumes m -> Memory.FrameLive m t1 m1 ->
+    (h_var : ∀ {t1 : Trace} {m1} {x : Var .var {}}, t1.readCount < k ->
+      m1.subsumes m -> Memory.FrameLive m t1 m1 ->
       (hwf_x : x.WfInHeap m1.heap) -> Q1 t1 (.var x) m1 ->
-      Eval m1 (e2.subst (Subst.openVar x)) (fun t2 => Q (t1 ++ t2))) :
-    Eval m (.letin e1 e2) Q := by
+      Eval (k - t1.readCount) m1 (e2.subst (Subst.openVar x)) (fun t2 => Q (t1 ++ t2))) :
+    Eval k m (.letin e1 e2) Q := by
   refine ⟨?_, ?_⟩
-  · refine Safe.letin he1.1 (fun t1 v m1 hrun => h_nonstuck (he1.2 t1 v m1 hrun)) ?_ ?_
+  · refine Safe.letin he1.1
+      (fun t1 v m1 hrun hbud => h_nonstuck hbud (he1.2 t1 v m1 hrun)) ?_ ?_
     · intro t1 m1 v hrun hv hwf_v l' hfresh
-      exact (h_val (BigStep.subsumes hrun) (BigStep.frameLive hrun) hv hwf_v
-        (he1.2 t1 v m1 hrun) l' hfresh).1
+      rcases Nat.lt_or_ge t1.readCount k with hbud | hover
+      · exact (h_val hbud (BigStep.subsumes hrun) (BigStep.frameLive hrun) hv hwf_v
+          (he1.2 t1 v m1 hrun) l' hfresh).1
+      · rw [Nat.sub_eq_zero_of_le hover]; exact Safe.exhausted
     · intro t1 m1 x hrun
-      have hq1 := he1.2 t1 (.var x) m1 hrun
-      have hwfx : x.WfInHeap m1.heap := by cases (h_nonstuck hq1).2 with | wf_var h => exact h
-      exact (h_var (BigStep.subsumes hrun) (BigStep.frameLive hrun) hwfx hq1).1
+      rcases Nat.lt_or_ge t1.readCount k with hbud | hover
+      · have hq1 := he1.2 t1 (.var x) m1 hrun
+        have hwfx : x.WfInHeap m1.heap := by
+          cases (h_nonstuck hbud hq1).2 with | wf_var h => exact h
+        exact (h_var hbud (BigStep.subsumes hrun) (BigStep.frameLive hrun) hwfx hq1).1
+      · rw [Nat.sub_eq_zero_of_le hover]; exact Safe.exhausted
   · intro t v m' hbs
     cases hbs with
     | bs_letin_val hrun_e1 hv hwf_v hfresh hrun_e2 =>
-      exact (h_val (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hv hwf_v
-        (he1.2 _ _ _ hrun_e1) _ hfresh).2 _ _ _ hrun_e2
+      rename_i t1 t2 _ _ _
+      rcases Nat.lt_or_ge t1.readCount k with hbud | hover
+      · exact (h_val hbud (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hv hwf_v
+          (he1.2 _ _ _ hrun_e1) _ hfresh).2 _ _ _ hrun_e2
+      · exact hQ_over _ _ _ (by rw [Trace.readCount_append]; omega)
     | bs_letin_var hrun_e1 hrun_e2 =>
-      have hq1 := he1.2 _ _ _ hrun_e1
-      cases (h_nonstuck hq1).2 with
-      | wf_var hwfx =>
-        exact (h_var (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hwfx hq1).2
-          _ _ _ hrun_e2
+      rename_i t1 t2 _ _
+      rcases Nat.lt_or_ge t1.readCount k with hbud | hover
+      · have hq1 := he1.2 _ _ _ hrun_e1
+        cases (h_nonstuck hbud hq1).2 with
+        | wf_var hwfx =>
+          exact (h_var hbud (BigStep.subsumes hrun_e1) (BigStep.frameLive hrun_e1) hwfx hq1).2
+            _ _ _ hrun_e2
+      · exact hQ_over _ _ _ (by rw [Trace.readCount_append]; omega)
     | bs_val hv => cases hv
 
 /-- The shared `letin`-continuation runner used by both the value-binding and
@@ -3677,8 +3751,10 @@ theorem sem_typ_letin_cont
     (hmt_mb : MemTyped (k - t1.readCount) st1 mb)
     (hval_l0 : Ty.val_denot env T (k - t1.readCount) st1 mb (.var (.free l0)))
     (hcompat_mb_C2 : mb.is_compatible (C2.denot env store)) :
-    Eval mb ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free l0)))
+    Eval (k - t1.readCount) mb
+      ((e2.subst (Subst.from_TypeEnv env).lift).subst (Subst.openVar (.free l0)))
       (fun t2 v m' =>
+        (t1 ++ t2).readCount < k →
         TraceOk (t1 ++ t2) ((C1 ∪ C2).denot env store) ∧
         ∃ (st' : StoreTyping (k - (t1 ++ t2).readCount)),
           WorldLe st' m' (st.trunc (Nat.sub_le k (t1 ++ t2).readCount)) store ∧
@@ -3729,8 +3805,10 @@ theorem sem_typ_letin_cont
     exact Exp.from_TypeEnv_weaken_open
   rw [hexpr]
   refine eval_post_monotonic ?_ he2'
-  intro t2 m' v hp2
-  obtain ⟨hok2, st', hwle2, hmt2, hval2, hpb2, hwl2⟩ := hp2
+  intro t2 m' v hp2 hguard
+  have hbud2 : t2.readCount < k - t1.readCount := by
+    rw [Trace.readCount_append] at hguard; omega
+  obtain ⟨hok2, st', hwle2, hmt2, hval2, hpb2, hwl2⟩ := hp2 hbud2
   have hR2_eq : (C2.rename Rename.succ).denot
       ((env.kill_peaks K).extend_var l0 (compute_peakset env T.captureSet)) mb
       = C2.denot env store := (congrFun hC2_env2 mb).trans hC2_mb_store
@@ -3809,18 +3887,20 @@ theorem sem_typ_letin
       CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hok1 hd)
     cases hle
     exact hseqcomp mu l hm' hmem
-  refine Eval.eval_letin' he1' (fun {t1 m1 v} hq1 => ?_)
-    (fun {t1 m1 v} hsub_m1 hframe hv hwf_v hq1 l' hfresh => ?_)
-    (fun {t1 m1 x0} hsub_m1 hframe hwf_x hq1 => ?_)
+  refine Eval.eval_letin' he1'
+    (fun t v m' hover hguard => absurd hguard (Nat.not_lt.mpr hover))
+    (fun {t1 m1 v} hbud hq1 => ?_)
+    (fun {t1 m1 v} hbud hsub_m1 hframe hv hwf_v hq1 l' hfresh => ?_)
+    (fun {t1 m1 x0} hbud hsub_m1 hframe hwf_x hq1 => ?_)
   · -- h_nonstuck: the `e1`-result is a `T`-value, hence a simple answer + heap-wf.
-    obtain ⟨_, st1, _, _, hval1, _, _⟩ := hq1
+    obtain ⟨_, st1, _, _, hval1, _, _⟩ := hq1 hbud
     simp only [Ty.exi_val_denot] at hval1
     exact ⟨val_denot_implies_simple_ans (typed_env_is_implying_simple_ans hts) T
              (k - t1.readCount) st1 m1 v hval1,
            val_denot_implies_wf (typed_env_is_implying_wf hts) T
              (k - t1.readCount) st1 m1 v hval1⟩
   · -- h_val: `e1` yields a value `v`; bind it at the fresh cell `l'`.
-    obtain ⟨hok1, st1, hwle1, hmt1, hval1, _, _⟩ := hq1
+    obtain ⟨hok1, st1, hwle1, hmt1, hval1, _, _⟩ := hq1 hbud
     simp only [Ty.exi_val_denot] at hval1
     set w : HeapVal := ⟨v, hv, compute_reachability m1.heap v hv⟩ with hw
     set m_ext := m1.extend_val l' w hwf_v rfl hfresh with hm_ext
@@ -3843,7 +3923,7 @@ theorem sem_typ_letin
     exact sem_typ_letin_cont _hclosed_C2 ht2 hts hdsep hsubC1 hsubC2 hok1
       hwle1_ext hmt_ext hval_var hcompat_ext_C2
   · -- h_var: `e1` yields a variable `x0`; reuse its existing cell.
-    obtain ⟨hok1, st1, hwle1, hmt1, hval1, _, _⟩ := hq1
+    obtain ⟨hok1, st1, hwle1, hmt1, hval1, _, _⟩ := hq1 hbud
     simp only [Ty.exi_val_denot] at hval1
     cases x0 with
     | bound b => cases b
@@ -4010,8 +4090,8 @@ lemma sem_subtyp_arrow {T1 T2 : Ty .capt s} {cs1 cs2 : CaptureSet s} {U1 U2 : Ty
     -- Fire hv's body at the same world with the coerced argument.
     have hbody1' := hbody1 i hij st'' m'' arg hwle'' hmt'' hcompat'' harg1
     refine eval_post_monotonic_general ?_ hbody1'
-    intro m''' _hsub''' t v hpost
-    obtain ⟨htr, st''', hwle''', hmt''', hval1, hpb, hwl⟩ := hpost
+    intro m''' _hsub''' t v hpost hguard
+    obtain ⟨htr, st''', hwle''', hmt''', hval1, hpb, hwl⟩ := hpost hguard
     refine ⟨htr, st''', hwle''', hmt''', ?_, hpb, hwl⟩
     -- hval1 lives at peakset `compute_peakset env T1.captureSet` and type U1;
     -- swap to the goal's peakset (peakset-inert) then weaken U1 → U2 via hres.
@@ -4095,8 +4175,8 @@ lemma sem_subtyp_cpoly {cb1 cb2 : CaptureBound s} {cs1 cs2 : CaptureSet s} {T1 T
       CapabilitySet.BoundedBy.trans hbound2 (hB env i st'a m'a htyping_a)
     have hbody1' := hbody1 i hij st'a m'a CS hCSwf hCSdf hwle'a hmt'a hcompat'a hbound1
     refine eval_post_monotonic_general ?_ hbody1'
-    intro m'' _hsub t v hpost
-    obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost
+    intro m'' _hsub t v hpost hguard
+    obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost hguard
     refine ⟨htr, st'', hwle'', hmt'', ?_, hpb, hwl⟩
     -- Weaken the codomain T1 → T2 via `hT` at `(Γ,C[.access_only]<:cb2)`.
     have henvT : EnvTyping (Γ,C[.access_only]<:cb2)
@@ -4184,8 +4264,8 @@ lemma sem_subtyp_poly {S1 S2 : PureTy s} {cs1 cs2 : CaptureSet s} {T1 T2 : Ty .e
     have hbody1' := hbody1 i hij st'a m'a denot hwle'a hmt'a hcompat'a hproper
       himply_simple_ans himply1 hpure
     refine eval_post_monotonic_general ?_ hbody1'
-    intro m'' _hsub t v hpost
-    obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost
+    intro m'' _hsub t v hpost hguard
+    obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost hguard
     refine ⟨htr, st'', hwle'', hmt'', ?_, hpb, hwl⟩
     -- Weaken the codomain T1 → T2 via `hT` at the extended context `(Γ,X<:S2)`.
     have henvT : EnvTyping (Γ,X<:S2) (env.extend_tvar denot) i st'a m'a :=
@@ -4214,8 +4294,8 @@ lemma sem_subtyp_modal {cs1 cs2 : CaptureSet s} {Ψ : SepCtx s} {E1 E2 : Ty .exi
       env_typing_worldle_trunc hij htyping' hwle'a
     have hbody1' := hbody1 i hij st'a m'a hwle'a hmt'a hcompat'a hkind hsep
     refine eval_post_monotonic_general ?_ hbody1'
-    intro m'' _hsub t v hpost
-    obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost
+    intro m'' _hsub t v hpost hguard
+    obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost hguard
     refine ⟨htr, st'', hwle'', hmt'', ?_, hpb, hwl⟩
     -- Weaken codomain E1 → E2 via `hT` under the lock (push_lock Ψ).  The `Satisfy`
     -- premise of the lock context is rebuilt from the body's kind/sep + closed Ψ.
@@ -4360,8 +4440,8 @@ theorem sem_typ_subtyp
   simp only [Ty.exi_exp_denot] at htd ⊢
   intro hmt
   refine eval_post_monotonic_general ?_ (htd hmt)
-  intro m' _hsub t v hpost
-  obtain ⟨htr, st', hwle', hmt', hval1, hpb, hwl⟩ := hpost
+  intro m' _hsub t v hpost hguard
+  obtain ⟨htr, st', hwle', hmt', hval1, hpb, hwl⟩ := hpost hguard
   exact ⟨TraceOk.mono hsubC htr, st', hwle', hmt',
     hsub_E (k - t.readCount) (Nat.sub_le k t.readCount) st' m' hwle' v hval1,
     pack_bound_mono hsubC (Memory.subsumes_refl m) hpb, hwl⟩
@@ -4582,10 +4662,12 @@ theorem sem_typ_unpack
       CapabilitySet.covers_imp_exists_hasmem (TraceOk.drop_covers_of_extDrops hok1 hd)
     cases hle
     exact hseqcomp mu l hm' hmem
-  refine Eval.eval_unpack he1' (fun {t1 m1 v} hq1 => ?_)
-    (fun {t1 m1 x0 cs0} hsub_m1 hframe hallocd _hwf_x _hwf_cs hq1 => ?_)
+  refine Eval.eval_unpack he1'
+    (fun t v m' hover hguard => absurd hguard (Nat.not_lt.mpr hover))
+    (fun {t1 m1 v} hbud hq1 => ?_)
+    (fun {t1 m1 x0 cs0} hbud hsub_m1 hframe hallocd _hwf_x _hwf_cs hq1 => ?_)
   · -- h_nonstuck: the `t`-result is a pack + heap-wf.
-    obtain ⟨_, st1, _, _, hval1, _, _⟩ := hq1
+    obtain ⟨_, st1, _, _, hval1, _, _⟩ := hq1 hbud
     simp only [Ty.exi_val_denot] at hval1
     split at hval1
     · next CS x heq =>
@@ -4600,7 +4682,7 @@ theorem sem_typ_unpack
       | wf_var hx => exact hx
     · exact hval1.elim
   · -- h_val: run `u` in the witness-extended, killed environment and reassemble.
-    obtain ⟨hok1, st1, hwle1, hmt1, hval1, hpb1, hwl1⟩ := hq1
+    obtain ⟨hok1, st1, hwle1, hmt1, hval1, hpb1, hwl1⟩ := hq1 hbud
     have hres : resolve m1.heap (Exp.pack cs0 x0) = some (.pack cs0 x0) := rfl
     simp only [Ty.exi_val_denot, hres] at hval1
     obtain ⟨hCSwf, hCSdf, hvalT⟩ := hval1
@@ -4743,8 +4825,10 @@ theorem sem_typ_unpack
     -- run (needed for `trace_cells_cap`).
     refine hexpr ▸ ?_
     refine ⟨he2'.1, ?_⟩
-    intro t2 vv m' hbs
-    obtain ⟨hok2, st'', hwle2, hmt2, hval2, hpb2, hwl2⟩ := he2'.2 t2 vv m' hbs
+    intro t2 vv m' hbs hguard
+    have hbud2 : t2.readCount < k - t1.readCount := by
+      rw [Trace.readCount_append] at hguard; omega
+    obtain ⟨hok2, st'', hwle2, hmt2, hval2, hpb2, hwl2⟩ := he2'.2 t2 vv m' hbs hbud2
     -- Index bridge: `u`'s post lands at `(k − t1.readCount) − t2.readCount`, which equals the
     -- compound decrement `k − (t1 ++ t2).readCount`.
     have hidx_eq : k - (t1 ++ t2).readCount = (k - t1.readCount) - t2.readCount := by
@@ -5034,8 +5118,10 @@ theorem sem_typ_unwrap
   -- Observe `x`'s modal value at world `(stx, store)`, invert it to expose the boxed body
   -- `t0`, then fire the body at the SAME world (`WorldLe.refl`) supplying the modal
   -- kind/non-interference obligations from `env.Satisfy Ψ store` (from `hsatisfy`).
+  rcases Nat.eq_zero_or_pos k with rfl | hkpos
+  · exact Eval.exhausted
   have hxd := semtyp_to_exi_exp_denot hx hts hdsep (Memory.is_compatible_empty store)
-  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hmt hxd
+  obtain ⟨stx, hwlex, hmtx, hxval⟩ := var_exp_denot_inv hkpos hmt hxd
   simp only [Ty.exi_val_denot] at hxval
   obtain ⟨fx, hfx, cs0, sepctx0, t0, hval, R, hlk, hR0_sub, hbody⟩ := modal_val_denot_inv hxval
   have hfxeq : fx = (env.lookup_var x).1 := by cases hfx; rfl
@@ -5052,8 +5138,8 @@ theorem sem_typ_unwrap
   rw [hgoal_expr]
   apply Eval.eval_unwrap hlk
   refine eval_post_monotonic ?_ hrec0
-  intro t m'' v hp
-  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp
+  intro t m'' v hp hguard
+  obtain ⟨htr, st'', hwle'', hmt'', hval'', hpb, hwl⟩ := hp hguard
   -- `hwle''` is based at `stx.trunc`; descend `x`'s world-step `hwlex` (based at `st`) to the
   -- same level and compose so the result is anchored at `st.trunc`.
   have hwlex_desc := WP.WorldLe.trunc (Nat.sub_le k t.readCount) hwlex
