@@ -251,6 +251,34 @@ theorem CompilerCtx.CompileCong.consTVar_boundIrrel {s1 s2 : Sig} {ctx : Compile
        unfold CapyCtx.IsStableCVar CapyCtx.lookup_authority CapyCtx.lookup_cvar
        exact Iff.rfl⟩
 
+/-- Pushing a `cvar` binder is `CompileCong`-irrelevant to its OWN declared bound as
+    long as the two bounds agree on *unbound-ness*: `peaks` never inspects a cvar's
+    bound (`peaks_push_cvar_irrel`), and `IsStableCVar .here` reads the bound only
+    through `∃ m, · = .unbound m`.  Bridges a `CapySubtyp.cpoly`-derived cvar push
+    (the RHS bound `cb2`) against `CapyTy.compile`'s own push of the LHS bound `cb1`
+    in the `capset` (both `.bound`) and `unbound` (both `.unbound`) `CapySubbound`
+    sub-cases — after the removal of the stability-flipping `bound_unbound` rule
+    (see the NOTE at `CapySubbound`), these are ALL the sub-cases. -/
+theorem CompilerCtx.CompileCong.consCVar_boundIrrel {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
+    {cb1 cb2 : CapyCaptureBound s1} (c : BVar s2 .cvar)
+    (hiff : (∃ m, cb1 = .unbound m) ↔ (∃ m, cb2 = .unbound m)) :
+    (ctx.consCVar cb1 c).CompileCong (ctx.consCVar cb2 c) :=
+  ⟨by simp only [CompilerCtx.consCVar_srcCtx],
+   fun W => by
+     simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default]
+     exact CapyCaptureSet.peaks_push_cvar_irrel W,
+   fun c0 => by
+     simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default]
+     cases c0 with
+     | here =>
+       change (CapyAuthority.access_only = .can_drop ∨
+             ∃ m, cb1.rename Rename.succ = .unbound m)
+           ↔ (CapyAuthority.access_only = .can_drop ∨
+             ∃ m, cb2.rename Rename.succ = .unbound m)
+       simp only [CapyCaptureBound.rename_eq_unbound_iff]
+       exact or_congr Iff.rfl hiff
+     | there c' => exact Iff.rfl⟩
+
 /-- A compiled lock's `peakSepCtx` depends on the context only through `peaks` +
     cvar-stability agreement. -/
 theorem CapyCaptureSet.peakset_eq {s : Sig} {Γ1 Γ2 : CapyCtx s} {W : CapyCaptureSet s}

@@ -19,6 +19,21 @@ The `exi` case needs the `consCVar` coherence-preservation lemma (K2); the
 tracked in `notes/fresh-roadmap.md`.
 -/
 
+/-- `HasKind` weakens under a fresh target binder (companion to `Subcapt.weaken`). -/
+theorem HasKind.weaken {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} {k : Kind}
+    (h : HasKind Γ C m) (b : Binding s k) :
+    HasKind (Γ.push b) (C.rename Rename.succ) m := by
+  induction h with
+  | empty => exact HasKind.empty
+  | union _ _ ih1 ih2 => exact HasKind.union ih1 ih2
+  | sc hsc _ ih => exact HasKind.sc (Subcapt.weaken hsc b) ih
+  | rw => exact HasKind.rw
+  | imm hlk hhas =>
+    exact HasKind.imm (Ctx.LookupLock.there hlk) hhas.rename
+  | ro =>
+    rw [CaptureSet.applyRO_rename]
+    exact HasKind.ro
+
 /-! ### `SubCoherent` — coherence up to capture-image subcapture
 
 The subtyping-compilation pipeline (`CapySubcapt.compile`/`CapySubbound.compile`/
@@ -46,11 +61,27 @@ structure CompilerCtx.SubCoherent (ctx : CompilerCtx s1 s2) : Prop where
   tvarLookup : ∀ {X : BVar s1 .tvar} {S : CapyPureTy s1},
     ctx.capyCtx.LookupTVar X S →
     ctx.coreCtx.LookupTVar (ctx.srcCtx.lookupTVar X) (CapyPureTy.compile S ctx)
+  /-- Read-only provenance: every source cvar declared `.unbound .ro` has a target
+      `HasKind _ _ .ro` witness (in practice via an enclosing lock's `MutabilityCtx`,
+      `HasKind.imm` — a compiled `cpoly [c <: unbound ro]` records `({c}, ro)` in its
+      body lock, `CapyCaptureBound.mutabilityCtx`).  This is what compiles source
+      `CapyHasKind.imm`, whose premise reads `c`'s declared mutability with no
+      structural (`applyRO`) witness on the set itself. -/
+  roLookup : ∀ {c : BVar s1 .cvar} {a : CapyAuthority} {cb : CapyCaptureBound s1},
+    ctx.capyCtx.LookupCVar c a cb → cb = .unbound .ro →
+    HasKind ctx.coreCtx (.cvar (.M .epsilon) (ctx.srcCtx.lookupCVar c)) .ro
 
 /-- Full coherence implies sub-coherence (the image equation gives the subcapture
-    reflexively). -/
+    reflexively) — GIVEN read-only provenance, which `Coherent` does not track: the
+    caller supplies `hro` from its enclosing locks (each source `unbound ro` cvar is
+    introduced by a `cpoly` whose compiled body sits under a lock recording
+    `({c}, ro)`, `CapyCaptureBound.mutabilityCtx`). -/
 theorem CompilerCtx.Coherent.toSubCoherent {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
-    (hcoh : ctx.Coherent) : ctx.SubCoherent where
+    (hcoh : ctx.Coherent)
+    (hro : ∀ {c : BVar s1 .cvar} {a : CapyAuthority} {cb : CapyCaptureBound s1},
+      ctx.capyCtx.LookupCVar c a cb → cb = .unbound .ro →
+      HasKind ctx.coreCtx (.cvar (.M .epsilon) (ctx.srcCtx.lookupCVar c)) .ro) :
+    ctx.SubCoherent where
   closed := hcoh.closed
   capyClosed := hcoh.capyClosed
   srcClosed := hcoh.srcClosed
@@ -61,6 +92,7 @@ theorem CompilerCtx.Coherent.toSubCoherent {s1 s2 : Sig} {ctx : CompilerCtx s1 s
     exact Subcapt.refl
   cvarLookup := hcoh.cvarLookup
   tvarLookup := hcoh.tvarLookup
+  roLookup := hro
 
 /-- A fresh *target* Core binder preserves sub-coherence (the stored `Subcapt`
     facts weaken by the new binder). -/
@@ -89,12 +121,22 @@ theorem CompilerCtx.SubCoherent.weakenTarget {s1 s2 : Sig} {ctx : CompilerCtx s1
     rw [CapyPureTy.compile_rename (ctx := ctx) (ctx' := ctx.weakenTarget b) (ρ := Rename.succ)
       rfl rfl]
     exact Ctx.LookupTVar.there h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    have h := hcoh.roLookup hl heq
+    simp only [CompilerCtx.weakenTarget_srcCtx, SrcCtx.lookupCVar_rename]
+    exact HasKind.weaken h b
 
-/-- A fresh *source* capture binder `c <: cb` preserves sub-coherence. -/
+/-- A fresh *source* capture binder `c <: cb` preserves sub-coherence.  `hro` is the
+    read-only provenance for the NEW binder: vacuous unless `cb = .unbound .ro`, in
+    which case the caller must exhibit a target `HasKind {c} .ro` witness (at the
+    `cpoly` compile site: `HasKind.imm` on the compiled body lock, pushed BEFORE this
+    `consCVar` — see `CapySubtyp.compile`'s `cpoly` case). -/
 theorem CompilerCtx.SubCoherent.consCVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     {cb : CapyCaptureBound s1} {c : BVar s2 .cvar}
     (hcoh : ctx.SubCoherent) (hcb : cb.IsClosed)
-    (hlk : ctx.coreCtx.LookupCVar c .access_only (CapyCaptureBound.compile cb ctx.srcCtx)) :
+    (hlk : ctx.coreCtx.LookupCVar c .access_only (CapyCaptureBound.compile cb ctx.srcCtx))
+    (hro : cb = .unbound .ro → HasKind ctx.coreCtx (.cvar (.M .epsilon) c) .ro) :
     (ctx.consCVar cb c).SubCoherent where
   closed := hcoh.closed
   capyClosed := by
@@ -129,6 +171,14 @@ theorem CompilerCtx.SubCoherent.consCVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
       have h := hcoh.tvarLookup hl0
       rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consCVar_weaken).symm] at h
       exact h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default, CapyCtx.push_cvar] at hl
+    cases hl with
+    | here =>
+      exact hro (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
+    | there hl0 =>
+      exact hcoh.roLookup hl0 (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
 
 /-- A fresh *source* type binder `X <: S` preserves sub-coherence. -/
 theorem CompilerCtx.SubCoherent.consTVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
@@ -169,6 +219,12 @@ theorem CompilerCtx.SubCoherent.consTVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
       have h := hcoh.tvarLookup hl0
       rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consTVar_weaken).symm] at h
       exact h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar] at hl
+    cases hl with
+    | there hl0 =>
+      exact hcoh.roLookup hl0 (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
 
 /-- A fresh *source* term binder `x : T` with an ARBITRARY capture image `cs`
     subcapturing the faithful `⟦T.captureSet⟧` (and arbitrary optional target-var
@@ -215,6 +271,12 @@ theorem CompilerCtx.SubCoherent.consVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
       have h := hcoh.tvarLookup hl0
       rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm] at h
       exact h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var] at hl
+    cases hl with
+    | there hl0 =>
+      exact hcoh.roLookup hl0 (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
 
 /-- Compilation distributes over `applyRO` (`applyRO = applyMut .ro`). -/
 theorem CapyCaptureSet.compile_applyRO {cs : CapyCaptureSet s1} {sc : SrcCtx s1 s2} :
@@ -379,11 +441,9 @@ theorem CapySubcapt.compile {s1 : Sig} {Γ : CapyCtx s1} {C1 C2 : CapyCaptureSet
     exact Subcapt.sc_drop_mono (ih ctx hΓ hcoh)
 
 /-- **Capture bounds compile to capture bounds.**  Target `Subbound` only has two
-    constructors (`capset`, and `top` for "anything `<: .unbound`"), so every source
-    case other than `capset` (which needs `CapySubcapt.compile`) is discharged by
-    `Subbound.top` — the compiled `.unbound _` forgets its mutability annotation
-    (`CapyCaptureBound.compile`), so both `unbound` and `bound_unbound` compile to a
-    `Subbound _ B .unbound` instance for the appropriate `B`. -/
+    constructors (`capset`, and `top` for "anything `<: .unbound`"), so `capset` needs
+    `CapySubcapt.compile` and `unbound` is discharged by `Subbound.top` — the compiled
+    `.unbound _` forgets its mutability annotation (`CapyCaptureBound.compile`). -/
 theorem CapySubbound.compile {s1 : Sig} {Γ : CapyCtx s1} {cb1 cb2 : CapyCaptureBound s1}
     (h : CapySubbound Γ cb1 cb2) {s2 : Sig} (ctx : CompilerCtx s1 s2)
     (hΓ : ctx.capyCtx = Γ) (hcoh : ctx.SubCoherent) :
@@ -396,27 +456,15 @@ theorem CapySubbound.compile {s1 : Sig} {Γ : CapyCtx s1} {cb1 cb2 : CapyCapture
   | unbound _ =>
     simp only [CapyCaptureBound.compile]
     exact Subbound.top
-  | bound_unbound _ =>
-    simp only [CapyCaptureBound.compile]
-    exact Subbound.top
 
-/-- **`CapyHasKind` compiles to `HasKind`, EXCEPT for `imm`.**  `empty`/`union`/`sc`/
-    `rw`/`ro` mirror their target counterparts directly (`ro` via
-    `CapyCaptureSet.compile_applyRO`).  `imm` is a genuine, currently-unresolved gap:
-    its premise `CapyCtx.LookupCVar Γ c a (.unbound .ro)` records `c`'s OWN declared
-    mutability statically, for the lifetime of `Γ`.  Target Core has no such static
-    per-cvar mutability — `HasKind _ _ .ro` is only derivable structurally
-    (`.applyRO`) or via an ENCLOSING lock's `mutability : MutabilityCtx` (`imm`,
-    `Ctx.LookupLock` + `MutabilityCtx.Has`).  A compiled `.unbound` cvar's mutability
-    lock (`CapyCaptureBound.mutabilityCtx`) is pushed only *alongside* the `cpoly`
-    that introduces it, guarding that `cpoly`'s own body (`E`'s compile context,
-    `ctx.weakenTarget.consCVar cb .here`, sits OUTSIDE the `.modal _ Ψ _` wrapper that
-    carries `Ψ`) — so at a general compile point there is no invariant connecting an
-    arbitrary `.unbound m`-bound source cvar back to some ancestor lock recording `m`.
-    Closing this needs new `CompilerCtx.Coherent` infrastructure (threading a
-    "mutability provenance" invariant through `consCVar`/`weakenTarget`), out of scope
-    for the pairwise-separation fix (`compile_peakSepCtx_subcapt_sep`) this file is
-    otherwise built around. -/
+/-- **`CapyHasKind` compiles to `HasKind`.**  `empty`/`union`/`sc`/`rw`/`ro` mirror
+    their target counterparts directly (`ro` via `CapyCaptureSet.compile_applyRO`).
+    `imm` — whose premise `CapyCtx.LookupCVar Γ c a (.unbound .ro)` reads `c`'s OWN
+    declared mutability, which target Core does not track statically — is discharged
+    by the `SubCoherent.roLookup` provenance field: every source `unbound ro` cvar
+    carries a target `HasKind {c} .ro` witness, in practice `HasKind.imm` on the
+    enclosing compiled `cpoly`'s body lock (`CapyCaptureBound.mutabilityCtx` records
+    `({c}, ro)` there). -/
 theorem CapyHasKind.compile {s1 : Sig} {Γ : CapyCtx s1} {C : CapyCaptureSet s1}
     {m : Mutability} (h : CapyHasKind Γ C m) {s2 : Sig} (ctx : CompilerCtx s1 s2)
     (hΓ : ctx.capyCtx = Γ) (hcoh : ctx.SubCoherent) :
@@ -429,7 +477,9 @@ theorem CapyHasKind.compile {s1 : Sig} {Γ : CapyCtx s1} {C : CapyCaptureSet s1}
   | sc hsc _ ih2 =>
     exact HasKind.sc (CapySubcapt.compile hsc ctx hΓ hcoh) ih2
   | rw => exact HasKind.rw
-  | imm _ => sorry
+  | imm hlk =>
+    simp only [CapyCaptureSet.compile]
+    exact hcoh.roLookup (hΓ ▸ hlk) rfl
   | ro =>
     simp only [CapyCaptureSet.compile_applyRO]
     exact HasKind.ro
@@ -635,7 +685,7 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
     · simp only [CompilerCtx.consCVar_capyCtx, CompilerCtx.weakenTarget_capyCtx, hΓ]
     · exact (hcoh.weakenTarget (b := placeholderBinding .cvar)
         (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound)).consCVar
-        CapyCaptureBound.IsClosed.unbound Ctx.LookupCVar.here
+        CapyCaptureBound.IsClosed.unbound Ctx.LookupCVar.here (fun h => nomatch h)
     · exact hA1
     · exact hB1
   -- K1: function-lock subtyping kernel.  The assembly (`Subtyp.poly`/`cpoly` for the
@@ -676,7 +726,7 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
       Ctx.LookupCVar.here
     have hcohB : ((ctx.weakenTarget (Binding.cvar Authority.access_only CaptureBound.unbound)
         ).consCVar (.unbound .epsilon) BVar.here).SubCoherent :=
-      hcohc.consCVar CapyCaptureBound.IsClosed.unbound hlkc
+      hcohc.consCVar CapyCaptureBound.IsClosed.unbound hlkc (fun h => nomatch h)
     have hΓB : ((ctx.weakenTarget (Binding.cvar Authority.access_only CaptureBound.unbound)
         ).consCVar (.unbound .epsilon) BVar.here).capyCtx = Γ0,C<:.unbound .epsilon := by
       simp only [CompilerCtx.consCVar_capyCtx, CompilerCtx.weakenTarget_capyCtx, hΓ]
@@ -754,6 +804,7 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
     have hcoh4 := hcoh3.consCVar (cb := CapyCaptureBound.unbound Mutability.epsilon)
       (c := BVar.there (BVar.there BVar.here)) CapyCaptureBound.IsClosed.unbound
       (Ctx.LookupCVar.there (Ctx.LookupCVar.there Ctx.LookupCVar.here))
+      (fun h => nomatch h)
     -- `{cx} ⊑ ⟦T.captureSet⟧`: `sc_cvar` on the middle binder's bound, transported
     -- to the `consCVar`'d source map by `compile_rename`.
     have hsubx : Subcapt ctxW3.coreCtx
@@ -994,38 +1045,86 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
         (CapyCaptureSet.compile cs2 ctx.srcCtx.weaken) :=
       CapySubcapt.compile hcs (ctx.weakenTarget (Binding.cvar Authority.access_only cb2c))
         hΓW hcohW
-    refine Subtyp.trans ?_ (Subtyp.modal hCfSub ?body) (Subtyp.modal_modal ?_ ?_ ?_ ?sat)
+    -- `modal_modal` FIRST (Ψ1 ↝ Ψ2 at the shared body `⟦T1⟧@cb1`), then `modal`
+    -- (body subtyping UNDER `Ψ2`'s lock): the body's coherence needs `roLookup`
+    -- provenance for the fresh `c <: cb2`, and `Ψ2.mutability`
+    -- (`CapyCaptureBound.mutabilityCtx cb2`) is exactly that record.
+    refine Subtyp.trans ?_ (Subtyp.modal_modal ?_ ?_ ?_ ?sat) (Subtyp.modal hCfSub ?body)
     · exact Ty.IsClosed.modal
-        (CapyCaptureSet.compile_isClosed hcs2cl hcoh.srcClosed.weaken)
+        (CapyCaptureSet.compile_isClosed hcs1cl hcoh.srcClosed.weaken)
         ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
           hcoh.srcClosed.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
-        (CapyTy.compile_isClosed T2 (ctx.weakenTarget.consCVar cb2 BVar.here)
-          hT2cl hcoh.srcClosed.weaken.consCVar)
-    case body =>
-      -- GAP: unlike `poly` (whose `ctxE` uses a bound-IRRELEVANT placeholder `.top`,
-      -- since a tvar's bound never affects `peaks`/`IsStableCVar`), `cpoly`'s `ctxE`
-      -- (`TypeCompiler.lean`) threads the REAL `cb` into the freshly-bound cvar's own
-      -- slot: `ctx.weakenTarget.consCVar cb .here`.  A cvar's OWN bound genuinely
-      -- affects `CapyCtx.IsStableCVar` (`∃ m, lookup_cvar c = .unbound m`), so
-      -- `compile T1 (…consCVar cb1 .here)` (what THIS goal needs, from unfolding
-      -- `compile (.cpoly cb1 cs1 T1) ctx`) and `compile T1 (…consCVar cb2 .here)`
-      -- (what `ih3` — typed at `ht : CapySubtyp (Γ0,C<:cb2) T1 T2` — actually gives)
-      -- can genuinely disagree whenever `T1` has a NESTED `poly`/`cpoly`/`arrow` whose
-      -- lock keys off `.here`'s stability, since `CapySubbound Γ cb2 cb1` allows a
-      -- strict narrowing (`bound_unbound`: `cb1 = .unbound m` stable ↝ `cb2 = .bound C`
-      -- possibly unstable), never the reverse.  `CompilerCtx.CompileCong.consCVar`
-      -- (`LockKernel.lean`) confirms this is not a `CompileCong`-style irrelevance —
-      -- it requires the SAME `cb` on both sides, unlike `consTVar`'s
-      -- `consTVar_boundIrrel`.  Closing this needs a genuinely new monotonicity
-      -- argument (compiling under a narrower cvar bound only ever *adds* lock
-      -- entries), out of scope for the pairwise-separation fix this file is built
-      -- around.
-      sorry
+        (CapyTy.compile_isClosed T1 (ctx.weakenTarget.consCVar cb1 BVar.here)
+          hT1cl hcoh.srcClosed.weaken.consCVar)
     · exact Ctx.IsClosed.push hcoh.closed (Binding.IsClosed.cvar hcb2cl')
     · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
         hcoh.srcClosed.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
     · exact ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
         hcoh.srcClosed.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+    case body =>
+      -- The compile context of THIS goal's `⟦T1⟧` threads the LHS bound `cb1`
+      -- (`compile (.cpoly cb1 cs1 T1) ctx` unfolds to `…consCVar cb1 .here`), while
+      -- `ih3` — typed at `ht : CapySubtyp (Γ0,C<:cb2) T1 T2` — speaks at `cb2`.
+      -- `CompileCong.consCVar_boundIrrel` bridges `cb1 ↝ cb2` whenever the two
+      -- bounds agree on unbound-ness (`peaks` never reads a cvar's bound;
+      -- `IsStableCVar .here` reads only `∃ m, · = .unbound m`) — that covers the
+      -- `capset` and `unbound` sub-cases of `hsb`.  The coherence chain pushes the
+      -- lock BEFORE `consCVar` so that `cb2 = .unbound .ro` provenance (`roLookup`)
+      -- is discharged by `HasKind.imm` on `Ψ2.mutability`.
+      have hLockCl : Binding.IsClosed (Binding.lock
+          (⟨peakSepCtx ctx.capyCtx (CapyCaptureSet.peakset ctx.capyCtx cs2)
+            ctx.srcCtx.weaken, CapyCaptureBound.mutabilityCtx cb2 BVar.here⟩
+            : ModalCtx (s2,C))) :=
+        Binding.IsClosed.lock ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
+          hcoh.srcClosed.weaken, CapyCaptureBound.mutabilityCtx_isClosed⟩
+      set ctxL := (ctx.weakenTarget (Binding.cvar Authority.access_only cb2c)).weakenTarget
+        (Binding.lock ⟨peakSepCtx ctx.capyCtx (CapyCaptureSet.peakset ctx.capyCtx cs2)
+          ctx.srcCtx.weaken, CapyCaptureBound.mutabilityCtx cb2 BVar.here⟩) with hctxL_def
+      have hlkF : ctxL.coreCtx.LookupCVar (BVar.there BVar.here) Authority.access_only
+          (CapyCaptureBound.compile cb2 ctxL.srcCtx) := by
+        have h0 : ctxL.coreCtx.LookupCVar (BVar.there BVar.here) Authority.access_only
+            ((cb2c.rename Rename.succ).rename Rename.succ) :=
+          Ctx.LookupCVar.there Ctx.LookupCVar.here
+        rw [hcb2c_def] at h0
+        simp only [hctxL_def, CompilerCtx.weakenTarget_srcCtx, SrcCtx.weaken,
+          CapyCaptureBound.compile_rename]
+        exact h0
+      have hroF : cb2 = .unbound .ro →
+          HasKind ctxL.coreCtx (.cvar (.M .epsilon) (BVar.there BVar.here)) .ro := by
+        intro heq
+        subst heq
+        exact HasKind.imm Ctx.LookupLock.here MutabilityCtx.Has.here
+      set ctxF := ctxL.consCVar cb2 (BVar.there BVar.here) with hctxF_def
+      have hΓF : ctxF.capyCtx = Γ0,C<:cb2 := by
+        simp only [hctxF_def, hctxL_def, CompilerCtx.consCVar_capyCtx,
+          CompilerCtx.weakenTarget_capyCtx, hΓ]
+      have hcohF : ctxF.SubCoherent :=
+        (hcohW.weakenTarget hLockCl).consCVar hcb2cl hlkF hroF
+      have hE := ih3 ctxF hΓF hcohF hT1cl hT2cl
+      have hr1 : CapyTy.compile T1 ctxF
+          = (CapyTy.compile T1 (ctx.weakenTarget.consCVar cb2 BVar.here)).rename
+            Rename.succ :=
+        CapyTy.compile_rename T1 _ _ Rename.succ rfl rfl
+      have hr2 : CapyTy.compile T2 ctxF
+          = (CapyTy.compile T2 (ctx.weakenTarget.consCVar cb2 BVar.here)).rename
+            Rename.succ :=
+        CapyTy.compile_rename T2 _ _ Rename.succ rfl rfl
+      rw [hr1, hr2] at hE
+      -- Both surviving `CapySubbound` shapes agree on unbound-ness (the removed
+      -- `bound_unbound` was the one stability-flipping rule; see the NOTE at
+      -- `CapySubbound` in `Capybara/TypeSystem/Core.lean`).
+      have hiff : (∃ m, cb1 = CapyCaptureBound.unbound m) ↔
+          (∃ m, cb2 = CapyCaptureBound.unbound m) := by
+        cases hsb with
+        | capset _ =>
+          exact iff_of_false (fun ⟨_, h⟩ => nomatch h) (fun ⟨_, h⟩ => nomatch h)
+        | unbound _ => exact iff_of_true ⟨_, rfl⟩ ⟨_, rfl⟩
+      have heq1 : CapyTy.compile T1 (ctx.weakenTarget.consCVar cb1 BVar.here)
+          = CapyTy.compile T1 (ctx.weakenTarget.consCVar cb2 BVar.here) :=
+        CapyTy.compile_eq_of T1 _ _
+          (CompilerCtx.CompileCong.consCVar_boundIrrel BVar.here hiff)
+      rw [← heq1] at hE
+      exact hE
     case sat =>
       apply Satisfy.satisfy
       · intro C m hmem
@@ -1043,37 +1142,6 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
             | ro =>
               cases hle
               exact HasKind.imm Ctx.LookupLock.here MutabilityCtx.Has.here
-          | there hmem => cases hmem
-        | bound_unbound hck =>
-          rename_i C' _
-          simp only [CapyCaptureBound.mutabilityCtx, MutabilityCtx.rename] at hmem
-          cases hmem with
-          | here =>
-            cases m with
-            | epsilon => exact HasKind.rw
-            | ro =>
-              set ctxL := (ctx.weakenTarget (Binding.cvar Authority.access_only cb2c)).weakenTarget
-                (Binding.lock ⟨peakSepCtx ctx.capyCtx (CapyCaptureSet.peakset ctx.capyCtx cs2)
-                  ctx.srcCtx.weaken, MutabilityCtx.empty⟩) with hctxL_def
-              have hΓL : ctxL.capyCtx = Γ0 := by
-                simp only [hctxL_def, CompilerCtx.weakenTarget_capyCtx, hΓ]
-              have hcohL : ctxL.SubCoherent :=
-                hcohW.weakenTarget (Binding.IsClosed.lock
-                  ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _)
-                    hcoh.srcClosed.weaken, MutabilityCtx.IsClosed.empty⟩)
-              have hHK : HasKind ctxL.coreCtx (CapyCaptureSet.compile C' ctxL.srcCtx) .ro :=
-                CapyHasKind.compile hck ctxL hΓL hcohL
-              have hlkc : ctxL.coreCtx.LookupCVar (.there BVar.here) Authority.access_only
-                  ((cb2c.rename Rename.succ).rename Rename.succ) :=
-                Ctx.LookupCVar.there Ctx.LookupCVar.here
-              have hsc : Subcapt ctxL.coreCtx (.cvar (.M .epsilon) (.there BVar.here))
-                  (CapyCaptureSet.compile C' ctxL.srcCtx) := by
-                simp only [hctxL_def, CompilerCtx.weakenTarget_srcCtx,
-                  CapyCaptureSet.compile_rename]
-                rw [hcb2c_def] at hlkc
-                simp only [CapyCaptureBound.compile, CaptureBound.rename] at hlkc
-                exact Subcapt.sc_cvar hlkc
-              exact HasKind.sc hsc hHK
           | there hmem => cases hmem
       · intro C1 C2 hdist
         simp only [ModalCtx.rename] at hdist

@@ -76,10 +76,6 @@ inductive CapySubbound : CapyCtx s -> CapyCaptureBound s -> CapyCaptureBound s -
   m1 ≤ m2 ->
   -------------------
   CapySubbound Γ (.unbound m1) (.unbound m2)
-| bound_unbound {C : CapyCaptureSet s} {m : Mutability} :
-  CapyHasKind Γ C m ->
-  -------------------
-  CapySubbound Γ (.bound C) (.unbound m)
 
 inductive CapyIsPeak : CapyCtx s -> CapyCaptureSet s -> Prop where
 | peak_peak :
