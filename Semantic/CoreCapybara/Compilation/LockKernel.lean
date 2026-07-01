@@ -309,7 +309,7 @@ theorem CapyTy.compile_eq_of {sort : CapyTySort} {s1 s2 : Sig}
   | case8 => intro ctx2 h; simp only [CapyTy.compile, h.1]
   | case9 =>
     rename_i ihDom ihE
-    rename_i Tdom _ _ _ _ _ _ _ _ _
+    rename_i Tdom _ _ _ _ _ _ _ _
     intro ctx2 h
     have hB := (h.weakenTarget (placeholderBinding .cvar)).consCVar
       (CapyCaptureBound.unbound .epsilon) BVar.here
@@ -320,9 +320,6 @@ theorem CapyTy.compile_eq_of {sort : CapyTySort} {s1 s2 : Sig}
       (placeholderBinding .cvar)).weakenTarget (placeholderBinding .var)).consCVar
       (CapyCaptureBound.unbound .epsilon) (.there (.there .here))).consVar Tdom (some .here)
       (.cvar (.M .epsilon) (.there .here))
-    have hE := (((h.weakenTarget (placeholderBinding .cvar)).weakenTarget
-      (placeholderBinding .cvar)).weakenTarget (placeholderBinding .var)).consVar
-      CapyTy.top (some .here) (.cvar (.M .epsilon) (.there .here))
     simp (config := { zetaDelta := true }) only [CapyTy.compile]
     congr 1
     congr 1
@@ -336,7 +333,7 @@ theorem CapyTy.compile_eq_of {sort : CapyTySort} {s1 s2 : Sig}
         congr 1
         · exact congrArg _ hLock.1
         · rw [hLock.1, peakSepCtx_peakset_eq_of_cong (hLock.2.1 _) hLock.2.2]
-        · exact ihE _ hE
+        · exact ihE _ hLock
   | case10 =>
     rename_i ihS ihE; intro ctx2 h
     simp (config := { zetaDelta := true }) only [CapyTy.compile]

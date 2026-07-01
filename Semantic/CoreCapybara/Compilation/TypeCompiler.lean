@@ -226,9 +226,11 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
   let ctxDomain : CompilerCtx (s1,C,x) (s2,C,C) :=
     (ctx.weakenTarget.weakenTarget.consCVar (.unbound .epsilon) (.there .here)).consVar
       T none (.cvar (.M .epsilon) .here)
-  let ctxE : CompilerCtx (s1,x) (s2,C,C,x)   :=
-    ctx.weakenTarget.weakenTarget.weakenTarget.consVar
-      .top (some .here) (.cvar (.M .epsilon) (.there .here))
+  -- the codomain AND the lock share one context: binds `c` then `x` (mapping `x`
+  -- to `{cx}`), with `x` bound at the REAL domain type `T` — so nested locks
+  -- inside `E` resolve `x`'s deep peaks through `T`, exactly as the source
+  -- rules (subtyping's body premise, abs) type the body at `x:T`.  The codomain
+  -- `E` (at sig `(s1,x)`, no self-cvar slot) is lifted by `implicit_cvar`.
   let ctxLock : CompilerCtx (s1,C,x) (s2,C,C,x) :=
     (ctx.weakenTarget.weakenTarget.weakenTarget.consCVar (.unbound .epsilon)
       (.there (.there .here))).consVar T (some .here) (.cvar (.M .epsilon) (.there .here))
@@ -248,7 +250,7 @@ def CapyTy.compile : CapyTy sort s1 -> CompilerCtx s1 s2 -> Ty (CapyTySort.compi
               (.typ (.modal
                       (CapyCaptureSet.compile W ctxLock.srcCtx)
                       Ψ
-                      (CapyTy.compile E ctxE)))))))
+                      (CapyTy.compile (E.rename Rename.implicit_cvar) ctxLock)))))))
 | .poly S cs E, ctx =>
   -- `[X <: S] ->cs E`  ↦  `[X] -> [Ψ]cs E`: a Core `poly` whose body `E` is guarded
   -- by a separation lock `[Ψ]` (a `modal`) capturing `Cf = ⟦cs⟧`.

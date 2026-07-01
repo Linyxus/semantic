@@ -343,7 +343,7 @@ theorem CapyTy.compile_rename {sort : CapyTySort} {s1 s2 : Sig}
   case case8 => intro _ _ _ _ h; simp only [CapyTy.compile, Ty.rename, h, SrcCtx.lookupTVar_rename]
   case case9 =>
     intro s2' ctx' ρ hcapy hsrc
-    rename_i _ _ Tdom _ _ _ _ _ _ _ _ _ ihDom ihE
+    rename_i _ _ Tdom _ _ _ _ _ _ _ _ ihDom ihE
     have h0 : CompilerCtx.RenamesTo _ ctx' ρ := ⟨hcapy, hsrc⟩
     have hB : CompilerCtx.RenamesTo _
         (ctx'.weakenTarget.consCVar (.unbound .epsilon) .here) ρ.lift :=
@@ -359,12 +359,6 @@ theorem CapyTy.compile_rename {sort : CapyTySort} {s1 s2 : Sig}
           (.cvar (.M .epsilon) (.there .here))) ρ.lift.lift.lift :=
       (h0.weakenTarget.weakenTarget.weakenTarget.consCVar (c := .there (.there .here))).consVar
         (T := Tdom) (bv := some .here) (cs := .cvar (.M .epsilon) (.there .here))
-    have hE : CompilerCtx.RenamesTo _
-        (ctx'.weakenTarget.weakenTarget.weakenTarget.consVar .top (some .here)
-          (.cvar (.M .epsilon) (.there .here))) ρ.lift.lift.lift :=
-      (((h0.weakenTarget (b := placeholderBinding .cvar)).weakenTarget
-        (b := placeholderBinding .cvar)).weakenTarget (b := placeholderBinding .var)).consVar
-        (T := .top) (bv := some .here) (cs := .cvar (.M .epsilon) (.there .here))
     simp (config := { zetaDelta := true }) only [CapyTy.compile, Ty.rename]
     congr 1
     congr 1
@@ -383,7 +377,7 @@ theorem CapyTy.compile_rename {sort : CapyTySort} {s1 s2 : Sig}
           congr 1
           rw [hLock.src]
           exact peakSepCtx_rename
-        · exact ihE _ _ hE.capy hE.src
+        · exact ihE _ _ hLock.capy hLock.src
   case case10 =>
     intro s2' ctx' ρ hcapy hsrc
     rename_i s1v s2v Sv csv Ev ctxv ctxEv Cfv Psiv ihS ihE

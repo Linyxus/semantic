@@ -475,6 +475,17 @@ theorem CapyCaptureBound.weaken_subst_comm_base {cb : CapyCaptureBound s1} {σ :
     simp only [CapyCaptureBound.subst, CapyCaptureBound.rename,
       CapyCaptureSet.weaken_subst_comm_base]
 
+/-- The implicit-cvar weakening commutes with substitution: inserting the unused
+    `C` slot below the top binder and substituting with the doubly lifted `σ` is
+    substituting with the singly lifted `σ` first.  An instance of
+    `CapyTy.weaken_subst_comm` at `K = [],,k1` via
+    `Rename.implicit_cvar_eq_succ_lift`. -/
+theorem CapyTy.implicit_cvar_subst_comm {T : CapyTy sort (s1,,k1)} {σ : CapySubst s1 s2} :
+    (T.subst (σ.lift (k := k1))).rename Rename.implicit_cvar
+      = (T.rename Rename.implicit_cvar).subst ((σ.lift (k := .cvar)).lift (k := k1)) := by
+  rw [Rename.implicit_cvar_eq_succ_lift]
+  exact CapyTy.weaken_subst_comm (K := ([],,k1)) (k0 := .cvar)
+
 /-- Composition of substitutions commutes with lifting. -/
 theorem CapySubst.comp_lift {σ1 : CapySubst s1 s2} {σ2 : CapySubst s2 s3} {k : Kind} :
   (σ1.lift (k := k)).comp (σ2.lift (k := k)) = (σ1.comp σ2).lift (k := k) := by

@@ -144,6 +144,14 @@ theorem CapyTy.weaken_rename_comm {T : CapyTy sort s1} {f : Rename s1 s2} :
     (T.rename Rename.succ).rename (f.lift (k:=k0)) = (T.rename f).rename (Rename.succ) := by
   simp [CapyTy.rename_comp, Rename.succ_lift_comm]
 
+/-- The implicit-cvar weakening commutes with renaming under a binder. -/
+theorem CapyTy.implicit_cvar_rename_comm {T : CapyTy sort (s1,,k0)} {f : Rename s1 s2} :
+    (T.rename (f.lift (k:=k0))).rename Rename.implicit_cvar
+      = (T.rename Rename.implicit_cvar).rename ((f.lift (k:=.cvar)).lift (k:=k0)) := by
+  rw [CapyTy.rename_comp, CapyTy.rename_comp]
+  congr 1
+  exact Rename.implicit_cvar_lift_comm.symm
+
 /-- Extracts the capture set from a capturing type. -/
 def CapyTy.captureSet : CapyTy .capt s -> CapyCaptureSet s
 | .top => .empty

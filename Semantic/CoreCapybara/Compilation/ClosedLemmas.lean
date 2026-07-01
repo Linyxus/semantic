@@ -243,7 +243,7 @@ theorem CapyTy.compile_isClosed {sort : CapyTySort} {s1 s2 : Sig}
   case case8 => intro _ _; exact Ty.IsClosed.tvar
   case case9 =>
     intro hT hctx
-    rename_i Tdom csarr Earr ctx0 ctxB ctxDomain ctxE ctxLock Wv Psiv ih2 ih1
+    rename_i Tdom csarr Earr ctx0 ctxB ctxDomain ctxLock Wv Psiv ih2 ih1
     cases hT with | arrow hTdom hcs hEcl =>
     have hB : ctxB.srcCtx.VarsClosed :=
       CompilerCtx.consCVar_VarsClosed (CompilerCtx.weakenTarget_VarsClosed hctx)
@@ -257,11 +257,6 @@ theorem CapyTy.compile_isClosed {sort : CapyTySort} {s1 s2 : Sig}
         (CompilerCtx.consCVar_VarsClosed
           (CompilerCtx.weakenTarget_VarsClosed
             (CompilerCtx.weakenTarget_VarsClosed (CompilerCtx.weakenTarget_VarsClosed hctx))))
-        CaptureSet.IsClosed.cvar
-    have hctxE : ctxE.srcCtx.VarsClosed :=
-      CompilerCtx.consVar_VarsClosed
-        (CompilerCtx.weakenTarget_VarsClosed
-          (CompilerCtx.weakenTarget_VarsClosed (CompilerCtx.weakenTarget_VarsClosed hctx)))
         CaptureSet.IsClosed.cvar
     exact Ty.IsClosed.cpoly CaptureBound.IsClosed.unbound CaptureSet.IsClosed.empty
       (Ty.IsClosed.typ
@@ -284,7 +279,7 @@ theorem CapyTy.compile_isClosed {sort : CapyTySort} {s1 s2 : Sig}
                   ⟨peakSepCtx_isClosed (Γ := ctxLock.capyCtx)
                       (CapyCaptureSet.peaks_isClosed _ _) hLock,
                     MutabilityCtx.IsClosed.empty⟩
-                  (ih1 hEcl hctxE)))))))
+                  (ih1 (CapyTy.IsClosed.rename hEcl Rename.implicit_cvar) hLock)))))))
   case case10 =>
     intro hT hctx
     rename_i Sv csv Ev ctx0 ctxE Cfv Psiv ihS ihE

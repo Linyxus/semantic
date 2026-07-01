@@ -118,6 +118,25 @@ def Rename.implicit_cvar : Rename (s,,k) (s,C,,k) where
     | .here => .here
     | .there y => .there (.there y)
 
+/-- The implicit-cvar weakening is the lift of the cvar-kind successor: inserting
+    the unused `C` slot below the top binder is weakening by `C` under that binder. -/
+theorem Rename.implicit_cvar_eq_succ_lift {s : Sig} {k : Kind} :
+    (Rename.implicit_cvar : Rename (s,,k) (s,C,,k))
+      = (Rename.succ (k := .cvar)).lift := by
+  apply Rename.funext
+  intro k' x
+  cases x <;> rfl
+
+/-- The implicit-cvar weakening commutes with lifting: inserting the unused `C`
+    slot before applying a (doubly) lifted renaming is the same as renaming first
+    and inserting the slot after. -/
+theorem Rename.implicit_cvar_lift_comm {f : Rename s1 s2} {k0 : Kind} :
+    (Rename.implicit_cvar (k := k0)).comp ((f.lift (k := .cvar)).lift (k := k0))
+      = (f.lift (k := k0)).comp Rename.implicit_cvar := by
+  apply Rename.funext
+  intro k x
+  cases x <;> rfl
+
 /-- Weakening that inserts an implicit capture variable just below the two top
     binders, mapping `s,,k1,,k2` into `s,C,,k1,,k2`. -/
 def Rename.implicit_cvar2 : Rename (s,,k1,,k2) (s,C,,k1,,k2) where

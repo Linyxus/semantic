@@ -697,7 +697,7 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
     simp only [CapyTy.rename, CapyTy.compile, Ty.rename, hm.tvar]
   case case9 =>
     rename_i ihDom ihE
-    rename_i Tdom csv _ _ _ _ _ _ _ _
+    rename_i Tdom csv Ev _ _ _ _ _ _
     intro s1' s2' ctx2 fs ft hinj hm
     have hmB := hm.weakenTarget.consCVar (cb := .unbound .epsilon) (c := .here)
     have hmDom := (hm.weakenTarget.weakenTarget.consCVar
@@ -707,9 +707,6 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
         (cb := .unbound .epsilon) (c := .there (.there .here))).consVar
         (T := Tdom) (bv := some .here) (cs := .cvar (.M .epsilon) (.there .here))
     simp only [CapyCaptureBound.rename] at hmLock
-    have hmE := (((hm.weakenTarget (b := placeholderBinding .cvar)).weakenTarget
-        (b := placeholderBinding .cvar)).weakenTarget (b := placeholderBinding .var)).consVar
-        (T := .top) (bv := some .here) (cs := .cvar (.M .epsilon) (.there .here))
     have hW : (((csv.rename fs).rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))
           ∪ CapyCaptureSet.var (.M .epsilon) (.bound .here) : CapyCaptureSet (s1',C,x))
         = ((((csv.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var)))
@@ -745,7 +742,8 @@ theorem CapyTy.compile_mapsTo {sort : CapyTySort} {s1 s2 : Sig}
           congr 1
           exact peakSepCtx_peakset_mapsTo hmLock.capy hinj.lift.lift
             hmLock.cvar hmLock.var _
-        · exact ihE hinj.lift hmE
+        · have hcm := CapyTy.implicit_cvar_rename_comm (T := Ev) (f := fs) (k0 := .var)
+          exact hcm.symm ▸ ihE hinj.lift.lift hmLock
   case case10 =>
     rename_i ihS ihE; intro s1' s2' ctx2 fs ft hinj hm
     simp (config := { zetaDelta := true }) only [CapyTy.rename, CapyTy.compile, Ty.rename]

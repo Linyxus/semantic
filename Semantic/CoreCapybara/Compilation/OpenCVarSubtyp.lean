@@ -4194,12 +4194,6 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                   (BVar.there (BVar.there BVar.here))).consVar T1 (some BVar.here)
                 (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))
               with hctxLockOrig
-            set ctxESub : CompilerCtx (s1',,Kind.var) (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
-              ctxSub.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
-                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxESub
-            set ctxEOrig : CompilerCtx (s1,,Kind.var) (s2,,Kind.cvar,,Kind.cvar,,Kind.var) :=
-              ctxOrig.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
-                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxEOrig
             have hcLock : (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
                   (k := Kind.var)).cvar (BVar.there (BVar.there BVar.here))
                 = CaptureSet.cvar (.M .epsilon) (BVar.there (BVar.there BVar.here)) := rfl
@@ -4226,8 +4220,6 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
               ((hvcSub.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
             have hvcLockOrig : ctxLockOrig.srcCtx.VarsClosed :=
               ((hvcOrig.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
-            have hvcEOrig : ctxEOrig.srcCtx.VarsClosed :=
-              (hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar
             have hσt3 : Subst.IsClosed
                 (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var)) :=
               Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))
@@ -4239,11 +4231,33 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                 ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
                   MutabilityCtx.IsClosed.empty⟩
                 (Ty.is_closed_subst
-                  (CapyTy.compile_isClosed E ctxEOrig hECl hvcEOrig)
+                  (CapyTy.compile_isClosed (E.rename Rename.implicit_cvar) ctxLockOrig
+                    (CapyTy.IsClosed.rename hECl Rename.implicit_cvar) hvcLockOrig)
                   hσt3)
             case body =>
               have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
                 fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+              have hlift1tv : ∀ X, ∃ Y,
+                  (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+                intro X
+                cases X with
+                | there X0 =>
+                  obtain ⟨Y, hY⟩ := htv0 X0
+                  exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+              have hclOrigW : ctxLockOrig.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclOrig
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var hT1Cl)
+              have hclSubW : ctxLockSub.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclSub
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var
+                    (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)))
+              have hinjW : ctxLockSub.srcCtx.CVarInjective :=
+                SrcCtx.CVarInjective.consVar
+                  (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
+                    (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)
+                    Rename.injective_succ)
               set ΨL : ModalCtx (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
                 { sep := peakSepCtx ctxLockSub.capyCtx (CapyCaptureSet.peakset ctxLockSub.capyCtx
                            (((cs.subst σ).rename Rename.succ).rename Rename.succ
@@ -4286,10 +4300,10 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                           CapyCaptureSet.IsClosed.var_bound)
                         ((hvcOrig.weaken.weaken.consCVar).consVar CaptureSet.IsClosed.cvar))
                       (Subst.lift_closed (Subst.lift_closed hscl))))
-              set ctxSub'' : CompilerCtx (s1',,Kind.var)
+              set ctxSub'' : CompilerCtx (s1',C,,Kind.var)
                   ((s2',,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
-                ⟨ctxESub.capyCtx, ctxESub.srcCtx.rename Rename.succ,
-                 (ctxESub.weakenTarget (Binding.lock ΨL)).dstCtx,
+                ⟨ctxLockSub.capyCtx, ctxLockSub.srcCtx.rename Rename.succ,
+                 (ctxLockSub.weakenTarget (Binding.lock ΨL)).dstCtx,
                  ((ctxSub.coreCtx.push_cvar Authority.access_only
                       (CaptureBound.unbound.subst σt)).push_cvar Authority.access_only
                       ((CaptureBound.bound (CapyCaptureSet.compile T1.captureSet
@@ -4303,50 +4317,56 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                           (CaptureSet.cvar (.M .epsilon) BVar.here))).subst
                         ((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)))
                       |>.push_lock ΨL⟩ with hctxSub''
-              set ctxOrig'' : CompilerCtx (s1,,Kind.var)
+              set ctxOrig'' : CompilerCtx (s1,C,,Kind.var)
                   ((s2,,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
-                ⟨ctxEOrig.capyCtx, ctxEOrig.srcCtx.rename Rename.succ,
-                 (ctxEOrig.weakenTarget
+                ⟨ctxLockOrig.capyCtx, ctxLockOrig.srcCtx.rename Rename.succ,
+                 (ctxLockOrig.weakenTarget
                    (Binding.lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _))).dstCtx,
-                 ctxEOrig.coreCtx.push_lock
+                 ctxLockOrig.coreCtx.push_lock
                    (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩ with hctxOrig''
-              have hle := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'')
-                (ctxOrig := ctxOrig'') (σ := σ.lift)
+              have hle := (CapyTy.compile_subst_subtyp (E.rename Rename.implicit_cvar)
+                (ctxSub := ctxSub'') (ctxOrig := ctxOrig'')
+                (σ := (σ.lift (k := Kind.cvar)).lift (k := Kind.var))
                 (σt := (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
                   (k := Kind.var)).lift (k := Kind.lock))
-                (((hcompat.weakenTarget.weakenTarget.weakenTarget).consVar hinvLock).weakenTarget)
-                (((htvar.weakenTarget.weakenTarget.weakenTarget).consVar).weakenTarget)
-                hECl hpbE
+                hcompatLock.weakenTarget
+                ((((htvar.weakenTarget.weakenTarget.weakenTarget).consCVar).consVar).weakenTarget)
+                (CapyTy.IsClosed.rename hECl Rename.implicit_cvar)
+                (CapyTy.PureBounds.rename Rename.implicit_cvar hpbE)
                 (TgtPairDroppable.liftLock (TgtPairDroppable.liftVar
                   (TgtPairDroppable.lift (TgtPairDroppable.lift hdrop))))
-                ((((hcompatAl.realign_weakenTarget).realign_weakenTarget).realign_weakenTarget
-                    ).realign_consVar htv0 CapyTy.IsClosed.top).realign_weakenTarget
-                (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
-                (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
+                ((((hcompatAl.realign_weakenTarget.realign_weakenTarget.realign_weakenTarget
+                    ).realign_consCVar hcLock).realign_consVar hlift1tv
+                    hT1Cl).realign_weakenTarget)
+                hclSubW hclOrigW
                 (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))))
-                (((hvcSub.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
-                (((hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
+                hvcLockSub.weaken hvcLockOrig.weaken
                 (Ctx.IsClosed.push hGbcl
                   (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
                     (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
                     MutabilityCtx.IsClosed.empty⟩))
-                (CapySubst.lift_closed hscS)
-                (SrcCtx.CVarInjective.rename
-                  (SrcCtx.CVarInjective.consVar
-                    (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
-                      (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
-                      Rename.injective_succ) Rename.injective_succ)) Rename.injective_succ)
-                (hiso.lift Kind.var) ⟨horig, CapyCaptureSet.NoPseudoPeak.empty⟩ hEnp
-                (hnc.weakenTarget.weakenTarget.consVar.weakenTarget)
-                (hsubsto.consVar htv0) (hstab.pushVar CapyTy.top CapyTy.top)).1
-              have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
-                  = (CapyTy.compile (E.subst σ.lift) ctxESub).rename Rename.succ :=
-                CapyTy.compile_rename (E.subst σ.lift) ctxESub ctxSub'' Rename.succ rfl rfl
-              have heq2 : CapyTy.compile E ctxOrig''
-                  = (CapyTy.compile E ctxEOrig).rename Rename.succ :=
-                CapyTy.compile_rename E ctxEOrig ctxOrig'' Rename.succ rfl rfl
+                (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+                (SrcCtx.CVarInjective.rename hinjW Rename.injective_succ)
+                ((hiso.lift Kind.cvar).lift Kind.var)
+                ⟨horig, hT1np.captureSet⟩
+                (CapyTy.NoPseudoPeak.rename Rename.implicit_cvar hEnp)
+                ((hnc.weakenConsCVar.weakenTarget.weakenTarget.consVarNoRename).weakenTarget)
+                ((hsubsto.consCVar).consVar hlift1tv)
+                ((hstab.pushCVar (.unbound .epsilon)).pushVar T1 (T1.subst σ.lift))).1
+              have heq1 : CapyTy.compile ((E.subst σ.lift).rename Rename.implicit_cvar) ctxSub''
+                  = (CapyTy.compile ((E.subst σ.lift).rename Rename.implicit_cvar)
+                      ctxLockSub).rename Rename.succ :=
+                CapyTy.compile_rename ((E.subst σ.lift).rename Rename.implicit_cvar)
+                  ctxLockSub ctxSub'' Rename.succ rfl rfl
+              have heq2 : CapyTy.compile (E.rename Rename.implicit_cvar) ctxOrig''
+                  = (CapyTy.compile (E.rename Rename.implicit_cvar) ctxLockOrig).rename
+                      Rename.succ :=
+                CapyTy.compile_rename (E.rename Rename.implicit_cvar) ctxLockOrig ctxOrig''
+                  Rename.succ rfl rfl
               convert hle using 2
-              · exact heq1.symm
+              · exact heq1.symm.trans
+                  (congrArg (fun Z => CapyTy.compile Z ctxSub'')
+                    CapyTy.implicit_cvar_subst_comm)
               · rw [heq2]; exact Ty.weaken_subst_comm_base
             · exact Ctx.IsClosed.push
                 (Ctx.IsClosed.push
@@ -4605,12 +4625,6 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                   (BVar.there (BVar.there BVar.here))).consVar T1 (some BVar.here)
                 (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))
               with hctxLockOrig
-            set ctxESub : CompilerCtx (s1',,Kind.var) (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
-              ctxSub.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
-                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxESub
-            set ctxEOrig : CompilerCtx (s1,,Kind.var) (s2,,Kind.cvar,,Kind.cvar,,Kind.var) :=
-              ctxOrig.weakenTarget.weakenTarget.weakenTarget.consVar CapyTy.top (some BVar.here)
-                (CaptureSet.cvar (.M .epsilon) (BVar.there BVar.here)) with hctxEOrig
             have hcLock : (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
                   (k := Kind.var)).cvar (BVar.there (BVar.there BVar.here))
                 = CaptureSet.cvar (.M .epsilon) (BVar.there (BVar.there BVar.here)) := rfl
@@ -4637,8 +4651,6 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
               ((hvcSub.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
             have hvcLockOrig : ctxLockOrig.srcCtx.VarsClosed :=
               ((hvcOrig.weaken.weaken.weaken).consCVar).consVar CaptureSet.IsClosed.cvar
-            have hvcEOrig : ctxEOrig.srcCtx.VarsClosed :=
-              (hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar
             have hσt3 : Subst.IsClosed
                 (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift (k := Kind.var)) :=
               Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))
@@ -4650,7 +4662,8 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                 ⟨peakSepCtx_isClosed (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
                   MutabilityCtx.IsClosed.empty⟩
                 (Ty.is_closed_subst
-                  (CapyTy.compile_isClosed E ctxEOrig hECl hvcEOrig)
+                  (CapyTy.compile_isClosed (E.rename Rename.implicit_cvar) ctxLockOrig
+                    (CapyTy.IsClosed.rename hECl Rename.implicit_cvar) hvcLockOrig)
                   hσt3)
             · exact Ctx.IsClosed.push
                 (Ctx.IsClosed.push
@@ -4740,6 +4753,27 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
             case bodyB =>
               have htv0 : ∀ X, ∃ Y, σ.tvar X = CapyPureTy.tvar Y :=
                 fun X => let ⟨Z, hZ, _⟩ := htvar X; ⟨Z, hZ⟩
+              have hlift1tv : ∀ X, ∃ Y,
+                  (σ.lift (k := Kind.cvar)).tvar X = CapyPureTy.tvar Y := by
+                intro X
+                cases X with
+                | there X0 =>
+                  obtain ⟨Y, hY⟩ := htv0 X0
+                  exact ⟨_, by rw [CapySubst.lift_there_tvar_eq, hY]; rfl⟩
+              have hclOrigW : ctxLockOrig.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclOrig
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var hT1Cl)
+              have hclSubW : ctxLockSub.capyCtx.IsClosed :=
+                CapyCtx.IsClosed.push (CapyCtx.IsClosed.push hclSub
+                  (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound))
+                  (CapyBinding.IsClosed.var
+                    (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)))
+              have hinjW : ctxLockSub.srcCtx.CVarInjective :=
+                SrcCtx.CVarInjective.consVar
+                  (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
+                    (SrcCtx.CVarInjective.consCVarHere hinj) Rename.injective_succ)
+                    Rename.injective_succ)
               set ΨL : ModalCtx (s2',,Kind.cvar,,Kind.cvar,,Kind.var) :=
                 { sep := peakSepCtx ctxLockSub.capyCtx (CapyCaptureSet.peakset ctxLockSub.capyCtx
                            (((cs.subst σ).rename Rename.succ).rename Rename.succ
@@ -4780,10 +4814,10 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                           (CapyTy.is_closed_subst hT1Cl (CapySubst.lift_closed hscS)) Rename.succ)
                         CapyCaptureSet.IsClosed.var_bound)
                       ((hvcSub.weaken.weaken.consCVar).consVar CaptureSet.IsClosed.cvar)))
-              set ctxSub'' : CompilerCtx (s1',,Kind.var)
+              set ctxSub'' : CompilerCtx (s1',C,,Kind.var)
                   ((s2',,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
-                ⟨ctxESub.capyCtx, ctxESub.srcCtx.rename Rename.succ,
-                 (ctxESub.weakenTarget (Binding.lock ΨL)).dstCtx,
+                ⟨ctxLockSub.capyCtx, ctxLockSub.srcCtx.rename Rename.succ,
+                 (ctxLockSub.weakenTarget (Binding.lock ΨL)).dstCtx,
                  ((ctxSub.coreCtx.push_cvar Authority.access_only
                       CaptureBound.unbound).push_cvar Authority.access_only
                       (CaptureBound.bound (CapyCaptureSet.compile (T1.subst σ.lift).captureSet
@@ -4796,51 +4830,57 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                             (BVar.there BVar.here)).consVar (T1.subst σ.lift) none
                           (CaptureSet.cvar (.M .epsilon) BVar.here)))
                       |>.push_lock ΨL⟩ with hctxSub''
-              set ctxOrig'' : CompilerCtx (s1,,Kind.var)
+              set ctxOrig'' : CompilerCtx (s1,C,,Kind.var)
                   ((s2,,Kind.cvar,,Kind.cvar,,Kind.var),,Kind.lock) :=
-                ⟨ctxEOrig.capyCtx, ctxEOrig.srcCtx.rename Rename.succ,
-                 (ctxEOrig.weakenTarget
+                ⟨ctxLockOrig.capyCtx, ctxLockOrig.srcCtx.rename Rename.succ,
+                 (ctxLockOrig.weakenTarget
                    (Binding.lock (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _))).dstCtx,
-                 ctxEOrig.coreCtx.push_lock
+                 ctxLockOrig.coreCtx.push_lock
                    (⟨SepCtx.empty, MutabilityCtx.empty⟩ : ModalCtx _)⟩ with hctxOrig''
-              have hge := (CapyTy.compile_subst_subtyp E (ctxSub := ctxSub'')
-                (ctxOrig := ctxOrig'') (σ := σ.lift)
+              have hge := (CapyTy.compile_subst_subtyp (E.rename Rename.implicit_cvar)
+                (ctxSub := ctxSub'') (ctxOrig := ctxOrig'')
+                (σ := (σ.lift (k := Kind.cvar)).lift (k := Kind.var))
                 (σt := (((σt.lift (k := Kind.cvar)).lift (k := Kind.cvar)).lift
                   (k := Kind.var)).lift (k := Kind.lock))
-                (((hcompat.weakenTarget.weakenTarget.weakenTarget).consVar hinvLock).weakenTarget)
-                (((htvar.weakenTarget.weakenTarget.weakenTarget).consVar).weakenTarget)
-                hECl hpbE
+                hcompatLock.weakenTarget
+                ((((htvar.weakenTarget.weakenTarget.weakenTarget).consCVar).consVar).weakenTarget)
+                (CapyTy.IsClosed.rename hECl Rename.implicit_cvar)
+                (CapyTy.PureBounds.rename Rename.implicit_cvar hpbE)
                 (TgtPairDroppable.liftLock (TgtPairDroppable.liftVar
                   (TgtPairDroppable.lift (TgtPairDroppable.lift hdrop))))
-                ((((hcompatAl.realign_weakenTarget).realign_weakenTarget).realign_weakenTarget
-                    ).realign_consVar htv0 CapyTy.IsClosed.top).realign_weakenTarget
-                (CapyCtx.IsClosed.push hclSub (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
-                (CapyCtx.IsClosed.push hclOrig (CapyBinding.IsClosed.var CapyTy.IsClosed.top))
+                ((((hcompatAl.realign_weakenTarget.realign_weakenTarget.realign_weakenTarget
+                    ).realign_consCVar hcLock).realign_consVar hlift1tv
+                    hT1Cl).realign_weakenTarget)
+                hclSubW hclOrigW
                 (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed (Subst.lift_closed hscl))))
-                (((hvcSub.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
-                (((hvcOrig.weaken.weaken.weaken).consVar CaptureSet.IsClosed.cvar).weaken)
+                hvcLockSub.weaken hvcLockOrig.weaken
                 (Ctx.IsClosed.push hGbcl
                   (Binding.IsClosed.lock ⟨peakSepCtx_isClosed
                     (CapyCaptureSet.peaks_isClosed _ _) hvcLockSub,
                     MutabilityCtx.IsClosed.empty⟩))
-                (CapySubst.lift_closed hscS)
-                (SrcCtx.CVarInjective.rename
-                  (SrcCtx.CVarInjective.consVar
-                    (SrcCtx.CVarInjective.rename (SrcCtx.CVarInjective.rename
-                      (SrcCtx.CVarInjective.rename hinj Rename.injective_succ)
-                      Rename.injective_succ) Rename.injective_succ)) Rename.injective_succ)
-                (hiso.lift Kind.var) ⟨horig, CapyCaptureSet.NoPseudoPeak.empty⟩ hEnp
-                (hnc.weakenTarget.weakenTarget.consVar.weakenTarget)
-                (hsubsto.consVar htv0) (hstab.pushVar CapyTy.top CapyTy.top)).2
-              have heq1 : CapyTy.compile (E.subst σ.lift) ctxSub''
-                  = (CapyTy.compile (E.subst σ.lift) ctxESub).rename Rename.succ :=
-                CapyTy.compile_rename (E.subst σ.lift) ctxESub ctxSub'' Rename.succ rfl rfl
-              have heq2 : CapyTy.compile E ctxOrig''
-                  = (CapyTy.compile E ctxEOrig).rename Rename.succ :=
-                CapyTy.compile_rename E ctxEOrig ctxOrig'' Rename.succ rfl rfl
+                (CapySubst.lift_closed (CapySubst.lift_closed hscS))
+                (SrcCtx.CVarInjective.rename hinjW Rename.injective_succ)
+                ((hiso.lift Kind.cvar).lift Kind.var)
+                ⟨horig, hT1np.captureSet⟩
+                (CapyTy.NoPseudoPeak.rename Rename.implicit_cvar hEnp)
+                ((hnc.weakenConsCVar.weakenTarget.weakenTarget.consVarNoRename).weakenTarget)
+                ((hsubsto.consCVar).consVar hlift1tv)
+                ((hstab.pushCVar (.unbound .epsilon)).pushVar T1 (T1.subst σ.lift))).2
+              have heq1 : CapyTy.compile ((E.subst σ.lift).rename Rename.implicit_cvar) ctxSub''
+                  = (CapyTy.compile ((E.subst σ.lift).rename Rename.implicit_cvar)
+                      ctxLockSub).rename Rename.succ :=
+                CapyTy.compile_rename ((E.subst σ.lift).rename Rename.implicit_cvar)
+                  ctxLockSub ctxSub'' Rename.succ rfl rfl
+              have heq2 : CapyTy.compile (E.rename Rename.implicit_cvar) ctxOrig''
+                  = (CapyTy.compile (E.rename Rename.implicit_cvar) ctxLockOrig).rename
+                      Rename.succ :=
+                CapyTy.compile_rename (E.rename Rename.implicit_cvar) ctxLockOrig ctxOrig''
+                  Rename.succ rfl rfl
               convert hge using 2
               · rw [heq2]; exact Ty.weaken_subst_comm_base
-              · exact heq1.symm
+              · exact heq1.symm.trans
+                  (congrArg (fun Z => CapyTy.compile Z ctxSub'')
+                    CapyTy.implicit_cvar_subst_comm)
   | .poly S cs E =>
     intro s2 s1' s2' ctxOrig ctxSub σ σt hcompat htvar hcl hpb hdrop hcompatAl hclSub hclOrig
       hscl hvcSub hvcOrig hcoreSub hscS hinj hiso horig hTnp hnc hsubsto hstab
