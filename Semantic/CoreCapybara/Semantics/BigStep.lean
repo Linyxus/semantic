@@ -1101,10 +1101,12 @@ theorem Memory.mcell_content_val {m : Memory} {y n : Nat}
   `read` (the cell stores a different location in `m1` vs `m2`, so the replayed value/trace
   diverge — see the `Denotation/KripkeModel.lean` first-principles note: no `subsumes`
   redefinition rescues it, because the type-erased memory cannot preserve cell types).  The
-  sound replacement is the SEMANTIC store-typing monotonicity (`KripkeModel.Robust.mono`,
-  proven), to be wired into the Fundamental `par`-case trace bounds during the Denotation
-  store-typing integration (Stage B); this operational adapter is the single minimal sorry
-  localizing that one gap, kept only because the `par` trace-bound proof still consumes it. -/
+  sound replacement is a WORLD-INDEXED `Safe`/monotonicity from the step-indexed (OFE) store
+  world (`Denotation/StepIndexedProto.lean`, in progress) — branch behaviour is required only
+  at *well-typed* future worlds, not arbitrary subsuming memories.  Same root as
+  `Fundamental.memTyped_subsumes`/`sem_typ_par`/`sem_typ_write`.  This operational adapter is
+  a minimal sorry localizing that one gap, kept only because the `par` trace-bound proof (and
+  `Props`/`Standardization`) still consume it pending the world-indexed rewrite. -/
 theorem BigStep.simulate_down {m2 : Memory} {e : Exp {}} {t : Trace} {v : Exp {}}
     {m2' : Memory} (hbs : BigStep m2 e t v m2') :
     ∀ {m1 : Memory}, m2.subsumes m1 -> Exp.WfInHeap e m1.heap ->

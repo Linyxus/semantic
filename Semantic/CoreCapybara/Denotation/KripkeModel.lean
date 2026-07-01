@@ -48,10 +48,18 @@ coverage is omitted (orthogonal and already monotone).
 namespace CoreCapybara
 namespace KripkeModel
 
-/-- A **semantic** store typing assigns a value *relation* (a plain memory-expression
-predicate) to each mutable cell location — substitution-stable, unlike a syntactic type.
-The relation stored at allocation is the world-instantiated content denotation. -/
-abbrev StoreTyping := Nat → Option (Memory → Exp {} → Prop)
+/-- A **monotone** value relation: a memory-expression predicate stable under memory
+growth (`subsumes`).  Every relation we ever store is a `val_denot` instance, hence
+monotone (`val_denot_is_monotonic`); bundling the monotonicity proof with the relation
+lets `MemTyped` be preserved under `subsumes` (`memTyped_subsumes`) and frees `alloc`/
+`write` from an external `hmono` premise — without exposing the relation's origin. -/
+def MonRel : Type := {R : Memory → Exp {} → Prop //
+  ∀ m1 m2, m2.subsumes m1 → ∀ e, R m1 e → R m2 e}
+
+/-- A **semantic** store typing assigns a *monotone* value relation (`MonRel`) to each
+mutable cell location — substitution-stable, unlike a syntactic type.  The relation stored
+at allocation is the world-instantiated content denotation. -/
+abbrev StoreTyping := Nat → Option MonRel
 
 /-- The typed future-world relation: the memory grows (`subsumes`) and the store typing
 only grows (existing cells keep their assigned relation). -/
@@ -88,18 +96,18 @@ def kdenot (k : Nat) (st : StoreTyping) (T : Ty .capt {}) (m : Memory) (e : Exp 
   | .cell _ Tc =>
       ∃ l n ℓ R, e = .var (.free l) ∧
         m.lookup l = some (.capability (.mcell n ℓ)) ∧ st l = some R ∧
-        (∀ m' e', R m' e' → kdenot k st Tc m' e')
+        (∀ m' e', R.1 m' e' → kdenot k st Tc m' e')
   | .reader _ Tc =>
       ∃ l n ℓ R, resolve m.heap e = some (.reader (.free l)) ∧
         m.lookup l = some (.capability (.mcell n ℓ)) ∧ st l = some R ∧
-        (∀ m' e', R m' e' → kdenot k st Tc m' e')
+        (∀ m' e', R.1 m' e' → kdenot k st Tc m' e')
   | .arrow T1 _ _ =>
       ∃ cs0 T0 t0, resolve m.heap e = some (.abs cs0 T0 t0) ∧
         ∀ j, j < k → ∀ (st' : StoreTyping) (m' : Memory) (arg : Nat),
           WorldLe st' m' st m →
           (∀ l n R, st' l = some R →
             m'.lookup l = some (.capability (.mcell n .live)) →
-            R m' (.var (.free n))) →
+            R.1 m' (.var (.free n))) →
           kdenot j st' T1 m' (.var (.free arg)) →
           ∀ (st'' : StoreTyping) (m'' : Memory),
             WorldLe st'' m'' st' m' → kdenot j st'' T1 m'' (.var (.free arg))
@@ -112,7 +120,7 @@ a relation `R` holds a value satisfying `R`.  The relation is applied directly �
 recursion through `kdenot` — which is what breaks the higher-order-store circularity. -/
 def MemTyped (_k : Nat) (st : StoreTyping) (m : Memory) : Prop :=
   ∀ l n R, st l = some R → m.lookup l = some (.capability (.mcell n .live)) →
-    R m (.var (.free n))
+    R.1 m (.var (.free n))
 
 /-- A mutable cell present in `m1` is present (as a mutable cell, of possibly decayed
 liveness / changed content) in any subsuming `m2`.  This is why the existentially
@@ -202,23 +210,21 @@ relation is `R` yields a value satisfying `R`.  Composed with the cell relation'
 implication `R → kdenot … Tc`, this gives the faithful `read` its result type. -/
 theorem read_typed {k st m l R n} (hwt : MemTyped k st m) (hst : st l = some R)
     (hl : m.lookup l = some (.capability (.mcell n .live))) :
-    R m (.var (.free n)) :=
+    R.1 m (.var (.free n)) :=
   hwt l n R hst hl
 
 /-- Extend a store typing with a fresh cell's relation. -/
-def StoreTyping.set (st : StoreTyping) (l : Nat) (R : Memory → Exp {} → Prop) : StoreTyping :=
+def StoreTyping.set (st : StoreTyping) (l : Nat) (R : MonRel) : StoreTyping :=
   fun k => if k = l then some R else st k
 
 /-- **Alloc steps up the world.**  Allocating a fresh cell `l` storing a location `c`
 that already holds a `T`-value (at the current index), and typing `l` as `T`, yields a
 world above the current one that is still well-typed at the same index. -/
 theorem alloc_world {k : Nat} {st : StoreTyping} {m : Memory} {c : Nat}
-    {R : Memory → Exp {} → Prop} {l : Nat} (hfresh : m.heap l = none) (hstfresh : st l = none)
+    {R : MonRel} {l : Nat} (hfresh : m.heap l = none) (hstfresh : st l = none)
     (hcontent : m.heap c ≠ none)
     (hwt : MemTyped k st m)
-    (hRext : R (m.extend_mcell l c hfresh hcontent) (.var (.free c)))
-    (hmono : ∀ l' R' n', st l' = some R' → R' m (.var (.free n')) →
-       R' (m.extend_mcell l c hfresh hcontent) (.var (.free n'))) :
+    (hRext : R.1 (m.extend_mcell l c hfresh hcontent) (.var (.free c))) :
     WorldLe (st.set l R) (m.extend_mcell l c hfresh hcontent) st m ∧
       MemTyped k (st.set l R) (m.extend_mcell l c hfresh hcontent) := by
   have hsub : (m.extend_mcell l c hfresh hcontent).subsumes m :=
@@ -246,19 +252,18 @@ theorem alloc_world {k : Nat} {st : StoreTyping} {m : Memory} {c : Nat}
     have hlk_old : m.lookup l' = some (.capability (.mcell n .live)) := by
       rw [← hlk']
       simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hl']
-    exact hmono l' R' n hst' (hwt l' n R' hst' hlk_old)
+    -- existing cell `l'` is unchanged by the extension; its bundled monotonicity transports
+    exact R'.2 m _ hsub _ (hwt l' n R' hst' hlk_old)
 
 /-- **Write steps up the world (type-preservingly).**  Writing a value `y` satisfying the
 cell's store relation `R` keeps the store typing fixed, yields a subsuming memory, and
 preserves well-typing — the type-preserving update a naive `subsumes` cannot track. -/
 theorem write_world {k : Nat} {st : StoreTyping} {m : Memory} {l : Nat}
-    {R : Memory → Exp {} → Prop} {y n0 : Nat}
+    {R : MonRel} {y n0 : Nat}
     (hexists : m.lookup l = some (.capability (.mcell n0 .live)))
     (hcontent : Liveness.live = .live → m.heap y ≠ none)
     (hst : st l = some R) (hwt : MemTyped k st m)
-    (hyR : R (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) (.var (.free y)))
-    (hmono : ∀ l' R' n', st l' = some R' → R' m (.var (.free n')) →
-       R' (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) (.var (.free n'))) :
+    (hyR : R.1 (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) (.var (.free y))) :
     WorldLe st (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) st m ∧
       MemTyped k st (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent) := by
   have hsub : (m.update_mcell l y .live ⟨n0, hexists⟩ hcontent).subsumes m :=
@@ -281,7 +286,8 @@ theorem write_world {k : Nat} {st : StoreTyping} {m : Memory} {l : Nat}
   · have hlk_old : m.lookup l' = some (.capability (.mcell n .live)) := by
       rw [← hlk']
       simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_neg hl']
-    exact hmono l' R' n hst' (hwt l' n R' hst' hlk_old)
+    -- the written cell is `l ≠ l'`, so `l'`'s content is unchanged; transport via `R'.2`
+    exact R'.2 m _ hsub _ (hwt l' n R' hst' hlk_old)
 
 /-! ## The payoff: monotonicity becomes structural
 
