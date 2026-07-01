@@ -1125,11 +1125,14 @@ theorem Memory.mcell_content_val {m : Memory} {y n : Nat}
   m.mcell_wf y n h
 
 /- NOTE (Phase 7): the three FALSE operational-monotonicity adapters
-  (`BigStep.simulate_down`, `Safe.lift`, `Safe.frame_lift`) were QUARANTINED to
-  `Semantics/OperationalMonotonicityAssumptions.lean` — they are no longer consumed by
-  anything on `Fundamental.lean`'s import path (the Phase-6 rely–guarantee `Safe.par`
-  eliminated the last use), and keeping them here would taint the whole path with
-  `sorryAx`.  Only the stale `Props`/`Standardization` adequacy proofs still want them. -/
+  (`BigStep.simulate_down`, `Safe.lift`, `Safe.frame_lift`) were DELETED from the
+  development: they are genuinely false for a faithful reference-valued `read` (the
+  cell stores a different location in `m1` vs `m2`, so a replayed run's value/trace
+  diverge — see the first-principles note in `Denotation/KripkeModel.lean`; no
+  `subsumes` redefinition rescues it).  The Phase-6 rely–guarantee `Safe.par` removed
+  their last use on `Fundamental.lean`'s path, and the reworked `Props`/
+  `Standardization`/`Confluence` are carrier-free (the interleaving `Step`'s own
+  `par`-guards carry the separation content), so nothing consumes them anywhere. -/
 
 /-- A location allocated within a `BigStep`'s trace was absent from the initial
   memory (allocation is always fresh). -/
