@@ -47,21 +47,20 @@ relation at *arbitrary* cell-content types (cells may store functions, cells-of-
 …).  So `val(arrow) → MemTyped → val(arbitrary content type)` has no well-founded
 measure on the type: the classical higher-order-store obstruction.
 
-## The fix: step-index
+## The retained frozen construction (`kdenot`, below)
 
-We add a **step index** `k`.  `kdenot k` is "well-typed for `k` more observation
-steps".  The function case at index `k+1` quantifies over future worlds that are
-`MemTyped` **at index `k`**, and its body recurses at index `k`.  `MemTyped k` reads the
-content via `kdenot k`.  Thus every recursive call decrements `k`: the relation is a
-plain structural recursion on `k` (no recursion on the *type* at the same index), so it
-is a well-founded Lean definition, and it is fully sound for the higher-order store.
+`kdenot` adds a **step index** `k` ("well-typed for `k` more observation steps"): the
+function case at index `k+1` quantifies over future worlds that are `MemTyped` at index `k`
+and its body recurses at index `k`, so every recursive call decrements `k` (no recursion on
+the *type* at the same index) and the definition is well-founded.  This breaks the
+well-foundedness obstruction and supports `read`/`alloc`; it validates — on the real
+`Ty`/`Memory` — monotonicity along `WorldLe` (free by transitivity for the function case),
+downward closure in `k`, and that `read`/`alloc`/`write` read off / maintain the world's
+well-typing, in place of the false syntactic `eval_monotonic`/`simulate_down`.
 
-This file validates the construction on the *real* `Ty`/`Memory`: well-definedness,
-monotonicity along the typed future relation `WorldLe` (free, by transitivity, for the
-function case), downward closure in `k`, and that `read`/`alloc`/`write` read off /
-maintain the world's well-typing — exactly the facts a faithful-read Fundamental proof
-needs in place of the (false) syntactic `eval_monotonic`/`simulate_down`.  Capture-set
-coverage is omitted (orthogonal and already monotone).
+But its *cell* relation stores a frozen relation exposing only a one-way implication, so it
+does NOT support `write` (see the top note); that is exactly why the promoted flat model
+replaces it.  Capture-set coverage is omitted (orthogonal and already monotone).
 -/
 
 namespace CoreCapybara

@@ -1,26 +1,50 @@
 import Semantic.CoreCapybara.Semantics.Heap
 
 /-!
-# Flat, truncation-based step-indexed store world (sandbox)
+# The flat, truncation-based step-indexed store world
 
-Validating the CORRECT keystone before promoting into `KripkeModel.lean`.
+The promoted store model for CoreCapybara's higher-order mutable references (Phase 1 of
+`roadmaps/generic-refs.md`).  `Denotation/KripkeModel.lean` imports it; `Denotation/Core.lean`
+is to be ported onto it in Phase 2.
 
-The dependent `World : Nat → Type` family with a content-fabricating `extend`
-(prototype `StepIndexedProto.lean`) cannot satisfy the naive coherence
-`val_denot T (n+1) (extend w) ↔ val_denot T n w`: `extend`'s canonical padding at the
-bottom level would have to be simultaneously `True` (to match a cell's agreement clause)
-and structural (to match e.g. `unit`), which is impossible.  See the note in the roadmap.
+## The obstruction
 
-The elegant, standard (Ahmed-style) fix keeps the world **flat** and stratifies with an
-**index truncation** `approx k` instead of a dependent world tower:
+A generic cell `cell Tc` holds a location whose content must be a `Tc`-value.  Reasoning
+about a *function* value forces a quantifier over future well-typed worlds (`MemTyped`), and
+`MemTyped` speaks about cell contents of *arbitrary* type — so the definitional chain
+`val_denot(arrow) → MemTyped → val_denot(arbitrary Tc)` has no well-founded measure on the
+type.  This classical ML higher-order-store circularity bites at two levels: the value level
+(the recursion above) and the *type* level (a world storing genuine, world-parametrized
+denotations would be a non-strictly-positive type).
 
-* a store typing `SWorld` maps a location to a *step-indexed* relation `SRel`;
-* the cell relation compares the stored relation with `val_denot Tc` only at indices
-  `j < k`, so the comparison is trivial at the boundary `k = 0` (no fabricated content);
-* `val_denot` is well-founded by recursion on the index `k` alone (every recursive call is
-  at a strictly smaller `j < k`), so it stays a plain Lean definition;
-* the keystone is **non-expansiveness**: `val_denot T k Ψ` depends only on `Ψ.approx k`.
-  Downward closure in the index is then immediate (`∀ j < k` restricts to `∀ j < k'`).
+## The design
+
+Keep the world **flat** and stratify with an index **truncation** (Ahmed style), rather than
+a dependent `World : Nat → Type` tower.  (The tower needs a content-fabricating `extend`,
+whose bottom padding cannot be both `True` — for a cell's agreement — and structural — for
+e.g. `unit`; the naive coherence is therefore false at the index boundary.  See
+`StepIndexedProto.lean` for that dead end.)
+
+* `SWorld` maps a location to a world-free *step-indexed* relation `SRel` — a value predicate
+  with the world argument amputated, so the type stays strictly positive.
+* the `cell` case *re-attaches* the world: it asserts the stored `R` agrees with the real
+  denotation `val_denot Tc` at the current world, but only at depths `j < k`.  The `< k` makes
+  the recursion well-founded on `k` alone and makes the boundary `k = 0` trivial (no fabricated
+  content).
+
+## What is proven (all `sorryAx`-free — only `propext`/`Quot.sound`)
+
+* the keystone — **non-expansiveness** (`val_denot_nonexpansive`): `val_denot T k` depends
+  only on the world's `k`-approximation.  Index downward-closure (`val_denot_downward`) and
+  memory-monotonicity (`val_denot_mem_mono`) follow.
+* the world structure `WorldLe`/`MemTyped`/`StoreConsistent` with their structural lemmas.
+* **`read_typed`** (forward) and **`write_reestablishes`** (backward — the direction the
+  frozen `MonRel` model lacked): the two halves of the cell's biconditional agreement.
+
+The `arrow` case and the closing `example`s are validation stand-ins for the higher-order
+(cell-of-arrow) shape.  The arrow's behaviour is modeled through its domain `T1`, exactly as
+`KripkeModel.kdenot` does — enough to exercise the keystone recursion; its existential codomain
+and capture sets rejoin in the Phase-2 port to `Core.lean`.
 -/
 
 namespace CoreCapybara
@@ -51,12 +75,10 @@ def val_denot : Ty .capt {} → Nat → SWorld → Memory → Exp {} → Prop
         Ψ l = some R ∧
         ∀ j, j < k → ∀ m' e', R j m' e' ↔ val_denot Tc j Ψ m' e'
   | .arrow T1 _ _, k, Ψ, m, e =>
-      -- Toy higher-order case: `e` is an abstraction, and at every strictly smaller index
-      -- its behaviour is constrained through the *domain* denotation `val_denot T1 j Ψ`
-      -- (the existential codomain is Phase-3 machinery, modeled here by the domain, as in
-      -- `KripkeModel.kdenot`).  This is genuinely world- and index-dependent — enough to
-      -- exercise the keystone (non-expansiveness recursion + index downward-closure) for a
-      -- cell whose content is a function.
+      -- Validation stand-in for the higher-order case (see module docstring): `e` is an
+      -- abstraction, constrained at every `j < k` through its *domain* denotation
+      -- `val_denot T1 j Ψ` (the existential codomain rejoins in the Phase-2 port).  Genuinely
+      -- world- and index-dependent — enough to exercise the keystone for a cell-of-arrow.
       (∃ cs0 T0 t0, resolve m.heap e = some (.abs cs0 T0 t0)) ∧
       ∀ j, j < k → ∀ (m' : Memory) (arg : Nat),
         m'.subsumes m → val_denot T1 j Ψ m' (.var (.free arg)) →
@@ -77,6 +99,7 @@ theorem SRel.approx_approx {j k : Nat} (hjk : j ≤ k) (R : SRel) :
   · rintro ⟨hij, _, hR⟩; exact ⟨hij, hR⟩
   · rintro ⟨hij, hR⟩; exact ⟨hij, Nat.lt_of_lt_of_le hij hjk, hR⟩
 
+/-- The world-level counterpart of `SRel.approx_approx`. -/
 theorem SWorld.approx_approx {j k : Nat} (hjk : j ≤ k) (Ψ : SWorld) :
     (Ψ.approx k).approx j = Ψ.approx j := by
   funext l
@@ -186,9 +209,11 @@ only grows (existing cells keep their assigned relation). -/
 def WorldLe (Ψ' : SWorld) (m' : Memory) (Ψ : SWorld) (m : Memory) : Prop :=
   m'.subsumes m ∧ ∀ l R, Ψ l = some R → Ψ' l = some R
 
+/-- Reflexivity of the future-world relation. -/
 theorem WorldLe.refl (Ψ : SWorld) (m : Memory) : WorldLe Ψ m Ψ m :=
   ⟨Memory.subsumes_refl m, fun _ _ h => h⟩
 
+/-- Transitivity of the future-world relation. -/
 theorem WorldLe.trans {Ψ1 Ψ2 Ψ3 m1 m2 m3} (h12 : WorldLe Ψ2 m2 Ψ1 m1)
     (h23 : WorldLe Ψ3 m3 Ψ2 m2) : WorldLe Ψ3 m3 Ψ1 m1 :=
   ⟨Memory.subsumes_trans h23.1 h12.1, fun l R h => h23.2 l R (h12.2 l R h)⟩
