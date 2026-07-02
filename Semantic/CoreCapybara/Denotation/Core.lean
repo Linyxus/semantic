@@ -567,15 +567,18 @@ theorem Memory.preserves_liveness_full_update_mcell
     change (m.heap.update_cell l _) l' = _
     unfold Heap.update_cell; rw [if_neg hl]; exact h
 
-structure TypeEnv.Satisfy (env : TypeEnv s) (ctx : SepCtx s) (m : Memory) where
-  wf : ∀ C mode,
-    ctx.Has C mode ->
+structure TypeEnv.Satisfy (env : TypeEnv s) (ctx : ModalCtx s) (m : Memory) where
+  wf_sep : ∀ C,
+    ctx.sep.Has C ->
+    (C.subst (Subst.from_TypeEnv env)).WfInHeap m.heap
+  wf_mut : ∀ C mode,
+    ctx.mutability.Has C mode ->
     (C.subst (Subst.from_TypeEnv env)).WfInHeap m.heap
   kind : ∀ C mode,
-    ctx.Has C mode ->
+    ctx.mutability.Has C mode ->
     CapabilitySet.HasKind (C.denot env m) mode
-  sep : ∀ C1 m1 C2 m2,
-    ctx.HasTwoDistinct C1 m1 C2 m2 ->
+  sep : ∀ C1 C2,
+    ctx.sep.HasTwoDistinct C1 C2 ->
     CapabilitySet.Noninterference (C1.denot env m) (C2.denot env m)
 
 /-- A capture variable is *dead* according to the (peaks-only) dead-set `K`:
@@ -821,10 +824,10 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
         MemTyped j st' m' →
         m'.is_compatible R0 →
        (∀ C mode,
-          Ψ.Has C mode →
+          Ψ.mutability.Has C mode →
           CapabilitySet.HasKind (C.denot env m') mode) →
-       (∀ C1 m1 C2 m2,
-          Ψ.HasTwoDistinct C1 m1 C2 m2 →
+       (∀ C1 C2,
+          Ψ.sep.HasTwoDistinct C1 C2 →
           CapabilitySet.Noninterference (C1.denot env m') (C2.denot env m')) →
         Eval j m' t0 (fun t v m'' =>
           t.readCount < j →
@@ -2209,18 +2212,19 @@ theorem capture_bound_denot_is_monotonic {B : CaptureBound s}
       rw [capture_set_denot_is_monotonic hwf_cs hsub]
 
 theorem TypeEnv.Satisfy.monotonic
-  {env : TypeEnv s} {ctx : SepCtx s} {mem1 mem2 : Memory}
+  {env : TypeEnv s} {ctx : ModalCtx s} {mem1 mem2 : Memory}
   (hsat : TypeEnv.Satisfy env ctx mem1)
   (hmem : mem2.subsumes mem1) :
   TypeEnv.Satisfy env ctx mem2 where
-  wf C mode hhas := CaptureSet.wf_monotonic hmem (hsat.wf C mode hhas)
+  wf_sep C hhas := CaptureSet.wf_monotonic hmem (hsat.wf_sep C hhas)
+  wf_mut C mode hhas := CaptureSet.wf_monotonic hmem (hsat.wf_mut C mode hhas)
   kind C mode hhas := by
-    rw [← capture_set_denot_is_monotonic (ρ := env) (C := C) (hsat.wf C mode hhas) hmem]
+    rw [← capture_set_denot_is_monotonic (ρ := env) (C := C) (hsat.wf_mut C mode hhas) hmem]
     exact hsat.kind C mode hhas
-  sep C1 m1 C2 m2 hdistinct := by
-    rw [← capture_set_denot_is_monotonic (ρ := env) (C := C1) (hsat.wf C1 m1 hdistinct.left) hmem,
-        ← capture_set_denot_is_monotonic (ρ := env) (C := C2) (hsat.wf C2 m2 hdistinct.right) hmem]
-    exact hsat.sep C1 m1 C2 m2 hdistinct
+  sep C1 C2 hdistinct := by
+    rw [← capture_set_denot_is_monotonic (ρ := env) (C := C1) (hsat.wf_sep C1 hdistinct.left) hmem,
+        ← capture_set_denot_is_monotonic (ρ := env) (C := C2) (hsat.wf_sep C2 hdistinct.right) hmem]
+    exact hsat.sep C1 C2 hdistinct
 
 /-- ground_denot of applyRO is a subset: C.applyRO.ground_denot m ⊆ C.ground_denot m -/
 theorem ground_denot_applyRO_subset {C : CaptureSet {}} {m : Memory} :
@@ -2399,7 +2403,7 @@ def val_denot_is_monotonic {env : TypeEnv s}
     have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
     exact ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', sepctx0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
-      SepCtx.wf_monotonic hmem hwf_sepctx,
+      ModalCtx.wf_monotonic hmem hwf_sepctx,
       fun m' hsubm' hsat => hsat_impl m' (Memory.subsumes_trans hsubm' hmem) hsat,
       by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
       fun j hjk st' m' hwle hmt hcompat hkind hsep => by
@@ -2524,7 +2528,7 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
       have hcs'_eq := expand_captures_monotonic hwle.1 cs' hwf_cs'
       exact ⟨Exp.wf_monotonic hwle.1 hwf_e, CaptureSet.wf_monotonic hwle.1 hwf_cs,
         cs', sepctx0, t0, resolve_monotonic hwle.1 hr, CaptureSet.wf_monotonic hwle.1 hwf_cs',
-        SepCtx.wf_monotonic hwle.1 hwf_sepctx,
+        ModalCtx.wf_monotonic hwle.1 hwf_sepctx,
         fun m' hsubm' hsat => hsat_impl m' (Memory.subsumes_trans hsubm' hwle.1) hsat,
         by rw [← hcs_eq, hcs'_eq]; exact hR0_sub,
         fun j hjk st' m' hwle' hmt hcompat hkind hsep => by

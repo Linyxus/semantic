@@ -55,7 +55,22 @@ def CaptureBound.subst : CaptureBound s1 -> Subst s1 s2 -> CaptureBound s2
 /-- Applies a substitution to all bound variables in a separation context. -/
 def SepCtx.subst : SepCtx s1 -> Subst s1 s2 -> SepCtx s2
 | .empty, _ => .empty
+| .cons K C, σ => .cons (K.subst σ) (C.subst σ)
+
+/-- Applies a substitution to all bound variables in a mutability context. -/
+def MutabilityCtx.subst : MutabilityCtx s1 -> Subst s1 s2 -> MutabilityCtx s2
+| .empty, _ => .empty
 | .cons K C m, σ => .cons (K.subst σ) (C.subst σ) m
+
+/-- Applies a substitution to a modal context, componentwise. -/
+def ModalCtx.subst (Ψ : ModalCtx s1) (σ : Subst s1 s2) : ModalCtx s2 :=
+  ⟨Ψ.sep.subst σ, Ψ.mutability.subst σ⟩
+
+@[simp] theorem ModalCtx.subst_sep {Ψ : ModalCtx s1} {σ : Subst s1 s2} :
+    (Ψ.subst σ).sep = Ψ.sep.subst σ := rfl
+
+@[simp] theorem ModalCtx.subst_mutability {Ψ : ModalCtx s1} {σ : Subst s1 s2} :
+    (Ψ.subst σ).mutability = Ψ.mutability.subst σ := rfl
 
 /-- Applies a substitution to a type. -/
 def Ty.subst : Ty sort s1 -> Subst s1 s2 -> Ty sort s2
@@ -297,8 +312,24 @@ theorem SepCtx.weaken_subst_comm_liftMany {Ψ : SepCtx (s1 ++ K)} {σ : Subst s1
   (Ψ.rename (Rename.succ.liftMany K)).subst (σ.lift (k := k0).liftMany K) := by
   induction Ψ with
   | empty => rfl
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     simp only [SepCtx.subst, SepCtx.rename, ih, CaptureSet.weaken_subst_comm_liftMany]
+
+theorem MutabilityCtx.weaken_subst_comm_liftMany {Ψ : MutabilityCtx (s1 ++ K)} {σ : Subst s1 s2} :
+  (Ψ.subst (σ.liftMany K)).rename ((Rename.succ (k := k0)).liftMany K) =
+  (Ψ.rename (Rename.succ.liftMany K)).subst (σ.lift (k := k0).liftMany K) := by
+  induction Ψ with
+  | empty => rfl
+  | cons Ψ C m ih =>
+    simp only [MutabilityCtx.subst, MutabilityCtx.rename, ih, CaptureSet.weaken_subst_comm_liftMany]
+
+theorem ModalCtx.weaken_subst_comm_liftMany {Ψ : ModalCtx (s1 ++ K)} {σ : Subst s1 s2} :
+  (Ψ.subst (σ.liftMany K)).rename ((Rename.succ (k := k0)).liftMany K) =
+  (Ψ.rename (Rename.succ.liftMany K)).subst (σ.lift (k := k0).liftMany K) := by
+  cases Ψ with
+  | mk sep mu =>
+    simp only [ModalCtx.subst, ModalCtx.rename,
+      SepCtx.weaken_subst_comm_liftMany, MutabilityCtx.weaken_subst_comm_liftMany]
 
 theorem CaptureBound.weaken_subst_comm_liftMany
     {cb : CaptureBound (s1 ++ K)} {σ : Subst s1 s2} :
@@ -351,7 +382,7 @@ theorem Ty.weaken_subst_comm {T : Ty sort (s1 ++ K)} {σ : Subst s1 s2} :
       ih
   | .modal cs Ψ T =>
     have ihCS := CaptureSet.weaken_subst_comm_liftMany (cs := cs) (σ := σ) (K := K) (k0 := k0)
-    have ihΨ := SepCtx.weaken_subst_comm_liftMany (Ψ := Ψ) (σ := σ) (K := K) (k0 := k0)
+    have ihΨ := ModalCtx.weaken_subst_comm_liftMany (Ψ := Ψ) (σ := σ) (K := K) (k0 := k0)
     have ih := Ty.weaken_subst_comm (T := T) (σ := σ) (K := K) (k0 := k0)
     simp only [Ty.subst, Ty.rename, ihCS, ihΨ, ih]
   | .unit => rfl
@@ -417,8 +448,22 @@ theorem SepCtx.weaken_subst_comm_base {Ψ : SepCtx s1} {σ : Subst s1 s2} :
   (Ψ.subst σ).rename (Rename.succ (k := k)) = (Ψ.rename Rename.succ).subst (σ.lift) := by
   induction Ψ with
   | empty => rfl
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     simp only [SepCtx.subst, SepCtx.rename, ih, CaptureSet.weaken_subst_comm_base]
+
+theorem MutabilityCtx.weaken_subst_comm_base {Ψ : MutabilityCtx s1} {σ : Subst s1 s2} :
+  (Ψ.subst σ).rename (Rename.succ (k := k)) = (Ψ.rename Rename.succ).subst (σ.lift) := by
+  induction Ψ with
+  | empty => rfl
+  | cons Ψ C m ih =>
+    simp only [MutabilityCtx.subst, MutabilityCtx.rename, ih, CaptureSet.weaken_subst_comm_base]
+
+theorem ModalCtx.weaken_subst_comm_base {Ψ : ModalCtx s1} {σ : Subst s1 s2} :
+  (Ψ.subst σ).rename (Rename.succ (k := k)) = (Ψ.rename Rename.succ).subst (σ.lift) := by
+  cases Ψ with
+  | mk sep mu =>
+    simp only [ModalCtx.subst, ModalCtx.rename,
+      SepCtx.weaken_subst_comm_base, MutabilityCtx.weaken_subst_comm_base]
 
 theorem CaptureBound.weaken_subst_comm_base {cb : CaptureBound s1} {σ : Subst s1 s2} :
   (cb.subst σ).rename (Rename.succ (k := k)) = (cb.rename Rename.succ).subst (σ.lift) := by
@@ -534,6 +579,27 @@ theorem CaptureBound.subst_comp {cb : CaptureBound s1} {σ1 : Subst s1 s2} {σ2 
   | unbound => rfl
   | bound cs => simp only [CaptureBound.subst, CaptureSet.subst_comp]
 
+/-- Substitution on separation contexts distributes over composition of substitutions. -/
+theorem SepCtx.subst_comp {K : SepCtx s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+  (K.subst σ1).subst σ2 = K.subst (σ1.comp σ2) := by
+  induction K generalizing s2 s3 with
+  | empty => rfl
+  | cons K C ih =>
+    simp only [SepCtx.subst, ih, CaptureSet.subst_comp]
+
+theorem MutabilityCtx.subst_comp {K : MutabilityCtx s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+  (K.subst σ1).subst σ2 = K.subst (σ1.comp σ2) := by
+  induction K generalizing s2 s3 with
+  | empty => rfl
+  | cons K C m ih =>
+    simp only [MutabilityCtx.subst, ih, CaptureSet.subst_comp]
+
+theorem ModalCtx.subst_comp {K : ModalCtx s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
+  (K.subst σ1).subst σ2 = K.subst (σ1.comp σ2) := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.subst, SepCtx.subst_comp, MutabilityCtx.subst_comp]
+
 /-- Substitution on types distributes over composition of substitutions. -/
 theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
   (T.subst σ1).subst σ2 = T.subst (σ1.comp σ2) := by
@@ -553,12 +619,7 @@ theorem Ty.subst_comp {T : Ty sort s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     conv_rhs => rw [← Subst.comp_lift]
     rfl
   | modal cs Ψ T ih =>
-    have hΨ : (Ψ.subst σ1).subst σ2 = Ψ.subst (σ1.comp σ2) := by
-      induction Ψ with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, ihΨ, CaptureSet.subst_comp]
-    simp only [Ty.subst, CaptureSet.subst_comp, ih, hΨ]
+    simp only [Ty.subst, CaptureSet.subst_comp, ih, ModalCtx.subst_comp]
   | unit => rfl
   | cap cs => simp only [Ty.subst, CaptureSet.subst_comp]
   | bool => rfl
@@ -594,12 +655,7 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     conv_rhs => rw [← Subst.comp_lift]
     rfl
   | boxed cs Ψ e ih_e =>
-    have hΨ : (Ψ.subst σ1).subst σ2 = Ψ.subst (σ1.comp σ2) := by
-      induction Ψ with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, ihΨ, CaptureSet.subst_comp]
-    simp only [Exp.subst, CaptureSet.subst_comp, hΨ, ih_e]
+    simp only [Exp.subst, CaptureSet.subst_comp, ModalCtx.subst_comp, ih_e]
   | reader x => simp only [Exp.subst, Var.subst_comp]
   | alloc x => simp only [Exp.subst, Var.subst_comp]
   | drop x => simp only [Exp.subst, Var.subst_comp]
@@ -628,14 +684,6 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp only [Exp.subst, Var.subst_comp, ih2, ih3]
   | par C1 C2 e1 e2 ih1 ih2 =>
     simp only [Exp.subst, CaptureSet.subst_comp, ih1, ih2]
-
-/-- Substitution on separation contexts distributes over composition of substitutions. -/
-theorem SepCtx.subst_comp {K : SepCtx s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
-  (K.subst σ1).subst σ2 = K.subst (σ1.comp σ2) := by
-  induction K generalizing s2 s3 with
-  | empty => rfl
-  | cons K C m ih =>
-    simp only [SepCtx.subst, ih, CaptureSet.subst_comp]
 
 /-- Substituting with the identity substitution leaves a variable unchanged. -/
 theorem Var.subst_id {x : Var .var s} :
@@ -685,6 +733,27 @@ theorem CaptureBound.subst_id {cb : CaptureBound s} :
   | unbound => rfl
   | bound cs => simp only [CaptureBound.subst, CaptureSet.subst_id]
 
+/-- Substituting with the identity substitution leaves a separation context unchanged. -/
+theorem SepCtx.subst_id {K : SepCtx s} :
+  K.subst Subst.id = K := by
+  induction K with
+  | empty => rfl
+  | cons K C ih =>
+    simp only [SepCtx.subst, ih, CaptureSet.subst_id]
+
+theorem MutabilityCtx.subst_id {K : MutabilityCtx s} :
+  K.subst Subst.id = K := by
+  induction K with
+  | empty => rfl
+  | cons K C m ih =>
+    simp only [MutabilityCtx.subst, ih, CaptureSet.subst_id]
+
+theorem ModalCtx.subst_id {K : ModalCtx s} :
+  K.subst Subst.id = K := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.subst, SepCtx.subst_id, MutabilityCtx.subst_id]
+
 /-- Substituting with the identity substitution leaves a type unchanged. -/
 theorem Ty.subst_id {T : Ty sort s} :
   T.subst Subst.id = T := by
@@ -704,12 +773,7 @@ theorem Ty.subst_id {T : Ty sort s} :
     conv_lhs => rw [Subst.lift_id]
     exact congrArg (Ty.cpoly cb cs) ih
   | modal cs Ψ T ih =>
-    have hΨ : Ψ.subst Subst.id = Ψ := by
-      induction Ψ with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, ihΨ, CaptureSet.subst_id]
-    simp only [Ty.subst, CaptureSet.subst_id, ih, hΨ]
+    simp only [Ty.subst, CaptureSet.subst_id, ih, ModalCtx.subst_id]
   | unit => simp only [Ty.subst]
   | cap cs => simp only [Ty.subst, CaptureSet.subst_id]
   | bool => simp only [Ty.subst]
@@ -746,12 +810,7 @@ theorem Exp.subst_id {e : Exp s} :
     conv_lhs => rw [Subst.lift_id]
     exact congrArg (Exp.cabs cs cb) ih
   | boxed cs Ψ e ih =>
-    have hΨ : Ψ.subst Subst.id = Ψ := by
-      induction Ψ with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, ihΨ, CaptureSet.subst_id]
-    simp only [Exp.subst, CaptureSet.subst_id, hΨ, ih]
+    simp only [Exp.subst, CaptureSet.subst_id, ModalCtx.subst_id, ih]
   | reader x =>
     simp only [Exp.subst, Var.subst_id]
   | alloc x =>
@@ -789,13 +848,6 @@ theorem Exp.subst_id {e : Exp s} :
   | par C1 C2 e1 e2 ih1 ih2 =>
     simp only [Exp.subst, CaptureSet.subst_id, ih1, ih2]
 
-/-- Substituting with the identity substitution leaves a separation context unchanged. -/
-theorem SepCtx.subst_id {K : SepCtx s} :
-  K.subst Subst.id = K := by
-  induction K with
-  | empty => rfl
-  | cons K C m ih =>
-    simp only [SepCtx.subst, ih, CaptureSet.subst_id]
 
 /-- Converts a renaming to a substitution. -/
 def Rename.asSubst (f : Rename s1 s2) : Subst s1 s2 where
@@ -865,6 +917,26 @@ theorem CaptureBound.subst_asSubst {cb : CaptureBound s1} {f : Rename s1 s2} :
   | unbound => rfl
   | bound cs => simp only [CaptureBound.subst, CaptureBound.rename, CaptureSet.subst_asSubst]
 
+theorem SepCtx.subst_asSubst {K : SepCtx s1} {f : Rename s1 s2} :
+  K.subst (f.asSubst) = K.rename f := by
+  induction K generalizing s2 with
+  | empty => rfl
+  | cons K C ih =>
+    simp only [SepCtx.subst, SepCtx.rename, ih, CaptureSet.subst_asSubst]
+
+theorem MutabilityCtx.subst_asSubst {K : MutabilityCtx s1} {f : Rename s1 s2} :
+  K.subst (f.asSubst) = K.rename f := by
+  induction K generalizing s2 with
+  | empty => rfl
+  | cons K C m ih =>
+    simp only [MutabilityCtx.subst, MutabilityCtx.rename, ih, CaptureSet.subst_asSubst]
+
+theorem ModalCtx.subst_asSubst {K : ModalCtx s1} {f : Rename s1 s2} :
+  K.subst (f.asSubst) = K.rename f := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.subst, ModalCtx.rename, SepCtx.subst_asSubst, MutabilityCtx.subst_asSubst]
+
 /-- Substituting a substitution lifted from a renaming is the same as renaming. -/
 theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
   T.subst (f.asSubst) = T.rename f := by
@@ -884,12 +956,7 @@ theorem Ty.subst_asSubst {T : Ty sort s1} {f : Rename s1 s2} :
     rw [← Rename.asSubst_lift]
     exact congrArg (Ty.cpoly (cb.rename f) (cs.rename f)) ih
   | modal cs Ψ T ih =>
-    have hΨ : Ψ.subst (f.asSubst) = Ψ.rename f := by
-      induction Ψ generalizing s2 with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, SepCtx.rename, ihΨ, CaptureSet.subst_asSubst]
-    simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ih, hΨ]
+    simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst, ih, ModalCtx.subst_asSubst]
   | unit => simp only [Ty.subst, Ty.rename]
   | cap cs => simp only [Ty.subst, Ty.rename, CaptureSet.subst_asSubst]
   | bool => simp only [Ty.subst, Ty.rename]
@@ -926,12 +993,7 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     rw [← Rename.asSubst_lift]
     exact congrArg (Exp.cabs (cs.rename f) (cb.rename f)) ih
   | boxed cs Ψ e ih =>
-    have hΨ : Ψ.subst (f.asSubst) = Ψ.rename f := by
-      induction Ψ generalizing s2 with
-      | empty => rfl
-      | cons Ψ C m ihΨ =>
-        simp only [SepCtx.subst, SepCtx.rename, ihΨ, CaptureSet.subst_asSubst]
-    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, hΨ, ih]
+    simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, ModalCtx.subst_asSubst, ih]
   | reader x =>
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst]
   | alloc x =>
@@ -970,14 +1032,6 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp only [Exp.subst, Exp.rename, Var.subst_asSubst, ih2, ih3]
   | par C1 C2 e1 e2 ih1 ih2 =>
     simp only [Exp.subst, Exp.rename, CaptureSet.subst_asSubst, ih1, ih2]
-
-/-- Substituting a substitution lifted from a renaming is the same as renaming. -/
-theorem SepCtx.subst_asSubst {K : SepCtx s1} {f : Rename s1 s2} :
-  K.subst (f.asSubst) = K.rename f := by
-  induction K generalizing s2 with
-  | empty => rfl
-  | cons K C m ih =>
-    simp only [SepCtx.subst, SepCtx.rename, ih, CaptureSet.subst_asSubst]
 
 theorem Subst.weaken_openVar {z : Var .var s} :
   Rename.succ.asSubst.comp (Subst.openVar z) = Subst.id := by
@@ -1115,10 +1169,23 @@ private theorem SepCtx.rename_closed_any {Ψ : SepCtx s1} {f : Rename s1 s2}
   (hc : Ψ.IsClosed) : (Ψ.rename f).IsClosed := by
   induction Ψ with
   | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     cases hc with
     | cons hΨ hC =>
       exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_any hC)
+
+private theorem MutabilityCtx.rename_closed_any {Ψ : MutabilityCtx s1} {f : Rename s1 s2}
+  (hc : Ψ.IsClosed) : (Ψ.rename f).IsClosed := by
+  induction Ψ with
+  | empty => exact MutabilityCtx.IsClosed.empty
+  | cons Ψ C m ih =>
+    cases hc with
+    | cons hΨ hC =>
+      exact MutabilityCtx.IsClosed.cons (ih hΨ) (CaptureSet.rename_closed_any hC)
+
+private theorem ModalCtx.rename_closed_any {Ψ : ModalCtx s1} {f : Rename s1 s2}
+  (hc : Ψ.IsClosed) : (Ψ.rename f).IsClosed :=
+  ⟨SepCtx.rename_closed_any hc.sep, MutabilityCtx.rename_closed_any hc.mutability⟩
 
 private theorem CaptureBound.rename_closed_any {cb : CaptureBound s1} {f : Rename s1 s2}
   (hc : cb.IsClosed) : (cb.rename f).IsClosed := by
@@ -1146,7 +1213,7 @@ private theorem Ty.rename_closed_any {T : Ty sort s1} {f : Rename s1 s2}
   | modal cs Ψ T ih =>
     cases hc with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.rename_closed_any hcs)
-      (SepCtx.rename_closed_any hΨ) (ih hT)
+      (ModalCtx.rename_closed_any hΨ) (ih hT)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1182,17 +1249,35 @@ theorem Subst.lift_closed {σ : Subst s1 s2} (hσ : σ.IsClosed) :
     | here => exact CaptureSet.IsClosed.cvar
     | there C => simp only [Subst.lift]; exact CaptureSet.rename_closed_any (hσ.cvar_closed C)
 
-/-- Substitution preserves closedness for types. -/
+/-- Substitution preserves closedness for separation contexts. -/
 def SepCtx.is_closed_subst {Ψ : SepCtx s1} {σ : Subst s1 s2}
   (hc : Ψ.IsClosed) (hsubst : Subst.IsClosed σ) :
   (Ψ.subst σ).IsClosed := by
   induction Ψ generalizing s2 with
   | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     cases hc with
     | cons hΨ hC =>
       simp only [SepCtx.subst]
       exact SepCtx.IsClosed.cons (ih hΨ hsubst) (CaptureSet.is_closed_subst hC hsubst)
+
+/-- Substitution preserves closedness for mutability contexts. -/
+def MutabilityCtx.is_closed_subst {Ψ : MutabilityCtx s1} {σ : Subst s1 s2}
+  (hc : Ψ.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (Ψ.subst σ).IsClosed := by
+  induction Ψ generalizing s2 with
+  | empty => exact MutabilityCtx.IsClosed.empty
+  | cons Ψ C m ih =>
+    cases hc with
+    | cons hΨ hC =>
+      simp only [MutabilityCtx.subst]
+      exact MutabilityCtx.IsClosed.cons (ih hΨ hsubst) (CaptureSet.is_closed_subst hC hsubst)
+
+/-- Substitution preserves closedness for modal contexts. -/
+def ModalCtx.is_closed_subst {Ψ : ModalCtx s1} {σ : Subst s1 s2}
+  (hc : Ψ.IsClosed) (hsubst : Subst.IsClosed σ) :
+  (Ψ.subst σ).IsClosed :=
+  ⟨SepCtx.is_closed_subst hc.sep hsubst, MutabilityCtx.is_closed_subst hc.mutability hsubst⟩
 
 def CaptureBound.is_closed_subst {cb : CaptureBound s1} {σ : Subst s1 s2}
   (hc : cb.IsClosed) (hsubst : Subst.IsClosed σ) :
@@ -1232,7 +1317,7 @@ def Ty.is_closed_subst {T : Ty sort s1} {σ : Subst s1 s2}
     simp only [Ty.subst]
     exact IsClosed.modal
       (CaptureSet.is_closed_subst hcs hsubst)
-      (SepCtx.is_closed_subst hΨ hsubst) (ih hT hsubst)
+      (ModalCtx.is_closed_subst hΨ hsubst) (ih hT hsubst)
   | unit => exact IsClosed.unit
   | cap cs =>
     cases hc with | cap hcs =>
@@ -1291,7 +1376,7 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     cases hc with | boxed hcs hΨ he =>
     simp only [Exp.subst]
     exact IsClosed.boxed (CaptureSet.is_closed_subst hcs hsubst)
-      (SepCtx.is_closed_subst hΨ hsubst) (ih he hsubst)
+      (ModalCtx.is_closed_subst hΨ hsubst) (ih he hsubst)
   | reader x =>
     cases hc with | reader hx =>
     simp only [Exp.subst]
@@ -1447,11 +1532,27 @@ theorem SepCtx.subst_closed_inv {Ψ : SepCtx s1} {σ : Subst s1 s2}
   Ψ.IsClosed := by
   induction Ψ generalizing s2 with
   | empty => exact SepCtx.IsClosed.empty
-  | cons Ψ C m ih =>
+  | cons Ψ C ih =>
     simp only [SepCtx.subst] at hclosed
     cases hclosed with
     | cons hΨ hC =>
       exact SepCtx.IsClosed.cons (ih hΨ) (CaptureSet.subst_closed_inv hC)
+
+theorem MutabilityCtx.subst_closed_inv {Ψ : MutabilityCtx s1} {σ : Subst s1 s2}
+  (hclosed : (Ψ.subst σ).IsClosed) :
+  Ψ.IsClosed := by
+  induction Ψ generalizing s2 with
+  | empty => exact MutabilityCtx.IsClosed.empty
+  | cons Ψ C m ih =>
+    simp only [MutabilityCtx.subst] at hclosed
+    cases hclosed with
+    | cons hΨ hC =>
+      exact MutabilityCtx.IsClosed.cons (ih hΨ) (CaptureSet.subst_closed_inv hC)
+
+theorem ModalCtx.subst_closed_inv {Ψ : ModalCtx s1} {σ : Subst s1 s2}
+  (hclosed : (Ψ.subst σ).IsClosed) :
+  Ψ.IsClosed :=
+  ⟨SepCtx.subst_closed_inv hclosed.sep, MutabilityCtx.subst_closed_inv hclosed.mutability⟩
 
 theorem CaptureBound.subst_closed_inv {cb : CaptureBound s1} {σ : Subst s1 s2}
   (hclosed : (cb.subst σ).IsClosed) :
@@ -1490,7 +1591,7 @@ theorem Ty.subst_closed_inv {T : Ty sort s1} {σ : Subst s1 s2}
     simp only [Ty.subst] at hclosed
     cases hclosed with | modal hcs hΨ hT =>
     exact IsClosed.modal (CaptureSet.subst_closed_inv hcs)
-      (SepCtx.subst_closed_inv hΨ) (ih hT)
+      (ModalCtx.subst_closed_inv hΨ) (ih hT)
   | unit => exact IsClosed.unit
   | cap cs =>
     simp only [Ty.subst] at hclosed
@@ -1539,7 +1640,7 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
   | boxed cs Ψ e ih =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | boxed hcs hΨ he =>
-    exact IsClosed.boxed (CaptureSet.subst_closed_inv hcs) (SepCtx.subst_closed_inv hΨ) (ih he)
+    exact IsClosed.boxed (CaptureSet.subst_closed_inv hcs) (ModalCtx.subst_closed_inv hΨ) (ih he)
   | reader x =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | reader hx =>

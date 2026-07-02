@@ -3608,7 +3608,7 @@ theorem Eval.eval_drop {m : Memory} {x : Nat} {n : Nat} {Q : Tpost}
   | bs_drop hx2 => exact hQ
   | bs_val hv => cases hv
 
-theorem Eval.eval_wrap {m : Memory} {cs : CaptureSet {}} {Ψ : SepCtx {}} {e : Exp {}}
+theorem Eval.eval_wrap {m : Memory} {cs : CaptureSet {}} {Ψ : ModalCtx {}} {e : Exp {}}
     {Q : Tpost} (hQ : Q [] (.boxed cs Ψ e) m) : Eval k m (.boxed cs Ψ e) Q := by
   refine ⟨Safe.ans (Exp.IsAns.is_val Exp.IsVal.boxed), ?_⟩
   intro t v m' hbs

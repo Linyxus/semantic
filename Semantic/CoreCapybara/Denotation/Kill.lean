@@ -362,22 +362,25 @@ theorem kill_cvar_exi_exp_denot {env : TypeEnv s} {c : BVar s .cvar}
 /-! ## `EnvTyping` transport along killing -/
 
 theorem TypeEnv.Satisfy.kill_cvar {env : TypeEnv s} {c : BVar s .cvar}
-    {Ψ : SepCtx s} {m : Memory}
+    {Ψ : ModalCtx s} {m : Memory}
     (h : env.Satisfy Ψ m) : (env.kill_cvar c).Satisfy Ψ m where
-  wf := fun C mode hh => by
+  wf_sep := fun C hh => by
     rw [Subst.from_TypeEnv_kill_cvar]
-    exact h.wf C mode hh
+    exact h.wf_sep C hh
+  wf_mut := fun C mode hh => by
+    rw [Subst.from_TypeEnv_kill_cvar]
+    exact h.wf_mut C mode hh
   kind := fun C mode hh => by
     change CapabilitySet.HasKind
       ((C.subst (Subst.from_TypeEnv (env.kill_cvar c))).ground_denot m) mode
     rw [Subst.from_TypeEnv_kill_cvar]
     exact h.kind C mode hh
-  sep := fun C1 m1 C2 m2 hh => by
+  sep := fun C1 C2 hh => by
     change CapabilitySet.Noninterference
       ((C1.subst (Subst.from_TypeEnv (env.kill_cvar c))).ground_denot m)
       ((C2.subst (Subst.from_TypeEnv (env.kill_cvar c))).ground_denot m)
     rw [Subst.from_TypeEnv_kill_cvar]
-    exact h.sep C1 m1 C2 m2 hh
+    exact h.sep C1 C2 hh
 
 theorem EnvTyping.kill_cvar {s : Sig} {Γ : Ctx s} {env : TypeEnv s} {m : Memory}
     (c : BVar s .cvar) (h : EnvTyping Γ env k st m) :

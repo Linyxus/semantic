@@ -257,39 +257,47 @@ theorem Rebind.hassepdom
 
 theorem rebind_satisfy_iff
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
-  (ρ : Rebind env1 f env2) (Ψ : SepCtx s1) (m : Memory) :
+  (ρ : Rebind env1 f env2) (Ψ : ModalCtx s1) (m : Memory) :
   TypeEnv.Satisfy env1 Ψ m ↔ TypeEnv.Satisfy env2 (Ψ.rename f) m := by
   constructor
   · intro hsat
     constructor
-    · intro C mode hhas
+    · intro C hhas
       obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
       simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C0)] using
-        hsat.wf C0 mode hhas0
+        hsat.wf_sep C0 hhas0
     · intro C mode hhas
-      obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
+      obtain ⟨C0, rfl, hhas0⟩ := MutabilityCtx.Has.rename_inv hhas
+      simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C0)] using
+        hsat.wf_mut C0 mode hhas0
+    · intro C mode hhas
+      obtain ⟨C0, rfl, hhas0⟩ := MutabilityCtx.Has.rename_inv hhas
       simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
         hsat.kind C0 mode hhas0
-    · intro C1 m1 C2 m2 hdistinct
+    · intro C1 C2 hdistinct
       obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
       simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
         rebind_captureset_denot (ρ := ρ) (C := D2)] using
-        hsat.sep D1 m1 D2 m2 hdistinct0
+        hsat.sep D1 D2 hdistinct0
   · intro hsat
     constructor
+    · intro C hhas
+      have hhas' := hhas.rename (f := f)
+      simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C)] using
+        hsat.wf_sep (C.rename f) hhas'
     · intro C mode hhas
       have hhas' := hhas.rename (f := f)
       simpa only [rebind_resolved_capture_set (ρ := ρ) (C := C)] using
-        hsat.wf (C.rename f) mode hhas'
+        hsat.wf_mut (C.rename f) mode hhas'
     · intro C mode hhas
       have hhas' := hhas.rename (f := f)
       simpa only [rebind_captureset_denot (ρ := ρ) (C := C)] using
         hsat.kind (C.rename f) mode hhas'
-    · intro C1 m1 C2 m2 hdistinct
+    · intro C1 C2 hdistinct
       have hdistinct' := hdistinct.rename (f := f)
       simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
         rebind_captureset_denot (ρ := ρ) (C := C2)] using
-        hsat.sep (C1.rename f) m1 (C2.rename f) m2 hdistinct'
+        hsat.sep (C1.rename f) (C2.rename f) hdistinct'
 
 set_option maxHeartbeats 1000000 in
 -- The mutual rebind denotation definitions trigger heavy reducibility checks
@@ -431,18 +439,18 @@ def rebind_val_denot
         have ih := rebind_exi_val_denot ρ T
         have hkind' :
             ∀ (C : CaptureSet s1) (mode : Mutability),
-              Ψ.Has C mode -> CapabilitySet.HasKind (C.denot env1 m') mode := by
+              Ψ.mutability.Has C mode -> CapabilitySet.HasKind (C.denot env1 m') mode := by
           intro C mode hhas
           simpa only [rebind_captureset_denot (ρ := ρ) (C := C)] using
             hkind (C.rename f) mode (hhas.rename)
         have hsep' :
-            ∀ (C1 : CaptureSet s1) (m1 : Mutability) (C2 : CaptureSet s1) (m2 : Mutability),
-              Ψ.HasTwoDistinct C1 m1 C2 m2 ->
+            ∀ (C1 : CaptureSet s1) (C2 : CaptureSet s1),
+              Ψ.sep.HasTwoDistinct C1 C2 ->
               CapabilitySet.Noninterference (C1.denot env1 m') (C2.denot env1 m') := by
-          intro C1 m1 C2 m2 hdistinct
+          intro C1 C2 hdistinct
           simpa only [rebind_captureset_denot (ρ := ρ) (C := C1),
             rebind_captureset_denot (ρ := ρ) (C := C2)] using
-              hsep (C1.rename f) m1 (C2.rename f) m2 (hdistinct.rename)
+              hsep (C1.rename f) (C2.rename f) (hdistinct.rename)
         have hd' := hbody j hjk st' m' hwle hmt hcompat hkind' hsep'
         refine eval_post_monotonic_general ?_ hd'
         intro m'' hsub'' t v hpost hguard
@@ -457,20 +465,21 @@ def rebind_val_denot
         have ih := rebind_exi_val_denot ρ T
         have hkind' :
             ∀ (C : CaptureSet s2) (mode : Mutability),
-              (Ψ.rename f).Has C mode -> CapabilitySet.HasKind (C.denot env2 m') mode := by
+              (Ψ.rename f).mutability.Has C mode ->
+                CapabilitySet.HasKind (C.denot env2 m') mode := by
           intro C mode hhas
-          obtain ⟨C0, rfl, hhas0⟩ := SepCtx.Has.rename_inv hhas
+          obtain ⟨C0, rfl, hhas0⟩ := MutabilityCtx.Has.rename_inv hhas
           simpa only [rebind_captureset_denot (ρ := ρ) (C := C0)] using
             hkind C0 mode hhas0
         have hsep' :
-            ∀ (C1 : CaptureSet s2) (m1 : Mutability) (C2 : CaptureSet s2) (m2 : Mutability),
-              (Ψ.rename f).HasTwoDistinct C1 m1 C2 m2 ->
+            ∀ (C1 : CaptureSet s2) (C2 : CaptureSet s2),
+              (Ψ.rename f).sep.HasTwoDistinct C1 C2 ->
               CapabilitySet.Noninterference (C1.denot env2 m') (C2.denot env2 m') := by
-          intro C1 m1 C2 m2 hdistinct
+          intro C1 C2 hdistinct
           obtain ⟨D1, D2, rfl, rfl, hdistinct0⟩ := SepCtx.HasTwoDistinct.rename_inv hdistinct
           simpa only [rebind_captureset_denot (ρ := ρ) (C := D1),
             rebind_captureset_denot (ρ := ρ) (C := D2)] using
-              hsep D1 m1 D2 m2 hdistinct0
+              hsep D1 D2 hdistinct0
         have hd' := hbody j hjk st' m' hwle hmt hcompat hkind' hsep'
         refine eval_post_monotonic_general ?_ hd'
         intro m'' hsub'' t v hpost hguard
@@ -585,7 +594,7 @@ theorem val_denot_auth_irrel {env : TypeEnv s} {cs : CaptureSet {}}
 
 theorem typed_env_satisfy_rebind
   {env1 : TypeEnv s1} {env2 : TypeEnv s2} {f : Rename s1 s2}
-  {Ψ : SepCtx s1} {m : Memory}
+  {Ψ : ModalCtx s1} {m : Memory}
   (ρ : Rebind env1 f env2)
   (hsat : TypeEnv.Satisfy env1 Ψ m) :
   TypeEnv.Satisfy env2 (Ψ.rename f) m := by

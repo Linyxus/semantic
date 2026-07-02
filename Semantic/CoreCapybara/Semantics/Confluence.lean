@@ -747,6 +747,20 @@ theorem SepCtx.renameLoc_eq_of_wf {s} {K : SepCtx s} {h : Heap} (hwf : K.WfInHea
   | wf_empty => rfl
   | wf_cons _ hC ih => simp only [SepCtx.renameLoc, ih hfix, CaptureSet.renameLoc_eq_of_wf hC hfix]
 
+theorem MutabilityCtx.renameLoc_eq_of_wf {s} {K : MutabilityCtx s} {h : Heap} (hwf : K.WfInHeap h)
+    {π : Equiv.Perm Nat} (hfix : ∀ l, h l ≠ none → π l = l) : K.renameLoc π = K := by
+  induction hwf with
+  | wf_empty => rfl
+  | wf_cons _ hC ih =>
+    simp only [MutabilityCtx.renameLoc, ih hfix, CaptureSet.renameLoc_eq_of_wf hC hfix]
+
+theorem ModalCtx.renameLoc_eq_of_wf {s} {K : ModalCtx s} {h : Heap} (hwf : K.WfInHeap h)
+    {π : Equiv.Perm Nat} (hfix : ∀ l, h l ≠ none → π l = l) : K.renameLoc π = K := by
+  cases K with
+  | mk sep mu =>
+    simp only [ModalCtx.renameLoc,
+      SepCtx.renameLoc_eq_of_wf hwf.sep hfix, MutabilityCtx.renameLoc_eq_of_wf hwf.mutability hfix]
+
 theorem Ty.renameLoc_eq_of_wf {sort s} {T : Ty sort s} {h : Heap} (hwf : T.WfInHeap h)
     {π : Equiv.Perm Nat} (hfix : ∀ l, h l ≠ none → π l = l) : T.renameLoc π = T := by
   induction hwf with
@@ -761,7 +775,7 @@ theorem Ty.renameLoc_eq_of_wf {sort s} {T : Ty sort s} {h : Heap} (hwf : T.WfInH
       CaptureSet.renameLoc_eq_of_wf hcs hfix, ih hfix]
   | wf_modal hcs hΨ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
-      SepCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
+      ModalCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
   | wf_unit => rfl
   | wf_cap hcs => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix]
   | wf_bool => rfl
@@ -790,7 +804,7 @@ theorem Exp.renameLoc_eq_of_wf {s} {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
       CaptureBound.renameLoc_eq_of_wf hcb hfix, ih hfix]
   | wf_boxed hcs hΨ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
-      SepCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
+      ModalCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
   | wf_reader hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_alloc hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_drop hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]

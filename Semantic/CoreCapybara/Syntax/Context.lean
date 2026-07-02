@@ -14,7 +14,7 @@ inductive Binding : Sig -> Kind -> Type where
 | var : Ty .capt s -> Binding s .var
 | tvar : PureTy s -> Binding s .tvar
 | cvar : Authority -> CaptureBound s -> Binding s .cvar
-| lock : SepCtx s -> Binding s .lock
+| lock : ModalCtx s -> Binding s .lock
 
 def Binding.rename : Binding s1 k -> Rename s1 s2 -> Binding s2 k
 | .var T, f => .var (T.rename f)
@@ -38,7 +38,7 @@ def Ctx.push_cvar : Ctx s -> Authority -> CaptureBound s -> Ctx (s,C)
 def Ctx.push_cvar_default : Ctx s -> CaptureBound s -> Ctx (s,C)
 | Γ, cb => Γ.push_cvar .can_drop cb
 
-def Ctx.push_lock : Ctx s -> SepCtx s -> Ctx (s,,.lock)
+def Ctx.push_lock : Ctx s -> ModalCtx s -> Ctx (s,,.lock)
 | Γ, Ψ => Γ.push (.lock Ψ)
 
 infixl:65 ",x:" => Ctx.push_var
@@ -79,10 +79,10 @@ inductive Ctx.LookupCVar : Ctx s -> BVar s .cvar -> Authority -> CaptureBound s 
   Ctx.LookupCVar Γ c a cb ->
   Ctx.LookupCVar (.push Γ b) (.there c) a (cb.rename Rename.succ)
 
-inductive Ctx.LookupLock : Ctx s -> BVar s .lock -> SepCtx s -> Prop
+inductive Ctx.LookupLock : Ctx s -> BVar s .lock -> ModalCtx s -> Prop
 | here :
   Ctx.LookupLock (.push Γ (.lock Ψ)) .here (Ψ.rename Rename.succ)
-| there {Ψ : SepCtx s} {b : Binding s k} :
+| there {Ψ : ModalCtx s} {b : Binding s k} :
   Ctx.LookupLock Γ ℓ Ψ ->
   Ctx.LookupLock (.push Γ b) (.there ℓ) (Ψ.rename Rename.succ)
 
@@ -109,7 +109,7 @@ def Ctx.TwoDistinctDroppable (Γ : Ctx s) (c1 c2 : BVar s .cvar) : Prop :=
   Γ.lookup_authority c2 = .can_drop ∧
   c1 ≠ c2
 
-def Ctx.lookup_lock : Ctx s -> BVar s .lock -> SepCtx s
+def Ctx.lookup_lock : Ctx s -> BVar s .lock -> ModalCtx s
 | .push _ (.lock Ψ), .here => Ψ.rename Rename.succ
 | .push Γ _, .there ℓ => (Γ.lookup_lock ℓ).rename Rename.succ
 
@@ -125,7 +125,7 @@ def Ctx.lookup_cvar' : Ctx (s,,k) -> BVar (s,,k) .cvar -> CaptureBound s
 | .push _ (.cvar _ cb), .here => cb
 | .push Γ _, .there c => Γ.lookup_cvar c
 
-def Ctx.lookup_lock' : Ctx (s,,k) -> BVar (s,,k) .lock -> SepCtx s
+def Ctx.lookup_lock' : Ctx (s,,k) -> BVar (s,,k) .lock -> ModalCtx s
 | .push _ (.lock Ψ), .here => Ψ
 | .push Γ _, .there ℓ => Γ.lookup_lock ℓ
 
@@ -196,7 +196,7 @@ theorem Ctx.lookup_lock_spec (Γ : Ctx s) (ℓ : BVar s .lock) :
     exact LookupLock.there (lookup_lock_spec Γ' ℓ')
 
 /-- If the inductive predicate holds, the sepctx equals the functional lookup. -/
-theorem Ctx.LookupLock.eq_lookup {Γ : Ctx s} {ℓ : BVar s .lock} {Ψ : SepCtx s}
+theorem Ctx.LookupLock.eq_lookup {Γ : Ctx s} {ℓ : BVar s .lock} {Ψ : ModalCtx s}
     (h : Ctx.LookupLock Γ ℓ Ψ) : Ψ = Γ.lookup_lock ℓ := by
   induction h with
   | here => rfl

@@ -1387,7 +1387,19 @@ inductive SepCtx.WfInHeap : SepCtx s -> Heap -> Prop where
 | wf_cons :
   SepCtx.WfInHeap Ψ H ->
   CaptureSet.WfInHeap C H ->
-  SepCtx.WfInHeap (.cons Ψ C m) H
+  SepCtx.WfInHeap (.cons Ψ C) H
+
+inductive MutabilityCtx.WfInHeap : MutabilityCtx s -> Heap -> Prop where
+| wf_empty :
+  MutabilityCtx.WfInHeap .empty H
+| wf_cons :
+  MutabilityCtx.WfInHeap Ψ H ->
+  CaptureSet.WfInHeap C H ->
+  MutabilityCtx.WfInHeap (.cons Ψ C m) H
+
+structure ModalCtx.WfInHeap (Ψ : ModalCtx s) (H : Heap) : Prop where
+  sep : Ψ.sep.WfInHeap H
+  mutability : Ψ.mutability.WfInHeap H
 
 inductive CaptureBound.WfInHeap : CaptureBound s -> Heap -> Prop where
 | wf_unbound :
@@ -1418,7 +1430,7 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap (.cpoly cb cs T) H
 | wf_modal :
   CaptureSet.WfInHeap cs H ->
-  SepCtx.WfInHeap Ψ H ->
+  ModalCtx.WfInHeap Ψ H ->
   Ty.WfInHeap T H ->
   Ty.WfInHeap (.modal cs Ψ T) H
 | wf_unit :
@@ -1468,7 +1480,7 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap (.cabs cs cb e) H
 | wf_boxed :
   CaptureSet.WfInHeap cs H ->
-  SepCtx.WfInHeap Ψ H ->
+  ModalCtx.WfInHeap Ψ H ->
   Exp.WfInHeap e H ->
   Exp.WfInHeap (.boxed cs Ψ e) H
 | wf_reader :
@@ -1558,6 +1570,18 @@ theorem SepCtx.wf_of_closed {Ψ : SepCtx s} {H : Heap}
   | empty => exact SepCtx.WfInHeap.wf_empty
   | cons hΨ hC ih => exact SepCtx.WfInHeap.wf_cons ih (CaptureSet.wf_of_closed hC)
 
+theorem MutabilityCtx.wf_of_closed {Ψ : MutabilityCtx s} {H : Heap}
+  (hclosed : Ψ.IsClosed) :
+  MutabilityCtx.WfInHeap Ψ H := by
+  induction hclosed with
+  | empty => exact MutabilityCtx.WfInHeap.wf_empty
+  | cons hΨ hC ih => exact MutabilityCtx.WfInHeap.wf_cons ih (CaptureSet.wf_of_closed hC)
+
+theorem ModalCtx.wf_of_closed {Ψ : ModalCtx s} {H : Heap}
+  (hclosed : Ψ.IsClosed) :
+  ModalCtx.WfInHeap Ψ H :=
+  ⟨SepCtx.wf_of_closed hclosed.sep, MutabilityCtx.wf_of_closed hclosed.mutability⟩
+
 theorem CaptureBound.wf_of_closed {cb : CaptureBound s} {H : Heap}
   (hclosed : cb.IsClosed) :
   CaptureBound.WfInHeap cb H := by
@@ -1583,7 +1607,7 @@ theorem Ty.wf_of_closed {T : Ty sort s} {H : Heap}
       (CaptureSet.wf_of_closed hcs) ih
   | modal hcs hΨ _ ih =>
     exact Ty.WfInHeap.wf_modal (CaptureSet.wf_of_closed hcs)
-      (SepCtx.wf_of_closed hΨ) ih
+      (ModalCtx.wf_of_closed hΨ) ih
   | cap hcs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_of_closed hcs)
   | cell hcs _ ih => exact Ty.WfInHeap.wf_cell (CaptureSet.wf_of_closed hcs) ih
   | reader hcs _ ih => exact Ty.WfInHeap.wf_reader (CaptureSet.wf_of_closed hcs) ih
@@ -1612,7 +1636,7 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
     exact Exp.WfInHeap.wf_cabs
       (CaptureSet.wf_of_closed hcs) (CaptureBound.wf_of_closed hcb) ih
   | boxed hcs hΨ _ ih =>
-    exact Exp.WfInHeap.wf_boxed (CaptureSet.wf_of_closed hcs) (SepCtx.wf_of_closed hΨ) ih
+    exact Exp.WfInHeap.wf_boxed (CaptureSet.wf_of_closed hcs) (ModalCtx.wf_of_closed hΨ) ih
   | pack hcs hx =>
     exact Exp.WfInHeap.wf_pack (CaptureSet.wf_of_closed hcs) (Var.wf_of_closed hx)
   | app hx hy =>
@@ -1667,6 +1691,23 @@ theorem SepCtx.wf_monotonic
   | wf_cons hwf_Ψ hwf_C ih =>
     exact SepCtx.WfInHeap.wf_cons (ih hsub) (CaptureSet.wf_monotonic hsub hwf_C)
 
+theorem MutabilityCtx.wf_monotonic
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
+  (hwf : MutabilityCtx.WfInHeap Ψ h1) :
+  MutabilityCtx.WfInHeap Ψ h2 := by
+  induction hwf with
+  | wf_empty => exact MutabilityCtx.WfInHeap.wf_empty
+  | wf_cons hwf_Ψ hwf_C ih =>
+    exact MutabilityCtx.WfInHeap.wf_cons (ih hsub) (CaptureSet.wf_monotonic hsub hwf_C)
+
+theorem ModalCtx.wf_monotonic
+  {h1 h2 : Heap}
+  (hsub : h2.subsumes h1)
+  (hwf : ModalCtx.WfInHeap Ψ h1) :
+  ModalCtx.WfInHeap Ψ h2 :=
+  ⟨SepCtx.wf_monotonic hsub hwf.sep, MutabilityCtx.wf_monotonic hsub hwf.mutability⟩
+
 theorem CaptureBound.wf_monotonic
   {h1 h2 : Heap}
   (hsub : h2.subsumes h1)
@@ -1699,7 +1740,7 @@ theorem Ty.wf_monotonic
   | wf_modal hwf_cs hwf_Ψ _ ih_T =>
     exact Ty.WfInHeap.wf_modal
       (CaptureSet.wf_monotonic hsub hwf_cs)
-      (SepCtx.wf_monotonic hsub hwf_Ψ) (ih_T hsub)
+      (ModalCtx.wf_monotonic hsub hwf_Ψ) (ih_T hsub)
   | wf_cap hwf_cs => exact Ty.WfInHeap.wf_cap (CaptureSet.wf_monotonic hsub hwf_cs)
   | wf_cell hwf_cs _ ih_T =>
     exact Ty.WfInHeap.wf_cell (CaptureSet.wf_monotonic hsub hwf_cs) (ih_T hsub)
@@ -1734,7 +1775,7 @@ theorem Exp.wf_monotonic
       (CaptureSet.wf_monotonic hsub hwf_cs) (CaptureBound.wf_monotonic hsub hwf_cb) (ih_e hsub)
   | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
     exact Exp.WfInHeap.wf_boxed
-      (CaptureSet.wf_monotonic hsub hwf_cs) (SepCtx.wf_monotonic hsub hwf_Ψ) (ih_e hsub)
+      (CaptureSet.wf_monotonic hsub hwf_cs) (ModalCtx.wf_monotonic hsub hwf_Ψ) (ih_e hsub)
   | wf_pack hwf_cs hwf_x =>
     exact Exp.WfInHeap.wf_pack
       (CaptureSet.wf_monotonic hsub hwf_cs) (Var.wf_monotonic hsub hwf_x)
@@ -1864,6 +1905,18 @@ theorem SepCtx.wf_dom_subsumes {h1 h2 : Heap}
   | wf_empty => exact .wf_empty
   | wf_cons _ hwf_C ih => exact .wf_cons (ih hsub) (CaptureSet.wf_dom_subsumes hsub hwf_C)
 
+theorem MutabilityCtx.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : MutabilityCtx.WfInHeap Ψ h1) :
+    MutabilityCtx.WfInHeap Ψ h2 := by
+  induction hwf with
+  | wf_empty => exact .wf_empty
+  | wf_cons _ hwf_C ih => exact .wf_cons (ih hsub) (CaptureSet.wf_dom_subsumes hsub hwf_C)
+
+theorem ModalCtx.wf_dom_subsumes {h1 h2 : Heap}
+    (hsub : h2.dom_subsumes h1) (hwf : ModalCtx.WfInHeap Ψ h1) :
+    ModalCtx.WfInHeap Ψ h2 :=
+  ⟨SepCtx.wf_dom_subsumes hsub hwf.sep, MutabilityCtx.wf_dom_subsumes hsub hwf.mutability⟩
+
 theorem CaptureBound.wf_dom_subsumes {h1 h2 : Heap}
     (hsub : h2.dom_subsumes h1) (hwf : CaptureBound.WfInHeap cb h1) :
     CaptureBound.WfInHeap cb h2 := by
@@ -1889,7 +1942,7 @@ theorem Ty.wf_dom_subsumes {h1 h2 : Heap}
                     (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_T hsub)
   | wf_modal hwf_cs hwf_Ψ _ ih_T =>
     exact .wf_modal (CaptureSet.wf_dom_subsumes hsub hwf_cs)
-                    (SepCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_T hsub)
+                    (ModalCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_T hsub)
   | wf_cap hwf_cs => exact .wf_cap (CaptureSet.wf_dom_subsumes hsub hwf_cs)
   | wf_cell hwf_cs _ ih_T =>
     exact .wf_cell (CaptureSet.wf_dom_subsumes hsub hwf_cs) (ih_T hsub)
@@ -1913,7 +1966,7 @@ theorem Exp.wf_dom_subsumes {h1 h2 : Heap}
                    (CaptureBound.wf_dom_subsumes hsub hwf_cb) (ih_e hsub)
   | wf_boxed hwf_cs hwf_Ψ _ ih_e =>
     exact .wf_boxed (CaptureSet.wf_dom_subsumes hsub hwf_cs)
-                    (SepCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_e hsub)
+                    (ModalCtx.wf_dom_subsumes hsub hwf_Ψ) (ih_e hsub)
   | wf_reader hwf_x => exact .wf_reader (Var.wf_dom_subsumes hsub hwf_x)
   | wf_alloc hwf_x => exact .wf_alloc (Var.wf_dom_subsumes hsub hwf_x)
   | wf_drop hwf_x => exact .wf_drop (Var.wf_dom_subsumes hsub hwf_x)
@@ -2536,6 +2589,27 @@ theorem SepCtx.wf_rename
     simpa only [SepCtx.rename] using
       (SepCtx.WfInHeap.wf_cons ih (CaptureSet.wf_rename hwf_C))
 
+theorem MutabilityCtx.wf_rename
+  {Ψ : MutabilityCtx s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : MutabilityCtx.WfInHeap Ψ H) :
+  MutabilityCtx.WfInHeap (Ψ.rename f) H := by
+  induction hwf with
+  | wf_empty =>
+    simpa only [MutabilityCtx.rename] using (MutabilityCtx.WfInHeap.wf_empty)
+  | wf_cons hwf_Ψ hwf_C ih =>
+    simpa only [MutabilityCtx.rename] using
+      (MutabilityCtx.WfInHeap.wf_cons ih (CaptureSet.wf_rename hwf_C))
+
+theorem ModalCtx.wf_rename
+  {Ψ : ModalCtx s1}
+  {f : Rename s1 s2}
+  {H : Heap}
+  (hwf : ModalCtx.WfInHeap Ψ H) :
+  ModalCtx.WfInHeap (Ψ.rename f) H :=
+  ⟨SepCtx.wf_rename hwf.sep, MutabilityCtx.wf_rename hwf.mutability⟩
+
 theorem CaptureBound.wf_rename
   {cb : CaptureBound s1}
   {f : Rename s1 s2}
@@ -2577,7 +2651,7 @@ theorem Ty.wf_rename
     simpa only [Ty.rename] using
       (Ty.WfInHeap.wf_modal
         (CaptureSet.wf_rename hwf_cs)
-        (SepCtx.wf_rename hwf_Ψ)
+        (ModalCtx.wf_rename hwf_Ψ)
         ih_T)
   | wf_unit =>
     simpa only [Ty.rename] using (Ty.WfInHeap.wf_unit)
@@ -2630,7 +2704,7 @@ theorem Exp.wf_rename
     simpa only [Exp.rename] using
       (Exp.WfInHeap.wf_boxed
         (CaptureSet.wf_rename hwf_cs)
-        (SepCtx.wf_rename hwf_Ψ)
+        (ModalCtx.wf_rename hwf_Ψ)
         ih_e)
   | wf_reader hwf_x =>
     simpa only [Exp.rename] using (Exp.WfInHeap.wf_reader (Var.wf_rename hwf_x))
@@ -2821,6 +2895,29 @@ theorem SepCtx.wf_subst
     simpa only [SepCtx.subst] using
       (SepCtx.WfInHeap.wf_cons (ih hwf_σ) (CaptureSet.wf_subst hwf_C hwf_σ))
 
+theorem MutabilityCtx.wf_subst
+  {Ψ : MutabilityCtx s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_Ψ : MutabilityCtx.WfInHeap Ψ H)
+  (hwf_σ : σ.WfInHeap H) :
+  MutabilityCtx.WfInHeap (Ψ.subst σ) H := by
+  induction hwf_Ψ with
+  | wf_empty =>
+    simpa only [MutabilityCtx.subst] using (MutabilityCtx.WfInHeap.wf_empty)
+  | wf_cons hwf_Ψ hwf_C ih =>
+    simpa only [MutabilityCtx.subst] using
+      (MutabilityCtx.WfInHeap.wf_cons (ih hwf_σ) (CaptureSet.wf_subst hwf_C hwf_σ))
+
+theorem ModalCtx.wf_subst
+  {Ψ : ModalCtx s1}
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_Ψ : ModalCtx.WfInHeap Ψ H)
+  (hwf_σ : σ.WfInHeap H) :
+  ModalCtx.WfInHeap (Ψ.subst σ) H :=
+  ⟨SepCtx.wf_subst hwf_Ψ.sep hwf_σ, MutabilityCtx.wf_subst hwf_Ψ.mutability hwf_σ⟩
+
 theorem CaptureBound.wf_subst
   {cb : CaptureBound s1}
   {σ : Subst s1 s2}
@@ -2870,7 +2967,7 @@ theorem Ty.wf_subst
     simpa only [Ty.subst] using
       (Ty.WfInHeap.wf_modal
         (CaptureSet.wf_subst hwf_cs hwf_σ)
-        (SepCtx.wf_subst hwf_Ψ hwf_σ)
+        (ModalCtx.wf_subst hwf_Ψ hwf_σ)
         (ih_T hwf_σ))
   | wf_unit =>
     simpa only [Ty.subst] using (Ty.WfInHeap.wf_unit)
@@ -2925,7 +3022,7 @@ theorem Exp.wf_subst
     simpa only [Exp.subst] using
       (Exp.WfInHeap.wf_boxed
         (CaptureSet.wf_subst hwf_cs hwf_σ)
-        (SepCtx.wf_subst hwf_Ψ hwf_σ)
+        (ModalCtx.wf_subst hwf_Ψ hwf_σ)
         (ih_e hwf_σ))
   | wf_reader hwf_x =>
     simpa only [Exp.subst] using (Exp.WfInHeap.wf_reader (Var.wf_subst hwf_x hwf_σ))
