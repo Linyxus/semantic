@@ -166,6 +166,31 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
+/-- Disjointness check. -/
+inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| disj_symm :
+  DisjCheck Γ C1 C2 ->
+  -------------------
+  DisjCheck Γ C2 C1
+| disj_union :
+  DisjCheck Γ C1 C3 ->
+  DisjCheck Γ C2 C3 ->
+  -------------------
+  DisjCheck Γ (C1 ∪ C2) C3
+| disj_empty {C : CaptureSet s} :
+  -------------------
+  DisjCheck Γ {} C
+| disj_sc {C1 C2 C1' : CaptureSet s} :
+  DisjCheck Γ C1 C2 ->
+  Subcapt Γ C1' C1 ->
+  CaptureSet.EquivP Γ C1' C1 ->
+  --------------------
+  DisjCheck Γ C1' C2
+| disj_droppable {c1 c2 : BVar s .cvar} :
+  Γ.TwoDistinctDroppable c1 c2 ->
+  --------------------
+  DisjCheck Γ (.cvar m1 c1) (.cvar m2 c2)
+
 /-- The capture sets in a vector are mutually disjoint: any two distinct entries pass
 the separation check (`SepCheck` is symmetric, so the ordering of the list is
 immaterial). Premise of the `n`-ary `pack` rule: parallel opening instantiates the `n`
@@ -174,7 +199,7 @@ entitled to treat distinct capture variables as separate — so overlapping evid
 would be unsound. -/
 def CaptureSet.PairwiseSep {s : Sig} {n : Nat}
     (Γ : Ctx s) (Cs : List.Vector (CaptureSet s) n) : Prop :=
-  Cs.toList.Pairwise (SepCheck Γ)
+  Cs.toList.Pairwise (DisjCheck Γ)
 
 inductive Satisfy : Ctx s -> ModalCtx s -> Prop where
 | satisfy {Ψ : ModalCtx s} :
