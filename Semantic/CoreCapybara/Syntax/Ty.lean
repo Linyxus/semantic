@@ -41,20 +41,33 @@ theorem CaptureBound.rename_comp
 
 /-- A type in CC, indexed by its sort (capturing or existential). -/
 inductive Ty : TySort -> Sig -> Type where
--- capturing types
+-- capturing types T, U
+/-- The top type. -/
 | top : Ty .capt s
+/-- A type variable. -/
 | tvar : BVar s .tvar -> Ty .capt s
+/-- A function type `(z: T) ->cs E`. -/
 | arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
+/-- A type function `[X<:S] ->cs E`. -/
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
+/-- A capture-polymorphic function `[C<:B] ->cs E`. -/
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+/-- A modal type `[Ψ]cs E`. -/
 | modal : CaptureSet s -> ModalCtx s -> Ty .exi s -> Ty .capt s
+/-- A simple, base capability.  -/
 | cap : CaptureSet s -> Ty .capt s
+/-- A mutable cell type. -/
 | cell : CaptureSet s -> Ty .capt s -> Ty .capt s
+/-- A read-only view of a mutable cell. -/
 | reader : CaptureSet s -> Ty .capt s -> Ty .capt s
+/-- The unit type. -/
 | unit : Ty .capt s
+/-- The boolean type. -/
 | bool : Ty .capt s
 -- existential types
+/-- An existential type binding `n` fresh capture variables in its body. -/
 | exi : (n : Nat) -> Ty .capt (s.extendCVars n) -> Ty .exi s
+/-- Embeds a capturing type as an existential type with no hidden capture evidence. -/
 | typ : Ty .capt s -> Ty .exi s
 
 /-- Applies a renaming to all bound variables in a type. -/
