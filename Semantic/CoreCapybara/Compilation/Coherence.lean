@@ -67,14 +67,25 @@ structure CompilerCtx.Coherent (ctx : CompilerCtx s1 s2) : Prop where
   varLookup : ∀ {x : BVar s1 .var} {T : CapyTy .capt s1},
     ctx.capyCtx.LookupVar x T →
     ∃ bv, ctx.srcCtx.lookupVarBVar x = some bv ∧
-          -- A source variable's capture IMAGE is its declared type's compiled
-          -- capture set `⟦T.captureSet⟧` — the function's *latent requirement* —
-          -- NOT the singleton `{bv}`.  This keeps the compiled lock faithful, so
-          -- the var rule's self-capture refinement vanishes under compilation
-          -- (see `Subtyp.self_refine`).  The target variable `bv` is used only for
-          -- the compiled *expression* `.var bv`.
-          ctx.srcCtx.lookupVar x = CapyCaptureSet.compile T.captureSet ctx.srcCtx ∧
-          ctx.coreCtx.LookupVar bv (CapyTy.compile T ctx)
+          -- A source variable's capture IMAGE is EITHER its declared type's
+          -- compiled capture set `⟦T.captureSet⟧` — the *latent requirement*, the
+          -- shape every `letin`-introduced binder has — OR (a function parameter,
+          -- introduced by the `abs` compilation) the singleton `{cx}` of a target
+          -- capture variable whose declared bound is that latent.  The second
+          -- disjunct is what the `arrow` compiler's re-abstraction (`x ↦ {cx}`,
+          -- `cx <: ⟦T.captureSet⟧`) demands of the abs-body context; the first is
+          -- what keeps the aligned-context devices (`SrcAligned`, the A1 resource
+          -- keystone) available.  Both give `Subcapt image ⟦T.captureSet⟧`.
+          (ctx.srcCtx.lookupVar x = CapyCaptureSet.compile T.captureSet ctx.srcCtx ∨
+           ∃ cx, ctx.srcCtx.lookupVar x = .cvar (.M .epsilon) cx ∧
+             ctx.coreCtx.LookupCVar cx .access_only
+               (.bound (CapyCaptureSet.compile T.captureSet ctx.srcCtx))) ∧
+          -- The target binder holds the compiled SELF-REFINED type `⟦T^{x}⟧`.
+          -- At an aligned binder this is `⟦T⟧` (`CapyTy.compile_refine_self`); at a
+          -- re-abstracted parameter it is the compiled arrow DOMAIN (`⟦T⟧` with
+          -- outer capture `{cx}`) — exactly what the target `abs` rule binds.
+          ctx.coreCtx.LookupVar bv
+            (CapyTy.compile (T.refineCaptureSet (.var (.M .epsilon) (.bound x))) ctx)
   -- Capture-variable lookup coherence: a source cvar's image is bound in `coreCtx`
   -- at the compiled authority + capture bound.  Needed by `Subtyp.tvar`/`cpoly`
   -- compilation, droppability transport (`compile_droppable`), and the lock

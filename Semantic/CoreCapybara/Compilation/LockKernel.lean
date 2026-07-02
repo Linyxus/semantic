@@ -139,11 +139,82 @@ theorem CapyCaptureSet.peaks_push_cvar_irrel {s : Sig} {Γ : CapyCtx s}
         conv_rhs => rw [CapyCaptureSet.peaksVarBound.eq_def]
         rfl
 
-/-- Two compiler contexts agree for `compile`: equal `srcCtx`, pointwise-equal `peaks`,
-    and pointwise-agreeing cvar stability (the last is what the peak-separation lock's
-    stability filter additionally reads from `capyCtx`, beyond bare `peaks`-behavior). -/
+/-- `CapyCaptureSet.compile` reads its `SrcCtx` only through `lookupVar` (capture
+    images) and `lookupCVar` — never `lookupVarBVar` (the term compiler's field).
+    Pointwise-agreeing contexts compile every capture set identically. -/
+theorem CapyCaptureSet.compile_congr {s1 s2 : Sig} {cs : CapyCaptureSet s1}
+    {sc1 sc2 : SrcCtx s1 s2}
+    (hv : ∀ x : BVar s1 .var, sc1.lookupVar x = sc2.lookupVar x)
+    (hc : ∀ c : BVar s1 .cvar, sc1.lookupCVar c = sc2.lookupCVar c) :
+    CapyCaptureSet.compile cs sc1 = CapyCaptureSet.compile cs sc2 := by
+  induction cs with
+  | empty => rfl
+  | union cs1 cs2 ih1 ih2 => simp only [CapyCaptureSet.compile, ih1, ih2]
+  | cvar a c => simp only [CapyCaptureSet.compile, hc c]
+  | var a x =>
+    cases x with
+    | bound x => simp only [CapyCaptureSet.compile, hv x]
+    | free n => rfl
+  | pseudo_peak _ ih => simp only [CapyCaptureSet.compile, ih]
+
+/-- `peakSepCtx` (at a fixed source context and peak set) reads its `SrcCtx` only
+    through `CapyCaptureSet.compile` of the key items — pointwise-agreeing contexts
+    build the same separation lock. -/
+theorem peakSepCtx_congr_src {s1 s2 : Sig} {Γ : CapyCtx s1} {P : CapyPeakSet s1}
+    {sc1 sc2 : SrcCtx s1 s2}
+    (hv : ∀ x : BVar s1 .var, sc1.lookupVar x = sc2.lookupVar x)
+    (hc : ∀ c : BVar s1 .cvar, sc1.lookupCVar c = sc2.lookupCVar c) :
+    peakSepCtx Γ P sc1 = peakSepCtx Γ P sc2 := by
+  unfold peakSepCtx
+  congr 1
+  funext K p
+  rw [CapyCaptureSet.compile_congr hv hc]
+
+/-- `compile_congr` lifted through a target weakening (`.weaken`), the form the
+    compiler's `poly`/`cpoly` lock captures use. -/
+theorem CapyCaptureSet.compile_congr_weaken {s1 s2 : Sig} {k : Kind}
+    {cs : CapyCaptureSet s1} {sc1 sc2 : SrcCtx s1 s2}
+    (hv : ∀ x : BVar s1 .var, sc1.lookupVar x = sc2.lookupVar x)
+    (hc : ∀ c : BVar s1 .cvar, sc1.lookupCVar c = sc2.lookupCVar c) :
+    CapyCaptureSet.compile cs (sc1.weaken (k := k))
+      = CapyCaptureSet.compile cs (sc2.weaken (k := k)) :=
+  CapyCaptureSet.compile_congr
+    (fun x => by simp only [SrcCtx.weaken, SrcCtx.lookupVar_rename, hv x])
+    (fun c => by simp only [SrcCtx.weaken, SrcCtx.lookupCVar_rename, hc c])
+
+/-- `peakSepCtx_congr_src` lifted through a target weakening. -/
+theorem peakSepCtx_congr_src_weaken {s1 s2 : Sig} {k : Kind} {Γ : CapyCtx s1}
+    {P : CapyPeakSet s1} {sc1 sc2 : SrcCtx s1 s2}
+    (hv : ∀ x : BVar s1 .var, sc1.lookupVar x = sc2.lookupVar x)
+    (hc : ∀ c : BVar s1 .cvar, sc1.lookupCVar c = sc2.lookupCVar c) :
+    peakSepCtx Γ P (sc1.weaken (k := k)) = peakSepCtx Γ P (sc2.weaken (k := k)) :=
+  peakSepCtx_congr_src
+    (fun x => by simp only [SrcCtx.weaken, SrcCtx.lookupVar_rename, hv x])
+    (fun c => by simp only [SrcCtx.weaken, SrcCtx.lookupCVar_rename, hc c])
+
+/-- `CapyCaptureBound.compile` congruence in the source context (via
+    `CapyCaptureSet.compile_congr` on a `.bound` payload). -/
+theorem CapyCaptureBound.compile_congr {s1 s2 : Sig} {cb : CapyCaptureBound s1}
+    {sc1 sc2 : SrcCtx s1 s2}
+    (hv : ∀ x : BVar s1 .var, sc1.lookupVar x = sc2.lookupVar x)
+    (hc : ∀ c : BVar s1 .cvar, sc1.lookupCVar c = sc2.lookupCVar c) :
+    CapyCaptureBound.compile cb sc1 = CapyCaptureBound.compile cb sc2 := by
+  cases cb with
+  | unbound m => rfl
+  | bound cs =>
+    simp only [CapyCaptureBound.compile]
+    rw [CapyCaptureSet.compile_congr hv hc]
+
+/-- Two compiler contexts agree for `compile`: pointwise-equal `srcCtx` lookups (the
+    var-capture-image, cvar and tvar maps — `lookupVarBVar`, the term compiler's
+    field, is *not* read by `compile` and hence not constrained), pointwise-equal
+    `peaks`, and pointwise-agreeing cvar stability (the last is what the
+    peak-separation lock's stability filter additionally reads from `capyCtx`,
+    beyond bare `peaks`-behavior). -/
 def CompilerCtx.CompileCong {s1 s2 : Sig} (ctx1 ctx2 : CompilerCtx s1 s2) : Prop :=
-  ctx1.srcCtx = ctx2.srcCtx ∧
+  ((∀ x : BVar s1 .var, ctx1.srcCtx.lookupVar x = ctx2.srcCtx.lookupVar x) ∧
+   (∀ c : BVar s1 .cvar, ctx1.srcCtx.lookupCVar c = ctx2.srcCtx.lookupCVar c) ∧
+   (∀ X : BVar s1 .tvar, ctx1.srcCtx.lookupTVar X = ctx2.srcCtx.lookupTVar X)) ∧
   (∀ W : CapyCaptureSet s1,
     CapyCaptureSet.peaks ctx1.capyCtx W = CapyCaptureSet.peaks ctx2.capyCtx W) ∧
   (∀ c : BVar s1 .cvar, ctx1.capyCtx.IsStableCVar c ↔ ctx2.capyCtx.IsStableCVar c)
@@ -192,14 +263,31 @@ theorem CompilerCtx.CompileCong.weakenTarget {s1 s2 : Sig} {k : Kind}
     {ctx1 ctx2 : CompilerCtx s1 s2} (h : ctx1.CompileCong ctx2)
     (b1 : Binding s2 k := placeholderBinding k) (b2 : Binding s2 k := placeholderBinding k) :
     (ctx1.weakenTarget b1).CompileCong (ctx2.weakenTarget b2) :=
-  ⟨by simp only [CompilerCtx.weakenTarget_srcCtx, h.1],
+  ⟨⟨fun x => by
+      simp only [CompilerCtx.weakenTarget_srcCtx, SrcCtx.lookupVar_rename, h.1.1 x],
+    fun c => by
+      simp only [CompilerCtx.weakenTarget_srcCtx, SrcCtx.lookupCVar_rename, h.1.2.1 c],
+    fun X => by
+      simp only [CompilerCtx.weakenTarget_srcCtx, SrcCtx.lookupTVar_rename, h.1.2.2 X]⟩,
    fun W => by simp only [CompilerCtx.weakenTarget_capyCtx]; exact h.2.1 W,
    fun c => by simp only [CompilerCtx.weakenTarget_capyCtx]; exact h.2.2 c⟩
 
 theorem CompilerCtx.CompileCong.consCVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s1 s2}
     (h : ctx1.CompileCong ctx2) (cb : CapyCaptureBound s1) (c : BVar s2 .cvar) :
     (ctx1.consCVar cb c).CompileCong (ctx2.consCVar cb c) :=
-  ⟨by simp only [CompilerCtx.consCVar_srcCtx, h.1],
+  ⟨⟨fun x => by cases x with
+      | there x' =>
+        simp only [CompilerCtx.consCVar_srcCtx]
+        exact h.1.1 x',
+    fun c0 => by cases c0 with
+      | here => rfl
+      | there c' =>
+        simp only [CompilerCtx.consCVar_srcCtx]
+        exact h.1.2.1 c',
+    fun X => by cases X with
+      | there X' =>
+        simp only [CompilerCtx.consCVar_srcCtx]
+        exact h.1.2.2 X'⟩,
    fun W => by
      simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default, CapyCtx.push_cvar]
      exact CapyCaptureSet.peaks_push_cong (.cvar .access_only cb) h.2.1 W,
@@ -211,7 +299,49 @@ theorem CompilerCtx.CompileCong.consVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s
     (h : ctx1.CompileCong ctx2) (T : CapyTy .capt s1) (bv : Option (BVar s2 .var))
     (cs : CaptureSet s2) :
     (ctx1.consVar T bv cs).CompileCong (ctx2.consVar T bv cs) :=
-  ⟨by simp only [CompilerCtx.consVar_srcCtx, h.1],
+  ⟨⟨fun x => by cases x with
+      | here => rfl
+      | there x' =>
+        simp only [CompilerCtx.consVar_srcCtx]
+        exact h.1.1 x',
+    fun c0 => by cases c0 with
+      | there c' =>
+        simp only [CompilerCtx.consVar_srcCtx]
+        exact h.1.2.1 c',
+    fun X => by cases X with
+      | there X' =>
+        simp only [CompilerCtx.consVar_srcCtx]
+        exact h.1.2.2 X'⟩,
+   fun W => by
+     simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var]
+     exact CapyCaptureSet.peaks_push_cong (.var T) h.2.1 W,
+   fun c => by
+     simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var]
+     exact CapyCtx.IsStableCVar.push_cong (.var T) h.2.2 c⟩
+
+/-- The stored target-variable image (`bv`) of a `consVar` binder is invisible to
+    `compile` (it is read only by `lookupVarBVar`, the term compiler's field): the
+    same declared type and capture image with *different* `bv`s are `CompileCong`.
+    This bridges the arrow compiler's `ctxDomain` (`bv = none` — no target term slot
+    exists below the target `x`-push) against the abs-body lock context
+    (`bv = some .here`) in the `abs` preservation case. -/
+theorem CompilerCtx.CompileCong.consVar_bvIrrel {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s1 s2}
+    (h : ctx1.CompileCong ctx2) (T : CapyTy .capt s1)
+    (bv1 bv2 : Option (BVar s2 .var)) (cs : CaptureSet s2) :
+    (ctx1.consVar T bv1 cs).CompileCong (ctx2.consVar T bv2 cs) :=
+  ⟨⟨fun x => by cases x with
+      | here => rfl
+      | there x' =>
+        simp only [CompilerCtx.consVar_srcCtx]
+        exact h.1.1 x',
+    fun c0 => by cases c0 with
+      | there c' =>
+        simp only [CompilerCtx.consVar_srcCtx]
+        exact h.1.2.1 c',
+    fun X => by cases X with
+      | there X' =>
+        simp only [CompilerCtx.consVar_srcCtx]
+        exact h.1.2.2 X'⟩,
    fun W => by
      simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var]
      exact CapyCaptureSet.peaks_push_cong (.var T) h.2.1 W,
@@ -222,7 +352,19 @@ theorem CompilerCtx.CompileCong.consVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s
 theorem CompilerCtx.CompileCong.consTVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx s1 s2}
     (h : ctx1.CompileCong ctx2) (S : CapyPureTy s1) (X : BVar s2 .tvar) :
     (ctx1.consTVar S X).CompileCong (ctx2.consTVar S X) :=
-  ⟨by simp only [CompilerCtx.consTVar_srcCtx, h.1],
+  ⟨⟨fun x => by cases x with
+      | there x' =>
+        simp only [CompilerCtx.consTVar_srcCtx]
+        exact h.1.1 x',
+    fun c0 => by cases c0 with
+      | there c' =>
+        simp only [CompilerCtx.consTVar_srcCtx]
+        exact h.1.2.1 c',
+    fun X0 => by cases X0 with
+      | here => rfl
+      | there X' =>
+        simp only [CompilerCtx.consTVar_srcCtx]
+        exact h.1.2.2 X'⟩,
    fun W => by
      simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar]
      exact CapyCaptureSet.peaks_push_cong (.tvar S) h.2.1 W,
@@ -240,7 +382,7 @@ theorem CompilerCtx.CompileCong.consTVar {s1 s2 : Sig} {ctx1 ctx2 : CompilerCtx 
 theorem CompilerCtx.CompileCong.consTVar_boundIrrel {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     (S1 S2 : CapyPureTy s1) (X : BVar s2 .tvar) :
     (ctx.consTVar S1 X).CompileCong (ctx.consTVar S2 X) :=
-  ⟨by simp only [CompilerCtx.consTVar_srcCtx],
+  ⟨⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩,
    fun W => by
      simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar]
      exact CapyCaptureSet.peaks_push_tvar_irrel W,
@@ -263,7 +405,7 @@ theorem CompilerCtx.CompileCong.consCVar_boundIrrel {s1 s2 : Sig} {ctx : Compile
     {cb1 cb2 : CapyCaptureBound s1} (c : BVar s2 .cvar)
     (hiff : (∃ m, cb1 = .unbound m) ↔ (∃ m, cb2 = .unbound m)) :
     (ctx.consCVar cb1 c).CompileCong (ctx.consCVar cb2 c) :=
-  ⟨by simp only [CompilerCtx.consCVar_srcCtx],
+  ⟨⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩,
    fun W => by
      simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default]
      exact CapyCaptureSet.peaks_push_cvar_irrel W,
@@ -330,11 +472,17 @@ theorem CapyTy.compile_eq_of {sort : CapyTySort} {s1 s2 : Sig}
   | case1 => intro ctx2 h; simp only [CapyTy.compile]
   | case2 => intro ctx2 h; simp only [CapyTy.compile]
   | case3 => intro ctx2 h; simp only [CapyTy.compile]
-  | case4 => intro ctx2 h; simp only [CapyTy.compile, h.1]
-  | case5 => intro ctx2 h; simp only [CapyTy.compile, h.1]
-  | case6 => intro ctx2 h; simp only [CapyTy.compile, h.1]
+  | case4 =>
+    intro ctx2 h; simp only [CapyTy.compile]
+    rw [CapyCaptureSet.compile_congr h.1.1 h.1.2.1]
+  | case5 =>
+    intro ctx2 h; simp only [CapyTy.compile]
+    rw [CapyCaptureSet.compile_congr h.1.1 h.1.2.1]
+  | case6 =>
+    intro ctx2 h; simp only [CapyTy.compile]
+    rw [CapyCaptureSet.compile_congr h.1.1 h.1.2.1]
   | case7 => rename_i ih; intro ctx2 h; simp only [CapyTy.compile]; rw [ih ctx2 h]
-  | case8 => intro ctx2 h; simp only [CapyTy.compile, h.1]
+  | case8 => intro ctx2 h; simp only [CapyTy.compile, h.1.2.2]
   | case9 =>
     rename_i ihDom ihE
     rename_i Tdom _ _ _ _ _ _ _ _
@@ -353,28 +501,45 @@ theorem CapyTy.compile_eq_of {sort : CapyTySort} {s1 s2 : Sig}
     congr 1
     congr 1
     · congr 1
-      exact congrArg _ hB.1
+      exact CapyCaptureSet.compile_congr hB.1.1 hB.1.2.1
     · congr 1
       congr 1
       · exact ihDom _ hDom
       · congr 1
         congr 1
-        · exact congrArg _ hLock.1
-        · rw [hLock.1, peakSepCtx_peakset_eq_of_cong (hLock.2.1 _) hLock.2.2]
+        · exact CapyCaptureSet.compile_congr hLock.1.1 hLock.1.2.1
+        · congr 1
+          exact (peakSepCtx_peakset_eq_of_cong (hLock.2.1 _) hLock.2.2).trans
+            (peakSepCtx_congr_src hLock.1.1 hLock.1.2.1)
         · exact ihE _ hLock
   | case10 =>
-    rename_i ihS ihE; intro ctx2 h
+    rename_i ihS ihE
+    intro ctx2 h
     simp (config := { zetaDelta := true }) only [CapyTy.compile]
     rw [ihS ctx2 h,
       ihE (ctx2.weakenTarget.consTVar CapyPureTy.top BVar.here)
-        (h.weakenTarget.consTVar CapyPureTy.top BVar.here),
-      h.1, peakSepCtx_peakset_eq_of_cong (h.2.1 _) h.2.2]
+        (h.weakenTarget.consTVar CapyPureTy.top BVar.here)]
+    congr 1
+    congr 1
+    congr 1
+    · exact CapyCaptureSet.compile_congr_weaken h.1.1 h.1.2.1
+    · congr 1
+      exact (peakSepCtx_peakset_eq_of_cong (h.2.1 _) h.2.2).trans
+        (peakSepCtx_congr_src_weaken h.1.1 h.1.2.1)
   | case11 =>
-    rename_i ihE; intro ctx2 h
+    rename_i ihE
+    intro ctx2 h
     simp (config := { zetaDelta := true }) only [CapyTy.compile]
     rw [ihE (ctx2.weakenTarget.consCVar _ BVar.here)
         (h.weakenTarget.consCVar _ BVar.here),
-      h.1, peakSepCtx_peakset_eq_of_cong (h.2.1 _) h.2.2]
+      CapyCaptureBound.compile_congr h.1.1 h.1.2.1]
+    congr 1
+    congr 1
+    congr 1
+    · exact CapyCaptureSet.compile_congr_weaken h.1.1 h.1.2.1
+    · congr 1
+      exact (peakSepCtx_peakset_eq_of_cong (h.2.1 _) h.2.2).trans
+        (peakSepCtx_congr_src_weaken h.1.1 h.1.2.1)
   | case12 =>
     rename_i ih; intro ctx2 h
     simp only [CapyTy.compile]

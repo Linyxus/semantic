@@ -87,9 +87,15 @@ theorem CompilerCtx.Coherent.toSubCoherent {s1 s2 : Sig} {ctx : CompilerCtx s1 s
   srcClosed := hcoh.srcClosed
   varLookup := by
     intro x T hl
-    obtain ⟨bv, _, hlv, _⟩ := hcoh.varLookup hl
-    rw [hlv]
-    exact Subcapt.refl
+    obtain ⟨bv, _, himg, _⟩ := hcoh.varLookup hl
+    cases himg with
+    | inl h =>
+      rw [h]
+      exact Subcapt.refl
+    | inr h =>
+      obtain ⟨cx, hlv, hcx⟩ := h
+      rw [hlv]
+      exact Subcapt.sc_cvar hcx
   cvarLookup := hcoh.cvarLookup
   tvarLookup := hcoh.tvarLookup
   roLookup := hro
@@ -891,7 +897,8 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
                 (BVar.there (BVar.there BVar.here))).consVar
               T (some BVar.here)
               (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))) :=
-        CapyTy.compile_eq_of _ _ _ ⟨rfl, fun _ => rfl, fun _ => Iff.rfl⟩
+        CapyTy.compile_eq_of _ _ _
+          ⟨⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩, fun _ => rfl, fun _ => Iff.rfl⟩
       have heqU2 : CapyTy.compile (U2.rename Rename.implicit_cvar) ctxLockR
           = CapyTy.compile (U2.rename Rename.implicit_cvar)
             ((ctx.weakenTarget.weakenTarget.weakenTarget.consCVar
@@ -899,7 +906,8 @@ theorem CapySubtyp.compile {s1 : Sig} {Γ : CapyCtx s1} {sort : CapyTySort}
                 (BVar.there (BVar.there BVar.here))).consVar
               T (some BVar.here)
               (CaptureSet.cvar (Access.M Mutability.epsilon) (BVar.there BVar.here))) :=
-        CapyTy.compile_eq_of _ _ _ ⟨rfl, fun _ => rfl, fun _ => Iff.rfl⟩
+        CapyTy.compile_eq_of _ _ _
+          ⟨⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩, fun _ => rfl, fun _ => Iff.rfl⟩
       exact heqU1 ▸ heqU2 ▸ hrename1 ▸ hrename2 ▸ hE1
     · exact Ctx.IsClosed.push
         (Ctx.IsClosed.push
@@ -1195,11 +1203,7 @@ theorem CapyCaptureSet.compile_resourcePeaks_target {s1 s2 : Sig} {ctx : Compile
     (hcoh : ctx.Coherent) {C : CapyCaptureSet s1} (hC : C.IsClosed) :
     CaptureSet.peaks ctx.coreCtx (CapyCaptureSet.compile C ctx.srcCtx)
       = CapyCaptureSet.compile (CapyCaptureSet.resourcePeaks ctx.capyCtx C) ctx.srcCtx := by
-  have hAligned : SrcAligned ctx.capyCtx ctx.srcCtx := by
-    intro x T hlook
-    obtain ⟨_, _, hB, _⟩ := hcoh.varLookup hlook
-    exact hB
-  rw [← CapyCaptureSet.compile_resourcePeaks hcoh.capyClosed hAligned hC]
+  rw [← CapyCaptureSet.compile_resourcePeaks hcoh.capyClosed hcoh.srcAligned hC]
   exact CaptureSet.peaks_of_peaksOnly
     (CapyCaptureSet.compile_peaksOnly (CapyCaptureSet.resourcePeaks_peaksOnly ctx.capyCtx C)
       (CapyCaptureSet.resourcePeaks_noPseudoPeak ctx.capyCtx C))

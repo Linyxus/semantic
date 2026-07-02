@@ -721,6 +721,34 @@ theorem SrcCtx.CVarInjective.consCVarThereHere {s1 s2 : Sig} {sc : SrcCtx s1 s2}
       simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ] at he
       exact congrArg BVar.there (h (BVar.there.inj (BVar.there.inj he)))
 
+/-- Injectivity for a fresh source cvar mapped to the *third-newest* target cvar
+    `.there (.there .here)` over a triply-`succ`-renamed context — the `abs`
+    compilation's body tower, where two target cvars (`[c]`, `[cx]`) and the
+    target term binder (`x`) sit above the base. -/
+theorem SrcCtx.CVarInjective.consCVarThereThereHere {s1 s2 : Sig} {sc : SrcCtx s1 s2}
+    (h : sc.CVarInjective) :
+    (SrcCtx.cons (.cvar (BVar.there (BVar.there BVar.here)))
+      (((sc.rename (Rename.succ (k := Kind.cvar))).rename
+          (Rename.succ (k := Kind.cvar))).rename
+        (Rename.succ (k := Kind.var)))).CVarInjective := by
+  intro c1 c2 he
+  cases c1 with
+  | here =>
+    cases c2 with
+    | here => rfl
+    | there c2' =>
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ] at he
+      exact absurd he (by simp)
+  | there c1' =>
+    cases c2 with
+    | here =>
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ] at he
+      exact absurd he (by simp)
+    | there c2' =>
+      simp only [SrcCtx.lookupCVar, SrcCtx.lookupCVar_rename, Rename.succ] at he
+      exact congrArg BVar.there
+        (h (BVar.there.inj (BVar.there.inj (BVar.there.inj he))))
+
 /-! ### Inversion: distinct `HasTwoDistinct` items of a `peakSepCtx` are distinct peaks
 
 The `sep_droppable` dispatch needs the two lock items `C1, C2` (which
@@ -3867,7 +3895,9 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                 = CapyTy.compile
                   (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
                     (CapyCaptureSet.var (.M .epsilon) (.bound .here))) rDsub :=
-              (CapyTy.compile_eq_of _ ctxDsub rDsub ⟨rfl, fun _ => rfl, fun _ => Iff.rfl⟩).trans
+              (CapyTy.compile_eq_of _ ctxDsub rDsub
+                ⟨⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩,
+                 fun _ => rfl, fun _ => Iff.rfl⟩).trans
                 (congrArg (fun Z => CapyTy.compile Z rDsub) hnat)
             exact hbridge ▸ hrec
           · simp only [CaptureSet.subst]; exact Subcapt.refl
@@ -4300,7 +4330,9 @@ theorem CapyTy.compile_subst_subtyp {sort : CapyTySort} (T : CapyTy sort s1) :
                 = CapyTy.compile
                   (((T1.subst σ.lift).rename Rename.succ).refineCaptureSet
                     (CapyCaptureSet.var (.M .epsilon) (.bound .here))) rDsub :=
-              (CapyTy.compile_eq_of _ ctxDsub rDsub ⟨rfl, fun _ => rfl, fun _ => Iff.rfl⟩).trans
+              (CapyTy.compile_eq_of _ ctxDsub rDsub
+                ⟨⟨fun _ => rfl, fun _ => rfl, fun _ => rfl⟩,
+                 fun _ => rfl, fun _ => Iff.rfl⟩).trans
                 (congrArg (fun Z => CapyTy.compile Z rDsub) hnat)
             exact hbridge ▸ hrec
           · simp only [CaptureSet.subst]; exact Subcapt.refl
@@ -5104,13 +5136,6 @@ decreasing_by
 `ctxOrig = ctx.weakenTarget.consCVar cb .here` (the `.exi` compiler context),
 `ctxSub = ctx`.  Each lemma below discharges one hypothesis of that instantiation
 from the `fresh` rule's premises and the `Coherent` invariant. -/
-
-/-- `Coherent`'s `varLookup` capture-image component is exactly `SrcAligned`. -/
-theorem CompilerCtx.Coherent.srcAligned {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
-    (hcoh : ctx.Coherent) : SrcAligned ctx.capyCtx ctx.srcCtx := by
-  intro x T hlook
-  obtain ⟨bv, _, hlv, _⟩ := hcoh.varLookup hlook
-  exact hlv
 
 /-- Closedness of the opened-cvar substitution (source side). -/
 theorem CapySubst.IsClosed.openCVar {s : Sig} {D : CapyCaptureSet s} (h : D.IsClosed) :

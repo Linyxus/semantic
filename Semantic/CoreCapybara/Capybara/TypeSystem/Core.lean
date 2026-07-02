@@ -257,6 +257,16 @@ inductive CapyHasType : CapyCaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .ex
   CapyHasType (D ∪ D.applyDrop) Γ (.var (.bound x)) (.exi T)
 | abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .exi (s,x)} :
   T1.IsClosed ->
+  -- Well-formedness of the DOMAIN annotation (2026-07-02, mirroring the `fresh`
+  -- rule's witness premises): the compiled function re-abstracts the domain's
+  -- capture behind a fresh capture variable `cx <: ⟦T1.captureSet⟧`, so the
+  -- compilation needs (a) `T1` free of literal frozen (`pseudo_peak`) atoms —
+  -- the body compiler context stores `T1` as `x`'s annotation and must stay
+  -- `NoPseudoPeak` — and (b) the re-abstraction bound `⟦T1.captureSet⟧` valid as
+  -- a target capture bound, i.e. access-only (no `.drop`-mode captures in a
+  -- domain annotation).  Both hold for all surface-written types.
+  T1.NoPseudoPeak ->
+  CapyCaptureSet.AccessOnly (Γ,C<:.unbound .epsilon) T1.captureSet ->
   CapyHasType
     ((cs.rename Rename.succ).rename Rename.succ ∪ (.var (.M .epsilon) (.bound .here)))
     (Γ,C<:.unbound .epsilon,x:T1)
@@ -276,6 +286,27 @@ inductive CapyHasType : CapyCaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .ex
   -----------------------------
   CapyHasType {} Γ (.cabs cb e) (.typ (.cpoly cb cs T))
 | app :
+  -- Well-formedness premises (2026-07-02, mirroring the `fresh`/`abs` premise
+  -- families; all hold for surface programs, whose declared types and capture
+  -- instantiations carry no `.drop`-mode captures and no free names):
+  --  * the FUNCTION's capture is access-only — applying a function must not
+  --    consume it.  The compiled application is an ANF `letin` chain whose heads
+  --    all resolve (through the bound intermediates' stored types) to `x`'s
+  --    capture image; the target `letin`'s sequential composition
+  --    (`SeqComp.seq_access_only`) and its kill-free body context need this.
+  CapyCaptureSet.AccessOnly Γ (.var (.M .epsilon) x) ->
+  --  * the self-cvar instantiation `D` is closed and access-only — it becomes
+  --    the target `capp`'s capture argument, whose rule demands a closed,
+  --    `IsValid` (access-only) bound.
+  D.IsClosed ->
+  CapyCaptureSet.AccessOnly Γ D ->
+  --  * the ARGUMENT's capture is access-only — the re-abstraction cvar `cx` is
+  --    instantiated with the argument's own capture image `⟦{ε y}⟧` (NOT the
+  --    domain's full latent, which would leak into the compiled application's
+  --    capture through the codomain modal's `W` and overflow the conclusion
+  --    capture `⟦{ε x} ∪ {ε y}⟧`); it becomes the SECOND target `capp`'s
+  --    capture argument, whose rule demands a valid (access-only) bound.
+  CapyCaptureSet.AccessOnly Γ (.var (.M .epsilon) y) ->
   CapyHasType (.var (.M .epsilon) x) Γ (.var x)
     (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
   CapyHasType (.var (.M .epsilon) y) Γ (.var y)

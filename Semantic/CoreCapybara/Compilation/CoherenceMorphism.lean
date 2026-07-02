@@ -1,5 +1,6 @@
 import Semantic.CoreCapybara.Compilation.Coherence
 import Semantic.CoreCapybara.Compilation.ContextMorphism
+import Semantic.CoreCapybara.Compilation.SubstLemmas
 
 /-!
 # Coherence preservation under the context builders
@@ -121,6 +122,131 @@ theorem CapyPureTy.compile_mapsTo {s1 s2 s1' s2' : Sig} {S : CapyPureTy s1}
   congr 1
   exact CapyTy.compile_mapsTo S.core ctx1 hinj hm
 
+/-- **A variable refined to its own singleton subtypes its declared type.**  For
+    `bv : T'` in the target, `T'` with its top capture set narrowed to `{bv}` is a
+    subtype of `T'`.  Holds uniformly: `{bv} <: T'.captureSet` by `sc_var`, lifted
+    through each former's covariant capture rule (`arrow`/`poly`/`cpoly`/`modal`
+    structural; `cell`/`reader`/`cap` via the dedicated covariance rules). -/
+theorem Subtyp.self_refine {s : Sig} {Γ : Ctx s} {bv : BVar s .var} {T' : Ty .capt s}
+    (h : Γ.LookupVar bv T') :
+    Subtyp Γ (T'.refineCaptureSet (.var (.M .epsilon) (.bound bv))) T' := by
+  have hsc : Subcapt Γ (.var (.M .epsilon) (.bound bv)) T'.captureSet := Subcapt.sc_var h
+  cases T' with
+  | top => exact Subtyp.refl
+  | tvar X => exact Subtyp.refl
+  | unit => exact Subtyp.refl
+  | bool => exact Subtyp.refl
+  | cap cs => exact Subtyp.cap hsc
+  | cell cs => exact Subtyp.cell hsc
+  | reader cs => exact Subtyp.reader hsc
+  | arrow A cs B => exact Subtyp.arrow Subtyp.refl hsc Subtyp.refl
+  | poly S cs B => exact Subtyp.poly_cap hsc
+  | cpoly cb cs B =>
+    refine Subtyp.cpoly ?_ hsc Subtyp.refl
+    cases cb with
+    | unbound => exact Subbound.top
+    | bound C => exact Subbound.capset (Subcapt.sc_elem CaptureSet.Subset.refl)
+  | modal cs Ψ E => exact Subtyp.modal hsc Subtyp.refl
+
+/-- **Self-capture refinement vanishes under compilation.**
+
+    With the `Coherent` invariant `⟦xv⟧ = ⟦T.captureSet⟧`, the var rule's refined
+    type `T^{xv}` compiles to *exactly* `⟦T⟧`: the refined capture field `{xv}`
+    compiles back to `⟦T.captureSet⟧`, the value it replaced.  For functions this
+    keeps the body lock faithful (the latent requirement `⟦cs⟧`, never understated)
+    — which is what dissolves the old function-typed-variable design gap.
+
+    The `arrow`/`poly`/`cpoly` cases additionally need the compiled lock `W` and
+    its separation context `Ψ` to coincide between `{xv}` and `cs`; both follow
+    from `compile`/`peaks` commuting with the capture image (the latter from
+    `peaks Γ {xv} = peaks Γ T.captureSet`).  This is now a MECHANICAL commutation
+    — the design gap is resolved — left as a scoped TODO. -/
+theorem CapyTy.compile_refine_self {s1 s2 : Sig} {T : CapyTy .capt s1}
+    {ctx : CompilerCtx s1 s2} {xv : BVar s1 .var}
+    (hsrc : ctx.srcCtx.lookupVar xv = CapyCaptureSet.compile T.captureSet ctx.srcCtx)
+    (hcapy : ctx.capyCtx.LookupVar xv T) :
+    CapyTy.compile (T.refineCaptureSet (.var (.M .epsilon) (.bound xv))) ctx
+      = CapyTy.compile T ctx := by
+  -- the var's capture image `⟦{xv}⟧` is its declared latent `⟦T.captureSet⟧`
+  have hxv : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv)) ctx.srcCtx
+      = CapyCaptureSet.compile T.captureSet ctx.srcCtx := by
+    simp only [CapyCaptureSet.compile, hsrc, CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+  -- `peaks {xv} = peaks T.captureSet` (faithful separation context)
+  have hpk : CapyCaptureSet.peakset ctx.capyCtx (.var (.M .epsilon) (.bound xv))
+      = CapyCaptureSet.peakset ctx.capyCtx T.captureSet := by
+    apply CapyCaptureSet.peakset_congr
+    rw [CapyCaptureSet.peaks, CapyCaptureSet.peaksVarBound_eq_captureSet hcapy]
+  cases T with
+  | top => simp only [CapyTy.refineCaptureSet]
+  | tvar X => simp only [CapyTy.refineCaptureSet]
+  | unit => simp only [CapyTy.refineCaptureSet]
+  | bool => simp only [CapyTy.refineCaptureSet]
+  | cap cs =>
+    simp only [CapyTy.captureSet] at hxv
+    simp only [CapyTy.refineCaptureSet, CapyTy.compile, hxv]
+  | cell cs m =>
+    simp only [CapyTy.captureSet] at hxv
+    cases m <;> simp only [CapyTy.refineCaptureSet, CapyTy.compile, hxv]
+  | poly S cs E =>
+    simp only [CapyTy.captureSet] at hxv hpk
+    have hCf : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv))
+          (SrcCtx.weaken (k := Kind.tvar) ctx.srcCtx)
+        = CapyCaptureSet.compile cs (SrcCtx.weaken (k := Kind.tvar) ctx.srcCtx) := by
+      unfold SrcCtx.weaken
+      rw [CapyCaptureSet.compile_rename, CapyCaptureSet.compile_rename, hxv]
+    -- only the modal lock `W` and (via `hpk`) the separation `Ψ` differ; `congr`
+    -- discharges the residual lock equality with `hCf` from context.
+    simp only [CapyTy.refineCaptureSet, CapyTy.compile, hpk]
+    repeat' congr 1
+  | cpoly cb cs E =>
+    simp only [CapyTy.captureSet] at hxv hpk
+    have hCf : CapyCaptureSet.compile (.var (.M .epsilon) (.bound xv))
+          (SrcCtx.weaken (k := Kind.cvar) ctx.srcCtx)
+        = CapyCaptureSet.compile cs (SrcCtx.weaken (k := Kind.cvar) ctx.srcCtx) := by
+      unfold SrcCtx.weaken
+      rw [CapyCaptureSet.compile_rename, CapyCaptureSet.compile_rename, hxv]
+    -- only the modal lock `W` and (via `hpk`) the separation `Ψ` differ; `congr`
+    -- discharges the residual lock equality with `hCf` from context.
+    simp only [CapyTy.refineCaptureSet, CapyTy.compile, hpk]
+    repeat' congr 1
+  | arrow T1 cs E =>
+    simp only [CapyTy.captureSet] at hxv hpk
+    simp only [CapyTy.refineCaptureSet, CapyTy.compile]
+    set ctxL := (ctx.weakenTarget.weakenTarget.weakenTarget.consCVar (.unbound .epsilon)
+      (.there (.there .here))).consVar T1 (some .here)
+      (.cvar (.M .epsilon) (.there .here)) with hctxL
+    -- the modal lock `W` agrees between `{xv}` and `cs`.  The two source
+    -- weakenings of the lock field peel through the lock's `var`/`cvar` `cons`es
+    -- via `compile_lock_field_congr`; its hypothesis is `hxv` transported under
+    -- the three target weakenings (`compile_rename` ×3).
+    have hCfW : CapyCaptureSet.compile
+          (((CapyCaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+            ∪ .var (.M .epsilon) (.bound .here)) ctxL.srcCtx
+        = CapyCaptureSet.compile ((cs.rename Rename.succ).rename Rename.succ
+            ∪ .var (.M .epsilon) (.bound .here)) ctxL.srcCtx := by
+      rw [hctxL]
+      simp only [CompilerCtx.consVar_srcCtx, CompilerCtx.consCVar_srcCtx,
+        CompilerCtx.weakenTarget_srcCtx]
+      apply CapyCaptureSet.compile_lock_field_congr
+      simp only [CapyCaptureSet.compile_rename, hxv]
+    -- the lock's separation context `Ψ` agrees between `{xv}` and `cs`.  Mirror of
+    -- `hCfW` for `peaks`: project the underlying `peaks` equality off `hpk`, then
+    -- peel the two `peaks`-weakenings via `peaks_lock_field_congr`.
+    have hpk' : CapyCaptureSet.peaks ctx.capyCtx (.var (.M .epsilon) (.bound xv))
+        = CapyCaptureSet.peaks ctx.capyCtx cs := congrArg CapyPeakSet.cs hpk
+    have hpkW : CapyCaptureSet.peakset ctxL.capyCtx
+          (((CapyCaptureSet.var (.M .epsilon) (.bound xv)).rename Rename.succ).rename Rename.succ
+            ∪ .var (.M .epsilon) (.bound .here))
+        = CapyCaptureSet.peakset ctxL.capyCtx ((cs.rename Rename.succ).rename Rename.succ
+            ∪ .var (.M .epsilon) (.bound .here)) := by
+      apply CapyCaptureSet.peakset_congr
+      rw [hctxL]
+      simp only [CompilerCtx.consVar_capyCtx, CompilerCtx.consCVar_capyCtx,
+        CompilerCtx.weakenTarget_capyCtx]
+      exact CapyCaptureSet.peaks_lock_field_congr hpk'
+    repeat' congr 1
+
+
 /-! ### `Coherent` builder-preservation (K2) -/
 
 /-- A fresh *target* Core binder preserves coherence: the stored compiled types
@@ -134,13 +260,27 @@ theorem CompilerCtx.Coherent.weakenTarget {s1 s2 : Sig} {ctx : CompilerCtx s1 s2
   srcClosed := CompilerCtx.weakenTarget_VarsClosed hcoh.srcClosed
   varLookup := by
     intro x T hl
-    obtain ⟨bv0, hbv0, hlv0, hcore0⟩ := hcoh.varLookup hl
+    obtain ⟨bv0, hbv0, himg0, hcore0⟩ := hcoh.varLookup hl
     refine ⟨Rename.succ.var bv0, ?_, ?_, ?_⟩
     · simp only [CompilerCtx.weakenTarget_srcCtx,
         SrcCtx.lookupVarBVar_rename, hbv0, Option.map_some]
-    · simp only [CompilerCtx.weakenTarget_srcCtx,
-        SrcCtx.lookupVar_rename, hlv0, CapyCaptureSet.compile_rename]
-    · rw [CapyTy.compile_rename T ctx (ctx.weakenTarget b) Rename.succ rfl rfl]
+    · cases himg0 with
+      | inl h =>
+        left
+        simp only [CompilerCtx.weakenTarget_srcCtx,
+          SrcCtx.lookupVar_rename, h, CapyCaptureSet.compile_rename]
+      | inr h =>
+        obtain ⟨cx, hlv, hcx⟩ := h
+        right
+        refine ⟨Rename.succ.var cx, ?_, ?_⟩
+        · simp only [CompilerCtx.weakenTarget_srcCtx, SrcCtx.lookupVar_rename, hlv,
+            CaptureSet.rename]
+        · have h2 := Ctx.LookupCVar.there (b := b) hcx
+          simp only [CaptureBound.rename] at h2
+          simp only [CompilerCtx.weakenTarget_srcCtx, CapyCaptureSet.compile_rename]
+          exact h2
+    · rw [CapyTy.compile_rename (T.refineCaptureSet (.var (.M .epsilon) (.bound x)))
+        ctx (ctx.weakenTarget b) Rename.succ rfl rfl]
       exact Ctx.LookupVar.there hcore0
   cvarLookup := by
     intro c0 a cb0 hl
@@ -195,6 +335,24 @@ theorem CapyCaptureSet.compile_captureSet_weaken_eq {s1 s2 : Sig} {k : Kind} {T 
       = CapyCaptureSet.compile T.captureSet ctx.srcCtx := by
   rw [CapyTy.captureSet_rename, CapyCaptureSet.compile_mapsTo hm.cvar hm.var, CaptureSet.rename_id]
 
+/-- The coherence invariant's self-refined-binding payload realigns under a
+    source-weakening morphism: refinement commutes with the weakening rename
+    (`refineCaptureSet_rename`), whose compile then peels (`compile_weaken_eq`). -/
+theorem CapyTy.compile_refine_weaken_eq {s1 s2 : Sig} {k : Kind}
+    {T : CapyTy .capt s1} {x : BVar s1 .var}
+    {ctx : CompilerCtx s1 s2} {ctx2 : CompilerCtx (s1,,k) s2}
+    (hm : ctx.MapsTo ctx2 (Rename.succ (k := k)) Rename.id) :
+    CapyTy.compile ((T.rename (Rename.succ (k := k))).refineCaptureSet
+        (.var (.M .epsilon) (.bound (.there x)))) ctx2
+      = CapyTy.compile (T.refineCaptureSet (.var (.M .epsilon) (.bound x))) ctx := by
+  have h : ((T.refineCaptureSet (.var (.M .epsilon) (.bound x))).rename
+        (Rename.succ (k := k)))
+      = (T.rename (Rename.succ (k := k))).refineCaptureSet
+          (.var (.M .epsilon) (.bound (.there x))) :=
+    CapyTy.refineCaptureSet_rename
+  rw [← h]
+  exact CapyTy.compile_weaken_eq hm
+
 /-! ### `Coherent` builder-preservation under source binders
 
 `cases hl` unfolds the source `push_cvar_default`/`push_var`/`push_tvar` to the
@@ -220,12 +378,21 @@ theorem CompilerCtx.Coherent.consCVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default, CapyCtx.push_cvar] at hl
     cases hl with
     | there hl0 =>
-      obtain ⟨bv0, hbv0, hlv0, hcore0⟩ := hcoh.varLookup hl0
+      obtain ⟨bv0, hbv0, himg0, hcore0⟩ := hcoh.varLookup hl0
       refine ⟨bv0, hbv0, ?_, ?_⟩
-      · exact hlv0.trans
-          (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consCVar_weaken).symm
-      · rw [(CapyTy.compile_weaken_eq CompilerCtx.MapsTo.consCVar_weaken).symm] at hcore0
-        exact hcore0
+      · cases himg0 with
+        | inl h =>
+          left
+          exact h.trans
+            (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consCVar_weaken).symm
+        | inr h =>
+          obtain ⟨cx, hlv, hcx⟩ := h
+          right
+          refine ⟨cx, hlv, ?_⟩
+          exact (CapyCaptureSet.compile_captureSet_weaken_eq
+            CompilerCtx.MapsTo.consCVar_weaken).symm ▸ hcx
+      · exact (CapyTy.compile_refine_weaken_eq
+          CompilerCtx.MapsTo.consCVar_weaken).symm ▸ hcore0
   cvarLookup := by
     intro c0 a cb0 hl
     simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default, CapyCtx.push_cvar] at hl
@@ -263,12 +430,21 @@ theorem CompilerCtx.Coherent.consTVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar] at hl
     cases hl with
     | there hl0 =>
-      obtain ⟨bv0, hbv0, hlv0, hcore0⟩ := hcoh.varLookup hl0
+      obtain ⟨bv0, hbv0, himg0, hcore0⟩ := hcoh.varLookup hl0
       refine ⟨bv0, hbv0, ?_, ?_⟩
-      · exact hlv0.trans
-          (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consTVar_weaken).symm
-      · rw [(CapyTy.compile_weaken_eq CompilerCtx.MapsTo.consTVar_weaken).symm] at hcore0
-        exact hcore0
+      · cases himg0 with
+        | inl h =>
+          left
+          exact h.trans
+            (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consTVar_weaken).symm
+        | inr h =>
+          obtain ⟨cx, hlv, hcx⟩ := h
+          right
+          refine ⟨cx, hlv, ?_⟩
+          exact (CapyCaptureSet.compile_captureSet_weaken_eq
+            CompilerCtx.MapsTo.consTVar_weaken).symm ▸ hcx
+      · exact (CapyTy.compile_refine_weaken_eq
+          CompilerCtx.MapsTo.consTVar_weaken).symm ▸ hcore0
   cvarLookup := by
     intro c0 a cb0 hl
     simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar] at hl
@@ -309,16 +485,124 @@ theorem CompilerCtx.Coherent.consVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     cases hl with
     | here =>
       refine ⟨bv, rfl, ?_, ?_⟩
-      · exact (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm
-      · rw [(CapyTy.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm] at hlk
-        exact hlk
-    | there hl0 =>
-      obtain ⟨bv0, hbv0, hlv0, hcore0⟩ := hcoh.varLookup hl0
-      refine ⟨bv0, hbv0, ?_, ?_⟩
-      · exact hlv0.trans
+      · left
+        exact (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm
+      · -- the fresh binder is ALIGNED (image = `⟦T.captureSet⟧`), so the compiled
+        -- self-refined type collapses to `⟦T⟧` (`compile_refine_self`), which peels
+        -- to the supplied binding.
+        have hsrc : (ctx.consVar T (some bv)
+              (CapyCaptureSet.compile T.captureSet ctx.srcCtx)).srcCtx.lookupVar .here
+            = CapyCaptureSet.compile (T.rename Rename.succ).captureSet
+                (ctx.consVar T (some bv)
+                  (CapyCaptureSet.compile T.captureSet ctx.srcCtx)).srcCtx :=
           (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm
-      · rw [(CapyTy.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm] at hcore0
-        exact hcore0
+        have hcapy : (ctx.consVar T (some bv)
+              (CapyCaptureSet.compile T.captureSet ctx.srcCtx)).capyCtx.LookupVar .here
+            (T.rename Rename.succ) := CapyCtx.LookupVar.here
+        rw [CapyTy.compile_refine_self hsrc hcapy]
+        exact (CapyTy.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm ▸ hlk
+    | there hl0 =>
+      obtain ⟨bv0, hbv0, himg0, hcore0⟩ := hcoh.varLookup hl0
+      refine ⟨bv0, hbv0, ?_, ?_⟩
+      · cases himg0 with
+        | inl h =>
+          left
+          exact h.trans
+            (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm
+        | inr h =>
+          obtain ⟨cx, hlv, hcx⟩ := h
+          right
+          refine ⟨cx, hlv, ?_⟩
+          exact (CapyCaptureSet.compile_captureSet_weaken_eq
+            CompilerCtx.MapsTo.consVar_weaken).symm ▸ hcx
+      · exact (CapyTy.compile_refine_weaken_eq
+          CompilerCtx.MapsTo.consVar_weaken).symm ▸ hcore0
+  cvarLookup := by
+    intro c0 a cb0 hl
+    simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var] at hl
+    cases hl with
+    | there hl0 =>
+      have h := hcoh.cvarLookup hl0
+      rw [(CapyCaptureBound.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm] at h
+      exact h
+  tvarLookup := by
+    intro X S hl
+    simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var] at hl
+    cases hl with
+    | there hl0 =>
+      have h := hcoh.tvarLookup hl0
+      rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm] at h
+      exact h
+
+/-- `Coherent`'s capture-image component, in `SrcAligned` form (every var's image
+    IS its latent `⟦T.captureSet⟧`).
+
+    ⚠ GENUINE DESIGN GAP (fresh-under-abs family): at a RE-ABSTRACTED parameter
+    binder (`x ↦ {cx}`, the second `varLookup` disjunct — present in every
+    abs-body compiler context) alignment is FALSE: `{cx}` is a bare target cvar
+    while the aligned image is the compiled latent `⟦T.captureSet⟧`.  The
+    aligned-context devices that consume this (`compile_resourcePeaks` / the A1
+    resource keystone behind the `AccessOnly`/`droppable` transports, and the
+    `fresh` case's `realign`-identity `SubstCompat`) are equalities that genuinely
+    FAIL there — e.g. `fresh`-packing a parameter emits `pack {cx} x`, whose
+    target `droppable` obligation is false (`cx` is bound `.access_only`).
+    Resolving this needs a design decision (can-drop-bounded `cx`, a
+    `Subcapt`-relaxed B2c for the lock keystones, or a source-level device);
+    until then the second disjunct is a documented `sorry`. -/
+theorem CompilerCtx.Coherent.srcAligned {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
+    (hcoh : ctx.Coherent) : SrcAligned ctx.capyCtx ctx.srcCtx := by
+  intro x T hlook
+  obtain ⟨bv, _, himg, _⟩ := hcoh.varLookup hlook
+  cases himg with
+  | inl h => exact h
+  | inr h => sorry
+
+/-- A fresh *source* term binder mapped to a RE-ABSTRACTED capture image `{cx}` —
+    the `abs` compilation's function parameter.  `cx` must be bound in `coreCtx` at
+    authority `.access_only` with bound `⟦T.captureSet⟧` (the middle `cpoly` binder
+    of the compiled arrow), and `bv` at the compiled self-refined domain type
+    (which resolves `x ↦ {cx}` — exactly the compiled arrow's domain). -/
+theorem CompilerCtx.Coherent.consVarCVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
+    {T : CapyTy .capt s1} {bv : BVar s2 .var} {cx : BVar s2 .cvar}
+    (hcoh : ctx.Coherent) (hT : T.IsClosed)
+    (hcx : ctx.coreCtx.LookupCVar cx .access_only
+      (.bound (CapyCaptureSet.compile T.captureSet ctx.srcCtx)))
+    (hlk : ctx.coreCtx.LookupVar bv
+      (CapyTy.compile ((T.rename Rename.succ).refineCaptureSet
+          (.var (.M .epsilon) (.bound .here)))
+        (ctx.consVar T (some bv) (.cvar (.M .epsilon) cx)))) :
+    (ctx.consVar T (some bv) (.cvar (.M .epsilon) cx)).Coherent where
+  closed := hcoh.closed
+  capyClosed := by
+    simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var]
+    exact CapyCtx.IsClosed.push hcoh.capyClosed (CapyBinding.IsClosed.var hT)
+  srcClosed := CompilerCtx.consVar_VarsClosed hcoh.srcClosed CaptureSet.IsClosed.cvar
+  varLookup := by
+    intro x T0 hl
+    simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var] at hl
+    cases hl with
+    | here =>
+      refine ⟨bv, rfl, ?_, hlk⟩
+      right
+      refine ⟨cx, rfl, ?_⟩
+      exact (CapyCaptureSet.compile_captureSet_weaken_eq
+        CompilerCtx.MapsTo.consVar_weaken).symm ▸ hcx
+    | there hl0 =>
+      obtain ⟨bv0, hbv0, himg0, hcore0⟩ := hcoh.varLookup hl0
+      refine ⟨bv0, hbv0, ?_, ?_⟩
+      · cases himg0 with
+        | inl h =>
+          left
+          exact h.trans
+            (CapyCaptureSet.compile_captureSet_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm
+        | inr h =>
+          obtain ⟨cx0, hlv, hcx0⟩ := h
+          right
+          refine ⟨cx0, hlv, ?_⟩
+          exact (CapyCaptureSet.compile_captureSet_weaken_eq
+            CompilerCtx.MapsTo.consVar_weaken).symm ▸ hcx0
+      · exact (CapyTy.compile_refine_weaken_eq
+          CompilerCtx.MapsTo.consVar_weaken).symm ▸ hcore0
   cvarLookup := by
     intro c0 a cb0 hl
     simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var] at hl
