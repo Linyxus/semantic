@@ -631,6 +631,31 @@ theorem val_denot_auth_irrel {env : TypeEnv s} {cs : CaptureSet {}}
     (cap := cap) (a1 := a1) (a2 := a2)) T
   rwa [Ty.rename_id] at h
 
+/-- `Rebind.auth_irrel` iterated over the `n` binders of an `extend_cvars`: the
+identity rename is a `Rebind` between two evidence-extensions that differ only in
+the authority tag of *every* one of the `n` binders. -/
+def Rebind.auth_irrel_cvars {s : Sig} {env : TypeEnv s} {m : Memory}
+    {a1 a2 : Authority} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} →
+    Rebind (TypeEnv.extend_cvars env m a1 CS) (Rename.id.liftCVars n)
+      (TypeEnv.extend_cvars env m a2 CS)
+  | 0, _ => Rebind.refl
+  | _ + 1, CS =>
+    ((Rebind.auth_irrel_cvars (CS := List.Vector.tail CS)).liftCVar (List.Vector.head CS)
+        (cap := (List.Vector.head CS).ground_denot m) (a := a1)).comp Rebind.auth_irrel
+
+/-- Re-tagging the authority of *all* `n` evidence binders leaves `val_denot`
+unchanged (authority is denotationally inert). -/
+theorem val_denot_auth_irrel_cvars {s : Sig} {env : TypeEnv s} {m : Memory}
+    {a1 a2 : Authority} {n : Nat} {CS : List.Vector (CaptureSet {}) n}
+    (T : Ty .capt (Sig.extendCVars s n)) :
+    IDenot.Equiv (Ty.val_denot (TypeEnv.extend_cvars env m a1 CS) T)
+      (Ty.val_denot (TypeEnv.extend_cvars env m a2 CS) T) := by
+  have h := rebind_val_denot (Rebind.auth_irrel_cvars (env := env) (m := m)
+    (a1 := a1) (a2 := a2) (CS := CS)) T
+  rw [Rename.liftCVars_id, Ty.rename_id] at h
+  exact h
+
 theorem typed_env_satisfy_rebind
   {env1 : TypeEnv s1} {env2 : TypeEnv s2} {f : Rename s1 s2}
   {Ψ : ModalCtx s1} {m : Memory}
@@ -722,6 +747,12 @@ lemma cweaken_exi_val_denot {env : TypeEnv s} {cs : CaptureSet {}} {cap : Capabi
   IDenot.Equiv (Ty.exi_val_denot env T)
     (Ty.exi_val_denot (env.extend_cvar cs cap a) (T.rename Rename.succ)) := by
   apply rebind_exi_val_denot (ρ:=Rebind.cweaken) (T:=T)
+
+lemma cweakenCVars_exi_val_denot {env : TypeEnv s} {m : Memory} {a : Authority}
+  {n : Nat} {CS : List.Vector (CaptureSet {}) n} {T : Ty .exi s} :
+  IDenot.Equiv (Ty.exi_val_denot env T)
+    (Ty.exi_val_denot (TypeEnv.extend_cvars env m a CS) (T.rename (Rename.weakenCVars n))) := by
+  apply rebind_exi_val_denot (ρ:=Rebind.cweakenCVars (m:=m) (a:=a)) (T:=T)
 
 lemma lweaken_val_denot {env : TypeEnv s} {T : Ty .capt s} :
   IDenot.Equiv (Ty.val_denot env T)

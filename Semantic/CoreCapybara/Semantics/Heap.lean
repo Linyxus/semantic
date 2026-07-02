@@ -3914,6 +3914,15 @@ private theorem hasmem_of_subset {C1 C2 : CapabilitySet} (hsub : C1 ⊆ C2) :
     intro mu l hmem; cases hmem
     exact ⟨.access .epsilon, CapabilitySet.hasmem.here⟩
 
+/-- Disjointness is preserved when the left operand shrinks (`⊆`): any shared
+location of `C1`/`C` is a shared location of the superset `C2`/`C`. -/
+theorem _root_.CoreCapybara.CapabilitySet.disjoint.subset_left {C1 C2 C : CapabilitySet}
+    (hsub : C1 ⊆ C2) (hdisj : CapabilitySet.disjoint C2 C) :
+    CapabilitySet.disjoint C1 C := by
+  intro mu1 mu2 l h1 h2
+  obtain ⟨mu1', h1'⟩ := hasmem_of_subset hsub mu1 l h1
+  exact hdisj mu1' mu2 l h1' h2
+
 /-- `is_compatible` is anti-monotonic in the capability set: if `C1 ⊆ C2` and `m`
     is compatible with `C2`, then it is compatible with `C1`. The mutability shift
     in `Subset.cap_ro` is harmless because compatibility only checks the

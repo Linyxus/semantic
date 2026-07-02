@@ -636,6 +636,29 @@ theorem TypeEnv.kill_peaks_cs_extend_cvar {env : TypeEnv s} {K : CaptureSet s}
   | cvar a' c => rfl
   | var a' v => rfl
 
+/-- `n`-ary generalisation of `kill_peaks_cs_extend_cvar`: killing peaks and then
+    extending by the `n` evidences commutes with extending first and killing the
+    `weakenCVars n`-lifted peak set. -/
+theorem TypeEnv.kill_peaks_cs_extend_cvars {env : TypeEnv s} {K : CaptureSet s}
+    {m : Memory} {a : Authority} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} →
+    TypeEnv.extend_cvars (env.kill_peaks_cs K) m a CS =
+      (TypeEnv.extend_cvars env m a CS).kill_peaks_cs (K.rename (Rename.weakenCVars n))
+  | 0, _ => by
+    change env.kill_peaks_cs K = env.kill_peaks_cs (K.rename (Rename.weakenCVars 0))
+    rw [show Rename.weakenCVars 0 = (Rename.id : Rename s s) from rfl, CaptureSet.rename_id]
+  | n + 1, CS => by
+    obtain ⟨l, hl⟩ := CS
+    cases l with
+    | nil => cases hl
+    | cons hd tl =>
+      have hl' : tl.length = n := by simpa using hl
+      change (TypeEnv.extend_cvars (env.kill_peaks_cs K) m a ⟨tl, hl'⟩).extend_cvar hd
+          (cap := hd.ground_denot m) (a := a) = _
+      rw [TypeEnv.kill_peaks_cs_extend_cvars (CS := ⟨tl, hl'⟩),
+        TypeEnv.kill_peaks_cs_extend_cvar, CaptureSet.rename_comp]
+      rfl
+
 /-- Forward direction of `consumed`: a `.drop`-mode capture variable atom of a
 capture set is an atom of its `consumed` part. -/
 theorem CaptureSet.cvar_drop_subset_consumed {s : Sig} {C : CaptureSet s}

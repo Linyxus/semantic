@@ -2396,6 +2396,82 @@ theorem TypeEnv.extend_cvars_lookup_tvar {s : Sig} {m : Memory} {a : Authority} 
       (CS := List.Vector.tail CS) (env := env) X
     exact ⟨X0, hX0⟩
 
+/-- Decomposition of a capture-variable lookup through an `extend_cvars` prefix:
+each cvar `c` of the extended signature is either one of the `n` freshly-bound
+evidence binders (looking up to `(cs, cs.ground_denot m)` at authority `a`, with
+`cs ∈ CS.toList`), or a base cvar `c0` inherited from `env`. -/
+theorem TypeEnv.extend_cvars_lookup_cvar {s : Sig} {m : Memory} {a : Authority} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} → {env : TypeEnv s} →
+    (c : BVar (Sig.extendCVars s n) .cvar) →
+    (∃ cs ∈ CS.toList,
+        (TypeEnv.extend_cvars env m a CS).lookup_cvar c = (cs, cs.ground_denot m) ∧
+        (TypeEnv.extend_cvars env m a CS).lookup_cvar_auth c = a)
+    ∨ (∃ c0 : BVar s .cvar,
+        (TypeEnv.extend_cvars env m a CS).lookup_cvar c = env.lookup_cvar c0 ∧
+        (TypeEnv.extend_cvars env m a CS).lookup_cvar_auth c = env.lookup_cvar_auth c0)
+  | 0, _, _, c => Or.inr ⟨c, rfl, rfl⟩
+  | n + 1, CS, env, c => by
+    obtain ⟨l, hl⟩ := CS
+    cases l with
+    | nil => cases hl
+    | cons hd tl =>
+      have hl' : tl.length = n := by simpa using hl
+      have henv_eq : TypeEnv.extend_cvars env m a ⟨hd :: tl, hl⟩ =
+          (TypeEnv.extend_cvars env m a ⟨tl, hl'⟩).extend_cvar hd
+            (cap := hd.ground_denot m) (a := a) := rfl
+      cases c with
+      | here =>
+        left
+        exact ⟨hd, List.mem_cons_self, by rw [henv_eq]; rfl, by rw [henv_eq]; rfl⟩
+      | there c' =>
+        rw [henv_eq]
+        obtain ⟨cs, hcs_mem, hlk, hauth⟩ | ⟨c0, hlk, hauth⟩ :=
+          TypeEnv.extend_cvars_lookup_cvar (m := m) (a := a) (CS := ⟨tl, hl'⟩) (env := env) c'
+        · left; exact ⟨cs, List.mem_cons_of_mem hd hcs_mem, hlk, hauth⟩
+        · right; exact ⟨c0, hlk, hauth⟩
+
+/-- A location reachable from one member `cs` of a vector `CS` is reachable from
+the union of the whole vector. -/
+theorem CaptureSet.hasmem_reachability_unionAll {m : Memory} {mu : CapMode} {l : Nat} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} → {cs : CaptureSet {}} →
+    cs ∈ CS.toList → (cs.reachability m).hasmem mu l →
+    ((CaptureSet.unionAll CS).reachability m).hasmem mu l
+  | 0, CS, _, hmem, _ => by rw [List.Vector.eq_nil CS] at hmem; cases hmem
+  | n + 1, CS, cs, hmem, h => by
+    obtain ⟨l', hl'⟩ := CS
+    cases l' with
+    | nil => cases hl'
+    | cons hd tl =>
+      have htl : tl.length = n := by simpa using hl'
+      change (hd.reachability m ∪ (CaptureSet.unionAll ⟨tl, htl⟩).reachability m).hasmem mu l
+      cases hmem with
+      | head => exact CapabilitySet.hasmem_union_left h
+      | tail _ hmem' =>
+        exact CapabilitySet.hasmem_union_right
+          (CaptureSet.hasmem_reachability_unionAll (CS := ⟨tl, htl⟩) hmem' h)
+
+/-- If every member of a vector `CS` has drop-free ground denotation, so does the
+union of the whole vector. -/
+theorem CaptureSet.unionAll_ground_denot_drop_free {m : Memory} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} →
+    (∀ cs ∈ CS.toList, (cs.ground_denot m).drop_free) →
+    ((CaptureSet.unionAll CS).ground_denot m).drop_free
+  | 0, _, _ => fun _ h => CapabilitySet.not_hasmem_empty h
+  | n + 1, CS, hdf => by
+    obtain ⟨l', hl'⟩ := CS
+    cases l' with
+    | nil => cases hl'
+    | cons hd tl =>
+      have htl : tl.length = n := by simpa using hl'
+      intro l h
+      change (hd.ground_denot m
+        ∪ (CaptureSet.unionAll ⟨tl, htl⟩).ground_denot m).hasmem .drop l at h
+      cases h with
+      | left h => exact hdf hd List.mem_cons_self l h
+      | right h =>
+        exact CaptureSet.unionAll_ground_denot_drop_free (CS := ⟨tl, htl⟩)
+          (fun cs hmem => hdf cs (List.mem_cons_of_mem hd hmem)) l h
+
 /-- `TypeEnv.extend_cvars` depends on the memory only through the ground capability
     denotations of the evidences: equal denotations, equal environments. -/
 theorem TypeEnv.extend_cvars_cap_eq {s : Sig} {env : TypeEnv s} {m1 m2 : Memory}
