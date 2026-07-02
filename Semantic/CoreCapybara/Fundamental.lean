@@ -140,9 +140,10 @@ theorem typed_env_lookup_var_reachability
 
 /-- `pack_bound` holds vacuously for any value that is not a syntactic pack. -/
 theorem pack_bound_of_ne_pack {R : CapabilitySet} {m m' : Memory} {v : Exp {}}
-    (h : ∀ (cs : CaptureSet {}) (x : Var .var {}), v ≠ .pack cs x) :
+    (h : ∀ (n : Nat) (cs : List.Vector (CaptureSet {}) n) (x : Var .var {}),
+      v ≠ .pack cs x) :
     pack_bound R m v m' :=
-  fun cs x heq => absurd heq (h cs x)
+  fun n cs x heq => absurd heq (h n cs x)
 
 
 theorem sem_typ_var
@@ -156,8 +157,8 @@ theorem sem_typ_var
   intro _hguard
   simp only [Ty.exi_val_denot]
   refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st m, hmt, ?_,
-    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+    pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
   have h_lookup := typed_env_lookup_var hts hx
   have hpeaks :
       compute_peaks env T.captureSet = compute_peaks env (.var (.M .epsilon) (.bound x)) := by
@@ -690,8 +691,8 @@ to a later memory are fresh relative to any earlier one. -/
 theorem pack_bound_mono {R R' : CapabilitySet} {m0 m1 m' : Memory} {v : Exp {}}
     (hRsub : R' ⊆ R) (hmm : m1.subsumes m0)
     (h : pack_bound R' m1 v m') : pack_bound R m0 v m' := by
-  intro cs x heq mu l hmem
-  rcases h cs x heq mu l hmem with ⟨hcov, hd⟩ | hr
+  intro n cs x heq mu l hmem
+  rcases h n cs x heq mu l hmem with ⟨hcov, hd⟩ | hr
   · exact Or.inl ⟨CapabilitySet.covers_mono hRsub hcov, hasmem_drop_of_subset hRsub hd⟩
   · refine Or.inr ?_
     exact Heap.none_of_subsumes_none hmm hr
@@ -1134,8 +1135,8 @@ theorem sem_typ_abs {T2 : Ty TySort.exi (s,x)} {Cf : CaptureSet s}
   · simp only [Exp.subst]; constructor
   · intro _hguard
     refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
-    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     constructor
     · apply Exp.wf_subst
@@ -1208,8 +1209,8 @@ theorem sem_typ_tabs {T : Ty TySort.exi (s,X)} {Cf : CaptureSet s} {S : PureTy s
   · simp only [Exp.subst]; constructor
   · intro _hguard
     refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
-    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     constructor
     · apply Exp.wf_subst
@@ -1283,8 +1284,8 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
   · simp only [Exp.subst]; constructor
   · intro _hguard
     refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
-    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     constructor
     · apply Exp.wf_subst
@@ -1370,18 +1371,79 @@ theorem sem_typ_cabs {T : Ty TySort.exi (s,C)} {Cf : CaptureSet s} {cb : Capture
               · simp only [Ty.exi_exp_denot] at htyped ⊢
                 exact htyped hmt_body
 
+/-- Wraps a subset-of-peaks fact about one member of an evidence vector into the
+    corresponding fact about the combined evidence `CaptureSet.unionAll`. -/
+private theorem subset_peaks_unionAll {s : Sig} {Γ : Ctx s} {X : CaptureSet s} :
+    {n : Nat} → {Cs : List.Vector (CaptureSet s) n} → (c0 : CaptureSet s) →
+    c0 ∈ Cs.toList → X ⊆ CaptureSet.peaks Γ c0 →
+    X ⊆ CaptureSet.peaks Γ (CaptureSet.unionAll Cs)
+  | 0, Cs, c0, hmem, _ => by
+    obtain ⟨l, hl⟩ := Cs
+    cases l with
+    | nil => cases hmem
+    | cons _ _ => cases hl
+  | n + 1, Cs, c0, hmem, hsub => by
+    obtain ⟨l, hl⟩ := Cs
+    cases l with
+    | nil => cases hl
+    | cons c l' =>
+      have hl' : l'.length = n := by simpa using hl
+      change X ⊆ CaptureSet.peaks Γ
+        (c ∪ CaptureSet.unionAll (⟨l', hl'⟩ : List.Vector (CaptureSet s) n))
+      rw [CaptureSet.peaks_union]
+      cases hmem with
+      | head => exact .union_right_left hsub
+      | tail _ hmem' =>
+        exact .union_right_right (subset_peaks_unionAll c0 hmem' hsub)
+
+/-- **Semantic mutual disjointness** of the `n` evidences of a pack: under every
+    world satisfying the context, the evidences denote pairwise location-disjoint
+    capability sets. Recorded in `exi_val_denot` at the pack site and consumed by
+    `unpack`, whose continuation binds all `n` evidences as simultaneous
+    `.can_drop` capture variables — `EnvSepWf` there demands their mutual
+    `CapabilitySet.disjoint`ness (dropping one must not dangle another). -/
+def SemPairwiseSep (Γ : Ctx s) {n : Nat} (Cs : List.Vector (CaptureSet s) n) : Prop :=
+  ∀ {k : Nat} {env : TypeEnv s} {st : StoreTyping k} {m : Memory},
+    EnvTyping Γ env k st m → env.EnvSepWf →
+    Cs.toList.Pairwise (fun c1 c2 =>
+      CapabilitySet.disjoint (c1.denot env m) (c2.denot env m))
+
+/-- **DESIGN GAP (needs a ruling): the syntactic pairwise-separation premise of the
+    `pack` rule is too weak for its semantic obligation.**
+
+    The pack rule demands `CaptureSet.PairwiseSep Γ Cs`, i.e. pairwise `SepCheck`.
+    But `SepCheck`'s denotation (`SemSepCheck`) is only `CapabilitySet.Noninterference`
+    — in particular `sep_ro` lets two READ-ONLY capture sets share locations.  What
+    the unpack continuation needs (via `EnvSepWf` for `n` simultaneous `.can_drop`
+    binders) is full location-level `CapabilitySet.disjoint`ness.
+
+    Counterexample to this theorem as stated: `pack ⟨[C, C], _⟩ x` with `C`
+    read-only passes `PairwiseSep` via `sep_ro`, yet both evidences denote the SAME
+    location set; an unpack continuation may `drop` through the first binder (all
+    unpacked binders are `.can_drop`) and then read through the second —
+    use-after-free.  Closing this requires strengthening the `pack` rule's premise
+    (e.g. a genuinely-disjoint `SepCheck` fragment excluding `sep_ro` between
+    evidences, or tracking that RO-shared evidences forfeit `.can_drop`). -/
+theorem CaptureSet.PairwiseSep.sem {s : Sig} {Γ : Ctx s} {n : Nat}
+    {Cs : List.Vector (CaptureSet s) n}
+    (h : CaptureSet.PairwiseSep Γ Cs) : SemPairwiseSep Γ Cs := sorry
+
 theorem sem_typ_pack
-  {T : Ty .capt (s,C)} {cs : CaptureSet s} {x : Var .var s} {Γ : Ctx s}
-  (hclosed_e : (Exp.pack cs x).IsClosed)
+  {n : Nat} {T : Ty .capt (Sig.extendCVars s n)} {Cs : List.Vector (CaptureSet s) n}
+  {x : Var .var s} {Γ : Ctx s}
+  (hclosed_e : (Exp.pack Cs x).IsClosed)
   (hΓ : Γ.IsClosed)
-  (hvalid_cs : cs.AccessOnly Γ)
-  (ht : SemanticTyping {} Γ (Exp.var x) (T.subst (Subst.openCVar cs)).typ) :
-  SemanticTyping (cs ∪ cs.applyAccess .drop) Γ (Exp.pack cs x) T.exi := by
+  (hvalid_cs : (CaptureSet.unionAll Cs).AccessOnly Γ)
+  (hsem_sep : SemPairwiseSep Γ Cs)
+  (ht : SemanticTyping {} Γ (Exp.var x) (T.subst (Subst.openCVars Cs)).typ) :
+  SemanticTyping ((CaptureSet.unionAll Cs) ∪ (CaptureSet.unionAll Cs).applyAccess .drop)
+    Γ (Exp.pack Cs x) (.exi n T) := by
   intro env k st store hts hdsep hcompat
-  have hsubst : (Exp.pack cs x).subst (Subst.from_TypeEnv env) =
-         Exp.pack (cs.subst (Subst.from_TypeEnv env)) (x.subst (Subst.from_TypeEnv env)) := by
+  have hsubst : (Exp.pack Cs x).subst (Subst.from_TypeEnv env) =
+         Exp.pack (Cs.map (fun C => C.subst (Subst.from_TypeEnv env)))
+           (x.subst (Subst.from_TypeEnv env)) := by
     simp only [Exp.subst]
-  have hclosed_cs : cs.IsClosed := by
+  have hclosed_cs : ∀ c ∈ Cs.toList, c.IsClosed := by
     cases hclosed_e with
     | pack hcs_closed _hx_closed => exact hcs_closed
   simp only [Ty.exi_exp_denot, List.empty_eq]
@@ -1401,51 +1463,67 @@ theorem sem_typ_pack
   rw [hvar] at hx
   intro hguard
   obtain ⟨_, st1, hwle1, hmt1, hval1, _⟩ := Eval.var_inv (hx hmt) hguard
+  -- The combined evidence resolves, in the runtime environment, to its denotation.
+  have hreach :
+      (CaptureSet.unionAll
+        (Cs.map (fun C => C.subst (Subst.from_TypeEnv env)))).reachability store
+      = (CaptureSet.unionAll Cs).denot env store := by
+    rw [← CaptureSet.unionAll_subst, ← CaptureSet.ground_denot_eq_reachability]
+    rfl
   refine ⟨TraceOk.nil, st1, hwle1, hmt1, ?_, ?_, ?_⟩
   · simp only [Ty.exi_val_denot]
-    constructor
-    · exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hclosed_cs)
+    refine ⟨Cs.map (fun C => C.subst (Subst.from_TypeEnv env)),
+      x.subst (Subst.from_TypeEnv env), rfl, ?_, ?_, ?_, ?_⟩
+    · -- well-formedness of each (resolved) evidence
+      intro cs hmem
+      rw [List.Vector.toList_map] at hmem
+      obtain ⟨c, hmem', rfl⟩ := List.mem_map.mp hmem
+      exact CaptureSet.wf_subst (CaptureSet.wf_of_closed (hclosed_cs c hmem'))
         (from_TypeEnv_wf_in_heap hts)
-    · have hQ' : Ty.val_denot env (T.subst (Subst.openCVar cs)) k st1 store
+    · -- drop-freedom of each evidence: a `.drop` in `c`'s runtime image traces
+      -- (via `drop_denot_peak`) to a `.drop`-access peak of `c`, hence of the
+      -- combined evidence, contradicting its `AccessOnly Γ`.
+      intro cs hmem
+      rw [List.Vector.toList_map] at hmem
+      obtain ⟨c, hmem', rfl⟩ := List.mem_map.mp hmem
+      intro l hmem_l
+      have hmem_l' : (c.denot env store).hasmem .drop l := hmem_l
+      obtain ⟨cv, hsub, _⟩ :=
+        drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts)
+          (hclosed_cs c hmem') hmem_l'
+      exact hvalid_cs cv (subset_peaks_unionAll c hmem' hsub)
+    · -- pairwise disjointness of the evidences, from the semantic hypothesis
+      have hpw := hsem_sep hts hdsep
+      rw [List.Vector.toList_map]
+      exact List.pairwise_map.mpr hpw
+    · -- the packed witness inhabits `T` under the `n`-fold evidence extension
+      have hQ' : Ty.val_denot env (T.subst (Subst.openCVars Cs)) k st1 store
           (Exp.var (x.subst (Subst.from_TypeEnv env))) := by
         simpa only [Ty.exi_val_denot] using hval1
-      let cs' := cs.subst (Subst.from_TypeEnv env)
-      have hretype := open_carg_val_denot (env := env) (cap := cs'.ground_denot store)
-        (a := .can_drop) (C := cs) (T := T)
-      refine ⟨?_, (hretype k st1 store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ'⟩
-      -- A `.drop` in `cs`'s runtime image traces (via `drop_denot_peak`) to a
-      -- `.drop`-access peak of `cs`, contradicting `cs.AccessOnly Γ`.
-      intro l hmem
-      have hmem' : (cs.denot env store).hasmem .drop l := hmem
-      obtain ⟨c, hsub, _⟩ :=
-        drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hclosed_cs hmem'
-      exact hvalid_cs c hsub
+      exact (open_cargs_val_denot (m := store) (a := .can_drop) (Cs := Cs) (T := T)
+        k st1 store (Exp.var (x.subst (Subst.from_TypeEnv env)))).mpr hQ'
   · -- pack_bound: every witness location is covered by the pack budget
-    -- `R = (cs ∪ cs.applyAccess .drop).denot` at its own access mode (the `cs`
-    -- summand) AND is consumable (`.drop`, from the `cs.applyAccess .drop` summand).
-    intro cs0 x0 heq mu l hmem
+    -- `R = (unionAll Cs ∪ (unionAll Cs).applyAccess .drop).denot` at its own access
+    -- mode (the `unionAll Cs` summand) AND is consumable (`.drop`, from the
+    -- `applyAccess .drop` summand).
+    intro n0 cs0 x0 heq mu l hmem
     cases heq
     left
-    have hreach :
-        (cs.subst (Subst.from_TypeEnv env)).reachability store = cs.denot env store := by
-      rw [← CaptureSet.ground_denot_eq_reachability]
-      rfl
     rw [hreach] at hmem
     have hgoal :
-        CaptureSet.denot env (cs.applyAccess .drop) store = (cs.denot env store).to_drop := by
+        CaptureSet.denot env ((CaptureSet.unionAll Cs).applyAccess .drop) store
+          = ((CaptureSet.unionAll Cs).denot env store).to_drop := by
       rw [captureSet_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
     refine ⟨CapabilitySet.covers_union_left (CapabilitySet.hasmem_implies_covers hmem), ?_⟩
     refine CapabilitySet.hasmem_union_right ?_
-    change (CaptureSet.denot env (cs.applyAccess .drop) store).hasmem .drop l
+    change (CaptureSet.denot env ((CaptureSet.unionAll Cs).applyAccess .drop) store).hasmem
+      .drop l
     rw [hgoal]
     exact CapabilitySet.hasmem_to_drop_of_hasmem hmem
-  · -- witness_live: the witness `cs` is live in `store`, since the pack budget
-    -- (compatible by `hcompat`) contains `cs` directly (its `cs` summand).
-    intro cs0 x0 heq
+  · -- witness_live: the combined witness is live in `store`, since the pack budget
+    -- (compatible by `hcompat`) contains it directly (its `unionAll Cs` summand).
+    intro n0 cs0 x0 heq
     cases heq
-    have hreach :
-        (cs.subst (Subst.from_TypeEnv env)).reachability store = cs.denot env store := by
-      rw [← CaptureSet.ground_denot_eq_reachability]; rfl
     rw [hreach]
     refine Memory.is_compatible_subset ?_ hcompat
     exact CapabilitySet.Subset.union_right_left
@@ -2028,8 +2106,8 @@ theorem sem_typ_wrap
   · constructor
   · intro _hguard
     refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h),
-    witness_live_of_ne_pack (fun _ _ h => by simp [Exp.subst] at h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h),
+    witness_live_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h)⟩
     simp only [Ty.val_denot]
     cases hclosed_e with
     | boxed hclosed_cs hclosed_Ψ hclosed_body =>
@@ -2308,8 +2386,8 @@ theorem sem_typ_invoke
   intro _hguard
   exact ⟨TraceOk.access hcov, st, WorldLe.refl_trunc_self _ st store, hmt,
     by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+    pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
 
 theorem sem_typ_unit :
   SemanticTyping {} Γ Exp.unit (.typ .unit) := by
@@ -2321,8 +2399,8 @@ theorem sem_typ_unit :
   · intro _hguard
     exact ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt,
       by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
 
 theorem sem_typ_btrue :
   SemanticTyping {} Γ Exp.btrue (.typ .bool) := by
@@ -2333,8 +2411,8 @@ theorem sem_typ_btrue :
   · exact Exp.IsSimpleVal.btrue
   · intro _hguard
     refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
     left; trivial
 
@@ -2347,8 +2425,8 @@ theorem sem_typ_bfalse :
   · exact Exp.IsSimpleVal.bfalse
   · intro _hguard
     refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot, resolve]
     right; trivial
 
@@ -2422,8 +2500,8 @@ theorem sem_typ_reader
   · exact Exp.IsSimpleVal.reader
   · intro _hguard
     refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
     simp only [Ty.exi_val_denot, Ty.val_denot]
     have hcell := typed_env_lookup_var hts hx
     have ⟨_, b0, ℓ0, R, rfl, hlookup_cell, _, hstl, himpl⟩ := cell_val_denot_inv_store hcell
@@ -2451,7 +2529,7 @@ theorem sem_typ_alloc
   {x : BVar s .var}
   (hx : SemanticTyping {} Γ (Exp.var (.bound x)) (.typ T)) :
   SemanticTyping {} Γ (Exp.alloc (.bound x))
-    (.exi (.cell (.cvar (.M .epsilon) .here) (T.rename Rename.succ))) := by
+    (.exi 1 (.cell (.cvar (.M .epsilon) .here) (T.rename Rename.succ))) := by
   intro env k st store hts hdsep hcompat
   simp only [Ty.exi_exp_denot, Exp.subst, Subst.from_TypeEnv, Var.subst, List.empty_eq]
   intro hmt
@@ -2521,16 +2599,27 @@ theorem sem_typ_alloc
   rw [show st.trunc (Nat.sub_le k (Trace.readCount [TraceItem.alloc l'])) = st from
     WP.World.trunc_self _ st]
   refine ⟨st1.set l' R, WorldLe.trans hwle1 walloc, hmtalloc, ?_, ?_, ?_⟩
-  · -- existential value denotation: `.pack (.var (.M .epsilon) (.free l')) (.free l')`
-    -- is a `cell (cvar ε here) (T.rename succ)`, with the fresh cell storing `R`.
-    simp only [Ty.exi_val_denot, resolve]
-    refine ⟨CaptureSet.WfInHeap.wf_var_free hlk_l', ?_, ?_⟩
+  · -- existential value denotation: `.pack ⟨[.var (.M .epsilon) (.free l')], rfl⟩ (.free l')`
+    -- is an `exi 1 (cell (cvar ε here) (T.rename succ))`, with the fresh cell storing `R`.
+    simp only [Ty.exi_val_denot]
+    refine ⟨⟨[.var (.M .epsilon) (.free l')], rfl⟩, .free l', rfl, ?_, ?_, ?_, ?_⟩
+    · -- well-formedness of the (single) evidence
+      intro cs hmem
+      cases hmem with
+      | head => exact CaptureSet.WfInHeap.wf_var_free hlk_l'
+      | tail _ h => cases h
     · -- drop-free: the cvar witness denotes a singleton at `l'`, which has no `.drop`.
-      change ((CaptureSet.var (.M .epsilon) (.free l')).ground_denot ext).drop_free
-      simp only [CaptureSet.ground_denot, reachability_of_loc, hlk_l'_heap,
-        CapabilitySet.applyAccess_M, CapabilitySet.applyMut_singleton_epsilon]
-      intro l'' hmem
-      exact CapabilitySet.singleton_no_drop hmem
+      intro cs hmem
+      cases hmem with
+      | tail _ h => cases h
+      | head =>
+        change ((CaptureSet.var (.M .epsilon) (.free l')).ground_denot ext).drop_free
+        simp only [CaptureSet.ground_denot, reachability_of_loc, hlk_l'_heap,
+          CapabilitySet.applyAccess_M, CapabilitySet.applyMut_singleton_epsilon]
+        intro l'' hmem
+        exact CapabilitySet.singleton_no_drop hmem
+    · -- pairwise disjointness: vacuous for a single evidence
+      exact List.Pairwise.cons (fun b hb => nomatch hb) List.Pairwise.nil
     · -- the cell value denotation at the (cvar-extended) env / extended world.
       simp only [Ty.val_denot]
       refine ⟨?_, l', fx, .live, R, rfl, hlk_l', ?_, ?_, ?_⟩
@@ -2556,25 +2645,36 @@ theorem sem_typ_alloc
           (cap := (CaptureSet.var (.M .epsilon) (.free l')).ground_denot ext)
           (a := .can_drop)) T j.val w' m' e'
   · -- pack_bound: the witness `l'` is fresh in `store` (`store.lookup l' = none`).
-    intro cs0 x0 heq mu l hmem
+    intro n0 cs0 x0 heq mu l hmem
     cases heq
     right
-    simp only [CaptureSet.reachability, reachability_of_loc, hlk_l'_heap,
-      CapabilitySet.applyAccess_M,
-      CapabilitySet.singleton] at hmem
-    cases hmem
-    show store.lookup l' = none
-    exact hfresh
+    -- `unionAll ⟨[c], rfl⟩ = c ∪ ∅`; the `∅` summand is uninhabited.
+    change (((CaptureSet.var (.M .epsilon) (.free l')) ∪ (.empty : CaptureSet {})).reachability
+      ext).hasmem mu l at hmem
+    rw [CaptureSet.reachability] at hmem
+    cases hmem with
+    | right h => cases h
+    | left h =>
+      simp only [CaptureSet.reachability, reachability_of_loc, hlk_l'_heap,
+        CapabilitySet.applyAccess_M, CapabilitySet.singleton] at h
+      cases h
+      show store.lookup l' = none
+      exact hfresh
   · -- witness_live: the fresh cell `l'` is live in `ext`.
-    intro cs0 x0 heq
+    intro n0 cs0 x0 heq
     cases heq
     intro mu l b ℓ hmem hheap
-    simp only [CaptureSet.reachability, reachability_of_loc, hlk_l'_heap,
-      CapabilitySet.applyAccess_M,
-      CapabilitySet.singleton] at hmem
-    cases hmem
-    rw [hlk_l'_heap] at hheap
-    cases hheap; rfl
+    change (((CaptureSet.var (.M .epsilon) (.free l')) ∪ (.empty : CaptureSet {})).reachability
+      ext).hasmem mu l at hmem
+    rw [CaptureSet.reachability] at hmem
+    cases hmem with
+    | right h => cases h
+    | left h =>
+      simp only [CaptureSet.reachability, reachability_of_loc, hlk_l'_heap,
+        CapabilitySet.applyAccess_M, CapabilitySet.singleton] at h
+      cases h
+      rw [hlk_l'_heap] at hheap
+      cases hheap; rfl
 
 theorem sem_typ_drop {x : BVar s .var}
   (hx : SemanticTyping {} Γ (Exp.var (.bound x))
@@ -2636,8 +2736,8 @@ theorem sem_typ_drop {x : BVar s .var}
     exact ⟨st, ⟨Memory.drop_mcell_subsumes _ _ ⟨b0, hlk_cell'⟩, fun _ _ h => h⟩,
       hmt_dropped,
       by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-      pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-      witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+      pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+      witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
   -- The `.drop` coverage comes directly from the drop-qualified budget:
   -- `(reachability_of_loc … x).to_drop` covers `x` at `.drop`.
   have hcov_access :
@@ -2711,8 +2811,8 @@ theorem sem_typ_read
   -- (`k - readCount [.access .ro y]` is definitionally `k - 1`).
   refine ⟨TraceOk.access hcov_y, st1.trunc (Nat.sub_le k 1),
     WP.WorldLe.trunc (Nat.sub_le k 1) hwle1, MemTyped_trunc (Nat.sub_le k 1) hmt1, ?_,
-    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+    pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
   simp only [Ty.exi_val_denot]
   -- content at the result index `k − 1`, extracted from `MemTyped`/`himpl` at `⟨k-1, _⟩ : Fin k`.
   exact (himpl ⟨k - 1, hpred⟩ (st1.trunc (Nat.le_of_lt hpred)) store (.var (.free b0))).mp
@@ -2808,8 +2908,8 @@ theorem sem_typ_write
     WP.World.trunc_self _ st]
   exact ⟨st2, WorldLe.trans (WorldLe.trans hwle1 hwle2) hwle_w, hmt_w,
     by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+    pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
 
 /-- `CaptureSet.Subset` lifts to a `CapabilitySet.Subset` on denotations,
 independently of any context (the env merely determines what each cvar
@@ -3659,8 +3759,8 @@ theorem sem_typ_par
   refine ⟨TraceOk.append (TraceOk.mono hsubC1 hok1) (TraceOk.mono hsubC2 hok2'),
     st'.trunc hjk, ?_, MemTyped_trunc hjk hmt',
     by simp only [Ty.exi_val_denot, Ty.val_denot, resolve],
-    pack_bound_of_ne_pack (fun _ _ h => nomatch h),
-    witness_live_of_ne_pack (fun _ _ h => nomatch h)⟩
+    pack_bound_of_ne_pack (fun _ _ _ h => nomatch h),
+    witness_live_of_ne_pack (fun _ _ _ h => nomatch h)⟩
   -- Compose `e1`'s world-step (`hwle1`, descended to the `e2` level) with `e2`'s
   -- (`hwle'`), then descend once more to the compound level — the `letin_cont` pattern.
   have h2le : k - t1.readCount - t2.readCount ≤ k - t1.readCount := Nat.sub_le _ _
