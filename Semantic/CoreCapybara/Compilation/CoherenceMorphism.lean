@@ -1,6 +1,7 @@
 import Semantic.CoreCapybara.Compilation.Coherence
 import Semantic.CoreCapybara.Compilation.ContextMorphism
 import Semantic.CoreCapybara.Compilation.SubstLemmas
+import Semantic.CoreCapybara.Compilation.LockKernel
 
 /-!
 # Coherence preservation under the context builders
@@ -295,6 +296,11 @@ theorem CompilerCtx.Coherent.weakenTarget {s1 s2 : Sig} {ctx : CompilerCtx s1 s2
     rw [CapyPureTy.compile_rename (ctx := ctx) (ctx' := ctx.weakenTarget b) (ρ := Rename.succ)
       rfl rfl]
     exact Ctx.LookupTVar.there h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    have h := hcoh.roLookup hl heq
+    simp only [CompilerCtx.weakenTarget_srcCtx, SrcCtx.lookupCVar_rename]
+    exact HasKind.weaken h b
 
 
 /-! ### Source-weakening payload realignment (`ft = id`)
@@ -362,11 +368,15 @@ distinct.  We therefore realign the *clean* (rename-free) hypothesis side with t
 weaken lemmas and discharge by `exact`, whose defeq check bridges the rep gap. -/
 
 /-- A fresh *source* capture binder `c <: cb` preserves coherence; the new `.here`
-    capture lookup is supplied by `hlk`. -/
+    capture lookup is supplied by `hlk`.  `hro` is the read-only provenance for the
+    NEW binder: vacuous unless `cb = .unbound .ro`, in which case the caller must
+    exhibit a target `HasKind {c} .ro` witness (at the `cpoly` compile site:
+    `HasKind.imm` on the compiled body lock, pushed BEFORE this `consCVar`). -/
 theorem CompilerCtx.Coherent.consCVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
     {cb : CapyCaptureBound s1} {c : BVar s2 .cvar}
     (hcoh : ctx.Coherent) (hcb : cb.IsClosed)
-    (hlk : ctx.coreCtx.LookupCVar c .access_only (CapyCaptureBound.compile cb ctx.srcCtx)) :
+    (hlk : ctx.coreCtx.LookupCVar c .access_only (CapyCaptureBound.compile cb ctx.srcCtx))
+    (hro : cb = .unbound .ro → HasKind ctx.coreCtx (.cvar (.M .epsilon) c) .ro) :
     (ctx.consCVar cb c).Coherent where
   closed := hcoh.closed
   capyClosed := by
@@ -412,6 +422,14 @@ theorem CompilerCtx.Coherent.consCVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
       have h := hcoh.tvarLookup hl0
       rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consCVar_weaken).symm] at h
       exact h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    simp only [CompilerCtx.consCVar_capyCtx, CapyCtx.push_cvar_default, CapyCtx.push_cvar] at hl
+    cases hl with
+    | here =>
+      exact hro (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
+    | there hl0 =>
+      exact hcoh.roLookup hl0 (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
 
 /-- A fresh *source* type binder `X <: S` preserves coherence; the new `.here`
     type-variable lookup is supplied by `hlk`. -/
@@ -464,6 +482,12 @@ theorem CompilerCtx.Coherent.consTVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
       have h := hcoh.tvarLookup hl0
       rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consTVar_weaken).symm] at h
       exact h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    simp only [CompilerCtx.consTVar_capyCtx, CapyCtx.push_tvar] at hl
+    cases hl with
+    | there hl0 =>
+      exact hcoh.roLookup hl0 (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
 
 /-- A fresh *source* term binder `x : T` (a real Core binder, mapped to target var
     `bv` with capture image `⟦T.captureSet⟧`) preserves coherence.  `bv` is required
@@ -533,6 +557,12 @@ theorem CompilerCtx.Coherent.consVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
       have h := hcoh.tvarLookup hl0
       rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm] at h
       exact h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var] at hl
+    cases hl with
+    | there hl0 =>
+      exact hcoh.roLookup hl0 (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
 
 /-- `Coherent`'s capture-image component, in `SrcAligned` form (every var's image
     IS its latent `⟦T.captureSet⟧`).
@@ -619,5 +649,11 @@ theorem CompilerCtx.Coherent.consVarCVar {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
       have h := hcoh.tvarLookup hl0
       rw [(CapyPureTy.compile_weaken_eq CompilerCtx.MapsTo.consVar_weaken).symm] at h
       exact h
+  roLookup := by
+    intro c0 a0 cb0 hl heq
+    simp only [CompilerCtx.consVar_capyCtx, CapyCtx.push_var] at hl
+    cases hl with
+    | there hl0 =>
+      exact hcoh.roLookup hl0 (CapyCaptureBound.rename_eq_unbound_iff.mp heq)
 
 end Compilation

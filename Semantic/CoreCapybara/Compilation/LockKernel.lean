@@ -54,6 +54,21 @@ theorem Subcapt.weaken {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s} {k : Kind}
     simp only [CaptureSet.applyAccess_rename]
     exact Subcapt.sc_drop_mono ih
 
+/-- `HasKind` weakens under a fresh target binder (companion to `Subcapt.weaken`). -/
+theorem HasKind.weaken {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} {k : Kind}
+    (h : HasKind Γ C m) (b : Binding s k) :
+    HasKind (Γ.push b) (C.rename Rename.succ) m := by
+  induction h with
+  | empty => exact HasKind.empty
+  | union _ _ ih1 ih2 => exact HasKind.union ih1 ih2
+  | sc hsc _ ih => exact HasKind.sc (Subcapt.weaken hsc b) ih
+  | rw => exact HasKind.rw
+  | imm hlk hhas =>
+    exact HasKind.imm (Ctx.LookupLock.there hlk) hhas.rename
+  | ro =>
+    rw [CaptureSet.applyRO_rename]
+    exact HasKind.ro
+
 /-! ## `compile` bound-insensitivity congruence
 
 `compile` reads `capyCtx` only through `peaks` (in the lock cases) and `srcCtx`

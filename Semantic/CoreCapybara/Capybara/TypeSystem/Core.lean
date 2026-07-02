@@ -115,7 +115,12 @@ inductive CapySepCheck : CapyCtx s -> CapyCaptureSet s -> CapyCaptureSet s -> Pr
   --------------------
   CapySepCheck Γ C1' C2
 | sep_distinct :
-  C1 ≠ C2 ->
+  -- Distinctness is MODE-ERASED (2026-07-02, user decision): two atoms on the
+  -- SAME peak at different access modes ALIAS — plain `C1 ≠ C2` would let
+  -- `{ε c} >< {ro c}` through, which is unsound (read-vs-write interference on
+  -- one resource) and which no covering lock can pay for in the compilation.
+  -- Distinct peaks are distinct capture ROOTS, i.e. distinct mode-erased atoms.
+  C1.modeErase ≠ C2.modeErase ->
   CapyIsPeak Γ C1 -> CapyIsPeak Γ C2 ->
   --------------------
   CapySepCheck Γ (C1.applyAccess mu1) (C2.applyAccess mu2)
@@ -307,6 +312,24 @@ inductive CapyHasType : CapyCaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .ex
   --    capture `⟦{ε x} ∪ {ε y}⟧`); it becomes the SECOND target `capp`'s
   --    capture argument, whose rule demands a valid (access-only) bound.
   CapyCaptureSet.AccessOnly Γ (.var (.M .epsilon) y) ->
+  --  * pseudo-peak freedom of the instantiation `D` and the arrow's annotations
+  --    `T1`/`T2` (2026-07-02, user decision; the `fresh`/`abs` well-formedness
+  --    family): the compiled separation transport (`CapySepCheck.compile`)
+  --    refutes its `sep_distinct` pseudo branches from the operands' pseudo-peak
+  --    freedom, and the operands here are `D` and the arrow's interference
+  --    footprint (built from `T1`/`T2`'s annotations).  Frozen (`pseudo_peak`)
+  --    atoms are compiler-internal devices; surface-written types and capture
+  --    instantiations never contain them.
+  D.NoPseudoPeak ->
+  T1.NoPseudoPeak ->
+  T2.NoPseudoPeak ->
+  --  * the DOMAIN annotation's capture is access-only (2026-07-02, user decision;
+  --    mirrors the `abs` rule's identical premise): the compiled wrap-lock's
+  --    self-cvar key item carries `T1.captureSet`'s access modes on `c`, and the
+  --    `unwrap` Satisfy discharge lowers `⟦D⟧.applyAccess a ⊑ ⟦D⟧` — valid for
+  --    ε/ro modes, not for `.drop`.  `abs` demands this at every introduction;
+  --    subsumption at the use-site is what loses it, so it is re-required here.
+  CapyCaptureSet.AccessOnly (Γ,C<:.unbound .epsilon) T1.captureSet ->
   CapyHasType (.var (.M .epsilon) x) Γ (.var x)
     (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
   CapyHasType (.var (.M .epsilon) y) Γ (.var y)

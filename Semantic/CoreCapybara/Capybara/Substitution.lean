@@ -166,10 +166,20 @@ def CapySubst.unpack (C : CapyCaptureSet s) (x : Var .var s) : CapySubst (s,C,x)
     | .there (.there X0) => CapyPureTy.tvar X0
 
 /-- Drops the innermost (capture-variable) binder from a capture set, lowering
-    it into the enclosing signature. Realised as the substitution that opens
-    that binder with the empty capture set, so references to it become `{}`. -/
-def CapyCaptureSet.dropCVar (cs : CapyCaptureSet (s,C)) : CapyCaptureSet s :=
-  CapyCaptureSet.subst cs (CapySubst.openCVar {})
+    it into the enclosing signature: references to the dropped binder become
+    `{}`.  Structural, NOT `subst (openCVar {})`: the `openCVar` substitution
+    wraps its witness in a frozen `pseudo_peak` (the lock-stability device),
+    which would plant inert `pseudo_peak ∅` atoms in every `interfere_set`
+    mentioning the bound cvar — breaking the surface pseudo-peak-freedom the
+    separation-check compilation relies on. -/
+def CapyCaptureSet.dropCVar : CapyCaptureSet (s,C) -> CapyCaptureSet s
+| .empty => .empty
+| .union cs1 cs2 => (CapyCaptureSet.dropCVar cs1) ∪ (CapyCaptureSet.dropCVar cs2)
+| .cvar _ .here => .empty
+| .cvar a (.there c) => .cvar a c
+| .var a (.bound (.there x)) => .var a (.bound x)
+| .var a (.free n) => .var a (.free n)
+| .pseudo_peak C => .pseudo_peak (CapyCaptureSet.dropCVar C)
 
 /-- Drops the innermost (type-variable) binder from a capture set. Capture sets
     never mention type variables, so this is the substitution that reindexes the

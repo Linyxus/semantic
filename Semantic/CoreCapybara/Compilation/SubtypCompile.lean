@@ -19,21 +19,6 @@ The `exi` case needs the `consCVar` coherence-preservation lemma (K2); the
 tracked in `notes/fresh-roadmap.md`.
 -/
 
-/-- `HasKind` weakens under a fresh target binder (companion to `Subcapt.weaken`). -/
-theorem HasKind.weaken {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {m : Mutability} {k : Kind}
-    (h : HasKind Γ C m) (b : Binding s k) :
-    HasKind (Γ.push b) (C.rename Rename.succ) m := by
-  induction h with
-  | empty => exact HasKind.empty
-  | union _ _ ih1 ih2 => exact HasKind.union ih1 ih2
-  | sc hsc _ ih => exact HasKind.sc (Subcapt.weaken hsc b) ih
-  | rw => exact HasKind.rw
-  | imm hlk hhas =>
-    exact HasKind.imm (Ctx.LookupLock.there hlk) hhas.rename
-  | ro =>
-    rw [CaptureSet.applyRO_rename]
-    exact HasKind.ro
-
 /-! ### `SubCoherent` — coherence up to capture-image subcapture
 
 The subtyping-compilation pipeline (`CapySubcapt.compile`/`CapySubbound.compile`/
@@ -72,15 +57,11 @@ structure CompilerCtx.SubCoherent (ctx : CompilerCtx s1 s2) : Prop where
     HasKind ctx.coreCtx (.cvar (.M .epsilon) (ctx.srcCtx.lookupCVar c)) .ro
 
 /-- Full coherence implies sub-coherence (the image equation gives the subcapture
-    reflexively) — GIVEN read-only provenance, which `Coherent` does not track: the
-    caller supplies `hro` from its enclosing locks (each source `unbound ro` cvar is
-    introduced by a `cpoly` whose compiled body sits under a lock recording
-    `({c}, ro)`, `CapyCaptureBound.mutabilityCtx`). -/
+    reflexively).  Read-only provenance now travels inside `Coherent` itself (the
+    `roLookup` field, shared verbatim with `SubCoherent`), so this needs no extra
+    argument. -/
 theorem CompilerCtx.Coherent.toSubCoherent {s1 s2 : Sig} {ctx : CompilerCtx s1 s2}
-    (hcoh : ctx.Coherent)
-    (hro : ∀ {c : BVar s1 .cvar} {a : CapyAuthority} {cb : CapyCaptureBound s1},
-      ctx.capyCtx.LookupCVar c a cb → cb = .unbound .ro →
-      HasKind ctx.coreCtx (.cvar (.M .epsilon) (ctx.srcCtx.lookupCVar c)) .ro) :
+    (hcoh : ctx.Coherent) :
     ctx.SubCoherent where
   closed := hcoh.closed
   capyClosed := hcoh.capyClosed
@@ -98,7 +79,7 @@ theorem CompilerCtx.Coherent.toSubCoherent {s1 s2 : Sig} {ctx : CompilerCtx s1 s
       exact Subcapt.sc_cvar hcx
   cvarLookup := hcoh.cvarLookup
   tvarLookup := hcoh.tvarLookup
-  roLookup := hro
+  roLookup := hcoh.roLookup
 
 /-- A fresh *target* Core binder preserves sub-coherence (the stored `Subcapt`
     facts weaken by the new binder). -/

@@ -99,5 +99,15 @@ structure CompilerCtx.Coherent (ctx : CompilerCtx s1 s2) : Prop where
   tvarLookup : ∀ {X : BVar s1 .tvar} {S : CapyPureTy s1},
     ctx.capyCtx.LookupTVar X S →
     ctx.coreCtx.LookupTVar (ctx.srcCtx.lookupTVar X) (CapyPureTy.compile S ctx)
+  /-- Read-only provenance: every source cvar declared `.unbound .ro` has a target
+      `HasKind _ _ .ro` witness (in practice via an enclosing lock's `MutabilityCtx`,
+      `HasKind.imm` — a compiled `cpoly [c <: unbound ro]` records `({c}, ro)` in its
+      body lock, `CapyCaptureBound.mutabilityCtx`).  This is what compiles source
+      `CapyHasKind.imm`, whose premise reads `c`'s declared mutability with no
+      structural (`applyRO`) witness on the set itself.  Shared verbatim with
+      `SubCoherent.roLookup`, so `toSubCoherent` needs no extra argument. -/
+  roLookup : ∀ {c : BVar s1 .cvar} {a : CapyAuthority} {cb : CapyCaptureBound s1},
+    ctx.capyCtx.LookupCVar c a cb → cb = .unbound .ro →
+    HasKind ctx.coreCtx (.cvar (.M .epsilon) (ctx.srcCtx.lookupCVar c)) .ro
 
 end Compilation

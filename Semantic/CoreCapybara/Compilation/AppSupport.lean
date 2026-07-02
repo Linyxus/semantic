@@ -190,6 +190,93 @@ private theorem CapySubtyp.exi_dest {Γ : CapyCtx s} {A : CapyTy .capt (s,C)}
     have he := h.isExiHead_eq
     simp [CapyTy.isExiHead] at he
 
+/-- Discriminates the `.typ` head of an existential-sorted type. -/
+private def CapyTy.isTypHead : CapyTy sort s → Bool
+  | .typ _ => true
+  | _ => false
+
+private theorem CapyTy.isTypHead_capt (T : CapyTy .capt s) : T.isTypHead = false := by
+  cases T <;> rfl
+
+/-- Source subtyping preserves the `.typ`-head discriminant (the `top` rule is
+    `.capt`-sorted, so a `.typ` head can never escape to `.top`). -/
+private theorem CapySubtyp.isTypHead_eq {Γ : CapyCtx s} {sort : CapyTySort}
+    {X Y : CapyTy sort s} (h : CapySubtyp Γ X Y) : X.isTypHead = Y.isTypHead := by
+  induction h with
+  | trans _ _ _ ih1 ih2 => exact ih1.trans ih2
+  | _ => first | rfl | simp only [CapyTy.isTypHead_capt]
+
+/-- Source subtyping out of a `.typ`-headed existential lands in a `.typ`. -/
+private theorem CapySubtyp.typ_dest {Γ : CapyCtx s} {A : CapyTy .capt s}
+    {E : CapyTy .exi s} (h : CapySubtyp Γ (.typ A) E) : ∃ B, E = .typ B := by
+  cases E with
+  | typ B => exact ⟨B, rfl⟩
+  | exi A' =>
+    have he := h.isTypHead_eq
+    simp [CapyTy.isTypHead] at he
+
+/-- Sort-generic core of `typ_typ_dest` (the sort index must be a variable for
+    the induction to fire). -/
+private theorem CapySubtyp.typ_typ_dest' {Γ : CapyCtx s} {sort : CapyTySort}
+    {X Y : CapyTy sort s} (h : CapySubtyp Γ X Y) :
+    ∀ (hsort : sort = CapyTySort.exi) {A B : CapyTy .capt s},
+      hsort ▸ X = CapyTy.typ A → hsort ▸ Y = CapyTy.typ B → CapySubtyp Γ A B := by
+  induction h with
+  | refl =>
+    rintro rfl A B hX hY
+    rw [hX] at hY
+    injection hY with _ hY'
+    subst hY'
+    exact CapySubtyp.refl
+  | trans hcl h1 h2 ih1 ih2 =>
+    rintro rfl A B hX hY
+    subst hX
+    subst hY
+    obtain ⟨M, rfl⟩ := h1.typ_dest
+    cases hcl with
+    | typ hMcl => exact CapySubtyp.trans hMcl (ih1 rfl rfl rfl) (ih2 rfl rfl rfl)
+  | typ hb =>
+    intro hsort
+    cases hsort
+    intro A B hX hY
+    injection hX with _ hX'
+    injection hY with _ hY'
+    subst hX'
+    subst hY'
+    exact hb
+  | exi _ _ =>
+    intro hsort
+    cases hsort
+    intro A B hX hY
+    cases hX
+  | _ => intro hsort; cases hsort
+
+/-- **`.typ`-congruence inversion**: subtyping between `.typ`-wrapped capturing
+    types comes from subtyping of the contents — a chain between `.typ`s passes
+    only through `.typ`s (`CapySubtyp.typ_dest`). -/
+theorem CapySubtyp.typ_typ_dest {Γ : CapyCtx s} {A B : CapyTy .capt s}
+    (h : CapySubtyp Γ (.typ A) (.typ B)) : CapySubtyp Γ A B :=
+  CapySubtyp.typ_typ_dest' h rfl rfl rfl
+
+/-- `captureSet` commutes with `openCVar` substitution (pointwise on the head's
+    cs slot; a `.tvar` head maps to a `.tvar`, keeping the capture empty — the
+    statement would be FALSE for a general substitution, whose tvar component
+    can introduce captures). -/
+theorem CapyTy.captureSet_subst_openCVar {s : Sig} {T : CapyTy .capt (s,C)}
+    {D : CapyCaptureSet s} :
+    (T.subst (CapySubst.openCVar D)).captureSet
+      = T.captureSet.subst (CapySubst.openCVar D) := by
+  cases T with
+  | tvar a => cases a with | there a' => rfl
+  | top => rfl
+  | arrow _ _ _ => rfl
+  | poly _ _ _ => rfl
+  | cpoly _ _ _ => rfl
+  | cap _ => rfl
+  | cell _ _ => rfl
+  | unit => rfl
+  | bool => rfl
+
 /-- General inversion of source variable typing at any existential type.  Every
     such derivation traces back to `var`, `readonly`, or `fresh`; the first two
     yield a self-refined declared type subtyping the assigned type (with the
@@ -306,5 +393,21 @@ theorem CapySubtyp.cell_not_arrow {s : Sig} {Γ : CapyCtx s} {C : CapyCaptureSet
     (h : CapySubtyp Γ (.typ (.cell C m)) (.typ (.arrow T1 cs T2))) : False := by
   have hb := h.typCellTopHead_preserved (by rfl)
   simp [CapyTy.typCellTopHead, CapyTy.cellTopHead] at hb
+
+/-- Applying a non-`.drop` access mode to a capture set lowers it (`ε` is the
+    identity, `ro` is `sc_ro`).  The `unwrap` Satisfy discharge uses this to
+    shrink the instantiated self-cvar lock item `⟦D⟧.applyAccess a ⊑ ⟦D⟧`;
+    `.drop` modes are excluded there by the app rule's `AccessOnly` premise on
+    the domain annotation. -/
+theorem Subcapt.applyAccess_nondrop {s : Sig} {Γ : Ctx s} {C : CaptureSet s}
+    {m : Mutability} :
+    Subcapt Γ (C.applyAccess (.M m)) C := by
+  cases m with
+  | epsilon =>
+    rw [CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+    exact Subcapt.refl
+  | ro =>
+    rw [CaptureSet.applyAccess_M, CaptureSet.applyMut_ro]
+    exact Subcapt.sc_ro
 
 end CoreCapybara
