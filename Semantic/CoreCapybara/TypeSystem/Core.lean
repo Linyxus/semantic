@@ -322,6 +322,17 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
+| consumer {T1 : Ty .capt (s,C)} :
+  T1.IsClosed ->
+  HasType
+    (((cs.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))) ∪
+      (.cvar (.M .epsilon) (.there .here)) ∪
+      (.cvar .drop (.there .here)))
+    ((Γ,C[.can_drop]<:.unbound),x:T1)
+    e
+    ((E.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))) ->
+  -----------------------------
+  HasType {} Γ (.consumer cs (.exi 1 T1) e) (.typ (.consumer (.exi 1 T1) cs E))
 | wrap :
   Ψ.IsClosed ->
   HasType
@@ -344,6 +355,13 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType {} Γ (.var y) (.typ T1) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
+| consumer_app {C1 : CaptureSet s} {T1 : Ty .capt (s,C)} :
+  SeqComp Γ C1 (.var (.M .epsilon) x) ->
+  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
+  HasType {} Γ (.var x) (.typ (.consumer (.exi 1 T1) (.var (.M .epsilon) x) E)) ->
+  HasType C1 Γ e (.exi 1 T1) ->
+  ----------------------------
+  HasType (C1 ∪ (.var (.M .epsilon) x)) Γ (.consumer_app x e) E
 | tapp {S : PureTy s} :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
   S.IsClosed ->

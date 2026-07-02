@@ -21,6 +21,7 @@ inductive Exp : Sig -> Type where
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
+| consumer_app : Var .var s -> Exp s -> Exp s
 | unwrap : Var .var s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
 | unpack : (n : Nat) -> Exp s -> Exp ((s.extendCVars n),x) -> Exp s
@@ -51,6 +52,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
 | .capp x cs, f => .capp (x.rename f) (cs.rename f)
+| .consumer_app x e, f => .consumer_app (x.rename f) (e.rename f)
 | .unwrap x, f => .unwrap (x.rename f)
 | .letin e1 e2, f => .letin (e1.rename f) (e2.rename (f.lift))
 | .unpack n e1 e2, f => .unpack n (e1.rename f) (e2.rename ((f.liftCVars n).lift))
@@ -146,6 +148,8 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     simp only [Exp.rename, Var.rename_id, PureTy.rename_id]
   | capp x cs =>
     simp only [Exp.rename, Var.rename_id, CaptureSet.rename_id]
+  | consumer_app x e ih =>
+    simp only [Exp.rename, Var.rename_id, ih]
   | unwrap x =>
     simp only [Exp.rename, Var.rename_id]
   | letin e1 e2 ih1 ih2 =>
@@ -224,6 +228,8 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simp only [Exp.rename, Var.rename_comp, PureTy.rename_comp]
   | capp x cs =>
     simp only [Exp.rename, Var.rename_comp, CaptureSet.rename_comp]
+  | consumer_app x e ih =>
+    simp only [Exp.rename, Var.rename_comp, ih]
   | unwrap x =>
     simp only [Exp.rename, Var.rename_comp]
   | letin e1 e2 ih1 ih2 =>
@@ -281,6 +287,7 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
+| consumer_app : Var.IsClosed x -> Exp.IsClosed e -> Exp.IsClosed (.consumer_app x e)
 | unwrap : Var.IsClosed x -> Exp.IsClosed (.unwrap x)
 | letin : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.letin e1 e2)
 | unpack : {s : Sig} -> {n : Nat} -> {e1 : Exp s} -> {e2 : Exp ((s.extendCVars n),x)} ->
