@@ -87,13 +87,13 @@ theorem Memory.FrameLive.refl {m : Memory} {t : Trace} : Memory.FrameLive m t m 
   The intermediate result of a `letin`/`unpack` is an *actual* answer (`m1` is a
   genuine `e1`-result), so the continuation can observe a live budget. -/
 inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
-| bs_pack {m : Memory} :
+| bs_pack {n : Nat} {cs : List.Vector (CaptureSet {}) n} {x : Var .var {}} {m : Memory} :
   BigStep m (.pack cs x) [] (.pack cs x) m
 | bs_alloc {m : Memory} {x : Nat} {l : Nat} :
   (hx : m.heap x ≠ none) ->
   (hfresh : m.heap l = none) ->
   BigStep m (.alloc (.free x)) [.alloc l]
-    (.pack (.var (.M .epsilon) (.free l)) (.free l)) (m.extend_mcell l x hfresh hx)
+    (.pack ⟨[.var (.M .epsilon) (.free l)], rfl⟩ (.free l)) (m.extend_mcell l x hfresh hx)
 | bs_val {m : Memory} {v : Exp {}} :
   (hv : Exp.IsSimpleVal v) ->
   BigStep m v [] v m
@@ -133,10 +133,11 @@ inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
   BigStep m e1 t1 (.var x) m1 ->
   BigStep m1 (e2.subst (Subst.openVar x)) t2 v2 m2 ->
   BigStep m (.letin e1 e2) (t1 ++ t2) v2 m2
-| bs_unpack {m m1 m2 : Memory} {x : Var .var {}} {cs : CaptureSet {}} :
+| bs_unpack {m m1 m2 : Memory} {n : Nat} {x : Var .var {}}
+    {cs : List.Vector (CaptureSet {}) n} {e2 : Exp ((Sig.extendCVars {} n),x)} :
   BigStep m e1 t1 (.pack cs x) m1 ->
   BigStep m1 (e2.subst (Subst.unpack cs x)) t2 v2 m2 ->
-  BigStep m (.unpack e1 e2) (t1 ++ t2) v2 m2
+  BigStep m (.unpack n e1 e2) (t1 ++ t2) v2 m2
 | bs_read {m : Memory} {x y n : Nat} {hv R} :
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
   m.lookup y = some (.capability (.mcell n .live)) ->
@@ -318,14 +319,15 @@ inductive Safe : Nat -> Memory -> Exp {} -> Prop where
   (h_var : ∀ {t1 : Trace} {m1} {x : Var .var {}},
     BigStep m e1 t1 (.var x) m1 -> Safe (k - t1.readCount) m1 (e2.subst (Subst.openVar x))) ->
   Safe k m (.letin e1 e2)
-| unpack {k : Nat} {m : Memory} :
+| unpack {k : Nat} {m : Memory} {n : Nat} {e1 : Exp {}}
+    {e2 : Exp ((Sig.extendCVars {} n),x)} :
   Safe k m e1 ->
   (h_ans : ∀ t1 v m1, BigStep m e1 t1 v m1 -> t1.readCount < k ->
-    v.IsPack ∧ Exp.WfInHeap v m1.heap) ->
-  (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : CaptureSet {}},
+    v.IsPack n ∧ Exp.WfInHeap v m1.heap) ->
+  (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : List.Vector (CaptureSet {}) n},
     BigStep m e1 t1 (.pack cs x) m1 ->
       Safe (k - t1.readCount) m1 (e2.subst (Subst.unpack cs x))) ->
-  Safe k m (.unpack e1 e2)
+  Safe k m (.unpack n e1 e2)
 | read {k : Nat} {m : Memory} {x y n : Nat} {hv R} :
   m.lookup x = some (.val ⟨.reader (.free y), hv, R⟩) ->
   m.lookup y = some (.capability (.mcell n .live)) ->
@@ -919,7 +921,11 @@ theorem BigStep.wf_answer {m : Memory} {e : Exp {}} {t v m'}
   | bs_wrap => exact hwf
   | bs_alloc hlk hfresh =>
     exact Exp.WfInHeap.wf_pack
-      (CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh hlk))
+      (fun cs hmem => by
+        cases hmem with
+        | head =>
+          exact CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh hlk)
+        | tail _ h => cases h)
       (Var.WfInHeap.wf_free (Memory.extend_mcell_lookup hfresh hlk))
   | bs_invoke _ _ => exact Exp.WfInHeap.wf_unit
   | bs_write _ _ => exact Exp.WfInHeap.wf_unit
@@ -2507,7 +2513,7 @@ theorem BigStep.appears_allocd_of_cap {m : Memory} {e : Exp {}} {t v m' l c}
       | masked => simp [Cell.subsumes] at hcy
       | capability cc => exact Or.inl (ih1 hl hsrc)
   | bs_unpack hbs1 hbs2 ih1 ih2 =>
-    rename_i _ _ _ _ _ _ m1 _ _ _
+    rename_i m1 _ _ _ _ _
     refine Trace.allocd_append.mpr ?_
     rcases hsrc : m1.lookup l with _ | c0
     · exact Or.inr (ih2 hsrc hl')
@@ -2676,7 +2682,7 @@ theorem BigStep.live_appears_allocd {m : Memory} {e : Exp {}} {t v m' l b}
     · obtain ⟨b1, hc'⟩ := Memory.mcell_lookup_down hbs2.subsumes hsrc hl'
       exact Or.inl (ih1 hl hc')
   | bs_unpack hbs1 hbs2 ih1 ih2 =>
-    rename_i _ _ _ _ _ _ m1 _ _ _
+    rename_i m1 _ _ _ _ _
     refine Trace.allocd_append.mpr ?_
     rcases hsrc : m1.lookup l with _ | c
     · exact Or.inr (ih2 hsrc hl')
@@ -3554,7 +3560,8 @@ theorem BigStep.simpleVal_eq {m : Memory} {v : Exp {}} {t v' m'}
     (hv : Exp.IsSimpleVal v) (hbs : BigStep m v t v' m') : t = [] ∧ v' = v ∧ m' = m := by
   cases hv <;> cases hbs <;> exact ⟨rfl, rfl, rfl⟩
 
-theorem Eval.eval_pack {m : Memory} {cs : CaptureSet {}} {x : Var .var {}} {Q : Tpost}
+theorem Eval.eval_pack {m : Memory} {n : Nat} {cs : List.Vector (CaptureSet {}) n}
+    {x : Var .var {}} {Q : Tpost}
     (hQ : Q [] (.pack cs x) m) : Eval k m (.pack cs x) Q := by
   refine ⟨Safe.ans (Exp.IsAns.is_val Exp.IsVal.pack), ?_⟩
   intro t v m' hbs
@@ -3695,7 +3702,7 @@ theorem Eval.eval_write {m : Memory} {x y : Nat} {n0 : Nat} {Q : Tpost}
 theorem Eval.eval_alloc {m : Memory} {x : Nat} {Q : Tpost}
     (hlk : m.heap x ≠ none)
     (h_post : ∀ l (hfresh : m.heap l = none),
-      Q [.alloc l] (.pack (.var (.M .epsilon) (.free l)) (.free l))
+      Q [.alloc l] (.pack ⟨[.var (.M .epsilon) (.free l)], rfl⟩ (.free l))
         (m.extend_mcell l x hfresh hlk)) :
     Eval k m (.alloc (.free x)) Q := by
   -- Faithful-cell alloc: the fresh cell stores the value location `x`; the only `BigStep`
@@ -3837,19 +3844,23 @@ theorem Eval.eval_letin {k : Nat} {m : Memory} {e1 : Exp {}} {e2 : Exp ({},x)} {
 
 /-- `unpack`: like `letin`, but the `e1`-answer is a `pack`.  Same budget discipline
   as `eval_letin`: continuation obligations only within budget, overflow internalized. -/
-theorem Eval.eval_unpack {k : Nat} {m : Memory} {e1 : Exp {}} {e2 : Exp ({},C,x)} {Q Q1 : Tpost}
+theorem Eval.eval_unpack {k : Nat} {m : Memory} {n : Nat} {e1 : Exp {}}
+    {e2 : Exp ((Sig.extendCVars {} n),x)} {Q Q1 : Tpost}
     (he1 : Eval k m e1 Q1)
     (hQ_over : ∀ t v m', k ≤ t.readCount -> Q t v m')
     (h_nonstuck : ∀ {t1 : Trace} {m1 : Memory} {v : Exp {}}, t1.readCount < k ->
-      Q1 t1 v m1 -> v.IsPack ∧ Exp.WfInHeap v m1.heap)
-    (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : CaptureSet {}}, t1.readCount < k ->
+      Q1 t1 v m1 -> v.IsPack n ∧ Exp.WfInHeap v m1.heap)
+    (h_val : ∀ {t1 : Trace} {m1} {x : Var .var {}} {cs : List.Vector (CaptureSet {}) n},
+      t1.readCount < k ->
       m1.subsumes m ->
       Memory.FrameLive m t1 m1 ->
       (∀ {l c}, m.lookup l = none ->
         m1.lookup l = some (.capability c) -> Trace.allocd t1 l) ->
-      (hwf_x : x.WfInHeap m1.heap) -> (hwf_cs : cs.WfInHeap m1.heap) -> Q1 t1 (.pack cs x) m1 ->
+      (hwf_x : x.WfInHeap m1.heap) ->
+      (hwf_cs : ∀ cs' ∈ cs.toList, CaptureSet.WfInHeap cs' m1.heap) ->
+      Q1 t1 (.pack cs x) m1 ->
       Eval (k - t1.readCount) m1 (e2.subst (Subst.unpack cs x)) (fun t2 => Q (t1 ++ t2))) :
-    Eval k m (.unpack e1 e2) Q := by
+    Eval k m (.unpack n e1 e2) Q := by
   refine ⟨?_, ?_⟩
   · refine Safe.unpack he1.1
       (fun t1 v m1 hrun hbud => h_nonstuck hbud (he1.2 t1 v m1 hrun)) ?_

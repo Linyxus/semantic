@@ -324,7 +324,7 @@ inductive GSeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
   (hfresh : m.heap l = none) ->
   GSeqStep [.alloc l] m (.alloc (.free x))
     (m.extend_mcell l x hfresh hx)
-    (.pack (.var (.M .epsilon) (.free l)) (.free l))
+    (.pack ⟨[.var (.M .epsilon) (.free l)], rfl⟩ (.free l))
 | step_drop :
   (hx : m.lookup x = some (.capability (.mcell n .live))) ->
   GSeqStep [.dealloc x] m (.drop (.free x))
@@ -332,9 +332,9 @@ inductive GSeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_ctx_letin :
   GSeqStep t m e1 m' e1' ->
   GSeqStep t m (.letin e1 e2) m' (.letin e1' e2)
-| step_ctx_unpack :
+| step_ctx_unpack {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)} :
   GSeqStep t m e1 m' e1' ->
-  GSeqStep t m (.unpack e1 e2) m' (.unpack e1' e2)
+  GSeqStep t m (.unpack n e1 e2) m' (.unpack n e1' e2)
 | step_par_left {C1 C2 : CaptureSet {}} :
   GSeqStep t m e1 m' e1' ->
   (ht : TraceOk t (C1.reachability m)) ->
@@ -360,8 +360,9 @@ inductive GSeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
     m (.letin v e)
     (m.extend l ⟨v, hv, compute_reachability m.heap v hv⟩ hwf rfl hfresh)
     (e.subst (Subst.openVar (.free l)))
-| step_unpack :
-  GSeqStep [] m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
+| step_unpack {n : Nat} {cs : List.Vector (CaptureSet {}) n}
+    {e : Exp ((Sig.extendCVars {} n),x)} :
+  GSeqStep [] m (.unpack n (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
 
 /-- Guards are extra: every guarded sequential step is a plain sequential step. -/
 theorem GSeqStep.toSeqStep {t : Trace} {m m' : Memory} {e e' : Exp {}}
@@ -451,9 +452,9 @@ theorem gseqreduce_ctx_letin {C : Trace} {m m' : Memory} {e1 e1' : Exp {}} {e2 :
   | step h _ ih => exact GSeqReduce.step (GSeqStep.step_ctx_letin h) ih
 
 theorem gseqreduce_ctx_unpack {tt : Trace} {m m' : Memory} {e1 e1' : Exp {}}
-    {e2 : Exp ({},C,x)}
+    {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
     (hred : GSeqReduce tt m e1 m' e1') :
-    GSeqReduce tt m (.unpack e1 e2) m' (.unpack e1' e2) := by
+    GSeqReduce tt m (.unpack n e1 e2) m' (.unpack n e1' e2) := by
   induction hred with
   | refl => exact GSeqReduce.refl
   | step h _ ih => exact GSeqReduce.step (GSeqStep.step_ctx_unpack h) ih
@@ -1261,15 +1262,17 @@ theorem SeqReduceN.letin_inv : ∀ {n : Nat} {t : Trace} {m mf : Memory}
 
 /-- **`unpack` decomposition.**  A sequential run of `unpack eh ek` to an answer runs the head
   `eh` to a `pack`, then continues (`step_unpack` then `ek`). -/
-theorem SeqReduceN.unpack_inv : ∀ {n : Nat} {t : Trace} {m mf : Memory}
-    {eh a : Exp {}} {ek : Exp ({},C,x)},
-    SeqReduceN n t m (.unpack eh ek) mf a → a.IsAns →
-    ∃ nh th mh cs x trest, SeqReduceN nh th m eh mh (.pack cs x) ∧
-      SeqReduce trest mh (.unpack (.pack cs x) ek) mf a ∧ t = th ++ trest ∧ nh < n := by
+theorem SeqReduceN.unpack_inv : ∀ {n : Nat} {t : Trace} {m mf : Memory} {nb : Nat}
+    {eh a : Exp {}} {ek : Exp ((Sig.extendCVars {} nb),x)},
+    SeqReduceN n t m (.unpack nb eh ek) mf a → a.IsAns →
+    ∃ (nh : Nat) (th : Trace) (mh : Memory) (cs : List.Vector (CaptureSet {}) nb)
+      (x : Var .var {}) (trest : Trace),
+      SeqReduceN nh th m eh mh (.pack cs x) ∧
+      SeqReduce trest mh (.unpack nb (.pack cs x) ek) mf a ∧ t = th ++ trest ∧ nh < n := by
   intro n
   induction n using Nat.strong_induction_on with
   | _ n ihn =>
-    intro t m mf eh ek a hred hans
+    intro t m mf nb eh ek a hred hans
     cases hred with
     | refl => cases hans with | is_val hv => cases hv
     | step h1 hrest =>
@@ -1845,15 +1848,17 @@ theorem GSeqReduceN.letin_inv : ∀ {n : Nat} {t : Trace} {m mf : Memory}
           by simp, by omega⟩
 
 /-- **Guarded `unpack` decomposition** (mirror of `SeqReduceN.unpack_inv`). -/
-theorem GSeqReduceN.unpack_inv : ∀ {n : Nat} {t : Trace} {m mf : Memory}
-    {eh a : Exp {}} {ek : Exp ({},C,x)},
-    GSeqReduceN n t m (.unpack eh ek) mf a → a.IsAns →
-    ∃ nh th mh cs x trest, GSeqReduceN nh th m eh mh (.pack cs x) ∧
-      GSeqReduce trest mh (.unpack (.pack cs x) ek) mf a ∧ t = th ++ trest ∧ nh < n := by
+theorem GSeqReduceN.unpack_inv : ∀ {n : Nat} {t : Trace} {m mf : Memory} {nb : Nat}
+    {eh a : Exp {}} {ek : Exp ((Sig.extendCVars {} nb),x)},
+    GSeqReduceN n t m (.unpack nb eh ek) mf a → a.IsAns →
+    ∃ (nh : Nat) (th : Trace) (mh : Memory) (cs : List.Vector (CaptureSet {}) nb)
+      (x : Var .var {}) (trest : Trace),
+      GSeqReduceN nh th m eh mh (.pack cs x) ∧
+      GSeqReduce trest mh (.unpack nb (.pack cs x) ek) mf a ∧ t = th ++ trest ∧ nh < n := by
   intro n
   induction n using Nat.strong_induction_on with
   | _ n ihn =>
-    intro t m mf eh ek a hred hans
+    intro t m mf nb eh ek a hred hans
     cases hred with
     | refl => cases hans with | is_val hv => cases hv
     | step h1 hrest =>

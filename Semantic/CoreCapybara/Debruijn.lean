@@ -92,6 +92,11 @@ def Rename.liftCVars (f : Rename s1 s2) : (n : Nat) -> Rename (s1.extendCVars n)
 def Rename.succ : Rename s (s,,k) where
   var := fun x => x.there
 
+/-- Weakens all variables past `n` fresh capture-variable binders. -/
+def Rename.weakenCVars : (n : Nat) → Rename s (s.extendCVars n)
+| 0 => Rename.id
+| n+1 => (Rename.weakenCVars n).comp Rename.succ
+
 /-- Function extensionality for renamings.
   Two renamings are equal if they map all variables equally. -/
 theorem Rename.funext {f1 f2 : Rename s1 s2}

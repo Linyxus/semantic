@@ -125,6 +125,18 @@ def Rebind.liftCVar
       simp only [Rename.lift] at h
       exact congrArg BVar.there (ρ.cvar_injective x y (BVar.there.inj h))
 
+/-- `Rebind.liftCVar` iterated over the `n` evidences of a pack: rebinding lifts
+    under the `n` capture binders of `TypeEnv.extend_cvars`. -/
+def Rebind.liftCVars {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
+    (ρ : Rebind env1 f env2) (m : Memory) (a : Authority) :
+    {n : Nat} → (CS : List.Vector (CaptureSet {}) n) →
+    Rebind (TypeEnv.extend_cvars env1 m a CS) (f.liftCVars n)
+      (TypeEnv.extend_cvars env2 m a CS)
+  | 0, _ => ρ
+  | _ + 1, CS =>
+    (Rebind.liftCVars ρ m a (List.Vector.tail CS)).liftCVar (List.Vector.head CS)
+      (cap := (List.Vector.head CS).ground_denot m) (a := a)
+
 theorem rebind_resolved_capture_set {C : CaptureSet s1}
   (ρ : Rebind env1 f env2) :
   C.subst (Subst.from_TypeEnv env1) =
@@ -496,22 +508,16 @@ def rebind_exi_val_denot
     intro k st m e
     simp only [Ty.exi_val_denot, Ty.rename]
     exact ih k st m e
-  | .exi T => by
+  | .exi n T => by
     intro k st m e
     simp only [Ty.exi_val_denot, Ty.rename]
-    cases hresolve : resolve m.heap e
-    · simp only
-    · rename_i e'
-      cases e'
-      case pack =>
-        rename_i CS y
-        simp only [List.empty_eq, and_congr_right_iff]
-        intro _hwf _hdf
-        exact rebind_val_denot
-          (ρ.liftCVar CS (cap := CS.ground_denot m) (a := .can_drop)) T k st m (Exp.var y)
-      all_goals {
-        simp only
-      }
+    constructor
+    · rintro ⟨CS, y, hres, hwf, hdf, hdisj, hbody⟩
+      exact ⟨CS, y, hres, hwf, hdf, hdisj,
+        (rebind_val_denot (ρ.liftCVars m .can_drop CS) T k st m (Exp.var y)).mp hbody⟩
+    · rintro ⟨CS, y, hres, hwf, hdf, hdisj, hbody⟩
+      exact ⟨CS, y, hres, hwf, hdf, hdisj,
+        (rebind_val_denot (ρ.liftCVars m .can_drop CS) T k st m (Exp.var y)).mpr hbody⟩
 
 def rebind_exi_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -569,6 +575,39 @@ def Rebind.lweaken {env : TypeEnv s} :
 
 theorem PeakSet.rename_id {s : Sig} {ps : PeakSet s} : ps.rename Rename.id = ps := by
   cases ps; simp only [PeakSet.rename, CaptureSet.rename_id]
+
+theorem PeakSet.rename_comp {s1 s2 s3 : Sig} {ps : PeakSet s1}
+    {f : Rename s1 s2} {g : Rename s2 s3} :
+    (ps.rename f).rename g = ps.rename (f.comp g) := by
+  cases ps; simp only [PeakSet.rename, CaptureSet.rename_comp]
+
+def Rebind.refl {env : TypeEnv s} : Rebind env Rename.id env where
+  var := fun _ => rfl
+  var_peaks := fun _ => PeakSet.rename_id
+  tvar := fun _ => rfl
+  cvar := fun _ => rfl
+  cvar_injective := fun _ _ h => h
+
+def Rebind.comp {s1 s2 s3 : Sig} {env1 : TypeEnv s1} {env2 : TypeEnv s2} {env3 : TypeEnv s3}
+    {f : Rename s1 s2} {g : Rename s2 s3}
+    (ρ1 : Rebind env1 f env2) (ρ2 : Rebind env2 g env3) :
+    Rebind env1 (f.comp g) env3 where
+  var := fun x => (ρ1.var x).trans (ρ2.var (f.var x))
+  var_peaks := fun x => by
+    rw [← PeakSet.rename_comp, ρ1.var_peaks x]
+    exact ρ2.var_peaks (f.var x)
+  tvar := fun x => (ρ1.tvar x).trans (ρ2.tvar (f.var x))
+  cvar := fun x => (ρ1.cvar x).trans (ρ2.cvar (f.var x))
+  cvar_injective := fun x y h => ρ1.cvar_injective x y (ρ2.cvar_injective _ _ h)
+
+/-- The `n`-fold capture-variable weakening `Rebind`: an environment embeds into its
+    `TypeEnv.extend_cvars`-extension along `Rename.weakenCVars n`. -/
+def Rebind.cweakenCVars {s : Sig} {env : TypeEnv s} {m : Memory} {a : Authority} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} →
+    Rebind env (Rename.weakenCVars n) (TypeEnv.extend_cvars env m a CS)
+  | 0, _ => Rebind.refl
+  | _ + 1, CS =>
+    (Rebind.cweakenCVars (CS := List.Vector.tail CS)).comp Rebind.cweaken
 
 /-- Authority is denotationally inert: `val_denot`/`exi_val_denot` read the
 environment only through `lookup_*`/`from_TypeEnv`, which discard the authority

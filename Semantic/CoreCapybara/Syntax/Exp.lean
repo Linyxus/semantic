@@ -22,7 +22,7 @@ inductive Exp : Sig -> Type where
 | capp : Var .var s -> CaptureSet s -> Exp s
 | unwrap : Var .var s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
-| unpack : Exp s -> Exp ((s,C),x) -> Exp s
+| unpack : (n : Nat) -> Exp s -> Exp ((s.extendCVars n),x) -> Exp s
 | unit : Exp s
 | btrue : Exp s
 | bfalse : Exp s
@@ -51,7 +51,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .capp x cs, f => .capp (x.rename f) (cs.rename f)
 | .unwrap x, f => .unwrap (x.rename f)
 | .letin e1 e2, f => .letin (e1.rename f) (e2.rename (f.lift))
-| .unpack e1 e2, f => .unpack (e1.rename f) (e2.rename (f.lift.lift))
+| .unpack n e1 e2, f => .unpack n (e1.rename f) (e2.rename ((f.liftCVars n).lift))
 | .unit, _ => .unit
 | .btrue, _ => .btrue
 | .bfalse, _ => .bfalse
@@ -91,8 +91,10 @@ inductive Exp.IsSimpleAns : Exp s -> Prop where
 | is_var :
   Exp.IsSimpleAns (.var x)
 
-inductive Exp.IsPack : Exp s -> Prop where
-| pack : Exp.IsPack (.pack css x)
+/-- `e` is a `pack` value of arity exactly `n`.  The arity index is essential for
+    progress: `unpack n` only fires on a pack whose evidence vector has length `n`. -/
+inductive Exp.IsPack {s : Sig} (n : Nat) : Exp s -> Prop where
+| pack {css : List.Vector (CaptureSet s) n} {x : Var .var s} : Exp.IsPack n (.pack css x)
 
 /-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
@@ -142,9 +144,9 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | letin e1 e2 ih1 ih2 =>
     simp only [Exp.rename, Rename.lift_id, ih1]
     exact congrArg (Exp.letin e1) ih2
-  | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.rename, Rename.lift_id, ih1]
-    exact congrArg (Exp.unpack e1) ih2
+  | unpack n e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, Rename.liftCVars_id, Rename.lift_id, ih1]
+    exact congrArg (Exp.unpack n e1) ih2
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -211,10 +213,10 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
   | letin e1 e2 ih1 ih2 =>
     simpa only [Exp.rename, Rename.lift_comp, ih1] using
       congrArg (Exp.letin (e1.rename (f.comp g))) (ih2 (f := f.lift) (g := g.lift))
-  | unpack e1 e2 ih1 ih2 =>
-    simpa only [Exp.rename, Rename.lift_comp, ih1] using
-      congrArg (Exp.unpack (e1.rename (f.comp g)))
-        (ih2 (f := f.lift.lift) (g := g.lift.lift))
+  | unpack n e1 e2 ih1 ih2 =>
+    simpa only [Exp.rename, Rename.liftCVars_comp, Rename.lift_comp, ih1] using
+      congrArg (Exp.unpack n (e1.rename (f.comp g)))
+        (ih2 (f := (f.liftCVars n).lift) (g := (g.liftCVars n).lift))
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -263,7 +265,8 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
 | unwrap : Var.IsClosed x -> Exp.IsClosed (.unwrap x)
 | letin : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.letin e1 e2)
-| unpack : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack e1 e2)
+| unpack : {s : Sig} -> {n : Nat} -> {e1 : Exp s} -> {e2 : Exp ((s.extendCVars n),x)} ->
+    Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack n e1 e2)
 | unit : Exp.IsClosed .unit
 | btrue : Exp.IsClosed .btrue
 | bfalse : Exp.IsClosed .bfalse

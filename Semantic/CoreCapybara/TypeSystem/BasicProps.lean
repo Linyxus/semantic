@@ -400,10 +400,10 @@ theorem HasType.exp_is_closed
       exact CaptureSet.rename_closed_inv h_use
     · exact hΨ_closed
     · exact Exp.rename_closed_inv ih
-  case pack C x T =>
+  case pack hCs_closed _ _ _ _ ih =>
     constructor
-    · assumption
-    · cases T
+    · exact CaptureSet.unionAll_closed_inv hCs_closed
+    · cases ih
       assumption
   case app =>
     rename_i ih_x ih_y

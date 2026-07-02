@@ -1449,9 +1449,9 @@ inductive Ty.WfInHeap : Ty sort s -> Heap -> Prop where
   Ty.WfInHeap T H ->
   Ty.WfInHeap (.reader cs T) H
 -- Existential types
-| wf_exi :
+| wf_exi {s : Sig} {n : Nat} {T : Ty .capt (s.extendCVars n)} {H : Heap} :
   Ty.WfInHeap T H ->
-  Ty.WfInHeap (.exi T) H
+  Ty.WfInHeap (.exi n T) H
 | wf_typ :
   Ty.WfInHeap T H ->
   Ty.WfInHeap (.typ T) H
@@ -1492,10 +1492,10 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
 | wf_drop :
   Var.WfInHeap x H ->
   Exp.WfInHeap (.drop x) H
-| wf_pack :
-  CaptureSet.WfInHeap cs H ->
+| wf_pack {s : Sig} {n : Nat} {css : List.Vector (CaptureSet s) n} {x : Var .var s} {H : Heap} :
+  (∀ cs ∈ css.toList, CaptureSet.WfInHeap cs H) ->
   Var.WfInHeap x H ->
-  Exp.WfInHeap (.pack cs x) H
+  Exp.WfInHeap (.pack css x) H
 | wf_app :
   Var.WfInHeap x H ->
   Var.WfInHeap y H ->
@@ -1515,10 +1515,10 @@ inductive Exp.WfInHeap : Exp s -> Heap -> Prop where
   Exp.WfInHeap e1 H ->
   Exp.WfInHeap e2 H ->
   Exp.WfInHeap (.letin e1 e2) H
-| wf_unpack :
+| wf_unpack {s : Sig} {n : Nat} {e1 : Exp s} {e2 : Exp ((s.extendCVars n),x)} {H : Heap} :
   Exp.WfInHeap e1 H ->
   Exp.WfInHeap e2 H ->
-  Exp.WfInHeap (.unpack e1 e2) H
+  Exp.WfInHeap (.unpack n e1 e2) H
 | wf_unit :
   Exp.WfInHeap .unit H
 | wf_btrue :
@@ -1638,7 +1638,8 @@ theorem Exp.wf_of_closed {e : Exp s} {H : Heap}
   | boxed hcs hΨ _ ih =>
     exact Exp.WfInHeap.wf_boxed (CaptureSet.wf_of_closed hcs) (ModalCtx.wf_of_closed hΨ) ih
   | pack hcs hx =>
-    exact Exp.WfInHeap.wf_pack (CaptureSet.wf_of_closed hcs) (Var.wf_of_closed hx)
+    exact Exp.WfInHeap.wf_pack
+      (fun cs hmem => CaptureSet.wf_of_closed (hcs cs hmem)) (Var.wf_of_closed hx)
   | app hx hy =>
     exact Exp.WfInHeap.wf_app (Var.wf_of_closed hx) (Var.wf_of_closed hy)
   | tapp hx hT =>
@@ -1778,7 +1779,8 @@ theorem Exp.wf_monotonic
       (CaptureSet.wf_monotonic hsub hwf_cs) (ModalCtx.wf_monotonic hsub hwf_Ψ) (ih_e hsub)
   | wf_pack hwf_cs hwf_x =>
     exact Exp.WfInHeap.wf_pack
-      (CaptureSet.wf_monotonic hsub hwf_cs) (Var.wf_monotonic hsub hwf_x)
+      (fun cs hmem => CaptureSet.wf_monotonic hsub (hwf_cs cs hmem))
+      (Var.wf_monotonic hsub hwf_x)
   | wf_app hwf_x hwf_y =>
     exact Exp.WfInHeap.wf_app (Var.wf_monotonic hsub hwf_x) (Var.wf_monotonic hsub hwf_y)
   | wf_tapp hwf_x hwf_T =>
@@ -1809,8 +1811,8 @@ theorem Exp.wf_inv_letin
 /-- Inversion for unpack: if `unpack e1 in e2` is well-formed,
     then both `e1` and `e2` are well-formed. -/
 theorem Exp.wf_inv_unpack
-  {e1 : Exp s} {e2 : Exp ((s,C),x)} {H : Heap}
-  (hwf : Exp.WfInHeap (.unpack e1 e2) H) :
+  {n : Nat} {e1 : Exp s} {e2 : Exp ((s.extendCVars n),x)} {H : Heap}
+  (hwf : Exp.WfInHeap (.unpack n e1 e2) H) :
   Exp.WfInHeap e1 H ∧ Exp.WfInHeap e2 H := by
   cases hwf with
   | wf_unpack hwf1 hwf2 => exact ⟨hwf1, hwf2⟩
@@ -1971,7 +1973,7 @@ theorem Exp.wf_dom_subsumes {h1 h2 : Heap}
   | wf_alloc hwf_x => exact .wf_alloc (Var.wf_dom_subsumes hsub hwf_x)
   | wf_drop hwf_x => exact .wf_drop (Var.wf_dom_subsumes hsub hwf_x)
   | wf_pack hwf_cs hwf_x =>
-    exact .wf_pack (CaptureSet.wf_dom_subsumes hsub hwf_cs)
+    exact .wf_pack (fun cs hmem => CaptureSet.wf_dom_subsumes hsub (hwf_cs cs hmem))
                    (Var.wf_dom_subsumes hsub hwf_x)
   | wf_app hwf_x hwf_y =>
     exact .wf_app (Var.wf_dom_subsumes hsub hwf_x) (Var.wf_dom_subsumes hsub hwf_y)
@@ -2714,7 +2716,12 @@ theorem Exp.wf_rename
     simpa only [Exp.rename] using (Exp.WfInHeap.wf_drop (Var.wf_rename hwf_x))
   | wf_pack hwf_cs hwf_x =>
     simpa only [Exp.rename] using
-      (Exp.WfInHeap.wf_pack (CaptureSet.wf_rename hwf_cs) (Var.wf_rename hwf_x))
+      (Exp.WfInHeap.wf_pack
+        (fun cs hmem => by
+          rw [List.Vector.toList_map] at hmem
+          obtain ⟨cs', hmem', rfl⟩ := List.mem_map.mp hmem
+          exact CaptureSet.wf_rename (hwf_cs cs' hmem'))
+        (Var.wf_rename hwf_x))
   | wf_app hwf_x hwf_y =>
     simpa only [Exp.rename] using
       (Exp.WfInHeap.wf_app (Var.wf_rename hwf_x) (Var.wf_rename hwf_y))
@@ -2790,6 +2797,16 @@ theorem Subst.wf_lift
       simpa only [Subst.lift] using (CaptureSet.WfInHeap.wf_cvar)
     | there C =>
       simpa only [Subst.lift] using CaptureSet.wf_rename (hwf_σ.wf_cvar C)
+
+/-- Lifting a well-formed substitution under `n` capture-variable binders
+    preserves well-formedness. -/
+theorem Subst.wf_liftCVars
+  {σ : Subst s1 s2}
+  {H : Heap}
+  (hwf_σ : σ.WfInHeap H) :
+  {n : Nat} → (σ.liftCVars n).WfInHeap H
+  | 0 => hwf_σ
+  | _ + 1 => Subst.wf_lift (Subst.wf_liftCVars hwf_σ)
 
 /-- Well-formed substitutions preserve well-formedness of variables. -/
 theorem Var.wf_subst
@@ -2984,7 +3001,7 @@ theorem Ty.wf_subst
       (Ty.WfInHeap.wf_reader (CaptureSet.wf_subst hwf_cs hwf_σ) (ih_T hwf_σ))
   | wf_exi _ ih =>
     simpa only [Ty.subst] using
-      (Ty.WfInHeap.wf_exi (ih (Subst.wf_lift hwf_σ)))
+      (Ty.WfInHeap.wf_exi (ih (Subst.wf_liftCVars hwf_σ)))
   | wf_typ _ ih =>
     simpa only [Ty.subst] using (Ty.WfInHeap.wf_typ (ih hwf_σ))
 
@@ -3033,7 +3050,10 @@ theorem Exp.wf_subst
   | wf_pack hwf_cs hwf_x =>
     simpa only [Exp.subst] using
       (Exp.WfInHeap.wf_pack
-        (CaptureSet.wf_subst hwf_cs hwf_σ)
+        (fun cs hmem => by
+          rw [List.Vector.toList_map] at hmem
+          obtain ⟨cs', hmem', rfl⟩ := List.mem_map.mp hmem
+          exact CaptureSet.wf_subst (hwf_cs cs' hmem') hwf_σ)
         (Var.wf_subst hwf_x hwf_σ))
   | wf_app hwf_x hwf_y =>
     simpa only [Exp.subst] using
@@ -3056,7 +3076,7 @@ theorem Exp.wf_subst
     simpa only [Exp.subst] using
       (Exp.WfInHeap.wf_unpack
         (ih1 hwf_σ)
-        (ih2 (Subst.wf_lift (Subst.wf_lift hwf_σ))))
+        (ih2 (Subst.wf_lift (Subst.wf_liftCVars hwf_σ))))
   | wf_unit =>
     simpa only [Exp.subst] using (Exp.WfInHeap.wf_unit)
   | wf_btrue =>
@@ -3144,37 +3164,60 @@ theorem Subst.wf_openCVar
     | there C0 =>
       simpa only [Subst.openCVar] using (CaptureSet.WfInHeap.wf_cvar)
 
-/-- Unpack substitution is well-formed if both the capture set and variable are well-formed. -/
+/-- The parallel opening substitution for `n` capture variables is well-formed if
+    every evidence in the vector is well-formed. -/
+theorem Subst.wf_openCVars {H : Heap} :
+  {n : Nat} → {Cs : List.Vector (CaptureSet s) n} →
+  (∀ C ∈ Cs.toList, CaptureSet.WfInHeap C H) →
+  (Subst.openCVars Cs).WfInHeap H
+  | 0, _, _ => by
+    constructor
+    · intro y
+      simpa only [Subst.openCVars, Subst.id] using (Var.WfInHeap.wf_bound)
+    · intro X
+      simpa only [Subst.openCVars, Subst.id, PureTy.WfInHeap] using (Ty.WfInHeap.wf_tvar)
+    · intro C
+      simpa only [Subst.openCVars, Subst.id] using (CaptureSet.WfInHeap.wf_cvar)
+  | _ + 1, Cs, hwf => by
+    obtain ⟨l, hl⟩ := Cs
+    cases l with
+    | nil => cases hl
+    | cons c l' =>
+      have ih := Subst.wf_openCVars (Cs := ⟨l', by simpa using hl⟩)
+        (fun C hmem => hwf C (List.mem_cons_of_mem c hmem))
+      constructor
+      · intro y
+        cases y with
+        | there y0 => exact ih.wf_var y0
+      · intro X
+        cases X with
+        | there X0 => exact ih.wf_tvar X0
+      · intro C_var
+        cases C_var with
+        | here => exact hwf c List.mem_cons_self
+        | there C0 => exact ih.wf_cvar C0
+
+/-- The unpack substitution is well-formed if every evidence and the variable
+    are well-formed. -/
 theorem Subst.wf_unpack
-  {C : CaptureSet s}
+  {n : Nat} {Cs : List.Vector (CaptureSet s) n}
   {x : Var .var s}
   {H : Heap}
-  (hwf_C : CaptureSet.WfInHeap C H)
+  (hwf_Cs : ∀ C ∈ Cs.toList, CaptureSet.WfInHeap C H)
   (hwf_x : Var.WfInHeap x H) :
-  (Subst.unpack C x).WfInHeap H := by
+  (Subst.unpack Cs x).WfInHeap H := by
+  have hopen := Subst.wf_openCVars hwf_Cs
   constructor
   · intro y
     cases y with
-    | here =>
-      simpa only [Subst.unpack] using hwf_x
-    | there y' =>
-      cases y' with
-      | there y0 =>
-        simpa only [Subst.unpack] using (Var.WfInHeap.wf_bound)
+    | here => simpa only [Subst.unpack] using hwf_x
+    | there y0 => simpa only [Subst.unpack] using hopen.wf_var y0
   · intro X
     cases X with
-    | there X' =>
-      cases X' with
-      | there X0 =>
-        simpa only [Subst.unpack, PureTy.WfInHeap] using (Ty.WfInHeap.wf_tvar)
+    | there X0 => simpa only [Subst.unpack] using hopen.wf_tvar X0
   · intro C_var
     cases C_var with
-    | there C' =>
-      cases C' with
-      | here =>
-        simpa only [Subst.unpack] using hwf_C
-      | there C0 =>
-        simpa only [Subst.unpack] using (CaptureSet.WfInHeap.wf_cvar)
+    | there C0 => simpa only [Subst.unpack] using hopen.wf_cvar C0
 
 def Heap.HasFinDom (H : Heap) (L : Finset Nat) : Prop :=
   ∀ l, H l ≠ none <-> l ∈ L

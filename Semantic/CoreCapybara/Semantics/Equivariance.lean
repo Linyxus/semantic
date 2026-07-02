@@ -74,7 +74,7 @@ def Ty.renameLoc (π : Equiv.Perm Nat) : Ty sort s → Ty sort s
 | .bool => .bool
 | .cell cs T => .cell (cs.renameLoc π) (T.renameLoc π)
 | .reader cs T => .reader (cs.renameLoc π) (T.renameLoc π)
-| .exi T => .exi (T.renameLoc π)
+| .exi n T => .exi n (T.renameLoc π)
 | .typ T => .typ (T.renameLoc π)
 
 /-- `renameLoc` preserves emptiness of a capture set. -/
@@ -110,13 +110,13 @@ def Exp.renameLoc (π : Equiv.Perm Nat) : Exp s → Exp s
 | .reader x => .reader (x.renameLoc π)
 | .alloc x => .alloc (x.renameLoc π)
 | .drop x => .drop (x.renameLoc π)
-| .pack cs x => .pack (cs.renameLoc π) (x.renameLoc π)
+| .pack cs x => .pack (cs.map (·.renameLoc π)) (x.renameLoc π)
 | .app x y => .app (x.renameLoc π) (y.renameLoc π)
 | .tapp x T => .tapp (x.renameLoc π) (T.renameLoc π)
 | .capp x cs => .capp (x.renameLoc π) (cs.renameLoc π)
 | .unwrap x => .unwrap (x.renameLoc π)
 | .letin e1 e2 => .letin (e1.renameLoc π) (e2.renameLoc π)
-| .unpack e1 e2 => .unpack (e1.renameLoc π) (e2.renameLoc π)
+| .unpack n e1 e2 => .unpack n (e1.renameLoc π) (e2.renameLoc π)
 | .unit => .unit
 | .btrue => .btrue
 | .bfalse => .bfalse
@@ -213,7 +213,7 @@ theorem Ty.renameLoc_rename (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
   | cap _ => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename]
   | cell _ _ ih => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename, ih]
   | reader _ _ ih => simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename, ih]
-  | exi _ ih => simp only [Ty.rename, Ty.renameLoc, ih]
+  | exi _ _ ih => simp only [Ty.rename, Ty.renameLoc, ih]
   | typ _ ih => simp only [Ty.rename, Ty.renameLoc, ih]
 
 theorem PureTy.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
@@ -238,8 +238,12 @@ theorem Exp.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
   | reader x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
   | alloc x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
   | drop x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
-  | pack _ x => simp only [Exp.rename, Exp.renameLoc, CaptureSet.renameLoc_rename,
-      Var.renameLoc_rename]
+  | pack _ x =>
+    simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, List.map_map, Function.comp_def,
+      CaptureSet.renameLoc_rename]
   | app x y => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
   | tapp x _ => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename,
       PureTy.renameLoc_rename]
@@ -247,7 +251,7 @@ theorem Exp.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
       CaptureSet.renameLoc_rename]
   | unwrap x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
   | letin _ _ ih1 ih2 => simp only [Exp.rename, Exp.renameLoc, ih1, ih2]
-  | unpack _ _ ih1 ih2 => simp only [Exp.rename, Exp.renameLoc, ih1, ih2]
+  | unpack _ _ _ ih1 ih2 => simp only [Exp.rename, Exp.renameLoc, ih1, ih2]
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -486,6 +490,14 @@ theorem Subst.lift_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig} (σ : Subst s1 
     | here => rfl
     | there C => exact CaptureSet.renameLoc_rename π Rename.succ (σ.cvar C)
 
+/-- `Subst.liftCVars` version of `Subst.lift_renameLoc`. -/
+theorem Subst.liftCVars_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig} (σ : Subst s1 s2) :
+    {n : Nat} → (σ.liftCVars n).renameLoc π = (σ.renameLoc π).liftCVars n
+  | 0 => rfl
+  | n + 1 => by
+    change ((σ.liftCVars n).lift).renameLoc π = ((σ.renameLoc π).liftCVars n).lift
+    rw [Subst.lift_renameLoc, Subst.liftCVars_renameLoc π σ (n := n)]
+
 theorem Var.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
     (x : Var .var s1) (σ : Subst s1 s2) :
     (x.subst σ).renameLoc π = (x.renameLoc π).subst (σ.renameLoc π) := by
@@ -560,9 +572,8 @@ theorem Ty.subst_renameLoc (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
   | cap _ => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc]
   | cell _ _ ih => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc, ih]
   | reader _ _ ih => simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc, ih]
-  | exi _ ih =>
-    simp only [Ty.subst, Ty.renameLoc, ih, ← Subst.lift_renameLoc]
-    rfl
+  | exi _ _ ih =>
+    simp only [Ty.subst, Ty.renameLoc, ih, ← Subst.liftCVars_renameLoc]
   | typ _ ih => simp only [Ty.subst, Ty.renameLoc, ih]
 
 theorem PureTy.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
@@ -595,8 +606,12 @@ theorem Exp.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
   | reader x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
   | alloc x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
   | drop x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
-  | pack _ x => simp only [Exp.subst, Exp.renameLoc, CaptureSet.subst_renameLoc,
-      Var.subst_renameLoc]
+  | pack _ x =>
+    simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, List.map_map, Function.comp_def,
+      CaptureSet.subst_renameLoc]
   | app x y => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
   | tapp x _ => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc,
       PureTy.subst_renameLoc]
@@ -606,8 +621,9 @@ theorem Exp.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
   | letin _ _ ih1 ih2 =>
     simp only [Exp.subst, Exp.renameLoc, ih1, ih2, ← Subst.lift_renameLoc]
     rfl
-  | unpack _ _ ih1 ih2 =>
-    simp only [Exp.subst, Exp.renameLoc, ih1, ih2, ← Subst.lift_renameLoc]
+  | unpack _ _ _ ih1 ih2 =>
+    simp only [Exp.subst, Exp.renameLoc, ih1, ih2, ← Subst.lift_renameLoc,
+      ← Subst.liftCVars_renameLoc]
     rfl
   | unit => rfl
   | btrue => rfl
@@ -674,20 +690,39 @@ theorem Subst.openCVar_renameLoc (π : Equiv.Perm Nat) {s : Sig} (C : CaptureSet
     | here => rfl
     | there C1 => rfl
 
+/-- Opening `n` capture-variable binders in parallel commutes with renaming. -/
+theorem Subst.openCVars_renameLoc (π : Equiv.Perm Nat) {s : Sig} :
+    {n : Nat} → (Cs : List.Vector (CaptureSet s) n) →
+    (Subst.openCVars Cs).renameLoc π = Subst.openCVars (Cs.map (·.renameLoc π))
+  | 0, _ => rfl
+  | n + 1, Cs => by
+    obtain ⟨l, hl⟩ := Cs
+    cases l with
+    | nil => cases hl
+    | cons c l' =>
+      have ih := Subst.openCVars_renameLoc π (n := n) ⟨l', by simpa using hl⟩
+      apply Subst.funext
+      · intro y; cases y with
+        | there y0 => exact congrArg (fun σ => σ.var y0) ih
+      · intro X; cases X with
+        | there X0 => exact congrArg (fun σ => σ.tvar X0) ih
+      · intro C0; cases C0 with
+        | here => rfl
+        | there C1 => exact congrArg (fun σ => σ.cvar C1) ih
+
 /-- Opening an existential package commutes with renaming. -/
-theorem Subst.unpack_renameLoc (π : Equiv.Perm Nat) {s : Sig} (C : CaptureSet s)
-    (x : Var .var s) :
-    (Subst.unpack C x).renameLoc π = Subst.unpack (C.renameLoc π) (x.renameLoc π) := by
+theorem Subst.unpack_renameLoc (π : Equiv.Perm Nat) {s : Sig} {n : Nat}
+    (Cs : List.Vector (CaptureSet s) n) (x : Var .var s) :
+    (Subst.unpack Cs x).renameLoc π
+      = Subst.unpack (Cs.map (·.renameLoc π)) (x.renameLoc π) := by
   apply Subst.funext
   · intro y; cases y with
     | here => rfl
-    | there y0 => cases y0 with | there y1 => rfl
+    | there y0 => exact congrArg (fun σ => σ.var y0) (Subst.openCVars_renameLoc π Cs)
   · intro X; cases X with
-    | there X0 => cases X0 with | there X1 => rfl
+    | there X0 => exact congrArg (fun σ => σ.tvar X0) (Subst.openCVars_renameLoc π Cs)
   · intro C0; cases C0 with
-    | there C1 => cases C1 with
-      | here => rfl
-      | there C2 => rfl
+    | there C1 => exact congrArg (fun σ => σ.cvar C1) (Subst.openCVars_renameLoc π Cs)
 
 theorem Var.WfInHeap.renameLoc {x : Var k s} {h : Heap} (hwf : x.WfInHeap h)
     (π : Equiv.Perm Nat) : (x.renameLoc π).WfInHeap (h.renameLoc π) := by
@@ -759,7 +794,13 @@ theorem Exp.WfInHeap.renameLoc {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_reader hx => exact .wf_reader (hx.renameLoc π)
   | wf_alloc hx => exact .wf_alloc (hx.renameLoc π)
   | wf_drop hx => exact .wf_drop (hx.renameLoc π)
-  | wf_pack hcs hx => exact .wf_pack (hcs.renameLoc π) (hx.renameLoc π)
+  | wf_pack hcs hx =>
+    exact .wf_pack
+      (fun cs hmem => by
+        rw [List.Vector.toList_map] at hmem
+        obtain ⟨cs', hmem', rfl⟩ := List.mem_map.mp hmem
+        exact (hcs cs' hmem').renameLoc π)
+      (hx.renameLoc π)
   | wf_app hx hy => exact .wf_app (hx.renameLoc π) (hy.renameLoc π)
   | wf_tapp hx hT => exact .wf_tapp (hx.renameLoc π) (hT.renameLoc π)
   | wf_capp hx hcs => exact .wf_capp (hx.renameLoc π) (hcs.renameLoc π)
@@ -957,7 +998,7 @@ theorem Ty.renameLoc_id {T : Ty sort s} : T.renameLoc (Equiv.refl Nat) = T := by
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
   | cell _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ih]
   | reader _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ih]
-  | exi _ ih => simp only [Ty.renameLoc, ih]
+  | exi _ _ ih => simp only [Ty.renameLoc, ih]
   | typ _ ih => simp only [Ty.renameLoc, ih]
 
 theorem PureTy.renameLoc_id {T : PureTy s} : T.renameLoc (Equiv.refl Nat) = T := by
@@ -977,13 +1018,17 @@ theorem Exp.renameLoc_id {e : Exp s} : e.renameLoc (Equiv.refl Nat) = e := by
   | reader x => simp only [Exp.renameLoc, Var.renameLoc_id]
   | alloc x => simp only [Exp.renameLoc, Var.renameLoc_id]
   | drop x => simp only [Exp.renameLoc, Var.renameLoc_id]
-  | pack _ x => simp only [Exp.renameLoc, CaptureSet.renameLoc_id, Var.renameLoc_id]
+  | pack _ x =>
+    simp only [Exp.renameLoc, Var.renameLoc_id]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, CaptureSet.renameLoc_id, List.map_id']
   | app x y => simp only [Exp.renameLoc, Var.renameLoc_id]
   | tapp x _ => simp only [Exp.renameLoc, Var.renameLoc_id, PureTy.renameLoc_id]
   | capp x _ => simp only [Exp.renameLoc, Var.renameLoc_id, CaptureSet.renameLoc_id]
   | unwrap x => simp only [Exp.renameLoc, Var.renameLoc_id]
   | letin _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
-  | unpack _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
+  | unpack _ _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -1076,7 +1121,7 @@ theorem Ty.renameLoc_comp {T : Ty sort s} {π ρ : Equiv.Perm Nat} :
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
   | cell _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ih]
   | reader _ _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ih]
-  | exi _ ih => simp only [Ty.renameLoc, ih]
+  | exi _ _ ih => simp only [Ty.renameLoc, ih]
   | typ _ ih => simp only [Ty.renameLoc, ih]
 
 theorem PureTy.renameLoc_comp {T : PureTy s} {π ρ : Equiv.Perm Nat} :
@@ -1097,13 +1142,18 @@ theorem Exp.renameLoc_comp {e : Exp s} {π ρ : Equiv.Perm Nat} :
   | reader x => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | alloc x => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | drop x => simp only [Exp.renameLoc, Var.renameLoc_comp]
-  | pack _ x => simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, Var.renameLoc_comp]
+  | pack _ x =>
+    simp only [Exp.renameLoc, Var.renameLoc_comp]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, List.map_map, Function.comp_def,
+      CaptureSet.renameLoc_comp]
   | app x y => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | tapp x _ => simp only [Exp.renameLoc, Var.renameLoc_comp, PureTy.renameLoc_comp]
   | capp x _ => simp only [Exp.renameLoc, Var.renameLoc_comp, CaptureSet.renameLoc_comp]
   | unwrap x => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | letin _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
-  | unpack _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
+  | unpack _ _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl

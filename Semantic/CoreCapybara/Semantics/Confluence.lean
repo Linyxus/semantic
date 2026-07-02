@@ -279,8 +279,8 @@ inductive Exp.AEq : Exp {} → Exp {} → Prop where
     AEq e2 e2' → AEq e3 e3' → AEq (.cond x e2 e3) (.cond x e2' e3')
   | letin {e1 e1' : Exp {}} {k : Exp ({},x)} :
     AEq e1 e1' → AEq (.letin e1 k) (.letin e1' k)
-  | unpack {e1 e1' : Exp {}} {k : Exp (({},C),x)} :
-    AEq e1 e1' → AEq (.unpack e1 k) (.unpack e1' k)
+  | unpack {n : Nat} {e1 e1' : Exp {}} {k : Exp ((Sig.extendCVars {} n),x)} :
+    AEq e1 e1' → AEq (.unpack n e1 k) (.unpack n e1' k)
 
 namespace Exp.AEq
 
@@ -683,8 +683,9 @@ theorem RStep.ctx_letin {t : Trace} {m m' : Memory} {e1 e1' : Exp {}} {e2 : Exp 
   | refl => exact RStep.refl
   | step hs => exact RStep.step (Step.step_ctx_letin hs)
 
-theorem RStep.ctx_unpack {t : Trace} {m m' : Memory} {e1 e1' : Exp {}} {e2 : Exp ({},C,x)}
-    (h : RStep t m e1 m' e1') : RStep t m (.unpack e1 e2) m' (.unpack e1' e2) := by
+theorem RStep.ctx_unpack {t : Trace} {m m' : Memory} {e1 e1' : Exp {}}
+    {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
+    (h : RStep t m e1 m' e1') : RStep t m (.unpack n e1 e2) m' (.unpack n e1' e2) := by
   cases h with
   | refl => exact RStep.refl
   | step hs => exact RStep.step (Step.step_ctx_unpack hs)
@@ -809,8 +810,13 @@ theorem Exp.renameLoc_eq_of_wf {s} {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_alloc hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_drop hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_pack hcs hx =>
-    simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
-      Var.renameLoc_eq_of_wf hx hfix]
+    simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map]
+    exact (List.map_congr_left
+        (fun cs hmem => CaptureSet.renameLoc_eq_of_wf (hcs cs hmem) hfix)).trans
+      (List.map_id _)
   | wf_app hx hy =>
     simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix, Var.renameLoc_eq_of_wf hy hfix]
   | wf_tapp hx hT =>
@@ -1776,7 +1782,14 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
         rw [Heap.extend_mcell_renameLoc, Memory.heap_renameLoc_eq_of_fresh hfresh hfresh2,
           Equiv.swap_apply_left, Equiv.swap_apply_of_ne_of_ne hxl hxl2]
       · apply Exp.AEq.of_eq
-        simp only [Exp.renameLoc, CaptureSet.renameLoc, Var.renameLoc, Equiv.swap_apply_left]
+        have hcs : CaptureSet.renameLoc (Equiv.swap l l2)
+            (CaptureSet.var (.M .epsilon) (.free l) : CaptureSet {})
+            = CaptureSet.var (.M .epsilon) (.free l2) := by
+          simp only [CaptureSet.renameLoc, Var.renameLoc, Equiv.swap_apply_left]
+        simp only [Exp.renameLoc, Var.renameLoc, Equiv.swap_apply_left]
+        exact congrArg
+          (fun cs => Exp.pack (⟨[cs], rfl⟩ : List.Vector (CaptureSet {}) 1) (.free l2))
+          hcs.symm
       · exact fun l' hl' => Equiv.swap_apply_of_ne_of_ne
           (fun he => hD l' hl' (by rw [he]; exact hfresh))
           (fun he => hD l' hl' (by rw [he]; exact hfresh2))
@@ -1809,7 +1822,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
     | step_rename => cases inner
     | step_lift hv2 _ _ =>
       exact (Step.not_isAns inner (Exp.IsAns.is_val (Exp.isVal_of_isSimpleVal hv2))).elim
-  | @step_ctx_unpack _ m0 _ _ _ e2 inner ih =>
+  | @step_ctx_unpack _ m0 _ _ _ n e2 inner ih =>
     intro D ts2 mb eb hD hwf hst2
     obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     cases hst2 with
@@ -1817,10 +1830,10 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
         ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf1 inner2
       have he2 : e2.renameLoc π = e2 := Exp.renameLoc_eq_of_wf hwf2 hπ
-      refine ⟨w1, w2, d1m, d2m, .unpack d1e e2, .unpack d2e e2, π,
+      refine ⟨w1, w2, d1m, d2m, .unpack n d1e e2, .unpack n d2e e2, π,
         RStep.ctx_unpack hr1, RStep.ctx_unpack hr2, hdm, ?_, fun l hl => hπ l (hD l hl),
         htr, hal, ?_⟩
-      · change Exp.AEq (.unpack d2e e2) (.unpack (d1e.renameLoc π) (e2.renameLoc π))
+      · change Exp.AEq (.unpack n d2e e2) (.unpack n (d1e.renameLoc π) (e2.renameLoc π))
         rw [he2]; exact Exp.AEq.unpack hde
       · rcases hprov with h | ⟨σ, h1, h2, h3⟩
         · exact Or.inl h

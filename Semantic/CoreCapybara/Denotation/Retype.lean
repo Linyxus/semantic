@@ -371,6 +371,24 @@ theorem Retype.liftCVar
         = ((σ.cvar C).rename Rename.succ).subst (Subst.from_TypeEnv (env2.extend_cvar cs cap a))
       rw [ρ.cvar C]
       apply rebind_resolved_capture_set Rebind.cweaken
+/-- Weakens a peak set past `n` fresh capture-variable binders (iterated
+    `Rename.succ`, matching the recursion of `TypeEnv.extend_cvars`). -/
+def PeakSet.weakenCVars (D : PeakSet s) : (n : Nat) → PeakSet (Sig.extendCVars s n)
+  | 0 => D
+  | n + 1 => (PeakSet.weakenCVars D n).rename Rename.succ
+
+/-- `Retype.liftCVar` iterated over the `n` evidences of a pack. -/
+theorem Retype.liftCVars
+  {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
+  (ρ : Retype env1 σ env2 D) (m : Memory) (a : Authority) :
+  {n : Nat} → (CS : List.Vector (CaptureSet {}) n) →
+  Retype (TypeEnv.extend_cvars env1 m a CS) (σ.liftCVars n)
+    (TypeEnv.extend_cvars env2 m a CS) (D.weakenCVars n)
+  | 0, _ => ρ
+  | _ + 1, CS =>
+    (Retype.liftCVars ρ m a (List.Vector.tail CS)).liftCVar
+      (List.Vector.head CS) (cap := (List.Vector.head CS).ground_denot m) (a := a)
+
 def retype_resolved_capture_set
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
   (ρ : Retype env1 σ env2 D) (C : CaptureSet s1) :
@@ -756,22 +774,16 @@ def retype_exi_val_denot
     intro k st m e
     simp only [Ty.exi_val_denot, Ty.subst]
     exact ih k st m e
-  | .exi T => by
+  | .exi n T => by
     intro k st m e
     simp only [Ty.exi_val_denot, Ty.subst]
-    cases hresolve : resolve m.heap e
-    · simp only
-    · rename_i e'
-      cases e'
-      case pack =>
-        rename_i CS y
-        simp only [List.empty_eq, and_congr_right_iff]
-        intro _hwf _hdf
-        exact retype_val_denot
-          (ρ.liftCVar (cs:=CS) (cap:=CS.ground_denot m) (a:=.can_drop)) T k st m (Exp.var y)
-      all_goals {
-        simp only
-      }
+    constructor
+    · rintro ⟨CS, y, hres, hwf, hdf, hdisj, hbody⟩
+      exact ⟨CS, y, hres, hwf, hdf, hdisj,
+        (retype_val_denot (ρ.liftCVars m .can_drop CS) T k st m (Exp.var y)).mp hbody⟩
+    · rintro ⟨CS, y, hres, hwf, hdf, hdisj, hbody⟩
+      exact ⟨CS, y, hres, hwf, hdf, hdisj,
+        (retype_val_denot (ρ.liftCVars m .can_drop CS) T k st m (Exp.var y)).mpr hbody⟩
 
 def retype_exi_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {σ : Subst s1 s2} {env2 : TypeEnv s2} {D : PeakSet s1}
@@ -918,5 +930,52 @@ theorem open_carg_exi_exp_denot
   IDenot.Equiv (Ty.exi_exp_denot (env.extend_cvar (C.subst (Subst.from_TypeEnv env)) cap a) T R)
     (Ty.exi_exp_denot env (T.subst (Subst.openCVar C)) R) := by
   apply retype_exi_exp_denot (Retype.open_carg cap a)
+
+/-- `open_carg_val_denot` iterated over the `n` evidences of a pack: interpreting a
+    type under the `TypeEnv.extend_cvars`-extension by the (env-resolved) evidences is
+    interpreting its parallel opening (`Subst.openCVars`) under the base environment.
+    Telescopes via `Subst.openCVars_succ`, with `Rebind.cweakenCVars` transporting the
+    head evidence's resolution across the `n`-fold extension. -/
+theorem open_cargs_val_denot {s : Sig} {env : TypeEnv s} {m : Memory} {a : Authority} :
+  {n : Nat} → {Cs : List.Vector (CaptureSet s) n} → {T : Ty .capt (Sig.extendCVars s n)} →
+  IDenot.Equiv
+    (Ty.val_denot
+      (TypeEnv.extend_cvars env m a (Cs.map (fun C => C.subst (Subst.from_TypeEnv env)))) T)
+    (Ty.val_denot env (T.subst (Subst.openCVars Cs)))
+  | 0, Cs, T => by
+    have h : T.subst (Subst.openCVars Cs) = T := Ty.subst_id
+    rw [h]
+    exact IDenot.equiv_refl _
+  | n + 1, Cs, T => by
+    obtain ⟨l, hl⟩ := Cs
+    cases l with
+    | nil => cases hl
+    | cons c l' =>
+      have hl' : l'.length = n := by simpa using hl
+      have hsub : (c.rename (Rename.weakenCVars n)).subst
+          (Subst.from_TypeEnv (TypeEnv.extend_cvars env m a
+            (List.Vector.map (fun C => C.subst (Subst.from_TypeEnv env)) ⟨l', hl'⟩)))
+          = c.subst (Subst.from_TypeEnv env) :=
+        (rebind_resolved_capture_set Rebind.cweakenCVars).symm
+      have h1 := open_carg_val_denot
+        (env := TypeEnv.extend_cvars env m a
+          (List.Vector.map (fun C => C.subst (Subst.from_TypeEnv env)) ⟨l', hl'⟩))
+        (C := c.rename (Rename.weakenCVars n))
+        (cap := (c.subst (Subst.from_TypeEnv env)).ground_denot m) (a := a)
+        (T := T)
+      rw [hsub] at h1
+      have h2 := open_cargs_val_denot (n := n) (Cs := ⟨l', hl'⟩)
+        (T := T.subst (Subst.openCVar (c.rename (Rename.weakenCVars n))))
+        (env := env) (m := m) (a := a)
+      have hcomp : (Subst.openCVar (c.rename (Rename.weakenCVars n))).comp
+          (Subst.openCVars ⟨l', hl'⟩)
+          = Subst.openCVars (⟨c :: l', hl⟩ : List.Vector (CaptureSet s) (n + 1)) :=
+        Subst.openCVars_succ (cs := ⟨c :: l', hl⟩)
+      have h3 : (T.subst (Subst.openCVar (c.rename (Rename.weakenCVars n)))).subst
+          (Subst.openCVars ⟨l', hl'⟩)
+          = T.subst (Subst.openCVars (⟨c :: l', hl⟩ : List.Vector (CaptureSet s) (n + 1))) :=
+        Eq.trans Ty.subst_comp (congrArg (fun σ => T.subst σ) hcomp)
+      exact IDenot.equiv_trans (IDenot.equiv_trans h1 h2)
+        (IDenot.eq_to_equiv (congrArg (Ty.val_denot env) h3))
 
 end CoreCapybara

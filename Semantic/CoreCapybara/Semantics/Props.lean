@@ -30,9 +30,9 @@ theorem reduce_ctx_letin
   | step h _ ih => exact Reduce.step (Step.step_ctx_letin h) ih
 
 /-- Helper: Congruence for Reduce in unpack context. -/
-theorem reduce_ctx_unpack
+theorem reduce_ctx_unpack {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
   (hred : Reduce C m e1 m' e1') :
-  Reduce C m (.unpack e1 e2) m' (.unpack e1' e2) := by
+  Reduce C m (.unpack n e1 e2) m' (.unpack n e1' e2) := by
   induction hred with
   | refl => exact Reduce.refl
   | step h _ ih => exact Reduce.step (Step.step_ctx_unpack h) ih
@@ -45,9 +45,9 @@ theorem seqreduce_ctx_letin
   | refl => exact SeqReduce.refl
   | step h _ ih => exact SeqReduce.step (SeqStep.step_ctx_letin h) ih
 
-theorem seqreduce_ctx_unpack
+theorem seqreduce_ctx_unpack {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
   (hred : SeqReduce C m e1 m' e1') :
-  SeqReduce C m (.unpack e1 e2) m' (.unpack e1' e2) := by
+  SeqReduce C m (.unpack n e1 e2) m' (.unpack n e1' e2) := by
   induction hred with
   | refl => exact SeqReduce.refl
   | step h _ ih => exact SeqReduce.step (SeqStep.step_ctx_unpack h) ih
@@ -232,7 +232,11 @@ theorem step_preserves_wf
     exact Exp.WfInHeap.wf_unit
   | step_alloc hlk hfresh =>
     exact Exp.WfInHeap.wf_pack
-      (CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh hlk))
+      (fun cs hmem => by
+        cases hmem with
+        | head =>
+          exact CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh hlk)
+        | tail _ h => cases h)
       (Var.WfInHeap.wf_free (Memory.extend_mcell_lookup hfresh hlk))
   | step_drop _ =>
     exact Exp.WfInHeap.wf_unit
@@ -273,7 +277,6 @@ theorem step_preserves_wf
     have hwf_subst := Subst.wf_openVar hwf_l
     exact Exp.wf_subst hwf_body_ext hwf_subst
   | step_unpack =>
-    rename_i cs x e_body
     have ⟨hwf_pack, hwf_body⟩ := Exp.wf_inv_unpack hwf
     cases hwf_pack with
     | wf_pack hwf_cs hwf_x =>
@@ -315,13 +318,13 @@ theorem reduce_preserves_wf
     exact ih hwf_mid
 
 /-- Inversion lemma for reduction of unpack expressions -/
-theorem reduce_unpack_inv
-  (hred : Reduce t m (.unpack e1 e2) m' a)
+theorem reduce_unpack_inv {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
+  (hred : Reduce t m (.unpack n e1 e2) m' a)
   (hans : a.IsAns) :
-  ∃ (t1 t2 : Trace) (m0 : Memory) (cs : CaptureSet {}) (x : Nat),
+  ∃ (t1 t2 : Trace) (m0 : Memory) (cs : List.Vector (CaptureSet {}) n) (x : Nat),
     Reduce t1 m e1 m0 (.pack cs (.free x)) ∧
     Reduce t2 m0 (e2.subst (Subst.unpack cs (.free x))) m' a := by
-  generalize hgen : Exp.unpack e1 e2 = e_full at hred
+  generalize hgen : Exp.unpack n e1 e2 = e_full at hred
   induction hred generalizing e1 e2 with
   | refl =>
     rw [←hgen] at hans
@@ -375,8 +378,8 @@ theorem Exp.isSimpleAns_cases {e : Exp {}} (h : e.IsSimpleAns) :
     exact Or.inr ⟨n, rfl⟩
 
 /-- A pack answer in the empty signature has a free witness variable. -/
-theorem Exp.isPack_cases {e : Exp {}} (h : e.IsPack) :
-    ∃ cs n, e = .pack cs (.free n) := by
+theorem Exp.isPack_cases {k : Nat} {e : Exp {}} (h : e.IsPack k) :
+    ∃ (cs : List.Vector (CaptureSet {}) k) (n : Nat), e = .pack cs (.free n) := by
   cases h with
   | pack =>
     rename_i cs x
@@ -694,14 +697,15 @@ theorem seqreduce_letin_split {t : Trace} {m m' : Memory} {e1 : Exp {}}
       exact Or.inr (Or.inr ⟨[], _, _, _, hv, hwf, _, hfresh, SeqReduce.refl, rest, rfl⟩)
 
 /-- `unpack` analogue of `seqreduce_letin_split`. -/
-theorem seqreduce_unpack_split {t : Trace} {m m' : Memory} {e1 : Exp {}}
-    {e2 : Exp ({},C,x)} {X : Exp {}}
-    (hred : SeqReduce t m (.unpack e1 e2) m' X) :
-    (∃ e1', SeqReduce t m e1 m' e1' ∧ X = .unpack e1' e2) ∨
-    (∃ (t1 t2 : Trace) (m1 : Memory) (cs : CaptureSet {}) (y : Var .var {}),
+theorem seqreduce_unpack_split {t : Trace} {m m' : Memory} {n : Nat} {e1 : Exp {}}
+    {e2 : Exp ((Sig.extendCVars {} n),x)} {X : Exp {}}
+    (hred : SeqReduce t m (.unpack n e1 e2) m' X) :
+    (∃ e1', SeqReduce t m e1 m' e1' ∧ X = .unpack n e1' e2) ∨
+    (∃ (t1 t2 : Trace) (m1 : Memory) (cs : List.Vector (CaptureSet {}) n)
+        (y : Var .var {}),
       SeqReduce t1 m e1 m1 (.pack cs y) ∧
       SeqReduce t2 m1 (e2.subst (Subst.unpack cs y)) m' X ∧ t = t1 ++ t2) := by
-  generalize hgen : Exp.unpack e1 e2 = efull at hred
+  generalize hgen : Exp.unpack n e1 e2 = efull at hred
   induction hred generalizing e1 with
   | refl => exact Or.inl ⟨e1, SeqReduce.refl, hgen.symm⟩
   | step hstep rest ih =>

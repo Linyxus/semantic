@@ -137,7 +137,7 @@ def Exp.subst : Exp s1 -> Subst s1 s2 -> Exp s2
 | .capp x cs, s => .capp (x.subst s) (cs.subst s)
 | .unwrap x, s => .unwrap (x.subst s)
 | .letin e1 e2, s => .letin (e1.subst s) (e2.subst s.lift)
-| .unpack e1 e2, s => .unpack (e1.subst s) (e2.subst s.lift.lift)
+| .unpack n e1 e2, s => .unpack n (e1.subst s) (e2.subst ((s.liftCVars n).lift))
 | .unit, _ => .unit
 | .btrue, _ => .btrue
 | .bfalse, _ => .bfalse
@@ -176,16 +176,34 @@ def Subst.openCVar (C : CaptureSet s) : Subst (s,C) s where
     | .here => C
     | .there x => .cvar (.M .epsilon) x
 
-/-- Opens an existential package, substituting `C` and `x` for the two innermost binders. -/
-def Subst.unpack (C : CaptureSet s) (x : Var .var s) : Subst (s,C,x) s where
+/-- Opens `n` capture-variable binders simultaneously: the `i`-th innermost bound
+    capture variable (de Bruijn index `i`, so `.here` is index `0`) is replaced by
+    `Cs.get i` (with `Cs.head` = `Cs.get 0` opening the innermost binder). Generalizes
+    `Subst.openCVar` (the `n = 1` case, `openCVars ⟨[C], _⟩ = openCVar C`).
+
+    All evidences live over the *outer* signature `s`, so this is a **parallel**
+    substitution — no evidence may mention any of the bound capture variables. -/
+def Subst.openCVars : {n : Nat} → List.Vector (CaptureSet s) n → Subst (s.extendCVars n) s
+  | 0, _ => Subst.id
+  | _ + 1, Cs =>
+    { var := fun | .there y => (Subst.openCVars Cs.tail).var y
+      tvar := fun | .there Y => (Subst.openCVars Cs.tail).tvar Y
+      cvar := fun
+        | .here => Cs.head
+        | .there y => (Subst.openCVars Cs.tail).cvar y }
+
+/-- Opens an `n`-ary existential package, substituting `x` for the innermost (term)
+    binder and the `n` evidences `Cs` for the `n` capture-variable binders underneath
+    (in parallel, as in `Subst.openCVars`). -/
+def Subst.unpack {n : Nat} (Cs : List.Vector (CaptureSet s) n) (x : Var .var s) :
+    Subst ((s.extendCVars n),x) s where
   var := fun
     | .here => x
-    | .there (.there x0) => .bound x0
-  cvar := fun
-    | .there (.here) => C
-    | .there (.there c0) => .cvar (.M .epsilon) c0
+    | .there y => (Subst.openCVars Cs).var y
   tvar := fun
-    | .there (.there X0) => PureTy.tvar X0
+    | .there Y => (Subst.openCVars Cs).tvar Y
+  cvar := fun
+    | .there c => (Subst.openCVars Cs).cvar c
 
 /-- Function extensionality for substitutions.
   Two substitutions are equal if they map all variables equally. -/
@@ -733,9 +751,9 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     simp only [Exp.subst, ih1, ih2]
     conv_rhs => rw [← Subst.comp_lift]
     rfl
-  | unpack e1 e2 ih1 ih2 =>
+  | unpack n e1 e2 ih1 ih2 =>
     simp only [Exp.subst, ih1, ih2]
-    conv_rhs => rw [← Subst.comp_lift, ← Subst.comp_lift]
+    conv_rhs => rw [← Subst.comp_liftCVars, ← Subst.comp_lift]
     rfl
   | unit => rfl
   | btrue => rfl
@@ -906,10 +924,10 @@ theorem Exp.subst_id {e : Exp s} :
     simp only [Exp.subst, ih1]
     conv_lhs => rw [Subst.lift_id]
     exact congrArg (Exp.letin e1) ih2
-  | unpack e1 e2 ih1 ih2 =>
+  | unpack n e1 e2 ih1 ih2 =>
     simp only [Exp.subst, ih1]
-    conv_lhs => rw [Subst.lift_id, Subst.lift_id]
-    exact congrArg (Exp.unpack e1) ih2
+    conv_lhs => rw [Subst.liftCVars_id, Subst.lift_id]
+    exact congrArg (Exp.unpack n e1) ih2
   | unit =>
     rfl
   | btrue => rfl
@@ -1103,10 +1121,10 @@ theorem Exp.subst_asSubst {e : Exp s1} {f : Rename s1 s2} :
     simp only [Exp.subst, Exp.rename, ih1]
     rw [← Rename.asSubst_lift]
     exact congrArg (Exp.letin (e1.rename f)) ih2
-  | unpack e1 e2 ih1 ih2 =>
+  | unpack n e1 e2 ih1 ih2 =>
     simp only [Exp.subst, Exp.rename, ih1]
-    rw [← Rename.asSubst_lift, ← Rename.asSubst_lift]
-    exact congrArg (Exp.unpack (e1.rename f)) ih2
+    rw [← Rename.asSubst_liftCVars, ← Rename.asSubst_lift]
+    exact congrArg (Exp.unpack n (e1.rename f)) ih2
   | unit =>
     rfl
   | btrue =>
@@ -1521,12 +1539,12 @@ def Exp.is_closed_subst {e : Exp s1} {σ : Subst s1 s2}
     constructor
     · exact ih1 he1 hsubst
     · exact ih2 he2 (Subst.lift_closed hsubst)
-  | unpack e1 e2 ih1 ih2 =>
+  | unpack n e1 e2 ih1 ih2 =>
     cases hc with | unpack he1 he2 =>
     simp only [Exp.subst]
     constructor
     · exact ih1 he1 hsubst
-    · exact ih2 he2 (Subst.lift_closed (Subst.lift_closed hsubst))
+    · exact ih2 he2 (Subst.lift_closed (Subst.liftCVars_closed hsubst))
   | unit =>
     exact IsClosed.unit
   | btrue =>
@@ -1780,7 +1798,7 @@ theorem Exp.subst_closed_inv {e : Exp s1} {σ : Subst s1 s2}
     simp only [Exp.subst] at hclosed
     cases hclosed with | letin he1 he2 =>
     exact IsClosed.letin (ih1 he1) (ih2 he2)
-  | unpack e1 e2 ih1 ih2 =>
+  | unpack n e1 e2 ih1 ih2 =>
     simp only [Exp.subst] at hclosed
     cases hclosed with | unpack he1 he2 =>
     exact IsClosed.unpack (ih1 he1) (ih2 he2)

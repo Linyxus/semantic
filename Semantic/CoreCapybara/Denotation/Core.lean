@@ -599,17 +599,29 @@ def TypeEnv.EnvSepWf (env : TypeEnv s) : Prop :=
     env.lookup_cvar_auth c2 = .can_drop →
     CapabilitySet.disjoint (env.lookup_cvar c1).2 (env.lookup_cvar c2).2
 
+/-- Extends a type environment with the `n` evidences of an `n`-ary pack, each bound
+    with authority `a` and its ground capability denotation at `m`.  `CS.head`
+    (de Bruijn index 0) becomes the innermost binding, matching `Subst.openCVars`.
+    The pack/unpack semantics use `a := .can_drop`; the `exi` subtyping rule re-tags
+    to `.access_only` (authority is denotationally inert). -/
+def TypeEnv.extend_cvars (ρ : TypeEnv s) (m : Memory) (a : Authority) :
+    {n : Nat} → List.Vector (CaptureSet {}) n → TypeEnv (s.extendCVars n)
+  | 0, _ => ρ
+  | _ + 1, CS =>
+    (TypeEnv.extend_cvars ρ m a (List.Vector.tail CS)).extend_cvar (List.Vector.head CS)
+      (cap := (List.Vector.head CS).ground_denot m) (a := a)
+
 /-- Pack-witness authority bound: if a computation that started at memory `m`
 with budget `R` results in a pack value, then every location `l` reachable from
-the pack's witness at mode `mu` is either covered by `R` at that same mode `mu`
-and consumable (`.drop`) under `R`, or fresh (allocated after `m`). The `.drop`
-half lets `unpack` see the witness as consumable; the `R.covers mu l` half lets
-`unpack` cover the continuation's access touches of the witness (`.drop` alone
-does not cover `.access` under `CapMode.Le`). -/
+the pack's (combined) witness evidence at mode `mu` is either covered by `R` at
+that same mode `mu` and consumable (`.drop`) under `R`, or fresh (allocated after
+`m`). The `.drop` half lets `unpack` see the witness as consumable; the
+`R.covers mu l` half lets `unpack` cover the continuation's access touches of the
+witness (`.drop` alone does not cover `.access` under `CapMode.Le`). -/
 def pack_bound (R : CapabilitySet) (m : Memory) : Exp {} -> Memory -> Prop :=
-  fun v m' => ∀ (cs : CaptureSet {}) (x : Var .var {}),
+  fun v m' => ∀ (n : Nat) (cs : List.Vector (CaptureSet {}) n) (x : Var .var {}),
     v = .pack cs x ->
-    ∀ mu l, (cs.reachability m').hasmem mu l ->
+    ∀ mu l, ((CaptureSet.unionAll cs).reachability m').hasmem mu l ->
       (R.covers mu l ∧ R.hasmem .drop l) ∨ m.lookup l = none
 
 /-- The unpacked existential witness is live in the result memory. Anti-monotonic
@@ -619,13 +631,14 @@ def pack_bound (R : CapabilitySet) (m : Memory) : Exp {} -> Memory -> Prop :=
   (`sem_typ_pack`/`sem_typ_alloc`) and consumed at `sem_typ_unpack`. Vacuous for
   non-pack values (cf. `pack_bound`). -/
 def witness_live : Exp {} -> Memory -> Prop :=
-  fun v m' => ∀ (cs : CaptureSet {}) (x : Var .var {}),
-    v = .pack cs x -> m'.is_compatible (cs.reachability m')
+  fun v m' => ∀ (n : Nat) (cs : List.Vector (CaptureSet {}) n) (x : Var .var {}),
+    v = .pack cs x -> m'.is_compatible ((CaptureSet.unionAll cs).reachability m')
 
 theorem witness_live_of_ne_pack {m' : Memory} {v : Exp {}}
-    (h : ∀ (cs : CaptureSet {}) (x : Var .var {}), v ≠ .pack cs x) :
+    (h : ∀ (n : Nat) (cs : List.Vector (CaptureSet {}) n) (x : Var .var {}),
+      v ≠ .pack cs x) :
     witness_live v m' :=
-  fun cs x heq => absurd heq (h cs x)
+  fun n cs x heq => absurd heq (h n cs x)
 
 /-- **Store consistency**: every store-typed location is an allocated mutable cell (live or
 dead) in `m`.  This is the world-well-formedness fact that makes a *heap*-fresh location
@@ -844,13 +857,17 @@ def Ty.exi_val_denot (ρ : TypeEnv s) (E : Ty .exi s)
     (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   match E with
   | .typ T => Ty.val_denot ρ T k st m e
-  | .exi T =>
-    match resolve m.heap e with
-    | some (.pack CS x) =>
-      CS.WfInHeap m.heap ∧
-      (CS.ground_denot m).drop_free ∧
-      Ty.val_denot (ρ.extend_cvar CS (cap := CS.ground_denot m) (a := .can_drop)) T k st m (.var x)
-    | _ => False
+  | .exi n T =>
+    ∃ (CS : List.Vector (CaptureSet {}) n) (x : Var .var {}),
+      resolve m.heap e = some (.pack CS x) ∧
+      (∀ cs ∈ CS.toList, cs.WfInHeap m.heap) ∧
+      (∀ cs ∈ CS.toList, (cs.ground_denot m).drop_free) ∧
+      -- The evidences denote pairwise-disjoint capability sets: `unpack` binds all
+      -- of them as `.can_drop` capture variables simultaneously, so `EnvSepWf` of
+      -- the continuation environment needs their mutual location-disjointness.
+      CS.toList.Pairwise
+        (fun cs1 cs2 => CapabilitySet.disjoint (cs1.ground_denot m) (cs2.ground_denot m)) ∧
+      Ty.val_denot (TypeEnv.extend_cvars ρ m .can_drop CS) T k st m (.var x)
 termination_by sizeOf E
 
 end
@@ -1323,54 +1340,148 @@ theorem Exp.from_TypeEnv_weaken_open_cvar
   rw [Exp.subst_comp]
   exact congrArg _ Subst.from_TypeEnv_weaken_open_cvar
 
-theorem Subst.from_TypeEnv_weaken_unpack {ps : PeakSet (s,C)} :
-  (Subst.from_TypeEnv ρ).lift.lift.comp (Subst.unpack cs (.free x)) =
-    Subst.from_TypeEnv ((ρ.extend_cvar cs).extend_var x ps) := by
+/-- Weakening past the top binder of an `(n+1)`-ary parallel opener yields the
+    `n`-ary opener on the tail (the opener delegates `.there` to the tail). -/
+theorem Subst.succ_asSubst_comp_openCVars {s : Sig} {n : Nat}
+    {cs : List.Vector (CaptureSet s) (n + 1)} :
+    ((Rename.succ (k := .cvar)).asSubst).comp (Subst.openCVars cs)
+      = Subst.openCVars (List.Vector.tail cs) := by
+  apply Subst.funext
+  · intro y; rfl
+  · intro X; rfl
+  · intro c0; rfl
+
+/-- Weakening past the witness binder of `Subst.unpack` yields the parallel opener. -/
+theorem Subst.succ_asSubst_comp_unpack {s : Sig} {n : Nat}
+    {cs : List.Vector (CaptureSet s) n} {x : Var .var s} :
+    ((Rename.succ (k := .var)).asSubst).comp (Subst.unpack cs x)
+      = Subst.openCVars cs := by
+  apply Subst.funext
+  · intro y; rfl
+  · intro X; rfl
+  · intro c0; rfl
+
+/-- Weakening past `n` fresh capture binders then opening them in parallel is the
+    identity (the `n`-ary generalisation of `CaptureSet.weaken_openCVar`). -/
+theorem CaptureSet.weaken_openCVars {s : Sig} {C : CaptureSet s} :
+    {n : Nat} → {cs : List.Vector (CaptureSet s) n} →
+    (C.rename (Rename.weakenCVars n)).subst (Subst.openCVars cs) = C
+  | 0, _ => by
+    have h0 : C.rename (Rename.weakenCVars 0) = C := CaptureSet.rename_id
+    rw [h0]
+    exact CaptureSet.subst_id
+  | n + 1, cs => by
+    have h1 : C.rename (Rename.weakenCVars (n + 1))
+        = (C.rename (Rename.weakenCVars n)).rename Rename.succ :=
+      (CaptureSet.rename_comp).symm
+    have h3 : ((C.rename (Rename.weakenCVars n)).subst Rename.succ.asSubst).subst
+        (Subst.openCVars cs)
+        = (C.rename (Rename.weakenCVars n)).subst
+            (Subst.openCVars (List.Vector.tail cs)) := by
+      have h := CaptureSet.subst_comp (cs := C.rename (Rename.weakenCVars n))
+        (σ1 := Rename.succ.asSubst) (σ2 := Subst.openCVars cs)
+      rw [Subst.succ_asSubst_comp_openCVars] at h
+      exact h
+    calc (C.rename (Rename.weakenCVars (n + 1))).subst (Subst.openCVars cs)
+        = ((C.rename (Rename.weakenCVars n)).subst Rename.succ.asSubst).subst
+            (Subst.openCVars cs) := by rw [h1, CaptureSet.subst_asSubst]; rfl
+      _ = (C.rename (Rename.weakenCVars n)).subst
+            (Subst.openCVars (List.Vector.tail cs)) := h3
+      _ = C := CaptureSet.weaken_openCVars
+
+/-- The parallel opener of an `(n+1)`-vector telescopes: open the innermost binder
+    with the (weakened) head evidence, then open the rest in parallel. -/
+theorem Subst.openCVars_succ {s : Sig} {n : Nat} {cs : List.Vector (CaptureSet s) (n + 1)} :
+    (Subst.openCVar ((List.Vector.head cs).rename (Rename.weakenCVars n))).comp
+      (Subst.openCVars (List.Vector.tail cs)) = Subst.openCVars cs := by
   apply Subst.funext
   · intro y
-    cases y
-    case here =>
-      rfl
-    case there y' =>
-      cases y'
-      case there v =>
-        change (((Subst.from_TypeEnv ρ).lift.lift).var (.there (.there v))).subst
-          (Subst.unpack cs (.free x)) = .free (ρ.lookup_var v).1
-        rfl
+    cases y with
+    | there y0 => rfl
   · intro X
-    cases X
-    case there X' =>
-      cases X'
-      case there X0 =>
-        rfl
-  · intro c
-    cases c
-    case there c' =>
-      cases c'
-      case here =>
-        change (((Subst.from_TypeEnv ρ).lift.lift).cvar (.there (.here))).subst
-          (Subst.unpack cs (.free x)) = cs
-        rfl
-      case there c0 =>
-        have helper : ∀ (g : CaptureSet {}),
-            ((g.rename Rename.succ).rename Rename.succ).subst
-              (Subst.unpack cs (.free x)) = g := by
-          intro g
-          induction g with
-          | empty => rfl
-          | union g1 g2 ih1 ih2 =>
-            change CaptureSet.subst _ _ = _
-            simp only [CaptureSet.rename, CaptureSet.subst]
-            rw [ih1, ih2]
-          | var m v =>
-            cases v with
-            | bound bv => cases bv
-            | free n => rfl
-          | cvar m cv => cases cv
-        change CaptureSet.subst (CaptureSet.rename (CaptureSet.rename (ρ.lookup_cvar c0).1
-          Rename.succ) Rename.succ) (Subst.unpack cs (.free x)) = _
-        rw [helper (ρ.lookup_cvar c0).1]
-        rfl
+    cases X with
+    | there X0 => rfl
+  · intro c0
+    cases c0 with
+    | here =>
+      change ((List.Vector.head cs).rename (Rename.weakenCVars n)).subst
+        (Subst.openCVars (List.Vector.tail cs)) = _
+      exact CaptureSet.weaken_openCVars
+    | there c1 => rfl
+
+/-- Composing the environment substitution (lifted under `n` capture binders) with
+    the parallel opener collapses to the substitution of the evidence-extended
+    environment.  The memory `m` seeds only the capability denotations, which the
+    substitution ignores. -/
+theorem Subst.from_TypeEnv_weaken_openCVars {m : Memory} {a : Authority} {s : Sig} :
+    {n : Nat} → {cs : List.Vector (CaptureSet {}) n} → {env : TypeEnv s} →
+    ((Subst.from_TypeEnv env).liftCVars n).comp (Subst.openCVars cs) =
+      Subst.from_TypeEnv (TypeEnv.extend_cvars env m a cs)
+  | 0, cs, env => by
+    change (Subst.from_TypeEnv env).comp Subst.id = Subst.from_TypeEnv env
+    apply Subst.funext
+    · intro y; exact Var.subst_id (x := (Subst.from_TypeEnv env).var y)
+    · intro X; exact PureTy.subst_id (T := (Subst.from_TypeEnv env).tvar X)
+    · intro c0; exact CaptureSet.subst_id (cs := (Subst.from_TypeEnv env).cvar c0)
+  | n + 1, cs, env => by
+    have ih := Subst.from_TypeEnv_weaken_openCVars (m := m) (a := a) (n := n)
+      (cs := List.Vector.tail cs) (env := env)
+    apply Subst.funext
+    · intro y
+      cases y with
+      | there y0 =>
+        change ((((Subst.from_TypeEnv env).liftCVars n).var y0).rename Rename.succ).subst
+          (Subst.openCVars cs) = _
+        rw [← Var.subst_asSubst, Var.subst_comp, Subst.succ_asSubst_comp_openCVars]
+        exact congrArg (fun σ => Subst.var σ y0) ih
+    · intro X
+      cases X with
+      | there X0 =>
+        change ((((Subst.from_TypeEnv env).liftCVars n).tvar X0).rename Rename.succ).subst
+          (Subst.openCVars cs) = _
+        rw [← PureTy.subst_asSubst, PureTy.subst_comp, Subst.succ_asSubst_comp_openCVars]
+        exact congrArg (fun σ => Subst.tvar σ X0) ih
+    · intro c0
+      cases c0 with
+      | here => rfl
+      | there c1 =>
+        change ((((Subst.from_TypeEnv env).liftCVars n).cvar c1).rename Rename.succ).subst
+          (Subst.openCVars cs) = _
+        rw [← CaptureSet.subst_asSubst, CaptureSet.subst_comp,
+          Subst.succ_asSubst_comp_openCVars]
+        exact congrArg (fun σ => Subst.cvar σ c1) ih
+
+theorem Subst.from_TypeEnv_weaken_unpack {s : Sig} {ρ : TypeEnv s}
+    {n : Nat} {m : Memory} {a : Authority} {x : Nat}
+    {cs : List.Vector (CaptureSet {}) n} {ps : PeakSet (Sig.extendCVars s n)} :
+  ((Subst.from_TypeEnv ρ).liftCVars n).lift.comp (Subst.unpack cs (.free x)) =
+    Subst.from_TypeEnv ((TypeEnv.extend_cvars ρ m a cs).extend_var x ps) := by
+  apply Subst.funext
+  · intro y
+    cases y with
+    | here => rfl
+    | there y0 =>
+      change ((((Subst.from_TypeEnv ρ).liftCVars n).var y0).rename Rename.succ).subst
+        (Subst.unpack cs (.free x)) = _
+      rw [← Var.subst_asSubst, Var.subst_comp, Subst.succ_asSubst_comp_unpack]
+      exact congrArg (fun σ => Subst.var σ y0)
+        (Subst.from_TypeEnv_weaken_openCVars (m := m) (a := a))
+  · intro X
+    cases X with
+    | there X0 =>
+      change ((((Subst.from_TypeEnv ρ).liftCVars n).tvar X0).rename Rename.succ).subst
+        (Subst.unpack cs (.free x)) = _
+      rw [← PureTy.subst_asSubst, PureTy.subst_comp, Subst.succ_asSubst_comp_unpack]
+      exact congrArg (fun σ => Subst.tvar σ X0)
+        (Subst.from_TypeEnv_weaken_openCVars (m := m) (a := a))
+  · intro c0
+    cases c0 with
+    | there c1 =>
+      change ((((Subst.from_TypeEnv ρ).liftCVars n).cvar c1).rename Rename.succ).subst
+        (Subst.unpack cs (.free x)) = _
+      rw [← CaptureSet.subst_asSubst, CaptureSet.subst_comp, Subst.succ_asSubst_comp_unpack]
+      exact congrArg (fun σ => Subst.cvar σ c1)
+        (Subst.from_TypeEnv_weaken_openCVars (m := m) (a := a))
 
 /-- All type variable denotations in the environment imply well-formedness. -/
 def TypeEnv.is_implying_wf (env : TypeEnv s) : Prop :=
@@ -2271,6 +2382,44 @@ theorem ground_denot_applyRO_mono {C1 C2 : CaptureSet {}} {m : Memory}
   rw [← ground_denot_applyRO_comm, ← ground_denot_applyRO_comm]
   exact CapabilitySet.applyRO_mono hsub
 
+/-- The `n` capture bindings of `TypeEnv.extend_cvars` are transparent to type
+    variables: a tvar lookup in the extended environment is a tvar lookup in the
+    base environment. -/
+theorem TypeEnv.extend_cvars_lookup_tvar {s : Sig} {m : Memory} {a : Authority} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} → {env : TypeEnv s} →
+    (X : BVar (Sig.extendCVars s n) .tvar) →
+    ∃ X0 : BVar s .tvar,
+      (TypeEnv.extend_cvars env m a CS).lookup_tvar X = env.lookup_tvar X0
+  | 0, _, _, X => ⟨X, rfl⟩
+  | n + 1, CS, env, .there X => by
+    obtain ⟨X0, hX0⟩ := TypeEnv.extend_cvars_lookup_tvar (m := m) (a := a)
+      (CS := List.Vector.tail CS) (env := env) X
+    exact ⟨X0, hX0⟩
+
+/-- `TypeEnv.extend_cvars` depends on the memory only through the ground capability
+    denotations of the evidences: equal denotations, equal environments. -/
+theorem TypeEnv.extend_cvars_cap_eq {s : Sig} {env : TypeEnv s} {m1 m2 : Memory}
+    {a : Authority} :
+    {n : Nat} → {CS : List.Vector (CaptureSet {}) n} →
+    (∀ cs ∈ CS.toList, cs.ground_denot m1 = cs.ground_denot m2) →
+    TypeEnv.extend_cvars env m1 a CS = TypeEnv.extend_cvars env m2 a CS
+  | 0, _, _ => rfl
+  | n + 1, CS, h => by
+    obtain ⟨l, hl⟩ := CS
+    cases l with
+    | nil => cases hl
+    | cons c l' =>
+      have hl' : l'.length = n := by simpa using hl
+      have ih := TypeEnv.extend_cvars_cap_eq (env := env) (m1 := m1) (m2 := m2)
+        (a := a) (n := n) (CS := ⟨l', hl'⟩)
+        (fun cs hmem => h cs (List.mem_cons_of_mem c hmem))
+      have hc := h c List.mem_cons_self
+      change (TypeEnv.extend_cvars env m1 a ⟨l', hl'⟩).extend_cvar c
+          (cap := CaptureSet.ground_denot c m1) (a := a)
+        = (TypeEnv.extend_cvars env m2 a ⟨l', hl'⟩).extend_cvar c
+          (cap := CaptureSet.ground_denot c m2) (a := a)
+      rw [ih, hc]
+
 mutual
 
 def val_denot_is_monotonic {env : TypeEnv s}
@@ -2624,20 +2773,14 @@ def exi_val_denot_down_trunc {env : TypeEnv s}
   | typ T =>
     simp only [Ty.exi_val_denot] at ht ⊢
     exact val_denot_down_trunc henv_dc T hjk e ht
-  | exi T =>
+  | exi n T =>
     simp only [Ty.exi_val_denot] at ht ⊢
-    cases hresolve : resolve m.heap e with
-    | none => rw [hresolve] at ht; exact ht.elim
-    | some e' =>
-      cases e'
-      case pack CS y =>
-        rw [hresolve] at ht
-        obtain ⟨hwf, hdf, hbody⟩ := ht
-        refine ⟨hwf, hdf, val_denot_down_trunc ?_ T hjk (.var y) hbody⟩
-        intro X
-        cases X with
-        | there X' => exact henv_dc X'
-      all_goals (rw [hresolve] at ht; exact ht.elim)
+    obtain ⟨CS, y, hres, hwf, hdf, hdisj, hbody⟩ := ht
+    refine ⟨CS, y, hres, hwf, hdf, hdisj, val_denot_down_trunc ?_ T hjk (.var y) hbody⟩
+    intro X
+    obtain ⟨X0, hX0⟩ := TypeEnv.extend_cvars_lookup_tvar (m := m) (CS := CS) (env := env) X
+    rw [hX0]
+    exact henv_dc X0
 
 def exi_val_denot_is_monotonic {env : TypeEnv s}
   (henv : env.IsMonotonic)
@@ -2649,33 +2792,32 @@ def exi_val_denot_is_monotonic {env : TypeEnv s}
     intro m1 m2 e hmem ht
     unfold Ty.exi_val_denot at ht ⊢
     exact val_denot_is_monotonic henv T k st hmem ht
-  | exi T =>
+  | exi n T =>
     intro m1 m2 e hmem ht
     simp only [Ty.exi_val_denot] at ht ⊢
-    cases hresolve1 : resolve m1.heap e
-    · simp [hresolve1] at ht
-    · rename_i e'
-      cases e'
-      case pack =>
-        rename_i CS y
-        rw [hresolve1] at ht
-        obtain ⟨hwf_CS_m1, hdf_m1, ht_body⟩ := ht
-        have hresolve2 : resolve m2.heap e = some (Exp.pack CS y) := by
-          exact resolve_monotonic hmem hresolve1
-        rw [hresolve2]
-        have hcap_eq : CS.ground_denot m1 = CS.ground_denot m2 :=
-          ground_denot_is_monotonic hwf_CS_m1 hmem
-        have henv' : (env.extend_cvar CS (cap := CS.ground_denot m1)
-            (a := .can_drop)).IsMonotonic :=
-          ⟨fun X => by cases X with | there X' => exact henv.tvar X',
-           fun X => by cases X with | there X' => exact henv.tvar_worldle X'⟩
-        exact ⟨CaptureSet.wf_monotonic hmem hwf_CS_m1,
-          by rw [← hcap_eq]; exact hdf_m1,
-          by rw [← hcap_eq]; exact val_denot_is_monotonic henv' T k st hmem ht_body⟩
-      all_goals {
-        rw [hresolve1] at ht
-        cases ht
-      }
+    obtain ⟨CS, y, hres1, hwf_m1, hdf_m1, hdisj_m1, ht_body⟩ := ht
+    have hres2 : resolve m2.heap e = some (Exp.pack CS y) :=
+      resolve_monotonic hmem hres1
+    have hcap_eq : ∀ cs ∈ CS.toList, cs.ground_denot m1 = cs.ground_denot m2 :=
+      fun cs hcs => ground_denot_is_monotonic (hwf_m1 cs hcs) hmem
+    have henv' : (TypeEnv.extend_cvars env m1 .can_drop CS).IsMonotonic := by
+      constructor
+      · intro X
+        obtain ⟨X0, hX0⟩ :=
+          TypeEnv.extend_cvars_lookup_tvar (m := m1) (CS := CS) (env := env) X
+        rw [hX0]; exact henv.tvar X0
+      · intro X
+        obtain ⟨X0, hX0⟩ :=
+          TypeEnv.extend_cvars_lookup_tvar (m := m1) (CS := CS) (env := env) X
+        rw [hX0]; exact henv.tvar_worldle X0
+    refine ⟨CS, y, hres2,
+      fun cs hcs => CaptureSet.wf_monotonic hmem (hwf_m1 cs hcs),
+      fun cs hcs => by rw [← hcap_eq cs hcs]; exact hdf_m1 cs hcs,
+      hdisj_m1.imp_of_mem (fun {cs1 cs2} h1 h2 hd => by
+        rw [← hcap_eq cs1 h1, ← hcap_eq cs2 h2]; exact hd),
+      ?_⟩
+    rw [← TypeEnv.extend_cvars_cap_eq hcap_eq]
+    exact val_denot_is_monotonic henv' T k st hmem ht_body
 
 def exi_val_denot_is_bool_independent {env : TypeEnv s}
   (henv : TypeEnv.is_bool_independent env)
@@ -2686,10 +2828,12 @@ def exi_val_denot_is_bool_independent {env : TypeEnv s}
   | typ T =>
     intro m
     simpa only [Ty.exi_val_denot] using val_denot_is_bool_independent henv T k st (m := m)
-  | exi T =>
+  | exi n T =>
     intro m
     unfold Ty.exi_val_denot
-    exact ⟨False.elim, False.elim⟩
+    constructor
+    · rintro ⟨CS, x, hres, -⟩; cases hres
+    · rintro ⟨CS, x, hres, -⟩; cases hres
 end
 
 theorem env_typing_monotonic
