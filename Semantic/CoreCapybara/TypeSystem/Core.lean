@@ -305,9 +305,9 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
 | alloc :
   HasType {} Γ (.var x) (.typ T) ->
   ----------------------------
-  HasType 
-    {} Γ 
-    (.alloc x) 
+  HasType
+    {} Γ
+    (.alloc x)
     (.exi (.cell (.cvar (.M .epsilon) .here) (T.rename Rename.succ)))
 | drop :
   Γ.IsClosed ->

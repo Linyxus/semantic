@@ -16,7 +16,7 @@ inductive Exp : Sig -> Type where
 | reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
 | drop : Var .var s -> Exp s
-| pack : CaptureSet s -> Var .var s -> Exp s
+| pack : List.Vector (CaptureSet s) n -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
@@ -44,7 +44,8 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .reader x, f => .reader (x.rename f)
 | .alloc x, f => .alloc (x.rename f)
 | .drop x, f => .drop (x.rename f)
-| .pack cs x, f => .pack (cs.rename f) (x.rename f)
+| .pack css x, f => .pack (css.map (·.rename f)) (x.rename f)
+-- NB: `css.map` here is `List.Vector.map`, preserving the length index `n`.
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
 | .capp x cs, f => .capp (x.rename f) (cs.rename f)
@@ -65,7 +66,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
 | boxed : Exp.IsVal (.boxed cs Ψ e)
-| pack : Exp.IsVal (.pack cs x)
+| pack : Exp.IsVal (.pack css x)
 | reader : Exp.IsVal (.reader x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
@@ -91,7 +92,7 @@ inductive Exp.IsSimpleAns : Exp s -> Prop where
   Exp.IsSimpleAns (.var x)
 
 inductive Exp.IsPack : Exp s -> Prop where
-| pack : Exp.IsPack (.pack cs x)
+| pack : Exp.IsPack (.pack css x)
 
 /-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
@@ -125,8 +126,11 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     simp only [Exp.rename, Var.rename_id]
   | drop x =>
     simp only [Exp.rename, Var.rename_id]
-  | pack cs x =>
-    simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
+  | pack css x =>
+    simp only [Exp.rename, Var.rename_id]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, CaptureSet.rename_id, List.map_id']
   | app x y =>
     simp only [Exp.rename, Var.rename_id]
   | tapp x T =>
@@ -191,8 +195,11 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simp only [Exp.rename, Var.rename_comp]
   | drop x =>
     simp only [Exp.rename, Var.rename_comp]
-  | pack cs x =>
-    simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
+  | pack css x =>
+    simp only [Exp.rename, Var.rename_comp]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, List.map_map, Function.comp_def, CaptureSet.rename_comp]
   | app x y =>
     simp only [Exp.rename, Var.rename_comp]
   | tapp x T =>
@@ -248,7 +255,9 @@ inductive Exp.IsClosed : Exp s -> Prop where
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
 | drop : Var.IsClosed x -> Exp.IsClosed (.drop x)
-| pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
+| pack : {s : Sig} -> {n : Nat} -> {css : List.Vector (CaptureSet s) n} -> {x : Var .var s} ->
+    (∀ cs ∈ css.toList, CaptureSet.IsClosed cs) -> Var.IsClosed x ->
+    Exp.IsClosed (.pack css x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)

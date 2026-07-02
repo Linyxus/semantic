@@ -39,6 +39,11 @@ def Sig.extendMany : Sig -> Sig -> Sig
 | s, [] => s
 | s, k :: K => (s.extendMany K).extend k
 
+/-- Extends a signature with `n` capture variables. -/
+def Sig.extendCVars : Sig -> Nat -> Sig
+| s, 0 => s
+| s, n+1 => (s.extendCVars n).extend_cvar
+
 postfix:80 ",x" => Sig.extend_var
 postfix:80 ",X" => Sig.extend_tvar
 postfix:80 ",C" => Sig.extend_cvar
@@ -78,6 +83,11 @@ def Rename.liftMany (f : Rename s1 s2) (K : Sig) : Rename (s1 ++ K) (s2 ++ K) :=
   | [] => f
   | k :: K => (f.liftMany K).lift (k:=k)
 
+/-- Lifts a renaming under `n` capture-variable binders. -/
+def Rename.liftCVars (f : Rename s1 s2) : (n : Nat) -> Rename (s1.extendCVars n) (s2.extendCVars n)
+| 0 => f
+| n+1 => (f.liftCVars n).lift (k := .cvar)
+
 /-- The "successor" renaming that weakens all variables by one level. -/
 def Rename.succ : Rename s (s,,k) where
   var := fun x => x.there
@@ -110,5 +120,26 @@ theorem Rename.lift_comp {f1 : Rename s1 s2} {f2 : Rename s2 s3} :
   apply Rename.funext
   intro k x
   cases x <;> rfl
+
+/-- Lifting the identity renaming under `n` capture-variable binders yields the identity. -/
+theorem Rename.liftCVars_id {n : Nat} :
+  (Rename.id (s:=s)).liftCVars n = Rename.id := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    change (Rename.id.liftCVars n).lift = Rename.id
+    rw [ih]
+    exact Rename.lift_id
+
+/-- Lifting under `n` capture-variable binders distributes over composition of renamings. -/
+theorem Rename.liftCVars_comp {f1 : Rename s1 s2} {f2 : Rename s2 s3} {n : Nat} :
+  (f1.comp f2).liftCVars n = (f1.liftCVars n).comp (f2.liftCVars n) := by
+  induction n with
+  | zero => rfl
+  | succ n ih =>
+    change ((f1.comp f2).liftCVars n).lift
+      = ((f1.liftCVars n).lift).comp ((f2.liftCVars n).lift)
+    rw [ih]
+    exact Rename.lift_comp
 
 end CoreCapybara

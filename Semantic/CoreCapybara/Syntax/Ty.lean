@@ -54,7 +54,7 @@ inductive Ty : TySort -> Sig -> Type where
 | unit : Ty .capt s
 | bool : Ty .capt s
 -- existential types
-| exi : Ty .capt (s,C) -> Ty .exi s
+| exi : (n : Nat) -> Ty .capt (s.extendCVars n) -> Ty .exi s
 | typ : Ty .capt s -> Ty .exi s
 
 /-- Applies a renaming to all bound variables in a type. -/
@@ -70,7 +70,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .bool, _ => .bool
 | .cell cs T, f => .cell (cs.rename f) (T.rename f)
 | .reader cs T, f => .reader (cs.rename f) (T.rename f)
-| .exi T, f => .exi (T.rename (f.lift))
+| .exi n T, f => .exi n (T.rename (f.liftCVars n))
 | .typ T, f => .typ (T.rename f)
 
 /-- Renaming by the identity renaming leaves a type unchanged. -/
@@ -101,9 +101,9 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
     exact congrArg (Ty.reader cs) ih
   | unit => rfl
   | bool => rfl
-  | exi T ih =>
-    simp only [Ty.rename, Rename.lift_id]
-    exact congrArg Ty.exi ih
+  | exi n T ih =>
+    simp only [Ty.rename, Rename.liftCVars_id]
+    exact congrArg (Ty.exi n) ih
   | typ T ih =>
     simp only [Ty.rename]
     exact congrArg Ty.typ ih
@@ -143,9 +143,9 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
         (ih (f := f) (g := g))
   | unit => rfl
   | bool => rfl
-  | exi T ih =>
-    simpa only [Ty.rename, Rename.lift_comp] using
-      congrArg Ty.exi (ih (f := f.lift) (g := g.lift))
+  | exi n T ih =>
+    simpa only [Ty.rename, Rename.liftCVars_comp] using
+      congrArg (Ty.exi n) (ih (f := f.liftCVars n) (g := g.liftCVars n))
   | typ T ih =>
     simpa only [Ty.rename] using congrArg Ty.typ (ih (f := f) (g := g))
 
@@ -205,7 +205,8 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | bool : Ty.IsClosed .bool
 | cell : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.cell cs T)
 | reader : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.reader cs T)
-| exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
+| exi : {s : Sig} -> {n : Nat} -> {T : Ty .capt (s.extendCVars n)} ->
+    Ty.IsClosed T -> Ty.IsClosed (.exi n T)
 | typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
 
 /-- The capture set of a renamed type equals the renamed capture set. -/
