@@ -1,6 +1,7 @@
 import Semantic.CoreCapybara.Compilation.Coherence
 import Semantic.CoreCapybara.Compilation.SubstLemmas
 import Semantic.CoreCapybara.Compilation.SubtypCompile
+import Semantic.CoreCapybara.Compilation.OpenCVarSubtyp
 open CoreCapybara
 namespace Compilation
 
@@ -146,30 +147,38 @@ theorem CapyTy.compile_refine_self {s1 s2 : Sig} {T : CapyTy .capt s1}
 /-- **Type-preservation of term compilation.**  A well-typed source term, in any
     coherent compiler context whose source typing context matches the
     derivation's, compiles to a well-typed target term at the compiled capture
-    set, context, and type. -/
+    set, context, and type.
+
+    Beyond `Coherent`, two context-regularity invariants are threaded (both
+    trivial at the closed top-level context and preserved by every context
+    extension): `CVarInjective` (distinct source cvars have distinct target
+    images) and `capyCtx.NoPseudoPeak` (stored capture annotations carry no
+    frozen peaks) — the `fresh` case's `compile_subst_subtyp` instantiation
+    consumes them. -/
 theorem CapyHasType.compile {s1 : Sig} {Cs : CapyCaptureSet s1} {Γ : CapyCtx s1}
     {e : CapyExp s1} {E : CapyTy .exi s1} (hty : CapyHasType Cs Γ e E) :
     ∀ {s2 : Sig} (ctx : CompilerCtx s1 s2), ctx.capyCtx = Γ → ctx.Coherent →
+    ctx.srcCtx.CVarInjective → ctx.capyCtx.NoPseudoPeak →
     ∃ e' : Exp s2, HasType (CapyCaptureSet.compile Cs ctx.srcCtx) ctx.coreCtx e'
       (CapyTy.compile E ctx) := by
   induction hty
   case unit =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hinj hnpp
     refine ⟨.unit, ?_⟩
     simp only [CapyCaptureSet.compile, CapyTy.compile]
     exact HasType.unit
   case btrue =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hinj hnpp
     refine ⟨.btrue, ?_⟩
     simp only [CapyCaptureSet.compile, CapyTy.compile]
     exact HasType.btrue
   case bfalse =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hinj hnpp
     refine ⟨.bfalse, ?_⟩
     simp only [CapyCaptureSet.compile, CapyTy.compile]
     exact HasType.bfalse
   case var =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hinj hnpp
     rename_i xv Γv Tv hclosed hlook
     obtain ⟨bv, _, hsrcvar, hcorelk⟩ := hcoh.varLookup (hΓ ▸ hlook)
     refine ⟨.var (.bound bv), ?_⟩
@@ -191,7 +200,7 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CapyCaptureSet s1} {Γ : CapyCtx s1
       (CapyCaptureSet.compile_isClosed (CapyTy.IsClosed.captureSet hTvclosed) hcoh.srcClosed)
       (Ty.IsClosed.typ (CapyTy.compile_isClosed _ _ hTvclosed hcoh.srcClosed))
   case readonly =>
-    intro s2 ctx hΓ hcoh
+    intro s2 ctx hΓ hcoh hinj hnpp
     rename_i xv Γv Cc hclosed hlook
     obtain ⟨bv, _, hsrcvar, hcorelk⟩ := hcoh.varLookup (hΓ ▸ hlook)
     simp only [CapyTy.captureSet] at hsrcvar
@@ -216,8 +225,8 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CapyCaptureSet s1} {Γ : CapyCtx s1
       (Subtyp.typ (Subtyp.reader (Subcapt.sc_ro_mono (Subcapt.sc_var hcorelk))))
       hcsclosed (Ty.IsClosed.typ (Ty.IsClosed.reader hcsclosed))
   case fresh =>
-    intro s2 ctx hΓ hcoh
-    rename_i s0 Γ0 Df xv Tbody hDcl hao hlook hdrop
+    intro s2 ctx hΓ hcoh hinj hnpp
+    rename_i s0 Γ0 Df xv Tbody hDcl hao hlook hdrop hpb hnp
     -- The refactored `fresh` rule reads `x` straight from the context
     -- (`Γ.LookupVar x (T[D/c])`) and re-packs it.  The subject `.var (.bound x)`
     -- compiles to the target variable `bv`, so we emit `.pack ⟦D⟧ bv` DIRECTLY —
@@ -249,12 +258,48 @@ theorem CapyHasType.compile {s1 : Sig} {Cs : CapyCaptureSet s1} {Γ : CapyCtx s1
     case var =>
       -- `HasType.var` types `bv` at `{}` and `⟦T[D/c]⟧^{bv}`; `pack` wants it at
       -- `(⟦T⟧_exiCtx).subst (openCVar ⟦D⟧)`.  Bridge = self-refinement vanishing
-      -- (`compile_refine_self`/`self_refine`) ∘ the type-level openCVar commutation
-      -- up to subtyping `⟦T[D/c]⟧ <: ⟦T⟧_exiCtx[⟦D⟧/c]` (the K1/★★ kernel).
-      sorry
+      -- (`Subtyp.self_refine`) ∘ the type-level openCVar commutation up to
+      -- subtyping `⟦T[D/c]⟧ <: ⟦T⟧_exiCtx[⟦D⟧/c]` — `compile_subst_subtyp`'s
+      -- forward direction, instantiated at the base `openCVar` package
+      -- (`OpenCVarSubtyp.lean`'s `openCVar` instances).
+      have hstoredCl : (Tbody.subst (CapySubst.openCVar Df)).IsClosed :=
+        CapyCtx.lookupVar_isClosed (hΓ ▸ hlook) hcoh.capyClosed
+      have hTcl : Tbody.IsClosed := CapyTy.isClosed_of_subst hstoredCl
+      have hnppExi : exiCtx.capyCtx.NoPseudoPeak := hnpp
+      have hclOrig : exiCtx.capyCtx.IsClosed :=
+        CapyCtx.IsClosed.push hcoh.capyClosed
+          (CapyBinding.IsClosed.cvar CapyCaptureBound.IsClosed.unbound)
+      have hvcOrig : exiCtx.srcCtx.VarsClosed := hcoh.srcClosed.weaken.consCVar
+      have hscl : (Subst.openCVar (CapyCaptureSet.compile Df ctx.srcCtx)).IsClosed :=
+        Subst.IsClosed.openCVar (CapyCaptureSet.compile_isClosed hDcl hcoh.srcClosed)
+      have hdropT : CaptureSet.droppable ctx.coreCtx
+          (CapyCaptureSet.compile Df ctx.srcCtx) :=
+        CapyCaptureSet.compile_droppable hcoh hDcl (hΓ ▸ hdrop)
+      have hB2c := (CapyTy.compile_subst_subtyp Tbody
+        (ctxOrig := exiCtx) (ctxSub := ctx)
+        (σt := Subst.openCVar (CapyCaptureSet.compile Df ctx.srcCtx))
+        SubstCompat.openCVar SubstTvarCompat.openCVar hTcl hpb
+        (TgtPairDroppable.openCVar hdropT)
+        (SubstCompat.realign_openCVar hcoh)
+        hcoh.capyClosed hclOrig hscl hcoh.srcClosed hvcOrig hcoh.closed
+        (CapySubst.IsClosed.openCVar hDcl)
+        hinj (PeakSubstIso.openCVar Df) hnppExi hnp
+        CapyCtx.SubstsTo.openCVar PeakSubstIso.StablePreserving.openCVar).1
+      have hmidCl : (CapyTy.compile (Tbody.subst (CapySubst.openCVar Df)) ctx).IsClosed :=
+        CapyTy.compile_isClosed _ _ hstoredCl hcoh.srcClosed
+      have hbase : HasType {} ctx.coreCtx (.var (.bound bv))
+          (.typ ((CapyTy.compile (Tbody.subst (CapySubst.openCVar Df)) ctx).refineCaptureSet
+            (.var (.M .epsilon) (.bound bv)))) :=
+        HasType.var hcoh.closed hcorelk
+      have hE2cl : Ty.IsClosed ((CapyTy.compile Tbody exiCtx).subst
+          (Subst.openCVar (CapyCaptureSet.compile Df ctx.srcCtx))) :=
+        Ty.is_closed_subst (CapyTy.compile_isClosed Tbody exiCtx hTcl hvcOrig) hscl
+      exact HasType.subtyp hbase Subcapt.refl
+        (Subtyp.typ (Subtyp.trans hmidCl (Subtyp.self_refine hcorelk) hB2c))
+        CaptureSet.IsClosed.empty (Ty.IsClosed.typ hE2cl)
   -- Remaining cases (abs, tabs, cabs, app, tapp, capp,
   -- letin, letin_unpack, alloc, drop, read, write, cond, par, invoke, subtyp)
   -- are WIP: discharged incrementally.
-  all_goals (intro s2 ctx hΓ hcoh; sorry)
+  all_goals (intro s2 ctx hΓ hcoh hinj hnpp; sorry)
 
 end Compilation

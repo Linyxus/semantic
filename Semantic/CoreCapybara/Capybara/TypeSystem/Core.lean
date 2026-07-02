@@ -245,6 +245,14 @@ inductive CapyHasType : CapyCaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .ex
   CapyCaptureSet.AccessOnly Γ D ->
   Γ.LookupVar x (T.subst (CapySubst.openCVar D)) ->
   CapyCaptureSet.droppable Γ D ->
+  -- Well-formedness of the existential WITNESS `T` (2026-07-02, user decision):
+  -- the rule constrains `T` only through the looked-up `T[openCVar D]`, but the
+  -- compilation (`compile_subst_subtyp`) needs the witness itself well-formed —
+  -- all `poly` bounds pure, and no literal frozen (`pseudo_peak`) atoms.
+  -- (`T.IsClosed` is NOT needed: it reflects back from the looked-up type's
+  -- closedness, `CapyTy.isClosed_of_subst`.)
+  T.PureBounds ->
+  T.NoPseudoPeak ->
   --------------------------------
   CapyHasType (D ∪ D.applyDrop) Γ (.var (.bound x)) (.exi T)
 | abs {T1 : CapyTy .capt (s,C)} {T2 : CapyTy .exi (s,x)} :

@@ -249,6 +249,19 @@ theorem CapyTy.IsPureType.rename {T : CapyTy .capt s1} (h : T.IsPureType) (f : R
   rw [CapyTy.captureSet_rename]
   exact h.rename f
 
+/-- Every polymorphic (`poly`/`tabs`) bound occurring in `T`, at any depth, is a
+    pure shape type.  Function domains need not be pure, but their own bounds must
+    be (so the recursion can re-enter them).  A well-formedness condition on source
+    types (source `poly`/`tabs` bind `CapyPureTy`), consumed by the type-level
+    substitution commutation (`compile_subst_subtyp`). -/
+def CapyTy.PureBounds : CapyTy sort s → Prop
+  | .top | .tvar _ | .unit | .bool | .cap _ | .cell _ _ => True
+  | .arrow T1 _ E => CapyTy.PureBounds T1 ∧ CapyTy.PureBounds E
+  | .poly S _ E => S.IsPureType ∧ CapyTy.PureBounds S ∧ CapyTy.PureBounds E
+  | .cpoly _ _ E => CapyTy.PureBounds E
+  | .exi T => CapyTy.PureBounds T
+  | .typ T => CapyTy.PureBounds T
+
 /-- A pure capturing type. -/
 structure CapyPureTy (s : Sig) where
   core : CapyTy .capt s
