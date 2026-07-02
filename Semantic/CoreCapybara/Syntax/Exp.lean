@@ -12,6 +12,7 @@ inductive Exp : Sig -> Type where
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
+| consumer : CaptureSet s -> Ty .exi s -> Exp (s,C,x) -> Exp s
 | boxed : CaptureSet s -> ModalCtx s -> Exp s -> Exp s
 | reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
@@ -40,6 +41,7 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .abs cs T e, f => .abs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
+| .consumer cs T e, f => .consumer (cs.rename f) (T.rename f) (e.rename (f.lift.lift))
 | .boxed cs Ψ e, f => .boxed (cs.rename f) (Ψ.rename f) (e.rename f)
 | .reader x, f => .reader (x.rename f)
 | .alloc x, f => .alloc (x.rename f)
@@ -65,6 +67,7 @@ inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
+| consumer : Exp.IsVal (.consumer cs T e)
 | boxed : Exp.IsVal (.boxed cs Ψ e)
 | pack : Exp.IsVal (.pack css x)
 | reader : Exp.IsVal (.reader x)
@@ -78,6 +81,7 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | abs : Exp.IsSimpleVal (.abs cs T e)
 | tabs : Exp.IsSimpleVal (.tabs cs T e)
 | cabs : Exp.IsSimpleVal (.cabs cs m e)
+| consumer : Exp.IsSimpleVal (.consumer cs T e)
 | boxed : Exp.IsSimpleVal (.boxed cs Ψ e)
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
@@ -119,6 +123,9 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | cabs cs cb e ih =>
     simp only [Exp.rename, CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
     exact congrArg (Exp.cabs cs cb) ih
+  | consumer cs T e ih =>
+    simp only [Exp.rename, CaptureSet.rename_id, Ty.rename_id, Rename.lift_id]
+    exact congrArg (Exp.consumer cs T) ih
   | boxed cs Ψ e ih =>
     simp only [Exp.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Exp.boxed cs Ψ) ih
@@ -188,6 +195,15 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     ] using
       congrArg (Exp.cabs (cs.rename (f.comp g)) (cb.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
+  | consumer cs T e ih =>
+    simpa only [
+      Exp.rename,
+      CaptureSet.rename_comp,
+      Ty.rename_comp,
+      Rename.lift_comp
+    ] using
+      congrArg (Exp.consumer (cs.rename (f.comp g)) (T.rename (f.comp g)))
+        (ih (f := f.lift.lift) (g := g.lift.lift))
   | boxed cs Ψ e ih =>
     simpa only [Exp.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Exp.boxed (cs.rename (f.comp g)) (Ψ.rename (f.comp g))) (ih (f := f) (g := g))
@@ -252,6 +268,8 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
     Exp.IsClosed (.cabs cs cb e)
+| consumer : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
+    Exp.IsClosed (.consumer cs T e)
 | boxed : CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Exp.IsClosed e ->
     Exp.IsClosed (.boxed cs Ψ e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)

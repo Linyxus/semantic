@@ -52,6 +52,9 @@ inductive Ty : TySort -> Sig -> Type where
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
 /-- A capture-polymorphic function `[C<:B] ->cs E`. -/
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+/-- A consume lambda `(x: ∃c. T) ->cs E` -/
+| consumer :
+  Ty .exi s -> CaptureSet s -> Ty .exi s -> Ty .capt s
 /-- A modal type `[Ψ]cs E`. -/
 | modal : CaptureSet s -> ModalCtx s -> Ty .exi s -> Ty .capt s
 /-- A simple, base capability.  -/
@@ -77,6 +80,7 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .arrow T1 cs T2, f => .arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
+| .consumer T1 cs T2, f => .consumer (T1.rename f) (cs.rename f) (T2.rename f)
 | .modal cs Ψ T, f => .modal (cs.rename f) (Ψ.rename f) (T.rename f)
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
@@ -101,6 +105,8 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   | cpoly cb cs T ih =>
     simp only [Ty.rename, Rename.lift_id, CaptureBound.rename_id, CaptureSet.rename_id]
     exact congrArg (Ty.cpoly cb cs) ih
+  | consumer T1 cs T2 ih1 ih2 =>
+    simp only [Ty.rename, CaptureSet.rename_id, ih1, ih2]
   | modal cs Ψ T ih =>
     simp only [Ty.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Ty.modal cs Ψ) ih
@@ -140,6 +146,8 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simpa only [Ty.rename, CaptureBound.rename_comp, CaptureSet.rename_comp, Rename.lift_comp] using
       congrArg (Ty.cpoly (cb.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
+  | consumer T1 cs T2 ih1 ih2 =>
+    simp only [Ty.rename, CaptureSet.rename_comp, ih1, ih2]
   | modal cs Ψ T ih =>
     simpa only [Ty.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Ty.modal (cs.rename (f.comp g)) (Ψ.rename (f.comp g)))
@@ -174,6 +182,7 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .arrow _ cs _ => cs
 | .poly _ cs _ => cs
 | .cpoly _ cs _ => cs
+| .consumer _ cs _ => cs
 | .modal cs _ _ => cs
 | .cap cs => cs
 | .cell cs _ => cs
@@ -187,6 +196,7 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .arrow T1 _ T2, cs => .arrow T1 cs T2
 | .poly T1 _ T2, cs => .poly T1 cs T2
 | .cpoly cb _ T, cs => .cpoly cb cs T
+| .consumer T1 _ T2, cs => .consumer T1 cs T2
 | .modal _ Ψ T, cs => .modal cs Ψ T
 | .cap _, cs => .cap cs
 | .cell _ T, cs => .cell cs T
@@ -210,6 +220,9 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | cpoly :
     CaptureBound.IsClosed cb -> CaptureSet.IsClosed cs -> Ty.IsClosed T ->
     Ty.IsClosed (.cpoly cb cs T)
+| consumer :
+    Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
+    Ty.IsClosed (.consumer T1 cs T2)
 | modal :
     CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Ty.IsClosed T ->
     Ty.IsClosed (.modal cs Ψ T)
