@@ -2330,6 +2330,32 @@ theorem sem_typ_capp
   exact IDenot.equiv_ltr (open_carg_exi_val_denot (env := env) (C := D) (T := T)
     (cap := (D.subst (Subst.from_TypeEnv env)).ground_denot store)) hval''
 
+/-- Denotation is monotone in the syntactic subset relation.  (Local copy of
+    `captureset_denot_subset_of_subset`, which is defined later in the file, so
+    that the consumer-introduction proof can use it.) -/
+private theorem consumer_captureset_denot_subset
+    {s : Sig} {C1 C2 : CaptureSet s} (hsub : C1 ⊆ C2)
+    (env : TypeEnv s) (m : Memory) :
+    C1.denot env m ⊆ C2.denot env m := by
+  unfold CaptureSet.denot
+  induction hsub with
+  | empty => exact CapabilitySet.Subset.empty
+  | refl => exact CapabilitySet.Subset.refl
+  | union_left _ _ ih1 ih2 => exact CapabilitySet.Subset.union_left ih1 ih2
+  | union_right_left _ ih =>
+    exact CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_left
+  | union_right_right _ ih =>
+    exact CapabilitySet.Subset.trans ih CapabilitySet.Subset.union_right_right
+
+/-- `is_compatible` depends only on the *locations* of a capability set.  (Local
+    copy of `Memory.is_compatible_of_loc`, defined later in the file.) -/
+private theorem consumer_is_compatible_of_loc {m : Memory} {C D : CapabilitySet}
+    (hCD : ∀ mu l, C.hasmem mu l → ∃ mu', D.hasmem mu' l)
+    (hD : m.is_compatible D) : m.is_compatible C := by
+  intro mu l b ℓ hmem hheap
+  obtain ⟨mu', hmem'⟩ := hCD mu l hmem
+  exact hD mu' l b ℓ hmem' hheap
+
 theorem sem_typ_consumer {T1 : Ty .capt (s,C)} {E : Ty .exi s}
   {Cf : CaptureSet s} {e : Exp (s,C,x)} {X : PeakSet s}
   (hclosed_consumer : (Exp.consumer Cf (.exi 1 T1) e).IsClosed)
@@ -2379,7 +2405,187 @@ theorem sem_typ_consumer {T1 : Ty .capt (s,C)} {E : Ty .exi s}
           · -- The behavioral body clause: run the consumer body under the
             -- doubly-extended environment (capture witness + argument),
             -- via the body's semantic typing `ht`.
-            sorry
+            intro j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle hmt_body hcompatR0 harg
+            have hsub : m'.subsumes store := hwle.1
+            have hCf_closed : Cf.IsClosed := hclosed_cs
+            -- Environment reassembly at the decremented index `j`.
+            have hts1 : EnvTyping Γ env j st' m' := env_typing_worldle_trunc hjk hts hwle
+            have henv_kill : EnvTyping (Γ.kill_peaks X) (env.kill_peaks X) j st' m' :=
+              EnvTyping.kill_peaks X hts1
+            set ENVCV := (env.kill_peaks X).extend_cvar CS (cap := CS.ground_denot m')
+                (a := .can_drop) with hENVCVdef
+            have henv_cvar :
+                EnvTyping ((Γ.kill_peaks X),C[.can_drop]<:.unbound) ENVCV j st' m' := by
+              rw [hENVCVdef]
+              refine ⟨hCSwf, ?_, ?_, rfl, hCSdf, rfl, henv_kill⟩
+              · simpa only [CaptureBound.subst] using CaptureBound.WfInHeap.wf_unbound
+              · simp only [CaptureBound.denot]; exact CapabilitySet.BoundedBy.top
+            -- Convert `harg` from the unkilled env (`ENV1`) to the killed cvar env `ENVCV`.
+            have hvalT_kill : Ty.val_denot ENVCV T1 j st' m' (.var (.free arg)) := by
+              have hEnvEq : ENVCV
+                  = (env.extend_cvar CS (cap := CS.ground_denot m') (a := .can_drop)).kill_peaks_cs
+                      (X.cs.rename Rename.succ) := by
+                rw [hENVCVdef]; exact TypeEnv.kill_peaks_cs_extend_cvar (K := X.cs)
+              rw [hEnvEq]
+              exact IDenot.equiv_ltr
+                (kill_peaks_cs_val_denot
+                  (env := env.extend_cvar CS (cap := CS.ground_denot m') (a := .can_drop))
+                  (K := X.cs.rename Rename.succ) T1) harg
+            set PS := compute_peakset ENVCV T1.captureSet with hPSdef
+            set ENV2 := ENVCV.extend_var arg PS with hENV2def
+            have henv2 : EnvTyping (((Γ.kill_peaks X),C[.can_drop]<:.unbound),x:T1) ENV2
+                j st' m' := by
+              rw [hENV2def]
+              exact ⟨hvalT_kill, (compute_peakset_correct henv_cvar T1.captureSet).symm, henv_cvar⟩
+            -- `EnvSepWf` of the reassembled environment.  The witness binder `CS` must be
+            -- separated from every surviving droppable base cvar `c2'` of `env.kill_peaks X`.
+            have hcross : ∀ c2' : BVar s .cvar,
+                (env.kill_peaks X).lookup_cvar_auth c2' = .can_drop →
+                CapabilitySet.disjoint (CS.ground_denot m')
+                  ((env.kill_peaks X).lookup_cvar c2').2 := by
+              intro c2' hauth2
+              have hauth2' : env.lookup_cvar_auth c2' = .can_drop :=
+                TypeEnv.kill_peaks_cs_can_drop_inv hauth2
+              have hΓauth : Γ.lookup_authority c2' = .can_drop :=
+                (envtyping_lookup_cvar_auth hts c2').symm.trans hauth2'
+              rcases hX c2' hΓauth with ⟨a, hsubX⟩ | ⟨a, hsubCf⟩
+              · -- `c2'` is killed by `X` — contradicts `hauth2 = can_drop`.
+                have hkilled : (env.kill_peaks X).lookup_cvar_auth c2' = .killed :=
+                  TypeEnv.kill_peaks_cs_killed hsubX
+                rw [hkilled] at hauth2; cases hauth2
+              · -- `c2'` occurs in `Cf`, so its capability's locations are covered by `R0`,
+                -- which is disjoint from `CS.ground_denot m'` by `hCSdisj`.
+                have hlk : (env.kill_peaks X).lookup_cvar c2' = env.lookup_cvar c2' :=
+                  TypeEnv.kill_peaks_cs_lookup_cvar env X.cs c2'
+                rw [hlk]
+                intro mu1 mu2 l hm1 hm2
+                have hd : (CaptureSet.cvar a c2').denot env store
+                    = ((env.lookup_cvar c2').2).applyAccess a := by
+                  change ((env.lookup_cvar c2').1.applyAccess a).ground_denot store = _
+                  rw [captureSet_ground_denot_applyAccess_comm, ← typed_env_cvar_cap_eq hts c2']
+                obtain ⟨mu3, hm3⟩ := hasmem_applyAccess_lift hm2 a
+                rw [← hd] at hm3
+                have hsubD : (CaptureSet.cvar a c2').denot env store ⊆ Cf.denot env store :=
+                  consumer_captureset_denot_subset hsubCf env store
+                have hcov4 := CapabilitySet.covers_mono hsubD
+                  (CapabilitySet.hasmem_implies_covers hm3)
+                obtain ⟨mu4, hm4, _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov4
+                exact hCSdisj mu1 mu4 l hm1 hm4
+            have hdsepCV : ENVCV.EnvSepWf := by
+              rw [hENVCVdef]
+              intro c1 c2 hne h1 h2
+              cases c1 with
+              | here =>
+                cases c2 with
+                | here => exact absurd rfl hne
+                | there c2' => exact hcross c2' h2
+              | there c1' =>
+                cases c2 with
+                | here => exact (hcross c1' h1).symm
+                | there c2' =>
+                  exact (TypeEnv.EnvSepWf.kill_peaks _hdsep) c1' c2'
+                    (fun heq => hne (congrArg BVar.there heq)) h1 h2
+            have hdsep2 : ENV2.EnvSepWf := by
+              rw [hENV2def]; exact TypeEnv.EnvSepWf.extend_var hdsepCV
+            -- Substitution bridge: the unpacked body equals `e` under `from_TypeEnv ENV2`.
+            have hexpr :
+                (e.subst (Subst.from_TypeEnv env).lift.lift).subst
+                    (Subst.unpack ⟨[CS], rfl⟩ (.free arg))
+                  = e.subst (Subst.from_TypeEnv ENV2) := by
+              rw [hENV2def, hENVCVdef]
+              rw [show (Subst.from_TypeEnv env) = Subst.from_TypeEnv (env.kill_peaks X) from
+                    (Subst.from_TypeEnv_kill_peaks_cs).symm, Exp.subst_comp]
+              exact congrArg (e.subst ·) (Subst.from_TypeEnv_weaken_unpack (n := 1) (ps := PS))
+            -- The three summands of the body's use set, evaluated at `ENV2`, `m'`.
+            have hD_Cf : CaptureSet.denot ENV2 ((Cf.rename Rename.succ).rename Rename.succ) m'
+                = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store := by
+              have e1 := rebind_captureset_denot
+                (Rebind.weaken (env := ENVCV) (x := arg) (ps := PS)) (Cf.rename Rename.succ)
+              rw [← hENV2def] at e1
+              have e2 := rebind_captureset_denot
+                (Rebind.cweaken (env := env.kill_peaks X) (cs := CS) (cap := CS.ground_denot m')
+                  (a := .can_drop)) Cf
+              rw [← hENVCVdef] at e2
+              have e3 : CaptureSet.denot (env.kill_peaks X) Cf = CaptureSet.denot env Cf := by
+                simp only [CaptureSet.denot, TypeEnv.kill_peaks, Subst.from_TypeEnv_kill_peaks_cs]
+              have hfun : CaptureSet.denot ENV2 ((Cf.rename Rename.succ).rename Rename.succ)
+                  = CaptureSet.denot env Cf := e1.symm.trans (e2.symm.trans e3)
+              calc CaptureSet.denot ENV2 ((Cf.rename Rename.succ).rename Rename.succ) m'
+                  = CaptureSet.denot env Cf m' := congrFun hfun m'
+                _ = (Cf.subst (Subst.from_TypeEnv env)).ground_denot store :=
+                    (closed_capture_denot_monotonic hCf_closed hts hsub).symm
+            have hD_eps : CaptureSet.denot ENV2 (CaptureSet.cvar (.M .epsilon) (.there .here)) m'
+                = CS.ground_denot m' := by
+              have e1 := rebind_captureset_denot
+                (Rebind.weaken (env := ENVCV) (x := arg) (ps := PS))
+                (CaptureSet.cvar (.M .epsilon) .here)
+              rw [← hENV2def] at e1
+              have e0 : CaptureSet.denot ENVCV (CaptureSet.cvar (.M .epsilon) .here) m'
+                  = CS.ground_denot m' := by
+                rw [hENVCVdef]
+                change (CS.applyAccess (.M .epsilon)).ground_denot m' = _
+                simp only [CaptureSet.applyAccess_M, CaptureSet.applyMut_epsilon]
+              calc CaptureSet.denot ENV2 (CaptureSet.cvar (.M .epsilon) (.there .here)) m'
+                  = CaptureSet.denot ENVCV (CaptureSet.cvar (.M .epsilon) .here) m' :=
+                    (congrFun e1 m').symm
+                _ = CS.ground_denot m' := e0
+            have hD_drop : CaptureSet.denot ENV2 (CaptureSet.cvar .drop (.there .here)) m'
+                = (CS.ground_denot m').to_drop := by
+              have e1 := rebind_captureset_denot
+                (Rebind.weaken (env := ENVCV) (x := arg) (ps := PS))
+                (CaptureSet.cvar .drop .here)
+              rw [← hENV2def] at e1
+              have e0 : CaptureSet.denot ENVCV (CaptureSet.cvar .drop .here) m'
+                  = (CS.ground_denot m').to_drop := by
+                rw [hENVCVdef]
+                change (CS.applyAccess .drop).ground_denot m' = _
+                rw [captureSet_ground_denot_applyAccess_comm, CapabilitySet.applyAccess_drop]
+              calc CaptureSet.denot ENV2 (CaptureSet.cvar .drop (.there .here)) m'
+                  = CaptureSet.denot ENVCV (CaptureSet.cvar .drop .here) m' := (congrFun e1 m').symm
+                _ = (CS.ground_denot m').to_drop := e0
+            have hbudget_eq : CaptureSet.denot ENV2
+                  (((Cf.rename Rename.succ).rename Rename.succ)
+                    ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))
+                    ∪ (CaptureSet.cvar .drop (.there .here))) m'
+                = ((Cf.subst (Subst.from_TypeEnv env)).ground_denot store ∪ CS.ground_denot m')
+                  ∪ (CS.ground_denot m').to_drop := by
+              change (CaptureSet.denot ENV2 ((Cf.rename Rename.succ).rename Rename.succ) m'
+                  ∪ CaptureSet.denot ENV2 (CaptureSet.cvar (.M .epsilon) (.there .here)) m')
+                  ∪ CaptureSet.denot ENV2 (CaptureSet.cvar .drop (.there .here)) m' = _
+              rw [hD_Cf, hD_eps, hD_drop]
+            -- Compatibility of the body's use set at `m'`.
+            have hc_drop : m'.is_compatible ((CS.ground_denot m').to_drop) :=
+              consumer_is_compatible_of_loc
+                (fun _ _ h => (CapabilitySet.hasmem_to_drop_imp h).2) hCSlive
+            have hcompat2 : m'.is_compatible (CaptureSet.denot ENV2
+                  (((Cf.rename Rename.succ).rename Rename.succ)
+                    ∪ (CaptureSet.cvar (.M .epsilon) (.there .here))
+                    ∪ (CaptureSet.cvar .drop (.there .here))) m') := by
+              rw [hbudget_eq]
+              intro mu l b ℓ hmem hheap
+              cases hmem with
+              | left h12 =>
+                cases h12 with
+                | left hR0 => exact hcompatR0 mu l b ℓ hR0 hheap
+                | right hCS => exact hCSlive mu l b ℓ hCS hheap
+              | right hDrop => exact hc_drop mu l b ℓ hDrop hheap
+            -- Run the body under `ENV2` and reassemble the consumer's post.
+            have htyped := ht ENV2 j st' m' henv2 hdsep2 hcompat2
+            simp only [Ty.exi_exp_denot] at htyped
+            have hrun := htyped hmt_body
+            refine hexpr ▸ ?_
+            refine eval_post_monotonic ?_ hrun
+            intro t m'' v hp hguard
+            obtain ⟨hok, st'', hwle'', hmt'', hval, hpb, hwl⟩ := hp hguard
+            refine ⟨hbudget_eq ▸ hok, st'', hwle'', hmt'', ?_, hbudget_eq ▸ hpb, hwl⟩
+            -- Value: un-weaken (var, then cvar) and un-kill back to `env`.
+            have hv1 := IDenot.equiv_rtl
+              (weaken_exi_val_denot (env := ENVCV) (T := E.rename Rename.succ)
+                (x := arg) (ps := PS)) hval
+            have hv2 := IDenot.equiv_rtl
+              (cweaken_exi_val_denot (env := env.kill_peaks X) (cs := CS)
+                (cap := CS.ground_denot m') (a := .can_drop) (T := E)) hv1
+            exact IDenot.equiv_rtl (kill_peaks_cs_exi_val_denot (env := env) (K := X.cs) E) hv2
 
 /-- Semantic typing for `consumer_app`.
 
