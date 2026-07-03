@@ -337,6 +337,19 @@ theorem CapyCtx.NoPseudoPeak.tail {Γ : CapyCtx s} {b : CapyBinding s k}
   | tvar S => exact h
   | cvar a cb => exact h
 
+/-- A variable looked up in a pseudo-peak-free context has a pseudo-peak-free
+    stored capture set. -/
+theorem CapyCtx.NoPseudoPeak.lookupVar {Γ : CapyCtx s} {x : BVar s .var}
+    {T : CapyTy .capt s} (hnp : Γ.NoPseudoPeak) (hlk : Γ.LookupVar x T) :
+    T.captureSet.NoPseudoPeak := by
+  induction hlk with
+  | here =>
+    rw [CapyTy.captureSet_rename]
+    exact CapyCaptureSet.NoPseudoPeak.rename hnp.2 Rename.succ
+  | there _ ih =>
+    rw [CapyTy.captureSet_rename]
+    exact CapyCaptureSet.NoPseudoPeak.rename (ih hnp.tail) Rename.succ
+
 mutual
 /-- Resolving a bound var through a pseudo-peak-free context yields a pseudo-peak-free
     capture set (no `pseudo_peak` is reconstructed). -/

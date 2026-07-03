@@ -1023,6 +1023,22 @@ theorem CapyCaptureSet.weaken_openCVar {C : CapyCaptureSet (s)} {C' : CapyCaptur
     _ = (CapyCaptureSet.subst C) CapySubst.id := by rw [CapySubst.weaken_openCVar]
     _ = C := by rw [CapyCaptureSet.subst_id]
 
+/-- Type-level: renaming a type up past a fresh cvar binder then opening that cvar
+    (with any `C'`) cancels — the shifted type never mentions the opened cvar.
+    Mirror of `CapyCaptureSet.weaken_openCVar`, needed for the codomain
+    G-decomposition's middle-context alignment (the actual-argument param type
+    `T0y` is `openCVar`-invariant). -/
+theorem CapyTy.weaken_openCVar {sort : CapyTySort} {T : CapyTy sort s}
+    {C' : CapyCaptureSet s} :
+    (T.rename Rename.succ).subst (CapySubst.openCVar C') = T := by
+  calc (T.rename Rename.succ).subst (CapySubst.openCVar C')
+      = (T.subst (CapyRename.asSubst Rename.succ)).subst (CapySubst.openCVar C') := by
+        rw [CapyTy.subst_asSubst]
+    _ = T.subst ((CapyRename.asSubst Rename.succ).comp (CapySubst.openCVar C')) :=
+        CapyTy.subst_comp
+    _ = T.subst CapySubst.id := by rw [CapySubst.weaken_openCVar]
+    _ = T := CapyTy.subst_id
+
 theorem CapyCaptureSet.ground_rename_invariant {C : CapyCaptureSet {}} :
   C.rename f = C := by
   induction C with
@@ -1233,6 +1249,27 @@ def CapyTy.is_closed_subst {T : CapyTy sort s1} {σ : CapySubst s1 s2}
     cases hc with | typ hT =>
     simp only [CapyTy.subst]
     exact IsClosed.typ (ih hT hsubst)
+
+/-- Composition of closed substitutions is closed. -/
+theorem CapySubst.IsClosed.comp {σ1 : CapySubst s1 s2} {σ2 : CapySubst s2 s3}
+    (h1 : σ1.IsClosed) (h2 : σ2.IsClosed) : (σ1.comp σ2).IsClosed where
+  var_closed := fun x => CapyVar.is_closed_subst (h1.var_closed x) h2
+  tvar_closed := fun X => CapyTy.is_closed_subst (h1.tvar_closed X) h2
+  cvar_closed := fun C => CapyCaptureSet.is_closed_subst (h1.cvar_closed C) h2
+
+/-- The `openVar` substitution is closed if the substituted variable is closed. -/
+theorem CapySubst.IsClosed.openVar {z : Var .var s} (hz : z.IsClosed) :
+    (CapySubst.openVar z).IsClosed where
+  var_closed := fun x => by
+    cases x with
+    | here => exact hz
+    | there x0 => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    cases X with
+    | there X0 => exact CapyTy.IsClosed.tvar
+  cvar_closed := fun C => by
+    cases C with
+    | there C0 => exact CapyCaptureSet.IsClosed.cvar
 
 /-- Substitution preserves closedness for expressions. -/
 def CapyExp.is_closed_subst {e : CapyExp s1} {σ : CapySubst s1 s2}

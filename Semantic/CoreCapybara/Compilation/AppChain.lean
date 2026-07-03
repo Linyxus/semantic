@@ -51,6 +51,26 @@ theorem appOpen_cvar_c {s : Sig} {Dt Cy : CaptureSet s} {yv : Var .var s} :
 theorem appOpen_cvar_cx {s : Sig} {Dt Cy : CaptureSet s} {yv : Var .var s} :
     (appOpen Dt Cy yv).cvar (.there .here) = Cy := rfl
 
+/-- The composite `appOpen` substitution is closed when its three payloads are:
+    the value image `yv`, the redirected-parameter capture `Cy`, and the compiled
+    argument `Dt`.  (The remaining slots are shifts to closed atoms.)  Needed for the
+    `Subtyp.trans` middle-type closedness of the codomain G-decomposition. -/
+theorem appOpen_is_closed {s : Sig} {Dt Cy : CaptureSet s} {yv : Var .var s}
+    (hDt : Dt.IsClosed) (hCy : Cy.IsClosed) (hyv : yv.IsClosed) :
+    (appOpen Dt Cy yv).IsClosed where
+  var_closed := fun x => by
+    match x with
+    | .here => exact hyv
+    | .there (.there (.there _)) => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    match X with
+    | .there (.there (.there _)) => exact Ty.IsClosed.tvar
+  cvar_closed := fun C => by
+    match C with
+    | .there .here => exact hCy
+    | .there (.there .here) => exact hDt
+    | .there (.there (.there _)) => exact CaptureSet.IsClosed.cvar
+
 theorem CaptureSet.appChain_collapse {s : Sig} {Dt Cy : CaptureSet s} {yv : Var .var s}
     (X : CaptureSet (s,C,C,x)) :
     ((((((X.subst (((Subst.openCVar Dt).lift (k := .cvar)).lift (k := .var))).rename
@@ -165,6 +185,146 @@ theorem CaptureBound.appChain_collapse {s : Sig} {Dt Cy : CaptureSet s} {yv : Va
   | unbound => rfl
   | bound cs =>
     simp only [CaptureBound.subst, CaptureBound.rename, CaptureSet.appChain_collapse]
+
+/-- The `Ty` lifting of the ANF application-chain collapse.  The three nested
+    ANF substitutions (`c ↦ ⟦D⟧`, `cx ↦ Cy`, `p ↦ y`, each interleaved with a
+    tower weakening) compose into the single `appOpen` substitution on the raw
+    compiled codomain, up to the three ambient weakenings — exactly as for the
+    `ModalCtx`/`CaptureSet` payloads.  Generic over `Ty.subst_comp`, so it needs
+    no structural case analysis: after `subst_asSubst`+`subst_comp`+`congr 1` the
+    residual `Subst` equality is category-agnostic (identical to the `CaptureSet`
+    collapse's `funext`). -/
+theorem Ty.appChain_collapse {s : Sig} {Dt Cy : CaptureSet s} {yv : Var .var s}
+    {sort : TySort} (T : Ty sort (s,C,C,x)) :
+    ((((((T.subst (((Subst.openCVar Dt).lift (k := .cvar)).lift (k := .var))).rename
+        (((Rename.succ (k := .var)).lift (k := .cvar)).lift (k := .var))).subst
+        ((Subst.openCVar (Cy.rename (Rename.succ (k := .var)))).lift (k := .var))).rename
+        ((Rename.succ (k := .var)).lift (k := .var))).subst
+        (Subst.openVar ((yv.rename (Rename.succ (k := .var))).rename (Rename.succ (k := .var))))).rename
+        (Rename.succ (k := .var)))
+      = (((T.subst (appOpen Dt Cy yv)).rename (Rename.succ (k := .var))).rename
+          (Rename.succ (k := .var))).rename (Rename.succ (k := .var)) := by
+  simp only [← Ty.subst_asSubst, ← CaptureSet.subst_asSubst, Ty.subst_comp]
+  congr 1
+  apply Subst.funext
+  · intro x
+    match x with
+    | .here => cases yv <;> rfl
+    | .there (.there (.there x0)) => rfl
+  · intro X
+    match X with
+    | .there (.there (.there X0)) => rfl
+  · intro C
+    match C with
+    | .there .here =>
+      rw [Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar,
+        Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar, appOpen_cvar_cx]
+      change (((((CaptureSet.cvar (.M .epsilon) (.there .here)).subst
+          Rename.succ.lift.lift.asSubst).subst
+          (Subst.openCVar (Cy.subst Rename.succ.asSubst)).lift).subst
+          Rename.succ.lift.asSubst).subst
+          (Subst.openVar ((yv.rename Rename.succ).rename Rename.succ))).subst Rename.succ.asSubst
+        = ((Cy.subst Rename.succ.asSubst).subst Rename.succ.asSubst).subst Rename.succ.asSubst
+      simp only [CaptureSet.subst_asSubst, CaptureSet.subst_cvar, CaptureSet.rename_cvar]
+      change ((((Cy.rename Rename.succ).rename Rename.succ).rename Rename.succ.lift).subst
+          (Subst.openVar ((yv.rename Rename.succ).rename Rename.succ))).rename Rename.succ
+        = ((Cy.rename Rename.succ).rename Rename.succ).rename Rename.succ
+      simp only [CaptureSet.weaken_rename_comm, CaptureSet.weaken_openVar]
+    | .there (.there .here) =>
+      rw [Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar,
+        Subst.comp_cvar, Subst.comp_cvar, Subst.comp_cvar, appOpen_cvar_c]
+      change (((((((Dt.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var)))).subst
+          Rename.succ.lift.lift.asSubst).subst
+          (Subst.openCVar (Cy.subst Rename.succ.asSubst)).lift).subst
+          Rename.succ.lift.asSubst).subst
+          (Subst.openVar ((yv.rename Rename.succ).rename Rename.succ))).subst Rename.succ.asSubst
+        = ((Dt.subst Rename.succ.asSubst).subst Rename.succ.asSubst).subst Rename.succ.asSubst
+      simp only [← CaptureSet.subst_asSubst, CaptureSet.subst_comp]
+      congr 1
+    | .there (.there (.there c0)) => rfl
+
+/-- The everything-at-once opening of the compiled arg-fit tower's TWO cpoly
+    binders (c ↦ Dt, cx ↦ Cy): the 2-capp analog of `appOpen`, without the
+    value-parameter slot.  Instantiates the outer cpoly `c` (`.there .here`) to the
+    compiled argument `Dt` and the inner cpoly `cx` (`.here`) to the redirected
+    parameter capture `Cy`; the remaining slots are shifts to closed atoms. -/
+def argOpen {s : Sig} (Dt Cy : CaptureSet s) :
+    Subst (s,C,C) s where
+  var := fun
+    | .there (.there x0) => .bound x0
+  tvar := fun
+    | .there (.there X0) => PureTy.tvar X0
+  cvar := fun
+    | .here => Cy
+    | .there .here => Dt
+    | .there (.there c0) => .cvar (.M .epsilon) c0
+
+theorem argOpen_cvar_c {s : Sig} {Dt Cy : CaptureSet s} :
+    (argOpen Dt Cy).cvar (.there .here) = Dt := rfl
+theorem argOpen_cvar_cx {s : Sig} {Dt Cy : CaptureSet s} :
+    (argOpen Dt Cy).cvar .here = Cy := rfl
+
+/-- The arg-fit `argOpen` substitution is closed when its two payloads are: the
+    redirected-parameter capture `Cy` and the compiled argument `Dt`.  (The remaining
+    slots are shifts to closed atoms.)  The 2-cpoly (no value-param) analogue of
+    `appOpen_is_closed`. -/
+theorem argOpen_is_closed {s : Sig} {Dt Cy : CaptureSet s}
+    (hDt : Dt.IsClosed) (hCy : Cy.IsClosed) :
+    (argOpen Dt Cy).IsClosed where
+  var_closed := fun x => by
+    match x with
+    | .there (.there _) => exact Var.IsClosed.bound
+  tvar_closed := fun X => by
+    match X with
+    | .there (.there _) => exact Ty.IsClosed.tvar
+  cvar_closed := fun C => by
+    match C with
+    | .here => exact hCy
+    | .there .here => exact hDt
+    | .there (.there _) => exact CaptureSet.IsClosed.cvar
+
+/-- The `Ty` lifting of the ANF ARG-FIT chain collapse (2-capp, no value param).
+    The two nested ANF cpoly substitutions (`c ↦ ⟦D⟧`, `cx ↦ Cy`, each interleaved
+    with a tower weakening) compose into the single `argOpen` substitution on the raw
+    compiled domain, up to the two ambient var-weakenings.  This is the arg-fit analog
+    of `Ty.appChain_collapse`, targeting `M2.rename succ` where
+    `M = A.subst (openCVar Dt).lift` and `M2 = (M.rename succ.lift).subst (openCVar (Cy.rename succ))`.
+    Generic over `Ty.subst_comp`, so after `subst_asSubst`+`subst_comp`+`congr 1` the
+    residual `Subst` equality is category-agnostic. -/
+theorem Ty.argChain_collapse {s : Sig} {Dt Cy : CaptureSet s}
+    {sort : TySort} (E : Ty sort (s,C,C)) :
+    (((E.subst ((Subst.openCVar Dt).lift (k := .cvar))).rename
+        ((Rename.succ (k := .var)).lift (k := .cvar))).subst
+        (Subst.openCVar (Cy.rename (Rename.succ (k := .var))))).rename
+        (Rename.succ (k := .var))
+      = ((E.subst (argOpen Dt Cy)).rename (Rename.succ (k := .var))).rename
+          (Rename.succ (k := .var)) := by
+  simp only [← Ty.subst_asSubst, ← CaptureSet.subst_asSubst, Ty.subst_comp]
+  congr 1
+  apply Subst.funext
+  · intro x
+    match x with
+    | .there (.there x0) => rfl
+  · intro X
+    match X with
+    | .there (.there X0) => rfl
+  · intro C
+    match C with
+    | .here =>
+      simp only [Subst.comp_cvar, argOpen_cvar_cx]
+      change ((((CaptureSet.cvar (.M .epsilon) BVar.here).subst Rename.succ.lift.asSubst).subst
+          (Subst.openCVar (Cy.subst Rename.succ.asSubst))).subst Rename.succ.asSubst)
+        = (Cy.subst Rename.succ.asSubst).subst Rename.succ.asSubst
+      simp only [CaptureSet.subst_asSubst, CaptureSet.subst_cvar, CaptureSet.rename_cvar]
+      rfl
+    | .there .here =>
+      simp only [Subst.comp_cvar, argOpen_cvar_c]
+      change ((((Dt.rename (Rename.succ (k := .cvar))).subst Rename.succ.lift.asSubst).subst
+          (Subst.openCVar (Cy.subst Rename.succ.asSubst))).subst Rename.succ.asSubst)
+        = (Dt.subst Rename.succ.asSubst).subst Rename.succ.asSubst
+      simp only [← CaptureSet.subst_asSubst, CaptureSet.subst_comp]
+      congr 1
+    | .there (.there c0) => rfl
 
 /-- The weakened-image cancellation used to compute chain images of items that do not
     mention the three tower binders: an item weakened past the two cvar binders and the

@@ -323,6 +323,14 @@ inductive CapyHasType : CapyCaptureSet s -> CapyCtx s -> CapyExp s -> CapyTy .ex
   D.NoPseudoPeak ->
   T1.NoPseudoPeak ->
   T2.NoPseudoPeak ->
+  --  * pure `poly`/`cpoly` bounds in the arrow's annotations `T1`/`T2` (2026-07-03,
+  --    completing the `fresh`/`abs` well-formedness family — `NoPseudoPeak` above was
+  --    added for this rule but its `PureBounds` twin was missed): the codomain and
+  --    domain compilations (`compile_subst_subtyp` for the arg-fit `.1` and codomain
+  --    `.2` bridges) require the substituted type's `poly` bounds pure.  Surface types
+  --    have pure bounds; this never rules out a surface program.
+  T1.PureBounds ->
+  T2.PureBounds ->
   --  * the DOMAIN annotation's capture is access-only (2026-07-02, user decision;
   --    mirrors the `abs` rule's identical premise): the compiled wrap-lock's
   --    self-cvar key item carries `T1.captureSet`'s access modes on `c`, and the
