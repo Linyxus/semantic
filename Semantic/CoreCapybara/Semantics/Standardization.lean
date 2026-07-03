@@ -301,6 +301,9 @@ inductive GSeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   GSeqStep [] m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
+| step_consumer_app :
+  m.lookup x = some (.val ⟨.consumer cs (.exi 1 T) e, hv, R⟩) ->
+  GSeqStep [] m (.consumer_app (.free x) arg) m (.unpack 1 arg e)
 | step_unwrap :
   m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
   GSeqStep [] m (.unwrap (.free x)) m e
@@ -372,6 +375,7 @@ theorem GSeqStep.toSeqStep {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_invoke h1 h2 => exact SeqStep.step_invoke h1 h2
   | step_tapply hlk => exact SeqStep.step_tapply hlk
   | step_capply hlk => exact SeqStep.step_capply hlk
+  | step_consumer_app hlk => exact SeqStep.step_consumer_app hlk
   | step_unwrap hlk => exact SeqStep.step_unwrap hlk
   | step_cond_var_true hlk => exact SeqStep.step_cond_var_true hlk
   | step_cond_var_false hlk => exact SeqStep.step_cond_var_false hlk
@@ -396,6 +400,7 @@ theorem GSeqStep.toStep {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_invoke h1 h2 => exact Step.step_invoke h1 h2
   | step_tapply hlk => exact Step.step_tapply hlk
   | step_capply hlk => exact Step.step_capply hlk
+  | step_consumer_app hlk => exact Step.step_consumer_app hlk
   | step_unwrap hlk => exact Step.step_unwrap hlk
   | step_cond_var_true hlk => exact Step.step_cond_var_true hlk
   | step_cond_var_false hlk => exact Step.step_cond_var_false hlk
@@ -489,7 +494,8 @@ theorem SeqStep.val_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} {l : N
 theorem SeqStep.alloc_fresh {t : Trace} {m m' : Memory} {e e' : Exp {}} {l : Nat}
     (hstep : SeqStep t m e m' e') (hal : Trace.allocd t l) : m.lookup l = none := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
@@ -505,7 +511,8 @@ theorem SeqStep.untouched_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} 
     (hstep : SeqStep t m e m' e') (hne : m.lookup c ≠ none) (hnt : ¬ Trace.touched t c) :
     m'.lookup c = m.lookup c := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => rfl
   | step_write hx _ =>
@@ -531,7 +538,8 @@ theorem SeqStep.unmutated_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} 
     (hw : ¬ (TraceItem.access .epsilon l ∈ t)) (hd : ¬ (TraceItem.dealloc l ∈ t)) :
     m'.lookup l = m.lookup l := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => rfl
   | step_write hx _ =>
@@ -640,6 +648,10 @@ theorem SeqStep.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : 
   | step_capply hlk =>
     obtain ⟨ci, hci⟩ := hc
     exact ⟨mb, SeqStep.step_capply ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk), hag, rfl⟩
+  | step_consumer_app hlk =>
+    obtain ⟨ci, hci⟩ := hc
+    exact ⟨mb, SeqStep.step_consumer_app ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk),
+      hag, rfl⟩
   | step_unwrap hlk =>
     obtain ⟨ci, hci⟩ := hc
     exact ⟨mb, SeqStep.step_unwrap ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk), hag, rfl⟩
@@ -746,6 +758,13 @@ theorem SeqStep.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace
       have hxc : xx ≠ c := fun h => by
         rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
       exact ⟨mb, SeqStep.step_capply ((hag xx hxc) ▸ hlk), hag, hcb, by simp [Trace.touched]⟩
+  | step_consumer_app hlk =>
+    match hwf with
+    | .wf_consumer_app (.wf_free (n := xx) hx1) _ =>
+      have hxc : xx ≠ c := fun h => by
+        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
+      exact ⟨mb, SeqStep.step_consumer_app ((hag xx hxc) ▸ hlk), hag, hcb,
+        by simp [Trace.touched]⟩
   | step_unwrap hlk =>
     match hwf with
     | .wf_unwrap (.wf_free (n := xx) hx1) =>
@@ -887,6 +906,8 @@ theorem step_step_swap {ts s : Trace} {m1 m2 mb : Memory} {eR eR' eL eL1 : Exp {
     exact ⟨mb, hrun, Step.step_tapply (SeqStep.val_preserved hrun hlk)⟩
   | step_capply hlk =>
     exact ⟨mb, hrun, Step.step_capply (SeqStep.val_preserved hrun hlk)⟩
+  | step_consumer_app hlk =>
+    exact ⟨mb, hrun, Step.step_consumer_app (SeqStep.val_preserved hrun hlk)⟩
   | step_unwrap hlk =>
     exact ⟨mb, hrun, Step.step_unwrap (SeqStep.val_preserved hrun hlk)⟩
   | step_cond_var_true hlk =>
@@ -1030,7 +1051,8 @@ theorem step_step_swap {ts s : Trace} {m1 m2 mb : Memory} {eR eR' eL eL1 : Exp {
 theorem Step.subsumes {t : Trace} {m m' : Memory} {e e' : Exp {}}
     (h : Step t m e m' e') : m'.subsumes m := by
   induction h with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => exact Memory.subsumes_refl _
   | step_par_left _ _ _ ih => exact ih
@@ -1324,7 +1346,8 @@ theorem SeqReduce.alloc_fresh {t : Trace} {m m' : Memory} {e e' : Exp {}} {l : N
 theorem Step.alloc_fresh {t : Trace} {m m' : Memory} {e e' : Exp {}} {l : Nat}
     (h : Step t m e m' e') (hal : Trace.allocd t l) : m.lookup l = none := by
   induction h with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
@@ -1367,7 +1390,8 @@ theorem Trace.Noninterfere.symm {t s : Trace} (h : Trace.Noninterfere t s) :
 theorem Step.allocd_present {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}} {l : Nat}
     (hstep : Step t m1 e1 m2 e2) (hal : Trace.allocd t l) : m2.heap l ≠ none := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
@@ -1389,6 +1413,7 @@ theorem Step.preserves_wf {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}}
   | step_invoke h1 h2 => exact step_preserves_wf (SeqStep.step_invoke h1 h2) hwf
   | step_tapply hlk => exact step_preserves_wf (SeqStep.step_tapply hlk) hwf
   | step_capply hlk => exact step_preserves_wf (SeqStep.step_capply hlk) hwf
+  | step_consumer_app hlk => exact step_preserves_wf (SeqStep.step_consumer_app hlk) hwf
   | step_unwrap hlk => exact step_preserves_wf (SeqStep.step_unwrap hlk) hwf
   | step_cond_var_true hlk => exact step_preserves_wf (SeqStep.step_cond_var_true hlk) hwf
   | step_cond_var_false hlk => exact step_preserves_wf (SeqStep.step_cond_var_false hlk) hwf
@@ -1475,7 +1500,8 @@ theorem Step.allocd_mcell {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}} {l : Nat
     (hstep : Step t m1 e1 m2 e2) (hal : Trace.allocd t l) :
     ∃ info, m2.heap l = some (.capability info) := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_write _ _ | step_drop _
   | step_rename | step_unpack | step_par_join _ _ | step_lift _ _ _ =>
@@ -1889,6 +1915,7 @@ theorem GSeqStep.transport {t : Trace} {m2 m2' m1 m1' : Memory} {e eg' es' : Exp
   | step_invoke h1 h2 => exact GSeqStep.step_invoke h1 h2
   | step_tapply hlk => exact GSeqStep.step_tapply hlk
   | step_capply hlk => exact GSeqStep.step_capply hlk
+  | step_consumer_app hlk => exact GSeqStep.step_consumer_app hlk
   | step_unwrap hlk => exact GSeqStep.step_unwrap hlk
   | step_cond_var_true hlk => exact GSeqStep.step_cond_var_true hlk
   | step_cond_var_false hlk => exact GSeqStep.step_cond_var_false hlk
@@ -1988,6 +2015,9 @@ theorem absorb : ∀ {n : Nat} {t1 t2 : Trace} {m0 m1 mf : Memory} {e e1 a : Exp
         Trace.Equiv.refl _, fun l => Iff.rfl⟩
     | step_capply hlk =>
       exact ⟨_, GSeqReduce.step (GSeqStep.step_capply hlk) hred.toGSeqReduce,
+        Trace.Equiv.refl _, fun l => Iff.rfl⟩
+    | step_consumer_app hlk =>
+      exact ⟨_, GSeqReduce.step (GSeqStep.step_consumer_app hlk) hred.toGSeqReduce,
         Trace.Equiv.refl _, fun l => Iff.rfl⟩
     | step_unwrap hlk =>
       exact ⟨_, GSeqReduce.step (GSeqStep.step_unwrap hlk) hred.toGSeqReduce,

@@ -41,6 +41,9 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step [] m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
+| step_consumer_app :
+  m.lookup x = some (.val ⟨.consumer cs (.exi 1 T) e, hv, R⟩) ->
+  Step [] m (.consumer_app (.free x) arg) m (.unpack 1 arg e)
 -- Boxed terms are values: no `wrap` reduction rule, only `unwrap`.
 | step_unwrap :
   m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
@@ -153,6 +156,9 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   SeqStep [] m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
+| step_consumer_app :
+  m.lookup x = some (.val ⟨.consumer cs (.exi 1 T) e, hv, R⟩) ->
+  SeqStep [] m (.consumer_app (.free x) arg) m (.unpack 1 arg e)
 | step_unwrap :
   m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
   SeqStep [] m (.unwrap (.free x)) m e

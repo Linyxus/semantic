@@ -327,7 +327,7 @@ theorem HasType.use_set_is_closed
   | pack hC _ _ _ =>
     exact CaptureSet.IsClosed.union hC (CaptureSet.applyAccess_isClosed hC)
   | app _ ht_x _ _ _ => exact HasType.typed_var_capture_closed ht_x
-  | consumer_app _ _ ht_x _ _ ih_e =>
+  | consumer_app _ _ _ ht_x _ _ ih_e =>
     exact CaptureSet.IsClosed.union ih_e (HasType.typed_var_capture_closed ht_x)
   | tapp _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
   | capp _ _ _ ht_x _ => exact HasType.typed_var_capture_closed ht_x
@@ -407,7 +407,7 @@ theorem HasType.exp_is_closed
       exact CaptureSet.rename_closed_inv h_use
     · assumption
     · exact ih
-  case consumer hT1 ht_body ih =>
+  case consumer hT1 _hX ht_body ih =>
     constructor
     · have h_use := HasType.use_set_is_closed ht_body
       cases h_use with
@@ -443,7 +443,7 @@ theorem HasType.exp_is_closed
     · rename_i _ ih_x
       cases ih_x; assumption
     · assumption
-  case consumer_app _ _ _ _ ih_x ih_e =>
+  case consumer_app _ _ _ _ _ ih_x ih_e =>
     constructor
     · cases ih_x; assumption
     · exact ih_e
@@ -494,7 +494,7 @@ theorem HasType.type_is_closed
     rename_i hcb_closed _
     exact Ty.IsClosed.cpoly hcb_closed
       (CaptureSet.rename_closed_inv h_use) ih
-  case consumer hT1 ht_body ih =>
+  case consumer hT1 _hX ht_body ih =>
     constructor
     have h_use := HasType.use_set_is_closed ht_body
     cases h_use with

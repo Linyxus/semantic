@@ -314,6 +314,20 @@ theorem rebind_satisfy_iff
 set_option maxHeartbeats 1000000 in
 -- The mutual rebind denotation definitions trigger heavy reducibility checks
 -- from the higher-order assumption transport in the modal branch.
+private theorem Ty.captSkelSize_consumer_arg_lt
+    {T1 : Ty .capt (s,C)} {cs : CaptureSet s} {E : Ty .exi s} :
+    Ty.captSkelSize T1 < Ty.captSkelSize (.consumer (.exi 1 T1) cs E) := by
+  simp only [Ty.captSkelSize, Ty.exiSkelSize]
+  change Ty.captSkelSize T1 < 1 + (1 + Ty.captSkelSize T1) + Ty.exiSkelSize E
+  omega
+
+private theorem Ty.exiSkelSize_consumer_res_lt
+    {T1 : Ty .capt (s,C)} {cs : CaptureSet s} {E : Ty .exi s} :
+    Ty.exiSkelSize E < Ty.captSkelSize (.consumer (.exi 1 T1) cs E) := by
+  simp only [Ty.captSkelSize, Ty.exiSkelSize]
+  change Ty.exiSkelSize E < 1 + (1 + Ty.captSkelSize T1) + Ty.exiSkelSize E
+  omega
+
 mutual
 
 def rebind_val_denot
@@ -436,7 +450,51 @@ def rebind_val_denot
       intro m'' hsub'' t v hpost hguard
       obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
-  | .consumer _ cs _ => by
+  | .consumer (.exi 1 T1) cs E => by
+    intro k st m e
+    simp only [Ty.val_denot, Ty.rename]
+    rw [← rebind_resolved_capture_set ρ]
+    rw [← rebind_captureset_denot ρ cs]
+    constructor
+    · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hbody⟩
+      refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle hmt hcompat harg
+      have ihArg :=
+        rebind_val_denot
+          (ρ.liftCVar CS (cap := CS.ground_denot m') (a := .can_drop)) T1
+      have ihRes := rebind_exi_val_denot ρ E
+      have harg' := (ihArg j st' m' (.var (.free arg))).mpr harg
+      have hd' := hbody j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle hmt hcompat harg'
+      refine eval_post_monotonic_general ?_ hd'
+      intro m'' _hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
+      exact ⟨htr, st'', hwle3, hmt3,
+        (ihRes (j - t.readCount) st'' m'' v).mp hval, hpb, hwl⟩
+    · intro ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, hbody⟩
+      refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
+      intro j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle hmt hcompat harg
+      have ihArg :=
+        rebind_val_denot
+          (ρ.liftCVar CS (cap := CS.ground_denot m') (a := .can_drop)) T1
+      have ihRes := rebind_exi_val_denot ρ E
+      have harg' := (ihArg j st' m' (.var (.free arg))).mp harg
+      have hd' := hbody j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle hmt hcompat harg'
+      refine eval_post_monotonic_general ?_ hd'
+      intro m'' _hsub'' t v hpost hguard
+      obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
+      exact ⟨htr, st'', hwle3, hmt3,
+        (ihRes (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
+  | .consumer (.exi 0 T1) cs E => by
+    intro k st m e
+    simp only [Ty.val_denot, Ty.rename]
+    rw [← rebind_resolved_capture_set ρ]
+    rw [← rebind_captureset_denot ρ cs]
+  | .consumer (.exi (n + 2) T1) cs E => by
+    intro k st m e
+    simp only [Ty.val_denot, Ty.rename]
+    rw [← rebind_resolved_capture_set ρ]
+    rw [← rebind_captureset_denot ρ cs]
+  | .consumer (.typ Targ) cs E => by
     intro k st m e
     simp only [Ty.val_denot, Ty.rename]
     rw [← rebind_resolved_capture_set ρ]
@@ -502,6 +560,13 @@ def rebind_val_denot
         intro m'' hsub'' t v hpost hguard
         obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
         exact ⟨htr, st'', hwle3, hmt3, (ih (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
+termination_by Ty.captSkelSize T
+decreasing_by
+  all_goals simp only [Ty.captSkelSize, Ty.exiSkelSize]
+  all_goals first
+    | omega
+    | change Ty.captSkelSize T1 < 1 + (1 + Ty.captSkelSize T1) + Ty.exiSkelSize E
+      omega
 
 def rebind_exi_val_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}
@@ -523,6 +588,10 @@ def rebind_exi_val_denot
     · rintro ⟨CS, y, hres, hwf, hdf, hdisj, hbody⟩
       exact ⟨CS, y, hres, hwf, hdf, hdisj,
         (rebind_val_denot (ρ.liftCVars m .can_drop CS) T k st m (Exp.var y)).mpr hbody⟩
+termination_by Ty.exiSkelSize T
+decreasing_by
+  all_goals simp only [Ty.exiSkelSize]
+  all_goals omega
 
 def rebind_exi_exp_denot
   {s1 s2 : Sig} {env1 : TypeEnv s1} {f : Rename s1 s2} {env2 : TypeEnv s2}

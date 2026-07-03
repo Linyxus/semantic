@@ -322,13 +322,23 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
-| consumer {T1 : Ty .capt (s,C)} :
+| consumer {T1 : Ty .capt (s,C)} {X : PeakSet s} :
   T1.IsClosed ->
+  -- Every droppable capture variable of `Γ` is either killed in the body's
+  -- context (`X`) or occurs in the closure's capture set `cs`.  The body can
+  -- never use a droppable outside `cs` anyway (its use set is `cs ∪ C`), so
+  -- killing the complement costs no expressiveness — and it is what lets the
+  -- witness binder `C` (which may alias the capabilities consumed at the
+  -- application site) coexist with `Γ`'s droppables in the separation
+  -- invariant: the witness is separated from the closure's own captures by
+  -- the application rule's `SeqComp`, and everything else is dead.
+  (∀ c : BVar s .cvar, Γ.lookup_authority c = .can_drop →
+    (∃ a, (CaptureSet.cvar a c) ⊆ X.cs) ∨ (∃ a, (CaptureSet.cvar a c) ⊆ cs)) ->
   HasType
     (((cs.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))) ∪
       (.cvar (.M .epsilon) (.there .here)) ∪
       (.cvar .drop (.there .here)))
-    ((Γ,C[.can_drop]<:.unbound),x:T1)
+    (((Γ.kill_peaks X),C[.can_drop]<:.unbound),x:T1)
     e
     ((E.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))) ->
   -----------------------------
@@ -357,6 +367,7 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
 | consumer_app {C1 : CaptureSet s} {T1 : Ty .capt (s,C)} :
   SeqComp Γ C1 (.var (.M .epsilon) x) ->
+  ((C1.peakset Γ).consumed).droppable Γ ->
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
   HasType {} Γ (.var x) (.typ (.consumer (.exi 1 T1) (.var (.M .epsilon) x) E)) ->
   HasType C1 Γ e (.exi 1 T1) ->

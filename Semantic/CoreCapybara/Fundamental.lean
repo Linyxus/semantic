@@ -288,6 +288,7 @@ theorem Ty.captureSet_isClosed {T : Ty .capt s}
   case arrow => cases h with | arrow _ hcs _ => exact hcs
   case poly => cases h with | poly _ hcs _ => exact hcs
   case cpoly => cases h with | cpoly _ hcs _ => exact hcs
+  case consumer => cases h with | consumer _ hcs _ => exact hcs
   case modal => cases h with | modal hcs _ _ => exact hcs
   case cap => cases h with | cap hcs => exact hcs
   case cell => cases h with | cell hcs => exact hcs
@@ -2328,6 +2329,74 @@ theorem sem_typ_capp
     pack_bound_mono hR0_sub (Memory.subsumes_refl store) hpb, hwl⟩
   exact IDenot.equiv_ltr (open_carg_exi_val_denot (env := env) (C := D) (T := T)
     (cap := (D.subst (Subst.from_TypeEnv env)).ground_denot store)) hval''
+
+theorem sem_typ_consumer {T1 : Ty .capt (s,C)} {E : Ty .exi s}
+  {Cf : CaptureSet s} {e : Exp (s,C,x)} {X : PeakSet s}
+  (hclosed_consumer : (Exp.consumer Cf (.exi 1 T1) e).IsClosed)
+  (hX : ∀ c : BVar s .cvar, Γ.lookup_authority c = .can_drop →
+    (∃ a, (CaptureSet.cvar a c) ⊆ X.cs) ∨ (∃ a, (CaptureSet.cvar a c) ⊆ Cf))
+  (ht : SemanticTyping
+    (((Cf.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))) ∪
+      (.cvar (.M .epsilon) (.there .here)) ∪
+      (.cvar .drop (.there .here)))
+    (((Γ.kill_peaks X),C[.can_drop]<:.unbound),x:T1)
+    e
+    ((E.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var)))) :
+  SemanticTyping ∅ Γ (Exp.consumer Cf (.exi 1 T1) e)
+    (.typ (.consumer (.exi 1 T1) Cf E)) := by
+  intro env k st store hts _hdsep _hcompat
+  simp only [Ty.exi_exp_denot, List.empty_eq]
+  intro hmt
+  apply Eval.eval_val
+  · simp only [Exp.subst]
+    exact Exp.IsSimpleVal.consumer
+  · intro _hguard
+    refine ⟨TraceOk.nil, st, WorldLe.refl_trunc_self _ st store, hmt, ?_,
+      pack_bound_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h),
+      witness_live_of_ne_pack (fun _ _ _ h => by simp [Exp.subst] at h)⟩
+    simp only [Ty.exi_val_denot, Ty.val_denot]
+    cases hclosed_consumer with
+    | consumer hclosed_cs hclosed_T hclosed_body =>
+      constructor
+      · apply Exp.wf_subst
+        · exact Exp.wf_of_closed (Exp.IsClosed.consumer hclosed_cs hclosed_T hclosed_body)
+        · exact from_TypeEnv_wf_in_heap hts
+      constructor
+      · apply CaptureSet.wf_subst
+        · exact CaptureSet.wf_of_closed hclosed_cs
+        · exact from_TypeEnv_wf_in_heap hts
+      · refine ⟨Cf.subst (Subst.from_TypeEnv env),
+          (Ty.exi 1 T1).subst (Subst.from_TypeEnv env),
+          e.subst (Subst.from_TypeEnv env).lift.lift, ?_, ?_, ?_⟩
+        · simp only [resolve, Exp.subst]
+        · apply CaptureSet.wf_subst
+          · exact CaptureSet.wf_of_closed hclosed_cs
+          · exact from_TypeEnv_wf_in_heap hts
+        · rw [expand_captures_eq_ground_denot]
+          constructor
+          · simp only [CaptureSet.denot, List.empty_eq]
+            exact CapabilitySet.Subset.refl
+          · -- The behavioral body clause: run the consumer body under the
+            -- doubly-extended environment (capture witness + argument),
+            -- via the body's semantic typing `ht`.
+            sorry
+
+/-- Semantic typing for `consumer_app`.
+
+The operational rules reduce `consumer_app` to the consumer body's unpacked form;
+the proof must connect the argument pack's witness evidence to the consumer
+closure's body-running obligation. -/
+theorem sem_typ_consumer_app
+  {C1 : CaptureSet s} {Γ : Ctx s} {x : Var .var s} {e : Exp s}
+  {T1 : Ty .capt (s,C)} {E : Ty .exi s}
+  (_hseq : SeqComp Γ C1 (.var (.M .epsilon) x))
+  (_hdrop : ((C1.peakset Γ).consumed).droppable Γ)
+  (_haccessible : (CaptureSet.var (.M .epsilon) x).accessible Γ)
+  (_hx : SemanticTyping {} Γ (.var x)
+    (.typ (.consumer (.exi 1 T1) (.var (.M .epsilon) x) E)))
+  (_he : SemanticTyping C1 Γ e (.exi 1 T1)) :
+  SemanticTyping (C1 ∪ (.var (.M .epsilon) x)) Γ (.consumer_app x e) E := by
+  sorry
 
 theorem sem_typ_invoke
   {x y : BVar s .var}
@@ -5551,6 +5620,16 @@ theorem fundamental
     · cases hclosed_e
       rename_i hclosed_cs hclosed_cb hclosed_e0
       exact ih (Ctx.IsClosed.push hΓ (Binding.IsClosed.cvar hclosed_cb)) hclosed_e0
+  case consumer =>
+    rename_i hT1_closed hX _ht_body ih
+    cases hclosed_e with
+    | consumer hclosed_cs hclosed_T hclosed_body =>
+      exact sem_typ_consumer (Exp.IsClosed.consumer hclosed_cs hclosed_T hclosed_body) hX
+        (ih (Ctx.IsClosed.push
+              (Ctx.IsClosed.push (Ctx.kill_peaks_cs_isClosed hΓ)
+                (Binding.IsClosed.cvar CaptureBound.IsClosed.unbound))
+              (Binding.IsClosed.var hT1_closed))
+          hclosed_body)
   case wrap =>
     rename_i hΨ_closed ht_body ih
     cases hclosed_e with
@@ -5591,6 +5670,13 @@ theorem fundamental
       cases hx_closed
       have hx := hx_ih hΓ (Exp.IsClosed.var Var.IsClosed.bound)
       exact sem_typ_capp (var_typing_extract_closed hx_syn) hD_closed_exp hvalid_D hx
+  case consumer_app =>
+    rename_i hseq hdrop haccessible hx_syn he_syn hx_ih he_ih
+    cases hclosed_e with
+    | consumer_app hx_closed he_closed =>
+      exact sem_typ_consumer_app hseq hdrop haccessible
+        (hx_ih hΓ (Exp.IsClosed.var hx_closed))
+        (he_ih hΓ he_closed)
   case unwrap =>
     rename_i x Ψ E hx hsatisfy ih_x
     have hx_closed := HasType.typed_var_closed hx

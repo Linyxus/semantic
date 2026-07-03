@@ -68,6 +68,7 @@ def Ty.renameLoc (π : Equiv.Perm Nat) : Ty sort s → Ty sort s
 | .arrow T1 cs T2 => .arrow (T1.renameLoc π) (cs.renameLoc π) (T2.renameLoc π)
 | .poly T1 cs T2 => .poly (T1.renameLoc π) (cs.renameLoc π) (T2.renameLoc π)
 | .cpoly cb cs T => .cpoly (cb.renameLoc π) (cs.renameLoc π) (T.renameLoc π)
+| .consumer T1 cs T2 => .consumer (T1.renameLoc π) (cs.renameLoc π) (T2.renameLoc π)
 | .modal cs Ψ T => .modal (cs.renameLoc π) (Ψ.renameLoc π) (T.renameLoc π)
 | .unit => .unit
 | .cap cs => .cap (cs.renameLoc π)
@@ -106,6 +107,7 @@ def Exp.renameLoc (π : Equiv.Perm Nat) : Exp s → Exp s
 | .abs cs T e => .abs (cs.renameLoc π) (T.renameLoc π) (e.renameLoc π)
 | .tabs cs T e => .tabs (cs.renameLoc π) (T.renameLoc π) (e.renameLoc π)
 | .cabs cs cb e => .cabs (cs.renameLoc π) (cb.renameLoc π) (e.renameLoc π)
+| .consumer cs T e => .consumer (cs.renameLoc π) (T.renameLoc π) (e.renameLoc π)
 | .boxed cs Ψ e => .boxed (cs.renameLoc π) (Ψ.renameLoc π) (e.renameLoc π)
 | .reader x => .reader (x.renameLoc π)
 | .alloc x => .alloc (x.renameLoc π)
@@ -114,6 +116,7 @@ def Exp.renameLoc (π : Equiv.Perm Nat) : Exp s → Exp s
 | .app x y => .app (x.renameLoc π) (y.renameLoc π)
 | .tapp x T => .tapp (x.renameLoc π) (T.renameLoc π)
 | .capp x cs => .capp (x.renameLoc π) (cs.renameLoc π)
+| .consumer_app x e => .consumer_app (x.renameLoc π) (e.renameLoc π)
 | .unwrap x => .unwrap (x.renameLoc π)
 | .letin e1 e2 => .letin (e1.renameLoc π) (e2.renameLoc π)
 | .unpack n e1 e2 => .unpack n (e1.renameLoc π) (e2.renameLoc π)
@@ -207,6 +210,8 @@ theorem Ty.renameLoc_rename (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
   | cpoly _ _ _ ih =>
     simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename,
       CaptureBound.renameLoc_rename, ih]
+  | consumer _ _ _ ih1 ih2 =>
+    simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename, ih1, ih2]
   | modal _ _ _ ih =>
     simp only [Ty.rename, Ty.renameLoc, CaptureSet.renameLoc_rename,
       ModalCtx.renameLoc_rename, ih]
@@ -233,6 +238,8 @@ theorem Exp.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
       PureTy.renameLoc_rename, ih]
   | cabs _ _ _ ih => simp only [Exp.rename, Exp.renameLoc, CaptureSet.renameLoc_rename,
       CaptureBound.renameLoc_rename, ih]
+  | consumer _ _ _ ih => simp only [Exp.rename, Exp.renameLoc, CaptureSet.renameLoc_rename,
+      Ty.renameLoc_rename, ih]
   | boxed _ _ _ ih => simp only [Exp.rename, Exp.renameLoc, CaptureSet.renameLoc_rename,
       ModalCtx.renameLoc_rename, ih]
   | reader x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
@@ -249,6 +256,7 @@ theorem Exp.renameLoc_rename (π : Equiv.Perm Nat) {s1 s2 : Sig}
       PureTy.renameLoc_rename]
   | capp x _ => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename,
       CaptureSet.renameLoc_rename]
+  | consumer_app x _ ih => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename, ih]
   | unwrap x => simp only [Exp.rename, Exp.renameLoc, Var.renameLoc_rename]
   | letin _ _ ih1 ih2 => simp only [Exp.rename, Exp.renameLoc, ih1, ih2]
   | unpack _ _ _ ih1 ih2 => simp only [Exp.rename, Exp.renameLoc, ih1, ih2]
@@ -430,6 +438,7 @@ theorem compute_reachability_renameLoc (π : Equiv.Perm Nat) (h : Heap)
   | abs => simp only [Exp.renameLoc, compute_reachability, expand_captures_renameLoc]
   | tabs => simp only [Exp.renameLoc, compute_reachability, expand_captures_renameLoc]
   | cabs => simp only [Exp.renameLoc, compute_reachability, expand_captures_renameLoc]
+  | consumer => simp only [Exp.renameLoc, compute_reachability, expand_captures_renameLoc]
   | boxed => simp only [Exp.renameLoc, compute_reachability, expand_captures_renameLoc]
   | unit => rfl
   | btrue => rfl
@@ -566,6 +575,8 @@ theorem Ty.subst_renameLoc (π : Equiv.Perm Nat) {sort : TySort} {s1 s2 : Sig}
     simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc,
       CaptureBound.subst_renameLoc, ih, ← Subst.lift_renameLoc]
     rfl
+  | consumer _ _ _ ih1 ih2 =>
+    simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc, ih1, ih2]
   | modal _ _ _ ih =>
     simp only [Ty.subst, Ty.renameLoc, CaptureSet.subst_renameLoc,
       ModalCtx.subst_renameLoc, ih]
@@ -601,6 +612,10 @@ theorem Exp.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
     simp only [Exp.subst, Exp.renameLoc, CaptureSet.subst_renameLoc,
       CaptureBound.subst_renameLoc, ih, ← Subst.lift_renameLoc]
     rfl
+  | consumer _ _ _ ih =>
+    simp only [Exp.subst, Exp.renameLoc, CaptureSet.subst_renameLoc, Ty.subst_renameLoc, ih,
+      ← Subst.lift_renameLoc]
+    rfl
   | boxed _ _ _ ih => simp only [Exp.subst, Exp.renameLoc, CaptureSet.subst_renameLoc,
       ModalCtx.subst_renameLoc, ih]
   | reader x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
@@ -617,6 +632,8 @@ theorem Exp.subst_renameLoc (π : Equiv.Perm Nat) {s1 s2 : Sig}
       PureTy.subst_renameLoc]
   | capp x _ => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc,
       CaptureSet.subst_renameLoc]
+  | consumer_app x _ ih =>
+    simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc, ih]
   | unwrap x => simp only [Exp.subst, Exp.renameLoc, Var.subst_renameLoc]
   | letin _ _ ih1 ih2 =>
     simp only [Exp.subst, Exp.renameLoc, ih1, ih2, ← Subst.lift_renameLoc]
@@ -771,6 +788,7 @@ theorem Ty.WfInHeap.renameLoc {T : Ty sort s} {h : Heap} (hwf : T.WfInHeap h)
   | wf_arrow _ hcs _ ih1 ih2 => exact .wf_arrow ih1 (hcs.renameLoc π) ih2
   | wf_poly _ hcs _ ih1 ih2 => exact .wf_poly ih1 (hcs.renameLoc π) ih2
   | wf_cpoly hcb hcs _ ih => exact .wf_cpoly (hcb.renameLoc π) (hcs.renameLoc π) ih
+  | wf_consumer _ hcs _ ih1 ih2 => exact .wf_consumer ih1 (hcs.renameLoc π) ih2
   | wf_modal hcs hΨ _ ih => exact .wf_modal (hcs.renameLoc π) (hΨ.renameLoc π) ih
   | wf_cap hcs => exact .wf_cap (hcs.renameLoc π)
   | wf_cell hcs _ ih => exact .wf_cell (hcs.renameLoc π) ih
@@ -790,6 +808,7 @@ theorem Exp.WfInHeap.renameLoc {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_abs hcs hT _ ih => exact .wf_abs (hcs.renameLoc π) (hT.renameLoc π) ih
   | wf_tabs hcs hT _ ih => exact .wf_tabs (hcs.renameLoc π) (hT.renameLoc π) ih
   | wf_cabs hcs hcb _ ih => exact .wf_cabs (hcs.renameLoc π) (hcb.renameLoc π) ih
+  | wf_consumer hcs hT _ ih => exact .wf_consumer (hcs.renameLoc π) (hT.renameLoc π) ih
   | wf_boxed hcs hΨ _ ih => exact .wf_boxed (hcs.renameLoc π) (hΨ.renameLoc π) ih
   | wf_reader hx => exact .wf_reader (hx.renameLoc π)
   | wf_alloc hx => exact .wf_alloc (hx.renameLoc π)
@@ -804,6 +823,7 @@ theorem Exp.WfInHeap.renameLoc {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_app hx hy => exact .wf_app (hx.renameLoc π) (hy.renameLoc π)
   | wf_tapp hx hT => exact .wf_tapp (hx.renameLoc π) (hT.renameLoc π)
   | wf_capp hx hcs => exact .wf_capp (hx.renameLoc π) (hcs.renameLoc π)
+  | wf_consumer_app hx _ ih => exact .wf_consumer_app (hx.renameLoc π) ih
   | wf_unwrap hx => exact .wf_unwrap (hx.renameLoc π)
   | wf_letin _ _ ih1 ih2 => exact .wf_letin ih1 ih2
   | wf_unpack _ _ ih1 ih2 => exact .wf_unpack ih1 ih2
@@ -993,6 +1013,8 @@ theorem Ty.renameLoc_id {T : Ty sort s} : T.renameLoc (Equiv.refl Nat) = T := by
   | poly _ _ _ ih1 ih2 => simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ih1, ih2]
   | cpoly _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_id, CaptureBound.renameLoc_id, ih]
+  | consumer _ _ _ ih1 ih2 =>
+    simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ih1, ih2]
   | modal _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_id, ModalCtx.renameLoc_id, ih]
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_id]
@@ -1013,6 +1035,8 @@ theorem Exp.renameLoc_id {e : Exp s} : e.renameLoc (Equiv.refl Nat) = e := by
   | tabs _ _ _ ih => simp only [Exp.renameLoc, CaptureSet.renameLoc_id, PureTy.renameLoc_id, ih]
   | cabs _ _ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_id, CaptureBound.renameLoc_id, ih]
+  | consumer _ _ _ ih =>
+    simp only [Exp.renameLoc, CaptureSet.renameLoc_id, Ty.renameLoc_id, ih]
   | boxed _ _ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_id, ModalCtx.renameLoc_id, ih]
   | reader x => simp only [Exp.renameLoc, Var.renameLoc_id]
@@ -1026,6 +1050,7 @@ theorem Exp.renameLoc_id {e : Exp s} : e.renameLoc (Equiv.refl Nat) = e := by
   | app x y => simp only [Exp.renameLoc, Var.renameLoc_id]
   | tapp x _ => simp only [Exp.renameLoc, Var.renameLoc_id, PureTy.renameLoc_id]
   | capp x _ => simp only [Exp.renameLoc, Var.renameLoc_id, CaptureSet.renameLoc_id]
+  | consumer_app x _ ih => simp only [Exp.renameLoc, Var.renameLoc_id, ih]
   | unwrap x => simp only [Exp.renameLoc, Var.renameLoc_id]
   | letin _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
   | unpack _ _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
@@ -1116,6 +1141,8 @@ theorem Ty.renameLoc_comp {T : Ty sort s} {π ρ : Equiv.Perm Nat} :
   | poly _ _ _ ih1 ih2 => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ih1, ih2]
   | cpoly _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, CaptureBound.renameLoc_comp, ih]
+  | consumer _ _ _ ih1 ih2 =>
+    simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ih1, ih2]
   | modal _ _ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_comp, ModalCtx.renameLoc_comp, ih]
   | cap _ => simp only [Ty.renameLoc, CaptureSet.renameLoc_comp]
@@ -1137,6 +1164,8 @@ theorem Exp.renameLoc_comp {e : Exp s} {π ρ : Equiv.Perm Nat} :
   | tabs _ _ _ ih => simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, PureTy.renameLoc_comp, ih]
   | cabs _ _ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, CaptureBound.renameLoc_comp, ih]
+  | consumer _ _ _ ih =>
+    simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, Ty.renameLoc_comp, ih]
   | boxed _ _ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_comp, ModalCtx.renameLoc_comp, ih]
   | reader x => simp only [Exp.renameLoc, Var.renameLoc_comp]
@@ -1151,6 +1180,7 @@ theorem Exp.renameLoc_comp {e : Exp s} {π ρ : Equiv.Perm Nat} :
   | app x y => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | tapp x _ => simp only [Exp.renameLoc, Var.renameLoc_comp, PureTy.renameLoc_comp]
   | capp x _ => simp only [Exp.renameLoc, Var.renameLoc_comp, CaptureSet.renameLoc_comp]
+  | consumer_app x _ ih => simp only [Exp.renameLoc, Var.renameLoc_comp, ih]
   | unwrap x => simp only [Exp.renameLoc, Var.renameLoc_comp]
   | letin _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
   | unpack _ _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1, ih2]
@@ -1520,6 +1550,9 @@ theorem Step.renameLoc {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_capply hlk =>
     rw [Exp.subst_renameLoc, Subst.openCVar_renameLoc]
     exact Step.step_capply (by rw [Memory.lookup_renameLoc, hlk]; rfl)
+  | step_consumer_app hlk =>
+    simp only [Exp.renameLoc, Var.renameLoc]
+    exact Step.step_consumer_app (by rw [Memory.lookup_renameLoc, hlk]; rfl)
   | step_unwrap hlk =>
     exact Step.step_unwrap (by rw [Memory.lookup_renameLoc, hlk]; rfl)
   | step_cond_var_true hlk =>
@@ -1613,6 +1646,9 @@ theorem SeqStep.renameLoc {t : Trace} {m m' : Memory} {e e' : Exp {}}
   | step_capply hlk =>
     rw [Exp.subst_renameLoc, Subst.openCVar_renameLoc]
     exact SeqStep.step_capply (by rw [Memory.lookup_renameLoc, hlk]; rfl)
+  | step_consumer_app hlk =>
+    simp only [Exp.renameLoc, Var.renameLoc]
+    exact SeqStep.step_consumer_app (by rw [Memory.lookup_renameLoc, hlk]; rfl)
   | step_unwrap hlk =>
     exact SeqStep.step_unwrap (by rw [Memory.lookup_renameLoc, hlk]; rfl)
   | step_cond_var_true hlk =>
@@ -1702,6 +1738,9 @@ theorem BigStep.renameLoc {t : Trace} {m m' : Memory} {e v : Exp {}}
   | bs_capply hlk _ ih =>
     rw [Exp.subst_renameLoc, Subst.openCVar_renameLoc] at ih
     exact BigStep.bs_capply (by rw [Memory.lookup_renameLoc, hlk]; rfl) ih
+  | bs_consumer_app hlk _ ih =>
+    simp only [Exp.renameLoc, Var.renameLoc] at ih ⊢
+    exact BigStep.bs_consumer_app (by rw [Memory.lookup_renameLoc, hlk]; rfl) ih
   | bs_wrap => exact BigStep.bs_wrap
   | bs_unwrap hlk _ ih =>
     exact BigStep.bs_unwrap (by rw [Memory.lookup_renameLoc, hlk]; rfl) ih

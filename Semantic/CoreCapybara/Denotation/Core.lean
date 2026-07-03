@@ -696,6 +696,156 @@ theorem MemTyped_trunc {j k : Nat} (hjk : j ≤ k) {st : StoreTyping k} {m : Mem
       rw [WP.World.trunc_trunc]
       exact hgood l n R0 hlk hlkm ⟨i.val, Nat.lt_of_lt_of_le i.isLt hjk⟩
 
+/- Constructor-only size for capturing types, ignoring capture/modal payloads.
+Substituting runtime environments can expand capture-set annotations, but it does
+not increase this type-constructor skeleton. -/
+mutual
+
+def Ty.captSkelSize : Ty .capt s → Nat
+| .top => 1
+| .tvar _ => 1
+| .arrow T1 _ T2 => 1 + Ty.captSkelSize T1 + Ty.exiSkelSize T2
+| .poly T1 _ T2 => 1 + Ty.captSkelSize T1 + Ty.exiSkelSize T2
+| .cpoly _ _ T => 1 + Ty.exiSkelSize T
+| .consumer T1 _ T2 => 1 + Ty.exiSkelSize T1 + Ty.exiSkelSize T2
+| .modal _ _ T => 1 + Ty.exiSkelSize T
+| .cap _ => 1
+| .cell _ T => 1 + Ty.captSkelSize T
+| .reader _ T => 1 + Ty.captSkelSize T
+| .unit => 1
+| .bool => 1
+
+def Ty.exiSkelSize : Ty .exi s → Nat
+| .exi _ T => 1 + Ty.captSkelSize T
+| .typ T => 1 + Ty.captSkelSize T
+
+end
+
+mutual
+
+theorem Ty.captSkelSize_rename {T : Ty .capt s1} {f : Rename s1 s2} :
+    Ty.captSkelSize (T.rename f) = Ty.captSkelSize T := by
+  cases T with
+  | top => simp [Ty.rename, Ty.captSkelSize]
+  | tvar X => simp [Ty.rename, Ty.captSkelSize]
+  | arrow T1 cs T2 =>
+      simp only [Ty.rename, Ty.captSkelSize]
+      rw [Ty.captSkelSize_rename (T := T1), Ty.exiSkelSize_rename (T := T2)]
+  | poly T1 cs T2 =>
+      simp only [Ty.rename, Ty.captSkelSize]
+      rw [Ty.captSkelSize_rename (T := T1), Ty.exiSkelSize_rename (T := T2)]
+  | cpoly cb cs T =>
+      simp only [Ty.rename, Ty.captSkelSize]
+      rw [Ty.exiSkelSize_rename (T := T)]
+  | consumer T1 cs T2 =>
+      simp only [Ty.rename, Ty.captSkelSize]
+      rw [Ty.exiSkelSize_rename (T := T1), Ty.exiSkelSize_rename (T := T2)]
+  | modal cs Ψ T =>
+      simp only [Ty.rename, Ty.captSkelSize]
+      rw [Ty.exiSkelSize_rename (T := T)]
+  | cap cs => simp [Ty.rename, Ty.captSkelSize]
+  | cell cs T =>
+      simp only [Ty.rename, Ty.captSkelSize]
+      rw [Ty.captSkelSize_rename (T := T)]
+  | reader cs T =>
+      simp only [Ty.rename, Ty.captSkelSize]
+      rw [Ty.captSkelSize_rename (T := T)]
+  | unit => simp [Ty.rename, Ty.captSkelSize]
+  | bool => simp [Ty.rename, Ty.captSkelSize]
+
+theorem Ty.exiSkelSize_rename {T : Ty .exi s1} {f : Rename s1 s2} :
+    Ty.exiSkelSize (T.rename f) = Ty.exiSkelSize T := by
+  cases T with
+  | exi n T =>
+      simp only [Ty.rename, Ty.exiSkelSize]
+      rw [Ty.captSkelSize_rename (T := T)]
+  | typ T =>
+      simp only [Ty.rename, Ty.exiSkelSize]
+      rw [Ty.captSkelSize_rename (T := T)]
+
+end
+
+def Subst.SkelPreserving (σ : Subst s1 s2) : Prop :=
+  ∀ X, Ty.captSkelSize (σ.tvar X).core = 1
+
+theorem Subst.from_TypeEnv_skelPreserving (env : TypeEnv s) :
+    (Subst.from_TypeEnv env).SkelPreserving := by
+  intro X
+  simp only [Subst.from_TypeEnv, PureTy.top, Ty.captSkelSize]
+
+theorem Subst.SkelPreserving.lift {σ : Subst s1 s2} (h : σ.SkelPreserving) :
+    (σ.lift (k := k)).SkelPreserving := by
+  intro X
+  cases X with
+  | here =>
+      simp [Subst.lift, PureTy.tvar, Ty.captSkelSize]
+  | there X =>
+      simpa only [Subst.lift, PureTy.rename] using
+        (Ty.captSkelSize_rename (T := (σ.tvar X).core) (f := Rename.succ)).trans (h X)
+
+theorem Subst.SkelPreserving.liftCVars {σ : Subst s1 s2} (h : σ.SkelPreserving) :
+    ∀ n, (σ.liftCVars n).SkelPreserving
+  | 0 => h
+  | n + 1 => (h.liftCVars n).lift
+
+mutual
+
+theorem Ty.captSkelSize_subst {T : Ty .capt s1} {σ : Subst s1 s2}
+    (hσ : σ.SkelPreserving) :
+    Ty.captSkelSize (T.subst σ) = Ty.captSkelSize T := by
+  cases T with
+  | top => simp [Ty.subst, Ty.captSkelSize]
+  | tvar X => simpa [Ty.subst, Ty.captSkelSize] using hσ X
+  | arrow T1 cs T2 =>
+      simp only [Ty.subst, Ty.captSkelSize]
+      have h1 := Ty.captSkelSize_subst (T := T1) hσ
+      have h2 := Ty.exiSkelSize_subst (T := T2) (Subst.SkelPreserving.lift (k := .var) hσ)
+      simpa [h1, h2]
+  | poly T1 cs T2 =>
+      simp only [Ty.subst, Ty.captSkelSize]
+      have h1 := Ty.captSkelSize_subst (T := T1) hσ
+      have h2 := Ty.exiSkelSize_subst (T := T2) (Subst.SkelPreserving.lift (k := .tvar) hσ)
+      simpa [h1, h2]
+  | cpoly cb cs T =>
+      simp only [Ty.subst, Ty.captSkelSize]
+      have h1 := Ty.exiSkelSize_subst (T := T) (Subst.SkelPreserving.lift (k := .cvar) hσ)
+      simpa [h1]
+  | consumer T1 cs T2 =>
+      simp only [Ty.subst, Ty.captSkelSize]
+      have h1 := Ty.exiSkelSize_subst (T := T1) hσ
+      have h2 := Ty.exiSkelSize_subst (T := T2) hσ
+      simp [h1, h2]
+  | modal cs Ψ T =>
+      simp only [Ty.subst, Ty.captSkelSize]
+      have h1 := Ty.exiSkelSize_subst (T := T) hσ
+      simp [h1]
+  | cap cs => simp [Ty.subst, Ty.captSkelSize]
+  | cell cs T =>
+      simp only [Ty.subst, Ty.captSkelSize]
+      have h1 := Ty.captSkelSize_subst (T := T) hσ
+      simp [h1]
+  | reader cs T =>
+      simp only [Ty.subst, Ty.captSkelSize]
+      have h1 := Ty.captSkelSize_subst (T := T) hσ
+      simp [h1]
+  | unit => simp [Ty.subst, Ty.captSkelSize]
+  | bool => simp [Ty.subst, Ty.captSkelSize]
+
+theorem Ty.exiSkelSize_subst {T : Ty .exi s1} {σ : Subst s1 s2}
+    (hσ : σ.SkelPreserving) :
+    Ty.exiSkelSize (T.subst σ) = Ty.exiSkelSize T := by
+  cases T with
+  | exi n T =>
+      simp only [Ty.subst, Ty.exiSkelSize]
+      have h1 := Ty.captSkelSize_subst (T := T) (hσ.liftCVars n)
+      simp [h1]
+  | typ T =>
+      simp only [Ty.subst, Ty.exiSkelSize]
+      have h1 := Ty.captSkelSize_subst (T := T) hσ
+      simp [h1]
+
+end
+
 mutual
 
 /-- **Step-indexed value denotation** for capturing types.  `Ty.val_denot env T k st m e`
@@ -819,14 +969,46 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
             Ty.exi_val_denot (env.extend_cvar CS (cap := CS.ground_denot m')) T
               (j - t.readCount) st'' m'' v ∧
             pack_bound R0 m' v m'' ∧ witness_live v m''))
-  | .consumer _ cs _ =>
+  | .consumer Targ cs E =>
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
     ∃ cs' T0 t0,
       resolve m.heap e = some (.consumer cs' T0 t0) ∧
       cs'.WfInHeap m.heap ∧
       let R0 := expand_captures m.heap cs'
-      R0 ⊆ (cs.denot env m)
+      R0 ⊆ (cs.denot env m) ∧
+      match Targ with
+      | .exi 1 T1 =>
+        ∀ (j : Nat) (hjk : j ≤ k) (st' : StoreTyping j) (m' : Memory)
+          (CS : CaptureSet {}) (arg : Nat),
+          CS.WfInHeap m'.heap →
+          (CS.ground_denot m').drop_free →
+          -- The witness capabilities are live at the call site: supplied by the
+          -- argument pack's `witness_live` at the elimination (`consumer_app`),
+          -- consumed by the body's compatibility obligation at the introduction.
+          m'.is_compatible (CS.ground_denot m') →
+          -- The witness is separated from the closure's own captures: supplied
+          -- at the elimination by `SeqComp Γ C1 {x}` (the consumed budget never
+          -- touches the closure) + `pack_bound` (the witness is consumed-or-
+          -- fresh); consumed at the introduction for the `EnvSepWf` pairs
+          -- between the witness binder and the closure's droppable captures
+          -- (everything else is killed in the body's context).
+          CapabilitySet.disjoint (CS.ground_denot m') R0 →
+          WorldLe st' m' (st.trunc hjk) m →
+          MemTyped j st' m' →
+          m'.is_compatible R0 →
+          let ENV1 := env.extend_cvar CS (cap := CS.ground_denot m') (a := .can_drop)
+          Ty.val_denot ENV1 T1 j st' m' (.var (.free arg)) →
+          Eval j m' (t0.subst (Subst.unpack ⟨[CS], rfl⟩ (.free arg))) (fun t v m'' =>
+            t.readCount < j →
+            TraceOk t ((R0 ∪ CS.ground_denot m') ∪ (CS.ground_denot m').to_drop) ∧
+            ∃ (st'' : StoreTyping (j - t.readCount)),
+              WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
+              MemTyped (j - t.readCount) st'' m'' ∧
+              Ty.exi_val_denot env E (j - t.readCount) st'' m'' v ∧
+              pack_bound ((R0 ∪ CS.ground_denot m') ∪ (CS.ground_denot m').to_drop) m' v m'' ∧
+              witness_live v m'')
+      | _ => True
   | .modal cs Ψ E =>
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -859,6 +1041,11 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
             Ty.exi_val_denot env E (j - t.readCount) st'' m'' v ∧
             pack_bound R0 m' v m'' ∧ witness_live v m''))
 termination_by sizeOf T
+decreasing_by
+  all_goals simp_wf
+  all_goals try omega
+  · apply Nat.lt_of_le_of_lt (Nat.le_add_left (sizeOf T1) (2 * sizeOf s + sizeOf cs))
+    omega
 
 /-- Value denotation for existential types (step-indexed). -/
 def Ty.exi_val_denot (ρ : TypeEnv s) (E : Ty .exi s)
@@ -2631,15 +2818,35 @@ def val_denot_is_monotonic {env : TypeEnv s}
     exact hfun j hjk st' m' CS hwf_CS hdf
       (WorldLe.trans (WP.WorldLe.trunc hjk ⟨hmem, fun _ _ h => h⟩) hwle) hmt
       hcompat hbounded
-  | consumer _ cs _ =>
+  | consumer Targ cs E =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
-    obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub⟩ := ht
+    obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hconsumer⟩ := ht
+    obtain ⟨hR0_sub, hbody⟩ := hconsumer
     have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hmem
     have hcs'_eq := expand_captures_monotonic hmem cs' hwf_cs'
-    exact ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
+    refine ⟨Exp.wf_monotonic hmem hwf_e, CaptureSet.wf_monotonic hmem hwf_cs,
       cs', T0, t0, resolve_monotonic hmem hr, CaptureSet.wf_monotonic hmem hwf_cs',
-      by rw [← hcs_eq, hcs'_eq]; exact hR0_sub⟩
+      ?_⟩
+    constructor
+    · rw [← hcs_eq, hcs'_eq]; exact hR0_sub
+    · cases Targ with
+      | exi n T1 =>
+          cases n with
+          | zero => trivial
+          | succ n =>
+              cases n with
+              | zero =>
+                  intro j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle hmt hcompat
+                  dsimp only
+                  intro harg
+                  rw [hcs'_eq] at hCSdisj hcompat
+                  have hrun := hbody j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj
+                    (WorldLe.trans (WP.WorldLe.trunc hjk ⟨hmem, fun _ _ h => h⟩) hwle)
+                    hmt hcompat harg
+                  simpa [hcs'_eq] using hrun
+              | succ _ => trivial
+      | typ _ => trivial
   | modal cs Ψ T =>
     intro m1 m2 e hmem ht
     unfold Ty.val_denot at ht ⊢
@@ -2766,14 +2973,34 @@ def val_denot_worldle_mono {env : TypeEnv s} (henv : env.IsMonotonic)
       rw [hcs'_eq] at hcompat ⊢
       exact hfun j hjk st' m' CS hwf_CS hdf
         (WorldLe.trans (WP.WorldLe.trunc hjk hwle) hwle') hmt hcompat hbounded
-  | .consumer _ cs _ => by
+  | .consumer Targ cs E => by
       unfold Ty.val_denot at ht ⊢
-      obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub⟩ := ht
+      obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hconsumer⟩ := ht
+      obtain ⟨hR0_sub, hbody⟩ := hconsumer
       have hcs_eq := capture_set_denot_is_monotonic (C := cs) (ρ := env) hwf_cs hwle.1
       have hcs'_eq := expand_captures_monotonic hwle.1 cs' hwf_cs'
-      exact ⟨Exp.wf_monotonic hwle.1 hwf_e, CaptureSet.wf_monotonic hwle.1 hwf_cs,
+      refine ⟨Exp.wf_monotonic hwle.1 hwf_e, CaptureSet.wf_monotonic hwle.1 hwf_cs,
         cs', T0, t0, resolve_monotonic hwle.1 hr, CaptureSet.wf_monotonic hwle.1 hwf_cs',
-        by rw [← hcs_eq, hcs'_eq]; exact hR0_sub⟩
+        ?_⟩
+      constructor
+      · rw [← hcs_eq, hcs'_eq]; exact hR0_sub
+      · cases Targ with
+        | exi n T1 =>
+            cases n with
+            | zero => trivial
+            | succ n =>
+                cases n with
+                | zero =>
+                    intro j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle' hmt hcompat
+                    dsimp only
+                    intro harg
+                    rw [hcs'_eq] at hCSdisj hcompat
+                    have hrun := hbody j hjk st' m' CS arg hCSwf hCSdf hCSlive hCSdisj
+                      (WorldLe.trans (WP.WorldLe.trunc hjk hwle) hwle')
+                      hmt hcompat harg
+                    simpa [hcs'_eq] using hrun
+                | succ _ => trivial
+        | typ _ => trivial
   | .modal cs Ψ T => by
       unfold Ty.val_denot at ht ⊢
       obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs',
@@ -2850,9 +3077,26 @@ def val_denot_down_trunc {env : TypeEnv s}
       rw [WP.World.trunc_trunc] at hwle'
       exact hfun i (Nat.le_trans hij hjk) st' m' CS hwf_CS hdf hwle' hmt hcompat
         hbounded
-  | .consumer _ _ _ => by
+  | .consumer Targ cs E => by
       unfold Ty.val_denot at ht ⊢
-      exact ht
+      obtain ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hconsumer⟩ := ht
+      obtain ⟨hR0_sub, hbody⟩ := hconsumer
+      refine ⟨hwf_e, hwf_cs, cs', T0, t0, hr, hwf_cs', hR0_sub, ?_⟩
+      cases Targ with
+      | exi n T1 =>
+          cases n with
+          | zero => trivial
+          | succ n =>
+              cases n with
+              | zero =>
+                  intro i hij st' m' CS arg hCSwf hCSdf hCSlive hCSdisj hwle' hmt hcompat
+                  dsimp only
+                  intro harg
+                  rw [WP.World.trunc_trunc] at hwle'
+                  exact hbody i (Nat.le_trans hij hjk) st' m' CS arg hCSwf hCSdf hCSlive
+                    hCSdisj hwle' hmt hcompat harg
+              | succ _ => trivial
+      | typ _ => trivial
   | .modal cs Ψ T => by
       unfold Ty.val_denot at ht ⊢
       obtain ⟨hwf_e, hwf_cs, cs', sepctx0, t0, hr, hwf_cs', hwf_sepctx, hsat_impl,
@@ -3487,7 +3731,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
       simp only [resolve, Option.some.injEq, Exp.consumer.injEq] at hres
       obtain ⟨rfl, _, _⟩ := hres
       simp only [resolve_reachability]
-      exact hR0_sub
+      exact hR0_sub.1
     | var x =>
       cases x with
       | free fx =>
@@ -3503,7 +3747,7 @@ theorem val_denot_enforces_captures {T : Ty .capt s}
             rw [reachability_of_loc_eq_resolve_reachability m fx v hcell]
             rw [hval]
             simp only [resolve_reachability]
-            exact hR0_sub
+            exact hR0_sub.1
           | _ => simp at hres
       | bound bx => cases bx
     | _ => simp [resolve] at hres
@@ -3674,9 +3918,10 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
       | bound bx => cases bx
     · intro m' CS hwf hdf hsub hcompat hbdd
       exact hbody m' CS hwf hdf hsub hcompat hbdd
-  | consumer _ _ _ =>
+  | consumer Targ oldcs E =>
     simp only [Ty.refineCaptureSet, Ty.val_denot] at hdenot ⊢
-    obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hR0_sub⟩ := hdenot
+    obtain ⟨hwf_e, hwf_cs, cs', x0, t0, hres, hwf_cs', hconsumer⟩ := hdenot
+    obtain ⟨_hR0_sub, hbody⟩ := hconsumer
     refine ⟨hwf_e, ?_, cs', x0, t0, hres, hwf_cs', ?_⟩
     · simp only [CaptureSet.subst]
       cases hwf_e with
@@ -3707,7 +3952,8 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
               rw [hreach_loc, hwf_reach, hcomp]
             simp only [CaptureSet.denot, CaptureSet.subst, hv, CaptureSet.ground_denot,
                        CapabilitySet.applyAccess_M, CapabilitySet.applyMut]
-            rw [heq]; exact CapabilitySet.Subset.refl
+            rw [heq]
+            exact ⟨CapabilitySet.Subset.refl, by simpa [heq] using hbody⟩
           | capability _ => simp at hres
           | masked => simp at hres
       | bound bx => cases bx
@@ -3949,7 +4195,7 @@ theorem pure_ty_enforce_pure {T : Ty .capt s}
     obtain ⟨_, _, cs', _, _, hres, _, hR0_sub⟩ := hdenot
     exact CapabilitySet.Subset.trans
       (resolve_reachability_subset_of_resolve hres)
-      (by simpa [resolve_reachability] using hpure.denot_empty.subset_of_subset hR0_sub)
+      (by simpa [resolve_reachability] using hpure.denot_empty.subset_of_subset hR0_sub.1)
   case modal cs Ψ T =>
     simp only [Ty.captureSet] at hpure
     simp only [Ty.val_denot] at hdenot

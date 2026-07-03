@@ -90,7 +90,8 @@ theorem step_memory_monotonic
   (hstep : SeqStep C m1 e1 m2 e2) :
   m2.subsumes m1 := by
   induction hstep with
-  | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
+  | step_apply | step_invoke | step_tapply | step_capply | step_consumer_app
+  | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ =>
     exact Memory.subsumes_refl _
@@ -212,6 +213,15 @@ theorem step_preserves_wf
       have ⟨_, _, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
       have hwf_subst := Subst.wf_openCVar hwf_CS
       exact Exp.wf_subst hwf_body hwf_subst
+  | step_consumer_app hlookup =>
+    rename_i x arg e_body cs T hv R
+    cases hwf with
+    | wf_consumer_app hwf_x hwf_arg =>
+      have hwf_consumer : Exp.WfInHeap (.consumer cs (.exi 1 T) e_body) m1.heap :=
+        m1.wf.wf_val _ _ hlookup
+      cases hwf_consumer with
+      | wf_consumer _ _ hwf_body =>
+        exact Exp.WfInHeap.wf_unpack hwf_arg hwf_body
   | step_unwrap hlookup =>
     rename_i x cs Ψ R hv
     have hwf_boxed : Exp.WfInHeap (.boxed cs Ψ e2) m1.heap := by
@@ -420,6 +430,9 @@ theorem safe_implies_progressive {k : Nat} {m : Memory} {e : Exp {}}
   | capply hlookup _ _ =>
     intro _
     exact IsProgressive.step (SeqStep.step_capply hlookup)
+  | consumer_app hlookup _ _ =>
+    intro _
+    exact IsProgressive.step (SeqStep.step_consumer_app hlookup)
   | unwrap hlookup _ _ =>
     intro _
     exact IsProgressive.step (SeqStep.step_unwrap hlookup)
@@ -559,6 +572,7 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     exact BigStep.bs_invoke hlkx hlky
   | step_tapply hlk => intro t' v m' hbs; exact BigStep.bs_tapply hlk hbs
   | step_capply hlk => intro t' v m' hbs; exact BigStep.bs_capply hlk hbs
+  | step_consumer_app hlk => intro t' v m' hbs; exact BigStep.bs_consumer_app hlk hbs
   | step_unwrap hlk => intro t' v m' hbs; exact BigStep.bs_unwrap hlk hbs
   | step_cond_var_true hlk =>
     intro t' v m' hbs
@@ -847,6 +861,17 @@ theorem safe_reduce_progressive {k : Nat} {m : Memory} {e : Exp {}}
         simp only at heq
         cases heq
         exact ih rest (by simpa using hbud)
+  | consumer_app hlk _ ih =>
+    intro t m' e' hred hbud
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_consumer_app hlk)
+    | step hstep rest =>
+      cases hstep with
+      | step_consumer_app hlk2 =>
+        have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+        simp only at heq
+        cases heq
+        exact ih rest (by simpa using hbud)
   | unwrap hlk _ ih =>
     intro t m' e' hred hbud
     cases hred with
@@ -1020,6 +1045,10 @@ theorem Safe.has_reduction {k : Nat} {m : Memory} {e : Exp {}} (h : Safe k m e) 
   | capply hlk _ ih =>
     obtain ⟨t, m', a, hred, hdisj⟩ := ih
     exact ⟨_, _, _, SeqReduce.step (SeqStep.step_capply hlk) hred, by simpa using hdisj⟩
+  | consumer_app hlk _ ih =>
+    obtain ⟨t, m', a, hred, hdisj⟩ := ih
+    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_consumer_app hlk) hred,
+      by simpa using hdisj⟩
   | unwrap hlk _ ih =>
     obtain ⟨t, m', a, hred, hdisj⟩ := ih
     exact ⟨_, _, _, SeqReduce.step (SeqStep.step_unwrap hlk) hred, by simpa using hdisj⟩
@@ -1147,7 +1176,8 @@ theorem step_immutable
   m1.not_mutated m2 := by
   intro l b ℓ hinit
   induction hstep with
-  | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
+  | step_apply | step_invoke | step_tapply | step_capply | step_consumer_app
+  | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ =>
     exact hinit
@@ -1199,7 +1229,8 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Nat} {�
     m1.heap l = some (.capability (.mcell b ℓ)) ->
     m2.heap l = some (.capability (.mcell b ℓ)) := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ =>
     intro _ _ hinit; exact hinit

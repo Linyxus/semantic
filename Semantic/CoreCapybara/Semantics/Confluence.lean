@@ -356,6 +356,8 @@ theorem Step.aeq_sim {t : Trace} {m m' : Memory} {e1 e1' e2 : Exp {}}
     cases hae with | eq h => exact ⟨_, h ▸ Step.step_invoke h1 h2, Exp.AEq.refl _⟩
   | step_tapply hlk => cases hae with | eq h => exact ⟨_, h ▸ Step.step_tapply hlk, Exp.AEq.refl _⟩
   | step_capply hlk => cases hae with | eq h => exact ⟨_, h ▸ Step.step_capply hlk, Exp.AEq.refl _⟩
+  | step_consumer_app hlk =>
+    cases hae with | eq h => exact ⟨_, h ▸ Step.step_consumer_app hlk, Exp.AEq.refl _⟩
   | step_unwrap hlk => cases hae with | eq h => exact ⟨_, h ▸ Step.step_unwrap hlk, Exp.AEq.refl _⟩
   | step_cond_var_true hlk =>
     cases hae with
@@ -774,6 +776,8 @@ theorem Ty.renameLoc_eq_of_wf {sort s} {T : Ty sort s} {h : Heap} (hwf : T.WfInH
   | wf_cpoly hcb hcs _ ih =>
     simp only [Ty.renameLoc, CaptureBound.renameLoc_eq_of_wf hcb hfix,
       CaptureSet.renameLoc_eq_of_wf hcs hfix, ih hfix]
+  | wf_consumer _ hcs _ ih1 ih2 =>
+    simp only [Ty.renameLoc, ih1 hfix, CaptureSet.renameLoc_eq_of_wf hcs hfix, ih2 hfix]
   | wf_modal hcs hΨ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
       ModalCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
@@ -803,6 +807,9 @@ theorem Exp.renameLoc_eq_of_wf {s} {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_cabs hcs hcb _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
       CaptureBound.renameLoc_eq_of_wf hcb hfix, ih hfix]
+  | wf_consumer hcs hT _ ih =>
+    simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
+      Ty.renameLoc_eq_of_wf hT hfix, ih hfix]
   | wf_boxed hcs hΨ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
       ModalCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
@@ -824,6 +831,8 @@ theorem Exp.renameLoc_eq_of_wf {s} {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_capp hx hcs =>
     simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix,
       CaptureSet.renameLoc_eq_of_wf hcs hfix]
+  | wf_consumer_app hx _ ih =>
+    simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix, ih hfix]
   | wf_unwrap hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_letin _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1 hfix, ih2 hfix]
   | wf_unpack _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1 hfix, ih2 hfix]
@@ -1002,6 +1011,10 @@ theorem Step.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat
   | step_capply hlk =>
     obtain ⟨ci, hci⟩ := hc
     exact ⟨mb, Step.step_capply ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk), hag, rfl⟩
+  | step_consumer_app hlk =>
+    obtain ⟨ci, hci⟩ := hc
+    exact ⟨mb, Step.step_consumer_app ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk),
+      hag, rfl⟩
   | step_unwrap hlk =>
     obtain ⟨ci, hci⟩ := hc
     exact ⟨mb, Step.step_unwrap ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk), hag, rfl⟩
@@ -1119,6 +1132,13 @@ theorem Step.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {
       have hxc : xx ≠ c := fun h => by
         rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
       exact ⟨mb, Step.step_capply ((hag xx hxc) ▸ hlk), hag, hcb, by simp [Trace.touched]⟩
+  | step_consumer_app hlk =>
+    match hwf with
+    | .wf_consumer_app (.wf_free (n := xx) hx1) _ =>
+      have hxc : xx ≠ c := fun h => by
+        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
+      exact ⟨mb, Step.step_consumer_app ((hag xx hxc) ▸ hlk), hag, hcb,
+        by simp [Trace.touched]⟩
   | step_unwrap hlk =>
     match hwf with
     | .wf_unwrap (.wf_free (n := xx) hx1) =>
@@ -1258,7 +1278,8 @@ theorem Step.untouched_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} {c 
     (hstep : Step t m e m' e') (hne : m.lookup c ≠ none) (hnt : ¬ Trace.touched t c) :
     m'.lookup c = m.lookup c := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => rfl
   | step_write hx _ =>
@@ -1307,6 +1328,11 @@ theorem Step.frame_add {m ma m' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat}
     | .wf_capp (.wf_free (n := xx) hx1) _ =>
       have hxc : xx ≠ c := Memory.present_ne_absent hx1 hc
       exact ⟨ma, Step.step_capply ((hag xx hxc) ▸ hlk), hag, rfl⟩
+  | step_consumer_app hlk =>
+    match hwf with
+    | .wf_consumer_app (.wf_free (n := xx) hx1) _ =>
+      have hxc : xx ≠ c := Memory.present_ne_absent hx1 hc
+      exact ⟨ma, Step.step_consumer_app ((hag xx hxc) ▸ hlk), hag, rfl⟩
   | step_unwrap hlk =>
     match hwf with
     | .wf_unwrap (.wf_free (n := xx) hx1) =>
@@ -1434,7 +1460,8 @@ theorem Step.delta {t : Trace} {m m' : Memory} {e e' : Exp {}} (hstep : Step t m
     (∃ c, m.lookup c = none ∧ m'.lookup c ≠ none ∧
       ∀ l, l ≠ c → m.lookup l = m'.lookup l) := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => exact Or.inl rfl
   | step_write hx _ =>
@@ -1733,6 +1760,12 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
     intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_capply hlk2 =>
+      have hu := lookup_val_unwrap_eq hlk hlk2; injection hu with _ _ _ hbody
+      exact Diamond.det rfl (by rw [hbody]) rfl
+  | step_consumer_app hlk =>
+    intro D ts2 mb eb hD hwf hst2
+    cases hst2 with
+    | step_consumer_app hlk2 =>
       have hu := lookup_val_unwrap_eq hlk hlk2; injection hu with _ _ _ hbody
       exact Diamond.det rfl (by rw [hbody]) rfl
   | step_unwrap hlk =>
