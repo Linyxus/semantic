@@ -1378,7 +1378,7 @@ theorem compute_reachability_frame {h1 h2 : Heap} {c : Nat} {ci1 ci2}
     compute_reachability h1 v hv = compute_reachability h2 v hv := by
   have hr := reachability_of_loc_frame hc1 hc2 hag
   cases hv with
-  | abs | tabs | cabs | boxed =>
+  | abs | tabs | cabs | consumer | boxed =>
     exact expand_captures_frame _ hr
   | reader => rename_i x; cases x with | free loc => rfl | bound bx => cases bx
   | unit | btrue | bfalse => rfl
@@ -1628,6 +1628,7 @@ theorem compute_reachability_frame_wf {h1 h2 : Heap} {c : Nat}
   | abs => cases hwf with | wf_abs hcs _ _ => exact expand_captures_frame_wf _ hcs hc2 hag
   | tabs => cases hwf with | wf_tabs hcs _ _ => exact expand_captures_frame_wf _ hcs hc2 hag
   | cabs => cases hwf with | wf_cabs hcs _ _ => exact expand_captures_frame_wf _ hcs hc2 hag
+  | consumer => cases hwf with | wf_consumer hcs _ _ => exact expand_captures_frame_wf _ hcs hc2 hag
   | boxed => cases hwf with | wf_boxed hcs _ _ => exact expand_captures_frame_wf _ hcs hc2 hag
   | reader => rename_i x; cases x with | free loc => rfl | bound bx => cases bx
   | unit | btrue | bfalse => rfl
