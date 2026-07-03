@@ -436,6 +436,11 @@ def rebind_val_denot
       intro m'' hsub'' t v hpost hguard
       obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
+  | .consumer _ cs _ => by
+    intro k st m e
+    simp only [Ty.val_denot, Ty.rename]
+    rw [← rebind_resolved_capture_set ρ]
+    rw [← rebind_captureset_denot ρ cs]
   | .modal cs Ψ T => by
     intro k st m e
     simp only [Ty.val_denot, Ty.rename]

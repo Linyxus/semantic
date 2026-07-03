@@ -256,6 +256,7 @@ theorem TypeEnv.HasPeak.ty_captureSet_subst {T : Ty .capt s1} {σ : Subst s1 s2}
   | arrow T1 cs T2 => exact Iff.rfl
   | poly T1 cs T2 => exact Iff.rfl
   | cpoly cb cs T => exact Iff.rfl
+  | consumer T1 cs T2 => exact Iff.rfl
   | modal cs Ψ T => exact Iff.rfl
   | cap cs => exact Iff.rfl
   | cell cs => exact Iff.rfl
@@ -702,6 +703,11 @@ def retype_val_denot
       intro m'' hsub'' t v hpost hguard
       obtain ⟨htr, st'', hwle3, hmt3, hval, hpb, hwl⟩ := hpost hguard
       exact ⟨htr, st'', hwle3, hmt3, (ih2 (j - t.readCount) st'' m'' v).mpr hval, hpb, hwl⟩
+  | .consumer _ cs _ => by
+    intro k st m e
+    simp only [Ty.val_denot, Ty.subst]
+    rw [← retype_resolved_capture_set ρ]
+    rw [← retype_captureset_denot ρ cs]
   | .modal cs Ψ T => by
     intro k st m e
     simp only [Ty.val_denot, Ty.subst]
