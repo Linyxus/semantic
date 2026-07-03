@@ -973,7 +973,7 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
     ∃ cs' T0 t0,
-      resolve m.heap e = some (.consumer cs' T0 t0) ∧
+      resolve m.heap e = some (.consumer cs' (.exi 1 T0) t0) ∧
       cs'.WfInHeap m.heap ∧
       let R0 := expand_captures m.heap cs'
       R0 ⊆ (cs.denot env m) ∧
@@ -3939,11 +3939,12 @@ theorem val_denot_refine {env : TypeEnv s} {T : Ty .capt s} {x : Var .var s}
           | val v =>
             injection hres with hres
             have hwf_reach := m.wf.wf_reach n v.unwrap v.isVal v.reachability hcell
-            have hconsumer_isval : (Exp.consumer cs' x0 t0).IsSimpleVal := hres ▸ v.isVal
+            set cval := Exp.consumer cs' (.exi 1 x0) t0 with hcvaldef
+            have hconsumer_isval : cval.IsSimpleVal := hres ▸ v.isVal
             have hcomp :
                 compute_reachability m.heap v.unwrap v.isVal = expand_captures m.heap cs' := by
               calc compute_reachability m.heap v.unwrap v.isVal
-                  = compute_reachability m.heap (Exp.consumer cs' x0 t0) hconsumer_isval := by
+                  = compute_reachability m.heap cval hconsumer_isval := by
                       simp only [hres]
                 _ = expand_captures m.heap cs' := rfl
             have hreach_loc : reachability_of_loc m.heap n = v.reachability := by
