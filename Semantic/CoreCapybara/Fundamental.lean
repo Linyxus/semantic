@@ -4972,21 +4972,45 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty 
 lemma sem_subtyp_cell {cs1 cs2 : CaptureSet s} {T : Ty .capt s}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.cell cs1 T) (.cell cs2 T) := by
-  sorry
+  unfold SemSubtyp
+  intro env ki st H htyping hdsep j hjk st' m' hwle e hv
+  have htyping' := env_typing_worldle_trunc hjk htyping hwle
+  simp only [Ty.val_denot] at hv ⊢
+  obtain ⟨_hwf_cs1, l, n0, liv, R, he, hlook, hcov1, hst_lookup, hR_iff⟩ := hv
+  refine ⟨?_, l, n0, liv, R, he, hlook, ?_, hst_lookup, hR_iff⟩
+  · exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed)
+      (from_TypeEnv_wf_in_heap htyping')
+  · exact CapabilitySet.covers_mono (hcs env j st' m' htyping') hcov1
 
 /-- Capture-covariance for `reader` with the element type held rigid (same
     skeleton as `sem_subtyp_cell`).  R.5 WORK ITEM: re-prove in the new model. -/
 lemma sem_subtyp_reader {cs1 cs2 : CaptureSet s} {T : Ty .capt s}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.reader cs1 T) (.reader cs2 T) := by
-  sorry
+  unfold SemSubtyp
+  intro env ki st H htyping hdsep j hjk st' m' hwle e hv
+  have htyping' := env_typing_worldle_trunc hjk htyping hwle
+  simp only [Ty.val_denot] at hv ⊢
+  obtain ⟨hwf_e, _hwf_cs1, label, n0, liv, R, hres, hlook, hcov1, hst_lookup, hR_iff⟩ := hv
+  refine ⟨hwf_e, ?_, label, n0, liv, R, hres, hlook, ?_, hst_lookup, hR_iff⟩
+  · exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed)
+      (from_TypeEnv_wf_in_heap htyping')
+  · exact CapabilitySet.covers_mono (hcs env j st' m' htyping') hcov1
 
 /-- Capture-covariance for `cap` (same skeleton as `sem_subtyp_cell`).
     R.5 WORK ITEM: re-prove in the new model. -/
 lemma sem_subtyp_cap {cs1 cs2 : CaptureSet s}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.cap cs1) (.cap cs2) := by
-  sorry
+  unfold SemSubtyp
+  intro env ki st H htyping hdsep j hjk st' m' hwle e hv
+  have htyping' := env_typing_worldle_trunc hjk htyping hwle
+  simp only [Ty.val_denot] at hv ⊢
+  obtain ⟨hwf_e, _hwf_cs1, label, he, hlook, hcov1⟩ := hv
+  refine ⟨hwf_e, ?_, label, he, hlook, ?_⟩
+  · exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed)
+      (from_TypeEnv_wf_in_heap htyping')
+  · exact CapabilitySet.covers_mono (hcs env j st' m' htyping') hcov1
 
 /-- Capture-covariance for `poly` with a *fixed* bound `S` and body `T`.  The
     poly value denotation refers to the captured set only in its well-formedness
@@ -4998,7 +5022,15 @@ lemma sem_subtyp_cap {cs1 cs2 : CaptureSet s}
 lemma sem_subtyp_poly_cap {S : Ty .capt s} {cs1 cs2 : CaptureSet s} {T : Ty .exi (s,X)}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.poly S cs1 T) (.poly S cs2 T) := by
-  sorry
+  unfold SemSubtyp
+  intro env ki st H htyping hdsep j hjk st' m' hwle e hv
+  have htyping' := env_typing_worldle_trunc hjk htyping hwle
+  simp only [Ty.val_denot] at hv ⊢
+  obtain ⟨hwf_e, _hwf_cs1, cs', S0, t0, hresolve, hwf_cs', hR0_sub1, hbody1⟩ := hv
+  refine ⟨hwf_e, ?_, cs', S0, t0, hresolve, hwf_cs', ?_, hbody1⟩
+  · exact CaptureSet.wf_subst (CaptureSet.wf_of_closed hcs2_closed)
+      (from_TypeEnv_wf_in_heap htyping')
+  · exact CapabilitySet.Subset.trans hR0_sub1 (hcs env j st' m' htyping')
 
 theorem fundamental_subtyp
   (hT1 : T1.IsClosed) (hT2 : T2.IsClosed)
