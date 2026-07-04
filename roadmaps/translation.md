@@ -1,583 +1,453 @@
-# Roadmap: Capybara → CoreCapybara translation
+# Roadmap: Capybara → CoreCapybara translation — fresh-start edition
 
-*Finalized 2026-07-04. Agreed in discussion 2026-07-03; adversarially
-reviewed by an independent fresh-context reviewer and the findings folded
-in (verbatim critique preserved at `notes/roadmap-critique-2026-07-03.md`).
-File:line anchors were machine-verified on those dates; core-capybara
-anchors against commit `af26a66`. Supersedes
-`notes/app-case-design-decision.md`.*
+*Finalized 2026-07-04, rev. 2 (same day). **Fresh-start ruling (user)**: the
+existing source module and its compilation are renamed to `Legacy*` and
+frozen as reference; after the rebase, a NEW Capybara is designed and built
+from scratch, from first principles, with every ruling of the 2026-07-03/04
+discussions baked in from day one instead of retrofitted. Rev. 1's retrofit
+phases (W/U/F/F2/F3/A/L) are superseded as *work plans* but their content
+survives as design inputs — see the phase map. Adversarial-review archive:
+`notes/roadmap-critique-2026-07-03.md`. Supersedes
+`notes/app-case-design-decision.md`. File:line anchors were machine-verified
+2026-07-03/04; anchors into the legacy module cite pre-rename paths (after
+Phase R they live under `LegacyCapybara/`/`LegacyCompilation/`, checkable at
+the reference tag).*
 
-*Decision status: every phase is ruled and actionable. The Phase F
-entry-grouping device is **ruled** (F.0: compute once, transport
-thereafter — 2026-07-04). ONE design item remains open: the
-`Coherent.srcAligned` device (candidates enumerated in Phase A; Phase F
-runs a check that may moot it).*
+*Decision status: the entry-grouping device is **ruled** (compute once,
+transport thereafter — P3). ONE design decision remains open — the
+alignment device (P7, ex-srcAligned), now a Phase D design-time choice
+rather than a retrofit; the fresh start makes the subcapture-shaped
+coherence design (β) natural.*
+
+## Phase map (rev. 1 → rev. 2)
+
+| Rev. 1 (retrofit) | Rev. 2 (fresh start) |
+|---|---|
+| R — rebase | **R** — rebase + legacy quarantine (revised: no legacy repair) |
+| W — DropWf retrofit | principle **P1**, designed in **D**, built in **S** |
+| U — unified parameters retrofit | principle **P2**, designed in **D**, built in **S** |
+| F — lock rebuild (incl. F.0) | principle **P3**, designed in **D**, built in **C** |
+| F2 — contravariant domains | principle **P4**, designed in **D**, built in **S**/**C** |
+| F3 — source sep_mono | principle **P5**, designed in **D**, built in **S**/**C** |
+| L — surface consumers | principle **P6**, designed in **D**, built last in **S**/**C** |
+| A — app-case endgame | **E** — endgame; legacy sorries become the **cliffs checklist** |
+
+**Order: R → D → S → C → E.**
 
 ## The ruling
 
-One constraint and two design changes:
+One constraint, two design changes (the intellectual core, unchanged from
+rev. 1 — now founding principles of the new module rather than retrofits):
 
 **Constraint — the target stays intact** (conservative extensions only,
 each proven sound in the existing model; no new obligations imposed on
-target clients). The translation's actual target delta today: **141
-insertions in 3 files** — TypeSystem/Core.lean +25 (`SepCheck.sep_mono`
-plus four `Subtyp` capture-covariance rules `cell`/`reader`/`cap`/
-`poly_cap`), BasicProps.lean +9, Fundamental.lean +107 (the semantic cases
-for all five additions, already proven in the old model). It stays at that
-scale. Rationale: the target's green semantic stack (Fundamental, adequacy)
-is the fixed ground truth; the result "the (conservatively extended) core
-hosts the surface calculus" is strictly stronger than one where the core
-was bent to receive it.
+target clients). The translation's target delta today: **141 insertions in
+3 files** — TypeSystem/Core.lean +25 (`SepCheck.sep_mono` plus four
+`Subtyp` capture-covariance rules `cell`/`reader`/`cap`/`poly_cap`),
+BasicProps.lean +9, Fundamental.lean +107 (the semantic cases for all five
+additions, already proven in the old model). These live in CORE files, not
+the legacy directories — they survive quarantine, are re-proven in Phase R,
+and are load-bearing for the new design too (`sep_mono` pays footprint
+consumption; the covariance rules receive source capture-covariance).
+Phase D re-validates the exact set; it stays at this scale. Rationale: the
+target's green semantic stack is the fixed ground truth; "the
+(conservatively extended) core hosts the surface calculus" is strictly
+stronger than a result where the core was bent to receive it.
 
-**Change 1 — `DropWf`: drop-qualified captures must be exercisable
-(source-side well-formedness).** A `.drop`-moded atom is well-formed only
-when its peaks have `can_drop` authority. This kills Gap 1 (the phantom
-drop-separation obligation, pinned at `app_capture_self_sep_modepoly`,
-CompileSubstOpenVar.lean:963) at the *formation* level. Evidence this is
-the right frame:
+**Change 1 (→ P1) — `DropWf`: drop-qualified captures must be
+exercisable.** A `.drop`-moded atom is well-formed only when its peaks have
+`can_drop` authority. Kills the phantom drop-separation obligation (legacy
+963 pin) at the *formation* level. Evidence this is the right frame
+(verified in the legacy system; the new design inherits the argument):
 - The invariant already holds for terms and use-sets: `drop` requires
-  `droppable` (Capybara/TypeSystem/Core.lean:399), `fresh` requires
+  `droppable` (legacy Capybara/TypeSystem/Core.lean:399), `fresh` requires
   `droppable Γ D` (:252), `letin_unpack` binds its witness `C[.can_drop]`
   (:377). The **only** leak is types-via-subsumption: `subtyp` (:429)
   checks only `IsClosed`, and `sc_elem`'s `{} ⊑ {drop c}` flows into
-  nested arrow latents through covariant cs-widening (:177), below the
-  reach of the top-level `AccessOnly` premises (abs:274, app:340).
-- Arrow binders are access-only (`C<:.unbound .epsilon`, :180) and `capp`
-  instantiation is access-only-valid (:358), so **no term can exercise a
-  drop-latent over a parameter** — every such latent is a phantom.
-  `DropWf` therefore rejects *zero terms*, only self-contradictory
-  ascriptions. Consistent with the no-restriction rule.
-- The comment at app:334-339 ("subsumption at the use-site is what loses
-  it, so it is re-required here") documents the per-rule-premise pattern
-  this replaces.
+  nested arrow latents through covariant cs-widening, below the reach of
+  top-level `AccessOnly` premises.
+- Arrow binders are access-only and `capp` instantiation is
+  access-only-valid, so **no term can exercise a drop-latent over a
+  parameter** — every such latent is a phantom. `DropWf` rejects *zero
+  terms*, only self-contradictory ascriptions. Consistent with the
+  no-restriction rule.
 
-**Change 2 — footprint-granular, resolution-free locks (translation-side;
-"N′").** Lock manufacture (`peakSepCtx`, Compilation/TypeCompiler.lean:172)
-stops atomizing and stops resolving through stored types: entries become
-whole footprints as written (term-var atoms stay symbolic `{x}`; cvar atoms
-already are symbols), and the entry *grouping* is computed once at the
-introduction context and transported thereafter (F.0). This kills Gap 2
-(narrowing self-separation, the `hself` hypothesis in CompileNarrow.lean /
-the `hLG` sorry in Preservation) by construction — declared-side and
-actual-side locks become syntactically identical, since nothing in a lock
-mentions a context resolution that narrowing could change. It also deletes
-the manufactured within-footprint obligations (the demand side of Gap 1)
-and the `pseudo_peak` graft. Evidence the target already supports
-consumption at this granularity (all verified, and **unchanged on
-core-capybara**):
+**Change 2 (→ P3) — footprint-granular, resolution-free locks.** Lock
+manufacture stops atomizing and stops resolving through stored types:
+entries are whole footprints as written (term-var atoms stay symbolic
+`{x}`; cvar atoms already are symbols), and the entry *grouping* is
+computed once at the introduction context and transported thereafter
+(the ruled device, below). Declared-side and actual-side locks are then
+syntactically identical under narrowing — the legacy hLG/hself problem is
+unstatable — and the manufactured within-footprint obligations (the demand
+side of the 963 gap) never exist. Evidence the target already consumes at
+this granularity (verified; **unchanged on core-capybara**):
 - `SepCtx` = list of capture sets "meant to be pairwise separated"
   (Syntax/SepCtx.lean:8) — entries are already whole sets.
 - Entailment rules exist in-target: `sep_union`, `sep_mono` (full left
   anti-monotonicity under `Subcapt`; ours), `sep_symm`, `sep_lock`,
   `sep_droppable` (TypeSystem/Core.lean:80-125). Cross-footprint demands
-  **below** footprint entries are payable via `sep_lock + sep_mono +
-  sc_elem` (`sep_mono` shrinks the left side only — upward-resolved
-  peak-level demands are NOT payable this way; that is why Phase F.3's
-  `sep_distinct`-leaf re-targeting must intercept compiled proofs *before*
-  source-side peak resolution, not after). Within-footprint demands are
-  never stated — which matches what the source ever grants usably.
+  below footprint entries are payable via `sep_lock + sep_mono + sc_elem`
+  (`sep_mono` shrinks the left side only — upward-resolved peak-level
+  demands are NOT payable this way; the new compile must ground
+  `sep_distinct`-shaped leaves at footprint entries *before* any
+  source-side peak resolution). Within-footprint demands are never
+  stated — which matches what the source ever grants usably.
 
-**Endgame:** Gap 1 dies at formation (W), Gap 2 and the atomization debt
-die at manufacture (F), the target never reopens beyond the five proven
-conservative extensions. Pin target: zero *modulo* the `Coherent.srcAligned`
-ruling (Phase A).
+**Endgame:** the phantom gap dies at formation (P1), the narrowing gap and
+the atomization debt are never born (P3), the target never reopens beyond
+the five proven conservative extensions. Pin target for the new module:
+**zero, with no legacy baseline to inherit** — the eight legacy sorries are
+quarantined with the legacy module and become the cliffs checklist (Phase E)
+that the new design must avoid by construction.
 
-## Phase R — Rebase onto latest core-capybara (FIRST)
+## Phase R — Rebase + legacy quarantine (FIRST)
 
 The core has evolved: 28 commits since the merge base `f6b793e`, tip
 `af26a66` ("consume-lambda elimination; module green", 0-sorry). The
-translation branch carries 89 commits on the old base.
+translation branch carries 89 commits on the old base. Under the fresh
+start, **none of the legacy translation is repaired against the new core**
+— that was the bulk of rev. 1's R and it is deleted work.
 
-### What is genuinely new on the core (verified against base `f6b793e`)
+### Steps
 
-| New since base | Impact on translation |
+1. **Backup/reference point**: branch or tag
+   `capybara-translation-pre-rebase-2` — the last commit where the legacy
+   module is green against the OLD core. This, not the in-tree copy, is
+   the *checkable* legacy reference.
+2. **Quarantine** (before the merge, so the tree is green at every step):
+   - `git mv Semantic/CoreCapybara/Capybara Semantic/CoreCapybara/LegacyCapybara`
+     (+ `Capybara.lean` → `LegacyCapybara.lean`),
+     `git mv Semantic/CoreCapybara/Compilation Semantic/CoreCapybara/LegacyCompilation`
+     (+ aggregator likewise); fix internal `import` lines mechanically
+     (37 files).
+   - Drop the two imports from `Semantic/CoreCapybara.lean` (the de facto
+     root aggregator — the lakefile has no explicit glob, and the working
+     discipline is per-file lean4check, so unimported = out of the build).
+   - Names inside legacy stay `Capy*` (they sit in `namespace
+     CoreCapybara`); the new module will reuse those natural names.
+     Clashes are impossible while legacy is never co-imported; an optional
+     `namespace Legacy` wrap is hygiene, not a requirement, and can wait
+     until a co-import is actually wanted.
+   - Note in `LegacyCapybara.lean`'s docstring: frozen 2026-07-04,
+     reference tag, superseded by the fresh module.
+3. **Merge `core-capybara` into `capybara-translation`** (merge, not a
+   89-commit replay). The one non-trivial conflict is **Fundamental.lean**
+   (our +107 lines × the core's ~4,900-line Kripke rework): take the core
+   side wholesale, re-add the five extensions (`sep_mono` + four `Subtyp`
+   covariance rules), and **re-prove their semantic cases in the new
+   Kripke model**, reshaped for element-typed cells/readers, using the
+   old-model proofs (`git show <reference-tag>:...`) as guides. Budget as
+   a real proof task, not merge mechanics. (The old-model cases are
+   already proven on this branch — `fundamental_sepcheck`/`_global`
+   sep_mono cases, `sem_subtyp_cell/reader/cap/poly_cap` — so this is
+   re-proof, not proof-from-nothing.)
+4. Do **not** base on `core-capybara-relax-droppability` — discarded
+   experiment (user ruled it the wrong direction).
+
+### What the new core provides (design targets for D)
+
+| New since old base `f6b793e` | Relevance to the fresh module |
 |---|---|
-| **Generic cells/readers**: `Ty.cell`/`Ty.reader` gain an element-type argument (Ty.lean:63-65) | `TypeCompiler` cell/reader cases + compiled-form lemmas; source bool-cells map to `.cell ⟦C⟧ bool`-shaped targets; our four `Subtyp` covariance rules reshape for the element argument |
-| **n-ary existentials**: `Ty.exi : (n : Nat) → Ty .capt (s.extendCVars n) → Ty .exi s` (Ty.lean:72), `pack` over `List.Vector` + `PairwiseSep` premise, `unpack` binds `extendCVars n` | fresh/unpack compilation re-targets at `n = 1`; expect `Sig.extend`-vs-`extendCVars 1` defeq friction (known repair idioms in memory) |
-| **`DisjCheck` judgment** (Core.lean:170) mirroring source `CapyDisjCheck` | `seq_sep` (already in base) takes a **SepCheck**, not DisjCheck; `DisjCheck` feeds only `PairwiseSep` (pack). Reaching `SeqComp` from source `seq_drop` needs a small **DisjCheck→SepCheck embedding** (constructor-wise straightforward; new work item) |
-| **Consumer lambdas**: `consumer`/`consumer_app` rules | No obligation now (nothing compiles to them yet); receiver for Phase L |
-| **Denotation/Fundamental Kripke rework** (~4,900 changed lines in Fundamental.lean; new KripkeModel/StepIndexed* files) | The real merge cost — see Mechanics 2 |
-| `capp` gained a vestigial unused `{I : CaptureSet s}` implicit | Cosmetic |
+| **Generic cells/readers**: `Ty.cell`/`Ty.reader` gain an element-type argument (Ty.lean:63-65) | D decides whether source cells go generic too (natural) or stay bool; compiled shapes `.cell ⟦C⟧ _`; the four covariance rules reshape for the element argument (R re-proof) |
+| **n-ary existentials**: `Ty.exi : (n : Nat) → …` (Ty.lean:72), `pack` over `List.Vector` + `PairwiseSep`, `unpack` binds `extendCVars n` | D decides source existential arity (fresh/unpack at n = 1 vs native n-ary); `Sig.extend`-vs-`extendCVars 1` defeq friction has known repair idioms (memory) |
+| **`DisjCheck` judgment** (Core.lean:170) | feeds `PairwiseSep` (pack); `seq_sep` takes a **SepCheck** — a small **DisjCheck→SepCheck embedding** is needed by consumer compilation (P6) |
+| **Consumer lambdas**: `consumer`/`consumer_app` | the receiver for P6 |
+| Kripke Denotation/Fundamental rework | the R merge cost (step 3) |
 
-Already in the base (no R work): kill-based `letin`/`unpack` (+droppable
-premise), `accessible` premises with `{}`-use head vars (`unwrap` has no
-`accessible` premise on the new core), `seq_sep`, PeakSet/kill_peaks
-infrastructure — and the `kill_peaks`-is-noop lemmas for access-only heads
-already exist (`Ctx.kill_peaks_accessOnly`, Compilation/AppSupport.lean:85-107).
-
-### What is verifiably stable (design analysis carries over)
-
-`Syntax/CaptureSet.lean` and `Syntax/SepCtx.lean` are **byte-identical**
-since the fork; `SepCheck`, `Satisfy`, `modal_modal`, `sep_lock`, the
-`Subcapt` rules, and lock/ModalCtx structure are unchanged. Everything the
-ruling above relies on survives the rebase untouched.
-
-### Mechanics
-
-1. Back up: branch `capybara-translation-pre-rebase-2` (precedent exists).
-2. **Merge `core-capybara` into `capybara-translation`** rather than
-   replaying 89 commits: `Capybara/` and `Compilation/` don't exist on the
-   core side, and the Syntax/TypeSystem deltas are small. The one
-   **non-trivial conflict is Fundamental.lean** (our +107 lines × the
-   core's ~4,900-line Kripke rework): resolve by taking the core side
-   wholesale, then re-adding our five extensions (`sep_mono` + the four
-   `Subtyp` covariance rules) and **re-proving their semantic cases in the
-   new Kripke model**, reshaped for element-typed cells/readers, using the
-   old-model proofs (`git show capybara-translation-pre-rebase-2:...`) as
-   guides. Budget this as a real proof task, not merge mechanics.
-3. Do **not** base on `core-capybara-relax-droppability` — that is the
-   discarded (PACK)/(DROP)-premise experiment (user ruled it the wrong
-   direction).
-4. Repair order: Syntax/type-level first (`TypeCompiler`), then
-   `Substitution`/compiled-form lemmas, then the big Compilation files,
-   Preservation last.
-5. The Fundamental cases for all five target extensions are **already
-   proven on this branch in the old model**
-   (`fundamental_sepcheck`/`_global` sep_mono cases;
-   `sem_subtyp_cell/reader/cap/poly_cap`), and everything imports together
-   via `Semantic/CoreCapybara.lean`. The rebase work item is purely the
-   re-proof under the new model (Mechanics 2), old proofs as guides.
+Verifiably stable (design analysis carries over): `Syntax/CaptureSet.lean`
+and `Syntax/SepCtx.lean` byte-identical since the fork; `SepCheck`,
+`Satisfy`, `modal_modal`, `sep_lock`, `Subcapt`, lock/ModalCtx structure
+unchanged. Also already in the core: kill-based `letin`/`unpack`,
+`accessible` premises, `seq_sep`, PeakSet/kill_peaks +
+`Ctx.kill_peaks_accessOnly` (legacy Compilation/AppSupport.lean:85-107 —
+quarry item).
 
 ### Acceptance
 
-Whole tree green under lean4check; sorry inventory unchanged from the
-pre-merge baseline of **eight**: the 963 pin (CompileSubstOpenVar:977),
-hLG (Preservation:1351), hcompat (:753), hcompatAl (:811), readonly
-(:449), the non-app stub (:1438), `Coherent.srcAligned`
-(CoherenceMorphism.lean:588 — the open design item, Phase A), and
-`app_use_covered` (UseCovered.lean:161). `#print axioms` sweep on the
-headline lemmas shows no NEW taint (pre-existing taint: srcAligned and
-app_use_covered sit on the live app spine, so headline lemmas are
-sorryAx-tainted by them today — R does not change that).
+**Whole tree green AND sorryAx-free** — for the first time on this branch:
+with legacy unimported, the build is exactly core-capybara + the five
+re-proven extensions; there is no sorry baseline to inherit. `#print
+axioms` sweep on the headline core theorems + the five extension cases.
+Legacy directories present, renamed, unimported; reference tag recorded.
 
-## Phase W — DropWf (source-side)
+## Phase D — First-principles design (paper, before code)
 
-1. **Predicate**: `CapyCaptureSet.DropWf Γ C` — every `.drop`-moded atom's
-   peaks are droppable (reuse `CapyCaptureSet.droppable`,
-   Capybara/Syntax/Context.lean:497, which is already peak-derived) — and
-   recursive `CapyTy.DropWf Γ T`, extending Γ under binders **with this
-   per-binder authority table** (load-bearing for the zero-rejection
-   claim): `exi` binders extend at **`.can_drop`** (drop-latents over
-   existential witnesses are legitimately exercisable — `letin_unpack`'s
-   own body use is `{drop C}`; extending at `.access_only` would reject
-   them and break "zero rejections"); `arrow`/`cpoly` binders extend at
-   `.access_only`.
-2. **Enforcement points** (not inside `CapySubcapt`/`CapySubtyp`
-   constructors — subcapture is shared with legitimate droppable-set
-   reasoning like `sc_drop_mono`/`seq_drop`, and premises inside subtyping
-   poison its metatheory): the `subtyp` rule (on `E2` — the single choke
-   point for phantom creation) + written annotations (`abs`'s `T1`,
-   `cabs`'s bound).
-3. **Regularity**: every type in a derivation is DropWf. Preservation
-   lemmas under rename/subst/narrowing. The substitution case is nearly
-   free: `capp`'s `D` is access-only and DropWf says access-only cvars
-   never drop-occur, so `{drop c}[c ↦ D] = D.applyDrop` never fires on WF
-   types; remaining `applyDrop` sites are droppability-guarded already.
-4. **Optional consolidation**: bundle DropWf with `PureBounds` and
-   `AccessOnly`-domain into one `CapyTy.Wf`, premised once, regularity
-   once; the scattered per-rule premises (the app:339 pattern) become
-   corollaries. (`NoPseudoPeak` is only transitional — Phase F deletes the
-   `pseudo_peak` device and those premises with it; don't design the
-   bundle around it.) Recommended if the premise-threading cost repeats.
-5. **Immediate harvest (minimal)**: add the WF hypothesis to the 963
-   lemma's statement and note the scenario is unreachable; the *full*
-   deletion of the mode-poly premise waits for Phase F (no point doing
-   `compile_subst_subtyp` interface surgery twice).
+One design document (`roadmaps/capybara-design.md` or `notes/`), covering
+the whole new module — source calculus AND compilation scheme together,
+since the compiled-type scheme is where past debt accumulated. Exit
+criterion: the document is complete enough that S and C are execution, not
+discovery. Optionally re-run the fresh-context adversarial review on it
+(the rev. 1 critique caught real errors; cheap insurance before building).
 
-Acceptance: WF threaded + regularity proven; zero-rejection sanity check —
-no example programs exist in the tree today, so **write one**: a small
-typed source example exercising fresh + abs + app + letin_unpack, kept
-green across W and all later phases.
+**D.1 — Feature inventory.** Type formers (arrow, cpoly, consumer — P6 —
+cells/readers: generic or bool, existentials: arity), expression forms,
+mode/authority lattice. Decide what legacy features are NOT carried (e.g.
+anything that existed only to serve atomization).
 
-## Phase U — Unified capture parameters (source-side)
+**D.2 — Well-formedness (P1, ex-W).** `DropWf` designed into a single
+`CapyTy.Wf` bundle (with `PureBounds`, `AccessOnly`-domain) from day one —
+premised once at binder-introduction points + `subtyp`'s E2, regularity
+proven once; no scattered per-rule premises (the legacy app:334-339
+re-requiring pattern is the anti-pattern). Per-binder authority table
+(load-bearing for zero-rejection): `exi` binders extend at `.can_drop`
+(witness drop-latents are legitimately exercisable — `letin_unpack`'s own
+body use is `{drop C}`); `arrow`/`cpoly` binders at `.access_only`.
+Substitution case is nearly free: access-only cvars never drop-occur in WF
+types, so `{drop c}[c ↦ D]` never fires; remaining `applyDrop` sites are
+droppability-guarded.
 
-*Ruling (2026-07-03, user decision): the roots/views species distinction is
-DISSOLVED — any capture parameter, however bounded, means separation. The
-earlier "keep the distinction" finding was a theorem about unification
-under FREE instantiation; Phase U changes the instantiation rules,
-supplying the payment that makes the unified fiat sound. It also fixes a
-genuine wart: `[c <: m]` cpolys are uncallable today (`capp` demands
-`.bound D`, `bound_unbound` removed).*
+**D.3 — Unified capture parameters (P2, ex-U).** No roots/views species —
+any capture parameter, however bounded, means separation. Four ingredients,
+born in the rules (no `pseudo_peak` branch ever exists):
+1. `sep_distinct` guarded by an **is-cvar-atom shape guard** (any two
+   mode-erased-distinct cvar *atoms* separate; `{ε c} # {ro c}`
+   underivable; the guard keeps overlapping sets and term-var alias pairs
+   out — both unsound).
+2. `bound_unbound`: `CapySubbound Γ (.bound D) (.unbound m)` with premise
+   `CapyHasKind Γ D m` (free for `m = ε`; ro-kinding for `m = ro`) — every
+   cpoly is instantiable.
+3. Separation check at `capp`: `CapySepCheck Γ D (interfere_set …)`,
+   mirroring app's premise.
+4. Top-level hypothesis: primordial pairwise separation over all env cvars.
+Soundness architecture (verified 2026-07-03): payment covers consumption —
+fiat consumptions reach sites through capture annotations = what
+`interfere_set` collects; eliminations check POST-substitution types;
+aliasing is rejected exactly where observable. ro-sharing survives
+(`sep_ro`; capability-based model); dissolution only goes UP into bounds —
+no sibling-parameter path. **Target needs nothing** (`Subbound.top` is the
+compiled image; `Satisfy.hkind` pays m-kinding via the wrap lock's
+`MutabilityCtx`). Language consequence (accepted): distinct capture
+parameters are a separation contract; sharing = merge parameters or ro.
 
-Four ingredients:
-
-1. **Extended fiat**: `sep_distinct`'s `CapyIsPeak` guard is **replaced by
-   an is-cvar-atom shape guard** — any two mode-erased-distinct cvar
-   *atoms* are separate (`{ε c} # {ro c}` stays underivable). The shape
-   guard is load-bearing: it keeps arbitrary sets (`{x} # {x,y}` —
-   overlapping) and term-var pairs (`{x} # {y}` with `y := x` — aliases)
-   out; both would be unsound. The `pseudo_peak` branch of the guard
-   survives until Phase F deletes the device (U runs before F).
-2. **Restored `bound_unbound`**: `CapySubbound Γ (.bound D) (.unbound m)`
-   with premise `CapyHasKind Γ D m` (free for `m = ε` via `rw`; ro-kinding
-   for `m = ro`). Root-cpolys become instantiable via bound-narrowing.
-3. **Separation check at `capp`**:
-   `CapySepCheck Γ D (CapyTy.interfere_set (.cpoly cb {εx} T))` — the
-   exact mirror of app's premise (Core.lean:345); `interfere_set` is
-   already defined for cpoly (Substitution.lean:233).
-4. **Widened top-level hypothesis**: primordial pairwise separation covers
-   all env cvars.
-
-Soundness architecture (analysis 2026-07-03): payment covers consumption —
-every fiat consumption reaches its site through capture annotations, which
-is what `interfere_set` collects; eliminations check against
-POST-substitution types, so earlier instantiations appear concretely in
-later checks; aliasing is rejected exactly where the aliased things could
-meet (if the body cannot observe `c1`, no check fires and none is needed).
-Corner cases verified: ro-sharing survives (`sep_ro` pays; the model is
-capability-based, so mode-poly grants on ro instantiations are true); no
-self-separation (dissolution only goes UP into bounds — no path between
-sibling parameters); drop modes policed by DropWf/droppability as before;
-the old `bound_unbound` removal was protecting fiat-without-payment, which
-ingredient 3 answers. **Target needs nothing** (verified: `Subbound.top`
-is the compiled image of the restored rule; `Satisfy.hkind` pays the
-`m`-kinding via the wrap lock's `MutabilityCtx`; no fiat exists
-target-side; two cvars denoting disjoint subsets of a shared bound is
-model-realizable).
-
-Language consequence (accepted): distinct capture parameters are a
-separation contract. Mutable aliasing across distinct parameters is
-unwritable at any instantiation; sharing is expressed by merging
-parameters or via the ro tier.
-
-Compilation cost: compiled capp becomes structurally identical to compiled
-app — Phase F builds ONE parameterized checked-instantiation device
-(bound-fit / satisfy-bridge / final-capture) consumed by both rules. The
-lock manufacture rule simplifies further: every cvar atom heads an entry —
-no species case-split.
-
-Metatheory repair inventory: `CapySubbound` inversion lemmas (restored
-`bound_unbound` gives `.unbound` targets a second constructor), subtyping
-transitivity/narrowing through the new rule, `capp` inversion updates for
-the new premise, and a regularity re-thread over the edited rules.
-
-Sequencing: source-rule edits + metatheory here, **bundled with W's
-regularity pass** (do the rule surgery of W+U first, then ONE combined
-regularity pass — threading W's regularity before U's rule edits would
-rework it); the compilation payment lands in F.
-
-Acceptance (interim state — U is honest-with-sorries until F): source
-rules edited + metatheory green; `CapySepCheck.compile` gains **one named,
-documented sorry** for the extended-fiat case (bound-cvar pairs have no
-lock item under the still-atomized manufacture — TypeCompiler.lean:172-176
-filters unstable cvars; the payment is F's job); no other new sorries;
-the W example program still typechecks.
-
-## Phase F — Footprint locks (translation-side)
-
-### F.0 — Entry-grouping device (RULED 2026-07-04: compute once, transport thereafter)
-
-The tension this resolves: "locks are resolution-free, hence identical
-under narrowing" conflicts with any manufacture-time pairing test.
-Deciding which entries a flat target `SepCtx` may pair-claim requires a
-peak-disjointness check; that check *is* a resolution (`peaksVarBound`
-reads stored types, Capybara/Syntax/Context.lean:223-236), and narrowing
-can flip its verdict overlap→disjoint (shrink `ann(y)` past a shared
-atom) — the two sides of hLG would then group differently and hLG
-resurrects. Purely syntactic grouping fails the other way: `{y}` vs `{c}`
-with `c ∈ ann(y)` are syntactically disjoint, so the lock makes a false
-claim and the wrap becomes unsatisfiable for a harmless program (today's
-atomize-then-dedup hid this silently).
-
-**Ruled device**: the grouping is computed ONCE, at the type's
-introduction context, and thereafter *transported* — threaded G-style, or
+**D.4 — Lock design (P3, incl. the ruled F.0 device).** Locks are
+footprint-granular and resolution-free from day one; `pseudo_peak`,
+`resourcePeaks`-vs-`peaks` view splits, stability filters, and the
+atomizing `peakSepCtx` are **never built**. The entry-grouping device
+(RULED 2026-07-04): a flat `SepCtx` claims all pairs, so which entries may
+be pair-claimed must be decided — any use-site peak-disjointness test is a
+resolution (narrowing flips it; legacy hLG resurrects), and purely
+syntactic grouping makes false claims (`{y}` vs `{c}` with `c ∈ ann(y)` ⇒
+unsatisfiable wrap for a harmless program). **Grouping is computed ONCE at
+the type's introduction context and transported** — threaded G-style or
 materialized in the compiled modal's Ψ (which is syntax) — never
-recomputed at use sites. Narrowing then preserves locks trivially; the
-residual obligation is **substitution-compatibility**: instantiation
-preserves the grouping's disjointness *because of* the U-checks (the
-`interfere_set` payments at app/capp are what license the substituted
-grouping).
+recomputed. Residual obligation: substitution-compatibility
+(instantiation preserves the grouping's disjointness BECAUSE of the D.3
+checks). Rejected alternatives, recorded: (b) cvar-only entries +
+payment-time descent — REFUTED (body derivations ground at peak-closure
+cvar pairs outside the written footprint; closure = resolution); (c)
+canonical-footprint WF — rejected under the no-restriction rule (`sc_elem`
+widening legitimately creates redundant spellings). **The one-page
+transport design (where the grouping lives, behavior under
+rename/subst/narrowing, checked against the hLG and substitution
+scenarios) is D's hardest deliverable.**
 
-Rejected alternatives (recorded so they are not re-proposed):
-- (b) cvar-only entries + payment-time descent — REFUTED: body-side
-  separation derivations ground at peak-closure cvar pairs *outside* the
-  written footprint (source term-var separations have no fiat; every
-  route descends to peak-level `sep_distinct` leaves), so a lock without
-  closure-resolved entries cannot pay the body; closure = resolution,
-  full circle.
-- (c) canonical-footprint WF (forbid redundant spellings like `{εy, εc}`
-  with `c ∈ ann(y)`) — rejected under the no-restriction rule:
-  subsumption legitimately creates such spellings (`sc_elem` widening),
-  and widened types may be needed for interface matching.
+**D.5 — Subtyping (P4 + P5, ex-F2/F3).** Contravariant arrow domains from
+day one (the target has had them all along, TypeSystem/Core.lean:153;
+legacy disabled them because term-parameter stored types leaked into lock
+manufacture via `peaksVarBound` — under P3 that leak never exists; cvar
+bounds never leaked, which is why legacy cpoly kept bound-contravariance
+via `consCVar_boundIrrel`). Source `sep_mono` (left-monotonicity under
+`CapySubcapt`) from day one — semantically unimpeachable
+(`C' ⊑ C ∧ C # X ⟹ C' # X`), covers separation facts against arbitrary
+footprints that the D.3 fiat does not, compiles by a one-rule mirror to
+target `sep_mono`; legacy couldn't afford it only because the frozen
+atomized pipeline couldn't pay transported claims (`EquivP` was the
+fence). Write the **P2×P4 interaction argument** here: does
+payment-covers-consumption survive contravariant shrinking of
+interfere-relevant annotations? (No counterexample found 2026-07-03;
+argument never written — a D exit criterion.)
 
-**Entry criterion for F's code work**: a one-page transport design —
-where the grouping lives (threaded vs Ψ-materialized), how it moves under
-rename/subst/narrowing — written and checked on paper against the hLG
-scenario and the substitution scenario.
+**D.6 — Consumer lambdas (P6, ex-L; designed now, built last).** Surface
+type `.consumer T1 cs E` (T1 under the implicit ∃-witness binder, dual to
+the arrow's ∀ self-cvar; `E` at OUTER scope — the witness must not leak);
+expression `.consume_abs T1 e`; elimination reuses `.app x y`
+(type-directed dispatch on disjoint constructors), compilation
+synthesizing `pack ⟦D⟧ ⟦y⟧`. Un-phantomable by construction: consumption
+is a CONSTRUCTOR, not a mode annotation — subsumption cannot conjure it;
+complements P1. Intro rule = `letin_unpack`'s binder block as a lambda
+(`(Γ,C[.can_drop]<:.unbound ε), x:T1` context, `cs↑↑ ∪ {εC} ∪ {drop C}`
+use, `implicit_cvar` rename) + witness-WF premises. Elim premises = pack
+evidence (D closed, access-only, droppable) + `CapyDisjCheck Γ D {εx}` +
+argFit `y : T1[openCVar D]`; NO interfere_set check (the core consumer is
+kill-based: witness-vs-closure is the DisjCheck; the rest is dead by the
+kill clause). Conclusion use-set fresh-style `{εx} ∪ D ∪ D.applyDrop`
+(var-style can't match the compiled pack's concrete use; the explicit
+`D.applyDrop` lets the enclosing letin's SeqComp protect the
+continuation). Compilation: intro → core `consumer` with
+`X := ambient droppables \ cs`; elim → `consumer_app` + `pack` (n = 1,
+`PairwiseSep` trivial); SeqComp discharge = `seq_access_only` (D leg) +
+`seq_sep` via the DisjCheck→SepCheck embedding (drop leg), assembled by
+`seq_union`. Known v1 limit (accepted, document in the rule): the
+DisjCheck premise needs all closure peaks droppable (`disj_droppable` is
+its only base pair rule) — consumers closing over non-droppable roots
+can't be applied; upgrade path = premise becomes `CapySepCheck` compiled
+straight into `seq_sep`. Main risk: kill-context transport (body TYPES
+may statically mention killed cvars — core treatment unverified).
+Deferred: direct-package application, n > 1 witnesses, dependent results.
 
-### Work items
+**D.7 — Alignment by design (P7, ex-srcAligned; THE open decision, made
+here).** The legacy anatomy (established 2026-07-04, verified at legacy
+TypeCompiler.lean:218-253): the compiled arrow is the two-cpoly tower
+`[c][cx <: ⟦ann⟧](x : S^{cx}) → …` — the source arrow's own binder maps to
+the OUTER *unbounded* cpoly (app's first capp instantiates it with `⟦D⟧`);
+`cx` is the inner bounded one, absent from source signatures, whose
+source-level identity is **x-used-as-a-capture-atom** (the compiler
+compiles the self-refined domain `(T↑)^{εx}` under `x ↦ {εcx}`; the second
+capp `cx := {εy}` is the capture half of term substitution, which the
+source does monolithically via `openVar`). `cx` exists because a stored
+type cannot mention its own binder. The legacy gap: the body context
+stores `x` at the RAW annotation while the compiled image is `{εcx}` —
+stored-type-READING forms on a parameter (`fresh x`, `drop x`,
+pack-over-x) compile to obligations false for access-only `cx`.
+Prohibition is not a fix: widening `{εcx}` to cx's bound and
+letin-rebinding is sound and compiles (`sc_cvar` dissolution) — the fix is
+**alignment**. Fresh-start candidates (α death-by-F and δ pin from rev. 1
+are moot — there is no legacy pipeline to observe and no reason to be born
+pinned):
+- **(β) subcapture-shaped coherence from birth** (natural default): the
+  new `SrcAligned`/`Coherent.varLookup` interface is stated with
+  `image ⊑ ⟦T.captureSet⟧` from day one — both legacy disjuncts already
+  delivered exactly that — and every consumer is *designed against* `⊑`
+  instead of audited for it. Companion requirement: the widening route
+  rides source capture covariance, which legacy had for arrows only —
+  the new source gets covariance at cell/reader/cap formers too (their
+  target twins are the four proven extension rules).
+- **(γ) the `S^{εc}` annotation idiom**: domains whose top-level capture
+  is the arrow's own binder make the direct forms fail already (the
+  binder is access-only AND unbounded — nothing to widen to), shrinking
+  the residual misalignment to `{εcx}` vs `{εc'}` (trivial subcapture).
+  Could be the default style, or a WF'd idiom — but forcing it is in
+  tension with the no-restriction rule; as an *idiom* it composes with β.
+- **(novel)**: with the rules unowned by history, the arrow rule's body
+  context can be designed outright around the view question (e.g. what
+  view of the parameter the body types against, and what the compiled
+  Coherent invariant asserts) — D.7 is where that gets one honest pass.
+Recommendation: β as the backbone, γ as idiom, novel-design pass during
+D.7; user confirms here.
 
-1. **Manufacture**: `peakSepCtx′` — entries are footprints as written; no
-   `peaks`-resolution of term vars, no per-atom fan-out; entry grouping
-   comes from F.0's transported computation, never recomputed. The
-   stability filter retires, and **`pseudo_peak` is DELETED** (verified
-   2026-07-03: it is the atomized representation's hand-rolled footprint
-   entry — `openCVar` freezes substituted sets so locks keep them as one
-   atom; ordinary positions compile it transparently,
-   TypeCompiler.lean:12-18 — under native footprint entries with
-   positional identity it has no job). Deletion inventory: the
-   constructor + `CapyIsPeak.peak_pseudo` + `openCVar` freezing + the
-   `resourcePeaks`/`peaks` view split collapses (resourcePeaks existed
-   only to dissolve pseudo for AccessOnly/droppable, Context.lean:396-408)
-   + the `NoPseudoPeak`/`PeaksOnly` lemma families + every `NoPseudoPeak`
-   premise in fresh(:260)/abs(:273)/app(:323-325) (they only refute pseudo
-   branches in `CapySepCheck.compile`) + pseudo cases across ~15
-   Compilation files (rebuilt here anyway). Source-side `peaks` stays —
-   it is load-bearing for `disj_peaks`. Under Phase U the entry rule is
-   uniform: every cvar atom and every term-var atom heads an entry.
-2. **Consumption reorganization**: body-side part-of-footprint payments go
-   through enclosing footprint entries via `sep_lock + sep_mono` instead of
-   atomized entries; the covering pipeline (`SepCovered`,
-   `TgtSplitCoveredOn`) shrinks to whatever transports remain — its main
-   job (shepherding atoms through substitution) disappears because entry
-   substitution is wholesale.
-3. **Rebuilds** (the big item): `compile_subst_subtyp`'s interface —
-   premise #5 (the ∀-modes atom-pair demand) disappears;
-   `app_satisfy_bridge`; the `appPeaks` inventory; `CapySepCheck.compile`'s
-   `sep_distinct` leaf re-targeted at footprint entries.
-4. **Casualties/salvage**: sep-core lemmas (`Subcapt.cvar_of_le`, the
-   SepCovered cores) survive; `CompileNarrow.lean` (node lemma, 9-lemma
-   peak inventory, `compile_arrowLock_narrow`) retires *with its problem*
-   — keep as reference until the new route is green, then delete.
-5. **Effect on Preservation's app case**: `hLG` closes by construction
-   (locks are transported, not recomputed — F.0's device delivers exactly
-   identical-locks-under-narrowing); the 963 pin is deleted or
-   trivialized; re-examine `hcompat`/`hcompatAl` (the ctxSub
-   `Cy`-vs-latent exactness tension) — expected to relax, since footprint
-   entries + `sep_mono` absorb exactly the `Cy ⊑ latent` slack; if not,
-   fall back to a G-style actual-typed intermediate context.
-6. **`Coherent.srcAligned`**: during this phase's design pass, run the
-   death-by-F check — does the rebuilt pipeline stop emitting the
-   `pack {cx} x` whose droppability obligation is false? If yes, the open
-   ruling in Phase A moots; if no, Phase A decides the device.
+**D.8 — Example programs.** Write the worked examples FIRST (none exist in
+the tree today): fresh + abs + app + letin_unpack + a consumer + a capp on
+a bounded parameter. They are D's test of expressiveness (the
+zero-rejection claims), then live as green regression programs through S/C.
 
-Acceptance: fresh/abs/subtyp compilation green on the new manufacture;
-`hLG`, 963, and the U-interim `CapySepCheck.compile` sorry gone; no new
-sorries; srcAligned either dead or explicitly decided in Phase A.
+## Phase S — Build: the new source calculus
 
-### Phase F2 — Restoration: contravariant arrow domains
+`Semantic/CoreCapybara/Capybara/` recreated from scratch per D: syntax,
+substitution/rename infrastructure, type system (all of P1/P2/P4/P5/P6 in
+the rules from day one), then ONE metatheory pass — regularity (Wf
+threading), inversion, narrowing, substitution lemmas. No `pseudo_peak`,
+no `resourcePeaks` split, no per-rule WF premise scatter. The D.8 example
+programs typecheck at the end of S. Zero sorries at phase acceptance
+(named interim sorries allowed only mid-phase).
 
-Today the source arrow subtyping rule is domain-invariant (same `T` both
-sides, Capybara/TypeSystem/Core.lean:177-183) while the target has had full
-contravariance all along (TypeSystem/Core.lean:153). It was disabled
-because term-parameter stored types leak into lock manufacture
-(`peaksVarBound` resolves them; cvar *bounds* never leak — which is why
-`cpoly` kept full bound-contravariance via `consCVar_boundIrrel`). Phase F
-removes exactly that leak, so contravariance becomes restorable:
+Quarry consciously (statement shapes and idioms, not wholesale ports):
+legacy Substitution/rename lemma inventory, `Sig.extend` defeq repair
+idioms, the two-peak-view lessons (the new system has ONE `peaks`).
 
-- **cpoly layer**: bounds `⟦T2.cs⟧ ⊑ ⟦T1.cs⟧` match the target `Subbound`
-  direction; body-under-changed-bound already solved (`consCVar_boundIrrel`).
-- **arrow layer**: target rule already contravariant; `CapySubtyp.compile`
-  recurses on domains.
-- **lock layer**: parameter entries are symbolic ⇒ identical both sides
-  (exact `sep_lock`); cs-entries differ by subcapture ⇒ `modal_modal` +
-  `sep_mono` — machinery needed for latent widening regardless of domains.
-  No new obligation *kind*.
+## Phase C — Build: the new compilation
 
-Plan: state Phase F's interfaces domain-generically from the start, but
-**land F green on invariant domains first**, then flip the source rule
-here. Costs: source rule + inversion/transitivity repairs; watch whether
-the compile invokes a source term-var *narrowing* lemma (`sep_sc`'s
-peak-equivalence premise is the sensitive spot — source `peaks` stays
-stored-type-resolving). DropWf covers the new domain premise automatically.
-Target: unchanged.
+`Semantic/CoreCapybara/Compilation/` recreated per D. Staging:
 
-### Phase F3 — Restoration: separation inheritance (source `sep_mono`)
+1. **TypeCompiler + compiled-form lemmas**: the compiled arrow/cpoly/
+   consumer schemes with footprint locks and the D.4 transported grouping
+   from the first line. The legacy tower (reference tag
+   TypeCompiler.lean:218-253) is the starting sketch, re-derived under
+   D.7's alignment choice.
+2. **Coherence layer**: the β-shaped (subcapture) invariant; context
+   morphisms; substitution lemmas. The substitution-compatibility lemma
+   for the transported grouping (D.4's residual obligation) lands here —
+   the single riskiest proof of the phase.
+3. **Rule families in order**: fresh/abs/subtyp first (legacy had these
+   green — regression reference), then app + capp through **ONE
+   parameterized checked-instantiation device** (bound-fit /
+   satisfy-bridge / final-capture serving app, capp, and consumer-app —
+   design once, the legacy var-origin/readonly-origin replay split is not
+   repeated: the app compile is parametric in head origin), then
+   consumer_app + pack synthesis (P6), then letin/letin_unpack over
+   consuming heads — which needs the **kill-weakening lemma** (see E).
+4. `CapySepCheck.compile` grounds `sep_distinct` leaves at footprint
+   entries before any peak resolution; body-side payments go through
+   enclosing entries via `sep_lock + sep_mono`; no covering pipeline
+   unless a residual transport genuinely needs one.
 
-*(The roots-vs-views species question that once lived here is dissolved by
-Phase U; what remains is the inheritance restoration — independent and
-still wanted.)*
+NOT ported, by design: `peakSepCtx` (atomizing), the stability filter,
+`pseudo_peak` machinery, CompileNarrow (node lemma, 9-lemma peak
+inventory, `compile_arrowLock_narrow`), the ~900-line narrowing recursion
+plan, `SepCovered`/`TgtSplitCoveredOn` (unless a small residual transport
+survives), the 963 pinned lemma and its mode-poly premise.
 
-Bound-cvar transparency (`sc_cvar : {εc} ⊑ D`) is retained under U, but
-capture sets today cannot *inherit* separations along subcapture at all
-(verified: `sep_sc` is peak-rigid via `EquivP`; no source
-left-monotonicity). Semantically `C' ⊑ C ∧ C # X ⟹ C' # X` is
-unimpeachable — and it covers what the U-fiat does not: facts against
-arbitrary footprints `X` (term-var footprints, unions), not just sibling
-cvars. Fix: add source `sep_mono` (left-monotonicity under `CapySubcapt`),
-compiled by a one-rule mirror to target `sep_mono` + compiled subcapture.
-The old design could not afford this (transported claims the frozen
-atomized pipeline couldn't pay — `EquivP` was the fence); under footprint
-locks it is nearly free. Safety: only shrinks the left side (cannot
-conjure the `{ε c} # {ro c}` same-root pair from `sep_distinct`'s
-mode-erasure note; cannot create drop atoms — DropWf polices those).
+## Phase E — Endgame
 
-Sequencing: after F lands; independent of F2; the `CapySepCheck.compile`
-induction gains one trivial case (do it while that proof is open).
-
-## Phase A — App-case endgame
-
-- Close the remaining app-case sorries under the new regime:
-  `hcompat`/`hcompatAl`, the readonly replay (Preservation:449), and
-  `app_use_covered` (UseCovered.lean:161).
-- **`Coherent.srcAligned` (CoherenceMorphism.lean:588) — the ONE open
-  design item (user ruling pending; F.6 may moot it).** It sits on the
-  live app spine (Preservation.lean:122-124/:1236/:1287,
-  SubtypCompile.lean:1187), so it sorryAx-taints the headline lemmas
-  today.
-
-  Anatomy (established 2026-07-04): the compiled arrow
-  (TypeCompiler.lean:218-253) is the two-cpoly tower
-  `[c][cx <: ⟦ann⟧](x : S^{cx}) → …`. The source arrow's own binder maps
-  to the OUTER, *unbounded* cpoly (app instantiates it with `⟦D⟧`); `cx`
-  is the inner, bounded one, absent from the source signatures — its
-  source-level identity is **x-used-as-a-capture-atom** (the compiler
-  compiles the self-refined domain `(T↑)^{εx}` under `x ↦ {εcx}`). It
-  exists as a separate target binder because a stored type cannot mention
-  its own binder (`x : S^{x}` is inexpressible in stored position) and
-  because the target splits term substitution into capture instantiation
-  (second `capp`, `cx := {εy}`) plus application. The gap: the body
-  context stores `x` at the RAW annotation source-side while the compiled
-  image is `{εcx}`, so stored-type-READING forms over a parameter —
-  `fresh x`, `drop x`, pack-over-x — compile to obligations that are
-  false for `cx` (access_only). Prohibition is NOT a fix: widening
-  `{εcx}` to cx's bound and re-binding through a `letin` is sound and
-  compiles green (`sc_cvar` dissolution), so the direct forms must be
-  *aligned*, not banned.
-
-  Candidate devices for the ruling:
-  - **(α) death-by-F**: the F.6 check — the rebuilt footprint pipeline may
-    stop emitting the false obligation altogether.
-  - **(β) interface relaxation**: weaken `SrcAligned`
-    (SubstLemmas.lean:410) from image-equality to subcapture
-    (`image ⊑ ⟦T.captureSet⟧` — exactly what `Coherent.varLookup` already
-    delivers for BOTH disjuncts); audit the consumers
-    (Preservation.lean:122-124/:1236/:1287, SubtypCompile.lean:1187,
-    OpenCVarSubtyp.lean:6842) for whether `⊑` suffices where `=` was
-    used. Companion fact: the widening route rides source capture
-    covariance, which exists for arrows only
-    (Capybara/TypeSystem/Core.lean:177) — cells/readers/caps would need
-    source twins of our four target covariance rules.
-  - **(γ) the `S^{εc}` annotation idiom**: domains whose top-level capture
-    is the arrow's own binder already make the direct forms fail (the
-    binder is access-only AND `.unbound` — no bound to widen to, so even
-    laundering is impossible), and the residual misalignment shrinks to
-    `{εcx}` vs `{εc'}` — a trivial subcapture. Concretely-annotated
-    domains remain the misaligned species, handled by (β) or by idiom/WF.
-  - **(δ) honest pin**: true for real programs, uncertifiable in-system.
-- Decide the non-app stub's status (out of the app-case scope; either close
-  or mark as the next milestone). **The non-app milestone has a known
-  research-grade prerequisite** (latent since the base): compiling
-  `letin`/`letin_unpack` over consuming heads (`fresh`'s use is
-  `D ∪ D.applyDrop`) targets rules that **kill** the continuation context,
-  while the source continuation is typed unkilled. Needs a *syntactic*
-  target kill-weakening lemma — "`HasType` survives killing `can_drop`
-  peaks the use-set avoids" — which does not exist on core-capybara (only
-  denotational transport, Denotation/Kill.lean). Plausible proof shape:
-  kill flips authority to `.killed` with the bound intact; `sc_cvar`
-  requires `.access_only`, so killed cvars never fed subcapture; the
-  avoidance hypothesis is exactly source `seq_drop`'s DisjCheck.
-- Hygiene: sweep bare `sorry` AND `#print axioms` for `sorryAx` across
-  `Compilation/` + `Capybara/` before declaring green.
-- Update `notes/` + memory; retire `notes/app-case-design-decision.md`
-  (already banner-marked resolved).
-
-## Phase L — Surface consumer lambdas
-
-*Design agreed 2026-07-03 (user proposal, rules drafted).*
-
-Surface forms: type `.consumer T1 cs E` (`T1 : CapyTy .capt (s,C)` under
-the implicit **witness** binder; `E : CapyTy .exi s` at the OUTER scope —
-the witness must not leak into the result); expression `.consume_abs T1 e`;
-elimination **reuses `.app x y`** (type-directed dispatch on disjoint
-constructors `.arrow`/`.consumer` — no ambiguity), with the compilation
-**synthesizing the pack** and its evidence.
-
-Design highlights:
-- **Quantifier duality**: arrow = implicit ∀ self-cvar (app instantiates);
-  consumer = implicit ∃ witness cvar (app packs; body sees it abstract).
-  Same domain shape, dual elimination.
-- **Un-phantomable consumption**: the drop-right is conveyed by the type
-  CONSTRUCTOR, not a mode annotation — subsumption cannot conjure a
-  `.consumer` from an `.arrow`. Complements DropWf (which bans the unsound
-  drop-latent route); the body's `{drop C}` use is DropWf-valid because
-  the witness binder is `can_drop`.
-- **Intro rule = `letin_unpack`'s binder block as a lambda**
-  (Core.lean:374-377 pattern verbatim: `(Γ,C[.can_drop]<:.unbound ε),x:T1`
-  context, `cs↑↑ ∪ {ε C} ∪ {drop C}` use-set, `implicit_cvar` rename,
-  double-lifted result) + the `fresh`/`abs` witness-WF premise family.
-- **Elim rule premises** = pack evidence (D closed, access-only,
-  `droppable Γ D`) + `CapyDisjCheck Γ D {εx}` (consumed footprint vs the
-  consumer's own captures) + the app-style argFit premise
-  `y : T1[openCVar D]`. NO `NoPseudoPeak` premises (L lands after F,
-  which deletes the device). **No `interfere_set` SepCheck** — the core
-  consumer is kill-based, not lock-based: witness-vs-closure is the
-  DisjCheck ({εx} resolves to cs), everything else is dead by the kill
-  clause. Conclusion use-set is **fresh-style** `{εx} ∪ D ∪ D.applyDrop`
-  (var-style `{εy}` cannot match the compiled pack's concrete use; the
-  explicit `D.applyDrop` is what lets the enclosing letin's SeqComp
-  protect the continuation).
-- **Compilation**: intro → core `consumer` with kill set
-  `X := ambient droppables \ cs` (kill-clause true by construction);
-  elim → `consumer_app ⟦x⟧ (pack ⟦D⟧ ⟦y⟧)` (n = 1, `PairwiseSep`
-  trivial; `accessible` rides Phase R's liveness repair). The SeqComp
-  discharge is more than one step: the `D` leg via `seq_access_only`, the
-  `D.applyDrop` leg via `seq_sep` — which takes a **SepCheck**, so it
-  needs the DisjCheck→SepCheck embedding (Phase R work item) + drop-mode
-  adaptation — assembled by `seq_union`. The argFit premise reuses Phase
-  F's checked-instantiation device — one device serves app, U-capp, and
-  consume-app.
-- **Known v1 expressiveness limit** (accepted — state it in the rule's
-  doc): the `CapyDisjCheck Γ D {εx}` premise is derivable only when *all*
-  the closure's peaks are droppable (`disj_droppable` is DisjCheck's only
-  base pair rule), so a consumer whose closure captures a non-droppable
-  root or an ro capability can never be applied — while the target
-  receiver (`seq_sep` = full SepCheck incl. `sep_lock`) is strictly more
-  permissive. If it bites, the premise upgrades to a `CapySepCheck`
-  compiled straight into `seq_sep`.
-- Mechanical extensions: `CapySubtyp.consumer` (covariant cs/E, E with no
-  binder gymnastics; domain invariant until F2), `interfere_set` case
-  (`cs ∪ dropCVar T1.captureSet ∪ E.interfere_set`), DropWf/Wf cases,
-  `tySize`.
-
-Risks/deferred: kill-context transport (body TYPES may statically mention
-killed cvars — how the core treats static references to killed entries is
-unverified; main compilation risk); non-dependent results (E independence)
-accepted for now; extensions that fit smoothly later: direct-package
-application (`y` already `.exi`-typed), multi-witness consumers (n > 1,
-`PairwiseSep` = the U-flavored pairwise check), dependent results.
-
-Sequencing: after the green baseline (Phase A); needs R (core consumer
-exists on the new base) and benefits from W (DropWf validates the witness
-pattern) and F (the shared argFit device); independent of F2/F3.
+- Headline preservation theorem over the full rule set; adequacy of the
+  compiled programs via the core's green stack.
+- **Kill-weakening lemma** (target-side, syntactic; research-grade,
+  latent since the old base): "`HasType` survives killing `can_drop`
+  peaks the use-set avoids" — needed to compile `letin`/`letin_unpack`
+  over consuming heads (their core rules kill the continuation context;
+  the source continuation is typed unkilled). Does not exist on
+  core-capybara (only denotational transport, Denotation/Kill.lean).
+  Plausible shape: kill flips authority to `.killed` with the bound
+  intact; `sc_cvar` requires `.access_only`, so killed cvars never fed
+  subcapture; the avoidance hypothesis is exactly `seq_drop`'s DisjCheck.
+  This is a LEMMA about the target, not a rule change — consistent with
+  the target-intact constraint.
+- **Cliffs checklist** — each legacy sorry, with its by-construction
+  killer, verified dead in the new module:
+  | Legacy sorry (at reference tag) | Killer |
+  |---|---|
+  | 963 pin `app_capture_self_sep_modepoly` (CompileSubstOpenVar:977) | P1: phantom drop-latents unformable |
+  | hLG (Preservation:1351) + hself/CompileNarrow | P3: locks transported, never recomputed — narrowing preserves them syntactically |
+  | hcompat (:753), hcompatAl (:811) | footprint entries + `sep_mono` absorb the `Cy ⊑ latent` slack; if a residue survives, the app-case context discipline chosen in D decides (G-style actual-typed intermediate context) |
+  | readonly replay (:449) | C.3: app compile parametric in head origin — no replay |
+  | non-app stub (:1438) | C covers all rule families; prerequisite = the kill-weakening lemma above |
+  | `Coherent.srcAligned` (CoherenceMorphism:588) | P7/D.7: alignment designed in (β backbone) |
+  | `app_use_covered` (UseCovered:161) | use accounting designed at footprint granularity; D must check it dissolves with atomization (flag in D.4 if not) |
+- Hygiene: sweep bare `sorry` AND `#print axioms` for `sorryAx` across the
+  new module before declaring green; zero tolerance — there is no
+  inherited baseline.
+- Docs/memory updates; legacy directories may be deleted once the new
+  module strictly dominates (user call at the time).
 
 ## Deferred (explicitly out of scope)
 
 - The one-rule target extension (`drop×ε` mode-lowering separation) — moot
-  once DropWf lands; recorded as considered-and-unnecessary.
+  under P1; recorded as considered-and-unnecessary.
 - `core-capybara-relax-droppability` — discarded experiment; do not
   resurrect.
+- Repairing the legacy module against the new core — explicitly not done;
+  the checkable legacy reference is the pre-merge tag.
+- Consumer extensions: direct-package application, n > 1 witnesses,
+  dependent results (D.6 lists the upgrade paths).
 
 ## Sequencing and risk
 
-**Order: R → W+U (bundled) → F → A → L.** R first (user directive;
-everything else builds on the new core). W and U are **bundled**: do both
-phases' rule surgery first, then ONE combined regularity pass (threading
-W's regularity before U's rule edits would rework it). W+U before F
-because F's rebuilt interfaces should be stated once, with the WF
-hypotheses and the unified-parameter semantics available — though they are
-logically independent of F's design-level work, which can start in
-parallel after R if bandwidth allows. Cross-checked: U's checks do NOT
-need F3's source `sep_mono` (`sep_sc` + `EquivP` suffices — resolution is
-peak-preserving); R depends on nothing scheduled later.
+**R → D → S → C → E.** R first (user directive; everything builds on the
+new core). D before any code: the entire value of the fresh start is that
+S and C execute a settled design — if D wobbles mid-build, stop and re-run
+D, don't patch forward (that is how the legacy debt accumulated). Within
+C, the transported-grouping substitution lemma (C.2) should be attacked
+early — it is the load-bearing novelty; if it fails, the F.0 device needs
+redesign while nothing downstream exists yet.
 
-Gates before F's code work: the F.0 transport design written on paper
-(the device is ruled; the write-up is the entry criterion), and the
-U-vs-F2 interaction argument (does payment-covers-consumption survive
-contravariant shrinking of interfere-relevant annotations? no
-counterexample found; argument not yet written) recorded as part of F2's
-entry criteria. The srcAligned device (Phase A) needs a user ruling
-unless F.6's death-by-F check moots it — run that check early in F.
+Gates: D's exit criteria — the transport one-pager (D.4), the P2×P4
+interaction argument (D.5), the alignment decision (D.7, user
+confirmation), example programs (D.8); optional adversarial review of the
+design doc. E's acceptance = cliffs checklist fully verified + hygiene
+sweep.
 
-Biggest risks: R's Fundamental.lean merge + five re-proofs in the new
-Kripke model (real proof work, not mechanics); F's `compile_subst_subtyp`
-rebuild (the single biggest mechanical item, but it *replaces* the hardest
-existing debt rather than adding to it); F.0's substitution-compatibility
-lemma (the transported grouping's residual obligation); the non-app
-milestone's kill-weakening lemma (Phase A; research-grade, plausible proof
-shape); the srcAligned ruling (design risk, not proof risk). W+U
-regularity is standard infrastructure.
+Biggest risks, ranked: (1) rebuild scale — S+C re-prove everything the
+legacy module took months to accumulate; mitigation: the quarry (all
+design analyses survive, legacy proofs remain readable at the tag, and
+the new pipeline is structurally smaller — most legacy Compilation volume
+served atomization); (2) the transported-grouping substitution lemma
+(C.2); (3) R's Fundamental merge + five re-proofs in the new Kripke model;
+(4) the kill-weakening lemma (E; research-grade, plausible shape); (5)
+D.7 alignment choice turning out to constrain the arrow rule in ways D
+didn't foresee — mitigated by the D.8 examples and the optional design
+review.
 
 Working discipline: lean4check (never `lake build` as a check), no axioms
 (theorem + sorry), `#print axioms` sweeps before any "done" claim, opus
-subagents with single-file ownership when parallelizing.
+subagents with single-file ownership when parallelizing, zero-sorry phase
+acceptance (named interim sorries only mid-phase).
