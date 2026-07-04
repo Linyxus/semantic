@@ -103,6 +103,27 @@ that the new design must avoid by construction.
 
 ## Phase R — Rebase + legacy quarantine (FIRST)
 
+> **✅ COMPLETED 2026-07-04.** Commit chain: notes checkpoint + backup
+> branch `capybara-translation-pre-rebase-2` at `ff84c9f`; dangling
+> `import Semantic.Capybara` removed `410143d`; quarantine `16cb8d4`
+> (39 files → `LegacyCapybara/`/`LegacyCompilation/`, unimported, frozen
+> notices); merge `f1cfc6f` (core taken wholesale; Debruijn kept both
+> additive families; five extensions restated in the merge — `cell`/
+> `reader` reshaped for element-typed cells, element invariant; `sep_mono`
+> Fundamental cases ported verbatim and proven); R.5 `335cf07`
+> (`sem_subtyp_cell`/`reader`/`cap`/`poly_cap` re-proven in the Kripke
+> model — old skeleton transferred: element payloads carried verbatim,
+> wf/covers fields rebuilt via `SemSubcapt` monotonicity). **Acceptance
+> held: whole tree green AND sorryAx-free** — `#print axioms` sweep over
+> `fundamental`, `adequacy_platform`, `immutability_adequacy_platform`
+> (+`_run`), `fundamental_subtyp`/`_sepcheck`/`_sepcheck_global`,
+> `SepCheck.left_mono`, and the four `sem_subtyp_*` = only
+> `[propext, Classical.choice, Quot.sound]`. Model note for D/C: `.cell`
+> denot uniquely lacks the leading `e.WfInHeap` conjunct; `SemSubcapt` now
+> yields `CapabilitySet.Subset` on the MEMORY's denotations; cells store a
+> step-indexed `MonRel` whose defining iff is what the rigid-element-type
+> choice carries verbatim.
+
 The core has evolved: 28 commits since the merge base `f6b793e`, tip
 `af26a66` ("consume-lambda elimination; module green", 0-sorry). The
 translation branch carries 89 commits on the old base. Under the fresh
