@@ -18,10 +18,6 @@ import Semantic.CoreCapybara.Semantics.Standardization
 
 import Semantic.CoreCapybara.Semantics.Confluence
 
-import Semantic.CoreCapybara.Capybara
-
-import Semantic.CoreCapybara.Compilation
-
 /-!
 # Semantic Type Soundness for CoreCapybara
 
@@ -56,9 +52,11 @@ arbitrary partial reductions: any two interleavings of a safe program reconverge
 permutation, `Trace.Equiv`, and reachability-equivalence of `par` capture annotations — the
 semantic content of data-race freedom.
 
-This is considered an intermediate step towards the "actual" Capybara.
-
-`Semantic.CoreCapybara.Capybara` defines the clean surface language System
-Capybara, and `Semantic.CoreCapybara.Compilation` develops the type-directed
-compiler translating Capybara into this core calculus.
+The legacy surface language (System Capybara) and its type-directed compiler
+are FROZEN as of 2026-07-04 (fresh-start ruling): they remain in-tree,
+unimported, at `Semantic.CoreCapybara.LegacyCapybara` /
+`Semantic.CoreCapybara.LegacyCompilation` as read-only reference. Their last
+green state against the old core is branch `capybara-translation-pre-rebase-2`.
+A new Capybara is being rebuilt from first principles — see
+`roadmaps/translation.md`.
 -/
