@@ -32,6 +32,7 @@ BASE_PATTERNS=(
   /.agents/
   /scripts/
   /notes/
+  /roadmaps/
   /Semantic/Prelude.lean
 )
 
