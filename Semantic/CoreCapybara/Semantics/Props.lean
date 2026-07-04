@@ -30,9 +30,9 @@ theorem reduce_ctx_letin
   | step h _ ih => exact Reduce.step (Step.step_ctx_letin h) ih
 
 /-- Helper: Congruence for Reduce in unpack context. -/
-theorem reduce_ctx_unpack
+theorem reduce_ctx_unpack {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
   (hred : Reduce C m e1 m' e1') :
-  Reduce C m (.unpack e1 e2) m' (.unpack e1' e2) := by
+  Reduce C m (.unpack n e1 e2) m' (.unpack n e1' e2) := by
   induction hred with
   | refl => exact Reduce.refl
   | step h _ ih => exact Reduce.step (Step.step_ctx_unpack h) ih
@@ -45,9 +45,9 @@ theorem seqreduce_ctx_letin
   | refl => exact SeqReduce.refl
   | step h _ ih => exact SeqReduce.step (SeqStep.step_ctx_letin h) ih
 
-theorem seqreduce_ctx_unpack
+theorem seqreduce_ctx_unpack {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
   (hred : SeqReduce C m e1 m' e1') :
-  SeqReduce C m (.unpack e1 e2) m' (.unpack e1' e2) := by
+  SeqReduce C m (.unpack n e1 e2) m' (.unpack n e1' e2) := by
   induction hred with
   | refl => exact SeqReduce.refl
   | step h _ ih => exact SeqReduce.step (SeqStep.step_ctx_unpack h) ih
@@ -90,15 +90,16 @@ theorem step_memory_monotonic
   (hstep : SeqStep C m1 e1 m2 e2) :
   m2.subsumes m1 := by
   induction hstep with
-  | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
+  | step_apply | step_invoke | step_tapply | step_capply | step_consumer_app
+  | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ =>
     exact Memory.subsumes_refl _
   | step_par_left _ ih => exact ih
   | step_par_right _ _ ih => exact ih
-  | step_write_true hx _ | step_write_false hx _ =>
-    exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩
-  | step_alloc _ hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh
+  | step_write hx hy =>
+    exact Memory.update_mcell_subsumes _ _ _ _ ⟨_, hx⟩ (fun _ => hy)
+  | step_alloc hlk hfresh => exact Memory.extend_mcell_subsumes _ _ _ hfresh hlk
   | step_drop hx => exact Memory.drop_mcell_subsumes _ _ ⟨_, hx⟩
   | step_ctx_letin _ ih | step_ctx_unpack _ ih => exact ih
   | step_lift hv hwf hfresh => exact Memory.extend_subsumes _ _ _ hwf rfl hfresh
@@ -212,6 +213,15 @@ theorem step_preserves_wf
       have ⟨_, _, hwf_body⟩ := Exp.wf_inv_cabs hwf_cabs
       have hwf_subst := Subst.wf_openCVar hwf_CS
       exact Exp.wf_subst hwf_body hwf_subst
+  | step_consumer_app hlookup =>
+    rename_i x arg e_body cs T hv R
+    cases hwf with
+    | wf_consumer_app hwf_x hwf_arg =>
+      have hwf_consumer : Exp.WfInHeap (.consumer cs (.exi 1 T) e_body) m1.heap :=
+        m1.wf.wf_val _ _ hlookup
+      cases hwf_consumer with
+      | wf_consumer _ _ hwf_body =>
+        exact Exp.WfInHeap.wf_unpack hwf_arg hwf_body
   | step_unwrap hlookup =>
     rename_i x cs Ψ R hv
     have hwf_boxed : Exp.WfInHeap (.boxed cs Ψ e2) m1.heap := by
@@ -226,17 +236,18 @@ theorem step_preserves_wf
     have ⟨_, _, hwf_else⟩ := Exp.wf_inv_cond hwf
     exact hwf_else
   | step_read hreader hcell =>
-    split
-    · exact Exp.WfInHeap.wf_btrue
-    · exact Exp.WfInHeap.wf_bfalse
-  | step_write_true _ _ =>
+    obtain ⟨v, hv⟩ := Option.ne_none_iff_exists'.mp (Memory.mcell_content_val hcell)
+    exact Exp.WfInHeap.wf_var (Var.WfInHeap.wf_free hv)
+  | step_write _ _ =>
     exact Exp.WfInHeap.wf_unit
-  | step_write_false _ _ =>
-    exact Exp.WfInHeap.wf_unit
-  | step_alloc _ hfresh =>
+  | step_alloc hlk hfresh =>
     exact Exp.WfInHeap.wf_pack
-      (CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh))
-      (Var.WfInHeap.wf_free (Memory.extend_mcell_lookup hfresh))
+      (fun cs hmem => by
+        cases hmem with
+        | head =>
+          exact CaptureSet.WfInHeap.wf_var_free (Memory.extend_mcell_lookup hfresh hlk)
+        | tail _ h => cases h)
+      (Var.WfInHeap.wf_free (Memory.extend_mcell_lookup hfresh hlk))
   | step_drop _ =>
     exact Exp.WfInHeap.wf_unit
   | step_ctx_letin hstep_e1 =>
@@ -276,7 +287,6 @@ theorem step_preserves_wf
     have hwf_subst := Subst.wf_openVar hwf_l
     exact Exp.wf_subst hwf_body_ext hwf_subst
   | step_unpack =>
-    rename_i cs x e_body
     have ⟨hwf_pack, hwf_body⟩ := Exp.wf_inv_unpack hwf
     cases hwf_pack with
     | wf_pack hwf_cs hwf_x =>
@@ -318,13 +328,13 @@ theorem reduce_preserves_wf
     exact ih hwf_mid
 
 /-- Inversion lemma for reduction of unpack expressions -/
-theorem reduce_unpack_inv
-  (hred : Reduce t m (.unpack e1 e2) m' a)
+theorem reduce_unpack_inv {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
+  (hred : Reduce t m (.unpack n e1 e2) m' a)
   (hans : a.IsAns) :
-  ∃ (t1 t2 : Trace) (m0 : Memory) (cs : CaptureSet {}) (x : Nat),
+  ∃ (t1 t2 : Trace) (m0 : Memory) (cs : List.Vector (CaptureSet {}) n) (x : Nat),
     Reduce t1 m e1 m0 (.pack cs (.free x)) ∧
     Reduce t2 m0 (e2.subst (Subst.unpack cs (.free x))) m' a := by
-  generalize hgen : Exp.unpack e1 e2 = e_full at hred
+  generalize hgen : Exp.unpack n e1 e2 = e_full at hred
   induction hred generalizing e1 e2 with
   | refl =>
     rw [←hgen] at hans
@@ -355,8 +365,8 @@ inductive IsProgressive : Memory -> Exp {} -> Prop where
 /-- If an answer has an evaluation, then the postcondition holds for it with the
     empty trace.  An answer `BigStep`s only to itself emitting no events, so the
     bundled preservation half of `Eval` applies to that trivial run. -/
-theorem eval_ans_holds_post {m : Memory} {e : Exp {}} {Q : Tpost}
-  (heval : Eval m e Q)
+theorem eval_ans_holds_post {k : Nat} {m : Memory} {e : Exp {}} {Q : Tpost}
+  (heval : Eval k m e Q)
   (hans : e.IsAns) :
   Q [] e m :=
   heval.2 _ _ _ (BigStep.of_isAns hans)
@@ -378,43 +388,60 @@ theorem Exp.isSimpleAns_cases {e : Exp {}} (h : e.IsSimpleAns) :
     exact Or.inr ⟨n, rfl⟩
 
 /-- A pack answer in the empty signature has a free witness variable. -/
-theorem Exp.isPack_cases {e : Exp {}} (h : e.IsPack) :
-    ∃ cs n, e = .pack cs (.free n) := by
+theorem Exp.isPack_cases {k : Nat} {e : Exp {}} (h : e.IsPack k) :
+    ∃ (cs : List.Vector (CaptureSet {}) k) (n : Nat), e = .pack cs (.free n) := by
   cases h with
   | pack =>
     rename_i cs x
     obtain ⟨n, rfl⟩ := Var.free_cases x
     exact ⟨cs, n, rfl⟩
 
-/-- **Progress (sequential small-step).**  A `Safe` configuration is *progressive*:
-    already an answer, or it can take a sequential `SeqStep`.  For `letin`/`unpack`,
-    when the head is an answer, `h_ans` on the trivial self-run classifies it as a
-    simple value or variable so that `step_lift`/`step_rename`/`step_unpack` fire. -/
-theorem safe_implies_progressive {m : Memory} {e : Exp {}}
-  (h : Safe m e) :
+/-- **Progress (sequential small-step).**  A `Safe` configuration with a LIVE read
+    budget (`0 < k`) is *progressive*: already an answer, or it can take a sequential
+    `SeqStep`.  The budget positivity is essential: `Safe 0` is the trivial
+    `exhausted` bottom and claims nothing.  For `letin`/`unpack`, when the head is an
+    answer, `h_ans` on the trivial self-run (whose read count `0 < k` is within
+    budget) classifies it as a simple value or variable so that
+    `step_lift`/`step_rename`/`step_unpack` fire. -/
+theorem safe_implies_progressive {k : Nat} {m : Memory} {e : Exp {}}
+  (h : Safe k m e) (hk : 0 < k) :
   IsProgressive m e := by
+  revert hk
   induction h with
-  | ans hans => exact IsProgressive.done hans
+  | exhausted => intro hk; exact absurd hk (Nat.lt_irrefl 0)
+  | ans hans => intro _; exact IsProgressive.done hans
   | alloc hlookup =>
+    intro _
     obtain ⟨l, hfresh⟩ := Memory.exists_fresh _
     exact IsProgressive.step (SeqStep.step_alloc (l := l) hlookup hfresh)
   | drop hx =>
+    intro _
     exact IsProgressive.step (SeqStep.step_drop hx)
-  | @apply cs T e_abs hv R y m x hlookup _ _ =>
+  | @apply cs T e_abs hv R y k m x hlookup _ _ =>
+    intro _
     obtain ⟨y', rfl⟩ := Var.free_cases y
     exact IsProgressive.step (SeqStep.step_apply hlookup)
   | invoke hlookup_x hlookup_y =>
+    intro _
     exact IsProgressive.step (SeqStep.step_invoke hlookup_x hlookup_y)
   | tapply hlookup _ _ =>
+    intro _
     exact IsProgressive.step (SeqStep.step_tapply hlookup)
   | capply hlookup _ _ =>
+    intro _
     exact IsProgressive.step (SeqStep.step_capply hlookup)
+  | consumer_app hlookup _ _ =>
+    intro _
+    exact IsProgressive.step (SeqStep.step_consumer_app hlookup)
   | unwrap hlookup _ _ =>
+    intro _
     exact IsProgressive.step (SeqStep.step_unwrap hlookup)
   | letin _ h_ans _ _ ih_e1 _ _ =>
-    cases ih_e1 with
+    intro hk
+    cases ih_e1 hk with
     | done hans =>
-      obtain ⟨hsimple_ans, hwf⟩ := h_ans _ _ _ (BigStep.of_isAns hans)
+      obtain ⟨hsimple_ans, hwf⟩ :=
+        h_ans _ _ _ (BigStep.of_isAns hans) (by simpa using hk)
       rcases Exp.isSimpleAns_cases hsimple_ans with hv | ⟨n, rfl⟩
       · obtain ⟨l0, hfresh⟩ := Memory.exists_fresh _
         exact IsProgressive.step (SeqStep.step_lift (l := l0) hv hwf hfresh)
@@ -422,14 +449,17 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
     | step hstep =>
       exact IsProgressive.step (SeqStep.step_ctx_letin hstep)
   | unpack _ h_ans _ ih_e1 _ =>
-    cases ih_e1 with
+    intro hk
+    cases ih_e1 hk with
     | done hans =>
-      obtain ⟨hpack, hwf⟩ := h_ans _ _ _ (BigStep.of_isAns hans)
+      obtain ⟨hpack, hwf⟩ :=
+        h_ans _ _ _ (BigStep.of_isAns hans) (by simpa using hk)
       obtain ⟨cs, n, rfl⟩ := Exp.isPack_cases hpack
       exact IsProgressive.step SeqStep.step_unpack
     | step hstep =>
       exact IsProgressive.step (SeqStep.step_ctx_unpack hstep)
-  | @cond e2 e3 m x hres _ _ _ _ =>
+  | @cond e2 e3 k m x hres _ _ _ _ =>
+    intro hk
     obtain ⟨fx, rfl⟩ := Var.free_cases x
     cases hres with
     | inl hbtrue =>
@@ -462,27 +492,33 @@ theorem safe_implies_progressive {m : Memory} {e : Exp {}}
                 (by simp [Memory.lookup, hcell]))
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
-  | read hlookup_reader hlookup_cell =>
+  | read hlookup_reader hlookup_cell _ =>
+    intro _
     exact IsProgressive.step (SeqStep.step_read hlookup_reader hlookup_cell)
-  | write_true hx hy =>
-    exact IsProgressive.step (SeqStep.step_write_true hx hy)
-  | write_false hx hy =>
-    exact IsProgressive.step (SeqStep.step_write_false hx hy)
-  | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
+  | write hx hy =>
+    intro _
+    exact IsProgressive.step (SeqStep.step_write hx hy)
+  | par _W _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ihh2 _ _ =>
     -- Sequential `par`: advance the left branch to an answer, then the right
     -- (`step_par_right` needs the left answer), then join. Some step always exists.
-    cases ih1 with
+    -- The right branch's progress after the left answers comes from the sequential
+    -- continuation `h2` on the left's trivial self-run (empty trace, budget intact).
+    intro hk
+    cases ih1 hk with
     | done hAans =>
-      cases ih2 (BigStep.of_isAns hAans) with
+      have hprog2 := ihh2 (BigStep.of_isAns hAans)
+      simp only [Trace.readCount_nil, Nat.sub_zero] at hprog2
+      cases hprog2 hk with
       | done hBans => exact IsProgressive.step (SeqStep.step_par_join hAans hBans)
       | step hstepB => exact IsProgressive.step (SeqStep.step_par_right hAans hstepB)
     | step hstepA => exact IsProgressive.step (SeqStep.step_par_left hstepA)
 
-/-- An `Eval` is progressive: its bundled `Safe` half gives small-step progress. -/
-theorem eval_implies_progressive {m : Memory} {e : Exp {}} {Q : Tpost}
-  (heval : Eval m e Q) :
+/-- An `Eval` at a live budget is progressive: its bundled `Safe` half gives
+    small-step progress. -/
+theorem eval_implies_progressive {k : Nat} {m : Memory} {e : Exp {}} {Q : Tpost}
+  (heval : Eval k m e Q) (hk : 0 < k) :
   IsProgressive m e :=
-  safe_implies_progressive heval.1
+  safe_implies_progressive heval.1 hk
 
 /-! ## Small-step ↔ big-step bridge
 
@@ -536,6 +572,7 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     exact BigStep.bs_invoke hlkx hlky
   | step_tapply hlk => intro t' v m' hbs; exact BigStep.bs_tapply hlk hbs
   | step_capply hlk => intro t' v m' hbs; exact BigStep.bs_capply hlk hbs
+  | step_consumer_app hlk => intro t' v m' hbs; exact BigStep.bs_consumer_app hlk hbs
   | step_unwrap hlk => intro t' v m' hbs; exact BigStep.bs_unwrap hlk hbs
   | step_cond_var_true hlk =>
     intro t' v m' hbs
@@ -547,16 +584,13 @@ theorem BigStep.head_expand {t : Trace} {m1 e1 m2 e2 : _}
     exact BigStep.bs_cond_false (by simp only [resolve, hlk]) hbs
   | step_read hlkx hlky =>
     intro t' v m' hbs
-    obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq (by split <;> constructor) hbs
-    exact BigStep.bs_read hlkx hlky
-  | step_write_true hx hy =>
+    cases hbs with
+    | bs_var => simpa using BigStep.bs_read hlkx hlky (Memory.mcell_content_val hlky)
+    | bs_val hv => cases hv
+  | step_write hx hy =>
     intro t' v m' hbs
     obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq Exp.IsSimpleVal.unit hbs
-    exact BigStep.bs_write_true hx hy
-  | step_write_false hx hy =>
-    intro t' v m' hbs
-    obtain ⟨rfl, rfl, rfl⟩ := BigStep.simpleVal_eq Exp.IsSimpleVal.unit hbs
-    exact BigStep.bs_write_false hx hy
+    exact BigStep.bs_write hx hy
   | step_alloc hlk hfresh =>
     intro t' v m' hbs
     cases hbs with
@@ -612,297 +646,333 @@ theorem reduce_to_bigstep {t : Trace} {m e m' a}
   | refl => exact BigStep.of_isAns hans
   | step hstep _ ih => exact BigStep.head_expand hstep (ih hans)
 
-/-- **Preservation of `Safe` (sequential small-step).**  A `SeqStep` preserves
-    big-step safety.  Invert the `Safe` derivation per redex; the `letin`/`unpack`
-    continuations transport across the inner step by head expansion (a post-step
-    `BigStep` of the head head-expands to a pre-step one feeding the original
-    handler).  Threads only `Exp.WfInHeap`.  The frozen `par` branch's safety comes
-    from the continuation `h2` (it is an answer); the reduct branch's from the
-    bound-driven `Safe.lift`. -/
-theorem step_preserves_safe {t : Trace} {m1 e1 m2 e2}
-    (hstep : SeqStep t m1 e1 m2 e2) :
-    Exp.WfInHeap e1 m1.heap → Safe m1 e1 → Safe m2 e2 := by
-  induction hstep with
-  | step_apply hlk =>
-    intro _ hsafe
-    cases hsafe with
-    | apply hlk2 hbody =>
-      have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
-      simp only at heq; cases heq; exact hbody
-    | invoke hlkx2 _ => rw [hlk] at hlkx2; exact absurd hlkx2 (by simp)
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_invoke _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_tapply hlk =>
-    intro _ hsafe
-    cases hsafe with
-    | tapply hlk2 hbody =>
-      have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
-      simp only at heq; cases heq; exact hbody
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_capply hlk =>
-    intro _ hsafe
-    cases hsafe with
-    | capply hlk2 hbody =>
-      have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
-      simp only at heq; cases heq; exact hbody
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_unwrap hlk =>
-    intro _ hsafe
-    cases hsafe with
-    | unwrap hlk2 hbody =>
-      have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
-      simp only at heq; cases heq; exact hbody
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_cond_var_true hlk =>
-    intro _ hsafe
-    cases hsafe with
-    | cond hres h_true _ =>
-      simp only [Memory.lookup] at hlk
-      exact h_true (by simp only [resolve, hlk])
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_cond_var_false hlk =>
-    intro _ hsafe
-    cases hsafe with
-    | cond hres _ h_false =>
-      simp only [Memory.lookup] at hlk
-      exact h_false (by simp only [resolve, hlk])
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_read _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val (by split <;> constructor))
-  | step_write_true _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_write_false _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_alloc _ _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.pack)
-  | step_drop _ => intro _ _; exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_ctx_letin hstep_inner ih =>
-    intro hwf hsafe
-    obtain ⟨hwf1, _⟩ := Exp.wf_inv_letin hwf
-    cases hsafe with
-    | letin hse1 h_ans h_val h_var =>
-      refine Safe.letin (ih hwf1 hse1) ?_ ?_ ?_
-      · intro t1 v m1' hbs
-        exact h_ans _ _ _ (BigStep.head_expand hstep_inner hbs)
-      · intro t1 m1' v hbs hv hwf_v l' hfresh
-        exact h_val (BigStep.head_expand hstep_inner hbs) hv hwf_v l' hfresh
-      · intro t1 m1' x hbs
-        exact h_var (BigStep.head_expand hstep_inner hbs)
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_ctx_unpack hstep_inner ih =>
-    intro hwf hsafe
-    obtain ⟨hwf1, _⟩ := Exp.wf_inv_unpack hwf
-    cases hsafe with
-    | unpack hse1 h_ans h_val =>
-      refine Safe.unpack (ih hwf1 hse1) ?_ ?_
-      · intro t1 v m1' hbs
-        exact h_ans _ _ _ (BigStep.head_expand hstep_inner hbs)
-      · intro t1 m1' x cs hbs
-        exact h_val (BigStep.head_expand hstep_inner hbs)
-    | ans hans => cases hans with | is_val hv => cases hv
-  | @step_par_left t m1 a m2 a' Cs1 Cs2 b hstep_a ih =>
-    intro hwf hsafe
-    obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
-    have hwfC1 : Cs1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
-    have hwfC2 : Cs2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
-    cases hsafe with
-    | ans hans => cases hans with | is_val hv => cases hv
-    | par hse_a hse_b h2 hb1 hb2 _hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
-      rename_i C1 C2
-      have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_a
-      have hse_a2' : Safe m2 a' := ih hwf_a hse_a
-      -- Left step's trace `t` is bounded by `C1`.
-      have htok_t : TraceOk t C1 := by
-        obtain ⟨s, vv, ms, hbs_a'⟩ := hse_a2'.has_answer
-        have hfull : BigStep m1 a (t ++ s) vv ms := BigStep.head_expand hstep_a hbs_a'
-        exact TraceOk.prefix (hb1 (Memory.subsumes_refl _) hwf_a hfull)
-      -- Frozen right branch `b` stays safe at `m2`: the left step's footprint (⊆ C1) does
-      -- not drop `b`'s cells (⊆ C2) by non-interference, so `SeqStep.frameLive` keeps them live.
-      have hse_b2' : Safe m2 b :=
-        Safe.frame_lift hse_b hsub21 hwf_b hb2 (fun l bb ⟨_, hmem⟩ hl =>
-          SeqStep.frameLive hstep_a l bb hl
-            (not_extDrops_of_noninterf htok_t (CapabilitySet.Noninterference.ni_symm hni) hmem))
-      -- Reduct `a'`'s budget grows by the step's fresh allocations `capsOf (allocList t)`.
-      have hb1_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
-          m'.subsumes m2 -> Exp.WfInHeap a' m'.heap -> BigStep m' a' s v m'' ->
-          TraceOk s (C1 ∪ capsOf (Trace.allocList t)) := by
-        intro m' s v m'' hsub' hwf' hbs
-        have hwfa' := step_preserves_wf hstep_a hwf_a
-        obtain ⟨ms, hbs_m2, _, _⟩ := hbs.simulate_down hsub' hwfa'
-        have hfull : BigStep m1 a (t ++ s) v ms := BigStep.head_expand hstep_a hbs_m2
-        have htok : TraceOk (t ++ s) C1 := hb1 (Memory.subsumes_refl _) hwf_a hfull
-        have := TraceOkFrom.absorb_exempt (TraceOkFrom.split_append htok)
-        rwa [List.append_nil] at this
-      have hwf_a2' : Exp.WfInHeap a' m2.heap := step_preserves_wf hstep_a hwf_a
-      have hcov_of_touch : ∀ {m'' : Memory} {s : Trace} {v : Exp {}} {mf : Memory} {l : Nat}
-          {bb : Bool}, m''.subsumes m2 -> BigStep m'' a' s v mf ->
-          m2.lookup l = some (.capability (.mcell bb .live)) -> Trace.extTouches s l ->
-          ∃ cm, (C1 ∪ capsOf (Trace.allocList t)).covers cm l := by
-        intro m'' s v mf l bb hsub'' hbs_a' hlive htouch
-        have hnal : ¬ Trace.allocd s l := fun ha => by
-          have hnone : m''.heap l = none := hbs_a'.alloc_fresh ha
-          have : m2.heap l = none := Heap.none_of_subsumes_none hsub'' hnone
-          rw [show m2.lookup l = m2.heap l from rfl, this] at hlive; cases hlive
-        obtain ⟨cm, hext⟩ :=
-          Trace.extTouchesMode_of_touched hnal (Trace.touched_of_extTouches htouch)
-        exact ⟨cm, (hb1_robust hsub'' (Exp.wf_monotonic hsub'' hwf_a2') hbs_a')
-          |>.covers_of_extTouchesMode hext⟩
-      refine Safe.par (C1 := C1 ∪ capsOf (Trace.allocList t)) (C2 := C2)
-        hse_a2' hse_b2' ?h2' (@hb1_robust) ?hb2' ?hrs1' ?hrs2' ?hpres1' ?hpres2'
-        ?hcov1' ?hcov2' ?hni'
-      case hcov1' =>
-        exact Safe.hcov_step hsub21 hwfC1
-          (fun l hl => step_allocd_mcell hstep_a (Trace.mem_allocList.mp hl)) hcov1
-      case hcov2' =>
-        rw [CaptureSet.reachability_monotonic hsub21 Cs2 hwfC2]; exact hcov2
-      case h2' =>
-        intro t1 v1 m1' hbs
-        exact h2 (BigStep.head_expand hstep_a hbs)
-      case hb2' =>
-        intro m' s v m'' hsub' hwf' hbs
-        exact hb2 (Memory.subsumes_trans hsub' hsub21) hwf' hbs
-      case hrs1' =>
-        intro m' hsub' hc
-        refine Safe.lift hse_a2' hsub' (Q := fun s val m => BigStep m2 a' s val m)
-          (fun _ _ _ h => h) ?_ hwf_a2'
-        intro s v m _ hbs_a' l b hlive htouch
-        obtain ⟨cm, hcov⟩ := hcov_of_touch (Memory.subsumes_refl _) hbs_a' hlive htouch
-        obtain ⟨mu', hmem', _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
-        obtain ⟨c', hc'', hsubc⟩ := hsub' l (.capability (.mcell b .live)) hlive
-        cases c' with
-        | val _ => simp [Cell.subsumes] at hsubc
-        | masked => simp [Cell.subsumes] at hsubc
-        | capability cc =>
-          cases cc with
-          | mcell b'' ℓ'' =>
-            have hℓ := hc mu' l b'' ℓ'' hmem' hc''
-            exact ⟨b'', by rw [hℓ] at hc''; exact hc''⟩
-          | basic => simp [Cell.subsumes] at hsubc
-      case hrs2' =>
-        intro m' hsub' hc
-        exact hrs2 (Memory.subsumes_trans hsub' hsub21) hc
-      case hpres1' =>
-        intro mu l hmem
-        rcases CapabilitySet.hasmem_union_iff.mp hmem with h1 | hA
-        · exact (fun hc => hpres1 mu l h1 (Heap.none_of_subsumes_none hsub21 hc))
-        · exact step_allocd_present hstep_a (Trace.mem_allocList.mp (capsOf_hasmem hA))
-      case hpres2' =>
-        intro mu l hmem
-        exact (fun hc => hpres2 mu l hmem (Heap.none_of_subsumes_none hsub21 hc))
-      case hni' =>
-        refine CapabilitySet.Noninterference.ni_union hni
-          (CapabilitySet.noninterference_capsOf_fresh ?_)
-        intro l hl mu' hm
-        exact hpres2 mu' l hm (step_allocd_fresh hstep_a (Trace.mem_allocList.mp hl))
-  | @step_par_right t m1 b m2 b' Cs1 Cs2 a hans_a hstep_b ih =>
-    intro hwf hsafe
-    obtain ⟨hwf_a, hwf_b⟩ := Exp.wf_inv_par hwf
-    have hwfC1 : Cs1.WfInHeap m1.heap := by cases hwf with | wf_par h _ _ _ => exact h
-    have hwfC2 : Cs2.WfInHeap m1.heap := by cases hwf with | wf_par _ h _ _ => exact h
-    cases hsafe with
-    | ans hans => cases hans with | is_val hv => cases hv
-    | par _hse_a hse_b _h2 hb1 hb2 _hrs1 _hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
-      rename_i C1 C2
-      have hsub21 : m2.subsumes m1 := step_memory_monotonic hstep_b
-      have hse_b2' : Safe m2 b' := ih hwf_b hse_b
-      -- Reduct `b'`'s budget grows by the step's fresh allocations.
-      have hb2_robust : ∀ {m' : Memory} {s : Trace} {v : Exp {}} {m''},
-          m'.subsumes m2 -> Exp.WfInHeap b' m'.heap -> BigStep m' b' s v m'' ->
-          TraceOk s (C2 ∪ capsOf (Trace.allocList t)) := by
-        intro m' s v m'' hsub' hwf' hbs
-        have hwfb' := step_preserves_wf hstep_b hwf_b
-        obtain ⟨ms, hbs_m2, _, _⟩ := hbs.simulate_down hsub' hwfb'
-        have hfull : BigStep m1 b (t ++ s) v ms := BigStep.head_expand hstep_b hbs_m2
-        have htok : TraceOk (t ++ s) C2 := hb2 (Memory.subsumes_refl _) hwf_b hfull
-        have := TraceOkFrom.absorb_exempt (TraceOkFrom.split_append htok)
-        rwa [List.append_nil] at this
-      have hni_grown : CapabilitySet.Noninterference C1 (C2 ∪ capsOf (Trace.allocList t)) := by
-        refine CapabilitySet.Noninterference.ni_symm (CapabilitySet.Noninterference.ni_union
-          (CapabilitySet.Noninterference.ni_symm hni)
-          (CapabilitySet.noninterference_capsOf_fresh ?_))
-        intro l hl mu' hm
-        exact hpres1 mu' l hm (step_allocd_fresh hstep_b (Trace.mem_allocList.mp hl))
-      have hwf_b2' : Exp.WfInHeap b' m2.heap := step_preserves_wf hstep_b hwf_b
-      have hcov_of_touch : ∀ {m'' : Memory} {s : Trace} {v : Exp {}} {mf : Memory} {l : Nat}
-          {bb : Bool}, m''.subsumes m2 -> BigStep m'' b' s v mf ->
-          m2.lookup l = some (.capability (.mcell bb .live)) -> Trace.extTouches s l ->
-          ∃ cm, (C2 ∪ capsOf (Trace.allocList t)).covers cm l := by
-        intro m'' s v mf l bb hsub'' hbs_b' hlive htouch
-        have hnal : ¬ Trace.allocd s l := fun ha => by
-          have hnone : m''.heap l = none := hbs_b'.alloc_fresh ha
-          have : m2.heap l = none := Heap.none_of_subsumes_none hsub'' hnone
-          rw [show m2.lookup l = m2.heap l from rfl, this] at hlive; cases hlive
-        obtain ⟨cm, hext⟩ :=
-          Trace.extTouchesMode_of_touched hnal (Trace.touched_of_extTouches htouch)
-        exact ⟨cm, (hb2_robust hsub'' (Exp.wf_monotonic hsub'' hwf_b2') hbs_b')
-          |>.covers_of_extTouchesMode hext⟩
-      refine Safe.par (C1 := C1) (C2 := C2 ∪ capsOf (Trace.allocList t))
-        (Safe.ans hans_a) hse_b2' ?h2' ?hb1' (@hb2_robust) ?hrs1' ?hrs2' ?hpres1' ?hpres2'
-        ?hcov1' ?hcov2' hni_grown
-      case hcov1' =>
-        rw [CaptureSet.reachability_monotonic hsub21 Cs1 hwfC1]; exact hcov1
-      case hcov2' =>
-        exact Safe.hcov_step hsub21 hwfC2
-          (fun l hl => step_allocd_mcell hstep_b (Trace.mem_allocList.mp hl)) hcov2
-      case h2' =>
-        intro t1 v1 m1' hbs_a2
-        obtain ⟨rfl, rfl, rfl⟩ := BigStep.isAns_inv hbs_a2 hans_a
-        exact hse_b2'
-      case hb1' =>
-        intro m' s v m'' hsub' hwf' hbs
-        exact hb1 (Memory.subsumes_trans hsub' hsub21) hwf' hbs
-      case hrs1' =>
-        intro m' hsub' hc
-        exact Safe.ans hans_a
-      case hrs2' =>
-        intro m' hsub' hc
-        refine Safe.lift hse_b2' hsub' (Q := fun s val m => BigStep m2 b' s val m)
-          (fun _ _ _ h => h) ?_ hwf_b2'
-        intro s v m _ hbs_b' l b hlive htouch
-        obtain ⟨cm, hcov⟩ := hcov_of_touch (Memory.subsumes_refl _) hbs_b' hlive htouch
-        obtain ⟨mu', hmem', _⟩ := CapabilitySet.covers_imp_exists_hasmem hcov
-        obtain ⟨c', hc'', hsubc⟩ := hsub' l (.capability (.mcell b .live)) hlive
-        cases c' with
-        | val _ => simp [Cell.subsumes] at hsubc
-        | masked => simp [Cell.subsumes] at hsubc
-        | capability cc =>
-          cases cc with
-          | mcell b'' ℓ'' =>
-            have hℓ := hc mu' l b'' ℓ'' hmem' hc''
-            exact ⟨b'', by rw [hℓ] at hc''; exact hc''⟩
-          | basic => simp [Cell.subsumes] at hsubc
-      case hpres1' =>
-        intro mu l hmem
-        exact (fun hc => hpres1 mu l hmem (Heap.none_of_subsumes_none hsub21 hc))
-      case hpres2' =>
-        intro mu l hmem
-        rcases CapabilitySet.hasmem_union_iff.mp hmem with h2m | hA
-        · exact (fun hc => hpres2 mu l h2m (Heap.none_of_subsumes_none hsub21 hc))
-        · exact step_allocd_present hstep_b (Trace.mem_allocList.mp (capsOf_hasmem hA))
-  | step_par_join _ _ =>
-    intro _ _
-    exact Safe.ans (Exp.IsAns.is_val Exp.IsVal.unit)
-  | step_rename =>
-    intro _ hsafe
-    cases hsafe with
-    | letin _ _ _ h_var => exact h_var BigStep.bs_var
-    | ans hans => cases hans with | is_val hv => cases hv
-  | step_lift hv hwf_v hfresh =>
-    intro _ hsafe
-    cases hsafe with
-    | letin _ _ h_val _ => exact h_val (BigStep.bs_val hv) hv hwf_v _ hfresh
-    | ans hans => cases hans with | is_val hv2 => cases hv2
-  | step_unpack =>
-    intro _ hsafe
-    cases hsafe with
-    | unpack _ _ h_val => exact h_val BigStep.bs_pack
-    | ans hans => cases hans with | is_val hv => cases hv
+/-! ## Progress along sequential reductions
 
-/-- **Preservation of `Eval` (sequential small-step).**  Because the postcondition
-    is keyed on the *whole* trace, a step *shifts* it by the step's own trace `t`:
-    every answer reached after the step prepends `t` as seen from before it. -/
-theorem step_preserves_eval {t : Trace} {m1 e1 m2 e2} {Q : Tpost}
-    (he : Eval m1 e1 Q) (hwf : Exp.WfInHeap e1 m1.heap) (hstep : SeqStep t m1 e1 m2 e2) :
-    Eval m2 e2 (fun t' => Q (t ++ t')) := by
-  refine ⟨step_preserves_safe hstep hwf he.1, ?_⟩
-  intro t' v m' hbs
-  exact he.2 (t ++ t') v m' (BigStep.head_expand hstep hbs)
+  With the budget-indexed `Safe`, single-step `Safe`-*preservation* is not the right
+  device: rebuilding a `Safe.par` carrier after a lone branch step would require
+  transporting the rely `W` along a *partial* branch run, which the rely–guarantee
+  fields (quantified over full `BigStep` runs) deliberately do not provide — and
+  soundly so, since arbitrary-memory transport is exactly the false
+  operational-monotonicity shape this development eliminated.  What adequacy needs
+  is weaker and honest: every state reachable *within budget* is progressive.  We
+  prove that by consulting the `Safe` derivation in place, decomposing the given
+  sequential reduction against the derivation (the `seqreduce_*_split` lemmas), and
+  paying budget as the decomposition crosses the head/branch boundary. -/
+
+/-- Answers take no `SeqStep`. -/
+theorem seqstep_ans_absurd {t : Trace} {m m' : Memory} {e e' : Exp {}}
+    (hans : e.IsAns) (hstep : SeqStep t m e m' e') : False := by
+  cases hans with
+  | is_var => cases hstep
+  | is_val hv => cases hv <;> cases hstep
+
+/-- A `SeqReduce` from an answer is trivial: same memory, same expression, no trace. -/
+theorem seqreduce_ans_eq {t : Trace} {m m' : Memory} {e e' : Exp {}}
+    (hans : e.IsAns) (hred : SeqReduce t m e m' e') :
+    m' = m ∧ e' = e ∧ t = [] := by
+  cases hred with
+  | refl => exact ⟨rfl, rfl, rfl⟩
+  | step hstep _ => exact (seqstep_ans_absurd hans hstep).elim
+
+/-- **Mid-run decomposition of a sequential `letin` reduction.**  A `SeqReduce` from
+  `.letin e1 e2` either (i) stays inside the head, or crosses into the opened
+  continuation after the head reached (ii) a variable (`step_rename`) or (iii) a
+  simple value (`step_lift`). -/
+theorem seqreduce_letin_split {t : Trace} {m m' : Memory} {e1 : Exp {}}
+    {e2 : Exp ({},x)} {X : Exp {}}
+    (hred : SeqReduce t m (.letin e1 e2) m' X) :
+    (∃ e1', SeqReduce t m e1 m' e1' ∧ X = .letin e1' e2) ∨
+    (∃ (t1 t2 : Trace) (m1 : Memory) (y : Var .var {}),
+      SeqReduce t1 m e1 m1 (.var y) ∧
+      SeqReduce t2 m1 (e2.subst (Subst.openVar y)) m' X ∧ t = t1 ++ t2) ∨
+    (∃ (t1 t2 : Trace) (m1 : Memory) (v : Exp {}) (hv : v.IsSimpleVal)
+       (hwf : Exp.WfInHeap v m1.heap) (l : Nat) (hfresh : m1.heap l = none),
+      SeqReduce t1 m e1 m1 v ∧
+      SeqReduce t2
+        (m1.extend l ⟨v, hv, compute_reachability m1.heap v hv⟩ hwf rfl hfresh)
+        (e2.subst (Subst.openVar (.free l))) m' X ∧ t = t1 ++ t2) := by
+  generalize hgen : Exp.letin e1 e2 = efull at hred
+  induction hred generalizing e1 with
+  | refl => exact Or.inl ⟨e1, SeqReduce.refl, hgen.symm⟩
+  | step hstep rest ih =>
+    rw [←hgen] at hstep
+    cases hstep with
+    | step_ctx_letin hstep1 =>
+      rcases ih rfl with ⟨e1', hr, hX⟩ | ⟨t1, t2, m1, y, hr1, hr2, ht⟩ |
+        ⟨t1, t2, m1, v, hv, hwf, l, hfresh, hr1, hr2, ht⟩
+      · exact Or.inl ⟨e1', SeqReduce.step hstep1 hr, hX⟩
+      · exact Or.inr (Or.inl ⟨_, t2, m1, y, SeqReduce.step hstep1 hr1, hr2,
+          by rw [ht, List.append_assoc]⟩)
+      · exact Or.inr (Or.inr ⟨_, t2, m1, v, hv, hwf, l, hfresh,
+          SeqReduce.step hstep1 hr1, hr2, by rw [ht, List.append_assoc]⟩)
+    | step_rename =>
+      exact Or.inr (Or.inl ⟨[], _, _, _, SeqReduce.refl, rest, rfl⟩)
+    | step_lift hv hwf hfresh =>
+      exact Or.inr (Or.inr ⟨[], _, _, _, hv, hwf, _, hfresh, SeqReduce.refl, rest, rfl⟩)
+
+/-- `unpack` analogue of `seqreduce_letin_split`. -/
+theorem seqreduce_unpack_split {t : Trace} {m m' : Memory} {n : Nat} {e1 : Exp {}}
+    {e2 : Exp ((Sig.extendCVars {} n),x)} {X : Exp {}}
+    (hred : SeqReduce t m (.unpack n e1 e2) m' X) :
+    (∃ e1', SeqReduce t m e1 m' e1' ∧ X = .unpack n e1' e2) ∨
+    (∃ (t1 t2 : Trace) (m1 : Memory) (cs : List.Vector (CaptureSet {}) n)
+        (y : Var .var {}),
+      SeqReduce t1 m e1 m1 (.pack cs y) ∧
+      SeqReduce t2 m1 (e2.subst (Subst.unpack cs y)) m' X ∧ t = t1 ++ t2) := by
+  generalize hgen : Exp.unpack n e1 e2 = efull at hred
+  induction hred generalizing e1 with
+  | refl => exact Or.inl ⟨e1, SeqReduce.refl, hgen.symm⟩
+  | step hstep rest ih =>
+    rw [←hgen] at hstep
+    cases hstep with
+    | step_ctx_unpack hstep1 =>
+      rcases ih rfl with ⟨e1', hr, hX⟩ | ⟨t1, t2, m1, cs, y, hr1, hr2, ht⟩
+      · exact Or.inl ⟨e1', SeqReduce.step hstep1 hr, hX⟩
+      · exact Or.inr ⟨_, t2, m1, cs, y, SeqReduce.step hstep1 hr1, hr2,
+          by rw [ht, List.append_assoc]⟩
+    | step_unpack =>
+      exact Or.inr ⟨[], _, _, _, _, SeqReduce.refl, rest, rfl⟩
+
+/-- **Mid-run decomposition of a sequential `par` reduction.**  Sequential scheduling
+  runs the left branch first (`step_par_right` is gated on the left being an
+  answer), so a `SeqReduce` from `.par Cs1 Cs2 e1 e2` is (i) still in the left
+  phase, (ii) in the right phase after the left reached an answer, or (iii) joined.
+  The evolved annotations are existentially hidden — consumers here need only the
+  reduct's shape. -/
+theorem seqreduce_par_split {t : Trace} {m m' : Memory} {Cs1 Cs2 : CaptureSet {}}
+    {e1 e2 X : Exp {}}
+    (hred : SeqReduce t m (.par Cs1 Cs2 e1 e2) m' X) :
+    (∃ Cs1' e1', SeqReduce t m e1 m' e1' ∧ X = .par Cs1' Cs2 e1' e2) ∨
+    (∃ (t1 t2 : Trace) (m1 : Memory) (a1 e2' : Exp {}) (Cs1' Cs2' : CaptureSet {}),
+      SeqReduce t1 m e1 m1 a1 ∧ a1.IsAns ∧ SeqReduce t2 m1 e2 m' e2' ∧
+      X = .par Cs1' Cs2' a1 e2' ∧ t = t1 ++ t2) ∨
+    (∃ (t1 t2 : Trace) (m1 : Memory) (a1 a2 : Exp {}),
+      SeqReduce t1 m e1 m1 a1 ∧ a1.IsAns ∧ SeqReduce t2 m1 e2 m' a2 ∧ a2.IsAns ∧
+      X = .unit ∧ t = t1 ++ t2) := by
+  generalize hgen : Exp.par Cs1 Cs2 e1 e2 = efull at hred
+  induction hred generalizing Cs1 Cs2 e1 e2 with
+  | refl => exact Or.inl ⟨Cs1, e1, SeqReduce.refl, hgen.symm⟩
+  | step hstep rest ih =>
+    rw [←hgen] at hstep
+    cases hstep with
+    | step_par_left hstep1 =>
+      rcases ih rfl with ⟨Cs1', e1', hr, hX⟩ |
+        ⟨t1, t2, m1, a1, e2', Cs1', Cs2', hr1, hans1, hr2, hX, ht⟩ |
+        ⟨t1, t2, m1, a1, a2, hr1, hans1, hr2, hans2, hX, ht⟩
+      · exact Or.inl ⟨Cs1', e1', SeqReduce.step hstep1 hr, hX⟩
+      · exact Or.inr (Or.inl ⟨_, t2, m1, a1, e2', Cs1', Cs2',
+          SeqReduce.step hstep1 hr1, hans1, hr2, hX, by rw [ht, List.append_assoc]⟩)
+      · exact Or.inr (Or.inr ⟨_, t2, m1, a1, a2, SeqReduce.step hstep1 hr1, hans1,
+          hr2, hans2, hX, by rw [ht, List.append_assoc]⟩)
+    | step_par_right hans1 hstep2 =>
+      rcases ih rfl with ⟨Cs1', e1', hr, hX⟩ |
+        ⟨t1, t2, m1, a1, e2'', Cs1', Cs2', hr1, hans1', hr2, hX, ht⟩ |
+        ⟨t1, t2, m1, a1, a2, hr1, hans1', hr2, hans2, hX, ht⟩
+      · obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq hans1 hr
+        exact Or.inr (Or.inl ⟨[], _, _, _, _, Cs1', _, SeqReduce.refl, hans1,
+          SeqReduce.step hstep2 SeqReduce.refl, hX, by simp⟩)
+      · obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq hans1 hr1
+        exact Or.inr (Or.inl ⟨[], _, _, _, _, Cs1', Cs2', SeqReduce.refl, hans1,
+          SeqReduce.step hstep2 hr2, hX, by simp [ht]⟩)
+      · obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq hans1 hr1
+        exact Or.inr (Or.inr ⟨[], _, _, _, _, SeqReduce.refl, hans1,
+          SeqReduce.step hstep2 hr2, hans2, hX, by simp [ht]⟩)
+    | step_par_join hans1 hans2 =>
+      obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq (Exp.IsAns.is_val Exp.IsVal.unit) rest
+      exact Or.inr (Or.inr ⟨[], [], _, _, _, SeqReduce.refl, hans1, SeqReduce.refl,
+        hans2, rfl, rfl⟩)
+
+set_option maxHeartbeats 1000000 in
+-- Large case split: the whole `Safe` derivation, with reduction decomposition per case.
+/-- **Progress along sequential reductions (within budget).**  Every state reachable
+  from a `Safe` configuration by a sequential reduction performing fewer reads than
+  the budget is progressive.  The derivation is consulted in place: the reduction is
+  decomposed against it, and the continuation obligations (`h_val`/`h_var`/`h2`) —
+  available at the residual budget — carry the recursion.  No `Safe` reconstruction
+  at intermediate states is needed. -/
+theorem safe_reduce_progressive {k : Nat} {m : Memory} {e : Exp {}}
+    (h : Safe k m e) :
+    ∀ {t : Trace} {m' : Memory} {e' : Exp {}},
+      SeqReduce t m e m' e' -> t.readCount < k -> IsProgressive m' e' := by
+  induction h with
+  | exhausted =>
+    intro t m' e' _ hbud
+    exact absurd hbud (Nat.not_lt_zero _)
+  | ans hans =>
+    intro t m' e' hred _
+    obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq hans hred
+    exact IsProgressive.done hans
+  | alloc hlk =>
+    intro t m' e' hred _
+    cases hred with
+    | refl =>
+      obtain ⟨l, hfresh⟩ := Memory.exists_fresh _
+      exact IsProgressive.step (SeqStep.step_alloc (l := l) hlk hfresh)
+    | step hstep rest =>
+      cases hstep with
+      | step_alloc hlk2 hfresh2 =>
+        obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq (Exp.IsAns.is_val Exp.IsVal.pack) rest
+        exact IsProgressive.done (Exp.IsAns.is_val Exp.IsVal.pack)
+  | @apply cs T e_abs hv R y k m x hlk _ ih =>
+    intro t m' e' hred hbud
+    cases hred with
+    | refl =>
+      obtain ⟨y', rfl⟩ := Var.free_cases y
+      exact IsProgressive.step (SeqStep.step_apply hlk)
+    | step hstep rest =>
+      cases hstep with
+      | step_apply hlk2 =>
+        have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+        simp only at heq
+        cases heq
+        exact ih rest (by simpa using hbud)
+      | step_invoke hlkx _ =>
+        rw [hlk] at hlkx
+        exact absurd hlkx (by simp)
+  | invoke hlkx hlky =>
+    intro t m' e' hred _
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_invoke hlkx hlky)
+    | step hstep rest =>
+      cases hstep with
+      | step_apply hlk2 => rw [hlkx] at hlk2; exact absurd hlk2 (by simp)
+      | step_invoke _ _ =>
+        obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq (Exp.IsAns.is_val Exp.IsVal.unit) rest
+        exact IsProgressive.done (Exp.IsAns.is_val Exp.IsVal.unit)
+  | tapply hlk _ ih =>
+    intro t m' e' hred hbud
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_tapply hlk)
+    | step hstep rest =>
+      cases hstep with
+      | step_tapply hlk2 =>
+        have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+        simp only at heq
+        cases heq
+        exact ih rest (by simpa using hbud)
+  | capply hlk _ ih =>
+    intro t m' e' hred hbud
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_capply hlk)
+    | step hstep rest =>
+      cases hstep with
+      | step_capply hlk2 =>
+        have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+        simp only at heq
+        cases heq
+        exact ih rest (by simpa using hbud)
+  | consumer_app hlk _ ih =>
+    intro t m' e' hred hbud
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_consumer_app hlk)
+    | step hstep rest =>
+      cases hstep with
+      | step_consumer_app hlk2 =>
+        have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+        simp only at heq
+        cases heq
+        exact ih rest (by simpa using hbud)
+  | unwrap hlk _ ih =>
+    intro t m' e' hred hbud
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_unwrap hlk)
+    | step hstep rest =>
+      cases hstep with
+      | step_unwrap hlk2 =>
+        have heq := congrArg HeapVal.unwrap (Memory.lookup_val_eq hlk hlk2)
+        simp only at heq
+        cases heq
+        exact ih rest (by simpa using hbud)
+  | letin hse1 h_ans h_val h_var ih1 ihval ihvar =>
+    intro t m' e' hred hbud
+    rcases seqreduce_letin_split hred with ⟨e1', hr, rfl⟩ |
+      ⟨t1, t2, m1, y, hr1, hr2, rfl⟩ |
+      ⟨t1, t2, m1, v, hv, hwf, l, hfresh, hr1, hr2, rfl⟩
+    · cases ih1 hr hbud with
+      | step hstep => exact IsProgressive.step (SeqStep.step_ctx_letin hstep)
+      | done hans1 =>
+        obtain ⟨hsa, hwfv⟩ := h_ans _ _ _ (reduce_to_bigstep hr hans1) hbud
+        rcases Exp.isSimpleAns_cases hsa with hv | ⟨n, rfl⟩
+        · obtain ⟨l0, hfresh⟩ := Memory.exists_fresh _
+          exact IsProgressive.step (SeqStep.step_lift (l := l0) hv hwfv hfresh)
+        · exact IsProgressive.step SeqStep.step_rename
+    · have hbs1 := reduce_to_bigstep hr1 Exp.IsAns.is_var
+      rw [Trace.readCount_append] at hbud
+      exact ihvar hbs1 hr2 (by omega)
+    · have hbs1 := reduce_to_bigstep hr1 (Exp.IsAns.is_val (Exp.isVal_of_isSimpleVal hv))
+      rw [Trace.readCount_append] at hbud
+      exact ihval hbs1 hv hwf l hfresh hr2 (by omega)
+  | unpack hse1 h_ans h_val ih1 ihval =>
+    intro t m' e' hred hbud
+    rcases seqreduce_unpack_split hred with ⟨e1', hr, rfl⟩ |
+      ⟨t1, t2, m1, cs, y, hr1, hr2, rfl⟩
+    · cases ih1 hr hbud with
+      | step hstep => exact IsProgressive.step (SeqStep.step_ctx_unpack hstep)
+      | done hans1 =>
+        obtain ⟨hpk, hwfv⟩ := h_ans _ _ _ (reduce_to_bigstep hr hans1) hbud
+        obtain ⟨cs', n, rfl⟩ := Exp.isPack_cases hpk
+        exact IsProgressive.step SeqStep.step_unpack
+    · have hbs1 := reduce_to_bigstep hr1 (Exp.IsAns.is_val Exp.IsVal.pack)
+      rw [Trace.readCount_append] at hbud
+      exact ihval hbs1 hr2 (by omega)
+  | read hlkx hlky hcontent =>
+    intro t m' e' hred _
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_read hlkx hlky)
+    | step hstep rest =>
+      cases hstep with
+      | step_read _ _ =>
+        obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq Exp.IsAns.is_var rest
+        exact IsProgressive.done Exp.IsAns.is_var
+  | write hx hy =>
+    intro t m' e' hred _
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_write hx hy)
+    | step hstep rest =>
+      cases hstep with
+      | step_write _ _ =>
+        obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq (Exp.IsAns.is_val Exp.IsVal.unit) rest
+        exact IsProgressive.done (Exp.IsAns.is_val Exp.IsVal.unit)
+  | drop hx =>
+    intro t m' e' hred _
+    cases hred with
+    | refl => exact IsProgressive.step (SeqStep.step_drop hx)
+    | step hstep rest =>
+      cases hstep with
+      | step_drop _ =>
+        obtain ⟨rfl, rfl, rfl⟩ := seqreduce_ans_eq (Exp.IsAns.is_val Exp.IsVal.unit) rest
+        exact IsProgressive.done (Exp.IsAns.is_val Exp.IsVal.unit)
+  | cond hres h_true h_false ihtrue ihfalse =>
+    intro t m' e' hred hbud
+    cases hred with
+    | refl =>
+      exact safe_implies_progressive (Safe.cond hres h_true h_false) (by simpa using hbud)
+    | step hstep rest =>
+      cases hstep with
+      | step_cond_var_true hlk =>
+        simp only [Memory.lookup] at hlk
+        exact ihtrue (by simp only [resolve, hlk]) rest (by simpa using hbud)
+      | step_cond_var_false hlk =>
+        simp only [Memory.lookup] at hlk
+        exact ihfalse (by simp only [resolve, hlk]) rest (by simpa using hbud)
+  | par _W _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ihh2 _ _ =>
+    intro t m' e' hred hbud
+    rcases seqreduce_par_split hred with ⟨Cs1', e1', hr, rfl⟩ |
+      ⟨t1, t2, m1, a1, e2', Cs1', Cs2', hr1, hans1, hr2, rfl, rfl⟩ |
+      ⟨t1, t2, m1, a1, a2, hr1, hans1, hr2, hans2, rfl, rfl⟩
+    · cases ih1 hr hbud with
+      | step hstepA => exact IsProgressive.step (SeqStep.step_par_left hstepA)
+      | done hansA =>
+        have hp2 := ihh2 (reduce_to_bigstep hr hansA) SeqReduce.refl
+          (by simpa using Nat.sub_pos_of_lt hbud)
+        cases hp2 with
+        | done hansB => exact IsProgressive.step (SeqStep.step_par_join hansA hansB)
+        | step hstepB => exact IsProgressive.step (SeqStep.step_par_right hansA hstepB)
+    · rw [Trace.readCount_append] at hbud
+      cases ihh2 (reduce_to_bigstep hr1 hans1) hr2 (by omega) with
+      | done hansB => exact IsProgressive.step (SeqStep.step_par_join hans1 hansB)
+      | step hstepB => exact IsProgressive.step (SeqStep.step_par_right hans1 hstepB)
+    · exact IsProgressive.done (Exp.IsAns.is_val Exp.IsVal.unit)
 
 /-- `SeqReduce`-level head expansion: fold `BigStep.head_expand` over a reduction. -/
 theorem BigStep.reduce_expand {t : Trace} {m1 e1 m2 e2}
@@ -916,96 +986,120 @@ theorem BigStep.reduce_expand {t : Trace} {m1 e1 m2 e2}
     rw [List.append_assoc]
     exact BigStep.head_expand hstep (ih hbs)
 
-/-- Sequential reduction preserves big-step safety (iterate `step_preserves_safe`). -/
-theorem reduce_preserves_safe {t : Trace} {m1 e1 m2 e2}
-    (hred : SeqReduce t m1 e1 m2 e2) (hwf : Exp.WfInHeap e1 m1.heap) :
-    Safe m1 e1 → Safe m2 e2 := by
-  induction hred with
-  | refl => exact id
-  | @step t1 m1 e1 m2 e2 t2 m3 e3 hstep hred_rest ih =>
-    intro hsafe
-    exact ih (step_preserves_wf hstep hwf) (step_preserves_safe hstep hwf hsafe)
-
-/-- **Preservation of `Eval` (sequential reduction).**  As `step_preserves_eval`,
-    with the postcondition shifted by the reduction's accumulated trace. -/
-theorem reduce_preserves_eval {t : Trace} {m1 e1 m2 e2} {Q : Tpost}
-    (he : Eval m1 e1 Q) (hwf : Exp.WfInHeap e1 m1.heap) (hred : SeqReduce t m1 e1 m2 e2) :
-    Eval m2 e2 (fun t' => Q (t ++ t')) := by
-  refine ⟨reduce_preserves_safe hred hwf he.1, ?_⟩
-  intro t' v m' hbs
-  exact he.2 (t ++ t') v m' (BigStep.reduce_expand hred hbs)
-
-/-- **Adequacy.**  If `Eval m e Q` and `e` reduces (sequential small-step) to an
+/-- **Adequacy.**  If `Eval k m e Q` and `e` reduces (sequential small-step) to an
     answer `a` emitting trace `t`, then `Q t a m'`: the reduction is realized as a
     `BigStep` (`reduce_to_bigstep`), to which the preservation half of `Eval`
-    applies. -/
-theorem eval_to_reduce {t : Trace} {m e m' a} {Q : Tpost}
-    (heval : Eval m e Q) (hans : a.IsAns) (hred : SeqReduce t m e m' a) : Q t a m' :=
+    applies.  Note NO budget hypothesis: the postcondition half of `Eval`
+    quantifies over all runs. -/
+theorem eval_to_reduce {k : Nat} {t : Trace} {m e m' a} {Q : Tpost}
+    (heval : Eval k m e Q) (hans : a.IsAns) (hred : SeqReduce t m e m' a) : Q t a m' :=
   heval.2 t a m' (reduce_to_bigstep hred hans)
 
-/-- **Termination to an answer (sequential small-step).**  A `Safe` configuration
-    reduces (sequentially) to an answer.  This is the small-step counterpart of
-    `Safe.has_answer`; the `letin`/`unpack` heads are classified by `h_ans` on the
-    big-step realization of the head's own reduction (`reduce_to_bigstep`).  The
-    `par` case schedules left-then-right (the `par` answer is `.unit`), matching
-    `SeqStep`'s gated `step_par_right`. -/
-theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
-    ∃ t m' a, SeqReduce t m e m' a ∧ a.IsAns := by
+/-- Helper for `Safe.has_reduction`: a single step to an answer satisfies the
+  budget disjunction at ANY budget (case on how the step's reads compare). -/
+theorem Safe.has_reduction_of_step_ans {k : Nat} {m m2 : Memory} {e a : Exp {}}
+    {ts : Trace} (hstep : SeqStep ts m e m2 a) (hans : a.IsAns) :
+    ∃ t m' a', SeqReduce t m e m' a' ∧
+      ((a'.IsAns ∧ t.readCount < k) ∨ k ≤ t.readCount) := by
+  rcases Nat.lt_or_ge (Trace.readCount (ts ++ [])) k with hlt | hge
+  · exact ⟨_, _, _, SeqReduce.step hstep SeqReduce.refl, Or.inl ⟨hans, hlt⟩⟩
+  · exact ⟨_, _, _, SeqReduce.step hstep SeqReduce.refl, Or.inr hge⟩
+
+/-- Helper for `Safe.has_reduction`: an answer satisfies the budget disjunction
+  at ANY budget via its trivial reduction. -/
+theorem Safe.has_reduction_of_ans {k : Nat} {m : Memory} {e : Exp {}}
+    (hans : e.IsAns) :
+    ∃ t m' a', SeqReduce t m e m' a' ∧
+      ((a'.IsAns ∧ t.readCount < k) ∨ k ≤ t.readCount) := by
+  rcases Nat.lt_or_ge (Trace.readCount []) k with hlt | hge
+  · exact ⟨[], _, _, SeqReduce.refl, Or.inl ⟨hans, hlt⟩⟩
+  · exact ⟨[], _, _, SeqReduce.refl, Or.inr hge⟩
+
+/-- **Within-budget termination (sequential small-step).**  A `Safe` configuration
+  sequentially reduces either to an answer within the read budget, or to a state
+  whose reduction has already consumed the whole budget.  This is the honest,
+  budget-indexed replacement for the removed total `Safe.has_answer`: a fixed-budget
+  derivation cannot promise an answer (`exhausted` carries no run), but it can
+  promise the budget is spent before anything gets stuck.  Instantiating the budget
+  above a terminating program's read count recovers answer reachability. -/
+theorem Safe.has_reduction {k : Nat} {m : Memory} {e : Exp {}} (h : Safe k m e) :
+    ∃ t m' a, SeqReduce t m e m' a ∧
+      ((a.IsAns ∧ t.readCount < k) ∨ k ≤ t.readCount) := by
   induction h with
-  | ans hans => exact ⟨_, _, _, SeqReduce.refl, hans⟩
+  | exhausted => exact ⟨[], _, _, SeqReduce.refl, Or.inr (Nat.zero_le _)⟩
+  | ans hans => exact Safe.has_reduction_of_ans hans
   | alloc hlk =>
     obtain ⟨l, hfresh⟩ := Memory.exists_fresh _
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_alloc hlk hfresh) SeqReduce.refl,
-      Exp.IsAns.is_val Exp.IsVal.pack⟩
-  | @apply cs T e_abs hv R y m x hlk _ ih =>
-    obtain ⟨t, m', a, hred, hans⟩ := ih
+    exact Safe.has_reduction_of_step_ans (SeqStep.step_alloc (l := l) hlk hfresh)
+      (Exp.IsAns.is_val Exp.IsVal.pack)
+  | @apply cs T e_abs hv R y k m x hlk _ ih =>
     obtain ⟨y', rfl⟩ := Var.free_cases y
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_apply hlk) hred, hans⟩
+    obtain ⟨t, m', a, hred, hdisj⟩ := ih
+    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_apply hlk) hred, by simpa using hdisj⟩
   | invoke hlkx hlky =>
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_invoke hlkx hlky) SeqReduce.refl,
-      Exp.IsAns.is_val Exp.IsVal.unit⟩
+    exact Safe.has_reduction_of_step_ans (SeqStep.step_invoke hlkx hlky)
+      (Exp.IsAns.is_val Exp.IsVal.unit)
   | tapply hlk _ ih =>
-    obtain ⟨t, m', a, hred, hans⟩ := ih
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_tapply hlk) hred, hans⟩
+    obtain ⟨t, m', a, hred, hdisj⟩ := ih
+    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_tapply hlk) hred, by simpa using hdisj⟩
   | capply hlk _ ih =>
-    obtain ⟨t, m', a, hred, hans⟩ := ih
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_capply hlk) hred, hans⟩
+    obtain ⟨t, m', a, hred, hdisj⟩ := ih
+    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_capply hlk) hred, by simpa using hdisj⟩
+  | consumer_app hlk _ ih =>
+    obtain ⟨t, m', a, hred, hdisj⟩ := ih
+    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_consumer_app hlk) hred,
+      by simpa using hdisj⟩
   | unwrap hlk _ ih =>
-    obtain ⟨t, m', a, hred, hans⟩ := ih
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_unwrap hlk) hred, hans⟩
-  | letin _ h_ans _ _ ih1 ih_val ih_var =>
-    obtain ⟨t1, m1, a1, hred1, hans1⟩ := ih1
-    have hbs1 := reduce_to_bigstep hred1 hans1
-    obtain ⟨hsa, hwf⟩ := h_ans _ _ _ hbs1
-    rcases Exp.isSimpleAns_cases hsa with hv | ⟨n, rfl⟩
-    · obtain ⟨l, hfresh⟩ := Memory.exists_fresh m1
-      obtain ⟨t2, m2, a2, hred2, hans2⟩ := ih_val hbs1 hv hwf l hfresh
-      exact ⟨_, _, _, seqreduce_trans (seqreduce_ctx_letin hred1)
-        (SeqReduce.step (SeqStep.step_lift hv hwf hfresh) hred2), hans2⟩
-    · obtain ⟨t2, m2, a2, hred2, hans2⟩ := ih_var hbs1
-      exact ⟨_, _, _, seqreduce_trans (seqreduce_ctx_letin hred1)
-        (SeqReduce.step SeqStep.step_rename hred2), hans2⟩
-  | unpack _ h_ans _ ih1 ih_val =>
-    obtain ⟨t1, m1, a1, hred1, hans1⟩ := ih1
-    have hbs1 := reduce_to_bigstep hred1 hans1
-    obtain ⟨hpack, hwf⟩ := h_ans _ _ _ hbs1
-    obtain ⟨cs, n, rfl⟩ := Exp.isPack_cases hpack
-    obtain ⟨t2, m2, a2, hred2, hans2⟩ := ih_val hbs1
-    exact ⟨_, _, _, seqreduce_trans (seqreduce_ctx_unpack hred1)
-      (SeqReduce.step SeqStep.step_unpack hred2), hans2⟩
-  | read hlkx hlky =>
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_read hlkx hlky) SeqReduce.refl,
-      Exp.IsAns.is_val (by split <;> constructor)⟩
-  | write_true hx hy =>
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_write_true hx hy) SeqReduce.refl,
-      Exp.IsAns.is_val Exp.IsVal.unit⟩
-  | write_false hx hy =>
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_write_false hx hy) SeqReduce.refl,
-      Exp.IsAns.is_val Exp.IsVal.unit⟩
+    obtain ⟨t, m', a, hred, hdisj⟩ := ih
+    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_unwrap hlk) hred, by simpa using hdisj⟩
+  | letin _ h_ans _ _ ih1 ihval ihvar =>
+    obtain ⟨t1, m1, a1, hred1, hdisj1⟩ := ih1
+    rcases hdisj1 with ⟨hans1, hbud1⟩ | hover1
+    · have hbs1 := reduce_to_bigstep hred1 hans1
+      obtain ⟨hsa, hwf⟩ := h_ans _ _ _ hbs1 hbud1
+      rcases Exp.isSimpleAns_cases hsa with hv | ⟨n, rfl⟩
+      · obtain ⟨l, hfresh⟩ := Memory.exists_fresh m1
+        obtain ⟨t2, m2, a2, hred2, hdisj2⟩ := ihval hbs1 hv hwf l hfresh
+        refine ⟨_, _, _, seqreduce_trans (seqreduce_ctx_letin hred1)
+          (SeqReduce.step (SeqStep.step_lift hv hwf hfresh) hred2), ?_⟩
+        rcases hdisj2 with ⟨hans2, hbud2⟩ | hover2
+        · exact Or.inl ⟨hans2,
+            by simp only [Trace.readCount_append, Trace.readCount_nil]; omega⟩
+        · exact Or.inr
+            (by simp only [Trace.readCount_append, Trace.readCount_nil]; omega)
+      · obtain ⟨t2, m2, a2, hred2, hdisj2⟩ := ihvar hbs1
+        refine ⟨_, _, _, seqreduce_trans (seqreduce_ctx_letin hred1)
+          (SeqReduce.step SeqStep.step_rename hred2), ?_⟩
+        rcases hdisj2 with ⟨hans2, hbud2⟩ | hover2
+        · exact Or.inl ⟨hans2,
+            by simp only [Trace.readCount_append, Trace.readCount_nil]; omega⟩
+        · exact Or.inr
+            (by simp only [Trace.readCount_append, Trace.readCount_nil]; omega)
+    · exact ⟨t1, _, _, seqreduce_ctx_letin hred1, Or.inr hover1⟩
+  | unpack _ h_ans _ ih1 ihval =>
+    obtain ⟨t1, m1, a1, hred1, hdisj1⟩ := ih1
+    rcases hdisj1 with ⟨hans1, hbud1⟩ | hover1
+    · have hbs1 := reduce_to_bigstep hred1 hans1
+      obtain ⟨hpk, hwf⟩ := h_ans _ _ _ hbs1 hbud1
+      obtain ⟨cs, n, rfl⟩ := Exp.isPack_cases hpk
+      obtain ⟨t2, m2, a2, hred2, hdisj2⟩ := ihval hbs1
+      refine ⟨_, _, _, seqreduce_trans (seqreduce_ctx_unpack hred1)
+        (SeqReduce.step SeqStep.step_unpack hred2), ?_⟩
+      rcases hdisj2 with ⟨hans2, hbud2⟩ | hover2
+      · exact Or.inl ⟨hans2,
+          by simp only [Trace.readCount_append, Trace.readCount_nil]; omega⟩
+      · exact Or.inr
+          (by simp only [Trace.readCount_append, Trace.readCount_nil]; omega)
+    · exact ⟨t1, _, _, seqreduce_ctx_unpack hred1, Or.inr hover1⟩
+  | read hlkx hlky _ =>
+    exact Safe.has_reduction_of_step_ans (SeqStep.step_read hlkx hlky) Exp.IsAns.is_var
+  | write hx hy =>
+    exact Safe.has_reduction_of_step_ans (SeqStep.step_write hx hy)
+      (Exp.IsAns.is_val Exp.IsVal.unit)
   | drop hx =>
-    exact ⟨_, _, _, SeqReduce.step (SeqStep.step_drop hx) SeqReduce.refl,
-      Exp.IsAns.is_val Exp.IsVal.unit⟩
-  | @cond e2 e3 m x hres _ _ ih_true ih_false =>
+    exact Safe.has_reduction_of_step_ans (SeqStep.step_drop hx)
+      (Exp.IsAns.is_val Exp.IsVal.unit)
+  | @cond e2 e3 k m x hres _ _ ih_true ih_false =>
     obtain ⟨fx, rfl⟩ := Var.free_cases x
     cases hres with
     | inl hbtrue =>
@@ -1018,10 +1112,10 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
           | mk unwrap hsimple reach =>
             have hunwrap : unwrap = .btrue := by simpa [resolve, hcell] using hbtrue
             cases hunwrap
-            obtain ⟨t, m', a, hred, hans⟩ := ih_true hbtrue
+            obtain ⟨t, m', a, hred, hdisj⟩ := ih_true hbtrue
             exact ⟨_, _, _, SeqReduce.step
               (SeqStep.step_cond_var_true (hv := hsimple) (R := reach)
-                (by simp [Memory.lookup, hcell])) hred, hans⟩
+                (by simp [Memory.lookup, hcell])) hred, by simpa using hdisj⟩
         | capability => simp [resolve, hcell] at hbtrue
         | masked => simp [resolve, hcell] at hbtrue
     | inr hbfalse =>
@@ -1034,31 +1128,38 @@ theorem Safe.has_reduction {m : Memory} {e : Exp {}} (h : Safe m e) :
           | mk unwrap hsimple reach =>
             have hunwrap : unwrap = .bfalse := by simpa [resolve, hcell] using hbfalse
             cases hunwrap
-            obtain ⟨t, m', a, hred, hans⟩ := ih_false hbfalse
+            obtain ⟨t, m', a, hred, hdisj⟩ := ih_false hbfalse
             exact ⟨_, _, _, SeqReduce.step
               (SeqStep.step_cond_var_false (hv := hsimple) (R := reach)
-                (by simp [Memory.lookup, hcell])) hred, hans⟩
+                (by simp [Memory.lookup, hcell])) hred, by simpa using hdisj⟩
         | capability => simp [resolve, hcell] at hbfalse
         | masked => simp [resolve, hcell] at hbfalse
-  | par _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ih2 _ _ =>
-    -- Canonical left-then-right-then-join reduction: run e1 fully (ih1), run e2 from
-    -- e1's answer-memory (ih2), lift each through the `SeqReduce` par congruences (the
-    -- right congruence needs e1's answer `hansa`), then join to `.unit`.
-    obtain ⟨ta, ma, aans, hreda, hansa⟩ := ih1
-    obtain ⟨tb, mb, bans, hredb, hansb⟩ := ih2 (reduce_to_bigstep hreda hansa)
-    exact ⟨_, _, _,
-      seqreduce_trans (seqreduce_par_left hreda)
-        (seqreduce_trans (seqreduce_par_right hansa hredb)
-          (SeqReduce.step (SeqStep.step_par_join hansa hansb) SeqReduce.refl)),
-      Exp.IsAns.is_val Exp.IsVal.unit⟩
+  | par _W _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih1 _ ihh2 _ _ =>
+    obtain ⟨t1, m1, a1, hred1, hdisj1⟩ := ih1
+    rcases hdisj1 with ⟨hans1, hbud1⟩ | hover1
+    · obtain ⟨t2, m2, a2, hred2, hdisj2⟩ := ihh2 (reduce_to_bigstep hred1 hans1)
+      rcases hdisj2 with ⟨hans2, hbud2⟩ | hover2
+      · refine ⟨_, _, _, seqreduce_trans (seqreduce_par_left hred1)
+          (seqreduce_trans (seqreduce_par_right hans1 hred2)
+            (SeqReduce.step (SeqStep.step_par_join hans1 hans2) SeqReduce.refl)), ?_⟩
+        exact Or.inl ⟨Exp.IsAns.is_val Exp.IsVal.unit,
+          by simp only [Trace.readCount_append, Trace.readCount_nil]; omega⟩
+      · refine ⟨_, _, _, seqreduce_trans (seqreduce_par_left hred1)
+          (seqreduce_par_right hans1 hred2), ?_⟩
+        exact Or.inr (by simp only [Trace.readCount_append]; omega)
+    · exact ⟨t1, _, _, seqreduce_par_left hred1, Or.inr hover1⟩
 
-/-- Answer existence (sequential small-step): `Eval m e Q` reduces to an answer
-    satisfying `Q`.  Combine `Safe.has_reduction` with the adequacy bridge. -/
-theorem eval_reduce_exists_answer {m : Memory} {e : Exp {}} {Q : Tpost}
-    (heval : Eval m e Q) :
-    ∃ t m' a, SeqReduce t m e m' a ∧ a.IsAns ∧ Q t a m' := by
-  obtain ⟨t, m', a, hred, hans⟩ := heval.1.has_reduction
-  exact ⟨t, m', a, hred, hans, heval.2 t a m' (reduce_to_bigstep hred hans)⟩
+/-- Answer existence within budget (sequential small-step): `Eval k m e Q` reduces
+    to an answer satisfying `Q` within the budget, or exhausts the budget. -/
+theorem eval_reduce_exists_answer {k : Nat} {m : Memory} {e : Exp {}} {Q : Tpost}
+    (heval : Eval k m e Q) :
+    ∃ t m' a, SeqReduce t m e m' a ∧
+      ((a.IsAns ∧ t.readCount < k ∧ Q t a m') ∨ k ≤ t.readCount) := by
+  obtain ⟨t, m', a, hred, hdisj⟩ := heval.1.has_reduction
+  rcases hdisj with ⟨hans, hbud⟩ | hover
+  · exact ⟨t, m', a, hred,
+      Or.inl ⟨hans, hbud, heval.2 t a m' (reduce_to_bigstep hred hans)⟩⟩
+  · exact ⟨t, m', a, hred, Or.inr hover⟩
 
 theorem not_mutated_refl {m : Memory} : m.not_mutated m := fun _ _ _ hinit => hinit
 
@@ -1075,13 +1176,14 @@ theorem step_immutable
   m1.not_mutated m2 := by
   intro l b ℓ hinit
   induction hstep with
-  | step_apply | step_invoke | step_tapply | step_capply | step_unwrap
+  | step_apply | step_invoke | step_tapply | step_capply | step_consumer_app
+  | step_unwrap
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ =>
     exact hinit
   | step_par_left _ ih => exact ih hwr hdr hinit
   | step_par_right _ _ ih => exact ih hwr hdr hinit
-  | step_write_true _ _ | step_write_false _ _ =>
+  | step_write _ _ =>
     exact absurd (List.mem_singleton.mpr rfl) (hwr _)
   | step_drop _ =>
     exact absurd (List.mem_singleton.mpr rfl) (hdr _)
@@ -1121,19 +1223,20 @@ theorem reduce_immutable
     other locations miss `l`; a write/drop at `l` itself is excluded by the
     hypotheses.  This is the per-cell refinement of `step_immutable`, needed when
     the trace *may* legitimately touch freshly allocated cells. -/
-theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {ℓ : Liveness}
+theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Nat} {ℓ : Liveness}
     (hstep : SeqStep t m1 e1 m2 e2) :
     TraceItem.access .epsilon l ∉ t -> TraceItem.dealloc l ∉ t ->
     m1.heap l = some (.capability (.mcell b ℓ)) ->
     m2.heap l = some (.capability (.mcell b ℓ)) := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ =>
     intro _ _ hinit; exact hinit
   | step_par_left _ ih => intro hwr hdr hinit; exact ih hwr hdr hinit
   | step_par_right _ _ ih => intro hwr hdr hinit; exact ih hwr hdr hinit
-  | step_write_true _ _ | step_write_false _ _ =>
+  | step_write _ _ =>
     intro hwr _ hinit
     simp only [Memory.update_mcell, Heap.update_cell]
     split
@@ -1162,7 +1265,7 @@ theorem step_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {
 
 /-- **Per-location immutability (reduction).**  A whole reduction that never
     writes or drops the specific cell `l` leaves it unchanged. -/
-theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Bool} {ℓ : Liveness}
+theorem reduce_preserves_cell {t : Trace} {m1 e1 m2 e2 : _} {l : Nat} {b : Nat} {ℓ : Liveness}
     (hred : SeqReduce t m1 e1 m2 e2) :
     TraceItem.access .epsilon l ∉ t -> TraceItem.dealloc l ∉ t ->
     m1.heap l = some (.capability (.mcell b ℓ)) ->

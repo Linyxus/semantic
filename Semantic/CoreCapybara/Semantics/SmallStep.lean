@@ -41,6 +41,9 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   Step [] m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
+| step_consumer_app :
+  m.lookup x = some (.val ⟨.consumer cs (.exi 1 T) e, hv, R⟩) ->
+  Step [] m (.consumer_app (.free x) arg) m (.unpack 1 arg e)
 -- Boxed terms are values: no `wrap` reduction rule, only `unwrap`.
 | step_unwrap :
   m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
@@ -53,34 +56,29 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
   Step [] m (.cond (.free x) e1 e2) m e2
 | step_read :
   m.lookup x = some (.val ⟨.reader (.free y), hv_reader, R_reader⟩) ->
-  m.lookup y = some (.capability (.mcell b .live)) ->
-  Step [.access .ro y] m (.read (.free x)) m (if b then .btrue else .bfalse)
-| step_write_true :
-  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
-  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell n .live)) ->
+  Step [.access .ro y] m (.read (.free x)) m (.var (.free n))
+| step_write :
+  (hx : m.lookup x = some (.capability (.mcell n0 .live))) ->
+  (hy : m.heap y ≠ none) ->
   Step [.access .epsilon x] m (.write (.free x) (.free y))
-    (m.update_mcell x true .live ⟨b0, hx⟩) .unit
-| step_write_false :
-  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
-  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
-  Step [.access .epsilon x] m (.write (.free x) (.free y))
-    (m.update_mcell x false .live ⟨b0, hx⟩) .unit
+    (m.update_mcell x y .live ⟨n0, hx⟩ (fun _ => hy)) .unit
 | step_alloc :
-  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+  (hx : m.heap x ≠ none) ->
   (hfresh : m.heap l = none) ->
   Step [.alloc l] m (.alloc (.free x))
-    (m.extend_mcell l b hfresh)
-    (.pack (.var (.M .epsilon) (.free l)) (.free l))
+    (m.extend_mcell l x hfresh hx)
+    (.pack ⟨[.var (.M .epsilon) (.free l)], rfl⟩ (.free l))
 | step_drop :
-  (hx : m.lookup x = some (.capability (.mcell b .live))) ->
+  (hx : m.lookup x = some (.capability (.mcell n .live))) ->
   Step [.dealloc x] m (.drop (.free x))
-    (m.drop_mcell x ⟨b, hx⟩) .unit
+    (m.drop_mcell x ⟨n, hx⟩) .unit
 | step_ctx_letin :
   Step t m e1 m' e1' ->
   Step t m (.letin e1 e2) m' (.letin e1' e2)
-| step_ctx_unpack :
+| step_ctx_unpack {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)} :
   Step t m e1 m' e1' ->
-  Step t m (.unpack e1 e2) m' (.unpack e1' e2)
+  Step t m (.unpack n e1 e2) m' (.unpack n e1' e2)
 -- `par e1 e2` interleaves both branches: either branch may take the next step (the two
 -- congruence rules), so a run is an arbitrary interleaving of the branches' events.  Once
 -- both are answers the single join rule reduces to `.unit`, keeping `par : .typ .unit`
@@ -111,8 +109,9 @@ inductive Step : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
     m (.letin v e)
     (m.extend l ⟨v, hv, compute_reachability m.heap v hv⟩ hwf rfl hfresh)
     (e.subst (Subst.openVar (.free l)))
-| step_unpack :
-  Step [] m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
+| step_unpack {n : Nat} {cs : List.Vector (CaptureSet {}) n}
+    {e : Exp ((Sig.extendCVars {} n),x)} :
+  Step [] m (.unpack n (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
 
 /-- Multi-step reduction relation: reflexive-transitive closure of `Step`,
   accumulating the traces of the individual steps in order.
@@ -157,6 +156,9 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
 | step_capply :
   m.lookup x = some (.val ⟨.cabs cs B e, hv, R⟩) ->
   SeqStep [] m (.capp (.free x) CS) m (e.subst (Subst.openCVar CS))
+| step_consumer_app :
+  m.lookup x = some (.val ⟨.consumer cs (.exi 1 T) e, hv, R⟩) ->
+  SeqStep [] m (.consumer_app (.free x) arg) m (.unpack 1 arg e)
 | step_unwrap :
   m.lookup x = some (.val ⟨.boxed cs Ψ e, hv, R⟩) ->
   SeqStep [] m (.unwrap (.free x)) m e
@@ -168,34 +170,29 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
   SeqStep [] m (.cond (.free x) e1 e2) m e2
 | step_read :
   m.lookup x = some (.val ⟨.reader (.free y), hv_reader, R_reader⟩) ->
-  m.lookup y = some (.capability (.mcell b .live)) ->
-  SeqStep [.access .ro y] m (.read (.free x)) m (if b then .btrue else .bfalse)
-| step_write_true :
-  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
-  m.lookup y = some (.val ⟨.btrue, hv, R⟩) ->
+  m.lookup y = some (.capability (.mcell n .live)) ->
+  SeqStep [.access .ro y] m (.read (.free x)) m (.var (.free n))
+| step_write :
+  (hx : m.lookup x = some (.capability (.mcell n0 .live))) ->
+  (hy : m.heap y ≠ none) ->
   SeqStep [.access .epsilon x] m (.write (.free x) (.free y))
-    (m.update_mcell x true .live ⟨b0, hx⟩) .unit
-| step_write_false :
-  (hx : m.lookup x = some (.capability (.mcell b0 .live))) ->
-  m.lookup y = some (.val ⟨.bfalse, hv, R⟩) ->
-  SeqStep [.access .epsilon x] m (.write (.free x) (.free y))
-    (m.update_mcell x false .live ⟨b0, hx⟩) .unit
+    (m.update_mcell x y .live ⟨n0, hx⟩ (fun _ => hy)) .unit
 | step_alloc :
-  m.lookup x = some (.val ⟨if b then .btrue else .bfalse, hv, R⟩) ->
+  (hx : m.heap x ≠ none) ->
   (hfresh : m.heap l = none) ->
   SeqStep [.alloc l] m (.alloc (.free x))
-    (m.extend_mcell l b hfresh)
-    (.pack (.var (.M .epsilon) (.free l)) (.free l))
+    (m.extend_mcell l x hfresh hx)
+    (.pack ⟨[.var (.M .epsilon) (.free l)], rfl⟩ (.free l))
 | step_drop :
-  (hx : m.lookup x = some (.capability (.mcell b .live))) ->
+  (hx : m.lookup x = some (.capability (.mcell n .live))) ->
   SeqStep [.dealloc x] m (.drop (.free x))
-    (m.drop_mcell x ⟨b, hx⟩) .unit
+    (m.drop_mcell x ⟨n, hx⟩) .unit
 | step_ctx_letin :
   SeqStep t m e1 m' e1' ->
   SeqStep t m (.letin e1 e2) m' (.letin e1' e2)
-| step_ctx_unpack :
+| step_ctx_unpack {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)} :
   SeqStep t m e1 m' e1' ->
-  SeqStep t m (.unpack e1 e2) m' (.unpack e1' e2)
+  SeqStep t m (.unpack n e1 e2) m' (.unpack n e1' e2)
 | step_par_left :
   SeqStep t m e1 m' e1' ->
   SeqStep t m (.par C1 C2 e1 e2) m' (.par (C1.growByAllocs t) C2 e1' e2)
@@ -218,8 +215,9 @@ inductive SeqStep : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where
     m (.letin v e)
     (m.extend l ⟨v, hv, compute_reachability m.heap v hv⟩ hwf rfl hfresh)
     (e.subst (Subst.openVar (.free l)))
-| step_unpack :
-  SeqStep [] m (.unpack (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
+| step_unpack {n : Nat} {cs : List.Vector (CaptureSet {}) n}
+    {e : Exp ((Sig.extendCVars {} n),x)} :
+  SeqStep [] m (.unpack n (.pack cs (.free x)) e) m (e.subst (Subst.unpack cs (.free x)))
 
 /-- Multi-step sequential reduction: reflexive-transitive closure of `SeqStep`. -/
 inductive SeqReduce : Trace -> Memory -> Exp {} -> Memory -> Exp {} -> Prop where

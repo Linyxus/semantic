@@ -3,6 +3,57 @@ import Semantic.CoreCapybara.Substitution
 
 namespace CoreCapybara
 
+/-- The union of all capture sets in a vector. `⋃ᵢ Cs.get i`, with `unionAll ⟨[], _⟩ = {}`.
+Used as the combined evidence of an `n`-ary `pack`. -/
+def CaptureSet.unionAll {s : Sig} : {n : Nat} → List.Vector (CaptureSet s) n → CaptureSet s
+  | 0, _ => {}
+  | _ + 1, Cs => Cs.head ∪ CaptureSet.unionAll Cs.tail
+
+/-- Substitution distributes over the union of a vector of capture sets. -/
+theorem CaptureSet.unionAll_subst {s1 s2 : Sig} {σ : Subst s1 s2} :
+    {n : Nat} → {Cs : List.Vector (CaptureSet s1) n} →
+    (CaptureSet.unionAll Cs).subst σ
+      = CaptureSet.unionAll (List.Vector.map (fun C => C.subst σ) Cs)
+  | 0, _ => rfl
+  | _ + 1, Cs => by
+    change (List.Vector.head Cs ∪ CaptureSet.unionAll (List.Vector.tail Cs)).subst σ = _
+    change _ = ((List.Vector.map _ Cs).head ∪ CaptureSet.unionAll ((List.Vector.map _ Cs).tail))
+    obtain ⟨l, hl⟩ := Cs
+    cases l with
+    | nil => cases hl
+    | cons c l' =>
+      change (c.subst σ) ∪ (CaptureSet.unionAll ⟨l', _⟩).subst σ
+        = (c.subst σ) ∪ CaptureSet.unionAll ⟨l'.map _, _⟩
+      rw [CaptureSet.unionAll_subst]
+      rfl
+
+/-- If the union of all capture sets in a vector is closed, so is each entry. -/
+theorem CaptureSet.unionAll_closed_inv {s : Sig} :
+    {n : Nat} → {Cs : List.Vector (CaptureSet s) n} →
+    (CaptureSet.unionAll Cs).IsClosed → ∀ cs ∈ Cs.toList, cs.IsClosed
+  | 0, Cs, _ => by
+    rw [List.Vector.eq_nil Cs]
+    intro cs hmem
+    cases hmem
+  | _ + 1, Cs, h => by
+    intro cs hmem
+    obtain ⟨l, hl⟩ := Cs
+    cases l with
+    | nil => cases hl
+    | cons c l' =>
+      cases h with
+      | union h1 h2 =>
+        cases hmem with
+        | head => exact h1
+        | tail _ hmem => exact CaptureSet.unionAll_closed_inv h2 cs hmem
+
+/-- The `n` freshly-bound capture variables of an `n`-ary existential, taken at access
+`ε`: `⋃_{i<n} (cvar ε cᵢ)` over `s.extendCVars n`. In the `unpack` rule the continuation
+accesses (this set) and drops (its `.drop` variant) all `n` unpacked capabilities. -/
+def CaptureSet.freshCVars {s : Sig} : (n : Nat) → CaptureSet (s.extendCVars n)
+  | 0 => {}
+  | n + 1 => (.cvar (.M .epsilon) .here) ∪ (CaptureSet.freshCVars (s := s) n).rename Rename.succ
+
 inductive Subcapt : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
 | sc_trans :
   Subcapt Γ C1 C2 ->
@@ -124,6 +175,41 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   --------------------
   SepCheck Γ (.cvar m1 c1) (.cvar m2 c2)
 
+/-- Disjointness check. -/
+inductive DisjCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
+| disj_symm :
+  DisjCheck Γ C1 C2 ->
+  -------------------
+  DisjCheck Γ C2 C1
+| disj_union :
+  DisjCheck Γ C1 C3 ->
+  DisjCheck Γ C2 C3 ->
+  -------------------
+  DisjCheck Γ (C1 ∪ C2) C3
+| disj_empty {C : CaptureSet s} :
+  -------------------
+  DisjCheck Γ {} C
+| disj_sc {C1 C2 C1' : CaptureSet s} :
+  DisjCheck Γ C1 C2 ->
+  Subcapt Γ C1' C1 ->
+  CaptureSet.EquivP Γ C1' C1 ->
+  --------------------
+  DisjCheck Γ C1' C2
+| disj_droppable {c1 c2 : BVar s .cvar} :
+  Γ.TwoDistinctDroppable c1 c2 ->
+  --------------------
+  DisjCheck Γ (.cvar m1 c1) (.cvar m2 c2)
+
+/-- The capture sets in a vector are mutually disjoint: any two distinct entries pass
+the separation check (`SepCheck` is symmetric, so the ordering of the list is
+immaterial). Premise of the `n`-ary `pack` rule: parallel opening instantiates the `n`
+bound capture variables with the `n` evidences, and an `unpack` continuation is
+entitled to treat distinct capture variables as separate — so overlapping evidences
+would be unsound. -/
+def CaptureSet.PairwiseSep {s : Sig} {n : Nat}
+    (Γ : Ctx s) (Cs : List.Vector (CaptureSet s) n) : Prop :=
+  Cs.toList.Pairwise (DisjCheck Γ)
+
 inductive Satisfy : Ctx s -> ModalCtx s -> Prop where
 | satisfy {Ψ : ModalCtx s} :
   (hkind : ∀ C m, Ψ.mutability.Has C m -> HasKind Γ C m) ->
@@ -179,22 +265,24 @@ inductive Subtyp : Ctx s -> Ty k s -> Ty k s -> Prop where
   Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ) ->
   ----------------------------------
   Subtyp Γ (.modal cs Ψ1 E) (.modal cs Ψ2 E)
-| exi :
-  Subtyp (Γ,C[.access_only]<:.unbound) T1 T2 ->
+| exi {s : Sig} {Γ : Ctx s} {n : Nat} {T1 T2 : Ty .capt (s.extendCVars n)} :
+  Subtyp (Ctx.extendCVars .access_only Γ n) T1 T2 ->
   --------------------------
-  Subtyp Γ (.exi T1) (.exi T2)
+  Subtyp Γ (.exi n T1) (.exi n T2)
 | typ :
   Subtyp Γ T1 T2 ->
   --------------------------
   Subtyp Γ (.typ T1) (.typ T2)
-| cell {cs1 cs2 : CaptureSet s} :
+| cell {cs1 cs2 : CaptureSet s} {T : Ty .capt s} :
+  -- Capture-covariance with the element type held invariant (conservative
+  -- extension; the element stays rigid, only the handle's capture widens).
   Subcapt Γ cs1 cs2 ->
   --------------------------
-  Subtyp Γ (.cell cs1) (.cell cs2)
-| reader {cs1 cs2 : CaptureSet s} :
+  Subtyp Γ (.cell cs1 T) (.cell cs2 T)
+| reader {cs1 cs2 : CaptureSet s} {T : Ty .capt s} :
   Subcapt Γ cs1 cs2 ->
   --------------------------
-  Subtyp Γ (.reader cs1) (.reader cs2)
+  Subtyp Γ (.reader cs1 T) (.reader cs2 T)
 | cap {cs1 cs2 : CaptureSet s} :
   Subcapt Γ cs1 cs2 ->
   --------------------------
@@ -238,13 +326,13 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (.typ (T.refineCaptureSet (.var (.M .epsilon) (.bound x))))
 | reader :
   Γ.IsClosed ->
-  Γ.LookupVar x (.cell C) ->
+  Γ.LookupVar x (.cell C T) ->
   ---------------------------------
   HasType
     {}
     Γ
     (.reader (.bound x))
-    (.typ (.reader (.var (.M .ro) (.bound x))))
+    (.typ (.reader (.var (.M .ro) (.bound x)) T))
 | abs {T1 : Ty .capt s} :
   T1.IsClosed ->
   HasType (cs.rename Rename.succ) (Γ,x:T1) e T2 ->
@@ -261,25 +349,57 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   HasType (cs.rename Rename.succ) (Γ,C[.access_only]<:cb) e T ->
   -----------------------------
   HasType {} Γ (.cabs cs cb e) (.typ (.cpoly cb cs T))
+| consumer {T1 : Ty .capt (s,C)} {X : PeakSet s} :
+  T1.IsClosed ->
+  -- Every droppable capture variable of `Γ` is either killed in the body's
+  -- context (`X`) or occurs in the closure's capture set `cs`.  The body can
+  -- never use a droppable outside `cs` anyway (its use set is `cs ∪ C`), so
+  -- killing the complement costs no expressiveness — and it is what lets the
+  -- witness binder `C` (which may alias the capabilities consumed at the
+  -- application site) coexist with `Γ`'s droppables in the separation
+  -- invariant: the witness is separated from the closure's own captures by
+  -- the application rule's `SeqComp`, and everything else is dead.
+  (∀ c : BVar s .cvar, Γ.lookup_authority c = .can_drop →
+    (∃ a, (CaptureSet.cvar a c) ⊆ X.cs) ∨ (∃ a, (CaptureSet.cvar a c) ⊆ cs)) ->
+  HasType
+    (((cs.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))) ∪
+      (.cvar (.M .epsilon) (.there .here)) ∪
+      (.cvar .drop (.there .here)))
+    (((Γ.kill_peaks X),C[.can_drop]<:.unbound),x:T1)
+    e
+    ((E.rename (Rename.succ (k := .cvar))).rename (Rename.succ (k := .var))) ->
+  -----------------------------
+  HasType {} Γ (.consumer cs (.exi 1 T1) e) (.typ (.consumer (.exi 1 T1) cs E))
 | wrap :
   Ψ.IsClosed ->
   HasType
     (cs.rename Rename.succ) (Γ.push_lock Ψ)
     (e.rename Rename.succ) (E.rename Rename.succ) ->
   HasType {} Γ (.boxed cs Ψ e) (.typ (.modal cs Ψ E))
-| pack {C : CaptureSet s} :
-  C.IsClosed ->
-  C.AccessOnly Γ ->
-  C.droppable Γ ->
-  HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVar C))) ->
+| pack {n : Nat} {Cs : List.Vector (CaptureSet s) n} {T : Ty .capt (s.extendCVars n)} :
+  (CaptureSet.unionAll Cs).IsClosed ->
+  (CaptureSet.unionAll Cs).AccessOnly Γ ->
+  (CaptureSet.unionAll Cs).droppable Γ ->
+  CaptureSet.PairwiseSep Γ Cs ->
+  HasType {} Γ (.var x) (.typ (T.subst (Subst.openCVars Cs))) ->
   ----------------------------
-  HasType (C ∪ C.applyAccess .drop) Γ (.pack C x) (.exi T)
+  HasType
+    ((CaptureSet.unionAll Cs) ∪ (CaptureSet.unionAll Cs).applyAccess .drop)
+    Γ (.pack Cs x) (.exi n T)
 | app :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
   HasType {} Γ (.var x) (.typ (.arrow T1 (.var (.M .epsilon) x) T2)) ->
   HasType {} Γ (.var y) (.typ T1) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.app x y) (T2.subst (Subst.openVar y))
+| consumer_app {C1 : CaptureSet s} {T1 : Ty .capt (s,C)} :
+  SeqComp Γ C1 (.var (.M .epsilon) x) ->
+  ((C1.peakset Γ).consumed).droppable Γ ->
+  (CaptureSet.var (.M .epsilon) x).accessible Γ ->
+  HasType {} Γ (.var x) (.typ (.consumer (.exi 1 T1) (.var (.M .epsilon) x) E)) ->
+  HasType C1 Γ e (.exi 1 T1) ->
+  ----------------------------
+  HasType (C1 ∪ (.var (.M .epsilon) x)) Γ (.consumer_app x e) E
 | tapp {S : PureTy s} :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
   S.IsClosed ->
@@ -305,19 +425,20 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (U.rename Rename.succ) ->
   --------------------------------
   HasType (C1 ∪ C2) Γ (.letin e1 e2) U
-| unpack :
+| unpack {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s} {t : Exp s} {U : Ty .exi s}
+    {n : Nat} {T : Ty .capt (s.extendCVars n)} {u : Exp ((s.extendCVars n),x)} :
   SeqComp Γ C1 C2 ->
   ((C1.peakset Γ).consumed).droppable Γ ->
-  HasType C1 Γ t (.exi T) ->
+  HasType C1 Γ t (.exi n T) ->
   HasType
-    (((C2.rename Rename.succ).rename Rename.succ) ∪
-     (.cvar (.M .epsilon) (.there .here)) ∪
-     (.cvar .drop (.there .here)))
-    ((Γ.kill_peaks ((C1.peakset Γ).consumed)),C[.can_drop]<:.unbound,x:T)
+    (((C2.rename (Rename.weakenCVars n)).rename Rename.succ) ∪
+     ((CaptureSet.freshCVars n).rename Rename.succ) ∪
+     (((CaptureSet.freshCVars n).rename Rename.succ).applyAccess .drop))
+    ((Ctx.extendCVars .can_drop (Γ.kill_peaks ((C1.peakset Γ).consumed)) n),x:T)
     u
-    ((U.rename Rename.succ).rename Rename.succ) ->
+    ((U.rename (Rename.weakenCVars n)).rename Rename.succ) ->
   --------------------------------------------
-  HasType (C1 ∪ C2) Γ (.unpack t u) U
+  HasType (C1 ∪ C2) Γ (.unpack n t u) U
 | unit :
   ----------------------------
   HasType {} Γ (.unit) (.typ .unit)
@@ -328,24 +449,27 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
   ----------------------------
   HasType {} Γ (.bfalse) (.typ .bool)
 | alloc :
-  HasType {} Γ (.var x) (.typ .bool) ->
+  HasType {} Γ (.var x) (.typ T) ->
   ----------------------------
-  HasType {} Γ (.alloc x) (.exi (.cell (.cvar (.M .epsilon) .here)))
+  HasType
+    {} Γ
+    (.alloc x)
+    (.exi 1 (.cell (.cvar (.M .epsilon) .here) (T.rename Rename.succ)))
 | drop :
   Γ.IsClosed ->
   (CaptureSet.var (.M .epsilon) x).droppable Γ ->
-  HasType {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x))) ->
+  HasType {} Γ (.var x) (.typ (.cell (.var (.M .epsilon) x) T)) ->
   ----------------------------
   HasType (.var .drop x) Γ (.drop x) (.typ .unit)
 | read :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.reader C)) ->
+  HasType {} Γ (.var x) (.typ (.reader C T)) ->
   ----------------------------
-  HasType (.var (.M .epsilon) x) Γ (.read x) (.typ .bool)
+  HasType (.var (.M .epsilon) x) Γ (.read x) (.typ T)
 | write :
   (CaptureSet.var (.M .epsilon) x).accessible Γ ->
-  HasType {} Γ (.var x) (.typ (.cell Cx)) ->
-  HasType {} Γ (.var y) (.typ .bool) ->
+  HasType {} Γ (.var x) (.typ (.cell Cx T)) ->
+  HasType {} Γ (.var y) (.typ T) ->
   ----------------------------
   HasType (.var (.M .epsilon) x) Γ (.write x y) (.typ .unit)
 | cond :

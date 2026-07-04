@@ -12,17 +12,19 @@ inductive Exp : Sig -> Type where
 | abs : CaptureSet s -> Ty .capt s -> Exp (s,x) -> Exp s
 | tabs : CaptureSet s -> PureTy s -> Exp (s,X) -> Exp s
 | cabs : CaptureSet s -> CaptureBound s -> Exp (s,C) -> Exp s
+| consumer : CaptureSet s -> Ty .exi s -> Exp (s,C,x) -> Exp s
 | boxed : CaptureSet s -> ModalCtx s -> Exp s -> Exp s
 | reader : Var .var s -> Exp s
 | alloc : Var .var s -> Exp s
 | drop : Var .var s -> Exp s
-| pack : CaptureSet s -> Var .var s -> Exp s
+| pack : List.Vector (CaptureSet s) n -> Var .var s -> Exp s
 | app : Var .var s -> Var .var s -> Exp s
 | tapp : Var .var s -> PureTy s -> Exp s
 | capp : Var .var s -> CaptureSet s -> Exp s
+| consumer_app : Var .var s -> Exp s -> Exp s
 | unwrap : Var .var s -> Exp s
 | letin : Exp s -> Exp (s,x) -> Exp s
-| unpack : Exp s -> Exp ((s,C),x) -> Exp s
+| unpack : (n : Nat) -> Exp s -> Exp ((s.extendCVars n),x) -> Exp s
 | unit : Exp s
 | btrue : Exp s
 | bfalse : Exp s
@@ -40,17 +42,20 @@ def Exp.rename : Exp s1 -> Rename s1 s2 -> Exp s2
 | .abs cs T e, f => .abs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .tabs cs T e, f => .tabs (cs.rename f) (T.rename f) (e.rename (f.lift))
 | .cabs cs cb e, f => .cabs (cs.rename f) (cb.rename f) (e.rename (f.lift))
+| .consumer cs T e, f => .consumer (cs.rename f) (T.rename f) (e.rename (f.lift.lift))
 | .boxed cs Ψ e, f => .boxed (cs.rename f) (Ψ.rename f) (e.rename f)
 | .reader x, f => .reader (x.rename f)
 | .alloc x, f => .alloc (x.rename f)
 | .drop x, f => .drop (x.rename f)
-| .pack cs x, f => .pack (cs.rename f) (x.rename f)
+| .pack css x, f => .pack (css.map (·.rename f)) (x.rename f)
+-- NB: `css.map` here is `List.Vector.map`, preserving the length index `n`.
 | .app x y, f => .app (x.rename f) (y.rename f)
 | .tapp x T, f => .tapp (x.rename f) (T.rename f)
 | .capp x cs, f => .capp (x.rename f) (cs.rename f)
+| .consumer_app x e, f => .consumer_app (x.rename f) (e.rename f)
 | .unwrap x, f => .unwrap (x.rename f)
 | .letin e1 e2, f => .letin (e1.rename f) (e2.rename (f.lift))
-| .unpack e1 e2, f => .unpack (e1.rename f) (e2.rename (f.lift.lift))
+| .unpack n e1 e2, f => .unpack n (e1.rename f) (e2.rename ((f.liftCVars n).lift))
 | .unit, _ => .unit
 | .btrue, _ => .btrue
 | .bfalse, _ => .bfalse
@@ -64,8 +69,9 @@ inductive Exp.IsVal : Exp s -> Prop where
 | abs : Exp.IsVal (.abs cs T e)
 | tabs : Exp.IsVal (.tabs cs T e)
 | cabs : Exp.IsVal (.cabs cs m e)
+| consumer : Exp.IsVal (.consumer cs T e)
 | boxed : Exp.IsVal (.boxed cs Ψ e)
-| pack : Exp.IsVal (.pack cs x)
+| pack : Exp.IsVal (.pack css x)
 | reader : Exp.IsVal (.reader x)
 | unit : Exp.IsVal .unit
 | btrue : Exp.IsVal .btrue
@@ -77,6 +83,7 @@ inductive Exp.IsSimpleVal : Exp s -> Prop where
 | abs : Exp.IsSimpleVal (.abs cs T e)
 | tabs : Exp.IsSimpleVal (.tabs cs T e)
 | cabs : Exp.IsSimpleVal (.cabs cs m e)
+| consumer : Exp.IsSimpleVal (.consumer cs T e)
 | boxed : Exp.IsSimpleVal (.boxed cs Ψ e)
 | unit : Exp.IsSimpleVal .unit
 | btrue : Exp.IsSimpleVal .btrue
@@ -90,8 +97,10 @@ inductive Exp.IsSimpleAns : Exp s -> Prop where
 | is_var :
   Exp.IsSimpleAns (.var x)
 
-inductive Exp.IsPack : Exp s -> Prop where
-| pack : Exp.IsPack (.pack cs x)
+/-- `e` is a `pack` value of arity exactly `n`.  The arity index is essential for
+    progress: `unpack n` only fires on a pack whose evidence vector has length `n`. -/
+inductive Exp.IsPack {s : Sig} (n : Nat) : Exp s -> Prop where
+| pack {css : List.Vector (CaptureSet s) n} {x : Var .var s} : Exp.IsPack n (.pack css x)
 
 /-- A value, bundling an expression with a proof that it is a value. -/
 structure Val (s : Sig) where
@@ -116,6 +125,9 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
   | cabs cs cb e ih =>
     simp only [Exp.rename, CaptureSet.rename_id, CaptureBound.rename_id, Rename.lift_id]
     exact congrArg (Exp.cabs cs cb) ih
+  | consumer cs T e ih =>
+    simp only [Exp.rename, CaptureSet.rename_id, Ty.rename_id, Rename.lift_id]
+    exact congrArg (Exp.consumer cs T) ih
   | boxed cs Ψ e ih =>
     simp only [Exp.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Exp.boxed cs Ψ) ih
@@ -125,22 +137,27 @@ def Exp.rename_id {e : Exp s} : e.rename (Rename.id) = e := by
     simp only [Exp.rename, Var.rename_id]
   | drop x =>
     simp only [Exp.rename, Var.rename_id]
-  | pack cs x =>
-    simp only [Exp.rename, CaptureSet.rename_id, Var.rename_id]
+  | pack css x =>
+    simp only [Exp.rename, Var.rename_id]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, CaptureSet.rename_id, List.map_id']
   | app x y =>
     simp only [Exp.rename, Var.rename_id]
   | tapp x T =>
     simp only [Exp.rename, Var.rename_id, PureTy.rename_id]
   | capp x cs =>
     simp only [Exp.rename, Var.rename_id, CaptureSet.rename_id]
+  | consumer_app x e ih =>
+    simp only [Exp.rename, Var.rename_id, ih]
   | unwrap x =>
     simp only [Exp.rename, Var.rename_id]
   | letin e1 e2 ih1 ih2 =>
     simp only [Exp.rename, Rename.lift_id, ih1]
     exact congrArg (Exp.letin e1) ih2
-  | unpack e1 e2 ih1 ih2 =>
-    simp only [Exp.rename, Rename.lift_id, ih1]
-    exact congrArg (Exp.unpack e1) ih2
+  | unpack n e1 e2 ih1 ih2 =>
+    simp only [Exp.rename, Rename.liftCVars_id, Rename.lift_id, ih1]
+    exact congrArg (Exp.unpack n e1) ih2
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -182,6 +199,15 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     ] using
       congrArg (Exp.cabs (cs.rename (f.comp g)) (cb.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
+  | consumer cs T e ih =>
+    simpa only [
+      Exp.rename,
+      CaptureSet.rename_comp,
+      Ty.rename_comp,
+      Rename.lift_comp
+    ] using
+      congrArg (Exp.consumer (cs.rename (f.comp g)) (T.rename (f.comp g)))
+        (ih (f := f.lift.lift) (g := g.lift.lift))
   | boxed cs Ψ e ih =>
     simpa only [Exp.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Exp.boxed (cs.rename (f.comp g)) (Ψ.rename (f.comp g))) (ih (f := f) (g := g))
@@ -191,23 +217,28 @@ theorem Exp.rename_comp {e : Exp s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simp only [Exp.rename, Var.rename_comp]
   | drop x =>
     simp only [Exp.rename, Var.rename_comp]
-  | pack cs x =>
-    simp only [Exp.rename, CaptureSet.rename_comp, Var.rename_comp]
+  | pack css x =>
+    simp only [Exp.rename, Var.rename_comp]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map, List.map_map, Function.comp_def, CaptureSet.rename_comp]
   | app x y =>
     simp only [Exp.rename, Var.rename_comp]
   | tapp x T =>
     simp only [Exp.rename, Var.rename_comp, PureTy.rename_comp]
   | capp x cs =>
     simp only [Exp.rename, Var.rename_comp, CaptureSet.rename_comp]
+  | consumer_app x e ih =>
+    simp only [Exp.rename, Var.rename_comp, ih]
   | unwrap x =>
     simp only [Exp.rename, Var.rename_comp]
   | letin e1 e2 ih1 ih2 =>
     simpa only [Exp.rename, Rename.lift_comp, ih1] using
       congrArg (Exp.letin (e1.rename (f.comp g))) (ih2 (f := f.lift) (g := g.lift))
-  | unpack e1 e2 ih1 ih2 =>
-    simpa only [Exp.rename, Rename.lift_comp, ih1] using
-      congrArg (Exp.unpack (e1.rename (f.comp g)))
-        (ih2 (f := f.lift.lift) (g := g.lift.lift))
+  | unpack n e1 e2 ih1 ih2 =>
+    simpa only [Exp.rename, Rename.liftCVars_comp, Rename.lift_comp, ih1] using
+      congrArg (Exp.unpack n (e1.rename (f.comp g)))
+        (ih2 (f := (f.liftCVars n).lift) (g := (g.liftCVars n).lift))
   | unit => rfl
   | btrue => rfl
   | bfalse => rfl
@@ -243,18 +274,24 @@ inductive Exp.IsClosed : Exp s -> Prop where
     Exp.IsClosed (.tabs cs T e)
 | cabs : CaptureSet.IsClosed cs -> CaptureBound.IsClosed cb -> Exp.IsClosed e ->
     Exp.IsClosed (.cabs cs cb e)
+| consumer : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Exp.IsClosed e ->
+    Exp.IsClosed (.consumer cs T e)
 | boxed : CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Exp.IsClosed e ->
     Exp.IsClosed (.boxed cs Ψ e)
 | reader : Var.IsClosed x -> Exp.IsClosed (.reader x)
 | alloc : Var.IsClosed x -> Exp.IsClosed (.alloc x)
 | drop : Var.IsClosed x -> Exp.IsClosed (.drop x)
-| pack : CaptureSet.IsClosed cs -> Var.IsClosed x -> Exp.IsClosed (.pack cs x)
+| pack : {s : Sig} -> {n : Nat} -> {css : List.Vector (CaptureSet s) n} -> {x : Var .var s} ->
+    (∀ cs ∈ css.toList, CaptureSet.IsClosed cs) -> Var.IsClosed x ->
+    Exp.IsClosed (.pack css x)
 | app : Var.IsClosed x -> Var.IsClosed y -> Exp.IsClosed (.app x y)
 | tapp : Var.IsClosed x -> PureTy.IsClosed T -> Exp.IsClosed (.tapp x T)
 | capp : Var.IsClosed x -> CaptureSet.IsClosed cs -> Exp.IsClosed (.capp x cs)
+| consumer_app : Var.IsClosed x -> Exp.IsClosed e -> Exp.IsClosed (.consumer_app x e)
 | unwrap : Var.IsClosed x -> Exp.IsClosed (.unwrap x)
 | letin : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.letin e1 e2)
-| unpack : Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack e1 e2)
+| unpack : {s : Sig} -> {n : Nat} -> {e1 : Exp s} -> {e2 : Exp ((s.extendCVars n),x)} ->
+    Exp.IsClosed e1 -> Exp.IsClosed e2 -> Exp.IsClosed (.unpack n e1 e2)
 | unit : Exp.IsClosed .unit
 | btrue : Exp.IsClosed .btrue
 | bfalse : Exp.IsClosed .bfalse

@@ -41,20 +41,36 @@ theorem CaptureBound.rename_comp
 
 /-- A type in CC, indexed by its sort (capturing or existential). -/
 inductive Ty : TySort -> Sig -> Type where
--- capturing types
+-- capturing types T, U
+/-- The top type. -/
 | top : Ty .capt s
+/-- A type variable. -/
 | tvar : BVar s .tvar -> Ty .capt s
+/-- A function type `(z: T) ->cs E`. -/
 | arrow : Ty .capt s -> CaptureSet s -> Ty .exi (s,x) -> Ty .capt s
+/-- A type function `[X<:S] ->cs E`. -/
 | poly : Ty .capt s -> CaptureSet s -> Ty .exi (s,X) -> Ty .capt s
+/-- A capture-polymorphic function `[C<:B] ->cs E`. -/
 | cpoly : CaptureBound s -> CaptureSet s -> Ty .exi (s,C) -> Ty .capt s
+/-- A consume lambda `(x: ∃c. T) ->cs E` -/
+| consumer :
+  Ty .exi s -> CaptureSet s -> Ty .exi s -> Ty .capt s
+/-- A modal type `[Ψ]cs E`. -/
 | modal : CaptureSet s -> ModalCtx s -> Ty .exi s -> Ty .capt s
+/-- A simple, base capability.  -/
 | cap : CaptureSet s -> Ty .capt s
-| cell : CaptureSet s -> Ty .capt s
-| reader : CaptureSet s -> Ty .capt s
+/-- A mutable cell type. -/
+| cell : CaptureSet s -> Ty .capt s -> Ty .capt s
+/-- A read-only view of a mutable cell. -/
+| reader : CaptureSet s -> Ty .capt s -> Ty .capt s
+/-- The unit type. -/
 | unit : Ty .capt s
+/-- The boolean type. -/
 | bool : Ty .capt s
 -- existential types
-| exi : Ty .capt (s,C) -> Ty .exi s
+/-- An existential type binding `n` fresh capture variables in its body. -/
+| exi : (n : Nat) -> Ty .capt (s.extendCVars n) -> Ty .exi s
+/-- Embeds a capturing type as an existential type with no hidden capture evidence. -/
 | typ : Ty .capt s -> Ty .exi s
 
 /-- Applies a renaming to all bound variables in a type. -/
@@ -64,13 +80,14 @@ def Ty.rename : Ty sort s1 -> Rename s1 s2 -> Ty sort s2
 | .arrow T1 cs T2, f => .arrow (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .poly T1 cs T2, f => .poly (T1.rename f) (cs.rename f) (T2.rename (f.lift))
 | .cpoly cb cs T, f => .cpoly (cb.rename f) (cs.rename f) (T.rename (f.lift))
+| .consumer T1 cs T2, f => .consumer (T1.rename f) (cs.rename f) (T2.rename f)
 | .modal cs Ψ T, f => .modal (cs.rename f) (Ψ.rename f) (T.rename f)
 | .unit, _ => .unit
 | .cap cs, f => .cap (cs.rename f)
 | .bool, _ => .bool
-| .cell cs, f => .cell (cs.rename f)
-| .reader cs, f => .reader (cs.rename f)
-| .exi T, f => .exi (T.rename (f.lift))
+| .cell cs T, f => .cell (cs.rename f) (T.rename f)
+| .reader cs T, f => .reader (cs.rename f) (T.rename f)
+| .exi n T, f => .exi n (T.rename (f.liftCVars n))
 | .typ T, f => .typ (T.rename f)
 
 /-- Renaming by the identity renaming leaves a type unchanged. -/
@@ -88,20 +105,24 @@ def Ty.rename_id {T : Ty sort s} : T.rename (Rename.id) = T := by
   | cpoly cb cs T ih =>
     simp only [Ty.rename, Rename.lift_id, CaptureBound.rename_id, CaptureSet.rename_id]
     exact congrArg (Ty.cpoly cb cs) ih
+  | consumer T1 cs T2 ih1 ih2 =>
+    simp only [Ty.rename, CaptureSet.rename_id, ih1, ih2]
   | modal cs Ψ T ih =>
     simp only [Ty.rename, CaptureSet.rename_id, ModalCtx.rename_id]
     exact congrArg (Ty.modal cs Ψ) ih
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_id]
-  | cell cs =>
+  | cell cs T ih =>
     simp only [Ty.rename, CaptureSet.rename_id]
-  | reader cs =>
+    exact congrArg (Ty.cell cs) ih
+  | reader cs T ih =>
     simp only [Ty.rename, CaptureSet.rename_id]
+    exact congrArg (Ty.reader cs) ih
   | unit => rfl
   | bool => rfl
-  | exi T ih =>
-    simp only [Ty.rename, Rename.lift_id]
-    exact congrArg Ty.exi ih
+  | exi n T ih =>
+    simp only [Ty.rename, Rename.liftCVars_id]
+    exact congrArg (Ty.exi n) ih
   | typ T ih =>
     simp only [Ty.rename]
     exact congrArg Ty.typ ih
@@ -125,21 +146,27 @@ theorem Ty.rename_comp {T : Ty sort s1} {f : Rename s1 s2} {g : Rename s2 s3} :
     simpa only [Ty.rename, CaptureBound.rename_comp, CaptureSet.rename_comp, Rename.lift_comp] using
       congrArg (Ty.cpoly (cb.rename (f.comp g)) (cs.rename (f.comp g)))
         (ih (f := f.lift) (g := g.lift))
+  | consumer T1 cs T2 ih1 ih2 =>
+    simp only [Ty.rename, CaptureSet.rename_comp, ih1, ih2]
   | modal cs Ψ T ih =>
     simpa only [Ty.rename, CaptureSet.rename_comp, ModalCtx.rename_comp] using
       congrArg (Ty.modal (cs.rename (f.comp g)) (Ψ.rename (f.comp g)))
         (ih (f := f) (g := g))
   | cap cs =>
     simp only [Ty.rename, CaptureSet.rename_comp]
-  | cell cs =>
-    simp only [Ty.rename, CaptureSet.rename_comp]
-  | reader cs =>
-    simp only [Ty.rename, CaptureSet.rename_comp]
+  | cell cs T ih =>
+    simpa only [Ty.rename, CaptureSet.rename_comp] using
+      congrArg (Ty.cell (cs.rename (f.comp g)))
+        (ih (f := f) (g := g))
+  | reader cs T ih =>
+    simpa only [Ty.rename, CaptureSet.rename_comp] using
+      congrArg (Ty.reader (cs.rename (f.comp g)))
+        (ih (f := f) (g := g))
   | unit => rfl
   | bool => rfl
-  | exi T ih =>
-    simpa only [Ty.rename, Rename.lift_comp] using
-      congrArg Ty.exi (ih (f := f.lift) (g := g.lift))
+  | exi n T ih =>
+    simpa only [Ty.rename, Rename.liftCVars_comp] using
+      congrArg (Ty.exi n) (ih (f := f.liftCVars n) (g := g.liftCVars n))
   | typ T ih =>
     simpa only [Ty.rename] using congrArg Ty.typ (ih (f := f) (g := g))
 
@@ -155,10 +182,11 @@ def Ty.captureSet : Ty .capt s -> CaptureSet s
 | .arrow _ cs _ => cs
 | .poly _ cs _ => cs
 | .cpoly _ cs _ => cs
+| .consumer _ cs _ => cs
 | .modal cs _ _ => cs
 | .cap cs => cs
-| .cell cs => cs
-| .reader cs => cs
+| .cell cs _ => cs
+| .reader cs _ => cs
 | .unit => .empty
 | .bool => .empty
 
@@ -168,10 +196,11 @@ def Ty.refineCaptureSet : Ty .capt s -> CaptureSet s -> Ty .capt s
 | .arrow T1 _ T2, cs => .arrow T1 cs T2
 | .poly T1 _ T2, cs => .poly T1 cs T2
 | .cpoly cb _ T, cs => .cpoly cb cs T
+| .consumer T1 _ T2, cs => .consumer T1 cs T2
 | .modal _ Ψ T, cs => .modal cs Ψ T
 | .cap _, cs => .cap cs
-| .cell _, cs => .cell cs
-| .reader _, cs => .reader cs
+| .cell _ T, cs => .cell cs T
+| .reader _ T, cs => .reader cs T
 | .unit, _ => .unit
 | .bool, _ => .bool
 
@@ -191,15 +220,19 @@ inductive Ty.IsClosed : Ty sort s -> Prop where
 | cpoly :
     CaptureBound.IsClosed cb -> CaptureSet.IsClosed cs -> Ty.IsClosed T ->
     Ty.IsClosed (.cpoly cb cs T)
+| consumer :
+    Ty.IsClosed T1 -> CaptureSet.IsClosed cs -> Ty.IsClosed T2 ->
+    Ty.IsClosed (.consumer T1 cs T2)
 | modal :
     CaptureSet.IsClosed cs -> ModalCtx.IsClosed Ψ -> Ty.IsClosed T ->
     Ty.IsClosed (.modal cs Ψ T)
 | unit : Ty.IsClosed .unit
 | cap : CaptureSet.IsClosed cs -> Ty.IsClosed (.cap cs)
 | bool : Ty.IsClosed .bool
-| cell : CaptureSet.IsClosed cs -> Ty.IsClosed (.cell cs)
-| reader : CaptureSet.IsClosed cs -> Ty.IsClosed (.reader cs)
-| exi : Ty.IsClosed T -> Ty.IsClosed (.exi T)
+| cell : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.cell cs T)
+| reader : CaptureSet.IsClosed cs -> Ty.IsClosed T -> Ty.IsClosed (.reader cs T)
+| exi : {s : Sig} -> {n : Nat} -> {T : Ty .capt (s.extendCVars n)} ->
+    Ty.IsClosed T -> Ty.IsClosed (.exi n T)
 | typ : Ty.IsClosed T -> Ty.IsClosed (.typ T)
 
 /-- The capture set of a renamed type equals the renamed capture set. -/

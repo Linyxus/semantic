@@ -38,6 +38,13 @@ def Ctx.push_cvar : Ctx s -> Authority -> CaptureBound s -> Ctx (s,C)
 def Ctx.push_cvar_default : Ctx s -> CaptureBound s -> Ctx (s,C)
 | Γ, cb => Γ.push_cvar .can_drop cb
 
+/-- Extends a context with `n` capture variables, each bound `[a]<:.unbound` for the
+given authority `a`. Used to go under the `n` binders of an `n`-ary existential:
+the subtyping rule uses `.access_only`, the `unpack` rule uses `.can_drop`. -/
+def Ctx.extendCVars (a : Authority) : Ctx s -> (n : Nat) -> Ctx (s.extendCVars n)
+| Γ, 0 => Γ
+| Γ, n+1 => (Ctx.extendCVars a Γ n).push_cvar a .unbound
+
 def Ctx.push_lock : Ctx s -> ModalCtx s -> Ctx (s,,.lock)
 | Γ, Ψ => Γ.push (.lock Ψ)
 

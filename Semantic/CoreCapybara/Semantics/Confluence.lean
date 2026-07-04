@@ -22,10 +22,15 @@ import Semantic.CoreCapybara.Semantics.Equivariance
     `Trace.Equiv ((t1 ++ s1).renameLoc π) (t2 ++ s2)`.  This is the observable content of
     data-race freedom: scheduling is unobservable.
 
-  * **Separation precondition `Safe m e`.**  Separation is exactly what rules out data
-    races and makes `par` confluent: two `par` branches writing the same cell would NOT
-    be confluent, but such a program is not `Safe` (it fails `SepCheck`).  `Exp.WfInHeap`
-    is the usual well-formedness premise.  These mirror `standardization`'s preconditions.
+  * **CARRIER-FREE separation.**  Separation is exactly what rules out data races and
+    makes `par` confluent — and it is carried by the interleaving `Step`'s OWN `par`
+    guards (`TraceOk` trace bounds + branch `Noninterference`), not by a `Safe` carrier
+    threaded through the run.  Threading the budget-indexed rely–guarantee `Safe.par`
+    across single interleaved steps would demand the false operational-monotonicity
+    transport (see the NOTE in `Semantics/BigStep.lean`); instead the
+    diamond records the PROVENANCE of its closing legs (renamed replays of the opposite
+    step), from which the wrap guards follow.  `Exp.WfInHeap` is the only precondition,
+    mirroring the carrier-free `standardization`.
 
   Intended proof route: a local diamond (resolve the `alloc` name-clash by renaming one
   side via `Equiv.swap`, using the operational `*.renameLoc` equivariance from
@@ -274,8 +279,8 @@ inductive Exp.AEq : Exp {} → Exp {} → Prop where
     AEq e2 e2' → AEq e3 e3' → AEq (.cond x e2 e3) (.cond x e2' e3')
   | letin {e1 e1' : Exp {}} {k : Exp ({},x)} :
     AEq e1 e1' → AEq (.letin e1 k) (.letin e1' k)
-  | unpack {e1 e1' : Exp {}} {k : Exp (({},C),x)} :
-    AEq e1 e1' → AEq (.unpack e1 k) (.unpack e1' k)
+  | unpack {n : Nat} {e1 e1' : Exp {}} {k : Exp ((Sig.extendCVars {} n),x)} :
+    AEq e1 e1' → AEq (.unpack n e1 k) (.unpack n e1' k)
 
 namespace Exp.AEq
 
@@ -351,6 +356,8 @@ theorem Step.aeq_sim {t : Trace} {m m' : Memory} {e1 e1' e2 : Exp {}}
     cases hae with | eq h => exact ⟨_, h ▸ Step.step_invoke h1 h2, Exp.AEq.refl _⟩
   | step_tapply hlk => cases hae with | eq h => exact ⟨_, h ▸ Step.step_tapply hlk, Exp.AEq.refl _⟩
   | step_capply hlk => cases hae with | eq h => exact ⟨_, h ▸ Step.step_capply hlk, Exp.AEq.refl _⟩
+  | step_consumer_app hlk =>
+    cases hae with | eq h => exact ⟨_, h ▸ Step.step_consumer_app hlk, Exp.AEq.refl _⟩
   | step_unwrap hlk => cases hae with | eq h => exact ⟨_, h ▸ Step.step_unwrap hlk, Exp.AEq.refl _⟩
   | step_cond_var_true hlk =>
     cases hae with
@@ -362,10 +369,8 @@ theorem Step.aeq_sim {t : Trace} {m m' : Memory} {e1 e1' e2 : Exp {}}
     | cond _ hae3 => exact ⟨_, Step.step_cond_var_false hlk, hae3⟩
   | step_read h1 h2 =>
     cases hae with | eq h => exact ⟨_, h ▸ Step.step_read h1 h2, Exp.AEq.refl _⟩
-  | step_write_true h1 h2 =>
-    cases hae with | eq h => exact ⟨_, h ▸ Step.step_write_true h1 h2, Exp.AEq.refl _⟩
-  | step_write_false h1 h2 =>
-    cases hae with | eq h => exact ⟨_, h ▸ Step.step_write_false h1 h2, Exp.AEq.refl _⟩
+  | step_write h1 h2 =>
+    cases hae with | eq h => exact ⟨_, h ▸ Step.step_write h1 h2, Exp.AEq.refl _⟩
   | step_alloc h1 h2 =>
     cases hae with | eq h => exact ⟨_, h ▸ Step.step_alloc h1 h2, Exp.AEq.refl _⟩
   | step_drop hx => cases hae with | eq h => exact ⟨_, h ▸ Step.step_drop hx, Exp.AEq.refl _⟩
@@ -680,8 +685,9 @@ theorem RStep.ctx_letin {t : Trace} {m m' : Memory} {e1 e1' : Exp {}} {e2 : Exp 
   | refl => exact RStep.refl
   | step hs => exact RStep.step (Step.step_ctx_letin hs)
 
-theorem RStep.ctx_unpack {t : Trace} {m m' : Memory} {e1 e1' : Exp {}} {e2 : Exp ({},C,x)}
-    (h : RStep t m e1 m' e1') : RStep t m (.unpack e1 e2) m' (.unpack e1' e2) := by
+theorem RStep.ctx_unpack {t : Trace} {m m' : Memory} {e1 e1' : Exp {}}
+    {n : Nat} {e2 : Exp ((Sig.extendCVars {} n),x)}
+    (h : RStep t m e1 m' e1') : RStep t m (.unpack n e1 e2) m' (.unpack n e1' e2) := by
   cases h with
   | refl => exact RStep.refl
   | step hs => exact RStep.step (Step.step_ctx_unpack hs)
@@ -770,14 +776,17 @@ theorem Ty.renameLoc_eq_of_wf {sort s} {T : Ty sort s} {h : Heap} (hwf : T.WfInH
   | wf_cpoly hcb hcs _ ih =>
     simp only [Ty.renameLoc, CaptureBound.renameLoc_eq_of_wf hcb hfix,
       CaptureSet.renameLoc_eq_of_wf hcs hfix, ih hfix]
+  | wf_consumer _ hcs _ ih1 ih2 =>
+    simp only [Ty.renameLoc, ih1 hfix, CaptureSet.renameLoc_eq_of_wf hcs hfix, ih2 hfix]
   | wf_modal hcs hΨ _ ih =>
     simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
       ModalCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
   | wf_unit => rfl
   | wf_cap hcs => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix]
   | wf_bool => rfl
-  | wf_cell hcs => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix]
-  | wf_reader hcs => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix]
+  | wf_cell hcs _ ih => simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix, ih hfix]
+  | wf_reader hcs _ ih =>
+    simp only [Ty.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix, ih hfix]
   | wf_exi _ ih => simp only [Ty.renameLoc, ih hfix]
   | wf_typ _ ih => simp only [Ty.renameLoc, ih hfix]
 
@@ -798,6 +807,9 @@ theorem Exp.renameLoc_eq_of_wf {s} {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_cabs hcs hcb _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
       CaptureBound.renameLoc_eq_of_wf hcb hfix, ih hfix]
+  | wf_consumer hcs hT _ ih =>
+    simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
+      Ty.renameLoc_eq_of_wf hT hfix, ih hfix]
   | wf_boxed hcs hΨ _ ih =>
     simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
       ModalCtx.renameLoc_eq_of_wf hΨ hfix, ih hfix]
@@ -805,8 +817,13 @@ theorem Exp.renameLoc_eq_of_wf {s} {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_alloc hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_drop hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_pack hcs hx =>
-    simp only [Exp.renameLoc, CaptureSet.renameLoc_eq_of_wf hcs hfix,
-      Var.renameLoc_eq_of_wf hx hfix]
+    simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
+    congr 1
+    apply List.Vector.toList_injective
+    simp only [List.Vector.toList_map]
+    exact (List.map_congr_left
+        (fun cs hmem => CaptureSet.renameLoc_eq_of_wf (hcs cs hmem) hfix)).trans
+      (List.map_id _)
   | wf_app hx hy =>
     simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix, Var.renameLoc_eq_of_wf hy hfix]
   | wf_tapp hx hT =>
@@ -814,6 +831,8 @@ theorem Exp.renameLoc_eq_of_wf {s} {e : Exp s} {h : Heap} (hwf : e.WfInHeap h)
   | wf_capp hx hcs =>
     simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix,
       CaptureSet.renameLoc_eq_of_wf hcs hfix]
+  | wf_consumer_app hx _ ih =>
+    simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix, ih hfix]
   | wf_unwrap hx => simp only [Exp.renameLoc, Var.renameLoc_eq_of_wf hx hfix]
   | wf_letin _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1 hfix, ih2 hfix]
   | wf_unpack _ _ ih1 ih2 => simp only [Exp.renameLoc, ih1 hfix, ih2 hfix]
@@ -855,8 +874,21 @@ theorem HeapVal.renameLoc_eq_of_wf {hv : HeapVal} {h : Heap}
   HeapVal.eq_of (Exp.renameLoc_eq_of_wf hwfv hfix)
     (CapabilitySet.renameLoc_eq_of_fix (fun mu l' hm => hfix l' (hreach mu l' hm)))
 
-/-- A swap of two fresh locations leaves a well-formed heap unchanged. -/
-theorem Heap.renameLoc_eq_of_fresh {h : Heap} (hwf : h.WfHeap) {l1 l2 : Nat}
+/-- A capability whose stored (live) location is fixed by `π` is itself fixed. -/
+theorem CapabilityInfo.renameLoc_eq_of_live_fix {info : CapabilityInfo} {π : Equiv.Perm Nat}
+    (hfix : ∀ n, info = .mcell n .live → π n = n) : info.renameLoc π = info := by
+  cases info with
+  | basic => rfl
+  | mcell n ℓ =>
+    cases ℓ with
+    | live => simp only [CapabilityInfo.renameLoc, hfix n rfl]
+    | dead => rfl
+
+/-- A swap of two fresh locations leaves a well-formed heap unchanged.  The content
+    closure (live mcells point at present value locations) is supplied as `hmcell`, so the
+    swap — which fixes every present location — also fixes mcell content pointers. -/
+theorem Heap.renameLoc_eq_of_fresh {h : Heap} (hwf : h.WfHeap)
+    (hmcell : ∀ l n, h l = some (.capability (.mcell n .live)) → h n ≠ none) {l1 l2 : Nat}
     (hf1 : h l1 = none) (hf2 : h l2 = none) :
     h.renameLoc (Equiv.swap l1 l2) = h := by
   have hA : ∀ k, h k ≠ none → Equiv.swap l1 l2 k = k := fun k hk =>
@@ -881,17 +913,27 @@ theorem Heap.renameLoc_eq_of_fresh {h : Heap} (hwf : h.WfHeap) {l1 l2 : Nat}
         simp only [Cell.renameLoc]
         rw [HeapVal.renameLoc_eq_of_wf (hwf.wf_val l' hv hc)
           (fun mu k hm => hwf.wf_reach_dom l' hv.unwrap hv.isVal hv.reachability hc mu k hm) hA]
-      | capability info => rfl
+      | capability info =>
+        simp only [Cell.renameLoc]
+        rw [CapabilityInfo.renameLoc_eq_of_live_fix
+          (fun n hn => hA n (hmcell l' n (by rw [hc, hn])))]
       | masked => rfl
     rw [hA l' (by rw [hc]; simp), hc]
     change some (Cell.renameLoc (Equiv.swap l1 l2) c) = some c
     rw [hcell]
 
+/-- A swap of two fresh locations leaves a memory's heap unchanged (content closure
+    supplied from the memory's `mcell_wf` invariant). -/
+theorem Memory.heap_renameLoc_eq_of_fresh {m : Memory} {l1 l2 : Nat}
+    (hf1 : m.heap l1 = none) (hf2 : m.heap l2 = none) :
+    m.heap.renameLoc (Equiv.swap l1 l2) = m.heap :=
+  Heap.renameLoc_eq_of_fresh m.wf (fun l n hl => m.mcell_wf l n hl) hf1 hf2
+
 /-- A swap of two fresh locations leaves a memory unchanged. -/
 theorem Memory.renameLoc_eq_of_fresh {m : Memory} {l1 l2 : Nat}
     (hf1 : m.heap l1 = none) (hf2 : m.heap l2 = none) :
     m.renameLoc (Equiv.swap l1 l2) = m :=
-  Memory.eq_of_heap (Heap.renameLoc_eq_of_fresh m.wf hf1 hf2)
+  Memory.eq_of_heap (Memory.heap_renameLoc_eq_of_fresh hf1 hf2)
 
 /-- An answer is a normal form for the genuine step relation too. -/
 theorem Step.not_isAns {t : Trace} {m m' : Memory} {a e' : Exp {}}
@@ -969,6 +1011,10 @@ theorem Step.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat
   | step_capply hlk =>
     obtain ⟨ci, hci⟩ := hc
     exact ⟨mb, Step.step_capply ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk), hag, rfl⟩
+  | step_consumer_app hlk =>
+    obtain ⟨ci, hci⟩ := hc
+    exact ⟨mb, Step.step_consumer_app ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk),
+      hag, rfl⟩
   | step_unwrap hlk =>
     obtain ⟨ci, hci⟩ := hc
     exact ⟨mb, Step.step_unwrap ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk), hag, rfl⟩
@@ -988,17 +1034,13 @@ theorem Step.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat
     have hyc : _ ≠ c := fun h => hnt (Or.inl h.symm)
     exact ⟨mb, Step.step_read ((hag _ (Memory.val_ne_cap hci hlkx)) ▸ hlkx)
       ((hag _ hyc) ▸ hlky), hag, rfl⟩
-  | step_write_true hx hy =>
+  | step_write hx hy =>
     obtain ⟨ci, hci⟩ := hc
     have hxc : _ ≠ c := fun h => hnt (Or.inl h.symm)
-    refine ⟨mb.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hx⟩,
-      Step.step_write_true ((hag _ hxc) ▸ hx) ((hag _ (Memory.val_ne_cap hci hy)) ▸ hy),
-      Memory.update_mcell_lookup_agree hag, Memory.update_mcell_lookup_ne (Ne.symm hxc)⟩
-  | step_write_false hx hy =>
-    obtain ⟨ci, hci⟩ := hc
-    have hxc : _ ≠ c := fun h => hnt (Or.inl h.symm)
-    refine ⟨mb.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hx⟩,
-      Step.step_write_false ((hag _ hxc) ▸ hx) ((hag _ (Memory.val_ne_cap hci hy)) ▸ hy),
+    have hyb : mb.heap _ ≠ none := match hwf with
+      | .wf_write _ (.wf_free h) => Option.ne_none_iff_exists'.mpr ⟨_, h⟩
+    refine ⟨mb.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hx⟩ (fun _ => hyb),
+      Step.step_write ((hag _ hxc) ▸ hx) hyb,
       Memory.update_mcell_lookup_agree hag, Memory.update_mcell_lookup_ne (Ne.symm hxc)⟩
   | step_drop hx =>
     obtain ⟨ci, hci⟩ := hc
@@ -1010,8 +1052,10 @@ theorem Step.frame_off {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat
     obtain ⟨ci, hci⟩ := hc
     have hlc := Memory.fresh_ne_cap hfresh hci
     have hfreshb : mb.heap _ = none := (hag _ hlc).symm.trans hfresh
-    refine ⟨mb.extend_mcell _ _ hfreshb,
-      Step.step_alloc ((hag _ (Memory.val_ne_cap hci hlk)) ▸ hlk) hfreshb,
+    have hxb : mb.heap _ ≠ none := match hwf with
+      | .wf_alloc (.wf_free h) => Option.ne_none_iff_exists'.mpr ⟨_, h⟩
+    refine ⟨mb.extend_mcell _ _ hfreshb hxb,
+      Step.step_alloc hxb hfreshb,
       Memory.extend_mcell_lookup_agree hag, ?_⟩
     simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
   | step_rename =>
@@ -1088,6 +1132,13 @@ theorem Step.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {
       have hxc : xx ≠ c := fun h => by
         rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
       exact ⟨mb, Step.step_capply ((hag xx hxc) ▸ hlk), hag, hcb, by simp [Trace.touched]⟩
+  | step_consumer_app hlk =>
+    match hwf with
+    | .wf_consumer_app (.wf_free (n := xx) hx1) _ =>
+      have hxc : xx ≠ c := fun h => by
+        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
+      exact ⟨mb, Step.step_consumer_app ((hag xx hxc) ▸ hlk), hag, hcb,
+        by simp [Trace.touched]⟩
   | step_unwrap hlk =>
     match hwf with
     | .wf_unwrap (.wf_free (n := xx) hx1) =>
@@ -1131,23 +1182,13 @@ theorem Step.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {
           rw [h] at hy1; rw [show mb.heap c = none from hcb] at hy1; cases hy1
         exact ⟨mb, Step.step_read hlkxb ((hag yy hyc) ▸ hlky), hag, hcb,
           by simp only [Trace.touched, or_false]; exact fun h => hyc h.symm⟩
-  | step_write_true hlkx hlky =>
+  | step_write hlkx hlky =>
     cases hwf with
     | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
       have hxc := Memory.present_ne_absent hxb hcb
-      have hyc := Memory.present_ne_absent hyb hcb
-      refine ⟨mb.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_true ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
-        Memory.update_mcell_lookup_agree hag, ?_,
-        by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
-      rw [Memory.update_mcell_lookup_ne (Ne.symm hxc)]; exact hcb
-  | step_write_false hlkx hlky =>
-    cases hwf with
-    | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
-      have hxc := Memory.present_ne_absent hxb hcb
-      have hyc := Memory.present_ne_absent hyb hcb
-      refine ⟨mb.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_false ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
+      have hyb' : mb.heap _ ≠ none := Option.ne_none_iff_exists'.mpr ⟨_, hyb⟩
+      refine ⟨mb.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hlkx⟩ (fun _ => hyb'),
+        Step.step_write ((hag _ hxc) ▸ hlkx) hyb',
         Memory.update_mcell_lookup_agree hag, ?_,
         by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
       rw [Memory.update_mcell_lookup_ne (Ne.symm hxc)]; exact hcb
@@ -1163,9 +1204,10 @@ theorem Step.frame_off_absent {ma mb ma' : Memory} {e e' : Exp {}} {t : Trace} {
     have hlc := Memory.fresh_ne_present hfresh hc
     cases hwf with
     | wf_alloc hwfx => cases hwfx with | wf_free hx1 =>
-      have hxc := Memory.present_ne_absent hx1 hcb
       have hfreshb : mb.heap _ = none := (hag _ hlc).symm.trans hfresh
-      refine ⟨mb.extend_mcell _ _ hfreshb, Step.step_alloc ((hag _ hxc) ▸ hlk) hfreshb,
+      have hxb' : mb.heap _ ≠ none := Option.ne_none_iff_exists'.mpr ⟨_, hx1⟩
+      refine ⟨mb.extend_mcell _ _ hfreshb hxb',
+        Step.step_alloc hxb' hfreshb,
         Memory.extend_mcell_lookup_agree hag, ?_, by simp [Trace.touched]⟩
       simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
       exact hcb
@@ -1236,10 +1278,11 @@ theorem Step.untouched_preserved {t : Trace} {m m' : Memory} {e e' : Exp {}} {c 
     (hstep : Step t m e m' e') (hne : m.lookup c ≠ none) (hnt : ¬ Trace.touched t c) :
     m'.lookup c = m.lookup c := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => rfl
-  | step_write_true hx _ | step_write_false hx _ =>
+  | step_write hx _ =>
     simp only [Trace.touched, or_false] at hnt
     exact Memory.update_mcell_lookup_ne hnt
   | step_drop hx =>
@@ -1285,6 +1328,11 @@ theorem Step.frame_add {m ma m' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat}
     | .wf_capp (.wf_free (n := xx) hx1) _ =>
       have hxc : xx ≠ c := Memory.present_ne_absent hx1 hc
       exact ⟨ma, Step.step_capply ((hag xx hxc) ▸ hlk), hag, rfl⟩
+  | step_consumer_app hlk =>
+    match hwf with
+    | .wf_consumer_app (.wf_free (n := xx) hx1) _ =>
+      have hxc : xx ≠ c := Memory.present_ne_absent hx1 hc
+      exact ⟨ma, Step.step_consumer_app ((hag xx hxc) ▸ hlk), hag, rfl⟩
   | step_unwrap hlk =>
     match hwf with
     | .wf_unwrap (.wf_free (n := xx) hx1) =>
@@ -1317,22 +1365,14 @@ theorem Step.frame_add {m ma m' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat}
       | .wf_reader (.wf_free (n := yy) hy1) =>
         have hyc : yy ≠ c := Memory.present_ne_absent hy1 hc
         exact ⟨ma, Step.step_read hlkxa ((hag yy hyc) ▸ hlky), hag, rfl⟩
-  | step_write_true hlkx hlky =>
+  | step_write hlkx hlky =>
     cases hwf with
     | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
       have hxc := Memory.present_ne_absent hxb hc
       have hyc := Memory.present_ne_absent hyb hc
-      refine ⟨ma.update_mcell _ true .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_true ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
-        Memory.update_mcell_lookup_agree hag, ?_⟩
-      exact Memory.update_mcell_lookup_ne (Ne.symm hxc)
-  | step_write_false hlkx hlky =>
-    cases hwf with
-    | wf_write hwfx hwfy => cases hwfx with | wf_free hxb => cases hwfy with | wf_free hyb =>
-      have hxc := Memory.present_ne_absent hxb hc
-      have hyc := Memory.present_ne_absent hyb hc
-      refine ⟨ma.update_mcell _ false .live ⟨_, (hag _ hxc) ▸ hlkx⟩,
-        Step.step_write_false ((hag _ hxc) ▸ hlkx) ((hag _ hyc) ▸ hlky),
+      have hyb' := Memory.heap_ne_none_of_agree hag hyc (Memory.heap_ne_none_of_lookup hyb)
+      refine ⟨ma.update_mcell _ _ .live ⟨_, (hag _ hxc) ▸ hlkx⟩ (fun _ => hyb'),
+        Step.step_write ((hag _ hxc) ▸ hlkx) hyb',
         Memory.update_mcell_lookup_agree hag, ?_⟩
       exact Memory.update_mcell_lookup_ne (Ne.symm hxc)
   | step_drop hlkx =>
@@ -1342,15 +1382,15 @@ theorem Step.frame_add {m ma m' : Memory} {e e' : Exp {}} {t : Trace} {c : Nat}
       refine ⟨ma.drop_mcell _ ⟨_, (hag _ hxc) ▸ hlkx⟩, Step.step_drop ((hag _ hxc) ▸ hlkx),
         Memory.drop_mcell_lookup_agree hag, ?_⟩
       exact Memory.drop_mcell_lookup_ne (Ne.symm hxc)
-  | @step_alloc l m0 _ b _ _ hlk hfresh =>
-    have hlc : l ≠ c := fun h => by
-      subst h
-      rw [Memory.extend_mcell_lookup hfresh] at hc'; cases hc'
+  | step_alloc hlk hfresh =>
+    have hlc := Memory.present_ne_absent (Memory.extend_mcell_lookup hfresh hlk) hc'
     cases hwf with
     | wf_alloc hwfx => cases hwfx with | wf_free hx1 =>
       have hxc := Memory.present_ne_absent hx1 hc
       have hfresha : ma.heap _ = none := (hag _ hlc).symm.trans hfresh
-      refine ⟨ma.extend_mcell _ _ hfresha, Step.step_alloc ((hag _ hxc) ▸ hlk) hfresha,
+      have hxb' := Memory.heap_ne_none_of_agree hag hxc (Memory.heap_ne_none_of_lookup hx1)
+      refine ⟨ma.extend_mcell _ _ hfresha hxb',
+        Step.step_alloc hxb' hfresha,
         Memory.extend_mcell_lookup_agree hag, ?_⟩
       simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg (Ne.symm hlc)]
   | step_rename =>
@@ -1420,27 +1460,22 @@ theorem Step.delta {t : Trace} {m m' : Memory} {e e' : Exp {}} (hstep : Step t m
     (∃ c, m.lookup c = none ∧ m'.lookup c ≠ none ∧
       ∀ l, l ≠ c → m.lookup l = m'.lookup l) := by
   induction hstep with
-  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_unwrap _
+  | step_apply _ | step_invoke _ _ | step_tapply _ | step_capply _ | step_consumer_app _
+  | step_unwrap _
   | step_cond_var_true _ | step_cond_var_false _ | step_read _ _
   | step_rename | step_unpack | step_par_join _ _ => exact Or.inl rfl
-  | step_write_true hx _ =>
-    refine Or.inr (Or.inl ⟨_, _, .mcell true .live, hx, ?_,
+  | step_write hx _ =>
+    refine Or.inr (Or.inl ⟨_, _, _, hx, Memory.update_mcell_lookup,
       ⟨.access .epsilon, Or.inl ⟨rfl, by simp, rfl⟩, by simp⟩,
       fun l hl => (Memory.update_mcell_lookup_ne hl).symm⟩)
-    simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
-  | step_write_false hx _ =>
-    refine Or.inr (Or.inl ⟨_, _, .mcell false .live, hx, ?_,
-      ⟨.access .epsilon, Or.inl ⟨rfl, by simp, rfl⟩, by simp⟩,
-      fun l hl => (Memory.update_mcell_lookup_ne hl).symm⟩)
-    simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
   | step_drop hx =>
-    refine Or.inr (Or.inl ⟨_, _, .mcell false .dead, hx, ?_,
+    refine Or.inr (Or.inl ⟨_, _, .mcell 0 .dead, hx, ?_,
       ⟨.drop, Or.inl ⟨rfl, by simp, rfl⟩, by simp⟩,
       fun l hl => (Memory.drop_mcell_lookup_ne hl).symm⟩)
     simp only [Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_true]
-  | @step_alloc l m0 _ b _ _ hlk hfresh =>
-    refine Or.inr (Or.inr ⟨l, hfresh, ?_, fun k hk => ?_⟩)
-    · rw [Memory.extend_mcell_lookup hfresh]; simp
+  | step_alloc hlk hfresh =>
+    refine Or.inr (Or.inr ⟨_, hfresh, ?_, fun k hk => ?_⟩)
+    · rw [Memory.extend_mcell_lookup hfresh hlk]; simp
     · simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hk]
   | @step_lift v m0 e0 l hv hwf hfresh =>
     refine Or.inr (Or.inr ⟨l, hfresh, ?_, fun k hk => ?_⟩)
@@ -1564,70 +1599,89 @@ theorem step_step_diamond_noclash {ts1 ts2 : Trace} {m ma mb : Memory} {e1 e1' e
       exact absurd (Step.delta_disjoint h1 h2 hsep hncR ha hb) (fun h => h)
   exact ⟨md1, stepR, hmd ▸ stepL⟩
 
-/-- Lift a genuine left-branch `Step` to a guarded `par` step, discharging the `TraceOk`/
-  `Noninterference` guards from the `Safe.par` carrier (genuine head-expansion variant of
-  `step_par_left_lift`). -/
-theorem step_par_left_lift' {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
-    {e1 e2 e1' : Exp {}}
-    (hsafe : Safe m (.par C1 C2 e1 e2)) (hwf : Exp.WfInHeap (.par C1 C2 e1 e2) m.heap)
-    (hbranch : Step t m e1 m' e1') :
-    Step t m (.par C1 C2 e1 e2) m' (.par (C1.growByAllocs t) C2 e1' e2) := by
-  obtain ⟨hwf_e1, _⟩ := Exp.wf_inv_par hwf
-  cases hsafe with
-  | ans hans => cases hans with | is_val hv => cases hv
-  | par hse_a _ h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
-    have hsafe1' : Safe m' e1' := Step.preserves_safe hbranch hwf_e1 hse_a
-    obtain ⟨s, v, m'', hrun'⟩ := hsafe1'.has_answer
-    obtain ⟨tt, hfull, heq, _⟩ := Step.head_expand_bigstep hbranch hse_a hwf_e1 hrun'
-    have ht : TraceOk t (C1.reachability m) := TraceOk.mono hcov1.1 (TraceOk.prefix
-      (TraceOk.equiv_invariant (hb1 (Memory.subsumes_refl _) hwf_e1 hfull) heq.symm))
-    have hni' : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m) :=
-      (((hni.subset_left hcov1.2).ni_symm).subset_left hcov2.2).ni_symm
-    exact Step.step_par_left hbranch ht hni'
+/-! ### Guard transport for diamond closing legs
 
-/-- Lift a genuine right-branch `Step` to a guarded `par` step (genuine head-expansion variant
-  of `step_par_right_lift`; does not require the left branch to be an answer). -/
-theorem step_par_right_lift' {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
-    {e1 e2 e2' : Exp {}}
-    (hsafe : Safe m (.par C1 C2 e1 e2)) (hwf : Exp.WfInHeap (.par C1 C2 e1 e2) m.heap)
-    (hbranch : Step t m e2 m' e2') :
-    Step t m (.par C1 C2 e1 e2) m' (.par C1 (C2.growByAllocs t) e1 e2') := by
-  obtain ⟨_, hwf_e2⟩ := Exp.wf_inv_par hwf
-  cases hsafe with
-  | ans hans => cases hans with | is_val hv => cases hv
-  | par _ hse_b h2 hb1 hb2 hrs1 hrs2 hpres1 hpres2 hcov1 hcov2 hni =>
-    have hsafe2' : Safe m' e2' := Step.preserves_safe hbranch hwf_e2 hse_b
-    obtain ⟨s, v, m'', hrun'⟩ := hsafe2'.has_answer
-    obtain ⟨tt, hfull, heq, _⟩ := Step.head_expand_bigstep hbranch hse_b hwf_e2 hrun'
-    have ht : TraceOk t (C2.reachability m) := TraceOk.mono hcov2.1 (TraceOk.prefix
-      (TraceOk.equiv_invariant (hb2 (Memory.subsumes_refl _) hwf_e2 hfull) heq.symm))
-    have hni' : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m) :=
-      (((hni.subset_left hcov1.2).ni_symm).subset_left hcov2.2).ni_symm
-    exact Step.step_par_right ht hni' hbranch
+  The old development discharged the `par` guards of the diamond's closing legs
+  from a total `Safe` carrier (run-extension via `has_answer`/`head_expand`) —
+  a device that is unavailable (and dishonest) under the budget-indexed
+  rely–guarantee `Safe.par`.  The carrier-free replacement: the closing legs are
+  (possibly renamed) REPLAYS of the opposite input step, so their guards follow
+  from the input steps' OWN guards, transported across the fresh-location
+  renaming (which fixes the ancestor domain) and the one-step memory growth
+  (reachability is subsumption-invariant for wf annotations). -/
 
-/-- Wrap a zero-or-one left-branch `RStep` into a `par` context, discharging the guards from the
-  carrier (`RStep` analogue of `step_par_left_lift'`). -/
-theorem RStep.par_left_safe {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
+/-- A trace bound at a wf annotation survives the opposite step's memory growth
+  (reachability is subsumption-invariant). -/
+theorem traceok_across {u t : Trace} {m m' : Memory} {C : CaptureSet {}} {e0 e0' : Exp {}}
+    (hstep : Step u m e0 m' e0') (hwfC : C.WfInHeap m.heap)
+    (ht : TraceOk t (C.reachability m)) :
+    TraceOk t (C.reachability m') := by
+  rwa [CaptureSet.reachability_monotonic (Step.subsumes hstep) C hwfC]
+
+/-- A trace bound survives a renaming that fixes the memory's domain: the
+  annotation's reachability sits inside the domain, so the renamed guard set is
+  the guard set itself. -/
+theorem traceok_rename {t : Trace} {m : Memory} {C : CaptureSet {}} {σ : Equiv.Perm Nat}
+    (hσ : ∀ l, m.heap l ≠ none → σ l = l)
+    (ht : TraceOk t (C.reachability m)) :
+    TraceOk (t.renameLoc σ) (C.reachability m) := by
+  have hfix : (C.reachability m).renameLoc σ = C.reachability m :=
+    CapabilitySet.renameLoc_eq_of_fix
+      (fun _ l h => hσ l (CaptureSet.reachability_dom h))
+  have hren := TraceOk.renameLoc ht σ
+  rwa [hfix] at hren
+
+/-- A trace bound at the initial annotation restricts to the annotation grown by
+  a genuine step's allocations, at the post-step memory. -/
+theorem traceok_grow {u t : Trace} {m m' : Memory} {C : CaptureSet {}} {e0 e0' : Exp {}}
+    (hstep : Step u m e0 m' e0') (hwfC : C.WfInHeap m.heap)
+    (ht : TraceOk t (C.reachability m)) :
+    TraceOk t ((C.growByAllocs u).reachability m') :=
+  TraceOk.mono growByAllocs_reachability_ge (traceok_across hstep hwfC ht)
+
+/-- `ni_growByAllocs` specialized to a genuine step: after the stepping branch's
+  annotation grows by the step's allocations, non-interference against the other
+  side persists at the post-step memory. -/
+theorem Step.ni_grow {u : Trace} {m m' : Memory} {CL CR : CaptureSet {}} {e0 e0' : Exp {}}
+    (hstep : Step u m e0 m' e0')
+    (hwfL : CL.WfInHeap m.heap) (hwfR : CR.WfInHeap m.heap)
+    (hni : CapabilitySet.Noninterference (CL.reachability m) (CR.reachability m)) :
+    CapabilitySet.Noninterference
+      ((CL.growByAllocs u).reachability m') (CR.reachability m') :=
+  ni_growByAllocs (Step.subsumes hstep) hwfL hwfR
+    (fun _ hl => Step.allocd_mcell hstep (Trace.mem_allocList.mp hl))
+    (fun _ hl => Step.alloc_fresh hstep (Trace.mem_allocList.mp hl))
+    hni
+
+/-- Wrap a zero-or-one left-branch `RStep` into a `par` context with the guards
+  supplied directly (carrier-free replacement of the old `Safe`-consuming lift). -/
+theorem RStep.par_left_guarded {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
     {e1 e2 e1' : Exp {}}
-    (hsafe : Safe m (.par C1 C2 e1 e2)) (hwf : Exp.WfInHeap (.par C1 C2 e1 e2) m.heap)
+    (ht : TraceOk t (C1.reachability m))
+    (hni : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m))
     (h : RStep t m e1 m' e1') :
     RStep t m (.par C1 C2 e1 e2) m' (.par (C1.growByAllocs t) C2 e1' e2) := by
   cases h with
   | refl => exact RStep.refl
-  | step hs => exact RStep.step (step_par_left_lift' hsafe hwf hs)
+  | step hs => exact RStep.step (Step.step_par_left hs ht hni)
 
-/-- Wrap a zero-or-one right-branch `RStep` into a `par` context (`RStep` analogue of
-  `step_par_right_lift'`). -/
-theorem RStep.par_right_safe {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
+/-- Wrap a zero-or-one right-branch `RStep` into a `par` context with the guards
+  supplied directly. -/
+theorem RStep.par_right_guarded {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
     {e1 e2 e2' : Exp {}}
-    (hsafe : Safe m (.par C1 C2 e1 e2)) (hwf : Exp.WfInHeap (.par C1 C2 e1 e2) m.heap)
+    (ht : TraceOk t (C2.reachability m))
+    (hni : CapabilitySet.Noninterference (C1.reachability m) (C2.reachability m))
     (h : RStep t m e2 m' e2') :
     RStep t m (.par C1 C2 e1 e2) m' (.par C1 (C2.growByAllocs t) e1 e2') := by
   cases h with
   | refl => exact RStep.refl
-  | step hs => exact RStep.step (step_par_right_lift' hsafe hwf hs)
+  | step hs => exact RStep.step (Step.step_par_right ht hni hs)
 
-/-- The shape of `local_diamond`'s conclusion, abstracted so it can be stated once. -/
+/-- The shape of `local_diamond`'s conclusion, abstracted so it can be stated once.
+  The final conjunct records the PROVENANCE of the closing legs — each is either
+  empty or a replay of the opposite input step's trace under a domain-fixing
+  renaming.  This is what lets the `par` congruence cases derive the closing
+  legs' guards from the input steps' own guards, with no `Safe` carrier. -/
 def Diamond (D : Nat → Prop) (ts1 : Trace) (ma : Memory) (ea : Exp {})
     (ts2 : Trace) (mb : Memory) (eb : Exp {}) : Prop :=
   ∃ (w1 w2 : Trace) (d1m d2m : Memory) (d1e d2e : Exp {}) (π : Equiv.Perm Nat),
@@ -1635,7 +1689,10 @@ def Diamond (D : Nat → Prop) (ts1 : Trace) (ma : Memory) (ea : Exp {})
     d2m = d1m.renameLoc π ∧ Exp.AEq d2e (d1e.renameLoc π) ∧
     (∀ l, D l → π l = l) ∧
     Trace.Equiv ((ts1 ++ w1).renameLoc π) (ts2 ++ w2) ∧
-    (∀ l, Trace.allocd ((ts1 ++ w1).renameLoc π) l ↔ Trace.allocd (ts2 ++ w2) l)
+    (∀ l, Trace.allocd ((ts1 ++ w1).renameLoc π) l ↔ Trace.allocd (ts2 ++ w2) l) ∧
+    ((w1 = [] ∧ w2 = []) ∨
+      ∃ σ : Equiv.Perm Nat, w1 = ts2.renameLoc σ ∧ w2 = ts1.renameLoc σ ∧
+        ∀ l, D l → σ l = l)
 
 /-- A deterministic redex: both steps coincide (same memory, expression and trace), so the
   diamond closes in zero steps with `π = id`. -/
@@ -1645,15 +1702,8 @@ theorem Diamond.det {D : Nat → Prop} {ts1 ts2 : Trace} {ma mb : Memory} {ea eb
   exact ⟨[], [], ma, ma, ea, ea, Equiv.refl Nat, RStep.refl, RStep.refl,
     (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl,
     by simp only [List.append_nil, Trace.renameLoc_id]; exact Trace.Equiv.refl _,
-    by simp only [List.append_nil, Trace.renameLoc_id]; exact fun _ => trivial⟩
-
-/-- The right branch of a `Safe` `par` node is safe at the node's memory (unconditionally — the
-  `Safe.par` carrier records both branches' own-memory safety). -/
-theorem Safe.par_inv_right' {m : Memory} {C1 C2 : CaptureSet {}} {e1 e2 : Exp {}}
-    (h : Safe m (.par C1 C2 e1 e2)) : Safe m e2 := by
-  cases h with
-  | par _ hse_b _ _ _ _ _ _ _ _ _ _ => exact hse_b
-  | ans hans' => cases hans' with | is_val hv => cases hv
+    by simp only [List.append_nil, Trace.renameLoc_id]; exact fun _ => trivial,
+    Or.inl ⟨rfl, rfl⟩⟩
 
 /-- A location fresh in BOTH memories exists (their domains are jointly finite). -/
 theorem Memory.exists_fresh_two (ma mb : Memory) :
@@ -1672,60 +1722,70 @@ theorem Memory.exists_fresh_two (ma mb : Memory) :
       Finset.le_sup (f := id) (Finset.mem_union.mpr (Or.inr hmem))
     omega
 
-/-- **Local diamond.**  Two single steps from a common safe, well-formed config reconverge in
+/-- **Local diamond.**  Two single steps from a common well-formed config reconverge in
   at most one step on each side, up to a permutation fixing the ancestor domain `D ⊆ dom(m)`,
   with `Trace.Equiv` combined traces and matching allocation footprint.  Deterministic redexes
   close in zero steps with `π = id`; `alloc`/`lift` and the `par` left/right schedule close up
   to a swap of freshly-chosen locations.  Proven by induction on the first step with the second
-  universally quantified (so the congruence cases recurse). -/
+  universally quantified (so the congruence cases recurse).
+
+  CARRIER-FREE: no `Safe` hypothesis — the separation content that closes the `par`
+  cases is carried by the two input `Step`s' own guards, transported to the closing
+  legs via the `Diamond` provenance conjunct. -/
 theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
     (hst1 : Step ts1 m e ma ea) :
     ∀ {D : Nat → Prop} {ts2 : Trace} {mb : Memory} {eb : Exp {}},
-      (∀ l, D l → m.heap l ≠ none) → Exp.WfInHeap e m.heap → Safe m e →
+      (∀ l, D l → m.heap l ≠ none) → Exp.WfInHeap e m.heap →
       Step ts2 m e mb eb → Diamond D ts1 ma ea ts2 mb eb := by
   induction hst1 with
   | step_apply hlk =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_apply hlk2 =>
       have hu := lookup_val_unwrap_eq hlk hlk2; injection hu with _ _ _ hbody
       exact Diamond.det rfl (by rw [hbody]) rfl
     | step_invoke hlkx2 hlky2 => have := lookup_cell_eq hlk hlkx2; simp at this
   | step_invoke hlkx hlky =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_apply hlk2 => have := lookup_cell_eq hlkx hlk2; simp at this
     | step_invoke hlkx2 hlky2 => exact Diamond.det rfl rfl rfl
   | step_tapply hlk =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_tapply hlk2 =>
       have hu := lookup_val_unwrap_eq hlk hlk2; injection hu with _ _ _ hbody
       exact Diamond.det rfl (by rw [hbody]) rfl
   | step_capply hlk =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_capply hlk2 =>
       have hu := lookup_val_unwrap_eq hlk hlk2; injection hu with _ _ _ hbody
       exact Diamond.det rfl (by rw [hbody]) rfl
+  | step_consumer_app hlk =>
+    intro D ts2 mb eb hD hwf hst2
+    cases hst2 with
+    | step_consumer_app hlk2 =>
+      have hu := lookup_val_unwrap_eq hlk hlk2; injection hu with _ _ _ hbody
+      exact Diamond.det rfl (by rw [hbody]) rfl
   | step_unwrap hlk =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_unwrap hlk2 =>
       have hu := lookup_val_unwrap_eq hlk hlk2; injection hu with _ _ _ hbody
       exact Diamond.det rfl hbody rfl
   | step_cond_var_true hlk =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_cond_var_true hlk2 => exact Diamond.det rfl rfl rfl
     | step_cond_var_false hlk2 => have := lookup_val_unwrap_eq hlk hlk2; simp at this
   | step_cond_var_false hlk =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_cond_var_true hlk2 => have := lookup_val_unwrap_eq hlk hlk2; simp at this
     | step_cond_var_false hlk2 => exact Diamond.det rfl rfl rfl
   | step_read hlkx hlky =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_read hlkx2 hlky2 =>
       have hy := lookup_val_unwrap_eq hlkx hlkx2
@@ -1735,32 +1795,34 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       simp only [Cell.capability.injEq, CapabilityInfo.mcell.injEq, and_true] at hb
       subst hb
       exact Diamond.det rfl rfl rfl
-  | step_write_true hx hy =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+  | step_write hx hy =>
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
-    | step_write_true hx2 hy2 => exact Diamond.det (Memory.eq_of_heap rfl) rfl rfl
-    | step_write_false hx2 hy2 => have := lookup_val_unwrap_eq hy hy2; simp at this
-  | step_write_false hx hy =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    | step_write hx2 hy2 => exact Diamond.det (Memory.eq_of_heap rfl) rfl rfl
+  | @step_alloc l m0 x hlk hfresh =>
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
-    | step_write_true hx2 hy2 => have := lookup_val_unwrap_eq hy hy2; simp at this
-    | step_write_false hx2 hy2 => exact Diamond.det (Memory.eq_of_heap rfl) rfl rfl
-  | @step_alloc l m0 _ b _ _ hlk hfresh =>
-    intro D ts2 mb eb hD hwf hsafe hst2
-    cases hst2 with
-    | @step_alloc l2 _ _ b2 _ _ hlk2 hfresh2 =>
-      have hb : b = b2 := by
-        have hu := lookup_val_unwrap_eq hlk hlk2
-        cases b <;> cases b2 <;> simp_all
-      subst hb
-      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_⟩
+    | @step_alloc l2 _ _ hlk2 hfresh2 =>
+      -- Both steps box the same content var `x` at fresh locations `l`, `l2`.  `x` is
+      -- present, so the swap of the two fresh locations fixes it.
+      have hxl : x ≠ l := Memory.present_ne_fresh hlk hfresh
+      have hxl2 : x ≠ l2 := Memory.present_ne_fresh hlk hfresh2
+      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_,
+        Or.inl ⟨rfl, rfl⟩⟩
       · apply Memory.eq_of_heap
-        change m0.heap.extend_mcell l2 b
-          = (m0.heap.extend_mcell l b).renameLoc (Equiv.swap l l2)
-        rw [Heap.extend_mcell_renameLoc, Heap.renameLoc_eq_of_fresh m0.wf hfresh hfresh2,
-          Equiv.swap_apply_left]
+        change m0.heap.extend_mcell l2 x
+          = (m0.heap.extend_mcell l x).renameLoc (Equiv.swap l l2)
+        rw [Heap.extend_mcell_renameLoc, Memory.heap_renameLoc_eq_of_fresh hfresh hfresh2,
+          Equiv.swap_apply_left, Equiv.swap_apply_of_ne_of_ne hxl hxl2]
       · apply Exp.AEq.of_eq
-        simp only [Exp.renameLoc, CaptureSet.renameLoc, Var.renameLoc, Equiv.swap_apply_left]
+        have hcs : CaptureSet.renameLoc (Equiv.swap l l2)
+            (CaptureSet.var (.M .epsilon) (.free l) : CaptureSet {})
+            = CaptureSet.var (.M .epsilon) (.free l2) := by
+          simp only [CaptureSet.renameLoc, Var.renameLoc, Equiv.swap_apply_left]
+        simp only [Exp.renameLoc, Var.renameLoc, Equiv.swap_apply_left]
+        exact congrArg
+          (fun cs => Exp.pack (⟨[cs], rfl⟩ : List.Vector (CaptureSet {}) 1) (.free l2))
+          hcs.symm
       · exact fun l' hl' => Equiv.swap_apply_of_ne_of_ne
           (fun he => hD l' hl' (by rw [he]; exact hfresh))
           (fun he => hD l' hl' (by rw [he]; exact hfresh2))
@@ -1771,40 +1833,48 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
           TraceItem.renameLoc, Equiv.swap_apply_left]
         exact fun _ => trivial
   | step_drop hx =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_drop hx2 => exact Diamond.det (Memory.eq_of_heap rfl) rfl rfl
   | @step_ctx_letin _ m0 _ _ _ e2 inner ih =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
     cases hst2 with
     | step_ctx_letin inner2 =>
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal⟩ :=
-        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf1 (Safe.letin_inv_left hsafe) inner2
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf1 inner2
       have he2 : e2.renameLoc π = e2 := Exp.renameLoc_eq_of_wf hwf2 hπ
       refine ⟨w1, w2, d1m, d2m, .letin d1e e2, .letin d2e e2, π,
-        RStep.ctx_letin hr1, RStep.ctx_letin hr2, hdm, ?_, fun l hl => hπ l (hD l hl), htr, hal⟩
-      change Exp.AEq (.letin d2e e2) (.letin (d1e.renameLoc π) (e2.renameLoc π))
-      rw [he2]; exact Exp.AEq.letin hde
+        RStep.ctx_letin hr1, RStep.ctx_letin hr2, hdm, ?_, fun l hl => hπ l (hD l hl),
+        htr, hal, ?_⟩
+      · change Exp.AEq (.letin d2e e2) (.letin (d1e.renameLoc π) (e2.renameLoc π))
+        rw [he2]; exact Exp.AEq.letin hde
+      · rcases hprov with h | ⟨σ, h1, h2, h3⟩
+        · exact Or.inl h
+        · exact Or.inr ⟨σ, h1, h2, fun l hl => h3 l (hD l hl)⟩
     | step_rename => cases inner
     | step_lift hv2 _ _ =>
       exact (Step.not_isAns inner (Exp.IsAns.is_val (Exp.isVal_of_isSimpleVal hv2))).elim
-  | @step_ctx_unpack _ m0 _ _ _ e2 inner ih =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+  | @step_ctx_unpack _ m0 _ _ _ n e2 inner ih =>
+    intro D ts2 mb eb hD hwf hst2
     obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     cases hst2 with
     | step_ctx_unpack inner2 =>
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal⟩ :=
-        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf1 (Safe.unpack_inv_left hsafe) inner2
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf1 inner2
       have he2 : e2.renameLoc π = e2 := Exp.renameLoc_eq_of_wf hwf2 hπ
-      refine ⟨w1, w2, d1m, d2m, .unpack d1e e2, .unpack d2e e2, π,
-        RStep.ctx_unpack hr1, RStep.ctx_unpack hr2, hdm, ?_, fun l hl => hπ l (hD l hl), htr, hal⟩
-      change Exp.AEq (.unpack d2e e2) (.unpack (d1e.renameLoc π) (e2.renameLoc π))
-      rw [he2]; exact Exp.AEq.unpack hde
+      refine ⟨w1, w2, d1m, d2m, .unpack n d1e e2, .unpack n d2e e2, π,
+        RStep.ctx_unpack hr1, RStep.ctx_unpack hr2, hdm, ?_, fun l hl => hπ l (hD l hl),
+        htr, hal, ?_⟩
+      · change Exp.AEq (.unpack n d2e e2) (.unpack n (d1e.renameLoc π) (e2.renameLoc π))
+        rw [he2]; exact Exp.AEq.unpack hde
+      · rcases hprov with h | ⟨σ, h1, h2, h3⟩
+        · exact Or.inl h
+        · exact Or.inr ⟨σ, h1, h2, fun l hl => h3 l (hD l hl)⟩
     | step_unpack => cases inner
   | step_par_left inner ht hni ih =>
     rename_i ts1' m0 e1 ma0 e1' e2 C1 C2
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_par hwf
     cases hst2 with
     | step_par_join h1 _ => exact (Step.not_isAns inner h1).elim
@@ -1814,18 +1884,25 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       -- (allocd-set agreement is recorded by the diamond), which `AEq.par` permits.
       have hwf_C1 : C1.WfInHeap m0.heap := by cases hwf with | wf_par h _ _ _ => exact h
       have hwf_C2 : C2.WfInHeap m0.heap := by cases hwf with | wf_par _ h _ _ => exact h
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal⟩ :=
-        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf_e1 (Safe.par_inv_left hsafe) inner2
-      have hsafea : Safe ma0 (.par (C1.growByAllocs ts1') C2 e1' e2) :=
-        Step.preserves_safe (Step.step_par_left inner ht hni) hwf hsafe
-      have hwfa : Exp.WfInHeap (.par (C1.growByAllocs ts1') C2 e1' e2) ma0.heap :=
-        Step.preserves_wf (Step.step_par_left inner ht hni) hwf
-      have hsafeb : Safe mb (.par (C1.growByAllocs ts2) C2 _ e2) :=
-        Step.preserves_safe (Step.step_par_left inner2 ht2 hni2) hwf hsafe
-      have hwfb : Exp.WfInHeap (.par (C1.growByAllocs ts2) C2 _ e2) mb.heap :=
-        Step.preserves_wf (Step.step_par_left inner2 ht2 hni2) hwf
-      have legL1 := RStep.par_left_safe hsafea hwfa hr1
-      have legL2 := RStep.par_left_safe hsafeb hwfb hr2
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf_e1 inner2
+      -- closing legs' guards: replays of the OTHER input step, transported by provenance
+      have hniA : CapabilitySet.Noninterference
+          ((C1.growByAllocs ts1').reachability ma0) (C2.reachability ma0) :=
+        Step.ni_grow inner hwf_C1 hwf_C2 hni
+      have hniB : CapabilitySet.Noninterference
+          ((C1.growByAllocs ts2).reachability mb) (C2.reachability mb) :=
+        Step.ni_grow inner2 hwf_C1 hwf_C2 hni2
+      have htw1 : TraceOk w1 ((C1.growByAllocs ts1').reachability ma0) := by
+        rcases hprov with ⟨h1, _⟩ | ⟨σ, h1, _, hσ⟩ <;> rw [h1]
+        · exact TraceOk.nil
+        · exact traceok_grow inner hwf_C1 (traceok_rename hσ ht2)
+      have htw2 : TraceOk w2 ((C1.growByAllocs ts2).reachability mb) := by
+        rcases hprov with ⟨_, h2⟩ | ⟨σ, _, h2, hσ⟩ <;> rw [h2]
+        · exact TraceOk.nil
+        · exact traceok_grow inner2 hwf_C1 (traceok_rename hσ ht)
+      have legL1 := RStep.par_left_guarded (e2 := e2) htw1 hniA hr1
+      have legL2 := RStep.par_left_guarded (e2 := e2) htw2 hniB hr2
       rw [← CaptureSet.growByAllocs_append] at legL1 legL2
       have he2 : e2.renameLoc π = e2 := Exp.renameLoc_eq_of_wf hwf_e2 hπ
       have hC2 : C2.renameLoc π = C2 := CaptureSet.renameLoc_eq_of_wf hwf_C2 hπ
@@ -1835,10 +1912,13 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       have hC2req : CaptureSet.RReq C2 (C2.renameLoc π) := by
         rw [hC2]; exact CaptureSet.RReq.refl C2
       refine ⟨w1, w2, d1m, d2m, _, _, π, legL1, legL2, hdm, ?_, fun l hl => hπ l (hD l hl),
-        htr, hal⟩
-      refine Exp.AEq.par ?_ hC2req hde (Exp.AEq.of_eq he2.symm)
-      rw [hC1grow]
-      exact CaptureSet.growByAllocs_RReq_of_allocd_iff (fun l => (hal l).symm)
+        htr, hal, ?_⟩
+      · refine Exp.AEq.par ?_ hC2req hde (Exp.AEq.of_eq he2.symm)
+        rw [hC1grow]
+        exact CaptureSet.growByAllocs_RReq_of_allocd_iff (fun l => (hal l).symm)
+      · rcases hprov with h | ⟨σ, h1, h2, h3⟩
+        · exact Or.inl h
+        · exact Or.inr ⟨σ, h1, h2, fun l hl => h3 l (hD l hl)⟩
     | step_par_right ht2 hni2 inner2 =>
       rename_i mb0
       -- CROSS: left vs right; close by stepping the OTHER branch on each side.
@@ -1930,24 +2010,23 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
           have := stepLσ.renameLoc σ
           rw [Memory.renameLoc_comp, hσσ, Memory.renameLoc_id, he1σ] at this
           exact this
-        have hsafea : Safe ma0 (.par (C1.growByAllocs ts1') C2 e1' e2) :=
-          Step.preserves_safe (Step.step_par_left inner ht hni) hwf hsafe
-        have hwfa : Exp.WfInHeap (.par (C1.growByAllocs ts1') C2 e1' e2) ma0.heap :=
-          Step.preserves_wf (Step.step_par_left inner ht hni) hwf
-        have hsafeb : Safe mb (.par C1 (C2.growByAllocs ts2) e1 mb0) :=
-          Step.preserves_safe (Step.step_par_right ht2 hni2 inner2) hwf hsafe
-        have hwfb : Exp.WfInHeap (.par C1 (C2.growByAllocs ts2) e1 mb0) mb.heap :=
-          Step.preserves_wf (Step.step_par_right ht2 hni2 inner2) hwf
         have legR : RStep (ts2.renameLoc σ) ma0 (.par (C1.growByAllocs ts1') C2 e1' e2) md
             (.par (C1.growByAllocs ts1') (C2.growByAllocs (ts2.renameLoc σ)) e1'
               (mb0.renameLoc σ)) :=
-          RStep.par_right_safe hsafea hwfa (RStep.step stepR)
+          RStep.par_right_guarded
+            (traceok_across inner hwf_C2 (traceok_rename hσfix ht2))
+            (Step.ni_grow inner hwf_C1 hwf_C2 hni)
+            (RStep.step stepR)
         have legL : RStep (ts1'.renameLoc σ) mb (.par C1 (C2.growByAllocs ts2) e1 mb0)
             (md.renameLoc σ)
             (.par (C1.growByAllocs (ts1'.renameLoc σ)) (C2.growByAllocs ts2) (e1'.renameLoc σ) mb0)
-            := RStep.par_left_safe hsafeb hwfb (RStep.step stepL)
+            := RStep.par_left_guarded
+            (traceok_across inner2 hwf_C1 (traceok_rename hσfix ht))
+            ((Step.ni_grow inner2 hwf_C2 hwf_C1 hni2.ni_symm).ni_symm)
+            (RStep.step stepL)
         refine ⟨ts2.renameLoc σ, ts1'.renameLoc σ, md, md.renameLoc σ, _, _, σ, legR, legL, rfl, ?_,
-          fun l hl => hσfix l (hD l hl), ?_, ?_⟩
+          fun l hl => hσfix l (hD l hl), ?_, ?_,
+          Or.inr ⟨σ, rfl, rfl, fun l hl => hσfix l (hD l hl)⟩⟩
         · -- `AEq d2e (d1e.renameLoc σ)` holds EXACTLY (σ² = id, C1/C2 fixed)
           apply Exp.AEq.of_eq
           simp only [Exp.renameLoc, CaptureSet.growByAllocs_renameLoc, hC1σ, hC2σ,
@@ -1985,22 +2064,23 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
         obtain ⟨md, stepR, stepL⟩ :=
           step_step_diamond_noclash inner inner2 hsep hwf_e1 hwf_e2 hncR hncL
         -- Path 1: from `ea` step the RIGHT branch; Path 2: from `eb` step the LEFT branch.
-        have hsafea : Safe ma0 (.par (C1.growByAllocs ts1') C2 e1' e2) :=
-          Step.preserves_safe (Step.step_par_left inner ht hni) hwf hsafe
-        have hwfa : Exp.WfInHeap (.par (C1.growByAllocs ts1') C2 e1' e2) ma0.heap :=
-          Step.preserves_wf (Step.step_par_left inner ht hni) hwf
-        have hsafeb : Safe mb (.par C1 (C2.growByAllocs ts2) e1 _) :=
-          Step.preserves_safe (Step.step_par_right ht2 hni2 inner2) hwf hsafe
-        have hwfb : Exp.WfInHeap (.par C1 (C2.growByAllocs ts2) e1 _) mb.heap :=
-          Step.preserves_wf (Step.step_par_right ht2 hni2 inner2) hwf
         have legR : RStep ts2 ma0 (.par (C1.growByAllocs ts1') C2 e1' e2) md
-            (.par (C1.growByAllocs ts1') (C2.growByAllocs ts2) e1' _) :=
-          RStep.par_right_safe hsafea hwfa (RStep.step stepR)
-        have legL : RStep ts1' mb (.par C1 (C2.growByAllocs ts2) e1 _) md
-            (.par (C1.growByAllocs ts1') (C2.growByAllocs ts2) e1' _) :=
-          RStep.par_left_safe hsafeb hwfb (RStep.step stepL)
+            (.par (C1.growByAllocs ts1') (C2.growByAllocs ts2) e1' mb0) :=
+          RStep.par_right_guarded
+            (traceok_across inner hwf_C2 ht2)
+            (Step.ni_grow inner hwf_C1 hwf_C2 hni)
+            (RStep.step stepR)
+        have legL : RStep ts1' mb (.par C1 (C2.growByAllocs ts2) e1 mb0) md
+            (.par (C1.growByAllocs ts1') (C2.growByAllocs ts2) e1' mb0) :=
+          RStep.par_left_guarded
+            (traceok_across inner2 hwf_C1 ht)
+            ((Step.ni_grow inner2 hwf_C2 hwf_C1 hni2.ni_symm).ni_symm)
+            (RStep.step stepL)
         refine ⟨ts2, ts1', md, md, _, _, Equiv.refl Nat, legR, legL,
-          (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl, ?_, ?_⟩
+          (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl,
+          ?_, ?_,
+          Or.inr ⟨Equiv.refl Nat, (Trace.renameLoc_id).symm, (Trace.renameLoc_id).symm,
+            fun _ _ => rfl⟩⟩
         · -- `(ts1' ++ ts2)` ≈ `(ts2 ++ ts1')` (commutation of separated traces)
           rw [Trace.renameLoc_id]
           refine Trace.equiv_comm_of_noninterfere hsep ?_ ?_
@@ -2013,7 +2093,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
   | step_par_right ht hni inner ih =>
     -- Symmetric to `step_par_left` (mirror left↔right): the RIGHT branch steps.
     rename_i ts1' m0 e2 ma0 e2' C1 C2 e1
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_par hwf
     cases hst2 with
     | step_par_join _ h2 => exact (Step.not_isAns inner h2).elim
@@ -2021,18 +2101,25 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       -- SAME side: both step the right branch.
       have hwf_C1 : C1.WfInHeap m0.heap := by cases hwf with | wf_par h _ _ _ => exact h
       have hwf_C2 : C2.WfInHeap m0.heap := by cases hwf with | wf_par _ h _ _ => exact h
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal⟩ :=
-        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf_e2 (Safe.par_inv_right' hsafe) inner2
-      have hsafea : Safe ma0 (.par C1 (C2.growByAllocs ts1') e1 e2') :=
-        Step.preserves_safe (Step.step_par_right ht hni inner) hwf hsafe
-      have hwfa : Exp.WfInHeap (.par C1 (C2.growByAllocs ts1') e1 e2') ma0.heap :=
-        Step.preserves_wf (Step.step_par_right ht hni inner) hwf
-      have hsafeb : Safe mb (.par C1 (C2.growByAllocs ts2) e1 _) :=
-        Step.preserves_safe (Step.step_par_right ht2 hni2 inner2) hwf hsafe
-      have hwfb : Exp.WfInHeap (.par C1 (C2.growByAllocs ts2) e1 _) mb.heap :=
-        Step.preserves_wf (Step.step_par_right ht2 hni2 inner2) hwf
-      have legR1 := RStep.par_right_safe hsafea hwfa hr1
-      have legR2 := RStep.par_right_safe hsafeb hwfb hr2
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+        ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf_e2 inner2
+      -- closing legs' guards: replays of the OTHER input step, transported by provenance
+      have hniA : CapabilitySet.Noninterference
+          (C1.reachability ma0) ((C2.growByAllocs ts1').reachability ma0) :=
+        (Step.ni_grow inner hwf_C2 hwf_C1 hni.ni_symm).ni_symm
+      have hniB : CapabilitySet.Noninterference
+          (C1.reachability mb) ((C2.growByAllocs ts2).reachability mb) :=
+        (Step.ni_grow inner2 hwf_C2 hwf_C1 hni2.ni_symm).ni_symm
+      have htw1 : TraceOk w1 ((C2.growByAllocs ts1').reachability ma0) := by
+        rcases hprov with ⟨h1, _⟩ | ⟨σ, h1, _, hσ⟩ <;> rw [h1]
+        · exact TraceOk.nil
+        · exact traceok_grow inner hwf_C2 (traceok_rename hσ ht2)
+      have htw2 : TraceOk w2 ((C2.growByAllocs ts2).reachability mb) := by
+        rcases hprov with ⟨_, h2⟩ | ⟨σ, _, h2, hσ⟩ <;> rw [h2]
+        · exact TraceOk.nil
+        · exact traceok_grow inner2 hwf_C2 (traceok_rename hσ ht)
+      have legR1 := RStep.par_right_guarded (e1 := e1) htw1 hniA hr1
+      have legR2 := RStep.par_right_guarded (e1 := e1) htw2 hniB hr2
       rw [← CaptureSet.growByAllocs_append] at legR1 legR2
       have he1 : e1.renameLoc π = e1 := Exp.renameLoc_eq_of_wf hwf_e1 hπ
       have hC1 : C1.renameLoc π = C1 := CaptureSet.renameLoc_eq_of_wf hwf_C1 hπ
@@ -2042,10 +2129,13 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       have hC1req : CaptureSet.RReq C1 (C1.renameLoc π) := by
         rw [hC1]; exact CaptureSet.RReq.refl C1
       refine ⟨w1, w2, d1m, d2m, _, _, π, legR1, legR2, hdm, ?_, fun l hl => hπ l (hD l hl),
-        htr, hal⟩
-      refine Exp.AEq.par hC1req ?_ (Exp.AEq.of_eq he1.symm) hde
-      rw [hC2grow]
-      exact CaptureSet.growByAllocs_RReq_of_allocd_iff (fun l => (hal l).symm)
+        htr, hal, ?_⟩
+      · refine Exp.AEq.par hC1req ?_ (Exp.AEq.of_eq he1.symm) hde
+        rw [hC2grow]
+        exact CaptureSet.growByAllocs_RReq_of_allocd_iff (fun l => (hal l).symm)
+      · rcases hprov with h | ⟨σ, h1, h2, h3⟩
+        · exact Or.inl h
+        · exact Or.inr ⟨σ, h1, h2, fun l hl => h3 l (hD l hl)⟩
     | step_par_left inner2 ht2 hni2 =>
       rename_i mb0
       -- CROSS: right vs left; close by stepping the OTHER branch on each side.
@@ -2130,24 +2220,23 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
           have := stepLσ.renameLoc σ
           rw [Memory.renameLoc_comp, hσσ, Memory.renameLoc_id, he2σ] at this
           exact this
-        have hsafea : Safe ma0 (.par C1 (C2.growByAllocs ts1') e1 e2') :=
-          Step.preserves_safe (Step.step_par_right ht hni inner) hwf hsafe
-        have hwfa : Exp.WfInHeap (.par C1 (C2.growByAllocs ts1') e1 e2') ma0.heap :=
-          Step.preserves_wf (Step.step_par_right ht hni inner) hwf
-        have hsafeb : Safe mb (.par (C1.growByAllocs ts2) C2 mb0 e2) :=
-          Step.preserves_safe (Step.step_par_left inner2 ht2 hni2) hwf hsafe
-        have hwfb : Exp.WfInHeap (.par (C1.growByAllocs ts2) C2 mb0 e2) mb.heap :=
-          Step.preserves_wf (Step.step_par_left inner2 ht2 hni2) hwf
         have legR : RStep (ts2.renameLoc σ) ma0 (.par C1 (C2.growByAllocs ts1') e1 e2') md
             (.par (C1.growByAllocs (ts2.renameLoc σ)) (C2.growByAllocs ts1') (mb0.renameLoc σ)
               e2') :=
-          RStep.par_left_safe hsafea hwfa (RStep.step stepR)
+          RStep.par_left_guarded
+            (traceok_across inner hwf_C1 (traceok_rename hσfix ht2))
+            ((Step.ni_grow inner hwf_C2 hwf_C1 hni.ni_symm).ni_symm)
+            (RStep.step stepR)
         have legL : RStep (ts1'.renameLoc σ) mb (.par (C1.growByAllocs ts2) C2 mb0 e2)
             (md.renameLoc σ)
             (.par (C1.growByAllocs ts2) (C2.growByAllocs (ts1'.renameLoc σ)) mb0 (e2'.renameLoc σ))
-            := RStep.par_right_safe hsafeb hwfb (RStep.step stepL)
+            := RStep.par_right_guarded
+            (traceok_across inner2 hwf_C2 (traceok_rename hσfix ht))
+            (Step.ni_grow inner2 hwf_C1 hwf_C2 hni2)
+            (RStep.step stepL)
         refine ⟨ts2.renameLoc σ, ts1'.renameLoc σ, md, md.renameLoc σ, _, _, σ, legR, legL, rfl, ?_,
-          fun l hl => hσfix l (hD l hl), ?_, ?_⟩
+          fun l hl => hσfix l (hD l hl), ?_, ?_,
+          Or.inr ⟨σ, rfl, rfl, fun l hl => hσfix l (hD l hl)⟩⟩
         · apply Exp.AEq.of_eq
           simp only [Exp.renameLoc, CaptureSet.growByAllocs_renameLoc, hC1σ, hC2σ,
             Trace.renameLoc_comp, hσσ, Trace.renameLoc_id, Exp.renameLoc_comp, Exp.renameLoc_id]
@@ -2180,22 +2269,23 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
           fun c h1 h2 => by by_contra h3; exact h2 (hclash c h1 (h3))
         obtain ⟨md, stepR, stepL⟩ :=
           step_step_diamond_noclash inner inner2 hsep hwf_e2 hwf_e1 hncR hncL
-        have hsafea : Safe ma0 (.par C1 (C2.growByAllocs ts1') e1 e2') :=
-          Step.preserves_safe (Step.step_par_right ht hni inner) hwf hsafe
-        have hwfa : Exp.WfInHeap (.par C1 (C2.growByAllocs ts1') e1 e2') ma0.heap :=
-          Step.preserves_wf (Step.step_par_right ht hni inner) hwf
-        have hsafeb : Safe mb (.par (C1.growByAllocs ts2) C2 _ e2) :=
-          Step.preserves_safe (Step.step_par_left inner2 ht2 hni2) hwf hsafe
-        have hwfb : Exp.WfInHeap (.par (C1.growByAllocs ts2) C2 _ e2) mb.heap :=
-          Step.preserves_wf (Step.step_par_left inner2 ht2 hni2) hwf
         have legR : RStep ts2 ma0 (.par C1 (C2.growByAllocs ts1') e1 e2') md
-            (.par (C1.growByAllocs ts2) (C2.growByAllocs ts1') _ e2') :=
-          RStep.par_left_safe hsafea hwfa (RStep.step stepR)
-        have legL : RStep ts1' mb (.par (C1.growByAllocs ts2) C2 _ e2) md
-            (.par (C1.growByAllocs ts2) (C2.growByAllocs ts1') _ e2') :=
-          RStep.par_right_safe hsafeb hwfb (RStep.step stepL)
+            (.par (C1.growByAllocs ts2) (C2.growByAllocs ts1') mb0 e2') :=
+          RStep.par_left_guarded
+            (traceok_across inner hwf_C1 ht2)
+            ((Step.ni_grow inner hwf_C2 hwf_C1 hni.ni_symm).ni_symm)
+            (RStep.step stepR)
+        have legL : RStep ts1' mb (.par (C1.growByAllocs ts2) C2 mb0 e2) md
+            (.par (C1.growByAllocs ts2) (C2.growByAllocs ts1') mb0 e2') :=
+          RStep.par_right_guarded
+            (traceok_across inner2 hwf_C2 ht)
+            (Step.ni_grow inner2 hwf_C1 hwf_C2 hni2)
+            (RStep.step stepL)
         refine ⟨ts2, ts1', md, md, _, _, Equiv.refl Nat, legR, legL,
-          (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl, ?_, ?_⟩
+          (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl,
+          ?_, ?_,
+          Or.inr ⟨Equiv.refl Nat, (Trace.renameLoc_id).symm, (Trace.renameLoc_id).symm,
+            fun _ _ => rfl⟩⟩
         · rw [Trace.renameLoc_id]
           refine Trace.equiv_comm_of_noninterfere hsep ?_ ?_
           · intro l hl
@@ -2205,38 +2295,39 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
         · intro l
           rw [Trace.renameLoc_id, Trace.allocd_append, Trace.allocd_append]; exact or_comm
   | step_par_join h1 h2 =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_par_left inner _ _ => exact (Step.not_isAns inner h1).elim
     | step_par_right _ _ inner => exact (Step.not_isAns inner h2).elim
     | step_par_join h1' h2' => exact Diamond.det rfl rfl rfl
   | step_rename =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_ctx_letin inner => cases inner
     | step_rename => exact Diamond.det rfl rfl rfl
     | step_lift hv2 _ _ => cases hv2
   | @step_lift v m0 e l hv hwf_v hfresh =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     obtain ⟨_, hwf_e⟩ := Exp.wf_inv_letin hwf
     cases hst2 with
     | @step_lift _ _ _ l2 hv2 hwf_v2 hfresh2 =>
       have hAfix : ∀ l', m0.heap l' ≠ none → Equiv.swap l l2 l' = l' := fun l' hl' =>
         Equiv.swap_apply_of_ne_of_ne (fun he => hl' (by rw [he]; exact hfresh))
           (fun he => hl' (by rw [he]; exact hfresh2))
-      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_⟩
+      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_,
+        Or.inl ⟨rfl, rfl⟩⟩
       · apply Memory.eq_of_heap
         change m0.heap.extend l2 ⟨v, hv2, compute_reachability m0.heap v hv2⟩
           = (m0.heap.extend l ⟨v, hv, compute_reachability m0.heap v hv⟩).renameLoc
               (Equiv.swap l l2)
-        rw [Heap.extend_renameLoc, Heap.renameLoc_eq_of_fresh m0.wf hfresh hfresh2,
+        rw [Heap.extend_renameLoc, Memory.heap_renameLoc_eq_of_fresh hfresh hfresh2,
           Equiv.swap_apply_left]
         congr 1
         apply HeapVal.eq_of
         · exact (Exp.renameLoc_eq_of_wf hwf_v hAfix).symm
         · change compute_reachability m0.heap v hv2
             = (compute_reachability m0.heap v hv).renameLoc (Equiv.swap l l2)
-          rw [← compute_reachability_renameLoc, Heap.renameLoc_eq_of_fresh m0.wf hfresh hfresh2]
+          rw [← compute_reachability_renameLoc, Memory.heap_renameLoc_eq_of_fresh hfresh hfresh2]
           simp only [Exp.renameLoc_eq_of_wf hwf_v hAfix]
       · apply Exp.AEq.of_eq
         rw [Exp.openVar_renameLoc, Exp.renameLoc_eq_of_wf hwf_e hAfix, Equiv.swap_apply_left]
@@ -2249,34 +2340,33 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       exact (Step.not_isAns inner (Exp.IsAns.is_val (Exp.isVal_of_isSimpleVal hv))).elim
     | step_rename => cases hv
   | step_unpack =>
-    intro D ts2 mb eb hD hwf hsafe hst2
+    intro D ts2 mb eb hD hwf hst2
     cases hst2 with
     | step_ctx_unpack inner => cases inner
     | step_unpack => exact Diamond.det rfl rfl rfl
 
-/-- **Strip lemma (semi-confluence).**  A single step and a run from the same safe config
-  reconverge.  Proven by induction on the run, closing each prefix tile with `local_diamond`
-  and recursing with the IH on the run's tail.  `D` and the first-path data are universally
-  quantified so the IH applies to a fresh step out of the run's interior. -/
+/-- **Strip lemma (semi-confluence).**  A single step and a run from the same well-formed
+  config reconverge.  Proven by induction on the run, closing each prefix tile with
+  `local_diamond` and recursing with the IH on the run's tail.  `D` and the first-path data
+  are universally quantified so the IH applies to a fresh step out of the run's interior. -/
 theorem strip {m mc : Memory} {e ec : Exp {}} {t2 : Trace}
     (hr2 : Reduce t2 m e mc ec) :
     ∀ {D : Nat → Prop} {ts : Trace} {m' : Memory} {e' : Exp {}},
-      (∀ l, D l → m.heap l ≠ none) → Exp.WfInHeap e m.heap → Safe m e →
+      (∀ l, D l → m.heap l ≠ none) → Exp.WfInHeap e m.heap →
       Step ts m e m' e' → Recon D ts m' e' t2 mc ec := by
   induction hr2 with
   | refl =>
-    intro D ts m' e' _ _ _ h1
+    intro D ts m' e' _ _ h1
     refine ⟨[], ts, m', m', e', e', Equiv.refl Nat, Reduce.refl, ?_,
       (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun l _ => rfl, ?_, ?_⟩
     · have h := Reduce.step h1 Reduce.refl; rwa [List.append_nil] at h
     · simp only [List.append_nil, List.nil_append, Trace.renameLoc_id]; exact Trace.Equiv.refl _
     · simp only [List.append_nil, List.nil_append, Trace.renameLoc_id]; exact fun _ => trivial
   | @step tk m1 e1 mk ek tr mfin efin k1 krest ih =>
-    intro D ts m' e' hD hwf hsafe h1
-    obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π0, hrs1, hrs2, hd2m, hd2e, hπ0D, hLDtr, hLDal⟩ :=
-      local_diamond h1 hD hwf hsafe k1
+    intro D ts m' e' hD hwf h1
+    obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π0, hrs1, hrs2, hd2m, hd2e, hπ0D, hLDtr, hLDal, _⟩ :=
+      local_diamond h1 hD hwf k1
     have hwfk : Exp.WfInHeap ek mk.heap := Step.preserves_wf k1 hwf
-    have hsafek : Safe mk ek := Step.preserves_safe k1 hwf hsafe
     cases hrs2 with
     | refl =>
       have hmk : mk.renameLoc π0.symm = d1m := by rw [hd2m, Memory.renameLoc_self_symm]
@@ -2304,7 +2394,7 @@ theorem strip {m mc : Memory} {e ec : Exp {}} {t2 : Trace}
       · rw [eqL, List.append_nil]; exact Trace.allocd_cong_right hLDal
     | step hk2 =>
       obtain ⟨u1, u2, g1m, g2m, g1e, g2e, π1, hu1, hu2, hg2m, hg2e, hπ1D, hIHtr, hIHal⟩ :=
-        ih (D := fun l => mk.heap l ≠ none) (fun _ h => h) hwfk hsafek hk2
+        ih (D := fun l => mk.heap l ≠ none) (fun _ h => h) hwfk hk2
       have hd1m : d2m.renameLoc π0.symm = d1m := by rw [hd2m, Memory.renameLoc_self_symm]
       have had2e : Exp.AEq (d2e.renameLoc π0.symm) d1e := by
         have := hd2e.renameLoc π0.symm
@@ -2354,23 +2444,22 @@ theorem strip {m mc : Memory} {e ec : Exp {}} {t2 : Trace}
 theorem confluence_aux {m m1 : Memory} {e e1 : Exp {}} {t1 : Trace}
     (hr1 : Reduce t1 m e m1 e1) :
     ∀ {D : Nat → Prop} {t2 : Trace} {m2 : Memory} {e2 : Exp {}},
-      (∀ l, D l → m.heap l ≠ none) → Exp.WfInHeap e m.heap → Safe m e →
+      (∀ l, D l → m.heap l ≠ none) → Exp.WfInHeap e m.heap →
       Reduce t2 m e m2 e2 → Recon D t1 m1 e1 t2 m2 e2 := by
   induction hr1 with
   | refl =>
-    intro D t2 m2 e2 _ _ _ hr2
+    intro D t2 m2 e2 _ _ hr2
     refine ⟨t2, [], m2, m2, e2, e2, Equiv.refl Nat, hr2, Reduce.refl,
       (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl, ?_, ?_⟩
     · simp only [List.nil_append, List.append_nil, Trace.renameLoc_id]; exact Trace.Equiv.refl _
     · simp only [List.nil_append, List.append_nil, Trace.renameLoc_id]; exact fun _ => trivial
   | @step ts ma ea mk ek trest m1fin e1fin h1 hrest ih =>
-    intro D t2 m2 e2 hD hwf hsafe hr2
+    intro D t2 m2 e2 hD hwf hr2
     obtain ⟨a1, a2, p1m, p2m, p1e, p2e, ρ, ha1, ha2, hp2m, hp2e, hρD, hStrTr, hStrAl⟩ :=
-      strip hr2 hD hwf hsafe h1
+      strip hr2 hD hwf h1
     have hwfk : Exp.WfInHeap ek mk.heap := Step.preserves_wf h1 hwf
-    have hsafek : Safe mk ek := Step.preserves_safe h1 hwf hsafe
     obtain ⟨b1, b2, q1m, q2m, q1e, q2e, σ, hb1, hb2, hq2m, hq2e, hσD, hIHTr, hIHAl⟩ :=
-      ih (D := fun l => mk.heap l ≠ none) (fun _ h => h) hwfk hsafek ha1
+      ih (D := fun l => mk.heap l ≠ none) (fun _ h => h) hwfk ha1
     have hb2r := Reduce.renameLoc hb2 ρ
     rw [← hp2m] at hb2r
     -- transport `b2`-run (renamed by ρ) across `AEq (p1e.renameLoc ρ) p2e`
@@ -2407,13 +2496,16 @@ theorem confluence_aux {m m1 : Memory} {e e1 : Exp {}} {t1 : Trace}
       exact Trace.allocd_cong_renameLoc (Trace.allocd_cong_left hIHAl) ρ
 
 /-- **Confluence (Church–Rosser) up to `Trace.Equiv`, a location renaming, and annotation
-  equivalence.**  From a safe, well-formed configuration `(m, e)`, any two interleaving reductions
+  equivalence.**  From a well-formed configuration `(m, e)`, any two interleaving reductions
   `Reduce t1 m e m1 e1` and `Reduce t2 m e m2 e2` have continuations `s1`, `s2` to a common reduct
   that agrees up to a single location renaming `π` on the memory exactly and on the expression up to
   `Exp.AEq` (reachability-equivalence of the order-sensitive `par` annotations), and whose combined
-  external traces agree (Mazurkiewicz `Trace.Equiv`) after renaming by `π`. -/
+  external traces agree (Mazurkiewicz `Trace.Equiv`) after renaming by `π`.
+
+  CARRIER-FREE: no `Safe` hypothesis — the separation content that commutes independent
+  `par` steps is carried by the interleaving `Step`'s own guards. -/
 theorem confluence {m m1 m2 : Memory} {e e1 e2 : Exp {}} {t1 t2 : Trace}
-    (hwf : Exp.WfInHeap e m.heap) (hsafe : Safe m e)
+    (hwf : Exp.WfInHeap e m.heap)
     (hr1 : Reduce t1 m e m1 e1) (hr2 : Reduce t2 m e m2 e2) :
     ∃ (s1 s2 : Trace) (mf1 mf2 : Memory) (ef1 ef2 : Exp {}) (π : Equiv.Perm Nat),
       Reduce s1 m1 e1 mf1 ef1 ∧
@@ -2422,7 +2514,7 @@ theorem confluence {m m1 m2 : Memory} {e e1 e2 : Exp {}} {t1 t2 : Trace}
       Exp.AEq ef2 (ef1.renameLoc π) ∧
       Trace.Equiv ((t1 ++ s1).renameLoc π) (t2 ++ s2) := by
   obtain ⟨s1, s2, mf1, mf2, ef1, ef2, π, hp1, hp2, hm, he, _, htr, _⟩ :=
-    confluence_aux hr1 (D := fun l => m.heap l ≠ none) (fun _ h => h) hwf hsafe hr2
+    confluence_aux hr1 (D := fun l => m.heap l ≠ none) (fun _ h => h) hwf hr2
   exact ⟨s1, s2, mf1, mf2, ef1, ef2, π, hp1, hp2, hm, he, htr⟩
 
 end CoreCapybara

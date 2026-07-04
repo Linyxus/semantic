@@ -48,9 +48,11 @@ For the parallel (`par`) fragment, `Semantic.CoreCapybara.Semantics.Standardizat
 standardization (every interleaving run to an answer matches a sequential one up to Mazurkiewicz
 trace-equivalence), and `Semantic.CoreCapybara.Semantics.Confluence` (on the nominal/equivariance
 layer `Semantic.CoreCapybara.Semantics.Equivariance`) proves confluence / Church–Rosser for
-arbitrary partial reductions: any two interleavings of a safe program reconverge up to a location
-permutation, `Trace.Equiv`, and reachability-equivalence of `par` capture annotations — the
-semantic content of data-race freedom.
+arbitrary partial reductions: any two interleavings of a well-formed program reconverge up to a
+location permutation, `Trace.Equiv`, and reachability-equivalence of `par` capture annotations —
+the semantic content of data-race freedom.  Both theorems are CARRIER-FREE: they need no `Safe`
+hypothesis, because the separation content that commutes independent steps is carried by the
+interleaving `Step`'s own `par` guards.
 
 The legacy surface language (System Capybara) and its type-directed compiler
 are FROZEN as of 2026-07-04 (fresh-start ruling): they remain in-tree,
