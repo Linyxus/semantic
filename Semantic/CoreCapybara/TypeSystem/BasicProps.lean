@@ -69,6 +69,16 @@ theorem CaptureSet.rename_closed {cs : CaptureSet s1} {f : Rename s1 s2} :
   case cvar => exact IsClosed.cvar
   case var_bound => exact IsClosed.var_bound
 
+/-- The `n` fresh capture-variable atoms of an `n`-ary existential are closed:
+they are all bound `.cvar` atoms. Used to establish the manufactured lock's
+well-formedness in the `unpack_own` semantic case. -/
+theorem CaptureSet.freshCVars_isClosed {s : Sig} (n : Nat) :
+    (CaptureSet.freshCVars (s := s) n).IsClosed := by
+  induction n with
+  | zero => exact CaptureSet.IsClosed.empty
+  | succ n ih =>
+    exact CaptureSet.IsClosed.union CaptureSet.IsClosed.cvar (CaptureSet.rename_closed ih)
+
 /-- If a renamed capture set is closed, the original is also closed. -/
 theorem CaptureSet.rename_closed_inv {cs : CaptureSet s1} {f : Rename s1 s2} :
     (cs.rename f).IsClosed -> cs.IsClosed := by
@@ -341,6 +351,16 @@ theorem HasType.use_set_is_closed
       | union hC2 _ =>
         exact CaptureSet.IsClosed.union ih1
           (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv hC2))
+  | unpack_own _ _ _ _ ih1 ih2 =>
+    -- Same as `unpack`, but the `C2` summand of the continuation budget carries
+    -- one extra `.lock`-succ rename layer, so peel THREE renames off `hC2`.
+    cases ih2 with
+    | union hleft _ =>
+      cases hleft with
+      | union hC2 _ =>
+        exact CaptureSet.IsClosed.union ih1
+          (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv
+            (CaptureSet.rename_closed_inv hC2)))
   | unit => exact CaptureSet.IsClosed.empty
   | btrue => exact CaptureSet.IsClosed.empty
   | bfalse => exact CaptureSet.IsClosed.empty
@@ -464,6 +484,14 @@ theorem HasType.exp_is_closed
     constructor
     · cases ih_x; assumption
     · cases ih_y; assumption
+  case unpack_own =>
+    -- The continuation IH is over `u.rename ((Rename.succ (k := .lock)).lift)`
+    -- (the manufactured-lock slot), so peel that weakening back off before
+    -- concluding closedness of the bare `u` under `Exp.IsClosed.unpack`.
+    apply Exp.IsClosed.unpack
+    · assumption
+    · apply Exp.rename_closed_inv
+      assumption
 
 theorem HasType.type_is_closed
   (ht : HasType C Γ e E) :
@@ -534,6 +562,9 @@ theorem HasType.type_is_closed
     exact Ty.rename_closed_inv ih2
   case unpack ih1 ih2 =>
     exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
+  case unpack_own ih1 ih2 =>
+    -- Result type carries one extra `.lock`-succ rename layer over `unpack`.
+    exact Ty.rename_closed_inv (Ty.rename_closed_inv (Ty.rename_closed_inv ih2))
   case alloc ih =>
     cases ih with | typ hT =>
     exact Ty.IsClosed.exi (Ty.IsClosed.cell CaptureSet.IsClosed.cvar (Ty.rename_closed hT))

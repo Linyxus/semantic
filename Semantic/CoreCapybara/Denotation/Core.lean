@@ -1678,6 +1678,27 @@ theorem Subst.from_TypeEnv_weaken_unpack {s : Sig} {ρ : TypeEnv s}
       exact congrArg (fun σ => Subst.cvar σ c1)
         (Subst.from_TypeEnv_weaken_openCVars (m := m) (a := a))
 
+/-- Lock-slot analogue of `Subst.from_TypeEnv_weaken_unpack`: absorbing the
+`.lock`-succ weakening (inserted between the witness binders and the term binder
+by `unpack_own`) into `from_TypeEnv`.  Since `from_TypeEnv` discards peaksets,
+the target var peakset is arbitrary. -/
+theorem Subst.from_TypeEnv_lweaken_unpack {s : Sig} {E : TypeEnv s} {x : Nat}
+    {ps : PeakSet (s,,.lock)} {ps0 : PeakSet s} :
+    ((Rename.succ (k := .lock)).lift).asSubst.comp
+        (Subst.from_TypeEnv ((E.extend_lock).extend_var x ps)) =
+      Subst.from_TypeEnv (E.extend_var x ps0) := by
+  apply Subst.funext
+  · intro y
+    cases y with
+    | here => rfl
+    | there y0 => rfl
+  · intro X
+    cases X with
+    | there X0 => rfl
+  · intro C
+    cases C with
+    | there C0 => rfl
+
 /-- All type variable denotations in the environment imply well-formedness. -/
 def TypeEnv.is_implying_wf (env : TypeEnv s) : Prop :=
   ∀ (X : BVar s .tvar),
