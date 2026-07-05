@@ -71,7 +71,7 @@ theorem CaptureSet.rename_closed {cs : CaptureSet s1} {f : Rename s1 s2} :
 
 /-- The `n` fresh capture-variable atoms of an `n`-ary existential are closed:
 they are all bound `.cvar` atoms. Used to establish the manufactured lock's
-well-formedness in the `unpack_own` semantic case. -/
+well-formedness in the `unpack` semantic case. -/
 theorem CaptureSet.freshCVars_isClosed {s : Sig} (n : Nat) :
     (CaptureSet.freshCVars (s := s) n).IsClosed := by
   induction n with
@@ -345,15 +345,8 @@ theorem HasType.use_set_is_closed
   | letin _ _ _ ih1 ih2 =>
     exact CaptureSet.IsClosed.union ih1 (CaptureSet.rename_closed_inv ih2)
   | unpack _ _ _ _ ih1 ih2 =>
-    cases ih2 with
-    | union hleft _ =>
-      cases hleft with
-      | union hC2 _ =>
-        exact CaptureSet.IsClosed.union ih1
-          (CaptureSet.rename_closed_inv (CaptureSet.rename_closed_inv hC2))
-  | unpack_own _ _ _ _ ih1 ih2 =>
-    -- Same as `unpack`, but the `C2` summand of the continuation budget carries
-    -- one extra `.lock`-succ rename layer, so peel THREE renames off `hC2`.
+    -- The `C2` summand of the continuation budget carries three rename layers
+    -- (weakenCVars, `.lock`-succ, succ), so peel THREE renames off `hC2`.
     cases ih2 with
     | union hleft _ =>
       cases hleft with
@@ -484,7 +477,7 @@ theorem HasType.exp_is_closed
     constructor
     · cases ih_x; assumption
     · cases ih_y; assumption
-  case unpack_own =>
+  case unpack =>
     -- The continuation IH is over `u.rename ((Rename.succ (k := .lock)).lift)`
     -- (the manufactured-lock slot), so peel that weakening back off before
     -- concluding closedness of the bare `u` under `Exp.IsClosed.unpack`.
@@ -561,9 +554,7 @@ theorem HasType.type_is_closed
   case letin ih1 ih2 =>
     exact Ty.rename_closed_inv ih2
   case unpack ih1 ih2 =>
-    exact Ty.rename_closed_inv (Ty.rename_closed_inv ih2)
-  case unpack_own ih1 ih2 =>
-    -- Result type carries one extra `.lock`-succ rename layer over `unpack`.
+    -- Result type carries three rename layers (weakenCVars, `.lock`-succ, succ).
     exact Ty.rename_closed_inv (Ty.rename_closed_inv (Ty.rename_closed_inv ih2))
   case alloc ih =>
     cases ih with | typ hT =>

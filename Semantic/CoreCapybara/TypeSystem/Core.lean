@@ -425,37 +425,24 @@ inductive HasType : CaptureSet s -> Ctx s -> Exp s -> Ty .exi s -> Prop where
     (U.rename Rename.succ) ->
   --------------------------------
   HasType (C1 ∪ C2) Γ (.letin e1 e2) U
+  /-- Unpack with a manufactured certificate-lock (paper H1 `unpack-own`,
+  unified into THE unpack rule 2026-07-06).  Eliminates the existential: kills
+  `C1`'s consumed peaks, binds the `n` witnesses at `.can_drop`, and pushes the
+  lock `Ψw = [freshCVars n, C2↑n]` between the witnesses and `x` — the
+  continuation reads witness-vs-`C2` separation off the lock (`sep_lock`) and
+  witness-vs-witness off `sep_droppable`.  The plain `SeqComp` premise pays the
+  lock: `pack_bound` confines every witness location to `C1`'s drop-covered
+  footprint or fresh cells, the `droppable` premise is the anti-laundering
+  anchor, and `captureSet_seqcomp_denot` turns `SeqComp` into the semantic
+  drop-vs-any conflict — see notes/sep-owned-mechanization.md §07 (which
+  corrects §05l: the earlier 'unsound-as-specified' verdict refuted only the
+  `fundamental_sepcheck` discharge route, not the rule).  The lock stores `C2`
+  PLAIN — a peaks-enriched entry would need a genuinely stronger premise.  The
+  syntax `.unpack n t u` has no lock slot, so the continuation subject is
+  `u.rename ((Rename.succ (k := .lock)).lift)`. -/
 | unpack {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s} {t : Exp s} {U : Ty .exi s}
     {n : Nat} {T : Ty .capt (s.extendCVars n)} {u : Exp ((s.extendCVars n),x)} :
   SeqComp Γ C1 C2 ->
-  ((C1.peakset Γ).consumed).droppable Γ ->
-  HasType C1 Γ t (.exi n T) ->
-  HasType
-    (((C2.rename (Rename.weakenCVars n)).rename Rename.succ) ∪
-     ((CaptureSet.freshCVars n).rename Rename.succ) ∪
-     (((CaptureSet.freshCVars n).rename Rename.succ).applyAccess .drop))
-    ((Ctx.extendCVars .can_drop (Γ.kill_peaks ((C1.peakset Γ).consumed)) n),x:T)
-    u
-    ((U.rename (Rename.weakenCVars n)).rename Rename.succ) ->
-  --------------------------------------------
-  HasType (C1 ∪ C2) Γ (.unpack n t u) U
-  /-- Certified variant of `unpack` (paper H1 "unpack-own").  The
-  `SepCheck Γ C1 C2` premise (in place of `unpack`'s `SeqComp`) is the payment
-  for a manufactured certificate-lock `Ψw = [freshCVars n, C2↑n]` pushed between
-  the `n` witness binders and the term binder `x`, recording that the witnesses
-  are separated from the continuation budget `C2`.  Witness-vs-witness
-  separation is NOT in the lock — the continuation derives it via `sep_droppable`
-  on the `.can_drop` witness binders (the paper's sep-consumable route).  The
-  lock stores `C2` PLAIN: the paper's `∪ peaks Γ C2` enrichment is deliberately
-  omitted, since in this model `⟦peaks Γ C2⟧ ⊇ ⟦C2⟧` strictly (capture
-  approximation), so a peaks-enriched entry would need the stronger premise
-  `sep(C1, C2 ∪ peaks Γ C2)`.  The syntax `.unpack n t u` has no lock slot, so
-  the continuation subject is `u.rename ((Rename.succ (k := .lock)).lift)`, and
-  every continuation index that reached into `,x` gains one `.lock` succ layer.
-  See notes/sep-owned-mechanization.md §06. -/
-| unpack_own {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s} {t : Exp s} {U : Ty .exi s}
-    {n : Nat} {T : Ty .capt (s.extendCVars n)} {u : Exp ((s.extendCVars n),x)} :
-  SepCheck Γ C1 C2 ->
   ((C1.peakset Γ).consumed).droppable Γ ->
   HasType C1 Γ t (.exi n T) ->
   HasType
