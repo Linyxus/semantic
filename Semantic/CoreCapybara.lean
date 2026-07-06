@@ -55,10 +55,9 @@ hypothesis, because the separation content that commutes independent steps is ca
 interleaving `Step`'s own `par` guards.
 
 The legacy surface language (System Capybara) and its type-directed compiler
-are FROZEN as of 2026-07-04 (fresh-start ruling): they remain in-tree,
-unimported, at `Semantic.CoreCapybara.LegacyCapybara` /
-`Semantic.CoreCapybara.LegacyCompilation` as read-only reference. Their last
-green state against the old core is branch `capybara-translation-pre-rebase-2`.
+were frozen 2026-07-04 (fresh-start ruling) and DELETED from the tree
+2026-07-06 as obsolete. Their last green state against the old core is branch
+`capybara-translation-pre-rebase-2` (also `capybara-translation-pre-rebase`).
 A new Capybara is being rebuilt from first principles — see
 `roadmaps/translation.md`.
 -/
