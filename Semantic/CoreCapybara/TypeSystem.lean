@@ -1,2 +1,3 @@
 import Semantic.CoreCapybara.TypeSystem.Core
 import Semantic.CoreCapybara.TypeSystem.BasicProps
+import Semantic.CoreCapybara.TypeSystem.KillWeakening
