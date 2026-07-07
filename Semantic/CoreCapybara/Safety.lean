@@ -328,22 +328,21 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
     (Memory.platform_of N) env_typing_of_platform platform_env_sep_wf (platform_is_compatible _)
   unfold Ty.exi_exp_denot at hdenot
   have heval := hdenot (memtyped_platform N (t.readCount + 1))
-  exact safe_reduce_progressive heval.1 hred (by omega)
+  exact safe_reduce_progressive heval.1.1 hred (by omega)
 
-/-! ## Adequacy under the genuine interleaving schedule (deferred)
+/-! ## Adequacy under the genuine interleaving schedule
 
   The genuine-interleaving analogue of `adequacy_platform` (progress along the interleaving
-  relation `Reduce`) is NOT available at this layer.  With the budget-indexed `Safe`, there is
-  no single-step `Safe`-preservation lemma: reconstructing a `Safe.par` carrier after a lone
-  branch `Step` would require transporting the rely `W` along a *partial* branch run, which the
-  rely–guarantee fields (quantified over full `BigStep` runs) deliberately do not provide — and
-  soundly so, since arbitrary-memory transport is exactly the false operational-monotonicity
-  shape this development eliminated.  Interleaving progress therefore needs either carrier
-  preservation along genuine steps (impossible here) or a carrier-free standardization result
-  (`SeqReduce` covers every `Reduce`-reachable state up to Mazurkiewicz permutation + heap
-  iso).  It is deferred to the standardization/confluence rework; the old
-  `Reduce.preserves_safe` / `Exp.SafeWithPlatformReduce` / `adequacy_platform_reduce` (which
-  rested on the now-removed `Step.preserves_safe`) are removed here. -/
+  relation `Reduce`) is established in `Semantic.CoreCapybara.SafetyReduce` as
+  `adequacy_platform_reduce`, with the immutability analogue
+  `immutability_adequacy_platform_reduce`.
+  It follows precisely the carrier-free route anticipated here: rather than preserving a
+  `Safe.par` carrier along a lone branch `Step` (unavailable, since the rely–guarantee fields
+  quantify over full `BigStep` runs and arbitrary-memory transport is the false
+  operational-monotonicity shape this development eliminated), it joins a partial `Reduce` run
+  against a sequential run via `confluence` (answers are `Step`-normal) and `standardization`
+  (`SeqReduce` covers every `Reduce`-reachable answer up to Mazurkiewicz permutation + heap iso).
+  That file lives downstream of `Confluence`, which `Safety` does not import. -/
 
 /-! ## Immutability
 
@@ -488,7 +487,7 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
   have hbig := reduce_to_bigstep (seqreduce_trans hred hrest) hans
   have htok : TraceOk (t ++ trest)
       (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)) :=
-    (heval.2 _ _ _ hbig (by omega)).1
+    (heval.1.2 _ _ _ hbig (by omega)).1
   intro l b ℓ hinit
   -- `l` is pre-allocated in the platform, so it is never freshly allocated by the run.
   have hl_alloc : ¬ Trace.allocd (t ++ trest) l := by

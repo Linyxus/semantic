@@ -1,4 +1,5 @@
 import Semantic.CoreCapybara.Semantics
+import Semantic.CoreCapybara.Semantics.PrefixTrace
 import Semantic.CoreCapybara.TypeSystem
 import Semantic.CoreCapybara.Denotation.KripkeModel
 import Semantic.CoreCapybara.Denotation.StepIndexedWorldParam
@@ -915,7 +916,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
             Ty.exi_val_denot
               (env.extend_var arg (compute_peakset env T1.captureSet)) T2
               (j - t.readCount) st'' m'' v ∧
-            pack_bound R0 m' v m'' ∧ witness_live v m''))
+            pack_bound R0 m' v m'' ∧ witness_live v m'') ∧
+        PrefixSafe j m' (t0.subst (Subst.openVar (.free arg))) R0)
   | .poly T1 cs T2 =>
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -943,7 +945,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
             WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
             MemTyped (j - t.readCount) st'' m'' ∧
             Ty.exi_val_denot (env.extend_tvar denot) T2 (j - t.readCount) st'' m'' v ∧
-            pack_bound R0 m' v m'' ∧ witness_live v m''))
+            pack_bound R0 m' v m'' ∧ witness_live v m'') ∧
+        PrefixSafe j m' (t0.subst (Subst.openTVar .top)) R0)
   | .cpoly B cs T =>
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -968,7 +971,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
             MemTyped (j - t.readCount) st'' m'' ∧
             Ty.exi_val_denot (env.extend_cvar CS (cap := CS.ground_denot m')) T
               (j - t.readCount) st'' m'' v ∧
-            pack_bound R0 m' v m'' ∧ witness_live v m''))
+            pack_bound R0 m' v m'' ∧ witness_live v m'') ∧
+        PrefixSafe j m' (t0.subst (Subst.openCVar CS)) R0)
   | .consumer Targ cs E =>
     e.WfInHeap m.heap ∧
     (cs.subst (Subst.from_TypeEnv env)).WfInHeap m.heap ∧
@@ -1007,7 +1011,9 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
               MemTyped (j - t.readCount) st'' m'' ∧
               Ty.exi_val_denot env E (j - t.readCount) st'' m'' v ∧
               pack_bound ((R0 ∪ CS.ground_denot m') ∪ (CS.ground_denot m').to_drop) m' v m'' ∧
-              witness_live v m'')
+              witness_live v m'') ∧
+          PrefixSafe j m' (t0.subst (Subst.unpack ⟨[CS], rfl⟩ (.free arg)))
+            ((R0 ∪ CS.ground_denot m') ∪ (CS.ground_denot m').to_drop)
       | _ => True
   | .modal cs Ψ E =>
     e.WfInHeap m.heap ∧
@@ -1039,7 +1045,8 @@ def Ty.val_denot (env : TypeEnv s) (T : Ty .capt s)
             WorldLe st'' m'' (st'.trunc (Nat.sub_le j t.readCount)) m' ∧
             MemTyped (j - t.readCount) st'' m'' ∧
             Ty.exi_val_denot env E (j - t.readCount) st'' m'' v ∧
-            pack_bound R0 m' v m'' ∧ witness_live v m''))
+            pack_bound R0 m' v m'' ∧ witness_live v m'') ∧
+        PrefixSafe j m' t0 R0)
 termination_by sizeOf T
 decreasing_by
   all_goals simp_wf
@@ -1085,7 +1092,8 @@ def Ty.exp_denot (ρ : TypeEnv s) (T : Ty .capt s) (R : CapabilitySet)
     ∃ (st' : StoreTyping (k - t.readCount)),
       WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) m ∧
       MemTyped (k - t.readCount) st' m' ∧
-      Ty.val_denot ρ T (k - t.readCount) st' m' v)
+      Ty.val_denot ρ T (k - t.readCount) st' m' v) ∧
+  PrefixSafe k m e R
 
 /-- Expression denotation for existential types (**step-counted, budget-guarded**).
     Besides the value denotation at the decremented index `k − t.readCount` and extended
@@ -1100,7 +1108,8 @@ def Ty.exi_exp_denot (ρ : TypeEnv s) (E : Ty .exi s) (R : CapabilitySet)
     ∃ (st' : StoreTyping (k - t.readCount)),
       WorldLe st' m' (st.trunc (Nat.sub_le k t.readCount)) m ∧
       MemTyped (k - t.readCount) st' m' ∧
-      Ty.exi_val_denot ρ E (k - t.readCount) st' m' v ∧ pack_bound R m v m' ∧ witness_live v m')
+      Ty.exi_val_denot ρ E (k - t.readCount) st' m' v ∧ pack_bound R m v m' ∧ witness_live v m') ∧
+  PrefixSafe k m e R
 
 /-- **Alloc preserves `MemTyped` and steps up `WorldLe`** — the heap-fresh location `l` is
 store-typing-fresh by consistency, so no separate freshness hypothesis is needed.  The fresh
@@ -3496,7 +3505,8 @@ theorem val_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTypi
   (himp : IDenot.ImplyAfter (Ty.val_denot env T1) ki st H (Ty.val_denot env T2)) :
   IDenot.ImplyAfter (Ty.exp_denot env T1 R) ki st H (Ty.exp_denot env T2 R) := by
   intro j hjk st' m' hwle e heval hmt
-  refine eval_post_monotonic_general ?_ (heval hmt)
+  obtain ⟨heval_e, heval_p⟩ := heval hmt
+  refine ⟨eval_post_monotonic_general ?_ heval_e, heval_p⟩
   intro m'' hsub'' t v hpost hguard
   obtain ⟨htr, st'', hwle'', hmt'', hval1⟩ := hpost hguard
   refine ⟨htr, st'', hwle'', hmt'', ?_⟩
@@ -3515,7 +3525,8 @@ theorem exi_denot_implyafter_lift {R : CapabilitySet} {ki : Nat} {st : StoreTypi
   (himp : IDenot.ImplyAfter (Ty.exi_val_denot env T1) ki st H (Ty.exi_val_denot env T2)) :
   IDenot.ImplyAfter (Ty.exi_exp_denot env T1 R) ki st H (Ty.exi_exp_denot env T2 R) := by
   intro j hjk st' m' hwle e heval hmt
-  refine eval_post_monotonic_general ?_ (heval hmt)
+  obtain ⟨heval_e, heval_p⟩ := heval hmt
+  refine ⟨eval_post_monotonic_general ?_ heval_e, heval_p⟩
   intro m'' hsub'' t v hpost hguard
   obtain ⟨htr, st'', hwle'', hmt'', hval1, hpb, hwl⟩ := hpost hguard
   refine ⟨htr, st'', hwle'', hmt'', ?_, hpb, hwl⟩

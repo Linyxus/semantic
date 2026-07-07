@@ -16,7 +16,11 @@ import Semantic.CoreCapybara.Safety
 
 import Semantic.CoreCapybara.Semantics.Standardization
 
+import Semantic.CoreCapybara.Semantics.PrefixTrace
+
 import Semantic.CoreCapybara.Semantics.Confluence
+
+import Semantic.CoreCapybara.SafetyReduce
 
 /-!
 # Semantic Type Soundness for CoreCapybara

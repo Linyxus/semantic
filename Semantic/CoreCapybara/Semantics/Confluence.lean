@@ -660,6 +660,43 @@ theorem Trace.allocd_cong_trans {t1 t2 t3 : Trace}
     (h2 : ∀ l, Trace.allocd t2 l ↔ Trace.allocd t3 l) :
     ∀ l, Trace.allocd t1 l ↔ Trace.allocd t3 l := fun l => (h1 l).trans (h2 l)
 
+/-! ### Read-count congruences
+
+  `Trace.readCount` counts read (`.access .ro`) events.  Location renaming only rewrites the
+  target of each event, never its `Mutability`, so `readCount` is INVARIANT under `renameLoc`;
+  combined with append-additivity this gives congruences mirroring the `Trace.allocd` ones,
+  letting the diamond tiling preserve the combined read count exactly. -/
+
+/-- `readCount` is invariant under location renaming (renaming rewrites only the target
+  location of each event, never its `Mutability`). -/
+theorem Trace.readCount_renameLoc {t : Trace} {π : Equiv.Perm Nat} :
+    (t.renameLoc π).readCount = t.readCount := by
+  unfold Trace.readCount Trace.renameLoc
+  rw [List.countP_map]
+  congr 1
+  funext item
+  cases item with
+  | access mu l => cases mu <;> rfl
+  | alloc l => rfl
+  | dealloc l => rfl
+
+theorem Trace.readCount_cong_left {t s s' : Trace} (h : s.readCount = s'.readCount) :
+    (t ++ s).readCount = (t ++ s').readCount := by
+  rw [Trace.readCount_append, Trace.readCount_append, h]
+
+theorem Trace.readCount_cong_right {t t' s : Trace} (h : t.readCount = t'.readCount) :
+    (t ++ s).readCount = (t' ++ s).readCount := by
+  rw [Trace.readCount_append, Trace.readCount_append, h]
+
+theorem Trace.readCount_cong_renameLoc {t1 t2 : Trace}
+    (h : t1.readCount = t2.readCount) (ρ : Equiv.Perm Nat) :
+    (t1.renameLoc ρ).readCount = (t2.renameLoc ρ).readCount := by
+  rw [Trace.readCount_renameLoc, Trace.readCount_renameLoc, h]
+
+theorem Trace.readCount_cong_trans {t1 t2 t3 : Trace}
+    (h1 : t1.readCount = t2.readCount) (h2 : t2.readCount = t3.readCount) :
+    t1.readCount = t3.readCount := h1.trans h2
+
 /-! ### Reconvergence predicate and the local diamond
 
   `Recon D t1 m1 e1 t2 m2 e2` packages the confluence conclusion for two configs descending
@@ -700,7 +737,8 @@ def Recon (D : Nat → Prop) (t1 : Trace) (m1 : Memory) (e1 : Exp {})
     mf2 = mf1.renameLoc π ∧ Exp.AEq ef2 (ef1.renameLoc π) ∧
     (∀ l, D l → π l = l) ∧
     Trace.Equiv ((t1 ++ s1).renameLoc π) (t2 ++ s2) ∧
-    (∀ l, Trace.allocd ((t1 ++ s1).renameLoc π) l ↔ Trace.allocd (t2 ++ s2) l)
+    (∀ l, Trace.allocd ((t1 ++ s1).renameLoc π) l ↔ Trace.allocd (t2 ++ s2) l) ∧
+    ((t1 ++ s1).renameLoc π).readCount = (t2 ++ s2).readCount
 
 /-- Two lookups of the same location agree. -/
 theorem lookup_cell_eq {x : Nat} {m : Memory} {c1 c2 : Cell}
@@ -1690,6 +1728,7 @@ def Diamond (D : Nat → Prop) (ts1 : Trace) (ma : Memory) (ea : Exp {})
     (∀ l, D l → π l = l) ∧
     Trace.Equiv ((ts1 ++ w1).renameLoc π) (ts2 ++ w2) ∧
     (∀ l, Trace.allocd ((ts1 ++ w1).renameLoc π) l ↔ Trace.allocd (ts2 ++ w2) l) ∧
+    ((ts1 ++ w1).renameLoc π).readCount = (ts2 ++ w2).readCount ∧
     ((w1 = [] ∧ w2 = []) ∨
       ∃ σ : Equiv.Perm Nat, w1 = ts2.renameLoc σ ∧ w2 = ts1.renameLoc σ ∧
         ∀ l, D l → σ l = l)
@@ -1703,6 +1742,7 @@ theorem Diamond.det {D : Nat → Prop} {ts1 ts2 : Trace} {ma mb : Memory} {ea eb
     (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl,
     by simp only [List.append_nil, Trace.renameLoc_id]; exact Trace.Equiv.refl _,
     by simp only [List.append_nil, Trace.renameLoc_id]; exact fun _ => trivial,
+    by simp only [List.append_nil, Trace.renameLoc_id],
     Or.inl ⟨rfl, rfl⟩⟩
 
 /-- A location fresh in BOTH memories exists (their domains are jointly finite). -/
@@ -1807,7 +1847,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       -- present, so the swap of the two fresh locations fixes it.
       have hxl : x ≠ l := Memory.present_ne_fresh hlk hfresh
       have hxl2 : x ≠ l2 := Memory.present_ne_fresh hlk hfresh2
-      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_,
+      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_, ?_,
         Or.inl ⟨rfl, rfl⟩⟩
       · apply Memory.eq_of_heap
         change m0.heap.extend_mcell l2 x
@@ -1832,6 +1872,8 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       · simp only [List.append_nil, Trace.renameLoc, List.map_cons, List.map_nil,
           TraceItem.renameLoc, Equiv.swap_apply_left]
         exact fun _ => trivial
+      · simp only [List.append_nil, Trace.readCount_renameLoc, Trace.readCount_alloc,
+          Trace.readCount_nil]
   | step_drop hx =>
     intro D ts2 mb eb hD hwf hst2
     cases hst2 with
@@ -1841,12 +1883,12 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
     obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_letin hwf
     cases hst2 with
     | step_ctx_letin inner2 =>
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hrc, hprov⟩ :=
         ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf1 inner2
       have he2 : e2.renameLoc π = e2 := Exp.renameLoc_eq_of_wf hwf2 hπ
       refine ⟨w1, w2, d1m, d2m, .letin d1e e2, .letin d2e e2, π,
         RStep.ctx_letin hr1, RStep.ctx_letin hr2, hdm, ?_, fun l hl => hπ l (hD l hl),
-        htr, hal, ?_⟩
+        htr, hal, hrc, ?_⟩
       · change Exp.AEq (.letin d2e e2) (.letin (d1e.renameLoc π) (e2.renameLoc π))
         rw [he2]; exact Exp.AEq.letin hde
       · rcases hprov with h | ⟨σ, h1, h2, h3⟩
@@ -1860,12 +1902,12 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
     obtain ⟨hwf1, hwf2⟩ := Exp.wf_inv_unpack hwf
     cases hst2 with
     | step_ctx_unpack inner2 =>
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hrc, hprov⟩ :=
         ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf1 inner2
       have he2 : e2.renameLoc π = e2 := Exp.renameLoc_eq_of_wf hwf2 hπ
       refine ⟨w1, w2, d1m, d2m, .unpack n d1e e2, .unpack n d2e e2, π,
         RStep.ctx_unpack hr1, RStep.ctx_unpack hr2, hdm, ?_, fun l hl => hπ l (hD l hl),
-        htr, hal, ?_⟩
+        htr, hal, hrc, ?_⟩
       · change Exp.AEq (.unpack n d2e e2) (.unpack n (d1e.renameLoc π) (e2.renameLoc π))
         rw [he2]; exact Exp.AEq.unpack hde
       · rcases hprov with h | ⟨σ, h1, h2, h3⟩
@@ -1884,7 +1926,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       -- (allocd-set agreement is recorded by the diamond), which `AEq.par` permits.
       have hwf_C1 : C1.WfInHeap m0.heap := by cases hwf with | wf_par h _ _ _ => exact h
       have hwf_C2 : C2.WfInHeap m0.heap := by cases hwf with | wf_par _ h _ _ => exact h
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hrc, hprov⟩ :=
         ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf_e1 inner2
       -- closing legs' guards: replays of the OTHER input step, transported by provenance
       have hniA : CapabilitySet.Noninterference
@@ -1912,7 +1954,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       have hC2req : CaptureSet.RReq C2 (C2.renameLoc π) := by
         rw [hC2]; exact CaptureSet.RReq.refl C2
       refine ⟨w1, w2, d1m, d2m, _, _, π, legL1, legL2, hdm, ?_, fun l hl => hπ l (hD l hl),
-        htr, hal, ?_⟩
+        htr, hal, hrc, ?_⟩
       · refine Exp.AEq.par ?_ hC2req hde (Exp.AEq.of_eq he2.symm)
         rw [hC1grow]
         exact CaptureSet.growByAllocs_RReq_of_allocd_iff (fun l => (hal l).symm)
@@ -2025,7 +2067,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
             ((Step.ni_grow inner2 hwf_C2 hwf_C1 hni2.ni_symm).ni_symm)
             (RStep.step stepL)
         refine ⟨ts2.renameLoc σ, ts1'.renameLoc σ, md, md.renameLoc σ, _, _, σ, legR, legL, rfl, ?_,
-          fun l hl => hσfix l (hD l hl), ?_, ?_,
+          fun l hl => hσfix l (hD l hl), ?_, ?_, ?_,
           Or.inr ⟨σ, rfl, rfl, fun l hl => hσfix l (hD l hl)⟩⟩
         · -- `AEq d2e (d1e.renameLoc σ)` holds EXACTLY (σ² = id, C1/C2 fixed)
           apply Exp.AEq.of_eq
@@ -2055,6 +2097,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
           rw [Trace.renameLoc_append, Trace.renameLoc_comp, hσσ, Trace.renameLoc_id,
             Trace.allocd_append, Trace.allocd_append]
           exact or_comm
+        · simp only [Trace.readCount_renameLoc, Trace.readCount_append]; omega
       · -- no clash: reconverge with `π = id` via `step_step_diamond_noclash`.
         push Not at hclash
         have hncR : ∀ c, m0.lookup c = none → ma0.lookup c ≠ none → mb.lookup c = none :=
@@ -2078,7 +2121,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
             (RStep.step stepL)
         refine ⟨ts2, ts1', md, md, _, _, Equiv.refl Nat, legR, legL,
           (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl,
-          ?_, ?_,
+          ?_, ?_, ?_,
           Or.inr ⟨Equiv.refl Nat, (Trace.renameLoc_id).symm, (Trace.renameLoc_id).symm,
             fun _ _ => rfl⟩⟩
         · -- `(ts1' ++ ts2)` ≈ `(ts2 ++ ts1')` (commutation of separated traces)
@@ -2090,6 +2133,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
             exact fresh_not_extSeq ht2 (Step.alloc_fresh inner hl)
         · intro l
           rw [Trace.renameLoc_id, Trace.allocd_append, Trace.allocd_append]; exact or_comm
+        · simp only [Trace.readCount_renameLoc, Trace.readCount_append]; omega
   | step_par_right ht hni inner ih =>
     -- Symmetric to `step_par_left` (mirror left↔right): the RIGHT branch steps.
     rename_i ts1' m0 e2 ma0 e2' C1 C2 e1
@@ -2101,7 +2145,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       -- SAME side: both step the right branch.
       have hwf_C1 : C1.WfInHeap m0.heap := by cases hwf with | wf_par h _ _ _ => exact h
       have hwf_C2 : C2.WfInHeap m0.heap := by cases hwf with | wf_par _ h _ _ => exact h
-      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hprov⟩ :=
+      obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π, hr1, hr2, hdm, hde, hπ, htr, hal, hrc, hprov⟩ :=
         ih (D := fun l => m0.heap l ≠ none) (fun _ h => h) hwf_e2 inner2
       -- closing legs' guards: replays of the OTHER input step, transported by provenance
       have hniA : CapabilitySet.Noninterference
@@ -2129,7 +2173,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       have hC1req : CaptureSet.RReq C1 (C1.renameLoc π) := by
         rw [hC1]; exact CaptureSet.RReq.refl C1
       refine ⟨w1, w2, d1m, d2m, _, _, π, legR1, legR2, hdm, ?_, fun l hl => hπ l (hD l hl),
-        htr, hal, ?_⟩
+        htr, hal, hrc, ?_⟩
       · refine Exp.AEq.par hC1req ?_ (Exp.AEq.of_eq he1.symm) hde
         rw [hC2grow]
         exact CaptureSet.growByAllocs_RReq_of_allocd_iff (fun l => (hal l).symm)
@@ -2235,7 +2279,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
             (Step.ni_grow inner2 hwf_C1 hwf_C2 hni2)
             (RStep.step stepL)
         refine ⟨ts2.renameLoc σ, ts1'.renameLoc σ, md, md.renameLoc σ, _, _, σ, legR, legL, rfl, ?_,
-          fun l hl => hσfix l (hD l hl), ?_, ?_,
+          fun l hl => hσfix l (hD l hl), ?_, ?_, ?_,
           Or.inr ⟨σ, rfl, rfl, fun l hl => hσfix l (hD l hl)⟩⟩
         · apply Exp.AEq.of_eq
           simp only [Exp.renameLoc, CaptureSet.growByAllocs_renameLoc, hC1σ, hC2σ,
@@ -2261,6 +2305,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
           rw [Trace.renameLoc_append, Trace.renameLoc_comp, hσσ, Trace.renameLoc_id,
             Trace.allocd_append, Trace.allocd_append]
           exact or_comm
+        · simp only [Trace.readCount_renameLoc, Trace.readCount_append]; omega
       · -- no clash: reconverge with `π = id` via `step_step_diamond_noclash`.
         push Not at hclash
         have hncR : ∀ c, m0.lookup c = none → ma0.lookup c ≠ none → mb.lookup c = none :=
@@ -2283,7 +2328,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
             (RStep.step stepL)
         refine ⟨ts2, ts1', md, md, _, _, Equiv.refl Nat, legR, legL,
           (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl,
-          ?_, ?_,
+          ?_, ?_, ?_,
           Or.inr ⟨Equiv.refl Nat, (Trace.renameLoc_id).symm, (Trace.renameLoc_id).symm,
             fun _ _ => rfl⟩⟩
         · rw [Trace.renameLoc_id]
@@ -2294,6 +2339,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
             exact fresh_not_extSeq ht2 (Step.alloc_fresh inner hl)
         · intro l
           rw [Trace.renameLoc_id, Trace.allocd_append, Trace.allocd_append]; exact or_comm
+        · simp only [Trace.readCount_renameLoc, Trace.readCount_append]; omega
   | step_par_join h1 h2 =>
     intro D ts2 mb eb hD hwf hst2
     cases hst2 with
@@ -2314,7 +2360,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
       have hAfix : ∀ l', m0.heap l' ≠ none → Equiv.swap l l2 l' = l' := fun l' hl' =>
         Equiv.swap_apply_of_ne_of_ne (fun he => hl' (by rw [he]; exact hfresh))
           (fun he => hl' (by rw [he]; exact hfresh2))
-      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_,
+      refine ⟨[], [], _, _, _, _, Equiv.swap l l2, RStep.refl, RStep.refl, ?_, ?_, ?_, ?_, ?_, ?_,
         Or.inl ⟨rfl, rfl⟩⟩
       · apply Memory.eq_of_heap
         change m0.heap.extend l2 ⟨v, hv2, compute_reachability m0.heap v hv2⟩
@@ -2336,6 +2382,7 @@ theorem local_diamond {ts1 : Trace} {m ma : Memory} {e ea : Exp {}}
           (fun he => hD l' hl' (by rw [he]; exact hfresh2))
       · exact Trace.Equiv.refl _
       · exact fun _ => Iff.rfl
+      · rfl
     | step_ctx_letin inner =>
       exact (Step.not_isAns inner (Exp.IsAns.is_val (Exp.isVal_of_isSimpleVal hv))).elim
     | step_rename => cases hv
@@ -2358,13 +2405,14 @@ theorem strip {m mc : Memory} {e ec : Exp {}} {t2 : Trace}
   | refl =>
     intro D ts m' e' _ _ h1
     refine ⟨[], ts, m', m', e', e', Equiv.refl Nat, Reduce.refl, ?_,
-      (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun l _ => rfl, ?_, ?_⟩
+      (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun l _ => rfl, ?_, ?_, ?_⟩
     · have h := Reduce.step h1 Reduce.refl; rwa [List.append_nil] at h
     · simp only [List.append_nil, List.nil_append, Trace.renameLoc_id]; exact Trace.Equiv.refl _
     · simp only [List.append_nil, List.nil_append, Trace.renameLoc_id]; exact fun _ => trivial
+    · simp only [List.append_nil, List.nil_append, Trace.renameLoc_id]
   | @step tk m1 e1 mk ek tr mfin efin k1 krest ih =>
     intro D ts m' e' hD hwf h1
-    obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π0, hrs1, hrs2, hd2m, hd2e, hπ0D, hLDtr, hLDal, _⟩ :=
+    obtain ⟨w1, w2, d1m, d2m, d1e, d2e, π0, hrs1, hrs2, hd2m, hd2e, hπ0D, hLDtr, hLDal, hLDrc, _⟩ :=
       local_diamond h1 hD hwf k1
     have hwfk : Exp.WfInHeap ek mk.heap := Step.preserves_wf k1 hwf
     cases hrs2 with
@@ -2379,21 +2427,22 @@ theorem strip {m mc : Memory} {e ec : Exp {}} {t2 : Trace}
       obtain ⟨efin', hkr, haefin⟩ := Reduce.aeq_sim haek hkr0
       have hp1 : Reduce (w1 ++ tr.renameLoc π0.symm) m' e'
           (mfin.renameLoc π0.symm) efin' := reduce_trans hrs1.toReduce hkr
-      simp only [List.append_nil] at hLDtr hLDal
+      simp only [List.append_nil] at hLDtr hLDal hLDrc
       have eqL : (ts ++ (w1 ++ tr.renameLoc π0.symm)).renameLoc π0
           = (ts ++ w1).renameLoc π0 ++ tr := by
         rw [← List.append_assoc, Trace.renameLoc_append, Trace.renameLoc_symm_self]
       refine ⟨w1 ++ tr.renameLoc π0.symm, [], mfin.renameLoc π0.symm, mfin,
         efin', efin, π0, hp1, Reduce.refl,
-        (Memory.renameLoc_symm_self).symm, ?_, hπ0D, ?_, ?_⟩
+        (Memory.renameLoc_symm_self).symm, ?_, hπ0D, ?_, ?_, ?_⟩
       · -- `AEq efin (efin'.renameLoc π0)`
         have h := haefin.symm.renameLoc π0
         rw [Exp.renameLoc_symm_self] at h
         exact h.symm
       · rw [eqL, List.append_nil]; exact Trace.Equiv.append_right_congr hLDtr hLDal
       · rw [eqL, List.append_nil]; exact Trace.allocd_cong_right hLDal
+      · rw [eqL, List.append_nil]; exact Trace.readCount_cong_right hLDrc
     | step hk2 =>
-      obtain ⟨u1, u2, g1m, g2m, g1e, g2e, π1, hu1, hu2, hg2m, hg2e, hπ1D, hIHtr, hIHal⟩ :=
+      obtain ⟨u1, u2, g1m, g2m, g1e, g2e, π1, hu1, hu2, hg2m, hg2e, hπ1D, hIHtr, hIHal, hIHrc⟩ :=
         ih (D := fun l => mk.heap l ≠ none) (fun _ h => h) hwfk hk2
       have hd1m : d2m.renameLoc π0.symm = d1m := by rw [hd2m, Memory.renameLoc_self_symm]
       have had2e : Exp.AEq (d2e.renameLoc π0.symm) d1e := by
@@ -2413,7 +2462,7 @@ theorem strip {m mc : Memory} {e ec : Exp {}} {t2 : Trace}
         rw [Trace.renameLoc_append, Trace.renameLoc_append, htk, List.append_assoc,
           ← Trace.renameLoc_append]
       refine ⟨w1 ++ u1.renameLoc π0.symm, u2, g1m.renameLoc π0.symm, g2m,
-        g1e', g2e, π0.trans π1, hp1, hu2, ?_, ?_, ?_, ?_, ?_⟩
+        g1e', g2e, π0.trans π1, hp1, hu2, ?_, ?_, ?_, ?_, ?_, ?_⟩
       · rw [hg2m, Memory.renameLoc_comp, ← Equiv.trans_assoc, Equiv.symm_trans_self,
           Equiv.refl_trans]
       · -- `AEq g2e (g1e'.renameLoc (π0.trans π1))`
@@ -2437,6 +2486,11 @@ theorem strip {m mc : Memory} {e ec : Exp {}} {t2 : Trace}
           (Trace.allocd_cong_renameLoc (Trace.allocd_cong_right hLDal) π1) ?_
         rw [step2]
         exact Trace.allocd_cong_left hIHal
+      · rw [eqL, List.append_assoc]
+        refine Trace.readCount_cong_trans
+          (Trace.readCount_cong_renameLoc (Trace.readCount_cong_right hLDrc) π1) ?_
+        rw [step2]
+        exact Trace.readCount_cong_left hIHrc
 
 /-- **Confluence engine (run vs run).**  Induction on the first run, closing the leading tile
   with `strip` and recursing with the IH on the run's tail; the protected domain and second-path
@@ -2450,15 +2504,16 @@ theorem confluence_aux {m m1 : Memory} {e e1 : Exp {}} {t1 : Trace}
   | refl =>
     intro D t2 m2 e2 _ _ hr2
     refine ⟨t2, [], m2, m2, e2, e2, Equiv.refl Nat, hr2, Reduce.refl,
-      (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl, ?_, ?_⟩
+      (Memory.renameLoc_id).symm, Exp.AEq.of_eq (Exp.renameLoc_id).symm, fun _ _ => rfl, ?_, ?_, ?_⟩
     · simp only [List.nil_append, List.append_nil, Trace.renameLoc_id]; exact Trace.Equiv.refl _
     · simp only [List.nil_append, List.append_nil, Trace.renameLoc_id]; exact fun _ => trivial
+    · simp only [List.nil_append, List.append_nil, Trace.renameLoc_id]
   | @step ts ma ea mk ek trest m1fin e1fin h1 hrest ih =>
     intro D t2 m2 e2 hD hwf hr2
-    obtain ⟨a1, a2, p1m, p2m, p1e, p2e, ρ, ha1, ha2, hp2m, hp2e, hρD, hStrTr, hStrAl⟩ :=
+    obtain ⟨a1, a2, p1m, p2m, p1e, p2e, ρ, ha1, ha2, hp2m, hp2e, hρD, hStrTr, hStrAl, hStrRc⟩ :=
       strip hr2 hD hwf h1
     have hwfk : Exp.WfInHeap ek mk.heap := Step.preserves_wf h1 hwf
-    obtain ⟨b1, b2, q1m, q2m, q1e, q2e, σ, hb1, hb2, hq2m, hq2e, hσD, hIHTr, hIHAl⟩ :=
+    obtain ⟨b1, b2, q1m, q2m, q1e, q2e, σ, hb1, hb2, hq2m, hq2e, hσD, hIHTr, hIHAl, hIHRc⟩ :=
       ih (D := fun l => mk.heap l ≠ none) (fun _ h => h) hwfk ha1
     have hb2r := Reduce.renameLoc hb2 ρ
     rw [← hp2m] at hb2r
@@ -2475,7 +2530,7 @@ theorem confluence_aux {m m1 : Memory} {e e1 : Exp {}} {t1 : Trace}
     have eqMid : (ts ++ (a1 ++ b2)).renameLoc ρ = (ts ++ a1).renameLoc ρ ++ b2.renameLoc ρ := by
       simp only [Trace.renameLoc_append, List.append_assoc]
     refine ⟨b1, a2 ++ b2.renameLoc ρ, q1m, q2m.renameLoc ρ, q1e, q2e',
-      σ.trans ρ, hb1, hp2, ?_, ?_, ?_, ?_, ?_⟩
+      σ.trans ρ, hb1, hp2, ?_, ?_, ?_, ?_, ?_, ?_⟩
     · rw [hq2m, Memory.renameLoc_comp]
     · -- `AEq q2e' (q1e.renameLoc (σ.trans ρ))`
       have hcomp : Exp.AEq (q2e.renameLoc ρ) (q1e.renameLoc (σ.trans ρ)) := by
@@ -2494,6 +2549,10 @@ theorem confluence_aux {m m1 : Memory} {e e1 : Exp {}} {t1 : Trace}
       refine Trace.allocd_cong_trans ?_ (Trace.allocd_cong_right hStrAl)
       rw [← eqMid]
       exact Trace.allocd_cong_renameLoc (Trace.allocd_cong_left hIHAl) ρ
+    · rw [eqL, eqRHS]
+      refine Trace.readCount_cong_trans ?_ (Trace.readCount_cong_right hStrRc)
+      rw [← eqMid]
+      exact Trace.readCount_cong_renameLoc (Trace.readCount_cong_left hIHRc) ρ
 
 /-- **Confluence (Church–Rosser) up to `Trace.Equiv`, a location renaming, and annotation
   equivalence.**  From a well-formed configuration `(m, e)`, any two interleaving reductions
@@ -2512,9 +2571,43 @@ theorem confluence {m m1 m2 : Memory} {e e1 e2 : Exp {}} {t1 t2 : Trace}
       Reduce s2 m2 e2 mf2 ef2 ∧
       mf2 = mf1.renameLoc π ∧
       Exp.AEq ef2 (ef1.renameLoc π) ∧
-      Trace.Equiv ((t1 ++ s1).renameLoc π) (t2 ++ s2) := by
-  obtain ⟨s1, s2, mf1, mf2, ef1, ef2, π, hp1, hp2, hm, he, _, htr, _⟩ :=
+      Trace.Equiv ((t1 ++ s1).renameLoc π) (t2 ++ s2) ∧
+      (t1 ++ s1).readCount = (t2 ++ s2).readCount := by
+  obtain ⟨s1, s2, mf1, mf2, ef1, ef2, π, hp1, hp2, hm, he, _, htr, _, hrc⟩ :=
     confluence_aux hr1 (D := fun l => m.heap l ≠ none) (fun _ h => h) hwf hr2
-  exact ⟨s1, s2, mf1, mf2, ef1, ef2, π, hp1, hp2, hm, he, htr⟩
+  exact ⟨s1, s2, mf1, mf2, ef1, ef2, π, hp1, hp2, hm, he, htr,
+    (Trace.readCount_renameLoc).symm.trans hrc⟩
+
+/-! ### Answer-shape transport lemmas
+
+  For the downstream genuine-interleaving adequacy assembly: `IsAns` is invariant under
+  location renaming and under the annotation equivalence `Exp.AEq` (both iff, as `renameLoc`
+  and `AEq` are invertible), and an `IsAns` config admits only the empty `Reduce` run. -/
+
+/-- `IsAns` is invariant under location renaming. -/
+theorem Exp.IsAns.renameLoc_iff {e : Exp {}} {π : Equiv.Perm Nat} :
+    (e.renameLoc π).IsAns ↔ e.IsAns := by
+  constructor
+  · intro h
+    have h' := h.renameLoc π.symm
+    rwa [Exp.renameLoc_self_symm] at h'
+  · intro h; exact h.renameLoc π
+
+/-- `IsAns` transports along `Exp.AEq` (an iff, as `AEq` is symmetric): an answer is `AEq`
+  only to itself, so the equivalence never crosses an answer to a non-answer. -/
+theorem Exp.AEq.isAns_iff {e1 e2 : Exp {}} (h : Exp.AEq e1 e2) :
+    e1.IsAns ↔ e2.IsAns := by
+  constructor
+  · intro hans; exact (h.eq_of_isAns hans) ▸ hans
+  · intro hans; exact (h.symm.eq_of_isAns hans) ▸ hans
+
+/-- An answer admits only the empty run: a `Reduce` from an `IsAns` config makes no step. -/
+theorem Reduce.eq_of_isAns {t : Trace} {m m' : Memory} {a e' : Exp {}}
+    (hr : Reduce t m a m' e') (hans : a.IsAns) : t = [] ∧ m' = m ∧ e' = a := by
+  cases hr with
+  | refl => exact ⟨rfl, rfl, rfl⟩
+  | step h1 _ => exact (Step.not_isAns h1 hans).elim
 
 end CoreCapybara
+
+
