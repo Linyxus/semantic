@@ -332,25 +332,20 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
 
 /-! ## Adequacy under the genuine interleaving schedule
 
-  The genuine-interleaving analogue of `adequacy_platform` (progress along the interleaving
-  relation `Reduce`) is established in `Semantic.CoreCapybara.SafetyReduce` as
-  `adequacy_platform_reduce`, with the immutability analogue
-  `immutability_adequacy_platform_reduce`.
-  It follows precisely the carrier-free route anticipated here: rather than preserving a
-  `Safe.par` carrier along a lone branch `Step` (unavailable, since the rely–guarantee fields
-  quantify over full `BigStep` runs and arbitrary-memory transport is the false
-  operational-monotonicity shape this development eliminated), it joins a partial `Reduce` run
-  against a sequential run via `confluence` (answers are `Step`-normal) and `standardization`
-  (`SeqReduce` covers every `Reduce`-reachable answer up to Mazurkiewicz permutation + heap iso).
-  That file lives downstream of `Confluence`, which `Safety` does not import. -/
+  The genuine-interleaving analogues of `adequacy_platform` and
+  `immutability_adequacy_platform` — progress and immutability along the interleaving relation
+  `Reduce` — are `adequacy_platform_reduce` and `immutability_adequacy_platform_reduce` in
+  `Semantic.CoreCapybara.SafetyReduce`.  They join a partial interleaved `Reduce` run against a
+  sequential run via `confluence` (answers are `Step`-normal) and `standardization` (`SeqReduce`
+  covers every `Reduce`-reachable answer up to Mazurkiewicz permutation and heap iso).  That
+  file lives downstream of `Confluence`, which `Safety` does not import. -/
 
 /-! ## Immutability
 
-  A read-only budget forbids writes (`.access .epsilon`). The `ro` kind now also
-  excludes `.drop` capabilities (there is no `ro_drop` alternative), so a drop —
-  which deallocates a cell (turning it dead and zeroing its bit), something
-  `not_mutated` (tracking bit and liveness) counts as a mutation — cannot occur
-  either. Drop-freedom is therefore a consequence of the `ro` kind
+  A read-only budget forbids writes (`.access .epsilon`). The `ro` kind also
+  excludes `.drop` capabilities, so a drop — which deallocates a cell (turning it dead
+  and zeroing its bit), something `not_mutated` (tracking bit and liveness) counts as a
+  mutation — cannot occur either. Drop-freedom is therefore a consequence of the `ro` kind
   (`HasKind.ro_drop_free`), not a separate hypothesis. -/
 
 /-- A read-only capability set never covers a write (`.access .epsilon`):
@@ -460,7 +455,7 @@ theorem traceok_no_dealloc {C : CapabilitySet} {l : Nat}
     initial memory on all mutable cells (bit and liveness).  The extension to an answer
     is what turns the partial run into a full `BigStep` run, from which the (budget-guarded)
     `TraceOk` postcondition of the semantic typing is read off.  `ro` rules out writes,
-    and — since `ro` now implies drop-freeness (`HasKind.ro_drop_free`) — also rules out
+    and — since `ro` implies drop-freeness (`HasKind.ro_drop_free`) — also rules out
     deallocations (which mutate liveness). -/
 theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     {C : CaptureSet (Sig.platform_of N)} {E : Ty .exi (Sig.platform_of N)}

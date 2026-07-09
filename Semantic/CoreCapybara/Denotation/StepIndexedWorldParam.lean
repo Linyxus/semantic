@@ -1,13 +1,13 @@
 import Semantic.CoreCapybara.Denotation.StepIndexedFlat
 
 /-!
-# Ahmed world-parametrized step-indexed store — the Phase-2 store model
+# Ahmed world-parametrized step-indexed store
 
-This is the **store the generic-refs soundness proof needs**, validated end to end on the real
-`Ty`/`Memory`, `sorryAx`-free.  A stored relation at level `k` is a *family over all lower
-worlds* `(j : Fin k) → World j → …`, so truncation is a pure drop (no content-fabricating
-`extend`), and the cell agreement is a genuine **biconditional** against `val_denot` — giving
-BOTH the forward direction (`read`) and the backward direction (`write`) the one-way store in
+This is the store model for CoreCapybara's higher-order mutable references, used by
+`Denotation/Core.lean`.  A stored relation at level `k` is a *family over all lower worlds*
+`(j : Fin k) → World j → …`, so truncation is a pure drop (no content-fabricating `extend`),
+and the cell agreement is a genuine **biconditional** against `val_denot` — giving BOTH the
+forward direction (`read`) and the backward direction (`write`) that the one-way store in
 `KripkeModel.lean` lacks.
 
 ## Why step-indexing is *necessary* (the definitive argument)
@@ -15,16 +15,16 @@ BOTH the forward direction (`read`) and the backward direction (`write`) the one
 The `alloc` typing rule (`TypeSystem/Core.lean`) types `alloc x : cell T` for **any** content
 type `T`, including a bare type variable `X`.  So a mutable cell may have *abstract* content,
 whose meaning is an environment-supplied semantic denotation — **not** a closed syntactic type.
-Hence the store cannot map locations to syntactic types (that fails abstract content — see
-`StepIndexedTypeStore.lean`); it must map to *semantic relations*.  A semantic cell relation
-must be **simultaneously** (1) `WorldLe`-monotone (survive store growth), (2) write-capable
-(re-establishable from a fresh `val_denot` value — needs the backward direction), and
-(3) abstract-content-capable.  No *non-indexed* relation store satisfies all three at once:
+Hence the store cannot map locations to syntactic types (that fails abstract content); it
+must map to *semantic relations*.  A semantic cell relation must be **simultaneously**
+(1) `WorldLe`-monotone (survive store growth), (2) write-capable (re-establishable from a
+fresh `val_denot` value — needs the backward direction), and (3) abstract-content-capable.
+No *non-indexed* relation store satisfies all three at once:
 
-  * one-way frozen implication (`KripkeModel.kdenot`): (1)✓ (2)✗ (3)✓ — no write;
-  * frozen biconditional pinned to a fixed world (`StepIndexedFlat.lean`): (1)✗ (2)✓ (3)✓ —
+  * a one-way frozen implication (`KripkeModel.kdenot`): (1)✓ (2)✗ (3)✓ — no write;
+  * a biconditional pinned to a fixed world (`StepIndexedFlat.lean`): (1)✗ (2)✓ (3)✓ —
     not monotone (a later-allocated location breaks the pin);
-  * syntactic type (`StepIndexedTypeStore.lean`): (1)✓ (2)✓ (3)✗ — no abstract content.
+  * a store of syntactic types: (1)✓ (2)✓ (3)✗ — no abstract content.
 
 The *only* device that meets all three is the **world-parametrized** relation below: the cell
 relation quantifies over all lower worlds, so it is growth-stable (1), re-interpreting the
@@ -34,16 +34,16 @@ relation (3).  That relation stores, at level `k`, a family indexed by `Fin k` �
 Therefore step-indexing is not an artifact of the proof technique; the full system (abstract
 mutable cells with faithful reads *and* writes) cannot be modeled by any non-indexed store.
 
-## Phase 2b consequence: reads consume the index (step-counting expression relation)
+## Consequence: reads consume the index
 
 `MemTyped k` can only expose a cell's content at indices `i < k` (`R : SemRel k` is
 `Fin k`-indexed, by `World`-positivity).  So dereferencing yields the content typed at `< k`,
-never at `k`: a `read` **consumes one index**.  Porting `Denotation/Core.lean` therefore
-requires the expression relation (`Eval`'s postcondition) to assert `val_denot` at `k − μ(t)`,
-where `μ` counts index-consuming events in the big-step trace `t`; the Fundamental theorem
-threads this decrement through trace composition (`t = t₁ ++ t₂`).  See `Task #6`.
+never at `k`: a `read` **consumes one index**.  The expression relation (`Eval`'s
+postcondition, in `Denotation/Core.lean`) therefore asserts `val_denot` at `k − μ(t)`, where
+`μ` counts index-consuming events in the big-step trace `t`; the Fundamental theorem threads
+this decrement through trace composition (`t = t₁ ++ t₂`).
 
-## What is proven here (Phase 2a, complete)
+## What is proven here
 
 `World`/`SemRel` recursion (accepted via `cast` + the defining equation `World.unfold`), world
 extensionality/truncation algebra (`World.ext`, `World.trunc`, `World.trunc_trunc`), the typed
@@ -95,7 +95,7 @@ theorem World.ext {k : Nat} {w1 w2 : World k} (h : ∀ l, w1.lookup l = w2.looku
   exact congrArg World.mk (funext h)
 
 /-- **Truncation** to a lower level: drop the top of each stored family.  A pure restriction
-of the `Fin`-index — no content is fabricated (contrast `StepIndexedProto.extend`). -/
+of the `Fin`-index — no content is fabricated. -/
 def World.trunc {k j : Nat} (hjk : j ≤ k) (w : World k) : World j :=
   World.mk fun l => (w.lookup l).map fun R (i : Fin j) (wi : World i.val) =>
     R ⟨i.val, Nat.lt_of_lt_of_le i.isLt hjk⟩ wi
@@ -258,9 +258,9 @@ theorem read_typed {k : Nat} {Ψ : World k} {m l Tc n} {R : SemRel k}
   fun j => (hag j _ m _).mp (hwt.2 l R n hΨl hlk j)
 
 /-- **Write soundness (the crux).**  A value that is a `Tc`-value at each lower truncated
-world satisfies the cell's stored relation `R` — the BACKWARD direction the frozen and flat
-stores could not supply.  Available here because the cell agreement is a genuine biconditional
-over *all* lower worlds, and it is world-stable (`val_denot_worldle_mono`). -/
+world satisfies the cell's stored relation `R` — the BACKWARD direction the one-way and
+fixed-world stores cannot supply.  Available here because the cell agreement is a genuine
+biconditional over *all* lower worlds, and it is world-stable (`val_denot_worldle_mono`). -/
 theorem write_reestablishes {k : Nat} {Ψ : World k} {Tc m_upd e_y} {R : SemRel k}
     (hag : ∀ (j : Fin k) (w' : World j.val) m' e', R j w' m' e' ↔ val_denot Tc j.val w' m' e')
     (hy : ∀ (j : Fin k), val_denot Tc j.val (Ψ.trunc (Nat.le_of_lt j.isLt)) m_upd e_y) :

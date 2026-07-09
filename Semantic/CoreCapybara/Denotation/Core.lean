@@ -11,14 +11,14 @@ open KripkeModel (mcell_up)
 open CoreCapybara.WP (WorldLe)
 
 /-- **Store typing at index `k`** — the Ahmed world-parametrized step-indexed store
-  (`Denotation/StepIndexedWorldParam.lean`).  Replaces the frozen `KripkeModel.StoreTyping`
-  (`Nat → Option MonRel`, one-way): a `StoreTyping k` maps each location to an optional
-  step-indexed relation `SemRel k` — a family over ALL lower worlds — so the cell agreement
-  can be a genuine biconditional (both `read` and `write`) yet stay `WorldLe`-monotone. -/
+  (`Denotation/StepIndexedWorldParam.lean`).  A `StoreTyping k` maps each location to an
+  optional step-indexed relation `SemRel k` — a family over ALL lower worlds — so the cell
+  agreement can be a genuine biconditional (both `read` and `write`) yet stay
+  `WorldLe`-monotone. -/
 abbrev StoreTyping (k : Nat) : Type := WP.World k
 
 /-- A **step-indexed value relation** stored at a cell: `SemRel k = (j : Fin k) → World j →
-  Memory → Exp {} → Prop` (a family over all lower worlds).  Replaces the frozen `MonRel`. -/
+  Memory → Exp {} → Prop` (a family over all lower worlds). -/
 abbrev MonRel (k : Nat) : Type := WP.SemRel k
 
 /-- Denotation of types, instantiated at a fixed Kripke world `(k, st)`.
@@ -29,7 +29,7 @@ abbrev MonRel (k : Nat) : Type := WP.SemRel k
 def Denot := Memory -> Exp {} -> Prop
 
 /-- An **indexed denotation**: a `Denot` parameterised by a step index `k` and a
-  store typing `st : StoreTyping k` (the Kripke world).  Now DEPENDENT — the store's type
+  store typing `st : StoreTyping k` (the Kripke world).  It is dependent: the store's type
   is coupled to the index (`World k`).  Type variables carry an `IDenot`, and
   `val_denot`/`exi_val_denot` produce one.  The world-applied `d k st : Denot` is
   what the combinator layer consumes. -/
@@ -590,9 +590,8 @@ def PeakSet.DeadIn (K : PeakSet s) (c : BVar s .cvar) : Prop :=
   ∃ a : Access, (CaptureSet.cvar a c) ⊆ K.cs
 
 /-- Environment separation well-formedness: every pair of distinct droppable
-capture variables has disjoint capability sets. This is the dead-set-free form
-of `DropSepExcept` — with no dead-set to exempt consumed pairs, *all* distinct
-droppable pairs must be separated. -/
+capture variables has disjoint capability sets.  With no dead-set to exempt
+consumed pairs, *all* distinct droppable pairs must be separated. -/
 def TypeEnv.EnvSepWf (env : TypeEnv s) : Prop :=
   ∀ (c1 c2 : BVar s .cvar),
     c1 ≠ c2 →
@@ -656,9 +655,9 @@ one index.  Defined BEFORE the `val_denot` block so the function-like cases can 
 `MemTyped` future worlds. -/
 def MemTyped (k : Nat) (st : StoreTyping k) (m : Memory) : Prop :=
   StoreConsistent st m ∧
-  -- every stored relation is **growth-stable** (the world-param analog of the old `MonRel.2`
-  -- bundling): stable under `WorldLe` at each lower level.  This is what lets `alloc`/`write`/
-  -- `drop` transport an *unchanged* cell's good-value across the world step.
+  -- every stored relation is **growth-stable**: stable under `WorldLe` at each lower level.
+  -- This is what lets `alloc`/`write`/`drop` transport an *unchanged* cell's good-value
+  -- across the world step.
   (∀ l (R : MonRel k), st.lookup l = some R →
     ∀ (i : Fin k) (w1 w2 : StoreTyping i.val) (m1 m2 : Memory),
       WorldLe w2 m2 w1 m1 → ∀ e, R i w1 m1 e → R i w2 m2 e) ∧
@@ -1082,7 +1081,7 @@ end
     index — see `Trace.readCount`), at an extended well-typed store typing `st'` truncated to
     that index.  Overflow runs owe nothing: the store speaks about content only at levels
     `< k`, so a run that exhausts the budget is beyond this world's observation depth (the
-    ▷-style bottom — see the Phase 2c design finding in `roadmaps/generic-refs.md`). -/
+    ▷-style bottom). -/
 def Ty.exp_denot (ρ : TypeEnv s) (T : Ty .capt s) (R : CapabilitySet)
     (k : Nat) (st : StoreTyping k) (m : Memory) (e : Exp {}) : Prop :=
   MemTyped k st m →
@@ -2222,7 +2221,7 @@ theorem typed_env_is_transparent
           intro x; cases x with
           | there x => exact ih ht' x
 
-/-- Every `tvar` binding's stored denotation is index-downward-closed (the new sixth conjunct
+/-- Every `tvar` binding's stored denotation is index-downward-closed (the sixth conjunct
 of `is_proper`).  Consumed by `val_denot_down_trunc` / `env_typing_worldle_down`. -/
 theorem typed_env_is_downward_closed
   (ht : EnvTyping Γ env k st mem) :
@@ -3285,9 +3284,9 @@ def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
 /-- Semantic separation check. The `EnvSepWf` premise is needed by the
 `sep_droppable` rule: separation of two distinct droppable capture variables
 is an environment invariant, not derivable from `EnvTyping` alone. The `sep_ro`
-rule no longer needs a `Γ.IsClosed` hypothesis here: `ro` now implies
-drop-freeness directly (`CapabilitySet.HasKind.ro_drop_free`), so the peak-tracing
-closedness argument is confined to the syntactic `sep_ro` premises. -/
+rule needs no `Γ.IsClosed` hypothesis here, since `ro` implies drop-freeness
+directly (`CapabilitySet.HasKind.ro_drop_free`); the peak-tracing closedness
+argument is confined to the syntactic `sep_ro` premises. -/
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
   ∀ env k st H,
     EnvTyping Γ env k st H ->

@@ -3,7 +3,7 @@ import Semantic.CoreCapybara.TypeSystem.BasicProps
 /-!
 # Kill-weakening via unconditional cvar-erasure
 
-The paper's Lemma [Kill weakening] (`lem:tr:kill`, ledger H2): typing survives the
+The paper's Lemma [Kill weakening] (`lem:tr:kill`): typing survives the
 kill operation `Γ ⊖ C₁` when the killed capture variables are avoided.
 
 The mechanization proceeds through an **unconditional erasure theorem**: erase every
@@ -13,13 +13,11 @@ form there is no side hypothesis, so every induction closes — gratuitous inter
 erase themselves, and authority-consulting leaves become trivial at killed variables.
 The paper statement (`HasType.kill_weakening`) is then the identity corollary: if
 erasure fixes the four visible components, killing preserves typing.
-
-See `notes/kill-weakening-design.md` for the full design.
 -/
 
 namespace CoreCapybara
 
-/-! ## §2.2 New definitions: cvar mention and erasure -/
+/-! ## New definitions: cvar mention and erasure -/
 
 /-- Structural boolean equality on de Bruijn variables (`BVar` derives none). -/
 def BVar.beq : BVar s k -> BVar s k -> Bool
@@ -177,9 +175,7 @@ def Ctx.eraseCVars : Ctx s -> CaptureSet s -> Ctx s
 | .empty, _ => .empty
 | .push Γ b, K => (Γ.eraseCVars K.strip1).push (b.eraseCVars K.strip1)
 
-/-! ## §3 Layer A — erasure algebra
-
-  Item numbers refer to `notes/kill-weakening-design.md §3`. -/
+/-! ## Layer A — erasure algebra -/
 
 /- Item 1: `{}`/`∪` are homomorphic (definitional). -/
 @[simp] theorem CaptureSet.eraseCVars_empty {K : CaptureSet s} :
@@ -1485,7 +1481,7 @@ theorem Ty.refineCaptureSet_eraseCVars {T : Ty .capt s} {C K : CaptureSet s} :
 @[simp] theorem PureTy.core_eraseCVars {T : PureTy s} {K : CaptureSet s} :
     (T.eraseCVars K).core = T.core.eraseCVars K := rfl
 
-/-! ## §3 Layer B — context erasure + kill -/
+/-! ## Layer B — context erasure + kill -/
 
 /- Item 11: lookup-erasure.  At `.here`/`.there` the looked-up payload is `·.rename succ`;
    the erased context pushes `b.eraseCVars K.strip1`, so the result reconciles via the
@@ -2072,7 +2068,7 @@ theorem Ctx.LookupCVar.kill_peaks_cs {Γ : Ctx s} {c : BVar s .cvar} {a : Author
     ← h.eq_lookup, ← h.eq_authority] at hs
   exact hs
 
-/-! ## §2.1 Headline erasure theorems (L1–L8) -/
+/-! ## Headline erasure theorems (L1–L8) -/
 
 theorem Subcapt.erase_kill {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s}
     (h : Subcapt Γ C1 C2) (K : CaptureSet s) :
@@ -3024,9 +3020,9 @@ theorem HasType.erase_kill {s : Sig} {C : CaptureSet s} {Γ : Ctx s} {e : Exp s}
     exact .subtyp (ih K) (hsc.erase_kill K) (hsub.erase_kill K)
       (hC.eraseCVars K) (hE.eraseCVars K)
 
-/-! ## §2.1 The paper lemma (L9) and its peak-set wrapper (L9') -/
+/-! ## The paper lemma (L9) and its peak-set wrapper (L9') -/
 
-/-- Paper Lemma [Kill weakening] (`lem:tr:kill`, ledger H2): if erasing the killed
+/-- Paper Lemma [Kill weakening] (`lem:tr:kill`): if erasing the killed
     variables `K` fixes the use set, term, result type, and context, then killing `K`
     in the context preserves typing. -/
 theorem HasType.kill_weakening {s : Sig} {C : CaptureSet s} {Γ : Ctx s} {e : Exp s}

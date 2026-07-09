@@ -71,7 +71,7 @@ theorem env_typing_worldle_trunc {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
 
 /-- **Environment-typing `WorldLe`-monotonicity at a fixed index.**  The same-index
 (`j = k`) instance of `env_typing_worldle_trunc` (`st.trunc (le_refl k) = st` by
-`trunc_self`).  Kept as a named lemma for the many callers that stay at index `k`. -/
+`trunc_self`).  A named lemma for the many callers that stay at index `k`. -/
 theorem env_typing_worldle_down {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
     {k : Nat} {st st' : StoreTyping k} {m m' : Memory}
     (hts : EnvTyping Γ env k st m) (hwle : WorldLe st' m' st m) :
@@ -79,12 +79,12 @@ theorem env_typing_worldle_down {s : Sig} {Γ : Ctx s} {env : TypeEnv s}
   env_typing_worldle_trunc (Nat.le_refl k) hts
     (by rw [WP.World.trunc_self]; exact hwle)
 
-/- NOTE (Phase 6): the FALSE `memTyped_subsumes` (operational subsumption-monotonicity —
-`Cell.subsumes` for mcells orders only liveness, so a non-type-preserving `write` is
-`subsumes`-compatible while destroying `MemTyped`) was DELETED.  Its only consumer was
-`sem_typ_par`, which now discharges the rely–guarantee `Safe.par` at *well-typed future
-worlds* (e2 runs at e1's post-world, `letin`-style; robust fields re-run the branch's
-semantic typing at the rely-world) — no operational transport of well-typedness remains. -/
+/- There is no operational subsumption-monotonicity of well-typedness: `Cell.subsumes` for
+mcells orders only liveness, so a non-type-preserving `write` is `subsumes`-compatible while
+destroying `MemTyped`.  Accordingly, `sem_typ_par` discharges the rely–guarantee `Safe.par`
+at *well-typed future worlds* (e2 runs at e1's post-world, `letin`-style; robust fields re-run
+the branch's semantic typing at the rely-world) rather than transporting well-typedness
+operationally. -/
 
 theorem typed_env_lookup_var
   (hts : EnvTyping Γ env k st store)
@@ -3086,9 +3086,8 @@ theorem sem_typ_read
   intro env k st store hts hdsep hcompat
   simp only [Ty.exi_exp_denot, Exp.subst, Subst.from_TypeEnv, Var.subst, List.empty_eq]
   intro hmt
-  -- **Budget 0: nothing is owed** (`Eval.exhausted`).  This is where the former
-  -- step-index-0 gap of the read rule is discharged honestly: the budget-indexed `Safe`
-  -- is trivial at 0 and the `μ(t) < 0` guard is vacuous (Phase 2c design finding).
+  -- **Budget 0: nothing is owed** (`Eval.exhausted`).  The budget-indexed `Safe`
+  -- is trivial at 0 and the `μ(t) < 0` guard is vacuous.
   rcases Nat.eq_zero_or_pos k with rfl | hkpos
   · exact ⟨Eval.exhausted, prefixSafe_zero⟩
   -- `x` is a reader; recover its underlying cell `y`, content `b0`, store relation `Rst`,
@@ -3676,8 +3675,8 @@ theorem sem_sepcheck_union
     (ih1 env k st H hts hdsep) (ih2 env k st H hts hdsep)
 
 /-- Two read-only capability sets do not interfere: any shared location is held
-read-only on both sides. `.ro` now excludes `.drop` outright (there is no
-`ro_drop` alternative), so no separate drop-freedom hypothesis is needed. -/
+read-only on both sides. `.ro` excludes `.drop` outright, so no separate
+drop-freedom hypothesis is needed. -/
 theorem CapabilitySet.noninterference_of_ro_ro
   (hk1 : CapabilitySet.HasKind C1 .ro)
   (hk2 : CapabilitySet.HasKind C2 .ro) :
@@ -4081,10 +4080,10 @@ theorem sem_typ_par
     CaptureSet.ground_denot_eq_reachability _ _
   have hrC2 : C2.denot env store = (C2.subst (Subst.from_TypeEnv env)).reachability store :=
     CaptureSet.ground_denot_eq_reachability _ _
-  -- **The rely** (Phase 6): a well-typed future world of `(st, store)` at budget `j`.
+  -- **The rely**: a well-typed future world of `(st, store)` at budget `j`.
   -- Every separation field of `Safe.par` is discharged by re-running the branch's
-  -- SEMANTIC typing at that world — never by operational replay from an arbitrary
-  -- subsuming memory (`simulate_down`/`memTyped_subsumes` are gone).
+  -- SEMANTIC typing at that world, never by operational replay from an arbitrary
+  -- subsuming memory.
   -- Shared engine: a branch's `Eval` at any rely-world with a compatible budget.
   have hbranch1 : ∀ (j : Nat) (st' : StoreTyping j) (m' : Memory) (hjk : j ≤ k),
       WorldLe st' m' (st.trunc hjk) store → MemTyped j st' m' →
@@ -4282,9 +4281,9 @@ never an mcell, so the store typing (which only tracks mcells) is untouched: con
 holds because every tracked location stays the same mcell it was, and each live tracked
 cell's good-value obligation transports along `extend_val_subsumes` via the stored
 relation's own monotonicity (`R.2`).  Unlike bare subsumption-monotonicity of `MemTyped`
-(which is FALSE for a higher-order store — see the Phase-6 note at the top of this file),
-this is a *local* growth (only the fresh, untracked location changes), so no global
-relation-monotonicity is needed. -/
+(which fails for a higher-order store, since a `subsumes`-compatible write can destroy
+well-typedness), this is a *local* growth (only the fresh, untracked location changes), so
+no global relation-monotonicity is needed. -/
 theorem WT_extend_val {k : Nat} {st : StoreTyping k} {m : Memory} {l : Nat} {w : HeapVal}
     (hwf_v : Exp.WfInHeap w.unwrap m.heap)
     (hreach : w.reachability = compute_reachability m.heap w.unwrap w.isVal)
@@ -5115,11 +5114,9 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty 
           (env.extend_lock) i st'a m'a henvlock_a hdsep.extend_lock)
     exact hbody1 i hij st'a m'a hwle'a hmt'a hcompat'a hsatΨ1.kind hsatΨ1.sep
 
-/-- Capture-covariance for `cell` with the element type held rigid.  In the old
-    (pre-Kripke) model this was `covers`-monotonicity in the capture set plus
-    heap-wf monotonicity under subsumption, with the element payload carried
-    verbatim.  R.5 WORK ITEM (Phase R, `roadmaps/translation.md`): re-prove in
-    the new Kripke/step-indexed model. -/
+/-- Capture-covariance for `cell` with the element type held rigid.  The element
+    payload is carried verbatim; only the capture set widens, discharged by
+    `covers_mono` together with well-formedness of the wider set. -/
 lemma sem_subtyp_cell {cs1 cs2 : CaptureSet s} {T : Ty .capt s}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.cell cs1 T) (.cell cs2 T) := by
@@ -5134,7 +5131,7 @@ lemma sem_subtyp_cell {cs1 cs2 : CaptureSet s} {T : Ty .capt s}
   · exact CapabilitySet.covers_mono (hcs env j st' m' htyping') hcov1
 
 /-- Capture-covariance for `reader` with the element type held rigid (same
-    skeleton as `sem_subtyp_cell`).  R.5 WORK ITEM: re-prove in the new model. -/
+    skeleton as `sem_subtyp_cell`). -/
 lemma sem_subtyp_reader {cs1 cs2 : CaptureSet s} {T : Ty .capt s}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.reader cs1 T) (.reader cs2 T) := by
@@ -5148,8 +5145,7 @@ lemma sem_subtyp_reader {cs1 cs2 : CaptureSet s} {T : Ty .capt s}
       (from_TypeEnv_wf_in_heap htyping')
   · exact CapabilitySet.covers_mono (hcs env j st' m' htyping') hcov1
 
-/-- Capture-covariance for `cap` (same skeleton as `sem_subtyp_cell`).
-    R.5 WORK ITEM: re-prove in the new model. -/
+/-- Capture-covariance for `cap` (same skeleton as `sem_subtyp_cell`). -/
 lemma sem_subtyp_cap {cs1 cs2 : CaptureSet s}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.cap cs1) (.cap cs2) := by
@@ -5168,8 +5164,7 @@ lemma sem_subtyp_cap {cs1 cs2 : CaptureSet s}
     field and the captured-resources bound; the function-body obligation depends
     on the bound and body alone, so widening `cs1` to `cs2` keeps the body field
     verbatim.  Needs no purity on `S` — exactly why it discharges the var rule's
-    poly refinement without the `PureTy` the full `sem_subtyp_poly` demands.
-    R.5 WORK ITEM: re-prove in the new model. -/
+    poly refinement without the `PureTy` the full `sem_subtyp_poly` demands. -/
 lemma sem_subtyp_poly_cap {S : Ty .capt s} {cs1 cs2 : CaptureSet s} {T : Ty .exi (s,X)}
   (hcs : SemSubcapt Γ cs1 cs2) (hcs2_closed : CaptureSet.IsClosed cs2) :
   SemSubtyp Γ (.poly S cs1 T) (.poly S cs2 T) := by

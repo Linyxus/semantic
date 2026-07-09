@@ -9,12 +9,7 @@ import Semantic.CoreCapybara.Semantics.BigStep
 
   This module is the infrastructure for Church–Rosser up to `Trace.Equiv` and
   `Memory.Iso`: confluence is only provable up to a location bijection because
-  `step_alloc` chooses fresh names freely (two runs diverge at a single `alloc`).
-
-  STATUS: definitions, `Iso`/`ConfigIso`, functoriality, and predicate transport
-  are proven; the equivariance OBLIGATIONS (data-level `*_renameLoc` and the
-  operational `Step/BigStep/Reduce.renameLoc`) are stated and grouped for design
-  audit, proofs to follow in the next phase. -/
+  `step_alloc` chooses fresh names freely (two runs diverge at a single `alloc`). -/
 
 namespace CoreCapybara
 
@@ -357,10 +352,9 @@ def TraceItem.renameLoc (π : Equiv.Perm Nat) : TraceItem → TraceItem
 def Trace.renameLoc (π : Equiv.Perm Nat) (t : Trace) : Trace :=
   t.map (TraceItem.renameLoc π)
 
-/-! ## Equivariance obligations (data level)
+/-! ## Equivariance facts (data level)
 
-  These are the facts the bundled-structure renamings and the operational
-  equivariance rest on.  Proofs deferred to the post-audit phase. -/
+  The facts the bundled-structure renamings and the operational equivariance rest on. -/
 
 /-- Heap lookup commutes with renaming (along `π`). -/
 theorem Heap.lookup_renameLoc (π : Equiv.Perm Nat) (h : Heap) (l : Nat) :

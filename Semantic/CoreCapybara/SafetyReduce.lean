@@ -5,11 +5,10 @@ import Semantic.CoreCapybara.Semantics.Confluence
 
   `Safety.lean` establishes progress and immutability along the *sequential* schedule
   `SeqReduce`.  This file lifts both to the *genuine interleaving* relation `Reduce`
-  (built from the interleaving small-step `Step`), closing the gap the old deferral
-  comment described.  The bridge is `confluence` (for progress) and `standardization`
-  (for immutability): a partial `Reduce` run is joined against a sequential run obtained
-  from the semantic typing, and answers are `Step`-normal, so the interleaved state is
-  itself progressive. -/
+  (built from the interleaving small-step `Step`).  The bridge is `confluence` (for progress)
+  and `standardization` (for immutability): a partial `Reduce` run is joined against a
+  sequential run obtained from the semantic typing, and answers are `Step`-normal, so the
+  interleaved state is itself progressive. -/
 
 namespace CoreCapybara
 

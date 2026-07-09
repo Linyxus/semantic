@@ -24,10 +24,9 @@ def Tpost.is_bool_independent (Q : Tpost) : Prop :=
 
 /-- `Q` does not observe WHICH value location a `read` returns: for any trace `t` and any
   two live value locations `n1`, `n2`, the postcondition agrees on the two read results.
-  This is the generic-cell analogue of `is_bool_independent` (which fixed the old bool
-  read's nondeterminism).  It is what lets `eval_monotonic` bridge a read replayed in a
-  subsuming memory by `simulate_down`, where the cell may store a different location and
-  the replay must pick a result present in the smaller memory. -/
+  The generic-cell analogue of `is_bool_independent`.  It lets a read replayed in a
+  subsuming memory be bridged even though the cell may store a different location there,
+  the replay picking a result present in the smaller memory. -/
 def Tpost.is_read_independent (Q : Tpost) : Prop :=
   ∀ {t : Trace} {m : Memory} {n1 n2 : Nat} {v1 v2 : HeapVal},
     m.lookup n1 = some (.val v1) ->
@@ -151,7 +150,7 @@ inductive BigStep : Memory -> Exp {} -> Trace -> Exp {} -> Memory -> Prop where
   -- well-formed and `n` is preserved by framing (confluence).  Kripke monotonicity of
   -- `Eval` is NOT available syntactically for this faithful read — a write changes the
   -- stored location across a subsuming memory — and is re-established semantically (at the
-  -- logical-relation level) rather than via `simulate_down`.
+  -- logical-relation level).
   m.heap n ≠ none ->
   BigStep m (.read (.free x)) [.access .ro y] (.var (.free n)) m
 | bs_write {m : Memory} {x y : Nat} {n0 : Nat} :
@@ -273,10 +272,9 @@ def Trace.readCount (t : Trace) : Nat :=
   store exposes cell content only at levels `< k`, so a read consumes one index and
   continuations run at *residual* budgets (`k − t₁.readCount` in `letin`/`unpack`/
   `par` — truncated subtraction lands budget-overflow runs on `exhausted`, exactly
-  where nothing further is owed).  See the Phase 2c design finding in
-  `roadmaps/generic-refs.md` for why total (index-free) safety is undischargeable at
-  exhausted budgets and why reads are the right fuel (they are the only
-  shape-information-destroying events).
+  where nothing further is owed).  Total (index-free) safety is undischargeable at
+  exhausted budgets, and reads are the right fuel because they are the only
+  shape-information-destroying events.
 
   The `letin`/`unpack` continuations quantify over the actual `BigStep` answers of
   the head, so the intermediate `m1` is a genuine result. -/
@@ -354,12 +352,12 @@ inductive Safe : Nat -> Memory -> Exp {} -> Prop where
   (resolve m.heap (.var x) = some .bfalse -> Safe k m e3) ->
   Safe k m (.cond x e2 e3)
 | par {k : Nat} {m : Memory} {C1 C2 : CapabilitySet} {Cs1 Cs2 : CaptureSet {}}
-  -- **Rely–guarantee parallel composition (Phase 6).**  `W j m'` is an abstract *rely*:
+  -- **Rely–guarantee parallel composition.**  `W j m'` is an abstract *rely*:
   -- "`m'` is an admissible scheduler memory observable for `j` reads" (the semantic
   -- instantiation packs a well-typed future world at budget `j`).  The separation
   -- content — budget bounds and robust branch safety — is demanded only at
-  -- rely-memories with a live budget, NEVER at arbitrary subsuming memories (the old
-  -- `simulate_down` shape, which is FALSE for a higher-order store).  All fields are
+  -- rely-memories with a live budget, NEVER at arbitrary subsuming memories (a
+  -- subsuming-memory replay shape, which is FALSE for a higher-order store).  All fields are
   -- budget-relative, matching the read-budget-indexed `Safe` discipline.
   (W : Nat -> Memory -> Prop) :
   (hW : W k m) ->
@@ -574,15 +572,6 @@ theorem Memory.exists_fresh_avoiding (m : Memory) (S : Finset Nat) :
     have hle : (dom ∪ S).sup id + 1 ≤ (dom ∪ S).sup id :=
       Finset.le_sup (f := id) (Finset.mem_union_left S hmem)
     omega
-
-/- NOTE (Phase 2c): the answer-extraction results `Safe.has_answer` and
-  `eval_exists_answer` (and `Safe.has_answer_avoiding` below) were REMOVED with the
-  budget-indexing of `Safe`: an `exhausted` derivation carries no run, so extraction
-  from a single fixed-budget derivation is genuinely false.  They had no consumers on
-  Fundamental's import path.  The honest indexed restatement (needed when `Safety.lean`
-  is repaired) requires either a `∀ k` compactness argument or a small-step
-  budget-exhaustion disjunct — see "Deferred After Fundamental" in
-  `roadmaps/generic-refs.md`.  The total-`Safe` proofs live at git 66b6654. -/
 
 /-- `SubsumeOk` is antitone in the trace: an external touch in a prefix `t1`
   remains an external touch in `t1 ++ t2`. -/
@@ -1147,16 +1136,6 @@ theorem Memory.mcell_content_val {m : Memory} {y n : Nat}
     m.lookup n ≠ none :=
   m.mcell_wf y n h
 
-/- NOTE (Phase 7): the three FALSE operational-monotonicity adapters
-  (`BigStep.simulate_down`, `Safe.lift`, `Safe.frame_lift`) were DELETED from the
-  development: they are genuinely false for a faithful reference-valued `read` (the
-  cell stores a different location in `m1` vs `m2`, so a replayed run's value/trace
-  diverge — see the first-principles note in `Denotation/KripkeModel.lean`; no
-  `subsumes` redefinition rescues it).  The Phase-6 rely–guarantee `Safe.par` removed
-  their last use on `Fundamental.lean`'s path, and the reworked `Props`/
-  `Standardization`/`Confluence` are carrier-free (the interleaving `Step`'s own
-  `par`-guards carry the separation content), so nothing consumes them anywhere. -/
-
 /-- A location allocated within a `BigStep`'s trace was absent from the initial
   memory (allocation is always fresh). -/
 theorem BigStep.alloc_fresh {m : Memory} {e : Exp {}} {t v m' l}
@@ -1405,8 +1384,8 @@ theorem compute_reachability_frame {h1 h2 : Heap} {c : Nat} {ci1 ci2}
 /-- **Exact memory frame.**  If `e` runs from `ma`, and `mb` agrees with `ma` on
   every cell except `c` (a capability cell of `ma` that `e` never touches), then
   `e` replays from `mb` with the SAME trace and value, the results agree off `c`,
-  and `c` is unchanged in the `mb`-run.  This is the bit-exact strengthening of
-  `simulate_down` (whose `subsumes` discards mcell bits) needed for the par diamond. -/
+  and `c` is unchanged in the `mb`-run.  This exact (bit-preserving) frame property is
+  what the par diamond needs. -/
 theorem BigStep.frame_off {ma mb : Memory} {e : Exp {}} {t v ma' : _} {c : Nat}
     (hbs : BigStep ma e t v ma')
     (hc : ∃ ci, ma.lookup c = some (.capability ci))
@@ -1888,235 +1867,6 @@ theorem BigStep.frame_off_absent {ma mb : Memory} {e : Exp {}} {t v ma' : _} {c 
         ih2 hc1 cpres1 ag1 (Exp.wf_monotonic (BigStep.subsumes run1) hwf_e2)
       exact ⟨mb2, BigStep.bs_par run1 run2, ag2, cpres2,
         by rw [Trace.touched_append, not_or]; exact ⟨hnt1, hnt2⟩⟩
-
-/- ORIGINAL PROOF — unsound for faithful reference-valued reads (see note above):
-  induction hbs generalizing mb with
-  | bs_pack =>
-    exact ⟨mb, BigStep.bs_pack, hag, hcb, by simp [Trace.touched]⟩
-  | bs_val hv =>
-    exact ⟨mb, BigStep.bs_val hv, hag, hcb, by simp [Trace.touched]⟩
-  | bs_var =>
-    exact ⟨mb, BigStep.bs_var, hag, hcb, by simp [Trace.touched]⟩
-  | bs_wrap =>
-    exact ⟨mb, BigStep.bs_wrap, hag, hcb, by simp [Trace.touched]⟩
-  | bs_alloc hlk hfresh =>
-    rename_i ll
-    have hlc : ll ≠ c := fun h => by rw [h] at hfresh; exact hc hfresh
-    match hwf with
-    | .wf_alloc (.wf_free (n := xx) hx1) =>
-      have hxc : xx ≠ c := fun h => by
-        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
-      have hlkb := (hag xx hxc) ▸ hlk
-      have hfreshb : mb.heap ll = none := by
-        rw [show mb.heap ll = _ from (hag ll hlc).symm]; exact hfresh
-      refine ⟨mb.extend_mcell ll _ hfreshb, BigStep.bs_alloc hlkb hfreshb, ?_, ?_,
-        by simp [Trace.touched]⟩
-      · intro l hlc'
-        by_cases hll : l = ll
-        · subst hll
-          rw [Memory.extend_mcell_lookup hfresh, Memory.extend_mcell_lookup hfreshb]
-        · simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hll]
-          exact hag l hlc'
-      · have hcl : c ≠ ll := fun h => hlc h.symm
-        simp only [Memory.lookup, Memory.extend_mcell, Heap.extend_mcell, if_neg hcl]
-        exact hcb
-  | bs_invoke hlkx hlky =>
-    match hwf with
-    | .wf_app (.wf_free (n := xx) hx1) (.wf_free (n := yy) hy1) =>
-      have hxc : xx ≠ c := fun h => by
-        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
-      have hyc : yy ≠ c := fun h => by
-        rw [h] at hy1; rw [show mb.heap c = none from hcb] at hy1; cases hy1
-      exact ⟨mb, BigStep.bs_invoke ((hag xx hxc) ▸ hlkx) ((hag yy hyc) ▸ hlky), hag, hcb,
-        by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
-  | bs_apply hlk hbody ih =>
-    match hwf with
-    | .wf_app (.wf_free (n := xx) hx1) hwfy =>
-      have hxc : xx ≠ c := fun h => by
-        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
-      have hlkb := (hag xx hxc) ▸ hlk
-      obtain ⟨_, _, he⟩ := Exp.wf_inv_abs (Memory.wf_lookup hlkb)
-      obtain ⟨mb', hbsb, hag', hcpres, hnt'⟩ :=
-        ih hc hcb hag (Exp.wf_subst he (Subst.wf_openVar hwfy))
-      exact ⟨mb', BigStep.bs_apply hlkb hbsb, hag', hcpres, hnt'⟩
-  | bs_tapply hlk hbody ih =>
-    match hwf with
-    | .wf_tapp (.wf_free (n := xx) hx1) _ =>
-      have hxc : xx ≠ c := fun h => by
-        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
-      have hlkb := (hag xx hxc) ▸ hlk
-      obtain ⟨_, _, he⟩ := Exp.wf_inv_tabs (Memory.wf_lookup hlkb)
-      obtain ⟨mb', hbsb, hag', hcpres, hnt'⟩ :=
-        ih hc hcb hag (Exp.wf_subst he (Subst.wf_openTVar Ty.WfInHeap.wf_top))
-      exact ⟨mb', BigStep.bs_tapply hlkb hbsb, hag', hcpres, hnt'⟩
-  | bs_capply hlk hbody ih =>
-    match hwf with
-    | .wf_capp (.wf_free (n := xx) hx1) hcs =>
-      have hxc : xx ≠ c := fun h => by
-        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
-      have hlkb := (hag xx hxc) ▸ hlk
-      obtain ⟨_, _, he⟩ := Exp.wf_inv_cabs (Memory.wf_lookup hlkb)
-      obtain ⟨mb', hbsb, hag', hcpres, hnt'⟩ :=
-        ih hc hcb hag (Exp.wf_subst he (Subst.wf_openCVar hcs))
-      exact ⟨mb', BigStep.bs_capply hlkb hbsb, hag', hcpres, hnt'⟩
-  | bs_unwrap hlk hbody ih =>
-    match hwf with
-    | .wf_unwrap (.wf_free (n := xx) hx1) =>
-      have hxc : xx ≠ c := fun h => by
-        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
-      have hlkb := (hag xx hxc) ▸ hlk
-      obtain ⟨mb', hbsb, hag', hcpres, hnt'⟩ :=
-        ih hc hcb hag (match Memory.wf_lookup hlkb with | .wf_boxed _ _ he => he)
-      exact ⟨mb', BigStep.bs_unwrap hlkb hbsb, hag', hcpres, hnt'⟩
-  | bs_read hlkx hlky =>
-    match hwf with
-    | .wf_read (.wf_free (n := xx) hx1) =>
-      have hxc : xx ≠ c := fun h => by
-        rw [h] at hx1; rw [show mb.heap c = none from hcb] at hx1; cases hx1
-      have hlkxb := (hag xx hxc) ▸ hlkx
-      match Memory.wf_lookup hlkxb with
-      | .wf_reader (.wf_free (n := yy) hy1) =>
-        have hyc : yy ≠ c := fun h => by
-          rw [h] at hy1; rw [show mb.heap c = none from hcb] at hy1; cases hy1
-        exact ⟨mb, BigStep.bs_read hlkxb ((hag yy hyc) ▸ hlky), hag, hcb,
-          by simp only [Trace.touched, or_false]; exact fun h => hyc h.symm⟩
-  | bs_write_true hlkx hlky =>
-    rename_i x y _ _ _
-    have hxx : mb.heap x ≠ none := by
-      cases hwf with | wf_write hwfx _ => cases hwfx with | wf_free h => rw [h]; simp
-    have hyx : mb.heap y ≠ none := by
-      cases hwf with | wf_write _ hwfy => cases hwfy with | wf_free h => rw [h]; simp
-    have hxc : x ≠ c := fun h => hxx (by rw [h]; exact hcb)
-    have hyc : y ≠ c := fun h => hyx (by rw [h]; exact hcb)
-    have hlkxb := (hag x hxc) ▸ hlkx
-    refine ⟨mb.update_mcell x true .live ⟨_, hlkxb⟩,
-      BigStep.bs_write_true hlkxb ((hag y hyc) ▸ hlky), ?_, ?_,
-      by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
-    · intro l hlc
-      by_cases hlx : l = x
-      · subst hlx
-        simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
-      · rw [Memory.update_mcell_lookup_ne hlx, Memory.update_mcell_lookup_ne hlx]
-        exact hag l hlc
-    · rw [Memory.update_mcell_lookup_ne (fun h => hxc h.symm)]; exact hcb
-  | bs_write_false hlkx hlky =>
-    rename_i x y _ _ _
-    have hxx : mb.heap x ≠ none := by
-      cases hwf with | wf_write hwfx _ => cases hwfx with | wf_free h => rw [h]; simp
-    have hyx : mb.heap y ≠ none := by
-      cases hwf with | wf_write _ hwfy => cases hwfy with | wf_free h => rw [h]; simp
-    have hxc : x ≠ c := fun h => hxx (by rw [h]; exact hcb)
-    have hyc : y ≠ c := fun h => hyx (by rw [h]; exact hcb)
-    have hlkxb := (hag x hxc) ▸ hlkx
-    refine ⟨mb.update_mcell x false .live ⟨_, hlkxb⟩,
-      BigStep.bs_write_false hlkxb ((hag y hyc) ▸ hlky), ?_, ?_,
-      by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
-    · intro l hlc
-      by_cases hlx : l = x
-      · subst hlx
-        simp only [Memory.lookup, Memory.update_mcell, Heap.update_cell, if_true]
-      · rw [Memory.update_mcell_lookup_ne hlx, Memory.update_mcell_lookup_ne hlx]
-        exact hag l hlc
-    · rw [Memory.update_mcell_lookup_ne (fun h => hxc h.symm)]; exact hcb
-  | bs_drop hlkx =>
-    rename_i xx _
-    have hxx : mb.heap xx ≠ none := by
-      cases hwf with | wf_drop hwfx => cases hwfx with | wf_free h => rw [h]; simp
-    have hxc : xx ≠ c := fun h => hxx (by rw [h]; exact hcb)
-    have hlkxb := (hag xx hxc) ▸ hlkx
-    refine ⟨mb.drop_mcell xx ⟨_, hlkxb⟩, BigStep.bs_drop hlkxb, ?_, ?_,
-      by simp only [Trace.touched, or_false]; exact fun h => hxc h.symm⟩
-    · intro l hlc
-      by_cases hlx : l = xx
-      · subst hlx
-        simp only [Memory.lookup, Memory.drop_mcell, Heap.update_cell, if_true]
-      · rw [Memory.drop_mcell_lookup_ne hlx, Memory.drop_mcell_lookup_ne hlx]; exact hag l hlc
-    · rw [Memory.drop_mcell_lookup_ne (fun h => hxc h.symm)]; exact hcb
-  | bs_letin_val hbs1 hv hwf_v hfresh hbs2 ih1 ih2 =>
-    rename_i vval l'
-    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
-    obtain ⟨mb1, run1, ag1, cpres1, hnt1⟩ := ih1 hc hcb hag hwf_e1
-    have hc_m1 : _ ≠ none :=
-      fun h => hc ((BigStep.untouched_preserved hbs1 hc hnt1).symm.trans h)
-    have hl'c : l' ≠ c := fun h => by subst h; exact hc_m1 hfresh
-    have hfreshb : mb1.lookup l' = none := (ag1 l' hl'c).symm.trans hfresh
-    have hwf_vb := BigStep.wf_answer run1 hwf_e1
-    have hreach_eq := compute_reachability_frame_wf cpres1 ag1 vval hv hwf_vb
-    obtain ⟨mb2, run2, ag2, cpres2, hnt2⟩ :=
-      ih2 (mb := mb1.extend_val l' ⟨vval, hv, compute_reachability mb1.heap vval hv⟩
-              hwf_vb rfl hfreshb)
-        (by rw [Memory.extend_val_lookup_ne (Ne.symm hl'c)]; exact hc_m1)
-        (by rw [Memory.extend_val_lookup_ne (Ne.symm hl'c)]; exact cpres1)
-        (by
-          intro l hlc
-          by_cases hll : l = l'
-          · subst hll
-            rw [Memory.extend_val_lookup_self, Memory.extend_val_lookup_self]
-            exact congrArg (fun R => some (Cell.val ⟨vval, hv, R⟩)) hreach_eq
-          · rw [Memory.extend_val_lookup_ne hll, Memory.extend_val_lookup_ne hll]
-            exact ag1 l hlc)
-        (Exp.wf_subst
-          (Exp.wf_monotonic
-            (Heap.subsumes_trans (Heap.extend_subsumes hfreshb) (BigStep.subsumes run1))
-            hwf_e2)
-          (Subst.wf_openVar (Var.WfInHeap.wf_free (Heap.extend_lookup_eq _ _ _))))
-    exact ⟨mb2, BigStep.bs_letin_val run1 hv hwf_vb hfreshb run2, ag2, cpres2,
-      by rw [Trace.touched_append, not_or]; exact ⟨hnt1, hnt2⟩⟩
-  | bs_letin_var hbs1 hbs2 ih1 ih2 =>
-    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_letin hwf
-    obtain ⟨mb1, run1, ag1, cpres1, hnt1⟩ := ih1 hc hcb hag hwf_e1
-    have hc1 : _ ≠ none :=
-      fun h => hc ((BigStep.untouched_preserved hbs1 hc hnt1).symm.trans h)
-    have hwf_body := Exp.wf_subst (Exp.wf_monotonic (BigStep.subsumes run1) hwf_e2)
-      (match BigStep.wf_answer run1 hwf_e1 with
-        | Exp.WfInHeap.wf_var hx => Subst.wf_openVar hx)
-    obtain ⟨mb2, run2, ag2, cpres2, hnt2⟩ := ih2 hc1 cpres1 ag1 hwf_body
-    exact ⟨mb2, BigStep.bs_letin_var run1 run2, ag2, cpres2,
-      by rw [Trace.touched_append, not_or]; exact ⟨hnt1, hnt2⟩⟩
-  | bs_unpack hbs1 hbs2 ih1 ih2 =>
-    obtain ⟨hwf_e1, hwf_e2⟩ := Exp.wf_inv_unpack hwf
-    obtain ⟨mb1, run1, ag1, cpres1, hnt1⟩ := ih1 hc hcb hag hwf_e1
-    have hc1 : _ ≠ none :=
-      fun h => hc ((BigStep.untouched_preserved hbs1 hc hnt1).symm.trans h)
-    have hwf_body := Exp.wf_subst (Exp.wf_monotonic (BigStep.subsumes run1) hwf_e2)
-      (match BigStep.wf_answer run1 hwf_e1 with
-        | Exp.WfInHeap.wf_pack hcs hx => Subst.wf_unpack hcs hx)
-    obtain ⟨mb2, run2, ag2, cpres2, hnt2⟩ := ih2 hc1 cpres1 ag1 hwf_body
-    exact ⟨mb2, BigStep.bs_unpack run1 run2, ag2, cpres2,
-      by rw [Trace.touched_append, not_or]; exact ⟨hnt1, hnt2⟩⟩
-  | bs_cond_true hres hbody ih =>
-    obtain ⟨hwfx, hwf2, _⟩ := Exp.wf_inv_cond hwf
-    match hwfx with
-    | .wf_free (n := xb) hxb =>
-      have hxc : xb ≠ c := fun h => by
-        rw [h] at hxb; rw [show mb.heap c = none from hcb] at hxb; cases hxb
-      have hresb : resolve mb.heap (.var (.free xb)) = some .btrue := by
-        simp only [resolve] at hres ⊢
-        rw [show mb.heap xb = _ from (hag xb hxc).symm]; exact hres
-      obtain ⟨mb', hbsb, hag', hcpres, hnt'⟩ := ih hc hcb hag hwf2
-      exact ⟨mb', BigStep.bs_cond_true hresb hbsb, hag', hcpres, hnt'⟩
-  | bs_cond_false hres hbody ih =>
-    obtain ⟨hwfx, _, hwf3⟩ := Exp.wf_inv_cond hwf
-    match hwfx with
-    | .wf_free (n := xb) hxb =>
-      have hxc : xb ≠ c := fun h => by
-        rw [h] at hxb; rw [show mb.heap c = none from hcb] at hxb; cases hxb
-      have hresb : resolve mb.heap (.var (.free xb)) = some .bfalse := by
-        simp only [resolve] at hres ⊢
-        rw [show mb.heap xb = _ from (hag xb hxc).symm]; exact hres
-      obtain ⟨mb', hbsb, hag', hcpres, hnt'⟩ := ih hc hcb hag hwf3
-      exact ⟨mb', BigStep.bs_cond_false hresb hbsb, hag', hcpres, hnt'⟩
-  | bs_par hbs1 hbs2 ih1 ih2 =>
-    match hwf with
-    | .wf_par _ _ hwf_e1 hwf_e2 =>
-      obtain ⟨mb1, run1, ag1, cpres1, hnt1⟩ := ih1 hc hcb hag hwf_e1
-      have hc1 : _ ≠ none :=
-        fun h => hc ((BigStep.untouched_preserved hbs1 hc hnt1).symm.trans h)
-      obtain ⟨mb2, run2, ag2, cpres2, hnt2⟩ :=
-        ih2 hc1 cpres1 ag1 (Exp.wf_monotonic (BigStep.subsumes run1) hwf_e2)
-      exact ⟨mb2, BigStep.bs_par run1 run2, ag2, cpres2,
-        by rw [Trace.touched_append, not_or]; exact ⟨hnt1, hnt2⟩⟩
--/
 
 /-- Exact memory frame, fresh variant: `c` is a capability of `ma` but ABSENT in
   `mb` (the other thread allocated it).  A corollary of `frame_off_absent`. -/
@@ -3363,10 +3113,6 @@ theorem added_avoid_trans {m m1 m' : Memory} {S : Finset Nat}
   rcases hm1 : m1.lookup c with _ | cell
   · exact h2 c hc' hm1
   · exact h1 c (by rw [hm1]; exact Option.some_ne_none cell) hc
-
-/- NOTE (Phase 2c): `Safe.has_answer_avoiding` (progress with fresh-name avoidance)
-  was REMOVED with the budget-indexing of `Safe` — see the NOTE at the former
-  `Safe.has_answer` site above.  Total-`Safe` proof at git 66b6654. -/
 
 /-- A `BigStep` never shrinks the heap domain (`alloc`/`extend` add, `write` mutates in place,
   `drop` leaves a dead mcell). -/

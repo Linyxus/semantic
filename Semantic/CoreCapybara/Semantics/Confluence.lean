@@ -7,7 +7,7 @@ import Semantic.CoreCapybara.Semantics.Equivariance
   reductions.  Two genuine interleaving reductions out of the same configuration can
   always be brought back together.
 
-  Design points (for audit):
+  Design points:
 
   * **Up to a location renaming `π : Equiv.Perm Nat`.**  Confluence is only provable
     up to a location bijection: `step_alloc` chooses fresh names freely, so two runs
@@ -32,14 +32,14 @@ import Semantic.CoreCapybara.Semantics.Equivariance
     step), from which the wrap guards follow.  `Exp.WfInHeap` is the only precondition,
     mirroring the carrier-free `standardization`.
 
-  Intended proof route: a local diamond (resolve the `alloc` name-clash by renaming one
+  Proof route: a local diamond (resolve the `alloc` name-clash by renaming one
   side via `Equiv.swap`, using the operational `*.renameLoc` equivariance from
-  `Equivariance.lean`), lifted to runs by a strip lemma on top of the proven separation
+  `Equivariance.lean`), lifted to runs by a strip lemma over the separation
   diamond `BigStep.step_run_commute`.
 
-  Headline corollary (DRF / determinacy, to state separately): every interleaving run of
-  a safe program to an answer reaches the SAME answer and memory up to `π`, with trace
-  pinned down only up to `Trace.Equiv` — schedule-determinism. -/
+  Specializing to runs that reach an answer gives determinacy (data-race freedom):
+  every interleaving run of a safe program to an answer reaches the SAME answer and
+  memory up to `π`, with the trace pinned down only up to `Trace.Equiv`. -/
 
 namespace CoreCapybara
 
@@ -1639,14 +1639,11 @@ theorem step_step_diamond_noclash {ts1 ts2 : Trace} {m ma mb : Memory} {e1 e1' e
 
 /-! ### Guard transport for diamond closing legs
 
-  The old development discharged the `par` guards of the diamond's closing legs
-  from a total `Safe` carrier (run-extension via `has_answer`/`head_expand`) —
-  a device that is unavailable (and dishonest) under the budget-indexed
-  rely–guarantee `Safe.par`.  The carrier-free replacement: the closing legs are
-  (possibly renamed) REPLAYS of the opposite input step, so their guards follow
-  from the input steps' OWN guards, transported across the fresh-location
-  renaming (which fixes the ancestor domain) and the one-step memory growth
-  (reachability is subsumption-invariant for wf annotations). -/
+  The `par` guards of the diamond's closing legs are discharged without a `Safe`
+  carrier: the closing legs are (possibly renamed) REPLAYS of the opposite input step,
+  so their guards follow from the input steps' OWN guards, transported across the
+  fresh-location renaming (which fixes the ancestor domain) and the one-step memory
+  growth (reachability is subsumption-invariant for wf annotations). -/
 
 /-- A trace bound at a wf annotation survives the opposite step's memory growth
   (reachability is subsumption-invariant). -/
@@ -1692,7 +1689,7 @@ theorem Step.ni_grow {u : Trace} {m m' : Memory} {CL CR : CaptureSet {}} {e0 e0'
     hni
 
 /-- Wrap a zero-or-one left-branch `RStep` into a `par` context with the guards
-  supplied directly (carrier-free replacement of the old `Safe`-consuming lift). -/
+  supplied directly. -/
 theorem RStep.par_left_guarded {t : Trace} {m m' : Memory} {C1 C2 : CaptureSet {}}
     {e1 e2 e1' : Exp {}}
     (ht : TraceOk t (C1.reachability m))

@@ -3,9 +3,11 @@ import Semantic.CoreCapybara.Semantics.Heap
 /-!
 # The flat, truncation-based step-indexed store world
 
-The promoted store model for CoreCapybara's higher-order mutable references (Phase 1 of
-`roadmaps/generic-refs.md`).  `Denotation/KripkeModel.lean` imports it; `Denotation/Core.lean`
-is to be ported onto it in Phase 2.
+A flat, truncation-based step-indexed store model for CoreCapybara's higher-order mutable
+references.  It pins its cell agreement to a fixed ambient world, so the agreement is not
+stable under store growth; the world-parametrized store in
+`Denotation/StepIndexedWorldParam.lean` (used by `Denotation/Core.lean`) removes that
+limitation by quantifying the agreement over all lower worlds.
 
 ## The obstruction
 
@@ -20,10 +22,9 @@ denotations would be a non-strictly-positive type).
 ## The design
 
 Keep the world **flat** and stratify with an index **truncation** (Ahmed style), rather than
-a dependent `World : Nat → Type` tower.  (The tower needs a content-fabricating `extend`,
+a dependent `World : Nat → Type` tower.  (Such a tower needs a content-fabricating `extend`,
 whose bottom padding cannot be both `True` — for a cell's agreement — and structural — for
-e.g. `unit`; the naive coherence is therefore false at the index boundary.  See
-`StepIndexedProto.lean` for that dead end.)
+e.g. `unit`; the naive coherence is therefore false at the index boundary.)
 
 * `SWorld` maps a location to a world-free *step-indexed* relation `SRel` — a value predicate
   with the world argument amputated, so the type stays strictly positive.
@@ -32,19 +33,19 @@ e.g. `unit`; the naive coherence is therefore false at the index boundary.  See
   the recursion well-founded on `k` alone and makes the boundary `k = 0` trivial (no fabricated
   content).
 
-## What is proven (all `sorryAx`-free — only `propext`/`Quot.sound`)
+## What is proven
 
 * the keystone — **non-expansiveness** (`val_denot_nonexpansive`): `val_denot T k` depends
   only on the world's `k`-approximation.  Index downward-closure (`val_denot_downward`) and
   memory-monotonicity (`val_denot_mem_mono`) follow.
 * the world structure `WorldLe`/`MemTyped`/`StoreConsistent` with their structural lemmas.
-* **`read_typed`** (forward) and **`write_reestablishes`** (backward — the direction the
-  frozen `MonRel` model lacked): the two halves of the cell's biconditional agreement.
+* **`read_typed`** (forward) and **`write_reestablishes`** (backward — the direction a
+  one-way implication cell store lacks): the two halves of the cell's biconditional agreement.
 
 The `arrow` case and the closing `example`s are validation stand-ins for the higher-order
 (cell-of-arrow) shape.  The arrow's behaviour is modeled through its domain `T1`, exactly as
 `KripkeModel.kdenot` does — enough to exercise the keystone recursion; its existential codomain
-and capture sets rejoin in the Phase-2 port to `Core.lean`.
+and capture sets are handled in the full value relation in `Denotation/Core.lean`.
 -/
 
 namespace CoreCapybara
@@ -77,8 +78,9 @@ def val_denot : Ty .capt {} → Nat → SWorld → Memory → Exp {} → Prop
   | .arrow T1 _ _, k, Ψ, m, e =>
       -- Validation stand-in for the higher-order case (see module docstring): `e` is an
       -- abstraction, constrained at every `j < k` through its *domain* denotation
-      -- `val_denot T1 j Ψ` (the existential codomain rejoins in the Phase-2 port).  Genuinely
-      -- world- and index-dependent — enough to exercise the keystone for a cell-of-arrow.
+      -- `val_denot T1 j Ψ` (the existential codomain is handled in `Denotation/Core.lean`).
+      -- Genuinely world- and index-dependent — enough to exercise the keystone for a
+      -- cell-of-arrow.
       (∃ cs0 T0 t0, resolve m.heap e = some (.abs cs0 T0 t0)) ∧
       ∀ j, j < k → ∀ (m' : Memory) (arg : Nat),
         m'.subsumes m → val_denot T1 j Ψ m' (.var (.free arg)) →
@@ -270,7 +272,7 @@ theorem val_denot_mem_mono (T : Ty .capt {}) {k Ψ m m2 e} (hsub : m2.subsumes m
 
 Both directions of the cell's stored relation are available, because the cell agreement is a
 biconditional `R j ↔ val_denot Tc j` (below `k`).  Read uses the forward direction; write
-uses the backward one — the direction the frozen `MonRel` model could not supply. -/
+uses the backward one — the direction a one-way implication store cannot supply. -/
 
 /-- **Read soundness.**  At a well-typed world, dereferencing a live cell `l` (whose stored
 relation `R` agrees with `val_denot Tc` below `k`) yields a `Tc`-value at every depth `< k`. -/
@@ -282,8 +284,8 @@ theorem read_typed {k Ψ m l R n Tc} (hwt : MemTyped k Ψ m) (hΨl : Ψ l = some
 
 /-- **Write soundness (the crux).**  Given the cell's biconditional agreement and a value
 `e_y` that is a `Tc`-value at index `k` and the (updated) world, the stored relation `R`
-holds of `e_y` at every depth `< k` — the BACKWARD direction the frozen `MonRel` model could
-not supply.  Immediate from the biconditional + index downward-closure. -/
+holds of `e_y` at every depth `< k` — the BACKWARD direction a one-way implication store
+cannot supply.  Immediate from the biconditional + index downward-closure. -/
 theorem write_reestablishes {k : Nat} {Ψ : SWorld} {Tc : Ty .capt {}} {R : SRel}
     {m_upd : Memory} {e_y : Exp {}}
     (hag : ∀ j, j < k → ∀ m' e', R j m' e' ↔ val_denot Tc j Ψ m' e')
@@ -309,10 +311,6 @@ example {k : Nat} {Ψ : SWorld} {R : SRel} {m_upd : Memory} {e_y : Exp {}}
     (hag : ∀ j, j < k → ∀ m' e', R j m' e' ↔ val_denot Tf j Ψ m' e')
     (hy : val_denot Tf k Ψ m_upd e_y) : ∀ j, j < k → R j m_upd e_y :=
   write_reestablishes hag hy
-
--- Verified sorryAx-free: `#print axioms val_denot_nonexpansive` / `read_typed` /
--- `write_reestablishes` all report only `[propext, Quot.sound]` — no `sorryAx`, not even
--- `Classical.choice`.
 
 end StepIndexedFlat
 end CoreCapybara

@@ -4,23 +4,12 @@ import Semantic.CoreCapybara.Denotation.StepIndexedFlat
 /-!
 # Step-indexed Kripke worlds for a higher-order mutable store
 
-## PROMOTED MODEL (Phase 1): see `Denotation/StepIndexedFlat.lean`
-
-The `MonRel`/`StoreTyping`/`kdenot` construction below stores a *frozen* relation per cell
-and exposes the cell agreement only as a one-way implication (`R → val Tc`).  That is enough
-for `read`/`alloc` but NOT for `write`, which needs the backward direction — see the
-`sem_typ_write` gap in `Fundamental.lean`.  Validating the keystone (Phase 1) revealed that
-the dependent `World : Nat → Type` family with a content-fabricating `extend`
-(`StepIndexedProto.lean`) cannot satisfy coherence at the index boundary.
-
-The corrected, promoted store model is the **flat, truncation-based** one in
-`Denotation/StepIndexedFlat.lean`: the cell agreement is a genuine biconditional below the
-index (`∀ j < k, R j ↔ val_denot Tc j Ψ`), the keystone is **non-expansiveness**
-(`val_denot_nonexpansive`: `val_denot T k` depends only on the world's `k`-approximation),
-and BOTH `read_typed` (forward) and `write_reestablishes` (backward — the direction the
-frozen model lacked) are proven, on the real `Ty`, for the `unit`/`cell`/**cell-of-arrow**
-toy, `sorryAx`-free.  The frozen construction below is retained transitionally until Phase 2
-ports `Denotation/Core.lean` onto the flat model.
+This module defines `kdenot`, a step-indexed value relation for a higher-order mutable
+store, over a store typing (`StoreTyping`) that assigns each cell a monotone value relation.
+Its cell relation exposes the cell agreement only as a one-way implication (`R → val Tc`),
+which suffices for `read`/`alloc` but not for `write` (which needs the backward direction).
+The world-parametrized store in `Denotation/StepIndexedWorldParam.lean`, used by
+`Denotation/Core.lean`, supplies both directions via a biconditional cell agreement.
 
 ## The problem
 
@@ -39,15 +28,14 @@ content respects `st`").  The cell value relation records `st l = some T` (a *pe
 fact) instead of pinning the content; this is what makes it monotone, and reading
 recovers the content's type from `MemTyped`.
 
-The earlier (first-order) version of this file made the value relation recurse
-*structurally on the type* and claimed no step-indexing is needed.  That is sound only
-for the reference fragment, because a **function** value's relation must quantify over
+Making the value relation recurse *structurally on the type*, with no step-indexing, is
+sound only for the reference fragment, because a **function** value's relation must quantify over
 future worlds and require them well-typed (`MemTyped`) — and `MemTyped` calls the value
 relation at *arbitrary* cell-content types (cells may store functions, cells-of-cells,
 …).  So `val(arrow) → MemTyped → val(arbitrary content type)` has no well-founded
 measure on the type: the classical higher-order-store obstruction.
 
-## The retained frozen construction (`kdenot`, below)
+## The construction (`kdenot`)
 
 `kdenot` adds a **step index** `k` ("well-typed for `k` more observation steps"): the
 function case at index `k+1` quantifies over future worlds that are `MemTyped` at index `k`
@@ -56,11 +44,11 @@ the *type* at the same index) and the definition is well-founded.  This breaks t
 well-foundedness obstruction and supports `read`/`alloc`; it validates — on the real
 `Ty`/`Memory` — monotonicity along `WorldLe` (free by transitivity for the function case),
 downward closure in `k`, and that `read`/`alloc`/`write` read off / maintain the world's
-well-typing, in place of the false syntactic `eval_monotonic`/`simulate_down`.
+well-typing.
 
-But its *cell* relation stores a frozen relation exposing only a one-way implication, so it
-does NOT support `write` (see the top note); that is exactly why the promoted flat model
-replaces it.  Capture-set coverage is omitted (orthogonal and already monotone).
+Its *cell* relation exposes only a one-way implication, so it does NOT support `write` (see
+the header): the biconditional cell agreement of the world-parametrized store supplies that.
+Capture-set coverage is omitted (orthogonal and already monotone).
 -/
 
 namespace CoreCapybara
@@ -105,8 +93,8 @@ NB (foundation stand-in): the real function *result* type `T2 : Ty .exi (∅,x)`
 existential and may mention the argument, so its denotation is `exi_exp_denot` of the
 *opened* type — orthogonal machinery.  Here the codomain is modeled by the (closed)
 domain type `T1` at a further future world, which is exactly the right shape to validate
-the index-drop and the transitivity-based monotonicity; the integration into
-`Denotation/Core.lean` substitutes the real `exi_exp_denot k` codomain. -/
+the index-drop and the transitivity-based monotonicity; `Denotation/Core.lean`'s value
+relation uses the real `exi_exp_denot k` codomain. -/
 def kdenot (k : Nat) (st : StoreTyping) (T : Ty .capt {}) (m : Memory) (e : Exp {}) : Prop :=
   match T with
   | .unit => resolve m.heap e = some .unit
@@ -314,7 +302,7 @@ theorem write_world {k : Nat} {st : StoreTyping} {m : Memory} {l : Nat}
 The expression relation the Fundamental theorem needs is the **future-quantified** form
 below: an expression is good if, at every accessible future world that is well-typed (at
 the appropriate index), it behaves well.  Its monotonicity is *free* — pure transitivity
-of `WorldLe` — with no operational replay (`simulate_down`) at all. -/
+of `WorldLe` — with no operational replay at all. -/
 
 /-- A future-quantified, step-indexed predicate (schematic stand-in for the expression
 denotation): `P k st m e` is whatever the Fundamental theorem asserts about evaluating
@@ -324,8 +312,7 @@ def Robust (P : Nat → StoreTyping → Memory → Exp {} → Prop)
   ∀ st' m', WorldLe st' m' st m → MemTyped k st' m' → P k st' m' e
 
 /-- **Monotonicity, for free.**  Any future-quantified expression property is monotone
-along `WorldLe` by transitivity alone — the structural replacement for `eval_monotonic`/
-`simulate_down`, valid at every index. -/
+along `WorldLe` by transitivity alone, valid at every index. -/
 theorem Robust.mono {P k} {st1 st2 m1 m2} (hw : WorldLe st2 m2 st1 m1) {e} :
     Robust P k st1 m1 e → Robust P k st2 m2 e :=
   fun h st' m' hw' hwt => h st' m' (WorldLe.trans hw hw') hwt
@@ -334,38 +321,6 @@ theorem Robust.mono {P k} {st1 st2 m1 m2} (hw : WorldLe st2 m2 st1 m1) {e} :
 theorem Robust.here {P k st m e} (hwt : MemTyped k st m) (h : Robust P k st m e) :
     P k st m e :=
   h st m (WorldLe.refl st m) hwt
-
-/-! ## Integration plan (how this slots into the real development)
-
-The validated pieces above are the *whole* step-indexed model for higher-order-store
-soundness.  To close `sem_typ_read`/`sem_typ_alloc`/`sem_typ_write` and delete the false
-`eval_monotonic`/`simulate_down`/`Safe.lift`/`Safe.frame_lift`:
-
-1. **Thread `(k, st)`.**  Give `Denot` an index and a store typing
-   (`Denot := Nat → StoreTyping → Memory → Exp → Prop`).  `Memory`/`Heap`/`BigStep`/
-   `SmallStep` are untouched (only the *Denotation* layer changes — `Eval` is generic
-   over its postcondition).
-
-2. **Rewrite `val_denot` cells/readers/arrows** along `kdenot` here: cells/readers record
-   `st l = some T` (persistent); the `arrow`/`poly`/`cpoly`/`modal` future-world
-   quantifiers carry `MemTyped k` and drop to index `k`.
-
-3. **Replace `is_monotonic` (over `subsumes`) with monotonicity over `WorldLe`**: the
-   reference cases become `kdenot_mono`, the function cases are the existing proofs plus
-   a `WorldLe.trans` step; downward closure in `k` is `kdenot_down`.
-
-4. **Carry `MemTyped` as the world's well-typedness** in `Eval`/`exp_denot`.  `read`'s
-   soundness in the Fundamental theorem is `read_typed`; `alloc`/`write` maintain the
-   world by `alloc_world`/`write_world` (note both take the content-presence witness the
-   generic `extend_mcell`/`update_mcell` require, matching `Memory.mcell_wf`).
-
-5. **Define `exp_denot` future-quantified** (`Robust` shape).  `exp_denot_is_monotonic`
-   collapses to `Robust.mono`; the operational monotonicity lemmas in `BigStep.lean` are
-   then unused and deleted.
-
-The step index makes the construction sound for the *full* higher-order store; recursion
-is structural on `k`, so the relation stays a plain well-founded Lean definition — as
-this file proves end to end. -/
 
 end KripkeModel
 end CoreCapybara

@@ -20,9 +20,9 @@ import Semantic.CoreCapybara.Semantics.Props
     Restricting to *external* touches makes it robust to the differing internal
     allocation ORDER (a self-allocated cell is private, never externally touched).
 
-  This file defines `Trace.Equiv` and states `standardization` (proof on top of the
-  diamond `BigStep.step_run_commute`, fed by the separation carrier `Safe` via
-  `Safe.par_noninterfere`). -/
+  This file defines `Trace.Equiv` and proves `standardization`; the separation content
+  that licenses the trace reordering is carried by the interleaving `Step`'s own
+  `par`-guards, so the theorem needs no `Safe` hypothesis. -/
 
 namespace CoreCapybara
 
@@ -269,20 +269,15 @@ theorem Trace.equiv_comm_of_noninterfere {t s : Trace}
 
 /-! ## The guarded sequential relation
 
-  The old development threaded a total `Safe` carrier through the interleaved run
-  and *reconstructed* it after every genuine step.  With the budget-indexed,
-  rely–guarantee `Safe.par` that reconstruction is impossible — rebuilding the
-  carrier after a lone branch step would demand transporting the rely along a
-  *partial* branch run, exactly the false operational-monotonicity shape this
-  development eliminated (see the NOTE in `Semantics/BigStep.lean` and the
-  first-principles falsity argument in `Denotation/KripkeModel.lean`).
-
-  The honest replacement is to observe that the interleaving `Step`'s own
-  `par`-guards already carry ALL the separation content standardization needs:
-  every branch step of the given run arrives with its trace bound and the
-  branches' non-interference.  Standardization therefore reorders GUARD-CARRYING
-  runs, never consulting `Safe` at intermediate states — indeed the final
-  `standardization` theorem needs no `Safe` hypothesis at all.
+  Standardization reorders runs using only the interleaving `Step`'s own `par`-guards,
+  never consulting a separation carrier at intermediate states; the final
+  `standardization` theorem needs no `Safe` hypothesis.  A total `Safe` carrier cannot
+  be reconstructed after a lone branch step: with the budget-indexed, rely–guarantee
+  `Safe.par`, rebuilding the carrier would demand transporting the rely along a
+  *partial* branch run, the false operational-monotonicity shape (see the NOTE in
+  `Semantics/BigStep.lean`).  The guards suffice on their own: every branch step of a
+  given run arrives with its trace bound and the branches' non-interference, which is
+  exactly the separation content standardization needs.
 
   `GSeqStep` is `SeqStep` (the left-first schedule) enriched with `Step`'s `par`
   guards; it projects to a plain `SeqStep` (dropping guards) and to a genuine
@@ -1512,10 +1507,6 @@ theorem Step.allocd_mcell {t : Trace} {m1 m2 : Memory} {e1 e2 : Exp {}} {l : Nat
   | step_ctx_letin _ ih | step_ctx_unpack _ ih
   | step_par_left _ _ _ ih | step_par_right _ _ _ ih => exact ih hal
 
-set_option maxHeartbeats 1000000 in
--- Large case split: the premature-`par_right` case threads the BigStep diamond, the
--- `Safe.par` carrier, and the trace-commutation algebra.
-
 /-! ## Guard algebra
 
   The per-step `par`-guards of a guarded run compose to whole-phase bounds and,
@@ -1796,8 +1787,7 @@ set_option maxHeartbeats 1000000 in
 /-- **Guarded `par` decomposition.**  A guarded sequential run of `par D1 D2 eL eR`
   to an answer splits into a guarded left run, then a guarded right run, then the
   join — AND the per-step guards compose (`TraceOk.guard_compose`) into whole-phase
-  bounds at the phase-start annotations.  These recovered bounds are what the old
-  development pulled from the (now impossible-to-transport) `Safe` carrier. -/
+  bounds at the phase-start annotations. -/
 theorem GSeqReduceN.par_inv : ∀ {n : Nat} {t : Trace} {m mf : Memory}
     {D1 D2 : CaptureSet {}} {eL eR a : Exp {}},
     GSeqReduceN n t m (.par D1 D2 eL eR) mf a → a.IsAns →

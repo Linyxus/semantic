@@ -652,12 +652,12 @@ theorem reduce_to_bigstep {t : Trace} {m e m' a}
   device: rebuilding a `Safe.par` carrier after a lone branch step would require
   transporting the rely `W` along a *partial* branch run, which the rely–guarantee
   fields (quantified over full `BigStep` runs) deliberately do not provide — and
-  soundly so, since arbitrary-memory transport is exactly the false
-  operational-monotonicity shape this development eliminated.  What adequacy needs
-  is weaker and honest: every state reachable *within budget* is progressive.  We
-  prove that by consulting the `Safe` derivation in place, decomposing the given
-  sequential reduction against the derivation (the `seqreduce_*_split` lemmas), and
-  paying budget as the decomposition crosses the head/branch boundary. -/
+  soundly so, since arbitrary-memory transport of the rely is exactly the unsound
+  operational-monotonicity shape.  What adequacy needs is weaker and honest: every
+  state reachable *within budget* is progressive.  This is proven by consulting the
+  `Safe` derivation in place, decomposing the given sequential reduction against the
+  derivation (the `seqreduce_*_split` lemmas), and paying budget as the decomposition
+  crosses the head/branch boundary. -/
 
 /-- Answers take no `SeqStep`. -/
 theorem seqstep_ans_absurd {t : Trace} {m m' : Memory} {e e' : Exp {}}
@@ -1017,11 +1017,10 @@ theorem Safe.has_reduction_of_ans {k : Nat} {m : Memory} {e : Exp {}}
 
 /-- **Within-budget termination (sequential small-step).**  A `Safe` configuration
   sequentially reduces either to an answer within the read budget, or to a state
-  whose reduction has already consumed the whole budget.  This is the honest,
-  budget-indexed replacement for the removed total `Safe.has_answer`: a fixed-budget
-  derivation cannot promise an answer (`exhausted` carries no run), but it can
-  promise the budget is spent before anything gets stuck.  Instantiating the budget
-  above a terminating program's read count recovers answer reachability. -/
+  whose reduction has already consumed the whole budget.  A fixed-budget derivation
+  cannot promise an answer (`exhausted` carries no run), but it can promise the budget
+  is spent before anything gets stuck.  Instantiating the budget above a terminating
+  program's read count recovers answer reachability. -/
 theorem Safe.has_reduction {k : Nat} {m : Memory} {e : Exp {}} (h : Safe k m e) :
     ∃ t m' a, SeqReduce t m e m' a ∧
       ((a.IsAns ∧ t.readCount < k) ∨ k ≤ t.readCount) := by

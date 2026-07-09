@@ -2605,7 +2605,7 @@ theorem Heap.wf_extend
     · intro hcontra; cases hcontra
     · exact hold
 
-/-- If a heap is well-formed and we look up a value, the expression is well-formed. -/
+/-- Looking up a value in a well-formed heap yields a well-formed expression. -/
 theorem Heap.wf_lookup
   {H : Heap} {l : Nat} {hv : HeapVal}
   (hwf_H : H.WfHeap)
