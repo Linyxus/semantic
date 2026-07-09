@@ -858,8 +858,9 @@ theorem intersect_mono_right :
       (Subset.trans (intersect_mono_right (C := Cb) hsub) Subset.union_right_right)
 
 /-- A capability set has a certain mutability kind.
-    `HasKind C .ro` means every cap in C is either `.access .ro` (immutable
-    access) or `.drop` (exclusive — does not grant any read/write authority).
+    `HasKind C .ro` means every cap in C is `.access .ro` (immutable access):
+    no `.drop` (deallocation) and no `.access .epsilon` (mutation) authority.
+    In particular `HasKind C .ro` implies `C.drop_free` (see `HasKind.ro_drop_free`).
     `HasKind C .epsilon` is always true. -/
 inductive HasKind : CapabilitySet -> Mutability -> Prop where
 | eps :
@@ -868,22 +869,41 @@ inductive HasKind : CapabilitySet -> Mutability -> Prop where
   HasKind .empty .ro
 | ro_cap :
   HasKind (.cap (.access .ro) l) .ro
-| ro_drop :
-  HasKind (.cap .drop l) .ro
 | ro_union :
   HasKind C1 .ro ->
   HasKind C2 .ro ->
   HasKind (C1 ∪ C2) .ro
 
-/-- applyRO always produces a capability set with kind .ro -/
-theorem HasKind.applyRO {C : CapabilitySet} : C.applyRO.HasKind .ro := by
+/-- applyRO produces a capability set with kind .ro, provided the source set is
+    drop-free (otherwise a `.drop` cap survives `applyRO` unchanged). -/
+theorem HasKind.applyRO {C : CapabilitySet} (hdf : C.drop_free) :
+    C.applyRO.HasKind .ro := by
   induction C with
   | empty => exact HasKind.ro_empty
-  | cap m _ =>
+  | cap m l =>
     cases m with
     | access _ => exact HasKind.ro_cap
-    | drop => exact HasKind.ro_drop
-  | union _ _ ih1 ih2 => exact HasKind.ro_union ih1 ih2
+    | drop => exact absurd hasmem.here (hdf l)
+  | union C1 C2 ih1 ih2 =>
+    exact HasKind.ro_union
+      (ih1 (fun l h => hdf l (hasmem.left h)))
+      (ih2 (fun l h => hdf l (hasmem.right h)))
+
+/-- Every `.ro`-kinded capability set is drop-free: `.ro` grants no `.drop`
+    (deallocation) authority. -/
+theorem HasKind.ro_drop_free {C : CapabilitySet} (h : C.HasKind .ro) :
+    C.drop_free := by
+  intro l
+  generalize hm : Mutability.ro = m at h
+  induction h with
+  | eps => cases hm
+  | ro_empty => exact not_hasmem_empty
+  | ro_cap => intro hmem; cases hmem
+  | ro_union _ _ ih1 ih2 =>
+    intro hmem
+    cases hmem with
+    | left hm1 => exact ih1 hm hm1
+    | right hm2 => exact ih2 hm hm2
 
 /-- Weakening: if C has kind m1 and m1 ≤ m2, then C has kind m2. -/
 theorem HasKind.weaken {C : CapabilitySet} {m1 m2 : Mutability}

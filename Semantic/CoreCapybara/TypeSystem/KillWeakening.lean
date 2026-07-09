@@ -2116,7 +2116,9 @@ theorem HasKind.erase_kill {s : Sig} {Γ : Ctx s} {C : CaptureSet s} {m : Mutabi
   | sc hsc _ ih => exact .sc (hsc.erase_kill K) ih
   | rw => exact .rw
   | imm hlock hhas => exact .imm ((hlock.eraseCVars).kill_peaks_cs K) hhas.eraseCVars
-  | ro => rw [CaptureSet.eraseCVars_applyRO]; exact .ro
+  | ro hΓ hC hao =>
+    rw [CaptureSet.eraseCVars_applyRO]
+    exact .ro (Ctx.kill_peaks_cs_isClosed (hΓ.eraseCVars K)) (hC.eraseCVars K) hao.eraseCVars
 
 theorem Subbound.erase_kill {s : Sig} {Γ : Ctx s} {cb1 cb2 : CaptureBound s}
     (h : Subbound Γ cb1 cb2) (K : CaptureSet s) :
@@ -2132,9 +2134,8 @@ theorem SepCheck.erase_kill {s : Sig} {Γ : Ctx s} {C1 C2 : CaptureSet s}
   | sep_symm _ ih => exact .sep_symm ih
   | sep_union _ _ ih1 ih2 => exact .sep_union ih1 ih2
   | sep_empty => exact .sep_empty
-  | sep_ro hc1 hc2 ha1 ha2 hk1 hk2 =>
-    exact .sep_ro (hc1.eraseCVars K) (hc2.eraseCVars K) ha1.eraseCVars ha2.eraseCVars
-      (hk1.erase_kill K) (hk2.erase_kill K)
+  | sep_ro hk1 hk2 =>
+    exact .sep_ro (hk1.erase_kill K) (hk2.erase_kill K)
   | sep_sc _ hsc hequiv ih => exact .sep_sc ih (hsc.erase_kill K) hequiv.eraseCVars
   | sep_mono _ hsc ih => exact .sep_mono ih (hsc.erase_kill K)
   | sep_lock hlock htwo => exact .sep_lock ((hlock.eraseCVars).kill_peaks_cs K) htwo.eraseCVars

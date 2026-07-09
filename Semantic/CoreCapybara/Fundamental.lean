@@ -3392,6 +3392,21 @@ theorem fundamental_subcapt
   case sc_ro_mono _ ih => exact sem_sc_ro_mono ih
   case sc_drop_mono _ ih => exact sem_sc_drop_mono ih
 
+/-- An access-only (no `.drop` peak) *closed* capture set denotes a drop-free
+capability set: any runtime `.drop` member would trace (via `drop_denot_peak`)
+to a `.drop`-access peak, contradicting `AccessOnly`. Closedness is essential:
+a free location referenced at `.drop` access has no peaks at all, so
+`AccessOnly` would be vacuous about it. -/
+theorem accessonly_denot_drop_free
+    {Γ : Ctx s} {env : TypeEnv s} {store : Memory} {C : CaptureSet s}
+    (hts : EnvTyping Γ env k st store) (hΓ : Γ.IsClosed) (hC : C.IsClosed)
+    (hao : C.AccessOnly Γ) :
+    (C.denot env store).drop_free := by
+  intro l hmem
+  obtain ⟨c, hsub, _⟩ :=
+    drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hC hmem
+  exact hao c hsub
+
 private theorem fundamental_haskind_ro
   (hkind : HasKind Γ C mode)
   : mode = .ro -> SemHasKind Γ C .ro := by
@@ -3419,13 +3434,13 @@ private theorem fundamental_haskind_ro
     intro hm env k st mem hts
     cases hm
     exact (typed_env_lookup_lock_satisfy hlock hts).kind _ _ hhas
-  | ro =>
-    rename_i C0
+  | ro hΓ hcl hao =>
     intro hm env k st mem hts
     cases hm
+    have hdf := accessonly_denot_drop_free hts hΓ hcl hao
+    simp only [CaptureSet.denot] at hdf
     simpa [CaptureSet.denot, CaptureSet.applyRO_subst, ground_denot_applyRO_comm] using
-      (CapabilitySet.HasKind.applyRO
-        (C := ((C0.subst (Subst.from_TypeEnv env)).ground_denot mem)))
+      (CapabilitySet.HasKind.applyRO hdf)
 
 theorem fundamental_haskind
   (hkind : HasKind Γ C mode) :
@@ -3648,26 +3663,24 @@ private theorem cvar_subset_cp_union_r {env : TypeEnv s} {a : Access}
 theorem sem_sepcheck_symm
   (ih : SemSepCheck Γ C1 C2) :
   SemSepCheck Γ C2 C1 := by
-  intro hΓ env k st H hts hdsep
-  exact CapabilitySet.Noninterference.ni_symm (ih hΓ env k st H hts hdsep)
+  intro env k st H hts hdsep
+  exact CapabilitySet.Noninterference.ni_symm (ih env k st H hts hdsep)
 
 theorem sem_sepcheck_union
   (ih1 : SemSepCheck Γ C1 C3)
   (ih2 : SemSepCheck Γ C2 C3) :
   SemSepCheck Γ (C1 ∪ C2) C3 := by
-  intro hΓ env k st H hts hdsep
+  intro env k st H hts hdsep
   simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
   exact CapabilitySet.Noninterference.ni_union
-    (ih1 hΓ env k st H hts hdsep) (ih2 hΓ env k st H hts hdsep)
+    (ih1 env k st H hts hdsep) (ih2 env k st H hts hdsep)
 
-/-- Two read-only *drop-free* capability sets do not interfere: any shared
-location is held read-only on both sides. The drop-freedom hypotheses rule
-out the `ro_drop` kinding alternative. -/
+/-- Two read-only capability sets do not interfere: any shared location is held
+read-only on both sides. `.ro` now excludes `.drop` outright (there is no
+`ro_drop` alternative), so no separate drop-freedom hypothesis is needed. -/
 theorem CapabilitySet.noninterference_of_ro_ro
   (hk1 : CapabilitySet.HasKind C1 .ro)
-  (hk2 : CapabilitySet.HasKind C2 .ro)
-  (hdf1 : C1.drop_free)
-  (hdf2 : C2.drop_free) :
+  (hk2 : CapabilitySet.HasKind C2 .ro) :
   CapabilitySet.Noninterference C1 C2 := by
   induction C1 with
   | empty => exact .ni_empty
@@ -3679,53 +3692,28 @@ theorem CapabilitySet.noninterference_of_ro_ro
       | cap m' l' =>
         cases hk2 with
         | ro_cap => exact .ni_ro
-        | ro_drop => exact absurd CapabilitySet.hasmem.here (hdf2 _)
       | union C2a C2b ih2a ih2b =>
         cases hk2 with
         | ro_union hk2a hk2b =>
-          have hdf2a : C2a.drop_free := fun l h => hdf2 l (.left h)
-          have hdf2b : C2b.drop_free := fun l h => hdf2 l (.right h)
-          exact .ni_symm (.ni_union (.ni_symm (ih2a hk2a hdf2a)) (.ni_symm (ih2b hk2b hdf2b)))
-    | ro_drop => exact absurd CapabilitySet.hasmem.here (hdf1 _)
+          exact .ni_symm (.ni_union (.ni_symm (ih2a hk2a)) (.ni_symm (ih2b hk2b)))
   | union C1a C1b ih1a ih1b =>
     cases hk1 with
     | ro_union hk1a hk1b =>
-      have hdf1a : C1a.drop_free := fun l h => hdf1 l (.left h)
-      have hdf1b : C1b.drop_free := fun l h => hdf1 l (.right h)
-      exact .ni_union (ih1a hk1a hdf1a) (ih1b hk1b hdf1b)
+      exact .ni_union (ih1a hk1a) (ih1b hk1b)
 
 theorem sem_sepcheck_empty :
   SemSepCheck Γ {} C := by
-  intro _hΓ env k st H hts _hdsep
+  intro env k st H hts _hdsep
   simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
   exact .ni_empty
 
-/-- An access-only (no `.drop` peak) *closed* capture set denotes a drop-free
-capability set: any runtime `.drop` member would trace (via `drop_denot_peak`)
-to a `.drop`-access peak, contradicting `AccessOnly`. Closedness is essential:
-a free location referenced at `.drop` access has no peaks at all, so
-`AccessOnly` would be vacuous about it. -/
-theorem accessonly_denot_drop_free
-    {Γ : Ctx s} {env : TypeEnv s} {store : Memory} {C : CaptureSet s}
-    (hts : EnvTyping Γ env k st store) (hΓ : Γ.IsClosed) (hC : C.IsClosed)
-    (hao : C.AccessOnly Γ) :
-    (C.denot env store).drop_free := by
-  intro l hmem
-  obtain ⟨c, hsub, _⟩ :=
-    drop_denot_peak hts hΓ (envtyping_lookup_cvar_drop_free hts) hC hmem
-  exact hao c hsub
-
 theorem sem_sepcheck_ro
-  (hcl1 : C1.IsClosed) (hcl2 : C2.IsClosed)
-  (hao1 : C1.AccessOnly Γ) (hao2 : C2.AccessOnly Γ)
   (hk1 : HasKind Γ C1 .ro)
   (hk2 : HasKind Γ C2 .ro) :
   SemSepCheck Γ C1 C2 := by
-  intro hΓ env k st H hts _hdsep
+  intro env k st H hts _hdsep
   exact CapabilitySet.noninterference_of_ro_ro
     (fundamental_haskind hk1 env k st H hts) (fundamental_haskind hk2 env k st H hts)
-    (accessonly_denot_drop_free hts hΓ hcl1 hao1)
-    (accessonly_denot_drop_free hts hΓ hcl2 hao2)
 
 /-- Semantic content of `sep_droppable`: two *distinct* droppable capture
 variables denote disjoint capability sets — exactly the `EnvSepWf`
@@ -3734,7 +3722,7 @@ access modes. -/
 theorem sem_sepcheck_droppable {c1 c2 : BVar s .cvar} {m1 m2 : Access}
   (hdistinct : Γ.TwoDistinctDroppable c1 c2) :
   SemSepCheck Γ (.cvar m1 c1) (.cvar m2 c2) := by
-  intro _hΓ env k st H hts hdsep
+  intro env k st H hts hdsep
   obtain ⟨ha1, ha2, hne⟩ := hdistinct
   have hdenot1 :
       (CaptureSet.cvar m1 c1).denot env H = ((env.lookup_cvar c1).2).applyAccess m1 := by
@@ -3765,22 +3753,22 @@ theorem fundamental_sepcheck
     exact sem_sepcheck_union ih1 ih2
   | sep_empty =>
     exact sem_sepcheck_empty
-  | sep_ro hcl1 hcl2 hao1 hao2 hk1 hk2 =>
-    exact sem_sepcheck_ro hcl1 hcl2 hao1 hao2 hk1 hk2
+  | sep_ro hk1 hk2 =>
+    exact sem_sepcheck_ro hk1 hk2
   | sep_sc _ hsub _hequiv ih =>
     -- The environment-separation invariant is budget-independent, so the budget
     -- move needs no transport.
-    intro hΓ env k st H hts hdsep
+    intro env k st H hts hdsep
     exact CapabilitySet.Noninterference.subset_left
-      (ih hΓ env k st H hts hdsep) (fundamental_subcapt hsub env k st H hts)
+      (ih env k st H hts hdsep) (fundamental_subcapt hsub env k st H hts)
   | sep_mono _ hsub ih =>
     -- Same as `sep_sc`: `Noninterference` is downward-closed in its left argument
     -- (the unused `EquivP` of `sep_sc` was never needed).
-    intro hΓ env k st H hts hdsep
+    intro env k st H hts hdsep
     exact CapabilitySet.Noninterference.subset_left
-      (ih hΓ env k st H hts hdsep) (fundamental_subcapt hsub env k st H hts)
+      (ih env k st H hts hdsep) (fundamental_subcapt hsub env k st H hts)
   | sep_lock hlock hdistinct =>
-    intro _hΓ env k st H henv _hdsep
+    intro env k st H henv _hdsep
     exact (typed_env_lookup_lock_satisfy hlock henv).sep _ _ hdistinct
   | sep_droppable hdistinct =>
     exact sem_sepcheck_droppable hdistinct
@@ -3792,7 +3780,7 @@ disjoint capabilities exactly by that invariant. The invariant reaches the
 `modal_modal` consumption point because `SemSubtyp` carries it — the `exi`
 subtyping rule re-tags its fresh binder `.access_only`, which preserves `EnvSepWf`. -/
 theorem fundamental_sepcheck_global
-  (hsep : SepCheck Γ C1 C2) (hΓ : Γ.IsClosed) :
+  (hsep : SepCheck Γ C1 C2) :
   ∀ env k st H,
     EnvTyping Γ env k st H ->
     env.EnvSepWf ->
@@ -3810,12 +3798,10 @@ theorem fundamental_sepcheck_global
     intro env k st H hts _hdsep
     simp only [CaptureSet.denot, CaptureSet.subst, CaptureSet.ground_denot]
     exact .ni_empty
-  | sep_ro hcl1 hcl2 hao1 hao2 hk1 hk2 =>
+  | sep_ro hk1 hk2 =>
     intro env k st H hts _hdsep
     exact CapabilitySet.noninterference_of_ro_ro
       (fundamental_haskind hk1 env k st H hts) (fundamental_haskind hk2 env k st H hts)
-      (accessonly_denot_drop_free hts hΓ hcl1 hao1)
-      (accessonly_denot_drop_free hts hΓ hcl2 hao2)
   | sep_sc _ hsub _ ih =>
     intro env k st H hts hdsep
     exact CapabilitySet.Noninterference.subset_left (ih env k st H hts hdsep)
@@ -3831,7 +3817,7 @@ theorem fundamental_sepcheck_global
     -- Two distinct droppable capture variables denote disjoint capabilities by
     -- the `EnvSepWf` invariant (as in `sem_sepcheck_droppable`).
     intro env k st H hts hdsep
-    exact sem_sepcheck_droppable hdistinct hΓ env k st H hts hdsep
+    exact sem_sepcheck_droppable hdistinct env k st H hts hdsep
 
 /-- Disjoint core of `disj_droppable`: two *distinct* droppable capture variables
 denote fully `disjoint` capability sets — exactly the `EnvSepWf` invariant.  This
@@ -3915,7 +3901,6 @@ theorem CaptureSet.PairwiseSep.sem {s : Sig} {Γ : Ctx s} {n : Nat}
 `EnvSepWf` invariant. Used only by `modal_modal`. -/
 theorem sem_satisfy_global
   (hclosed_Ψ : Ψ.IsClosed)
-  (hΓ : Γ.IsClosed)
   (hsatisfy : Satisfy Γ Ψ) :
   ∀ env k st m,
     EnvTyping Γ env k st m ->
@@ -3935,11 +3920,10 @@ theorem sem_satisfy_global
     · intro C mode hhas
       exact fundamental_haskind (hkind C mode hhas) env k st m henv
     · intro C1 C2 hdistinct
-      exact fundamental_sepcheck_global (hsep C1 C2 hdistinct) hΓ env k st m henv hdsep
+      exact fundamental_sepcheck_global (hsep C1 C2 hdistinct) env k st m henv hdsep
 
 theorem sem_satisfy
   (hclosed_Ψ : Ψ.IsClosed)
-  (hΓ : Γ.IsClosed)
   (hsatisfy : Satisfy Γ Ψ) :
   ∀ env k st m,
     EnvTyping Γ env k st m ->
@@ -3959,12 +3943,11 @@ theorem sem_satisfy
     · intro C mode hhas
       exact fundamental_haskind (hkind C mode hhas) env k st m henv
     · intro C1 C2 hdistinct
-      exact fundamental_sepcheck (hsep C1 C2 hdistinct) hΓ env k st m henv hdsep
+      exact fundamental_sepcheck (hsep C1 C2 hdistinct) env k st m henv hdsep
 
 theorem sem_typ_par
   {C1 C2 : CaptureSet s} {Γ : Ctx s}
   {e1 e2 : Exp s} {E1 E2 : Ty .exi s}
-  (hΓ : Γ.IsClosed)
   (_hclosed_C1 : C1.IsClosed)
   (_hclosed_C2 : C2.IsClosed)
   (_hclosed_e1 : e1.IsClosed)
@@ -3984,7 +3967,7 @@ theorem sem_typ_par
     have hunion : (C1 ∪ C2).denot env store = C1.denot env store ∪ C2.denot env store := rfl
     have hcompat' := hunion ▸ hcompat
     have hni : CapabilitySet.Noninterference (C1.denot env store) (C2.denot env store) :=
-      hsep hΓ env k st store hts hdsep
+      hsep env k st store hts hdsep
     have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
       intro mu l hmem
       simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
@@ -4063,7 +4046,7 @@ theorem sem_typ_par
     CapabilitySet.Subset.union_right_right
   -- Separation: the two branches' footprints are non-interfering.
   have hni : CapabilitySet.Noninterference (C1.denot env store) (C2.denot env store) :=
-    hsep hΓ env k st store hts hdsep
+    hsep env k st store hts hdsep
   have hpresent_C2 : ∀ mu l, (C2.denot env store).hasmem mu l → store.heap l ≠ none := by
     intro mu l hmem
     simp only [CaptureSet.denot, CaptureSet.ground_denot_eq_reachability] at hmem
@@ -4292,7 +4275,7 @@ theorem captureSet_seqcomp_denot
     intro mu l h1 _h2
     exact accessonly_denot_drop_free hts hΓ hclosed hao l h1
   | seq_sep hsep =>
-    exact (fundamental_sepcheck hsep hΓ env k st store hts hdsep).seqComp
+    exact (fundamental_sepcheck hsep env k st store hts hdsep).seqComp
 
 /-- **Extending memory with a fresh value cell preserves `MemTyped`.**  A value cell is
 never an mcell, so the store typing (which only tracks mcells) is untouched: consistency
@@ -5083,7 +5066,6 @@ theorem SepCtx.rename_isClosed {Ψ : SepCtx s1} {f : Rename s1 s2}
     exact SepCtx.IsClosed.cons ih (CaptureSet.rename_isClosed hC)
 
 lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty .exi s}
-  (hΓ : Γ.IsClosed)
   (hΨ1_closed : ModalCtx.IsClosed Ψ1)
   (hΨ2_closed : ModalCtx.IsClosed Ψ2)
   (hsat : Satisfy (Γ.push_lock Ψ2) (Ψ1.rename Rename.succ)) :
@@ -5093,8 +5075,6 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty 
   have htyping' := env_typing_worldle_trunc hjk htyping hwle
   have hΨ1r_closed : (Ψ1.rename (Rename.succ (k := Kind.lock))).IsClosed :=
     ModalCtx.rename_closed hΨ1_closed
-  have hΓlock_closed : (Γ.push_lock Ψ2).IsClosed :=
-    Ctx.IsClosed.push hΓ (Binding.IsClosed.lock hΨ2_closed)
   simp only [Ty.val_denot] at hv ⊢
   obtain ⟨hwf_e, hwf_cs, cs0, sepctx0, t0, hresolve, hwf_cs0, hwf_sepctx0,
     hsat_impl1, hR0_sub1, hbody1⟩ := hv
@@ -5108,7 +5088,7 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty 
       ⟨hsatΨ2, htyping0⟩
     have hsatΨ1 : env.Satisfy Ψ1 m0 :=
       TypeEnv.satisfy_lweaken_iff.mp
-        (sem_satisfy_global hΨ1r_closed hΓlock_closed hsat
+        (sem_satisfy_global hΨ1r_closed hsat
           (env.extend_lock) j st' m0 henvlock0 hdsep.extend_lock)
     exact hsat_impl1 m0 hsub hsatΨ1
   · -- The body: the target supplies `Ψ2` kind/sep facts; convert to `Ψ1` and feed
@@ -5131,7 +5111,7 @@ lemma sem_subtyp_modal_modal {cs : CaptureSet s} {Ψ1 Ψ2 : ModalCtx s} {E : Ty 
       ⟨hsatΨ2, htyping_a⟩
     have hsatΨ1 : env.Satisfy Ψ1 m'a :=
       TypeEnv.satisfy_lweaken_iff.mp
-        (sem_satisfy_global hΨ1r_closed hΓlock_closed hsat
+        (sem_satisfy_global hΨ1r_closed hsat
           (env.extend_lock) i st'a m'a henvlock_a hdsep.extend_lock)
     exact hbody1 i hij st'a m'a hwle'a hmt'a hcompat'a hsatΨ1.kind hsatΨ1.sep
 
@@ -5239,8 +5219,8 @@ theorem fundamental_subtyp
     cases hT2 with | modal hcs2 _ hE2 =>
     exact sem_subtyp_modal (fundamental_subcapt s_cs) hcs2 hΨ
       (ih_body (Ty.rename_closed hE1) (Ty.rename_closed hE2))
-  | modal_modal hΓ hΨ1 hΨ2 hsat =>
-    intro _ _; exact sem_subtyp_modal_modal hΓ hΨ1 hΨ2 hsat
+  | modal_modal _ hΨ1 hΨ2 hsat =>
+    intro _ _; exact sem_subtyp_modal_modal hΨ1 hΨ2 hsat
   | exi _ ih_body =>
     intro hT1 hT2
     cases hT1 with | exi hT1b =>
@@ -6684,7 +6664,6 @@ theorem modal_val_denot_inv {k : Nat} {st : StoreTyping k}
 theorem sem_typ_unwrap
   {x : BVar s .var} {Ψ : ModalCtx s} {E : Ty .exi s}
   (hclosed_Ψ : Ψ.IsClosed)
-  (hΓ : Γ.IsClosed)
   (hx : SemanticTyping {} Γ (Exp.var (.bound x))
     (.typ (.modal (.var (.M .epsilon) (.bound x)) Ψ E)))
   (hsatisfy : Satisfy Γ Ψ) :
@@ -6706,7 +6685,7 @@ theorem sem_typ_unwrap
   have hcompatR0 : store.is_compatible (expand_captures store.heap cs0) :=
     Memory.is_compatible_subset hR0_sub hcompat
   have hsatΨ : env.Satisfy Ψ store :=
-    sem_satisfy hclosed_Ψ hΓ hsatisfy env k st store hts hdsep
+    sem_satisfy hclosed_Ψ hsatisfy env k st store hts hdsep
   have hbody' := hbody stx store (WorldLe.refl stx store) hmtx hcompatR0 hsatΨ.kind hsatΨ.sep
   simp only [Ty.exi_exp_denot] at hbody'
   have hrec0 := hbody' hmtx
@@ -6830,7 +6809,7 @@ theorem fundamental
           cases hclosed_modal with
           | modal _ hclosed_Ψ _ =>
             exact hclosed_Ψ
-      exact sem_typ_unwrap (x := bx) hclosed_Ψ hΓ
+      exact sem_typ_unwrap (x := bx) hclosed_Ψ
         (ih_x hΓ (by constructor; constructor))
         hsatisfy
   case invoke =>
@@ -6885,7 +6864,7 @@ theorem fundamental
   case par ht1_syn ht2_syn hsep_syn ht1_ih ht2_ih =>
     cases hclosed_e with
     | par hclosed_C1 hclosed_C2 hclosed_e1 hclosed_e2 =>
-      exact sem_typ_par hΓ
+      exact sem_typ_par
         hclosed_C1
         hclosed_C2
         hclosed_e1

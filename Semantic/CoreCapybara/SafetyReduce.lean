@@ -106,7 +106,7 @@ theorem adequacy_platform_reduce {N : Nat} {e : Exp (Sig.platform_of N)}
       simp only [List.append_nil, Trace.readCount_append] at hrc
       omega
 
-/-- **Immutability under the genuine interleaving schedule.**  A read-only, drop-free
+/-- **Immutability under the genuine interleaving schedule.**  A read-only
     program that reduces (via the interleaving `Reduce`, to an answer) leaves the platform
     memory unmutated.  `standardization` converts the interleaving run to a sequential run
     with the same endpoints, discharging the sequential `immutability_adequacy_platform_run`. -/
@@ -114,7 +114,6 @@ theorem immutability_adequacy_platform_reduce {N : Nat} {e : Exp (Sig.platform_o
     {C : CaptureSet (Sig.platform_of N)} {E : Ty .exi (Sig.platform_of N)}
     (ht : SemanticTyping C (Ctx.platform_of N) e E)
     (hkind : HasKind (Ctx.platform_of N) C .ro)
-    (hdf : (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)).drop_free)
     (hclosed : e.IsClosed) :
     ∀ t M2 a,
       Reduce t (Memory.platform_of N)
@@ -123,14 +122,14 @@ theorem immutability_adequacy_platform_reduce {N : Nat} {e : Exp (Sig.platform_o
       (Memory.platform_of N).not_mutated M2 := by
   intro t M2 a hred hans
   obtain ⟨t', hseq, _⟩ := standardization (platform_subst_wfInHeap hclosed) hred hans
-  exact immutability_adequacy_platform_run ht hkind hdf t' M2 a hseq hans
+  exact immutability_adequacy_platform_run ht hkind t' M2 a hseq hans
 
 /-! ## Typed corollaries — interleaving safety with zero side conditions
 
   For a `HasType`-derived program both the `SemanticTyping` premise (via `fundamental`,
   discharging context closedness with `platform_ctx_isClosed`) and source closedness (via
   `HasType.exp_is_closed`) come for free, so a well-typed platform program is interleaving-safe
-  and — when its budget is read-only and drop-free — interleaving-immutable, with no extra
+  and — when its budget is read-only — interleaving-immutable, with no extra
   hypotheses. -/
 
 /-- **Interleaving adequacy for a typed program.**  Every `Reduce`-reachable state of a
@@ -143,19 +142,18 @@ theorem adequacy_platform_reduce_typed {N : Nat} {e : Exp (Sig.platform_of N)}
     (HasType.exp_is_closed ht)
 
 /-- **Interleaving immutability for a typed program.**  A well-typed platform program with a
-    read-only, drop-free budget that reduces to an answer under the interleaving schedule
+    read-only budget that reduces to an answer under the interleaving schedule
     leaves the platform memory unmutated. -/
 theorem immutability_adequacy_platform_reduce_typed {N : Nat} {e : Exp (Sig.platform_of N)}
     {C : CaptureSet (Sig.platform_of N)} {E : Ty .exi (Sig.platform_of N)}
     (ht : HasType C (Ctx.platform_of N) e E)
-    (hkind : HasKind (Ctx.platform_of N) C .ro)
-    (hdf : (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)).drop_free) :
+    (hkind : HasKind (Ctx.platform_of N) C .ro) :
     ∀ t M2 a,
       Reduce t (Memory.platform_of N)
         (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M2 a ->
       a.IsAns ->
       (Memory.platform_of N).not_mutated M2 :=
   immutability_adequacy_platform_reduce (fundamental (platform_ctx_isClosed N) ht)
-    hkind hdf (HasType.exp_is_closed ht)
+    hkind (HasType.exp_is_closed ht)
 
 end CoreCapybara

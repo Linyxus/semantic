@@ -3284,11 +3284,11 @@ def SemSubbound (Γ : Ctx s) (B1 B2 : CaptureBound s) : Prop :=
 
 /-- Semantic separation check. The `EnvSepWf` premise is needed by the
 `sep_droppable` rule: separation of two distinct droppable capture variables
-is an environment invariant, not derivable from `EnvTyping` alone. The
-`Γ.IsClosed` hypothesis serves the `sep_ro` rule's drop-freedom argument (peak
-tracing requires closed types). -/
+is an environment invariant, not derivable from `EnvTyping` alone. The `sep_ro`
+rule no longer needs a `Γ.IsClosed` hypothesis here: `ro` now implies
+drop-freeness directly (`CapabilitySet.HasKind.ro_drop_free`), so the peak-tracing
+closedness argument is confined to the syntactic `sep_ro` premises. -/
 def SemSepCheck (Γ : Ctx s) (C1 C2 : CaptureSet s) : Prop :=
-  Γ.IsClosed ->
   ∀ env k st H,
     EnvTyping Γ env k st H ->
     env.EnvSepWf ->

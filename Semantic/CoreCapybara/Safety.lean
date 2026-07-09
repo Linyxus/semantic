@@ -346,14 +346,15 @@ theorem adequacy_platform {e : Exp (Sig.platform_of N)}
 
 /-! ## Immutability
 
-  A read-only budget forbids writes (`.access .epsilon`). But the `ro` kind also
-  permits `.drop` capabilities (`HasKind.ro_drop`), and a drop deallocates a cell
-  (turning it dead and zeroing its bit), which `not_mutated` (tracking bit and
-  liveness) counts as a mutation. So immutability needs the budget to be both
-  read-only and drop-free. -/
+  A read-only budget forbids writes (`.access .epsilon`). The `ro` kind now also
+  excludes `.drop` capabilities (there is no `ro_drop` alternative), so a drop —
+  which deallocates a cell (turning it dead and zeroing its bit), something
+  `not_mutated` (tracking bit and liveness) counts as a mutation — cannot occur
+  either. Drop-freedom is therefore a consequence of the `ro` kind
+  (`HasKind.ro_drop_free`), not a separate hypothesis. -/
 
 /-- A read-only capability set never covers a write (`.access .epsilon`):
-    its caps are `.access .ro` (and `.epsilon ≰ .ro`) or `.drop` (incomparable). -/
+    every cap is `.access .ro`, and `.epsilon ≰ .ro`. -/
 theorem haskind_ro_not_covers_eps {C : CapabilitySet} (h : CapabilitySet.HasKind C .ro)
     (l : Nat) : ¬ C.covers (.access .epsilon) l := by
   revert h
@@ -363,7 +364,6 @@ theorem haskind_ro_not_covers_eps {C : CapabilitySet} (h : CapabilitySet.HasKind
     intro h hcov
     cases h with
     | ro_cap => cases hcov with | here hle => cases hle with | access hmu => cases hmu
-    | ro_drop => cases hcov with | here hle => cases hle
   | union C1 C2 ih1 ih2 =>
     intro h hcov
     cases h with
@@ -455,18 +455,17 @@ theorem traceok_no_dealloc {C : CapabilitySet} {l : Nat}
     · exact ih hA halloc hmem'
 
 /-- Immutability adequacy: a semantically well-typed program whose budget is
-    read-only (`HasKind .ro`) and drop-free does not mutate any platform cell along a
+    read-only (`HasKind .ro`) does not mutate any platform cell along a
     partial run that *extends to an answer* — the state after the prefix agrees with the
     initial memory on all mutable cells (bit and liveness).  The extension to an answer
     is what turns the partial run into a full `BigStep` run, from which the (budget-guarded)
-    `TraceOk` postcondition of the semantic typing is read off.  `ro` rules out writes;
-    drop-freeness rules out deallocations (which `ro` would otherwise permit, and which
-    mutate liveness). -/
+    `TraceOk` postcondition of the semantic typing is read off.  `ro` rules out writes,
+    and — since `ro` now implies drop-freeness (`HasKind.ro_drop_free`) — also rules out
+    deallocations (which mutate liveness). -/
 theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
     {C : CaptureSet (Sig.platform_of N)} {E : Ty .exi (Sig.platform_of N)}
     (ht : SemanticTyping C (Ctx.platform_of N) e E)
-    (hkind : HasKind (Ctx.platform_of N) C .ro)
-    (hdf : (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)).drop_free) :
+    (hkind : HasKind (Ctx.platform_of N) C .ro) :
     ∀ t trest M1 e1 M2 a,
       SeqReduce t (Memory.platform_of N)
         (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M1 e1 ->
@@ -499,26 +498,27 @@ theorem immutability_adequacy_platform {N : Nat} {e : Exp (Sig.platform_of N)}
   have hwr : TraceItem.access .epsilon l ∉ (t ++ trest) :=
     traceok_no_write (haskind_ro_not_covers_eps hro l) htok (by simp) hl_alloc
   have hdr : TraceItem.dealloc l ∉ (t ++ trest) :=
-    traceok_no_dealloc (dropfree_not_covers_drop hdf l) htok (by simp) hl_alloc
+    traceok_no_dealloc
+      (dropfree_not_covers_drop (CapabilitySet.HasKind.ro_drop_free hro) l) htok
+      (by simp) hl_alloc
   exact reduce_preserves_cell hred
     (fun hm => hwr (List.mem_append_left _ hm))
     (fun hm => hdr (List.mem_append_left _ hm)) hinit
 
-/-- Immutability adequacy for a full run to an answer: a read-only, drop-free program that
+/-- Immutability adequacy for a full run to an answer: a read-only program that
     reduces to an answer leaves the platform memory unmutated.  Special case of
     `immutability_adequacy_platform` with the answer state itself as the prefix endpoint
     (`trest = refl`). -/
 theorem immutability_adequacy_platform_run {N : Nat} {e : Exp (Sig.platform_of N)}
     {C : CaptureSet (Sig.platform_of N)} {E : Ty .exi (Sig.platform_of N)}
     (ht : SemanticTyping C (Ctx.platform_of N) e E)
-    (hkind : HasKind (Ctx.platform_of N) C .ro)
-    (hdf : (C.denot (TypeEnv.platform_of N) (Memory.platform_of N)).drop_free) :
+    (hkind : HasKind (Ctx.platform_of N) C .ro) :
     ∀ t M2 a,
       SeqReduce t (Memory.platform_of N)
         (e.subst (Subst.from_TypeEnv (TypeEnv.platform_of N))) M2 a ->
       a.IsAns ->
       (Memory.platform_of N).not_mutated M2 :=
   fun t M2 a hred hans =>
-    immutability_adequacy_platform ht hkind hdf t [] M2 a M2 a hred SeqReduce.refl hans
+    immutability_adequacy_platform ht hkind t [] M2 a M2 a hred SeqReduce.refl hans
 
 end CoreCapybara

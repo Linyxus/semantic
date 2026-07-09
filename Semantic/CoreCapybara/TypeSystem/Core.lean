@@ -116,6 +116,9 @@ inductive HasKind : Ctx s -> CaptureSet s -> Mutability -> Prop where
   -------------------
   HasKind Γ C .ro
 | ro {C : CaptureSet s} :
+  Γ.IsClosed ->
+  C.IsClosed ->
+  C.AccessOnly Γ ->
   -------------------
   HasKind Γ C.applyRO .ro
 
@@ -142,10 +145,6 @@ inductive SepCheck : Ctx s -> CaptureSet s -> CaptureSet s -> Prop where
   -------------------
   SepCheck Γ {} C
 | sep_ro :
-  C1.IsClosed ->
-  C2.IsClosed ->
-  C1.AccessOnly Γ ->
-  C2.AccessOnly Γ ->
   HasKind Γ C1 .ro ->
   HasKind Γ C2 .ro ->
   -------------------
