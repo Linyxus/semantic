@@ -7,11 +7,9 @@ semantic type soundness via a step-indexed Kripke logical relation over a
 higher-order store: the fundamental theorem yields type safety, memory
 safety, immutability, and data-race freedom.
 
-All results are proved in full. The development contains no `sorry`, and
-every headline theorem depends only on the standard axioms
-`propext`, `Classical.choice`, and `Quot.sound`.
-
 ## Building
+
+You need the Lean toolchain to build this mechanization.
 
 ``` sh
 lake exe cache get
@@ -21,12 +19,6 @@ lake build
 The toolchain is pinned by `lean-toolchain`; the only dependency is Mathlib.
 
 ## Correspondence with the paper
-
-The paper states its results twice: in the *Metatheory* section of the main
-text, and in the metatheory appendix, "in the form in which they are
-mechanized". The tables below map both to the Lean declarations, which the
-paper designates as ground truth. All declarations live in the
-`CoreCapybara` namespace.
 
 ### Main theorems
 
@@ -38,63 +30,6 @@ paper designates as ground truth. All declarations live in the
 | Separation | `fundamental_sepcheck` | [Fundamental.lean](Semantic/CoreCapybara/Fundamental.lean) |
 | Standardization | `standardization` | [Semantics/Standardization.lean](Semantic/CoreCapybara/Semantics/Standardization.lean) |
 | Confluence | `confluence` | [Semantics/Confluence.lean](Semantic/CoreCapybara/Semantics/Confluence.lean) |
-
-- `fundamental` is the paper's statement verbatim: syntactic typing
-  `HasType C Γ e E` implies semantic typing `SemanticTyping C Γ e E`
-  (for a closed context).
-- `adequacy_platform_reduce_typed` is Type Soundness as stated in the main
-  text: a well-typed program, run on the platform (see below), reaches only
-  progressive configurations — each is an answer or can step — under **any**
-  schedule of the interleaving small-step relation `Reduce`. It is the
-  composition of `fundamental` with the adequacy theorems below. The Memory
-  Safety corollary carries no separate Lean declaration: the stuck
-  configurations that adequacy excludes include every use-after-free and
-  double-free, since a dead cell matches no reduction rule.
-- `immutability_adequacy_platform_reduce_typed`: if the program's use set
-  moreover has kind `ro` (`HasKind Γ C .ro`), any interleaved run to an
-  answer leaves the initial memory unchanged in content and liveness
-  (`Memory.not_mutated`).
-- `fundamental_sepcheck`: syntactic separation `SepCheck Γ C1 C2` denotes
-  non-interference of the two footprints in every realizing,
-  separation-well-formed environment (`SemSepCheck`).
-- `standardization`: a well-formed configuration's interleaved run to an
-  answer is matched by a sequential run with the same endpoints, up to
-  Mazurkiewicz trace equivalence (`Trace.Equiv`). No typing hypothesis.
-- `confluence`: any two interleaved runs from a well-formed configuration
-  join, with final memories equal up to a location permutation, final
-  expressions equal up to the permutation and `Exp.AEq` (reachability
-  equivalence of the order-sensitive `par` capture annotations — the
-  discrepancy the paper's appendix notes), combined traces
-  `Trace.Equiv`-related, and equal read counts. The Schedule Determinism
-  corollary is the instance where both runs end in answers: answers are
-  `Reduce`-normal, so the joining runs are empty.
-
-### Appendix statements
-
-The appendix states the adequacy chain in its mechanized granularity:
-
-| Paper result | Lean declaration | File |
-| --- | --- | --- |
-| Subcapturing lemma | `fundamental_subcapt` | [Fundamental.lean](Semantic/CoreCapybara/Fundamental.lean) |
-| Separation lemma | `fundamental_sepcheck` | [Fundamental.lean](Semantic/CoreCapybara/Fundamental.lean) |
-| Kinding lemma (read-only covers no write) | `fundamental_haskind` | [Fundamental.lean](Semantic/CoreCapybara/Fundamental.lean) |
-| Sequential adequacy | `adequacy_platform` | [Safety.lean](Semantic/CoreCapybara/Safety.lean) |
-| Adequacy (any schedule) | `adequacy_platform_reduce` | [SafetyReduce.lean](Semantic/CoreCapybara/SafetyReduce.lean) |
-| Immutability (semantic premise) | `immutability_adequacy_platform_reduce` | [SafetyReduce.lean](Semantic/CoreCapybara/SafetyReduce.lean) |
-
-The adequacy theorems take a `SemanticTyping` premise and run the program on
-the *platform* of `N` pre-allocated boolean cells: `Ctx.platform_of N` binds,
-per cell, a capture variable and a term variable of boolean reference type
-(`.cell … .bool`), `Memory.platform_of N` allocates the live cells, and
-`TypeEnv.platform_of N` maps each variable to its cell
-(all in [Safety.lean](Semantic/CoreCapybara/Safety.lean)). `adequacy_platform`
-covers sequential runs directly from the model; `adequacy_platform_reduce`
-lifts it to arbitrary interleavings by joining, via `confluence`, a partial
-interleaved run against the maximal sequential run the model provides. The
-`*_typed` corollaries in
-[SafetyReduce.lean](Semantic/CoreCapybara/SafetyReduce.lean) discharge the
-semantic premises with `fundamental`, giving the zero-side-condition
-statements of the main text.
 
 ### The model
 
