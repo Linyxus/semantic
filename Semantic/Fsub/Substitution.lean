@@ -227,4 +227,36 @@ theorem Exp.subst_comp {e : Exp s1} {σ1 : Subst s1 s2} {σ2 : Subst s2 s3} :
     conv_rhs => rw [← Subst.comp_lift]
     rfl
 
+/-!
+The identity substitution is preserved by lifting.
+-/
+theorem Subst.lift_id {k : Kind} : (Subst.id (s:=s)).lift (k:=k) = Subst.id := by
+  apply Subst.funext
+  · intro x; cases x <;> rfl
+  · intro x; cases x <;> rfl
+
+theorem Var.subst_id {x : Var s} : x.subst Subst.id = x := by cases x <;> rfl
+
+theorem Ty.subst_id {T : Ty s} : T.subst Subst.id = T := by
+  induction T with
+  | top => rfl
+  | tvar x => rfl
+  | singleton x => simp [Ty.subst, Var.subst_id]
+  | arrow T1 T2 ih1 ih2 =>
+    simpa only [Ty.subst, Subst.lift_id, ih1] using congrArg (Ty.arrow T1) ih2
+  | poly T1 T2 ih1 ih2 =>
+    simpa only [Ty.subst, Subst.lift_id, ih1] using congrArg (Ty.poly T1) ih2
+
+theorem Exp.subst_id {e : Exp s} : e.subst Subst.id = e := by
+  induction e with
+  | var x => simp [Exp.subst, Var.subst_id]
+  | abs T e ih =>
+    simpa only [Exp.subst, Ty.subst_id, Subst.lift_id] using congrArg (Exp.abs T) ih
+  | tabs T e ih =>
+    simpa only [Exp.subst, Ty.subst_id, Subst.lift_id] using congrArg (Exp.tabs T) ih
+  | app x y => simp [Exp.subst, Var.subst_id]
+  | tapp x T => simp [Exp.subst, Var.subst_id, Ty.subst_id]
+  | letin e1 e2 ih1 ih2 =>
+    simpa only [Exp.subst, Subst.lift_id, ih1] using congrArg (Exp.letin e1) ih2
+
 end Fsub
